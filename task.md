@@ -199,4 +199,4 @@
 - M0：`867e53b` 项目初始化（workspace / TypeScript / Vitest / ESLint / smoke test）
 - M1：`007f2bb` core 时空语义（Context / Fiber / Effect / Event / Registry / Reflect + 85 tests）
 - M2：`9e4b78f` agent + tools + session（SessionLog / ToolsService / AgentLoop + 45 tests）
-- M3：`feat(eval): complete M3 eval runtime and cli`（待记录 hash）
+- M3：`68631c7` eval 评测运行时与 CLI（EvalRunner / strategies / eval run + compare + 29 tests）
