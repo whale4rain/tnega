@@ -101,6 +101,6 @@ tnega evolve --budget 10  # 运行进化循环
 ## 状态
 
 - M1 core 时空语义：已完成。Context / Fiber / Effect / Event / Registry / Reflect 已落地，支持插件热插拔、失败回滚、依赖联动与 scope 隔离，配套 85 个 core 测试。
-- M2 agent + tools + session：未开始。
+- M2 agent + tools + session：已完成。SessionLog 以 JSONL 记录可重放的会话事件并支持 fork / compact；ToolsService 提供注册表与可插拔执行管线；AgentService 提供可替换 agentLoop、inbox 与 fake LLM 端到端工具调用，配套 45 个测试。
 - M3 eval 评测运行时：未开始。
 - M4 evolve 进化循环：未开始。

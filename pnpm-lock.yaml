@@ -27,7 +27,17 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.2.0)(vite@8.2.2(@types/node@26.2.0))
 
-  packages/agent: {}
+  packages/agent:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/cli: {}
 
@@ -37,9 +47,17 @@ importers:
 
   packages/evolve: {}
 
-  packages/session: {}
+  packages/session:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
 
-  packages/tools: {}
+  packages/tools:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

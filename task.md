@@ -14,7 +14,7 @@
 | --- | --- |
 | M0 项目初始化 | 已完成 |
 | M1 core 时空语义 | 已完成 |
-| M2 agent + tools + session | 未开始 |
+| M2 agent + tools + session | 已完成 |
 | M3 eval 评测运行时 | 未开始 |
 | M4 evolve 进化循环 | 未开始 |
 
@@ -97,33 +97,33 @@
 
 ### M2.1 session
 
-- [ ] SessionEvent 事件类型定义
-- [ ] JSONL append-only 会话日志
-- [ ] deriveMessages 从日志投影模型历史
-- [ ] replay / fork / compact
-- [ ] 测试：日志追加、投影、replay 一致性、fork 隔离、compact 后仍可重建历史
+- [x] SessionEvent 事件类型定义
+- [x] JSONL append-only 会话日志
+- [x] deriveMessages 从日志投影模型历史
+- [x] replay / fork / compact
+- [x] 测试：日志追加、投影、replay 一致性、fork 隔离、compact 后仍可重建历史
 
 ### M2.2 tools
 
-- [ ] 工具注册表，schema 与执行函数
-- [ ] 执行管线：pre-execute / execute / post-execute / result
-- [ ] 工具按 scope 注册，per-agent 能力集
-- [ ] 测试：注册卸载、管线钩子顺序、scope 隔离、工具异常处理
+- [x] 工具注册表，schema 与执行函数
+- [x] 执行管线：pre-execute / execute / post-execute / result
+- [x] 工具按 scope 注册，per-agent 能力集
+- [x] 测试：注册卸载、管线钩子顺序、scope 隔离、工具异常处理
 
 ### M2.3 agent
 
-- [ ] Agent 接口与 agentLoop 可替换 service
-- [ ] turn / step 生命周期与 agent/* 事件
-- [ ] 最小 inbox：输入 claim 与 injected context
-- [ ] LLM 适配器 seam，供测试注入 fake LLM
-- [ ] 测试：单步循环、多步工具循环、turn 结束条件、事件顺序、fake LLM 端到端
+- [x] Agent 接口与 agentLoop 可替换 service
+- [x] turn / step 生命周期与 agent/* 事件
+- [x] 最小 inbox：输入 claim 与 injected context
+- [x] LLM 适配器 seam，供测试注入 fake LLM
+- [x] 测试：单步循环、多步工具循环、turn 结束条件、事件顺序、fake LLM 端到端
 
 ### M2 验收
 
-- [ ] 用 fake LLM 跑通一次包含工具调用的完整会话
-- [ ] session 日志可重建模型输入
-- [ ] 更新 task.md 状态
-- [ ] git commit（M2）
+- [x] 用 fake LLM 跑通一次包含工具调用的完整会话
+- [x] session 日志可重建模型输入
+- [x] 更新 task.md 状态
+- [x] git commit（M2）
 
 ## M3 eval 评测运行时
 
