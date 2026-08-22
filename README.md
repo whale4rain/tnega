@@ -89,7 +89,7 @@ packages/
   cli/        # Headless CLI
 ```
 
-## 使用（规划）
+## 使用
 
 ```text
 tnega run                 # 运行一次 agent 会话
@@ -98,9 +98,24 @@ tnega eval compare a b    # 比较两次评测
 tnega evolve --budget 10  # 运行进化循环
 ```
 
+tasks.yml 支持候选声明；没有接入真实 LLM 时可以用内置确定性 loop 跑通完整评测链路：
+
+```yaml
+tasks:
+  - id: echo-good
+    inputText: good
+    assertion:
+      expect: good
+candidates:
+  echo:
+    version: "1"
+    loop: echo
+defaultCandidate: echo
+```
+
 ## 状态
 
 - M1 core 时空语义：已完成。Context / Fiber / Effect / Event / Registry / Reflect 已落地，支持插件热插拔、失败回滚、依赖联动与 scope 隔离，配套 85 个 core 测试。
 - M2 agent + tools + session：已完成。SessionLog 以 JSONL 记录可重放的会话事件并支持 fork / compact；ToolsService 提供注册表与可插拔执行管线；AgentService 提供可替换 agentLoop、inbox 与 fake LLM 端到端工具调用，配套 45 个测试。
-- M3 eval 评测运行时：未开始。
+- M3 eval 评测运行时：已完成。EvalRunner 在隔离子 Context 中加载候选，逐 task 创建独立会话与工具 scope，支持预算、缓存、持久化与 eval/* 事件；策略 assert / llm-judge / regression / all / weighted / gate 可注册、替换和卸载；CLI 支持 `tnega eval run` 与 `tnega eval compare`，配套 29 个测试。
 - M4 evolve 进化循环：未开始。

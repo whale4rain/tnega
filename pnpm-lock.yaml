@@ -39,11 +39,40 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
-  packages/cli: {}
+  packages/cli:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/eval':
+        specifier: workspace:*
+        version: link:../eval
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/core: {}
 
-  packages/eval: {}
+  packages/eval:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/evolve: {}
 

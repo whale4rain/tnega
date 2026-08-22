@@ -2,5 +2,15 @@
   "name": "@tnega/cli",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/eval": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
 }

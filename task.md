@@ -15,7 +15,7 @@
 | M0 项目初始化 | 已完成 |
 | M1 core 时空语义 | 已完成 |
 | M2 agent + tools + session | 已完成 |
-| M3 eval 评测运行时 | 未开始 |
+| M3 eval 评测运行时 | 已完成 |
 | M4 evolve 进化循环 | 未开始 |
 
 ## 开发约定
@@ -131,40 +131,40 @@
 
 ### M3.1 核心对象
 
-- [ ] EvalStrategy / Task / Evidence / Verdict / EvalRun 类型
-- [ ] ctx.eval：register / run / get / compare
-- [ ] eval/* 事件：start / task-start / task-end / verdict / run-end / abort
+- [x] EvalStrategy / Task / Evidence / Verdict / EvalRun 类型
+- [x] ctx.eval：register / run / get / compare
+- [x] eval/* 事件：start / task-start / task-end / verdict / run-end / abort
 
 ### M3.2 运行器
 
-- [ ] run 创建隔离子 Context 与 Fiber
-- [ ] candidate 在隔离 scope 加载，结束自动卸载
-- [ ] 每个 task 独立子 Context，调用 agentLoop 并收集 evidence
-- [ ] 预算控制：回合 / Token / 成本 / 时间上限
-- [ ] 缓存：task + candidate 版本 + 模型配置哈希
-- [ ] 测试：run 生命周期、隔离卸载、预算中止、缓存命中、错误证据仍可判分
+- [x] run 创建隔离子 Context 与 Fiber
+- [x] candidate 在隔离 scope 加载，结束自动卸载
+- [x] 每个 task 独立子 Context，调用 agentLoop 并收集 evidence
+- [x] 预算控制：回合 / Token / 成本 / 时间上限
+- [x] 缓存：task + candidate 版本 + 模型配置哈希
+- [x] 测试：run 生命周期、隔离卸载、预算中止、缓存命中、错误证据仍可判分
 
 ### M3.3 策略
 
-- [ ] assert 策略（结果匹配 / 文件断言）
-- [ ] llm-judge 策略（确定性评分，可 keyless replay）
-- [ ] regression 策略（对比 baseline，允许退化阈值）
-- [ ] 组合与 gate：all / weighted / safety 必过
-- [ ] 测试：策略注册卸载、组合判分、gate 通过拒绝、regression 退化拦截、LLM judge 稳定性
+- [x] assert 策略（结果匹配 / 文件断言）
+- [x] llm-judge 策略（确定性评分，可 keyless replay）
+- [x] regression 策略（对比 baseline，允许退化阈值）
+- [x] 组合与 gate：all / weighted / safety 必过
+- [x] 测试：策略注册卸载、组合判分、gate 通过拒绝、regression 退化拦截、LLM judge 稳定性
 
 ### M3.4 CLI 与持久化
 
-- [ ] tnega eval run tasks.yml
-- [ ] tnega eval compare <a> <b>
-- [ ] EvalRun 持久化与读取
-- [ ] 测试：CLI 端到端、结果文件可回读
+- [x] tnega eval run tasks.yml
+- [x] tnega eval compare <a> <b>
+- [x] EvalRun 持久化与读取
+- [x] 测试：CLI 端到端、结果文件可回读
 
 ### M3 验收
 
-- [ ] 候选 preset 在隔离环境评测后无残留
-- [ ] 同一 evidence 重放结果稳定
-- [ ] 更新 task.md 状态
-- [ ] git commit（M3）
+- [x] 候选 preset 在隔离环境评测后无残留
+- [x] 同一 evidence 重放结果稳定
+- [x] 更新 task.md 状态
+- [x] git commit（M3）
 
 ## M4 evolve 进化循环
 
@@ -199,3 +199,4 @@
 - M0：`867e53b` 项目初始化（workspace / TypeScript / Vitest / ESLint / smoke test）
 - M1：`007f2bb` core 时空语义（Context / Fiber / Effect / Event / Registry / Reflect + 85 tests）
 - M2：`9e4b78f` agent + tools + session（SessionLog / ToolsService / AgentLoop + 45 tests）
+- M3：`feat(eval): complete M3 eval runtime and cli`（待记录 hash）
