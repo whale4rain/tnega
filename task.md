@@ -12,7 +12,7 @@
 
 | 阶段 | 状态 |
 | --- | --- |
-| M0 项目初始化 | 进行中（README 已完成） |
+| M0 项目初始化 | 已完成 |
 | M1 core 时空语义 | 未开始 |
 | M2 agent + tools + session | 未开始 |
 | M3 eval 评测运行时 | 未开始 |
@@ -31,14 +31,14 @@
 目标：建立可运行、可测试的工程骨架。
 
 - [x] README.md 编写
-- [ ] pnpm workspace 初始化（packages 结构）
-- [ ] 根 package.json 与脚本（build / test / lint）
-- [ ] TypeScript 严格模式配置
-- [ ] Vitest 测试环境与 smoke test
-- [ ] 目录结构落地：core / agent / tools / session / eval / evolve / cli
-- [ ] 测试：smoke test 验证 build 与 test 链路可用
-- [ ] 更新 task.md 状态
-- [ ] git commit（M0）
+- [x] pnpm workspace 初始化（packages 结构）
+- [x] 根 package.json 与脚本（build / test / lint）
+- [x] TypeScript 严格模式配置
+- [x] Vitest 测试环境与 smoke test
+- [x] 目录结构落地：core / agent / tools / session / eval / evolve / cli
+- [x] 测试：smoke test 验证 build 与 test 链路可用
+- [x] 更新 task.md 状态
+- [x] git commit（M0）
 
 验收：`pnpm test` 可用，workspace 可解析，CI 链路在本地可跑通。
 
@@ -195,3 +195,5 @@
 ## 提交记录
 
 按阶段记录 commit，后续在此追加。
+
+- M0：`1050fc6` 项目初始化（workspace / TypeScript / Vitest / ESLint / smoke test）
