@@ -100,4 +100,7 @@ tnega evolve --budget 10  # 运行进化循环
 
 ## 状态
 
-设计阶段，尚未开始实现。完成 M1 后更新本文件。
+- M1 core 时空语义：已完成。Context / Fiber / Effect / Event / Registry / Reflect 已落地，支持插件热插拔、失败回滚、依赖联动与 scope 隔离，配套 85 个 core 测试。
+- M2 agent + tools + session：未开始。
+- M3 eval 评测运行时：未开始。
+- M4 evolve 进化循环：未开始。

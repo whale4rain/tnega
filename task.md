@@ -13,7 +13,7 @@
 | 阶段 | 状态 |
 | --- | --- |
 | M0 项目初始化 | 已完成 |
-| M1 core 时空语义 | 未开始 |
+| M1 core 时空语义 | 已完成 |
 | M2 agent + tools + session | 未开始 |
 | M3 eval 评测运行时 | 未开始 |
 | M4 evolve 进化循环 | 未开始 |
@@ -48,48 +48,48 @@
 
 ### M1.1 基础工具
 
-- [ ] DisposableList：push / delete / clear，clear 返回逆序列表
-- [ ] 最小 Logger
-- [ ] 错误组合与异步堆栈辅助
-- [ ] 测试：DisposableList 顺序、删除、重复清理
+- [x] DisposableList：push / delete / clear，clear 返回逆序列表
+- [x] 最小 Logger
+- [x] 错误组合与异步堆栈辅助
+- [x] 测试：DisposableList 顺序、删除、重复清理
 
 ### M1.2 事件系统
 
-- [ ] EventsService：emit / parallel / serial / bail / waterfall
-- [ ] 监听器注册与注销，卸载时自动清理
-- [ ] scope 可见性过滤与 global 选项
-- [ ] 测试：四种派发模式、异常传播、卸载清理、scope 过滤
+- [x] EventsService：emit / parallel / serial / bail / waterfall
+- [x] 监听器注册与注销，卸载时自动清理
+- [x] scope 可见性过滤与 global 选项
+- [x] 测试：四种派发模式、异常传播、卸载清理、scope 过滤
 
 ### M1.3 Fiber 生命周期
 
-- [ ] Fiber 状态机：pending / loading / active / failed / unloading / disposed
-- [ ] effect 收集：同步 / 异步 dispose 函数
-- [ ] 卸载时逆序执行 disposables，等待异步清理
-- [ ] 加载中途抛错时回滚已注册 effects
-- [ ] epoch 与配置变化触发 reload
-- [ ] inertia 串行化并发刷新
-- [ ] 根 Fiber 与 restart
-- [ ] 测试：热插拔、热重载、失败回滚、异步清理、并发刷新、reload 后旧注册不残留
+- [x] Fiber 状态机：pending / loading / active / failed / unloading / disposed
+- [x] effect 收集：同步 / 异步 dispose 函数
+- [x] 卸载时逆序执行 disposables，等待异步清理
+- [x] 加载中途抛错时回滚已注册 effects
+- [x] epoch 与配置变化触发 reload
+- [x] inertia 串行化并发刷新
+- [x] 根 Fiber 与 restart
+- [x] 测试：热插拔、热重载、失败回滚、异步清理、并发刷新、reload 后旧注册不残留
 
 ### M1.4 Context 与 Scope
 
-- [ ] Context 树：extend 创建子 Context，服务沿父链查找
-- [ ] isolate / intercept 语义
-- [ ] 测试：子 Context 隔离、服务覆盖、父级不受污染
+- [x] Context 树：extend 创建子 Context，服务沿父链查找
+- [x] isolate / intercept 语义
+- [x] 测试：子 Context 隔离、服务覆盖、父级不受污染
 
 ### M1.5 Registry 与 Reflect
 
-- [ ] RegistryService：plugin 挂载、插件身份去重、fibers 管理
-- [ ] ReflectService：provide / inject、服务访问、Impl 语义
-- [ ] internal/service 与 internal/get/set 钩子
-- [ ] 测试：依赖齐备才激活、依赖消失依赖方先停、provider 恢复后自动重载、循环依赖报错
+- [x] RegistryService：plugin 挂载、插件身份去重、fibers 管理
+- [x] ReflectService：provide / inject、服务访问、Impl 语义
+- [x] internal/service 与 internal/get/set 钩子
+- [x] 测试：依赖齐备才激活、依赖消失依赖方先停、provider 恢复后自动重载、循环依赖报错
 
 ### M1 验收
 
-- [ ] 所有 core 测试通过
-- [ ] 编写一个演示测试：插件注册工具与监听器，热卸载后全部清除
-- [ ] 更新 task.md 状态
-- [ ] git commit（M1）
+- [x] 所有 core 测试通过
+- [x] 编写一个演示测试：插件注册工具与监听器，热卸载后全部清除
+- [x] 更新 task.md 状态
+- [x] git commit（M1）
 
 ## M2 agent + tools + session
 
