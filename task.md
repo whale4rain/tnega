@@ -1,0 +1,197 @@
+# Tnega 开发计划与进度追踪
+
+> 每完成一个较大阶段及任务，需要完整的、全面的测试文件同步生成，并自己测试。
+
+开发必须按本文件推进。每个阶段完成标准：功能实现、测试文件同步生成并全部通过、进度状态更新、达到提交点则 git commit。
+
+## 项目目标
+
+自研核心语义的 Agent Harness，参照 DeepSeek Harness 的时空可组合思想，Eval 与 Agent Loop、Tools 平级，最终支持 Agent 自进化实验。
+
+## 当前状态
+
+| 阶段 | 状态 |
+| --- | --- |
+| M0 项目初始化 | 进行中（README 已完成） |
+| M1 core 时空语义 | 未开始 |
+| M2 agent + tools + session | 未开始 |
+| M3 eval 评测运行时 | 未开始 |
+| M4 evolve 进化循环 | 未开始 |
+
+## 开发约定
+
+- 每个阶段先写计划任务，再实现，再同步补测试，最后自己运行测试。
+- 测试必须覆盖正常路径、失败路径、回滚路径、隔离路径。
+- 每个较大阶段完成且测试通过后，git commit。
+- 阶段完成后更新本文件的状态表。
+- 非目标：Web UI、子代理、插件市场、生产级沙箱、多模态。
+
+## M0 项目初始化
+
+目标：建立可运行、可测试的工程骨架。
+
+- [x] README.md 编写
+- [ ] pnpm workspace 初始化（packages 结构）
+- [ ] 根 package.json 与脚本（build / test / lint）
+- [ ] TypeScript 严格模式配置
+- [ ] Vitest 测试环境与 smoke test
+- [ ] 目录结构落地：core / agent / tools / session / eval / evolve / cli
+- [ ] 测试：smoke test 验证 build 与 test 链路可用
+- [ ] 更新 task.md 状态
+- [ ] git commit（M0）
+
+验收：`pnpm test` 可用，workspace 可解析，CI 链路在本地可跑通。
+
+## M1 core 时空语义
+
+目标：自研 Context / Fiber / Effect / Event / Registry / Reflect，实现插件热插拔、失败回滚、依赖联动、scope 隔离。
+
+### M1.1 基础工具
+
+- [ ] DisposableList：push / delete / clear，clear 返回逆序列表
+- [ ] 最小 Logger
+- [ ] 错误组合与异步堆栈辅助
+- [ ] 测试：DisposableList 顺序、删除、重复清理
+
+### M1.2 事件系统
+
+- [ ] EventsService：emit / parallel / serial / bail / waterfall
+- [ ] 监听器注册与注销，卸载时自动清理
+- [ ] scope 可见性过滤与 global 选项
+- [ ] 测试：四种派发模式、异常传播、卸载清理、scope 过滤
+
+### M1.3 Fiber 生命周期
+
+- [ ] Fiber 状态机：pending / loading / active / failed / unloading / disposed
+- [ ] effect 收集：同步 / 异步 dispose 函数
+- [ ] 卸载时逆序执行 disposables，等待异步清理
+- [ ] 加载中途抛错时回滚已注册 effects
+- [ ] epoch 与配置变化触发 reload
+- [ ] inertia 串行化并发刷新
+- [ ] 根 Fiber 与 restart
+- [ ] 测试：热插拔、热重载、失败回滚、异步清理、并发刷新、reload 后旧注册不残留
+
+### M1.4 Context 与 Scope
+
+- [ ] Context 树：extend 创建子 Context，服务沿父链查找
+- [ ] isolate / intercept 语义
+- [ ] 测试：子 Context 隔离、服务覆盖、父级不受污染
+
+### M1.5 Registry 与 Reflect
+
+- [ ] RegistryService：plugin 挂载、插件身份去重、fibers 管理
+- [ ] ReflectService：provide / inject、服务访问、Impl 语义
+- [ ] internal/service 与 internal/get/set 钩子
+- [ ] 测试：依赖齐备才激活、依赖消失依赖方先停、provider 恢复后自动重载、循环依赖报错
+
+### M1 验收
+
+- [ ] 所有 core 测试通过
+- [ ] 编写一个演示测试：插件注册工具与监听器，热卸载后全部清除
+- [ ] 更新 task.md 状态
+- [ ] git commit（M1）
+
+## M2 agent + tools + session
+
+目标：最小可运行的 Agent 循环，JSONL 会话日志，工具注册与执行管线。
+
+### M2.1 session
+
+- [ ] SessionEvent 事件类型定义
+- [ ] JSONL append-only 会话日志
+- [ ] deriveMessages 从日志投影模型历史
+- [ ] replay / fork / compact
+- [ ] 测试：日志追加、投影、replay 一致性、fork 隔离、compact 后仍可重建历史
+
+### M2.2 tools
+
+- [ ] 工具注册表，schema 与执行函数
+- [ ] 执行管线：pre-execute / execute / post-execute / result
+- [ ] 工具按 scope 注册，per-agent 能力集
+- [ ] 测试：注册卸载、管线钩子顺序、scope 隔离、工具异常处理
+
+### M2.3 agent
+
+- [ ] Agent 接口与 agentLoop 可替换 service
+- [ ] turn / step 生命周期与 agent/* 事件
+- [ ] 最小 inbox：输入 claim 与 injected context
+- [ ] LLM 适配器 seam，供测试注入 fake LLM
+- [ ] 测试：单步循环、多步工具循环、turn 结束条件、事件顺序、fake LLM 端到端
+
+### M2 验收
+
+- [ ] 用 fake LLM 跑通一次包含工具调用的完整会话
+- [ ] session 日志可重建模型输入
+- [ ] 更新 task.md 状态
+- [ ] git commit（M2）
+
+## M3 eval 评测运行时
+
+目标：Eval 成为与 Agent Loop、Tools 平级的一等公民，提供可插拔策略与隔离实验。
+
+### M3.1 核心对象
+
+- [ ] EvalStrategy / Task / Evidence / Verdict / EvalRun 类型
+- [ ] ctx.eval：register / run / get / compare
+- [ ] eval/* 事件：start / task-start / task-end / verdict / run-end / abort
+
+### M3.2 运行器
+
+- [ ] run 创建隔离子 Context 与 Fiber
+- [ ] candidate 在隔离 scope 加载，结束自动卸载
+- [ ] 每个 task 独立子 Context，调用 agentLoop 并收集 evidence
+- [ ] 预算控制：回合 / Token / 成本 / 时间上限
+- [ ] 缓存：task + candidate 版本 + 模型配置哈希
+- [ ] 测试：run 生命周期、隔离卸载、预算中止、缓存命中、错误证据仍可判分
+
+### M3.3 策略
+
+- [ ] assert 策略（结果匹配 / 文件断言）
+- [ ] llm-judge 策略（确定性评分，可 keyless replay）
+- [ ] regression 策略（对比 baseline，允许退化阈值）
+- [ ] 组合与 gate：all / weighted / safety 必过
+- [ ] 测试：策略注册卸载、组合判分、gate 通过拒绝、regression 退化拦截、LLM judge 稳定性
+
+### M3.4 CLI 与持久化
+
+- [ ] tnega eval run tasks.yml
+- [ ] tnega eval compare <a> <b>
+- [ ] EvalRun 持久化与读取
+- [ ] 测试：CLI 端到端、结果文件可回读
+
+### M3 验收
+
+- [ ] 候选 preset 在隔离环境评测后无残留
+- [ ] 同一 evidence 重放结果稳定
+- [ ] 更新 task.md 状态
+- [ ] git commit（M3）
+
+## M4 evolve 进化循环
+
+目标：用 core 的安全变异 + eval 的可靠评估，实现候选生成、比较、选择与持久化。
+
+### M4.1 候选与实验
+
+- [ ] Candidate：preset / plugin / mutation / rationale
+- [ ] propose 接口：诊断失败模式并生成候选
+- [ ] ExperimentLog 树：candidate + verdicts + parent baseline
+- [ ] 测试：候选生成、实验树持久化、fork / 回放
+
+### M4.2 选择策略
+
+- [ ] compare：baseline vs candidate 配对比较
+- [ ] gate 策略：safety 必过、regression 阈值、显著性规则
+- [ ] 接受后持久化为新 baseline，拒绝后保留旧 baseline
+- [ ] 人工审批 seam（eval/run-end 事件可暂停）
+- [ ] 测试：接受 / 拒绝路径、退化拦截、budget 中止、审批暂停与恢复
+
+### M4.3 闭环演示
+
+- [ ] 一个确定性 demo：规则 propose + fake eval 完成多轮进化
+- [ ] 验证：候选失败不影响主 runtime
+- [ ] 更新 task.md 状态
+- [ ] git commit（M4）
+
+## 提交记录
+
+按阶段记录 commit，后续在此追加。
