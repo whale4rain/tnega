@@ -196,4 +196,4 @@
 
 按阶段记录 commit，后续在此追加。
 
-- M0：`1050fc6` 项目初始化（workspace / TypeScript / Vitest / ESLint / smoke test）
+- M0：`867e53b` 项目初始化（workspace / TypeScript / Vitest / ESLint / smoke test）
