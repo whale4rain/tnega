@@ -198,3 +198,4 @@
 
 - M0：`867e53b` 项目初始化（workspace / TypeScript / Vitest / ESLint / smoke test）
 - M1：`007f2bb` core 时空语义（Context / Fiber / Effect / Event / Registry / Reflect + 85 tests）
+- M2：`9e4b78f` agent + tools + session（SessionLog / ToolsService / AgentLoop + 45 tests）
