@@ -235,6 +235,7 @@
 - [x] 嵌套生命周期：父插件卸载先清理父 disposer，再等待子插件完全卸载
 - [x] 失败路径：disposer 抛错时其余 disposer 继续执行，fiber 仍到达 disposed
 - [x] 全量 typecheck / test / lint 通过
+- [x] 测试记录：`docs/test/spacetime-composability.md`
 - [x] git commit（M6）
 
 ## 提交记录
