@@ -2,5 +2,17 @@
   "name": "@tnega/evolve",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/eval": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
 }

@@ -74,7 +74,24 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
-  packages/evolve: {}
+  packages/evolve:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/eval':
+        specifier: workspace:*
+        version: link:../eval
+    devDependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/session:
     dependencies:

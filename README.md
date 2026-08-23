@@ -63,6 +63,8 @@ Tnega 把自进化拆成三个可独立验证的阶段：
 
 Experiment log 是一棵树，每个节点包含 candidate、verdicts 与 parent baseline，可回放、可 fork。
 
+evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果生成候选，`evaluate` 在 eval 的隔离 scope 中运行候选，`decide` 用可插拔的 gate 比较 baseline 与 candidate，接受后持久化为新 baseline，拒绝后保留旧 baseline。人工审批通过 `evolve/approval-request` 事件暂停，调用方可以异步 approve / reject。
+
 ## 与 dsh 的关系
 
 - 理念参照 DeepSeek Harness 与 Cordis 的时空可组合。
@@ -118,4 +120,4 @@ defaultCandidate: echo
 - M1 core 时空语义：已完成。Context / Fiber / Effect / Event / Registry / Reflect 已落地，支持插件热插拔、失败回滚、依赖联动与 scope 隔离，配套 85 个 core 测试。
 - M2 agent + tools + session：已完成。SessionLog 以 JSONL 记录可重放的会话事件并支持 fork / compact；ToolsService 提供注册表与可插拔执行管线；AgentService 提供可替换 agentLoop、inbox 与 fake LLM 端到端工具调用，配套 45 个测试。
 - M3 eval 评测运行时：已完成。EvalRunner 在隔离子 Context 中加载候选，逐 task 创建独立会话与工具 scope，支持预算、缓存、持久化与 eval/* 事件；策略 assert / llm-judge / regression / all / weighted / gate 可注册、替换和卸载；CLI 支持 `tnega eval run` 与 `tnega eval compare`，配套 29 个测试。
-- M4 evolve 进化循环：未开始。
+- M4 evolve 进化循环：已完成。Candidate / propose / ExperimentLog 树提供候选生成与可回放实验；selection gate 支持 min-score、safety、退化阈值、显著性规则与审批 seam；确定性多轮闭环验证候选失败不影响主 runtime，配套 11 个 evolve 测试。

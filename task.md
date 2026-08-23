@@ -16,7 +16,7 @@
 | M1 core 时空语义 | 已完成 |
 | M2 agent + tools + session | 已完成 |
 | M3 eval 评测运行时 | 已完成 |
-| M4 evolve 进化循环 | 未开始 |
+| M4 evolve 进化循环 | 已完成 |
 
 ## 开发约定
 
@@ -172,25 +172,25 @@
 
 ### M4.1 候选与实验
 
-- [ ] Candidate：preset / plugin / mutation / rationale
-- [ ] propose 接口：诊断失败模式并生成候选
-- [ ] ExperimentLog 树：candidate + verdicts + parent baseline
-- [ ] 测试：候选生成、实验树持久化、fork / 回放
+- [x] Candidate：preset / plugin / mutation / rationale
+- [x] propose 接口：诊断失败模式并生成候选
+- [x] ExperimentLog 树：candidate + verdicts + parent baseline
+- [x] 测试：候选生成、实验树持久化、fork / 回放
 
 ### M4.2 选择策略
 
-- [ ] compare：baseline vs candidate 配对比较
-- [ ] gate 策略：safety 必过、regression 阈值、显著性规则
-- [ ] 接受后持久化为新 baseline，拒绝后保留旧 baseline
-- [ ] 人工审批 seam（eval/run-end 事件可暂停）
-- [ ] 测试：接受 / 拒绝路径、退化拦截、budget 中止、审批暂停与恢复
+- [x] compare：baseline vs candidate 配对比较
+- [x] gate 策略：safety 必过、regression 阈值、显著性规则
+- [x] 接受后持久化为新 baseline，拒绝后保留旧 baseline
+- [x] 人工审批 seam（eval/run-end 事件可暂停）
+- [x] 测试：接受 / 拒绝路径、退化拦截、budget 中止、审批暂停与恢复
 
 ### M4.3 闭环演示
 
-- [ ] 一个确定性 demo：规则 propose + fake eval 完成多轮进化
-- [ ] 验证：候选失败不影响主 runtime
-- [ ] 更新 task.md 状态
-- [ ] git commit（M4）
+- [x] 一个确定性 demo：规则 propose + fake eval 完成多轮进化
+- [x] 验证：候选失败不影响主 runtime
+- [x] 更新 task.md 状态
+- [x] git commit（M4）
 
 ## 提交记录
 
