@@ -18,6 +18,7 @@
 | M3 eval 评测运行时 | 已完成 |
 | M4 evolve 进化循环 | 已完成 |
 | M5 真实 LLM 接入 | 已完成 |
+| M6 时空可组合极端压力测试 | 已完成 |
 
 ## 开发约定
 
@@ -220,6 +221,22 @@
 - [x] 更新 README / task.md / .gitignore
 - [x] git commit（M5）
 
+## M6 时空可组合极端压力测试
+
+目标：对 M1 的时空可组合语义做真实压力验证，覆盖热插拔风暴、依赖级联、scope 风暴、并发卸载与失败回滚的极端路径。
+
+- [x] 时间可组合：100 次热插拔无监听器 / service / disposer 残留
+- [x] 依赖替换：20 代 provider 热替换，dependent 每代恰好 reload 一次
+- [x] 依赖级联：128 插件链整体失活、整体重新激活
+- [x] 空间可组合：64 个 sibling scope 同名 service 互不污染
+- [x] 并发：64 个同插件 fiber 同时挂载 / 卸载
+- [x] 健康检查抖动：65 次 notify 拨动，最终无监听残留
+- [x] 热更新：100 次 update 风暴合并为最终 config
+- [x] 嵌套生命周期：父插件卸载先清理父 disposer，再等待子插件完全卸载
+- [x] 失败路径：disposer 抛错时其余 disposer 继续执行，fiber 仍到达 disposed
+- [x] 全量 typecheck / test / lint 通过
+- [x] git commit（M6）
+
 ## 提交记录
 
 按阶段记录 commit，后续在此追加。
@@ -230,3 +247,4 @@
 - M3：`68631c7` eval 评测运行时与 CLI（EvalRunner / strategies / eval run + compare + 29 tests）
 - M4：`31ea62e` evolve 进化循环（Candidate / propose / ExperimentLog / selection gate + 11 tests）
 - M5：`d74dcc9` 真实 LLM 接入（OpenAI compatible adapter / tnega run / real DeepSeek smoke）
+- M6：待提交 时空可组合极端压力测试（10 extreme spacetime tests）

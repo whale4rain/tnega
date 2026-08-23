@@ -79,6 +79,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 - M3：eval runner 与策略（assert / llm-judge / regression）。
 - M4：evolve 进化循环与 experiment log。
 - M5：真实 LLM 接入与 `tnega run`。
+- M6：时空可组合极端压力测试。
 
 ## 目录结构（规划）
 
@@ -132,8 +133,9 @@ defaultCandidate: echo
 
 ## 状态
 
-- M1 core 时空语义：已完成。Context / Fiber / Effect / Event / Registry / Reflect 已落地，支持插件热插拔、失败回滚、依赖联动与 scope 隔离，配套 85 个 core 测试。
+- M1 core 时空语义：已完成。Context / Fiber / Effect / Event / Registry / Reflect 已落地，支持插件热插拔、失败回滚、依赖联动与 scope 隔离，配套 94 个 core 测试。
 - M2 agent + tools + session：已完成。SessionLog 以 JSONL 记录可重放的会话事件并支持 fork / compact；ToolsService 提供注册表与可插拔执行管线；AgentService 提供可替换 agentLoop、inbox 与 fake LLM 端到端工具调用，配套 45 个测试。
 - M3 eval 评测运行时：已完成。EvalRunner 在隔离子 Context 中加载候选，逐 task 创建独立会话与工具 scope，支持预算、缓存、持久化与 eval/* 事件；策略 assert / llm-judge / regression / all / weighted / gate 可注册、替换和卸载；CLI 支持 `tnega eval run` 与 `tnega eval compare`，配套 29 个测试。
 - M4 evolve 进化循环：已完成。Candidate / propose / ExperimentLog 树提供候选生成与可回放实验；selection gate 支持 min-score、safety、退化阈值、显著性规则与审批 seam；确定性多轮闭环验证候选失败不影响主 runtime，配套 11 个 evolve 测试。
 - M5 真实 LLM 接入：已完成。`@tnega/llm` 提供 OpenAI 兼容适配器与 `listModels`；`tnega run` 只从环境变量读取 key，支持模型、端点、温度、token 上限与 session 文件参数，配套 OpenAI 协议与 CLI 端到端测试。
+- M6 时空可组合极端压力测试：已完成。新增 10 个压力测试，覆盖 100 次热插拔、20 代 provider 替换、128 插件级联、64 scope 隔离、64 fiber 并发挂载卸载、65 次健康检查拨动与 update 风暴。
