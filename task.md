@@ -229,4 +229,4 @@
 - M2：`9e4b78f` agent + tools + session（SessionLog / ToolsService / AgentLoop + 45 tests）
 - M3：`68631c7` eval 评测运行时与 CLI（EvalRunner / strategies / eval run + compare + 29 tests）
 - M4：`31ea62e` evolve 进化循环（Candidate / propose / ExperimentLog / selection gate + 11 tests）
-- M5：待提交 真实 LLM 接入（OpenAI compatible adapter / tnega run / real DeepSeek smoke）
+- M5：`d74dcc9` 真实 LLM 接入（OpenAI compatible adapter / tnega run / real DeepSeek smoke）
