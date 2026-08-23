@@ -248,4 +248,4 @@
 - M3：`68631c7` eval 评测运行时与 CLI（EvalRunner / strategies / eval run + compare + 29 tests）
 - M4：`31ea62e` evolve 进化循环（Candidate / propose / ExperimentLog / selection gate + 11 tests）
 - M5：`d74dcc9` 真实 LLM 接入（OpenAI compatible adapter / tnega run / real DeepSeek smoke）
-- M6：`a8cd087` 时空可组合极端压力测试（10 extreme spacetime tests）
+- M6：`a8cd087` 时空可组合极端压力测试（10 extreme spacetime tests，测试记录 `1db8eb4`）
