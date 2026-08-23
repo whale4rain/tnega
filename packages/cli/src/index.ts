@@ -2,18 +2,23 @@ import type { CompareResult, EvalRun } from '@tnega/eval'
 import {
   CliError,
   compareCommand,
+  formatAgentRun,
   formatCompare,
   formatRun,
+  runAgentCommand,
   runCommand,
 } from './commands.js'
 
-export type { TasksFile } from './commands.js'
+export type { LlmEnvConfig, RunAgentCommandOptions, RunAgentCommandResult, TasksFile } from './commands.js'
 export {
   CliError,
   compareCommand,
+  formatAgentRun,
   formatCompare,
   formatRun,
   loadTasksFile,
+  resolveLlmEnv,
+  runAgentCommand,
   runCommand,
 } from './commands.js'
 export { parseYaml } from './yaml.js'
@@ -22,6 +27,23 @@ export type { CompareResult, EvalRun }
 export function main(argv: readonly string[]): Promise<number> {
   return (async () => {
     const [command, ...args] = argv
+    if (command === 'run') {
+      const parsed = parseRunAgentArgs(args)
+      if (!parsed.prompt) throw new CliError('run requires a prompt')
+      const result = await runAgentCommand({
+        prompt: parsed.prompt,
+        ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
+        ...(parsed.sessionFile ? { sessionFile: parsed.sessionFile } : {}),
+        ...(parsed.model ? { model: parsed.model } : {}),
+        ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
+        ...(parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {}),
+        ...(parsed.temperature !== undefined ? { temperature: parsed.temperature } : {}),
+        ...(parsed.maxTurns !== undefined ? { maxTurns: parsed.maxTurns } : {}),
+        ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
+      })
+      return emit(formatAgentRun(result), 0)
+    }
+
     if (command === 'eval' && args[0] === 'run') {
       const parsed = parseRunArgs(args.slice(1))
       if (!parsed.tasksFile) throw new CliError('eval run requires a tasks file')
@@ -69,6 +91,18 @@ interface ParsedCompareArgs {
   cwd?: string
 }
 
+interface ParsedRunAgentArgs {
+  prompt?: string
+  cwd?: string
+  sessionFile?: string
+  model?: string
+  baseUrl?: string
+  maxTokens?: number
+  temperature?: number
+  maxTurns?: number
+  maxSteps?: number
+}
+
 function parseRunArgs(args: readonly string[]): ParsedRunArgs {
   const parsed: ParsedRunArgs = {}
   let cursor = 0
@@ -92,6 +126,72 @@ function parseRunArgs(args: readonly string[]): ParsedRunArgs {
     }
   }
   return parsed
+}
+
+function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
+  const parsed: ParsedRunAgentArgs = {}
+  const positional: string[] = []
+  let cursor = 0
+  while (cursor < args.length) {
+    const arg = args[cursor]!
+    if (!arg.startsWith('--')) {
+      positional.push(arg)
+      cursor += 1
+      continue
+    }
+
+    const eq = arg.indexOf('=')
+    const name = eq >= 0 ? arg.slice(2, eq) : arg.slice(2)
+    const value = eq >= 0 ? arg.slice(eq + 1) : args[cursor + 1]
+    if (!value) throw new CliError(`--${name} requires a value`)
+    assignRunAgentOption(parsed, name, value)
+    cursor += eq >= 0 ? 1 : 2
+  }
+
+  const prompt = positional.join(' ').trim()
+  if (prompt) parsed.prompt = prompt
+  return parsed
+}
+
+function assignRunAgentOption(
+  parsed: ParsedRunAgentArgs,
+  name: string,
+  value: string,
+): void {
+  switch (name) {
+    case 'cwd':
+      parsed.cwd = value
+      return
+    case 'session':
+      parsed.sessionFile = value
+      return
+    case 'model':
+      parsed.model = value
+      return
+    case 'base-url':
+      parsed.baseUrl = value
+      return
+    case 'max-tokens':
+      parsed.maxTokens = parseFiniteNumber('--max-tokens', value)
+      return
+    case 'temperature':
+      parsed.temperature = parseFiniteNumber('--temperature', value)
+      return
+    case 'max-turns':
+      parsed.maxTurns = parseFiniteNumber('--max-turns', value)
+      return
+    case 'max-steps':
+      parsed.maxSteps = parseFiniteNumber('--max-steps', value)
+      return
+    default:
+      throw new CliError(`unknown option: --${name}`)
+  }
+}
+
+function parseFiniteNumber(name: string, value: string): number {
+  const number = Number(value)
+  if (!Number.isFinite(number)) throw new CliError(`${name} requires a finite number`)
+  return number
 }
 
 function parseCompareArgs(args: readonly string[]): ParsedCompareArgs {

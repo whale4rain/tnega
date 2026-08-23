@@ -1,7 +1,15 @@
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { Context, type Plugin } from '@tnega/core'
-import { agent, type AgentInput, type AgentRunResult } from '@tnega/agent'
+import {
+  agent,
+  type AgentLoop,
+  type AgentInput,
+  type AgentRunOptions,
+  type AgentRunResult,
+  type LLMAdapter,
+} from '@tnega/agent'
+import { openaiCompatAdapter } from '@tnega/llm'
 import { session } from '@tnega/session'
 import { tools } from '@tnega/tools'
 import {
@@ -39,6 +47,29 @@ export interface CompareCommandOptions {
   head: string
   outputDir?: string
   cwd?: string
+}
+
+export interface RunAgentCommandOptions {
+  prompt: string
+  cwd?: string
+  sessionFile?: string
+  model?: string
+  baseUrl?: string
+  maxTokens?: number
+  temperature?: number
+  maxTurns?: number
+  maxSteps?: number
+}
+
+export interface RunAgentCommandResult {
+  run: AgentRunResult
+  sessionFile: string
+}
+
+export interface LlmEnvConfig {
+  apiKey?: string
+  baseUrl?: string
+  model?: string
 }
 
 export class CliError extends Error {
@@ -220,4 +251,84 @@ export async function compareCommand(options: CompareCommandOptions): Promise<Co
 function resolveRunInput(input: string, cwd: string): string {
   if (input.endsWith('.json')) return resolve(cwd, input)
   return input
+}
+
+export function resolveLlmEnv(env: NodeJS.ProcessEnv = process.env): LlmEnvConfig {
+  const config: LlmEnvConfig = {}
+  const apiKey = env.OPENCODE_GO_API_KEY || env.OPENAI_API_KEY || env.DEEPSEEK_API_KEY
+  if (apiKey) config.apiKey = apiKey
+  if (env.OPENCODE_GO_BASE_URL) config.baseUrl = env.OPENCODE_GO_BASE_URL
+  if (env.OPENCODE_GO_MODEL) config.model = env.OPENCODE_GO_MODEL
+  return config
+}
+
+export async function runAgentCommand(
+  options: RunAgentCommandOptions,
+): Promise<RunAgentCommandResult> {
+  const cwd = options.cwd ?? process.cwd()
+  const sessionFile = resolve(cwd, options.sessionFile ?? join('.tnega', 'run.jsonl'))
+  const envConfig = resolveLlmEnv(process.env)
+  const apiKey = envConfig.apiKey
+  if (!apiKey) {
+    throw new CliError(
+      'missing OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY); set it before running tnega run',
+    )
+  }
+
+  const model = options.model ?? envConfig.model
+  const baseUrl = options.baseUrl ?? envConfig.baseUrl
+  const adapter = openaiCompatAdapter({
+    apiKey,
+    ...(model ? { model } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  })
+  const context = await createRunContext(sessionFile, adapter, options)
+  try {
+    const loop = context.root.get('agentLoop') as AgentLoop
+    const runOptions: AgentRunOptions = {}
+    if (options.maxTurns !== undefined) runOptions.maxTurns = options.maxTurns
+    if (options.maxSteps !== undefined) runOptions.maxSteps = options.maxSteps
+    const run = await loop({ text: options.prompt }, runOptions)
+    return { run, sessionFile }
+  } finally {
+    await context.dispose()
+  }
+}
+
+async function createRunContext(
+  sessionFile: string,
+  llm: LLMAdapter,
+  options: RunAgentCommandOptions,
+) {
+  const root = new Context()
+  const sessionFiber = await root.plugin(session, { file: sessionFile })
+  const toolsFiber = await root.plugin(tools)
+  const agentConfig: {
+    llm: LLMAdapter
+    maxTurns?: number
+    maxSteps?: number
+  } = { llm }
+  if (options.maxTurns !== undefined) agentConfig.maxTurns = options.maxTurns
+  if (options.maxSteps !== undefined) agentConfig.maxSteps = options.maxSteps
+  const agentFiber = await root.plugin(agent, agentConfig)
+  return {
+    root,
+    dispose: async () => {
+      for (const fiber of [agentFiber, toolsFiber, sessionFiber].reverse()) {
+        await fiber.dispose()
+      }
+    },
+  }
+}
+
+export function formatAgentRun(result: RunAgentCommandResult): string {
+  const output = result.run.output.trim()
+  const lines: string[] = []
+  if (output) lines.push(output)
+  lines.push(`finish ${result.run.finishReason}`)
+  lines.push(`steps ${result.run.steps.length}`)
+  lines.push(`session ${result.sessionFile}`)
+  return lines.join('\n')
 }

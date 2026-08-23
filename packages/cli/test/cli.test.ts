@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Mock } from 'vitest'
 
 import {
   CliError,
@@ -11,9 +12,13 @@ import {
   loadTasksFile,
   main,
   parseYaml,
+  resolveLlmEnv,
+  runAgentCommand,
   runCommand,
 } from '../src/index.js'
 import type { EvalRun } from '../src/index.js'
+
+type FetchMock = Mock<(...args: [unknown, RequestInit]) => Promise<Response>>
 
 const dirs: string[] = []
 let stdoutSpy: ReturnType<typeof vi.spyOn> | undefined
@@ -27,6 +32,8 @@ async function tempDir(prefix: string): Promise<string> {
 afterEach(async () => {
   stdoutSpy?.mockRestore()
   stdoutSpy = undefined
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
 
@@ -39,6 +46,15 @@ function captureStdout(): () => string {
     return true
   })
   return () => output
+}
+
+function openaiResponse(content = 'hi'): Response {
+  return new Response(JSON.stringify({
+    choices: [{ message: { content }, finish_reason: 'stop' }],
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
 }
 
 async function writeTasks(
@@ -234,6 +250,77 @@ describe('eval compare command', () => {
     const regressed = await main(['eval', 'compare', head.id, base.id, '--cwd', dir])
     expect(regressed).toBe(1)
     expect(output2()).toContain('regression echo-task')
+  })
+})
+
+describe('agent run command', () => {
+  it('resolves the API key from environment variables without accepting code-level keys', () => {
+    expect(resolveLlmEnv({ OPENCODE_GO_API_KEY: 'a' })).toEqual({ apiKey: 'a' })
+    expect(resolveLlmEnv({ OPENAI_API_KEY: 'b' })).toEqual({ apiKey: 'b' })
+    expect(resolveLlmEnv({ DEEPSEEK_API_KEY: 'c' })).toEqual({ apiKey: 'c' })
+    expect(resolveLlmEnv({
+      OPENCODE_GO_BASE_URL: 'https://example.test/v1',
+      OPENCODE_GO_MODEL: 'deepseek-v4-pro',
+    })).toEqual({
+      baseUrl: 'https://example.test/v1',
+      model: 'deepseek-v4-pro',
+    })
+  })
+
+  it('runs an agent against a mocked OpenAI compatible endpoint and never writes the key', async () => {
+    const dir = await tempDir('tnega-cli-agent-')
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    const fetchMock = vi.fn(async () => openaiResponse('agent says hi')) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runAgentCommand({ prompt: 'say hi', cwd: dir, maxTokens: 16 })
+
+    expect(result.run.output).toBe('agent says hi')
+    expect(result.run.finishReason).toBe('stop')
+    expect(result.sessionFile).toBe(join(dir, '.tnega', 'run.jsonl'))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const init = fetchMock.mock.calls[0]![1]!
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer test-key')
+    const body = JSON.parse(String(init.body)) as { max_tokens: number; model: string }
+    expect(body.model).toBe('deepseek-v4-flash')
+    expect(body.max_tokens).toBe(16)
+
+    const sessionText = await readFile(result.sessionFile, 'utf8')
+    expect(sessionText).toContain('agent says hi')
+    expect(sessionText).not.toContain('test-key')
+  })
+
+  it('rejects a run without an API key', async () => {
+    vi.stubEnv('OPENCODE_GO_API_KEY', '')
+    vi.stubEnv('OPENAI_API_KEY', '')
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
+    const dir = await tempDir('tnega-cli-agent-nokey-')
+
+    await expect(runAgentCommand({ prompt: 'hello', cwd: dir })).rejects.toThrow(
+      CliError,
+    )
+  })
+
+  it('prints a run through main with flags and a mocked provider', async () => {
+    const dir = await tempDir('tnega-cli-agent-main-')
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn(async () => openaiResponse('flagged output')))
+    const output = captureStdout()
+
+    const code = await main([
+      'run',
+      '--max-tokens',
+      '8',
+      '--cwd',
+      dir,
+      'flagged prompt',
+    ])
+
+    expect(code).toBe(0)
+    expect(output()).toContain('flagged output')
+    expect(output()).toContain('finish stop')
+    expect(output()).toContain('session ')
+    expect(output()).not.toContain('test-key')
   })
 })
 

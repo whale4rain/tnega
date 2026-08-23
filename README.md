@@ -32,6 +32,7 @@ Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空
 | session | JSONL 事件日志，支持 replay / fork / compact |
 | eval | 评测运行时：策略注册、任务执行、证据收集、判分、持久化 |
 | evolve | 进化循环：生成候选、评估、比较、接受或拒绝 |
+| llm | OpenAI 兼容 LLM 适配器，默认对接 OpenCode Go DeepSeek |
 | cli | headless 命令行入口 |
 
 ## Eval 是一等公民
@@ -77,6 +78,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 - M2：agent loop + tools + session。
 - M3：eval runner 与策略（assert / llm-judge / regression）。
 - M4：evolve 进化循环与 experiment log。
+- M5：真实 LLM 接入与 `tnega run`。
 
 ## 目录结构（规划）
 
@@ -88,17 +90,30 @@ packages/
   session/    # JSONL Session Log
   eval/       # Eval Runtime
   evolve/     # Evolution Loop
+  llm/        # OpenAI-compatible LLM Adapter
   cli/        # Headless CLI
 ```
 
 ## 使用
 
 ```text
-tnega run                 # 运行一次 agent 会话
+tnega run "prompt"        # 运行一次 agent 会话（读取环境变量 key）
 tnega eval run tasks.yml  # 运行评测
 tnega eval compare a b    # 比较两次评测
 tnega evolve --budget 10  # 运行进化循环
 ```
+
+## 真实 LLM 接入
+
+`tnega run` 通过 OpenAI 兼容协议调用 OpenCode Go 的 DeepSeek 端点，key 只从环境变量读取，不写入代码或仓库文件：
+
+```text
+OPENCODE_GO_API_KEY=sk-xxx tnega run "Reply with: hello"
+```
+
+也可以使用 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY` 作为兼容变量。默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `deepseek-v4-flash`；可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
+
+会话记录默认写入 `.tnega/run.jsonl`，可以使用 `--session <file>` 指定位置。
 
 tasks.yml 支持候选声明；没有接入真实 LLM 时可以用内置确定性 loop 跑通完整评测链路：
 
@@ -121,3 +136,4 @@ defaultCandidate: echo
 - M2 agent + tools + session：已完成。SessionLog 以 JSONL 记录可重放的会话事件并支持 fork / compact；ToolsService 提供注册表与可插拔执行管线；AgentService 提供可替换 agentLoop、inbox 与 fake LLM 端到端工具调用，配套 45 个测试。
 - M3 eval 评测运行时：已完成。EvalRunner 在隔离子 Context 中加载候选，逐 task 创建独立会话与工具 scope，支持预算、缓存、持久化与 eval/* 事件；策略 assert / llm-judge / regression / all / weighted / gate 可注册、替换和卸载；CLI 支持 `tnega eval run` 与 `tnega eval compare`，配套 29 个测试。
 - M4 evolve 进化循环：已完成。Candidate / propose / ExperimentLog 树提供候选生成与可回放实验；selection gate 支持 min-score、safety、退化阈值、显著性规则与审批 seam；确定性多轮闭环验证候选失败不影响主 runtime，配套 11 个 evolve 测试。
+- M5 真实 LLM 接入：已完成。`@tnega/llm` 提供 OpenAI 兼容适配器与 `listModels`；`tnega run` 只从环境变量读取 key，支持模型、端点、温度、token 上限与 session 文件参数，配套 OpenAI 协议与 CLI 端到端测试。

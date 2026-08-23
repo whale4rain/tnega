@@ -1,5 +1,5 @@
 {
-  "name": "@tnega/cli",
+  "name": "@tnega/llm",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,9 +8,6 @@
   },
   "dependencies": {
     "@tnega/agent": "workspace:*",
-    "@tnega/core": "workspace:*",
-    "@tnega/eval": "workspace:*",
-    "@tnega/llm": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/tools": "workspace:*"
   }

@@ -17,6 +17,7 @@
 | M2 agent + tools + session | 已完成 |
 | M3 eval 评测运行时 | 已完成 |
 | M4 evolve 进化循环 | 已完成 |
+| M5 真实 LLM 接入 | 已完成 |
 
 ## 开发约定
 
@@ -192,6 +193,33 @@
 - [x] 更新 task.md 状态
 - [x] git commit（M4）
 
+## M5 真实 LLM 接入
+
+目标：用可插拔的 OpenAI 兼容 LLM 适配器接通真实 DeepSeek，并让 CLI 直接运行一次 agent 会话；API key 只从环境变量读取，绝不进入代码或仓库文件。
+
+### M5.1 LLM 适配器
+
+- [x] `@tnega/llm` 包：OpenAI compatible `chat/completions`
+- [x] `openaiCompatAdapter(config)` 返回 `LLMAdapter`
+- [x] 消息 / tool calls / finish reason / JSON arguments 映射
+- [x] 非 2xx、非法 JSON、网络失败统一包装为 `OpenAICompatibleError`
+- [x] `listModels(config)` 查询模型列表
+- [x] 测试：请求构造、tool calls、abort、异常、默认配置、模型列表
+
+### M5.2 CLI run
+
+- [x] `tnega run "prompt"`，支持 `--cwd / --session / --model / --base-url / --max-tokens / --temperature / --max-turns / --max-steps`
+- [x] key 从 `OPENCODE_GO_API_KEY` 读取，兼容 `OPENAI_API_KEY` / `DEEPSEEK_API_KEY`
+- [x] 会话写入 `.tnega/run.jsonl`，文件中不含 key
+- [x] 测试：mock OpenAI 端到端、缺 key 报错、输出与 session 持久化
+
+### M5 验收
+
+- [x] 单元测试 + CLI 测试全部通过
+- [x] 用真实 OpenCode Go key 完成一次 DeepSeek 冒烟
+- [x] 更新 README / task.md / .gitignore
+- [x] git commit（M5）
+
 ## 提交记录
 
 按阶段记录 commit，后续在此追加。
@@ -201,3 +229,4 @@
 - M2：`9e4b78f` agent + tools + session（SessionLog / ToolsService / AgentLoop + 45 tests）
 - M3：`68631c7` eval 评测运行时与 CLI（EvalRunner / strategies / eval run + compare + 29 tests）
 - M4：`31ea62e` evolve 进化循环（Candidate / propose / ExperimentLog / selection gate + 11 tests）
+- M5：待提交 真实 LLM 接入（OpenAI compatible adapter / tnega run / real DeepSeek smoke）
