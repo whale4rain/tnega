@@ -1,4 +1,5 @@
 export * from './diagnose.js'
+export * from './llm.js'
 export * from './log.js'
 export * from './select.js'
 export * from './service.js'

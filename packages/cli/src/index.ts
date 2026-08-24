@@ -4,22 +4,34 @@ import {
   compareCommand,
   formatAgentRun,
   formatCompare,
+  formatEvolveResult,
   formatRun,
   runAgentCommand,
   runCommand,
+  runEvolveCommand,
 } from './commands.js'
 
-export type { LlmEnvConfig, RunAgentCommandOptions, RunAgentCommandResult, TasksFile } from './commands.js'
+export type {
+  EvolveFileConfig,
+  LlmEnvConfig,
+  RunAgentCommandOptions,
+  RunAgentCommandResult,
+  RunEvolveCommandOptions,
+  RunEvolveCommandResult,
+  TasksFile,
+} from './commands.js'
 export {
   CliError,
   compareCommand,
   formatAgentRun,
   formatCompare,
+  formatEvolveResult,
   formatRun,
   loadTasksFile,
   resolveLlmEnv,
   runAgentCommand,
   runCommand,
+  runEvolveCommand,
 } from './commands.js'
 export { parseYaml } from './yaml.js'
 export type { CompareResult, EvalRun }
@@ -70,6 +82,29 @@ export function main(argv: readonly string[]): Promise<number> {
       return emit(formatCompare(result), result.summary.regressions.length ? 1 : 0)
     }
 
+    if (command === 'evolve' && args[0] === 'run') {
+      const parsed = parseEvolveRunArgs(args.slice(1))
+      if (!parsed.tasksFile) throw new CliError('evolve run requires a tasks file')
+      const result = await runEvolveCommand({
+        tasksFile: parsed.tasksFile,
+        ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
+        ...(parsed.outputDir ? { outputDir: parsed.outputDir } : {}),
+        ...(parsed.maxIterations !== undefined
+          ? { maxIterations: parsed.maxIterations }
+          : {}),
+        ...(parsed.maxRuns !== undefined ? { maxRuns: parsed.maxRuns } : {}),
+        ...(parsed.baseSystem ? { baseSystem: parsed.baseSystem } : {}),
+        ...(parsed.model ? { model: parsed.model } : {}),
+        ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
+        ...(parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {}),
+        ...(parsed.temperature !== undefined ? { temperature: parsed.temperature } : {}),
+        ...(parsed.maxTurns !== undefined ? { maxTurns: parsed.maxTurns } : {}),
+        ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
+        ...(parsed.cache !== undefined ? { cache: parsed.cache } : {}),
+      })
+      return emit(formatEvolveResult(result), 0)
+    }
+
     throw new CliError(`unknown command: ${command ?? '<empty>'}`)
   })().catch((error: unknown) => {
     if (error instanceof CliError) return emit(`error: ${error.message}`, 2)
@@ -101,6 +136,22 @@ interface ParsedRunAgentArgs {
   temperature?: number
   maxTurns?: number
   maxSteps?: number
+}
+
+interface ParsedEvolveRunArgs {
+  tasksFile?: string
+  cwd?: string
+  outputDir?: string
+  maxIterations?: number
+  maxRuns?: number
+  baseSystem?: string
+  model?: string
+  baseUrl?: string
+  maxTokens?: number
+  temperature?: number
+  maxTurns?: number
+  maxSteps?: number
+  cache?: boolean
 }
 
 function parseRunArgs(args: readonly string[]): ParsedRunArgs {
@@ -151,6 +202,83 @@ function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
   const prompt = positional.join(' ').trim()
   if (prompt) parsed.prompt = prompt
   return parsed
+}
+
+function parseEvolveRunArgs(args: readonly string[]): ParsedEvolveRunArgs {
+  const parsed: ParsedEvolveRunArgs = {}
+  const positional: string[] = []
+  let cursor = 0
+  while (cursor < args.length) {
+    const arg = args[cursor]!
+    if (!arg.startsWith('--')) {
+      positional.push(arg)
+      cursor += 1
+      continue
+    }
+    if (arg === '--no-cache') {
+      parsed.cache = false
+      cursor += 1
+      continue
+    }
+
+    const eq = arg.indexOf('=')
+    const name = eq >= 0 ? arg.slice(2, eq) : arg.slice(2)
+    const value = eq >= 0 ? arg.slice(eq + 1) : args[cursor + 1]
+    if (!value) throw new CliError(`--${name} requires a value`)
+    assignEvolveRunOption(parsed, name, value)
+    cursor += eq >= 0 ? 1 : 2
+  }
+
+  const tasksFile = positional.join(' ').trim()
+  if (tasksFile) parsed.tasksFile = tasksFile
+  return parsed
+}
+
+function assignEvolveRunOption(
+  parsed: ParsedEvolveRunArgs,
+  name: string,
+  value: string,
+): void {
+  switch (name) {
+    case 'cwd':
+      parsed.cwd = value
+      return
+    case 'output-dir':
+      parsed.outputDir = value
+      return
+    case 'iterations':
+      parsed.maxIterations = parseFiniteNumber('--iterations', value)
+      return
+    case 'max-runs':
+      parsed.maxRuns = parseFiniteNumber('--max-runs', value)
+      return
+    case 'base-system':
+      parsed.baseSystem = value
+      return
+    case 'model':
+      parsed.model = value
+      return
+    case 'base-url':
+      parsed.baseUrl = value
+      return
+    case 'max-tokens':
+      parsed.maxTokens = parseFiniteNumber('--max-tokens', value)
+      return
+    case 'temperature':
+      parsed.temperature = parseFiniteNumber('--temperature', value)
+      return
+    case 'max-turns':
+      parsed.maxTurns = parseFiniteNumber('--max-turns', value)
+      return
+    case 'max-steps':
+      parsed.maxSteps = parseFiniteNumber('--max-steps', value)
+      return
+    case 'no-cache':
+      parsed.cache = false
+      return
+    default:
+      throw new CliError(`unknown option: --${name}`)
+  }
 }
 
 function assignRunAgentOption(

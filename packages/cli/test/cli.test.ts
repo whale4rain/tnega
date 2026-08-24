@@ -1,12 +1,14 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
+import type { EvolveStepResult } from '@tnega/evolve'
 
 import {
   CliError,
   compareCommand,
+  formatEvolveResult,
   formatCompare,
   formatRun,
   loadTasksFile,
@@ -15,6 +17,7 @@ import {
   resolveLlmEnv,
   runAgentCommand,
   runCommand,
+  runEvolveCommand,
 } from '../src/index.js'
 import type { EvalRun } from '../src/index.js'
 
@@ -320,6 +323,133 @@ describe('agent run command', () => {
     expect(output()).toContain('flagged output')
     expect(output()).toContain('finish stop')
     expect(output()).toContain('session ')
+    expect(output()).not.toContain('test-key')
+  })
+})
+
+describe('evolve run command', () => {
+  function stepNode(result: EvolveStepResult) {
+    return result.kind === 'no-candidate' ? undefined : result.node
+  }
+
+  async function writeEvolveTasks(dir: string): Promise<string> {
+    const file = join(dir, 'evolve-tasks.yml')
+    await writeFile(file, [
+      'outputDir: .tnega/runs',
+      'tasks:',
+      '  - id: t1',
+      '    inputText: hello',
+      '    assertion:',
+      '      expect: hi',
+      'strategyNames:',
+      '  - assert',
+      'evolve:',
+      '  maxIterations: 1',
+    ].join('\n'), 'utf8')
+    return file
+  }
+
+  function evolveFetchMock(): { fetchMock: FetchMock } {
+    const fetchMock = vi.fn(async (_url: unknown, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as {
+        messages: Array<{ content: string }>
+      }
+      const text = body.messages.map(message => message.content).join('\n')
+      if (text.includes('自进化引擎')) {
+        return openaiResponse(JSON.stringify({
+          name: 'fix-output',
+          system: 'answer hi',
+          rationale: 'baseline failed the assert task',
+          mutationDescription: 'switch system prompt to answer hi',
+        }))
+      }
+      const system = body.messages[0]?.content ?? ''
+      return openaiResponse(system === 'answer hi' ? 'hi' : 'wrong')
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+    return { fetchMock }
+  }
+
+  it('runs a full baseline -> propose -> candidate loop against a mocked provider', async () => {
+    const dir = await tempDir('tnega-cli-evolve-')
+    const tasksFile = await writeEvolveTasks(dir)
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    const { fetchMock } = evolveFetchMock()
+
+    const result = await runEvolveCommand({
+      tasksFile,
+      cwd: dir,
+      baseSystem: 'baseline system',
+      maxTurns: 1,
+      maxSteps: 2,
+      maxTokens: 32,
+    })
+
+    expect(result.prime.kind).toBe('established')
+    const prime = stepNode(result.prime)
+    expect(prime?.candidate.name).toBe('baseline')
+    expect(prime?.run.summary.score).toBe(0)
+    expect(result.result.kind).toBe('accepted')
+    const finalNode = stepNode(result.result)
+    expect(finalNode?.candidate.name).toBe('fix-output')
+    expect(finalNode?.status).toBe('accepted')
+    expect(finalNode?.decision?.delta).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    const logText = await readFile(result.logFile, 'utf8')
+    const log = JSON.parse(logText) as {
+      baselineId: string
+      nodes: Record<string, { candidate: { name: string }; status: string }>
+    }
+    expect(Object.keys(log.nodes)).toHaveLength(2)
+    expect(log.baselineId).toBe(finalNode?.id)
+    expect(Object.values(log.nodes).some(node => node.candidate.name === 'fix-output')).toBe(true)
+    expect(logText).not.toContain('test-key')
+
+    const runFiles = await readdir(result.runDir)
+    expect(runFiles.filter(file => file.endsWith('.json'))).toHaveLength(2)
+
+    const formatted = formatEvolveResult(result)
+    expect(formatted).toContain('baseline baseline: score 0.000')
+    expect(formatted).toContain('decision accepted')
+    expect(formatted).toContain('candidate fix-output')
+    expect(formatted).toContain(`log ${result.logFile}`)
+  })
+
+  it('rejects a run without an API key', async () => {
+    vi.stubEnv('OPENCODE_GO_API_KEY', '')
+    vi.stubEnv('OPENAI_API_KEY', '')
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
+    const dir = await tempDir('tnega-cli-evolve-nokey-')
+    const tasksFile = await writeEvolveTasks(dir)
+
+    await expect(runEvolveCommand({ tasksFile, cwd: dir })).rejects.toThrow(CliError)
+  })
+
+  it('wires evolve run through main with flags', async () => {
+    const dir = await tempDir('tnega-cli-evolve-main-')
+    const tasksFile = await writeEvolveTasks(dir)
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    evolveFetchMock()
+    const output = captureStdout()
+
+    const code = await main([
+      'evolve',
+      'run',
+      tasksFile,
+      '--cwd',
+      dir,
+      '--iterations',
+      '1',
+      '--base-system',
+      'baseline system',
+      '--no-cache',
+    ])
+
+    expect(code).toBe(0)
+    expect(output()).toContain('decision accepted')
+    expect(output()).toContain('candidate fix-output')
+    expect(output()).toContain('log ')
     expect(output()).not.toContain('test-key')
   })
 })

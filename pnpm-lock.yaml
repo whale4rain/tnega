@@ -50,6 +50,9 @@ importers:
       '@tnega/eval':
         specifier: workspace:*
         version: link:../eval
+      '@tnega/evolve':
+        specifier: workspace:*
+        version: link:../evolve
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
@@ -79,6 +82,9 @@ importers:
 
   packages/evolve:
     dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
@@ -86,9 +92,6 @@ importers:
         specifier: workspace:*
         version: link:../eval
     devDependencies:
-      '@tnega/agent':
-        specifier: workspace:*
-        version: link:../agent
       '@tnega/session':
         specifier: workspace:*
         version: link:../session

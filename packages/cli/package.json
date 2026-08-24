@@ -10,6 +10,7 @@
     "@tnega/agent": "workspace:*",
     "@tnega/core": "workspace:*",
     "@tnega/eval": "workspace:*",
+    "@tnega/evolve": "workspace:*",
     "@tnega/llm": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/tools": "workspace:*"

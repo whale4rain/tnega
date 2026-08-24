@@ -7,11 +7,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@tnega/agent": "workspace:*",
     "@tnega/core": "workspace:*",
     "@tnega/eval": "workspace:*"
   },
   "devDependencies": {
-    "@tnega/agent": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/tools": "workspace:*"
   }

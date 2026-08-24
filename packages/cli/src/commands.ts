@@ -24,6 +24,15 @@ import {
   type Task,
 } from '@tnega/eval'
 import { parseYaml } from './yaml.js'
+import {
+  createLlmProposeRule,
+  evolvePlugin,
+  llmCandidate,
+  type EvolvePluginConfig,
+  type EvolveService,
+  type EvolveStepResult,
+  type SelectionPolicy,
+} from '@tnega/evolve'
 
 export interface TasksFile {
   tasks: Task[]
@@ -31,6 +40,15 @@ export interface TasksFile {
   defaultCandidate?: string
   strategyNames?: string[]
   outputDir?: string
+  evolve?: EvolveFileConfig
+}
+
+export interface EvolveFileConfig {
+  maxIterations?: number
+  maxRuns?: number
+  baseSystem?: string
+  policy?: SelectionPolicy
+  budget?: RunBudget
 }
 
 export interface RunCommandOptions {
@@ -64,6 +82,31 @@ export interface RunAgentCommandOptions {
 export interface RunAgentCommandResult {
   run: AgentRunResult
   sessionFile: string
+}
+
+export interface RunEvolveCommandOptions {
+  tasksFile: string
+  cwd?: string
+  outputDir?: string
+  maxIterations?: number
+  maxRuns?: number
+  baseSystem?: string
+  model?: string
+  baseUrl?: string
+  maxTokens?: number
+  temperature?: number
+  maxTurns?: number
+  maxSteps?: number
+  budget?: RunBudget
+  cache?: boolean
+  policy?: SelectionPolicy
+}
+
+export interface RunEvolveCommandResult {
+  prime: EvolveStepResult
+  result: EvolveStepResult
+  logFile: string
+  runDir: string
 }
 
 export interface LlmEnvConfig {
@@ -122,6 +165,9 @@ export function loadTasksFile(file: string): TasksFile {
     result.strategyNames = data.strategyNames.map(item => String(item))
   }
   if (typeof data.outputDir === 'string') result.outputDir = data.outputDir
+  if (data.evolve !== undefined) {
+    result.evolve = asRecord(data.evolve) as EvolveFileConfig
+  }
   if (!tasks.length) {
     throw new CliError(`no tasks found in ${file}`)
   }
@@ -331,4 +377,128 @@ export function formatAgentRun(result: RunAgentCommandResult): string {
   lines.push(`steps ${result.run.steps.length}`)
   lines.push(`session ${result.sessionFile}`)
   return lines.join('\n')
+}
+
+export async function runEvolveCommand(
+  options: RunEvolveCommandOptions,
+): Promise<RunEvolveCommandResult> {
+  const cwd = options.cwd ?? process.cwd()
+  const tasksFile = loadTasksFile(options.tasksFile)
+  const envConfig = resolveLlmEnv(process.env)
+  const apiKey = envConfig.apiKey
+  if (!apiKey) {
+    throw new CliError(
+      'missing OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY); set it before running tnega evolve run',
+    )
+  }
+
+  const model = options.model ?? envConfig.model
+  const baseUrl = options.baseUrl ?? envConfig.baseUrl
+  const adapter = openaiCompatAdapter({
+    apiKey,
+    ...(model ? { model } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  })
+  const modelConfig = model || baseUrl
+    ? {
+        ...(model ? { model } : {}),
+        ...(baseUrl ? { baseUrl } : {}),
+      }
+    : undefined
+  const evolveFile = tasksFile.evolve ?? {}
+  const outputDir = resolve(cwd, options.outputDir ?? tasksFile.outputDir ?? '.tnega/experiments')
+  const runDir = join(outputDir, 'runs')
+  const policy = options.policy ?? evolveFile.policy ?? {
+    minScore: 0,
+    maxDegradation: 0,
+    minDelta: 0.001,
+  }
+  const maxIterations = options.maxIterations ?? evolveFile.maxIterations ?? 3
+  const baseSystem = options.baseSystem ?? evolveFile.baseSystem ?? ''
+  const rule = createLlmProposeRule({
+    adapter,
+    ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+    ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    ...(modelConfig ? { model: modelConfig } : {}),
+  })
+
+  const root = new Context()
+  const evalFiber = await root.plugin(evalPlugin, { outputDir: runDir })
+  const evolveConfig: EvolvePluginConfig = {
+    outputDir,
+    tasks: tasksFile.tasks,
+    policy,
+    rules: [rule],
+    cache: options.cache ?? false,
+  }
+  if (tasksFile.strategyNames) evolveConfig.strategyNames = tasksFile.strategyNames
+  const budget = options.budget ?? evolveFile.budget
+  if (budget) {
+    evolveConfig.budget = budget
+  }
+  const evolveFiber = await root.plugin(evolvePlugin, evolveConfig)
+  try {
+    const evolve = root.get('evolve') as EvolveService
+    const baseline = llmCandidate({
+      name: 'baseline',
+      system: baseSystem,
+      adapter,
+      ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+      ...(modelConfig ? { model: modelConfig } : {}),
+    })
+    const prime = await evolve.step({ candidate: baseline })
+    const maxRuns = options.maxRuns ?? evolveFile.maxRuns
+    const result = await evolve.evolve({
+      maxIterations,
+      ...(maxRuns !== undefined ? { maxRuns } : {}),
+      run: { cache: options.cache ?? false },
+    })
+    return {
+      prime,
+      result,
+      logFile: join(outputDir, 'log.json'),
+      runDir,
+    }
+  } finally {
+    await evolveFiber.dispose()
+    await evalFiber.dispose()
+  }
+}
+
+export function formatEvolveResult(result: RunEvolveCommandResult): string {
+  const lines: string[] = []
+  const primeNode = stepNode(result.prime)
+  const finalNode = stepNode(result.result)
+  if (primeNode) {
+    lines.push(
+      `baseline ${candidateLabel(primeNode.candidate)}: `
+        + `score ${primeNode.run.summary.score.toFixed(3)} `
+        + `(${primeNode.run.summary.passed}/${primeNode.run.summary.total})`,
+    )
+  }
+  lines.push(`decision ${result.result.kind}`)
+  if (finalNode) {
+    lines.push(`candidate ${candidateLabel(finalNode.candidate)}: score ${finalNode.run.summary.score.toFixed(3)}`)
+    lines.push(`status ${finalNode.status}`)
+    if (finalNode.decision?.reason) lines.push(`reason ${finalNode.decision.reason}`)
+    if (finalNode.decision?.delta !== undefined) {
+      const delta = finalNode.decision.delta
+      lines.push(`delta ${delta >= 0 ? '+' : ''}${delta.toFixed(3)}`)
+    }
+  } else if (result.result.kind === 'no-candidate') {
+    lines.push(`reason ${result.result.reason}`)
+  }
+  lines.push(`log ${result.logFile}`)
+  return lines.join('\n')
+}
+
+function stepNode(result: EvolveStepResult) {
+  return result.kind === 'no-candidate' ? undefined : result.node
+}
+
+function candidateLabel(candidate: { name: string; version?: string }): string {
+  return candidate.version ? `${candidate.name}@${candidate.version}` : candidate.name
 }
