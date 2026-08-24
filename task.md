@@ -263,4 +263,4 @@
 - M5：`d74dcc9` 真实 LLM 接入（OpenAI compatible adapter / tnega run / real DeepSeek smoke）
 - M6：`a8cd087` 时空可组合极端压力测试（10 extreme spacetime tests，测试记录 `1db8eb4`）
 - M7：`19d831c` 真实 LLM 自进化闭环（evolve run / LLM propose / real DeepSeek e2e）
-- M7 测试记录：`c071b00` 真实 LLM e2e 文档（README / task.md 同步更新）
+- M7 测试记录：`b6d2917` 真实 LLM e2e 文档（README / task.md 同步更新）
