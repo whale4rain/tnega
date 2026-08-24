@@ -17,6 +17,7 @@
     "noEmit": true
   },
   "include": [
+    "scripts/**/*.ts",
     "packages/**/*.ts",
     "test/**/*.ts",
     "vitest.config.ts"

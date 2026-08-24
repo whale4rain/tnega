@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "tnega": "node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/ts-import-loader.mjs scripts/tnega.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json",

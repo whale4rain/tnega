@@ -1,0 +1,13 @@
+outputDir: .tnega/runs
+strategyNames:
+  - assert
+tasks:
+  - id: echo-good
+    inputText: good
+    assertion:
+      expect: good
+candidates:
+  echo:
+    version: "1"
+    loop: echo
+defaultCandidate: echo

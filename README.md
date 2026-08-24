@@ -99,10 +99,16 @@ packages/
 ## 使用
 
 ```text
-tnega run "prompt"        # 运行一次 agent 会话（读取环境变量 key）
-tnega eval run tasks.yml  # 运行评测
-tnega eval compare a b    # 比较两次评测
-tnega evolve run tasks.yml  # 运行真实 LLM 自进化闭环
+pnpm tnega run "prompt"            # 运行一次 agent 会话（读取环境变量 key）
+pnpm tnega eval run tasks.yml      # 运行评测
+pnpm tnega eval compare a b        # 比较两次评测
+pnpm tnega evolve run tasks.yml    # 运行真实 LLM 自进化闭环
+```
+
+不需要 API key 的快速试用：
+
+```text
+pnpm tnega eval run examples/tasks.yml
 ```
 
 ## 真实 LLM 接入
@@ -110,7 +116,7 @@ tnega evolve run tasks.yml  # 运行真实 LLM 自进化闭环
 `tnega run` 通过 OpenAI 兼容协议调用 OpenCode Go 的 DeepSeek 端点，key 只从环境变量读取，不写入代码或仓库文件：
 
 ```text
-OPENCODE_GO_API_KEY=sk-xxx tnega run "Reply with: hello"
+OPENCODE_GO_API_KEY=sk-xxx pnpm tnega run "Reply with: hello"
 ```
 
 也可以使用 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY` 作为兼容变量。默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `deepseek-v4-flash`；可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
