@@ -19,6 +19,7 @@
 | M4 evolve 进化循环 | 已完成 |
 | M5 真实 LLM 接入 | 已完成 |
 | M6 时空可组合极端压力测试 | 已完成 |
+| M7 真实 LLM 自进化闭环 | 已完成 |
 
 ## 开发约定
 
@@ -238,6 +239,18 @@
 - [x] 测试记录：`docs/test/spacetime-composability.md`
 - [x] git commit（M6）
 
+## M7 真实 LLM 自进化闭环
+
+目标：把自进化闭环接上真实 LLM，Agent Loop 和候选提案都由真实 DeepSeek 驱动，跑通 baseline 评测 → LLM 提案 → 候选评测 → gate 选择 → 持久化。
+
+- [x] evolve 新增 `llmCandidate` 与 `createLlmProposeRule`，提案要求返回 JSON 并校验字段
+- [x] CLI 新增 `tnega evolve run tasks.yml`，支持 `--iterations / --max-turns / --max-steps / --max-tokens / --model / --base-url / --no-cache`
+- [x] 测试：提案解析、system prompt 注入、llmCandidate 隔离评测、CLI mock 端到端、key 不落盘
+- [x] 真实 DeepSeek 端到端实验：baseline + 提案 + 候选评测 + gate 拒绝 + 实验树持久化
+- [x] 测试记录：`docs/test/evolve-llm-e2e.md`
+- [x] 全量 typecheck / test / lint 通过
+- [x] git commit（M7）
+
 ## 提交记录
 
 按阶段记录 commit，后续在此追加。
@@ -249,3 +262,5 @@
 - M4：`31ea62e` evolve 进化循环（Candidate / propose / ExperimentLog / selection gate + 11 tests）
 - M5：`d74dcc9` 真实 LLM 接入（OpenAI compatible adapter / tnega run / real DeepSeek smoke）
 - M6：`a8cd087` 时空可组合极端压力测试（10 extreme spacetime tests，测试记录 `1db8eb4`）
+- M7：`19d831c` 真实 LLM 自进化闭环（evolve run / LLM propose / real DeepSeek e2e）
+- M7 测试记录：`c071b00` 真实 LLM e2e 文档（README / task.md 同步更新）

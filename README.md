@@ -80,6 +80,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 - M4：evolve 进化循环与 experiment log。
 - M5：真实 LLM 接入与 `tnega run`。
 - M6：时空可组合极端压力测试。
+- M7：真实 LLM 自进化闭环。
 
 ## 目录结构（规划）
 
@@ -101,7 +102,7 @@ packages/
 tnega run "prompt"        # 运行一次 agent 会话（读取环境变量 key）
 tnega eval run tasks.yml  # 运行评测
 tnega eval compare a b    # 比较两次评测
-tnega evolve --budget 10  # 运行进化循环
+tnega evolve run tasks.yml  # 运行真实 LLM 自进化闭环
 ```
 
 ## 真实 LLM 接入
@@ -115,6 +116,8 @@ OPENCODE_GO_API_KEY=sk-xxx tnega run "Reply with: hello"
 也可以使用 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY` 作为兼容变量。默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `deepseek-v4-flash`；可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
 
 会话记录默认写入 `.tnega/run.jsonl`，可以使用 `--session <file>` 指定位置。
+
+`tnega evolve run tasks.yml` 把自进化闭环接到真实 LLM：baseline 和候选都由 LLM 驱动，提案规则要求 LLM 返回 JSON 形态的系统提示词候选，评测后由确定性 gate 决定接受或拒绝。实验树默认写入 `.tnega/experiments/log.json`，候选 run 写入 `.tnega/experiments/runs/`，文件中不含 key。
 
 tasks.yml 支持候选声明；没有接入真实 LLM 时可以用内置确定性 loop 跑通完整评测链路：
 
@@ -139,3 +142,4 @@ defaultCandidate: echo
 - M4 evolve 进化循环：已完成。Candidate / propose / ExperimentLog 树提供候选生成与可回放实验；selection gate 支持 min-score、safety、退化阈值、显著性规则与审批 seam；确定性多轮闭环验证候选失败不影响主 runtime，配套 11 个 evolve 测试。
 - M5 真实 LLM 接入：已完成。`@tnega/llm` 提供 OpenAI 兼容适配器与 `listModels`；`tnega run` 只从环境变量读取 key，支持模型、端点、温度、token 上限与 session 文件参数，配套 OpenAI 协议与 CLI 端到端测试。
 - M6 时空可组合极端压力测试：已完成。新增 10 个压力测试，覆盖 100 次热插拔、20 代 provider 替换、128 插件级联、64 scope 隔离、64 fiber 并发挂载卸载、65 次健康检查拨动与 update 风暴。
+- M7 真实 LLM 自进化闭环：已完成。`evolve run` 用真实 DeepSeek 驱动 baseline、提案与候选评测，gate 选择后持久化实验树；真实端到端实验与记录见 `docs/test/evolve-llm-e2e.md`。
