@@ -81,6 +81,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 - M5：真实 LLM 接入与 `tnega run`。
 - M6：时空可组合极端压力测试。
 - M7：真实 LLM 自进化闭环。
+- M8：最小内置工具集与路径沙箱。
 
 ## 目录结构（规划）
 
@@ -100,6 +101,8 @@ packages/
 
 ```text
 pnpm tnega run "prompt"            # 运行一次 agent 会话（读取环境变量 key）
+pnpm tnega run --allow-network "fetch https://example.com"
+pnpm tnega run --allow-shell "list files and summarize"
 pnpm tnega eval run tasks.yml      # 运行评测
 pnpm tnega eval compare a b        # 比较两次评测
 pnpm tnega evolve run tasks.yml    # 运行真实 LLM 自进化闭环
@@ -122,6 +125,26 @@ OPENCODE_GO_API_KEY=sk-xxx pnpm tnega run "Reply with: hello"
 也可以使用 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY` 作为兼容变量。默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `deepseek-v4-flash`；可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
 
 会话记录默认写入 `.tnega/run.jsonl`，可以使用 `--session <file>` 指定位置。
+
+## 内置工具
+
+`tnega run` 默认挂载一个最小内置工具集，每个工具都是普通 `ToolDefinition`，通过 `builtinTools` 插件注册；插件卸载时工具自动注销，符合“工具也是可插拔”的架构。
+
+默认工具：
+
+```text
+echo, now, calculator, json,
+read_file, write_file, list_dir, glob, grep
+```
+
+高权限工具默认不注册：
+
+- `http_get`：需要 `--allow-network`
+- `shell`：需要 `--allow-shell`，工作目录被限制在 `--cwd` 内
+
+文件工具使用路径沙箱：`read_file / write_file / list_dir / glob / grep / shell` 均被限制在 `--cwd` 内，拒绝绝对路径越界、`..` 越界与 symlink 越界。读取默认上限 256 KiB，写入与搜索默认上限 1 MiB，搜索结果默认 200 条，shell 默认 15 秒超时。
+
+以插件方式接入时，`builtinTools` 接受 `BuiltinToolsConfig`：`cwd / allowNetwork / allowShell / disabled / maxReadBytes / maxWriteBytes / maxSearchBytes / maxResults / timeoutMs`，`disabled` 可进一步关闭任一内置工具。
 
 `tnega evolve run tasks.yml` 把自进化闭环接到真实 LLM：baseline 和候选都由 LLM 驱动，提案规则要求 LLM 返回 JSON 形态的系统提示词候选，评测后由确定性 gate 决定接受或拒绝。实验树默认写入 `.tnega/experiments/log.json`，候选 run 写入 `.tnega/experiments/runs/`，文件中不含 key。
 
@@ -149,3 +172,4 @@ defaultCandidate: echo
 - M5 真实 LLM 接入：已完成。`@tnega/llm` 提供 OpenAI 兼容适配器与 `listModels`；`tnega run` 只从环境变量读取 key，支持模型、端点、温度、token 上限与 session 文件参数，配套 OpenAI 协议与 CLI 端到端测试。
 - M6 时空可组合极端压力测试：已完成。新增 10 个压力测试，覆盖 100 次热插拔、20 代 provider 替换、128 插件级联、64 scope 隔离、64 fiber 并发挂载卸载、65 次健康检查拨动与 update 风暴。
 - M7 真实 LLM 自进化闭环：已完成。`evolve run` 用真实 DeepSeek 驱动 baseline、提案与候选评测，gate 选择后持久化实验树；真实端到端实验与记录见 `docs/test/evolve-llm-e2e.md`。
+- M8 最小内置工具集：已完成。`builtinTools` 以插件形式提供 `echo / now / calculator / json / read_file / write_file / list_dir / glob / grep`，`http_get` 与 `shell` 默认关闭，文件与 shell 工具受路径沙箱与字节/结果/超时上限约束；配套 16 个测试。

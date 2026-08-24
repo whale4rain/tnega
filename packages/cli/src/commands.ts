@@ -11,7 +11,7 @@ import {
 } from '@tnega/agent'
 import { openaiCompatAdapter } from '@tnega/llm'
 import { session } from '@tnega/session'
-import { tools } from '@tnega/tools'
+import { builtinTools, tools } from '@tnega/tools'
 import {
   evalPlugin,
   type CompareResult,
@@ -77,6 +77,8 @@ export interface RunAgentCommandOptions {
   temperature?: number
   maxTurns?: number
   maxSteps?: number
+  allowNetwork?: boolean
+  allowShell?: boolean
 }
 
 export interface RunAgentCommandResult {
@@ -351,6 +353,11 @@ async function createRunContext(
   const root = new Context()
   const sessionFiber = await root.plugin(session, { file: sessionFile })
   const toolsFiber = await root.plugin(tools)
+  const builtinToolsFiber = await root.plugin(builtinTools, {
+    cwd: options.cwd ?? process.cwd(),
+    ...(options.allowNetwork ? { allowNetwork: true } : {}),
+    ...(options.allowShell ? { allowShell: true } : {}),
+  })
   const agentConfig: {
     llm: LLMAdapter
     maxTurns?: number
@@ -362,7 +369,7 @@ async function createRunContext(
   return {
     root,
     dispose: async () => {
-      for (const fiber of [agentFiber, toolsFiber, sessionFiber].reverse()) {
+      for (const fiber of [agentFiber, builtinToolsFiber, toolsFiber, sessionFiber].reverse()) {
         await fiber.dispose()
       }
     },

@@ -52,6 +52,8 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.temperature !== undefined ? { temperature: parsed.temperature } : {}),
         ...(parsed.maxTurns !== undefined ? { maxTurns: parsed.maxTurns } : {}),
         ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
+        ...(parsed.allowNetwork !== undefined ? { allowNetwork: parsed.allowNetwork } : {}),
+        ...(parsed.allowShell !== undefined ? { allowShell: parsed.allowShell } : {}),
       })
       return emit(formatAgentRun(result), 0)
     }
@@ -136,6 +138,8 @@ interface ParsedRunAgentArgs {
   temperature?: number
   maxTurns?: number
   maxSteps?: number
+  allowNetwork?: boolean
+  allowShell?: boolean
 }
 
 interface ParsedEvolveRunArgs {
@@ -187,6 +191,16 @@ function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
     const arg = args[cursor]!
     if (!arg.startsWith('--')) {
       positional.push(arg)
+      cursor += 1
+      continue
+    }
+    if (arg === '--allow-network') {
+      parsed.allowNetwork = true
+      cursor += 1
+      continue
+    }
+    if (arg === '--allow-shell') {
+      parsed.allowShell = true
       cursor += 1
       continue
     }

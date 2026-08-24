@@ -1,6 +1,10 @@
 import type { Context, Disposable } from '@tnega/core'
 import { Service } from '@tnega/core'
 
+export * from './builtins.js'
+export * from './calc.js'
+export * from './path.js'
+
 export interface ToolParameterSchema {
   type?: string
   properties?: Record<string, unknown>

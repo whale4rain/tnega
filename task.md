@@ -20,6 +20,7 @@
 | M5 真实 LLM 接入 | 已完成 |
 | M6 时空可组合极端压力测试 | 已完成 |
 | M7 真实 LLM 自进化闭环 | 已完成 |
+| M8 最小内置工具集 | 已完成 |
 
 ## 开发约定
 
@@ -250,6 +251,21 @@
 - [x] 测试记录：`docs/test/evolve-llm-e2e.md`
 - [x] 全量 typecheck / test / lint 通过
 - [x] git commit（M7）
+
+## M8 最小内置工具集
+
+目标：参照常见 agent 的最小工具集合，为 `tnega run` 提供开箱即用的基础能力，同时保持工具即插件的时空可组合语义，并为高权限能力设置显式开关。
+
+- [x] `calculator`：安全算术表达式解析器，支持 `+ - * / % ^`、括号、`pi/e/tau` 与常用函数，拒绝除法/对数/开方中的非法输入
+- [x] `path` 沙箱：`resolveInside` 将路径限制在 cwd 内，拒绝绝对越界、`..` 越界与 symlink 越界
+- [x] `builtinTools` 插件：默认注册 `echo / now / calculator / json / read_file / write_file / list_dir / glob / grep`，卸载自动注销
+- [x] `http_get` 与 `shell` 默认不注册，CLI 通过 `--allow-network` / `--allow-shell` 显式开启
+- [x] 文件工具：拒绝二进制文件，写入/读取字节上限、搜索字节与结果上限、shell 超时上限
+- [x] `BuiltinToolsConfig`：`cwd / allowNetwork / allowShell / disabled / maxReadBytes / maxWriteBytes / maxSearchBytes / maxResults / timeoutMs`
+- [x] 测试：注册与卸载、disabled、scope 隔离、calculator / json、文件读写与搜索、路径逃逸、二进制与字节限制、网络与 shell 开关，共 16 个测试
+- [x] 全量 typecheck / test / lint 通过
+- [x] 更新 README / task.md
+- [x] git commit（M8）
 
 ## 提交记录
 
