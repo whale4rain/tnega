@@ -22,6 +22,7 @@
 | M7 真实 LLM 自进化闭环 | 已完成 |
 | M8 最小内置工具集 | 已完成 |
 | M9 真实 LLM 工具调用端到端测试 | 已完成 |
+| M10 npm / pnpm 发布准备 | 已完成 |
 
 ## 开发约定
 
@@ -280,6 +281,20 @@
 - [x] 全量 typecheck / test / lint 通过
 - [x] 更新 README / task.md
 - [x] git commit（M9）
+
+## M10 npm / pnpm 发布准备
+
+目标：让 `tnega` 可以通过 npm 与 pnpm 安装。采用单包路线：根包作为公共自包含 CLI 发布，内部 `@tnega/*` workspace 包保持 private，后续需要库级发布再拆。
+
+- [x] 根包发布元数据：name `tnega` / version `0.1.0` / public / MIT / `files: ["dist"]` / `engines.node >= 22`
+- [x] CLI bin 源码入口：`packages/cli/src/bin.ts`，`bin.tnega` 指向 `dist/bin.js`
+- [x] esbuild 自包含构建：`scripts/build.mjs` 产出 `dist/bin.js` 与 `dist/index.js`，不残留 `@tnega/` 外部 import
+- [x] `prepublishOnly`：自动执行 `pnpm test:package`（build + 发布测试）
+- [x] 测试：`test/publish.test.ts` 覆盖发布元数据、bin 源码、bundle 自包含性与 CLI 冒烟
+- [x] 本地安装验证：`npm install` 与 `pnpm add` tarball 后 `node node_modules/tnega/dist/bin.js` 可运行
+- [x] 测试记录：`docs/test/npm-publish.md`
+- [x] 全量 typecheck / test / lint 通过
+- [x] git commit（M10）
 
 ## 提交记录
 

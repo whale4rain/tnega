@@ -83,6 +83,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 - M7：真实 LLM 自进化闭环。
 - M8：最小内置工具集与路径沙箱。
 - M9：真实 LLM 工具调用端到端测试。
+- M10：npm / pnpm 发布准备，`tnega` 作为自包含 CLI 包可安装。
 
 ## 目录结构（规划）
 
@@ -99,6 +100,16 @@ packages/
 ```
 
 ## 使用
+
+发布后可通过 npm 或 pnpm 全局安装：
+
+```text
+npm install -g tnega
+pnpm add -g tnega
+tnega run "prompt"
+```
+
+本地开发仍使用 workspace 脚本：
 
 ```text
 pnpm tnega run "prompt"            # 运行一次 agent 会话（读取环境变量 key）
@@ -175,3 +186,4 @@ defaultCandidate: echo
 - M7 真实 LLM 自进化闭环：已完成。`evolve run` 用真实 DeepSeek 驱动 baseline、提案与候选评测，gate 选择后持久化实验树；真实端到端实验与记录见 `docs/test/evolve-llm-e2e.md`。
 - M8 最小内置工具集：已完成。`builtinTools` 以插件形式提供 `echo / now / calculator / json / read_file / write_file / list_dir / glob / grep`，`http_get` 与 `shell` 默认关闭，文件与 shell 工具受路径沙箱与字节/结果/超时上限约束；配套 16 个测试。
 - M9 真实 LLM 工具调用端到端测试：已完成。mock 端到端 4 个测试覆盖 calculator / http_get / shell / 路径沙箱；真实 DeepSeek 冒烟 3 个测试覆盖 calculator / read_file / shell，session 记录 tool-call 与 tool-result，测试记录见 `docs/test/tools-llm-e2e.md`。
+- M10 npm / pnpm 发布准备：已完成。`tnega` 根包发布为公共自包含 CLI，`bin` 指向 esbuild 打包的 `dist/bin.js`，`prepublishOnly` 自动构建并跑发布测试；npm 与 pnpm 本地安装验证通过，测试记录见 `docs/test/npm-publish.md`。
