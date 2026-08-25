@@ -311,3 +311,4 @@
 - M7 测试记录：`b6d2917` 真实 LLM e2e 文档（README / task.md 同步更新）
 - M8：`85baa91` 最小内置工具集（builtinTools 插件 / path 沙箱 / calc / CLI 权限开关 + 16 tests）
 - M9：`b456dd5` 真实 LLM 工具调用端到端测试（mock e2e 4 tests / real smoke 3 tests / 测试记录）
+- M10：`d1a3869` npm / pnpm 发布准备（esbuild 自包含 CLI / publish tests / 测试记录）
