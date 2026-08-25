@@ -21,6 +21,7 @@
 | M6 时空可组合极端压力测试 | 已完成 |
 | M7 真实 LLM 自进化闭环 | 已完成 |
 | M8 最小内置工具集 | 已完成 |
+| M9 真实 LLM 工具调用端到端测试 | 已完成 |
 
 ## 开发约定
 
@@ -266,6 +267,19 @@
 - [x] 全量 typecheck / test / lint 通过
 - [x] 更新 README / task.md
 - [x] git commit（M8）
+
+## M9 真实 LLM 工具调用端到端测试
+
+目标：补上“真实 LLM 实际调用默认工具”的端到端验证，并让 mock 测试确定性覆盖同一管线，避免工具集只注册不执行。
+
+- [x] mock 端到端：`packages/cli/test/tools-e2e.test.ts` 4 个测试
+- [x] mock 覆盖：`calculator` 执行并写入 session、`read_file` 路径沙箱拒绝 `../`、`shell` 仅 `allowShell` 时执行、`http_get` 仅 `allowNetwork` 时执行
+- [x] 真实 LLM 冒烟：`test/deepseek-tools.smoke.test.ts` 3 个测试
+- [x] 真实覆盖：`calculator` / `read_file` / `shell` 均由真实 DeepSeek 调用，session 含 tool-call 与 tool-result 且不含 key
+- [x] 测试记录：`docs/test/tools-llm-e2e.md`
+- [x] 全量 typecheck / test / lint 通过
+- [x] 更新 README / task.md
+- [x] git commit（M9）
 
 ## 提交记录
 
