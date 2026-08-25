@@ -42,7 +42,8 @@ describe('packed artifact', () => {
         stdio: ['ignore', 'pipe', 'pipe'],
       })
     } catch (error) {
-      output = String(error.stdout ?? '')
+      const err = error as { stdout?: unknown }
+      output = String(err.stdout ?? '')
     }
     expect(output).toContain('unknown command: no-such-command')
   })
