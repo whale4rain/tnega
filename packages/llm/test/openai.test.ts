@@ -145,7 +145,7 @@ describe('openaiCompatAdapter', () => {
     expect(body.messages[0]).toEqual({ role: 'user', content: 'call tools' })
   })
 
-  it('forwards the abort signal to fetch', async () => {
+  it('passes a combined timeout and caller signal to fetch', async () => {
     const controller = new AbortController()
     const fetchMock = vi.fn(async () => jsonResponse({
         choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
@@ -159,14 +159,44 @@ describe('openaiCompatAdapter', () => {
       { signal: controller.signal },
     )
     const init = fetchMock.mock.calls[0]![1]!
-    expect(init.signal).toBe(controller.signal)
+    expect(init.signal).toBeDefined()
+    expect(init.signal).not.toBe(controller.signal)
+  })
+
+  it('does not retry when the caller aborts', async () => {
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: unknown, init: RequestInit) => {
+      controller.abort(new Error('caller aborted'))
+      const signal = init.signal
+      expect(signal?.aborted).toBe(true)
+      return Promise.reject(
+        Object.assign(new Error('caller aborted'), { name: 'AbortError' }),
+      )
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 3,
+      retryDelayMs: 1,
+    })
+    await expect(adapter.complete(
+      [{ role: 'user', content: 'go' }],
+      [],
+      { signal: controller.signal },
+    )).rejects.toMatchObject({
+      name: 'OpenAICompatibleError',
+      status: 0,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('wraps non-ok responses without exposing the API key', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+    const fetchMock = vi.fn(async () => new Response(
       JSON.stringify({ error: { message: 'invalid api key' } }),
       { status: 401, headers: { 'content-type': 'application/json' } },
-    )))
+    )) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
 
     const adapter = openaiCompatAdapter({ apiKey: 'should-not-leak' })
     await expect(adapter.complete([{ role: 'user', content: 'hi' }], [], {}))
@@ -176,17 +206,183 @@ describe('openaiCompatAdapter', () => {
         status: 401,
         detail: '{"error":{"message":"invalid api key"}}',
       })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('wraps transport failures', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => {
+    const fetchMock = vi.fn(async () => {
       throw new Error('socket hang up')
-    }))
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
 
-    const adapter = openaiCompatAdapter({ apiKey: 'test-key' })
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      retryDelayMs: 1,
+    })
     await expect(adapter.complete([{ role: 'user', content: 'hi' }], [], {}))
       .rejects
       .toThrow('LLM request failed: socket hang up')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('retries a 500 response and then succeeds', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({}, 500))
+      .mockResolvedValueOnce(jsonResponse({}, 503))
+      .mockResolvedValueOnce(jsonResponse({
+        choices: [{ message: { content: 'recovered' }, finish_reason: 'stop' }],
+      })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 2,
+      retryDelayMs: 1,
+    })
+    const completion = await adapter.complete(
+      [{ role: 'user', content: 'hi' }],
+      [],
+      {},
+    )
+
+    expect(completion).toEqual({ content: 'recovered', finishReason: 'stop' })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('retries a 429 response', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({}, 429))
+      .mockResolvedValueOnce(jsonResponse({
+        choices: [{ message: { content: 'slow down' }, finish_reason: 'stop' }],
+      })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 1,
+      retryDelayMs: 1,
+    })
+    const completion = await adapter.complete(
+      [{ role: 'user', content: 'hi' }],
+      [],
+      {},
+    )
+
+    expect(completion.content).toBe('slow down')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries a transient network error', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(jsonResponse({
+        choices: [{ message: { content: 'back online' }, finish_reason: 'stop' }],
+      })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 1,
+      retryDelayMs: 1,
+    })
+    const completion = await adapter.complete(
+      [{ role: 'user', content: 'hi' }],
+      [],
+      {},
+    )
+
+    expect(completion.content).toBe('back online')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('exhausts retries and surfaces the final status', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}, 500)) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 2,
+      retryDelayMs: 1,
+    })
+    await expect(adapter.complete([{ role: 'user', content: 'hi' }], [], {}))
+      .rejects
+      .toMatchObject({
+        name: 'OpenAICompatibleError',
+        status: 500,
+      })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('honors maxRetries 0', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}, 500)) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 0,
+      retryDelayMs: 1,
+    })
+    await expect(adapter.complete([{ role: 'user', content: 'hi' }], [], {}))
+      .rejects
+      .toMatchObject({ status: 500 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails with a timeout error when the timeout is hit', async () => {
+    const fetchMock = vi.fn((_url: unknown, init: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(Object.assign(new Error('timed out'), { name: 'AbortError' }))
+        })
+      })
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      timeoutMs: 10,
+      maxRetries: 0,
+    })
+    await expect(adapter.complete([{ role: 'user', content: 'hi' }], [], {}))
+      .rejects
+      .toMatchObject({
+        name: 'OpenAICompatibleError',
+        status: 0,
+      })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a timeout and then succeeds', async () => {
+    let attempts = 0
+    const fetchMock = vi.fn((_url: unknown, init: RequestInit) => {
+      attempts += 1
+      if (attempts === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('timed out'), { name: 'AbortError' }))
+          })
+        })
+      }
+      return Promise.resolve(jsonResponse({
+        choices: [{ message: { content: 'finally' }, finish_reason: 'stop' }],
+      }))
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      timeoutMs: 10,
+      maxRetries: 1,
+      retryDelayMs: 1,
+    })
+    const completion = await adapter.complete(
+      [{ role: 'user', content: 'hi' }],
+      [],
+      {},
+    )
+
+    expect(completion.content).toBe('finally')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('uses sensible defaults for model and base URL', async () => {

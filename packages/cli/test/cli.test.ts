@@ -304,6 +304,25 @@ describe('agent run command', () => {
     )
   })
 
+  it('retries a transient LLM failure with the configured limits', async () => {
+    const dir = await tempDir('tnega-cli-agent-retry-')
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 500 }))
+      .mockResolvedValueOnce(openaiResponse('after retry')) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runAgentCommand({
+      prompt: 'say hi',
+      cwd: dir,
+      maxRetries: 1,
+      retryDelayMs: 1,
+    })
+
+    expect(result.run.output).toBe('after retry')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('prints a run through main with flags and a mocked provider', async () => {
     const dir = await tempDir('tnega-cli-agent-main-')
     vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
@@ -314,6 +333,12 @@ describe('agent run command', () => {
       'run',
       '--max-tokens',
       '8',
+      '--timeout-ms',
+      '5000',
+      '--max-retries',
+      '1',
+      '--retry-delay-ms',
+      '1',
       '--cwd',
       dir,
       'flagged prompt',
@@ -444,6 +469,12 @@ describe('evolve run command', () => {
       '--base-system',
       'baseline system',
       '--no-cache',
+      '--timeout-ms',
+      '5000',
+      '--max-retries',
+      '1',
+      '--retry-delay-ms',
+      '1',
     ])
 
     expect(code).toBe(0)

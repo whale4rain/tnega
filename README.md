@@ -84,6 +84,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 - M8：最小内置工具集与路径沙箱。
 - M9：真实 LLM 工具调用端到端测试。
 - M10：npm / pnpm 发布准备，`tnega` 作为自包含 CLI 包可安装。
+- M11：LLM 请求超时与退避重试。
 
 ## 目录结构（规划）
 
@@ -136,6 +137,12 @@ OPENCODE_GO_API_KEY=sk-xxx pnpm tnega run "Reply with: hello"
 
 也可以使用 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY` 作为兼容变量。默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `deepseek-v4-flash`；可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
 
+LLM 请求默认 120 秒超时，最多重试 2 次，采用 500ms 起步的指数退避；仅网络错误、408 / 425 / 429 / 5xx 会触发重试，401 / 403 等 4xx 和用户取消不会重试。可以通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖，`tnega run` 与 `tnega evolve run` 都支持：
+
+```text
+OPENCODE_GO_API_KEY=sk-xxx pnpm tnega run "prompt" --timeout-ms 180000 --max-retries 3
+```
+
 会话记录默认写入 `.tnega/run.jsonl`，可以使用 `--session <file>` 指定位置。
 
 ## 内置工具
@@ -187,3 +194,4 @@ defaultCandidate: echo
 - M8 最小内置工具集：已完成。`builtinTools` 以插件形式提供 `echo / now / calculator / json / read_file / write_file / list_dir / glob / grep`，`http_get` 与 `shell` 默认关闭，文件与 shell 工具受路径沙箱与字节/结果/超时上限约束；配套 16 个测试。
 - M9 真实 LLM 工具调用端到端测试：已完成。mock 端到端 4 个测试覆盖 calculator / http_get / shell / 路径沙箱；真实 DeepSeek 冒烟 3 个测试覆盖 calculator / read_file / shell，session 记录 tool-call 与 tool-result，测试记录见 `docs/test/tools-llm-e2e.md`。
 - M10 npm / pnpm 发布准备：已完成。`tnega` 根包发布为公共自包含 CLI，`bin` 指向 esbuild 打包的 `dist/bin.js`，`prepublishOnly` 自动构建并跑发布测试；npm 与 pnpm 本地安装验证通过，测试记录见 `docs/test/npm-publish.md`。
+- M11 LLM 超时与重试：已完成。OpenAI 兼容适配器支持 120s 默认超时、最多 2 次重试与指数退避，只对瞬时错误重试；`run` 与 `evolve run` 均可通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖。

@@ -23,6 +23,7 @@
 | M8 最小内置工具集 | 已完成 |
 | M9 真实 LLM 工具调用端到端测试 | 已完成 |
 | M10 npm / pnpm 发布准备 | 已完成 |
+| M11 LLM 超时与重试 | 已完成 |
 
 ## 开发约定
 
@@ -295,6 +296,19 @@
 - [x] 测试记录：`docs/test/npm-publish.md`
 - [x] 全量 typecheck / test / lint 通过
 - [x] git commit（M10）
+
+## M11 LLM 超时与重试
+
+目标：为真实 LLM 请求增加超时、退避重试与可配置 CLI 参数，避免长请求或上游瞬时 5xx 直接失败。
+
+- [x] `openaiCompatAdapter` 新增 `timeoutMs / maxRetries / retryDelayMs` 配置
+- [x] 默认 120s 超时、最多 2 次重试、500ms 指数退避
+- [x] 仅对网络错误、408 / 425 / 429 / 5xx 重试；401 / 403 等 4xx 不重试
+- [x] 外部 abort 立即停止且不重试；超时后仍按重试策略重试
+- [x] `tnega run` 与 `tnega evolve run` 新增 `--timeout-ms / --max-retries / --retry-delay-ms`
+- [x] 测试：500 / 429 / 网络错误 / 超时重试成功、重试耗尽、401 不重试、调用方取消、`maxRetries: 0`、CLI 参数透传
+- [x] 全量 typecheck / test / lint 通过
+- [x] git commit（M11）
 
 ## 提交记录
 

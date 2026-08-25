@@ -9,6 +9,9 @@ import type { ToolDefinition } from '@tnega/tools'
 
 export const DEFAULT_OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash'
+export const DEFAULT_LLM_TIMEOUT_MS = 120_000
+export const DEFAULT_LLM_MAX_RETRIES = 2
+export const DEFAULT_LLM_RETRY_DELAY_MS = 500
 
 export interface OpenAICompatibleConfig {
   apiKey?: string
@@ -16,6 +19,9 @@ export interface OpenAICompatibleConfig {
   model?: string
   temperature?: number
   maxTokens?: number
+  timeoutMs?: number
+  maxRetries?: number
+  retryDelayMs?: number
 }
 
 interface OpenAICompatibleToolCall {
@@ -60,17 +66,36 @@ export class OpenAICompatibleError extends Error {
 export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAdapter {
   return {
     async complete(messages, tools, options) {
-      const request = buildRequest(messages, tools, config, options.signal)
-      let response: Response
-      try {
-        response = await fetch(request.url, request.init)
-      } catch (error) {
-        throw new OpenAICompatibleError(
-          0,
-          `LLM request failed: ${errorMessage(error)}`,
+      const timeoutMs = config.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
+      const maxRetries = config.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
+      const retryDelayMs = config.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
+      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        const request = buildRequest(
+          messages,
+          tools,
+          config,
+          combineSignal(options.signal, timeoutMs),
         )
+        try {
+          const response = await fetch(request.url, request.init)
+          if (!isRetryableStatus(response.status) || attempt >= maxRetries) {
+            return parseResponse(response)
+          }
+          await response.body?.cancel()
+        } catch (error) {
+          if (isExternalAbort(error, options.signal)) {
+            throw new OpenAICompatibleError(
+              0,
+              `LLM request aborted: ${errorMessage(error)}`,
+            )
+          }
+          if (attempt >= maxRetries) {
+            throw toRequestError(error, timeoutMs)
+          }
+        }
+        await sleep(retryDelayMs * 2 ** attempt)
       }
-      return parseResponse(response)
+      throw new OpenAICompatibleError(0, 'LLM request failed')
     },
   }
 }
@@ -286,4 +311,43 @@ function toFinishReason(
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+function combineSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs)
+  return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
+
+function isExternalAbort(
+  error: unknown,
+  signal: AbortSignal | undefined,
+): boolean {
+  return Boolean(signal?.aborted && isAbortLike(error))
+}
+
+function isAbortLike(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const name = (error as { name?: unknown }).name
+  return name === 'AbortError' || name === 'TimeoutError'
+}
+
+function toRequestError(error: unknown, timeoutMs: number): OpenAICompatibleError {
+  if (isAbortLike(error)) {
+    return new OpenAICompatibleError(
+      0,
+      `LLM request timed out after ${timeoutMs}ms`,
+    )
+  }
+  return new OpenAICompatibleError(0, `LLM request failed: ${errorMessage(error)}`)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

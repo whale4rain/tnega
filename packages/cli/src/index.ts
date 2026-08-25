@@ -54,6 +54,11 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
         ...(parsed.allowNetwork !== undefined ? { allowNetwork: parsed.allowNetwork } : {}),
         ...(parsed.allowShell !== undefined ? { allowShell: parsed.allowShell } : {}),
+        ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
+        ...(parsed.maxRetries !== undefined ? { maxRetries: parsed.maxRetries } : {}),
+        ...(parsed.retryDelayMs !== undefined
+          ? { retryDelayMs: parsed.retryDelayMs }
+          : {}),
       })
       return emit(formatAgentRun(result), 0)
     }
@@ -103,6 +108,11 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.maxTurns !== undefined ? { maxTurns: parsed.maxTurns } : {}),
         ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
         ...(parsed.cache !== undefined ? { cache: parsed.cache } : {}),
+        ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
+        ...(parsed.maxRetries !== undefined ? { maxRetries: parsed.maxRetries } : {}),
+        ...(parsed.retryDelayMs !== undefined
+          ? { retryDelayMs: parsed.retryDelayMs }
+          : {}),
       })
       return emit(formatEvolveResult(result), 0)
     }
@@ -140,6 +150,9 @@ interface ParsedRunAgentArgs {
   maxSteps?: number
   allowNetwork?: boolean
   allowShell?: boolean
+  timeoutMs?: number
+  maxRetries?: number
+  retryDelayMs?: number
 }
 
 interface ParsedEvolveRunArgs {
@@ -156,6 +169,9 @@ interface ParsedEvolveRunArgs {
   maxTurns?: number
   maxSteps?: number
   cache?: boolean
+  timeoutMs?: number
+  maxRetries?: number
+  retryDelayMs?: number
 }
 
 function parseRunArgs(args: readonly string[]): ParsedRunArgs {
@@ -287,6 +303,15 @@ function assignEvolveRunOption(
     case 'max-steps':
       parsed.maxSteps = parseFiniteNumber('--max-steps', value)
       return
+    case 'timeout-ms':
+      parsed.timeoutMs = parseFiniteNumber('--timeout-ms', value)
+      return
+    case 'max-retries':
+      parsed.maxRetries = parseFiniteNumber('--max-retries', value)
+      return
+    case 'retry-delay-ms':
+      parsed.retryDelayMs = parseFiniteNumber('--retry-delay-ms', value)
+      return
     case 'no-cache':
       parsed.cache = false
       return
@@ -324,6 +349,15 @@ function assignRunAgentOption(
       return
     case 'max-steps':
       parsed.maxSteps = parseFiniteNumber('--max-steps', value)
+      return
+    case 'timeout-ms':
+      parsed.timeoutMs = parseFiniteNumber('--timeout-ms', value)
+      return
+    case 'max-retries':
+      parsed.maxRetries = parseFiniteNumber('--max-retries', value)
+      return
+    case 'retry-delay-ms':
+      parsed.retryDelayMs = parseFiniteNumber('--retry-delay-ms', value)
       return
     default:
       throw new CliError(`unknown option: --${name}`)

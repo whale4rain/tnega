@@ -79,6 +79,9 @@ export interface RunAgentCommandOptions {
   maxSteps?: number
   allowNetwork?: boolean
   allowShell?: boolean
+  timeoutMs?: number
+  maxRetries?: number
+  retryDelayMs?: number
 }
 
 export interface RunAgentCommandResult {
@@ -102,6 +105,9 @@ export interface RunEvolveCommandOptions {
   budget?: RunBudget
   cache?: boolean
   policy?: SelectionPolicy
+  timeoutMs?: number
+  maxRetries?: number
+  retryDelayMs?: number
 }
 
 export interface RunEvolveCommandResult {
@@ -331,6 +337,11 @@ export async function runAgentCommand(
     ...(baseUrl ? { baseUrl } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+    ...(options.retryDelayMs !== undefined
+      ? { retryDelayMs: options.retryDelayMs }
+      : {}),
   })
   const context = await createRunContext(sessionFile, adapter, options)
   try {
@@ -407,6 +418,11 @@ export async function runEvolveCommand(
     ...(baseUrl ? { baseUrl } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+    ...(options.retryDelayMs !== undefined
+      ? { retryDelayMs: options.retryDelayMs }
+      : {}),
   })
   const modelConfig = model || baseUrl
     ? {
