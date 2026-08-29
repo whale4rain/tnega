@@ -323,8 +323,8 @@
 
 ### M12.2 LLM 流式适配
 
-- [ ] `LLMAdapter.stream()` 与 SSE 解析，归一化 `message_start / message_delta / message_stop / toolcall_start / toolcall_end`
-- [ ] 流式测试：内容增量、工具参数累积、finish reason、超时与 abort
+- [x] `LLMAdapter.stream()` 与 SSE 解析，归一化 `message_start / message_delta / message_stop / toolcall_start / toolcall_end`
+- [x] 流式测试：内容增量、工具参数累积、finish reason、超时与 abort
 
 ### M12.3 Agent 流式运行
 

@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import type {
   AgentFinishReason,
   LLMAdapter,
   LLMCompletion,
+  LLMStreamEvent,
   LLMToolCall,
 } from '@tnega/agent'
 import type { ModelMessage } from '@tnega/session'
@@ -44,6 +46,23 @@ interface OpenAICompatibleChoice {
 interface OpenAICompatiblePayload {
   choices?: unknown
   data?: unknown
+}
+
+interface OpenAIStreamChoice {
+  delta?: {
+    content?: string | null
+    tool_calls?: unknown
+  }
+  finish_reason?: string | null
+}
+
+interface OpenAIStreamToolCall {
+  index?: unknown
+  id?: unknown
+  function?: {
+    name?: unknown
+    arguments?: unknown
+  }
 }
 
 interface RequestPayload {
@@ -97,6 +116,69 @@ export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAda
       }
       throw new OpenAICompatibleError(0, 'LLM request failed')
     },
+    async *stream(messages, tools, options) {
+      const timeoutMs = config.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
+      const maxRetries = config.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
+      const retryDelayMs = config.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
+      for (let attempt = 0; ; attempt += 1) {
+        const request = buildRequest(
+          messages,
+          tools,
+          config,
+          combineSignal(options.signal, timeoutMs),
+          true,
+        )
+        let response: Response
+        try {
+          response = await fetch(request.url, request.init)
+        } catch (error) {
+          if (isExternalAbort(error, options.signal)) {
+            throw new OpenAICompatibleError(
+              0,
+              `LLM stream aborted: ${errorMessage(error)}`,
+            )
+          }
+          if (attempt >= maxRetries) {
+            throw toStreamError(error, timeoutMs)
+          }
+          await sleep(retryDelayMs * 2 ** attempt)
+          continue
+        }
+
+        if (!response.ok || !response.body) {
+          if (isRetryableStatus(response.status) && attempt < maxRetries) {
+            await response.body?.cancel()
+            await sleep(retryDelayMs * 2 ** attempt)
+            continue
+          }
+          if (!response.ok) await assertOk(response)
+          throw new OpenAICompatibleError(
+            response.status,
+            'LLM stream response had no body',
+          )
+        }
+
+        let sawEvent = false
+        try {
+          for await (const event of parseOpenAIStream(response.body)) {
+            sawEvent = true
+            yield event
+          }
+          return
+        } catch (error) {
+          if (isExternalAbort(error, options.signal)) {
+            throw new OpenAICompatibleError(
+              0,
+              `LLM stream aborted: ${errorMessage(error)}`,
+            )
+          }
+          if (sawEvent || attempt >= maxRetries) {
+            throw toStreamError(error, timeoutMs)
+          }
+          await sleep(retryDelayMs * 2 ** attempt)
+        }
+      }
+    },
   }
 }
 
@@ -134,11 +216,13 @@ function buildRequest(
   tools: readonly ToolDefinition[],
   config: OpenAICompatibleConfig,
   signal: AbortSignal | undefined,
+  stream = false,
 ): RequestPayload {
   const body: Record<string, unknown> = {
     model: config.model ?? DEFAULT_DEEPSEEK_MODEL,
     messages: messages.map(toOpenAIMessage),
   }
+  if (stream) body.stream = true
   if (tools.length) {
     body.tools = tools.map(toOpenAITool)
   }
@@ -350,4 +434,212 @@ function toRequestError(error: unknown, timeoutMs: number): OpenAICompatibleErro
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function* parseOpenAIStream(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<LLMStreamEvent> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let content = ''
+  let messageId: string = randomUUID()
+  let model: string | undefined
+  let messageStarted = false
+  let finishReason: string | null | undefined
+  const calls = new Map<number, {
+    index: number
+    id: string
+    name: string
+    arguments: string
+    emitted: boolean
+  }>()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let newlineIndex: number
+      while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newlineIndex).replace(/\r$/, '')
+        buffer = buffer.slice(newlineIndex + 1)
+        if (!line.startsWith('data:')) continue
+        const data = line.slice(5).trim()
+        if (!data) continue
+        if (data === '[DONE]') {
+          yield* finalizeStreamEvents(messageId, content, calls, finishReason)
+          return
+        }
+        let payload: unknown
+        try {
+          payload = JSON.parse(data) as unknown
+        } catch {
+          continue
+        }
+        const events = processStreamChunk(
+          payload,
+          { messageId, model, messageStarted },
+          { content, finishReason },
+          calls,
+        )
+        messageId = events.messageId
+        model = events.model
+        messageStarted = true
+        content = events.content
+        finishReason = events.finishReason
+        for (const event of events.events) yield event
+      }
+    }
+  } finally {
+    if (reader.releaseLock) {
+      try {
+        reader.releaseLock()
+      } catch {
+        // stream may already be closed by abort
+      }
+    }
+  }
+
+  yield* finalizeStreamEvents(messageId, content, calls, finishReason)
+}
+
+interface StreamChunkState {
+  messageId: string
+  model: string | undefined
+  messageStarted: boolean
+  content: string
+  finishReason: string | null | undefined
+}
+
+function processStreamChunk(
+  payload: unknown,
+  state: Pick<StreamChunkState, 'messageId' | 'model' | 'messageStarted'>,
+  progress: Pick<StreamChunkState, 'content' | 'finishReason'>,
+  calls: Map<number, {
+    index: number
+    id: string
+    name: string
+    arguments: string
+    emitted: boolean
+  }>,
+): StreamChunkState & { events: LLMStreamEvent[] } {
+  const record = payload as {
+    id?: unknown
+    model?: unknown
+    choices?: unknown
+  } | null
+  const events: LLMStreamEvent[] = []
+  let messageId = state.messageId
+  let model = state.model
+  let messageStarted = state.messageStarted
+  let content = progress.content
+  let finishReason = progress.finishReason
+
+  if (typeof record?.id === 'string' && record.id) messageId = record.id
+  if (typeof record?.model === 'string' && record.model) model = record.model
+  if (!messageStarted) {
+    messageStarted = true
+    const start = {
+      type: 'message_start' as const,
+      id: messageId,
+      ...(model ? { model } : {}),
+    }
+    events.push(start)
+  }
+
+  const choices = Array.isArray(record?.choices)
+    ? record.choices as OpenAIStreamChoice[]
+    : []
+  const choice = choices[0]
+  if (choice?.finish_reason !== undefined && choice.finish_reason !== null) {
+    finishReason = choice.finish_reason
+  }
+  const delta = choice?.delta
+  if (typeof delta?.content === 'string' && delta.content) {
+    content += delta.content
+    events.push({ type: 'message_delta', id: messageId, delta: delta.content })
+  }
+  if (Array.isArray(delta?.tool_calls)) {
+    for (const entry of delta.tool_calls as OpenAIStreamToolCall[]) {
+      const index = typeof entry.index === 'number' ? entry.index : 0
+      let call = calls.get(index)
+      if (!call) {
+        call = { index, id: '', name: '', arguments: '', emitted: false }
+        calls.set(index, call)
+      }
+      if (typeof entry.id === 'string' && entry.id) call.id = entry.id
+      if (typeof entry.function?.name === 'string' && entry.function.name) {
+        call.name = entry.function.name
+      }
+      if (typeof entry.function?.arguments === 'string') {
+        call.arguments += entry.function.arguments
+      }
+      if (!call.emitted && call.id && call.name) {
+        call.emitted = true
+        events.push({
+          type: 'toolcall_start',
+          id: call.id,
+          index,
+          name: call.name,
+        })
+      }
+    }
+  }
+
+  return {
+    messageId,
+    model,
+    messageStarted,
+    content,
+    finishReason,
+    events,
+  }
+}
+
+function finalizeStreamEvents(
+  messageId: string,
+  content: string,
+  calls: Map<number, {
+    index: number
+    id: string
+    name: string
+    arguments: string
+    emitted: boolean
+  }>,
+  finishReason: string | null | undefined,
+): LLMStreamEvent[] {
+  const events: LLMStreamEvent[] = []
+  const toolCalls: LLMToolCall[] = []
+  for (const call of calls.values()) {
+    if (!call.emitted) continue
+    events.push({
+      type: 'toolcall_end',
+      id: call.id,
+      index: call.index,
+      name: call.name,
+      arguments: parseArguments(call.arguments),
+    })
+    toolCalls.push({
+      id: call.id,
+      name: call.name,
+      arguments: parseArguments(call.arguments),
+    })
+  }
+  events.push({
+    type: 'message_stop',
+    id: messageId,
+    finishReason: toFinishReason(finishReason, content, toolCalls.length > 0),
+  })
+  return events
+}
+
+function toStreamError(error: unknown, timeoutMs: number): OpenAICompatibleError {
+  if (isAbortLike(error)) {
+    return new OpenAICompatibleError(
+      0,
+      `LLM stream timed out after ${timeoutMs}ms`,
+    )
+  }
+  return new OpenAICompatibleError(0, `LLM stream failed: ${errorMessage(error)}`)
 }

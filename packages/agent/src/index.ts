@@ -3,7 +3,14 @@ import type { ModelMessage, SessionLog, ToolResultPayload } from '@tnega/session
 import type { ToolDefinition, ToolResult } from '@tnega/tools'
 import type { ToolsService } from '@tnega/tools'
 
-export type AgentFinishReason = 'stop' | 'tool_calls' | 'length' | 'max_turns' | 'max_steps' | 'error'
+export type AgentFinishReason =
+  | 'stop'
+  | 'tool_calls'
+  | 'length'
+  | 'max_turns'
+  | 'max_steps'
+  | 'error'
+  | 'cancelled'
 
 export interface LLMToolCall {
   id: string
@@ -22,12 +29,57 @@ export interface CompleteOptions {
   signal?: AbortSignal
 }
 
+export interface LLMMessageStartEvent {
+  type: 'message_start'
+  id: string
+  model?: string
+}
+
+export interface LLMMessageDeltaEvent {
+  type: 'message_delta'
+  id: string
+  delta: string
+}
+
+export interface LLMToolCallStartEvent {
+  type: 'toolcall_start'
+  id: string
+  index: number
+  name: string
+}
+
+export interface LLMToolCallEndEvent {
+  type: 'toolcall_end'
+  id: string
+  index: number
+  name: string
+  arguments: unknown
+}
+
+export interface LLMMessageStopEvent {
+  type: 'message_stop'
+  id: string
+  finishReason: AgentFinishReason
+}
+
+export type LLMStreamEvent =
+  | LLMMessageStartEvent
+  | LLMMessageDeltaEvent
+  | LLMToolCallStartEvent
+  | LLMToolCallEndEvent
+  | LLMMessageStopEvent
+
 export interface LLMAdapter {
   complete(
     messages: readonly ModelMessage[],
     tools: readonly ToolDefinition[],
     options: CompleteOptions,
   ): Promise<LLMCompletion>
+  stream?(
+    messages: readonly ModelMessage[],
+    tools: readonly ToolDefinition[],
+    options: CompleteOptions,
+  ): AsyncIterable<LLMStreamEvent>
 }
 
 export interface AgentInput {

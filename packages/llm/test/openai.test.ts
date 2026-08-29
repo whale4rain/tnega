@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
 import type { ModelMessage } from '@tnega/session'
+import type { LLMStreamEvent } from '@tnega/agent'
 import type { ToolDefinition } from '@tnega/tools'
 
 import {
@@ -19,6 +20,38 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'content-type': 'application/json' },
   })
+}
+
+function sseResponse(chunks: string[], status = 200): Response {
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    status,
+    headers: { 'content-type': 'text/event-stream' },
+  })
+}
+
+async function collectStream(
+  adapter: ReturnType<typeof openaiCompatAdapter>,
+  messages: ModelMessage[],
+  signal?: AbortSignal,
+): Promise<LLMStreamEvent[]> {
+  const events: LLMStreamEvent[] = []
+  const stream = adapter.stream
+  if (!stream) throw new Error('adapter does not expose stream')
+  for await (const event of stream(
+    messages,
+    [],
+    { ...(signal ? { signal } : {}) },
+  )) {
+    events.push(event)
+  }
+  return events
 }
 
 const addTool: ToolDefinition = {
@@ -400,6 +433,132 @@ describe('openaiCompatAdapter', () => {
       model: string
     }
     expect(body.model).toBe(DEFAULT_DEEPSEEK_MODEL)
+  })
+
+  it('streams content deltas and a final stop event', async () => {
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"id":"m1","model":"deepseek-v4-flash","choices":[{"delta":{"content":"hel"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({ apiKey: 'test-key' })
+    const events = await collectStream(adapter, [{ role: 'user', content: 'hi' }])
+
+    expect(events).toEqual([
+      { type: 'message_start', id: 'm1', model: 'deepseek-v4-flash' },
+      { type: 'message_delta', id: 'm1', delta: 'hel' },
+      { type: 'message_delta', id: 'm1', delta: 'lo' },
+      { type: 'message_stop', id: 'm1', finishReason: 'stop' },
+    ])
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as {
+      stream?: boolean
+    }
+    expect(body.stream).toBe(true)
+  })
+
+  it('streams split tool call deltas into start and end events', async () => {
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"add","arguments":"{\\"a\\":"}}]}}]}\n\n',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1,\\"b\\":2}"}}]}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+      'data: [DONE]\n\n',
+    ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({ apiKey: 'test-key' })
+    const events = await collectStream(adapter, [{ role: 'user', content: '1+2' }])
+
+    expect(events).toEqual([
+      { type: 'message_start', id: expect.any(String) },
+      {
+        type: 'toolcall_start',
+        id: 'c1',
+        index: 0,
+        name: 'add',
+      },
+      {
+        type: 'toolcall_end',
+        id: 'c1',
+        index: 0,
+        name: 'add',
+        arguments: { a: 1, b: 2 },
+      },
+      { type: 'message_stop', id: expect.any(String), finishReason: 'tool_calls' },
+    ])
+  })
+
+  it('retries a transient status before emitting any event', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(sseResponse([], 500))
+      .mockResolvedValueOnce(sseResponse([
+        'data: {"choices":[{"delta":{"content":"recovered"}}]}\n\n',
+        'data: [DONE]\n\n',
+      ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 1,
+      retryDelayMs: 1,
+    })
+    const events = await collectStream(adapter, [{ role: 'user', content: 'hi' }])
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(events[1]).toMatchObject({ type: 'message_delta', delta: 'recovered' })
+  })
+
+  it('does not retry after events were emitted', async () => {
+    const encoder = new TextEncoder()
+    const failing = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          'data: {"choices":[{"delta":{"content":"x"}}]}\n\n',
+        ))
+      },
+      pull(controller) {
+        controller.error(new Error('connection reset'))
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(failing, {
+      headers: { 'content-type': 'text/event-stream' },
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 2,
+      retryDelayMs: 1,
+    })
+    await expect(
+      collectStream(adapter, [{ role: 'user', content: 'hi' }]),
+    ).rejects.toThrow('LLM stream failed: connection reset')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('aborts without retry when the caller cancels', async () => {
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: unknown, init: RequestInit) => {
+      controller.abort(new Error('cancelled'))
+      const signal = init.signal
+      expect(signal?.aborted).toBe(true)
+      return Promise.reject(
+        Object.assign(new Error('cancelled'), { name: 'AbortError' }),
+      )
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({
+      apiKey: 'test-key',
+      maxRetries: 3,
+      retryDelayMs: 1,
+    })
+    await expect(
+      collectStream(adapter, [{ role: 'user', content: 'go' }], controller.signal),
+    ).rejects.toMatchObject({ name: 'OpenAICompatibleError', status: 0 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
 
