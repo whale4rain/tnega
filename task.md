@@ -24,6 +24,7 @@
 | M9 真实 LLM 工具调用端到端测试 | 已完成 |
 | M10 npm / pnpm 发布准备 | 已完成 |
 | M11 LLM 超时与重试 | 已完成 |
+| M12 tnega web | 已完成 |
 
 ## 开发约定
 
@@ -31,7 +32,7 @@
 - 测试必须覆盖正常路径、失败路径、回滚路径、隔离路径。
 - 每个较大阶段完成且测试通过后，git commit。
 - 阶段完成后更新本文件的状态表。
-- 非目标：Web UI、子代理、插件市场、生产级沙箱、多模态。
+- 非目标：子代理、插件市场、生产级沙箱、多模态。
 
 ## M0 项目初始化
 
@@ -310,6 +311,55 @@
 - [x] 全量 typecheck / test / lint 通过
 - [x] git commit（M11）
 
+## M12 tnega web
+
+目标：为 tnega 实现类似 dsh 的本地 Web UI。v0 提供聊天 / 多轮会话 / 工具时间线 / 工作区 / 工具权限 / 设置；v1 提供 eval 与 evolve 的只读仪表板。
+
+### M12.1 文档与设计登记
+
+- [x] CONTEXT.md 术语表
+- [x] ADR：系统级 API 配置、Agent 流式 SSE、React + Vite 前端
+- [x] README / task.md 登记 M12，移除 Web UI 非目标
+
+### M12.2 LLM 流式适配
+
+- [ ] `LLMAdapter.stream()` 与 SSE 解析，归一化 `message_start / message_delta / message_stop / toolcall_start / toolcall_end`
+- [ ] 流式测试：内容增量、工具参数累积、finish reason、超时与 abort
+
+### M12.3 Agent 流式运行
+
+- [ ] `AgentService.runStream()` 异步生成器，`run()` 收集结果
+- [ ] 取消语义：LLM 立即中止，工具等返回后停止，run 标 cancelled
+- [ ] 共享 Agent 运行时工厂，CLI 与 Web 复用
+
+### M12.4 配置与会话存储
+
+- [ ] 系统级配置：Windows `%APPDATA%\tnega\config.json`，macOS/Linux `~/.config/tnega/config.json`，env 优先
+- [ ] 每工作区 `.tnega/sessions/<id>.jsonl`，meta 存标题 / workspace / createdAt
+- [ ] 自动标题、重命名、fork、删除（仅空闲）
+
+### M12.5 HTTP / SSE 服务端
+
+- [ ] 原生 `node:http` 极简 router，零运行时依赖
+- [ ] `POST /api/sessions/:id/runs` 返回 SSE；断连即取消；同 session 仅一个 active run
+- [ ] 跨站防护：JSON content-type + `x-tnega-client: 1`
+- [ ] 协议单测 + mock LLM API 集成测试
+
+### M12.6 React / Vite 前端
+
+- [ ] `apps/web` React + Vite + TypeScript，浅色 manpage 风（严格按 DESIGN.md）
+- [ ] 侧栏最近工作区 + 添加路径；会话列表；多轮聊天；fork；工具权限开关
+- [ ] 设置页：apiKey、model 下拉、baseUrl、temperature，env > config > 默认
+- [ ] 生产 dist 打进 npm，`tnega web` 托管静态资源与 API
+- [ ] 全量 typecheck / test / lint / build 通过
+- [ ] git commit（M12）
+
+### M12.7 eval / evolve 只读仪表板
+
+- [ ] 只读展示 `.tnega/runs/*.json` 与实验树，浏览器不触发 eval/evolve
+- [ ] 测试与文档记录
+- [ ] git commit（M12.7）
+
 ## 提交记录
 
 按阶段记录 commit，后续在此追加。
@@ -326,3 +376,4 @@
 - M8：`85baa91` 最小内置工具集（builtinTools 插件 / path 沙箱 / calc / CLI 权限开关 + 16 tests）
 - M9：`b456dd5` 真实 LLM 工具调用端到端测试（mock e2e 4 tests / real smoke 3 tests / 测试记录）
 - M10：`d1a3869` npm / pnpm 发布准备（esbuild 自包含 CLI / publish tests / 测试记录）
+- M11：`d1cf092` LLM 超时与退避重试（README / task.md 同步更新）

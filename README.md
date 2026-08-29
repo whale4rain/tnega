@@ -70,7 +70,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 
 - 理念参照 DeepSeek Harness 与 Cordis 的时空可组合。
 - 核心语义自研，代码自维护，不依赖 Cordis 运行时。
-- 暂时不做：Web UI、子代理、插件市场、生产级沙箱、多模态。
+- 暂时不做：子代理、插件市场、生产级沙箱、多模态。
 
 ## 路线图
 
@@ -85,6 +85,7 @@ evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果�
 - M9：真实 LLM 工具调用端到端测试。
 - M10：npm / pnpm 发布准备，`tnega` 作为自包含 CLI 包可安装。
 - M11：LLM 请求超时与退避重试。
+- M12：`tnega web` 本地 Web UI（会话、流式聊天、工作区、工具权限、设置、eval/evolve 只读仪表板）。
 
 ## 目录结构（规划）
 
@@ -116,6 +117,7 @@ tnega run "prompt"
 pnpm tnega run "prompt"            # 运行一次 agent 会话（读取环境变量 key）
 pnpm tnega run --allow-network "fetch https://example.com"
 pnpm tnega run --allow-shell "list files and summarize"
+pnpm tnega web                         # 启动本地 Web UI（默认 http://127.0.0.1:3080）
 pnpm tnega eval run tasks.yml      # 运行评测
 pnpm tnega eval compare a b        # 比较两次评测
 pnpm tnega evolve run tasks.yml    # 运行真实 LLM 自进化闭环
@@ -195,3 +197,4 @@ defaultCandidate: echo
 - M9 真实 LLM 工具调用端到端测试：已完成。mock 端到端 4 个测试覆盖 calculator / http_get / shell / 路径沙箱；真实 DeepSeek 冒烟 3 个测试覆盖 calculator / read_file / shell，session 记录 tool-call 与 tool-result，测试记录见 `docs/test/tools-llm-e2e.md`。
 - M10 npm / pnpm 发布准备：已完成。`tnega` 根包发布为公共自包含 CLI，`bin` 指向 esbuild 打包的 `dist/bin.js`，`prepublishOnly` 自动构建并跑发布测试；npm 与 pnpm 本地安装验证通过，测试记录见 `docs/test/npm-publish.md`。
 - M11 LLM 超时与重试：已完成。OpenAI 兼容适配器支持 120s 默认超时、最多 2 次重试与指数退避，只对瞬时错误重试；`run` 与 `evolve run` 均可通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖。
+- M12 tnega web：已完成。`tnega web` 在 `127.0.0.1:3080` 提供浅色 manpage 风格 Web UI，支持多工作区、JSONL 会话、fork、token 级 SSE 流式聊天、每次运行的工具权限开关、系统级模型配置，以及 eval/evolve 只读仪表板。
