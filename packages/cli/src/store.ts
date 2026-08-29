@@ -9,6 +9,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import type { SessionEvent } from '@tnega/session'
 
 export interface SessionMetaPayload {
   title: string
@@ -195,6 +196,41 @@ export async function forkSession(
   return readSessionSummary(workspace, fork.id)
 }
 
+export async function forkSessionAt(
+  workspace: string,
+  id: string,
+  messageId: string,
+  title?: string,
+): Promise<SessionSummary> {
+  const source = sessionFile(workspace, id)
+  const lines = await readEventLines(source)
+  const events: SessionEvent[] = []
+  for (const line of lines) {
+    const event = parseSessionEvent(line)
+    if (event) events.push(event)
+  }
+  const targetIndex = events.findIndex(
+    event => event.id === messageId
+      && event.type === 'message'
+      && event.payload.role === 'user',
+  )
+  const startIndex = conversationStartIndex(events, targetIndex, messageId)
+  const meta = await readSessionMeta(source)
+  const fork = await createSession(workspace, {
+    title: title?.trim() || `${meta.payload.title} fork`,
+    createdAt: meta.payload.createdAt,
+  })
+  const target = sessionFile(workspace, fork.id)
+  const forkMeta = await readSessionMeta(target)
+  const selected = events.slice(startIndex)
+  const next = [JSON.stringify(forkMeta)]
+  selected.forEach((event, index) => {
+    next.push(JSON.stringify({ ...event, seq: index + 2 }))
+  })
+  await writeAtomic(target, `${next.join('\n')}\n`)
+  return readSessionSummary(workspace, fork.id)
+}
+
 export async function deleteSession(workspace: string, id: string): Promise<void> {
   await rm(sessionFile(workspace, id), { force: true })
 }
@@ -239,4 +275,45 @@ function isMetaLine(line: string): boolean {
   } catch {
     return false
   }
+}
+
+function conversationStartIndex(
+  events: readonly SessionEvent[],
+  targetIndex: number,
+  messageId: string,
+): number {
+  if (targetIndex < 0) {
+    throw new TypeError(`user message not found: ${messageId}`)
+  }
+  let startIndex = targetIndex
+  for (let index = targetIndex - 1; index >= 0; index -= 1) {
+    if (events[index]?.type === 'message') {
+      startIndex = index
+      break
+    }
+  }
+  return startIndex
+}
+
+function parseSessionEvent(line: string): SessionEvent | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(line)
+  } catch {
+    return undefined
+  }
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  if (
+    typeof record.id !== 'string'
+    || typeof record.seq !== 'number'
+    || typeof record.ts !== 'number'
+    || typeof record.type !== 'string'
+    || record.payload === undefined
+    || record.payload === null
+    || typeof record.payload !== 'object'
+  ) {
+    return undefined
+  }
+  return value as SessionEvent
 }

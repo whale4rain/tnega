@@ -176,6 +176,93 @@ describe('web server', () => {
     expect(list.sessions.map(session => session.id)).toEqual([fork.session.id])
   })
 
+  it('forks a session from a user message with its preceding context', async () => {
+    const dir = await tempDir('tnega-web-fork-at-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('mock reply')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    async function run(prompt: string): Promise<void> {
+      const response = await apiFetch(
+        server.url,
+        `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt,
+            allowNetwork: false,
+            allowShell: false,
+          }),
+        },
+      )
+      expect(response.status).toBe(200)
+      await response.text()
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+
+    await run('first turn')
+    await run('second turn')
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        id: string
+        type: string
+        payload: { role?: string; content?: string }
+      }>
+    }
+    const messages = detail.events.filter(event => event.type === 'message')
+    expect(messages.map(message => message.payload.content)).toEqual([
+      'first turn',
+      'mock reply',
+      'second turn',
+      'mock reply',
+    ])
+    const secondUser = messages.find(message => message.payload.content === 'second turn')!
+
+    const fork = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/fork?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ messageId: secondUser.id }),
+      },
+    ).then(r => r.json()) as { session: { id: string } }
+
+    const forkDetail = await apiFetch(
+      server.url,
+      `/api/sessions/${fork.session.id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        type: string
+        payload: { role?: string; content?: string }
+      }>
+    }
+    const forkMessages = forkDetail.events.filter(event => event.type === 'message')
+    expect(forkMessages.map(message => message.payload.content)).toEqual([
+      'mock reply',
+      'second turn',
+      'mock reply',
+    ])
+  })
+
   it('streams a run through SSE and persists the final message', async () => {
     const dir = await tempDir('tnega-web-run-')
     const workspace = await mkdir(dir, 'workspace')

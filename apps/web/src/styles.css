@@ -456,7 +456,11 @@ textarea {
 
 .message-label {
   color: var(--mute);
+  display: flex;
+  flex: 0 0 auto;
   font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
   margin-bottom: 2px;
 }
 
@@ -481,6 +485,18 @@ textarea {
   position: absolute;
   top: 0;
   width: 3px;
+}
+
+.message-menu {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.message-menu .icon-button {
+  min-height: 22px;
+  min-width: 26px;
+  padding: 1px 4px;
 }
 
 .message.system .message-label,

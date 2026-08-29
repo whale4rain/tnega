@@ -174,6 +174,17 @@ export default function App() {
     }
   }
 
+  async function handleForkAt(id: string, messageId: string) {
+    if (!workspace) return
+    try {
+      const { session } = await api.forkSession(workspace, id, { messageId })
+      setSessions(current => [session, ...current])
+      selectSession(session.id)
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!workspace) return
     if (!window.confirm(`delete session ${id.slice(0, 8)}?`)) return
@@ -259,6 +270,7 @@ export default function App() {
               apiKeySet={config?.apiKeySet ?? false}
               onNewSession={handleNewSession}
               onRefresh={refreshSession}
+              onForkAt={handleForkAt}
               onMessagesChange={setMessages}
             />
           )}
@@ -484,6 +496,7 @@ interface ChatViewProps {
   apiKeySet: boolean
   onNewSession: () => Promise<void>
   onRefresh: (id: string) => Promise<void>
+  onForkAt: (id: string, messageId: string) => Promise<void>
   onMessagesChange: (
     updater: (current: DisplayMessage[]) => DisplayMessage[],
   ) => void
@@ -497,6 +510,7 @@ function ChatView({
   apiKeySet,
   onNewSession,
   onRefresh,
+  onForkAt,
   onMessagesChange,
 }: ChatViewProps) {
   const [prompt, setPrompt] = useState('')
@@ -674,6 +688,11 @@ function ChatView({
     abortRef.current?.abort()
   }
 
+  function forkHere(messageId: string) {
+    if (!sessionId) return
+    void onForkAt(sessionId, messageId)
+  }
+
   function handleStreamEvent(event: StreamEvent) {
     onMessagesChange(current => {
       const next = [...current]
@@ -810,6 +829,9 @@ function ChatView({
                     else userRefs.current.delete(message.id)
                   }
                 : undefined}
+              onForkAt={message.role === 'user' && !running
+                ? () => forkHere(message.id)
+                : undefined}
             />
           ))}
           {runState === 'cancelling' && (
@@ -908,9 +930,10 @@ interface MessageBlockProps {
   message: DisplayMessage
   active?: boolean
   userRef?: Ref<HTMLDivElement>
+  onForkAt?: () => void
 }
 
-function MessageBlock({ message, active, userRef }: MessageBlockProps) {
+function MessageBlock({ message, active, userRef, onForkAt }: MessageBlockProps) {
   if (message.role === 'tool' && message.tool) {
     return <ToolBlock message={message} />
   }
@@ -924,12 +947,27 @@ function MessageBlock({ message, active, userRef }: MessageBlockProps) {
   }
   const marker = message.role === 'user' ? '>' : message.role === 'assistant' ? '<' : '-'
   const className = `message ${message.role}${active ? ' active-user' : ''}`
+  const isUser = message.role === 'user'
   return (
     <div className={className} ref={userRef}>
       <div className="message-label">
-        {marker} {message.role}
-        {message.pending ? ' ...' : ''}
-        {message.finishReason ? ` / ${message.finishReason}` : ''}
+        <span>
+          {marker} {message.role}
+          {message.pending ? ' ...' : ''}
+          {message.finishReason ? ` / ${message.finishReason}` : ''}
+        </span>
+        {isUser && onForkAt && (
+          <span className="message-menu">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={onForkAt}
+              title="fork here"
+            >
+              [fork]
+            </button>
+          </span>
+        )}
       </div>
       <div className="message-body md">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>

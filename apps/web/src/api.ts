@@ -113,15 +113,20 @@ export function renameSession(
   })
 }
 
+export interface ForkSessionOptions {
+  title?: string
+  messageId?: string
+}
+
 export function forkSession(
   workspace: string,
   id: string,
-  title?: string,
+  options: ForkSessionOptions = {},
 ): Promise<{ session: SessionSummary }> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions/${id}/fork?${query.toString()}`, {
     method: 'POST',
-    body: JSON.stringify(title === undefined ? {} : { title }),
+    body: JSON.stringify(options),
   })
 }
 
