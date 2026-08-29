@@ -502,13 +502,39 @@ function ChatView({
   const [allowShell, setAllowShell] = useState(false)
   const [runState, setRunState] = useState<RunState>('idle')
   const [runError, setRunError] = useState<string | null>(null)
+  const [showJump, setShowJump] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const stickToBottomRef = useRef(true)
 
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     const node = scrollRef.current
     if (node) node.scrollTop = node.scrollHeight
+  }, [])
+
+  useEffect(() => {
+    stickToBottomRef.current = true
+    scrollToBottom()
+  }, [scrollToBottom, sessionId, workspace])
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return
+    scrollToBottom()
   }, [messages])
+
+  function handleMessagesScroll() {
+    const node = scrollRef.current
+    if (!node) return
+    const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80
+    stickToBottomRef.current = nearBottom
+    setShowJump(!nearBottom && node.scrollHeight > node.clientHeight + 1)
+  }
+
+  function jumpToBottom() {
+    stickToBottomRef.current = true
+    setShowJump(false)
+    scrollToBottom()
+  }
 
   const running = runState === 'running' || runState === 'cancelling'
 
@@ -522,6 +548,8 @@ function ChatView({
     abortRef.current = controller
     setRunError(null)
     setRunState('running')
+    stickToBottomRef.current = true
+    setShowJump(false)
     onMessagesChange(current => [
       ...current,
       {
@@ -702,11 +730,23 @@ function ChatView({
           <span>{summary.id.slice(0, 8)}</span>
         </div>
       </div>
-      <div className="messages" ref={scrollRef}>
-        {messages.length === 0 && <div className="empty-line">no messages</div>}
-        {messages.map(message => <MessageBlock key={message.id} message={message} />)}
-        {runState === 'cancelling' && (
-          <div className="run-note">cancelling</div>
+      <div className="messages-viewport">
+        <div className="messages" ref={scrollRef} onScroll={handleMessagesScroll}>
+          {messages.length === 0 && <div className="empty-line">no messages</div>}
+          {messages.map(message => <MessageBlock key={message.id} message={message} />)}
+          {runState === 'cancelling' && (
+            <div className="run-note">cancelling</div>
+          )}
+        </div>
+        {showJump && (
+          <button
+            type="button"
+            className="button-primary jump-bottom"
+            onClick={jumpToBottom}
+            title="back to bottom"
+          >
+            [bottom]
+          </button>
         )}
       </div>
       {runError && (
