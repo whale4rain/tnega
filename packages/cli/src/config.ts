@@ -20,19 +20,33 @@ export interface EffectiveLlmConfig {
 }
 
 export function systemConfigPath(): string {
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    return join(process.env.APPDATA, 'tnega', 'config.json')
+  if (process.platform === 'win32') {
+    return join(homedir(), '.tnega', 'config.json')
   }
   const base = process.env.XDG_CONFIG_HOME || join(homedir(), '.config')
   return join(base, 'tnega', 'config.json')
 }
 
+function legacyWindowsConfigPath(): string | undefined {
+  if (process.platform !== 'win32' || !process.env.APPDATA) return undefined
+  const legacy = join(process.env.APPDATA, 'tnega', 'config.json')
+  return legacy === systemConfigPath() ? undefined : legacy
+}
+
 export async function readSystemConfig(file = systemConfigPath()): Promise<SystemConfig> {
+  const config = await readConfigFile(file)
+  if (config !== undefined) return config
+  const migrated = await migrateLegacyConfig(file)
+  if (migrated !== undefined) return migrated
+  return {}
+}
+
+async function readConfigFile(file: string): Promise<SystemConfig | undefined> {
   let text: string
   try {
     text = await readFile(file, 'utf8')
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw error
   }
   let parsed: unknown
@@ -42,6 +56,15 @@ export async function readSystemConfig(file = systemConfigPath()): Promise<Syste
     return {}
   }
   return normalizeConfig(parsed)
+}
+
+async function migrateLegacyConfig(target: string): Promise<SystemConfig | undefined> {
+  const legacy = legacyWindowsConfigPath()
+  if (!legacy || target !== systemConfigPath()) return undefined
+  const source = await readConfigFile(legacy)
+  if (!source || Object.keys(source).length === 0) return undefined
+  await writeSystemConfig(source, target)
+  return source
 }
 
 export async function writeSystemConfig(
