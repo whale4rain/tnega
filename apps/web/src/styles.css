@@ -493,6 +493,10 @@ textarea {
   white-space: pre-wrap;
 }
 
+.md {
+  white-space: normal;
+}
+
 .md > :first-child {
   margin-top: 0;
 }
