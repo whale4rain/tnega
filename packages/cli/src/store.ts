@@ -10,6 +10,7 @@ import {
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import {
+  messageLineage,
   SessionLog,
   projectEvents,
   type ModelMessage,
@@ -238,8 +239,9 @@ export async function forkSessionAt(
   })
   const target = sessionFile(workspace, fork.id)
   const forkMeta = await readSessionMeta(target)
+  const startIndex = lineageStartIndex(events, targetIndex)
   const selected = events
-    .slice(0, targetIndex + 1)
+    .slice(startIndex, targetIndex + 1)
     .filter(event => event.type !== 'meta')
   const next = [JSON.stringify(forkMeta)]
   selected.forEach((event, index) => {
@@ -270,10 +272,11 @@ export async function truncateSessionAt(
     throw new TypeError(`user message not found: ${messageId}`)
   }
   const meta = await readSessionMeta(file)
+  const startIndex = lineageStartIndex(events, targetIndex)
   const next = [
     JSON.stringify(meta),
     ...events
-      .slice(0, targetIndex)
+      .slice(startIndex, targetIndex)
       .filter(event => event.type !== 'meta')
       .map(event => JSON.stringify(event)),
   ]
@@ -440,6 +443,21 @@ function isMetaLine(line: string): boolean {
   } catch {
     return false
   }
+}
+
+function lineageStartIndex(
+  events: readonly SessionEvent[],
+  targetIndex: number,
+): number {
+  const target = events[targetIndex]
+  if (!target || target.type !== 'message') return 0
+  const lineage = messageLineage(events, target.id)
+  if (lineage.length < 2) return 0
+  const lineageIds = new Set(lineage.map(event => event.id))
+  const start = events.findIndex(
+    event => event.type === 'message' && lineageIds.has(event.id),
+  )
+  return start >= 0 ? start : 0
 }
 
 function parseSessionEvent(line: string): SessionEvent | undefined {

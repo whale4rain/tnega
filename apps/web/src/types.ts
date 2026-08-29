@@ -138,6 +138,7 @@ export interface DisplayMessage {
   id: string
   role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
+  parentId?: string
   tool?: DisplayTool
   finishReason?: string
   pending?: boolean

@@ -166,6 +166,25 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
   return messages
 }
 
+export function messageLineage(
+  events: readonly SessionEvent[],
+  messageId: string,
+): SessionEvent[] {
+  const byId = new Map<string, SessionEvent>()
+  for (const event of events) {
+    if (event.type === 'message') byId.set(event.id, event)
+  }
+  const path: SessionEvent[] = []
+  let cursor = byId.get(messageId)
+  while (cursor && cursor.type === 'message') {
+    path.unshift(clone(cursor))
+    cursor = cursor.payload.parentId
+      ? byId.get(cursor.payload.parentId)
+      : undefined
+  }
+  return path
+}
+
 function stringify(value: unknown): string {
   if (typeof value === 'string') return value
   try {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -299,6 +300,95 @@ describe('web server', () => {
       undefined,
       firstUser.id,
       firstAssistant.id,
+    ])
+  })
+
+  it('forks from the parent chain instead of raw event order', async () => {
+    const dir = await tempDir('tnega-web-fork-lineage-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    await writeFile(configFile, JSON.stringify({}), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const tnegaDir = await mkdir(workspace, '.tnega')
+    const sessionsDir = await mkdir(tnegaDir, 'sessions')
+    const id = randomUUID()
+    const orphanId = randomUUID()
+    const rootId = randomUUID()
+    const assistantId = randomUUID()
+    const targetId = randomUUID()
+    const now = Date.now()
+    const events = [
+      {
+        id,
+        seq: 1,
+        ts: now,
+        type: 'meta',
+        payload: { title: 'seed', workspace, createdAt: now },
+      },
+      {
+        id: orphanId,
+        seq: 2,
+        ts: now,
+        type: 'message',
+        payload: { role: 'user', content: 'orphan turn' },
+      },
+      {
+        id: rootId,
+        seq: 3,
+        ts: now,
+        type: 'message',
+        payload: { role: 'user', content: 'root turn' },
+      },
+      {
+        id: assistantId,
+        seq: 4,
+        ts: now,
+        type: 'message',
+        payload: { role: 'assistant', content: 'root reply', parentId: rootId },
+      },
+      {
+        id: targetId,
+        seq: 5,
+        ts: now,
+        type: 'message',
+        payload: { role: 'user', content: 'target turn', parentId: assistantId },
+      },
+    ]
+    await writeFile(
+      join(sessionsDir, `${id}.jsonl`),
+      `${events.map(event => JSON.stringify(event)).join('\n')}\n`,
+      'utf8',
+    )
+
+    const fork = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/fork?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ messageId: targetId }),
+      },
+    ).then(r => r.json()) as { session: { id: string } }
+    const forkDetail = await apiFetch(
+      server.url,
+      `/api/sessions/${fork.session.id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        type: string
+        payload: { role?: string; content?: string; parentId?: string }
+      }>
+    }
+    const forkMessages = forkDetail.events.filter(event => event.type === 'message')
+    expect(forkMessages.map(message => message.payload.content)).toEqual([
+      'root turn',
+      'root reply',
+      'target turn',
+    ])
+    expect(forkMessages.map(message => message.payload.parentId)).toEqual([
+      undefined,
+      rootId,
+      assistantId,
     ])
   })
 

@@ -1491,6 +1491,7 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
               id: event.id,
               role: event.payload.role,
               content: event.payload.content,
+              parentId: event.payload.parentId,
             })
           }
         }

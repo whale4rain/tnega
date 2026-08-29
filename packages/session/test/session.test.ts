@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
 import {
+  messageLineage,
   projectEvents,
   SessionLog,
   session,
@@ -90,6 +91,16 @@ describe('SessionLog append', () => {
     expect((user.payload as { parentId?: string }).parentId).toBeUndefined()
     expect((assistant.payload as { parentId?: string }).parentId).toBe(user.id)
     expect((next.payload as { parentId?: string }).parentId).toBe(assistant.id)
+  })
+
+  it('resolves the parent chain for a message', async () => {
+    const log = new SessionLog(await tempFile('lineage.jsonl'))
+    const user = await log.append('message', { role: 'user', content: 'hello' })
+    const assistant = await log.append('message', { role: 'assistant', content: 'world' })
+    const next = await log.append('message', { role: 'user', content: 'again' })
+
+    const lineage = messageLineage(await log.read(), next.id)
+    expect(lineage.map(event => event.id)).toEqual([user.id, assistant.id, next.id])
   })
 })
 
