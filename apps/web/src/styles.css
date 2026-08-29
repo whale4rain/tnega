@@ -401,6 +401,44 @@ textarea {
   gap: 16px;
 }
 
+.chat-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.context-ring {
+  align-items: center;
+  display: flex;
+  height: 34px;
+  justify-content: center;
+  position: relative;
+  width: 34px;
+}
+
+.context-ring-track,
+.context-ring-value {
+  fill: none;
+  stroke-width: 3;
+}
+
+.context-ring-track {
+  stroke: var(--hairline);
+}
+
+.context-ring-value {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.2s ease;
+}
+
+.context-ring-label {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  position: absolute;
+}
+
 .messages {
   flex: 1;
   min-height: 0;

@@ -142,6 +142,17 @@ export function truncateSession(
   })
 }
 
+export function compactSession(
+  workspace: string,
+  id: string,
+): Promise<{ summary: SessionSummary }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${id}/compact?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
 export function deleteSession(workspace: string, id: string): Promise<void> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions/${id}?${query.toString()}`, {

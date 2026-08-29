@@ -9,7 +9,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import type { SessionEvent } from '@tnega/session'
+import { SessionLog, type ModelMessage, type SessionEvent } from '@tnega/session'
 
 export interface SessionMetaPayload {
   title: string
@@ -263,6 +263,69 @@ export async function truncateSessionAt(
   return readSessionSummary(workspace, id)
 }
 
+export interface ContextUsage {
+  tokens: number
+  limit: number
+  ratio: number
+}
+
+export const DEFAULT_CONTEXT_LIMIT = 128_000
+
+export async function readSessionMessages(
+  workspace: string,
+  id: string,
+): Promise<ModelMessage[]> {
+  const log = new SessionLog(sessionFile(workspace, id))
+  await log.init()
+  return log.deriveMessages()
+}
+
+export async function estimateContextUsage(
+  workspace: string,
+  id: string,
+): Promise<ContextUsage> {
+  const messages = await readSessionMessages(workspace, id)
+  const tokens = estimateMessageTokens(messages)
+  const limit = DEFAULT_CONTEXT_LIMIT
+  return {
+    tokens,
+    limit,
+    ratio: limit > 0 ? tokens / limit : 0,
+  }
+}
+
+export async function compactSession(
+  workspace: string,
+  id: string,
+  keep = 0,
+  checkpointMessages?: readonly ModelMessage[],
+): Promise<SessionSummary> {
+  const file = sessionFile(workspace, id)
+  const meta = await readSessionMeta(file)
+  const log = new SessionLog(file)
+  await log.init()
+  if (checkpointMessages?.length) {
+    const events = await log.read()
+    const checkpoint: SessionEvent = {
+      id: randomUUID(),
+      seq: (events.at(-1)?.seq ?? 1) + 1,
+      ts: Date.now(),
+      type: 'checkpoint',
+      payload: {
+        messages: [...checkpointMessages],
+      },
+    }
+    await writeAtomic(file, `${JSON.stringify(meta)}\n${JSON.stringify(checkpoint)}\n`)
+    return readSessionSummary(workspace, id)
+  }
+  const keepCount = Number.isFinite(keep) && keep > 0 ? Math.floor(keep) : 0
+  await log.compact({ keep: keepCount })
+  const lines = await readEventLines(file)
+  const next = [JSON.stringify(meta), ...lines.filter(line => !isMetaLine(line))]
+  await writeAtomic(file, `${next.join('\n')}\n`)
+  return readSessionSummary(workspace, id)
+}
+
 export async function deleteSession(workspace: string, id: string): Promise<void> {
   await rm(sessionFile(workspace, id), { force: true })
 }
@@ -348,4 +411,16 @@ function parseSessionEvent(line: string): SessionEvent | undefined {
     return undefined
   }
   return value as SessionEvent
+}
+
+function estimateMessageTokens(messages: readonly ModelMessage[]): number {
+  let tokens = 0
+  for (const message of messages) {
+    tokens += Math.ceil(message.content.length / 4)
+    for (const call of message.tool_calls ?? []) {
+      const raw = JSON.stringify(call.arguments ?? {}) ?? ''
+      tokens += Math.ceil(raw.length / 4)
+    }
+  }
+  return tokens
 }

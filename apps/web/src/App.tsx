@@ -6,6 +6,7 @@ import { ConversationNav } from './ConversationNav'
 import {
   addWorkspace,
   ApiError,
+  compactSession,
   createSession,
   deleteSession,
   displayPath,
@@ -24,6 +25,7 @@ import {
 } from './api'
 import type {
   ConfigSnapshot,
+  ContextUsage,
   DisplayMessage,
   ModelMessage,
   SessionEvent,
@@ -50,6 +52,7 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
+  const [context, setContext] = useState<ContextUsage | null>(null)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [view, setView] = useState<View>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -97,6 +100,7 @@ export default function App() {
     api.getSession(workspace, id)
       .then(detail => {
         setSummary(detail.summary)
+        setContext(detail.context)
         setMessages(projectEvents(detail.events))
       })
       .catch((reason: unknown) => setError(messageOf(reason)))
@@ -106,6 +110,7 @@ export default function App() {
     if (!workspace) return
     const detail = await api.getSession(workspace, id)
     setSummary(detail.summary)
+    setContext(detail.context)
     setMessages(projectEvents(detail.events))
     const next = await api.listSessions(workspace)
     setSessions(next.sessions)
@@ -120,6 +125,7 @@ export default function App() {
       setSessions([])
       setSessionId(null)
       setSummary(null)
+      setContext(null)
       setMessages([])
     } catch (reason) {
       setError(messageOf(reason))
@@ -135,6 +141,7 @@ export default function App() {
         setSessions([])
         setSessionId(null)
         setSummary(null)
+        setContext(null)
         setMessages([])
       }
     } catch (reason) {
@@ -195,6 +202,7 @@ export default function App() {
       if (sessionId === id) {
         setSessionId(null)
         setSummary(null)
+        setContext(null)
         setMessages([])
       }
     } catch (reason) {
@@ -267,6 +275,7 @@ export default function App() {
               workspace={workspace}
               sessionId={sessionId}
               summary={summary}
+              context={context}
               messages={messages}
               apiKeySet={config?.apiKeySet ?? false}
               onNewSession={handleNewSession}
@@ -493,6 +502,7 @@ interface ChatViewProps {
   workspace: string | null
   sessionId: string | null
   summary: SessionSummary | null
+  context: ContextUsage | null
   messages: DisplayMessage[]
   apiKeySet: boolean
   onNewSession: () => Promise<void>
@@ -507,6 +517,7 @@ function ChatView({
   workspace,
   sessionId,
   summary,
+  context,
   messages,
   apiKeySet,
   onNewSession,
@@ -736,6 +747,17 @@ function ChatView({
     void onForkAt(sessionId, messageId)
   }
 
+  async function handleCompact() {
+    if (!workspace || !sessionId || running) return
+    setRunError(null)
+    try {
+      await api.compactSession(workspace, sessionId)
+      await onRefresh(sessionId)
+    } catch (reason) {
+      setRunError(messageOf(reason))
+    }
+  }
+
   function handleStreamEvent(event: StreamEvent) {
     onMessagesChange(current => {
       const next = [...current]
@@ -856,6 +878,18 @@ function ChatView({
           <span>{displayPath(workspace)}</span>
           <span>{summary.eventCount} events</span>
           <span>{summary.id.slice(0, 8)}</span>
+          <div className="chat-header-actions">
+            {context && <ContextRing context={context} />}
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => void handleCompact()}
+              disabled={running}
+              title="compact context"
+            >
+              [compact]
+            </button>
+          </div>
         </div>
       </div>
       <div className="messages-viewport">
@@ -1089,6 +1123,45 @@ function MessageBlock({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
       )}
+    </div>
+  )
+}
+
+function ContextRing({ context }: { context: ContextUsage }) {
+  const ratio = Math.min(1, Math.max(0, context.ratio))
+  const radius = 11
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference * (1 - ratio)
+  const color = ratio >= 0.8
+    ? 'var(--danger)'
+    : ratio >= 0.5
+      ? 'var(--warning)'
+      : 'var(--success)'
+  const percent = Math.round(context.ratio * 100)
+  return (
+    <div
+      className="context-ring"
+      title={`${context.tokens.toLocaleString()} / ${context.limit.toLocaleString()} tokens`}
+    >
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <circle
+          className="context-ring-track"
+          cx="17"
+          cy="17"
+          r={radius}
+        />
+        <circle
+          className="context-ring-value"
+          cx="17"
+          cy="17"
+          r={radius}
+          stroke={color}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          transform="rotate(-90 17 17)"
+        />
+      </svg>
+      <span className="context-ring-label">{percent}%</span>
     </div>
   )
 }
@@ -1428,6 +1501,7 @@ const api = {
   renameSession,
   forkSession,
   truncateSession,
+  compactSession,
   deleteSession,
   saveConfig,
   streamRun,

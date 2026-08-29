@@ -46,6 +46,13 @@ export type SessionEvent =
 export interface SessionDetail {
   summary: SessionSummary
   events: SessionEvent[]
+  context: ContextUsage
+}
+
+export interface ContextUsage {
+  tokens: number
+  limit: number
+  ratio: number
 }
 
 export interface ModelMessage {

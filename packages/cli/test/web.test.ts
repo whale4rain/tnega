@@ -47,9 +47,29 @@ async function startMockLlm(content: string): Promise<{
       body += String(chunk)
     })
     req.on('end', () => {
-      if (typeof body !== 'string' || !body.includes('"stream":true')) {
+      if (typeof body !== 'string') {
         res.writeHead(400)
-        res.end('stream required')
+        res.end('body required')
+        return
+      }
+      const parsed = JSON.parse(body) as { stream?: boolean }
+      if (parsed.stream !== true) {
+        res.writeHead(200, {
+          'content-type': 'application/json',
+        })
+        res.end(JSON.stringify({
+          id: 'chatcmpl-mock',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: 'mock-model',
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content },
+              finish_reason: 'stop',
+            },
+          ],
+        }))
         return
       }
       res.writeHead(200, {
@@ -360,6 +380,67 @@ describe('web server', () => {
       'edited second turn',
       'mock reply',
     ])
+  })
+
+  it('compacts a session into a summarized checkpoint', async () => {
+    const dir = await tempDir('tnega-web-compact-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('x')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const response = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'a very long conversation with lots of words',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+      },
+    )
+    expect(response.status).toBe(200)
+    await response.text()
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    const before = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as { context: { tokens: number; ratio: number } }
+    expect(before.context.tokens).toBeGreaterThan(0)
+
+    const compact = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/compact?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    )
+    expect(compact.status).toBe(200)
+
+    const after = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      context: { tokens: number; ratio: number }
+      events: Array<{ type: string }>
+    }
+    expect(after.context.tokens).toBeLessThan(before.context.tokens)
+    expect(after.events.some(event => event.type === 'checkpoint')).toBe(true)
   })
 
   it('streams a run through SSE and persists the final message', async () => {

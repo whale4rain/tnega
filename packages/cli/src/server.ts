@@ -20,14 +20,18 @@ import {
   type SystemConfig,
 } from './config.js'
 import {
+  compactSession,
   createSession,
   deleteSession,
   ensureWorkspace,
+  estimateContextUsage,
   forkSession,
   forkSessionAt,
   isSessionId,
   listSessions,
+  readSessionMessages,
   readSessionSummary,
+  type SessionSummary,
   setSessionTitle,
   truncateSessionAt,
 } from './store.js'
@@ -245,7 +249,8 @@ async function handleApi(
     if (action === undefined && req.method === 'GET') {
       const summary = await readSessionSummary(workspace, id)
       const events = await readSessionEvents(workspace, id)
-      sendJson(res, 200, { summary, events })
+      const context = await estimateContextUsage(workspace, id)
+      sendJson(res, 200, { summary, events, context })
       return
     }
     if (action === undefined && req.method === 'PATCH') {
@@ -307,6 +312,19 @@ async function handleApi(
       sendJson(res, 200, { summary })
       return
     }
+    if (action === 'compact' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      const body = await readJsonBody(req)
+      const keep = typeof body.keep === 'number' && Number.isFinite(body.keep)
+        ? body.keep
+        : 0
+      const summary = await compactContext(context, workspace, id, keep)
+      sendJson(res, 200, { summary })
+      return
+    }
     if (action === 'runs' && req.method === 'POST') {
       await handleRun(req, res, context, workspace, id)
       return
@@ -314,6 +332,58 @@ async function handleApi(
   }
 
   sendError(res, 404, 'not found')
+}
+
+async function compactContext(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+  keep: number,
+): Promise<SessionSummary> {
+  const config = await readSystemConfig(context.configFile)
+  const effective = effectiveLlmConfig(config)
+  const apiKey = effectiveApiKey(config)
+  if (!effective.apiKeySet || !apiKey) {
+    throw new HttpError(400, 'API key is not configured')
+  }
+  const messages = await readSessionMessages(workspace, id)
+  if (!messages.length) {
+    return compactSession(workspace, id, keep)
+  }
+  const adapter = openaiCompatAdapter({
+    apiKey,
+    baseUrl: effective.baseUrl,
+    model: effective.model,
+    maxTokens: 4096,
+    timeoutMs: 180_000,
+    ...(effective.temperature !== undefined
+      ? { temperature: effective.temperature }
+      : {}),
+  })
+  const completion = await adapter.complete(
+    [
+      {
+        role: 'system',
+        content: 'You compress an agent conversation for later continuation. '
+          + 'Preserve the task, decisions, file paths, tool results, and open '
+          + 'questions in a compact but complete form.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify(messages),
+      },
+    ],
+    [],
+    {},
+  )
+  const summary = completion.content?.trim()
+  if (!summary) throw new HttpError(500, 'compression returned no summary')
+  return compactSession(
+    workspace,
+    id,
+    keep,
+    [{ role: 'system', content: `[compressed conversation]\n${summary}` }],
+  )
 }
 
 async function handleRun(
