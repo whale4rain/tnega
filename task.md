@@ -24,7 +24,7 @@
 | M9 真实 LLM 工具调用端到端测试 | 已完成 |
 | M10 npm / pnpm 发布准备 | 已完成 |
 | M11 LLM 超时与重试 | 已完成 |
-| M12 tnega web | 已完成 |
+| M12 tnega web（v0，M12.7 待办） | 已完成 |
 
 ## 开发约定
 
@@ -330,29 +330,29 @@
 
 - [x] `AgentService.runStream()` 异步生成器，`run()` 收集结果
 - [x] 取消语义：LLM 立即中止，工具等返回后停止，run 标 cancelled
-- [ ] 共享 Agent 运行时工厂，CLI 与 Web 复用
+- [x] 共享 Agent 运行时工厂，CLI 与 Web 复用
 
 ### M12.4 配置与会话存储
 
-- [ ] 系统级配置：Windows `%APPDATA%\tnega\config.json`，macOS/Linux `~/.config/tnega/config.json`，env 优先
-- [ ] 每工作区 `.tnega/sessions/<id>.jsonl`，meta 存标题 / workspace / createdAt
-- [ ] 自动标题、重命名、fork、删除（仅空闲）
+- [x] 系统级配置：Windows `%APPDATA%\tnega\config.json`，macOS/Linux `~/.config/tnega/config.json`，env 优先
+- [x] 每工作区 `.tnega/sessions/<id>.jsonl`，meta 存标题 / workspace / createdAt
+- [x] 自动标题、重命名、fork、删除（仅空闲）
 
 ### M12.5 HTTP / SSE 服务端
 
-- [ ] 原生 `node:http` 极简 router，零运行时依赖
-- [ ] `POST /api/sessions/:id/runs` 返回 SSE；断连即取消；同 session 仅一个 active run
-- [ ] 跨站防护：JSON content-type + `x-tnega-client: 1`
-- [ ] 协议单测 + mock LLM API 集成测试
+- [x] 原生 `node:http` 极简 router，零运行时依赖
+- [x] `POST /api/sessions/:id/runs` 返回 SSE；断连即取消；同 session 仅一个 active run
+- [x] 跨站防护：JSON content-type + `x-tnega-client: 1`
+- [x] 协议单测 + mock LLM API 集成测试
 
 ### M12.6 React / Vite 前端
 
-- [ ] `apps/web` React + Vite + TypeScript，浅色 manpage 风（严格按 DESIGN.md）
-- [ ] 侧栏最近工作区 + 添加路径；会话列表；多轮聊天；fork；工具权限开关
-- [ ] 设置页：apiKey、model 下拉、baseUrl、temperature，env > config > 默认
-- [ ] 生产 dist 打进 npm，`tnega web` 托管静态资源与 API
-- [ ] 全量 typecheck / test / lint / build 通过
-- [ ] git commit（M12）
+- [x] `apps/web` React + Vite + TypeScript，浅色 manpage 风（严格按 DESIGN.md）
+- [x] 侧栏最近工作区 + 添加路径；会话列表；多轮聊天；fork；工具权限开关
+- [x] 设置页：apiKey、model 下拉、baseUrl、temperature，env > config > 默认
+- [x] 生产 dist 打进 npm，`tnega web` 托管静态资源与 API
+- [x] 全量 typecheck / test / lint / build 通过
+- [x] git commit（M12）
 
 ### M12.7 eval / evolve 只读仪表板
 
@@ -377,3 +377,9 @@
 - M9：`b456dd5` 真实 LLM 工具调用端到端测试（mock e2e 4 tests / real smoke 3 tests / 测试记录）
 - M10：`d1a3869` npm / pnpm 发布准备（esbuild 自包含 CLI / publish tests / 测试记录）
 - M11：`d1cf092` LLM 超时与退避重试（README / task.md 同步更新）
+- M12.1：`c732dc0` Web UI 文档与 ADR 登记
+- M12.2：`23cb122` LLM SSE 流式适配
+- M12.3：`4eb7b2c` Agent 流式 / 可取消运行，`c6c6d14` 取消语义确定性修复
+- M12.4-5：`b180f8c` 系统配置 / 会话存储 / HTTP + SSE 服务端
+- M12.6：`660ed9d` React + Vite 前端与 `tnega web` 构建集成
+- M12.7：待办（eval / evolve 只读仪表板未提交）
