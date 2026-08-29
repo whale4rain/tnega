@@ -46,7 +46,7 @@ body {
     "Courier New",
     monospace;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.35;
   letter-spacing: 0;
 }
 
@@ -260,6 +260,7 @@ textarea {
 
 .marker {
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .ellipsis {
@@ -384,8 +385,8 @@ textarea {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 16px;
+  gap: 2px;
+  padding: 6px 16px;
 }
 
 .chat-title {
@@ -409,13 +410,13 @@ textarea {
 
 .message {
   border-bottom: 1px solid var(--hairline);
-  padding: 12px 0;
+  padding: 8px 0;
 }
 
 .message-label {
   color: var(--mute);
   font-size: 12px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .message.user .message-label {
@@ -445,7 +446,7 @@ textarea {
 }
 
 .md p {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
 }
 
 .md pre {
@@ -566,8 +567,8 @@ textarea {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 16px 12px;
+  gap: 6px;
+  padding: 6px 16px 10px;
 }
 
 .permissions {
@@ -581,6 +582,7 @@ textarea {
   display: flex;
   gap: 6px;
   user-select: none;
+  white-space: nowrap;
 }
 
 .toggle input {
@@ -592,7 +594,10 @@ textarea {
 
 .toggle-mark {
   color: var(--ink);
-  flex: 0 0 22px;
+  flex: 0 0 3ch;
+  text-align: center;
+  white-space: nowrap;
+  width: 3ch;
 }
 
 .composer-actions {
