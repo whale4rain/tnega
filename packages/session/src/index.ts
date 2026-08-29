@@ -47,6 +47,9 @@ export interface ToolResultPayload {
 
 export interface CheckpointPayload {
   messages: ModelMessage[]
+  summary?: string
+  tokensBefore?: number
+  snapshot?: SessionEvent[]
 }
 
 export type SessionEventType =
@@ -77,6 +80,8 @@ export interface SessionConfig {
 
 export interface CompactOptions {
   keep?: number
+  summary?: string
+  tokensBefore?: number
 }
 
 export type ReplayReducer<T> = (state: T, event: SessionEvent) => T | Promise<T>
@@ -256,6 +261,11 @@ export class SessionLog {
         type: 'checkpoint',
         payload: {
           messages: projectEvents(prefix),
+          ...(options.summary ? { summary: options.summary } : {}),
+          ...(options.tokensBefore !== undefined
+            ? { tokensBefore: options.tokensBefore }
+            : {}),
+          ...(prefix.length ? { snapshot: prefix } : {}),
         },
       }
       const next = [checkpoint, ...suffix]

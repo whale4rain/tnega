@@ -211,13 +211,28 @@ describe('SessionLog compact', () => {
     await log.append('tool-result', { id: 'r1', toolCallId: 'c1', name: 'add', ok: true, output: 3 })
     const before = await log.deriveMessages()
 
-    const count = await log.compact()
+    const count = await log.compact({ summary: 'structured summary', tokensBefore: 120 })
     expect(count).toBe(1)
     expect(await log.deriveMessages()).toEqual(before)
 
     const events = await log.read()
     expect(events[0]!.type).toBe('checkpoint')
-    expect((events[0]!.payload as { messages: ModelMessage[] }).messages).toEqual(before)
+    const checkpoint = events[0]!.payload as {
+      messages: ModelMessage[]
+      summary?: string
+      tokensBefore?: number
+      snapshot?: SessionEvent[]
+    }
+    expect(checkpoint.messages).toEqual(before)
+    expect(checkpoint.summary).toBe('structured summary')
+    expect(checkpoint.tokensBefore).toBe(120)
+    expect(checkpoint.snapshot?.length).toBe(4)
+    expect(checkpoint.snapshot?.map(event => event.type)).toEqual([
+      'message',
+      'message',
+      'tool-call',
+      'tool-result',
+    ])
   })
 
   it('keeps the latest raw events and still reconstructs history', async () => {
@@ -236,6 +251,13 @@ describe('SessionLog compact', () => {
     const events = await log.read()
     expect(events[0]!.type).toBe('checkpoint')
     expect(events.slice(1).map(event => event.type)).toEqual(['tool-result', 'message'])
+    const checkpoint = events[0]!.payload as { snapshot?: SessionEvent[] }
+    expect(checkpoint.snapshot?.length).toBe(3)
+    expect(checkpoint.snapshot?.map(event => event.type)).toEqual([
+      'message',
+      'message',
+      'tool-call',
+    ])
   })
 
   it('can append after compact with a fresh seq', async () => {
