@@ -540,6 +540,9 @@ function ChatView({
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const userRefs = useRef(new Map<string, HTMLDivElement>())
   const stickToBottomRef = useRef(true)
+  const streamDeltaRef = useRef(new Map<string, string>())
+  const streamFlushFrameRef = useRef<number | null>(null)
+  const streamFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const userIndexes = useMemo(() => {
     const indexes: number[] = []
@@ -671,6 +674,7 @@ function ChatView({
             event => handleStreamEvent(event),
             controller.signal,
           )
+          flushStreamDeltas()
           break
         } catch (reason) {
           if (
@@ -762,7 +766,102 @@ function ChatView({
     }
   }
 
+  useEffect(() => {
+    return () => {
+      if (streamFlushFrameRef.current !== null) {
+        cancelAnimationFrame(streamFlushFrameRef.current)
+      }
+      if (streamFlushTimerRef.current !== null) {
+        clearTimeout(streamFlushTimerRef.current)
+      }
+    }
+  }, [])
+
+  function flushStreamDeltas() {
+    if (streamFlushFrameRef.current !== null) {
+      cancelAnimationFrame(streamFlushFrameRef.current)
+      streamFlushFrameRef.current = null
+    }
+    if (streamFlushTimerRef.current !== null) {
+      clearTimeout(streamFlushTimerRef.current)
+      streamFlushTimerRef.current = null
+    }
+    const deltas = streamDeltaRef.current
+    if (deltas.size === 0) return
+    streamDeltaRef.current = new Map()
+    onMessagesChange(current => applyStreamDeltas(current, deltas))
+  }
+
+  function scheduleStreamFlush() {
+    if (streamFlushFrameRef.current !== null || streamFlushTimerRef.current !== null) {
+      return
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      streamFlushFrameRef.current = requestAnimationFrame(() => {
+        streamFlushFrameRef.current = null
+        flushStreamDeltas()
+      })
+      return
+    }
+    streamFlushTimerRef.current = setTimeout(() => {
+      streamFlushTimerRef.current = null
+      flushStreamDeltas()
+    }, 0)
+  }
+
+  function queueStreamDelta(id: string, delta: string) {
+    const queued = streamDeltaRef.current.get(id) ?? ''
+    streamDeltaRef.current.set(id, queued + delta)
+    scheduleStreamFlush()
+  }
+
+  function applyStreamDeltas(
+    current: DisplayMessage[],
+    deltas: ReadonlyMap<string, string>,
+  ): DisplayMessage[] {
+    let next = current
+    for (const [id, delta] of deltas) {
+      const liveId = `live-${id}`
+      const index = next.findIndex(message => message.id === liveId)
+      if (index !== -1) {
+        const entry = next[index]!
+        next = next.map((message, messageIndex) =>
+          messageIndex === index
+            ? { ...entry, content: entry.content + delta, pending: true }
+            : message,
+        )
+        continue
+      }
+      const fallback = findPendingAssistant(next) ?? lastAssistant(next)
+      if (fallback) {
+        next = next.map(message =>
+          message === fallback
+            ? { ...message, content: message.content + delta, pending: true }
+            : message,
+        )
+        continue
+      }
+      next = [
+        ...next,
+        {
+          id: liveId,
+          role: 'assistant',
+          content: delta,
+          pending: true,
+        },
+      ]
+    }
+    return next
+  }
+
   function handleStreamEvent(event: StreamEvent) {
+    if (event.type === 'message_delta') {
+      queueStreamDelta(event.id, event.delta)
+      return
+    }
+
+    flushStreamDeltas()
+
     onMessagesChange(current => {
       switch (event.type) {
         case 'message_start':
@@ -775,35 +874,6 @@ function ChatView({
               pending: true,
             },
           ]
-        case 'message_delta': {
-          const id = `live-${event.id}`
-          const index = current.findIndex(message => message.id === id)
-          if (index !== -1) {
-            const entry = current[index]!
-            return current.map((message, messageIndex) =>
-              messageIndex === index
-                ? { ...entry, content: entry.content + event.delta, pending: true }
-                : message,
-            )
-          }
-          const fallback = findPendingAssistant(current) ?? lastAssistant(current)
-          if (fallback) {
-            return current.map(message =>
-              message === fallback
-                ? { ...message, content: message.content + event.delta, pending: true }
-                : message,
-            )
-          }
-          return [
-            ...current,
-            {
-              id: `live-${event.id}`,
-              role: 'assistant',
-              content: event.delta,
-              pending: true,
-            },
-          ]
-        }
         case 'message_stop': {
           const id = `live-${event.id}`
           const target = current.find(message => message.id === id)
