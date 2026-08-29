@@ -764,92 +764,125 @@ function ChatView({
 
   function handleStreamEvent(event: StreamEvent) {
     onMessagesChange(current => {
-      const next = [...current]
       switch (event.type) {
         case 'message_start':
-          next.push({
-            id: `live-${event.id}`,
-            role: 'assistant',
-            content: '',
-            pending: true,
-          })
-          break
+          return [
+            ...current,
+            {
+              id: `live-${event.id}`,
+              role: 'assistant',
+              content: '',
+              pending: true,
+            },
+          ]
         case 'message_delta': {
-          const target = findPendingAssistant(next) ?? lastAssistant(next)
-          if (target) {
-            target.content += event.delta
-            target.pending = true
-          } else {
-            next.push({
+          const id = `live-${event.id}`
+          const index = current.findIndex(message => message.id === id)
+          if (index !== -1) {
+            const entry = current[index]!
+            return current.map((message, messageIndex) =>
+              messageIndex === index
+                ? { ...entry, content: entry.content + event.delta, pending: true }
+                : message,
+            )
+          }
+          const fallback = findPendingAssistant(current) ?? lastAssistant(current)
+          if (fallback) {
+            return current.map(message =>
+              message === fallback
+                ? { ...message, content: message.content + event.delta, pending: true }
+                : message,
+            )
+          }
+          return [
+            ...current,
+            {
               id: `live-${event.id}`,
               role: 'assistant',
               content: event.delta,
               pending: true,
-            })
-          }
-          break
+            },
+          ]
         }
         case 'message_stop': {
-          const target = findPendingAssistant(next)
-          if (target) {
-            target.pending = false
-            target.finishReason = event.finishReason
-          }
-          break
+          const id = `live-${event.id}`
+          const target = current.find(message => message.id === id)
+            ?? findPendingAssistant(current)
+          if (!target) break
+          return current.map(message =>
+            message === target
+              ? { ...message, pending: false, finishReason: event.finishReason }
+              : message,
+          )
         }
         case 'tool/start':
-          next.push({
-            id: `live-tool-${event.call.id}`,
-            role: 'tool',
-            content: '',
-            tool: {
-              callId: event.call.id,
-              name: event.call.name,
-              argumentsText: prettyJson(event.call.arguments),
-              status: 'pending',
+          return [
+            ...current,
+            {
+              id: `live-tool-${event.call.id}`,
+              role: 'tool',
+              content: '',
+              tool: {
+                callId: event.call.id,
+                name: event.call.name,
+                argumentsText: prettyJson(event.call.arguments),
+                status: 'pending',
+              },
             },
-          })
-          break
+          ]
         case 'tool/end': {
-          let target: DisplayMessage | undefined
-          for (let index = next.length - 1; index >= 0; index -= 1) {
-            const entry = next[index]
+          let targetIndex = -1
+          for (let index = current.length - 1; index >= 0; index -= 1) {
+            const entry = current[index]
             if (
               entry
               && entry.role === 'tool'
               && entry.tool?.callId === event.call.id
               && entry.tool.status === 'pending'
             ) {
-              target = entry
+              targetIndex = index
               break
             }
           }
-          if (target?.tool) {
-            target.tool.status = 'done'
-            target.tool.ok = event.result.ok
-            target.tool.outputText = event.result.output === undefined
-              ? undefined
-              : prettyJson(event.result.output)
-            target.tool.errorText = event.result.error?.message
-          }
-          break
+          if (targetIndex === -1) break
+          const entry = current[targetIndex]!
+          const tool = entry.tool!
+          return current.map((message, messageIndex) =>
+            messageIndex === targetIndex
+              ? {
+                  ...entry,
+                  tool: {
+                    ...tool,
+                    status: 'done',
+                    ok: event.result.ok,
+                    outputText: event.result.output === undefined
+                      ? undefined
+                      : prettyJson(event.result.output),
+                    errorText: event.result.error?.message,
+                  },
+                }
+              : message,
+          )
         }
         case 'run/end':
-          for (const entry of next) {
-            if (entry.role === 'assistant' && entry.pending) entry.pending = false
-          }
-          break
+          return current.map(message =>
+            message.role === 'assistant' && message.pending
+              ? { ...message, pending: false }
+              : message,
+          )
         case 'error':
-          next.push({
-            id: `live-error-${Date.now()}`,
-            role: 'system',
-            content: event.message,
-          })
-          break
+          return [
+            ...current,
+            {
+              id: `live-error-${Date.now()}`,
+              role: 'system',
+              content: event.message,
+            },
+          ]
         default:
-          break
+          return current
       }
-      return next
+      return current
     })
   }
 
