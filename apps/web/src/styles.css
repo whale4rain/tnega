@@ -763,6 +763,63 @@ textarea {
   color: var(--danger);
 }
 
+.message.compaction {
+  padding: 4px 0;
+}
+
+.compaction-toggle {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.compaction-status {
+  color: var(--warning);
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.compaction-meta {
+  color: var(--mute);
+  flex: 1;
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compaction-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.compaction-summary {
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.compaction-snapshot {
+  border-left: 2px solid var(--hairline-strong);
+  margin-left: 4px;
+  padding-left: 12px;
+}
+
+.compaction-snapshot-title {
+  color: var(--mute);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
 .run-note {
   color: var(--warning);
   font-size: 12px;

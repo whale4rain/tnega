@@ -40,7 +40,12 @@ export type SessionEvent =
   | SessionEventBase<'message', MessagePayload>
   | SessionEventBase<'tool-call', ToolCallPayload>
   | SessionEventBase<'tool-result', ToolResultPayload>
-  | SessionEventBase<'checkpoint', { messages: ModelMessage[] }>
+  | SessionEventBase<'checkpoint', {
+      messages: ModelMessage[]
+      summary?: string
+      tokensBefore?: number
+      snapshot?: SessionEvent[]
+    }>
   | SessionEventBase<'meta', Record<string, unknown>>
 
 export interface SessionDetail {
@@ -128,4 +133,8 @@ export interface DisplayMessage {
   tool?: DisplayTool
   finishReason?: string
   pending?: boolean
+  compacted?: boolean
+  snapshotCount?: number
+  tokensBefore?: number
+  snapshot?: DisplayMessage[]
 }

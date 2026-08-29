@@ -1051,6 +1051,9 @@ function MessageBlock({
   if (message.role === 'tool' && message.tool) {
     return <ToolBlock message={message} />
   }
+  if (message.role === 'system' && message.compacted) {
+    return <CompactionBlock message={message} />
+  }
   if (message.role === 'system') {
     return (
       <div className="message system">
@@ -1202,6 +1205,49 @@ function ToolBlock({ message }: { message: DisplayMessage }) {
             <pre className="tool-error">{tool.errorText ?? 'tool failed'}</pre>
           )}
           {tool.status === 'pending' && <div className="run-note">running</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CompactionBlock({ message }: { message: DisplayMessage }) {
+  const [open, setOpen] = useState(false)
+  const marker = open ? '[-]' : '[+]'
+  const count = message.snapshotCount ?? 0
+  const tokens = message.tokensBefore
+  const meta = [
+    count > 0 ? `${count} events` : '',
+    tokens !== undefined ? `${tokens.toLocaleString()} tokens before` : '',
+  ].filter(Boolean).join(' / ')
+  return (
+    <div className="message compaction">
+      <button
+        type="button"
+        className="compaction-toggle"
+        onClick={() => setOpen(open => !open)}
+      >
+        <span className="marker">{marker}</span>
+        <span className="compaction-status">compacted</span>
+        <span className="compaction-meta">{meta}</span>
+      </button>
+      {open && (
+        <div className="compaction-detail">
+          {message.content && (
+            <div className="compaction-summary md">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )}
+          {message.snapshot && message.snapshot.length > 0 && (
+            <div className="compaction-snapshot">
+              <div className="compaction-snapshot-title">previous conversation</div>
+              {message.snapshot.map(item => (
+                <MessageBlock key={item.id} message={item} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1403,11 +1449,25 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         }
         break
       }
-      case 'checkpoint':
-        for (const item of event.payload.messages) {
-          pushModelMessage(messages, toolIndex, item, event.id)
+      case 'checkpoint': {
+        const snapshot = event.payload.snapshot
+        if (snapshot?.length) {
+          messages.push({
+            id: event.id,
+            role: 'system',
+            content: event.payload.summary ?? '',
+            compacted: true,
+            snapshotCount: snapshot.length,
+            tokensBefore: event.payload.tokensBefore,
+            snapshot: projectEvents(snapshot),
+          })
+        } else {
+          for (const item of event.payload.messages) {
+            pushModelMessage(messages, toolIndex, item, event.id)
+          }
         }
         break
+      }
       case 'meta':
         break
     }
