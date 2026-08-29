@@ -219,7 +219,9 @@ export async function forkSessionAt(
       && event.type === 'message'
       && event.payload.role === 'user',
   )
-  const startIndex = conversationStartIndex(events, targetIndex, messageId)
+  if (targetIndex < 0) {
+    throw new TypeError(`user message not found: ${messageId}`)
+  }
   const meta = await readSessionMeta(source)
   const fork = await createSession(workspace, {
     title: title?.trim() || `${meta.payload.title} fork`,
@@ -227,7 +229,9 @@ export async function forkSessionAt(
   })
   const target = sessionFile(workspace, fork.id)
   const forkMeta = await readSessionMeta(target)
-  const selected = events.slice(startIndex)
+  const selected = events
+    .slice(0, targetIndex + 1)
+    .filter(event => event.type !== 'meta')
   const next = [JSON.stringify(forkMeta)]
   selected.forEach((event, index) => {
     next.push(JSON.stringify({ ...event, seq: index + 2 }))
@@ -427,24 +431,6 @@ function isMetaLine(line: string): boolean {
   } catch {
     return false
   }
-}
-
-function conversationStartIndex(
-  events: readonly SessionEvent[],
-  targetIndex: number,
-  messageId: string,
-): number {
-  if (targetIndex < 0) {
-    throw new TypeError(`user message not found: ${messageId}`)
-  }
-  let startIndex = targetIndex
-  for (let index = targetIndex - 1; index >= 0; index -= 1) {
-    if (events[index]?.type === 'message') {
-      startIndex = index
-      break
-    }
-  }
-  return startIndex
 }
 
 function parseSessionEvent(line: string): SessionEvent | undefined {

@@ -204,7 +204,7 @@ describe('web server', () => {
     expect(list.sessions.map(session => session.id)).toEqual([fork.session.id])
   })
 
-  it('forks a session from a user message with its preceding context', async () => {
+  it('forks a session with all history up to the selected user message', async () => {
     const dir = await tempDir('tnega-web-fork-at-')
     const workspace = await mkdir(dir, 'workspace')
     const configFile = join(dir, 'config.json')
@@ -285,9 +285,9 @@ describe('web server', () => {
     }
     const forkMessages = forkDetail.events.filter(event => event.type === 'message')
     expect(forkMessages.map(message => message.payload.content)).toEqual([
+      'first turn',
       'mock reply',
       'second turn',
-      'mock reply',
     ])
   })
 
