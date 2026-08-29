@@ -700,8 +700,13 @@ function workspaceParam(url: URL): string | undefined {
   return value === null || !value.trim() ? undefined : value
 }
 
+function canonicalWorkspace(workspace: string): string {
+  const resolved = resolve(workspace)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
 function runKey(workspace: string, id: string): string {
-  return `${resolve(workspace)}\0${id}`
+  return `${canonicalWorkspace(workspace)}\0${id}`
 }
 
 function isActive(

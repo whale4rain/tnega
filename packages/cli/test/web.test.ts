@@ -21,7 +21,7 @@ async function tempDir(prefix: string): Promise<string> {
   return dir
 }
 
-async function startMockLlm(content: string): Promise<{
+async function startMockLlm(content: string, delayMs = 0): Promise<{
   url: string
   close: () => Promise<void>
 }> {
@@ -53,33 +53,41 @@ async function startMockLlm(content: string): Promise<{
         return
       }
       const parsed = JSON.parse(body) as { stream?: boolean }
-      if (parsed.stream !== true) {
+      const respond = (): void => {
+        if (parsed.stream !== true) {
+          res.writeHead(200, {
+            'content-type': 'application/json',
+          })
+          res.end(JSON.stringify({
+            id: 'chatcmpl-mock',
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model: 'mock-model',
+            choices: [
+              {
+                index: 0,
+                message: { role: 'assistant', content },
+                finish_reason: 'stop',
+              },
+            ],
+          }))
+          return
+        }
         res.writeHead(200, {
-          'content-type': 'application/json',
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
         })
-        res.end(JSON.stringify({
-          id: 'chatcmpl-mock',
-          object: 'chat.completion',
-          created: Math.floor(Date.now() / 1000),
-          model: 'mock-model',
-          choices: [
-            {
-              index: 0,
-              message: { role: 'assistant', content },
-              finish_reason: 'stop',
-            },
-          ],
-        }))
-        return
+        for (const chunk of chunks) {
+          res.write(`data: ${JSON.stringify(chunk)}\n\n`)
+        }
+        res.end()
       }
-      res.writeHead(200, {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-      })
-      for (const chunk of chunks) {
-        res.write(`data: ${JSON.stringify(chunk)}\n\n`)
+      if (delayMs > 0) {
+        const timer = setTimeout(respond, delayMs)
+        res.on('close', () => clearTimeout(timer))
+      } else {
+        respond()
       }
-      res.end()
     })
   })
   await new Promise<void>(resolve => {
@@ -599,6 +607,67 @@ describe('web server', () => {
     expect(messages[1]!.payload.role).toBe('assistant')
     expect(messages[1]!.payload.content).toBe('hello from mock')
   })
+
+  it.skipIf(process.platform !== 'win32')(
+    'rejects a concurrent run for the same session when workspace case differs',
+    async () => {
+      const dir = await tempDir('tnega-web-run-key-')
+      const workspace = await mkdir(dir, 'workspace')
+      const configFile = join(dir, 'config.json')
+      const mock = await startMockLlm('never shown', 500)
+      await writeFile(configFile, JSON.stringify({
+        apiKey: 'test-key',
+        baseUrl: mock.url,
+        model: 'mock-model',
+        temperature: 0,
+      }), 'utf8')
+      const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+      servers.push(server)
+
+      const created = await apiFetch(
+        server.url,
+        `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+        { method: 'POST', body: '{}' },
+      ).then(r => r.json()) as { session: { id: string } }
+      const id = created.session.id
+
+      const firstController = new AbortController()
+      const first = await apiFetch(
+        server.url,
+        `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt: 'block',
+            allowNetwork: false,
+            allowShell: false,
+          }),
+          signal: firstController.signal,
+        },
+      )
+      expect(first.status).toBe(200)
+
+      const firstChar = workspace.slice(0, 1)
+      const mixedWorkspace = `${firstChar === firstChar.toUpperCase()
+        ? firstChar.toLowerCase()
+        : firstChar.toUpperCase()}${workspace.slice(1)}`
+      const second = await apiFetch(
+        server.url,
+        `/api/sessions/${id}/runs?workspace=${encodeURIComponent(mixedWorkspace)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt: 'blocked',
+            allowNetwork: false,
+            allowShell: false,
+          }),
+        },
+      )
+      expect(second.status).toBe(409)
+
+      await first.text()
+    },
+  )
 })
 
 async function mkdir(parent: string, name: string): Promise<string> {
