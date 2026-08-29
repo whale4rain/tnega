@@ -32,8 +32,9 @@ export interface ToolResultPayload {
   toolCallId: string
   name: string
   ok: boolean
+  durationMs?: number
   output?: unknown
-  error?: { message: string; stack?: string }
+  error?: { name?: string; message: string; stack?: string }
 }
 
 export type SessionEvent =
@@ -66,6 +67,8 @@ export interface ModelMessage {
   name?: string
   tool_call_id?: string
   tool_calls?: Array<{ id: string; name: string; arguments: unknown }>
+  toolOk?: boolean
+  toolError?: { name?: string; message: string; stack?: string }
 }
 
 export interface LlmEffective {
@@ -101,7 +104,9 @@ export interface ToolResult {
   name: string
   ok: boolean
   output?: unknown
-  error?: { message: string; stack?: string }
+  error?: { name?: string; message: string; stack?: string }
+  startedAt?: number
+  durationMs?: number
 }
 
 export type StreamEvent =

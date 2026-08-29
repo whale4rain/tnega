@@ -119,7 +119,8 @@ describe('SessionLog deriveMessages', () => {
       toolCallId: 'c1',
       name: 'boom',
       ok: false,
-      error: { message: 'exploded' },
+      durationMs: 7,
+      error: { name: 'ExplosionError', message: 'exploded' },
     })
 
     expect(await log.deriveMessages()).toEqual([
@@ -129,7 +130,14 @@ describe('SessionLog deriveMessages', () => {
         content: '',
         tool_calls: [{ id: 'c1', name: 'boom', arguments: {} }],
       },
-      { role: 'tool', content: 'error: exploded', tool_call_id: 'c1', name: 'boom' },
+      {
+        role: 'tool',
+        content: 'error: exploded',
+        tool_call_id: 'c1',
+        name: 'boom',
+        toolOk: false,
+        toolError: { name: 'ExplosionError', message: 'exploded' },
+      },
     ])
   })
 

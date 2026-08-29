@@ -398,8 +398,69 @@ describe('agent loop', () => {
         content: '',
         tool_calls: [{ id: 'c1', name: 'fail', arguments: {} }],
       },
-      { role: 'tool', content: 'error: boom', tool_call_id: 'c1', name: 'fail' },
+      {
+        role: 'tool',
+        content: 'error: boom',
+        tool_call_id: 'c1',
+        name: 'fail',
+        toolOk: false,
+        toolError: { name: 'Error', message: 'boom' },
+      },
     ])
+  })
+
+  it('closes tool calls with a failed result when execution throws', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('tool-exec-error.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'missing', {})],
+        finishReason: 'tool_calls',
+      },
+      { content: 'recovered', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'do it' })
+
+    expect(result.output).toBe('recovered')
+    expect(calls[1]!.messages).toEqual([
+      { role: 'user', content: 'do it' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'c1', name: 'missing', arguments: {} }],
+      },
+      {
+        role: 'tool',
+        content: 'error: tool not found: missing',
+        tool_call_id: 'c1',
+        name: 'missing',
+        toolOk: false,
+        toolError: {
+          name: 'ToolNotFoundError',
+          message: 'tool not found: missing',
+        },
+      },
+    ])
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    const results = events.filter(event => event.type === 'tool-result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.payload).toMatchObject({
+      id: 'c1',
+      toolCallId: 'c1',
+      name: 'missing',
+      ok: false,
+      error: {
+        name: 'ToolNotFoundError',
+        message: 'tool not found: missing',
+      },
+    })
   })
 
   it('aborts the loop when the signal is already aborted', async () => {

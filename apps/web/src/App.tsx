@@ -1471,17 +1471,18 @@ function pushModelMessage(
 ): void {
   if (item.role === 'tool') {
     const index = toolIndex.get(item.tool_call_id ?? '')
+    const legacyFailed = item.content.startsWith('error: ')
+    const failed = item.toolOk === false
+      || (item.toolOk === undefined && legacyFailed)
+    const errorText = item.toolError?.message
+      ?? (legacyFailed ? item.content.slice(7) : undefined)
     if (index !== undefined && messages[index]?.tool) {
       const target = messages[index]!.tool!
       target.status = 'done'
-      target.ok = !item.content.startsWith('error: ')
-      if (item.content.startsWith('error: ')) {
-        target.errorText = item.content.slice(7)
-      } else {
-        target.outputText = item.content
-      }
+      target.ok = !failed
+      target.errorText = errorText
+      target.outputText = failed ? undefined : item.content
     } else {
-      const failed = item.content.startsWith('error: ')
       messages.push({
         id: `${sourceId}-${messages.length}`,
         role: 'tool',
@@ -1493,7 +1494,7 @@ function pushModelMessage(
           status: 'done',
           ok: !failed,
           outputText: failed ? undefined : item.content,
-          errorText: failed ? item.content.slice(7) : undefined,
+          errorText,
         },
       })
     }

@@ -1,6 +1,6 @@
 import type { Context } from '@tnega/core'
 import type { ModelMessage, SessionLog, ToolResultPayload } from '@tnega/session'
-import type { ToolDefinition, ToolResult } from '@tnega/tools'
+import type { ToolDefinition, ToolError, ToolResult } from '@tnega/tools'
 import type { ToolsService } from '@tnega/tools'
 
 export type AgentFinishReason =
@@ -225,6 +225,8 @@ function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
     }
     if (message.name) copy.name = message.name
     if (message.tool_call_id) copy.tool_call_id = message.tool_call_id
+    if (message.toolOk !== undefined) copy.toolOk = message.toolOk
+    if (message.toolError) copy.toolError = { ...message.toolError }
     if (message.tool_calls) {
       copy.tool_calls = message.tool_calls.map(call => ({
         id: call.id,
@@ -377,17 +379,33 @@ export class AgentService {
         })
         const toolOptions: { callId: string; signal?: AbortSignal } = { callId: call.id }
         if (options.signal) toolOptions.signal = options.signal
-        const result = await tools.execute(call.name, call.arguments, toolOptions)
+        const startedAt = Date.now()
+        let result: ToolResult
+        try {
+          result = await tools.execute(call.name, call.arguments, toolOptions)
+        } catch (error) {
+          result = {
+            ok: false,
+            name: call.name,
+            callId: call.id,
+            input: call.arguments,
+            error: toToolError(error),
+            startedAt,
+            durationMs: Date.now() - startedAt,
+          }
+        }
         toolResults.push(result)
         const toolResultPayload: ToolResultPayload = {
           id: call.id,
           toolCallId: call.id,
           name: call.name,
           ok: result.ok,
+          durationMs: result.durationMs,
         }
         if (result.output !== undefined) toolResultPayload.output = result.output
         if (result.error) {
           toolResultPayload.error = {
+            name: result.error.name,
             message: result.error.message,
           }
           if (result.error.stack) toolResultPayload.error.stack = result.error.stack
@@ -496,6 +514,15 @@ export class AgentService {
         tool_call_id: call.id,
       }
       message.name = result?.name ?? call.name
+      if (result && !result.ok) {
+        message.toolOk = false
+        if (result.error) {
+          message.toolError = {
+            name: result.error.name,
+            message: result.error.message,
+          }
+        }
+      }
       next.push(message)
     }
     return next
@@ -525,6 +552,21 @@ function copySteps(steps: readonly AgentStep[]): readonly AgentStep[] {
     completion: copyCompletion(step.completion),
     toolResults: step.toolResults.map(result => ({ ...result })),
   }))
+}
+
+function toToolError(error: unknown): ToolError {
+  if (error instanceof Error) {
+    const result: ToolError = {
+      name: error.name,
+      message: error.message,
+    }
+    if (error.stack) result.stack = error.stack
+    return result
+  }
+  return {
+    name: 'ToolExecutionError',
+    message: String(error),
+  }
 }
 
 function completionFromStreamEvents(events: readonly LLMStreamEvent[]): LLMCompletion {

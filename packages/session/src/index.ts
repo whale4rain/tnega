@@ -17,6 +17,8 @@ export interface ModelMessage {
   name?: string
   tool_call_id?: string
   tool_calls?: ModelToolCall[]
+  toolOk?: boolean
+  toolError?: ToolResultErrorPayload
 }
 
 export type MessageRole = 'system' | 'user' | 'assistant'
@@ -33,16 +35,20 @@ export interface ToolCallPayload {
   arguments: unknown
 }
 
+export interface ToolResultErrorPayload {
+  name?: string
+  message: string
+  stack?: string
+}
+
 export interface ToolResultPayload {
   id: string
   toolCallId: string
   name: string
   ok: boolean
+  durationMs?: number
   output?: unknown
-  error?: {
-    message: string
-    stack?: string
-  }
+  error?: ToolResultErrorPayload
 }
 
 export interface CheckpointPayload {
@@ -135,15 +141,20 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
         break
       }
       case 'tool-result': {
-        const content = event.payload.ok
-          ? stringify(event.payload.output)
-          : `error: ${event.payload.error?.message ?? 'unknown'}`
+        const failed = !event.payload.ok
+        const content = failed
+          ? `error: ${event.payload.error?.message ?? 'unknown'}`
+          : stringify(event.payload.output)
         const message: ModelMessage = {
           role: 'tool',
           content,
           tool_call_id: event.payload.toolCallId,
         }
         message.name = event.payload.name
+        if (failed) {
+          message.toolOk = false
+          if (event.payload.error) message.toolError = event.payload.error
+        }
         messages.push(message)
         break
       }
