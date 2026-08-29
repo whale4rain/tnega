@@ -422,6 +422,33 @@ textarea {
   z-index: 5;
 }
 
+.conversation-nav {
+  align-items: center;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+}
+
+.conversation-nav .icon-button {
+  min-height: 26px;
+  min-width: 30px;
+  padding: 1px 4px;
+}
+
+.conversation-nav .count {
+  font-size: 11px;
+  line-height: 1;
+}
+
 .message {
   border-bottom: 1px solid var(--hairline);
   padding: 8px 0;
@@ -439,6 +466,11 @@ textarea {
 
 .message.assistant .message-label {
   color: var(--success);
+}
+
+.message.user.active-user {
+  background: var(--surface-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .message.system .message-label,

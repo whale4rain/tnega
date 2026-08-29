@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import type { Ref } from 'react'
+import { ConversationNav } from './ConversationNav'
 import {
   addWorkspace,
   ApiError,
@@ -503,9 +505,19 @@ function ChatView({
   const [runState, setRunState] = useState<RunState>('idle')
   const [runError, setRunError] = useState<string | null>(null)
   const [showJump, setShowJump] = useState(false)
+  const [navIndex, setNavIndex] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const userRefs = useRef(new Map<string, HTMLDivElement>())
   const stickToBottomRef = useRef(true)
+
+  const userIndexes = useMemo(() => {
+    const indexes: number[] = []
+    messages.forEach((message, index) => {
+      if (message.role === 'user') indexes.push(index)
+    })
+    return indexes
+  }, [messages])
 
   const scrollToBottom = useCallback(() => {
     const node = scrollRef.current
@@ -513,9 +525,17 @@ function ChatView({
   }, [])
 
   useEffect(() => {
+    setNavIndex(0)
+    userRefs.current.clear()
     stickToBottomRef.current = true
     scrollToBottom()
   }, [scrollToBottom, sessionId, workspace])
+
+  useEffect(() => {
+    if (navIndex >= userIndexes.length) {
+      setNavIndex(userIndexes.length === 0 ? 0 : userIndexes.length - 1)
+    }
+  }, [navIndex, userIndexes.length])
 
   useEffect(() => {
     if (!stickToBottomRef.current) return
@@ -536,6 +556,27 @@ function ChatView({
     scrollToBottom()
   }
 
+  function scrollToUserMessage(targetIndex: number) {
+    const messageIndex = userIndexes[targetIndex]
+    if (messageIndex === undefined) return
+    const target = messages[messageIndex]
+    const node = target ? userRefs.current.get(target.id) : undefined
+    if (!node) return
+    stickToBottomRef.current = false
+    setShowJump(true)
+    node.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+
+  function goToUser(offset: number) {
+    const next = Math.min(
+      Math.max(navIndex + offset, 0),
+      Math.max(userIndexes.length - 1, 0),
+    )
+    if (next === navIndex) return
+    setNavIndex(next)
+    scrollToUserMessage(next)
+  }
+
   const running = runState === 'running' || runState === 'cancelling'
 
   async function startRun() {
@@ -550,6 +591,7 @@ function ChatView({
     setRunState('running')
     stickToBottomRef.current = true
     setShowJump(false)
+    setNavIndex(userIndexes.length)
     onMessagesChange(current => [
       ...current,
       {
@@ -733,11 +775,29 @@ function ChatView({
       <div className="messages-viewport">
         <div className="messages" ref={scrollRef} onScroll={handleMessagesScroll}>
           {messages.length === 0 && <div className="empty-line">no messages</div>}
-          {messages.map(message => <MessageBlock key={message.id} message={message} />)}
+          {messages.map((message, index) => (
+            <MessageBlock
+              key={message.id}
+              message={message}
+              active={message.role === 'user' && userIndexes[navIndex] === index}
+              userRef={message.role === 'user'
+                ? node => {
+                    if (node) userRefs.current.set(message.id, node)
+                    else userRefs.current.delete(message.id)
+                  }
+                : undefined}
+            />
+          ))}
           {runState === 'cancelling' && (
             <div className="run-note">cancelling</div>
           )}
         </div>
+        <ConversationNav
+          count={userIndexes.length}
+          index={navIndex}
+          onPrevious={() => goToUser(-1)}
+          onNext={() => goToUser(1)}
+        />
         {showJump && (
           <button
             type="button"
@@ -822,9 +882,11 @@ function ChatView({
 
 interface MessageBlockProps {
   message: DisplayMessage
+  active?: boolean
+  userRef?: Ref<HTMLDivElement>
 }
 
-function MessageBlock({ message }: MessageBlockProps) {
+function MessageBlock({ message, active, userRef }: MessageBlockProps) {
   if (message.role === 'tool' && message.tool) {
     return <ToolBlock message={message} />
   }
@@ -837,8 +899,9 @@ function MessageBlock({ message }: MessageBlockProps) {
     )
   }
   const marker = message.role === 'user' ? '>' : message.role === 'assistant' ? '<' : '-'
+  const className = `message ${message.role}${active ? ' active-user' : ''}`
   return (
-    <div className={`message ${message.role}`}>
+    <div className={className} ref={userRef}>
       <div className="message-label">
         {marker} {message.role}
         {message.pending ? ' ...' : ''}
