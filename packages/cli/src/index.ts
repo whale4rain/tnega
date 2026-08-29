@@ -2,6 +2,7 @@ import type { CompareResult, EvalRun } from '@tnega/eval'
 import {
   CliError,
   compareCommand,
+  createAgentRuntime,
   formatAgentRun,
   formatCompare,
   formatEvolveResult,
@@ -10,8 +11,11 @@ import {
   runCommand,
   runEvolveCommand,
 } from './commands.js'
+import { startWebServer } from './server.js'
 
 export type {
+  AgentRuntime,
+  AgentRuntimeOptions,
   EvolveFileConfig,
   LlmEnvConfig,
   RunAgentCommandOptions,
@@ -23,6 +27,7 @@ export type {
 export {
   CliError,
   compareCommand,
+  createAgentRuntime,
   formatAgentRun,
   formatCompare,
   formatEvolveResult,
@@ -61,6 +66,16 @@ export function main(argv: readonly string[]): Promise<number> {
           : {}),
       })
       return emit(formatAgentRun(result), 0)
+    }
+
+    if (command === 'web') {
+      const parsed = parseWebArgs(args)
+      const server = await startWebServer({
+        ...(parsed.host ? { host: parsed.host } : {}),
+        ...(parsed.port !== undefined ? { port: parsed.port } : {}),
+      })
+      process.stdout.write(`tnega web listening on ${server.url}\n`)
+      return new Promise<number>(() => {})
     }
 
     if (command === 'eval' && args[0] === 'run') {
@@ -153,6 +168,11 @@ interface ParsedRunAgentArgs {
   timeoutMs?: number
   maxRetries?: number
   retryDelayMs?: number
+}
+
+interface ParsedWebArgs {
+  host?: string
+  port?: number
 }
 
 interface ParsedEvolveRunArgs {
@@ -389,6 +409,24 @@ function parseCompareArgs(args: readonly string[]): ParsedCompareArgs {
     } else {
       throw new CliError(`unexpected argument: ${arg}`)
     }
+  }
+  return parsed
+}
+
+function parseWebArgs(args: readonly string[]): ParsedWebArgs {
+  const parsed: ParsedWebArgs = {}
+  let cursor = 0
+  while (cursor < args.length) {
+    const arg = args[cursor]!
+    if (arg === '--host' || arg === '--port') {
+      const value = args[cursor + 1]
+      if (!value) throw new CliError(`${arg} requires a value`)
+      if (arg === '--host') parsed.host = value
+      if (arg === '--port') parsed.port = parseFiniteNumber('--port', value)
+      cursor += 2
+      continue
+    }
+    throw new CliError(`unknown option: ${arg}`)
   }
   return parsed
 }

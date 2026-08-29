@@ -123,6 +123,21 @@ export interface LlmEnvConfig {
   model?: string
 }
 
+export interface AgentRuntimeOptions {
+  cwd: string
+  sessionFile: string
+  llm: LLMAdapter
+  allowNetwork?: boolean
+  allowShell?: boolean
+  maxTurns?: number
+  maxSteps?: number
+}
+
+export interface AgentRuntime {
+  root: Context
+  dispose: () => Promise<void>
+}
+
 export class CliError extends Error {
   override name = 'CliError'
 }
@@ -343,7 +358,17 @@ export async function runAgentCommand(
       ? { retryDelayMs: options.retryDelayMs }
       : {}),
   })
-  const context = await createRunContext(sessionFile, adapter, options)
+  const context = await createAgentRuntime({
+    cwd,
+    sessionFile,
+    llm: adapter,
+    ...(options.allowNetwork !== undefined
+      ? { allowNetwork: options.allowNetwork }
+      : {}),
+    ...(options.allowShell !== undefined ? { allowShell: options.allowShell } : {}),
+    ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+    ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+  })
   try {
     const loop = context.root.get('agentLoop') as AgentLoop
     const runOptions: AgentRunOptions = {}
@@ -356,16 +381,14 @@ export async function runAgentCommand(
   }
 }
 
-async function createRunContext(
-  sessionFile: string,
-  llm: LLMAdapter,
-  options: RunAgentCommandOptions,
-) {
+export async function createAgentRuntime(
+  options: AgentRuntimeOptions,
+): Promise<AgentRuntime> {
   const root = new Context()
-  const sessionFiber = await root.plugin(session, { file: sessionFile })
+  const sessionFiber = await root.plugin(session, { file: options.sessionFile })
   const toolsFiber = await root.plugin(tools)
   const builtinToolsFiber = await root.plugin(builtinTools, {
-    cwd: options.cwd ?? process.cwd(),
+    cwd: options.cwd,
     ...(options.allowNetwork ? { allowNetwork: true } : {}),
     ...(options.allowShell ? { allowShell: true } : {}),
   })
@@ -373,7 +396,7 @@ async function createRunContext(
     llm: LLMAdapter
     maxTurns?: number
     maxSteps?: number
-  } = { llm }
+  } = { llm: options.llm }
   if (options.maxTurns !== undefined) agentConfig.maxTurns = options.maxTurns
   if (options.maxSteps !== undefined) agentConfig.maxSteps = options.maxSteps
   const agentFiber = await root.plugin(agent, agentConfig)
