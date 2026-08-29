@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
@@ -618,7 +619,17 @@ function errorMessage(error: unknown): string {
 }
 
 function defaultWebRoot(): string {
-  return fileURLToPath(new URL('../../dist/web/', import.meta.url))
+  const candidates = [
+    // Bundled package layout: dist/bin.js serves dist/web.
+    new URL('../dist/web/', import.meta.url),
+    // Source checkout layout: packages/cli/src/server.ts serves <repo>/dist/web.
+    new URL('../../../dist/web/', import.meta.url),
+  ]
+  for (const candidate of candidates) {
+    const path = fileURLToPath(candidate)
+    if (existsSync(path)) return path
+  }
+  return fileURLToPath(candidates[1]!)
 }
 
 class HttpError extends Error {

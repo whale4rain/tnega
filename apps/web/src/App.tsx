@@ -1,0 +1,1151 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import {
+  addWorkspace,
+  ApiError,
+  createSession,
+  deleteSession,
+  displayPath,
+  forkSession,
+  formatTime,
+  getConfig,
+  getSession,
+  listSessions,
+  listWorkspaces,
+  prettyJson,
+  removeWorkspace,
+  renameSession,
+  saveConfig,
+  streamRun,
+} from './api'
+import type {
+  ConfigSnapshot,
+  DisplayMessage,
+  ModelMessage,
+  SessionEvent,
+  SessionSummary,
+  StreamEvent,
+} from './types'
+
+type View = 'chat' | 'settings'
+type RunState = 'idle' | 'running' | 'cancelling'
+
+const MODEL_OPTIONS = [
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
+  'deepseek-chat',
+  'deepseek-reasoner',
+  'gpt-5.2',
+  'gpt-5.1',
+]
+
+export default function App() {
+  const [config, setConfig] = useState<ConfigSnapshot | null>(null)
+  const [workspaces, setWorkspaces] = useState<string[]>([])
+  const [workspace, setWorkspace] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [summary, setSummary] = useState<SessionSummary | null>(null)
+  const [messages, setMessages] = useState<DisplayMessage[]>([])
+  const [view, setView] = useState<View>('chat')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([getConfig(), listWorkspaces()])
+      .then(([nextConfig, nextWorkspaces]) => {
+        if (cancelled) return
+        setConfig(nextConfig)
+        const stored = nextWorkspaces.workspaces
+        setWorkspaces(stored)
+        if (stored.length && !workspace) setWorkspace(stored[0]!)
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(messageOf(reason))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!workspace) return
+    let cancelled = false
+    api.listSessions(workspace)
+      .then(({ sessions: next }) => {
+        if (cancelled) return
+        setSessions(next)
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(messageOf(reason))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspace])
+
+  const selectSession = useCallback((id: string) => {
+    if (!workspace) return
+    setSessionId(id)
+    setError(null)
+    setMessages([])
+    api.getSession(workspace, id)
+      .then(detail => {
+        setSummary(detail.summary)
+        setMessages(projectEvents(detail.events))
+      })
+      .catch((reason: unknown) => setError(messageOf(reason)))
+  }, [workspace])
+
+  const refreshSession = useCallback(async (id: string) => {
+    if (!workspace) return
+    const detail = await api.getSession(workspace, id)
+    setSummary(detail.summary)
+    setMessages(projectEvents(detail.events))
+    const next = await api.listSessions(workspace)
+    setSessions(next.sessions)
+  }, [workspace])
+
+  async function handleAddWorkspace(path: string) {
+    if (!path.trim()) return
+    try {
+      const result = await api.addWorkspace(path.trim())
+      setWorkspaces(result.workspaces)
+      setWorkspace(result.path)
+      setSessions([])
+      setSessionId(null)
+      setSummary(null)
+      setMessages([])
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleRemoveWorkspace(path: string) {
+    try {
+      const result = await api.removeWorkspace(path)
+      setWorkspaces(result.workspaces)
+      if (workspace === path) {
+        setWorkspace(null)
+        setSessions([])
+        setSessionId(null)
+        setSummary(null)
+        setMessages([])
+      }
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleNewSession() {
+    if (!workspace) return
+    try {
+      const { session } = await api.createSession(workspace)
+      setSessions(current => [session, ...current])
+      selectSession(session.id)
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleRename(id: string, title: string) {
+    if (!workspace || !title.trim()) return
+    try {
+      const { summary: next } = await api.renameSession(workspace, id, title.trim())
+      setSessions(current => current.map(session => session.id === id ? next : session))
+      if (sessionId === id) setSummary(next)
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleFork(id: string) {
+    if (!workspace) return
+    try {
+      const { session } = await api.forkSession(workspace, id)
+      setSessions(current => [session, ...current])
+      selectSession(session.id)
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!workspace) return
+    if (!window.confirm(`delete session ${id.slice(0, 8)}?`)) return
+    try {
+      await api.deleteSession(workspace, id)
+      setSessions(current => current.filter(session => session.id !== id))
+      if (sessionId === id) {
+        setSessionId(null)
+        setSummary(null)
+        setMessages([])
+      }
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleConfigSaved(next: ConfigSnapshot) {
+    setConfig(next)
+    setView('chat')
+  }
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">tnega web</div>
+        <div className="workspace-label" title={workspace ?? ''}>
+          {workspace ? displayPath(workspace) : 'no workspace'}
+        </div>
+        <div className="topbar-actions">
+          <button
+            type="button"
+            className="menu-button"
+            onClick={() => setSidebarOpen(open => !open)}
+            title="sidebar"
+          >
+            [menu]
+          </button>
+          <button
+            type="button"
+            className={view === 'settings' ? 'tab-active' : ''}
+            onClick={() => setView(view === 'settings' ? 'chat' : 'settings')}
+          >
+            {view === 'settings' ? '[chat]' : '[settings]'}
+          </button>
+        </div>
+      </header>
+      <div className="body">
+        <aside className={sidebarOpen ? 'sidebar open' : 'sidebar'}>
+          <WorkspacePane
+            workspaces={workspaces}
+            current={workspace}
+            onSelect={setWorkspace}
+            onAdd={handleAddWorkspace}
+            onRemove={handleRemoveWorkspace}
+          />
+          <SessionPane
+            sessions={sessions}
+            workspace={workspace}
+            selectedId={sessionId}
+            onSelect={selectSession}
+            onNew={handleNewSession}
+            onRename={handleRename}
+            onFork={handleFork}
+            onDelete={handleDelete}
+          />
+        </aside>
+        <main className="main">
+          {error && (
+            <div className="error-banner" role="alert">
+              <span className="marker">[!]</span>
+              <span>{error}</span>
+              <button type="button" onClick={() => setError(null)} title="dismiss">[x]</button>
+            </div>
+          )}
+          {view === 'settings' ? (
+            <SettingsView config={config} onSaved={handleConfigSaved} />
+          ) : (
+            <ChatView
+              workspace={workspace}
+              sessionId={sessionId}
+              summary={summary}
+              messages={messages}
+              apiKeySet={config?.apiKeySet ?? false}
+              onNewSession={handleNewSession}
+              onRefresh={refreshSession}
+              onMessagesChange={setMessages}
+            />
+          )}
+        </main>
+      </div>
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="close sidebar"
+        />
+      )}
+    </div>
+  )
+}
+
+interface WorkspacePaneProps {
+  workspaces: string[]
+  current: string | null
+  onSelect: (path: string) => void
+  onAdd: (path: string) => Promise<void>
+  onRemove: (path: string) => Promise<void>
+}
+
+function WorkspacePane({
+  workspaces,
+  current,
+  onSelect,
+  onAdd,
+  onRemove,
+}: WorkspacePaneProps) {
+  const [path, setPath] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    if (!path.trim() || busy) return
+    setBusy(true)
+    try {
+      await onAdd(path)
+      setPath('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="pane">
+      <div className="pane-header">
+        <span>[workspaces]</span>
+        <span className="count">{workspaces.length}</span>
+      </div>
+      <div className="pane-list">
+        {workspaces.map(item => (
+          <div
+            key={item}
+            className={item === current ? 'workspace-row active' : 'workspace-row'}
+          >
+            <button
+              type="button"
+              className="workspace-select"
+              onClick={() => onSelect(item)}
+              title={item}
+            >
+              <span className="marker">{item === current ? '[x]' : '[ ]'}</span>
+              <span className="ellipsis">{displayPath(item)}</span>
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => void onRemove(item)}
+              title="remove workspace"
+            >
+              [x]
+            </button>
+          </div>
+        ))}
+        {!workspaces.length && <div className="empty-line">none</div>}
+      </div>
+      <div className="pane-form">
+        <input
+          type="text"
+          value={path}
+          onChange={event => setPath(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter') void submit()
+          }}
+          placeholder="absolute path"
+          spellCheck={false}
+        />
+        <button type="button" onClick={() => void submit()} disabled={busy} title="add workspace">
+          [+]
+        </button>
+      </div>
+    </section>
+  )
+}
+
+interface SessionPaneProps {
+  sessions: SessionSummary[]
+  workspace: string | null
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onNew: () => Promise<void>
+  onRename: (id: string, title: string) => Promise<void>
+  onFork: (id: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}
+
+function SessionPane({
+  sessions,
+  workspace,
+  selectedId,
+  onSelect,
+  onNew,
+  onRename,
+  onFork,
+  onDelete,
+}: SessionPaneProps) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+
+  function beginRename(session: SessionSummary) {
+    setEditingId(session.id)
+    setDraft(session.title)
+  }
+
+  async function commitRename() {
+    if (editingId) {
+      await onRename(editingId, draft)
+    }
+    setEditingId(null)
+  }
+
+  return (
+    <section className="pane sessions-pane">
+      <div className="pane-header">
+        <span>[sessions]</span>
+        <div className="pane-header-actions">
+          <span className="count">{sessions.length}</span>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => void onNew()}
+            disabled={!workspace}
+            title="new session"
+          >
+            [+]
+          </button>
+        </div>
+      </div>
+      <div className="pane-list">
+        {sessions.map(session => (
+          <div
+            key={session.id}
+            className={session.id === selectedId ? 'session-row active' : 'session-row'}
+          >
+            {editingId === session.id ? (
+              <input
+                type="text"
+                className="rename-input"
+                value={draft}
+                onChange={event => setDraft(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') void commitRename()
+                  if (event.key === 'Escape') setEditingId(null)
+                }}
+                autoFocus
+                spellCheck={false}
+              />
+            ) : (
+              <button
+                type="button"
+                className="session-select"
+                onClick={() => onSelect(session.id)}
+                title={`${session.id}\n${formatTime(session.updatedAt)}`}
+              >
+                <span className="session-title ellipsis">{session.title}</span>
+                <span className="session-meta">
+                  {formatTime(session.updatedAt)} {session.eventCount}
+                </span>
+              </button>
+            )}
+            <div className="session-actions">
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => beginRename(session)}
+                title="rename"
+              >
+                [r]
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => void onFork(session.id)}
+                title="fork"
+              >
+                [f]
+              </button>
+              <button
+                type="button"
+                className="icon-button danger"
+                onClick={() => void onDelete(session.id)}
+                title="delete"
+              >
+                [x]
+              </button>
+            </div>
+          </div>
+        ))}
+        {!sessions.length && <div className="empty-line">none</div>}
+      </div>
+    </section>
+  )
+}
+
+interface ChatViewProps {
+  workspace: string | null
+  sessionId: string | null
+  summary: SessionSummary | null
+  messages: DisplayMessage[]
+  apiKeySet: boolean
+  onNewSession: () => Promise<void>
+  onRefresh: (id: string) => Promise<void>
+  onMessagesChange: (
+    updater: (current: DisplayMessage[]) => DisplayMessage[],
+  ) => void
+}
+
+function ChatView({
+  workspace,
+  sessionId,
+  summary,
+  messages,
+  apiKeySet,
+  onNewSession,
+  onRefresh,
+  onMessagesChange,
+}: ChatViewProps) {
+  const [prompt, setPrompt] = useState('')
+  const [allowNetwork, setAllowNetwork] = useState(false)
+  const [allowShell, setAllowShell] = useState(false)
+  const [runState, setRunState] = useState<RunState>('idle')
+  const [runError, setRunError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const node = scrollRef.current
+    if (node) node.scrollTop = node.scrollHeight
+  }, [messages])
+
+  const running = runState === 'running' || runState === 'cancelling'
+
+  async function startRun() {
+    if (!workspace || !sessionId || !prompt.trim() || running) return
+    if (!apiKeySet) {
+      setRunError('API key is not configured')
+      return
+    }
+    const controller = new AbortController()
+    abortRef.current = controller
+    setRunError(null)
+    setRunState('running')
+    onMessagesChange(current => [
+      ...current,
+      {
+        id: `live-user-${Date.now()}`,
+        role: 'user',
+        content: prompt.trim(),
+      },
+    ])
+    const sent = prompt.trim()
+    setPrompt('')
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await api.streamRun(
+            workspace,
+            sessionId,
+            {
+              prompt: sent,
+              allowNetwork,
+              allowShell,
+            },
+            event => handleStreamEvent(event),
+            controller.signal,
+          )
+          break
+        } catch (reason) {
+          if (
+            reason instanceof ApiError
+            && reason.status === 409
+            && attempt < 10
+            && !controller.signal.aborted
+          ) {
+            await delay(400)
+            continue
+          }
+          throw reason
+        }
+      }
+      await onRefresh(sessionId)
+    } catch (reason) {
+      if (controller.signal.aborted) {
+        await delay(300)
+        await onRefresh(sessionId)
+      } else {
+        setRunError(messageOf(reason))
+      }
+    } finally {
+      abortRef.current = null
+      setRunState('idle')
+    }
+  }
+
+  function cancelRun() {
+    if (runState !== 'running') return
+    setRunState('cancelling')
+    abortRef.current?.abort()
+  }
+
+  function handleStreamEvent(event: StreamEvent) {
+    onMessagesChange(current => {
+      const next = [...current]
+      switch (event.type) {
+        case 'message_start':
+          next.push({
+            id: `live-${event.id}`,
+            role: 'assistant',
+            content: '',
+            pending: true,
+          })
+          break
+        case 'message_delta': {
+          const target = findPendingAssistant(next) ?? lastAssistant(next)
+          if (target) {
+            target.content += event.delta
+            target.pending = true
+          } else {
+            next.push({
+              id: `live-${event.id}`,
+              role: 'assistant',
+              content: event.delta,
+              pending: true,
+            })
+          }
+          break
+        }
+        case 'message_stop': {
+          const target = findPendingAssistant(next)
+          if (target) {
+            target.pending = false
+            target.finishReason = event.finishReason
+          }
+          break
+        }
+        case 'tool/start':
+          next.push({
+            id: `live-tool-${event.call.id}`,
+            role: 'tool',
+            content: '',
+            tool: {
+              callId: event.call.id,
+              name: event.call.name,
+              argumentsText: prettyJson(event.call.arguments),
+              status: 'pending',
+            },
+          })
+          break
+        case 'tool/end': {
+          let target: DisplayMessage | undefined
+          for (let index = next.length - 1; index >= 0; index -= 1) {
+            const entry = next[index]
+            if (
+              entry
+              && entry.role === 'tool'
+              && entry.tool?.callId === event.call.id
+              && entry.tool.status === 'pending'
+            ) {
+              target = entry
+              break
+            }
+          }
+          if (target?.tool) {
+            target.tool.status = 'done'
+            target.tool.ok = event.result.ok
+            target.tool.outputText = event.result.output === undefined
+              ? undefined
+              : prettyJson(event.result.output)
+            target.tool.errorText = event.result.error?.message
+          }
+          break
+        }
+        case 'run/end':
+          for (const entry of next) {
+            if (entry.role === 'assistant' && entry.pending) entry.pending = false
+          }
+          break
+        case 'error':
+          next.push({
+            id: `live-error-${Date.now()}`,
+            role: 'system',
+            content: event.message,
+          })
+          break
+        default:
+          break
+      }
+      return next
+    })
+  }
+
+  if (!workspace) {
+    return (
+      <div className="empty-state">
+        <div className="empty-title">no workspace</div>
+      </div>
+    )
+  }
+
+  if (!sessionId || !summary) {
+    return (
+      <div className="empty-state">
+        <div className="empty-title">no session</div>
+        <button type="button" className="button-primary" onClick={() => void onNewSession()}>
+          [+ new session]
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="chat">
+      <div className="chat-header">
+        <div className="chat-title ellipsis" title={summary.id}>
+          {summary.title}
+        </div>
+        <div className="chat-meta">
+          <span>{displayPath(workspace)}</span>
+          <span>{summary.eventCount} events</span>
+          <span>{summary.id.slice(0, 8)}</span>
+        </div>
+      </div>
+      <div className="messages" ref={scrollRef}>
+        {messages.length === 0 && <div className="empty-line">no messages</div>}
+        {messages.map(message => <MessageBlock key={message.id} message={message} />)}
+        {runState === 'cancelling' && (
+          <div className="run-note">cancelling</div>
+        )}
+      </div>
+      {runError && (
+        <div className="error-banner" role="alert">
+          <span className="marker">[!]</span>
+          <span>{runError}</span>
+          <button type="button" onClick={() => setRunError(null)} title="dismiss">[x]</button>
+        </div>
+      )}
+      <div className="composer">
+        <div className="permissions">
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={allowNetwork}
+              onChange={event => setAllowNetwork(event.target.checked)}
+              disabled={running}
+            />
+            <span className="toggle-mark">{allowNetwork ? '[x]' : '[ ]'}</span>
+            <span>allowNetwork</span>
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={allowShell}
+              onChange={event => setAllowShell(event.target.checked)}
+              disabled={running}
+            />
+            <span className="toggle-mark">{allowShell ? '[x]' : '[ ]'}</span>
+            <span>allowShell</span>
+          </label>
+        </div>
+        <textarea
+          value={prompt}
+          onChange={event => setPrompt(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              void startRun()
+            }
+          }}
+          placeholder="prompt"
+          rows={4}
+          disabled={running}
+          spellCheck={false}
+        />
+        <div className="composer-actions">
+          {running ? (
+            <button
+              type="button"
+              className="button-danger"
+              onClick={cancelRun}
+              disabled={runState !== 'running'}
+            >
+              [stop]
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => void startRun()}
+              disabled={!prompt.trim() || !apiKeySet}
+            >
+              [run]
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
+}
+
+interface MessageBlockProps {
+  message: DisplayMessage
+}
+
+function MessageBlock({ message }: MessageBlockProps) {
+  if (message.role === 'tool' && message.tool) {
+    return <ToolBlock message={message} />
+  }
+  if (message.role === 'system') {
+    return (
+      <div className="message system">
+        <div className="message-label">[!]</div>
+        <div className="message-body">{message.content}</div>
+      </div>
+    )
+  }
+  const marker = message.role === 'user' ? '>' : message.role === 'assistant' ? '<' : '-'
+  return (
+    <div className={`message ${message.role}`}>
+      <div className="message-label">
+        {marker} {message.role}
+        {message.pending ? ' ...' : ''}
+        {message.finishReason ? ` / ${message.finishReason}` : ''}
+      </div>
+      <div className="message-body md">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+      </div>
+    </div>
+  )
+}
+
+function ToolBlock({ message }: { message: DisplayMessage }) {
+  const [open, setOpen] = useState(false)
+  const tool = message.tool!
+  const marker = open ? '[-]' : '[+]'
+  const status = tool.status === 'pending'
+    ? 'run'
+    : tool.ok
+      ? 'ok'
+      : 'err'
+  return (
+    <div className="message tool">
+      <button type="button" className="tool-toggle" onClick={() => setOpen(open => !open)}>
+        <span className="marker">{marker}</span>
+        <span className="tool-status">{status}</span>
+        <span className="tool-name">{tool.name}</span>
+        <span className="tool-id">{tool.callId.slice(0, 8)}</span>
+      </button>
+      {open && (
+        <div className="tool-detail">
+          {tool.argumentsText && (
+            <pre className="tool-arguments">{tool.argumentsText}</pre>
+          )}
+          {tool.status === 'done' && tool.ok && tool.outputText !== undefined && (
+            <pre className="tool-output">{tool.outputText}</pre>
+          )}
+          {tool.status === 'done' && !tool.ok && (
+            <pre className="tool-error">{tool.errorText ?? 'tool failed'}</pre>
+          )}
+          {tool.status === 'pending' && <div className="run-note">running</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface SettingsViewProps {
+  config: ConfigSnapshot | null
+  onSaved: (config: ConfigSnapshot) => void
+}
+
+function SettingsView({ config, onSaved }: SettingsViewProps) {
+  const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [model, setModel] = useState('')
+  const [temperature, setTemperature] = useState('')
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!config) return
+    setBaseUrl(config.config.baseUrl ?? config.effective.baseUrl)
+    setModel(config.config.model ?? config.effective.model)
+    setTemperature(
+      config.config.temperature === undefined
+        ? ''
+        : String(config.config.temperature),
+    )
+  }, [config])
+
+  async function submit() {
+    if (!config || busy) return
+    setBusy(true)
+    setError(null)
+    const patch: Record<string, unknown> = {}
+    if (apiKey.trim()) patch.apiKey = apiKey.trim()
+    if (baseUrl.trim()) patch.baseUrl = baseUrl.trim()
+    else patch.baseUrl = ''
+    if (model.trim()) patch.model = model.trim()
+    else patch.model = ''
+    if (temperature.trim()) {
+      const value = Number(temperature)
+      if (Number.isFinite(value)) patch.temperature = value
+    }
+    try {
+      const next = await api.saveConfig(patch)
+      onSaved(next)
+      setApiKey('')
+      setSaved(true)
+    } catch (reason) {
+      setError(messageOf(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="settings">
+      <div className="settings-header">
+        <span>[settings]</span>
+        <span className="count">{config?.apiKeySet ? 'key set' : 'key not set'}</span>
+      </div>
+      <div className="settings-grid">
+        <label className="field">
+          <span>apiKey</span>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={event => setApiKey(event.target.value)}
+            placeholder={config?.apiKeySet ? '********' : 'not set'}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <span className="field-note">
+            {config?.apiKeySet ? '[set]' : '[not set]'}
+          </span>
+        </label>
+        <label className="field">
+          <span>baseUrl</span>
+          <input
+            type="text"
+            value={baseUrl}
+            onChange={event => setBaseUrl(event.target.value)}
+            spellCheck={false}
+          />
+          <span className="field-note">env: {config?.env.baseUrl ?? 'none'}</span>
+        </label>
+        <label className="field">
+          <span>model</span>
+          <input
+            type="text"
+            value={model}
+            onChange={event => setModel(event.target.value)}
+            list="model-options"
+            spellCheck={false}
+          />
+          <datalist id="model-options">
+            {MODEL_OPTIONS.map(option => <option key={option} value={option} />)}
+          </datalist>
+          <span className="field-note">env: {config?.env.model ?? 'none'}</span>
+        </label>
+        <label className="field">
+          <span>temperature</span>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            max="2"
+            value={temperature}
+            onChange={event => setTemperature(event.target.value)}
+            placeholder={config?.effective.temperature === undefined
+              ? 'default'
+              : String(config.effective.temperature)}
+          />
+          <span className="field-note">effective: {config?.effective.model ?? '-'}</span>
+        </label>
+      </div>
+      {error && (
+        <div className="error-banner" role="alert">
+          <span className="marker">[!]</span>
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} title="dismiss">[x]</button>
+        </div>
+      )}
+      <div className="settings-actions">
+        <button type="button" className="button-primary" onClick={() => void submit()} disabled={busy}>
+          [save]
+        </button>
+        {saved && <span className="saved-note">saved</span>}
+      </div>
+    </div>
+  )
+}
+
+function projectEvents(events: SessionEvent[]): DisplayMessage[] {
+  const messages: DisplayMessage[] = []
+  const toolIndex = new Map<string, number>()
+  for (const event of events) {
+    switch (event.type) {
+      case 'message':
+        if (
+          event.payload.role === 'system'
+          || event.payload.role === 'user'
+          || event.payload.role === 'assistant'
+        ) {
+          if (event.payload.content) {
+            messages.push({
+              id: event.id,
+              role: event.payload.role,
+              content: event.payload.content,
+            })
+          }
+        }
+        break
+      case 'tool-call':
+        messages.push({
+          id: event.id,
+          role: 'tool',
+          content: '',
+          tool: {
+            callId: event.payload.id,
+            name: event.payload.name,
+            argumentsText: prettyJson(event.payload.arguments),
+            status: 'pending',
+          },
+        })
+        toolIndex.set(event.payload.id, messages.length - 1)
+        break
+      case 'tool-result': {
+        const index = toolIndex.get(event.payload.toolCallId)
+        if (index === undefined) {
+          messages.push({
+            id: event.id,
+            role: 'tool',
+            content: '',
+            tool: {
+              callId: event.payload.toolCallId,
+              name: event.payload.name,
+              argumentsText: '',
+              status: 'done',
+              ok: event.payload.ok,
+              outputText: event.payload.output === undefined
+                ? undefined
+                : prettyJson(event.payload.output),
+              errorText: event.payload.error?.message,
+            },
+          })
+        } else {
+          const target = messages[index]
+          if (target?.tool) {
+            target.tool.status = 'done'
+            target.tool.ok = event.payload.ok
+            target.tool.outputText = event.payload.output === undefined
+              ? undefined
+              : prettyJson(event.payload.output)
+            target.tool.errorText = event.payload.error?.message
+          }
+        }
+        break
+      }
+      case 'checkpoint':
+        for (const item of event.payload.messages) {
+          pushModelMessage(messages, toolIndex, item, event.id)
+        }
+        break
+      case 'meta':
+        break
+    }
+  }
+  return messages
+}
+
+function pushModelMessage(
+  messages: DisplayMessage[],
+  toolIndex: Map<string, number>,
+  item: ModelMessage,
+  sourceId: string,
+): void {
+  if (item.role === 'tool') {
+    const index = toolIndex.get(item.tool_call_id ?? '')
+    if (index !== undefined && messages[index]?.tool) {
+      const target = messages[index]!.tool!
+      target.status = 'done'
+      target.ok = !item.content.startsWith('error: ')
+      if (item.content.startsWith('error: ')) {
+        target.errorText = item.content.slice(7)
+      } else {
+        target.outputText = item.content
+      }
+    } else {
+      const failed = item.content.startsWith('error: ')
+      messages.push({
+        id: `${sourceId}-${messages.length}`,
+        role: 'tool',
+        content: '',
+        tool: {
+          callId: item.tool_call_id ?? '',
+          name: item.name ?? 'tool',
+          argumentsText: '',
+          status: 'done',
+          ok: !failed,
+          outputText: failed ? undefined : item.content,
+          errorText: failed ? item.content.slice(7) : undefined,
+        },
+      })
+    }
+    return
+  }
+  if (item.role === 'system' || item.role === 'user' || item.role === 'assistant') {
+    messages.push({
+      id: `${sourceId}-${messages.length}`,
+      role: item.role,
+      content: item.content,
+    })
+    for (const call of item.tool_calls ?? []) {
+      messages.push({
+        id: `${sourceId}-tool-${call.id}`,
+        role: 'tool',
+        content: '',
+        tool: {
+          callId: call.id,
+          name: call.name,
+          argumentsText: prettyJson(call.arguments),
+          status: 'pending',
+        },
+      })
+      toolIndex.set(call.id, messages.length - 1)
+    }
+  }
+}
+
+function findPendingAssistant(messages: DisplayMessage[]): DisplayMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const entry = messages[index]
+    if (entry && entry.role === 'assistant' && entry.pending) return entry
+  }
+  return undefined
+}
+
+function lastAssistant(messages: DisplayMessage[]): DisplayMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const entry = messages[index]
+    if (entry && entry.role === 'assistant') return entry
+  }
+  return undefined
+}
+
+function messageOf(reason: unknown): string {
+  if (reason instanceof Error) return reason.message
+  return String(reason)
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+const api = {
+  addWorkspace,
+  removeWorkspace,
+  listSessions,
+  getSession,
+  createSession,
+  renameSession,
+  forkSession,
+  deleteSession,
+  saveConfig,
+  streamRun,
+}

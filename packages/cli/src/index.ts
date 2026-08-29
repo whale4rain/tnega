@@ -2,7 +2,6 @@ import type { CompareResult, EvalRun } from '@tnega/eval'
 import {
   CliError,
   compareCommand,
-  createAgentRuntime,
   formatAgentRun,
   formatCompare,
   formatEvolveResult,
