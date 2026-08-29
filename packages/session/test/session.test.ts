@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -81,6 +81,50 @@ describe('SessionLog append', () => {
     expect(events.map(event => (event.payload as { content: string }).content)).toEqual(['a', 'b', 'c'])
   })
 
+  it('links message events to their predecessor', async () => {
+    const log = new SessionLog(await tempFile('parent.jsonl'))
+    const user = await log.append('message', { role: 'user', content: 'hello' })
+    const assistant = await log.append('message', { role: 'assistant', content: 'world' })
+    const next = await log.append('message', { role: 'user', content: 'again' })
+
+    expect((user.payload as { parentId?: string }).parentId).toBeUndefined()
+    expect((assistant.payload as { parentId?: string }).parentId).toBe(user.id)
+    expect((next.payload as { parentId?: string }).parentId).toBe(assistant.id)
+  })
+
+})
+
+describe('SessionLog lineage', () => {
+  it('resolves the predecessor chain for a message', async () => {
+    const log = new SessionLog(await tempFile('lineage.jsonl'))
+    const user = await log.append('message', { role: 'user', content: 'hello' })
+    const assistant = await log.append('message', { role: 'assistant', content: 'world' })
+    const next = await log.append('message', { role: 'user', content: 'again' })
+
+    const lineage = await log.lineage(next.id)
+    expect(lineage.map(event => event.id)).toEqual([user.id, assistant.id, next.id])
+  })
+
+  it('falls back to event order when parent links are missing', async () => {
+    const file = await tempFile('lineage-legacy.jsonl')
+    const events = [
+      { id: 'a', seq: 1, ts: 1, type: 'message', payload: { role: 'user', content: 'a' } },
+      { id: 'b', seq: 2, ts: 2, type: 'message', payload: { role: 'assistant', content: 'b' } },
+      { id: 'c', seq: 3, ts: 3, type: 'message', payload: { role: 'user', content: 'c' } },
+    ]
+    await writeFile(file, `${events.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
+
+    const log = new SessionLog(file)
+    await log.init()
+    expect((await log.lineage('c')).map(event => event.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('rejects an unknown message id', async () => {
+    const log = new SessionLog(await tempFile('lineage-unknown.jsonl'))
+    await log.append('message', { role: 'user', content: 'a' })
+
+    await expect(log.lineage('missing')).rejects.toThrow('message not found: missing')
+  })
 })
 
 describe('SessionLog deriveMessages', () => {

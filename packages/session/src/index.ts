@@ -27,6 +27,7 @@ export interface MessagePayload {
   role: MessageRole
   content: string
   name?: string
+  parentId?: string
 }
 
 export interface ToolCallPayload {
@@ -196,17 +197,59 @@ export class SessionLog {
   append(type: SessionEventType, payload: SessionEvent['payload']): Promise<SessionEvent> {
     return this._run(async () => {
       await this._ensureLoaded()
+      const eventPayload = clone(payload)
+      if (type === 'message') {
+        for (let index = this._events.length - 1; index >= 0; index -= 1) {
+          const previous = this._events[index]
+          if (previous?.type === 'message') {
+            const messagePayload = eventPayload as MessagePayload
+            messagePayload.parentId ??= previous.id
+            break
+          }
+        }
+      }
       const event = {
         id: randomUUID(),
         seq: this._nextSeq,
         ts: Date.now(),
         type: type as SessionEvent['type'],
-        payload: clone(payload),
+        payload: eventPayload,
       } as SessionEvent
       await appendFile(this.file, `${JSON.stringify(event)}\n`, 'utf8')
       this._events.push(event)
       this._nextSeq += 1
       return event
+    })
+  }
+
+  async lineage(messageId: string): Promise<SessionEvent[]> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      const messages = this._events.filter(
+        (event): event is Extract<SessionEvent, { type: 'message' }> => event.type === 'message',
+      )
+      const byId = new Map<string, Extract<SessionEvent, { type: 'message' }>>(
+        messages.map(event => [event.id, event] as const),
+      )
+      if (!byId.has(messageId)) {
+        throw new Error(`message not found: ${messageId}`)
+      }
+      const chain: SessionEvent[] = []
+      const seen = new Set<string>()
+      let cursorId: string | undefined = messageId
+      while (cursorId && byId.has(cursorId) && !seen.has(cursorId)) {
+        seen.add(cursorId)
+        const event: Extract<SessionEvent, { type: 'message' }> = byId.get(cursorId)!
+        chain.unshift(clone(event))
+        const parentId: string | undefined = event.payload.parentId
+        if (parentId && byId.has(parentId)) {
+          cursorId = parentId
+          continue
+        }
+        const index = messages.findIndex(message => message.id === cursorId)
+        cursorId = index > 0 ? messages[index - 1]!.id : undefined
+      }
+      return chain
     })
   }
 
