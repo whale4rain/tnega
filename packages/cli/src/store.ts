@@ -231,6 +231,38 @@ export async function forkSessionAt(
   return readSessionSummary(workspace, fork.id)
 }
 
+export async function truncateSessionAt(
+  workspace: string,
+  id: string,
+  messageId: string,
+): Promise<SessionSummary> {
+  const file = sessionFile(workspace, id)
+  const lines = await readEventLines(file)
+  const events: SessionEvent[] = []
+  for (const line of lines) {
+    const event = parseSessionEvent(line)
+    if (event) events.push(event)
+  }
+  const targetIndex = events.findIndex(
+    event => event.id === messageId
+      && event.type === 'message'
+      && event.payload.role === 'user',
+  )
+  if (targetIndex < 0) {
+    throw new TypeError(`user message not found: ${messageId}`)
+  }
+  const meta = await readSessionMeta(file)
+  const next = [
+    JSON.stringify(meta),
+    ...events
+      .slice(0, targetIndex)
+      .filter(event => event.type !== 'meta')
+      .map(event => JSON.stringify(event)),
+  ]
+  await writeAtomic(file, `${next.join('\n')}\n`)
+  return readSessionSummary(workspace, id)
+}
+
 export async function deleteSession(workspace: string, id: string): Promise<void> {
   await rm(sessionFile(workspace, id), { force: true })
 }

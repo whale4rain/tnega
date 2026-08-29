@@ -20,6 +20,7 @@ import {
   renameSession,
   saveConfig,
   streamRun,
+  truncateSession,
 } from './api'
 import type {
   ConfigSnapshot,
@@ -520,8 +521,11 @@ function ChatView({
   const [runError, setRunError] = useState<string | null>(null)
   const [showJump, setShowJump] = useState(false)
   const [navIndex, setNavIndex] = useState(0)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const userRefs = useRef(new Map<string, HTMLDivElement>())
   const stickToBottomRef = useRef(true)
 
@@ -542,6 +546,8 @@ function ChatView({
     setNavIndex(0)
     userRefs.current.clear()
     stickToBottomRef.current = true
+    setEditingId(null)
+    setEditDraft('')
     scrollToBottom()
   }, [scrollToBottom, sessionId, workspace])
 
@@ -617,8 +623,9 @@ function ChatView({
 
   const running = runState === 'running' || runState === 'cancelling'
 
-  async function startRun() {
-    if (!workspace || !sessionId || !prompt.trim() || running) return
+  async function runPrompt(text: string) {
+    const sent = text.trim()
+    if (!workspace || !sessionId || !sent || running) return
     if (!apiKeySet) {
       setRunError('API key is not configured')
       return
@@ -635,11 +642,9 @@ function ChatView({
       {
         id: `live-user-${Date.now()}`,
         role: 'user',
-        content: prompt.trim(),
+        content: sent,
       },
     ])
-    const sent = prompt.trim()
-    setPrompt('')
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
@@ -682,10 +687,48 @@ function ChatView({
     }
   }
 
+  function startRun() {
+    if (!prompt.trim()) return
+    const sent = prompt.trim()
+    setPrompt('')
+    void runPrompt(sent)
+  }
+
   function cancelRun() {
     if (runState !== 'running') return
     setRunState('cancelling')
     abortRef.current?.abort()
+  }
+
+  function beginEdit(message: DisplayMessage) {
+    setEditingId(message.id)
+    setEditDraft(message.content)
+    stickToBottomRef.current = false
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditDraft('')
+  }
+
+  async function submitEdit() {
+    const content = editDraft.trim()
+    const id = editingId
+    if (!workspace || !sessionId || !id || !content) return
+    if (!apiKeySet) {
+      setRunError('API key is not configured')
+      return
+    }
+    setEditingId(null)
+    setEditDraft('')
+    try {
+      await api.truncateSession(workspace, sessionId, id)
+      await onRefresh(sessionId)
+    } catch (reason) {
+      setRunError(messageOf(reason))
+      return
+    }
+    await runPrompt(content)
   }
 
   function forkHere(messageId: string) {
@@ -829,6 +872,18 @@ function ChatView({
                     else userRefs.current.delete(message.id)
                   }
                 : undefined}
+              editing={editingId === message.id}
+              editDraft={editingId === message.id ? editDraft : ''}
+              onEditDraftChange={setEditDraft}
+              onBeginEdit={message.role === 'user' && !running
+                ? () => beginEdit(message)
+                : undefined}
+              onSubmitEdit={message.role === 'user' && editingId === message.id
+                ? () => void submitEdit()
+                : undefined}
+              onCancelEdit={message.role === 'user' && editingId === message.id
+                ? cancelEdit
+                : undefined}
               onForkAt={message.role === 'user' && !running
                 ? () => forkHere(message.id)
                 : undefined}
@@ -886,6 +941,7 @@ function ChatView({
           </label>
         </div>
         <textarea
+          ref={composerRef}
           value={prompt}
           onChange={event => setPrompt(event.target.value)}
           onKeyDown={event => {
@@ -930,10 +986,27 @@ interface MessageBlockProps {
   message: DisplayMessage
   active?: boolean
   userRef?: Ref<HTMLDivElement>
+  editing?: boolean
+  editDraft?: string
+  onEditDraftChange?: (value: string) => void
+  onBeginEdit?: () => void
+  onSubmitEdit?: () => void
+  onCancelEdit?: () => void
   onForkAt?: () => void
 }
 
-function MessageBlock({ message, active, userRef, onForkAt }: MessageBlockProps) {
+function MessageBlock({
+  message,
+  active,
+  userRef,
+  editing = false,
+  editDraft = '',
+  onEditDraftChange,
+  onBeginEdit,
+  onSubmitEdit,
+  onCancelEdit,
+  onForkAt,
+}: MessageBlockProps) {
   if (message.role === 'tool' && message.tool) {
     return <ToolBlock message={message} />
   }
@@ -946,7 +1019,7 @@ function MessageBlock({ message, active, userRef, onForkAt }: MessageBlockProps)
     )
   }
   const marker = message.role === 'user' ? '>' : message.role === 'assistant' ? '<' : '-'
-  const className = `message ${message.role}${active ? ' active-user' : ''}`
+  const className = `message ${message.role}${active ? ' active-user' : ''}${editing ? ' editing' : ''}`
   const isUser = message.role === 'user'
   return (
     <div className={className} ref={userRef}>
@@ -956,22 +1029,66 @@ function MessageBlock({ message, active, userRef, onForkAt }: MessageBlockProps)
           {message.pending ? ' ...' : ''}
           {message.finishReason ? ` / ${message.finishReason}` : ''}
         </span>
-        {isUser && onForkAt && (
+        {isUser && !editing && (onBeginEdit || onForkAt) && (
           <span className="message-menu">
-            <button
-              type="button"
-              className="icon-button"
-              onClick={onForkAt}
-              title="fork here"
-            >
-              [fork]
-            </button>
+            {onBeginEdit && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={onBeginEdit}
+                title="edit"
+              >
+                [edit]
+              </button>
+            )}
+            {onForkAt && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={onForkAt}
+                title="fork here"
+              >
+                [fork]
+              </button>
+            )}
           </span>
         )}
       </div>
-      <div className="message-body md">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-      </div>
+      {editing ? (
+        <div className="message-edit">
+          <textarea
+            value={editDraft}
+            onChange={event => onEditDraftChange?.(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                onSubmitEdit?.()
+              }
+              if (event.key === 'Escape') onCancelEdit?.()
+            }}
+            autoFocus
+            spellCheck={false}
+            rows={4}
+          />
+          <div className="message-edit-actions">
+            <button
+              type="button"
+              className="button-primary"
+              onClick={onSubmitEdit}
+              disabled={!editDraft.trim()}
+            >
+              [send]
+            </button>
+            <button type="button" onClick={onCancelEdit} title="cancel">
+              [x]
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="message-body md">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+        </div>
+      )}
     </div>
   )
 }
@@ -1310,6 +1427,7 @@ const api = {
   createSession,
   renameSession,
   forkSession,
+  truncateSession,
   deleteSession,
   saveConfig,
   streamRun,

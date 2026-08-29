@@ -263,6 +263,105 @@ describe('web server', () => {
     ])
   })
 
+  it('truncates and resends from a user message', async () => {
+    const dir = await tempDir('tnega-web-truncate-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('mock reply')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    async function run(prompt: string): Promise<void> {
+      const response = await apiFetch(
+        server.url,
+        `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt,
+            allowNetwork: false,
+            allowShell: false,
+          }),
+        },
+      )
+      expect(response.status).toBe(200)
+      await response.text()
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+
+    await run('first turn')
+    await run('second turn')
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        id: string
+        type: string
+        payload: { role?: string; content?: string }
+      }>
+    }
+    const messages = detail.events.filter(event => event.type === 'message')
+    const secondUser = messages.find(message => message.payload.content === 'second turn')!
+
+    const truncated = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/truncate?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ messageId: secondUser.id }),
+      },
+    )
+    expect(truncated.status).toBe(200)
+
+    const after = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        type: string
+        payload: { role?: string; content?: string }
+      }>
+    }
+    const afterMessages = after.events.filter(event => event.type === 'message')
+    expect(afterMessages.map(message => message.payload.content)).toEqual([
+      'first turn',
+      'mock reply',
+    ])
+
+    await run('edited second turn')
+    const edited = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        type: string
+        payload: { role?: string; content?: string }
+      }>
+    }
+    const editedMessages = edited.events.filter(event => event.type === 'message')
+    expect(editedMessages.map(message => message.payload.content)).toEqual([
+      'first turn',
+      'mock reply',
+      'edited second turn',
+      'mock reply',
+    ])
+  })
+
   it('streams a run through SSE and persists the final message', async () => {
     const dir = await tempDir('tnega-web-run-')
     const workspace = await mkdir(dir, 'workspace')

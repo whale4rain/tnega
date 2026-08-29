@@ -29,6 +29,7 @@ import {
   listSessions,
   readSessionSummary,
   setSessionTitle,
+  truncateSessionAt,
 } from './store.js'
 
 const DEFAULT_HOST = '127.0.0.1'
@@ -290,6 +291,20 @@ async function handleApi(
             title === undefined ? undefined : title,
           )
       sendJson(res, 201, { session: summary })
+      return
+    }
+    if (action === 'truncate' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      const body = await readJsonBody(req)
+      if (typeof body.messageId !== 'string' || !body.messageId) {
+        sendError(res, 400, 'messageId is required')
+        return
+      }
+      const summary = await truncateSessionAt(workspace, id, body.messageId)
+      sendJson(res, 200, { summary })
       return
     }
     if (action === 'runs' && req.method === 'POST') {

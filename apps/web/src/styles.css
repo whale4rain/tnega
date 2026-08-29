@@ -499,6 +499,26 @@ textarea {
   padding: 1px 4px;
 }
 
+.message-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.message-edit textarea {
+  min-height: 84px;
+}
+
+.message-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.message-edit-actions .button-primary {
+  min-height: 28px;
+}
+
 .message.system .message-label,
 .message.system {
   color: var(--danger);

@@ -130,6 +130,18 @@ export function forkSession(
   })
 }
 
+export function truncateSession(
+  workspace: string,
+  id: string,
+  messageId: string,
+): Promise<{ summary: SessionSummary }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${id}/truncate?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify({ messageId }),
+  })
+}
+
 export function deleteSession(workspace: string, id: string): Promise<void> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions/${id}?${query.toString()}`, {
