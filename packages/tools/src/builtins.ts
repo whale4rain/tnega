@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import {
   appendFile,
   mkdir,
@@ -645,12 +645,18 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   return definition(
     'shell',
     'Run a shell command inside the workspace and return { exitCode, stdout, stderr }. Disabled by default; enable with allowShell.',
-    async (input) => {
+    async (input, options: ToolExecuteOptions) => {
       const args = record(input)
       const command = stringField(args.command, 'command')
       const cwd = await resolveInside(config.cwd, optionalString(args.cwd, 'cwd') ?? '.')
       const timeoutMs = optionalNumber(args.timeoutMs, 'timeoutMs') ?? config.timeoutMs
-      const result = await runShellCommand(command, cwd, timeoutMs, config.maxWriteBytes)
+      const result = await runShellCommand(
+        command,
+        cwd,
+        timeoutMs,
+        config.maxWriteBytes,
+        options.signal,
+      )
       return {
         exitCode: result.exitCode,
         stdout: result.stdout,
@@ -675,24 +681,72 @@ interface ShellResult {
   stderr: string
 }
 
+async function killProcessTree(child: ChildProcess): Promise<void> {
+  if (child.pid === undefined) return
+  if (process.platform === 'win32') {
+    await new Promise<void>((resolve) => {
+      const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      killer.on('error', () => resolve())
+      killer.on('exit', () => resolve())
+    })
+  } else {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch {
+      // The process group is already gone.
+    }
+    child.kill('SIGKILL')
+  }
+}
+
 function runShellCommand(
   command: string,
   cwd: string,
   timeoutMs: number,
   maxBuffer: number,
+  signal?: AbortSignal,
 ): Promise<ShellResult> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd,
       shell: true,
-      timeout: timeoutMs,
       windowsHide: true,
+      ...(process.platform === 'win32' ? {} : { detached: true }),
     })
     let stdout = ''
     let stderr = ''
+    let settled = false
+    let timer: NodeJS.Timeout | undefined
+    let onAbort: () => void = () => {}
     const append = (target: string, chunk: Buffer, limit: number): string => {
       if (target.length >= limit) return target
       return target + chunk.toString('utf8').slice(0, limit - target.length)
+    }
+    const cleanup = (): void => {
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    }
+    const finish = (action: () => void): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      action()
+    }
+    const fail = (message: string): void => {
+      finish(() => {
+        void killProcessTree(child).finally(() => reject(new Error(message)))
+      })
+    }
+    onAbort = () => fail('shell command cancelled')
+    if (signal) {
+      if (signal.aborted) onAbort()
+      else signal.addEventListener('abort', onAbort, { once: true })
+    }
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => fail(`shell command timed out after ${timeoutMs}ms`), timeoutMs)
     }
     child.stdout.on('data', (chunk: Buffer) => {
       stdout = append(stdout, chunk, maxBuffer)
@@ -701,14 +755,14 @@ function runShellCommand(
       stderr = append(stderr, chunk, maxBuffer)
     })
     child.on('error', (error) => {
-      resolve({ exitCode: 1, stdout, stderr: message(error) })
+      finish(() => resolve({ exitCode: 1, stdout, stderr: message(error) }))
     })
-    child.on('close', (code, signal) => {
-      resolve({
+    child.on('close', (code, closeSignal) => {
+      finish(() => resolve({
         exitCode: code ?? 1,
         stdout,
-        stderr: signal ? `killed by ${signal}` : stderr,
-      })
+        stderr: closeSignal ? `killed by ${closeSignal}` : stderr,
+      }))
     })
   })
 }

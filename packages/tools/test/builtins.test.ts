@@ -367,4 +367,32 @@ describe('network and shell tools', () => {
     })
     expect(escape.error?.message).toContain('escapes')
   })
+
+  it('shell times out and kills the process tree', async () => {
+    const dir = await tempDir('tnega-tools-shell-timeout-')
+    const { service } = await mount({
+      cwd: dir,
+      allowShell: true,
+      timeoutMs: 200,
+    })
+    const result = await fail(service, 'shell', {
+      command: 'node -e "setInterval(() => {}, 1000)"',
+      timeoutMs: 200,
+    })
+    expect(result.error?.message).toContain('timed out')
+  })
+
+  it('shell cancels when the run signal aborts', async () => {
+    const dir = await tempDir('tnega-tools-shell-cancel-')
+    const { service } = await mount({ cwd: dir, allowShell: true })
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 50)
+    const result = await service.execute(
+      'shell',
+      { command: 'node -e "setInterval(() => {}, 1000)"' },
+      { signal: controller.signal },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.error?.message).toContain('cancelled')
+  })
 })
