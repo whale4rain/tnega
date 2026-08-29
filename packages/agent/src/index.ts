@@ -271,7 +271,7 @@ export class AgentService {
   }
 
   async run(input?: AgentInput, options: AgentRunOptions = {}): Promise<AgentRunResult> {
-    return consumeAgentStream(this._stream(input, options))
+    return consumeAgentStream(this._stream(input, options, false))
   }
 
   async *runStream(
@@ -289,6 +289,7 @@ export class AgentService {
   private async *_stream(
     input?: AgentInput,
     options: AgentRunOptions = {},
+    useStream = true,
   ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
     const claimed = input ?? this.inbox.claim()
     if (!claimed) throw new AgentError('no agent input available')
@@ -319,10 +320,6 @@ export class AgentService {
     })
 
     for (let index = 0; index < maxTurns; index++) {
-      if (options.signal?.aborted) {
-        finishReason = 'cancelled'
-        break
-      }
       if (steps.length >= maxSteps) {
         finishReason = 'max_steps'
         break
@@ -336,7 +333,7 @@ export class AgentService {
       if (options.signal) completeOptions.signal = options.signal
 
       let completion: LLMCompletion
-      const streamMethod = llm.stream
+      const streamMethod = useStream ? llm.stream : undefined
       if (streamMethod) {
         const streamEvents: LLMStreamEvent[] = []
         let cancelled = false
@@ -353,7 +350,13 @@ export class AgentService {
         if (cancelled) break
         completion = completionFromStreamEvents(streamEvents)
       } else {
-        completion = await llm.complete(stepInput, tools.list(), completeOptions)
+        try {
+          completion = await llm.complete(stepInput, tools.list(), completeOptions)
+        } catch (error) {
+          if (!options.signal?.aborted) throw error
+          finishReason = 'cancelled'
+          break
+        }
       }
 
       const toolCalls = completion.toolCalls ?? []
