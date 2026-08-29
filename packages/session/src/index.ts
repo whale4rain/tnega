@@ -27,7 +27,6 @@ export interface MessagePayload {
   role: MessageRole
   content: string
   name?: string
-  parentId?: string
 }
 
 export interface ToolCallPayload {
@@ -166,25 +165,6 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
   return messages
 }
 
-export function messageLineage(
-  events: readonly SessionEvent[],
-  messageId: string,
-): SessionEvent[] {
-  const byId = new Map<string, SessionEvent>()
-  for (const event of events) {
-    if (event.type === 'message') byId.set(event.id, event)
-  }
-  const path: SessionEvent[] = []
-  let cursor = byId.get(messageId)
-  while (cursor && cursor.type === 'message') {
-    path.unshift(clone(cursor))
-    cursor = cursor.payload.parentId
-      ? byId.get(cursor.payload.parentId)
-      : undefined
-  }
-  return path
-}
-
 function stringify(value: unknown): string {
   if (typeof value === 'string') return value
   try {
@@ -223,15 +203,6 @@ export class SessionLog {
         type: type as SessionEvent['type'],
         payload: clone(payload),
       } as SessionEvent
-      if (event.type === 'message') {
-        for (let index = this._events.length - 1; index >= 0; index -= 1) {
-          const previous = this._events[index]
-          if (previous?.type === 'message') {
-            event.payload.parentId = previous.id
-            break
-          }
-        }
-      }
       await appendFile(this.file, `${JSON.stringify(event)}\n`, 'utf8')
       this._events.push(event)
       this._nextSeq += 1

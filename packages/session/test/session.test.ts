@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
 import {
-  messageLineage,
   projectEvents,
   SessionLog,
   session,
@@ -82,26 +81,6 @@ describe('SessionLog append', () => {
     expect(events.map(event => (event.payload as { content: string }).content)).toEqual(['a', 'b', 'c'])
   })
 
-  it('links message events to their predecessor', async () => {
-    const log = new SessionLog(await tempFile('parent.jsonl'))
-    const user = await log.append('message', { role: 'user', content: 'hello' })
-    const assistant = await log.append('message', { role: 'assistant', content: 'world' })
-    const next = await log.append('message', { role: 'user', content: 'again' })
-
-    expect((user.payload as { parentId?: string }).parentId).toBeUndefined()
-    expect((assistant.payload as { parentId?: string }).parentId).toBe(user.id)
-    expect((next.payload as { parentId?: string }).parentId).toBe(assistant.id)
-  })
-
-  it('resolves the parent chain for a message', async () => {
-    const log = new SessionLog(await tempFile('lineage.jsonl'))
-    const user = await log.append('message', { role: 'user', content: 'hello' })
-    const assistant = await log.append('message', { role: 'assistant', content: 'world' })
-    const next = await log.append('message', { role: 'user', content: 'again' })
-
-    const lineage = messageLineage(await log.read(), next.id)
-    expect(lineage.map(event => event.id)).toEqual([user.id, assistant.id, next.id])
-  })
 })
 
 describe('SessionLog deriveMessages', () => {
@@ -231,17 +210,6 @@ describe('SessionLog fork', () => {
     expect(await source.read()).toHaveLength(2)
   })
 
-  it('keeps predecessor links when the fork continues', async () => {
-    const source = new SessionLog(await tempFile('fork-parent-link.jsonl'))
-    const user = await source.append('message', { role: 'user', content: 'hello' })
-    const assistant = await source.append('message', { role: 'assistant', content: 'world' })
-    const child = await source.fork(await tempFile('fork-child-link.jsonl'))
-
-    const next = await child.append('message', { role: 'user', content: 'child only' })
-    expect((next.payload as { parentId?: string }).parentId).toBe(assistant.id)
-    expect((await child.read()).map(event => (event.type === 'message' ? event.payload.parentId : undefined)))
-      .toEqual([undefined, user.id, assistant.id])
-  })
 })
 
 describe('SessionLog compact', () => {

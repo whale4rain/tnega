@@ -21,7 +21,6 @@ export interface MessagePayload {
   role: 'system' | 'user' | 'assistant'
   content: string
   name?: string
-  parentId?: string
 }
 
 export interface ToolCallPayload {
@@ -138,7 +137,6 @@ export interface DisplayMessage {
   id: string
   role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
-  parentId?: string
   tool?: DisplayTool
   finishReason?: string
   pending?: boolean
