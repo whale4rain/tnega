@@ -561,6 +561,19 @@ textarea {
   background: var(--surface-card);
   border: 1px solid var(--hairline);
   border-radius: 4px;
+  font-family:
+    "Cascadia Code",
+    "JetBrains Mono",
+    "Fira Code",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 13px;
   overflow-x: auto;
   padding: 8px 10px;
 }
@@ -568,6 +581,18 @@ textarea {
 .md code {
   background: var(--surface-card);
   border-radius: 4px;
+  font-family:
+    "Cascadia Code",
+    "JetBrains Mono",
+    "Fira Code",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
   padding: 0 4px;
 }
 
