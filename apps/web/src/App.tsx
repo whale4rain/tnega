@@ -1213,13 +1213,10 @@ function ToolBlock({ message }: { message: DisplayMessage }) {
 
 function CompactionBlock({ message }: { message: DisplayMessage }) {
   const [open, setOpen] = useState(false)
-  const marker = open ? '[-]' : '[+]'
-  const count = message.snapshotCount ?? 0
   const tokens = message.tokensBefore
-  const meta = [
-    count > 0 ? `${count} events` : '',
-    tokens !== undefined ? `${tokens.toLocaleString()} tokens before` : '',
-  ].filter(Boolean).join(' / ')
+  const tokenText = tokens !== undefined
+    ? `${tokens.toLocaleString()} tokens`
+    : 'context'
   return (
     <div className="message compaction">
       <button
@@ -1227,27 +1224,19 @@ function CompactionBlock({ message }: { message: DisplayMessage }) {
         className="compaction-toggle"
         onClick={() => setOpen(open => !open)}
       >
-        <span className="marker">{marker}</span>
-        <span className="compaction-status">compacted</span>
-        <span className="compaction-meta">{meta}</span>
+        <span className="marker">{open ? '[-]' : '[+]'}</span>
+        <span className="compaction-status">[compaction]</span>
+        <span className="compaction-meta">
+          {open
+            ? `compacted from ${tokenText}`
+            : `compacted from ${tokenText} (expand)`}
+        </span>
       </button>
-      {open && (
-        <div className="compaction-detail">
-          {message.content && (
-            <div className="compaction-summary md">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content}
-              </ReactMarkdown>
-            </div>
-          )}
-          {message.snapshot && message.snapshot.length > 0 && (
-            <div className="compaction-snapshot">
-              <div className="compaction-snapshot-title">previous conversation</div>
-              {message.snapshot.map(item => (
-                <MessageBlock key={item.id} message={item} />
-              ))}
-            </div>
-          )}
+      {open && message.content && (
+        <div className="compaction-summary md">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {message.content}
+          </ReactMarkdown>
         </div>
       )}
     </div>
@@ -1452,14 +1441,13 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
       case 'checkpoint': {
         const snapshot = event.payload.snapshot
         if (snapshot?.length) {
+          messages.push(...projectEvents(snapshot))
           messages.push({
             id: event.id,
             role: 'system',
             content: event.payload.summary ?? '',
             compacted: true,
-            snapshotCount: snapshot.length,
             tokensBefore: event.payload.tokensBefore,
-            snapshot: projectEvents(snapshot),
           })
         } else {
           for (const item of event.payload.messages) {

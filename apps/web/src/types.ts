@@ -134,7 +134,5 @@ export interface DisplayMessage {
   finishReason?: string
   pending?: boolean
   compacted?: boolean
-  snapshotCount?: number
   tokensBefore?: number
-  snapshot?: DisplayMessage[]
 }
