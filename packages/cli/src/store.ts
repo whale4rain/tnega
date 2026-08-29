@@ -191,60 +191,25 @@ export async function setSessionTitle(
 export async function forkSession(
   workspace: string,
   id: string,
-  title?: string,
+  options: { title?: string; messageId?: string } = {},
 ): Promise<SessionSummary> {
   const source = sessionFile(workspace, id)
-  const lines = await readEventLines(source)
   const meta = await readSessionMeta(source)
+  const log = new SessionLog(source)
+  await log.init()
+  const allEvents = await log.read()
+  const events = options.messageId
+    ? await log.forkAt(options.messageId)
+    : allEvents.filter(event => event.type !== 'meta')
   const fork = await createSession(workspace, {
-    title: title?.trim() || `${meta.payload.title} fork`,
+    title: options.title?.trim() || `${meta.payload.title} fork`,
     createdAt: meta.payload.createdAt,
     parentSessionId: id,
+    ...(options.messageId ? { forkedAtMessageId: options.messageId } : {}),
   })
   const target = sessionFile(workspace, fork.id)
   const forkMeta = await readSessionMeta(target)
-  const next = [JSON.stringify(forkMeta), ...lines.filter(line => !isMetaLine(line))]
-  await writeAtomic(target, `${next.join('\n')}\n`)
-  return readSessionSummary(workspace, fork.id)
-}
-
-export async function forkSessionAt(
-  workspace: string,
-  id: string,
-  messageId: string,
-  title?: string,
-): Promise<SessionSummary> {
-  const source = sessionFile(workspace, id)
-  const lines = await readEventLines(source)
-  const events: SessionEvent[] = []
-  for (const line of lines) {
-    const event = parseSessionEvent(line)
-    if (event) events.push(event)
-  }
-  const targetIndex = events.findIndex(
-    event => event.id === messageId
-      && event.type === 'message'
-      && event.payload.role === 'user',
-  )
-  if (targetIndex < 0) {
-    throw new TypeError(`user message not found: ${messageId}`)
-  }
-  const meta = await readSessionMeta(source)
-  const fork = await createSession(workspace, {
-    title: title?.trim() || `${meta.payload.title} fork`,
-    createdAt: meta.payload.createdAt,
-    parentSessionId: id,
-    forkedAtMessageId: messageId,
-  })
-  const target = sessionFile(workspace, fork.id)
-  const forkMeta = await readSessionMeta(target)
-  const selected = events
-    .slice(0, targetIndex + 1)
-    .filter(event => event.type !== 'meta')
-  const next = [JSON.stringify(forkMeta)]
-  selected.forEach((event, index) => {
-    next.push(JSON.stringify({ ...event, seq: index + 2 }))
-  })
+  const next = [JSON.stringify(forkMeta), ...events.map(event => JSON.stringify(event))]
   await writeAtomic(target, `${next.join('\n')}\n`)
   return readSessionSummary(workspace, fork.id)
 }

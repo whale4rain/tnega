@@ -127,6 +127,92 @@ describe('SessionLog lineage', () => {
   })
 })
 
+describe('SessionLog forkAt', () => {
+  it('copies the message lineage up to the selected message', async () => {
+    const log = new SessionLog(await tempFile('fork-at.jsonl'))
+    const a = await log.append('message', { role: 'user', content: 'a' })
+    await log.append('message', { role: 'assistant', content: 'b' })
+    const c = await log.append('message', { role: 'user', content: 'c' })
+    await log.append('message', { role: 'assistant', content: 'd' })
+
+    const events = await log.forkAt(c.id)
+    expect(events.map(event => event.type)).toEqual(['message', 'message', 'message'])
+    expect(events.map(event => (event.payload as { content: string }).content)).toEqual([
+      'a',
+      'b',
+      'c',
+    ])
+    expect(events.map(event => event.id)).toEqual([a.id, (await log.read())[1]!.id, c.id])
+  })
+
+  it('follows parent links instead of raw event order', async () => {
+    const file = await tempFile('fork-at-lineage.jsonl')
+    const events = [
+      {
+        id: 'root',
+        seq: 1,
+        ts: 1,
+        type: 'message',
+        payload: { role: 'user', content: 'root', parentId: 'missing' },
+      },
+      {
+        id: 'branch',
+        seq: 2,
+        ts: 2,
+        type: 'message',
+        payload: { role: 'assistant', content: 'branch', parentId: 'root' },
+      },
+      {
+        id: 'orphan',
+        seq: 3,
+        ts: 3,
+        type: 'message',
+        payload: { role: 'user', content: 'orphan', parentId: 'branch' },
+      },
+      {
+        id: 'orphan-tool',
+        seq: 4,
+        ts: 4,
+        type: 'tool-call',
+        payload: { id: 'tool-1', name: 'orphan-tool', arguments: {} },
+      },
+      {
+        id: 'first',
+        seq: 5,
+        ts: 5,
+        type: 'message',
+        payload: { role: 'user', content: 'first', parentId: 'branch' },
+      },
+      {
+        id: 'second',
+        seq: 6,
+        ts: 6,
+        type: 'message',
+        payload: { role: 'assistant', content: 'second', parentId: 'first' },
+      },
+    ]
+    await writeFile(file, `${events.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
+
+    const log = new SessionLog(file)
+    await log.init()
+    const selected = await log.forkAt('second')
+    expect(selected.map(event => event.id)).toEqual(['root', 'branch', 'first', 'second'])
+  })
+
+  it('keeps a checkpoint prefix when history starts before the lineage', async () => {
+    const log = new SessionLog(await tempFile('fork-at-checkpoint.jsonl'))
+    await log.append('message', { role: 'user', content: 'old user' })
+    await log.append('message', { role: 'assistant', content: 'old reply' })
+    await log.compact()
+    const next = await log.append('message', { role: 'user', content: 'recent' })
+
+    const selected = await log.forkAt(next.id)
+    expect(selected.map(event => event.type)).toEqual(['checkpoint', 'message'])
+    const checkpoint = selected[0]!.payload as { snapshot?: SessionEvent[] }
+    expect(checkpoint.snapshot?.length).toBe(2)
+  })
+})
+
 describe('SessionLog deriveMessages', () => {
   it('projects user, assistant, tool call and tool result history', async () => {
     const log = new SessionLog(await tempFile('derive.jsonl'))
@@ -225,35 +311,6 @@ describe('SessionLog replay', () => {
     }, [])
     expect(contents).toEqual(['a', 'b'])
   })
-})
-
-describe('SessionLog fork', () => {
-  it('forks an isolated copy with the same events and seq', async () => {
-    const source = new SessionLog(await tempFile('fork-source.jsonl'))
-    await source.append('message', { role: 'user', content: 'hello' })
-    await source.append('message', { role: 'assistant', content: 'world' })
-
-    const targetFile = await tempFile('fork-target.jsonl')
-    const child = await source.fork(targetFile)
-
-    expect(await child.read()).toEqual(await source.read())
-    const event = await child.append('message', { role: 'user', content: 'child only' })
-    expect(event.seq).toBe(3)
-    expect(await child.read()).toHaveLength(3)
-    expect(await source.read()).toHaveLength(2)
-  })
-
-  it('lets the parent append without affecting the fork', async () => {
-    const source = new SessionLog(await tempFile('fork-parent.jsonl'))
-    await source.append('message', { role: 'user', content: 'parent' })
-    const child = await source.fork(await tempFile('fork-child.jsonl'))
-
-    await source.append('message', { role: 'assistant', content: 'parent later' })
-
-    expect(await child.read()).toHaveLength(1)
-    expect(await source.read()).toHaveLength(2)
-  })
-
 })
 
 describe('SessionLog compact', () => {

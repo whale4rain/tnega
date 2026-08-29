@@ -225,31 +225,44 @@ export class SessionLog {
   async lineage(messageId: string): Promise<SessionEvent[]> {
     return this._run(async () => {
       await this._ensureLoaded()
-      const messages = this._events.filter(
-        (event): event is Extract<SessionEvent, { type: 'message' }> => event.type === 'message',
+      return this._resolveLineage(messageId)
+    })
+  }
+
+  async forkAt(messageId: string): Promise<SessionEvent[]> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      const lineage = this._resolveLineage(messageId)
+      const lineageIds = new Set(lineage.map(event => event.id))
+      const targetIndex = this._events.findIndex(
+        event => event.id === messageId && event.type === 'message',
       )
-      const byId = new Map<string, Extract<SessionEvent, { type: 'message' }>>(
-        messages.map(event => [event.id, event] as const),
-      )
-      if (!byId.has(messageId)) {
+      if (targetIndex < 0) {
         throw new Error(`message not found: ${messageId}`)
       }
-      const chain: SessionEvent[] = []
-      const seen = new Set<string>()
-      let cursorId: string | undefined = messageId
-      while (cursorId && byId.has(cursorId) && !seen.has(cursorId)) {
-        seen.add(cursorId)
-        const event: Extract<SessionEvent, { type: 'message' }> = byId.get(cursorId)!
-        chain.unshift(clone(event))
-        const parentId: string | undefined = event.payload.parentId
-        if (parentId && byId.has(parentId)) {
-          cursorId = parentId
+      const selected: SessionEvent[] = []
+      let skippedMessage = false
+      for (let index = 0; index <= targetIndex; index += 1) {
+        const event = this._events[index]!
+        if (event.type === 'message') {
+          if (!lineageIds.has(event.id)) {
+            skippedMessage = true
+            continue
+          }
+          skippedMessage = false
+          selected.push(clone(event))
           continue
         }
-        const index = messages.findIndex(message => message.id === cursorId)
-        cursorId = index > 0 ? messages[index - 1]!.id : undefined
+        if (event.type === 'meta') continue
+        if (event.type === 'checkpoint') {
+          selected.push(clone(event))
+          continue
+        }
+        if (!skippedMessage) {
+          selected.push(clone(event))
+        }
       }
-      return chain
+      return selected
     })
   }
 
@@ -280,24 +293,6 @@ export class SessionLog {
         })
       }
       return pending.then(() => state)
-    })
-  }
-
-  async fork(targetFile?: string): Promise<SessionLog> {
-    const file = targetFile ?? `${this.file}.${Date.now()}.${randomUUID()}.fork.jsonl`
-    return this._run(async () => {
-      await this._ensureLoaded()
-      const child = new SessionLog(file)
-      await child._run(async () => {
-        await child._ensureLoaded()
-        const events = this._events.map(event => clone(event))
-        if (events.length) {
-          await writeFile(child.file, `${events.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
-        }
-        child._events = events
-        child._nextSeq = this._nextSeq
-      })
-      return child
     })
   }
 
@@ -370,6 +365,34 @@ export class SessionLog {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
       throw error
     }
+  }
+
+  private _resolveLineage(messageId: string): SessionEvent[] {
+    const messages = this._events.filter(
+      (event): event is Extract<SessionEvent, { type: 'message' }> => event.type === 'message',
+    )
+    const byId = new Map<string, Extract<SessionEvent, { type: 'message' }>>(
+      messages.map(event => [event.id, event] as const),
+    )
+    if (!byId.has(messageId)) {
+      throw new Error(`message not found: ${messageId}`)
+    }
+    const chain: SessionEvent[] = []
+    const seen = new Set<string>()
+    let cursorId: string | undefined = messageId
+    while (cursorId && byId.has(cursorId) && !seen.has(cursorId)) {
+      seen.add(cursorId)
+      const event: Extract<SessionEvent, { type: 'message' }> = byId.get(cursorId)!
+      chain.unshift(clone(event))
+      const parentId: string | undefined = event.payload.parentId
+      if (parentId && byId.has(parentId)) {
+        cursorId = parentId
+        continue
+      }
+      const index = messages.findIndex(message => message.id === cursorId)
+      cursorId = index > 0 ? messages[index - 1]!.id : undefined
+    }
+    return chain
   }
 }
 

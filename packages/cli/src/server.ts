@@ -26,7 +26,6 @@ import {
   ensureWorkspace,
   estimateContextUsage,
   forkSession,
-  forkSessionAt,
   isSessionId,
   listSessions,
   prepareSessionCompact,
@@ -359,22 +358,12 @@ async function handleApi(
     }
     if (action === 'fork' && req.method === 'POST') {
       const body = await readJsonBody(req)
-      const title = typeof body.title === 'string' ? body.title : undefined
-      const messageId = typeof body.messageId === 'string' && body.messageId
-        ? body.messageId
-        : undefined
-      const summary = messageId
-        ? await forkSessionAt(
-            workspace,
-            id,
-            messageId,
-            title === undefined ? undefined : title,
-          )
-        : await forkSession(
-            workspace,
-            id,
-            title === undefined ? undefined : title,
-          )
+      const summary = await forkSession(workspace, id, {
+        ...(typeof body.title === 'string' ? { title: body.title } : {}),
+        ...(typeof body.messageId === 'string' && body.messageId
+          ? { messageId: body.messageId }
+          : {}),
+      })
       sendJson(res, 201, { session: summary })
       return
     }
