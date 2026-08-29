@@ -470,7 +470,17 @@ textarea {
 
 .message.user.active-user {
   background: var(--surface-soft);
-  box-shadow: inset 3px 0 0 var(--accent);
+  position: relative;
+}
+
+.message.user.active-user::before {
+  background: var(--accent);
+  bottom: 0;
+  content: "";
+  left: -16px;
+  position: absolute;
+  top: 0;
+  width: 3px;
 }
 
 .message.system .message-label,

@@ -540,7 +540,8 @@ function ChatView({
   useEffect(() => {
     if (!stickToBottomRef.current) return
     scrollToBottom()
-  }, [messages])
+    if (userIndexes.length) setNavIndex(userIndexes.length - 1)
+  }, [messages, scrollToBottom, userIndexes.length])
 
   function handleMessagesScroll() {
     const node = scrollRef.current
@@ -548,6 +549,29 @@ function ChatView({
     const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80
     stickToBottomRef.current = nearBottom
     setShowJump(!nearBottom && node.scrollHeight > node.clientHeight + 1)
+    updateActiveUserFromScroll()
+  }
+
+  function updateActiveUserFromScroll() {
+    const node = scrollRef.current
+    if (!node) return
+    const threshold = node.scrollTop + node.clientHeight * 0.5
+    let activeIndex = 0
+    let bestDistance = Infinity
+    for (let index = 0; index < userIndexes.length; index += 1) {
+      const message = messages[userIndexes[index]]
+      const element = message ? userRefs.current.get(message.id) : undefined
+      if (!element) continue
+      const top = element.getBoundingClientRect().top
+        - node.getBoundingClientRect().top
+        + node.scrollTop
+      const distance = Math.abs(top - threshold)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        activeIndex = index
+      }
+    }
+    if (activeIndex !== navIndex) setNavIndex(activeIndex)
   }
 
   function jumpToBottom() {
