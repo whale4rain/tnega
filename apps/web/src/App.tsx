@@ -529,6 +529,7 @@ function ChatView({
   const [allowNetwork, setAllowNetwork] = useState(false)
   const [allowShell, setAllowShell] = useState(false)
   const [runState, setRunState] = useState<RunState>('idle')
+  const [compacting, setCompacting] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
   const [showJump, setShowJump] = useState(false)
   const [navIndex, setNavIndex] = useState(0)
@@ -636,7 +637,7 @@ function ChatView({
 
   async function runPrompt(text: string) {
     const sent = text.trim()
-    if (!workspace || !sessionId || !sent || running) return
+    if (!workspace || !sessionId || !sent || running || compacting) return
     if (!apiKeySet) {
       setRunError('API key is not configured')
       return
@@ -748,13 +749,16 @@ function ChatView({
   }
 
   async function handleCompact() {
-    if (!workspace || !sessionId || running) return
+    if (!workspace || !sessionId || running || compacting) return
     setRunError(null)
+    setCompacting(true)
     try {
       await api.compactSession(workspace, sessionId)
       await onRefresh(sessionId)
     } catch (reason) {
       setRunError(messageOf(reason))
+    } finally {
+      setCompacting(false)
     }
   }
 
@@ -884,10 +888,10 @@ function ChatView({
               type="button"
               className="icon-button"
               onClick={() => void handleCompact()}
-              disabled={running}
+              disabled={running || compacting}
               title="compact context"
             >
-              [compact]
+              {compacting ? '[compacting]' : '[compact]'}
             </button>
           </div>
         </div>
@@ -909,7 +913,7 @@ function ChatView({
               editing={editingId === message.id}
               editDraft={editingId === message.id ? editDraft : ''}
               onEditDraftChange={setEditDraft}
-              onBeginEdit={message.role === 'user' && !running
+              onBeginEdit={message.role === 'user' && !running && !compacting
                 ? () => beginEdit(message)
                 : undefined}
               onSubmitEdit={message.role === 'user' && editingId === message.id
@@ -918,13 +922,16 @@ function ChatView({
               onCancelEdit={message.role === 'user' && editingId === message.id
                 ? cancelEdit
                 : undefined}
-              onForkAt={message.role === 'user' && !running
+              onForkAt={message.role === 'user' && !running && !compacting
                 ? () => forkHere(message.id)
                 : undefined}
             />
           ))}
           {runState === 'cancelling' && (
             <div className="run-note">cancelling</div>
+          )}
+          {compacting && (
+            <div className="run-note">compacting context...</div>
           )}
         </div>
         <ConversationNav
@@ -958,7 +965,7 @@ function ChatView({
               type="checkbox"
               checked={allowNetwork}
               onChange={event => setAllowNetwork(event.target.checked)}
-              disabled={running}
+              disabled={running || compacting}
             />
             <span className="toggle-mark">{allowNetwork ? '[x]' : '[ ]'}</span>
             <span>allowNetwork</span>
@@ -968,7 +975,7 @@ function ChatView({
               type="checkbox"
               checked={allowShell}
               onChange={event => setAllowShell(event.target.checked)}
-              disabled={running}
+              disabled={running || compacting}
             />
             <span className="toggle-mark">{allowShell ? '[x]' : '[ ]'}</span>
             <span>allowShell</span>
@@ -986,7 +993,7 @@ function ChatView({
           }}
           placeholder="prompt"
           rows={4}
-          disabled={running}
+          disabled={running || compacting}
           spellCheck={false}
         />
         <div className="composer-actions">
@@ -1004,7 +1011,7 @@ function ChatView({
               type="button"
               className="button-primary"
               onClick={() => void startRun()}
-              disabled={!prompt.trim() || !apiKeySet}
+              disabled={!prompt.trim() || !apiKeySet || compacting}
             >
               [run]
             </button>
