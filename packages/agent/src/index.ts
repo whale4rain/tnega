@@ -154,6 +154,30 @@ export interface AgentTurnEndEvent {
 
 export type AgentEndEvent = AgentTurnEndEvent
 
+export interface AgentToolStartEvent {
+  type: 'tool/start'
+  index: number
+  call: LLMToolCall
+}
+
+export interface AgentToolEndEvent {
+  type: 'tool/end'
+  index: number
+  call: LLMToolCall
+  result: ToolResult
+}
+
+export interface AgentRunEndEvent {
+  type: 'run/end'
+  run: AgentRunResult
+}
+
+export type AgentStreamEvent =
+  | LLMStreamEvent
+  | AgentToolStartEvent
+  | AgentToolEndEvent
+  | AgentRunEndEvent
+
 export type AgentLoop = (
   input?: AgentInput,
   options?: AgentRunOptions,
@@ -247,6 +271,25 @@ export class AgentService {
   }
 
   async run(input?: AgentInput, options: AgentRunOptions = {}): Promise<AgentRunResult> {
+    return consumeAgentStream(this._stream(input, options))
+  }
+
+  async *runStream(
+    input?: AgentInput,
+    options: AgentRunOptions = {},
+  ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
+    const iterator = this._stream(input, options)[Symbol.asyncIterator]()
+    while (true) {
+      const next = await iterator.next()
+      if (next.done) return next.value
+      yield next.value
+    }
+  }
+
+  private async *_stream(
+    input?: AgentInput,
+    options: AgentRunOptions = {},
+  ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
     const claimed = input ?? this.inbox.claim()
     if (!claimed) throw new AgentError('no agent input available')
 
@@ -277,7 +320,7 @@ export class AgentService {
 
     for (let index = 0; index < maxTurns; index++) {
       if (options.signal?.aborted) {
-        finishReason = 'error'
+        finishReason = 'cancelled'
         break
       }
       if (steps.length >= maxSteps) {
@@ -291,7 +334,27 @@ export class AgentService {
         maxSteps: maxSteps - steps.length,
       }
       if (options.signal) completeOptions.signal = options.signal
-      const completion = await llm.complete(stepInput, tools.list(), completeOptions)
+
+      let completion: LLMCompletion
+      const streamMethod = llm.stream
+      if (streamMethod) {
+        const streamEvents: LLMStreamEvent[] = []
+        let cancelled = false
+        try {
+          for await (const event of streamMethod(stepInput, tools.list(), completeOptions)) {
+            streamEvents.push(event)
+            yield event
+          }
+        } catch (error) {
+          if (!options.signal?.aborted) throw error
+          finishReason = 'cancelled'
+          cancelled = true
+        }
+        if (cancelled) break
+        completion = completionFromStreamEvents(streamEvents)
+      } else {
+        completion = await llm.complete(stepInput, tools.list(), completeOptions)
+      }
 
       const toolCalls = completion.toolCalls ?? []
       const toolResults: ToolResult[] = []
@@ -303,12 +366,15 @@ export class AgentService {
       }
       for (const call of toolCalls) {
         this.ctx.emit('agent/tool-call', { index, call })
+        yield { type: 'tool/start', index, call }
         await session.append('tool-call', {
           id: call.id,
           name: call.name,
           arguments: call.arguments,
         })
-        const result = await tools.execute(call.name, call.arguments, { callId: call.id })
+        const toolOptions: { callId: string; signal?: AbortSignal } = { callId: call.id }
+        if (options.signal) toolOptions.signal = options.signal
+        const result = await tools.execute(call.name, call.arguments, toolOptions)
         toolResults.push(result)
         const toolResultPayload: ToolResultPayload = {
           id: call.id,
@@ -324,7 +390,12 @@ export class AgentService {
           if (result.error.stack) toolResultPayload.error.stack = result.error.stack
         }
         await session.append('tool-result', toolResultPayload)
+        yield { type: 'tool/end', index, call, result }
         this.ctx.emit('agent/tool-result', { index, call, result })
+      }
+      if (options.signal?.aborted) {
+        finishReason = 'cancelled'
+        break
       }
 
       steps.push({
@@ -357,6 +428,13 @@ export class AgentService {
       }
     }
 
+    const runResult: AgentRunResult = {
+      input: claimed,
+      output,
+      finishReason,
+      steps,
+      messages: copyMessages(messages),
+    }
     this.ctx.emit('agent/turn-end', {
       input: claimed,
       steps: copySteps(steps),
@@ -372,13 +450,8 @@ export class AgentService {
       finishReason,
     })
 
-    return {
-      input: claimed,
-      output,
-      finishReason,
-      steps,
-      messages: copyMessages(messages),
-    }
+    yield { type: 'run/end', run: runResult }
+    return runResult
   }
 
   private _initialMessages(input: AgentInput): ModelMessage[] {
@@ -449,6 +522,39 @@ function copySteps(steps: readonly AgentStep[]): readonly AgentStep[] {
     completion: copyCompletion(step.completion),
     toolResults: step.toolResults.map(result => ({ ...result })),
   }))
+}
+
+function completionFromStreamEvents(events: readonly LLMStreamEvent[]): LLMCompletion {
+  let content = ''
+  const calls = new Map<number, LLMToolCall>()
+  let finishReason: AgentFinishReason = 'error'
+  for (const event of events) {
+    if (event.type === 'message_delta') {
+      content += event.delta
+    } else if (event.type === 'toolcall_end') {
+      calls.set(event.index, {
+        id: event.id,
+        name: event.name,
+        arguments: event.arguments,
+      })
+    } else if (event.type === 'message_stop') {
+      finishReason = event.finishReason
+    }
+  }
+  const completion: LLMCompletion = { finishReason }
+  if (content) completion.content = content
+  if (calls.size) completion.toolCalls = [...calls.values()]
+  return completion
+}
+
+async function consumeAgentStream(
+  stream: AsyncGenerator<AgentStreamEvent, AgentRunResult, void>,
+): Promise<AgentRunResult> {
+  const iterator = stream[Symbol.asyncIterator]()
+  while (true) {
+    const next = await iterator.next()
+    if (next.done) return next.value
+  }
 }
 
 export const agent = {

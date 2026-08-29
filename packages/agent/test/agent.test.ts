@@ -11,12 +11,15 @@ import {
   agent,
   AgentError,
   AgentInbox,
+  type AgentService,
+  type AgentStreamEvent,
   type AgentLoop,
   type AgentRunResult,
   type AgentToolCallEvent,
   type AgentToolResultEvent,
   type LLMAdapter,
   type LLMCompletion,
+  type LLMStreamEvent,
   type LLMToolCall,
 } from '../src/index.js'
 
@@ -59,6 +62,34 @@ function fakeLLM(sequence: Array<Omit<LLMCompletion, 'finishReason'> & { finishR
 
 function toolCall(id: string, name: string, argumentsValue: unknown): LLMToolCall {
   return { id, name, arguments: argumentsValue }
+}
+
+function streamingLLM(events: readonly LLMStreamEvent[]): LLMAdapter {
+  return {
+    complete: async () => {
+      throw new Error('complete should not be used')
+    },
+    stream: async function* () {
+      yield* events
+    },
+  }
+}
+
+async function collectStream(
+  stream: AsyncGenerator<AgentStreamEvent, AgentRunResult, void>,
+): Promise<{ events: AgentStreamEvent[]; result: AgentRunResult }> {
+  const events: AgentStreamEvent[] = []
+  let result: AgentRunResult | undefined
+  const iterator = stream[Symbol.asyncIterator]()
+  while (true) {
+    const next = await iterator.next()
+    if (next.done) {
+      result = next.value
+      break
+    }
+    events.push(next.value)
+  }
+  return { events, result: result! }
 }
 
 function addTool(): ToolDefinition {
@@ -383,6 +414,176 @@ describe('agent loop', () => {
     const loop = root.get('agentLoop') as AgentLoop
     const result = await loop({ text: 'go' }, { signal: controller.signal })
     expect(result.steps).toHaveLength(0)
-    expect(result.finishReason).toBe('error')
+    expect(result.finishReason).toBe('cancelled')
+  })
+
+  it('streams LLM deltas and returns the collected result', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream.jsonl') })
+    await root.plugin(tools)
+    const adapter = streamingLLM([
+      { type: 'message_start', id: 'm1', model: 'test-model' },
+      { type: 'message_delta', id: 'm1', delta: 'hel' },
+      { type: 'message_delta', id: 'm1', delta: 'lo' },
+      { type: 'message_stop', id: 'm1', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    const { events, result } = await collectStream(service.runStream({ text: 'hi' }))
+
+    expect(events.map(event => event.type)).toEqual([
+      'message_start',
+      'message_delta',
+      'message_delta',
+      'message_stop',
+      'run/end',
+    ])
+    expect(result.output).toBe('hello')
+    expect(result.finishReason).toBe('stop')
+
+    const log = dynamic(root).session as SessionLog
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+    ])
+  })
+
+  it('streams tool start and end events around a tool call', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-tools.jsonl') })
+    await root.plugin(tools)
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register(addTool())
+    let streamCalls = 0
+    const adapter: LLMAdapter = {
+      complete: async () => ({ content: '3', finishReason: 'stop' }),
+      stream: async function* () {
+        streamCalls += 1
+        if (streamCalls === 1) {
+          yield { type: 'message_start', id: 'm1' }
+          yield {
+            type: 'toolcall_start',
+            id: 'c1',
+            index: 0,
+            name: 'add',
+          }
+          yield {
+            type: 'toolcall_end',
+            id: 'c1',
+            index: 0,
+            name: 'add',
+            arguments: { a: 1, b: 2 },
+          }
+          yield { type: 'message_stop', id: 'm1', finishReason: 'tool_calls' }
+          return
+        }
+        yield { type: 'message_start', id: 'm2' }
+        yield { type: 'message_delta', id: 'm2', delta: '3' }
+        yield { type: 'message_stop', id: 'm2', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    const { events, result } = await collectStream(service.runStream({ text: '1+2' }))
+
+    expect(events.map(event => event.type)).toEqual([
+      'message_start',
+      'toolcall_start',
+      'toolcall_end',
+      'message_stop',
+      'tool/start',
+      'tool/end',
+      'message_start',
+      'message_delta',
+      'message_stop',
+      'run/end',
+    ])
+    expect(result.output).toBe('3')
+    expect(result.finishReason).toBe('stop')
+    const toolEnd = events.find(event => event.type === 'tool/end')
+    expect(toolEnd && toolEnd.type === 'tool/end' ? toolEnd.result.output : undefined).toBe(3)
+
+    const log = dynamic(root).session as SessionLog
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: '1+2' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'c1', name: 'add', arguments: { a: 1, b: 2 } }],
+      },
+      { role: 'tool', content: '3', tool_call_id: 'c1', name: 'add' },
+      { role: 'assistant', content: '3' },
+    ])
+  })
+
+  it('marks a run cancelled when the stream aborts', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-cancel.jsonl') })
+    await root.plugin(tools)
+    const controller = new AbortController()
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('complete should not be used')
+      },
+      stream: async function* (_messages, _tools, options) {
+        yield { type: 'message_start', id: 'm1' }
+        await new Promise<void>((resolve, reject) => {
+          const abort = (): void => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          }
+          if (options.signal?.aborted) {
+            abort()
+            return
+          }
+          options.signal?.addEventListener('abort', abort, { once: true })
+        })
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    setTimeout(() => controller.abort(), 5)
+    const { events, result } = await collectStream(
+      service.runStream({ text: 'go' }, { signal: controller.signal }),
+    )
+
+    expect(events.map(event => event.type)).toEqual(['message_start', 'run/end'])
+    expect(result.finishReason).toBe('cancelled')
+  })
+
+  it('waits for an in-flight tool before marking the run cancelled', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('tool-cancel.jsonl') })
+    await root.plugin(tools)
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'slow', description: 'slow tool' },
+      execute: () => new Promise(resolve => setTimeout(() => resolve('done'), 30)),
+    })
+    const adapter: LLMAdapter = {
+      complete: async () => ({
+        content: '',
+        toolCalls: [toolCall('c1', 'slow', {})],
+        finishReason: 'tool_calls',
+      }),
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 5)
+    const service = dynamic(root).agent as AgentService
+    const result = await service.run({ text: 'go' }, { signal: controller.signal })
+
+    expect(result.finishReason).toBe('cancelled')
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual([
+      'message',
+      'message',
+      'tool-call',
+      'tool-result',
+    ])
   })
 })

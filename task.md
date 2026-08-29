@@ -328,8 +328,8 @@
 
 ### M12.3 Agent 流式运行
 
-- [ ] `AgentService.runStream()` 异步生成器，`run()` 收集结果
-- [ ] 取消语义：LLM 立即中止，工具等返回后停止，run 标 cancelled
+- [x] `AgentService.runStream()` 异步生成器，`run()` 收集结果
+- [x] 取消语义：LLM 立即中止，工具等返回后停止，run 标 cancelled
 - [ ] 共享 Agent 运行时工厂，CLI 与 Web 复用
 
 ### M12.4 配置与会话存储
