@@ -6,4 +6,5 @@ coverage/
 .env
 .env.*
 .tnega/
+.fix/
 *.tgz
