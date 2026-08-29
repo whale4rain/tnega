@@ -20,6 +20,8 @@ export interface SessionMetaPayload {
   title: string
   workspace: string
   createdAt: number
+  parentSessionId?: string
+  forkedAtMessageId?: string
 }
 
 export interface SessionSummary extends SessionMetaPayload {
@@ -31,6 +33,8 @@ export interface SessionSummary extends SessionMetaPayload {
 export interface CreateSessionOptions {
   title?: string
   createdAt?: number
+  parentSessionId?: string
+  forkedAtMessageId?: string
 }
 
 interface SessionMetaEvent {
@@ -79,6 +83,8 @@ export async function createSession(
       title,
       workspace: resolve(workspace),
       createdAt,
+      ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+      ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
     },
   }
   await writeFile(sessionFile(workspace, id), `${JSON.stringify(meta)}\n`, 'utf8')
@@ -193,6 +199,7 @@ export async function forkSession(
   const fork = await createSession(workspace, {
     title: title?.trim() || `${meta.payload.title} fork`,
     createdAt: meta.payload.createdAt,
+    parentSessionId: id,
   })
   const target = sessionFile(workspace, fork.id)
   const forkMeta = await readSessionMeta(target)
@@ -226,6 +233,8 @@ export async function forkSessionAt(
   const fork = await createSession(workspace, {
     title: title?.trim() || `${meta.payload.title} fork`,
     createdAt: meta.payload.createdAt,
+    parentSessionId: id,
+    forkedAtMessageId: messageId,
   })
   const target = sessionFile(workspace, fork.id)
   const forkMeta = await readSessionMeta(target)

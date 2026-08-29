@@ -80,6 +80,17 @@ describe('SessionLog append', () => {
     expect(events.map(event => event.seq)).toEqual([1, 2, 3])
     expect(events.map(event => (event.payload as { content: string }).content)).toEqual(['a', 'b', 'c'])
   })
+
+  it('links message events to their predecessor', async () => {
+    const log = new SessionLog(await tempFile('parent.jsonl'))
+    const user = await log.append('message', { role: 'user', content: 'hello' })
+    const assistant = await log.append('message', { role: 'assistant', content: 'world' })
+    const next = await log.append('message', { role: 'user', content: 'again' })
+
+    expect((user.payload as { parentId?: string }).parentId).toBeUndefined()
+    expect((assistant.payload as { parentId?: string }).parentId).toBe(user.id)
+    expect((next.payload as { parentId?: string }).parentId).toBe(assistant.id)
+  })
 })
 
 describe('SessionLog deriveMessages', () => {
@@ -207,6 +218,18 @@ describe('SessionLog fork', () => {
 
     expect(await child.read()).toHaveLength(1)
     expect(await source.read()).toHaveLength(2)
+  })
+
+  it('keeps predecessor links when the fork continues', async () => {
+    const source = new SessionLog(await tempFile('fork-parent-link.jsonl'))
+    const user = await source.append('message', { role: 'user', content: 'hello' })
+    const assistant = await source.append('message', { role: 'assistant', content: 'world' })
+    const child = await source.fork(await tempFile('fork-child-link.jsonl'))
+
+    const next = await child.append('message', { role: 'user', content: 'child only' })
+    expect((next.payload as { parentId?: string }).parentId).toBe(assistant.id)
+    expect((await child.read()).map(event => (event.type === 'message' ? event.payload.parentId : undefined)))
+      .toEqual([undefined, user.id, assistant.id])
   })
 })
 

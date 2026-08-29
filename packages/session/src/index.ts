@@ -27,6 +27,7 @@ export interface MessagePayload {
   role: MessageRole
   content: string
   name?: string
+  parentId?: string
 }
 
 export interface ToolCallPayload {
@@ -201,8 +202,17 @@ export class SessionLog {
         seq: this._nextSeq,
         ts: Date.now(),
         type: type as SessionEvent['type'],
-        payload,
+        payload: clone(payload),
       } as SessionEvent
+      if (event.type === 'message') {
+        for (let index = this._events.length - 1; index >= 0; index -= 1) {
+          const previous = this._events[index]
+          if (previous?.type === 'message') {
+            event.payload.parentId = previous.id
+            break
+          }
+        }
+      }
       await appendFile(this.file, `${JSON.stringify(event)}\n`, 'utf8')
       this._events.push(event)
       this._nextSeq += 1

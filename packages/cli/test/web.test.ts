@@ -253,7 +253,7 @@ describe('web server', () => {
       events: Array<{
         id: string
         type: string
-        payload: { role?: string; content?: string }
+        payload: { role?: string; content?: string; parentId?: string }
       }>
     }
     const messages = detail.events.filter(event => event.type === 'message')
@@ -263,6 +263,8 @@ describe('web server', () => {
       'second turn',
       'mock reply',
     ])
+    const firstUser = messages.find(message => message.payload.content === 'first turn')!
+    const firstAssistant = messages.find(message => message.payload.content === 'mock reply')!
     const secondUser = messages.find(message => message.payload.content === 'second turn')!
 
     const fork = await apiFetch(
@@ -273,6 +275,10 @@ describe('web server', () => {
         body: JSON.stringify({ messageId: secondUser.id }),
       },
     ).then(r => r.json()) as { session: { id: string } }
+    expect(fork.session).toMatchObject({
+      parentSessionId: id,
+      forkedAtMessageId: secondUser.id,
+    })
 
     const forkDetail = await apiFetch(
       server.url,
@@ -280,7 +286,7 @@ describe('web server', () => {
     ).then(r => r.json()) as {
       events: Array<{
         type: string
-        payload: { role?: string; content?: string }
+        payload: { role?: string; content?: string; parentId?: string }
       }>
     }
     const forkMessages = forkDetail.events.filter(event => event.type === 'message')
@@ -288,6 +294,11 @@ describe('web server', () => {
       'first turn',
       'mock reply',
       'second turn',
+    ])
+    expect(forkMessages.map(message => message.payload.parentId)).toEqual([
+      undefined,
+      firstUser.id,
+      firstAssistant.id,
     ])
   })
 

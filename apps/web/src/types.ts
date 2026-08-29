@@ -5,6 +5,8 @@ export interface SessionSummary {
   createdAt: number
   updatedAt: number
   eventCount: number
+  parentSessionId?: string
+  forkedAtMessageId?: string
 }
 
 export interface SessionEventBase<T extends string, P> {
@@ -19,6 +21,7 @@ export interface MessagePayload {
   role: 'system' | 'user' | 'assistant'
   content: string
   name?: string
+  parentId?: string
 }
 
 export interface ToolCallPayload {
