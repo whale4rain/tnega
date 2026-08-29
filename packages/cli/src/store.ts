@@ -9,7 +9,12 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { SessionLog, type ModelMessage, type SessionEvent } from '@tnega/session'
+import {
+  SessionLog,
+  projectEvents,
+  type ModelMessage,
+  type SessionEvent,
+} from '@tnega/session'
 
 export interface SessionMetaPayload {
   title: string
@@ -294,35 +299,87 @@ export async function estimateContextUsage(
   }
 }
 
+export interface CompactSessionOptions {
+  keep?: number
+  keepTokens?: number
+  checkpointMessages?: readonly ModelMessage[]
+  summary?: string
+  tokensBefore?: number
+}
+
+export interface SessionCompactPreparation {
+  prefixMessages: ModelMessage[]
+  previousSummary: string | undefined
+  tokensBefore: number
+}
+
+export async function prepareSessionCompact(
+  workspace: string,
+  id: string,
+  keepTokens: number,
+): Promise<SessionCompactPreparation> {
+  const log = new SessionLog(sessionFile(workspace, id))
+  await log.init()
+  const allEvents = await log.read()
+  const events = allEvents.filter(event => event.type !== 'meta')
+  const suffixStart = suffixStartIndexForTokens(events, keepTokens)
+  const prefix = events.slice(0, suffixStart)
+  let previousSummary: string | undefined
+  let summaryStart = 0
+  for (let index = prefix.length - 1; index >= 0; index -= 1) {
+    const event = prefix[index]
+    if (
+      event?.type === 'checkpoint'
+      && typeof event.payload.summary === 'string'
+      && event.payload.summary
+    ) {
+      previousSummary = event.payload.summary
+      summaryStart = index + 1
+      break
+    }
+  }
+  const tokensBefore = estimateMessageTokens(await log.deriveMessages())
+  return {
+    prefixMessages: projectEvents(prefix.slice(summaryStart)),
+    previousSummary,
+    tokensBefore,
+  }
+}
+
 export async function compactSession(
   workspace: string,
   id: string,
-  keep = 0,
-  checkpointMessages?: readonly ModelMessage[],
+  options: CompactSessionOptions = {},
 ): Promise<SessionSummary> {
   const file = sessionFile(workspace, id)
   const meta = await readSessionMeta(file)
   const log = new SessionLog(file)
   await log.init()
-  if (checkpointMessages?.length) {
-    const events = await log.read()
-    const checkpoint: SessionEvent = {
-      id: randomUUID(),
-      seq: (events.at(-1)?.seq ?? 1) + 1,
-      ts: Date.now(),
-      type: 'checkpoint',
-      payload: {
-        messages: [...checkpointMessages],
-      },
-    }
-    await writeAtomic(file, `${JSON.stringify(meta)}\n${JSON.stringify(checkpoint)}\n`)
-    return readSessionSummary(workspace, id)
+  const allEvents = await log.read()
+  const events = allEvents.filter(event => event.type !== 'meta')
+  const keep = resolveCompactKeep(events, options)
+  const split = Math.max(0, events.length - keep)
+  const prefix = events.slice(0, split)
+  const suffix = events.slice(split)
+  const checkpointMessages = options.checkpointMessages?.length
+    ? [...options.checkpointMessages]
+    : projectEvents(prefix)
+  const checkpoint: SessionEvent = {
+    id: randomUUID(),
+    seq: (allEvents.at(-1)?.seq ?? 0) + 1,
+    ts: Date.now(),
+    type: 'checkpoint',
+    payload: {
+      messages: checkpointMessages,
+      ...(options.summary ? { summary: options.summary } : {}),
+      ...(options.tokensBefore !== undefined
+        ? { tokensBefore: options.tokensBefore }
+        : {}),
+      ...(prefix.length ? { snapshot: prefix } : {}),
+    },
   }
-  const keepCount = Number.isFinite(keep) && keep > 0 ? Math.floor(keep) : 0
-  await log.compact({ keep: keepCount })
-  const lines = await readEventLines(file)
-  const next = [JSON.stringify(meta), ...lines.filter(line => !isMetaLine(line))]
-  await writeAtomic(file, `${next.join('\n')}\n`)
+  const next = [meta, checkpoint, ...suffix]
+  await writeAtomic(file, `${next.map(event => JSON.stringify(event)).join('\n')}\n`)
   return readSessionSummary(workspace, id)
 }
 
@@ -423,4 +480,75 @@ function estimateMessageTokens(messages: readonly ModelMessage[]): number {
     }
   }
   return tokens
+}
+
+function resolveCompactKeep(
+  events: readonly SessionEvent[],
+  options: CompactSessionOptions,
+): number {
+  if (
+    typeof options.keepTokens === 'number'
+    && Number.isFinite(options.keepTokens)
+    && options.keepTokens > 0
+  ) {
+    return events.length - suffixStartIndexForTokens(events, options.keepTokens)
+  }
+  const keep = typeof options.keep === 'number' && Number.isFinite(options.keep) && options.keep > 0
+    ? Math.floor(options.keep)
+    : 0
+  return Math.min(keep, events.length)
+}
+
+function suffixStartIndexForTokens(
+  events: readonly SessionEvent[],
+  targetTokens: number,
+): number {
+  if (!events.length || targetTokens <= 0) return 0
+  let tokens = 0
+  let candidate = events.length
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    tokens += estimateEventTokens(events[index]!)
+    if (tokens >= targetTokens) {
+      candidate = index
+      break
+    }
+  }
+  if (candidate === events.length) return 0
+  let cut = candidate
+  while (cut < events.length) {
+    const event = events[cut]
+    if (event && event.type === 'message' && event.payload.role === 'user') return cut
+    cut += 1
+  }
+  return candidate
+}
+
+function estimateEventTokens(event: SessionEvent): number {
+  switch (event.type) {
+    case 'message':
+      return Math.ceil(event.payload.content.length / 4)
+    case 'tool-call': {
+      const raw = JSON.stringify(event.payload.arguments ?? {}) ?? ''
+      return Math.ceil(raw.length / 4)
+    }
+    case 'tool-result': {
+      const raw = event.payload.ok
+        ? stringifyUnknown(event.payload.output)
+        : event.payload.error?.message ?? 'error'
+      return Math.ceil(raw.length / 4)
+    }
+    case 'checkpoint':
+      return estimateMessageTokens(event.payload.messages)
+    case 'meta':
+      return 0
+  }
+}
+
+function stringifyUnknown(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value) ?? ''
+  } catch {
+    return String(value)
+  }
 }

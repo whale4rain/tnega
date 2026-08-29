@@ -437,10 +437,115 @@ describe('web server', () => {
       `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
     ).then(r => r.json()) as {
       context: { tokens: number; ratio: number }
-      events: Array<{ type: string }>
+      events: Array<{
+        type: string
+        payload?: {
+          summary?: string
+          snapshot?: Array<{
+            type: string
+            payload?: { role?: string; content?: string }
+          }>
+        }
+      }>
     }
     expect(after.context.tokens).toBeLessThan(before.context.tokens)
-    expect(after.events.some(event => event.type === 'checkpoint')).toBe(true)
+    const checkpoint = after.events.find(event => event.type === 'checkpoint')
+    expect(checkpoint).toBeDefined()
+    expect(typeof checkpoint!.payload?.summary).toBe('string')
+    expect(
+      checkpoint!.payload?.snapshot?.some(
+        event => event.payload?.content === 'a very long conversation with lots of words',
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps recent raw events and a snapshot after compacting a long session', async () => {
+    const dir = await tempDir('tnega-web-compact-tail-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('tail reply')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    for (const prompt of ['a'.repeat(80_000), 'b'.repeat(80_000)]) {
+      const run = await apiFetch(
+        server.url,
+        `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt,
+            allowNetwork: false,
+            allowShell: false,
+          }),
+        },
+      )
+      expect(run.status).toBe(200)
+      await run.text()
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+
+    const second = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'recent request',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+      },
+    )
+    expect(second.status).toBe(200)
+    await second.text()
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    const before = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as { context: { tokens: number } }
+
+    const compact = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/compact?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    )
+    expect(compact.status).toBe(200)
+
+    const after = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      context: { tokens: number }
+      events: Array<{
+        type: string
+        payload?: {
+          content?: string
+          snapshot?: Array<{ type: string; payload?: { content?: string } }>
+        }
+      }>
+    }
+    expect(after.context.tokens).toBeLessThan(before.context.tokens)
+    const checkpointIndex = after.events.findIndex(event => event.type === 'checkpoint')
+    expect(checkpointIndex).toBeGreaterThanOrEqual(0)
+    const checkpoint = after.events[checkpointIndex]
+    expect(checkpoint?.payload?.snapshot?.length).toBeGreaterThan(0)
+    const tail = after.events.slice(checkpointIndex + 1).filter(event => event.type === 'message')
+    expect(tail.some(event => event.payload?.content === 'recent request')).toBe(true)
   })
 
   it('streams a run through SSE and persists the final message', async () => {
