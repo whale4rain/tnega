@@ -301,7 +301,7 @@ export class AgentService {
     const llm = this._llm()
     if (!llm) throw new AgentError('no LLM adapter available')
 
-    const maxTurns = options.maxTurns ?? this.config.maxTurns ?? 8
+    const maxTurns = options.maxTurns ?? this.config.maxTurns ?? 64
     const maxSteps = options.maxSteps ?? this.config.maxSteps ?? 64
     const injected = this.inbox.injected()
     this.ctx.emit('agent/start', { input: claimed, options, injected })
