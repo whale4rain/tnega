@@ -128,20 +128,21 @@ describe('SessionLog lineage', () => {
 })
 
 describe('SessionLog forkAt', () => {
-  it('copies the message lineage tail from the selected message', async () => {
+  it('copies the message lineage up to the selected message', async () => {
     const log = new SessionLog(await tempFile('fork-at.jsonl'))
-    await log.append('message', { role: 'user', content: 'a' })
+    const a = await log.append('message', { role: 'user', content: 'a' })
     await log.append('message', { role: 'assistant', content: 'b' })
     const c = await log.append('message', { role: 'user', content: 'c' })
-    const d = await log.append('message', { role: 'assistant', content: 'd' })
+    await log.append('message', { role: 'assistant', content: 'd' })
 
     const events = await log.forkAt(c.id)
-    expect(events.map(event => event.type)).toEqual(['message', 'message'])
+    expect(events.map(event => event.type)).toEqual(['message', 'message', 'message'])
     expect(events.map(event => (event.payload as { content: string }).content)).toEqual([
+      'a',
+      'b',
       'c',
-      'd',
     ])
-    expect(events.map(event => event.id)).toEqual([c.id, d.id])
+    expect(events.map(event => event.id)).toEqual([a.id, (await log.read())[1]!.id, c.id])
   })
 
   it('follows parent links instead of raw event order', async () => {
@@ -194,23 +195,22 @@ describe('SessionLog forkAt', () => {
 
     const log = new SessionLog(file)
     await log.init()
-    const selected = await log.forkAt('first')
-    expect(selected.map(event => event.id)).toEqual(['first', 'second'])
+    const selected = await log.forkAt('second')
+    expect(selected.map(event => event.id)).toEqual(['root', 'branch', 'first', 'second'])
     expect(selected.some(event => event.id === 'orphan-tool')).toBe(false)
   })
 
-  it('keeps only the selected message when it is the latest', async () => {
+  it('keeps a checkpoint prefix when history starts before the lineage', async () => {
     const log = new SessionLog(await tempFile('fork-at-checkpoint.jsonl'))
-    const first = await log.append('message', { role: 'user', content: 'old user' })
+    await log.append('message', { role: 'user', content: 'old user' })
     await log.append('message', { role: 'assistant', content: 'old reply' })
+    await log.compact()
     const next = await log.append('message', { role: 'user', content: 'recent' })
 
-    expect((await log.forkAt(next.id)).map(event => event.id)).toEqual([next.id])
-    expect((await log.forkAt(first.id)).map(event => event.id)).toEqual([
-      first.id,
-      (await log.read())[1]!.id,
-      next.id,
-    ])
+    const selected = await log.forkAt(next.id)
+    expect(selected.map(event => event.type)).toEqual(['checkpoint', 'message'])
+    const checkpoint = selected[0]!.payload as { snapshot?: SessionEvent[] }
+    expect(checkpoint.snapshot?.length).toBe(2)
   })
 })
 

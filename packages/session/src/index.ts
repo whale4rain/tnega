@@ -232,28 +232,20 @@ export class SessionLog {
   async forkAt(messageId: string): Promise<SessionEvent[]> {
     return this._run(async () => {
       await this._ensureLoaded()
-      const messages = this._events.filter(
-        (event): event is Extract<SessionEvent, { type: 'message' }> => event.type === 'message',
-      )
-      const latest = messages.at(-1)
-      if (!latest) {
-        throw new Error(`message not found: ${messageId}`)
-      }
-      const lineage = this._resolveLineage(latest.id)
-      const tailStart = lineage.findIndex(event => event.id === messageId)
-      if (tailStart < 0) {
-        throw new Error(`message not found: ${messageId}`)
-      }
-      const tailIds = new Set(lineage.slice(tailStart).map(event => event.id))
-      const rawStart = this._events.findIndex(
+      const lineage = this._resolveLineage(messageId)
+      const lineageIds = new Set(lineage.map(event => event.id))
+      const targetIndex = this._events.findIndex(
         event => event.id === messageId && event.type === 'message',
       )
+      if (targetIndex < 0) {
+        throw new Error(`message not found: ${messageId}`)
+      }
       const selected: SessionEvent[] = []
       let skippedMessage = false
-      for (let index = rawStart; index < this._events.length; index += 1) {
+      for (let index = 0; index <= targetIndex; index += 1) {
         const event = this._events[index]!
         if (event.type === 'message') {
-          if (!tailIds.has(event.id)) {
+          if (!lineageIds.has(event.id)) {
             skippedMessage = true
             continue
           }
@@ -262,7 +254,10 @@ export class SessionLog {
           continue
         }
         if (event.type === 'meta') continue
-        if (event.type === 'checkpoint') continue
+        if (event.type === 'checkpoint') {
+          selected.push(clone(event))
+          continue
+        }
         if (!skippedMessage) {
           selected.push(clone(event))
         }
