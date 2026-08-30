@@ -1,4 +1,7 @@
-:root {
+/* Theme tokens. A theme only overrides these variables; the rest of the
+   stylesheet is theme-agnostic. */
+:root,
+:root[data-theme="light"] {
   --canvas: #fdfcfc;
   --surface-soft: #f8f7f7;
   --surface-card: #f1eeee;
@@ -17,6 +20,53 @@
   --warning: #ff9f0a;
   --success: #30d158;
   --on-dark: #fdfcfc;
+  --overlay: rgba(15, 0, 0, 0.25);
+}
+
+:root[data-theme="dark"] {
+  --canvas: #16181d;
+  --surface-soft: #1d2026;
+  --surface-card: #252932;
+  --ink: #ececf0;
+  --ink-deep: #f7f7f9;
+  --charcoal: #b8bcc6;
+  --body: #c7cad3;
+  --mute: #9aa0ab;
+  --stone: #838894;
+  --ash: #6c7180;
+  --hairline: rgba(236, 236, 240, 0.14);
+  --hairline-strong: #5a5f6b;
+  --accent: #5da2ff;
+  --danger: #ff6961;
+  --danger-bg: rgba(255, 105, 97, 0.12);
+  --warning: #ffb340;
+  --success: #57d97a;
+  --on-dark: #16181d;
+  --overlay: rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --canvas: #16181d;
+    --surface-soft: #1d2026;
+    --surface-card: #252932;
+    --ink: #ececf0;
+    --ink-deep: #f7f7f9;
+    --charcoal: #b8bcc6;
+    --body: #c7cad3;
+    --mute: #9aa0ab;
+    --stone: #838894;
+    --ash: #6c7180;
+    --hairline: rgba(236, 236, 240, 0.14);
+    --hairline-strong: #5a5f6b;
+    --accent: #5da2ff;
+    --danger: #ff6961;
+    --danger-bg: rgba(255, 105, 97, 0.12);
+    --warning: #ffb340;
+    --success: #57d97a;
+    --on-dark: #16181d;
+    --overlay: rgba(0, 0, 0, 0.55);
+  }
 }
 
 * {
@@ -33,6 +83,9 @@ body,
 body {
   background: var(--canvas);
   color: var(--ink);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
   font-family:
     "Berkeley Mono",
     "JetBrains Mono",
@@ -66,6 +119,10 @@ button {
   cursor: pointer;
   min-height: 28px;
   padding: 3px 10px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
   white-space: nowrap;
 }
 
@@ -144,6 +201,10 @@ textarea {
 .topbar-actions {
   display: flex;
   gap: 4px;
+}
+
+.theme-toggle {
+  min-width: 84px;
 }
 
 .menu-button {
@@ -930,7 +991,7 @@ textarea {
   }
 
   .backdrop {
-    background: rgba(15, 0, 0, 0.25);
+    background: var(--overlay);
     border: none;
     bottom: 0;
     display: block;

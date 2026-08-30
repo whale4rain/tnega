@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Ref } from 'react'
 import { ConversationNav } from './ConversationNav'
+import { ThemeToggle, type ThemePreference } from './ThemeToggle'
 import {
   addWorkspace,
   ApiError,
@@ -36,6 +37,21 @@ import type {
 type View = 'chat' | 'settings'
 type RunState = 'idle' | 'running' | 'cancelling'
 
+const THEME_STORAGE_KEY = 'tnega-theme'
+
+function initialThemePreference(): ThemePreference {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY)
+  if (stored === 'light' || stored === 'dark' || stored === 'system') {
+    return stored
+  }
+  return 'system'
+}
+
+function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
+  if (preference === 'light' || preference === 'dark') return preference
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 const MODEL_OPTIONS = [
   'deepseek-v4-flash',
   'deepseek-v4-pro',
@@ -46,6 +62,9 @@ const MODEL_OPTIONS = [
 ]
 
 export default function App() {
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    initialThemePreference,
+  )
   const [config, setConfig] = useState<ConfigSnapshot | null>(null)
   const [workspaces, setWorkspaces] = useState<string[]>([])
   const [workspace, setWorkspace] = useState<string | null>(null)
@@ -57,6 +76,19 @@ export default function App() {
   const [view, setView] = useState<View>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.theme = resolveTheme(themePreference)
+    localStorage.setItem(THEME_STORAGE_KEY, themePreference)
+    if (themePreference !== 'system') return
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const listener = () => {
+      root.dataset.theme = resolveTheme('system')
+    }
+    media.addEventListener('change', listener)
+    return () => media.removeEventListener('change', listener)
+  }, [themePreference])
 
   useEffect(() => {
     let cancelled = false
@@ -223,6 +255,10 @@ export default function App() {
           {workspace ? displayPath(workspace) : 'no workspace'}
         </div>
         <div className="topbar-actions">
+          <ThemeToggle
+            value={themePreference}
+            onChange={setThemePreference}
+          />
           <button
             type="button"
             className="menu-button"
