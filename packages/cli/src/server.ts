@@ -328,8 +328,13 @@ async function handleApi(
     if (action === undefined && req.method === 'GET') {
       const summary = await readSessionSummary(workspace, id)
       const events = await readSessionEvents(workspace, id)
-      const context = await estimateContextUsage(workspace, id)
-      sendJson(res, 200, { summary, events, context })
+      const contextUsage = await estimateContextUsage(workspace, id)
+      sendJson(res, 200, {
+        summary,
+        events,
+        context: contextUsage,
+        running: isActive(context.activeRuns, workspace, id),
+      })
       return
     }
     if (action === undefined && req.method === 'PATCH') {
@@ -392,6 +397,11 @@ async function handleApi(
         : 0
       const summary = await compactContext(context, workspace, id, keep)
       sendJson(res, 200, { summary })
+      return
+    }
+    if (action === 'stop' && req.method === 'POST') {
+      await handleStopRun(context, workspace, id)
+      sendJson(res, 200, { stopped: true })
       return
     }
     if (action === 'runs' && req.method === 'POST') {
@@ -567,10 +577,6 @@ async function handleRun(
   })
   res.flushHeaders()
 
-  req.on('close', () => {
-    if (!res.writableEnded && !res.destroyed) controller.abort()
-  })
-
   try {
     const session = runtime.root.get('session') as SessionLog
     const history = await session.deriveMessages()
@@ -590,15 +596,15 @@ async function handleRun(
     )
     while (true) {
       const next = await iterator.next()
-      if (res.destroyed) {
-        controller.abort()
-        break
-      }
       if (next.done) break
-      writeSse(res, next.value)
+      try {
+        if (!res.destroyed && !res.writableEnded) writeSse(res, next.value)
+      } catch {
+        // The client may have disconnected; the run itself must continue.
+      }
     }
-    if (!res.destroyed) {
-      await autoTitle(workspace, id, prompt)
+    await autoTitle(workspace, id, prompt)
+    if (!res.destroyed && !res.writableEnded) {
       writeSse(res, { type: 'done' })
       res.end()
     }
@@ -611,6 +617,16 @@ async function handleRun(
     context.activeRuns.delete(key)
     await runtime.dispose()
   }
+}
+
+async function handleStopRun(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const controller = context.activeRuns.get(runKey(workspace, id))
+  if (!controller) throw new HttpError(409, 'session is not running')
+  controller.abort()
 }
 
 async function autoTitle(workspace: string, id: string, prompt: string): Promise<void> {

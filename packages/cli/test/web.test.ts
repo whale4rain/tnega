@@ -119,6 +119,34 @@ function apiFetch(
   return fetch(`${base}${path}`, { ...init, headers })
 }
 
+interface SessionDetailForTest {
+  running: boolean
+  events: Array<{
+    type: string
+    payload: { role?: string; content?: string }
+  }>
+}
+
+async function waitForSession(
+  base: string,
+  workspace: string,
+  id: string,
+  predicate: (detail: SessionDetailForTest) => boolean,
+  timeoutMs = 4000,
+): Promise<SessionDetailForTest> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    const response = await apiFetch(
+      base,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    )
+    const detail = await response.json() as SessionDetailForTest
+    if (predicate(detail)) return detail
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  throw new Error('timed out waiting for session state')
+}
+
 describe('web server', () => {
   it('enforces client header and serves config without leaking the key', async () => {
     const dir = await tempDir('tnega-web-guard-')
@@ -775,6 +803,147 @@ describe('web server', () => {
       await first.text()
     },
   )
+
+  it('keeps an active run alive after the SSE client disconnects', async () => {
+    const dir = await tempDir('tnega-web-run-survives-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('late reply', 500)
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const controller = new AbortController()
+    const first = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'keep running',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+        signal: controller.signal,
+      },
+    )
+    expect(first.status).toBe(200)
+    controller.abort()
+
+    const blocked = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'blocked',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+      },
+    )
+    expect(blocked.status).toBe(409)
+
+    const detail = await waitForSession(
+      server.url,
+      workspace,
+      id,
+      session => !session.running,
+    )
+    const messages = detail.events
+      .filter(event => event.type === 'message')
+      .map(event => event.payload.content)
+    expect(messages).toContain('late reply')
+  })
+
+  it('stops a running session only through the stop endpoint', async () => {
+    const dir = await tempDir('tnega-web-run-stop-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('stopped reply', 500)
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const first = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'stop me',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+      },
+    )
+    expect(first.status).toBe(200)
+
+    const running = await waitForSession(
+      server.url,
+      workspace,
+      id,
+      session => session.running,
+    )
+    expect(running.running).toBe(true)
+
+    const stop = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/stop?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    )
+    expect(stop.status).toBe(200)
+
+    const stopped = await waitForSession(
+      server.url,
+      workspace,
+      id,
+      session => !session.running,
+    )
+    expect(stopped.running).toBe(false)
+
+    const second = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'after stop',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+      },
+    )
+    expect(second.status).toBe(200)
+    await second.text()
+  })
 })
 
 async function mkdir(parent: string, name: string): Promise<string> {
