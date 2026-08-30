@@ -345,6 +345,43 @@ describe('agent loop', () => {
     expect(result.finishReason).toBe('max_turns')
   })
 
+  it('runs a final turn when maxTurns ends on a tool call', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('max-turns-final.jsonl') })
+    await root.plugin(tools)
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register(addTool())
+    const { adapter, calls } = fakeLLM([
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+        finishReason: 'tool_calls',
+      },
+      { content: '3', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter, maxTurns: 1 })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'loop' })
+    expect(result.steps).toHaveLength(2)
+    expect(result.finishReason).toBe('stop')
+    expect(result.output).toBe('3')
+    expect(calls).toHaveLength(2)
+    expect(calls[1]!.tools).toEqual([])
+
+    const log = dynamic(root).session as SessionLog
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'loop' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'c1', name: 'add', arguments: { a: 1, b: 2 } }],
+      },
+      { role: 'tool', content: '3', tool_call_id: 'c1', name: 'add' },
+      { role: 'assistant', content: '3' },
+    ])
+  })
+
   it('stops after maxSteps when the model keeps requesting tools', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('max-steps.jsonl') })

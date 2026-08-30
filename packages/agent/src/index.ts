@@ -321,7 +321,9 @@ export class AgentService {
       injected,
     })
 
-    for (let index = 0; index < maxTurns; index++) {
+    let index = 0
+    let finalTurnGranted = false
+    while (index < maxTurns + (finalTurnGranted ? 1 : 0)) {
       if (steps.length >= maxSteps) {
         finishReason = 'max_steps'
         break
@@ -329,6 +331,7 @@ export class AgentService {
 
       const stepInput = copyMessages(messages)
       this.ctx.emit('agent/step', { index, input: copyMessages(stepInput) })
+      const availableTools = finalTurnGranted ? [] : tools.list()
       const completeOptions: CompleteOptions = {
         maxSteps: maxSteps - steps.length,
       }
@@ -340,7 +343,7 @@ export class AgentService {
         const streamEvents: LLMStreamEvent[] = []
         let cancelled = false
         try {
-          for await (const event of streamMethod(stepInput, tools.list(), completeOptions)) {
+          for await (const event of streamMethod(stepInput, availableTools, completeOptions)) {
             streamEvents.push(event)
             yield event
           }
@@ -353,7 +356,7 @@ export class AgentService {
         completion = completionFromStreamEvents(streamEvents)
       } else {
         try {
-          completion = await llm.complete(stepInput, tools.list(), completeOptions)
+          completion = await llm.complete(stepInput, availableTools, completeOptions)
         } catch (error) {
           if (!options.signal?.aborted) throw error
           finishReason = 'cancelled'
@@ -362,6 +365,10 @@ export class AgentService {
       }
 
       const toolCalls = completion.toolCalls ?? []
+      if (finalTurnGranted && toolCalls.length) {
+        finishReason = 'max_turns'
+        break
+      }
       const toolResults: ToolResult[] = []
       if (toolCalls.length) {
         await session.append('message', {
@@ -442,11 +449,14 @@ export class AgentService {
             : 'stop'
         break
       }
-      if (index + 1 >= maxTurns) {
+      if (index + 1 >= maxTurns && !finalTurnGranted) {
+        finalTurnGranted = true
+      } else if (index + 1 >= maxTurns + (finalTurnGranted ? 1 : 0)) {
         finishReason = 'max_turns'
-      } else {
-        finishReason = 'tool_calls'
+        break
       }
+      finishReason = 'tool_calls'
+      index += 1
     }
 
     const runResult: AgentRunResult = {
