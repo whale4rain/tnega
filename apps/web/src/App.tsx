@@ -21,6 +21,7 @@ import {
   removeWorkspace,
   renameSession,
   saveConfig,
+  stopRun,
   streamRun,
   truncateSession,
 } from './api'
@@ -30,6 +31,7 @@ import type {
   DisplayMessage,
   ModelMessage,
   SessionEvent,
+  SessionDetail,
   SessionSummary,
   StreamEvent,
 } from './types'
@@ -72,6 +74,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [context, setContext] = useState<ContextUsage | null>(null)
+  const [sessionRunning, setSessionRunning] = useState(false)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [view, setView] = useState<View>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -133,6 +136,7 @@ export default function App() {
       .then(detail => {
         setSummary(detail.summary)
         setContext(detail.context)
+        setSessionRunning(detail.running)
         setMessages(projectEvents(detail.events))
       })
       .catch((reason: unknown) => setError(messageOf(reason)))
@@ -143,9 +147,11 @@ export default function App() {
     const detail = await api.getSession(workspace, id)
     setSummary(detail.summary)
     setContext(detail.context)
+    setSessionRunning(detail.running)
     setMessages(projectEvents(detail.events))
     const next = await api.listSessions(workspace)
     setSessions(next.sessions)
+    return detail
   }, [workspace])
 
   async function handleAddWorkspace(path: string) {
@@ -158,6 +164,7 @@ export default function App() {
       setSessionId(null)
       setSummary(null)
       setContext(null)
+      setSessionRunning(false)
       setMessages([])
     } catch (reason) {
       setError(messageOf(reason))
@@ -174,6 +181,7 @@ export default function App() {
         setSessionId(null)
         setSummary(null)
         setContext(null)
+        setSessionRunning(false)
         setMessages([])
       }
     } catch (reason) {
@@ -235,6 +243,7 @@ export default function App() {
         setSessionId(null)
         setSummary(null)
         setContext(null)
+        setSessionRunning(false)
         setMessages([])
       }
     } catch (reason) {
@@ -312,6 +321,7 @@ export default function App() {
               sessionId={sessionId}
               summary={summary}
               context={context}
+              sessionRunning={sessionRunning}
               messages={messages}
               apiKeySet={config?.apiKeySet ?? false}
               onNewSession={handleNewSession}
@@ -539,10 +549,11 @@ interface ChatViewProps {
   sessionId: string | null
   summary: SessionSummary | null
   context: ContextUsage | null
+  sessionRunning: boolean
   messages: DisplayMessage[]
   apiKeySet: boolean
   onNewSession: () => Promise<void>
-  onRefresh: (id: string) => Promise<void>
+  onRefresh: (id: string) => Promise<SessionDetail | undefined>
   onForkAt: (id: string, messageId: string) => Promise<void>
   onMessagesChange: (
     updater: (current: DisplayMessage[]) => DisplayMessage[],
@@ -554,6 +565,7 @@ function ChatView({
   sessionId,
   summary,
   context,
+  sessionRunning,
   messages,
   apiKeySet,
   onNewSession,
@@ -572,6 +584,7 @@ function ChatView({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const runStateRef = useRef<RunState>('idle')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const userRefs = useRef(new Map<string, HTMLDivElement>())
@@ -601,6 +614,38 @@ function ChatView({
     setEditDraft('')
     scrollToBottom()
   }, [scrollToBottom, sessionId, workspace])
+
+  useEffect(() => {
+    runStateRef.current = runState
+  }, [runState])
+
+  useEffect(() => {
+    if (sessionRunning && runStateRef.current === 'idle') setRunState('running')
+  }, [sessionRunning])
+
+  useEffect(() => {
+    if (!sessionRunning || !workspace || !sessionId) return
+    let cancelled = false
+    const poll = async (): Promise<void> => {
+      try {
+        const detail = await onRefresh(sessionId)
+        if (cancelled) return
+        if (detail?.running && runStateRef.current === 'idle') {
+          setRunState('running')
+        } else if (!detail?.running) {
+          setRunState('idle')
+        }
+      } catch (reason) {
+        if (!cancelled) setRunError(messageOf(reason))
+      }
+    }
+    const timer = setInterval(() => { void poll() }, 1000)
+    void poll()
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [onRefresh, sessionId, sessionRunning, workspace])
 
   useEffect(() => {
     if (navIndex >= userIndexes.length) {
@@ -746,9 +791,21 @@ function ChatView({
     void runPrompt(sent)
   }
 
-  function cancelRun() {
+  async function cancelRun() {
     if (runState !== 'running') return
+    if (!workspace || !sessionId) return
     setRunState('cancelling')
+    try {
+      await api.stopRun(workspace, sessionId)
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 409) {
+        abortRef.current?.abort()
+        return
+      }
+      setRunError(messageOf(reason))
+      setRunState('running')
+      return
+    }
     abortRef.current?.abort()
   }
 
@@ -1699,5 +1756,6 @@ const api = {
   compactSession,
   deleteSession,
   saveConfig,
+  stopRun,
   streamRun,
 }

@@ -55,6 +55,7 @@ export interface SessionDetail {
   summary: SessionSummary
   events: SessionEvent[]
   context: ContextUsage
+  running: boolean
 }
 
 export interface ContextUsage {

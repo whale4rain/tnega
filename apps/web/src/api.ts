@@ -153,6 +153,17 @@ export function compactSession(
   })
 }
 
+export function stopRun(
+  workspace: string,
+  id: string,
+): Promise<{ stopped: boolean }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${id}/stop?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
 export function deleteSession(workspace: string, id: string): Promise<void> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions/${id}?${query.toString()}`, {
