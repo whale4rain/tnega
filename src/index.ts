@@ -226,13 +226,21 @@ export {
 } from '../packages/evolve/src/index.js'
 
 export {
+  DEFAULT_MODEL,
   DEFAULT_DEEPSEEK_MODEL,
   DEFAULT_LLM_MAX_RETRIES,
   DEFAULT_LLM_RETRY_DELAY_MS,
   DEFAULT_LLM_TIMEOUT_MS,
   DEFAULT_OPENCODE_GO_BASE_URL,
+  MODEL_CATALOG,
   OpenAICompatibleError,
+  anthropicMessagesAdapter,
+  createLlmAdapter,
+  lookupModel,
   openaiCompatAdapter,
+  type LlmConfig,
+  type LlmProtocol,
+  type ModelDefinition,
   type OpenAICompatibleConfig,
 } from '../packages/llm/src/index.js'
 
