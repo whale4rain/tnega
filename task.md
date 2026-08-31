@@ -25,6 +25,7 @@
 | M10 npm / pnpm 发布准备 | 已完成 |
 | M11 LLM 超时与重试 | 已完成 |
 | M12 tnega web（v0，M12.7 待办） | 已完成 |
+| M13 agent core 对外边界 | 进行中 |
 
 ## 开发约定
 
@@ -359,6 +360,19 @@
 - [ ] 只读展示 `.tnega/runs/*.json` 与实验树，浏览器不触发 eval/evolve
 - [ ] 测试与文档记录
 - [ ] git commit（M12.7）
+
+## M13 agent core 对外边界
+
+目标：让 `tnega` 可以作为库被外部 agent（如后续独立仓库的 coding agent）复用，补齐可编程契约、声明式 agent 定义、可插拔会话投影与工具策略，并验证发布包在消费者侧的类型与运行时可用性。
+
+验收：根包 `import { Context, defineAgent, SessionLog } from 'tnega'` 可用；新增契约全部配套测试；typecheck / lint / test / build 全绿；README 记录库用法与边界。
+
+- [ ] M13.1 根包库入口：`src/index.ts` 汇聚 core / agent / tools / session / eval / evolve / llm / cli 公开 API，`exports` 指向 `dist/index.js` 与 `dist/types`，构建生成并重写声明，publish 测试覆盖消费者导入
+- [ ] M13.2 AgentDefinition：`name / version / system / tools / loop / hooks` 的声明式插件契约，system 注入 agent loop，卸载无残留
+- [ ] M13.3 SessionProjector 与 context budget：可插拔投影器 + token 估算 / 预算工具，从 cli store 下沉到 session
+- [ ] M13.4 Tools policy：输入校验、授权、输出截断三类可插拔策略 + 轻量 schema 校验器
+- [ ] M13.5 README 库用法、契约文档与状态更新
+- [ ] 全量测试 / typecheck / lint / build 通过，更新状态与提交记录
 
 ## 提交记录
 
