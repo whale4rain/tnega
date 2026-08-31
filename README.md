@@ -21,7 +21,7 @@ export OPENCODE_GO_API_KEY=sk-...
 tnega run "Reply with: hello"
 ```
 
-`tnega run` uses OpenCode Go's `minimax-m3` model through the Anthropic Messages endpoint by default. The API key can also come from `~/.tnega/config.json` (Windows: `%USERPROFILE%\.tnega\config.json`) with fields `apiKey`, `model`, `baseUrl`, and `temperature`. Precedence: CLI flags > environment variables > config file > defaults.
+`tnega run` uses OpenCode Go's `deepseek-v4-flash` model through the OpenAI compatible endpoint by default. `minimax-m3` is also available through the Anthropic Messages endpoint. The API key can also come from `~/.tnega/config.json` (Windows: `%USERPROFILE%\.tnega\config.json`) with fields `apiKey`, `model`, `baseUrl`, and `temperature`. Precedence: CLI flags > environment variables > config file > defaults.
 
 Run a deterministic eval without an API key:
 
@@ -64,7 +64,7 @@ const root = new Context()
 const fiber = await root.plugin(
   defineAgent({
     name: 'coding-agent',
-    version: '0.1.0',
+    version: '0.1.1',
     system: 'You are a coding agent.',
   }),
   { llm: openaiCompatAdapter({ apiKey: process.env.OPENCODE_GO_API_KEY! }) },

@@ -27,7 +27,7 @@ export interface ModelDefinition {
   pricing: ModelPricingMeta
 }
 
-export const DEFAULT_MODEL = 'minimax-m3'
+export const DEFAULT_MODEL = 'deepseek-v4-flash'
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 export const MODEL_CATALOG: readonly ModelDefinition[] = [

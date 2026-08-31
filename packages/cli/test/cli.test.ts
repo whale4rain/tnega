@@ -310,6 +310,31 @@ describe('agent run command', () => {
     expect(sessionText).not.toContain('test-key')
   })
 
+  it('defaults to deepseek-v4-flash through the OpenAI compatible endpoint', async () => {
+    const dir = await tempDir('tnega-cli-agent-default-')
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    const fetchMock = vi.fn(async () => openaiResponse('default model')) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runAgentCommand({
+      prompt: 'say hi',
+      cwd: dir,
+      configFile: join(dir, 'missing-default-config.json'),
+      maxTokens: 16,
+    })
+
+    expect(result.run.output).toBe('default model')
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'https://opencode.ai/zen/go/v1/chat/completions',
+    )
+    const init = fetchMock.mock.calls[0]![1]!
+    expect((init.headers as Record<string, string>).authorization).toBe(
+      'Bearer test-key',
+    )
+    const body = JSON.parse(String(init.body)) as { model: string }
+    expect(body.model).toBe('deepseek-v4-flash')
+  })
+
   it('rejects a run without an API key', async () => {
     vi.stubEnv('OPENCODE_GO_API_KEY', '')
     vi.stubEnv('OPENAI_API_KEY', '')

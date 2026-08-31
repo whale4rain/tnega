@@ -54,7 +54,7 @@
 
 ## M14 LLM provider 抽象与 Anthropic Messages
 
-目标：能力表携带价格元数据；默认模型切换为 `minimax-m3`（Anthropic Messages 协议），保留 OpenAI 兼容回退；key 只从环境变量或 `.tnega` 配置读取，不进入代码。
+目标：能力表携带价格元数据；默认模型为 `deepseek-v4-flash`（OpenAI 兼容协议），`minimax-m3` 走 Anthropic Messages 协议；key 只从环境变量或 `.tnega` 配置读取，不进入代码。
 
 - [x] 能力表新增价格字段：每 1M token 的 input / output / cachedRead，DeepSeek 区分 Peak / Off-Peak，附 `monthlyUsage`
 - [x] `openaiCompatAdapter` 拆分为独立 provider 模块
@@ -66,7 +66,7 @@
 - [x] README 与 task.md 更新
 - [x] git commit
 
-验收：`pnpm typecheck`、`pnpm lint`、`pnpm test` 全部通过；`tnega run` 默认请求 `.../v1/messages` 且使用 `minimax-m3`。
+验收：`pnpm typecheck`、`pnpm lint`、`pnpm test` 全部通过；`tnega run` 默认请求 `.../v1/chat/completions` 且使用 `deepseek-v4-flash`。
 
 ## M1 core 时空语义
 
@@ -423,3 +423,4 @@
 - M13.5：`a054cc7` README 库用法与 M13 状态更新
 - M13.6：`8c73d13` 默认 loop hooks 生效；`c56ea1c` createAgentRuntime 外部组合入口
 - M13.7：`26f1475` 默认 loop context budget / compact checkpoint 消息状态 / runtime inbox 注入 / 子路径导出
+- M14.1：`6f963d1` README 英文重构 + 中文文档；默认模型改为 `deepseek-v4-flash`，版本升至 0.1.1

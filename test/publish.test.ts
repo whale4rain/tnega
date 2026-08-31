@@ -65,7 +65,7 @@ describe('packed artifact', () => {
     expect(typeof mod.anthropicMessagesAdapter).toBe('function')
     expect(typeof mod.createLlmAdapter).toBe('function')
     expect(typeof mod.lookupModel).toBe('function')
-    expect(mod.DEFAULT_MODEL).toBe('minimax-m3')
+    expect(mod.DEFAULT_MODEL).toBe('deepseek-v4-flash')
     expect(typeof mod.main).toBe('function')
     expect(mod.coreApi).toBeTruthy()
   })

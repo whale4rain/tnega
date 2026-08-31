@@ -29,7 +29,7 @@ export OPENCODE_GO_API_KEY=sk-...
 tnega run "Reply with: hello"
 ```
 
-`tnega run` 默认通过 Anthropic Messages 协议调用 OpenCode Go 的 `minimax-m3` 端点。key 也可以放在系统配置文件中：Windows 为 `%USERPROFILE%\.tnega\config.json`，Linux / macOS 为 `~/.config/tnega/config.json`，文件内可写 `apiKey`、`model`、`baseUrl`、`temperature`。优先级为命令行参数 > 环境变量 > 配置文件 > 默认值。
+`tnega run` 默认通过 OpenAI 兼容协议调用 OpenCode Go 的 `deepseek-v4-flash`；`minimax-m3` 走 Anthropic Messages 协议，同样内置在能力表中。key 也可以放在系统配置文件中：Windows 为 `%USERPROFILE%\.tnega\config.json`，Linux / macOS 为 `~/.config/tnega/config.json`，文件内可写 `apiKey`、`model`、`baseUrl`、`temperature`。优先级为命令行参数 > 环境变量 > 配置文件 > 默认值。
 
 不需要 API key 的确定性评测：
 
@@ -163,7 +163,7 @@ const builtinFiber = await root.plugin(builtinTools, {
 const agentFiber = await root.plugin(
   defineAgent({
     name: 'coding-agent',
-    version: '0.1.0',
+    version: '0.1.1',
     system: 'You are a coding agent.',
     tools: [],
   }),

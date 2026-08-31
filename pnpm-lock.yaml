@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      tnega:
+        specifier: ^0.1.0
+        version: 0.1.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -939,6 +943,11 @@ packages:
     resolution: {integrity: sha512-yau8yJdTt989Mm0Bd/236QnzEiPf2xLLTqUZRUJOo/3CB078LSwzei343DgtJVmfJKJE3TMINY1u42SQsP6mXw==}
     engines: {node: '>=14.0.0'}
 
+  tnega@0.1.0:
+    resolution: {integrity: sha512-IwxdUSxgfVPsoZgv6gqPSLhfqGdWW7z6hZHNn51FtxeczK6KISSiRkzT2qHHj+QB2d7QvcqMsdszbkUH3og2RQ==}
+    engines: {node: '>=22'}
+    hasBin: true
+
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
     engines: {node: '>=18.12'}
@@ -1758,6 +1767,8 @@ snapshots:
       picomatch: 4.0.5
 
   tinyrainbow@3.1.1: {}
+
+  tnega@0.1.0: {}
 
   ts-api-utils@2.5.0(typescript@6.0.3):
     dependencies:

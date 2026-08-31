@@ -183,7 +183,7 @@ describe('anthropicMessagesAdapter', () => {
     )
   })
 
-  it('uses the default model and max_tokens when not configured', async () => {
+  it('uses the configured default model and max_tokens when not configured', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       content: [{ type: 'text', text: 'hi' }],
       stop_reason: 'end_turn',

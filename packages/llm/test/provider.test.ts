@@ -25,12 +25,17 @@ function expectPricingPositive(
 }
 
 describe('createLlmAdapter', () => {
-  it('routes minimax-m3 to the Anthropic Messages adapter', () => {
-    const adapter = createLlmAdapter({ model: 'minimax-m3' })
+  it('routes the default deepseek model to the OpenAI compatible adapter', () => {
+    const adapter = createLlmAdapter({})
     expect(adapter).toBeDefined()
+    expect(DEFAULT_MODEL).toBe('deepseek-v4-flash')
+    expect(lookupModel(DEFAULT_MODEL)?.protocol).toBe('openai')
+  })
+
+  it('routes minimax-m3 to the Anthropic Messages adapter', () => {
+    expect(createLlmAdapter({ model: 'minimax-m3' })).toBeDefined()
     expect(lookupModel('minimax-m3')?.protocol).toBe('anthropic')
     expect(lookupModel('MINIMAX-M3')?.protocol).toBe('anthropic')
-    expect(DEFAULT_MODEL).toBe('minimax-m3')
   })
 
   it('routes deepseek models to the OpenAI compatible adapter', () => {

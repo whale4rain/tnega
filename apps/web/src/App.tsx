@@ -57,6 +57,7 @@ function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
 const MODEL_OPTIONS = [
   'deepseek-v4-flash',
   'deepseek-v4-pro',
+  'minimax-m3',
   'deepseek-chat',
   'deepseek-reasoner',
   'gpt-5.2',
