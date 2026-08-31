@@ -13,7 +13,7 @@ import {
   type AgentRunResult,
   type LLMAdapter,
 } from '@tnega/agent'
-import { openaiCompatAdapter } from '@tnega/llm'
+import { createLlmAdapter } from '@tnega/llm'
 import { session, type SessionProjector } from '@tnega/session'
 import {
   builtinTools,
@@ -33,6 +33,11 @@ import {
   type Task,
 } from '@tnega/eval'
 import { parseYaml } from './yaml.js'
+import {
+  readSystemConfig,
+  resolveLlmEnv,
+  systemConfigPath,
+} from './config.js'
 import {
   createLlmProposeRule,
   evolvePlugin,
@@ -80,6 +85,7 @@ export interface RunAgentCommandOptions {
   prompt: string
   cwd?: string
   sessionFile?: string
+  configFile?: string
   model?: string
   baseUrl?: string
   maxTokens?: number
@@ -102,6 +108,7 @@ export interface RunEvolveCommandOptions {
   tasksFile: string
   cwd?: string
   outputDir?: string
+  configFile?: string
   maxIterations?: number
   maxRuns?: number
   baseSystem?: string
@@ -131,6 +138,8 @@ export interface LlmEnvConfig {
   baseUrl?: string
   model?: string
 }
+
+export { resolveLlmEnv } from './config.js'
 
 export interface AgentRuntimeOptions {
   cwd: string
@@ -338,36 +347,35 @@ function resolveRunInput(input: string, cwd: string): string {
   return input
 }
 
-export function resolveLlmEnv(env: NodeJS.ProcessEnv = process.env): LlmEnvConfig {
-  const config: LlmEnvConfig = {}
-  const apiKey = env.OPENCODE_GO_API_KEY || env.OPENAI_API_KEY || env.DEEPSEEK_API_KEY
-  if (apiKey) config.apiKey = apiKey
-  if (env.OPENCODE_GO_BASE_URL) config.baseUrl = env.OPENCODE_GO_BASE_URL
-  if (env.OPENCODE_GO_MODEL) config.model = env.OPENCODE_GO_MODEL
-  return config
-}
-
 export async function runAgentCommand(
   options: RunAgentCommandOptions,
 ): Promise<RunAgentCommandResult> {
   const cwd = options.cwd ?? process.cwd()
   const sessionFile = resolve(cwd, options.sessionFile ?? join('.tnega', 'run.jsonl'))
+  const configFile = options.configFile ?? systemConfigPath()
+  const systemConfig = await readSystemConfig(configFile)
   const envConfig = resolveLlmEnv(process.env)
-  const apiKey = envConfig.apiKey
+  const apiKey = envConfig.apiKey ?? systemConfig.apiKey
   if (!apiKey) {
     throw new CliError(
-      'missing OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY); set it before running tnega run',
+      'missing LLM API key; set OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
     )
   }
 
-  const model = options.model ?? envConfig.model
-  const baseUrl = options.baseUrl ?? envConfig.baseUrl
-  const adapter = openaiCompatAdapter({
+  const model = options.model ?? envConfig.model ?? systemConfig.model
+  const baseUrl = options.baseUrl
+    ?? envConfig.baseUrl
+    ?? systemConfig.baseUrl
+  const adapter = createLlmAdapter({
     apiKey,
     ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(systemConfig.temperature !== undefined
+      && options.temperature === undefined
+      ? { temperature: systemConfig.temperature }
+      : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
     ...(options.retryDelayMs !== undefined
@@ -471,22 +479,30 @@ export async function runEvolveCommand(
 ): Promise<RunEvolveCommandResult> {
   const cwd = options.cwd ?? process.cwd()
   const tasksFile = loadTasksFile(options.tasksFile)
+  const configFile = options.configFile ?? systemConfigPath()
+  const systemConfig = await readSystemConfig(configFile)
   const envConfig = resolveLlmEnv(process.env)
-  const apiKey = envConfig.apiKey
+  const apiKey = envConfig.apiKey ?? systemConfig.apiKey
   if (!apiKey) {
     throw new CliError(
-      'missing OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY); set it before running tnega evolve run',
+      'missing LLM API key; set OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
     )
   }
 
-  const model = options.model ?? envConfig.model
-  const baseUrl = options.baseUrl ?? envConfig.baseUrl
-  const adapter = openaiCompatAdapter({
+  const model = options.model ?? envConfig.model ?? systemConfig.model
+  const baseUrl = options.baseUrl
+    ?? envConfig.baseUrl
+    ?? systemConfig.baseUrl
+  const adapter = createLlmAdapter({
     apiKey,
     ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(systemConfig.temperature !== undefined
+      && options.temperature === undefined
+      ? { temperature: systemConfig.temperature }
+      : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
     ...(options.retryDelayMs !== undefined

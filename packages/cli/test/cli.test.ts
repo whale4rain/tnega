@@ -60,6 +60,18 @@ function openaiResponse(content = 'hi'): Response {
   })
 }
 
+function anthropicResponse(content = 'hi'): Response {
+  return new Response(JSON.stringify({
+    id: 'msg_1',
+    model: 'minimax-m3',
+    content: [{ type: 'text', text: content }],
+    stop_reason: 'end_turn',
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
 async function writeTasks(
   dir: string,
   file: string,
@@ -276,7 +288,12 @@ describe('agent run command', () => {
     const fetchMock = vi.fn(async () => openaiResponse('agent says hi')) as FetchMock
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await runAgentCommand({ prompt: 'say hi', cwd: dir, maxTokens: 16 })
+    const result = await runAgentCommand({
+      prompt: 'say hi',
+      cwd: dir,
+      model: 'deepseek-v4-flash',
+      maxTokens: 16,
+    })
 
     expect(result.run.output).toBe('agent says hi')
     expect(result.run.finishReason).toBe('stop')
@@ -299,9 +316,42 @@ describe('agent run command', () => {
     vi.stubEnv('DEEPSEEK_API_KEY', '')
     const dir = await tempDir('tnega-cli-agent-nokey-')
 
-    await expect(runAgentCommand({ prompt: 'hello', cwd: dir })).rejects.toThrow(
-      CliError,
+    await expect(runAgentCommand({
+      prompt: 'hello',
+      cwd: dir,
+      configFile: join(dir, 'missing-config.json'),
+    })).rejects.toThrow(CliError)
+  })
+
+  it('reads the API key and model from a config file through the Anthropic adapter', async () => {
+    const dir = await tempDir('tnega-cli-agent-config-')
+    const configFile = join(dir, 'config.json')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'config-key',
+      model: 'minimax-m3',
+      baseUrl: 'https://opencode.ai/zen/go/v1',
+    }), 'utf8')
+    const fetchMock = vi.fn(async () => anthropicResponse('config agent')) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runAgentCommand({
+      prompt: 'say hi',
+      cwd: dir,
+      configFile,
+      maxTokens: 16,
+    })
+
+    expect(result.run.output).toBe('config agent')
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'https://opencode.ai/zen/go/v1/messages',
     )
+    const init = fetchMock.mock.calls[0]![1]!
+    const headers = init.headers as Record<string, string>
+    expect(headers['x-api-key']).toBe('config-key')
+    expect(headers.authorization).toBeUndefined()
+    const body = JSON.parse(String(init.body)) as { model: string; max_tokens: number }
+    expect(body.model).toBe('minimax-m3')
+    expect(body.max_tokens).toBe(16)
   })
 
   it('retries a transient LLM failure with the configured limits', async () => {
@@ -404,6 +454,7 @@ describe('evolve run command', () => {
     const result = await runEvolveCommand({
       tasksFile,
       cwd: dir,
+      model: 'deepseek-v4-flash',
       baseSystem: 'baseline system',
       maxTurns: 1,
       maxSteps: 2,
@@ -448,7 +499,11 @@ describe('evolve run command', () => {
     const dir = await tempDir('tnega-cli-evolve-nokey-')
     const tasksFile = await writeEvolveTasks(dir)
 
-    await expect(runEvolveCommand({ tasksFile, cwd: dir })).rejects.toThrow(CliError)
+    await expect(runEvolveCommand({
+      tasksFile,
+      cwd: dir,
+      configFile: join(dir, 'missing-config.json'),
+    })).rejects.toThrow(CliError)
   })
 
   it('wires evolve run through main with flags', async () => {
@@ -464,6 +519,8 @@ describe('evolve run command', () => {
       tasksFile,
       '--cwd',
       dir,
+      '--model',
+      'deepseek-v4-flash',
       '--iterations',
       '1',
       '--base-system',

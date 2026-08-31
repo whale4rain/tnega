@@ -1,8 +1,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_OPENCODE_GO_BASE_URL } from '@tnega/llm'
-import { resolveLlmEnv, type LlmEnvConfig } from './commands.js'
+import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL } from '@tnega/llm'
+
+export interface LlmEnvConfig {
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+}
 
 export interface SystemConfig {
   apiKey?: string
@@ -99,7 +104,7 @@ export function effectiveLlmConfig(
   const envConfig = resolveLlmEnv(env)
   const apiKey = envConfig.apiKey ?? config.apiKey
   const baseUrl = envConfig.baseUrl ?? config.baseUrl ?? DEFAULT_OPENCODE_GO_BASE_URL
-  const model = envConfig.model ?? config.model ?? DEFAULT_DEEPSEEK_MODEL
+  const model = envConfig.model ?? config.model ?? DEFAULT_MODEL
   const result: EffectiveLlmConfig = {
     apiKeySet: Boolean(apiKey),
     baseUrl,
@@ -122,6 +127,15 @@ export function effectiveApiKey(
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
   return resolveLlmEnv(env).apiKey ?? config.apiKey
+}
+
+export function resolveLlmEnv(env: NodeJS.ProcessEnv = process.env): LlmEnvConfig {
+  const config: LlmEnvConfig = {}
+  const apiKey = env.OPENCODE_GO_API_KEY || env.OPENAI_API_KEY || env.DEEPSEEK_API_KEY
+  if (apiKey) config.apiKey = apiKey
+  if (env.OPENCODE_GO_BASE_URL) config.baseUrl = env.OPENCODE_GO_BASE_URL
+  if (env.OPENCODE_GO_MODEL) config.model = env.OPENCODE_GO_MODEL
+  return config
 }
 
 function normalizeConfig(value: unknown): SystemConfig {

@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AgentStreamEvent } from '@tnega/agent'
-import { openaiCompatAdapter } from '@tnega/llm'
+import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
 import type { ModelMessage, SessionLog } from '@tnega/session'
 import {
   createAgentRuntime,
@@ -434,7 +434,7 @@ async function compactContext(
   if (!messages.length) {
     return compactSession(workspace, id, { keep })
   }
-  const adapter = openaiCompatAdapter({
+  const adapter = createLlmAdapter({
     apiKey,
     baseUrl: effective.baseUrl,
     model: effective.model,
@@ -669,7 +669,7 @@ function adapterFromConfig(
     model: effective.model,
   }
   if (effective.temperature !== undefined) options.temperature = effective.temperature
-  return openaiCompatAdapter(options)
+  return createLlmAdapter(options)
 }
 
 function configSnapshot(config: SystemConfig): Record<string, unknown> {

@@ -50,6 +50,7 @@ export function main(argv: readonly string[]): Promise<number> {
         prompt: parsed.prompt,
         ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
         ...(parsed.sessionFile ? { sessionFile: parsed.sessionFile } : {}),
+        ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
         ...(parsed.model ? { model: parsed.model } : {}),
         ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
         ...(parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {}),
@@ -72,6 +73,7 @@ export function main(argv: readonly string[]): Promise<number> {
       const server = await startWebServer({
         ...(parsed.host ? { host: parsed.host } : {}),
         ...(parsed.port !== undefined ? { port: parsed.port } : {}),
+        ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
       })
       process.stdout.write(`tnega web listening on ${server.url}\n`)
       return new Promise<number>(() => {})
@@ -110,6 +112,7 @@ export function main(argv: readonly string[]): Promise<number> {
         tasksFile: parsed.tasksFile,
         ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
         ...(parsed.outputDir ? { outputDir: parsed.outputDir } : {}),
+        ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
         ...(parsed.maxIterations !== undefined
           ? { maxIterations: parsed.maxIterations }
           : {}),
@@ -156,6 +159,7 @@ interface ParsedRunAgentArgs {
   prompt?: string
   cwd?: string
   sessionFile?: string
+  configFile?: string
   model?: string
   baseUrl?: string
   maxTokens?: number
@@ -172,12 +176,14 @@ interface ParsedRunAgentArgs {
 interface ParsedWebArgs {
   host?: string
   port?: number
+  configFile?: string
 }
 
 interface ParsedEvolveRunArgs {
   tasksFile?: string
   cwd?: string
   outputDir?: string
+  configFile?: string
   maxIterations?: number
   maxRuns?: number
   baseSystem?: string
@@ -295,6 +301,10 @@ function assignEvolveRunOption(
     case 'output-dir':
       parsed.outputDir = value
       return
+    case 'config':
+    case 'config-file':
+      parsed.configFile = value
+      return
     case 'iterations':
       parsed.maxIterations = parseFiniteNumber('--iterations', value)
       return
@@ -350,6 +360,10 @@ function assignRunAgentOption(
       return
     case 'session':
       parsed.sessionFile = value
+      return
+    case 'config':
+    case 'config-file':
+      parsed.configFile = value
       return
     case 'model':
       parsed.model = value
@@ -417,11 +431,12 @@ function parseWebArgs(args: readonly string[]): ParsedWebArgs {
   let cursor = 0
   while (cursor < args.length) {
     const arg = args[cursor]!
-    if (arg === '--host' || arg === '--port') {
+    if (arg === '--host' || arg === '--port' || arg === '--config' || arg === '--config-file') {
       const value = args[cursor + 1]
       if (!value) throw new CliError(`${arg} requires a value`)
       if (arg === '--host') parsed.host = value
       if (arg === '--port') parsed.port = parseFiniteNumber('--port', value)
+      if (arg === '--config' || arg === '--config-file') parsed.configFile = value
       cursor += 2
       continue
     }
