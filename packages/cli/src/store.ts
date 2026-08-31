@@ -11,7 +11,12 @@ import {
 import { join, resolve } from 'node:path'
 import {
   SessionLog,
+  estimateContextUsage as estimateSessionContextUsage,
+  estimateMessageTokens,
   projectEvents,
+  resolveCompactKeep,
+  suffixStartIndexForTokens,
+  type ContextUsage,
   type ModelMessage,
   type SessionEvent,
 } from '@tnega/session'
@@ -246,14 +251,6 @@ export async function truncateSessionAt(
   return readSessionSummary(workspace, id)
 }
 
-export interface ContextUsage {
-  tokens: number
-  limit: number
-  ratio: number
-}
-
-export const DEFAULT_CONTEXT_LIMIT = 128_000
-
 export async function readSessionMessages(
   workspace: string,
   id: string,
@@ -268,13 +265,7 @@ export async function estimateContextUsage(
   id: string,
 ): Promise<ContextUsage> {
   const messages = await readSessionMessages(workspace, id)
-  const tokens = estimateMessageTokens(messages)
-  const limit = DEFAULT_CONTEXT_LIMIT
-  return {
-    tokens,
-    limit,
-    ratio: limit > 0 ? tokens / limit : 0,
-  }
+  return estimateSessionContextUsage(messages)
 }
 
 export interface CompactSessionOptions {
@@ -428,87 +419,4 @@ function parseSessionEvent(line: string): SessionEvent | undefined {
     return undefined
   }
   return value as SessionEvent
-}
-
-function estimateMessageTokens(messages: readonly ModelMessage[]): number {
-  let tokens = 0
-  for (const message of messages) {
-    tokens += Math.ceil(message.content.length / 4)
-    for (const call of message.tool_calls ?? []) {
-      const raw = JSON.stringify(call.arguments ?? {}) ?? ''
-      tokens += Math.ceil(raw.length / 4)
-    }
-  }
-  return tokens
-}
-
-function resolveCompactKeep(
-  events: readonly SessionEvent[],
-  options: CompactSessionOptions,
-): number {
-  if (
-    typeof options.keepTokens === 'number'
-    && Number.isFinite(options.keepTokens)
-    && options.keepTokens > 0
-  ) {
-    return events.length - suffixStartIndexForTokens(events, options.keepTokens)
-  }
-  const keep = typeof options.keep === 'number' && Number.isFinite(options.keep) && options.keep > 0
-    ? Math.floor(options.keep)
-    : 0
-  return Math.min(keep, events.length)
-}
-
-function suffixStartIndexForTokens(
-  events: readonly SessionEvent[],
-  targetTokens: number,
-): number {
-  if (!events.length || targetTokens <= 0) return 0
-  let tokens = 0
-  let candidate = events.length
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    tokens += estimateEventTokens(events[index]!)
-    if (tokens >= targetTokens) {
-      candidate = index
-      break
-    }
-  }
-  if (candidate === events.length) return 0
-  let cut = candidate
-  while (cut < events.length) {
-    const event = events[cut]
-    if (event && event.type === 'message' && event.payload.role === 'user') return cut
-    cut += 1
-  }
-  return candidate
-}
-
-function estimateEventTokens(event: SessionEvent): number {
-  switch (event.type) {
-    case 'message':
-      return Math.ceil(event.payload.content.length / 4)
-    case 'tool-call': {
-      const raw = JSON.stringify(event.payload.arguments ?? {}) ?? ''
-      return Math.ceil(raw.length / 4)
-    }
-    case 'tool-result': {
-      const raw = event.payload.ok
-        ? stringifyUnknown(event.payload.output)
-        : event.payload.error?.message ?? 'error'
-      return Math.ceil(raw.length / 4)
-    }
-    case 'checkpoint':
-      return estimateMessageTokens(event.payload.messages)
-    case 'meta':
-      return 0
-  }
-}
-
-function stringifyUnknown(value: unknown): string {
-  if (typeof value === 'string') return value
-  try {
-    return JSON.stringify(value) ?? ''
-  } catch {
-    return String(value)
-  }
 }

@@ -33,11 +33,18 @@ export {
 } from '../packages/core/src/index.js'
 
 export {
+  DEFAULT_CONTEXT_LIMIT,
   SessionLog,
+  estimateContextUsage,
+  estimateEventTokens,
+  estimateMessageTokens,
   projectEvents,
+  resolveCompactKeep,
   session,
+  suffixStartIndexForTokens,
   type CheckpointPayload,
   type CompactOptions,
+  type ContextUsage,
   type MessagePayload,
   type MessageRole,
   type ModelMessage,
@@ -48,6 +55,7 @@ export {
   type SessionEvent,
   type SessionEventBase,
   type SessionEventType,
+  type SessionProjector,
   type ToolCallPayload,
   type ToolResultErrorPayload,
   type ToolResultPayload,

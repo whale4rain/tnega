@@ -83,15 +83,27 @@ export type SessionEvent =
 
 export interface SessionConfig {
   file: string
+  projector?: SessionProjector
 }
 
 export interface CompactOptions {
   keep?: number
+  keepTokens?: number
   summary?: string
   tokensBefore?: number
 }
 
 export type ReplayReducer<T> = (state: T, event: SessionEvent) => T | Promise<T>
+
+export type SessionProjector = (events: readonly SessionEvent[]) => ModelMessage[]
+
+export interface ContextUsage {
+  tokens: number
+  limit: number
+  ratio: number
+}
+
+export const DEFAULT_CONTEXT_LIMIT = 128_000
 
 function isSessionEvent(value: unknown): value is SessionEvent {
   if (typeof value !== 'object' || value === null) return false
@@ -175,13 +187,102 @@ function stringify(value: unknown): string {
   }
 }
 
+export function estimateMessageTokens(messages: readonly ModelMessage[]): number {
+  let tokens = 0
+  for (const message of messages) {
+    tokens += Math.ceil(message.content.length / 4)
+    for (const call of message.tool_calls ?? []) {
+      const raw = JSON.stringify(call.arguments ?? {}) ?? ''
+      tokens += Math.ceil(raw.length / 4)
+    }
+  }
+  return tokens
+}
+
+export function estimateEventTokens(event: SessionEvent): number {
+  switch (event.type) {
+    case 'message':
+      return Math.ceil(event.payload.content.length / 4)
+    case 'tool-call': {
+      const raw = JSON.stringify(event.payload.arguments ?? {}) ?? ''
+      return Math.ceil(raw.length / 4)
+    }
+    case 'tool-result': {
+      const raw = event.payload.ok
+        ? stringify(event.payload.output)
+        : event.payload.error?.message ?? 'error'
+      return Math.ceil(raw.length / 4)
+    }
+    case 'checkpoint':
+      return estimateMessageTokens(event.payload.messages)
+    case 'meta':
+      return 0
+  }
+}
+
+export function suffixStartIndexForTokens(
+  events: readonly SessionEvent[],
+  targetTokens: number,
+): number {
+  if (!events.length || targetTokens <= 0) return 0
+  let tokens = 0
+  let candidate = events.length
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    tokens += estimateEventTokens(events[index]!)
+    if (tokens >= targetTokens) {
+      candidate = index
+      break
+    }
+  }
+  if (candidate === events.length) return 0
+  let cut = candidate
+  while (cut < events.length) {
+    const event = events[cut]
+    if (event && event.type === 'message' && event.payload.role === 'user') return cut
+    cut += 1
+  }
+  return candidate
+}
+
+export function resolveCompactKeep(
+  events: readonly SessionEvent[],
+  options: CompactOptions,
+): number {
+  if (
+    typeof options.keepTokens === 'number'
+    && Number.isFinite(options.keepTokens)
+    && options.keepTokens > 0
+  ) {
+    return events.length - suffixStartIndexForTokens(events, options.keepTokens)
+  }
+  const keep = typeof options.keep === 'number' && Number.isFinite(options.keep) && options.keep > 0
+    ? Math.floor(options.keep)
+    : 0
+  return Math.min(keep, events.length)
+}
+
+export function estimateContextUsage(
+  messages: readonly ModelMessage[],
+  limit = DEFAULT_CONTEXT_LIMIT,
+): ContextUsage {
+  const tokens = estimateMessageTokens(messages)
+  return {
+    tokens,
+    limit,
+    ratio: limit > 0 ? tokens / limit : 0,
+  }
+}
+
 export class SessionLog {
   private _events: SessionEvent[] = []
   private _loaded = false
   private _nextSeq = 1
   private _queue: Promise<unknown> = Promise.resolve()
 
-  constructor(readonly file: string) {}
+  constructor(
+    readonly file: string,
+    private _projector: SessionProjector = projectEvents,
+  ) {}
 
   init(): Promise<void> {
     return this._run(async () => {
@@ -276,7 +377,14 @@ export class SessionLog {
   deriveMessages(): Promise<ModelMessage[]> {
     return this._run(async () => {
       await this._ensureLoaded()
-      return clone(projectEvents(this._events))
+      return clone(this._projector(this._events))
+    })
+  }
+
+  estimateContext(limit = DEFAULT_CONTEXT_LIMIT): Promise<ContextUsage> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      return estimateContextUsage(this._projector(this._events), limit)
     })
   }
 
@@ -299,7 +407,7 @@ export class SessionLog {
   compact(options: CompactOptions = {}): Promise<number> {
     return this._run(async () => {
       await this._ensureLoaded()
-      const keep = Math.max(0, Math.min(options.keep ?? 0, this._events.length))
+      const keep = resolveCompactKeep(this._events, options)
       const split = this._events.length - keep
       const prefix = this._events.slice(0, split)
       const suffix = this._events.slice(split)
@@ -309,7 +417,7 @@ export class SessionLog {
         ts: Date.now(),
         type: 'checkpoint',
         payload: {
-          messages: projectEvents(prefix),
+          messages: this._projector(prefix),
           ...(options.summary ? { summary: options.summary } : {}),
           ...(options.tokensBefore !== undefined
             ? { tokensBefore: options.tokensBefore }
@@ -399,7 +507,7 @@ export class SessionLog {
 export const session = {
   name: 'session',
   apply: async (ctx: Context, config: SessionConfig) => {
-    const log = new SessionLog(config.file)
+    const log = new SessionLog(config.file, config.projector)
     await log.init()
     ctx.provide('session', log)
     return () => log.close()

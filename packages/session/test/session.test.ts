@@ -5,9 +5,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
 import {
+  estimateContextUsage,
+  estimateEventTokens,
+  estimateMessageTokens,
   projectEvents,
+  resolveCompactKeep,
   SessionLog,
   session,
+  suffixStartIndexForTokens,
   type ModelMessage,
   type SessionEvent,
 } from '../src/index.js'
@@ -446,5 +451,205 @@ describe('projectEvents', () => {
 
   it('accepts an empty event stream', () => {
     expect(projectEvents([])).toEqual([])
+  })
+})
+
+describe('SessionProjector', () => {
+  it('derives messages through a custom projector', async () => {
+    const file = await tempFile('projector.jsonl')
+    const log = new SessionLog(file, (events) => (
+      events
+        .filter((event): event is Extract<SessionEvent, { type: 'message' }> => event.type === 'message')
+        .map((event) => ({
+          role: 'system' as const,
+          content: `[${event.payload.role}] ${event.payload.content}`,
+        }))
+    ))
+    await log.append('message', { role: 'user', content: 'hello' })
+    await log.append('message', { role: 'assistant', content: 'hi' })
+
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'system', content: '[user] hello' },
+      { role: 'system', content: '[assistant] hi' },
+    ])
+    const usage = await log.estimateContext(100)
+    expect(usage.tokens).toBe(Math.ceil('[user] hello'.length / 4) + Math.ceil('[assistant] hi'.length / 4))
+    expect(usage.limit).toBe(100)
+  })
+
+  it('passes a projector through the session plugin', async () => {
+    const root = new Context()
+    const fiber = root.plugin(session, {
+      file: await tempFile('projector-plugin.jsonl'),
+      projector: (events: readonly SessionEvent[]) => (
+        events
+          .filter((event: SessionEvent): event is Extract<SessionEvent, { type: 'message' }> => (
+            event.type === 'message'
+          ))
+          .map((event: Extract<SessionEvent, { type: 'message' }>) => ({
+            role: 'assistant' as const,
+            content: event.payload.content.toUpperCase(),
+          }))
+      ),
+    })
+    await fiber
+
+    const log = dynamic(root).session as SessionLog
+    await log.append('message', { role: 'user', content: 'ping' })
+    expect(await log.deriveMessages()).toEqual([{ role: 'assistant', content: 'PING' }])
+    await fiber.dispose()
+  })
+
+  it('uses the projector when compacting into a checkpoint', async () => {
+    const file = await tempFile('projector-compact.jsonl')
+    const log = new SessionLog(file, (events: readonly SessionEvent[]) => {
+      const messages: ModelMessage[] = []
+      for (const event of events) {
+        if (event.type === 'checkpoint') {
+          messages.push(...event.payload.messages)
+        } else if (event.type === 'message') {
+          messages.push({ role: 'system', content: event.payload.content })
+        }
+      }
+      return messages
+    })
+    await log.append('message', { role: 'user', content: 'a' })
+    await log.append('message', { role: 'assistant', content: 'b' })
+
+    await log.compact()
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'system', content: 'a' },
+      { role: 'system', content: 'b' },
+    ])
+  })
+})
+
+describe('context budget', () => {
+  it('estimates tokens from messages and tool call arguments', () => {
+    const messages: ModelMessage[] = [
+      { role: 'user', content: 'aaaaaaaa' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'c1',
+            name: 'read',
+            arguments: { key: 'aaaaaaaa' },
+          },
+        ],
+      },
+    ]
+    const expected = 2 + Math.ceil('{"key":"aaaaaaaa"}'.length / 4)
+    expect(estimateMessageTokens(messages)).toBe(expected)
+    expect(estimateContextUsage(messages, 10)).toEqual({
+      tokens: expected,
+      limit: 10,
+      ratio: expected / 10,
+    })
+  })
+
+  it('estimates event tokens for every session event type', () => {
+    const message: SessionEvent = {
+      id: 'm1',
+      seq: 1,
+      ts: 1,
+      type: 'message',
+      payload: { role: 'user', content: 'aaaaaaaa' },
+    }
+    const toolCall: SessionEvent = {
+      id: 't1',
+      seq: 2,
+      ts: 2,
+      type: 'tool-call',
+      payload: { id: 't1', name: 'read', arguments: { key: 'aaaaaaaa' } },
+    }
+    const toolResult: SessionEvent = {
+      id: 'r1',
+      seq: 3,
+      ts: 3,
+      type: 'tool-result',
+      payload: {
+        id: 'r1',
+        toolCallId: 't1',
+        name: 'read',
+        ok: true,
+        output: { value: 'aaaaaaaa' },
+      },
+    }
+    const checkpoint: SessionEvent = {
+      id: 'c1',
+      seq: 4,
+      ts: 4,
+      type: 'checkpoint',
+      payload: { messages: [{ role: 'user', content: 'aaaaaaaa' }] },
+    }
+    const meta: SessionEvent = {
+      id: 'meta1',
+      seq: 5,
+      ts: 5,
+      type: 'meta',
+      payload: {},
+    }
+
+    expect(estimateEventTokens(message)).toBe(2)
+    expect(estimateEventTokens(toolCall)).toBe(Math.ceil('{"key":"aaaaaaaa"}'.length / 4))
+    expect(estimateEventTokens(toolResult)).toBe(
+      Math.ceil('{"value":"aaaaaaaa"}'.length / 4),
+    )
+    expect(estimateEventTokens(checkpoint)).toBe(2)
+    expect(estimateEventTokens(meta)).toBe(0)
+  })
+
+  it('finds a token budget boundary and resolves compact keep', () => {
+    const events: SessionEvent[] = [
+      {
+        id: 'm1',
+        seq: 1,
+        ts: 1,
+        type: 'message',
+        payload: { role: 'user', content: 'aaaa' },
+      },
+      {
+        id: 'm2',
+        seq: 2,
+        ts: 2,
+        type: 'message',
+        payload: { role: 'user', content: 'bbbbbbbb' },
+      },
+      {
+        id: 'm3',
+        seq: 3,
+        ts: 3,
+        type: 'message',
+        payload: { role: 'user', content: 'cccccccc' },
+      },
+    ]
+
+    expect(suffixStartIndexForTokens(events, 3)).toBe(1)
+    expect(resolveCompactKeep(events, { keepTokens: 3 })).toBe(2)
+    expect(resolveCompactKeep(events, { keep: 10 })).toBe(3)
+    expect(resolveCompactKeep(events, {})).toBe(0)
+  })
+
+  it('compacts by keepTokens and preserves projected history', async () => {
+    const log = new SessionLog(await tempFile('compact-tokens.jsonl'))
+    await log.append('message', { role: 'user', content: 'aaaa' })
+    await log.append('message', { role: 'user', content: 'bbbbbbbb' })
+    await log.append('message', { role: 'user', content: 'cccccccc' })
+    const before = await log.deriveMessages()
+
+    const count = await log.compact({ keepTokens: 3 })
+    expect(count).toBe(3)
+    expect(await log.deriveMessages()).toEqual(before)
+
+    const events = await log.read()
+    expect(events[0]!.type).toBe('checkpoint')
+    expect(events.slice(1).map(event => (event.payload as { content: string }).content)).toEqual([
+      'bbbbbbbb',
+      'cccccccc',
+    ])
+    const checkpoint = events[0]!.payload as { messages: ModelMessage[] }
+    expect(checkpoint.messages).toEqual([{ role: 'user', content: 'aaaa' }])
   })
 })
