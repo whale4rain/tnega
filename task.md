@@ -54,9 +54,9 @@
 
 ## M14 LLM provider 抽象与 Anthropic Messages
 
-目标：能力表不存价格；默认模型切换为 `minimax-m3`（Anthropic Messages 协议），保留 OpenAI 兼容回退；key 只从环境变量或 `.tnega` 配置读取，不进入代码。
+目标：能力表携带价格元数据；默认模型切换为 `minimax-m3`（Anthropic Messages 协议），保留 OpenAI 兼容回退；key 只从环境变量或 `.tnega` 配置读取，不进入代码。
 
-- [x] 能力表移除价格字段
+- [x] 能力表新增价格字段：每 1M token 的 input / output / cachedRead，DeepSeek 区分 Peak / Off-Peak，附 `monthlyUsage`
 - [x] `openaiCompatAdapter` 拆分为独立 provider 模块
 - [x] 新增 `anthropicMessagesAdapter`，支持 Messages 请求映射、SSE 流、重试与超时
 - [x] 新增 `createLlmAdapter` 按模型表选择协议，未知模型回退 OpenAI

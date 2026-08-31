@@ -211,6 +211,16 @@ OPENCODE_GO_API_KEY=sk-xxx pnpm tnega run "Reply with: hello"
 
 默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `minimax-m3`（Anthropic Messages 协议，请求 `.../v1/messages`）；OpenAI 兼容回退默认模型为 `deepseek-v4-flash`。模型协议通过内置模型表自动选择，未知模型回退到 OpenAI 兼容协议。可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
 
+能力表（`MODEL_CATALOG`）同时携带价格元数据，单位为每 1M token 的 USD，DeepSeek 模型区分 Peak / Off-Peak 两档；`monthlyUsage` 为 OpenCode Go 订阅每月包含的美元额度。Peak 时段为 UTC 周一至周五 01:00-04:00 与 06:00-10:00，其余时间（含周末）为 Off-Peak。
+
+| 模型 | 档位 | Input | Output | Cached Read | Usage |
+| --- | --- | ---: | ---: | ---: | ---: |
+| MiniMax M3 | 单档 | $0.30 | $1.20 | $0.06 | $60 |
+| DeepSeek V4 Flash | Off-Peak | $0.22 | $0.66 | $0.007 | $30 |
+| DeepSeek V4 Flash | Peak | $0.44 | $1.32 | $0.014 | $30 |
+| DeepSeek V4 Pro | Off-Peak | $0.66 | $1.98 | $0.022 | $15 |
+| DeepSeek V4 Pro | Peak | $1.32 | $3.96 | $0.044 | $15 |
+
 LLM 请求默认 120 秒超时，最多重试 2 次，采用 500ms 起步的指数退避；仅网络错误、408 / 425 / 429 / 5xx 会触发重试，401 / 403 等 4xx 和用户取消不会重试。可以通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖，`tnega run` 与 `tnega evolve run` 都支持：
 
 ```text
