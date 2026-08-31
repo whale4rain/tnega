@@ -405,4 +405,4 @@
 - M13.4：`d21b630` Tools policy（validator / authorizer / truncator）
 - M13.5：`a054cc7` README 库用法与 M13 状态更新
 - M13.6：`8c73d13` 默认 loop hooks 生效；`c56ea1c` createAgentRuntime 外部组合入口
-- M13.7：待补 默认 loop context budget / compact checkpoint 消息状态 / runtime inbox 注入 / 子路径导出
+- M13.7：`26f1475` 默认 loop context budget / compact checkpoint 消息状态 / runtime inbox 注入 / 子路径导出
