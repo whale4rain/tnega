@@ -101,6 +101,57 @@ packages/
   cli/        # Headless CLI
 ```
 
+## 作为库使用
+
+`tnega` 从 0.1.0 起同时发布为库入口。外部 agent（包括独立仓库的 coding agent）可以直接依赖根包，用 `Context` 组装自己的运行时，不需要依赖内部 `@tnega/*` 包。发布包通过 `exports` 暴露 `dist/index.js` 与 `dist/types`，所有公共契约都有类型声明。
+
+```ts
+import {
+  Context,
+  session,
+  tools,
+  builtinTools,
+  defineAgent,
+  openaiCompatAdapter,
+  type AgentLoop,
+} from 'tnega'
+
+const root = new Context()
+const sessionFiber = await root.plugin(session, {
+  file: '.tnega/coding-agent.jsonl',
+})
+const toolsFiber = await root.plugin(tools)
+const builtinFiber = await root.plugin(builtinTools, {
+  cwd: process.cwd(),
+})
+
+const agentFiber = await root.plugin(
+  defineAgent({
+    name: 'coding-agent',
+    version: '0.1.0',
+    system: 'You are a coding agent.',
+    tools: [], // 专属工具随插件生命周期注册与注销
+  }),
+  { llm: openaiCompatAdapter({ apiKey: process.env.OPENCODE_GO_API_KEY! }) },
+)
+
+const loop = root.get('agentLoop') as AgentLoop
+const result = await loop({ text: 'implement the feature' })
+console.log(result.output)
+
+for (const fiber of [agentFiber, builtinFiber, toolsFiber, sessionFiber].reverse()) {
+  await fiber.dispose()
+}
+```
+
+M13 为外部 agent 补齐的三个主要契约：
+
+- `AgentDefinition`：`defineAgent({ name, version?, system?, tools?, loop?, hooks? })` 返回普通插件。默认 loop 使用 `config.llm` 并注入 `agentSystem`；传入自定义 `loop` 时，tnega 负责 system 注入与 `beforeRun` / `afterRun` 包装；`tools` 随插件挂载和卸载自动注册、注销，并派发 `agent/definition` 元数据事件。
+- `SessionProjector` 与 context budget：`session` 插件可通过 `projector` 配置自定义 JSONL 事件到模型消息的投影；`SessionLog.deriveMessages()`、`estimateContext()` 与 `compact({ keepTokens })` 共用同一投影器。估算与预算工具也独立导出：`estimateContextUsage`、`estimateMessageTokens`、`estimateEventTokens`、`suffixStartIndexForTokens`、`resolveCompactKeep`、`DEFAULT_CONTEXT_LIMIT`。
+- `ToolPolicy`：`validator`、`authorizer`、`truncator` 可配置在 `tools` 全局层，也可覆盖在单个 `ToolDefinition.policy`。执行顺序为 `pre-execute → authorizer → validator → execute → truncator → post-execute / result`；策略拒绝会返回 `ToolResult.ok === false` 而不是把异常抛给 agent loop。`validateSchema` 支持 required、type、enum、嵌套对象与数组，并允许不带 `type` 的属性（视为任意 JSON）。
+
+另外 `createAgentRuntime`、`LLMAdapter`、eval / evolve 服务也通过根包导出，外部 agent 既可以只替换 loop 和工具，也可以直接嵌入评测与进化闭环。
+
 ## 使用
 
 发布后可通过 npm 或 pnpm 全局安装：
@@ -198,3 +249,4 @@ defaultCandidate: echo
 - M10 npm / pnpm 发布准备：已完成。`tnega` 根包发布为公共自包含 CLI，`bin` 指向 esbuild 打包的 `dist/bin.js`，`prepublishOnly` 自动构建并跑发布测试；npm 与 pnpm 本地安装验证通过，测试记录见 `docs/test/npm-publish.md`。
 - M11 LLM 超时与重试：已完成。OpenAI 兼容适配器支持 120s 默认超时、最多 2 次重试与指数退避，只对瞬时错误重试；`run` 与 `evolve run` 均可通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖。
 - M12 tnega web：已完成。`tnega web` 在 `127.0.0.1:3080` 提供浅色 manpage 风格 Web UI，支持多工作区、JSONL 会话、fork、token 级 SSE 流式聊天、每次运行的工具权限开关、系统级模型配置，以及 eval/evolve 只读仪表板。
+- M13 agent core 对外边界：已完成。根包暴露库入口与完整类型；`defineAgent` 提供声明式 agent 契约；session 支持可插拔投影器与 context budget；tools 支持校验 / 授权 / 截断策略；发布测试验证消费者可直接 `import { Context, defineAgent, SessionLog } from 'tnega'`。
