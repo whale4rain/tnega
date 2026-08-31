@@ -11,6 +11,14 @@
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": {
+      "types": "./dist/types/src/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": "./dist/bin.js",
+    "./package.json": "./package.json"
+  },
   "packageManager": "pnpm@11.19.0",
   "engines": {
     "node": ">=22"

@@ -4,10 +4,12 @@
     "noEmit": false,
     "declaration": true,
     "sourceMap": true,
-    "rootDir": "packages",
-    "outDir": "dist"
+    "rootDir": ".",
+    "outDir": "dist/types",
+    "emitDeclarationOnly": true
   },
   "include": [
-    "packages/**/*.ts"
+    "src/index.ts",
+    "packages/*/src/**/*.ts"
   ]
 }

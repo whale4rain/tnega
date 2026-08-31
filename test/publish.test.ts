@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '..')
@@ -53,4 +54,39 @@ describe('packed artifact', () => {
     expect(index).not.toMatch(/from ["']@tnega\//)
     expect(index).toContain('runAgentCommand')
   })
+
+  it('resolves the library entry as a consumer via package exports', async () => {
+    const mod = await import('tnega')
+    expect(typeof mod.Context).toBe('function')
+    expect(typeof mod.SessionLog).toBe('function')
+    expect(typeof mod.ToolsService).toBe('function')
+    expect(typeof mod.AgentService).toBe('function')
+    expect(typeof mod.openaiCompatAdapter).toBe('function')
+    expect(typeof mod.main).toBe('function')
+    expect(mod.coreApi).toBeTruthy()
+  })
+
+  it('publishes self-contained declarations without @tnega/* imports', () => {
+    const rootDir = resolve(root, 'dist/types')
+    const files = collectDeclarations(rootDir)
+    expect(files.length).toBeGreaterThan(10)
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8')
+      expect(text).not.toMatch(/['"]@tnega\//)
+    }
+    expect(existsSync(resolve(rootDir, 'src/index.d.ts'))).toBe(true)
+  })
 })
+
+function collectDeclarations(dir: string): string[] {
+  const files: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...collectDeclarations(path))
+    } else if (entry.name.endsWith('.d.ts')) {
+      files.push(path)
+    }
+  }
+  return files
+}

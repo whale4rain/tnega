@@ -18,6 +18,7 @@
   },
   "include": [
     "scripts/**/*.ts",
+    "src/**/*.ts",
     "packages/**/*.ts",
     "test/**/*.ts",
     "vitest.config.ts"
