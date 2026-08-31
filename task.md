@@ -372,6 +372,7 @@
 - [x] M13.3 SessionProjector 与 context budget：可插拔投影器 + token 估算 / 预算工具，从 cli store 下沉到 session
 - [x] M13.4 Tools policy：输入校验、授权、输出截断三类可插拔策略 + 轻量 schema 校验器
 - [x] M13.5 README 库用法、契约文档与状态更新
+- [x] M13.6 runtime 组合边界：`createAgentRuntime` 可注入 `AgentDefinition` / `SessionProjector` / `ToolPolicy` / `builtinTools: false` / `plugins`，`llm` 可选；默认 loop 执行 `beforeRun` / `afterRun`；新增 agent + cli 组合测试
 - [x] 全量测试 / typecheck / lint / build 通过，更新状态与提交记录
 
 ## 提交记录
@@ -402,3 +403,4 @@
 - M13.3：`1b0a201` SessionProjector 与 context budget
 - M13.4：`d21b630` Tools policy（validator / authorizer / truncator）
 - M13.5：`a054cc7` README 库用法与 M13 状态更新
+- M13.6：`8c73d13` 默认 loop hooks 生效；`c56ea1c` createAgentRuntime 外部组合入口
