@@ -83,6 +83,6 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "tnega": "^0.1.0"
+    "tnega": "^0.1.1"
   }
 }

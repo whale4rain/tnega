@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       tnega:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -948,6 +948,11 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
+  tnega@0.1.1:
+    resolution: {integrity: sha512-x9j9to1UmuOCPaMXmzz8HA0exkIGEvp/4dS1iwamNlfUy8NDDNB7o3/BWy1XpnZ1JYOh4K2HgdNk5I+Tu4kbdQ==}
+    engines: {node: '>=22'}
+    hasBin: true
+
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
     engines: {node: '>=18.12'}
@@ -1769,6 +1774,10 @@ snapshots:
   tinyrainbow@3.1.1: {}
 
   tnega@0.1.0: {}
+
+  tnega@0.1.1:
+    dependencies:
+      tnega: 0.1.0
 
   ts-api-utils@2.5.0(typescript@6.0.3):
     dependencies:
