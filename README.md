@@ -201,19 +201,23 @@ pnpm tnega eval run examples/tasks.yml
 
 ## 真实 LLM 接入
 
-`tnega run` 通过 OpenAI 兼容协议调用 OpenCode Go 的 DeepSeek 端点，key 只从环境变量读取，不写入代码或仓库文件：
+`tnega run` 默认通过 Anthropic Messages 协议调用 OpenCode Go 的 `minimax-m3` 端点。key 从环境变量或 tnega 系统配置读取，不写入代码或仓库文件：
 
 ```text
 OPENCODE_GO_API_KEY=sk-xxx pnpm tnega run "Reply with: hello"
 ```
 
-也可以使用 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY` 作为兼容变量。默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `deepseek-v4-flash`；可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
+也可以使用 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY` 作为兼容变量。系统配置文件位置：Windows 为 `%USERPROFILE%\.tnega\config.json`，Linux / macOS 为 `~/.config/tnega/config.json`，文件内可写 `apiKey`、`baseUrl`、`model`、`temperature`。优先级为命令行参数 > 环境变量 > 配置文件 > 默认值。
+
+默认端点为 `https://opencode.ai/zen/go/v1`，默认模型为 `minimax-m3`（Anthropic Messages 协议，请求 `.../v1/messages`）；OpenAI 兼容回退默认模型为 `deepseek-v4-flash`。模型协议通过内置模型表自动选择，未知模型回退到 OpenAI 兼容协议。可通过 `OPENCODE_GO_BASE_URL`、`OPENCODE_GO_MODEL` 或 `--base-url`、`--model`、`--max-tokens`、`--temperature` 覆盖。
 
 LLM 请求默认 120 秒超时，最多重试 2 次，采用 500ms 起步的指数退避；仅网络错误、408 / 425 / 429 / 5xx 会触发重试，401 / 403 等 4xx 和用户取消不会重试。可以通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖，`tnega run` 与 `tnega evolve run` 都支持：
 
 ```text
 OPENCODE_GO_API_KEY=sk-xxx pnpm tnega run "prompt" --timeout-ms 180000 --max-retries 3
 ```
+
+`run`、`evolve run` 与 `web` 均支持 `--config <file>`（或 `--config-file <file>`）指定配置文件。
 
 会话记录默认写入 `.tnega/run.jsonl`，可以使用 `--session <file>` 指定位置。
 
