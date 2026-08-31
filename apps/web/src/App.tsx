@@ -3,6 +3,14 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Ref } from 'react'
 import { ConversationNav } from './ConversationNav'
+import {
+  clearSessionSelection,
+  readSessionSelection,
+  readWorkspaceSelection,
+  resolveWorkspaceSelection,
+  writeSessionSelection,
+  writeWorkspaceSelection,
+} from './sessionSelection'
 import { ThemeToggle, type ThemePreference } from './ThemeToggle'
 import {
   addWorkspace,
@@ -70,7 +78,9 @@ export default function App() {
   )
   const [config, setConfig] = useState<ConfigSnapshot | null>(null)
   const [workspaces, setWorkspaces] = useState<string[]>([])
-  const [workspace, setWorkspace] = useState<string | null>(null)
+  const [workspace, setWorkspace] = useState<string | null>(
+    () => readWorkspaceSelection(localStorage),
+  )
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
@@ -102,7 +112,7 @@ export default function App() {
         setConfig(nextConfig)
         const stored = nextWorkspaces.workspaces
         setWorkspaces(stored)
-        if (stored.length && !workspace) setWorkspace(stored[0]!)
+        setWorkspace(resolveWorkspaceSelection(localStorage, stored))
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(messageOf(reason))
@@ -143,6 +153,36 @@ export default function App() {
       .catch((reason: unknown) => setError(messageOf(reason)))
   }, [workspace])
 
+  useEffect(() => {
+    if (workspace) writeWorkspaceSelection(localStorage, workspace)
+  }, [workspace])
+
+  useEffect(() => {
+    if (!workspace || !sessionId) return
+    writeSessionSelection(localStorage, workspace, sessionId)
+  }, [workspace, sessionId])
+
+  useEffect(() => {
+    if (!workspace || !sessions.length) return
+    const preferred = readSessionSelection(localStorage, workspace)
+    if (!preferred || sessionId === preferred) return
+    if (!sessions.some(session => session.id === preferred)) {
+      clearSessionSelection(localStorage, workspace)
+      return
+    }
+    selectSession(preferred)
+  }, [sessions, workspace, sessionId, selectSession])
+
+  const selectWorkspace = useCallback((next: string) => {
+    if (next === workspace) return
+    setWorkspace(next)
+    setSessionId(null)
+    setSummary(null)
+    setContext(null)
+    setSessionRunning(false)
+    setMessages([])
+  }, [workspace])
+
   const refreshSession = useCallback(async (id: string) => {
     if (!workspace) return
     const detail = await api.getSession(workspace, id)
@@ -160,13 +200,8 @@ export default function App() {
     try {
       const result = await api.addWorkspace(path.trim())
       setWorkspaces(result.workspaces)
-      setWorkspace(result.path)
       setSessions([])
-      setSessionId(null)
-      setSummary(null)
-      setContext(null)
-      setSessionRunning(false)
-      setMessages([])
+      selectWorkspace(result.path)
     } catch (reason) {
       setError(messageOf(reason))
     }
@@ -291,7 +326,7 @@ export default function App() {
           <WorkspacePane
             workspaces={workspaces}
             current={workspace}
-            onSelect={setWorkspace}
+            onSelect={selectWorkspace}
             onAdd={handleAddWorkspace}
             onRemove={handleRemoveWorkspace}
           />
