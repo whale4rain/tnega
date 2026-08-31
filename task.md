@@ -397,3 +397,8 @@
 - M12.4-5：`b180f8c` 系统配置 / 会话存储 / HTTP + SSE 服务端
 - M12.6：`660ed9d` React + Vite 前端与 `tnega web` 构建集成
 - M12.7：待办（eval / evolve 只读仪表板未提交）
+- M13.1：`f990674` 根包库入口（`tnega` library entry + packed types）
+- M13.2：`1e02c0d` AgentDefinition 声明式契约
+- M13.3：`1b0a201` SessionProjector 与 context budget
+- M13.4：`d21b630` Tools policy（validator / authorizer / truncator）
+- M13.5：`a054cc7` README 库用法与 M13 状态更新
