@@ -11,6 +11,7 @@ import {
   defineAgent,
   type AgentInput,
   type AgentLoop,
+  type AgentRunOptions,
   type AgentRunResult,
   type LLMAdapter,
   type LLMCompletion,
@@ -204,6 +205,64 @@ describe('defineAgent contract', () => {
 
     const loop = root.get('agentLoop') as AgentLoop
     await expect(loop({ text: 'x' })).rejects.toThrow(/LLM|llm/i)
+  })
+
+  it('runs beforeRun/afterRun hooks on the default loop', async () => {
+    const root = await mountRoot()
+    const events: string[] = []
+    const seenInput: AgentInput[] = []
+    const seenOptions: AgentRunOptions[] = []
+    const seenResults: AgentRunResult[] = []
+    const { adapter } = fakeLLM({ content: 'hooked', finishReason: 'stop' })
+    await root.plugin(defineAgent({
+      name: 'default-hooks',
+      system: 'SYS',
+      hooks: {
+        beforeRun: async (input, options) => {
+          events.push('before')
+          seenInput.push(input)
+          seenOptions.push(options)
+        },
+        afterRun: async (result, options) => {
+          events.push('after')
+          seenResults.push(result)
+          seenOptions.push(options)
+        },
+      },
+    }), { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'hello' }, { maxTurns: 3 })
+    expect(result.output).toBe('hooked')
+    expect(events).toEqual(['before', 'after'])
+    expect(seenInput[0]).toEqual({ text: 'hello' })
+    expect(seenResults[0]).toMatchObject({
+      output: 'hooked',
+      finishReason: 'stop',
+    })
+    expect(seenOptions).toHaveLength(2)
+    expect(seenOptions[0]).toMatchObject({ maxTurns: 3 })
+    expect(seenOptions[1]).toMatchObject({ maxTurns: 3 })
+  })
+
+  it('does not call afterRun when the default loop LLM throws', async () => {
+    const root = await mountRoot()
+    const events: string[] = []
+    const { adapter } = fakeLLM({ content: 'x', finishReason: 'stop' })
+    adapter.complete = async () => {
+      throw new Error('llm boom')
+    }
+    await root.plugin(defineAgent({
+      name: 'default-hooks-fail',
+      hooks: {
+        beforeRun: async () => { events.push('before') },
+        afterRun: async () => { events.push('after') },
+      },
+    }), { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await expect(loop({ text: 'hello' })).rejects.toThrow('llm boom')
+    expect(events).toEqual(['before'])
   })
 
   it('disposes all definition-owned state including its internal agent fiber', async () => {

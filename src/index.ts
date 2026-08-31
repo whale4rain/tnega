@@ -100,6 +100,7 @@ export {
   type AgentConfig,
   type AgentEndEvent,
   type AgentFinishReason,
+  type AgentHooks,
   type AgentInput,
   type AgentLoop,
   type AgentRunOptions,

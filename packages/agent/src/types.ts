@@ -107,6 +107,11 @@ export interface AgentRunOptions {
   signal?: AbortSignal
 }
 
+export interface AgentHooks {
+  beforeRun?: (input: AgentInput, options: AgentRunOptions) => void | Promise<void>
+  afterRun?: (result: AgentRunResult, options: AgentRunOptions) => void | Promise<void>
+}
+
 export interface AgentStartEvent {
   input: AgentInput
   options: AgentRunOptions

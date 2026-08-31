@@ -5,6 +5,7 @@ import type { ToolsService } from '@tnega/tools'
 
 import type {
   AgentFinishReason,
+  AgentHooks,
   AgentInput,
   AgentRunOptions,
   AgentRunResult,
@@ -56,6 +57,7 @@ export interface AgentConfig {
   maxTurns?: number
   maxSteps?: number
   inbox?: AgentInbox
+  hooks?: AgentHooks
 }
 
 function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
@@ -136,6 +138,7 @@ export class AgentService {
   ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
     const claimed = input ?? this.inbox.claim()
     if (!claimed) throw new AgentError('no agent input available')
+    await this.config.hooks?.beforeRun?.(claimed, options)
 
     const session = this._session()
     const tools = this._tools()
@@ -326,6 +329,7 @@ export class AgentService {
       output,
       finishReason,
     })
+    await this.config.hooks?.afterRun?.(runResult, options)
 
     yield { type: 'run/end', run: runResult }
     return runResult

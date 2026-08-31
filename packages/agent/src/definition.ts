@@ -3,12 +3,9 @@ import type { ModelMessage } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
 
 import { agent, AgentService, type AgentConfig } from './service.js'
-import type { AgentInput, AgentLoop, AgentRunOptions, AgentRunResult, LLMAdapter } from './types.js'
+import type { AgentHooks, AgentInput, AgentLoop, AgentRunOptions, AgentRunResult, LLMAdapter } from './types.js'
 
-export interface AgentDefinitionHooks {
-  beforeRun?: (input: AgentInput, options: AgentRunOptions) => void | Promise<void>
-  afterRun?: (result: AgentRunResult, options: AgentRunOptions) => void | Promise<void>
-}
+export type AgentDefinitionHooks = AgentHooks
 
 export interface AgentDefinition {
   name: string
@@ -19,8 +16,7 @@ export interface AgentDefinition {
   hooks?: AgentDefinitionHooks
 }
 
-export interface DefineAgentConfig {
-  llm?: LLMAdapter
+export interface DefineAgentConfig extends Partial<Pick<AgentConfig, 'llm' | 'maxTurns' | 'maxSteps'>> {
   [key: string]: unknown
 }
 
@@ -74,7 +70,10 @@ export function defineAgent(
         ctx.provide('agentLoop', loop)
       } else {
         const agentConfig: AgentConfig = {}
+        if (definition.hooks) agentConfig.hooks = definition.hooks
         if (config.llm) agentConfig.llm = config.llm
+        if (config.maxTurns !== undefined) agentConfig.maxTurns = config.maxTurns
+        if (config.maxSteps !== undefined) agentConfig.maxSteps = config.maxSteps
         const agentFiber = ctx.plugin(agent, agentConfig)
         await agentFiber
         agentService = ctx.reflect.get('agent') as AgentService
