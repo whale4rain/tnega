@@ -26,6 +26,7 @@
 | M11 LLM 超时与重试 | 已完成 |
 | M12 tnega web（v0，M12.7 待办） | 已完成 |
 | M13 agent core 对外边界 | 已完成 |
+| M14 LLM provider 抽象与 Anthropic Messages | 已完成 |
 
 ## 开发约定
 
@@ -50,6 +51,22 @@
 - [x] git commit（M0）
 
 验收：`pnpm test` 可用，workspace 可解析，CI 链路在本地可跑通。
+
+## M14 LLM provider 抽象与 Anthropic Messages
+
+目标：能力表不存价格；默认模型切换为 `minimax-m3`（Anthropic Messages 协议），保留 OpenAI 兼容回退；key 只从环境变量或 `.tnega` 配置读取，不进入代码。
+
+- [x] 能力表移除价格字段
+- [x] `openaiCompatAdapter` 拆分为独立 provider 模块
+- [x] 新增 `anthropicMessagesAdapter`，支持 Messages 请求映射、SSE 流、重试与超时
+- [x] 新增 `createLlmAdapter` 按模型表选择协议，未知模型回退 OpenAI
+- [x] CLI 读取系统配置 key / baseUrl / model，支持 `--config` / `--config-file`
+- [x] web 服务按模型表选择协议
+- [x] 测试：Anthropic 请求映射、SSE、重试、key 不泄露；provider 路由；CLI 配置读取
+- [x] README 与 task.md 更新
+- [x] git commit
+
+验收：`pnpm typecheck`、`pnpm lint`、`pnpm test` 全部通过；`tnega run` 默认请求 `.../v1/messages` 且使用 `minimax-m3`。
 
 ## M1 core 时空语义
 
