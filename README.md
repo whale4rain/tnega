@@ -148,9 +148,28 @@ M13 为外部 agent 补齐的三个主要契约：
 
 - `AgentDefinition`：`defineAgent({ name, version?, system?, tools?, loop?, hooks? })` 返回普通插件。默认 loop 使用 `config.llm` 并注入 `agentSystem`，同时执行 `beforeRun` / `afterRun` hooks；传入自定义 `loop` 时，tnega 同样负责 system 注入与 hooks 包装；`tools` 随插件挂载和卸载自动注册、注销，并派发 `agent/definition` 元数据事件。
 - `SessionProjector` 与 context budget：`session` 插件可通过 `projector` 配置自定义 JSONL 事件到模型消息的投影；`SessionLog.deriveMessages()`、`estimateContext()` 与 `compact({ keepTokens })` 共用同一投影器。估算与预算工具也独立导出：`estimateContextUsage`、`estimateMessageTokens`、`estimateEventTokens`、`suffixStartIndexForTokens`、`resolveCompactKeep`、`DEFAULT_CONTEXT_LIMIT`。
+
+默认 loop 现在内置 context budget：`AgentConfig` 或 `AgentRunOptions` 传入 `contextBudget: { limit, compactRatio, keepTokens, summarize }` 后，每个 step 前会按 token 估算检查用量，超过 `compactRatio` 时先调用 `summarize`（缺省生成内置摘要），再执行 `session.compact` 保留最近 `keepTokens`，并派发 `agent/context-compact` 事件；压缩后的消息状态写入 checkpoint，因此后续 step 与 session replay / derive 看到的上下文一致。`compact` 新增可选 `messages` 字段，用于把显式压缩结果作为 checkpoint 消息状态，默认仍保留压缩前投影，不改变原有 `compact` 语义。
 - `ToolPolicy`：`validator`、`authorizer`、`truncator` 可配置在 `tools` 全局层，也可覆盖在单个 `ToolDefinition.policy`。执行顺序为 `pre-execute → authorizer → validator → execute → truncator → post-execute / result`；策略拒绝会返回 `ToolResult.ok === false` 而不是把异常抛给 agent loop。`validateSchema` 支持 required、type、enum、嵌套对象与数组，并允许不带 `type` 的属性（视为任意 JSON）。
 
-另外 `createAgentRuntime` 现在支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、`sessionProjector`、`toolPolicy`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供；`LLMAdapter`、eval / evolve 服务同样通过根包导出。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期，并直接嵌入评测与进化闭环。
+另外 `createAgentRuntime` 现在支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、自定义 `inbox`、`sessionProjector`、`toolPolicy`、`contextBudget`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供；`LLMAdapter`、eval / evolve 服务同样通过根包导出。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期，并直接嵌入评测与进化闭环。
+
+除根入口外，发布包还提供按域拆分的子路径导出，外部 agent 可以只引入需要的部分：
+
+```text
+tnega/agent         # AgentLoop / AgentDefinition / AgentService / inbox / context budget
+tnega/core          # Context / Fiber / Effect / Event / Registry / Reflect
+tnega/session       # SessionLog / projector / compact / token 估算
+tnega/tools         # ToolsService / ToolDefinition / ToolPolicy
+tnega/eval          # EvalStrategy / Task / Verdict / EvalRun
+tnega/evolve        # Candidate / ExperimentLog / propose / gate
+tnega/llm           # openaiCompatAdapter 与重试配置
+tnega/cli/runtime   # createAgentRuntime 组合运行时
+tnega/events        # EventsService / DispatchMode / Hook
+tnega/services      # service / registry / reflect / logger
+```
+
+每个子路径都有对应的运行时 bundle 与类型声明，`test/publish.test.ts` 会以消费者身份逐一验证。
 
 ## 使用
 
@@ -249,4 +268,4 @@ defaultCandidate: echo
 - M10 npm / pnpm 发布准备：已完成。`tnega` 根包发布为公共自包含 CLI，`bin` 指向 esbuild 打包的 `dist/bin.js`，`prepublishOnly` 自动构建并跑发布测试；npm 与 pnpm 本地安装验证通过，测试记录见 `docs/test/npm-publish.md`。
 - M11 LLM 超时与重试：已完成。OpenAI 兼容适配器支持 120s 默认超时、最多 2 次重试与指数退避，只对瞬时错误重试；`run` 与 `evolve run` 均可通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖。
 - M12 tnega web：已完成。`tnega web` 在 `127.0.0.1:3080` 提供浅色 manpage 风格 Web UI，支持多工作区、JSONL 会话、fork、token 级 SSE 流式聊天、每次运行的工具权限开关、系统级模型配置，以及 eval/evolve 只读仪表板。
-- M13 agent core 对外边界：已完成。根包暴露库入口与完整类型；`defineAgent` 提供声明式 agent 契约，默认 loop 执行 hooks；`createAgentRuntime` 可注入 agent / sessionProjector / toolPolicy / builtinTools:false / plugins；session 支持可插拔投影器与 context budget；tools 支持校验 / 授权 / 截断策略；发布测试验证消费者可直接 `import { Context, defineAgent, SessionLog } from 'tnega'`。
+- M13 agent core 对外边界：已完成。根包暴露库入口与完整类型；`defineAgent` 提供声明式 agent 契约，默认 loop 执行 hooks；`createAgentRuntime` 可注入 agent / inbox / sessionProjector / toolPolicy / contextBudget / builtinTools:false / plugins；session 支持可插拔投影器、context budget 与压缩 checkpoint 消息状态；tools 支持校验 / 授权 / 截断策略；发布包提供 10 个按域拆分的子路径导出并逐一验证消费者导入。

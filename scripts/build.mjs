@@ -20,18 +20,39 @@ const common = {
   logLevel: 'info',
 }
 
-await build({
-  ...common,
-  entryPoints: ['packages/cli/src/bin.ts'],
-  outfile: 'dist/bin.js',
-})
-chmodSync(new URL('../dist/bin.js', import.meta.url), 0o755)
+const libraryEntries = {
+  agent: 'packages/agent/src/index.ts',
+  core: 'packages/core/src/index.ts',
+  eval: 'packages/eval/src/index.ts',
+  evolve: 'packages/evolve/src/index.ts',
+  llm: 'packages/llm/src/index.ts',
+  session: 'packages/session/src/index.ts',
+  tools: 'packages/tools/src/index.ts',
+  'cli-runtime': 'packages/cli/src/index.ts',
+  events: 'src/events.ts',
+  services: 'src/services.ts',
+}
 
-await build({
-  ...common,
-  entryPoints: ['src/index.ts'],
-  outfile: 'dist/index.js',
-})
+await Promise.all([
+  build({
+    ...common,
+    entryPoints: ['packages/cli/src/bin.ts'],
+    outfile: 'dist/bin.js',
+  }),
+  build({
+    ...common,
+    entryPoints: ['src/index.ts'],
+    outfile: 'dist/index.js',
+  }),
+  ...Object.entries(libraryEntries).map(([name, entryPoint]) =>
+    build({
+      ...common,
+      entryPoints: [entryPoint],
+      outfile: `dist/${name}.js`,
+    }),
+  ),
+])
+chmodSync(new URL('../dist/bin.js', import.meta.url), 0o755)
 
 const webCwd = fileURLToPath(new URL('../apps/web/', import.meta.url))
 const viteBin = fileURLToPath(

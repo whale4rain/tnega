@@ -16,6 +16,46 @@
       "types": "./dist/types/src/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./agent": {
+      "types": "./dist/types/packages/agent/src/index.d.ts",
+      "import": "./dist/agent.js"
+    },
+    "./cli/runtime": {
+      "types": "./dist/types/packages/cli/src/index.d.ts",
+      "import": "./dist/cli-runtime.js"
+    },
+    "./core": {
+      "types": "./dist/types/packages/core/src/index.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./eval": {
+      "types": "./dist/types/packages/eval/src/index.d.ts",
+      "import": "./dist/eval.js"
+    },
+    "./events": {
+      "types": "./dist/types/src/events.d.ts",
+      "import": "./dist/events.js"
+    },
+    "./evolve": {
+      "types": "./dist/types/packages/evolve/src/index.d.ts",
+      "import": "./dist/evolve.js"
+    },
+    "./llm": {
+      "types": "./dist/types/packages/llm/src/index.d.ts",
+      "import": "./dist/llm.js"
+    },
+    "./services": {
+      "types": "./dist/types/src/services.d.ts",
+      "import": "./dist/services.js"
+    },
+    "./session": {
+      "types": "./dist/types/packages/session/src/index.d.ts",
+      "import": "./dist/session.js"
+    },
+    "./tools": {
+      "types": "./dist/types/packages/tools/src/index.d.ts",
+      "import": "./dist/tools.js"
+    },
     "./cli": "./dist/bin.js",
     "./package.json": "./package.json"
   },

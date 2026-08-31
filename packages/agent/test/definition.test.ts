@@ -9,6 +9,8 @@ import { tools, ToolsService, type ToolDefinition } from '@tnega/tools'
 
 import {
   defineAgent,
+  type AgentContextBudget,
+  type AgentContextCompactEvent,
   type AgentInput,
   type AgentLoop,
   type AgentRunOptions,
@@ -285,5 +287,94 @@ describe('defineAgent contract', () => {
     expect(after).toHaveLength(before.length)
     expect(root.get('agentLoop')).toBeUndefined()
     expect(root.get('agentDefinition')).toBeUndefined()
+  })
+
+  it('compacts the default loop context when the budget is exceeded', async () => {
+    const root = await mountRoot()
+    const compactEvents: AgentContextCompactEvent[] = []
+    root.on('agent/context-compact', (value: AgentContextCompactEvent) => {
+      compactEvents.push(value)
+    })
+    const longContent = 'x'.repeat(800)
+    const { adapter, messages } = fakeLLM({ content: 'done', finishReason: 'stop' })
+    const budget: AgentContextBudget = {
+      limit: 200,
+      compactRatio: 0.5,
+    }
+    await root.plugin(defineAgent({
+      name: 'budgeted',
+      system: 'SYS',
+    }), {
+      llm: adapter,
+      contextBudget: budget,
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: longContent })
+    expect(result.output).toBe('done')
+    expect(compactEvents).toHaveLength(1)
+    expect(compactEvents[0]).toMatchObject({
+      type: 'agent/context-compact',
+      messagesBefore: 2,
+      limit: 200,
+    })
+    expect(compactEvents[0]!.tokensBefore).toBeGreaterThan(100)
+    expect(compactEvents[0]!.messagesAfter).toBe(1)
+    const summaryMessage = messages[0]!.at(-1)
+    expect(summaryMessage?.role).toBe('system')
+    expect(String(summaryMessage?.content)).toContain('Earlier context was compacted.')
+    expect(String(summaryMessage?.content)).toContain('Tokens before compaction:')
+
+    const session = dynamic(root).session as SessionLog
+    const replayed = await session.replay()
+    expect(replayed.some(event => event.type === 'checkpoint')).toBe(true)
+    const derived = await session.deriveMessages()
+    expect(derived.length).toBeGreaterThan(0)
+    const derivedText = derived.map(message => message.content).join(' ')
+    expect(derivedText).toContain('Earlier context was compacted.')
+  })
+
+  it('uses a custom summarizer and keeps the requested suffix', async () => {
+    const root = await mountRoot()
+    const events: AgentContextCompactEvent[] = []
+    root.on('agent/context-compact', (value: AgentContextCompactEvent) => {
+      events.push(value)
+    })
+    const { adapter, messages } = fakeLLM({ content: 'ok', finishReason: 'stop' })
+    await root.plugin(defineAgent({
+      name: 'custom-summarizer',
+      system: 'SYS',
+    }), {
+      llm: adapter,
+      contextBudget: {
+        limit: 100,
+        compactRatio: 0.1,
+        keepTokens: 16,
+        summarize: async (input: readonly import('@tnega/session').ModelMessage[]) => [
+          { role: 'system', content: `summary of ${input.length} messages` },
+        ],
+      },
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'y'.repeat(400) })
+    expect(events).toHaveLength(1)
+    expect(events[0]!.keepTokens).toBe(16)
+    expect(String(messages[0]!.at(-1)?.content)).toContain('summary of 2 messages')
+  })
+
+  it('rejects invalid context budget configuration', async () => {
+    const root = await mountRoot()
+    const { adapter } = fakeLLM({ content: 'x', finishReason: 'stop' })
+    await root.plugin(defineAgent({
+      name: 'bad-budget',
+      system: 'SYS',
+    }), {
+      llm: adapter,
+      contextBudget: { limit: 100, compactRatio: 1.5 },
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await expect(loop({ text: 'hello' })).rejects.toThrow(/invalid context budget/)
   })
 })

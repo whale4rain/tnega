@@ -373,6 +373,7 @@
 - [x] M13.4 Tools policy：输入校验、授权、输出截断三类可插拔策略 + 轻量 schema 校验器
 - [x] M13.5 README 库用法、契约文档与状态更新
 - [x] M13.6 runtime 组合边界：`createAgentRuntime` 可注入 `AgentDefinition` / `SessionProjector` / `ToolPolicy` / `builtinTools: false` / `plugins`，`llm` 可选；默认 loop 执行 `beforeRun` / `afterRun`；新增 agent + cli 组合测试
+- [x] M13.7 context budget 与子路径导出：`AgentConfig` / `AgentRunOptions` 支持 `contextBudget`，默认 loop 每 step 按 token 估算压缩并派发 `agent/context-compact`；`session.compact` 新增 `messages` 选项使 checkpoint 保存压缩后状态，replay / derive 与 loop 续跑一致；`createAgentRuntime` 支持注入自定义 `inbox`；发布包新增 `tnega/agent`、`tnega/cli/runtime`、`tnega/core`、`tnega/eval`、`tnega/events`、`tnega/evolve`、`tnega/llm`、`tnega/services`、`tnega/session`、`tnega/tools` 子路径导出；测试覆盖压缩事件、自定义 summarizer、非法配置、inbox 注入与消费者子路径导入
 - [x] 全量测试 / typecheck / lint / build 通过，更新状态与提交记录
 
 ## 提交记录
@@ -404,3 +405,4 @@
 - M13.4：`d21b630` Tools policy（validator / authorizer / truncator）
 - M13.5：`a054cc7` README 库用法与 M13 状态更新
 - M13.6：`8c73d13` 默认 loop hooks 生效；`c56ea1c` createAgentRuntime 外部组合入口
+- M13.7：待补 默认 loop context budget / compact checkpoint 消息状态 / runtime inbox 注入 / 子路径导出

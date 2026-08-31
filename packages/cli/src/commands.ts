@@ -4,7 +4,9 @@ import { Context, type Plugin } from '@tnega/core'
 import {
   agent,
   defineAgent,
+  type AgentContextBudget,
   type AgentDefinition,
+  type AgentInbox,
   type AgentLoop,
   type AgentInput,
   type AgentRunOptions,
@@ -134,10 +136,12 @@ export interface AgentRuntimeOptions {
   cwd: string
   sessionFile: string
   llm?: LLMAdapter
+  inbox?: AgentInbox
   allowNetwork?: boolean
   allowShell?: boolean
   maxTurns?: number
   maxSteps?: number
+  contextBudget?: AgentContextBudget
   agent?: AgentDefinition
   sessionProjector?: SessionProjector
   toolPolicy?: ToolPolicy
@@ -420,6 +424,8 @@ export async function createAgentRuntime(
       ...(options.llm ? { llm: options.llm } : {}),
       ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
       ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+      ...(options.inbox ? { inbox: options.inbox } : {}),
+      ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
     })
     fibers.push(definitionFiber)
   } else {
@@ -427,10 +433,14 @@ export async function createAgentRuntime(
       llm?: LLMAdapter
       maxTurns?: number
       maxSteps?: number
+      inbox?: AgentInbox
+      contextBudget?: AgentContextBudget
     } = {}
     if (options.llm) agentConfig.llm = options.llm
     if (options.maxTurns !== undefined) agentConfig.maxTurns = options.maxTurns
     if (options.maxSteps !== undefined) agentConfig.maxSteps = options.maxSteps
+    if (options.inbox) agentConfig.inbox = options.inbox
+    if (options.contextBudget) agentConfig.contextBudget = options.contextBudget
     const agentFiber = await root.plugin(agent, agentConfig)
     fibers.push(agentFiber)
   }

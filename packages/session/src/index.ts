@@ -91,6 +91,7 @@ export interface CompactOptions {
   keepTokens?: number
   summary?: string
   tokensBefore?: number
+  messages?: ModelMessage[]
 }
 
 export type ReplayReducer<T> = (state: T, event: SessionEvent) => T | Promise<T>
@@ -417,7 +418,9 @@ export class SessionLog {
         ts: Date.now(),
         type: 'checkpoint',
         payload: {
-          messages: this._projector(prefix),
+          messages: options.messages
+            ? clone(options.messages)
+            : this._projector(prefix),
           ...(options.summary ? { summary: options.summary } : {}),
           ...(options.tokensBefore !== undefined
             ? { tokensBefore: options.tokensBefore }

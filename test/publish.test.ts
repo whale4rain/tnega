@@ -66,6 +66,45 @@ describe('packed artifact', () => {
     expect(mod.coreApi).toBeTruthy()
   })
 
+  it('resolves every documented subpath as a consumer via package exports', async () => {
+    const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
+    const subpaths = [
+      'agent',
+      'cli/runtime',
+      'core',
+      'eval',
+      'events',
+      'evolve',
+      'llm',
+      'services',
+      'session',
+      'tools',
+    ]
+    for (const subpath of subpaths) {
+      expect(pkg.exports[`./${subpath}`]).toBeTruthy()
+      const mod = await import(`tnega/${subpath}`)
+      expect(Object.keys(mod).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('emits a runtime js file for every subpath entry', () => {
+    const names = [
+      'agent',
+      'cli-runtime',
+      'core',
+      'eval',
+      'events',
+      'evolve',
+      'llm',
+      'services',
+      'session',
+      'tools',
+    ]
+    for (const name of names) {
+      expect(existsSync(resolve(root, `dist/${name}.js`))).toBe(true)
+    }
+  })
+
   it('publishes self-contained declarations without @tnega/* imports', () => {
     const rootDir = resolve(root, 'dist/types')
     const files = collectDeclarations(rootDir)

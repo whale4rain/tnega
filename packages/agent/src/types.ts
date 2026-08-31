@@ -1,4 +1,4 @@
-import type { ModelMessage } from '@tnega/session'
+import type { ContextUsage, ModelMessage } from '@tnega/session'
 import type { ToolDefinition, ToolResult } from '@tnega/tools'
 
 export type AgentFinishReason =
@@ -105,6 +105,28 @@ export interface AgentRunOptions {
   maxTurns?: number
   maxSteps?: number
   signal?: AbortSignal
+  contextBudget?: AgentContextBudget
+}
+
+export interface AgentContextBudget {
+  limit?: number
+  compactRatio?: number
+  keepTokens?: number
+  summarize?: AgentContextSummarizer
+}
+
+export type AgentContextSummarizer = (
+  messages: readonly ModelMessage[],
+  usage: ContextUsage,
+) => readonly ModelMessage[] | Promise<readonly ModelMessage[]>
+
+export interface AgentContextCompactEvent {
+  type: 'agent/context-compact'
+  messagesBefore: number
+  tokensBefore: number
+  limit: number
+  keepTokens: number
+  messagesAfter: number
 }
 
 export interface AgentHooks {

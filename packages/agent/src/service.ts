@@ -1,9 +1,16 @@
 import type { Context } from '@tnega/core'
-import type { ModelMessage, SessionLog, ToolResultPayload } from '@tnega/session'
+import {
+  DEFAULT_CONTEXT_LIMIT,
+  estimateContextUsage,
+  type ModelMessage,
+  type SessionLog,
+  type ToolResultPayload,
+} from '@tnega/session'
 import type { ToolError, ToolResult } from '@tnega/tools'
 import type { ToolsService } from '@tnega/tools'
 
 import type {
+  AgentContextBudget,
   AgentFinishReason,
   AgentHooks,
   AgentInput,
@@ -58,6 +65,7 @@ export interface AgentConfig {
   maxSteps?: number
   inbox?: AgentInbox
   hooks?: AgentHooks
+  contextBudget?: AgentContextBudget
 }
 
 function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
@@ -147,6 +155,7 @@ export class AgentService {
 
     const maxTurns = options.maxTurns ?? this.config.maxTurns ?? 64
     const maxSteps = options.maxSteps ?? this.config.maxSteps ?? 64
+    const contextBudget = options.contextBudget ?? this.config.contextBudget
     const injected = this.inbox.injected()
     this.ctx.emit('agent/start', { input: claimed, options, injected })
 
@@ -175,6 +184,9 @@ export class AgentService {
       if (steps.length >= maxSteps) {
         finishReason = 'max_steps'
         break
+      }
+      if (contextBudget) {
+        messages = await this._enforceContextBudget(session, contextBudget, messages)
       }
 
       const stepInput = copyMessages(messages)
@@ -335,6 +347,42 @@ export class AgentService {
     return runResult
   }
 
+  private async _enforceContextBudget(
+    session: SessionLog,
+    budget: AgentContextBudget,
+    messages: readonly ModelMessage[],
+  ): Promise<ModelMessage[]> {
+    const limit = budget.limit ?? DEFAULT_CONTEXT_LIMIT
+    const compactRatio = budget.compactRatio ?? 0.9
+    if (limit <= 0 || compactRatio <= 0 || compactRatio > 1) {
+      throw new AgentError('invalid context budget: limit must be positive and compactRatio must be in (0, 1]')
+    }
+    const usage = estimateContextUsage(messages, limit)
+    if (usage.ratio < compactRatio) return copyMessages(messages)
+    const keepTokens = budget.keepTokens ?? Math.max(1, Math.floor(limit * 0.5))
+    const compactMessages = budget.summarize
+      ? await budget.summarize(messages, usage)
+      : [{ role: 'system' as const, content: defaultContextSummary(messages, usage) }]
+    const summary = compactMessages
+      .map(message => `${message.role}: ${message.content}`)
+      .join('\n')
+    await session.compact({
+      keepTokens,
+      summary,
+      tokensBefore: usage.tokens,
+      messages: compactMessages.map(message => copyMessages([message])[0]!),
+    })
+    this.ctx.emit('agent/context-compact', {
+      type: 'agent/context-compact',
+      messagesBefore: messages.length,
+      tokensBefore: usage.tokens,
+      limit,
+      keepTokens,
+      messagesAfter: compactMessages.length,
+    })
+    return compactMessages.map(message => copyMessages([message])[0]!)
+  }
+
   private _initialMessages(input: AgentInput): ModelMessage[] {
     const systemPrompt = this.inbox.injected().get('agentSystem')
     const systemMessage = typeof systemPrompt === 'string' && systemPrompt
@@ -411,6 +459,20 @@ export class AgentService {
   private _llm(): LLMAdapter | undefined {
     return this.config.llm
   }
+}
+
+function defaultContextSummary(
+  messages: readonly ModelMessage[],
+  usage: { tokens: number },
+): string {
+  const latest = messages.at(-1)
+  const latestText = latest ? `${latest.role}: ${latest.content}` : 'none'
+  return [
+    'Earlier context was compacted.',
+    `Messages before compaction: ${messages.length}.`,
+    `Tokens before compaction: ${usage.tokens}.`,
+    `Latest message: ${latestText}`,
+  ].join(' ')
 }
 
 function copySteps(steps: readonly AgentStep[]): readonly AgentStep[] {

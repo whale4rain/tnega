@@ -377,6 +377,38 @@ describe('SessionLog compact', () => {
     ])
   })
 
+  it('stores explicit compacted messages instead of the prefix projection', async () => {
+    const log = new SessionLog(await tempFile('compact-messages.jsonl'))
+    await log.append('message', { role: 'user', content: 'old context' })
+    await log.append('message', { role: 'assistant', content: 'done' })
+
+    const compacted: ModelMessage[] = [
+      { role: 'system', content: 'compacted summary' },
+    ]
+    const count = await log.compact({
+      keepTokens: 1,
+      summary: 'compacted summary',
+      tokensBefore: 100,
+      messages: compacted,
+    })
+    expect(count).toBe(2)
+
+    const events = await log.read()
+    expect(events[0]!.type).toBe('checkpoint')
+    const checkpoint = events[0]!.payload as {
+      messages: ModelMessage[]
+      summary?: string
+      tokensBefore?: number
+    }
+    expect(checkpoint.messages).toEqual(compacted)
+    expect(checkpoint.summary).toBe('compacted summary')
+    expect(checkpoint.tokensBefore).toBe(100)
+    expect(await log.deriveMessages()).toEqual([
+      ...compacted,
+      { role: 'assistant', content: 'done' },
+    ])
+  })
+
   it('can append after compact with a fresh seq', async () => {
     const log = new SessionLog(await tempFile('compact-append.jsonl'))
     await log.append('message', { role: 'user', content: 'a' })

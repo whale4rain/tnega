@@ -98,6 +98,8 @@ export {
   AgentService,
   agent,
   type AgentConfig,
+  type AgentContextBudget,
+  type AgentContextCompactEvent,
   type AgentEndEvent,
   type AgentFinishReason,
   type AgentHooks,

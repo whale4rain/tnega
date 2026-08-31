@@ -4,13 +4,18 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { Context, Plugin } from '@tnega/core'
-import type {
-  AgentLoop,
-  AgentRunOptions,
-  LLMAdapter,
-  LLMCompletion,
+import {
+  AgentInbox,
+  type AgentContextCompactEvent,
+  type AgentLoop,
+  type AgentRunOptions,
+  type LLMAdapter,
+  type LLMCompletion,
 } from '@tnega/agent'
-import type { ModelMessage, SessionEvent } from '@tnega/session'
+import type {
+  ModelMessage,
+  SessionEvent,
+} from '@tnega/session'
 import type { ToolDefinition, ToolPolicy } from '@tnega/tools'
 
 import {
@@ -81,6 +86,91 @@ function pingTool(): ToolDefinition {
 }
 
 describe('createAgentRuntime composition', () => {
+  it('uses an injected inbox for queued inputs and injected context', async () => {
+    const dir = await tempDir('tnega-runtime-inbox-')
+    const inbox = new AgentInbox()
+    inbox.inject('agentSystem', 'inbox system')
+    inbox.push({ text: 'queued' })
+    const { adapter, calls } = fakeLLM([{ content: 'claimed', finishReason: 'stop' }])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, {
+      llm: adapter,
+      builtinTools: false,
+      inbox,
+      agent: { name: 'inbox-agent' },
+    }))
+    try {
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      const result = await loop()
+      expect(result.input).toEqual({ text: 'queued' })
+      expect(inbox.size).toBe(0)
+      expect(calls[0]!.messages[0]).toMatchObject({
+        role: 'system',
+        content: 'inbox system',
+      })
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('uses an injected inbox on the default agent branch', async () => {
+    const dir = await tempDir('tnega-runtime-inbox-default-')
+    const inbox = new AgentInbox()
+    inbox.inject('agentSystem', 'default inbox system')
+    inbox.push({ text: 'queued default' })
+    const { adapter, calls } = fakeLLM([{ content: 'claimed', finishReason: 'stop' }])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, {
+      llm: adapter,
+      builtinTools: false,
+      inbox,
+    }))
+    try {
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      const result = await loop()
+      expect(result.input).toEqual({ text: 'queued default' })
+      expect(calls[0]!.messages).toMatchObject([
+        { role: 'system', content: 'default inbox system' },
+        { role: 'user', content: 'queued default' },
+      ])
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('enforces a runtime context budget and emits compact events', async () => {
+    const dir = await tempDir('tnega-runtime-budget-')
+    const compactEvents: AgentContextCompactEvent[] = []
+    const { adapter, calls } = fakeLLM([
+      { content: 'stop', finishReason: 'stop' },
+      { content: 'stop again', finishReason: 'stop' },
+    ])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, {
+      llm: adapter,
+      builtinTools: false,
+      contextBudget: {
+        limit: 100,
+        compactRatio: 0.1,
+      },
+    }))
+    runtime.root.on('agent/context-compact', (value: AgentContextCompactEvent) => {
+      compactEvents.push(value)
+    })
+    try {
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      const result = await loop({ text: 'z'.repeat(400) })
+      expect(result.output).toBe('stop')
+      expect(compactEvents).toHaveLength(1)
+      expect(compactEvents[0]).toMatchObject({
+        type: 'agent/context-compact',
+        messagesBefore: 1,
+        limit: 100,
+      })
+      expect(String(calls[0]!.messages.at(-1)?.content))
+        .toContain('Earlier context was compacted.')
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
   it('mounts an injected AgentDefinition with custom tools and no builtin tools', async () => {
     const dir = await tempDir('tnega-runtime-agent-')
     const events: string[] = []
