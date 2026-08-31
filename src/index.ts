@@ -100,6 +100,9 @@ export {
   type AgentTurnEndEvent,
   type AgentTurnStartEvent,
   type CompleteOptions,
+  type AgentDefinition,
+  type AgentDefinitionHooks,
+  type DefineAgentConfig,
   type LLMAdapter,
   type LLMCompletion,
   type LLMMessageDeltaEvent,
@@ -109,6 +112,7 @@ export {
   type LLMToolCall,
   type LLMToolCallEndEvent,
   type LLMToolCallStartEvent,
+  defineAgent,
 } from '../packages/agent/src/index.js'
 
 export {
