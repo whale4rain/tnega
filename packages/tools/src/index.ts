@@ -1,9 +1,25 @@
 import type { Context, Disposable } from '@tnega/core'
 import { Service } from '@tnega/core'
+import { ToolAuthorizationError, validateToolInput } from './policy.js'
+import type {
+  ToolAuthorizer,
+  ToolInputValidator,
+  ToolPolicy,
+  ToolResultTruncator,
+} from './policy.js'
 
 export * from './builtins.js'
 export * from './calc.js'
 export * from './path.js'
+export {
+  ToolAuthorizationError,
+  validateSchema,
+  validateToolInput,
+  type ToolAuthorizer,
+  type ToolInputValidator,
+  type ToolPolicy,
+  type ToolResultTruncator,
+} from './policy.js'
 
 export interface ToolParameterSchema {
   type?: string
@@ -33,6 +49,7 @@ export interface ToolDefinition {
   schema: ToolSchema
   execute: ToolExecutor
   metadata?: Record<string, unknown>
+  policy?: ToolPolicy
 }
 
 export interface ToolError {
@@ -65,7 +82,7 @@ export interface ToolStagePayload {
   result: ToolResult
 }
 
-export interface ToolsConfig {
+export interface ToolsConfig extends ToolPolicy {
   [key: string]: unknown
 }
 
@@ -104,9 +121,19 @@ export class ToolsService extends Service<never> {
   static provide = 'tools'
 
   private _tools = new Map<string, ToolDefinition>()
+  private _policy: {
+    validator: ToolInputValidator
+    authorizer?: ToolAuthorizer
+    truncator?: ToolResultTruncator
+  }
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: ToolsConfig = {}) {
     super(ctx, 'tools')
+    this._policy = {
+      validator: config.validator ?? validateToolInput,
+    }
+    if (config.authorizer !== undefined) this._policy.authorizer = config.authorizer
+    if (config.truncator !== undefined) this._policy.truncator = config.truncator
   }
 
   register(definition: ToolDefinition): Disposable {
@@ -157,6 +184,28 @@ export class ToolsService extends Service<never> {
 
     await this.ctx.parallel('tools/pre-execute', request)
 
+    const policy = request.tool.policy
+    const authorizer = policy?.authorizer ?? this._policy.authorizer
+    if (authorizer) {
+      const allowed = await authorizer(request)
+      if (!allowed) {
+        return this._finish(
+          request,
+          this._failure(
+            request,
+            new ToolAuthorizationError(`tool authorization denied: ${name}`),
+          ),
+        )
+      }
+    }
+
+    const validator = policy?.validator ?? this._policy.validator
+    try {
+      await validator(request.input, request.tool)
+    } catch (error) {
+      return this._finish(request, this._failure(request, error))
+    }
+
     let output: unknown
     let caught: unknown
     try {
@@ -170,6 +219,22 @@ export class ToolsService extends Service<never> {
       ? this._success(request, output)
       : this._failure(request, caught)
 
+    const truncator = policy?.truncator ?? this._policy.truncator
+    if (truncator) {
+      try {
+        return this._finish(request, await truncator(result, request))
+      } catch (error) {
+        return this._finish(request, this._failure(request, error))
+      }
+    }
+
+    return this._finish(request, result)
+  }
+
+  private async _finish(
+    request: ToolRequest,
+    result: ToolResult,
+  ): Promise<ToolResult> {
     await this.ctx.parallel('tools/post-execute', { request, result })
     await this.ctx.parallel('tools/result', { request, result })
     return result
@@ -213,8 +278,8 @@ export class ToolsService extends Service<never> {
 
 export const tools = {
   name: 'tools',
-  apply(ctx: Context) {
-    new ToolsService(ctx)
+  apply(ctx: Context, config: ToolsConfig = {}) {
+    new ToolsService(ctx, config)
   },
 }
 
