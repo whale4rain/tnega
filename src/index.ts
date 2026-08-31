@@ -241,6 +241,8 @@ export {
   type LlmConfig,
   type LlmProtocol,
   type ModelDefinition,
+  type ModelPricing,
+  type ModelPricingMeta,
   type OpenAICompatibleConfig,
 } from '../packages/llm/src/index.js'
 

@@ -10,6 +10,8 @@ export {
   lookupModel,
   type LlmProtocol,
   type ModelDefinition,
+  type ModelPricing,
+  type ModelPricingMeta,
 } from './models.js'
 export { openaiCompatAdapter, listModels } from './openai.js'
 export { createLlmAdapter } from './provider.js'
