@@ -3,7 +3,7 @@ import type { ModelMessage } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
 
 import { agent, AgentService, type AgentConfig } from './service.js'
-import type { AgentHooks, AgentInput, AgentLoop, AgentRunOptions, AgentRunResult, LLMAdapter } from './types.js'
+import type { AgentHooks, AgentInput, AgentLoop } from './types.js'
 
 export type AgentDefinitionHooks = AgentHooks
 
