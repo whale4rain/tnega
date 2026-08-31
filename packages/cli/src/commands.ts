@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import { Context, type Plugin } from '@tnega/core'
 import {
   agent,
+  defineAgent,
+  type AgentDefinition,
   type AgentLoop,
   type AgentInput,
   type AgentRunOptions,
@@ -10,8 +12,13 @@ import {
   type LLMAdapter,
 } from '@tnega/agent'
 import { openaiCompatAdapter } from '@tnega/llm'
-import { session } from '@tnega/session'
-import { builtinTools, tools } from '@tnega/tools'
+import { session, type SessionProjector } from '@tnega/session'
+import {
+  builtinTools,
+  tools,
+  type BuiltinToolsConfig,
+  type ToolPolicy,
+} from '@tnega/tools'
 import {
   evalPlugin,
   type CompareResult,
@@ -126,11 +133,16 @@ export interface LlmEnvConfig {
 export interface AgentRuntimeOptions {
   cwd: string
   sessionFile: string
-  llm: LLMAdapter
+  llm?: LLMAdapter
   allowNetwork?: boolean
   allowShell?: boolean
   maxTurns?: number
   maxSteps?: number
+  agent?: AgentDefinition
+  sessionProjector?: SessionProjector
+  toolPolicy?: ToolPolicy
+  builtinTools?: false | BuiltinToolsConfig
+  plugins?: readonly Plugin[]
 }
 
 export interface AgentRuntime {
@@ -385,27 +397,51 @@ export async function createAgentRuntime(
   options: AgentRuntimeOptions,
 ): Promise<AgentRuntime> {
   const root = new Context()
-  const sessionFiber = await root.plugin(session, { file: options.sessionFile })
-  const toolsFiber = await root.plugin(tools)
-  const builtinToolsFiber = await root.plugin(builtinTools, {
-    cwd: options.cwd,
-    ...(options.allowNetwork ? { allowNetwork: true } : {}),
-    ...(options.allowShell ? { allowShell: true } : {}),
+  const fibers: Array<{ dispose: () => Promise<void> }> = []
+  const sessionFiber = await root.plugin(session, {
+    file: options.sessionFile,
+    ...(options.sessionProjector ? { projector: options.sessionProjector } : {}),
   })
-  const agentConfig: {
-    llm: LLMAdapter
-    maxTurns?: number
-    maxSteps?: number
-  } = { llm: options.llm }
-  if (options.maxTurns !== undefined) agentConfig.maxTurns = options.maxTurns
-  if (options.maxSteps !== undefined) agentConfig.maxSteps = options.maxSteps
-  const agentFiber = await root.plugin(agent, agentConfig)
+  fibers.push(sessionFiber)
+  const toolsFiber = await root.plugin(tools, options.toolPolicy ?? {})
+  fibers.push(toolsFiber)
+  if (options.builtinTools !== false) {
+    const builtinConfig: BuiltinToolsConfig = { cwd: options.cwd }
+    if (options.allowNetwork) builtinConfig.allowNetwork = true
+    if (options.allowShell) builtinConfig.allowShell = true
+    if (options.builtinTools && typeof options.builtinTools === 'object') {
+      Object.assign(builtinConfig, options.builtinTools)
+    }
+    const builtinToolsFiber = await root.plugin(builtinTools, builtinConfig)
+    fibers.push(builtinToolsFiber)
+  }
+  if (options.agent) {
+    const definitionFiber = await root.plugin(defineAgent(options.agent), {
+      ...(options.llm ? { llm: options.llm } : {}),
+      ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    })
+    fibers.push(definitionFiber)
+  } else {
+    const agentConfig: {
+      llm?: LLMAdapter
+      maxTurns?: number
+      maxSteps?: number
+    } = {}
+    if (options.llm) agentConfig.llm = options.llm
+    if (options.maxTurns !== undefined) agentConfig.maxTurns = options.maxTurns
+    if (options.maxSteps !== undefined) agentConfig.maxSteps = options.maxSteps
+    const agentFiber = await root.plugin(agent, agentConfig)
+    fibers.push(agentFiber)
+  }
+  for (const plugin of options.plugins ?? []) {
+    const fiber = await root.plugin(plugin)
+    fibers.push(fiber)
+  }
   return {
     root,
     dispose: async () => {
-      for (const fiber of [agentFiber, builtinToolsFiber, toolsFiber, sessionFiber].reverse()) {
-        await fiber.dispose()
-      }
+      for (const fiber of [...fibers].reverse()) await fiber.dispose()
     },
   }
 }
