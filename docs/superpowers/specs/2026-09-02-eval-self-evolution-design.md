@@ -2,7 +2,7 @@
 
 > 日期：2026-09-02
 > 状态：待用户审阅
-> 分支：codex/dsh-align
+> 分支：codex/eval-self-evolution
 > 目标版本：下一版本核心能力，版本号在发布时确认
 
 ## 1. 背景与目标
@@ -28,6 +28,7 @@ tnega 已有通用 agent eval（`packages/eval`）和实验性自进化（`packa
   plan prompt），默认行为不变。
 - 不做 Web 仪表板（本期只做库 API + CLI + 机器可读产物，Web 下一期消费这些数据）。
 - 不做完整显著性检验（本期门禁用 `minPairs + minDelta + regressions`）。
+- 不自动把失败 trace 转写成可直接入库的 eval task；只生成草稿供人工审阅。
 - 不做独立消费插件（沿用 DSH 对齐时确定的范围）。
 
 ## 3. 总体架构
@@ -57,10 +58,18 @@ EvolveService (packages/evolve)
   |-- llm propose rule -> candidate patch (coding config)
   |-- evaluate(train + val) -> gate -> accept/reject
   +-- experiments/log.json DAG
+
+Benchmark 数据链路：
+
+packages/benchmark
+  |-- importers: bigcodebench / swebench / user-json
+  |-- 下载 manifest 与仓库快照 -> data/benchmarks/<source>/
+  +-- 物化 fixture workspace + tasks.json（与 tasks.yml task 同构）
 ```
 
 依赖方向：`evolve -> eval -> coding-agent/agent/session/tools`，CLI 只做编排和格式化。
 `packages/eval` 不依赖 `packages/cli`，避免循环依赖。
+`packages/benchmark` 是独立工具包，CLI 依赖它来导入数据，eval 运行时不需要它。
 
 ## 4. Task Schema 扩展
 
@@ -381,6 +390,8 @@ Pareto 所需数据，Web 仪表板下一期直接消费。
 - `eval run` 输出增加 `trialSummaries` 与 trace 目录。
 - 新增 `eval replay <runId> <taskId> [trial]`：只读 trace 重放给 LLM judge，
   不重新运行 agent。
+- 新增 `eval import-benchmark <source> --subset <n>`：下载并物化公开 benchmark，
+  输出 tasks.json + fixture 目录，供 `tasks.yml` 引用。
 
 ## 14. 测试数据来源
 
@@ -416,12 +427,54 @@ CLI 运行产生的 session trace 是候选数据源。本期实现 trace 持久
 `eval replay`，使“线上失败 -> 人工转写为 task fixture + check”的通路可用；
 自动转写工具不做（避免生成不可靠任务）。
 
-### 14.4 公开 benchmark 导入（预留格式，不做适配器）
+### 14.4 公开 benchmark 导入（本期实现）
 
-预留 JSON 导入格式（task 数组 + fixture 目录 + check 命令），
-dsh-eval / SWE-bench 风格的适配器留到后续版本。
+本期在 `packages/benchmark` 中实现两个真实数据源，规模取中小量：
 
-### 14.5 不做
+- BigCodeBench Complete 子集：真实 Python 函数级任务，每个任务带真实单元测试，
+  无需 Docker。首批导入 200 个任务，作为默认真实数据集。
+- SWE-bench Verified 子集：真实 GitHub issue + 仓库快照 + 测试补丁，
+  是 repo 级 coding 任务。首批按依赖复杂度筛选约 50 个 Python 实例，
+  验证本地可跑后再扩量。
+
+导入流程：
+
+```text
+CLI -> packages/benchmark importer
+  -> 下载 manifest / 仓库快照（HuggingFace 或 GitHub）
+  -> 物化 data/benchmarks/<source>/<instanceId>/
+       fixture/       # 仓库工作区（base commit 状态 + 测试补丁）
+       task.json      # 与 tasks.yml task 同构：inputText + fixture + check + split
+  -> 汇总 tasks.json + manifest（dataset 版本、instance id、sha）
+```
+
+复现性约定：
+
+- task 元数据必须包含 `dataset`、`instanceId`、`commit`、`checkCommand`，
+  EvalRun 的 candidate 侧同时记录 model/harness 版本。
+- 下载数据放 `data/benchmarks/`（加入 `.gitignore`），manifest 摘要可提交，
+  避免把大文件放进仓库。
+- 所有 benchmark 任务默认 `split: val`，防止自进化在 benchmark 上过拟合；
+  用户自己的 train 任务单独提供。
+
+### 14.5 失败回流草稿（本期实现）
+
+从 tnega 真实运行的失败 session trace 生成草稿任务：
+
+- fixture：失败运行时的 workspace 快照（文件清单 + 内容差异）。
+- prompt：原始用户请求。
+- check 候选：失败时的测试命令或可验证产物断言。
+- 状态标记为 `draft`，人工审阅通过后转正式 task。
+
+本期实现草稿生成器与 `tasks.yml` 的 `importDrafts` 合并入口；
+自动转写不直接入库，防止不可靠断言污染真实数据集。
+
+### 14.6 用户项目任务集（保留）
+
+用户在自己的仓库写 `tasks.yml`，`fixture.root` 指向任务模板目录，
+`check` 使用真实测试命令，作为 benchmark 之外的补充。
+
+### 14.7 不做
 
 本期不引入 LLM 合成任务生成，防止 eval 与自进化同源导致的自我确认偏差。
 
@@ -444,14 +497,21 @@ dsh-eval / SWE-bench 风格的适配器留到后续版本。
 6. evolve 测试：确定性假 propose rule 验证 patch 应用、train/val 门禁、
    experiment DAG 记录与拒绝理由。
 
-实施按两个可独立验收的里程碑推进：M1 eval harness（Task schema、权限、trace、
-多 trial、CLI），M2 self-evolution（失败反射、train/val 门禁、实验日志）。
+实施按四个可独立验收的里程碑推进：
+
+- M1 eval harness：Task schema、权限、trace、多 trial、CLI。
+- M2 self-evolution：失败反射、train/val 门禁、实验日志。
+- M3 benchmark：`packages/benchmark` 导入 BigCodeBench 子集与 SWE-bench Verified
+  子集，物化 fixture 与 tasks.json。
+- M4 真实评测：用配置的 LLM API（deepseek-v4-flash）跑 benchmark 冒烟与首批真实任务，
+  校验权限、trace、评分链路端到端可用。
+
 每个里程碑独立提交、独立测试。
 
 ## 17. 后续扩展
 
 - Docker 容器沙箱作为可选运行时。
 - Web 仪表板消费 `log.json` / EvalRun / trace。
-- 公开 benchmark 导入适配器（dsh-eval 风格）。
+- benchmark 扩量：BigCodeBench 全量、SWE-bench Verified 全量、Terminal-Bench。
 - 失败 trace 自动转写为 eval task。
 - 完整显著性检验与多目标 Pareto 自动选择。
