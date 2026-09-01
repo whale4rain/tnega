@@ -23,10 +23,10 @@ import {
   applyPlanStreamEvent,
   formatSlashMessage,
   latestPlanFromEvents,
-  readSlashMetaEvent,
   slashPromptParts,
   type DisplayPlan,
 } from './planDisplay'
+import { formatCancelCause, projectEvents } from './projectEvents'
 import {
   addWorkspace,
   ApiError,
@@ -56,8 +56,6 @@ import type {
   ConfigSnapshot,
   ContextUsage,
   DisplayMessage,
-  ModelMessage,
-  SessionEvent,
   SessionDetail,
   SessionSummary,
   SlashCommand,
@@ -1267,15 +1265,32 @@ function ChatView({
               : message,
           )
         }
-        case 'run/end':
+        case 'run/end': {
+          const failed = event.run.finishReason === 'cancelled'
+            || event.run.finishReason === 'error'
           return current.map(message =>
             message.role === 'assistant' && message.pending
-              ? { ...message, pending: false }
+              ? {
+                  ...message,
+                  pending: false,
+                  ...(failed && message.content ? { interrupted: true } : {}),
+                  ...(message.finishReason ? {} : { finishReason: event.run.finishReason }),
+                }
               : message,
           )
+        }
         case 'error':
           return [
-            ...current,
+            ...current.map(message =>
+              message.role === 'assistant' && message.pending
+                ? {
+                    ...message,
+                    pending: false,
+                    ...(message.content ? { interrupted: true } : {}),
+                    ...(message.finishReason ? {} : { finishReason: 'error' }),
+                  }
+                : message,
+            ),
             {
               id: `live-error-${Date.now()}`,
               role: 'system',
@@ -1615,19 +1630,25 @@ function MessageBlock({
       <div className="message system">
         <div className="message-label">[!]</div>
         <div className="message-body">{message.content}</div>
+        <MessageStatus message={message} />
       </div>
     )
   }
   const marker = message.role === 'user' ? '>' : message.role === 'assistant' ? '<' : '-'
   const className = `message ${message.role}${active ? ' active-user' : ''}${editing ? ' editing' : ''}`
   const isUser = message.role === 'user'
+  const finishReason = message.finishReason ?? message.endState?.finishReason
   return (
     <div className={className} ref={userRef}>
       <div className="message-label">
         <span>
           {marker} {message.role}
           {message.pending ? ' ...' : ''}
-          {message.finishReason ? ` / ${message.finishReason}` : ''}
+          {message.interrupted ? ' / interrupted' : ''}
+          {message.retry
+            ? ` / retry ${message.retry.retry}${message.retry.started ? ' ...' : ''}`
+            : ''}
+          {finishReason ? ` / ${finishReason}` : ''}
         </span>
         {isUser && !editing && (onBeginEdit || onForkAt) && (
           <span className="message-menu">
@@ -1689,8 +1710,30 @@ function MessageBlock({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
       )}
+      <MessageStatus message={message} />
     </div>
   )
+}
+
+function MessageStatus({ message }: { message: DisplayMessage }) {
+  const parts: string[] = []
+  if (message.retry) {
+    const delay = message.retry.delayMs !== undefined
+      ? ` / ${message.retry.delayMs}ms`
+      : ''
+    const failure = message.retry.failure?.message
+      ? ` / ${message.retry.failure.message}`
+      : ''
+    parts.push(`[retry ${message.retry.retry}${delay}${failure}]`)
+  }
+  if (message.endState?.cancelCause) {
+    parts.push(`[cancel ${formatCancelCause(message.endState.cancelCause)}]`)
+  }
+  if (message.endState?.error) {
+    parts.push(`[error: ${message.endState.error.message}]`)
+  }
+  if (parts.length === 0) return null
+  return <div className="message-status">{parts.join(' ')}</div>
 }
 
 function ContextRing({ context }: { context: ContextUsage }) {
@@ -1990,183 +2033,6 @@ function SettingsView({ config, onSaved }: SettingsViewProps) {
       </div>
     </div>
   )
-}
-
-function projectEvents(events: SessionEvent[]): DisplayMessage[] {
-  const messages: DisplayMessage[] = []
-  const toolIndex = new Map<string, number>()
-  for (const event of events) {
-    switch (event.type) {
-      case 'user/message':
-        if (event.payload.content) {
-          messages.push({
-            id: event.id,
-            role: 'user',
-            content: event.payload.content,
-          })
-        }
-        break
-      case 'assistant/message':
-        if (event.payload.content) {
-          messages.push({
-            id: event.id,
-            role: 'assistant',
-            content: event.payload.content,
-          })
-        }
-        break
-      case 'system/message':
-        if (event.payload.content) {
-          messages.push({
-            id: event.id,
-            role: 'system',
-            content: event.payload.content,
-          })
-        }
-        break
-      case 'tool/call':
-        messages.push({
-          id: event.id,
-          role: 'tool',
-          content: '',
-          tool: {
-            callId: event.payload.id,
-            name: event.payload.name,
-            argumentsText: prettyJson(event.payload.arguments),
-            status: 'pending',
-          },
-        })
-        toolIndex.set(event.payload.id, messages.length - 1)
-        break
-      case 'tool/result': {
-        const index = toolIndex.get(event.payload.toolCallId)
-        if (index === undefined) {
-          messages.push({
-            id: event.id,
-            role: 'tool',
-            content: '',
-            tool: {
-              callId: event.payload.toolCallId,
-              name: event.payload.name,
-              argumentsText: '',
-              status: 'done',
-              ok: event.payload.ok,
-              outputText: event.payload.output === undefined
-                ? undefined
-                : prettyJson(event.payload.output),
-              errorText: event.payload.error?.message,
-            },
-          })
-        } else {
-          const target = messages[index]
-          if (target?.tool) {
-            target.tool.status = 'done'
-            target.tool.ok = event.payload.ok
-            target.tool.outputText = event.payload.output === undefined
-              ? undefined
-              : prettyJson(event.payload.output)
-            target.tool.errorText = event.payload.error?.message
-          }
-        }
-        break
-      }
-      case 'checkpoint': {
-        messages.splice(0, messages.length)
-        toolIndex.clear()
-        for (const item of event.payload.messages) {
-          pushModelMessage(messages, toolIndex, item, event.id)
-        }
-        messages.push({
-          id: event.id,
-          role: 'system',
-          content: event.payload.summary ?? '',
-          compacted: true,
-          tokensBefore: event.payload.tokensBefore,
-        })
-        break
-      }
-      case 'meta': {
-        const slash = readSlashMetaEvent(event)
-        if (slash) {
-          messages.push({
-            id: event.id,
-            role: 'system',
-            content: formatSlashMessage(slash.command, slash.args, slash.result),
-            slash,
-          })
-        }
-        break
-      }
-      case 'llm/retry':
-      case 'llm/retry-started':
-      case 'turn/start':
-      case 'turn/end':
-      case 'step/start':
-      case 'step/end':
-        break
-    }
-  }
-  return messages
-}
-
-function pushModelMessage(
-  messages: DisplayMessage[],
-  toolIndex: Map<string, number>,
-  item: ModelMessage,
-  sourceId: string,
-): void {
-  if (item.role === 'tool') {
-    const index = toolIndex.get(item.tool_call_id ?? '')
-    const legacyFailed = item.content.startsWith('error: ')
-    const failed = item.toolOk === false
-      || (item.toolOk === undefined && legacyFailed)
-    const errorText = item.toolError?.message
-      ?? (legacyFailed ? item.content.slice(7) : undefined)
-    if (index !== undefined && messages[index]?.tool) {
-      const target = messages[index]!.tool!
-      target.status = 'done'
-      target.ok = !failed
-      target.errorText = errorText
-      target.outputText = failed ? undefined : item.content
-    } else {
-      messages.push({
-        id: `${sourceId}-${messages.length}`,
-        role: 'tool',
-        content: '',
-        tool: {
-          callId: item.tool_call_id ?? '',
-          name: item.name ?? 'tool',
-          argumentsText: '',
-          status: 'done',
-          ok: !failed,
-          outputText: failed ? undefined : item.content,
-          errorText,
-        },
-      })
-    }
-    return
-  }
-  if (item.role === 'system' || item.role === 'user' || item.role === 'assistant') {
-    messages.push({
-      id: `${sourceId}-${messages.length}`,
-      role: item.role,
-      content: item.content,
-    })
-    for (const call of item.tool_calls ?? []) {
-      messages.push({
-        id: `${sourceId}-tool-${call.id}`,
-        role: 'tool',
-        content: '',
-        tool: {
-          callId: call.id,
-          name: call.name,
-          argumentsText: prettyJson(call.arguments),
-          status: 'pending',
-        },
-      })
-      toolIndex.set(call.id, messages.length - 1)
-    }
-  }
 }
 
 function findPendingAssistant(messages: DisplayMessage[]): DisplayMessage | undefined {

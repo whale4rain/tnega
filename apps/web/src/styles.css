@@ -954,6 +954,26 @@ textarea {
   white-space: pre-wrap;
 }
 
+.message-status {
+  color: var(--mute);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.message.assistant .message-status {
+  color: var(--warning);
+}
+
+.message.user .message-status {
+  color: var(--accent);
+}
+
+.message.system .message-status {
+  color: var(--danger);
+}
+
 .md {
   white-space: normal;
 }

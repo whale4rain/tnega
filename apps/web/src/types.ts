@@ -231,6 +231,21 @@ export interface DisplayTool {
   errorText?: string
 }
 
+export interface DisplayRetry {
+  retryId: string
+  retry: number
+  delayMs?: number
+  started?: boolean
+  failure?: { name?: string; message: string; stack?: string }
+}
+
+export interface DisplayEndState {
+  finishReason?: string
+  interrupted?: boolean
+  cancelCause?: CancelCause
+  error?: { name?: string; message: string; stack?: string }
+}
+
 export interface DisplayMessage {
   id: string
   role: 'user' | 'assistant' | 'tool' | 'system'
@@ -241,4 +256,7 @@ export interface DisplayMessage {
   pending?: boolean
   compacted?: boolean
   tokensBefore?: number
+  interrupted?: boolean
+  retry?: DisplayRetry
+  endState?: DisplayEndState
 }
