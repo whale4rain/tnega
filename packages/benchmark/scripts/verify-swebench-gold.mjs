@@ -12,20 +12,35 @@ const dataDir = join(root, 'data', 'benchmarks')
 const parquetFile = join(dataDir, '.cache', 'swebench-verified.parquet')
 const ids = process.argv.slice(2).filter(arg => !arg.startsWith('--'))
 
+const importedIds = await importedSwebenchIds()
 const buffer = await asyncBufferFromFile(parquetFile)
 const rows = await parquetReadObjects({ file: buffer })
+const selectedRows = rows.filter(row =>
+  ids.length ? ids.includes(row.instance_id) : importedIds.has(row.instance_id)
+)
 
 const results = []
-for (const row of rows) {
-  if (ids.length && !ids.includes(row.instance_id)) continue
+for (const row of selectedRows) {
   const result = await verifyInstance(row)
   results.push(result)
-  console.log(`${result.instanceId}\t${result.goldPass ? 'PASS' : 'FAIL'}\texit=${result.exitCode}\t${result.reason}`)
+  console.log(
+    `${result.instanceId}\tbase=${result.basePass ? 'PASS' : 'FAIL'}\tgold=${result.goldPass ? 'PASS' : 'FAIL'}\texit=${result.exitCode}\t${result.reason}`,
+  )
 }
 
 const outputFile = join(dataDir, 'verified-swebench.json')
 await writeFile(outputFile, `${JSON.stringify(results, null, 2)}\n`, 'utf8')
 console.log(`wrote ${outputFile} (${results.length} instances)`)
+
+async function importedSwebenchIds() {
+  const tasksFile = join(dataDir, 'tasks.json')
+  const parsed = JSON.parse(await readFile(tasksFile, 'utf8'))
+  const ids = new Set()
+  for (const task of parsed.tasks ?? []) {
+    if (task.artifacts?.dataset === 'swebench') ids.add(task.id)
+  }
+  return ids
+}
 
 async function verifyInstance(row) {
   const instanceId = row.instance_id
@@ -41,27 +56,55 @@ async function verifyInstance(row) {
     await writeFile(join(workDir, 'test.patch'), row.test_patch ?? '', 'utf8')
     await writeFile(join(workDir, 'gold.patch'), row.patch ?? '', 'utf8')
     await run('git', ['apply', '--whitespace=nowarn', 'test.patch'], workDir)
+    const baseOutcome = await runTestRunner(row, workDir)
+    let goldOutcome = baseOutcome
     if (row.patch) {
       await run('git', ['apply', '--whitespace=nowarn', 'gold.patch'], workDir)
+      goldOutcome = await runTestRunner(row, workDir)
     }
-    const runner = buildCheckRunner(row)
-    await writeFile(join(workDir, '.tnega_run_tests.py'), runner, 'utf8')
-    const outcome = await run('python', ['.tnega_run_tests.py'], workDir, 180_000)
     return {
       instanceId,
-      goldPass: outcome.code === 0,
-      exitCode: outcome.code,
-      reason: outcome.error ?? '',
+      basePass: baseOutcome.code === 0,
+      goldPass: goldOutcome.code === 0,
+      baseExitCode: baseOutcome.code,
+      exitCode: goldOutcome.code,
+      reason: !goldOutcome.error && baseOutcome.code === 0
+        ? 'base already passed; task not reproducible'
+        : goldOutcome.error ?? '',
     }
   } catch (error) {
     return {
       instanceId,
+      basePass: false,
       goldPass: false,
+      baseExitCode: -1,
       exitCode: -1,
       reason: error instanceof Error ? error.message : String(error),
     }
   } finally {
-    await rm(workDir, { recursive: true, force: true })
+    try {
+      await rmRetry(workDir)
+    } catch (error) {
+      console.warn(`warning: could not remove ${workDir}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
+
+async function runTestRunner(row, workDir) {
+  const runner = buildCheckRunner(row)
+  await writeFile(join(workDir, '.tnega_run_tests.py'), runner, 'utf8')
+  return run('python', ['.tnega_run_tests.py'], workDir, 180_000)
+}
+
+async function rmRetry(target) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await rm(target, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if (attempt === 9) throw error
+      await new Promise(resolve => setTimeout(resolve, 150))
+    }
   }
 }
 
