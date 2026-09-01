@@ -9,8 +9,11 @@ import {
   estimateEventTokens,
   estimateMessageTokens,
   projectEvents,
+  repairUnclosed,
   resolveCompactKeep,
+  safeCompactSplit,
   SessionLog,
+  SessionFormatError,
   session,
   suffixStartIndexForTokens,
   type ModelMessage,
@@ -32,6 +35,24 @@ async function tempFile(name: string): Promise<string> {
   return join(dir, name)
 }
 
+function withFormatMeta(events: SessionEvent[]): SessionEvent[] {
+  return [
+    {
+      id: 'meta-format',
+      seq: 1,
+      ts: 1,
+      type: 'meta',
+      payload: { formatVersion: 2 },
+    },
+    ...events.map((event, index) => ({ ...event, seq: event.seq + 1, ts: index + 2 })),
+  ]
+}
+
+async function writeV2(file: string, events: SessionEvent[]): Promise<void> {
+  const all = withFormatMeta(events)
+  await writeFile(file, `${all.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
+}
+
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
@@ -45,12 +66,13 @@ describe('SessionLog append', () => {
     const first = await log.append('message', { role: 'user', content: 'hello' })
     const second = await log.append('message', { role: 'assistant', content: 'hi' })
 
-    expect(first.seq).toBe(1)
-    expect(second.seq).toBe(2)
+    expect(first.seq).toBe(2)
+    expect(second.seq).toBe(3)
     expect(first.id).not.toBe(second.id)
 
     const lines = (await readFile(file, 'utf8')).trim().split('\n')
-    expect(lines).toHaveLength(2)
+    expect(lines).toHaveLength(3)
+    expect((JSON.parse(lines[0]!) as SessionEvent).type).toBe('meta')
     for (const line of lines) {
       const event = JSON.parse(line) as SessionEvent
       expect(event.id).toBeTruthy()
@@ -67,8 +89,8 @@ describe('SessionLog append', () => {
     await second.init()
     const event = await second.append('meta', { kind: 'resume' })
 
-    expect(event.seq).toBe(2)
-    expect(await second.read()).toHaveLength(2)
+    expect(event.seq).toBe(3)
+    expect(await second.read()).toHaveLength(3)
   })
 
   it('serializes concurrent appends without losing events', async () => {
@@ -83,8 +105,11 @@ describe('SessionLog append', () => {
     ])
 
     const events = await log.read()
-    expect(events.map(event => event.seq)).toEqual([1, 2, 3])
-    expect(events.map(event => (event.payload as { content: string }).content)).toEqual(['a', 'b', 'c'])
+    expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4])
+    expect(events
+      .filter(event => event.type === 'message')
+      .map(event => (event.payload as { content: string }).content))
+      .toEqual(['a', 'b', 'c'])
   })
 
   it('links message events to their predecessor', async () => {
@@ -120,8 +145,9 @@ describe('SessionLog append', () => {
     const reloaded = new SessionLog(file)
     await reloaded.init()
     const events = await reloaded.read()
-    expect(events).toHaveLength(1)
-    expect(events[0]?.type).toBe('plan')
+    expect(events).toHaveLength(2)
+    expect(events[0]?.type).toBe('meta')
+    expect(events[1]?.type).toBe('plan')
   })
 })
 
@@ -174,7 +200,7 @@ describe('SessionLog lineage', () => {
       { id: 'b', seq: 2, ts: 2, type: 'message', payload: { role: 'assistant', content: 'b' } },
       { id: 'c', seq: 3, ts: 3, type: 'message', payload: { role: 'user', content: 'c' } },
     ]
-    await writeFile(file, `${events.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
+    await writeV2(file, events)
 
     const log = new SessionLog(file)
     await log.init()
@@ -204,7 +230,9 @@ describe('SessionLog forkAt', () => {
       'b',
       'c',
     ])
-    expect(events.map(event => event.id)).toEqual([a.id, (await log.read())[1]!.id, c.id])
+    const all = await log.read()
+    const assistant = all.find(event => event.type === 'message' && event.payload.role === 'assistant')!
+    expect(events.map(event => event.id)).toEqual([a.id, assistant.id, c.id])
   })
 
   it('follows parent links instead of raw event order', async () => {
@@ -253,7 +281,7 @@ describe('SessionLog forkAt', () => {
         payload: { role: 'assistant', content: 'second', parentId: 'first' },
       },
     ]
-    await writeFile(file, `${events.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
+    await writeV2(file, events)
 
     const log = new SessionLog(file)
     await log.init()
@@ -270,9 +298,16 @@ describe('SessionLog forkAt', () => {
     const next = await log.append('message', { role: 'user', content: 'recent' })
 
     const selected = await log.forkAt(next.id)
-    expect(selected.map(event => event.type)).toEqual(['checkpoint', 'message'])
-    const checkpoint = selected[0]!.payload as { snapshot?: SessionEvent[] }
-    expect(checkpoint.snapshot?.length).toBe(2)
+    expect(selected.map(event => event.type)).toEqual([
+      'message',
+      'message',
+      'checkpoint',
+      'message',
+    ])
+    const checkpoint = selected.find(event => event.type === 'checkpoint')!
+    const payload = checkpoint.payload as { messages?: ModelMessage[]; surfaceOp?: string }
+    expect(payload.messages).toHaveLength(2)
+    expect(payload.surfaceOp).toBe('replace')
   })
 })
 
@@ -360,7 +395,7 @@ describe('SessionLog replay', () => {
     await log.append('message', { role: 'assistant', content: 'b' })
 
     const types = await log.replay((state: string[], event) => [...state, event.type], [])
-    expect(types).toEqual(['message', 'message'])
+    expect(types).toEqual(['meta', 'message', 'message'])
   })
 
   it('supports async reducers in event order', async () => {
@@ -372,7 +407,185 @@ describe('SessionLog replay', () => {
       await Promise.resolve()
       return [...state, (event.payload as { content: string }).content]
     }, [])
-    expect(contents).toEqual(['a', 'b'])
+    expect(contents).toEqual([undefined, 'a', 'b'])
+  })
+})
+
+describe('SessionLog lifecycle and repair', () => {
+  it('leaves a closed event stream untouched', () => {
+    expect(repairUnclosed([])).toEqual([])
+  })
+
+  it('appends lifecycle events without affecting the message surface', async () => {
+    const log = new SessionLog(await tempFile('lifecycle.jsonl'))
+    await log.append('turn/start', { input: 'hello', reason: 'user' })
+    await log.append('step/start', { index: 0 })
+    await log.append('message', { role: 'user', content: 'hello' })
+    await log.append('message', { role: 'assistant', content: 'hi' })
+    await log.append('step/end', { index: 0 })
+    await log.append('turn/end', { finishReason: 'stop', steps: 1 })
+
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'hi' },
+    ])
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'message',
+      'message',
+      'step/end',
+      'turn/end',
+    ])
+    for (const event of events.filter(event => (
+      event.type === 'turn/start'
+      || event.type === 'turn/end'
+      || event.type === 'step/start'
+      || event.type === 'step/end'
+    ))) {
+      expect(estimateEventTokens(event)).toBe(0)
+    }
+  })
+
+  it('repairs unclosed tool calls, steps and turns on load', async () => {
+    const file = await tempFile('repair.jsonl')
+    await writeV2(file, [
+      {
+        id: 'turn-1',
+        seq: 1,
+        ts: 1,
+        type: 'turn/start',
+        payload: { input: 'go' },
+      },
+      {
+        id: 'step-1',
+        seq: 2,
+        ts: 2,
+        type: 'step/start',
+        payload: { index: 0 },
+      },
+      {
+        id: 'call-1',
+        seq: 3,
+        ts: 3,
+        type: 'tool-call',
+        payload: { id: 'c1', name: 'read', arguments: {} },
+      },
+    ])
+
+    const log = new SessionLog(file)
+    await log.init()
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'tool-call',
+      'tool-result',
+      'step/end',
+      'turn/end',
+    ])
+    expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    const result = events[4]!
+    expect(result.type).toBe('tool-result')
+    expect(result.payload).toMatchObject({
+      id: 'c1',
+      toolCallId: 'c1',
+      name: 'read',
+      ok: false,
+    })
+    expect(events[5]).toMatchObject({
+      type: 'step/end',
+      payload: { index: 0, interrupted: true, finishReason: 'interrupted' },
+    })
+    expect(events[6]).toMatchObject({
+      type: 'turn/end',
+      payload: { interrupted: true, finishReason: 'interrupted' },
+    })
+  })
+
+  it('drops a torn tail and rewrites the file', async () => {
+    const file = await tempFile('torn.jsonl')
+    await writeV2(file, [
+      {
+        id: 'm1',
+        seq: 1,
+        ts: 1,
+        type: 'message',
+        payload: { role: 'user', content: 'hello' },
+      },
+    ])
+    await writeFile(file, `${await readFile(file, 'utf8')}{"id":"partial"\n`, 'utf8')
+
+    const log = new SessionLog(file)
+    await log.init()
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual(['meta', 'message'])
+
+    const text = await readFile(file, 'utf8')
+    expect(text).not.toContain('partial')
+    expect(text.trimEnd().split('\n')).toHaveLength(2)
+  })
+
+  it('rejects files without the current format version', async () => {
+    const file = await tempFile('format-version.jsonl')
+    await writeFile(file, `${JSON.stringify({
+      id: 'meta-old',
+      seq: 1,
+      ts: 1,
+      type: 'meta',
+      payload: { formatVersion: 1 },
+    })}\n`, 'utf8')
+
+    const log = new SessionLog(file)
+    await expect(log.init()).rejects.toBeInstanceOf(SessionFormatError)
+  })
+})
+
+describe('compact boundary safety', () => {
+  it('never splits a tool call from its result', () => {
+    const events: SessionEvent[] = [
+      {
+        id: 'm1',
+        seq: 1,
+        ts: 1,
+        type: 'message',
+        payload: { role: 'user', content: 'a' },
+      },
+      {
+        id: 'm2',
+        seq: 2,
+        ts: 2,
+        type: 'message',
+        payload: { role: 'assistant', content: '' },
+      },
+      {
+        id: 'c1',
+        seq: 3,
+        ts: 3,
+        type: 'tool-call',
+        payload: { id: 'c1', name: 'read', arguments: {} },
+      },
+      {
+        id: 'r1',
+        seq: 4,
+        ts: 4,
+        type: 'tool-result',
+        payload: { id: 'r1', toolCallId: 'c1', name: 'read', ok: true },
+      },
+      {
+        id: 'm3',
+        seq: 5,
+        ts: 5,
+        type: 'message',
+        payload: { role: 'user', content: 'b' },
+      },
+    ]
+
+    expect(safeCompactSplit(events, 3)).toBe(2)
+    expect(safeCompactSplit(events, 2)).toBe(2)
   })
 })
 
@@ -386,22 +599,23 @@ describe('SessionLog compact', () => {
     const before = await log.deriveMessages()
 
     const count = await log.compact({ summary: 'structured summary', tokensBefore: 120 })
-    expect(count).toBe(1)
+    expect(count).toBe(6)
     expect(await log.deriveMessages()).toEqual(before)
 
     const events = await log.read()
-    expect(events[0]!.type).toBe('checkpoint')
-    const checkpoint = events[0]!.payload as {
+    expect(events.at(-1)!.type).toBe('checkpoint')
+    const checkpoint = events.at(-1)!.payload as {
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
-      snapshot?: SessionEvent[]
+      surfaceOp?: string
     }
     expect(checkpoint.messages).toEqual(before)
     expect(checkpoint.summary).toBe('structured summary')
     expect(checkpoint.tokensBefore).toBe(120)
-    expect(checkpoint.snapshot?.length).toBe(4)
-    expect(checkpoint.snapshot?.map(event => event.type)).toEqual([
+    expect(checkpoint.surfaceOp).toBe('replace')
+    expect(events.slice(0, -1).map(event => event.type)).toEqual([
+      'meta',
       'message',
       'message',
       'tool-call',
@@ -419,19 +633,21 @@ describe('SessionLog compact', () => {
     const before = await log.deriveMessages()
 
     const count = await log.compact({ keep: 2 })
-    expect(count).toBe(3)
+    expect(count).toBe(7)
     expect(await log.deriveMessages()).toEqual(before)
 
     const events = await log.read()
-    expect(events[0]!.type).toBe('checkpoint')
-    expect(events.slice(1).map(event => event.type)).toEqual(['tool-result', 'message'])
-    const checkpoint = events[0]!.payload as { snapshot?: SessionEvent[] }
-    expect(checkpoint.snapshot?.length).toBe(3)
-    expect(checkpoint.snapshot?.map(event => event.type)).toEqual([
+    expect(events.at(-1)!.type).toBe('checkpoint')
+    expect(events.slice(0, -1).map(event => event.type)).toEqual([
+      'meta',
       'message',
       'message',
       'tool-call',
+      'tool-result',
+      'message',
     ])
+    const checkpoint = events.at(-1)!.payload as { surfaceOp?: string }
+    expect(checkpoint.surfaceOp).toBe('replace')
   })
 
   it('stores explicit compacted messages instead of the prefix projection', async () => {
@@ -448,18 +664,23 @@ describe('SessionLog compact', () => {
       tokensBefore: 100,
       messages: compacted,
     })
-    expect(count).toBe(2)
+    expect(count).toBe(4)
 
     const events = await log.read()
-    expect(events[0]!.type).toBe('checkpoint')
-    const checkpoint = events[0]!.payload as {
+    expect(events.at(-1)!.type).toBe('checkpoint')
+    const checkpoint = events.at(-1)!.payload as {
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
+      surfaceOp?: string
     }
-    expect(checkpoint.messages).toEqual(compacted)
+    expect(checkpoint.messages).toEqual([
+      ...compacted,
+      { role: 'assistant', content: 'done' },
+    ])
     expect(checkpoint.summary).toBe('compacted summary')
     expect(checkpoint.tokensBefore).toBe(100)
+    expect(checkpoint.surfaceOp).toBe('replace')
     expect(await log.deriveMessages()).toEqual([
       ...compacted,
       { role: 'assistant', content: 'done' },
@@ -473,7 +694,7 @@ describe('SessionLog compact', () => {
     await log.compact()
 
     const event = await log.append('message', { role: 'user', content: 'c' })
-    expect(event.seq).toBe(3)
+    expect(event.seq).toBe(5)
     expect((await log.deriveMessages()).map(message => message.content)).toEqual(['a', 'b', 'c'])
   })
 })
@@ -503,6 +724,40 @@ describe('session plugin', () => {
     const text = await readFile(file, 'utf8')
     expect(text.trim()).not.toHaveLength(0)
     expect(text).toContain('persist')
+  })
+
+  it('broadcasts appended events and flush checkpoints', async () => {
+    const root = new Context()
+    const fiber = root.plugin(session, { file: await tempFile('plugin-broadcast.jsonl') })
+    await fiber
+
+    const live: string[] = []
+    let flushPayload: { file: string; seq: number } | undefined
+    root.on('session/event', (event: SessionEvent) => live.push(event.type))
+    root.on('session/flush', (payload: { file: string; seq: number }) => {
+      flushPayload = payload
+    })
+
+    const log = dynamic(root).session as SessionLog
+    await log.append('message', { role: 'user', content: 'broadcast' })
+    expect(live).toEqual(['message'])
+
+    const seq = await log.flush()
+    expect(seq).toBe(2)
+    expect(flushPayload?.seq).toBe(2)
+    await fiber.dispose()
+  })
+
+  it('invokes a custom broadcast callback', async () => {
+    const broadcasts: string[] = []
+    const file = await tempFile('broadcast-custom.jsonl')
+    const log = new SessionLog(file, undefined, (type, payload) => {
+      broadcasts.push(`${type}:${(payload as { type?: string }).type ?? 'flush'}`)
+    })
+    await log.append('message', { role: 'user', content: 'a' })
+    await log.flush()
+
+    expect(broadcasts).toEqual(['event:message', 'flush:flush'])
   })
 })
 
@@ -595,7 +850,7 @@ describe('SessionProjector', () => {
       const messages: ModelMessage[] = []
       for (const event of events) {
         if (event.type === 'checkpoint') {
-          messages.push(...event.payload.messages)
+          messages.splice(0, messages.length, ...event.payload.messages)
         } else if (event.type === 'message') {
           messages.push({ role: 'system', content: event.payload.content })
         }
@@ -729,16 +984,25 @@ describe('context budget', () => {
     const before = await log.deriveMessages()
 
     const count = await log.compact({ keepTokens: 3 })
-    expect(count).toBe(3)
+    expect(count).toBe(5)
     expect(await log.deriveMessages()).toEqual(before)
 
     const events = await log.read()
-    expect(events[0]!.type).toBe('checkpoint')
-    expect(events.slice(1).map(event => (event.payload as { content: string }).content)).toEqual([
+    expect(events.at(-1)!.type).toBe('checkpoint')
+    expect(events
+      .filter(event => event.type === 'message')
+      .map(event => (event.payload as { content: string }).content))
+      .toEqual([
+      'aaaa',
       'bbbbbbbb',
       'cccccccc',
     ])
-    const checkpoint = events[0]!.payload as { messages: ModelMessage[] }
-    expect(checkpoint.messages).toEqual([{ role: 'user', content: 'aaaa' }])
+    const checkpoint = events.at(-1)!.payload as { messages: ModelMessage[]; surfaceOp?: string }
+    expect(checkpoint.messages).toEqual([
+      { role: 'user', content: 'aaaa' },
+      { role: 'user', content: 'bbbbbbbb' },
+      { role: 'user', content: 'cccccccc' },
+    ])
+    expect(checkpoint.surfaceOp).toBe('replace')
   })
 })

@@ -3,6 +3,12 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 
+export const SESSION_FORMAT_VERSION = 2
+
+export class SessionFormatError extends Error {
+  override name = 'SessionFormatError'
+}
+
 export type ModelRole = 'system' | 'user' | 'assistant' | 'tool'
 
 export interface ModelToolCall {
@@ -52,10 +58,37 @@ export interface ToolResultPayload {
   error?: ToolResultErrorPayload
 }
 
+export interface TurnStartPayload {
+  input?: unknown
+  reason?: string
+}
+
+export interface TurnEndPayload {
+  finishReason?: string
+  output?: string
+  steps?: number
+  interrupted?: boolean
+  error?: ToolResultErrorPayload
+}
+
+export interface StepStartPayload {
+  index: number
+}
+
+export interface StepEndPayload {
+  index: number
+  finishReason?: string
+  toolCalls?: number
+  interrupted?: boolean
+  error?: ToolResultErrorPayload
+}
+
 export interface CheckpointPayload {
   messages: ModelMessage[]
   summary?: string
   tokensBefore?: number
+  surfaceOp?: 'replace'
+  /** @deprecated v0.2 keeps raw events in place; use messages instead. */
   snapshot?: SessionEvent[]
 }
 
@@ -85,6 +118,10 @@ export type SessionEventType =
   | 'plan'
   | 'checkpoint'
   | 'meta'
+  | 'turn/start'
+  | 'turn/end'
+  | 'step/start'
+  | 'step/end'
 
 export interface SessionEventBase<T extends SessionEventType, P> {
   id: string
@@ -101,10 +138,15 @@ export type SessionEvent =
   | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', CheckpointPayload>
   | SessionEventBase<'meta', Record<string, unknown>>
+  | SessionEventBase<'turn/start', TurnStartPayload>
+  | SessionEventBase<'turn/end', TurnEndPayload>
+  | SessionEventBase<'step/start', StepStartPayload>
+  | SessionEventBase<'step/end', StepEndPayload>
 
 export interface SessionConfig {
   file: string
   projector?: SessionProjector
+  broadcast?: SessionBroadcast
 }
 
 export interface CompactOptions {
@@ -118,6 +160,11 @@ export interface CompactOptions {
 export type ReplayReducer<T> = (state: T, event: SessionEvent) => T | Promise<T>
 
 export type SessionProjector = (events: readonly SessionEvent[]) => ModelMessage[]
+
+export type SessionBroadcast = (
+  type: 'event' | 'flush',
+  payload: unknown,
+) => void
 
 export interface ContextUsage {
   tokens: number
@@ -146,7 +193,7 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
   for (const event of events) {
     switch (event.type) {
       case 'checkpoint':
-        messages.push(...clone(event.payload.messages))
+        messages.splice(0, messages.length, ...clone(event.payload.messages))
         break
       case 'message': {
         const message: ModelMessage = {
@@ -197,6 +244,11 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
         break
       case 'meta':
         break
+      case 'turn/start':
+      case 'turn/end':
+      case 'step/start':
+      case 'step/end':
+        break
     }
   }
   return messages
@@ -243,6 +295,11 @@ export function estimateEventTokens(event: SessionEvent): number {
       return estimateMessageTokens(event.payload.messages)
     case 'meta':
       return 0
+    case 'turn/start':
+    case 'turn/end':
+    case 'step/start':
+    case 'step/end':
+      return 0
   }
 }
 
@@ -268,6 +325,112 @@ export function suffixStartIndexForTokens(
     cut += 1
   }
   return candidate
+}
+
+export function safeCompactSplit(
+  events: readonly SessionEvent[],
+  splitIndex: number,
+): number {
+  const index = Math.max(0, Math.min(splitIndex, events.length))
+  const first = events[index]
+  if (first?.type === 'tool-result') {
+    const callId = first.payload.toolCallId
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const candidate = events[cursor]
+      if (candidate?.type === 'tool-call' && candidate.payload.id === callId) {
+        return cursor
+      }
+    }
+  }
+
+  let openCalls = 0
+  for (let cursor = 0; cursor <= events.length; cursor += 1) {
+    if (cursor >= index && openCalls === 0) return cursor
+    const event = events[cursor]
+    if (!event) continue
+    if (event.type === 'tool-call') openCalls += 1
+    if (event.type === 'tool-result') openCalls = Math.max(0, openCalls - 1)
+  }
+  return index
+}
+
+export function repairUnclosed(
+  events: readonly SessionEvent[],
+): SessionEvent[] {
+  const openCalls: Extract<SessionEvent, { type: 'tool-call' }>[] = []
+  const openSteps: Extract<SessionEvent, { type: 'step/start' }>[] = []
+  const openTurns: Extract<SessionEvent, { type: 'turn/start' }>[] = []
+  for (const event of events) {
+    switch (event.type) {
+      case 'tool-call':
+        openCalls.push(event)
+        break
+      case 'tool-result': {
+        const callIndex = openCalls.findIndex(
+          call => call.payload.id === event.payload.toolCallId,
+        )
+        if (callIndex >= 0) openCalls.splice(callIndex, 1)
+        else openCalls.pop()
+        break
+      }
+      case 'step/start':
+        openSteps.push(event)
+        break
+      case 'step/end':
+        openSteps.pop()
+        break
+      case 'turn/start':
+        openTurns.push(event)
+        break
+      case 'turn/end':
+        openTurns.pop()
+        break
+    }
+  }
+
+  if (!openCalls.length && !openSteps.length && !openTurns.length) return []
+
+  const synthetic: SessionEvent[] = []
+  let nextSeq = (events.at(-1)?.seq ?? 0) + 1
+  let nextTs = (events.at(-1)?.ts ?? Date.now()) + 1
+  const push = (type: SessionEventType, payload: SessionEvent['payload']): void => {
+    synthetic.push({
+      id: randomUUID(),
+      seq: nextSeq,
+      ts: nextTs,
+      type: type as SessionEvent['type'],
+      payload: clone(payload),
+    } as SessionEvent)
+    nextSeq += 1
+    nextTs += 1
+  }
+
+  for (const call of openCalls) {
+    push('tool-result', {
+      id: call.payload.id,
+      toolCallId: call.payload.id,
+      name: call.payload.name,
+      ok: false,
+      error: {
+        name: 'SessionInterruptedError',
+        message: 'session interrupted before tool result was recorded',
+      },
+    })
+  }
+  for (const step of openSteps) {
+    push('step/end', {
+      index: step.payload.index,
+      finishReason: 'interrupted',
+      interrupted: true,
+    })
+  }
+  for (const turn of openTurns) {
+    push('turn/end', {
+      finishReason: 'interrupted',
+      interrupted: true,
+    })
+  }
+  return synthetic
 }
 
 export function resolveCompactKeep(
@@ -308,6 +471,7 @@ export class SessionLog {
   constructor(
     readonly file: string,
     private _projector: SessionProjector = projectEvents,
+    private _broadcast?: SessionBroadcast,
   ) {}
 
   init(): Promise<void> {
@@ -322,6 +486,10 @@ export class SessionLog {
   append(type: 'plan', payload: PlanPayload): Promise<SessionEvent>
   append(type: 'checkpoint', payload: CheckpointPayload): Promise<SessionEvent>
   append(type: 'meta', payload: Record<string, unknown>): Promise<SessionEvent>
+  append(type: 'turn/start', payload: TurnStartPayload): Promise<SessionEvent>
+  append(type: 'turn/end', payload: TurnEndPayload): Promise<SessionEvent>
+  append(type: 'step/start', payload: StepStartPayload): Promise<SessionEvent>
+  append(type: 'step/end', payload: StepEndPayload): Promise<SessionEvent>
   append(type: SessionEventType, payload: SessionEvent['payload']): Promise<SessionEvent> {
     return this._run(async () => {
       await this._ensureLoaded()
@@ -346,7 +514,17 @@ export class SessionLog {
       await appendFile(this.file, `${JSON.stringify(event)}\n`, 'utf8')
       this._events.push(event)
       this._nextSeq += 1
+      this._broadcast?.('event', event)
       return event
+    })
+  }
+
+  flush(): Promise<number> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      const seq = this._nextSeq - 1
+      this._broadcast?.('flush', { file: this.file, seq })
+      return seq
     })
   }
 
@@ -381,7 +559,9 @@ export class SessionLog {
           selected.push(clone(event))
           continue
         }
-        if (event.type === 'meta') continue
+        if (event.type === 'meta' || event.type.startsWith('turn/') || event.type.startsWith('step/')) {
+          continue
+        }
         if (event.type === 'checkpoint') {
           selected.push(clone(event))
           continue
@@ -434,34 +614,54 @@ export class SessionLog {
   compact(options: CompactOptions = {}): Promise<number> {
     return this._run(async () => {
       await this._ensureLoaded()
-      const keep = resolveCompactKeep(this._events, options)
-      const split = this._events.length - keep
-      const prefix = this._events.slice(0, split)
-      const suffix = this._events.slice(split)
+      const events = this._events
+      const nonMeta: SessionEvent[] = []
+      const rawIndices: number[] = []
+      for (let index = 0; index < events.length; index += 1) {
+        const event = events[index]!
+        if (event.type === 'meta') continue
+        nonMeta.push(event)
+        rawIndices.push(index)
+      }
+      const keep = resolveCompactKeep(nonMeta, options)
+      let splitIndex = Math.max(0, nonMeta.length - keep)
+      splitIndex = safeCompactSplit(nonMeta, splitIndex)
+      const rawSplit = rawIndices[splitIndex] ?? events.length
+      const suffix = events.slice(rawSplit)
+      let messages: ModelMessage[]
+      if (options.messages) {
+        messages = this._projector([
+          {
+            id: randomUUID(),
+            seq: 0,
+            ts: 0,
+            type: 'checkpoint',
+            payload: { messages: clone(options.messages) },
+          },
+          ...suffix,
+        ])
+      } else {
+        messages = this._projector(events)
+      }
       const checkpoint: SessionEvent = {
         id: randomUUID(),
-        seq: this._events.at(-1)?.seq ?? 0,
+        seq: (events.at(-1)?.seq ?? 0) + 1,
         ts: Date.now(),
         type: 'checkpoint',
         payload: {
-          messages: options.messages
-            ? clone(options.messages)
-            : this._projector(prefix),
+          messages,
+          surfaceOp: 'replace',
           ...(options.summary ? { summary: options.summary } : {}),
           ...(options.tokensBefore !== undefined
             ? { tokensBefore: options.tokensBefore }
             : {}),
-          ...(prefix.length ? { snapshot: prefix } : {}),
         },
       }
-      const next = [checkpoint, ...suffix]
-      if (next.length) {
-        await writeFile(this.file, `${next.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
-      } else {
-        await writeFile(this.file, '', 'utf8')
-      }
-      this._events = next
-      return next.length
+      await appendFile(this.file, `${JSON.stringify(checkpoint)}\n`, 'utf8')
+      this._events.push(checkpoint)
+      this._nextSeq += 1
+      this._broadcast?.('event', checkpoint)
+      return this._events.length
     })
   }
 
@@ -478,29 +678,88 @@ export class SessionLog {
   private async _ensureLoaded(): Promise<void> {
     if (this._loaded) return
     await mkdir(dirname(resolve(this.file)), { recursive: true })
-    this._events = await this._read()
+    const read = await this._read()
+    if (!read.existing) {
+      const meta: SessionEvent = {
+        id: randomUUID(),
+        seq: 1,
+        ts: Date.now(),
+        type: 'meta',
+        payload: { formatVersion: SESSION_FORMAT_VERSION },
+      }
+      await writeFile(this.file, `${JSON.stringify(meta)}\n`, 'utf8')
+      this._events = [meta]
+      this._nextSeq = 2
+      this._loaded = true
+      return
+    }
+    this._events = read.events
     this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
     this._loaded = true
   }
 
-  private async _read(): Promise<SessionEvent[]> {
+  private async _read(): Promise<{ existing: boolean; events: SessionEvent[] }> {
+    let text: string
     try {
-      const text = await readFile(this.file, 'utf8')
-      const events: SessionEvent[] = []
-      for (const line of text.split('\n')) {
-        if (!line.trim()) continue
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(line)
-        } catch {
-          continue
-        }
-        if (isSessionEvent(parsed)) events.push(parsed)
-      }
-      return events
+      text = await readFile(this.file, 'utf8')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return { existing: false, events: [] }
+      }
       throw error
+    }
+    if (!text.trim()) return { existing: false, events: [] }
+
+    const lines = text.split('\n')
+    const events: SessionEvent[] = []
+    let torn = false
+    for (const line of lines) {
+      if (!line.trim()) continue
+      if (torn) continue
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(line)
+      } catch {
+        torn = true
+        continue
+      }
+      if (!isSessionEvent(parsed)) {
+        torn = true
+        continue
+      }
+      events.push(parsed)
+    }
+
+    this._assertFormat(events)
+
+    const synthetic = repairUnclosed(events)
+    if (!torn && !synthetic.length) return { existing: true, events }
+
+    const repaired = [...events, ...synthetic]
+    await writeFile(
+      this.file,
+      `${repaired.map(event => JSON.stringify(event)).join('\n')}\n`,
+      'utf8',
+    )
+    return { existing: true, events: repaired }
+  }
+
+  private _assertFormat(events: readonly SessionEvent[]): void {
+    let version: number | undefined
+    for (const event of events) {
+      if (event.type !== 'meta') continue
+      const value = (event.payload as Record<string, unknown>).formatVersion
+      if (typeof value === 'number') version = value
+    }
+    if (version === undefined) {
+      throw new SessionFormatError(
+        `session log is missing formatVersion; expected ${SESSION_FORMAT_VERSION}`,
+      )
+    }
+    if (version !== SESSION_FORMAT_VERSION) {
+      throw new SessionFormatError(
+        `unsupported session format version ${version}; expected ${SESSION_FORMAT_VERSION}`,
+      )
     }
   }
 
@@ -536,7 +795,10 @@ export class SessionLog {
 export const session = {
   name: 'session',
   apply: async (ctx: Context, config: SessionConfig) => {
-    const log = new SessionLog(config.file, config.projector)
+    const log = new SessionLog(config.file, config.projector, config.broadcast ?? ((type, payload) => {
+      if (type === 'event') ctx.emit('session/event', payload)
+      else ctx.emit('session/flush', payload)
+    }))
     await log.init()
     ctx.provide('session', log)
     return () => log.close()
