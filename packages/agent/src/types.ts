@@ -69,6 +69,13 @@ export type LLMStreamEvent =
   | LLMToolCallEndEvent
   | LLMMessageStopEvent
 
+export interface LLMStreamRequestEvent {
+  index: number
+  messages: ModelMessage[]
+  tools: readonly ToolDefinition[]
+  options: CompleteOptions
+}
+
 export interface LLMAdapter {
   complete(
     messages: readonly ModelMessage[],

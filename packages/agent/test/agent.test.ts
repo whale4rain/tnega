@@ -23,6 +23,7 @@ import {
   type LLMAdapter,
   type LLMCompletion,
   type LLMStreamEvent,
+  type LLMStreamRequestEvent,
   type LLMToolCall,
 } from '../src/index.js'
 
@@ -619,6 +620,89 @@ describe('agent loop', () => {
     ])
   })
 
+  it('lets llm/stream rewrite the final request before the adapter runs', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-waterfall.jsonl') })
+    await root.plugin(tools)
+    const requests: ModelMessage[][] = []
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('complete should not be used')
+      },
+      stream: async function* (messages) {
+        requests.push([...messages])
+        yield { type: 'message_start', id: 'm1' }
+        yield { type: 'message_delta', id: 'm1', delta: 'ok' }
+        yield { type: 'message_stop', id: 'm1', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.messages = [
+        ...payload.messages,
+        { role: 'user', content: 'injected' },
+      ]
+      return next()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    const { result } = await collectStream(service.runStream({ text: 'go' }))
+    expect(result.output).toBe('ok')
+    expect(requests).toEqual([
+      [
+        { role: 'user', content: 'go' },
+        { role: 'user', content: 'injected' },
+      ],
+    ])
+
+    const log = dynamic(root).session as SessionLog
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'user', content: 'injected' },
+      { role: 'assistant', content: 'ok' },
+    ])
+  })
+
+  it('lets llm/stream short-circuit without calling the adapter', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-short-circuit.jsonl') })
+    await root.plugin(tools)
+    let adapterCalls = 0
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('complete should not be used')
+      },
+      stream: async function* () {
+        adapterCalls += 1
+        yield { type: 'message_start', id: 'adapter' }
+        yield { type: 'message_delta', id: 'adapter', delta: 'never' }
+        yield { type: 'message_stop', id: 'adapter', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    root.on('llm/stream', async () => (async function* () {
+      yield { type: 'message_start', id: 'wrapped' }
+      yield { type: 'message_delta', id: 'wrapped', delta: 'wrapped' }
+      yield { type: 'message_stop', id: 'wrapped', finishReason: 'stop' }
+    })())
+
+    const service = dynamic(root).agent as AgentService
+    const { result } = await collectStream(service.runStream({ text: 'go' }))
+    expect(result.output).toBe('wrapped')
+    expect(adapterCalls).toBe(0)
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.filter(event => event.type === 'assistant/chunk'))
+      .toHaveLength(1)
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'wrapped' },
+    ])
+  })
+
   it('marks a run cancelled when the stream aborts', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('stream-cancel.jsonl') })
@@ -665,11 +749,16 @@ describe('agent loop', () => {
       'turn/start',
       'step/start',
       'user/message',
+      'assistant/chunk',
       'assistant/message',
       'step/end',
       'turn/end',
     ])
-    expect(durableEvents[4]?.payload).toMatchObject({
+    expect(durableEvents[4]).toMatchObject({
+      type: 'assistant/chunk',
+      payload: { id: 'm1', content: 'partial', index: 0 },
+    })
+    expect(durableEvents[5]?.payload).toMatchObject({
       content: 'partial',
       interrupted: true,
     })
@@ -1089,14 +1178,20 @@ describe('agent loop', () => {
       'turn/start',
       'step/start',
       'user/message',
+      'assistant/chunk',
       'assistant/message',
       'llm/retry',
       'llm/retry-started',
+      'assistant/chunk',
       'assistant/message',
       'step/end',
       'turn/end',
     ])
-    expect(events[4]?.payload).toMatchObject({ content: 'recover', interrupted: true })
+    expect(events[4]).toMatchObject({
+      type: 'assistant/chunk',
+      payload: { id: 'm1', content: 'recover', index: 0 },
+    })
+    expect(events[5]?.payload).toMatchObject({ content: 'recover', interrupted: true })
     expect(await log.deriveMessages()).toEqual([
       { role: 'user', content: 'go' },
       { role: 'assistant', content: 'recover' },
