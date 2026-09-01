@@ -424,7 +424,7 @@ export function repairUnclosed(
       interrupted: true,
     })
   }
-  for (const turn of openTurns) {
+  for (let i = 0; i < openTurns.length; i++) {
     push('turn/end', {
       finishReason: 'interrupted',
       interrupted: true,
