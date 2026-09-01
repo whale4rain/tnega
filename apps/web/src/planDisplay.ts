@@ -137,7 +137,7 @@ export function isSlashCommandResult(value: unknown): value is SlashCommandResul
   return record.kind === 'json'
 }
 
-export function formatSlashMetaEvent(event: SessionEvent): string | null {
+export function readSlashMetaEvent(event: SessionEvent): SlashMetaPayload | null {
   if (event.type !== 'meta') return null
   const payload = event.payload as Partial<SlashMetaPayload> & Record<string, unknown>
   if (
@@ -148,5 +148,15 @@ export function formatSlashMetaEvent(event: SessionEvent): string | null {
   ) {
     return null
   }
-  return formatSlashMessage(payload.command, payload.args, payload.result)
+  return {
+    kind: 'slash',
+    command: payload.command,
+    args: [...payload.args],
+    result: payload.result,
+  }
+}
+
+export function formatSlashMetaEvent(event: SessionEvent): string | null {
+  const data = readSlashMetaEvent(event)
+  return data ? formatSlashMessage(data.command, data.args, data.result) : null
 }

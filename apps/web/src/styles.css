@@ -1155,6 +1155,71 @@ textarea {
   padding: 8px 10px;
 }
 
+.message.slash {
+  padding: 4px 0;
+}
+
+.slash-toggle {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.slash-status {
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.slash-command {
+  flex: 1;
+  font-family:
+    "Cascadia Code",
+    "JetBrains Mono",
+    "Fira Code",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash-result {
+  margin-top: 4px;
+}
+
+.slash-text {
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.slash-json {
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+
 .run-note {
   color: var(--warning);
   font-size: 12px;

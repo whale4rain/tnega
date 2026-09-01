@@ -22,8 +22,8 @@ import { PlanPanel } from './PlanPanel'
 import {
   applyPlanStreamEvent,
   formatSlashMessage,
-  formatSlashMetaEvent,
   latestPlanFromEvents,
+  readSlashMetaEvent,
   slashPromptParts,
   type DisplayPlan,
 } from './planDisplay'
@@ -941,6 +941,7 @@ function ChatView({
           id: `slash-${name}-${Date.now()}`,
           role: 'system',
           content: text,
+          slash: { kind: 'slash', command: name, args, result },
         },
       ])
       await onRefresh(sessionId)
@@ -1502,6 +1503,9 @@ function MessageBlock({
   if (message.role === 'system' && message.compacted) {
     return <CompactionBlock message={message} />
   }
+  if (message.role === 'system' && message.slash) {
+    return <SlashBlock message={message} />
+  }
   if (message.role === 'system') {
     return (
       <div className="message system">
@@ -1722,6 +1726,39 @@ function CompactionBlock({ message }: { message: DisplayMessage }) {
   )
 }
 
+function SlashBlock({ message }: { message: DisplayMessage }) {
+  const [open, setOpen] = useState(true)
+  const slash = message.slash!
+  const line = [slash.command, ...slash.args].join(' ')
+  return (
+    <div className="message slash">
+      <button
+        type="button"
+        className="slash-toggle"
+        onClick={() => setOpen(open => !open)}
+        aria-expanded={open}
+      >
+        <span className="marker">{open ? '[-]' : '[+]'}</span>
+        <span className="slash-status">slash</span>
+        <span className="slash-command" title={line}>{line}</span>
+      </button>
+      {open && (
+        <div className="slash-result">
+          {slash.result.kind === 'text' ? (
+            <div className="slash-text md">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {slash.result.text}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <pre className="slash-json">{prettyJson(slash.result.value)}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface SettingsViewProps {
   config: ConfigSnapshot | null
   onSaved: (config: ConfigSnapshot) => void
@@ -1936,12 +1973,13 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
       case 'meta': {
-        const content = formatSlashMetaEvent(event)
-        if (content) {
+        const slash = readSlashMetaEvent(event)
+        if (slash) {
           messages.push({
             id: event.id,
             role: 'system',
-            content,
+            content: formatSlashMessage(slash.command, slash.args, slash.result),
+            slash,
           })
         }
         break

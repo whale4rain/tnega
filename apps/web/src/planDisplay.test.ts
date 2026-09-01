@@ -8,6 +8,7 @@ import {
   latestPlanFromEvents,
   planFromPayload,
   planStatusText,
+  readSlashMetaEvent,
   slashPromptParts,
 } from './planDisplay'
 
@@ -191,5 +192,77 @@ describe('formatSlashMetaEvent', () => {
       payload: { kind: 'resume' },
     }
     expect(formatSlashMetaEvent(event)).toBeNull()
+  })
+})
+
+describe('readSlashMetaEvent', () => {
+  it('reads persisted slash meta payloads', () => {
+    const event: SessionEvent = {
+      id: 'slash-event',
+      seq: 2,
+      ts: 2,
+      type: 'meta',
+      payload: {
+        kind: 'slash',
+        command: '/mode',
+        args: ['plan'],
+        result: { kind: 'json', value: { current: 'plan' } },
+      },
+    }
+    expect(readSlashMetaEvent(event)).toEqual({
+      kind: 'slash',
+      command: '/mode',
+      args: ['plan'],
+      result: { kind: 'json', value: { current: 'plan' } },
+    })
+  })
+
+  it('supports text slash results', () => {
+    const event: SessionEvent = {
+      id: 'slash-event',
+      seq: 2,
+      ts: 2,
+      type: 'meta',
+      payload: {
+        kind: 'slash',
+        command: '/skills',
+        args: ['fixture'],
+        result: { kind: 'text', text: 'unknown skill: fixture' },
+      },
+    }
+    expect(readSlashMetaEvent(event)).toMatchObject({
+      command: '/skills',
+      result: { kind: 'text', text: 'unknown skill: fixture' },
+    })
+  })
+
+  it('ignores unrelated or malformed meta events', () => {
+    expect(readSlashMetaEvent({
+      id: 'resume-event',
+      seq: 2,
+      ts: 2,
+      type: 'meta',
+      payload: { kind: 'resume' },
+    })).toBeNull()
+    expect(readSlashMetaEvent({
+      id: 'bad-event',
+      seq: 3,
+      ts: 3,
+      type: 'meta',
+      payload: { kind: 'slash', command: '/mode' },
+    })).toBeNull()
+    const messageEvent = {
+      id: 'msg-event',
+      seq: 4,
+      ts: 4,
+      type: 'message',
+      payload: {
+        kind: 'slash',
+        command: '/mode',
+        args: [],
+        result: { kind: 'text', text: 'x' },
+      },
+    } as unknown as SessionEvent
+    expect(readSlashMetaEvent(messageEvent)).toBeNull()
   })
 })

@@ -178,6 +178,7 @@ export interface DisplayMessage {
   role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
   tool?: DisplayTool
+  slash?: SlashMetaPayload
   finishReason?: string
   pending?: boolean
   compacted?: boolean
