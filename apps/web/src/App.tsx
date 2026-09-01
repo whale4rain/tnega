@@ -1997,22 +1997,34 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
   const toolIndex = new Map<string, number>()
   for (const event of events) {
     switch (event.type) {
-      case 'message':
-        if (
-          event.payload.role === 'system'
-          || event.payload.role === 'user'
-          || event.payload.role === 'assistant'
-        ) {
-          if (event.payload.content) {
-            messages.push({
-              id: event.id,
-              role: event.payload.role,
-              content: event.payload.content,
-            })
-          }
+      case 'user/message':
+        if (event.payload.content) {
+          messages.push({
+            id: event.id,
+            role: 'user',
+            content: event.payload.content,
+          })
         }
         break
-      case 'tool-call':
+      case 'assistant/message':
+        if (event.payload.content) {
+          messages.push({
+            id: event.id,
+            role: 'assistant',
+            content: event.payload.content,
+          })
+        }
+        break
+      case 'system/message':
+        if (event.payload.content) {
+          messages.push({
+            id: event.id,
+            role: 'system',
+            content: event.payload.content,
+          })
+        }
+        break
+      case 'tool/call':
         messages.push({
           id: event.id,
           role: 'tool',
@@ -2026,7 +2038,7 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         })
         toolIndex.set(event.payload.id, messages.length - 1)
         break
-      case 'tool-result': {
+      case 'tool/result': {
         const index = toolIndex.get(event.payload.toolCallId)
         if (index === undefined) {
           messages.push({
@@ -2085,6 +2097,8 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         }
         break
       }
+      case 'llm/retry':
+      case 'llm/retry-started':
       case 'turn/start':
       case 'turn/end':
       case 'step/start':

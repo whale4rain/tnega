@@ -19,11 +19,25 @@ export interface SessionEventBase<T extends string, P> {
   payload: P
 }
 
-export interface MessagePayload {
-  role: 'system' | 'user' | 'assistant'
+export interface UserMessagePayload {
   content: string
   name?: string
 }
+
+export interface AssistantMessagePayload {
+  content: string
+  name?: string
+}
+
+export interface SystemMessagePayload {
+  content: string
+  name?: string
+}
+
+export type MessageEventPayload =
+  | UserMessagePayload
+  | AssistantMessagePayload
+  | SystemMessagePayload
 
 export interface ToolCallPayload {
   id: string
@@ -57,9 +71,11 @@ export interface PlanPayload {
 }
 
 export type SessionEvent =
-  | SessionEventBase<'message', MessagePayload>
-  | SessionEventBase<'tool-call', ToolCallPayload>
-  | SessionEventBase<'tool-result', ToolResultPayload>
+  | SessionEventBase<'user/message', UserMessagePayload>
+  | SessionEventBase<'assistant/message', AssistantMessagePayload>
+  | SessionEventBase<'system/message', SystemMessagePayload>
+  | SessionEventBase<'tool/call', ToolCallPayload>
+  | SessionEventBase<'tool/result', ToolResultPayload>
   | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', {
       messages: ModelMessage[]
@@ -69,6 +85,11 @@ export type SessionEvent =
       snapshot?: SessionEvent[]
     }>
   | SessionEventBase<'meta', Record<string, unknown>>
+  | SessionEventBase<'llm/retry', {
+      attempt: number
+      error?: { name?: string; message: string; stack?: string }
+    }>
+  | SessionEventBase<'llm/retry-started', { attempt: number }>
   | SessionEventBase<'turn/start', {
       input?: unknown
       reason?: string

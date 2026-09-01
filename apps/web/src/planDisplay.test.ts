@@ -255,7 +255,7 @@ describe('readSlashMetaEvent', () => {
       id: 'msg-event',
       seq: 4,
       ts: 4,
-      type: 'message',
+      type: 'user/message',
       payload: {
         kind: 'slash',
         command: '/mode',

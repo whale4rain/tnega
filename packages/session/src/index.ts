@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 
-export const SESSION_FORMAT_VERSION = 2
+export const SESSION_FORMAT_VERSION = 3
 
 export class SessionFormatError extends Error {
   override name = 'SessionFormatError'
@@ -27,14 +27,30 @@ export interface ModelMessage {
   toolError?: ToolResultErrorPayload
 }
 
-export type MessageRole = 'system' | 'user' | 'assistant'
-
-export interface MessagePayload {
-  role: MessageRole
+export interface UserMessagePayload {
   content: string
   name?: string
   parentId?: string
 }
+
+export interface AssistantMessagePayload {
+  content: string
+  name?: string
+  parentId?: string
+}
+
+export interface SystemMessagePayload {
+  content: string
+  name?: string
+  parentId?: string
+}
+
+export type MessageEventPayload =
+  | UserMessagePayload
+  | AssistantMessagePayload
+  | SystemMessagePayload
+
+export type MessageEventType = 'user/message' | 'assistant/message' | 'system/message'
 
 export interface ToolCallPayload {
   id: string
@@ -83,6 +99,15 @@ export interface StepEndPayload {
   error?: ToolResultErrorPayload
 }
 
+export interface LLMRetryPayload {
+  attempt: number
+  error?: ToolResultErrorPayload
+}
+
+export interface LLMRetryStartedPayload {
+  attempt: number
+}
+
 export interface CheckpointPayload {
   messages: ModelMessage[]
   summary?: string
@@ -112,12 +137,14 @@ export type AgentType = 'general' | 'coding'
 export type SessionMode = 'auto' | 'plan' | 'execute'
 
 export type SessionEventType =
-  | 'message'
-  | 'tool-call'
-  | 'tool-result'
+  | MessageEventType
+  | 'tool/call'
+  | 'tool/result'
   | 'plan'
   | 'checkpoint'
   | 'meta'
+  | 'llm/retry'
+  | 'llm/retry-started'
   | 'turn/start'
   | 'turn/end'
   | 'step/start'
@@ -132,16 +159,32 @@ export interface SessionEventBase<T extends SessionEventType, P> {
 }
 
 export type SessionEvent =
-  | SessionEventBase<'message', MessagePayload>
-  | SessionEventBase<'tool-call', ToolCallPayload>
-  | SessionEventBase<'tool-result', ToolResultPayload>
+  | SessionEventBase<'user/message', UserMessagePayload>
+  | SessionEventBase<'assistant/message', AssistantMessagePayload>
+  | SessionEventBase<'system/message', SystemMessagePayload>
+  | SessionEventBase<'tool/call', ToolCallPayload>
+  | SessionEventBase<'tool/result', ToolResultPayload>
   | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', CheckpointPayload>
   | SessionEventBase<'meta', Record<string, unknown>>
+  | SessionEventBase<'llm/retry', LLMRetryPayload>
+  | SessionEventBase<'llm/retry-started', LLMRetryStartedPayload>
   | SessionEventBase<'turn/start', TurnStartPayload>
   | SessionEventBase<'turn/end', TurnEndPayload>
   | SessionEventBase<'step/start', StepStartPayload>
   | SessionEventBase<'step/end', StepEndPayload>
+
+function isMessageEventType(type: SessionEventType): type is MessageEventType {
+  return type === 'user/message'
+    || type === 'assistant/message'
+    || type === 'system/message'
+}
+
+function isMessageEvent(
+  event: SessionEvent,
+): event is Extract<SessionEvent, { type: MessageEventType }> {
+  return isMessageEventType(event.type)
+}
 
 export interface SessionConfig {
   file: string
@@ -195,16 +238,25 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
       case 'checkpoint':
         messages.splice(0, messages.length, ...clone(event.payload.messages))
         break
-      case 'message': {
-        const message: ModelMessage = {
-          role: event.payload.role,
-          content: event.payload.content,
-        }
+      case 'user/message': {
+        const message: ModelMessage = { role: 'user', content: event.payload.content }
         if (event.payload.name) message.name = event.payload.name
         messages.push(message)
         break
       }
-      case 'tool-call': {
+      case 'assistant/message': {
+        const message: ModelMessage = { role: 'assistant', content: event.payload.content }
+        if (event.payload.name) message.name = event.payload.name
+        messages.push(message)
+        break
+      }
+      case 'system/message': {
+        const message: ModelMessage = { role: 'system', content: event.payload.content }
+        if (event.payload.name) message.name = event.payload.name
+        messages.push(message)
+        break
+      }
+      case 'tool/call': {
         const last = messages.at(-1)
         if (!last || last.role !== 'assistant') {
           messages.push({
@@ -222,7 +274,7 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
         })
         break
       }
-      case 'tool-result': {
+      case 'tool/result': {
         const failed = !event.payload.ok
         const content = failed
           ? `error: ${event.payload.error?.message ?? 'unknown'}`
@@ -243,6 +295,9 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
       case 'plan':
         break
       case 'meta':
+        break
+      case 'llm/retry':
+      case 'llm/retry-started':
         break
       case 'turn/start':
       case 'turn/end':
@@ -277,13 +332,15 @@ export function estimateMessageTokens(messages: readonly ModelMessage[]): number
 
 export function estimateEventTokens(event: SessionEvent): number {
   switch (event.type) {
-    case 'message':
+    case 'user/message':
+    case 'assistant/message':
+    case 'system/message':
       return Math.ceil(event.payload.content.length / 4)
-    case 'tool-call': {
+    case 'tool/call': {
       const raw = JSON.stringify(event.payload.arguments ?? {}) ?? ''
       return Math.ceil(raw.length / 4)
     }
-    case 'tool-result': {
+    case 'tool/result': {
       const raw = event.payload.ok
         ? stringify(event.payload.output)
         : event.payload.error?.message ?? 'error'
@@ -294,6 +351,9 @@ export function estimateEventTokens(event: SessionEvent): number {
     case 'checkpoint':
       return estimateMessageTokens(event.payload.messages)
     case 'meta':
+      return 0
+    case 'llm/retry':
+    case 'llm/retry-started':
       return 0
     case 'turn/start':
     case 'turn/end':
@@ -321,7 +381,7 @@ export function suffixStartIndexForTokens(
   let cut = candidate
   while (cut < events.length) {
     const event = events[cut]
-    if (event && event.type === 'message' && event.payload.role === 'user') return cut
+    if (event?.type === 'user/message') return cut
     cut += 1
   }
   return candidate
@@ -333,11 +393,11 @@ export function safeCompactSplit(
 ): number {
   const index = Math.max(0, Math.min(splitIndex, events.length))
   const first = events[index]
-  if (first?.type === 'tool-result') {
+  if (first?.type === 'tool/result') {
     const callId = first.payload.toolCallId
     for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
       const candidate = events[cursor]
-      if (candidate?.type === 'tool-call' && candidate.payload.id === callId) {
+      if (candidate?.type === 'tool/call' && candidate.payload.id === callId) {
         return cursor
       }
     }
@@ -348,8 +408,8 @@ export function safeCompactSplit(
     if (cursor >= index && openCalls === 0) return cursor
     const event = events[cursor]
     if (!event) continue
-    if (event.type === 'tool-call') openCalls += 1
-    if (event.type === 'tool-result') openCalls = Math.max(0, openCalls - 1)
+    if (event.type === 'tool/call') openCalls += 1
+    if (event.type === 'tool/result') openCalls = Math.max(0, openCalls - 1)
   }
   return index
 }
@@ -357,15 +417,15 @@ export function safeCompactSplit(
 export function repairUnclosed(
   events: readonly SessionEvent[],
 ): SessionEvent[] {
-  const openCalls: Extract<SessionEvent, { type: 'tool-call' }>[] = []
+  const openCalls: Extract<SessionEvent, { type: 'tool/call' }>[] = []
   const openSteps: Extract<SessionEvent, { type: 'step/start' }>[] = []
   const openTurns: Extract<SessionEvent, { type: 'turn/start' }>[] = []
   for (const event of events) {
     switch (event.type) {
-      case 'tool-call':
+      case 'tool/call':
         openCalls.push(event)
         break
-      case 'tool-result': {
+      case 'tool/result': {
         const callIndex = openCalls.findIndex(
           call => call.payload.id === event.payload.toolCallId,
         )
@@ -406,7 +466,7 @@ export function repairUnclosed(
   }
 
   for (const call of openCalls) {
-    push('tool-result', {
+    push('tool/result', {
       id: call.payload.id,
       toolCallId: call.payload.id,
       name: call.payload.name,
@@ -480,12 +540,16 @@ export class SessionLog {
     })
   }
 
-  append(type: 'message', payload: MessagePayload): Promise<SessionEvent>
-  append(type: 'tool-call', payload: ToolCallPayload): Promise<SessionEvent>
-  append(type: 'tool-result', payload: ToolResultPayload): Promise<SessionEvent>
+  append(type: 'user/message', payload: UserMessagePayload): Promise<SessionEvent>
+  append(type: 'assistant/message', payload: AssistantMessagePayload): Promise<SessionEvent>
+  append(type: 'system/message', payload: SystemMessagePayload): Promise<SessionEvent>
+  append(type: 'tool/call', payload: ToolCallPayload): Promise<SessionEvent>
+  append(type: 'tool/result', payload: ToolResultPayload): Promise<SessionEvent>
   append(type: 'plan', payload: PlanPayload): Promise<SessionEvent>
   append(type: 'checkpoint', payload: CheckpointPayload): Promise<SessionEvent>
   append(type: 'meta', payload: Record<string, unknown>): Promise<SessionEvent>
+  append(type: 'llm/retry', payload: LLMRetryPayload): Promise<SessionEvent>
+  append(type: 'llm/retry-started', payload: LLMRetryStartedPayload): Promise<SessionEvent>
   append(type: 'turn/start', payload: TurnStartPayload): Promise<SessionEvent>
   append(type: 'turn/end', payload: TurnEndPayload): Promise<SessionEvent>
   append(type: 'step/start', payload: StepStartPayload): Promise<SessionEvent>
@@ -494,11 +558,11 @@ export class SessionLog {
     return this._run(async () => {
       await this._ensureLoaded()
       const eventPayload = clone(payload)
-      if (type === 'message') {
+      if (isMessageEventType(type)) {
         for (let index = this._events.length - 1; index >= 0; index -= 1) {
           const previous = this._events[index]
-          if (previous?.type === 'message') {
-            const messagePayload = eventPayload as MessagePayload
+          if (previous && isMessageEvent(previous)) {
+            const messagePayload = eventPayload as MessageEventPayload
             messagePayload.parentId ??= previous.id
             break
           }
@@ -541,7 +605,7 @@ export class SessionLog {
       const lineage = this._resolveLineage(messageId)
       const lineageIds = new Set(lineage.map(event => event.id))
       const targetIndex = this._events.findIndex(
-        event => event.id === messageId && event.type === 'message',
+        event => event.id === messageId && isMessageEvent(event),
       )
       if (targetIndex < 0) {
         throw new Error(`message not found: ${messageId}`)
@@ -550,7 +614,7 @@ export class SessionLog {
       let skippedMessage = false
       for (let index = 0; index <= targetIndex; index += 1) {
         const event = this._events[index]!
-        if (event.type === 'message') {
+        if (isMessageEvent(event)) {
           if (!lineageIds.has(event.id)) {
             skippedMessage = true
             continue
@@ -559,7 +623,13 @@ export class SessionLog {
           selected.push(clone(event))
           continue
         }
-        if (event.type === 'meta' || event.type.startsWith('turn/') || event.type.startsWith('step/')) {
+        if (
+          event.type === 'meta'
+          || event.type === 'llm/retry'
+          || event.type === 'llm/retry-started'
+          || event.type.startsWith('turn/')
+          || event.type.startsWith('step/')
+        ) {
           continue
         }
         if (event.type === 'checkpoint') {
@@ -765,9 +835,9 @@ export class SessionLog {
 
   private _resolveLineage(messageId: string): SessionEvent[] {
     const messages = this._events.filter(
-      (event): event is Extract<SessionEvent, { type: 'message' }> => event.type === 'message',
+      (event): event is Extract<SessionEvent, { type: MessageEventType }> => isMessageEvent(event),
     )
-    const byId = new Map<string, Extract<SessionEvent, { type: 'message' }>>(
+    const byId = new Map<string, Extract<SessionEvent, { type: MessageEventType }>>(
       messages.map(event => [event.id, event] as const),
     )
     if (!byId.has(messageId)) {
@@ -778,7 +848,7 @@ export class SessionLog {
     let cursorId: string | undefined = messageId
     while (cursorId && byId.has(cursorId) && !seen.has(cursorId)) {
       seen.add(cursorId)
-      const event: Extract<SessionEvent, { type: 'message' }> = byId.get(cursorId)!
+      const event: Extract<SessionEvent, { type: MessageEventType }> = byId.get(cursorId)!
       chain.unshift(clone(event))
       const parentId: string | undefined = event.payload.parentId
       if (parentId && byId.has(parentId)) {

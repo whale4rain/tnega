@@ -123,6 +123,12 @@ function apiFetch(
   return fetch(`${base}${path}`, { ...init, headers })
 }
 
+function isMessageEvent(event: { type: string }): boolean {
+  return event.type === 'user/message'
+    || event.type === 'assistant/message'
+    || event.type === 'system/message'
+}
+
 interface SessionDetailForTest {
   running: boolean
   events: Array<{
@@ -341,7 +347,7 @@ describe('web server', () => {
         payload: { role?: string; content?: string }
       }>
     }
-    const messages = detail.events.filter(event => event.type === 'message')
+    const messages = detail.events.filter(isMessageEvent)
     expect(messages.map(message => message.payload.content)).toEqual([
       'first turn',
       'mock reply',
@@ -372,7 +378,7 @@ describe('web server', () => {
         payload: { role?: string; content?: string }
       }>
     }
-    const forkMessages = forkDetail.events.filter(event => event.type === 'message')
+    const forkMessages = forkDetail.events.filter(isMessageEvent)
     expect(forkMessages.map(message => message.payload.content)).toEqual([
       'first turn',
       'mock reply',
@@ -433,7 +439,7 @@ describe('web server', () => {
         payload: { role?: string; content?: string }
       }>
     }
-    const messages = detail.events.filter(event => event.type === 'message')
+    const messages = detail.events.filter(isMessageEvent)
     const secondUser = messages.find(message => message.payload.content === 'second turn')!
 
     const fork = await apiFetch(
@@ -454,7 +460,7 @@ describe('web server', () => {
       events: Array<{ type: string; payload: { role?: string; content?: string } }>
     }
     const forkMessages = forkDetail.events
-      .filter(event => event.type === 'message')
+      .filter(isMessageEvent)
       .map(message => message.payload.content)
     expect(forkMessages).toEqual([
       'first turn',
@@ -471,7 +477,7 @@ describe('web server', () => {
       events: Array<{ type: string; payload: { role?: string; content?: string } }>
     }
     const parentMessages = parentDetail.events
-      .filter(event => event.type === 'message')
+      .filter(isMessageEvent)
       .map(message => message.payload.content)
     expect(parentMessages).toEqual([
       'first turn',
@@ -535,7 +541,7 @@ describe('web server', () => {
         payload: { role?: string; content?: string }
       }>
     }
-    const messages = detail.events.filter(event => event.type === 'message')
+    const messages = detail.events.filter(isMessageEvent)
     const secondUser = messages.find(message => message.payload.content === 'second turn')!
 
     const truncated = await apiFetch(
@@ -557,7 +563,7 @@ describe('web server', () => {
         payload: { role?: string; content?: string }
       }>
     }
-    const afterMessages = after.events.filter(event => event.type === 'message')
+    const afterMessages = after.events.filter(isMessageEvent)
     expect(afterMessages.map(message => message.payload.content)).toEqual([
       'first turn',
       'mock reply',
@@ -573,7 +579,7 @@ describe('web server', () => {
         payload: { role?: string; content?: string }
       }>
     }
-    const editedMessages = edited.events.filter(event => event.type === 'message')
+    const editedMessages = edited.events.filter(isMessageEvent)
     expect(editedMessages.map(message => message.payload.content)).toEqual([
       'first turn',
       'mock reply',
@@ -657,7 +663,7 @@ describe('web server', () => {
     expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
     expect(
       after.events.slice(0, checkpointIndex).some(
-        event => event.type === 'message'
+        event => isMessageEvent(event)
           && event.payload?.content === 'a very long conversation with lots of words',
       ),
     ).toBe(true)
@@ -753,7 +759,7 @@ describe('web server', () => {
         message => message.content === 'recent request',
       ) ?? false,
     ).toBe(true)
-    const rawBefore = after.events.slice(0, checkpointIndex).filter(event => event.type === 'message')
+    const rawBefore = after.events.slice(0, checkpointIndex).filter(isMessageEvent)
     expect(rawBefore.some(event => event.payload?.content === 'recent request')).toBe(true)
   })
 
@@ -802,10 +808,10 @@ describe('web server', () => {
       events: Array<{ type: string; payload: { role?: string; content?: string } }>
     }
     expect(detail.summary.title).toBe('say hello')
-    const messages = detail.events.filter(event => event.type === 'message')
+    const messages = detail.events.filter(isMessageEvent)
     expect(messages).toHaveLength(2)
-    expect(messages[0]!.payload.role).toBe('user')
-    expect(messages[1]!.payload.role).toBe('assistant')
+    expect(messages[0]!.type).toBe('user/message')
+    expect(messages[1]!.type).toBe('assistant/message')
     expect(messages[1]!.payload.content).toBe('hello from mock')
   })
 
@@ -929,7 +935,7 @@ describe('web server', () => {
       session => !session.running,
     )
     const messages = detail.events
-      .filter(event => event.type === 'message')
+      .filter(isMessageEvent)
       .map(event => event.payload.content)
     expect(messages).toContain('late reply')
   })
@@ -1083,11 +1089,11 @@ describe('web server', () => {
       { id: 'plan-1', title: 'Inspect the project', status: 'pending' },
       { id: 'plan-2', title: 'Add the endpoint', status: 'pending' },
     ])
-    const messages = detail.events.filter(event => event.type === 'message')
+    const messages = detail.events.filter(isMessageEvent)
     const contents = messages.map(message => message.payload.content)
     expect(contents).toContain('build a greeting endpoint')
     expect(contents).toContain(planJson)
-    const system = messages.find(message => message.payload.role === 'system')
+    const system = messages.find(message => message.type === 'system/message')
     expect(system?.payload.content).toContain('You are Tnega')
     expect(
       messages.some(message => message.payload.content?.includes('<plan>') ?? false),

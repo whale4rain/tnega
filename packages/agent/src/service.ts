@@ -295,15 +295,14 @@ export class AgentService {
       }
       const toolResults: ToolResult[] = []
       if (toolCalls.length) {
-        await session.append('message', {
-          role: 'assistant',
+        await session.append('assistant/message', {
           content: completion.content ?? '',
         })
       }
       for (const call of toolCalls) {
         this.ctx.emit('agent/tool-call', { index, call })
         yield { type: 'tool/start', index, call }
-        await session.append('tool-call', {
+        await session.append('tool/call', {
           id: call.id,
           name: call.name,
           arguments: call.arguments,
@@ -341,7 +340,7 @@ export class AgentService {
           }
           if (result.error.stack) toolResultPayload.error.stack = result.error.stack
         }
-        await session.append('tool-result', toolResultPayload)
+        await session.append('tool/result', toolResultPayload)
         yield { type: 'tool/end', index, call, result }
         this.ctx.emit('agent/tool-result', { index, call, result })
       }
@@ -361,7 +360,7 @@ export class AgentService {
         output = completion.content
       }
       if (!toolCalls.length) {
-        await session.append('message', { role: 'assistant', content: completion.content ?? '' })
+        await session.append('assistant/message', { content: completion.content ?? '' })
       }
 
       await session.append('step/end', {
@@ -494,11 +493,17 @@ export class AgentService {
     const prefix = commonSurfacePrefix(requested, surface)
     const suffix = commonSurfaceSuffix(requested.slice(prefix), surface.slice(prefix))
     for (const message of requested.slice(prefix, requested.length - suffix)) {
-      await session.append('message', {
-        role: message.role,
-        content: message.content,
-        ...(message.name ? { name: message.name } : {}),
-      })
+      if (message.role === 'user') {
+        await session.append('user/message', {
+          content: message.content,
+          ...(message.name ? { name: message.name } : {}),
+        })
+      } else {
+        await session.append('system/message', {
+          content: message.content,
+          ...(message.name ? { name: message.name } : {}),
+        })
+      }
     }
   }
 

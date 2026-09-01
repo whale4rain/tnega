@@ -260,9 +260,7 @@ export async function truncateSessionAt(
     if (event) events.push(event)
   }
   const targetIndex = events.findIndex(
-    event => event.id === messageId
-      && event.type === 'message'
-      && event.payload.role === 'user',
+    event => event.id === messageId && event.type === 'user/message',
   )
   if (targetIndex < 0) {
     throw new TypeError(`user message not found: ${messageId}`)

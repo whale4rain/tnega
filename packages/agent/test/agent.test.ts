@@ -488,7 +488,7 @@ describe('agent loop', () => {
 
     const log = dynamic(root).session as SessionLog
     const events = await log.read()
-    const results = events.filter(event => event.type === 'tool-result')
+    const results = events.filter(event => event.type === 'tool/result')
     expect(results).toHaveLength(1)
     expect(results[0]!.payload).toMatchObject({
       id: 'c1',
@@ -683,10 +683,10 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
-      'message',
-      'message',
-      'tool-call',
-      'tool-result',
+      'user/message',
+      'assistant/message',
+      'tool/call',
+      'tool/result',
       'step/end',
       'turn/end',
     ])
@@ -708,8 +708,8 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
-      'message',
-      'message',
+      'user/message',
+      'assistant/message',
       'step/end',
       'turn/end',
     ])
@@ -758,8 +758,8 @@ describe('agent loop', () => {
       { role: 'assistant', content: 'second answer' },
     ])
     const userMessages = (await log.read()).filter(
-      (event): event is Extract<SessionEvent, { type: 'message' }> =>
-        event.type === 'message' && event.payload.role === 'user',
+      (event): event is Extract<SessionEvent, { type: 'user/message' }> =>
+        event.type === 'user/message',
     )
     expect(userMessages.map(event => event.payload.content)).toEqual(['first', 'second'])
   })
@@ -915,7 +915,7 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
-      'message',
+      'user/message',
       'step/end',
       'turn/end',
     ])

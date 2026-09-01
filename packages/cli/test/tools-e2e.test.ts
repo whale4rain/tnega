@@ -98,8 +98,8 @@ describe('tnega run builtin tools via OpenAI compatible endpoint', () => {
     expect(result.run.finishReason).toBe('stop')
 
     const sessionText = await readFile(result.sessionFile, 'utf8')
-    expect(sessionText).toContain('"tool-call"')
-    expect(sessionText).toContain('"tool-result"')
+    expect(sessionText).toContain('"tool/call"')
+    expect(sessionText).toContain('"tool/result"')
     expect(sessionText).toContain('calculator')
     expect(sessionText).not.toContain('test-key')
   })
