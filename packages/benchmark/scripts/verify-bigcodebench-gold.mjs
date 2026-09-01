@@ -105,6 +105,7 @@ function run(command, args, cwd, timeoutMs = 60_000) {
     let stderr = ''
     let settled = false
     const timer = setTimeout(() => {
+      killTree(child.pid)
       finish({ code: 124, error: 'timed out' })
     }, timeoutMs)
     child.stdout.on('data', chunk => {
@@ -127,4 +128,15 @@ function run(command, args, cwd, timeoutMs = 60_000) {
       resolve({ code: outcome.code, error: detail })
     }
   })
+}
+
+function killTree(pid) {
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+  } else {
+    process.kill(-pid, 'SIGKILL')
+  }
 }
