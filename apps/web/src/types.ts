@@ -33,6 +33,7 @@ export interface AssistantMessagePayload {
 export interface SystemMessagePayload {
   content: string
   name?: string
+  hidden?: boolean
 }
 
 export type MessageEventPayload =

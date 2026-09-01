@@ -197,4 +197,56 @@ describe('projectEvents', () => {
       endState: { finishReason: 'cancelled', cancelCause: { type: 'user' } },
     })
   })
+
+  it('hides internal system messages from durable events', () => {
+    const events: SessionEvent[] = [
+      ev('turn/start', {}, 1),
+      ev('user/message', { content: 'hello' }, 2),
+      ev('system/message', {
+        content: 'You are Tnega',
+        hidden: true,
+      }, 3),
+      ev('system/message', { content: 'legacy prompt' }, 4),
+      ev('system/message', { content: 'visible note', hidden: false }, 5),
+      ev('assistant/message', { content: 'ok' }, 6),
+    ]
+
+    const messages = projectEvents(events)
+
+    expect(messages.map(message => `${message.role}:${message.content}`)).toEqual([
+      'user:hello',
+      'system:visible note',
+      'assistant:ok',
+    ])
+    expect(messages).toHaveLength(3)
+    expect(messages[0]).toMatchObject({ role: 'user', content: 'hello' })
+    expect(messages[1]).toMatchObject({ role: 'system', content: 'visible note' })
+    expect(messages[2]).toMatchObject({ role: 'assistant', content: 'ok' })
+  })
+
+  it('hides model-internal system messages from checkpoint payloads', () => {
+    const events: SessionEvent[] = [
+      ev('checkpoint', {
+        surfaceOp: 'replace',
+        messages: [
+          { role: 'system', content: 'You are Tnega' },
+          { role: 'user', content: 'hello' },
+          { role: 'assistant', content: 'ok' },
+        ],
+        summary: 'compacted summary',
+        tokensBefore: 100,
+      }, 1),
+    ]
+
+    const messages = projectEvents(events)
+
+    expect(messages).toHaveLength(3)
+    expect(messages[0]).toMatchObject({ role: 'user', content: 'hello' })
+    expect(messages[1]).toMatchObject({ role: 'assistant', content: 'ok' })
+    expect(messages[2]).toMatchObject({
+      role: 'system',
+      content: 'compacted summary',
+      compacted: true,
+    })
+  })
 })

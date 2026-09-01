@@ -1091,11 +1091,12 @@ describe('web server', () => {
     ).then(r => r.json()) as {
       events: Array<{
         type: string
-        payload: {
-          items?: Array<{ id: string; title: string; status: string }>
-          role?: string
-          content?: string
-        }
+      payload: {
+        items?: Array<{ id: string; title: string; status: string }>
+        role?: string
+        content?: string
+        hidden?: boolean
+      }
       }>
     }
     const plans = detail.events.filter(event => event.type === 'plan')
@@ -1110,6 +1111,7 @@ describe('web server', () => {
     expect(contents).toContain(planJson)
     const system = messages.find(message => message.type === 'system/message')
     expect(system?.payload.content).toContain('You are Tnega')
+    expect(system?.payload.hidden).toBe(true)
     expect(
       messages.some(message => message.payload.content?.includes('<plan>') ?? false),
     ).toBe(true)

@@ -603,6 +603,7 @@ export class AgentService {
         await session.append('system/message', {
           content: message.content,
           ...(message.name ? { name: message.name } : {}),
+          hidden: true,
         })
       }
     }

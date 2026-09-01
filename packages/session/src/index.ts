@@ -50,6 +50,7 @@ export interface SystemMessagePayload {
   content: string
   name?: string
   parentId?: string
+  hidden?: boolean
 }
 
 export type MessageEventPayload =

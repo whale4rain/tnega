@@ -43,7 +43,9 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         }
         break
       case 'system/message':
-        if (event.payload.content) {
+        // System messages are model-internal by default; `hidden: false`
+        // opts a message into the visible transcript.
+        if (event.payload.content && event.payload.hidden === false) {
           messages.push({
             id: event.id,
             role: 'system',
@@ -186,6 +188,7 @@ function pushModelMessage(
   item: ModelMessage,
   sourceId: string,
 ): void {
+  if (item.role === 'system') return
   if (item.role === 'tool') {
     const index = toolIndex.get(item.tool_call_id ?? '')
     const legacyFailed = item.content.startsWith('error: ')
@@ -217,7 +220,7 @@ function pushModelMessage(
     }
     return
   }
-  if (item.role === 'system' || item.role === 'user' || item.role === 'assistant') {
+  if (item.role === 'user' || item.role === 'assistant') {
     messages.push({
       id: `${sourceId}-${messages.length}`,
       role: item.role,
