@@ -1,5 +1,5 @@
 import { defineAgent, type AgentLoop, type LLMAdapter } from '@tnega/agent'
-import { createCodingAgentPlugin } from '@tnega/coding-agent'
+import { CODING_SYSTEM_PROMPT, createCodingAgentPlugin } from '@tnega/coding-agent'
 import { Context } from '@tnega/core'
 import { session } from '@tnega/session'
 import { builtinTools, tools, type ToolPolicy } from '@tnega/tools'
@@ -47,7 +47,7 @@ export async function createCodingEvalRuntime(
   }
   await root.plugin(defineAgent({
     name: 'coding-eval',
-    system: options.config.agent?.systemPrompt ?? 'You are a coding agent.',
+    system: options.config.agent?.systemPrompt ?? CODING_SYSTEM_PROMPT,
   }), agentConfig)
 
   const codingOptions: {
