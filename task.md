@@ -27,7 +27,7 @@
 | M12 tnega web（v0，M12.7 待办） | 已完成 |
 | M13 agent core 对外边界 | 已完成 |
 | M14 LLM provider 抽象与 Anthropic Messages | 已完成 |
-| M15 coding agent 与 web 前端架构 | 进行中 |
+| M15 coding agent 与 web 前端架构 | 已完成 |
 
 ## 开发约定
 
@@ -50,38 +50,38 @@
 
 ### M15.2 packages/coding-agent
 
-- [ ] 类型：`AgentKind`、`SessionMode`、`Plan`、`PlanStatus`、`SlashCommand`
-- [ ] plan 生成：用同一 LLM adapter 生成 JSON 计划（summary + items），稳健解析
-- [ ] skills：扫描 workspace `.tnega/skills/<name>/SKILL.md`，提供 `skills_list` / `skill_read`
-- [ ] MCP：读取 workspace `.tnega/mcp.json`，stdio 传输，工具名 `mcp__<server>__<tool>`，runtime dispose 时清理子进程
-- [ ] coding agent definition：system prompt、plan 工具（plan_execute_mark / plan_execute_result）、skills、MCP
-- [ ] slash command 注册表：`/plan`、`/mode` 等，供 web 查询与执行
-- [ ] 测试：plan 解析、skills 加载、MCP 握手/调用/清理、插件挂载工具、slash 注册
+- [x] 类型：`AgentKind`、`SessionMode`、`Plan`、`PlanStatus`、`SlashCommand`
+- [x] plan 生成：用同一 LLM adapter 生成 JSON 计划（summary + items），稳健解析
+- [x] skills：扫描 workspace `.tnega/skills/<name>/SKILL.md`，提供 `skills_list` / `skill_read`
+- [x] MCP：读取 workspace `.tnega/mcp.json`，stdio 传输，工具名 `mcp__<server>__<tool>`，runtime dispose 时清理子进程
+- [x] coding agent definition：system prompt、plan 工具（plan_execute_mark / plan_execute_result）、skills、MCP
+- [x] slash command 注册表：`/plan`、`/mode` 等，供 web 查询与执行
+- [x] 测试：plan 解析、skills 加载、MCP 握手/调用/清理、插件挂载工具、slash 注册
 
 ### M15.3 CLI / web server
 
-- [ ] `createSession` / `forkSession` 接受 agentType / mode 并持久化
-- [ ] run 请求支持会话级 mode（plan 先出计划再执行），SSE 发出 `plan/*` 事件
-- [ ] coding 会话路由到 coding agent runtime（默认保留 general 行为）
-- [ ] `/api/coding/commands` 与 `/api/coding/slash` 端点
-- [ ] 测试：coding 会话创建、plan SSE、meta 持久化、slash 端点
+- [x] `createSession` / `forkSession` 接受 agentType / mode 并持久化
+- [x] run 请求支持会话级 mode（plan 先出计划再执行），SSE 发出 `plan/*` 事件
+- [x] coding 会话路由到 coding agent runtime（默认保留 general 行为）
+- [x] `/api/coding/commands` 与 `/api/coding/slash` 端点
+- [x] 测试：coding 会话创建、plan SSE、meta 持久化、slash 端点
 
 ### M15.4 web 前端
 
-- [ ] 会话创建与 header 显示 agentType 徽标，会话粒度切换
-- [ ] chat header 提供 mode 切换（auto / plan / execute）
-- [ ] plan 面板：todo 列表显示在聊天区上方，随执行实时更新
-- [ ] 斜杠命令菜单：前端 `/` 选择，调用后端执行
-- [ ] `plan` 会话事件渲染与流式 `plan/*` SSE 处理
-- [ ] 大型 App.tsx 拆分模块，保持现有 CSS 视觉与交互习惯
-- [ ] 前端类型 / API 同步更新
+- [x] 会话创建与 header 显示 agentType 徽标，会话粒度切换
+- [x] chat header 提供 mode 切换（auto / plan / execute）
+- [x] plan 面板：todo 列表显示在聊天区上方，随执行实时更新
+- [x] 斜杠命令菜单：前端 `/` 选择，调用后端执行
+- [x] `plan` 会话事件渲染与流式 `plan/*` SSE 处理
+- [x] 大型 App.tsx 拆分模块，保持现有 CSS 视觉与交互习惯
+- [x] 前端类型 / API 同步更新
 
 ### M15 验收
 
-- [ ] `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build` 全部通过
-- [ ] web 可创建 coding 会话并运行 plan & execute，plan 面板与 tool 折叠正常
-- [ ] 发布测试包含 `coding-agent` 子路径
-- [ ] README / task.md 更新，独立功能点逐个 git commit
+- [x] `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build` 全部通过
+- [x] web 可创建 coding 会话并运行 plan & execute，plan 面板与 tool 折叠正常
+- [x] 发布测试包含 `coding-agent` 子路径
+- [x] README / task.md 更新，独立功能点逐个 git commit
 
 ## M0 项目初始化
 

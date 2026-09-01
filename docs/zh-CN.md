@@ -44,6 +44,11 @@ tnega web
 # http://127.0.0.1:3080
 ```
 
+Web UI 支持按会话选择 `general` / `coding` 两种 agent。coding 会话提供
+`auto` / `plan` / `execute` 模式：plan 模式会在输入框上方展示 LLM 生成的
+todo 计划，并随 `plan_execute_mark` / `plan_execute_result` 工具调用实时更新；
+`/mode`、`/skills`、`/mcp` 等斜杠命令可直接从前端触发。
+
 ## CLI
 
 ```text
@@ -138,7 +143,7 @@ read_file, write_file, list_dir, glob, grep
 
 ## 作为库使用
 
-`tnega` 从 0.1.0 起同时发布为库入口。外部 agent（包括独立仓库的 coding agent）可以直接依赖根包，用 `Context` 组装自己的运行时，不需要依赖内部 `@tnega/*` 包。发布包通过 `exports` 暴露 `dist/index.js` 与 `dist/types`，所有公共契约都有类型声明。
+`tnega` 从 0.1.0 起同时发布为库入口。外部 agent（包括独立仓库的 coding agent）可以直接依赖根包，用 `Context` 组装自己的运行时，不需要依赖内部 `@tnega/*` 包。发布包通过 `exports` 暴露 `dist/index.js` 与 `dist/types`，另有 `tnega/coding-agent` 等子路径，所有公共契约都有类型声明。
 
 ```ts
 import {
