@@ -29,6 +29,7 @@
 | M14 LLM provider 抽象与 Anthropic Messages | 已完成 |
 | M15 coding agent 与 web 前端架构 | 已完成 |
 | DSH v0.2.0 core 对齐 | 进行中 |
+| M16 eval benchmark 与真实评测 | 进行中 |
 
 ## 开发约定
 
@@ -51,6 +52,21 @@
 - [x] web：`assistant/chunk` 与 compaction 事件类型同步，不污染 transcript
 - [x] 全量 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` 验证
 - [x] 按功能点逐个 git commit
+
+## M16 eval benchmark 与真实评测
+
+目标：把公开真实 benchmark 导入为可运行的 eval tasks，先用 BigCodeBench 与
+SWE-bench 建立真实测试任务集，再跑真实 LLM 评测与自进化闭环。
+
+- [x] `packages/benchmark`：BigCodeBench 与 SWE-bench Verified 导入器，物化 fixture 与 tasks.json
+- [x] CLI `eval import-benchmark`：支持 `--subset / --repo / --ids / --version / --mirror / --force`
+- [x] BigCodeBench 只导入实现与测试均为标准库的任务，避免隐式 pip 依赖
+- [x] 按 dataset 合并 tasks.json，manifest 记录双数据源版本与数量
+- [x] 导入 200 个 BigCodeBench 任务与 50 个 SWE-bench Verified 实例（sympy / requests / seaborn）
+- [x] CLI `eval run --task <id>` 支持从 tasks.json 过滤单个真实任务
+- [x] 金标准校验：BigCodeBench 200 中 181 个用官方解法通过；SWE 抽样 9 个中 6 个满足 base-fail / gold-pass，其余为本机 Python 3.11 或依赖版本差异
+- [ ] M4 真实 LLM API 冒烟（需要 key）
+- [ ] benchmark 扩量与失败 trace 回流
 
 ## M15 coding agent 与 web 前端架构
 
