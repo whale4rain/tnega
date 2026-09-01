@@ -11,7 +11,10 @@ const tasksFile = join(dataDir, 'tasks.json')
 const defaultRunsDir = join(dataDir, 'runs')
 
 const args = parseArgs(process.argv.slice(2))
-const tasks = (JSON.parse(await readFile(tasksFile, 'utf8'))).tasks ?? []
+const parsedTasksFile = JSON.parse(await readFile(tasksFile, 'utf8'))
+const validIds = args.valid ? await readValidIds() : undefined
+const tasks = (parsedTasksFile.tasks ?? [])
+  .filter(task => !validIds || validIds.has(task.id))
 const candidates = tasks
   .filter(task => args.dataset ? task.artifacts?.dataset === args.dataset : true)
   .filter(task => args.repo ? task.artifacts?.repo === args.repo : true)
@@ -42,6 +45,8 @@ for (const task of selected) {
     'eval', 'run', tasksFile,
     '--task', task.id,
     '--output', output,
+    ...(args.timeoutMs !== undefined ? ['--timeout-ms', String(args.timeoutMs)] : []),
+    ...(args.noCache ? ['--no-cache'] : []),
   ])
   const durationMs = Date.now() - startedAt
   let run
@@ -141,6 +146,9 @@ function parseArgs(values) {
     limit: undefined,
     runsDir: defaultRunsDir,
     force: false,
+    valid: false,
+    timeoutMs: undefined,
+    noCache: false,
     ids: new Set(),
   }
   let cursor = 0
@@ -148,6 +156,16 @@ function parseArgs(values) {
     const arg = values[cursor]
     if (arg === '--force') {
       parsed.force = true
+      cursor += 1
+      continue
+    }
+    if (arg === '--valid') {
+      parsed.valid = true
+      cursor += 1
+      continue
+    }
+    if (arg === '--no-cache') {
+      parsed.noCache = true
       cursor += 1
       continue
     }
@@ -159,11 +177,21 @@ function parseArgs(values) {
     else if (name === 'repo') parsed.repo = value
     else if (name === 'limit') parsed.limit = Number(value)
     else if (name === 'runs-dir') parsed.runsDir = value
+    else if (name === 'timeout-ms') parsed.timeoutMs = Number(value)
     else if (name === 'ids') parsed.ids = new Set(value.split(',').map(item => item.trim()).filter(Boolean))
     else throw new Error(`unknown option: --${name}`)
     cursor += eq >= 0 ? 1 : 2
   }
   return parsed
+}
+
+async function readValidIds() {
+  const verified = JSON.parse(await readFile(join(dataDir, 'verified-swebench.json'), 'utf8'))
+  return new Set(
+    verified
+      .filter(row => row.basePass === false && row.goldPass === true)
+      .map(row => row.instanceId),
+  )
 }
 
 function safeId(id) {
