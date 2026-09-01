@@ -7,6 +7,7 @@ export interface SlashContext {
   tools: readonly ToolDefinition[]
   cwd: string
   mode?: SessionMode
+  setMode?: (mode: SessionMode) => void | Promise<void>
 }
 
 export type SlashHandler = (
@@ -55,14 +56,42 @@ export function createSlashRegistry(): SlashRegistry {
   )
   registry.register(
     '/mode',
-    'Switch the session mode: auto, plan (plan then execute), or execute (use the current plan).',
-    (_args, context) => ({
-      kind: 'json',
-      value: {
-        modes: ['auto', 'plan', 'execute'],
-        current: context.mode ?? 'auto',
-      },
-    }),
+    'Show or switch the session mode: /mode, /mode plan, /mode execute, /mode auto.',
+    async (args, context) => {
+      const modes: SessionMode[] = ['auto', 'plan', 'execute']
+      if (!args.length) {
+        return {
+          kind: 'json',
+          value: {
+            modes,
+            current: context.mode ?? 'auto',
+          },
+        }
+      }
+      const requested = args[0]!.trim().toLowerCase()
+      if (!modes.includes(requested as SessionMode)) {
+        return {
+          kind: 'text',
+          text: `invalid mode: ${args[0]}; expected auto, plan or execute`,
+        }
+      }
+      const next = requested as SessionMode
+      if (!context.setMode) {
+        return {
+          kind: 'text',
+          text: 'mode switching is not available in this context',
+        }
+      }
+      await context.setMode(next)
+      return {
+        kind: 'json',
+        value: {
+          modes,
+          current: next,
+          switched: true,
+        },
+      }
+    },
   )
   registry.register('/skills', 'List skills available in the workspace.', (_args, context) => ({
     kind: 'json',

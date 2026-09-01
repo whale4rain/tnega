@@ -877,10 +877,13 @@ async function handleCodingSlash(
       mcp: true,
       planTools: true,
       ...(summary.mode ? { mode: summary.mode } : {}),
+      setMode: async (next) => {
+        await patchSessionMeta(workspace, id, { mode: next })
+      },
     }))
     const coding = root.get('coding') as CodingService
     const result: SlashCommandResult = await coding.runCommand(name, args)
-    sendJson(res, 200, { result })
+    sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
   } finally {
     await fiber?.dispose()
   }

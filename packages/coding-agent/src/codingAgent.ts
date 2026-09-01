@@ -11,6 +11,7 @@ import type { CodingSurvey, Plan, SlashCommand } from './types.js'
 export interface CodingAgentOptions {
   cwd: string
   mode?: SessionMode
+  setMode?: (mode: SessionMode) => void | Promise<void>
   skills?: boolean
   mcp?: boolean
   planTools?: boolean
@@ -114,6 +115,7 @@ export function createCodingAgentPlugin(
   const mcpEnabled = options.mcp ?? true
   const planToolsEnabled = options.planTools ?? true
   const mode = options.mode
+  const setMode = options.setMode
   const registerAgent = options.registerAgent ?? true
 
   return {
@@ -171,6 +173,7 @@ export function createCodingAgentPlugin(
           cwd,
           tools: service.tools.list(),
           ...(mode ? { mode } : {}),
+          ...(setMode ? { setMode } : {}),
         }),
         survey,
       } satisfies CodingService)

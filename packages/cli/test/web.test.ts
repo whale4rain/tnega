@@ -1270,6 +1270,31 @@ describe('web server', () => {
       value: { current: 'plan' },
     })
 
+    const switched = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/mode', args: ['execute'] }),
+      },
+    )
+    expect(switched.status).toBe(200)
+    const switchedBody = await switched.json() as {
+      mode: string
+      result: { kind: string; value: { current: string; switched: boolean } }
+    }
+    expect(switchedBody.mode).toBe('execute')
+    expect(switchedBody.result).toMatchObject({
+      kind: 'json',
+      value: { current: 'execute', switched: true },
+    })
+
+    const summary = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as { summary: { mode: string } }
+    expect(summary.summary.mode).toBe('execute')
+
     const general = await apiFetch(
       server.url,
       `/api/sessions?workspace=${encodeURIComponent(workspace)}`,

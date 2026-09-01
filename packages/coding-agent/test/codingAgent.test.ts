@@ -74,6 +74,42 @@ describe('createCodingAgentPlugin', () => {
     expect(root.get('coding')).toBeUndefined()
   })
 
+  it('switches the session mode through the setMode callback', async () => {
+    const cwd = await tempDir('tnega-coding-mode-')
+    const root = await mountRoot(cwd)
+    const switched: string[] = []
+    const fiber = root.plugin(createCodingAgentPlugin({
+      cwd,
+      mode: 'plan',
+      mcp: false,
+      setMode: (next) => {
+        switched.push(next)
+      },
+    }))
+    await fiber
+
+    const coding = root.get('coding') as CodingService
+    const result = await coding.runCommand('/mode', ['execute'])
+    expect(switched).toEqual(['execute'])
+    expect(result).toEqual({
+      kind: 'json',
+      value: {
+        modes: ['auto', 'plan', 'execute'],
+        current: 'execute',
+        switched: true,
+      },
+    })
+
+    const invalid = await coding.runCommand('/mode', ['sandbox'])
+    expect(invalid).toEqual({
+      kind: 'text',
+      text: 'invalid mode: sandbox; expected auto, plan or execute',
+    })
+    expect(switched).toEqual(['execute'])
+
+    await fiber.dispose()
+  })
+
   it('registers MCP tools and closes servers on dispose', async () => {
     const cwd = await tempDir('tnega-coding-mcp-')
     const { mkdir, writeFile } = await import('node:fs/promises')
