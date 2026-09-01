@@ -65,9 +65,29 @@ export type SessionEvent =
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
+      surfaceOp?: 'replace'
       snapshot?: SessionEvent[]
     }>
   | SessionEventBase<'meta', Record<string, unknown>>
+  | SessionEventBase<'turn/start', {
+      input?: unknown
+      reason?: string
+    }>
+  | SessionEventBase<'turn/end', {
+      finishReason?: string
+      output?: string
+      steps?: number
+      interrupted?: boolean
+      error?: { name?: string; message: string; stack?: string }
+    }>
+  | SessionEventBase<'step/start', { index: number }>
+  | SessionEventBase<'step/end', {
+      index: number
+      finishReason?: string
+      toolCalls?: number
+      interrupted?: boolean
+      error?: { name?: string; message: string; stack?: string }
+    }>
 
 export interface SessionDetail {
   summary: SessionSummary

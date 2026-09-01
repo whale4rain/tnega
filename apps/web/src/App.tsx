@@ -2059,21 +2059,18 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
       case 'checkpoint': {
-        const snapshot = event.payload.snapshot
-        if (snapshot?.length) {
-          messages.push(...projectEvents(snapshot))
-          messages.push({
-            id: event.id,
-            role: 'system',
-            content: event.payload.summary ?? '',
-            compacted: true,
-            tokensBefore: event.payload.tokensBefore,
-          })
-        } else {
-          for (const item of event.payload.messages) {
-            pushModelMessage(messages, toolIndex, item, event.id)
-          }
+        messages.splice(0, messages.length)
+        toolIndex.clear()
+        for (const item of event.payload.messages) {
+          pushModelMessage(messages, toolIndex, item, event.id)
         }
+        messages.push({
+          id: event.id,
+          role: 'system',
+          content: event.payload.summary ?? '',
+          compacted: true,
+          tokensBefore: event.payload.tokensBefore,
+        })
         break
       }
       case 'meta': {
@@ -2088,6 +2085,11 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         }
         break
       }
+      case 'turn/start':
+      case 'turn/end':
+      case 'step/start':
+      case 'step/end':
+        break
     }
   }
   return messages

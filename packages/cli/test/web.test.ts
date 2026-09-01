@@ -641,25 +641,29 @@ describe('web server', () => {
         type: string
         payload?: {
           summary?: string
-          snapshot?: Array<{
-            type: string
-            payload?: { role?: string; content?: string }
+          messages?: Array<{
+            role?: string
+            content?: string
           }>
+          content?: string
         }
       }>
     }
     expect(after.context.tokens).toBeLessThan(before.context.tokens)
-    const checkpoint = after.events.find(event => event.type === 'checkpoint')
-    expect(checkpoint).toBeDefined()
-    expect(typeof checkpoint!.payload?.summary).toBe('string')
+    const checkpointIndex = after.events.findIndex(event => event.type === 'checkpoint')
+    expect(checkpointIndex).toBeGreaterThanOrEqual(0)
+    const checkpoint = after.events[checkpointIndex]
+    expect(typeof checkpoint?.payload?.summary).toBe('string')
+    expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
     expect(
-      checkpoint!.payload?.snapshot?.some(
-        event => event.payload?.content === 'a very long conversation with lots of words',
+      after.events.slice(0, checkpointIndex).some(
+        event => event.type === 'message'
+          && event.payload?.content === 'a very long conversation with lots of words',
       ),
     ).toBe(true)
   })
 
-  it('keeps recent raw events and a snapshot after compacting a long session', async () => {
+  it('keeps recent raw events and a surface checkpoint after compacting a long session', async () => {
     const dir = await tempDir('tnega-web-compact-tail-')
     const workspace = await mkdir(dir, 'workspace')
     const configFile = join(dir, 'config.json')
@@ -735,7 +739,7 @@ describe('web server', () => {
         type: string
         payload?: {
           content?: string
-          snapshot?: Array<{ type: string; payload?: { content?: string } }>
+          messages?: Array<{ role?: string; content?: string }>
         }
       }>
     }
@@ -743,9 +747,14 @@ describe('web server', () => {
     const checkpointIndex = after.events.findIndex(event => event.type === 'checkpoint')
     expect(checkpointIndex).toBeGreaterThanOrEqual(0)
     const checkpoint = after.events[checkpointIndex]
-    expect(checkpoint?.payload?.snapshot?.length).toBeGreaterThan(0)
-    const tail = after.events.slice(checkpointIndex + 1).filter(event => event.type === 'message')
-    expect(tail.some(event => event.payload?.content === 'recent request')).toBe(true)
+    expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
+    expect(
+      checkpoint?.payload?.messages?.some(
+        message => message.content === 'recent request',
+      ) ?? false,
+    ).toBe(true)
+    const rawBefore = after.events.slice(0, checkpointIndex).filter(event => event.type === 'message')
+    expect(rawBefore.some(event => event.payload?.content === 'recent request')).toBe(true)
   })
 
   it('streams a run through SSE and persists the final message', async () => {
@@ -1075,10 +1084,12 @@ describe('web server', () => {
       { id: 'plan-2', title: 'Add the endpoint', status: 'pending' },
     ])
     const messages = detail.events.filter(event => event.type === 'message')
-    expect(messages.map(message => message.payload.content)).toEqual([
-      'build a greeting endpoint',
-      planJson,
-    ])
+    const contents = messages.map(message => message.payload.content)
+    expect(contents).toContain('build a greeting endpoint')
+    expect(contents).toContain(planJson)
+    const system = messages.find(message => message.payload.role === 'system')
+    expect(system?.payload.content).toContain('You are Tnega')
+    expect(messages.some(message => message.payload.content.includes('<plan>'))).toBe(true)
   })
 
   it('reuses the persisted plan in execute mode without regenerating it', async () => {
