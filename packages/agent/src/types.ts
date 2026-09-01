@@ -1,5 +1,7 @@
-import type { ContextUsage, ModelMessage } from '@tnega/session'
+import type { CancelCause, ContextUsage, ModelMessage } from '@tnega/session'
 import type { ToolDefinition, ToolResult } from '@tnega/tools'
+
+export type AgentCancelCause = CancelCause
 
 export type AgentFinishReason =
   | 'stop'

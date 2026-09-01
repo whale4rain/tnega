@@ -11,6 +11,7 @@ import type { ToolsService } from '@tnega/tools'
 
 import type {
   AgentContextBudget,
+  AgentCancelCause,
   AgentFinishReason,
   AgentHooks,
   AgentInput,
@@ -153,6 +154,29 @@ function copyCompletion(completion: LLMCompletion): LLMCompletion {
     }))
   }
   return copy
+}
+
+function isCancelCause(value: unknown): value is AgentCancelCause {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  if (record.type === 'user') return true
+  if (
+    record.type === 'abort'
+    && (record.message === undefined || typeof record.message === 'string')
+  ) {
+    return true
+  }
+  if (record.type === 'timeout' && typeof record.timeoutMs === 'number') {
+    return true
+  }
+  return false
+}
+
+function cancelCauseFromSignal(signal?: AbortSignal): AgentCancelCause | undefined {
+  if (!signal?.aborted) return undefined
+  const reason = signal.reason
+  if (isCancelCause(reason)) return reason
+  return { type: 'abort' }
 }
 
 export class AgentService {
@@ -430,6 +454,7 @@ export class AgentService {
       turnError = error
       throw error
     } finally {
+      const cancelCause = cancelCauseFromSignal(options.signal)
       if (currentStepIndex !== undefined) {
         const cancelled = options.signal?.aborted
         await session.append('step/end', {
@@ -440,6 +465,7 @@ export class AgentService {
               ? 'error'
               : 'interrupted',
           interrupted: true,
+          ...(cancelCause ? { cancelCause } : {}),
           ...(turnError ? { error: toToolError(turnError) } : {}),
         })
       }
@@ -447,6 +473,7 @@ export class AgentService {
         finishReason: turnError
           ? (options.signal?.aborted ? 'cancelled' : 'error')
           : finishReason,
+        ...(cancelCause ? { cancelCause } : {}),
         ...(output ? { output } : {}),
         ...(steps.length ? { steps: steps.length } : {}),
         ...(turnError ? { interrupted: true, error: toToolError(turnError) } : {}),

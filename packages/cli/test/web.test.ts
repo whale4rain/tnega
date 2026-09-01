@@ -133,7 +133,12 @@ interface SessionDetailForTest {
   running: boolean
   events: Array<{
     type: string
-    payload: { role?: string; content?: string }
+    payload: {
+      role?: string
+      content?: string
+      finishReason?: string
+      cancelCause?: unknown
+    }
   }>
 }
 
@@ -1000,6 +1005,16 @@ describe('web server', () => {
       session => !session.running,
     )
     expect(stopped.running).toBe(false)
+    const stepEnd = stopped.events.find(event => event.type === 'step/end')
+    const turnEnd = stopped.events.find(event => event.type === 'turn/end')
+    expect(stepEnd?.payload).toMatchObject({
+      finishReason: 'cancelled',
+      cancelCause: { type: 'user' },
+    })
+    expect(turnEnd?.payload).toMatchObject({
+      finishReason: 'cancelled',
+      cancelCause: { type: 'user' },
+    })
 
     const second = await apiFetch(
       server.url,

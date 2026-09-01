@@ -1013,14 +1013,14 @@ function ChatView({
       await api.stopRun(workspace, sessionId)
     } catch (reason) {
       if (reason instanceof ApiError && reason.status === 409) {
-        abortRef.current?.abort()
+        abortRef.current?.abort({ type: 'user' })
         return
       }
       setRunError(messageOf(reason))
       setRunState('running')
       return
     }
-    abortRef.current?.abort()
+    abortRef.current?.abort({ type: 'user' })
   }
 
   const slashMenuVisible = isCoding && !slashBusy && (

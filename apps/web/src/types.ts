@@ -55,6 +55,11 @@ export interface ToolResultPayload {
   error?: { name?: string; message: string; stack?: string }
 }
 
+export type CancelCause =
+  | { type: 'user' }
+  | { type: 'abort'; message?: string }
+  | { type: 'timeout'; timeoutMs: number }
+
 export type PlanItemStatus = 'pending' | 'done' | 'failed'
 
 export type PlanStatus = 'pending' | 'running' | 'done' | 'failed'
@@ -99,6 +104,7 @@ export type SessionEvent =
       output?: string
       steps?: number
       interrupted?: boolean
+      cancelCause?: CancelCause
       error?: { name?: string; message: string; stack?: string }
     }>
   | SessionEventBase<'step/start', { index: number }>
@@ -107,6 +113,7 @@ export type SessionEvent =
       finishReason?: string
       toolCalls?: number
       interrupted?: boolean
+      cancelCause?: CancelCause
       error?: { name?: string; message: string; stack?: string }
     }>
 

@@ -515,6 +515,45 @@ describe('SessionLog lifecycle and repair', () => {
     })
   })
 
+  it('does not synthesize closures while a live writer owns the log', async () => {
+    const file = await tempFile('live-reader.jsonl')
+    const writer = new SessionLog(file)
+    await writer.init()
+    await writer.append('turn/start', { input: 'go', reason: 'user' })
+    await writer.append('step/start', { index: 0 })
+    await writer.append('user/message', { content: 'go' })
+
+    const reader = new SessionLog(file)
+    await reader.init()
+    const events = await reader.read()
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'user/message',
+    ])
+    expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4])
+
+    const text = await readFile(file, 'utf8')
+    expect(text.trimEnd().split('\n')).toHaveLength(4)
+
+    await writer.append('step/end', { index: 0 })
+    await writer.append('turn/end', { finishReason: 'stop', steps: 1 })
+    await writer.close()
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    const closed = await reopened.read()
+    expect(closed.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'user/message',
+      'step/end',
+      'turn/end',
+    ])
+    await reopened.close()
+  })
+
   it('drops a torn tail and rewrites the file', async () => {
     const file = await tempFile('torn.jsonl')
     await writeV3(file, [

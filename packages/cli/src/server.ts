@@ -942,7 +942,7 @@ async function handleStopRun(
 ): Promise<void> {
   const controller = context.activeRuns.get(runKey(workspace, id))
   if (!controller) throw new HttpError(409, 'session is not running')
-  controller.abort()
+  controller.abort({ type: 'user' })
 }
 
 async function autoTitle(workspace: string, id: string, prompt: string): Promise<void> {

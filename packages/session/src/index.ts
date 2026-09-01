@@ -9,6 +9,12 @@ export class SessionFormatError extends Error {
   override name = 'SessionFormatError'
 }
 
+const liveSessions = new Map<string, SessionLog>()
+
+function sessionFileKey(file: string): string {
+  return resolve(file)
+}
+
 export type ModelRole = 'system' | 'user' | 'assistant' | 'tool'
 
 export interface ModelToolCall {
@@ -74,6 +80,11 @@ export interface ToolResultPayload {
   error?: ToolResultErrorPayload
 }
 
+export type CancelCause =
+  | { type: 'user' }
+  | { type: 'abort'; message?: string }
+  | { type: 'timeout'; timeoutMs: number }
+
 export interface TurnStartPayload {
   input?: unknown
   reason?: string
@@ -84,6 +95,7 @@ export interface TurnEndPayload {
   output?: string
   steps?: number
   interrupted?: boolean
+  cancelCause?: CancelCause
   error?: ToolResultErrorPayload
 }
 
@@ -96,6 +108,7 @@ export interface StepEndPayload {
   finishReason?: string
   toolCalls?: number
   interrupted?: boolean
+  cancelCause?: CancelCause
   error?: ToolResultErrorPayload
 }
 
@@ -536,7 +549,14 @@ export class SessionLog {
 
   init(): Promise<void> {
     return this._run(async () => {
-      await this._ensureLoaded()
+      const key = sessionFileKey(this.file)
+      if (!liveSessions.has(key)) liveSessions.set(key, this)
+      try {
+        await this._ensureLoaded()
+      } catch (error) {
+        if (liveSessions.get(key) === this) liveSessions.delete(key)
+        throw error
+      }
     })
   }
 
@@ -736,7 +756,10 @@ export class SessionLog {
   }
 
   close(): Promise<void> {
-    return this._queue.then(() => undefined)
+    return this._queue.then(() => {
+      const key = sessionFileKey(this.file)
+      if (liveSessions.get(key) === this) liveSessions.delete(key)
+    })
   }
 
   private _run<T>(task: () => Promise<T>): Promise<T> {
@@ -801,6 +824,13 @@ export class SessionLog {
     }
 
     this._assertFormat(events)
+
+    const key = sessionFileKey(this.file)
+    const owner = liveSessions.get(key)
+    if (owner && owner !== this) {
+      // A live writer owns this log; never synthesize closures over its active turn.
+      return { existing: true, events }
+    }
 
     const synthetic = repairUnclosed(events)
     if (!torn && !synthetic.length) return { existing: true, events }

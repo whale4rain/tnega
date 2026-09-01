@@ -630,6 +630,7 @@ describe('agent loop', () => {
       },
       stream: async function* (_messages, _tools, options) {
         yield { type: 'message_start', id: 'm1' }
+        setTimeout(() => controller.abort(), 0)
         await new Promise<void>((resolve, reject) => {
           const abort = (): void => {
             reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
@@ -645,7 +646,6 @@ describe('agent loop', () => {
     await root.plugin(agent, { llm: adapter })
 
     const service = dynamic(root).agent as AgentService
-    setTimeout(() => controller.abort(), 5)
     const { events, result } = await collectStream(
       service.runStream({ text: 'go' }, { signal: controller.signal }),
     )
@@ -661,7 +661,10 @@ describe('agent loop', () => {
     const toolService = dynamic(root).tools as ToolsService
     toolService.register({
       schema: { name: 'slow', description: 'slow tool' },
-      execute: () => new Promise(resolve => setTimeout(() => resolve('done'), 30)),
+      execute: () => {
+        setTimeout(() => controller.abort(), 0)
+        return new Promise(resolve => setTimeout(() => resolve('done'), 30))
+      },
     })
     const adapter: LLMAdapter = {
       complete: async () => ({
@@ -673,7 +676,6 @@ describe('agent loop', () => {
     await root.plugin(agent, { llm: adapter })
 
     const controller = new AbortController()
-    setTimeout(() => controller.abort(), 5)
     const service = dynamic(root).agent as AgentService
     const result = await service.run({ text: 'go' }, { signal: controller.signal })
 
@@ -691,6 +693,56 @@ describe('agent loop', () => {
       'step/end',
       'turn/end',
     ])
+    expect(events[7]?.payload).toMatchObject({
+      finishReason: 'cancelled',
+      interrupted: true,
+      cancelCause: { type: 'abort' },
+    })
+    expect(events[8]?.payload).toMatchObject({
+      finishReason: 'cancelled',
+      cancelCause: { type: 'abort' },
+    })
+  })
+
+  it('preserves a typed user cancellation cause in durable events', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('tool-cancel-user.jsonl') })
+    await root.plugin(tools)
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'slow', description: 'slow tool' },
+      execute: () => {
+        setTimeout(() => controller.abort({ type: 'user' }), 0)
+        return new Promise(resolve => setTimeout(() => resolve('done'), 30))
+      },
+    })
+    const adapter: LLMAdapter = {
+      complete: async () => ({
+        content: '',
+        toolCalls: [toolCall('c1', 'slow', {})],
+        finishReason: 'tool_calls',
+      }),
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const controller = new AbortController()
+    const service = dynamic(root).agent as AgentService
+    const result = await service.run({ text: 'go' }, { signal: controller.signal })
+
+    expect(result.finishReason).toBe('cancelled')
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    const stepEnd = events.find(event => event.type === 'step/end')
+    const turnEnd = events.find(event => event.type === 'turn/end')
+    expect(stepEnd?.payload).toMatchObject({
+      finishReason: 'cancelled',
+      interrupted: true,
+      cancelCause: { type: 'user' },
+    })
+    expect(turnEnd?.payload).toMatchObject({
+      finishReason: 'cancelled',
+      cancelCause: { type: 'user' },
+    })
   })
 
   it('writes durable turn and step lifecycle around model calls', async () => {
