@@ -2,9 +2,9 @@ import type { Context, Plugin } from '@tnega/core'
 import { defineAgent, type LLMAdapter } from '@tnega/agent'
 import type { ModelMessage, SessionMode } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
-import { connectMcpServers } from './mcp.js'
+import { connectMcpServers, type McpRuntime } from './mcp.js'
 import { generatePlan } from './plan.js'
-import { skillReadTool, skillTool } from './skills.js'
+import { listSkills, skillReadTool, skillTool } from './skills.js'
 import { createSlashRegistry, type SlashCommandResult } from './slash.js'
 import type { CodingSurvey, Plan, SlashCommand } from './types.js'
 
@@ -125,29 +125,31 @@ export function createCodingAgentPlugin(
       const service = dynamic(ctx)
       const tools: ToolDefinition[] = []
       const planTools = planToolsEnabled ? planToolDefinitions() : []
+      const skillEntries = await listSkills(cwd)
       tools.push(...planTools)
-      let skills = 0
+      let skillCount = 0
       let mcpServers = 0
       let mcpTools = 0
 
       if (skillsEnabled) {
         tools.push(await skillTool(cwd))
         tools.push(await skillReadTool(cwd))
-        skills = 2
+        skillCount = 2
       }
+      let mcpRuntime: McpRuntime | undefined
       if (mcpEnabled) {
-        const runtime = await connectMcpServers(cwd, () => {
+        mcpRuntime = await connectMcpServers(cwd, () => {
           mcpTools += 1
         })
-        mcpServers = runtime.surveys.length
-        for (const survey of runtime.surveys) {
+        mcpServers = mcpRuntime.surveys.length
+        for (const survey of mcpRuntime.surveys) {
           if (survey.status === 'failed') {
             throw new Error(`mcp server ${survey.name} failed: ${survey.error ?? 'unknown'}`)
           }
         }
-        tools.push(...runtime.tools)
+        tools.push(...mcpRuntime.tools)
         ctx.fiber.effect(() => () => {
-          void runtime.dispose()
+          void mcpRuntime?.dispose()
         }, 'coding:dispose-mcp')
       }
       for (const tool of tools) {
@@ -160,7 +162,7 @@ export function createCodingAgentPlugin(
         mode: mode ?? 'auto',
         planTools: planTools.length,
         skillsEnabled,
-        skills,
+        skills: skillCount,
         mcpEnabled,
         mcpServers,
         mcpTools,
@@ -174,6 +176,13 @@ export function createCodingAgentPlugin(
           tools: service.tools.list(),
           ...(mode ? { mode } : {}),
           ...(setMode ? { setMode } : {}),
+          ...(skillEntries.length ? { skills: skillEntries } : {}),
+          ...(mcpRuntime ? {
+            mcp: {
+              surveys: mcpRuntime.surveys,
+              tools: mcpRuntime.tools,
+            },
+          } : {}),
         }),
         survey,
       } satisfies CodingService)

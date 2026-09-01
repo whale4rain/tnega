@@ -1,5 +1,7 @@
 import type { ToolDefinition } from '@tnega/tools'
 import type { SessionMode } from '@tnega/session'
+import { listSkills, readSkill, type SkillEntry } from './skills.js'
+import type { McpSurvey } from './mcp.js'
 import type { SlashCommand, SlashCommandResult } from './types.js'
 export type { SlashCommandResult } from './types.js'
 
@@ -8,6 +10,11 @@ export interface SlashContext {
   cwd: string
   mode?: SessionMode
   setMode?: (mode: SessionMode) => void | Promise<void>
+  skills?: SkillEntry[]
+  mcp?: {
+    surveys: McpSurvey[]
+    tools: readonly ToolDefinition[]
+  }
 }
 
 export type SlashHandler = (
@@ -93,21 +100,54 @@ export function createSlashRegistry(): SlashRegistry {
       }
     },
   )
-  registry.register('/skills', 'List skills available in the workspace.', (_args, context) => ({
-    kind: 'json',
-    value: {
-      skills: context.tools
-        .filter(tool => tool.schema.name.startsWith('skill'))
-        .map(tool => tool.schema.name),
+  registry.register(
+    '/skills',
+    'List workspace skills, or read one with /skills <name>.',
+    async (args, context) => {
+      const skills = context.skills ?? await listSkills(context.cwd)
+      if (!args.length) {
+        return {
+          kind: 'json',
+          value: {
+            skills: skills.map(skill => ({
+              name: skill.name,
+              description: skill.description,
+            })),
+          },
+        }
+      }
+      const name = args[0]!
+      const known = skills.some(skill => skill.name === name)
+      if (!known) {
+        return {
+          kind: 'text',
+          text: `unknown skill: ${name}`,
+        }
+      }
+      const content = await readSkill(context.cwd, name)
+      return {
+        kind: 'text',
+        text: `# ${name}\n\n${content}`,
+      }
     },
-  }))
-  registry.register('/mcp', 'Show connected MCP servers and their tools.', (_args, context) => ({
-    kind: 'json',
-    value: {
-      tools: context.tools
-        .filter(tool => tool.schema.name.startsWith('mcp__'))
-        .map(tool => tool.schema.name),
-    },
-  }))
+  )
+  registry.register(
+    '/mcp',
+    'Show connected MCP servers and their tools.',
+    (_args, context) => ({
+      kind: 'json',
+      value: {
+        servers: (context.mcp?.surveys ?? []).map(survey => ({
+          name: survey.name,
+          status: survey.status,
+          toolCount: survey.toolCount,
+          ...(survey.error ? { error: survey.error } : {}),
+        })),
+        tools: (context.mcp?.tools ?? context.tools)
+          .filter(tool => tool.schema.name.startsWith('mcp__'))
+          .map(tool => tool.schema.name),
+      },
+    }),
+  )
   return registry
 }

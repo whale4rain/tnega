@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { ToolDefinition } from '@tnega/tools'
 
 import { SlashRegistry, createSlashRegistry } from '../src/slash.js'
@@ -37,6 +40,10 @@ describe('createSlashRegistry', () => {
   ]
 
   it('exposes plan, mode, skills, and mcp commands', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'tnega-slash-'))
+    const skillPath = join(cwd, '.tnega', 'skills', 'typescript')
+    await mkdir(skillPath, { recursive: true })
+    await writeFile(join(skillPath, 'SKILL.md'), '# TypeScript Style\nBe consistent.\n', 'utf8')
     const registry = createSlashRegistry()
     expect(registry.list().map(command => command.name)).toEqual([
       '/plan',
@@ -53,9 +60,46 @@ describe('createSlashRegistry', () => {
       kind: 'json',
       value: { modes: ['auto', 'plan', 'execute'], current: 'execute' },
     })
-    const skills = await registry.run('/skills', [], { cwd: '.', tools })
-    expect(skills).toEqual({ kind: 'json', value: { skills: ['skills_list'] } })
-    const mcp = await registry.run('/mcp', [], { cwd: '.', tools })
-    expect(mcp).toEqual({ kind: 'json', value: { tools: ['mcp__files__read'] } })
+    const skills = await registry.run('/skills', [], {
+      cwd,
+      tools,
+      skills: [{ name: 'typescript', path: 'x', description: 'TypeScript Style' }],
+    })
+    expect(skills).toEqual({
+      kind: 'json',
+      value: {
+        skills: [
+          {
+            name: 'typescript',
+            description: 'TypeScript Style',
+          },
+        ],
+      },
+    })
+    const skillRead = await registry.run('/skills', ['typescript'], {
+      cwd,
+      tools,
+      skills: [{ name: 'typescript', path: 'x', description: 'TypeScript Style' }],
+    })
+    expect(skillRead).toEqual({
+      kind: 'text',
+      text: '# typescript\n\n# TypeScript Style\nBe consistent.\n',
+    })
+    const mcp = await registry.run('/mcp', [], {
+      cwd,
+      tools,
+      mcp: {
+        surveys: [{ name: 'files', status: 'connected', toolCount: 1 }],
+        tools: [{ schema: { name: 'mcp__files__read', description: 'read' }, execute: () => '' }],
+      },
+    })
+    expect(mcp).toEqual({
+      kind: 'json',
+      value: {
+        servers: [{ name: 'files', status: 'connected', toolCount: 1 }],
+        tools: ['mcp__files__read'],
+      },
+    })
+    await rm(cwd, { recursive: true, force: true })
   })
 })

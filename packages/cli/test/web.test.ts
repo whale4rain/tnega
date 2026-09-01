@@ -1310,6 +1310,89 @@ describe('web server', () => {
     )
     expect(rejected.status).toBe(400)
   })
+
+  it('serves workspace skills and mcp survey through slash commands', async () => {
+    const dir = await tempDir('tnega-web-coding-skills-mcp-')
+    const workspace = await mkdir(dir, 'workspace')
+    const { mkdir: fsMkdir, writeFile: fsWriteFile } = await import('node:fs/promises')
+    await fsMkdir(join(workspace, '.tnega', 'skills', 'fixture'), { recursive: true })
+    await fsWriteFile(
+      join(workspace, '.tnega', 'skills', 'fixture', 'SKILL.md'),
+      '# Fixture Skill\nDo the fixture thing.\n',
+      'utf8',
+    )
+    const configFile = join(dir, 'config.json')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ agentType: 'coding', mode: 'auto' }),
+      },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const skills = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/skills', args: [] }),
+      },
+    )
+    expect(skills.status).toBe(200)
+    const skillsBody = await skills.json() as {
+      result: { kind: string; value: { skills: Array<{ name: string; description: string }> } }
+    }
+    expect(skillsBody.result).toMatchObject({
+      kind: 'json',
+      value: {
+        skills: [
+          {
+            name: 'fixture',
+            description: 'Fixture Skill',
+          },
+        ],
+      },
+    })
+
+    const skillRead = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/skills', args: ['fixture'] }),
+      },
+    )
+    const skillReadBody = await skillRead.json() as { result: { kind: string; text: string } }
+    expect(skillReadBody.result).toEqual({
+      kind: 'text',
+      text: '# fixture\n\n# Fixture Skill\nDo the fixture thing.\n',
+    })
+
+    const mcp = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/mcp', args: [] }),
+      },
+    )
+    expect(mcp.status).toBe(200)
+    const mcpBody = await mcp.json() as {
+      result: { kind: string; value: { servers: unknown[]; tools: string[] } }
+    }
+    expect(mcpBody.result).toEqual({
+      kind: 'json',
+      value: {
+        servers: [],
+        tools: [],
+      },
+    })
+  })
 })
 
 async function mkdir(parent: string, name: string): Promise<string> {

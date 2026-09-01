@@ -74,6 +74,87 @@ describe('createCodingAgentPlugin', () => {
     expect(root.get('coding')).toBeUndefined()
   })
 
+  it('lists and reads workspace skills through slash commands', async () => {
+    const cwd = await tempDir('tnega-coding-skills-')
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(join(cwd, '.tnega', 'skills', 'typescript'), { recursive: true })
+    await writeFile(
+      join(cwd, '.tnega', 'skills', 'typescript', 'SKILL.md'),
+      '# TypeScript Style\nFollow the repository conventions.\n',
+      'utf8',
+    )
+    const root = await mountRoot(cwd)
+    const fiber = root.plugin(createCodingAgentPlugin({
+      cwd,
+      mcp: false,
+    }))
+    await fiber
+
+    const coding = root.get('coding') as CodingService
+    const listed = await coding.runCommand('/skills', [])
+    expect(listed).toMatchObject({
+      kind: 'json',
+      value: {
+        skills: [
+          {
+            name: 'typescript',
+            description: 'TypeScript Style',
+          },
+        ],
+      },
+    })
+
+    const read = await coding.runCommand('/skills', ['typescript'])
+    expect(read).toEqual({
+      kind: 'text',
+      text: '# typescript\n\n# TypeScript Style\nFollow the repository conventions.\n',
+    })
+
+    const missing = await coding.runCommand('/skills', ['unknown'])
+    expect(missing).toEqual({ kind: 'text', text: 'unknown skill: unknown' })
+
+    await fiber.dispose()
+  })
+
+  it('reports mcp servers and tools through slash commands', async () => {
+    const cwd = await tempDir('tnega-coding-mcp-slash-')
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(join(cwd, '.tnega'), { recursive: true })
+    await writeFile(join(cwd, '.tnega', 'mcp.json'), JSON.stringify({
+      mcpServers: {
+        fixture: {
+          command: process.execPath,
+          args: [fileURLToPath(new URL('./fixtures/mcp-server.mjs', import.meta.url))],
+        },
+      },
+    }))
+
+    const root = await mountRoot(cwd)
+    const fiber = root.plugin(createCodingAgentPlugin({
+      cwd,
+      skills: false,
+    }))
+    await fiber
+
+    const coding = root.get('coding') as CodingService
+    const result = await coding.runCommand('/mcp', [])
+    expect(result).toMatchObject({
+      kind: 'json',
+      value: {
+        servers: [
+          {
+            name: 'fixture',
+            status: 'connected',
+            toolCount: 1,
+          },
+        ],
+        tools: ['mcp__fixture__echo'],
+      },
+    })
+
+    await fiber.dispose()
+  })
+
   it('switches the session mode through the setMode callback', async () => {
     const cwd = await tempDir('tnega-coding-mode-')
     const root = await mountRoot(cwd)
