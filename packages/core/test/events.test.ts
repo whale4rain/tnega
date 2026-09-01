@@ -130,6 +130,29 @@ describe('EventsService', () => {
     expect(root.waterfall('empty', 5, (value: number) => value + 1)).toBe(6)
   })
 
+  it('waterfallAsync awaits async listeners before the final callback', async () => {
+    const root = new Context()
+    const order: string[] = []
+    root.on('flow', async (values: number[], next: () => Promise<number>) => {
+      await Promise.resolve()
+      values[0]! += 1
+      order.push('listener')
+      return next()
+    })
+
+    const result = await root.waterfallAsync(
+      'flow',
+      [1],
+      (values: number[]) => {
+        order.push('final')
+        return values[0]! * 2
+      },
+    )
+
+    expect(result).toBe(4)
+    expect(order).toEqual(['listener', 'final'])
+  })
+
   it('removes plugin listeners when the fiber unloads', async () => {
     const root = new Context()
     const calls: string[] = []

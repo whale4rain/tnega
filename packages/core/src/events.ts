@@ -15,6 +15,8 @@ declare module './context.js' {
     bail(thisArg: object, name: string, ...args: Any[]): Any
     waterfall(name: string, ...args: Any[]): Any
     waterfall(thisArg: object, name: string, ...args: Any[]): Any
+    waterfallAsync(name: string, ...args: Any[]): Promise<Any>
+    waterfallAsync(thisArg: object, name: string, ...args: Any[]): Promise<Any>
   }
 }
 
@@ -22,7 +24,7 @@ export function isBailed(value: Any) {
   return value !== null && value !== false && value !== undefined
 }
 
-export type DispatchMode = 'emit' | 'parallel' | 'serial' | 'bail' | 'waterfall'
+export type DispatchMode = 'emit' | 'parallel' | 'serial' | 'bail' | 'waterfall' | 'waterfallAsync'
 
 export interface EventOptions {
   prepend?: boolean
@@ -113,6 +115,19 @@ export class EventsService {
     const next = () => {
       const callback = callbacks.shift()
       return callback ? Reflect.apply(callback, thisArg, args) : inner(...args)
+    }
+    args.push(next)
+    return next()
+  }
+
+  async waterfallAsync(...args: Any[]) {
+    const [thisArg, callbacks] = this._resolve('waterfallAsync', args)
+    const inner = args.pop()
+    const next = async () => {
+      const callback = callbacks.shift()
+      return callback
+        ? await Reflect.apply(callback, thisArg, args)
+        : inner(...args)
     }
     args.push(next)
     return next()

@@ -132,7 +132,16 @@ export class ReflectService {
     this.mixin('reflect', ['get', 'set', 'provide', 'accessor', 'mixin'])
     this.mixin('fiber', ['runtime', 'effect'])
     this.mixin('registry', ['inject', 'plugin'])
-    this.mixin('events', ['on', 'once', 'parallel', 'emit', 'serial', 'bail', 'waterfall'])
+    this.mixin('events', [
+      'on',
+      'once',
+      'parallel',
+      'emit',
+      'serial',
+      'bail',
+      'waterfall',
+      'waterfallAsync',
+    ])
   }
 
   get(name: string, strict = true) {
