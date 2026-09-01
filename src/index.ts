@@ -61,6 +61,7 @@ export {
   type SessionEventBase,
   type SessionEventType,
   type SessionProjector,
+  type AssistantChunkPayload,
   type StepEndPayload,
   type StepStartPayload,
   type ToolCallPayload,
@@ -68,6 +69,8 @@ export {
   type ToolResultPayload,
   type TurnEndPayload,
   type TurnStartPayload,
+  type CompactionEndPayload,
+  type CompactionStartPayload,
 } from '../packages/session/src/index.js'
 
 export {
@@ -138,6 +141,7 @@ export {
   type LLMMessageDeltaEvent,
   type LLMMessageStartEvent,
   type LLMMessageStopEvent,
+  type LLMStreamRequestEvent,
   type LLMStreamEvent,
   type LLMToolCall,
   type LLMToolCallEndEvent,
