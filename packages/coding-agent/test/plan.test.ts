@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LLMAdapter } from '@tnega/agent'
+import type { ModelMessage } from '@tnega/session'
 
 import {
   PlanGenerationError,
@@ -37,6 +38,14 @@ describe('parsePlanResponse', () => {
     const plan = parsePlanResponse('```json\n{"items":[{"title":"one"},{"title":"two"}]}\n```')
     expect(plan.items).toHaveLength(2)
     expect(plan.items.map(item => item.title)).toEqual(['one', 'two'])
+  })
+
+  it('extracts an embedded JSON object from prose', () => {
+    const plan = parsePlanResponse(
+      'Sure, here is the implementation plan:\n{"summary":"Ship it","items":[{"title":"one"}]}',
+    )
+    expect(plan.summary).toBe('Ship it')
+    expect(plan.items[0]?.title).toBe('one')
   })
 
   it('trims titles and detail and omits empty summary', () => {
@@ -102,5 +111,39 @@ describe('generatePlan', () => {
       },
     }
     await expect(generatePlan(adapter, [])).rejects.toThrow(PlanGenerationError)
+  })
+
+  it('retries with a correction prompt when the first answer is not JSON', async () => {
+    const calls: Array<{ messages: ModelMessage[] }> = []
+    const adapter: LLMAdapter = {
+      async complete(messages) {
+        calls.push({ messages: messages as ModelMessage[] })
+        if (calls.length === 1) return { content: 'three.', finishReason: 'stop' }
+        return {
+          content: JSON.stringify({ items: [{ title: 'Reply with three' }] }),
+          finishReason: 'stop',
+        }
+      },
+    }
+
+    const plan = await generatePlan(adapter, [{ role: 'user', content: 'reply three' }])
+    expect(plan.items[0]?.title).toBe('Reply with three')
+    expect(calls).toHaveLength(2)
+    expect(calls[1]!.messages).toMatchObject([
+      { role: 'system', content: expect.stringContaining('planning assistant') },
+      { role: 'user', content: 'reply three' },
+      { role: 'assistant', content: 'three.' },
+      { role: 'user', content: expect.stringContaining('was not a valid plan JSON') },
+    ])
+  })
+
+  it('throws after exhausting plan correction retries', async () => {
+    const adapter: LLMAdapter = {
+      async complete() {
+        return { content: 'still not json', finishReason: 'stop' }
+      },
+    }
+
+    await expect(generatePlan(adapter, [])).rejects.toThrow(/not valid JSON/)
   })
 })
