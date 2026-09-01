@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context, FiberState } from '@tnega/core'
-import { SessionLog, session, type ModelMessage } from '@tnega/session'
+import { SessionLog, session, type ModelMessage, type SessionEvent } from '@tnega/session'
 import { tools, ToolsService, type ToolDefinition } from '@tnega/tools'
 
 import {
@@ -14,9 +14,12 @@ import {
   type AgentService,
   type AgentStreamEvent,
   type AgentLoop,
+  type AgentPreStepEvent,
+  type AgentRequestEvent,
   type AgentRunResult,
   type AgentToolCallEvent,
   type AgentToolResultEvent,
+  type AgentTurnStoppingEvent,
   type LLMAdapter,
   type LLMCompletion,
   type LLMStreamEvent,
@@ -678,10 +681,255 @@ describe('agent loop', () => {
     const log = dynamic(root).session as SessionLog
     const events = await log.read()
     expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
       'message',
       'message',
       'tool-call',
       'tool-result',
+      'step/end',
+      'turn/end',
     ])
+  })
+
+  it('writes durable turn and step lifecycle around model calls', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('durable-lifecycle.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([{ content: 'hello', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'hi' })
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'message',
+      'message',
+      'step/end',
+      'turn/end',
+    ])
+    expect(events[1]?.payload).toMatchObject({ reason: 'user' })
+    expect(events[2]?.payload).toEqual({ index: 0 })
+    expect(events[5]?.payload).toMatchObject({
+      index: 0,
+      finishReason: 'stop',
+      toolCalls: 0,
+    })
+    expect(events[6]?.payload).toMatchObject({ finishReason: 'stop', steps: 1 })
+  })
+
+  it('persists a new user turn without duplicating history', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('multi-turn.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([
+      { content: 'first answer', finishReason: 'stop' },
+      { content: 'second answer', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    const log = dynamic(root).session as SessionLog
+    const history = await log.deriveMessages()
+    const secondInput: ModelMessage[] = [
+      ...history,
+      { role: 'user', content: 'second' },
+    ]
+    const second = await loop({ messages: secondInput })
+
+    expect(calls).toHaveLength(2)
+    expect(calls[1]!.messages).toEqual([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second' },
+    ])
+    expect(second.output).toBe('second answer')
+
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second' },
+      { role: 'assistant', content: 'second answer' },
+    ])
+    const userMessages = (await log.read()).filter(
+      (event): event is Extract<SessionEvent, { type: 'message' }> =>
+        event.type === 'message' && event.payload.role === 'user',
+    )
+    expect(userMessages.map(event => event.payload.content)).toEqual(['first', 'second'])
+  })
+
+  it('persists only the delta when pre-step rewrites multi-user history', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('pre-step-delta.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([
+      { content: 'first answer', finishReason: 'stop' },
+      { content: 'second answer', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
+      const first = payload.messages[0]
+      if (!(first?.role === 'user' && first.content === 'context')) {
+        payload.messages = [
+          { role: 'user', content: 'context' },
+          ...payload.messages,
+        ]
+      }
+      return next()
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    const log = dynamic(root).session as SessionLog
+    const history = await log.deriveMessages()
+    const secondInput: ModelMessage[] = [
+      ...history,
+      { role: 'user', content: 'second' },
+    ]
+    await loop({ messages: secondInput })
+
+    expect(calls[0]!.messages).toEqual([
+      { role: 'user', content: 'context' },
+      { role: 'user', content: 'first' },
+    ])
+    expect(calls[1]!.messages).toEqual([
+      { role: 'user', content: 'context' },
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second' },
+    ])
+
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'context' },
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second' },
+      { role: 'assistant', content: 'second answer' },
+    ])
+  })
+
+  it('lets agent/pre-step rewrite the model input and persists it', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('pre-step.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+
+    const seen: number[] = []
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
+      seen.push(payload.index)
+      payload.messages = [
+        ...payload.messages.filter(message => message.role !== 'user'),
+        { role: 'user', content: 'steered' },
+      ]
+      return next()
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'original' })
+    expect(seen).toEqual([0])
+    expect(calls[0]!.messages).toEqual([{ role: 'user', content: 'steered' }])
+
+    const log = dynamic(root).session as SessionLog
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'steered' },
+      { role: 'assistant', content: 'ok' },
+    ])
+  })
+
+  it('lets agent/request wrap the final request payload', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-wrap.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+
+    root.on('agent/request', (payload: AgentRequestEvent, next) => {
+      payload.messages = [
+        ...payload.messages.filter(message => message.role !== 'user'),
+        { role: 'user', content: 'wrapped' },
+      ]
+      payload.options = { ...payload.options, maxSteps: 1 }
+      return next()
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'original' })
+    expect(calls[0]!.messages).toEqual([{ role: 'user', content: 'wrapped' }])
+
+    const log = dynamic(root).session as SessionLog
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'wrapped' },
+      { role: 'assistant', content: 'ok' },
+    ])
+  })
+
+  it('lets agent/turn-stopping keep the turn alive', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('turn-stopping.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([
+      { content: 'one', finishReason: 'stop' },
+      { content: 'two', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    let stopping = 0
+    root.on('agent/turn-stopping', (payload: AgentTurnStoppingEvent) => {
+      stopping += 1
+      return stopping === 1 ? 'continue' : undefined
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'go' })
+    expect(stopping).toBe(2)
+    expect(result.steps).toHaveLength(2)
+    expect(result.output).toBe('two')
+    expect(calls).toHaveLength(2)
+  })
+
+  it('closes step and turn with an error when the model request fails', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('lifecycle-error.jsonl') })
+    await root.plugin(tools)
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('model exploded')
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await expect(loop({ text: 'go' })).rejects.toThrow('model exploded')
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'message',
+      'step/end',
+      'turn/end',
+    ])
+    expect(events[4]?.payload).toMatchObject({
+      index: 0,
+      finishReason: 'error',
+      interrupted: true,
+      error: { name: 'Error', message: 'model exploded' },
+    })
+    expect(events[5]?.payload).toMatchObject({
+      finishReason: 'error',
+      interrupted: true,
+      error: { name: 'Error', message: 'model exploded' },
+    })
   })
 })

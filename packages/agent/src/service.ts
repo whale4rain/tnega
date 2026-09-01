@@ -14,10 +14,13 @@ import type {
   AgentFinishReason,
   AgentHooks,
   AgentInput,
+  AgentPreStepEvent,
+  AgentRequestEvent,
   AgentRunOptions,
   AgentRunResult,
   AgentStep,
   AgentStreamEvent,
+  AgentTurnStoppingEvent,
   CompleteOptions,
   LLMAdapter,
   LLMCompletion,
@@ -87,6 +90,43 @@ function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
     }
     return copy
   })
+}
+
+function isUserOrSystemMessage(
+  message: ModelMessage,
+): message is ModelMessage & { role: 'system' | 'user' } {
+  return message.role === 'system' || message.role === 'user'
+}
+
+function sameSurfaceMessage(left: ModelMessage, right: ModelMessage): boolean {
+  return left.role === right.role
+    && left.content === right.content
+    && (left.name ?? '') === (right.name ?? '')
+}
+
+function commonSurfacePrefix(
+  left: readonly ModelMessage[],
+  right: readonly ModelMessage[],
+): number {
+  const max = Math.min(left.length, right.length)
+  let count = 0
+  while (count < max && sameSurfaceMessage(left[count]!, right[count]!)) count += 1
+  return count
+}
+
+function commonSurfaceSuffix(
+  left: readonly ModelMessage[],
+  right: readonly ModelMessage[],
+): number {
+  const max = Math.min(left.length, right.length)
+  let count = 0
+  while (
+    count < max
+    && sameSurfaceMessage(left[left.length - 1 - count]!, right[right.length - 1 - count]!)
+  ) {
+    count += 1
+  }
+  return count
 }
 
 function stringify(value: unknown): string {
@@ -160,14 +200,6 @@ export class AgentService {
     this.ctx.emit('agent/start', { input: claimed, options, injected })
 
     let messages = this._initialMessages(claimed)
-    const systemPrompt = this.inbox.injected().get('agentSystem')
-    if (typeof systemPrompt === 'string' && systemPrompt) {
-      await session.append('message', { role: 'system', content: systemPrompt })
-    }
-    if (claimed.text) {
-      await session.append('message', { role: 'user', content: claimed.text })
-    }
-
     const steps: AgentStep[] = []
     let output = ''
     let finishReason: AgentFinishReason = 'stop'
@@ -178,9 +210,17 @@ export class AgentService {
       injected,
     })
 
+    await session.append('turn/start', {
+      input: claimed.text ?? claimed,
+      reason: 'user',
+    })
+
     let index = 0
     let finalTurnGranted = false
-    while (index < maxTurns + (finalTurnGranted ? 1 : 0)) {
+    let currentStepIndex: number | undefined
+    let turnError: unknown
+    try {
+      while (index < maxTurns + (finalTurnGranted ? 1 : 0)) {
       if (steps.length >= maxSteps) {
         finishReason = 'max_steps'
         break
@@ -190,12 +230,36 @@ export class AgentService {
       }
 
       const stepInput = copyMessages(messages)
-      this.ctx.emit('agent/step', { index, input: copyMessages(stepInput) })
+      const preStep = this.ctx.waterfall('agent/pre-step', {
+        index,
+        messages: stepInput,
+      }, (payload: AgentPreStepEvent) => payload)
+      if (!preStep || !Array.isArray(preStep.messages) || !preStep.messages.length) {
+        break
+      }
+
+      await session.append('step/start', { index })
+      currentStepIndex = index
+
+      const requestedInput = copyMessages(preStep.messages)
+      this.ctx.emit('agent/step', { index, input: copyMessages(requestedInput) })
       const availableTools = finalTurnGranted ? [] : tools.list()
       const completeOptions: CompleteOptions = {
         maxSteps: maxSteps - steps.length,
       }
       if (options.signal) completeOptions.signal = options.signal
+
+      const request = this.ctx.waterfall('agent/request', {
+        index,
+        messages: requestedInput,
+        tools: availableTools,
+        options: completeOptions,
+      }, (payload: AgentRequestEvent) => payload)
+      if (!request || !Array.isArray(request.messages)) {
+        throw new AgentError('agent/request must return a request payload')
+      }
+      const llmMessages = copyMessages(request.messages)
+      await this._persistStepInput(session, llmMessages)
 
       let completion: LLMCompletion
       const streamMethod = useStream ? llm.stream : undefined
@@ -203,7 +267,7 @@ export class AgentService {
         const streamEvents: LLMStreamEvent[] = []
         let cancelled = false
         try {
-          for await (const event of streamMethod(stepInput, availableTools, completeOptions)) {
+          for await (const event of streamMethod(llmMessages, request.tools, request.options)) {
             streamEvents.push(event)
             yield event
           }
@@ -216,7 +280,7 @@ export class AgentService {
         completion = completionFromStreamEvents(streamEvents)
       } else {
         try {
-          completion = await llm.complete(stepInput, availableTools, completeOptions)
+          completion = await llm.complete(llmMessages, request.tools, request.options)
         } catch (error) {
           if (!options.signal?.aborted) throw error
           finishReason = 'cancelled'
@@ -288,7 +352,7 @@ export class AgentService {
 
       steps.push({
         index,
-        input: stepInput,
+        input: copyMessages(llmMessages),
         completion,
         toolResults,
       })
@@ -300,14 +364,26 @@ export class AgentService {
         await session.append('message', { role: 'assistant', content: completion.content ?? '' })
       }
 
-      const nextMessages = this._extendMessages(messages, completion, toolResults)
+      await session.append('step/end', {
+        index,
+        finishReason: completion.finishReason,
+        toolCalls: toolCalls.length,
+      })
+      currentStepIndex = undefined
+
+      const nextMessages = this._extendMessages(llmMessages, completion, toolResults)
       if (toolCalls.length === 0) {
         finishReason = completion.finishReason === 'length'
           ? 'length'
           : completion.finishReason === 'error'
             ? 'error'
             : 'stop'
-        break
+        const keepGoing = await this.ctx.serial('agent/turn-stopping', {
+          index,
+          steps: copySteps(steps),
+          finishReason,
+        } satisfies AgentTurnStoppingEvent) as unknown
+        if (!keepGoing) break
       }
       if (index + 1 >= maxTurns && !finalTurnGranted) {
         finalTurnGranted = true
@@ -315,9 +391,35 @@ export class AgentService {
         finishReason = 'max_turns'
         break
       }
-      finishReason = 'tool_calls'
+      if (toolCalls.length) finishReason = 'tool_calls'
       index += 1
       messages = nextMessages
+    }
+    } catch (error) {
+      turnError = error
+      throw error
+    } finally {
+      if (currentStepIndex !== undefined) {
+        const cancelled = options.signal?.aborted
+        await session.append('step/end', {
+          index: currentStepIndex,
+          finishReason: cancelled
+            ? 'cancelled'
+            : turnError
+              ? 'error'
+              : 'interrupted',
+          interrupted: true,
+          ...(turnError ? { error: toToolError(turnError) } : {}),
+        })
+      }
+      await session.append('turn/end', {
+        finishReason: turnError
+          ? (options.signal?.aborted ? 'cancelled' : 'error')
+          : finishReason,
+        ...(output ? { output } : {}),
+        ...(steps.length ? { steps: steps.length } : {}),
+        ...(turnError ? { interrupted: true, error: toToolError(turnError) } : {}),
+      })
     }
 
     const runResult: AgentRunResult = {
@@ -381,6 +483,23 @@ export class AgentService {
       messagesAfter: compactMessages.length,
     })
     return compactMessages.map(message => copyMessages([message])[0]!)
+  }
+
+  private async _persistStepInput(
+    session: SessionLog,
+    input: readonly ModelMessage[],
+  ): Promise<void> {
+    const requested = input.filter(isUserOrSystemMessage)
+    const surface = (await session.deriveMessages()).filter(isUserOrSystemMessage)
+    const prefix = commonSurfacePrefix(requested, surface)
+    const suffix = commonSurfaceSuffix(requested.slice(prefix), surface.slice(prefix))
+    for (const message of requested.slice(prefix, requested.length - suffix)) {
+      await session.append('message', {
+        role: message.role,
+        content: message.content,
+        ...(message.name ? { name: message.name } : {}),
+      })
+    }
   }
 
   private _initialMessages(input: AgentInput): ModelMessage[] {

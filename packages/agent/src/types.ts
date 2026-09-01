@@ -151,6 +151,24 @@ export interface AgentStepEvent {
   input: readonly ModelMessage[]
 }
 
+export interface AgentPreStepEvent {
+  index: number
+  messages: ModelMessage[]
+}
+
+export interface AgentRequestEvent {
+  index: number
+  messages: ModelMessage[]
+  tools: readonly ToolDefinition[]
+  options: CompleteOptions
+}
+
+export interface AgentTurnStoppingEvent {
+  index: number
+  steps: readonly AgentStep[]
+  finishReason: AgentFinishReason
+}
+
 export interface AgentToolCallEvent {
   index: number
   call: LLMToolCall
