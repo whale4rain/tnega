@@ -471,3 +471,7 @@
 - M13.6：`8c73d13` 默认 loop hooks 生效；`c56ea1c` createAgentRuntime 外部组合入口
 - M13.7：`26f1475` 默认 loop context budget / compact checkpoint 消息状态 / runtime inbox 注入 / 子路径导出
 - M14.1：`6f963d1` README 英文重构 + 中文文档；默认模型改为 `deepseek-v4-flash`，版本升至 0.1.1
+- M15.1：`bf70355` coding 会话通过 plan / slash 管线接入 web server
+- M15.2：`77caa2b` web coding 会话 UI（plan 面板 / mode 切换 / slash 菜单）
+- M15.3：`7eb29a8` `tnega/coding-agent` 子路径发布与 ESM bin 修复
+- M15.4：`8d8fde6` README / 中文文档 / task 状态更新
