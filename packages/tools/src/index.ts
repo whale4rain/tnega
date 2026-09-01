@@ -174,7 +174,7 @@ export class ToolsService extends Service<never> {
     const tool = this._tools.get(name)
     if (!tool) throw new ToolNotFoundError(name)
 
-    const request: ToolRequest = {
+    let request: ToolRequest = {
       tool,
       name,
       input,
@@ -182,62 +182,92 @@ export class ToolsService extends Service<never> {
       startedAt: Date.now(),
     }
 
-    await this.ctx.parallel('tools/pre-execute', request)
+    let preError: unknown
+    try {
+      const resolved = await this.ctx.waterfallAsync(
+        'tools/pre-execute',
+        request,
+        async (payload: ToolRequest) => {
+          await this._applyPolicy(payload)
+          return payload
+        },
+      )
+      if (!resolved) {
+        throw new ToolAuthorizationError(`tool rejected by tools/pre-execute: ${name}`)
+      }
+      request = resolved
+    } catch (error) {
+      preError = error
+    }
 
-    const policy = request.tool.policy
-    const authorizer = policy?.authorizer ?? this._policy.authorizer
-    if (authorizer) {
-      const allowed = await authorizer(request)
-      if (!allowed) {
-        return this._finish(
+    let result: ToolResult | undefined
+    try {
+      if (!preError) {
+        result = await this.ctx.waterfallAsync(
+          'tools/execute',
           request,
-          this._failure(
-            request,
-            new ToolAuthorizationError(`tool authorization denied: ${name}`),
-          ),
+          async (payload: ToolRequest) => {
+            const output = await payload.tool.execute(payload.input, payload.options)
+            return this._success(payload, output)
+          },
         )
       }
-    }
-
-    const validator = policy?.validator ?? this._policy.validator
-    try {
-      await validator(request.input, request.tool)
     } catch (error) {
-      return this._finish(request, this._failure(request, error))
+      result = this._failure(request, error)
+    }
+    if (preError) result = this._failure(request, preError)
+    if (!result) {
+      result = this._failure(
+        request,
+        new Error('tools/execute did not return a tool result'),
+      )
     }
 
-    let output: unknown
-    let caught: unknown
     try {
-      await this.ctx.parallel('tools/execute', request)
-      output = await tool.execute(request.input, request.options)
+      const normalized = await this.ctx.waterfallAsync(
+        'tools/post-execute',
+        { request, result },
+        async (payload: ToolStagePayload) => {
+          const policy = payload.request.tool.policy
+          const truncator = policy?.truncator ?? this._policy.truncator
+          return truncator
+            ? await truncator(payload.result, payload.request)
+            : payload.result
+        },
+      )
+      if (normalized && typeof normalized.ok === 'boolean') result = normalized
     } catch (error) {
-      caught = error
+      result = this._failure(request, error)
     }
 
-    const result = caught === undefined
-      ? this._success(request, output)
-      : this._failure(request, caught)
-
-    const truncator = policy?.truncator ?? this._policy.truncator
-    if (truncator) {
-      try {
-        return this._finish(request, await truncator(result, request))
-      } catch (error) {
-        return this._finish(request, this._failure(request, error))
-      }
-    }
-
-    return this._finish(request, result)
+    return this._finish(
+      request,
+      result ?? this._failure(
+        request,
+        new Error('tools/execute did not return a tool result'),
+      ),
+    )
   }
 
   private async _finish(
     request: ToolRequest,
     result: ToolResult,
   ): Promise<ToolResult> {
-    await this.ctx.parallel('tools/post-execute', { request, result })
     await this.ctx.parallel('tools/result', { request, result })
     return result
+  }
+
+  private async _applyPolicy(request: ToolRequest): Promise<void> {
+    const policy = request.tool.policy
+    const authorizer = policy?.authorizer ?? this._policy.authorizer
+    if (authorizer) {
+      const allowed = await authorizer(request)
+      if (!allowed) {
+        throw new ToolAuthorizationError(`tool authorization denied: ${request.name}`)
+      }
+    }
+    const validator = policy?.validator ?? this._policy.validator
+    if (validator) await validator(request.input, request.tool)
   }
 
   private _validate(definition: ToolDefinition): void {
