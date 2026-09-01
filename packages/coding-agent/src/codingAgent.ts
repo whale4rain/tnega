@@ -16,6 +16,8 @@ export interface CodingAgentOptions {
   mcp?: boolean
   planTools?: boolean
   registerAgent?: boolean
+  systemPrompt?: string
+  planPrompt?: string
 }
 
 export interface CodingService {
@@ -183,7 +185,8 @@ export function createCodingAgentPlugin(
       })
 
       ctx.provide('coding', {
-        generatePlan,
+        generatePlan: (adapter, messages, signal) =>
+          generatePlan(adapter, messages, signal, options.planPrompt),
         commands: () => slash.list(),
         runCommand: async (name, args) => slash.run(name, args, slashContext()),
         suggestCommand: async (name) => slash.suggest(name, slashContext()),
@@ -191,10 +194,11 @@ export function createCodingAgentPlugin(
       } satisfies CodingService)
 
       if (registerAgent) {
+        const systemPrompt = options.systemPrompt ?? CODING_SYSTEM_PROMPT
         await ctx.plugin(defineAgent({
           name: 'coding',
           version: '0.1.0',
-          system: CODING_SYSTEM_PROMPT,
+          system: systemPrompt,
           tools: [],
         }))
       }
