@@ -14,6 +14,7 @@ import {
   session,
   suffixStartIndexForTokens,
   type ModelMessage,
+  type PlanPayload,
   type SessionEvent,
 } from '../src/index.js'
 
@@ -97,6 +98,62 @@ describe('SessionLog append', () => {
     expect((next.payload as { parentId?: string }).parentId).toBe(assistant.id)
   })
 
+  it('appends plan events with item status and persists them', async () => {
+    const file = await tempFile('plan.jsonl')
+    const log = new SessionLog(file)
+    await log.init()
+
+    const plan = await log.append('plan', {
+      summary: 'build a todo list',
+      status: 'pending',
+      items: [
+        { id: 'p1', title: 'write code', status: 'pending' },
+        { id: 'p2', title: 'run tests', status: 'pending', detail: 'pnpm test' },
+      ],
+    })
+
+    expect(plan.type).toBe('plan')
+    const payload = plan.payload as PlanPayload
+    expect(payload.items).toHaveLength(2)
+    expect(payload.items[0]).toMatchObject({ id: 'p1', status: 'pending' })
+
+    const reloaded = new SessionLog(file)
+    await reloaded.init()
+    const events = await reloaded.read()
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe('plan')
+  })
+})
+
+describe('plan event projection and estimation', () => {
+  it('ignores plan events when projecting model messages', async () => {
+    const file = await tempFile('plan-project.jsonl')
+    const log = new SessionLog(file)
+    await log.init()
+    await log.append('plan', {
+      items: [{ id: 'p1', title: 'step one', status: 'pending' }],
+    })
+    await log.append('message', { role: 'user', content: 'hello' })
+
+    const messages = await log.deriveMessages()
+    expect(messages).toEqual([{ role: 'user', content: 'hello' }])
+  })
+
+  it('counts zero tokens for plan events', () => {
+    const event: SessionEvent = {
+      id: 'plan-1',
+      seq: 1,
+      ts: 1,
+      type: 'plan',
+      payload: {
+        summary: 'a very long plan summary that should not cost tokens',
+        items: [
+          { id: 'p1', title: 'step', status: 'pending', detail: 'detail' },
+        ],
+      },
+    }
+    expect(estimateEventTokens(event)).toBe(0)
+  })
 })
 
 describe('SessionLog lineage', () => {

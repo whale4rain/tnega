@@ -59,10 +59,26 @@ export interface CheckpointPayload {
   snapshot?: SessionEvent[]
 }
 
+export type PlanItemStatus = 'pending' | 'done' | 'failed'
+
+export interface PlanItemPayload {
+  id: string
+  title: string
+  status: PlanItemStatus
+  detail?: string
+}
+
+export interface PlanPayload {
+  items: PlanItemPayload[]
+  status?: 'pending' | 'running' | 'done' | 'failed'
+  summary?: string
+}
+
 export type SessionEventType =
   | 'message'
   | 'tool-call'
   | 'tool-result'
+  | 'plan'
   | 'checkpoint'
   | 'meta'
 
@@ -78,6 +94,7 @@ export type SessionEvent =
   | SessionEventBase<'message', MessagePayload>
   | SessionEventBase<'tool-call', ToolCallPayload>
   | SessionEventBase<'tool-result', ToolResultPayload>
+  | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', CheckpointPayload>
   | SessionEventBase<'meta', Record<string, unknown>>
 
@@ -172,6 +189,8 @@ export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
         messages.push(message)
         break
       }
+      case 'plan':
+        break
       case 'meta':
         break
     }
@@ -214,6 +233,8 @@ export function estimateEventTokens(event: SessionEvent): number {
         : event.payload.error?.message ?? 'error'
       return Math.ceil(raw.length / 4)
     }
+    case 'plan':
+      return 0
     case 'checkpoint':
       return estimateMessageTokens(event.payload.messages)
     case 'meta':
@@ -294,6 +315,7 @@ export class SessionLog {
   append(type: 'message', payload: MessagePayload): Promise<SessionEvent>
   append(type: 'tool-call', payload: ToolCallPayload): Promise<SessionEvent>
   append(type: 'tool-result', payload: ToolResultPayload): Promise<SessionEvent>
+  append(type: 'plan', payload: PlanPayload): Promise<SessionEvent>
   append(type: 'checkpoint', payload: CheckpointPayload): Promise<SessionEvent>
   append(type: 'meta', payload: Record<string, unknown>): Promise<SessionEvent>
   append(type: SessionEventType, payload: SessionEvent['payload']): Promise<SessionEvent> {
