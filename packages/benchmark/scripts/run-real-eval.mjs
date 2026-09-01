@@ -12,7 +12,7 @@ const defaultRunsDir = join(dataDir, 'runs')
 
 const args = parseArgs(process.argv.slice(2))
 const parsedTasksFile = JSON.parse(await readFile(tasksFile, 'utf8'))
-const validIds = args.valid ? await readValidIds() : undefined
+const validIds = args.valid ? await readValidIds(args.dataset) : undefined
 const tasks = (parsedTasksFile.tasks ?? [])
   .filter(task => !validIds || validIds.has(task.id))
 const candidates = tasks
@@ -185,11 +185,17 @@ function parseArgs(values) {
   return parsed
 }
 
-async function readValidIds() {
-  const verified = JSON.parse(await readFile(join(dataDir, 'verified-swebench.json'), 'utf8'))
+async function readValidIds(dataset) {
+  const file = dataset === 'bigcodebench'
+    ? 'verified-bigcodebench.json'
+    : 'verified-swebench.json'
+  const verified = JSON.parse(await readFile(join(dataDir, file), 'utf8'))
+  const valid = dataset === 'bigcodebench'
+    ? row => row.goldPass === true
+    : row => row.basePass === false && row.goldPass === true
   return new Set(
     verified
-      .filter(row => row.basePass === false && row.goldPass === true)
+      .filter(valid)
       .map(row => row.instanceId),
   )
 }
