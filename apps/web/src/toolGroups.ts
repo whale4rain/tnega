@@ -1,4 +1,4 @@
-import type { DisplayMessage } from './types'
+import type { DisplayMessage } from './types.js'
 
 export type MessageRenderItem =
   | { kind: 'message'; message: DisplayMessage; sourceIndex: number }

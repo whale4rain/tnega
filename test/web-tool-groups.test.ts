@@ -22,7 +22,7 @@ function toolMessage(
       name,
       argumentsText: '{}',
       status,
-      ok,
+      ...(ok === undefined ? {} : { ok }),
     },
   }
 }
