@@ -74,6 +74,10 @@ export interface PlanPayload {
   summary?: string
 }
 
+export type AgentType = 'general' | 'coding'
+
+export type SessionMode = 'auto' | 'plan' | 'execute'
+
 export type SessionEventType =
   | 'message'
   | 'tool-call'

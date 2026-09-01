@@ -232,6 +232,59 @@ describe('web server', () => {
     expect(list.sessions.map(session => session.id)).toEqual([fork.session.id])
   })
 
+  it('creates coding sessions with agent type and mode and patches mode', async () => {
+    const dir = await tempDir('tnega-web-meta-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'coding session',
+          agentType: 'coding',
+          mode: 'plan',
+        }),
+      },
+    ).then(r => r.json()) as { session: { id: string; agentType: string; mode: string } }
+    expect(created.session).toMatchObject({
+      agentType: 'coding',
+      mode: 'plan',
+    })
+    const id = created.session.id
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      summary: { agentType?: string; mode?: string }
+    }
+    expect(detail.summary).toMatchObject({ agentType: 'coding', mode: 'plan' })
+
+    const patched = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ mode: 'execute' }),
+      },
+    ).then(r => r.json()) as { summary: { mode: string; agentType: string } }
+    expect(patched.summary).toMatchObject({ mode: 'execute', agentType: 'coding' })
+
+    const fork = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/fork?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as {
+      session: { mode?: string; agentType?: string }
+    }
+    expect(fork.session).toMatchObject({ mode: 'execute', agentType: 'coding' })
+  })
+
   it('forks a session with all history up to the selected user message', async () => {
     const dir = await tempDir('tnega-web-fork-at-')
     const workspace = await mkdir(dir, 'workspace')

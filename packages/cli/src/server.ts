@@ -28,6 +28,7 @@ import {
   forkSession,
   isSessionId,
   listSessions,
+  patchSessionMeta,
   prepareSessionCompact,
   readSessionMessages,
   readSessionSummary,
@@ -307,7 +308,17 @@ async function handleApi(
     }
     const body = await readJsonBody(req)
     const title = typeof body.title === 'string' ? body.title : undefined
-    const session = await createSession(workspace, title === undefined ? {} : { title })
+    const agentType = body.agentType === 'general' || body.agentType === 'coding'
+      ? body.agentType
+      : undefined
+    const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'execute'
+      ? body.mode
+      : undefined
+    const session = await createSession(workspace, {
+      ...(title !== undefined ? { title } : {}),
+      ...(agentType ? { agentType } : {}),
+      ...(mode ? { mode } : {}),
+    })
     sendJson(res, 201, { session })
     return
   }
@@ -343,11 +354,19 @@ async function handleApi(
         return
       }
       const body = await readJsonBody(req)
-      if (typeof body.title !== 'string') {
-        sendError(res, 400, 'title is required')
+      const patch: Parameters<typeof patchSessionMeta>[2] = {}
+      if (typeof body.title === 'string') patch.title = body.title
+      if (body.agentType === 'general' || body.agentType === 'coding') {
+        patch.agentType = body.agentType
+      }
+      if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'execute') {
+        patch.mode = body.mode
+      }
+      if (!Object.keys(patch).length) {
+        sendError(res, 400, 'title, agentType or mode is required')
         return
       }
-      const summary = await setSessionTitle(workspace, id, body.title)
+      const summary = await patchSessionMeta(workspace, id, patch)
       sendJson(res, 200, { summary })
       return
     }

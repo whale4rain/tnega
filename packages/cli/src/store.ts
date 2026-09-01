@@ -17,8 +17,10 @@ import {
   resolveCompactKeep,
   suffixStartIndexForTokens,
   type ContextUsage,
+  type AgentType,
   type ModelMessage,
   type SessionEvent,
+  type SessionMode,
 } from '@tnega/session'
 
 export interface SessionMetaPayload {
@@ -27,6 +29,8 @@ export interface SessionMetaPayload {
   createdAt: number
   parentSessionId?: string
   forkedAtMessageId?: string
+  agentType?: AgentType
+  mode?: SessionMode
 }
 
 export interface SessionSummary extends SessionMetaPayload {
@@ -40,6 +44,14 @@ export interface CreateSessionOptions {
   createdAt?: number
   parentSessionId?: string
   forkedAtMessageId?: string
+  agentType?: AgentType
+  mode?: SessionMode
+}
+
+export interface SessionMetaPatch {
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
 }
 
 interface SessionMetaEvent {
@@ -90,6 +102,8 @@ export async function createSession(
       createdAt,
       ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
       ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
+      ...(options.agentType ? { agentType: options.agentType } : {}),
+      ...(options.mode ? { mode: options.mode } : {}),
     },
   }
   await writeFile(sessionFile(workspace, id), `${JSON.stringify(meta)}\n`, 'utf8')
@@ -173,16 +187,26 @@ export async function setSessionTitle(
   id: string,
   title: string,
 ): Promise<SessionSummary> {
+  return patchSessionMeta(workspace, id, { title })
+}
+
+export async function patchSessionMeta(
+  workspace: string,
+  id: string,
+  patch: SessionMetaPatch,
+): Promise<SessionSummary> {
   const file = sessionFile(workspace, id)
   const lines = await readEventLines(file)
-  const trimmed = title.trim() || 'New session'
   let meta = await readSessionMeta(file)
+  const payload: SessionMetaPayload = { ...meta.payload }
+  if (patch.title !== undefined) {
+    payload.title = patch.title.trim() || 'New session'
+  }
+  if (patch.agentType !== undefined) payload.agentType = patch.agentType
+  if (patch.mode !== undefined) payload.mode = patch.mode
   meta = {
     ...meta,
-    payload: {
-      ...meta.payload,
-      title: trimmed,
-    },
+    payload,
   }
   const next: string[] = [JSON.stringify(meta)]
   for (const line of lines) {
@@ -210,6 +234,8 @@ export async function forkSession(
     title: options.title?.trim() || `${meta.payload.title} fork`,
     createdAt: meta.payload.createdAt,
     parentSessionId: id,
+    ...(meta.payload.agentType ? { agentType: meta.payload.agentType } : {}),
+    ...(meta.payload.mode ? { mode: meta.payload.mode } : {}),
     ...(options.messageId ? { forkedAtMessageId: options.messageId } : {}),
   })
   const target = sessionFile(workspace, fork.id)

@@ -43,10 +43,10 @@
 
 ### M15.1 会话语义：plan 事件与 agent 元数据
 
-- [ ] `@tnega/session` 新增 `plan` 事件：`{ id, status?, items: [{ id, title, status, detail? }], summary? }`
-- [ ] `SessionLog.append` 支持 `plan`，投影时忽略（不进模型上下文），token 估算为 0
-- [ ] session 元数据新增可选 `agentType`（general | coding）与 `mode`（auto | plan | execute），创建/分叉时透传
-- [ ] 测试：plan append / 投影 / 估算 / 持久化；meta 字段透传
+- [x] `@tnega/session` 新增 `plan` 事件：`{ id, status?, items: [{ id, title, status, detail? }], summary? }`
+- [x] `SessionLog.append` 支持 `plan`，投影时忽略（不进模型上下文），token 估算为 0
+- [x] session 元数据新增可选 `agentType`（general | coding）与 `mode`（auto | plan | execute），创建/分叉时透传
+- [x] 测试：plan append / 投影 / 估算 / 持久化；meta 字段透传
 
 ### M15.2 packages/coding-agent
 
