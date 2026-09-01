@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { Context, type Plugin } from '@tnega/core'
 import {
@@ -35,6 +36,12 @@ import {
 } from '@tnega/eval'
 import { parseYaml } from './yaml.js'
 import {
+  importBigCodeBench,
+  importSweBench,
+  type BenchmarkImportOptions,
+  type ImportedBenchmark,
+} from '@tnega/benchmark'
+import {
   readSystemConfig,
   resolveLlmEnv,
   systemConfigPath,
@@ -69,6 +76,7 @@ export interface EvolveFileConfig {
 export interface RunCommandOptions {
   tasksFile: string
   candidateName?: string
+  taskFilter?: string
   cache?: boolean
   budget?: RunBudget
   outputFile?: string
@@ -141,6 +149,17 @@ export interface RunEvolveCommandResult {
   result: EvolveStepResult
   logFile: string
   runDir: string
+}
+
+export interface ImportBenchmarkCommandOptions {
+  source: string
+  outDir?: string
+  subset?: number
+  repo?: string
+  ids?: string
+  version?: string
+  mirror?: string
+  force?: boolean
 }
 
 export interface LlmEnvConfig {
@@ -273,7 +292,9 @@ function toTask(value: unknown, index: number, file: string): Task {
 
 export function loadTasksFile(file: string): TasksFile {
   const text = readFileSync(resolve(file), 'utf8')
-  const data = parseYaml(text)
+  const data = /^\s*\{/.test(text)
+    ? JSON.parse(text) as Record<string, unknown>
+    : parseYaml(text)
   const tasks = Array.isArray(data.tasks)
     ? data.tasks.map((entry, index) => toTask(entry, index, file))
     : []
@@ -399,6 +420,12 @@ function evalService(root: Context): EvalService {
 export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
   const cwd = options.cwd ?? process.cwd()
   const tasksFile = loadTasksFile(options.tasksFile)
+  const tasks = options.taskFilter
+    ? tasksFile.tasks.filter(task => task.id === options.taskFilter)
+    : tasksFile.tasks
+  if (options.taskFilter && !tasks.length) {
+    throw new CliError(`task not found: ${options.taskFilter}`)
+  }
   const outputDir = resolve(cwd, tasksFile.outputDir ?? '.tnega/runs')
   const candidate = candidateFromFile(tasksFile, options.candidateName)
   const root = await createEvalContext(cwd, {
@@ -407,7 +434,7 @@ export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
   })
   const runOptions: EvalRunOptions = {
     candidate: candidate.preset,
-    tasks: tasksFile.tasks,
+    tasks,
     cache: options.cache ?? true,
   }
   if (options.outputFile) runOptions.outputFile = resolve(cwd, options.outputFile)
@@ -731,6 +758,77 @@ export async function runEvolveCommand(
     await evolveFiber.dispose()
     await evalFiber.dispose()
   }
+}
+
+export async function importBenchmarkCommand(
+  options: ImportBenchmarkCommandOptions,
+): Promise<ImportedBenchmark> {
+  const outDir = resolve(options.outDir ?? 'data/benchmarks')
+  const common: BenchmarkImportOptions = {
+    outDir,
+    ...(options.subset !== undefined ? { subset: options.subset } : {}),
+    ...(options.repo ? { repo: options.repo } : {}),
+    ...(options.ids ? { ids: options.ids } : {}),
+    ...(options.version ? { version: options.version } : {}),
+    ...(options.mirror ? { mirror: options.mirror } : {}),
+    ...(options.force !== undefined ? { force: options.force } : {}),
+  }
+  const previousTasks = await readTaskEntries(join(outDir, 'tasks.json'))
+  if (options.source === 'bigcodebench') {
+    const result = await importBigCodeBench(common)
+    await mergeTasksFile(result.tasksFile, previousTasks, options.source)
+    return result
+  }
+  if (options.source === 'swebench') {
+    const result = await importSweBench(common)
+    await mergeTasksFile(result.tasksFile, previousTasks, options.source)
+    return result
+  }
+  throw new CliError(`unknown benchmark source: ${options.source}`)
+}
+
+async function readTaskEntries(tasksFile: string): Promise<unknown[]> {
+  const text = await readFile(tasksFile, 'utf8').catch(() => undefined)
+  if (!text || !/^\s*\{/.test(text)) return []
+  const data = JSON.parse(text) as Record<string, unknown>
+  return Array.isArray(data.tasks) ? data.tasks : []
+}
+
+async function mergeTasksFile(
+  tasksFile: string,
+  previousTasks: readonly unknown[],
+  source: string,
+): Promise<void> {
+  const incomingText = await readFile(tasksFile, 'utf8')
+  const incoming = JSON.parse(incomingText) as Record<string, unknown>
+  const incomingTasks = Array.isArray(incoming.tasks) ? incoming.tasks : []
+  const byId = new Map<string, unknown>()
+  const retained = previousTasks.filter(entry => {
+    const task = asRecord(entry)
+    const dataset = asRecord(task.artifacts).dataset
+    return typeof dataset !== 'string' || dataset !== source
+  })
+  for (const entry of [...retained, ...incomingTasks]) {
+    const task = asRecord(entry)
+    if (typeof task.id === 'string') byId.set(task.id, entry)
+  }
+  const merged = {
+    outputDir: incoming.outputDir,
+    strategyNames: incoming.strategyNames,
+    candidates: incoming.candidates,
+    defaultCandidate: incoming.defaultCandidate,
+    tasks: [...byId.values()],
+  }
+  await writeFile(tasksFile, `${JSON.stringify(merged, null, 2)}\n`, 'utf8')
+}
+
+export function formatBenchmarkImport(result: ImportedBenchmark): string {
+  return [
+    `imported ${result.manifest.source}@${result.manifest.version}`,
+    `tasks ${result.manifest.total}`,
+    `tasks file ${result.tasksFile}`,
+    `manifest ${result.manifestFile}`,
+  ].join('\n')
 }
 
 export function formatEvolveResult(result: RunEvolveCommandResult): string {

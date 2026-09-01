@@ -3,9 +3,11 @@ import {
   CliError,
   compareCommand,
   formatAgentRun,
+  formatBenchmarkImport,
   formatCompare,
   formatEvolveResult,
   formatRun,
+  importBenchmarkCommand,
   runAgentCommand,
   runCommand,
   runEvolveCommand,
@@ -16,6 +18,7 @@ export type {
   AgentRuntime,
   AgentRuntimeOptions,
   EvolveFileConfig,
+  ImportBenchmarkCommandOptions,
   LlmEnvConfig,
   RunAgentCommandOptions,
   RunAgentCommandResult,
@@ -28,9 +31,11 @@ export {
   compareCommand,
   createAgentRuntime,
   formatAgentRun,
+  formatBenchmarkImport,
   formatCompare,
   formatEvolveResult,
   formatRun,
+  importBenchmarkCommand,
   loadTasksFile,
   resolveLlmEnv,
   runAgentCommand,
@@ -85,6 +90,7 @@ export function main(argv: readonly string[]): Promise<number> {
       const run = await runCommand({
         tasksFile: parsed.tasksFile,
         ...(parsed.candidateName ? { candidateName: parsed.candidateName } : {}),
+        ...(parsed.taskFilter ? { taskFilter: parsed.taskFilter } : {}),
         ...(parsed.cache !== undefined ? { cache: parsed.cache } : {}),
         ...(parsed.outputFile ? { outputFile: parsed.outputFile } : {}),
         ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
@@ -114,6 +120,22 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
       })
       return emit(formatCompare(result), result.summary.regressions.length ? 1 : 0)
+    }
+
+    if (command === 'eval' && args[0] === 'import-benchmark') {
+      const parsed = parseBenchmarkImportArgs(args.slice(1))
+      if (!parsed.source) throw new CliError('eval import-benchmark requires a source')
+      const result = await importBenchmarkCommand({
+        source: parsed.source,
+        ...(parsed.outDir ? { outDir: parsed.outDir } : {}),
+        ...(parsed.subset !== undefined ? { subset: parsed.subset } : {}),
+        ...(parsed.repo ? { repo: parsed.repo } : {}),
+        ...(parsed.ids ? { ids: parsed.ids } : {}),
+        ...(parsed.version ? { version: parsed.version } : {}),
+        ...(parsed.mirror ? { mirror: parsed.mirror } : {}),
+        ...(parsed.force !== undefined ? { force: parsed.force } : {}),
+      })
+      return emit(formatBenchmarkImport(result), 0)
     }
 
     if (command === 'evolve' && args[0] === 'run') {
@@ -155,6 +177,7 @@ export function main(argv: readonly string[]): Promise<number> {
 interface ParsedRunArgs {
   tasksFile?: string
   candidateName?: string
+  taskFilter?: string
   cache?: boolean
   outputFile?: string
   cwd?: string
@@ -219,6 +242,17 @@ interface ParsedEvolveRunArgs {
   retryDelayMs?: number
 }
 
+interface ParsedBenchmarkImportArgs {
+  source?: string
+  outDir?: string
+  subset?: number
+  repo?: string
+  ids?: string
+  version?: string
+  mirror?: string
+  force?: boolean
+}
+
 function parseRunArgs(args: readonly string[]): ParsedRunArgs {
   const parsed: ParsedRunArgs = {}
   let cursor = 0
@@ -240,7 +274,7 @@ function parseRunArgs(args: readonly string[]): ParsedRunArgs {
     const value = eq >= 0 ? arg.slice(eq + 1) : args[cursor + 1]
     if (!value) throw new CliError(`--${name} requires a value`)
     if (name === 'candidate' || name === 'output' || name === 'cwd'
-      || name === 'model' || name === 'base-url' || name === 'max-tokens'
+      || name === 'task' || name === 'model' || name === 'base-url' || name === 'max-tokens'
       || name === 'temperature' || name === 'max-turns' || name === 'max-steps'
       || name === 'timeout-ms' || name === 'max-retries' || name === 'retry-delay-ms') {
       assignRunOption(parsed, name, value)
@@ -256,6 +290,9 @@ function assignRunOption(parsed: ParsedRunArgs, name: string, value: string): vo
   switch (name) {
     case 'candidate':
       parsed.candidateName = value
+      return
+    case 'task':
+      parsed.taskFilter = value
       return
     case 'output':
       parsed.outputFile = value
@@ -357,6 +394,46 @@ function parseEvolveRunArgs(args: readonly string[]): ParsedEvolveRunArgs {
 
   const tasksFile = positional.join(' ').trim()
   if (tasksFile) parsed.tasksFile = tasksFile
+  return parsed
+}
+
+function parseBenchmarkImportArgs(args: readonly string[]): ParsedBenchmarkImportArgs {
+  const parsed: ParsedBenchmarkImportArgs = {}
+  let cursor = 0
+  while (cursor < args.length) {
+    const arg = args[cursor]!
+    if (arg === '--force') {
+      parsed.force = true
+      cursor += 1
+      continue
+    }
+    if (!arg.startsWith('--')) {
+      if (parsed.source) throw new CliError(`unexpected argument: ${arg}`)
+      parsed.source = arg
+      cursor += 1
+      continue
+    }
+    const eq = arg.indexOf('=')
+    const name = eq >= 0 ? arg.slice(2, eq) : arg.slice(2)
+    const value = eq >= 0 ? arg.slice(eq + 1) : args[cursor + 1]
+    if (!value) throw new CliError(`--${name} requires a value`)
+    if (name === 'out') {
+      parsed.outDir = value
+    } else if (name === 'subset') {
+      parsed.subset = parseFiniteNumber('--subset', value)
+    } else if (name === 'repo') {
+      parsed.repo = value
+    } else if (name === 'ids') {
+      parsed.ids = value
+    } else if (name === 'version') {
+      parsed.version = value
+    } else if (name === 'mirror') {
+      parsed.mirror = value
+    } else {
+      throw new CliError(`unknown option: --${name}`)
+    }
+    cursor += eq >= 0 ? 1 : 2
+  }
   return parsed
 }
 

@@ -66,4 +66,26 @@ describe('tasks file coding fields', () => {
     expect(parsed.tasks[0]?.setup).toBe('echo setup')
     expect(parsed.tasks[0]?.teardown).toBe('echo done')
   })
+
+  it('parses JSON tasks files used by benchmark import', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tnega-tasks-json-'))
+    dirs.push(dir)
+    const file = join(dir, 'tasks.json')
+    await writeFile(file, JSON.stringify({
+      tasks: [
+        {
+          id: 'BigCodeBench/0',
+          inputText: 'implement the function',
+          fixture: { root: 'bigcodebench/BigCodeBench-0' },
+          check: 'python -m unittest discover',
+          split: 'val',
+        },
+      ],
+    }), 'utf8')
+
+    const parsed = loadTasksFile(file)
+    expect(parsed.tasks[0]?.id).toBe('BigCodeBench/0')
+    expect(parsed.tasks[0]?.fixture?.root).toBe(join(dir, 'bigcodebench', 'BigCodeBench-0'))
+    expect(parsed.tasks[0]?.split).toBe('val')
+  })
 })

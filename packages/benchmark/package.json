@@ -1,0 +1,13 @@
+{
+  "name": "@tnega/benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/eval": "workspace:*",
+    "hyparquet": "^1.29.2"
+  }
+}
