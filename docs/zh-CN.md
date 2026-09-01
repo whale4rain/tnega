@@ -168,7 +168,7 @@ const builtinFiber = await root.plugin(builtinTools, {
 const agentFiber = await root.plugin(
   defineAgent({
     name: 'coding-agent',
-    version: '0.1.1',
+    version: '0.2.0',
     system: 'You are a coding agent.',
     tools: [],
   }),

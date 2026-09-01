@@ -79,7 +79,7 @@ const root = new Context()
 const fiber = await root.plugin(
   defineAgent({
     name: 'coding-agent',
-    version: '0.1.1',
+    version: '0.2.0',
     system: 'You are a coding agent.',
   }),
   { llm: openaiCompatAdapter({ apiKey: process.env.OPENCODE_GO_API_KEY! }) },
