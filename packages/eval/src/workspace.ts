@@ -82,7 +82,11 @@ async function runCommand(
     let stdout = ''
     let stderr = ''
     let settled = false
-    let timer: NodeJS.Timeout | undefined
+    const timer: NodeJS.Timeout | undefined = setTimeout(() => {
+      finish(() => {
+        void kill().finally(() => resolve({ exitCode: 124, stdout, stderr: 'timed out' }))
+      })
+    }, timeoutMs)
     let onAbort: () => void = () => {}
 
     const append = (target: string, chunk: Buffer): string => {
@@ -114,12 +118,6 @@ async function runCommand(
       if (signal.aborted) onAbort()
       else signal.addEventListener('abort', onAbort, { once: true })
     }
-
-    timer = setTimeout(() => {
-      finish(() => {
-        void kill().finally(() => resolve({ exitCode: 124, stdout, stderr: 'timed out' }))
-      })
-    }, timeoutMs)
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout = append(stdout, chunk)
