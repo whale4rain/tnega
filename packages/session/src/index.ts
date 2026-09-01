@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 
-export const SESSION_FORMAT_VERSION = 3
+export const SESSION_FORMAT_VERSION = 4
 
 export class SessionFormatError extends Error {
   override name = 'SessionFormatError'
@@ -46,6 +46,12 @@ export interface AssistantMessagePayload {
   interrupted?: boolean
 }
 
+export interface AssistantChunkPayload {
+  id: string
+  content: string
+  index?: number
+}
+
 export interface SystemMessagePayload {
   content: string
   name?: string
@@ -58,6 +64,17 @@ export type MessageEventPayload =
   | SystemMessagePayload
 
 export type MessageEventType = 'user/message' | 'assistant/message' | 'system/message'
+
+export interface CompactionStartPayload {
+  boundary?: number
+  keep?: number
+  tokensBefore?: number
+}
+
+export interface CompactionEndPayload {
+  checkpointId?: string
+  keep?: number
+}
 
 export interface ToolCallPayload {
   id: string
@@ -155,10 +172,13 @@ export type SessionMode = 'auto' | 'plan' | 'execute'
 
 export type SessionEventType =
   | MessageEventType
+  | 'assistant/chunk'
   | 'tool/call'
   | 'tool/result'
   | 'plan'
   | 'checkpoint'
+  | 'compaction/start'
+  | 'compaction/end'
   | 'meta'
   | 'llm/retry'
   | 'llm/retry-started'
@@ -178,11 +198,14 @@ export interface SessionEventBase<T extends SessionEventType, P> {
 export type SessionEvent =
   | SessionEventBase<'user/message', UserMessagePayload>
   | SessionEventBase<'assistant/message', AssistantMessagePayload>
+  | SessionEventBase<'assistant/chunk', AssistantChunkPayload>
   | SessionEventBase<'system/message', SystemMessagePayload>
   | SessionEventBase<'tool/call', ToolCallPayload>
   | SessionEventBase<'tool/result', ToolResultPayload>
   | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', CheckpointPayload>
+  | SessionEventBase<'compaction/start', CompactionStartPayload>
+  | SessionEventBase<'compaction/end', CompactionEndPayload>
   | SessionEventBase<'meta', Record<string, unknown>>
   | SessionEventBase<'llm/retry', LLMRetryPayload>
   | SessionEventBase<'llm/retry-started', LLMRetryStartedPayload>
@@ -251,79 +274,83 @@ function clone<T>(value: T): T {
 export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
   const messages: ModelMessage[] = []
   for (const event of events) {
-    switch (event.type) {
-      case 'checkpoint':
-        messages.splice(0, messages.length, ...clone(event.payload.messages))
-        break
-      case 'user/message': {
-        const message: ModelMessage = { role: 'user', content: event.payload.content }
-        if (event.payload.name) message.name = event.payload.name
-        messages.push(message)
-        break
-      }
-      case 'assistant/message': {
-        const message: ModelMessage = { role: 'assistant', content: event.payload.content }
-        if (event.payload.name) message.name = event.payload.name
-        messages.push(message)
-        break
-      }
-      case 'system/message': {
-        const message: ModelMessage = { role: 'system', content: event.payload.content }
-        if (event.payload.name) message.name = event.payload.name
-        messages.push(message)
-        break
-      }
-      case 'tool/call': {
-        const last = messages.at(-1)
-        if (!last || last.role !== 'assistant') {
-          messages.push({
-            role: 'assistant',
-            content: '',
-            tool_calls: [],
-          })
-        } else if (!last.tool_calls) {
-          last.tool_calls = []
-        }
-        messages.at(-1)!.tool_calls!.push({
-          id: event.payload.id,
-          name: event.payload.name,
-          arguments: event.payload.arguments,
-        })
-        break
-      }
-      case 'tool/result': {
-        const failed = !event.payload.ok
-        const content = failed
-          ? `error: ${event.payload.error?.message ?? 'unknown'}`
-          : stringify(event.payload.output)
-        const message: ModelMessage = {
-          role: 'tool',
-          content,
-          tool_call_id: event.payload.toolCallId,
-        }
-        message.name = event.payload.name
-        if (failed) {
-          message.toolOk = false
-          if (event.payload.error) message.toolError = event.payload.error
-        }
-        messages.push(message)
-        break
-      }
-      case 'plan':
-        break
-      case 'meta':
-        break
-      case 'llm/retry':
-      case 'llm/retry-started':
-        break
-      case 'turn/start':
-      case 'turn/end':
-      case 'step/start':
-      case 'step/end':
-        break
-    }
+    applyMessageProjection(messages, event)
   }
   return messages
+}
+
+function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): void {
+  switch (event.type) {
+    case 'checkpoint':
+      messages.splice(0, messages.length, ...clone(event.payload.messages))
+      break
+    case 'user/message': {
+      const message: ModelMessage = { role: 'user', content: event.payload.content }
+      if (event.payload.name) message.name = event.payload.name
+      messages.push(message)
+      break
+    }
+    case 'assistant/message': {
+      const message: ModelMessage = { role: 'assistant', content: event.payload.content }
+      if (event.payload.name) message.name = event.payload.name
+      messages.push(message)
+      break
+    }
+    case 'system/message': {
+      const message: ModelMessage = { role: 'system', content: event.payload.content }
+      if (event.payload.name) message.name = event.payload.name
+      messages.push(message)
+      break
+    }
+    case 'tool/call': {
+      const last = messages.at(-1)
+      if (!last || last.role !== 'assistant') {
+        messages.push({
+          role: 'assistant',
+          content: '',
+          tool_calls: [],
+        })
+      } else if (!last.tool_calls) {
+        last.tool_calls = []
+      }
+      messages.at(-1)!.tool_calls!.push({
+        id: event.payload.id,
+        name: event.payload.name,
+        arguments: event.payload.arguments,
+      })
+      break
+    }
+    case 'tool/result': {
+      const failed = !event.payload.ok
+      const content = failed
+        ? `error: ${event.payload.error?.message ?? 'unknown'}`
+        : stringify(event.payload.output)
+      const message: ModelMessage = {
+        role: 'tool',
+        content,
+        tool_call_id: event.payload.toolCallId,
+      }
+      message.name = event.payload.name
+      if (failed) {
+        message.toolOk = false
+        if (event.payload.error) message.toolError = event.payload.error
+      }
+      messages.push(message)
+      break
+    }
+    case 'assistant/chunk':
+    case 'compaction/start':
+    case 'compaction/end':
+    case 'plan':
+    case 'meta':
+    case 'llm/retry':
+    case 'llm/retry-started':
+    case 'turn/start':
+    case 'turn/end':
+    case 'step/start':
+    case 'step/end':
+      break
+  }
 }
 
 function stringify(value: unknown): string {
@@ -353,6 +380,8 @@ export function estimateEventTokens(event: SessionEvent): number {
     case 'assistant/message':
     case 'system/message':
       return Math.ceil(event.payload.content.length / 4)
+    case 'assistant/chunk':
+      return Math.ceil(event.payload.content.length / 4)
     case 'tool/call': {
       const raw = JSON.stringify(event.payload.arguments ?? {}) ?? ''
       return Math.ceil(raw.length / 4)
@@ -367,6 +396,8 @@ export function estimateEventTokens(event: SessionEvent): number {
       return 0
     case 'checkpoint':
       return estimateMessageTokens(event.payload.messages)
+    case 'compaction/start':
+    case 'compaction/end':
     case 'meta':
       return 0
     case 'llm/retry':
@@ -541,9 +572,14 @@ export function estimateContextUsage(
 
 export class SessionLog {
   private _events: SessionEvent[] = []
+  private _surface: ModelMessage[] = []
   private _loaded = false
   private _nextSeq = 1
   private _queue: Promise<unknown> = Promise.resolve()
+  private _writeTail: Promise<void> = Promise.resolve()
+  private _pending: SessionEvent[] = []
+  private _drainScheduled = false
+  private _writeError: unknown
 
   constructor(
     readonly file: string,
@@ -557,6 +593,12 @@ export class SessionLog {
       if (!liveSessions.has(key)) liveSessions.set(key, this)
       try {
         await this._ensureLoaded()
+        await this._drainWrite()
+        if (this._writeError) {
+          const error = this._writeError
+          this._writeError = undefined
+          throw error
+        }
       } catch (error) {
         if (liveSessions.get(key) === this) liveSessions.delete(key)
         throw error
@@ -566,11 +608,14 @@ export class SessionLog {
 
   append(type: 'user/message', payload: UserMessagePayload): Promise<SessionEvent>
   append(type: 'assistant/message', payload: AssistantMessagePayload): Promise<SessionEvent>
+  append(type: 'assistant/chunk', payload: AssistantChunkPayload): Promise<SessionEvent>
   append(type: 'system/message', payload: SystemMessagePayload): Promise<SessionEvent>
   append(type: 'tool/call', payload: ToolCallPayload): Promise<SessionEvent>
   append(type: 'tool/result', payload: ToolResultPayload): Promise<SessionEvent>
   append(type: 'plan', payload: PlanPayload): Promise<SessionEvent>
   append(type: 'checkpoint', payload: CheckpointPayload): Promise<SessionEvent>
+  append(type: 'compaction/start', payload: CompactionStartPayload): Promise<SessionEvent>
+  append(type: 'compaction/end', payload: CompactionEndPayload): Promise<SessionEvent>
   append(type: 'meta', payload: Record<string, unknown>): Promise<SessionEvent>
   append(type: 'llm/retry', payload: LLMRetryPayload): Promise<SessionEvent>
   append(type: 'llm/retry-started', payload: LLMRetryStartedPayload): Promise<SessionEvent>
@@ -581,6 +626,16 @@ export class SessionLog {
   append(type: SessionEventType, payload: SessionEvent['payload']): Promise<SessionEvent> {
     return this._run(async () => {
       await this._ensureLoaded()
+      const event = this._buildEvent(type, payload)
+      this._commitEvent(event)
+      return event
+    })
+  }
+
+  private _buildEvent(
+    type: SessionEventType,
+    payload: SessionEvent['payload'],
+  ): SessionEvent {
       const eventPayload = clone(payload)
       if (isMessageEventType(type)) {
         for (let index = this._events.length - 1; index >= 0; index -= 1) {
@@ -599,17 +654,50 @@ export class SessionLog {
         type: type as SessionEvent['type'],
         payload: eventPayload,
       } as SessionEvent
-      await appendFile(this.file, `${JSON.stringify(event)}\n`, 'utf8')
-      this._events.push(event)
       this._nextSeq += 1
-      this._broadcast?.('event', event)
       return event
+  }
+
+  private _commitEvent(event: SessionEvent): void {
+    this._events.push(event)
+    this._surface = clone(this._projector(this._events))
+    this._broadcast?.('event', event)
+    this._enqueue(event)
+  }
+
+  private _enqueue(event: SessionEvent): void {
+    this._pending.push(event)
+    if (this._drainScheduled) return
+    this._drainScheduled = true
+    setImmediate(() => {
+      this._drainScheduled = false
+      void this._drainWrite()
     })
+  }
+
+  private _drainWrite(): Promise<void> {
+    const events = this._pending.splice(0)
+    if (!events.length) return this._writeTail
+    const write = this._writeTail.then(() => appendFile(
+      this.file,
+      `${events.map(event => JSON.stringify(event)).join('\n')}\n`,
+      'utf8',
+    ))
+    this._writeTail = write.catch((error) => {
+      this._writeError ??= error
+    })
+    return write.then(() => undefined, () => undefined)
   }
 
   flush(): Promise<number> {
     return this._run(async () => {
       await this._ensureLoaded()
+      await this._drainWrite()
+      if (this._writeError) {
+        const error = this._writeError
+        this._writeError = undefined
+        throw error
+      }
       const seq = this._nextSeq - 1
       this._broadcast?.('flush', { file: this.file, seq })
       return seq
@@ -678,7 +766,7 @@ export class SessionLog {
   deriveMessages(): Promise<ModelMessage[]> {
     return this._run(async () => {
       await this._ensureLoaded()
-      return clone(this._projector(this._events))
+      return clone(this._surface)
     })
   }
 
@@ -737,30 +825,40 @@ export class SessionLog {
       } else {
         messages = this._projector(events)
       }
-      const checkpoint: SessionEvent = {
-        id: randomUUID(),
-        seq: (events.at(-1)?.seq ?? 0) + 1,
-        ts: Date.now(),
-        type: 'checkpoint',
-        payload: {
-          messages,
-          surfaceOp: 'replace',
-          ...(options.summary ? { summary: options.summary } : {}),
-          ...(options.tokensBefore !== undefined
-            ? { tokensBefore: options.tokensBefore }
-            : {}),
-        },
-      }
-      await appendFile(this.file, `${JSON.stringify(checkpoint)}\n`, 'utf8')
-      this._events.push(checkpoint)
-      this._nextSeq += 1
-      this._broadcast?.('event', checkpoint)
+      const compactionStart = this._buildEvent('compaction/start', {
+        ...(splitIndex > 0 ? { boundary: splitIndex } : {}),
+        ...(options.keep !== undefined ? { keep: options.keep } : {}),
+        ...(options.tokensBefore !== undefined
+          ? { tokensBefore: options.tokensBefore }
+          : {}),
+      })
+      this._commitEvent(compactionStart)
+      const checkpoint = this._buildEvent('checkpoint', {
+        messages,
+        surfaceOp: 'replace',
+        ...(options.summary ? { summary: options.summary } : {}),
+        ...(options.tokensBefore !== undefined
+          ? { tokensBefore: options.tokensBefore }
+          : {}),
+      })
+      this._commitEvent(checkpoint)
+      const compactionEnd = this._buildEvent('compaction/end', {
+        checkpointId: checkpoint.id,
+        ...(options.keep !== undefined ? { keep: options.keep } : {}),
+      })
+      this._commitEvent(compactionEnd)
       return this._events.length
     })
   }
 
   close(): Promise<void> {
-    return this._queue.then(() => {
+    return this._queue.then(async () => {
+      await this._drainWrite()
+      if (this._writeError) {
+        const error = this._writeError
+        this._writeError = undefined
+        throw error
+      }
       const key = sessionFileKey(this.file)
       if (liveSessions.get(key) === this) liveSessions.delete(key)
     })
@@ -774,6 +872,15 @@ export class SessionLog {
 
   private async _ensureLoaded(): Promise<void> {
     if (this._loaded) return
+    const key = sessionFileKey(this.file)
+    const owner = liveSessions.get(key)
+    if (owner && owner !== this && owner._loaded) {
+      this._events = owner._events.map(event => clone(event))
+      this._surface = clone(owner._surface)
+      this._nextSeq = owner._nextSeq
+      this._loaded = true
+      return
+    }
     await mkdir(dirname(resolve(this.file)), { recursive: true })
     const read = await this._read()
     if (!read.existing) {
@@ -786,11 +893,13 @@ export class SessionLog {
       }
       await writeFile(this.file, `${JSON.stringify(meta)}\n`, 'utf8')
       this._events = [meta]
+      this._surface = clone(this._projector(this._events))
       this._nextSeq = 2
       this._loaded = true
       return
     }
     this._events = read.events
+    this._surface = clone(this._projector(this._events))
     this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
     this._loaded = true
   }

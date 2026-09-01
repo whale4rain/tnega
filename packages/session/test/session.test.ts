@@ -2,6 +2,24 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { vi } from 'vitest'
+
+const { appendFileMock } = vi.hoisted(() => ({ appendFileMock: { fail: false } }))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    appendFile: async (
+      path: Parameters<typeof actual.appendFile>[0],
+      data: Parameters<typeof actual.appendFile>[1],
+      options?: Parameters<typeof actual.appendFile>[2],
+    ) => {
+      if (appendFileMock.fail) throw new Error('disk full')
+      return actual.appendFile(path, data, options)
+    },
+  }
+})
 
 import { Context } from '@tnega/core'
 import {
@@ -47,13 +65,13 @@ function withFormatMeta(events: SessionEvent[]): SessionEvent[] {
       seq: 1,
       ts: 1,
       type: 'meta',
-      payload: { formatVersion: 3 },
+      payload: { formatVersion: 4 },
     },
     ...events.map((event, index) => ({ ...event, seq: event.seq + 1, ts: index + 2 })),
   ]
 }
 
-async function writeV3(file: string, events: SessionEvent[]): Promise<void> {
+async function writeV4(file: string, events: SessionEvent[]): Promise<void> {
   const all = withFormatMeta(events)
   await writeFile(file, `${all.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
 }
@@ -75,6 +93,7 @@ describe('SessionLog append', () => {
     expect(second.seq).toBe(3)
     expect(first.id).not.toBe(second.id)
 
+    await log.flush()
     const lines = (await readFile(file, 'utf8')).trim().split('\n')
     expect(lines).toHaveLength(3)
     expect((JSON.parse(lines[0]!) as SessionEvent).type).toBe('meta')
@@ -89,6 +108,7 @@ describe('SessionLog append', () => {
     const file = await tempFile('resume.jsonl')
     const first = new SessionLog(file)
     await first.append('user/message', { content: 'one' })
+    await first.flush()
 
     const second = new SessionLog(file)
     await second.init()
@@ -147,6 +167,7 @@ describe('SessionLog append', () => {
     expect(payload.items).toHaveLength(2)
     expect(payload.items[0]).toMatchObject({ id: 'p1', status: 'pending' })
 
+    await log.flush()
     const reloaded = new SessionLog(file)
     await reloaded.init()
     const events = await reloaded.read()
@@ -205,7 +226,7 @@ describe('SessionLog lineage', () => {
       { id: 'b', seq: 2, ts: 2, type: 'assistant/message', payload: { content: 'b' } },
       { id: 'c', seq: 3, ts: 3, type: 'user/message', payload: { content: 'c' } },
     ]
-    await writeV3(file, events)
+    await writeV4(file, events)
 
     const log = new SessionLog(file)
     await log.init()
@@ -290,7 +311,7 @@ describe('SessionLog forkAt', () => {
         payload: { content: 'second', parentId: 'first' },
       },
     ]
-    await writeV3(file, events)
+    await writeV4(file, events)
 
     const log = new SessionLog(file)
     await log.init()
@@ -310,7 +331,9 @@ describe('SessionLog forkAt', () => {
     expect(selected.map(event => event.type)).toEqual([
       'user/message',
       'assistant/message',
+      'compaction/start',
       'checkpoint',
+      'compaction/end',
       'user/message',
     ])
     const checkpoint = selected.find(event => event.type === 'checkpoint')!
@@ -460,7 +483,7 @@ describe('SessionLog lifecycle and repair', () => {
 
   it('repairs unclosed tool calls, steps and turns on load', async () => {
     const file = await tempFile('repair.jsonl')
-    await writeV3(file, [
+    await writeV4(file, [
       {
         id: 'turn-1',
         seq: 1,
@@ -522,6 +545,7 @@ describe('SessionLog lifecycle and repair', () => {
     await writer.append('turn/start', { input: 'go', reason: 'user' })
     await writer.append('step/start', { index: 0 })
     await writer.append('user/message', { content: 'go' })
+    await writer.flush()
 
     const reader = new SessionLog(file)
     await reader.init()
@@ -554,9 +578,41 @@ describe('SessionLog lifecycle and repair', () => {
     await reopened.close()
   })
 
+  it('lets a second reader see unflushed events from a live owner', async () => {
+    const file = await tempFile('live-pending.jsonl')
+    const writer = new SessionLog(file)
+    await writer.init()
+    await writer.append('user/message', { content: 'pending' })
+
+    const reader = new SessionLog(file)
+    await reader.init()
+    expect(await reader.read()).toEqual(await writer.read())
+
+    await writer.flush()
+    expect((await readFile(file, 'utf8')).trimEnd().split('\n')).toHaveLength(2)
+    await writer.close()
+  })
+
+  it('propagates flush failures and retries later appends', async () => {
+    const file = await tempFile('flush-failure.jsonl')
+    const log = new SessionLog(file)
+    appendFileMock.fail = true
+    await log.append('user/message', { content: 'a' })
+
+    await expect(log.flush()).rejects.toThrow('disk full')
+
+    appendFileMock.fail = false
+    await log.append('user/message', { content: 'b' })
+    const seq = await log.flush()
+    expect(seq).toBe(3)
+    const text = await readFile(file, 'utf8')
+    expect(text).toContain('"b"')
+    await log.close()
+  })
+
   it('drops a torn tail and rewrites the file', async () => {
     const file = await tempFile('torn.jsonl')
-    await writeV3(file, [
+    await writeV4(file, [
       {
         id: 'm1',
         seq: 1,
@@ -647,12 +703,12 @@ describe('SessionLog compact', () => {
     const before = await log.deriveMessages()
 
     const count = await log.compact({ summary: 'structured summary', tokensBefore: 120 })
-    expect(count).toBe(6)
+    expect(count).toBe(8)
     expect(await log.deriveMessages()).toEqual(before)
 
     const events = await log.read()
-    expect(events.at(-1)!.type).toBe('checkpoint')
-    const checkpoint = events.at(-1)!.payload as {
+    expect(events.at(-2)!.type).toBe('checkpoint')
+    const checkpoint = events.at(-2)!.payload as {
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
@@ -662,12 +718,20 @@ describe('SessionLog compact', () => {
     expect(checkpoint.summary).toBe('structured summary')
     expect(checkpoint.tokensBefore).toBe(120)
     expect(checkpoint.surfaceOp).toBe('replace')
+    expect(events.at(-1)!.type).toBe('compaction/end')
+    expect(events.slice(-3).map(event => event.type)).toEqual([
+      'compaction/start',
+      'checkpoint',
+      'compaction/end',
+    ])
     expect(events.slice(0, -1).map(event => event.type)).toEqual([
       'meta',
       'user/message',
       'assistant/message',
       'tool/call',
       'tool/result',
+      'compaction/start',
+      'checkpoint',
     ])
   })
 
@@ -681,11 +745,11 @@ describe('SessionLog compact', () => {
     const before = await log.deriveMessages()
 
     const count = await log.compact({ keep: 2 })
-    expect(count).toBe(7)
+    expect(count).toBe(9)
     expect(await log.deriveMessages()).toEqual(before)
 
     const events = await log.read()
-    expect(events.at(-1)!.type).toBe('checkpoint')
+    expect(events.at(-2)!.type).toBe('checkpoint')
     expect(events.slice(0, -1).map(event => event.type)).toEqual([
       'meta',
       'user/message',
@@ -693,8 +757,10 @@ describe('SessionLog compact', () => {
       'tool/call',
       'tool/result',
       'assistant/message',
+      'compaction/start',
+      'checkpoint',
     ])
-    const checkpoint = events.at(-1)!.payload as { surfaceOp?: string }
+    const checkpoint = events.at(-2)!.payload as { surfaceOp?: string }
     expect(checkpoint.surfaceOp).toBe('replace')
   })
 
@@ -712,11 +778,11 @@ describe('SessionLog compact', () => {
       tokensBefore: 100,
       messages: compacted,
     })
-    expect(count).toBe(4)
+    expect(count).toBe(6)
 
     const events = await log.read()
-    expect(events.at(-1)!.type).toBe('checkpoint')
-    const checkpoint = events.at(-1)!.payload as {
+    expect(events.at(-2)!.type).toBe('checkpoint')
+    const checkpoint = events.at(-2)!.payload as {
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
@@ -742,7 +808,7 @@ describe('SessionLog compact', () => {
     await log.compact()
 
     const event = await log.append('user/message', { content: 'c' })
-    expect(event.seq).toBe(5)
+    expect(event.seq).toBe(7)
     expect((await log.deriveMessages()).map(message => message.content)).toEqual(['a', 'b', 'c'])
   })
 })
@@ -1042,11 +1108,11 @@ describe('context budget', () => {
     const before = await log.deriveMessages()
 
     const count = await log.compact({ keepTokens: 3 })
-    expect(count).toBe(5)
+    expect(count).toBe(7)
     expect(await log.deriveMessages()).toEqual(before)
 
     const events = await log.read()
-    expect(events.at(-1)!.type).toBe('checkpoint')
+    expect(events.at(-2)!.type).toBe('checkpoint')
     expect(events
       .filter(event => event.type === 'user/message')
       .map(event => (event.payload as { content: string }).content))
@@ -1055,7 +1121,7 @@ describe('context budget', () => {
       'bbbbbbbb',
       'cccccccc',
     ])
-    const checkpoint = events.at(-1)!.payload as { messages: ModelMessage[]; surfaceOp?: string }
+    const checkpoint = events.at(-2)!.payload as { messages: ModelMessage[]; surfaceOp?: string }
     expect(checkpoint.messages).toEqual([
       { role: 'user', content: 'aaaa' },
       { role: 'user', content: 'bbbbbbbb' },
