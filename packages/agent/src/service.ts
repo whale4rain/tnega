@@ -15,7 +15,9 @@ import type {
   AgentHooks,
   AgentInput,
   AgentPreStepEvent,
+  AgentRequestErrorEvent,
   AgentRequestEvent,
+  AgentRequestRetryDecision,
   AgentRunOptions,
   AgentRunResult,
   AgentStep,
@@ -221,6 +223,10 @@ export class AgentService {
     let turnError: unknown
     try {
       while (index < maxTurns + (finalTurnGranted ? 1 : 0)) {
+      if (options.signal?.aborted) {
+        finishReason = 'cancelled'
+        break
+      }
       if (steps.length >= maxSteps) {
         finishReason = 'max_steps'
         break
@@ -261,32 +267,58 @@ export class AgentService {
       const llmMessages = copyMessages(request.messages)
       await this._persistStepInput(session, llmMessages)
 
-      let completion: LLMCompletion
+      let completion: LLMCompletion | undefined
       const streamMethod = useStream ? llm.stream : undefined
-      if (streamMethod) {
-        const streamEvents: LLMStreamEvent[] = []
-        let cancelled = false
-        try {
-          for await (const event of streamMethod(llmMessages, request.tools, request.options)) {
-            streamEvents.push(event)
-            yield event
-          }
-        } catch (error) {
-          if (!options.signal?.aborted) throw error
-          finishReason = 'cancelled'
-          cancelled = true
-        }
-        if (cancelled) break
-        completion = completionFromStreamEvents(streamEvents)
-      } else {
-        try {
-          completion = await llm.complete(llmMessages, request.tools, request.options)
-        } catch (error) {
-          if (!options.signal?.aborted) throw error
+      let attempt = 0
+      while (true) {
+        if (options.signal?.aborted) {
           finishReason = 'cancelled'
           break
         }
+        try {
+          if (streamMethod) {
+            const streamEvents: LLMStreamEvent[] = []
+            for await (const event of streamMethod(llmMessages, request.tools, request.options)) {
+              streamEvents.push(event)
+              yield event
+            }
+            completion = completionFromStreamEvents(streamEvents)
+          } else {
+            completion = await llm.complete(llmMessages, request.tools, request.options)
+          }
+          break
+        } catch (error) {
+          if (options.signal?.aborted) {
+            finishReason = 'cancelled'
+            break
+          }
+          attempt += 1
+          await session.append('llm/retry', {
+            attempt,
+            error: toToolError(error),
+          })
+          const decision = await this.ctx.waterfallAsync(
+            'agent/request-error',
+            {
+              index,
+              messages: copyMessages(llmMessages),
+              tools: request.tools,
+              options: request.options,
+              attempt,
+              error,
+            } satisfies AgentRequestErrorEvent,
+            () => undefined,
+          ) as AgentRequestRetryDecision
+          if (options.signal?.aborted) {
+            finishReason = 'cancelled'
+            break
+          }
+          if (decision?.kind !== 'retry') throw error
+          await session.append('llm/retry-started', { attempt })
+        }
       }
+      if (options.signal?.aborted) break
+      if (!completion) throw new AgentError('LLM adapter did not produce a completion')
 
       const toolCalls = completion.toolCalls ?? []
       if (finalTurnGranted && toolCalls.length) {

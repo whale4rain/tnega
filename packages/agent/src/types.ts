@@ -163,6 +163,19 @@ export interface AgentRequestEvent {
   options: CompleteOptions
 }
 
+export interface AgentRequestErrorEvent {
+  index: number
+  messages: readonly ModelMessage[]
+  tools: readonly ToolDefinition[]
+  options: CompleteOptions
+  attempt: number
+  error: unknown
+}
+
+export type AgentRequestRetryDecision =
+  | { kind: 'retry' }
+  | undefined
+
 export interface AgentTurnStoppingEvent {
   index: number
   steps: readonly AgentStep[]

@@ -16,6 +16,7 @@ import {
   type AgentLoop,
   type AgentPreStepEvent,
   type AgentRequestEvent,
+  type AgentRequestErrorEvent,
   type AgentRunResult,
   type AgentToolCallEvent,
   type AgentToolResultEvent,
@@ -895,6 +896,63 @@ describe('agent loop', () => {
     expect(calls).toHaveLength(2)
   })
 
+  it('recovers a failed model request through agent/request-error', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-error-retry.jsonl') })
+    await root.plugin(tools)
+    let calls = 0
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        calls += 1
+        if (calls === 1) throw new Error('transient model failure')
+        return { content: 'recovered', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const seen: Array<{ index: number; attempt: number }> = []
+    root.on('agent/request-error', async (payload: AgentRequestErrorEvent) => {
+      await Promise.resolve()
+      seen.push({ index: payload.index, attempt: payload.attempt })
+      return { kind: 'retry' }
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'go' })
+
+    expect(result.output).toBe('recovered')
+    expect(result.finishReason).toBe('stop')
+    expect(result.steps).toHaveLength(1)
+    expect(calls).toBe(2)
+    expect(seen).toEqual([{ index: 0, attempt: 1 }])
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'user/message',
+      'llm/retry',
+      'llm/retry-started',
+      'assistant/message',
+      'step/end',
+      'turn/end',
+    ])
+    expect(events[4]?.payload).toMatchObject({
+      attempt: 1,
+      error: { name: 'Error', message: 'transient model failure' },
+    })
+    expect(events[5]?.payload).toEqual({ attempt: 1 })
+    expect(events.filter(event => event.type === 'user/message')).toHaveLength(1)
+    expect(events.filter(event => event.type === 'step/start')).toHaveLength(1)
+    expect(events.filter(event => event.type === 'step/end')).toHaveLength(1)
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'recovered' },
+    ])
+  })
+
   it('closes step and turn with an error when the model request fails', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('lifecycle-error.jsonl') })
@@ -916,16 +974,21 @@ describe('agent loop', () => {
       'turn/start',
       'step/start',
       'user/message',
+      'llm/retry',
       'step/end',
       'turn/end',
     ])
     expect(events[4]?.payload).toMatchObject({
+      attempt: 1,
+      error: { name: 'Error', message: 'model exploded' },
+    })
+    expect(events[5]?.payload).toMatchObject({
       index: 0,
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
     })
-    expect(events[5]?.payload).toMatchObject({
+    expect(events[6]?.payload).toMatchObject({
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
