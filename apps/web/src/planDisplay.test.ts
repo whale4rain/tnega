@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { PlanPayload, SessionEvent, StreamEvent } from './types'
 import {
   applyPlanStreamEvent,
+  formatSlashMessage,
+  formatSlashMetaEvent,
   formatSlashResult,
   latestPlanFromEvents,
   planFromPayload,
@@ -147,5 +149,47 @@ describe('formatSlashResult', () => {
     expect(formatSlashResult({ kind: 'text', text: 'hello' })).toBe('hello')
     expect(formatSlashResult({ kind: 'json', value: { modes: ['auto'] } }))
       .toBe('{\n  "modes": [\n    "auto"\n  ]\n}')
+  })
+})
+
+describe('formatSlashMessage', () => {
+  it('includes the command and formatted result', () => {
+    expect(formatSlashMessage('/skills', [], { kind: 'text', text: 'hello' }))
+      .toBe('/skills\n\nhello')
+    expect(formatSlashMessage('/skills', ['fixture'], {
+      kind: 'json',
+      value: { skills: ['fixture'] },
+    })).toBe('/skills fixture\n\n{\n  "skills": [\n    "fixture"\n  ]\n}')
+  })
+})
+
+describe('formatSlashMetaEvent', () => {
+  it('renders persisted slash meta events as chat content', () => {
+    const event: SessionEvent = {
+      id: 'slash-event',
+      seq: 2,
+      ts: 2,
+      type: 'meta',
+      payload: {
+        kind: 'slash',
+        command: '/skills',
+        args: [],
+        result: { kind: 'json', value: { skills: ['fixture'] } },
+      },
+    }
+    expect(formatSlashMetaEvent(event)).toBe(
+      '/skills\n\n{\n  "skills": [\n    "fixture"\n  ]\n}',
+    )
+  })
+
+  it('ignores unrelated meta events', () => {
+    const event: SessionEvent = {
+      id: 'resume-event',
+      seq: 2,
+      ts: 2,
+      type: 'meta',
+      payload: { kind: 'resume' },
+    }
+    expect(formatSlashMetaEvent(event)).toBeNull()
   })
 })

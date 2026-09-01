@@ -883,6 +883,13 @@ async function handleCodingSlash(
     }))
     const coding = root.get('coding') as CodingService
     const result: SlashCommandResult = await coding.runCommand(name, args)
+    const sessionLog = root.get('session') as SessionLog
+    await sessionLog.append('meta', {
+      kind: 'slash',
+      command: name,
+      args,
+      result,
+    })
     sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
   } finally {
     await fiber?.dispose()

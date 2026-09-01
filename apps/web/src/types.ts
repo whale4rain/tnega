@@ -156,6 +156,13 @@ export type SlashCommandResult =
   | { kind: 'text'; text: string }
   | { kind: 'json'; value: unknown }
 
+export interface SlashMetaPayload {
+  kind: 'slash'
+  command: string
+  args: string[]
+  result: SlashCommandResult
+}
+
 export interface DisplayTool {
   callId: string
   name: string

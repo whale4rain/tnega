@@ -21,7 +21,8 @@ import { ThemeToggle, type ThemePreference } from './ThemeToggle'
 import { PlanPanel } from './PlanPanel'
 import {
   applyPlanStreamEvent,
-  formatSlashResult,
+  formatSlashMessage,
+  formatSlashMetaEvent,
   latestPlanFromEvents,
   slashPromptParts,
   type DisplayPlan,
@@ -933,7 +934,7 @@ function ChatView({
     setSlashBusy(true)
     try {
       const { result } = await api.codingSlash(workspace, sessionId, name, args)
-      const text = formatSlashResult(result)
+      const text = formatSlashMessage(name, args, result)
       onMessagesChange(current => [
         ...current,
         {
@@ -1934,8 +1935,17 @@ function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         }
         break
       }
-      case 'meta':
+      case 'meta': {
+        const content = formatSlashMetaEvent(event)
+        if (content) {
+          messages.push({
+            id: event.id,
+            role: 'system',
+            content,
+          })
+        }
         break
+      }
     }
   }
   return messages

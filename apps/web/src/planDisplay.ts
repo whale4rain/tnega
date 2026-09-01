@@ -1,4 +1,10 @@
-import type { PlanPayload, SessionEvent, StreamEvent } from './types'
+import type {
+  PlanPayload,
+  SessionEvent,
+  SlashCommandResult,
+  SlashMetaPayload,
+  StreamEvent,
+} from './types'
 
 export interface DisplayPlanItem {
   id: string
@@ -113,4 +119,34 @@ export function formatSlashResult(
 ): string {
   if (result.kind === 'text') return result.text
   return JSON.stringify(result.value, null, 2)
+}
+
+export function formatSlashMessage(
+  command: string,
+  args: readonly string[],
+  result: SlashCommandResult,
+): string {
+  const line = [command, ...args].join(' ')
+  return `${line}\n\n${formatSlashResult(result)}`
+}
+
+export function isSlashCommandResult(value: unknown): value is SlashCommandResult {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as { kind?: unknown; text?: unknown }
+  if (record.kind === 'text') return typeof record.text === 'string'
+  return record.kind === 'json'
+}
+
+export function formatSlashMetaEvent(event: SessionEvent): string | null {
+  if (event.type !== 'meta') return null
+  const payload = event.payload as Partial<SlashMetaPayload> & Record<string, unknown>
+  if (
+    payload.kind !== 'slash'
+    || typeof payload.command !== 'string'
+    || !Array.isArray(payload.args)
+    || !isSlashCommandResult(payload.result)
+  ) {
+    return null
+  }
+  return formatSlashMessage(payload.command, payload.args, payload.result)
 }

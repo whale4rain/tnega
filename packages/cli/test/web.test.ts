@@ -1269,6 +1269,20 @@ describe('web server', () => {
       kind: 'json',
       value: { current: 'plan' },
     })
+    const history = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{ type: string; payload: { kind?: string; command?: string; args?: string[] } }>
+    }
+    const slashMeta = history.events.filter(
+      event => event.type === 'meta' && event.payload.kind === 'slash',
+    )
+    expect(slashMeta).toHaveLength(1)
+    expect(slashMeta[0]?.payload).toMatchObject({
+      command: '/mode',
+      args: [],
+    })
 
     const switched = await apiFetch(
       server.url,
