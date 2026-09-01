@@ -66,6 +66,7 @@ SWE-bench 建立真实测试任务集，再跑真实 LLM 评测与自进化闭�
 - [x] CLI `eval run --task <id>` 支持从 tasks.json 过滤单个真实任务
 - [x] 金标准校验：BigCodeBench 200 中 181 个用官方解法通过；SWE 抽样 9 个中 6 个满足 base-fail / gold-pass，其余为本机 Python 3.11 或依赖版本差异
 - [x] M4 真实 LLM API 冒烟：deepseek-v4-flash 跑 BigCodeBench/0（check 1/1 + trace 0.86，score 0.93）与 SWE-bench seaborn-3187（check 失败 + trace 0.708，score 0.354），权限 / check / trace / 结果落盘链路端到端可用
+- [x] 首批真实评测批次：7/7 BigCodeBench check 通过；SWE 5 个中 1 个 check 通过、3 个 trace 通过，结果见 `docs/eval-results.md`
 - [ ] benchmark 扩量与真实评测批次：SWE-bench Verified 按仓库扩量、Terminal-Bench、BigCodeBench 全量
 - [ ] 失败 trace 回流：从真实运行失败会话生成 draft task，人工审阅后入库
 
