@@ -43,6 +43,7 @@ export interface AssistantMessagePayload {
   content: string
   name?: string
   parentId?: string
+  interrupted?: boolean
 }
 
 export interface SystemMessagePayload {
@@ -113,12 +114,15 @@ export interface StepEndPayload {
 }
 
 export interface LLMRetryPayload {
-  attempt: number
-  error?: ToolResultErrorPayload
+  retryId: string
+  retry: number
+  delayMs?: number
+  failure?: ToolResultErrorPayload
 }
 
 export interface LLMRetryStartedPayload {
-  attempt: number
+  retryId: string
+  retry: number
 }
 
 export interface CheckpointPayload {

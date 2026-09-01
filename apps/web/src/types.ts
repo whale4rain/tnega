@@ -27,6 +27,7 @@ export interface UserMessagePayload {
 export interface AssistantMessagePayload {
   content: string
   name?: string
+  interrupted?: boolean
 }
 
 export interface SystemMessagePayload {
@@ -91,10 +92,12 @@ export type SessionEvent =
     }>
   | SessionEventBase<'meta', Record<string, unknown>>
   | SessionEventBase<'llm/retry', {
-      attempt: number
-      error?: { name?: string; message: string; stack?: string }
+      retryId: string
+      retry: number
+      delayMs?: number
+      failure?: { name?: string; message: string; stack?: string }
     }>
-  | SessionEventBase<'llm/retry-started', { attempt: number }>
+  | SessionEventBase<'llm/retry-started', { retryId: string; retry: number }>
   | SessionEventBase<'turn/start', {
       input?: unknown
       reason?: string

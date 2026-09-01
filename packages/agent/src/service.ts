@@ -1,4 +1,6 @@
 import type { Context } from '@tnega/core'
+import { randomUUID } from 'node:crypto'
+
 import {
   DEFAULT_CONTEXT_LIMIT,
   estimateContextUsage,
@@ -179,6 +181,30 @@ function cancelCauseFromSignal(signal?: AbortSignal): AgentCancelCause | undefin
   return { type: 'abort' }
 }
 
+function partialStreamContent(events: readonly LLMStreamEvent[]): string {
+  let content = ''
+  for (const event of events) {
+    if (event.type === 'message_delta') content += event.delta
+  }
+  return content
+}
+
+async function cancellableDelay(ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (ms <= 0) return !signal?.aborted
+  if (signal?.aborted) return false
+  return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve(true)
+    }, ms)
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      resolve(false)
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 export class AgentService {
   readonly inbox: AgentInbox
 
@@ -288,7 +314,7 @@ export class AgentService {
       if (!request || !Array.isArray(request.messages)) {
         throw new AgentError('agent/request must return a request payload')
       }
-      const llmMessages = copyMessages(request.messages)
+      let llmMessages = copyMessages(request.messages)
       await this._persistStepInput(session, llmMessages)
 
       let completion: LLMCompletion | undefined
@@ -299,9 +325,9 @@ export class AgentService {
           finishReason = 'cancelled'
           break
         }
+        const streamEvents: LLMStreamEvent[] = []
         try {
           if (streamMethod) {
-            const streamEvents: LLMStreamEvent[] = []
             for await (const event of streamMethod(llmMessages, request.tools, request.options)) {
               streamEvents.push(event)
               yield event
@@ -312,15 +338,19 @@ export class AgentService {
           }
           break
         } catch (error) {
+          const content = partialStreamContent(streamEvents)
+          if (content) {
+            await session.append('assistant/message', {
+              content,
+              interrupted: true,
+            })
+            llmMessages = await session.deriveMessages()
+          }
           if (options.signal?.aborted) {
             finishReason = 'cancelled'
             break
           }
           attempt += 1
-          await session.append('llm/retry', {
-            attempt,
-            error: toToolError(error),
-          })
           const decision = await this.ctx.waterfallAsync(
             'agent/request-error',
             {
@@ -338,7 +368,19 @@ export class AgentService {
             break
           }
           if (decision?.kind !== 'retry') throw error
-          await session.append('llm/retry-started', { attempt })
+          const retryId = randomUUID()
+          const delayMs = decision.delayMs ?? 0
+          await session.append('llm/retry', {
+            retryId,
+            retry: attempt,
+            ...(delayMs > 0 ? { delayMs } : {}),
+            failure: toToolError(error),
+          })
+          if (!await cancellableDelay(delayMs, options.signal)) {
+            finishReason = 'cancelled'
+            break
+          }
+          await session.append('llm/retry-started', { retryId, retry: attempt })
         }
       }
       if (options.signal?.aborted) break

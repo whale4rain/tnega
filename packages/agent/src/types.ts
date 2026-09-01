@@ -175,7 +175,7 @@ export interface AgentRequestErrorEvent {
 }
 
 export type AgentRequestRetryDecision =
-  | { kind: 'retry' }
+  | { kind: 'retry'; delayMs?: number }
   | undefined
 
 export interface AgentTurnStoppingEvent {

@@ -630,6 +630,7 @@ describe('agent loop', () => {
       },
       stream: async function* (_messages, _tools, options) {
         yield { type: 'message_start', id: 'm1' }
+        yield { type: 'message_delta', id: 'm1', delta: 'partial' }
         setTimeout(() => controller.abort(), 0)
         await new Promise<void>((resolve, reject) => {
           const abort = (): void => {
@@ -650,8 +651,32 @@ describe('agent loop', () => {
       service.runStream({ text: 'go' }, { signal: controller.signal }),
     )
 
-    expect(events.map(event => event.type)).toEqual(['message_start', 'run/end'])
+    expect(events.map(event => event.type)).toEqual([
+      'message_start',
+      'message_delta',
+      'run/end',
+    ])
     expect(result.finishReason).toBe('cancelled')
+
+    const log = dynamic(root).session as SessionLog
+    const durableEvents = await log.read()
+    expect(durableEvents.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'user/message',
+      'assistant/message',
+      'step/end',
+      'turn/end',
+    ])
+    expect(durableEvents[4]?.payload).toMatchObject({
+      content: 'partial',
+      interrupted: true,
+    })
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'partial' },
+    ])
   })
 
   it('waits for an in-flight tool before marking the run cancelled', async () => {
@@ -991,17 +1016,91 @@ describe('agent loop', () => {
       'step/end',
       'turn/end',
     ])
-    expect(events[4]?.payload).toMatchObject({
-      attempt: 1,
-      error: { name: 'Error', message: 'transient model failure' },
+    const retry = events.find(
+      (event): event is Extract<SessionEvent, { type: 'llm/retry' }> =>
+        event.type === 'llm/retry',
+    )
+    const retryStarted = events.find(
+      (event): event is Extract<SessionEvent, { type: 'llm/retry-started' }> =>
+        event.type === 'llm/retry-started',
+    )
+    expect(retry?.payload).toMatchObject({
+      retry: 1,
+      failure: { name: 'Error', message: 'transient model failure' },
     })
-    expect(events[5]?.payload).toEqual({ attempt: 1 })
+    expect(typeof retry?.payload.retryId).toBe('string')
+    expect(retryStarted?.payload).toMatchObject({ retry: 1 })
+    expect(retryStarted?.payload.retryId).toBe(retry?.payload.retryId)
     expect(events.filter(event => event.type === 'user/message')).toHaveLength(1)
     expect(events.filter(event => event.type === 'step/start')).toHaveLength(1)
     expect(events.filter(event => event.type === 'step/end')).toHaveLength(1)
     expect(await log.deriveMessages()).toEqual([
       { role: 'user', content: 'go' },
       { role: 'assistant', content: 'recovered' },
+    ])
+  })
+
+  it('keeps the interrupted stream prefix in the retried request history', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-error-stream.jsonl') })
+    await root.plugin(tools)
+    const requests: ModelMessage[][] = []
+    let calls = 0
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('complete should not be used')
+      },
+      stream: async function* (messages) {
+        calls += 1
+        requests.push([...messages])
+        if (calls === 1) {
+          yield { type: 'message_start', id: 'm1' }
+          yield { type: 'message_delta', id: 'm1', delta: 'recover' }
+          throw new Error('stream interrupted')
+        }
+        yield { type: 'message_start', id: 'm2' }
+        yield { type: 'message_delta', id: 'm2', delta: 'ed' }
+        yield { type: 'message_stop', id: 'm2', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    root.on('agent/request-error', async () => ({ kind: 'retry' }))
+    const service = dynamic(root).agent as AgentService
+    const { result } = await collectStream(service.runStream({ text: 'go' }))
+
+    expect(result.output).toBe('ed')
+    expect(result.steps[0]!.input).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'recover' },
+    ])
+    expect(result.steps[0]!.completion.content).toBe('ed')
+    expect(calls).toBe(2)
+    expect(requests[0]).toEqual([{ role: 'user', content: 'go' }])
+    expect(requests[1]).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'recover' },
+    ])
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'turn/start',
+      'step/start',
+      'user/message',
+      'assistant/message',
+      'llm/retry',
+      'llm/retry-started',
+      'assistant/message',
+      'step/end',
+      'turn/end',
+    ])
+    expect(events[4]?.payload).toMatchObject({ content: 'recover', interrupted: true })
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'recover' },
+      { role: 'assistant', content: 'ed' },
     ])
   })
 
@@ -1026,21 +1125,16 @@ describe('agent loop', () => {
       'turn/start',
       'step/start',
       'user/message',
-      'llm/retry',
       'step/end',
       'turn/end',
     ])
     expect(events[4]?.payload).toMatchObject({
-      attempt: 1,
-      error: { name: 'Error', message: 'model exploded' },
-    })
-    expect(events[5]?.payload).toMatchObject({
       index: 0,
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
     })
-    expect(events[6]?.payload).toMatchObject({
+    expect(events[5]?.payload).toMatchObject({
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
