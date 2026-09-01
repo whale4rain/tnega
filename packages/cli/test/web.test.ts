@@ -1089,7 +1089,9 @@ describe('web server', () => {
     expect(contents).toContain(planJson)
     const system = messages.find(message => message.payload.role === 'system')
     expect(system?.payload.content).toContain('You are Tnega')
-    expect(messages.some(message => message.payload.content.includes('<plan>'))).toBe(true)
+    expect(
+      messages.some(message => message.payload.content?.includes('<plan>') ?? false),
+    ).toBe(true)
   })
 
   it('reuses the persisted plan in execute mode without regenerating it', async () => {
