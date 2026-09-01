@@ -75,6 +75,7 @@ describe('packed artifact', () => {
     const subpaths = [
       'agent',
       'cli/runtime',
+      'coding-agent',
       'core',
       'eval',
       'events',
@@ -95,6 +96,7 @@ describe('packed artifact', () => {
     const names = [
       'agent',
       'cli-runtime',
+      'coding-agent',
       'core',
       'eval',
       'events',

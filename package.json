@@ -24,6 +24,10 @@
       "types": "./dist/types/packages/cli/src/index.d.ts",
       "import": "./dist/cli-runtime.js"
     },
+    "./coding-agent": {
+      "types": "./dist/types/packages/coding-agent/src/index.d.ts",
+      "import": "./dist/coding-agent.js"
+    },
     "./core": {
       "types": "./dist/types/packages/core/src/index.d.ts",
       "import": "./dist/core.js"

@@ -18,10 +18,14 @@ const common = {
   target: 'node22',
   sourcemap: true,
   logLevel: 'info',
+  banner: {
+    js: "import { createRequire as __tnegaCreateRequire } from 'node:module'; const require = __tnegaCreateRequire(import.meta.url);",
+  },
 }
 
 const libraryEntries = {
   agent: 'packages/agent/src/index.ts',
+  'coding-agent': 'packages/coding-agent/src/index.ts',
   core: 'packages/core/src/index.ts',
   eval: 'packages/eval/src/index.ts',
   evolve: 'packages/evolve/src/index.ts',
