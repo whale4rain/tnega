@@ -10,11 +10,12 @@ import {
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import {
+  SESSION_FORMAT_VERSION,
   SessionLog,
   estimateContextUsage as estimateSessionContextUsage,
   estimateMessageTokens,
   projectEvents,
-  resolveCompactKeep,
+  safeCompactSplit,
   suffixStartIndexForTokens,
   type ContextUsage,
   type AgentType,
@@ -59,7 +60,7 @@ interface SessionMetaEvent {
   seq: number
   ts: number
   type: 'meta'
-  payload: SessionMetaPayload
+  payload: SessionMetaPayload & { formatVersion?: number }
 }
 
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -100,6 +101,7 @@ export async function createSession(
       title,
       workspace: resolve(workspace),
       createdAt,
+      formatVersion: SESSION_FORMAT_VERSION,
       ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
       ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
       ...(options.agentType ? { agentType: options.agentType } : {}),
@@ -198,7 +200,7 @@ export async function patchSessionMeta(
   const file = sessionFile(workspace, id)
   const lines = await readEventLines(file)
   let meta = await readSessionMeta(file)
-  const payload: SessionMetaPayload = { ...meta.payload }
+  const payload: SessionMetaPayload & { formatVersion?: number } = { ...meta.payload }
   if (patch.title !== undefined) {
     payload.title = patch.title.trim() || 'New session'
   }
@@ -318,7 +320,8 @@ export async function prepareSessionCompact(
   const allEvents = await log.read()
   const events = allEvents.filter(event => event.type !== 'meta')
   const suffixStart = suffixStartIndexForTokens(events, keepTokens)
-  const prefix = events.slice(0, suffixStart)
+  const split = safeCompactSplit(events, suffixStart)
+  const prefix = events.slice(0, split)
   let previousSummary: string | undefined
   let summaryStart = 0
   for (let index = prefix.length - 1; index >= 0; index -= 1) {
@@ -347,34 +350,19 @@ export async function compactSession(
   options: CompactSessionOptions = {},
 ): Promise<SessionSummary> {
   const file = sessionFile(workspace, id)
-  const meta = await readSessionMeta(file)
   const log = new SessionLog(file)
   await log.init()
-  const allEvents = await log.read()
-  const events = allEvents.filter(event => event.type !== 'meta')
-  const keep = resolveCompactKeep(events, options)
-  const split = Math.max(0, events.length - keep)
-  const prefix = events.slice(0, split)
-  const suffix = events.slice(split)
-  const checkpointMessages = options.checkpointMessages?.length
-    ? [...options.checkpointMessages]
-    : projectEvents(prefix)
-  const checkpoint: SessionEvent = {
-    id: randomUUID(),
-    seq: (allEvents.at(-1)?.seq ?? 0) + 1,
-    ts: Date.now(),
-    type: 'checkpoint',
-    payload: {
-      messages: checkpointMessages,
-      ...(options.summary ? { summary: options.summary } : {}),
-      ...(options.tokensBefore !== undefined
-        ? { tokensBefore: options.tokensBefore }
-        : {}),
-      ...(prefix.length ? { snapshot: prefix } : {}),
-    },
-  }
-  const next = [meta, checkpoint, ...suffix]
-  await writeAtomic(file, `${next.map(event => JSON.stringify(event)).join('\n')}\n`)
+  await log.compact({
+    ...(options.keep !== undefined ? { keep: options.keep } : {}),
+    ...(options.keepTokens !== undefined ? { keepTokens: options.keepTokens } : {}),
+    ...(options.checkpointMessages?.length
+      ? { messages: [...options.checkpointMessages] }
+      : {}),
+    ...(options.summary ? { summary: options.summary } : {}),
+    ...(options.tokensBefore !== undefined
+      ? { tokensBefore: options.tokensBefore }
+      : {}),
+  })
   return readSessionSummary(workspace, id)
 }
 
