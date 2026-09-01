@@ -2,6 +2,8 @@ import type {
   ConfigSnapshot,
   SessionDetail,
   SessionSummary,
+  SlashCommand,
+  SlashCommandResult,
   StreamEvent,
 } from './types'
 
@@ -84,12 +86,16 @@ export function listSessions(workspace: string): Promise<{
 
 export function createSession(
   workspace: string,
-  title?: string,
+  options: { title?: string; agentType?: 'general' | 'coding'; mode?: 'auto' | 'plan' | 'execute' } = {},
 ): Promise<{ session: SessionSummary }> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions?${query.toString()}`, {
     method: 'POST',
-    body: JSON.stringify(title === undefined ? {} : { title }),
+    body: JSON.stringify({
+      ...(options.title !== undefined ? { title: options.title } : {}),
+      ...(options.agentType !== undefined ? { agentType: options.agentType } : {}),
+      ...(options.mode !== undefined ? { mode: options.mode } : {}),
+    }),
   })
 }
 
@@ -106,10 +112,47 @@ export function renameSession(
   id: string,
   title: string,
 ): Promise<{ summary: SessionSummary }> {
+  return patchSessionMeta(workspace, id, { title })
+}
+
+export function patchSessionMeta(
+  workspace: string,
+  id: string,
+  patch: {
+    title?: string
+    agentType?: 'general' | 'coding'
+    mode?: 'auto' | 'plan' | 'execute'
+  },
+): Promise<{ summary: SessionSummary }> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions/${id}?${query.toString()}`, {
     method: 'PATCH',
-    body: JSON.stringify({ title }),
+    body: JSON.stringify(patch),
+  })
+}
+
+export function codingCommands(
+  workspace: string,
+  id: string,
+): Promise<{
+  commands: SlashCommand[]
+  agentType: 'general' | 'coding'
+  mode: 'auto' | 'plan' | 'execute'
+}> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${id}/coding/commands?${query.toString()}`)
+}
+
+export function codingSlash(
+  workspace: string,
+  id: string,
+  name: string,
+  args: string[] = [],
+): Promise<{ result: SlashCommandResult }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${id}/coding/slash?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify({ name, args }),
   })
 }
 

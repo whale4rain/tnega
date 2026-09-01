@@ -7,6 +7,8 @@ export interface SessionSummary {
   eventCount: number
   parentSessionId?: string
   forkedAtMessageId?: string
+  agentType?: 'general' | 'coding'
+  mode?: 'auto' | 'plan' | 'execute'
 }
 
 export interface SessionEventBase<T extends string, P> {
@@ -39,10 +41,26 @@ export interface ToolResultPayload {
   error?: { name?: string; message: string; stack?: string }
 }
 
+export type PlanItemStatus = 'pending' | 'done' | 'failed'
+
+export type PlanStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface PlanPayload {
+  items: Array<{
+    id: string
+    title: string
+    status: PlanItemStatus
+    detail?: string
+  }>
+  status?: PlanStatus
+  summary?: string
+}
+
 export type SessionEvent =
   | SessionEventBase<'message', MessagePayload>
   | SessionEventBase<'tool-call', ToolCallPayload>
   | SessionEventBase<'tool-result', ToolResultPayload>
+  | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', {
       messages: ModelMessage[]
       summary?: string
@@ -120,9 +138,23 @@ export type StreamEvent =
   | { type: 'toolcall_end'; id: string; index: number; name: string; arguments: unknown }
   | { type: 'tool/start'; index: number; call: ToolCall }
   | { type: 'tool/end'; index: number; call: ToolCall; result: ToolResult }
+  | { type: 'plan/start' }
+  | { type: 'plan/items'; plan: PlanPayload }
+  | { type: 'plan/item'; item: PlanPayload['items'][number] }
+  | { type: 'plan/done'; plan: PlanPayload }
+  | { type: 'plan/error'; message: string }
   | { type: 'run/end'; run: { output: string; finishReason: string } }
   | { type: 'done' }
   | { type: 'error'; message: string }
+
+export interface SlashCommand {
+  name: string
+  description: string
+}
+
+export type SlashCommandResult =
+  | { kind: 'text'; text: string }
+  | { kind: 'json'; value: unknown }
 
 export interface DisplayTool {
   callId: string

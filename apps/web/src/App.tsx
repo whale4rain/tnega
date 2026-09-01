@@ -18,9 +18,19 @@ import {
   writeWorkspaceSelection,
 } from './sessionSelection'
 import { ThemeToggle, type ThemePreference } from './ThemeToggle'
+import { PlanPanel } from './PlanPanel'
+import {
+  applyPlanStreamEvent,
+  formatSlashResult,
+  latestPlanFromEvents,
+  slashPromptParts,
+  type DisplayPlan,
+} from './planDisplay'
 import {
   addWorkspace,
   ApiError,
+  codingCommands,
+  codingSlash,
   compactSession,
   createSession,
   deleteSession,
@@ -31,6 +41,7 @@ import {
   getSession,
   listSessions,
   listWorkspaces,
+  patchSessionMeta,
   prettyJson,
   removeWorkspace,
   renameSession,
@@ -47,6 +58,7 @@ import type {
   SessionEvent,
   SessionDetail,
   SessionSummary,
+  SlashCommand,
   StreamEvent,
 } from './types'
 
@@ -93,6 +105,7 @@ export default function App() {
   const [context, setContext] = useState<ContextUsage | null>(null)
   const [sessionRunning, setSessionRunning] = useState(false)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
+  const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
   const [view, setView] = useState<View>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -155,6 +168,7 @@ export default function App() {
         setContext(detail.context)
         setSessionRunning(detail.running)
         setMessages(projectEvents(detail.events))
+        setPlan(latestPlanFromEvents(detail.events))
       })
       .catch((reason: unknown) => setError(messageOf(reason)))
   }, [workspace])
@@ -196,6 +210,7 @@ export default function App() {
     setContext(detail.context)
     setSessionRunning(detail.running)
     setMessages(projectEvents(detail.events))
+    setPlan(latestPlanFromEvents(detail.events))
     const next = await api.listSessions(workspace)
     setSessions(next.sessions)
     return detail
@@ -225,16 +240,19 @@ export default function App() {
         setContext(null)
         setSessionRunning(false)
         setMessages([])
+        setPlan(undefined)
       }
     } catch (reason) {
       setError(messageOf(reason))
     }
   }
 
-  async function handleNewSession() {
+  async function handleNewSession(
+    options: { agentType?: 'general' | 'coding'; mode?: 'auto' | 'plan' | 'execute' } = {},
+  ) {
     if (!workspace) return
     try {
-      const { session } = await api.createSession(workspace)
+      const { session } = await api.createSession(workspace, options)
       setSessions(current => [session, ...current])
       selectSession(session.id)
     } catch (reason) {
@@ -287,7 +305,21 @@ export default function App() {
         setContext(null)
         setSessionRunning(false)
         setMessages([])
+        setPlan(undefined)
       }
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleModeChange(nextMode: 'auto' | 'plan' | 'execute') {
+    if (!workspace || !sessionId) return
+    try {
+      const { summary: next } = await api.patchSessionMeta(workspace, sessionId, {
+        mode: nextMode,
+      })
+      setSummary(next)
+      setSessions(current => current.map(session => session.id === sessionId ? next : session))
     } catch (reason) {
       setError(messageOf(reason))
     }
@@ -370,6 +402,9 @@ export default function App() {
               onRefresh={refreshSession}
               onForkAt={handleForkAt}
               onMessagesChange={setMessages}
+              plan={plan}
+              onPlanChange={setPlan}
+              onModeChange={handleModeChange}
             />
           )}
         </main>
@@ -472,7 +507,7 @@ interface SessionPaneProps {
   workspace: string | null
   selectedId: string | null
   onSelect: (id: string) => void
-  onNew: () => Promise<void>
+  onNew: (options: { agentType?: 'general' | 'coding'; mode?: 'auto' | 'plan' | 'execute' }) => Promise<void>
   onRename: (id: string, title: string) => Promise<void>
   onFork: (id: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
@@ -490,6 +525,7 @@ function SessionPane({
 }: SessionPaneProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [newAgentType, setNewAgentType] = useState<'general' | 'coding'>('general')
 
   function beginRename(session: SessionSummary) {
     setEditingId(session.id)
@@ -512,13 +548,24 @@ function SessionPane({
           <button
             type="button"
             className="icon-button"
-            onClick={() => void onNew()}
+            onClick={() => void onNew({ agentType: newAgentType })}
             disabled={!workspace}
             title="new session"
           >
             [+]
           </button>
         </div>
+      </div>
+      <div className="pane-form">
+        <select
+          value={newAgentType}
+          onChange={event => setNewAgentType(event.target.value as 'general' | 'coding')}
+          disabled={!workspace}
+          aria-label="new session agent"
+        >
+          <option value="general">general</option>
+          <option value="coding">coding</option>
+        </select>
       </div>
       <div className="pane-list">
         {sessions.map(session => (
@@ -547,6 +594,11 @@ function SessionPane({
                 title={`${session.id}\n${formatTime(session.updatedAt)}`}
               >
                 <span className="session-title ellipsis">{session.title}</span>
+                {session.agentType && (
+                  <span className={`agent-badge ${session.agentType}`}>
+                    [{session.agentType}]
+                  </span>
+                )}
                 <span className="session-meta">
                   {formatTime(session.updatedAt)} {session.eventCount}
                 </span>
@@ -593,13 +645,18 @@ interface ChatViewProps {
   context: ContextUsage | null
   sessionRunning: boolean
   messages: DisplayMessage[]
+  plan?: DisplayPlan
   apiKeySet: boolean
-  onNewSession: () => Promise<void>
+  onNewSession: (
+    options?: { agentType?: 'general' | 'coding'; mode?: 'auto' | 'plan' | 'execute' },
+  ) => Promise<void>
   onRefresh: (id: string) => Promise<SessionDetail | undefined>
   onForkAt: (id: string, messageId: string) => Promise<void>
   onMessagesChange: (
     updater: (current: DisplayMessage[]) => DisplayMessage[],
   ) => void
+  onPlanChange: (updater: (current: DisplayPlan | undefined) => DisplayPlan | undefined) => void
+  onModeChange: (mode: 'auto' | 'plan' | 'execute') => Promise<void>
 }
 
 function ChatView({
@@ -609,11 +666,14 @@ function ChatView({
   context,
   sessionRunning,
   messages,
+  plan,
   apiKeySet,
   onNewSession,
   onRefresh,
   onForkAt,
   onMessagesChange,
+  onPlanChange,
+  onModeChange,
 }: ChatViewProps) {
   const [prompt, setPrompt] = useState('')
   const [allowNetwork, setAllowNetwork] = useState(false)
@@ -625,8 +685,12 @@ function ChatView({
   const [navIndex, setNavIndex] = useState(0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState('')
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([])
+  const [slashError, setSlashError] = useState<string | null>(null)
+  const [slashBusy, setSlashBusy] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const runStateRef = useRef<RunState>('idle')
+  const planRef = useRef<DisplayPlan | undefined>(undefined)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const userRefs = useRef(new Map<string, HTMLDivElement>())
@@ -662,6 +726,36 @@ function ChatView({
   useEffect(() => {
     runStateRef.current = runState
   }, [runState])
+
+  useEffect(() => {
+    planRef.current = plan
+  }, [plan])
+
+  const isCoding = summary?.agentType === 'coding'
+  const mode = summary?.mode ?? 'auto'
+
+  useEffect(() => {
+    if (!workspace || !sessionId || !isCoding) {
+      setSlashCommands([])
+      setSlashError(null)
+      return
+    }
+    let cancelled = false
+    setSlashBusy(true)
+    api.codingCommands(workspace, sessionId)
+      .then(result => {
+        if (!cancelled) setSlashCommands(result.commands)
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setSlashError(messageOf(reason))
+      })
+      .finally(() => {
+        if (!cancelled) setSlashBusy(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isCoding, sessionId, workspace])
 
   useEffect(() => {
     if (sessionRunning && runStateRef.current === 'idle') setRunState('running')
@@ -766,6 +860,11 @@ function ChatView({
   async function runPrompt(text: string) {
     const sent = text.trim()
     if (!workspace || !sessionId || !sent || running || compacting) return
+    const slash = slashPromptParts(sent)
+    if (slash && isCoding) {
+      await runSlash(slash.name, slash.args)
+      return
+    }
     if (!apiKeySet) {
       setRunError('API key is not configured')
       return
@@ -828,11 +927,40 @@ function ChatView({
     }
   }
 
+  async function runSlash(name: string, args: string[]) {
+    if (!workspace || !sessionId) return
+    setRunError(null)
+    setSlashBusy(true)
+    try {
+      const { result } = await api.codingSlash(workspace, sessionId, name, args)
+      const text = formatSlashResult(result)
+      onMessagesChange(current => [
+        ...current,
+        {
+          id: `slash-${name}-${Date.now()}`,
+          role: 'system',
+          content: text,
+        },
+      ])
+      await onRefresh(sessionId)
+    } catch (reason) {
+      setRunError(messageOf(reason))
+    } finally {
+      setSlashBusy(false)
+    }
+  }
+
   function startRun() {
     if (!prompt.trim()) return
     const sent = prompt.trim()
     setPrompt('')
     void runPrompt(sent)
+  }
+
+  function selectSlashCommand(command: SlashCommand) {
+    setPrompt(command.name + ' ')
+    setSlashError(null)
+    composerRef.current?.focus()
   }
 
   async function cancelRun() {
@@ -852,6 +980,9 @@ function ChatView({
     }
     abortRef.current?.abort()
   }
+
+  const slashMenuVisible = isCoding && !slashBusy && prompt.startsWith('/')
+    && !prompt.includes(' ')
 
   function beginEdit(message: DisplayMessage) {
     setEditingId(message.id)
@@ -996,6 +1127,28 @@ function ChatView({
       queueStreamDelta(event.id, event.delta)
       return
     }
+    if (
+      event.type === 'plan/start'
+      || event.type === 'plan/items'
+      || event.type === 'plan/item'
+      || event.type === 'plan/done'
+      || event.type === 'plan/error'
+    ) {
+      const current = planRef.current
+      const next = applyPlanStreamEvent(current, event)
+      if (next !== current) onPlanChange(() => next)
+      if (event.type === 'plan/error') {
+        onMessagesChange(currentMessages => [
+          ...currentMessages,
+          {
+            id: `live-plan-error-${Date.now()}`,
+            role: 'system',
+            content: `plan failed: ${event.message}`,
+          },
+        ])
+      }
+      return
+    }
 
     flushStreamDeltas()
 
@@ -1115,13 +1268,34 @@ function ChatView({
   return (
     <div className="chat">
       <div className="chat-header">
-        <div className="chat-title ellipsis" title={summary.id}>
-          {summary.title}
+        <div className="chat-title-line">
+          <div className="chat-title ellipsis" title={summary.id}>
+            {summary.title}
+          </div>
+          {summary.agentType && (
+            <span className={`agent-badge ${summary.agentType}`}>[{summary.agentType}]</span>
+          )}
         </div>
         <div className="chat-meta">
           <span>{displayPath(workspace)}</span>
           <span>{summary.eventCount} events</span>
           <span>{summary.id.slice(0, 8)}</span>
+          {isCoding && (
+            <div className="mode-switch" role="group" aria-label="session mode">
+              {(['auto', 'plan', 'execute'] as const).map(option => (
+                <button
+                  key={option}
+                  type="button"
+                  className={mode === option ? 'mode-option active' : 'mode-option'}
+                  onClick={() => void onModeChange(option)}
+                  disabled={sessionRunning || compacting}
+                  title={`${option} mode`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="chat-header-actions">
             {context && <ContextRing context={context} />}
             <button
@@ -1136,6 +1310,7 @@ function ChatView({
           </div>
         </div>
       </div>
+      <PlanPanel plan={plan} />
       <div className="messages-viewport">
         <div className="messages" ref={scrollRef} onScroll={handleMessagesScroll}>
           {messages.length === 0 && <div className="empty-line">no messages</div>}
@@ -1232,6 +1407,27 @@ function ChatView({
             <span>allowShell</span>
           </label>
         </div>
+        {isCoding && slashMenuVisible && (
+          <div className="slash-menu" role="listbox" aria-label="slash commands">
+            {slashBusy && <div className="slash-note">loading commands...</div>}
+            {slashError && <div className="slash-note error">{slashError}</div>}
+            {!slashBusy && !slashError && slashCommands.length === 0 && (
+              <div className="slash-note">no commands</div>
+            )}
+            {!slashBusy && !slashError && slashCommands.map(command => (
+              <button
+                key={command.name}
+                type="button"
+                className="slash-command"
+                role="option"
+                onClick={() => selectSlashCommand(command)}
+              >
+                <span className="slash-name">{command.name}</span>
+                <span className="slash-description">{command.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           ref={composerRef}
           value={prompt}
@@ -1837,6 +2033,7 @@ const api = {
   getSession,
   createSession,
   renameSession,
+  patchSessionMeta,
   forkSession,
   truncateSession,
   compactSession,
@@ -1844,4 +2041,6 @@ const api = {
   saveConfig,
   stopRun,
   streamRun,
+  codingCommands,
+  codingSlash,
 }
