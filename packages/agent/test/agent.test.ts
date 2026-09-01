@@ -19,7 +19,6 @@ import {
   type AgentRunResult,
   type AgentToolCallEvent,
   type AgentToolResultEvent,
-  type AgentTurnStoppingEvent,
   type LLMAdapter,
   type LLMCompletion,
   type LLMStreamEvent,
@@ -883,7 +882,7 @@ describe('agent loop', () => {
     await root.plugin(agent, { llm: adapter })
 
     let stopping = 0
-    root.on('agent/turn-stopping', (payload: AgentTurnStoppingEvent) => {
+    root.on('agent/turn-stopping', () => {
       stopping += 1
       return stopping === 1 ? 'continue' : undefined
     })
