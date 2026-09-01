@@ -3,6 +3,11 @@ type YamlValue = Record<string, unknown> | unknown[] | string | number | boolean
 function parseScalar(raw: string): YamlValue {
   const value = raw.trim()
   if (!value) return ''
+  if (value.startsWith('[') && value.endsWith(']')) {
+    const inner = value.slice(1, -1).trim()
+    if (!inner) return []
+    return inner.split(',').map(part => parseScalar(part))
+  }
   if (value === 'true') return true
   if (value === 'false') return false
   if (value === 'null' || value === '~') return null

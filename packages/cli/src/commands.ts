@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { Context, type Plugin } from '@tnega/core'
 import {
   agent,
@@ -72,6 +73,15 @@ export interface RunCommandOptions {
   budget?: RunBudget
   outputFile?: string
   cwd?: string
+  model?: string
+  baseUrl?: string
+  maxTokens?: number
+  temperature?: number
+  maxTurns?: number
+  maxSteps?: number
+  timeoutMs?: number
+  maxRetries?: number
+  retryDelayMs?: number
 }
 
 export interface CompareCommandOptions {
@@ -173,12 +183,13 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {}
 }
 
-function toTask(value: unknown, index: number): Task {
+function toTask(value: unknown, index: number, file: string): Task {
   const record = asRecord(value)
   const id = typeof record.id === 'string' ? record.id : `task-${index + 1}`
   const task: Task = {
     id,
   }
+  const tasksDir = dirname(resolve(file))
   if (typeof record.name === 'string') task.name = record.name
   if (typeof record.description === 'string') task.description = record.description
   if (typeof record.inputText === 'string') {
@@ -197,13 +208,75 @@ function toTask(value: unknown, index: number): Task {
   if (budget !== undefined) task.budget = budget
   const artifacts = record.artifacts === undefined ? undefined : asRecord(record.artifacts)
   if (artifacts !== undefined) task.artifacts = artifacts
+  const fixture = record.fixture === undefined ? undefined : asRecord(record.fixture)
+  if (fixture !== undefined) {
+    const parsedFixture: NonNullable<Task['fixture']> = {}
+    if (typeof fixture.root === 'string') {
+      parsedFixture.root = resolve(tasksDir, fixture.root)
+    }
+    if (Array.isArray(fixture.files)) {
+      parsedFixture.files = fixture.files.flatMap((entry): Array<{
+        path: string
+        content?: string
+        from?: string
+      }> => {
+        const item = asRecord(entry)
+        if (typeof item.path !== 'string') return []
+        const fileEntry: { path: string; content?: string; from?: string } = {
+          path: item.path,
+        }
+        if (typeof item.content === 'string') fileEntry.content = item.content
+        if (typeof item.from === 'string') fileEntry.from = item.from
+        return [fileEntry]
+      })
+    }
+    task.fixture = parsedFixture
+  }
+  if (typeof record.setup === 'string') task.setup = record.setup
+  if (typeof record.check === 'string') task.check = record.check
+  if (typeof record.teardown === 'string') task.teardown = record.teardown
+  if (typeof record.trials === 'number' && Number.isFinite(record.trials)) {
+    task.trials = Math.max(1, Math.floor(record.trials))
+  }
+  const permissions = record.permissions === undefined ? undefined : asRecord(record.permissions)
+  if (permissions !== undefined) {
+    const parsedPermissions: Task['permissions'] = {}
+    if (Array.isArray(permissions.tools)) {
+      parsedPermissions.tools = permissions.tools
+        .filter((entry): entry is string => typeof entry === 'string')
+    }
+    const shell = permissions.shell === undefined ? undefined : asRecord(permissions.shell)
+    if (shell !== undefined) {
+      const parsedShell: NonNullable<Task['permissions']>['shell'] = {
+        enabled: shell.enabled === true,
+      }
+      if (Array.isArray(shell.allow)) {
+        parsedShell.allow = shell.allow
+          .filter((entry): entry is string => typeof entry === 'string')
+      }
+      if (Array.isArray(shell.deny)) {
+        parsedShell.deny = shell.deny
+          .filter((entry): entry is string => typeof entry === 'string')
+      }
+      parsedPermissions.shell = parsedShell
+    }
+    if (permissions.network !== undefined) parsedPermissions.network = permissions.network === true
+    if (permissions.skills !== undefined) parsedPermissions.skills = permissions.skills === true
+    if (permissions.mcp !== undefined) parsedPermissions.mcp = permissions.mcp === true
+    task.permissions = parsedPermissions
+  }
+  if (record.split === 'train' || record.split === 'val') {
+    task.split = record.split
+  }
   return task
 }
 
 export function loadTasksFile(file: string): TasksFile {
   const text = readFileSync(resolve(file), 'utf8')
   const data = parseYaml(text)
-  const tasks = Array.isArray(data.tasks) ? data.tasks.map(toTask) : []
+  const tasks = Array.isArray(data.tasks)
+    ? data.tasks.map((entry, index) => toTask(entry, index, file))
+    : []
   const result: TasksFile = { tasks }
   if (data.candidates !== undefined) {
     result.candidates = asRecord(data.candidates)
@@ -222,45 +295,80 @@ export function loadTasksFile(file: string): TasksFile {
   return result
 }
 
+interface CandidateFileEntry {
+  preset: CandidatePreset
+  coding?: {
+    model?: string
+    baseUrl?: string
+    skills?: boolean
+    planTools?: boolean
+  }
+}
+
 function candidateFromFile(
   tasksFile: TasksFile,
   name: string | undefined,
-): CandidatePreset {
+): CandidateFileEntry {
   const candidates = tasksFile.candidates ?? {}
   const candidateName = name ?? tasksFile.defaultCandidate
   if (!candidateName || !(candidateName in candidates)) {
     return {
-      plugin: (ctx: Context) => {
-        ctx.provide('evalCandidateName', candidateName ?? 'default')
+      preset: {
+        plugin: (ctx: Context) => {
+          ctx.provide('evalCandidateName', candidateName ?? 'default')
+        },
+        name: candidateName ?? 'default',
       },
-      name: candidateName ?? 'default',
     }
   }
   const entry = asRecord(candidates[candidateName])
   if (entry.loop === 'echo') {
     return {
-      plugin: (ctx: Context) => {
-        ctx.provide('evalCandidateName', candidateName)
-        ctx.provide('agentLoop', echoLoop)
+      preset: {
+        plugin: (ctx: Context) => {
+          ctx.provide('evalCandidateName', candidateName)
+          ctx.provide('agentLoop', echoLoop)
+        },
+        name: candidateName,
+        ...(typeof entry.version === 'string' ? { version: entry.version } : {}),
       },
-      name: candidateName,
-      ...(typeof entry.version === 'string' ? { version: entry.version } : {}),
+    }
+  }
+  if (entry.coding === true) {
+    const coding: CandidateFileEntry['coding'] = {}
+    if (typeof entry.model === 'string') coding.model = entry.model
+    if (typeof entry.baseUrl === 'string') coding.baseUrl = entry.baseUrl
+    if (entry.skills !== undefined) coding.skills = entry.skills === true
+    if (entry.planTools !== undefined) coding.planTools = entry.planTools === true
+    return {
+      preset: {
+        plugin: (ctx: Context) => {
+          ctx.provide('evalCandidateName', candidateName)
+        },
+        name: candidateName,
+        ...(typeof entry.version === 'string' ? { version: entry.version } : {}),
+      },
+      coding,
     }
   }
   if (entry.plugin === undefined) {
     return {
-      plugin: (ctx: Context) => {
-        ctx.provide('evalCandidateName', candidateName)
+      preset: {
+        plugin: (ctx: Context) => {
+          ctx.provide('evalCandidateName', candidateName)
+        },
+        name: candidateName,
+        ...(typeof entry.version === 'string' ? { version: entry.version } : {}),
       },
-      name: candidateName,
-      ...(typeof entry.version === 'string' ? { version: entry.version } : {}),
     }
   }
   return {
-    plugin: entry.plugin as unknown as Plugin,
-    name: candidateName,
-    ...(typeof entry.version === 'string' ? { version: entry.version } : {}),
-    ...(entry.config !== undefined ? { config: asRecord(entry.config) } : {}),
+    preset: {
+      plugin: entry.plugin as unknown as Plugin,
+      name: candidateName,
+      ...(typeof entry.version === 'string' ? { version: entry.version } : {}),
+      ...(entry.config !== undefined ? { config: asRecord(entry.config) } : {}),
+    },
   }
 }
 
@@ -292,19 +400,68 @@ export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
   const cwd = options.cwd ?? process.cwd()
   const tasksFile = loadTasksFile(options.tasksFile)
   const outputDir = resolve(cwd, tasksFile.outputDir ?? '.tnega/runs')
+  const candidate = candidateFromFile(tasksFile, options.candidateName)
   const root = await createEvalContext(cwd, {
     outputDir,
     defaultBudget: options.budget ?? {},
   })
-  const candidate = candidateFromFile(tasksFile, options.candidateName)
   const runOptions: EvalRunOptions = {
-    candidate: candidate as CandidatePreset,
+    candidate: candidate.preset,
     tasks: tasksFile.tasks,
     cache: options.cache ?? true,
   }
   if (options.outputFile) runOptions.outputFile = resolve(cwd, options.outputFile)
   if (tasksFile.strategyNames) {
     runOptions.strategyNames = tasksFile.strategyNames
+  }
+  if (candidate.coding) {
+    const systemConfig = await readSystemConfig()
+    const envConfig = resolveLlmEnv(process.env)
+    const apiKey = envConfig.apiKey ?? systemConfig.apiKey
+    if (!apiKey) {
+      throw new CliError(
+        'missing LLM API key for coding eval; set OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
+      )
+    }
+    const model = options.model
+      ?? envConfig.model
+      ?? systemConfig.model
+      ?? candidate.coding.model
+    const baseUrl = options.baseUrl
+      ?? envConfig.baseUrl
+      ?? systemConfig.baseUrl
+      ?? candidate.coding.baseUrl
+    const adapter = createLlmAdapter({
+      apiKey,
+      ...(model ? { model } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+      ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+      ...(systemConfig.temperature !== undefined
+        && options.temperature === undefined
+        ? { temperature: systemConfig.temperature }
+        : {}),
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+      ...(options.retryDelayMs !== undefined
+        ? { retryDelayMs: options.retryDelayMs }
+        : {}),
+    })
+    runOptions.coding = {
+      llm: adapter,
+      agent: {
+        ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+        ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+      },
+      coding: {
+        skills: candidate.coding.skills ?? true,
+        planTools: candidate.coding.planTools ?? true,
+        mcp: false,
+      },
+    }
+    if (!runOptions.strategyNames) {
+      runOptions.strategyNames = ['check', 'trace']
+    }
   }
   return evalService(root).run(runOptions)
 }

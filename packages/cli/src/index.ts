@@ -88,6 +88,17 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.cache !== undefined ? { cache: parsed.cache } : {}),
         ...(parsed.outputFile ? { outputFile: parsed.outputFile } : {}),
         ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
+        ...(parsed.model ? { model: parsed.model } : {}),
+        ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
+        ...(parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {}),
+        ...(parsed.temperature !== undefined ? { temperature: parsed.temperature } : {}),
+        ...(parsed.maxTurns !== undefined ? { maxTurns: parsed.maxTurns } : {}),
+        ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
+        ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
+        ...(parsed.maxRetries !== undefined ? { maxRetries: parsed.maxRetries } : {}),
+        ...(parsed.retryDelayMs !== undefined
+          ? { retryDelayMs: parsed.retryDelayMs }
+          : {}),
       })
       return emit(formatRun(run), run.summary.failed > 0 ? 1 : 0)
     }
@@ -147,6 +158,15 @@ interface ParsedRunArgs {
   cache?: boolean
   outputFile?: string
   cwd?: string
+  model?: string
+  baseUrl?: string
+  maxTokens?: number
+  temperature?: number
+  maxTurns?: number
+  maxSteps?: number
+  timeoutMs?: number
+  maxRetries?: number
+  retryDelayMs?: number
 }
 
 interface ParsedCompareArgs {
@@ -204,24 +224,75 @@ function parseRunArgs(args: readonly string[]): ParsedRunArgs {
   let cursor = 0
   while (cursor < args.length) {
     const arg = args[cursor]!
-    if (arg === '--candidate' || arg === '--output' || arg === '--cwd') {
-      const value = args[cursor + 1]
-      if (!value) throw new CliError(`${arg} requires a value`)
-      if (arg === '--candidate') parsed.candidateName = value
-      if (arg === '--output') parsed.outputFile = value
-      if (arg === '--cwd') parsed.cwd = value
-      cursor += 2
-    } else if (arg === '--no-cache') {
+    if (arg === '--no-cache') {
       parsed.cache = false
       cursor += 1
-    } else if (!parsed.tasksFile) {
+      continue
+    }
+    if (!arg.startsWith('--')) {
+      if (parsed.tasksFile) throw new CliError(`unexpected argument: ${arg}`)
       parsed.tasksFile = arg
       cursor += 1
+      continue
+    }
+    const eq = arg.indexOf('=')
+    const name = eq >= 0 ? arg.slice(2, eq) : arg.slice(2)
+    const value = eq >= 0 ? arg.slice(eq + 1) : args[cursor + 1]
+    if (!value) throw new CliError(`--${name} requires a value`)
+    if (name === 'candidate' || name === 'output' || name === 'cwd'
+      || name === 'model' || name === 'base-url' || name === 'max-tokens'
+      || name === 'temperature' || name === 'max-turns' || name === 'max-steps'
+      || name === 'timeout-ms' || name === 'max-retries' || name === 'retry-delay-ms') {
+      assignRunOption(parsed, name, value)
+      cursor += eq >= 0 ? 1 : 2
     } else {
-      throw new CliError(`unexpected argument: ${arg}`)
+      throw new CliError(`unknown option: --${name}`)
     }
   }
   return parsed
+}
+
+function assignRunOption(parsed: ParsedRunArgs, name: string, value: string): void {
+  switch (name) {
+    case 'candidate':
+      parsed.candidateName = value
+      return
+    case 'output':
+      parsed.outputFile = value
+      return
+    case 'cwd':
+      parsed.cwd = value
+      return
+    case 'model':
+      parsed.model = value
+      return
+    case 'base-url':
+      parsed.baseUrl = value
+      return
+    case 'max-tokens':
+      parsed.maxTokens = parseFiniteNumber('--max-tokens', value)
+      return
+    case 'temperature':
+      parsed.temperature = parseFiniteNumber('--temperature', value)
+      return
+    case 'max-turns':
+      parsed.maxTurns = parseFiniteNumber('--max-turns', value)
+      return
+    case 'max-steps':
+      parsed.maxSteps = parseFiniteNumber('--max-steps', value)
+      return
+    case 'timeout-ms':
+      parsed.timeoutMs = parseFiniteNumber('--timeout-ms', value)
+      return
+    case 'max-retries':
+      parsed.maxRetries = parseFiniteNumber('--max-retries', value)
+      return
+    case 'retry-delay-ms':
+      parsed.retryDelayMs = parseFiniteNumber('--retry-delay-ms', value)
+      return
+    default:
+      throw new CliError(`unknown option: --${name}`)
+  }
 }
 
 function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
