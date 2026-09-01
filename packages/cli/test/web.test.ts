@@ -24,7 +24,9 @@ async function tempDir(prefix: string): Promise<string> {
 async function startMockLlm(content: string, delayMs = 0): Promise<{
   url: string
   close: () => Promise<void>
+  requestCount: () => number
 }> {
+  let count = 0
   const chunks = [
     {
       id: 'chatcmpl-mock',
@@ -47,6 +49,7 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
       body += String(chunk)
     })
     req.on('end', () => {
+      count += 1
       if (typeof body !== 'string') {
         res.writeHead(400)
         res.end('body required')
@@ -98,6 +101,7 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
   const url = `http://127.0.0.1:${address.port}/v1`
   const entry = {
     url,
+    requestCount: () => count,
     close: () => new Promise<void>((resolve, reject) => {
       server.close(error => error ? reject(error) : resolve())
     }),
@@ -996,6 +1000,290 @@ describe('web server', () => {
     )
     expect(second.status).toBe(200)
     await second.text()
+  })
+
+  it('streams a generated plan and runs a coding session in plan mode', async () => {
+    const dir = await tempDir('tnega-web-coding-plan-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const planJson = JSON.stringify({
+      summary: 'Implement a greeting endpoint',
+      items: [
+        { title: 'Inspect the project' },
+        { title: 'Add the endpoint' },
+      ],
+    })
+    const mock = await startMockLlm(planJson)
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ agentType: 'coding', mode: 'plan' }),
+      },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const response = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'build a greeting endpoint',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+      },
+    )
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    expect(text).toContain('event: plan/start')
+    expect(text).toContain('event: plan/items')
+    expect(text).toContain('event: plan/item')
+    expect(text).toContain('event: plan/done')
+    expect(text).toContain('Implement a greeting endpoint')
+    expect(text).toContain('event: message_start')
+    expect(text).toContain('event: done')
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        type: string
+        payload: {
+          items?: Array<{ id: string; title: string; status: string }>
+          role?: string
+          content?: string
+        }
+      }>
+    }
+    const plans = detail.events.filter(event => event.type === 'plan')
+    expect(plans).toHaveLength(1)
+    expect(plans[0]!.payload.items).toMatchObject([
+      { id: 'plan-1', title: 'Inspect the project', status: 'pending' },
+      { id: 'plan-2', title: 'Add the endpoint', status: 'pending' },
+    ])
+    const messages = detail.events.filter(event => event.type === 'message')
+    expect(messages.map(message => message.payload.content)).toEqual([
+      'build a greeting endpoint',
+      planJson,
+    ])
+  })
+
+  it('reuses the persisted plan in execute mode without regenerating it', async () => {
+    const dir = await tempDir('tnega-web-coding-execute-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const planJson = JSON.stringify({
+      summary: 'Refactor the worker',
+      items: [{ title: 'Extract helper' }, { title: 'Add tests' }],
+    })
+    const mock = await startMockLlm(planJson)
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ agentType: 'coding', mode: 'plan' }),
+      },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    async function run(prompt: string): Promise<string> {
+      const response = await apiFetch(
+        server.url,
+        `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt,
+            allowNetwork: false,
+            allowShell: false,
+          }),
+        },
+      )
+      expect(response.status).toBe(200)
+      const text = await response.text()
+      await new Promise(resolve => setTimeout(resolve, 20))
+      return text
+    }
+
+    const first = await run('refactor the worker')
+    expect(first).toContain('event: plan/start')
+    expect(mock.requestCount()).toBe(2)
+
+    const patched = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ mode: 'execute' }),
+      },
+    )
+    expect(patched.status).toBe(200)
+
+    const second = await run('continue with the plan')
+    expect(second).toContain('event: plan/start')
+    expect(second).toContain('event: plan/items')
+    expect(second).toContain('event: plan/done')
+    expect(mock.requestCount()).toBe(3)
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{
+        type: string
+        payload: { items?: Array<{ id: string; status: string }> }
+      }>
+    }
+    const plans = detail.events.filter(event => event.type === 'plan')
+    expect(plans.length).toBeGreaterThanOrEqual(2)
+    expect(plans.at(-1)!.payload.items).toMatchObject([
+      { id: 'plan-1', status: 'pending' },
+      { id: 'plan-2', status: 'pending' },
+    ])
+  })
+
+  it('runs a coding session in auto mode without generating a plan', async () => {
+    const dir = await tempDir('tnega-web-coding-auto-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('auto mode reply')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ agentType: 'coding', mode: 'auto' }),
+      },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const response = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'just answer',
+          allowNetwork: false,
+          allowShell: false,
+        }),
+      },
+    )
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    expect(text).not.toContain('event: plan/start')
+    expect(text).toContain('auto mode reply')
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{ type: string }>
+    }
+    expect(detail.events.filter(event => event.type === 'plan')).toHaveLength(0)
+  })
+
+  it('lists and runs coding slash commands through frontend endpoints', async () => {
+    const dir = await tempDir('tnega-web-coding-slash-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ agentType: 'coding', mode: 'plan' }),
+      },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const commands = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/commands?workspace=${encodeURIComponent(workspace)}`,
+    )
+    expect(commands.status).toBe(200)
+    const commandsBody = await commands.json() as {
+      agentType: string
+      mode: string
+      commands: Array<{ name: string; description: string }>
+    }
+    expect(commandsBody).toMatchObject({
+      agentType: 'coding',
+      mode: 'plan',
+    })
+    expect(commandsBody.commands.map(command => command.name)).toEqual([
+      '/plan',
+      '/mode',
+      '/skills',
+      '/mcp',
+    ])
+
+    const slash = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/mode', args: [] }),
+      },
+    )
+    expect(slash.status).toBe(200)
+    const slashBody = await slash.json() as {
+      result: { kind: string; value: { current: string } }
+    }
+    expect(slashBody.result).toMatchObject({
+      kind: 'json',
+      value: { current: 'plan' },
+    })
+
+    const general = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const rejected = await apiFetch(
+      server.url,
+      `/api/sessions/${general.session.id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/mode', args: [] }),
+      },
+    )
+    expect(rejected.status).toBe(400)
   })
 })
 

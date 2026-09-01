@@ -105,4 +105,22 @@ describe('createCodingAgentPlugin', () => {
     await fiber.dispose()
     expect(service.has('mcp__fixture__echo')).toBe(false)
   })
+
+  it('can register the agent service only when requested', async () => {
+    const cwd = await tempDir('tnega-coding-register-agent-')
+    const root = await mountRoot(cwd)
+    const fiber = root.plugin(createCodingAgentPlugin({
+      cwd,
+      mode: 'auto',
+      skills: false,
+      mcp: false,
+      registerAgent: false,
+    }))
+    await fiber
+
+    expect(root.get('coding')).toBeTruthy()
+    expect(root.get('agent')).toBeUndefined()
+
+    await fiber.dispose()
+  })
 })

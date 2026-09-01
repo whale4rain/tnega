@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@tnega/agent": "workspace:*",
+    "@tnega/coding-agent": "workspace:*",
     "@tnega/core": "workspace:*",
     "@tnega/eval": "workspace:*",
     "@tnega/evolve": "workspace:*",

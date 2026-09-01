@@ -51,6 +51,9 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/coding-agent':
+        specifier: workspace:*
+        version: link:../coding-agent
       '@tnega/core':
         specifier: workspace:*
         version: link:../core

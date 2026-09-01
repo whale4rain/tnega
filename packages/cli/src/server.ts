@@ -4,8 +4,26 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AgentStreamEvent } from '@tnega/agent'
+import { Context } from '@tnega/core'
+import {
+  CODING_SYSTEM_PROMPT,
+  createCodingAgentPlugin,
+  createSlashRegistry,
+  generatePlan,
+  planToContext,
+  type CodingService,
+  type Plan,
+  type PlanItem,
+  type SlashCommandResult,
+} from '@tnega/coding-agent'
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
-import type { ModelMessage, SessionLog } from '@tnega/session'
+import {
+  session,
+  type ModelMessage,
+  type PlanPayload,
+  type SessionLog,
+} from '@tnega/session'
+import { tools } from '@tnega/tools'
 import {
   createAgentRuntime,
   resolveLlmEnv,
@@ -323,6 +341,31 @@ async function handleApi(
     return
   }
 
+  const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash)$/)
+  if (codingMatch) {
+    const id = codingMatch[1]!
+    const action = codingMatch[2]!
+    const workspace = workspaceParam(url)
+    if (!isSessionId(id)) {
+      sendError(res, 400, 'invalid session id')
+      return
+    }
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    if (action === 'commands' && req.method === 'GET') {
+      await handleCodingCommands(res, workspace, id)
+      return
+    }
+    if (action === 'slash' && req.method === 'POST') {
+      await handleCodingSlash(req, res, workspace, id)
+      return
+    }
+    sendError(res, 405, 'method not allowed')
+    return
+  }
+
   const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
   if (sessionMatch) {
     const id = sessionMatch[1]!
@@ -557,6 +600,9 @@ async function handleRun(
   const prompt = body.prompt.trim()
   const allowNetwork = body.allowNetwork === true
   const allowShell = body.allowShell === true
+  const summary = await readSessionSummary(workspace, id)
+  const coding = summary.agentType === 'coding'
+  const mode = summary.mode ?? 'auto'
 
   const config = await readSystemConfig(context.configFile)
   const effective = effectiveLlmConfig(config)
@@ -571,14 +617,24 @@ async function handleRun(
   }
 
   const controller = new AbortController()
+  const adapter = adapterFromConfig(effective, apiKey)
   let runtime: AgentRuntime | undefined
   try {
     runtime = await createAgentRuntime({
       cwd: workspace,
       sessionFile: sessionFilePath(workspace, id),
-      llm: adapterFromConfig(effective, apiKey),
+      llm: adapter,
       allowNetwork,
       allowShell,
+      ...(coding
+        ? {
+            plugins: [createCodingAgentPlugin({
+              cwd: workspace,
+              mode,
+              registerAgent: false,
+            })],
+          }
+        : {}),
     })
   } catch (error) {
     await runtime?.dispose()
@@ -597,9 +653,25 @@ async function handleRun(
   res.flushHeaders()
 
   try {
-    const session = runtime.root.get('session') as SessionLog
-    const history = await session.deriveMessages()
-    const messages = [
+    const sessionLog = runtime.root.get('session') as SessionLog
+    const history = await sessionLog.deriveMessages()
+    const emitSse = (event: Record<string, unknown>): void => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    }
+    let plan: Plan | undefined
+    if (coding && (mode === 'plan' || mode === 'execute')) {
+      plan = await ensurePlanForRun({
+        adapter,
+        session: sessionLog,
+        mode,
+        messages: [...history, { role: 'user' as const, content: prompt }],
+        signal: controller.signal,
+        emit: emitSse,
+      })
+    }
+    const messages: ModelMessage[] = [
+      ...(coding ? [{ role: 'system' as const, content: CODING_SYSTEM_PROMPT }] : []),
+      ...(plan ? [{ role: 'system' as const, content: planToContext(plan) }] : []),
       ...history,
       { role: 'user' as const, content: prompt },
     ]
@@ -621,6 +693,7 @@ async function handleRun(
       } catch {
         // The client may have disconnected; the run itself must continue.
       }
+      if (plan) await trackPlanTool(next.value, plan, sessionLog, emitSse)
     }
     await autoTitle(workspace, id, prompt)
     if (!res.destroyed && !res.writableEnded) {
@@ -635,6 +708,181 @@ async function handleRun(
   } finally {
     context.activeRuns.delete(key)
     await runtime.dispose()
+  }
+}
+
+interface EnsurePlanForRunOptions {
+  adapter: ReturnType<typeof openaiCompatAdapter>
+  session: SessionLog
+  mode: 'plan' | 'execute'
+  messages: readonly ModelMessage[]
+  signal?: AbortSignal
+  emit: (event: Record<string, unknown>) => void
+}
+
+async function ensurePlanForRun(options: EnsurePlanForRunOptions): Promise<Plan> {
+  if (options.mode === 'execute') {
+    const events = await options.session.read()
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]
+      if (event?.type !== 'plan') continue
+      const plan = planFromPayload(event.payload)
+      if (!plan) continue
+      for (const item of plan.items) item.status = 'pending'
+      plan.status = 'pending'
+      await options.session.append('plan', planPayload(plan))
+      options.emit({ type: 'plan/start' })
+      options.emit({ type: 'plan/items', plan })
+      options.emit({ type: 'plan/done', plan })
+      return plan
+    }
+  }
+
+  options.emit({ type: 'plan/start' })
+  try {
+    const plan = await generatePlan(options.adapter, options.messages, options.signal)
+    await options.session.append('plan', planPayload(plan))
+    options.emit({ type: 'plan/items', plan })
+    for (const item of plan.items) {
+      options.emit({ type: 'plan/item', item })
+    }
+    options.emit({ type: 'plan/done', plan })
+    return plan
+  } catch (error) {
+    options.emit({ type: 'plan/error', message: errorMessage(error) })
+    throw error
+  }
+}
+
+async function trackPlanTool(
+  event: AgentStreamEvent,
+  plan: Plan,
+  session: SessionLog,
+  emit: (event: Record<string, unknown>) => void,
+): Promise<void> {
+  if (event.type !== 'tool/end') return
+  const args = event.call.arguments && typeof event.call.arguments === 'object'
+    ? event.call.arguments as Record<string, unknown>
+    : {}
+  if (event.call.name === 'plan_execute_mark') {
+    if (event.result && event.result.ok === false) return
+    const id = typeof args.id === 'string' ? args.id : ''
+    const status = typeof args.status === 'string' ? args.status : ''
+    if (status !== 'pending' && status !== 'done' && status !== 'failed') return
+    const item = plan.items.find(candidate => candidate.id === id)
+    if (!item) return
+    item.status = status
+    plan.status = 'running'
+    await session.append('plan', planPayload(plan))
+    emit({ type: 'plan/item', item: { ...item } })
+    return
+  }
+  if (event.call.name === 'plan_execute_result') {
+    if (event.result && event.result.ok === false) return
+    const status = typeof args.status === 'string' ? args.status : ''
+    if (status !== 'done' && status !== 'failed') return
+    plan.status = status
+    await session.append('plan', planPayload(plan))
+    emit({ type: 'plan/done', plan: { ...plan, items: plan.items.map(item => ({ ...item })) } })
+  }
+}
+
+function planPayload(plan: Plan): PlanPayload {
+  return {
+    items: plan.items.map(item => ({
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      ...(item.detail ? { detail: item.detail } : {}),
+    })),
+    status: plan.status,
+    ...(plan.summary ? { summary: plan.summary } : {}),
+  }
+}
+
+function planFromPayload(payload: PlanPayload): Plan | undefined {
+  if (!Array.isArray(payload.items) || !payload.items.length) return undefined
+  const items: PlanItem[] = []
+  for (let index = 0; index < payload.items.length; index += 1) {
+    const entry = payload.items[index]!
+    const title = typeof entry.title === 'string' && entry.title.trim()
+      ? entry.title.trim()
+      : undefined
+    if (!title) return undefined
+    const status = entry.status === 'pending' || entry.status === 'done' || entry.status === 'failed'
+      ? entry.status
+      : 'pending'
+    const item: PlanItem = {
+      id: typeof entry.id === 'string' && entry.id ? entry.id : `plan-${index + 1}`,
+      title,
+      status,
+    }
+    if (typeof entry.detail === 'string' && entry.detail) item.detail = entry.detail
+    items.push(item)
+  }
+  const plan: Plan = {
+    items,
+    status: payload.status === 'pending' || payload.status === 'running'
+      || payload.status === 'done' || payload.status === 'failed'
+      ? payload.status
+      : 'pending',
+  }
+  if (typeof payload.summary === 'string' && payload.summary) plan.summary = payload.summary
+  return plan
+}
+
+async function handleCodingCommands(
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const summary = await readSessionSummary(workspace, id)
+  sendJson(res, 200, {
+    commands: createSlashRegistry().list(),
+    agentType: summary.agentType ?? 'general',
+    mode: summary.mode ?? 'auto',
+  })
+}
+
+async function handleCodingSlash(
+  req: IncomingMessage,
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const summary = await readSessionSummary(workspace, id)
+  if (summary.agentType !== 'coding') {
+    sendError(res, 400, 'session is not a coding session')
+    return
+  }
+  const body = await readJsonBody(req)
+  const name = typeof body.name === 'string' && body.name.trim()
+    ? body.name.trim()
+    : ''
+  if (!name) {
+    sendError(res, 400, 'name is required')
+    return
+  }
+  const args = Array.isArray(body.args)
+    ? body.args.filter((arg): arg is string => typeof arg === 'string')
+    : []
+  const root = new Context()
+  let fiber: { dispose: () => Promise<void> } | undefined
+  try {
+    await root.plugin(session, { file: sessionFilePath(workspace, id) })
+    await root.plugin(tools)
+    fiber = await root.plugin(createCodingAgentPlugin({
+      cwd: workspace,
+      skills: true,
+      mcp: true,
+      planTools: true,
+      ...(summary.mode ? { mode: summary.mode } : {}),
+    }))
+    const coding = root.get('coding') as CodingService
+    const result: SlashCommandResult = await coding.runCommand(name, args)
+    sendJson(res, 200, { result })
+  } finally {
+    await fiber?.dispose()
   }
 }
 

@@ -14,6 +14,7 @@ export interface CodingAgentOptions {
   skills?: boolean
   mcp?: boolean
   planTools?: boolean
+  registerAgent?: boolean
 }
 
 export interface CodingService {
@@ -32,7 +33,7 @@ type DynamicContext = Context & {
 
 const dynamic = (ctx: Context): DynamicContext => ctx as unknown as DynamicContext
 
-const CODING_SYSTEM_PROMPT = `You are Tnega, a coding agent running in a workspace session.
+export const CODING_SYSTEM_PROMPT = `You are Tnega, a coding agent running in a workspace session.
 
 You work iteratively in the user's repository:
 - Inspect the workspace before editing when the task is unclear.
@@ -113,6 +114,7 @@ export function createCodingAgentPlugin(
   const mcpEnabled = options.mcp ?? true
   const planToolsEnabled = options.planTools ?? true
   const mode = options.mode
+  const registerAgent = options.registerAgent ?? true
 
   return {
     name: 'coding-agent',
@@ -173,12 +175,14 @@ export function createCodingAgentPlugin(
         survey,
       } satisfies CodingService)
 
-      await ctx.plugin(defineAgent({
-        name: 'coding',
-        version: '0.1.0',
-        system: CODING_SYSTEM_PROMPT,
-        tools: [],
-      }))
+      if (registerAgent) {
+        await ctx.plugin(defineAgent({
+          name: 'coding',
+          version: '0.1.0',
+          system: CODING_SYSTEM_PROMPT,
+          tools: [],
+        }))
+      }
     },
   }
 }
