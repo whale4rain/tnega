@@ -8,3 +8,6 @@ coverage/
 .tnega/
 .fix/
 *.tgz
+
+# materialized benchmark data is reproducible via `pnpm tnega eval import-benchmark`
+data/benchmarks/

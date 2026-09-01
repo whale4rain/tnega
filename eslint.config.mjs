@@ -8,6 +8,7 @@ export default tseslint.config(
       'apps/web/dist/**',
       'node_modules/**',
       'coverage/**',
+      'data/benchmarks/**',
     ],
   },
   js.configs.recommended,
