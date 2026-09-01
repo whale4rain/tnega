@@ -195,7 +195,7 @@ describe('SessionLog lineage', () => {
 
   it('falls back to event order when parent links are missing', async () => {
     const file = await tempFile('lineage-legacy.jsonl')
-    const events = [
+    const events: SessionEvent[] = [
       { id: 'a', seq: 1, ts: 1, type: 'message', payload: { role: 'user', content: 'a' } },
       { id: 'b', seq: 2, ts: 2, type: 'message', payload: { role: 'assistant', content: 'b' } },
       { id: 'c', seq: 3, ts: 3, type: 'message', payload: { role: 'user', content: 'c' } },
@@ -237,7 +237,7 @@ describe('SessionLog forkAt', () => {
 
   it('follows parent links instead of raw event order', async () => {
     const file = await tempFile('fork-at-lineage.jsonl')
-    const events = [
+    const events: SessionEvent[] = [
       {
         id: 'root',
         seq: 1,
