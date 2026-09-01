@@ -433,6 +433,8 @@ export class EvalRunner {
         agentResult,
         controller.signal,
       )
+      const sessionLog = runtime?.root.get('session') as { flush(): Promise<number> } | undefined
+      await sessionLog?.flush()
       const trace = await deriveTraceMetrics(
         sessionFile,
         startedAt,

@@ -43,6 +43,8 @@ describe('coding runtime', () => {
     try {
       const result = await runtime.loop({ text: 'hello' })
       expect(result.output.length).toBeGreaterThan(0)
+      const sessionLog = runtime.root.get('session') as { flush(): Promise<number> }
+      await sessionLog.flush()
       const trace = await readFile(sessionFile, 'utf8')
       expect(trace).toContain('user/message')
     } finally {
