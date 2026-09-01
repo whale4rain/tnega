@@ -32,6 +32,7 @@ import {
   ApiError,
   codingCommands,
   codingSlash,
+  codingSlashCandidates,
   compactSession,
   createSession,
   deleteSession,
@@ -60,6 +61,7 @@ import type {
   SessionDetail,
   SessionSummary,
   SlashCommand,
+  SlashSuggestion,
   StreamEvent,
 } from './types'
 
@@ -689,6 +691,12 @@ function ChatView({
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([])
   const [slashError, setSlashError] = useState<string | null>(null)
   const [slashBusy, setSlashBusy] = useState(false)
+  const [slashSubmenu, setSlashSubmenu] = useState<{
+    command: SlashCommand
+    candidates: SlashSuggestion[]
+    busy: boolean
+    error: string | null
+  } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const runStateRef = useRef<RunState>('idle')
   const planRef = useRef<DisplayPlan | undefined>(undefined)
@@ -736,6 +744,7 @@ function ChatView({
   const mode = summary?.mode ?? 'auto'
 
   useEffect(() => {
+    setSlashSubmenu(null)
     if (!workspace || !sessionId || !isCoding) {
       setSlashCommands([])
       setSlashError(null)
@@ -962,7 +971,38 @@ function ChatView({
   function selectSlashCommand(command: SlashCommand) {
     setPrompt(command.name + ' ')
     setSlashError(null)
+    if (command.name === '/skills' || command.name === '/mcp') {
+      void openSlashSubmenu(command)
+    } else {
+      setSlashSubmenu(null)
+    }
     composerRef.current?.focus()
+  }
+
+  async function openSlashSubmenu(command: SlashCommand) {
+    if (!workspace || !sessionId) return
+    setSlashSubmenu({ command, candidates: [], busy: true, error: null })
+    try {
+      const { candidates } = await api.codingSlashCandidates(workspace, sessionId, command.name)
+      setSlashSubmenu(current => current?.command.name === command.name
+        ? { ...current, candidates, busy: false }
+        : current)
+    } catch (reason) {
+      setSlashSubmenu(current => current?.command.name === command.name
+        ? { ...current, busy: false, error: messageOf(reason) }
+        : current)
+    }
+  }
+
+  function closeSlashSubmenu() {
+    if (slashSubmenu) setPrompt(slashSubmenu.command.name)
+    setSlashSubmenu(null)
+  }
+
+  function chooseSlashSuggestion(suggestion: SlashSuggestion) {
+    setSlashSubmenu(null)
+    setPrompt('')
+    void runSlash(suggestion.command, suggestion.args)
   }
 
   async function cancelRun() {
@@ -983,8 +1023,9 @@ function ChatView({
     abortRef.current?.abort()
   }
 
-  const slashMenuVisible = isCoding && !slashBusy && prompt.startsWith('/')
-    && !prompt.includes(' ')
+  const slashMenuVisible = isCoding && !slashBusy && (
+    slashSubmenu !== null || (prompt.startsWith('/') && !prompt.includes(' '))
+  )
 
   function beginEdit(message: DisplayMessage) {
     setEditingId(message.id)
@@ -1411,29 +1452,92 @@ function ChatView({
         </div>
         {isCoding && slashMenuVisible && (
           <div className="slash-menu" role="listbox" aria-label="slash commands">
-            {slashBusy && <div className="slash-note">loading commands...</div>}
-            {slashError && <div className="slash-note error">{slashError}</div>}
-            {!slashBusy && !slashError && slashCommands.length === 0 && (
-              <div className="slash-note">no commands</div>
+            {slashSubmenu ? (
+              <>
+                <div className="slash-menu-header">
+                  <button
+                    type="button"
+                    className="slash-back"
+                    onClick={closeSlashSubmenu}
+                    title="back to commands"
+                  >
+                    [back]
+                  </button>
+                  <span className="slash-menu-command">{slashSubmenu.command.name}</span>
+                  <span className="slash-menu-hint">select to run</span>
+                </div>
+                {slashSubmenu.busy && <div className="slash-note">loading...</div>}
+                {slashSubmenu.error && (
+                  <div className="slash-note error">{slashSubmenu.error}</div>
+                )}
+                {!slashSubmenu.busy && !slashSubmenu.error && (
+                  <>
+                    <button
+                      type="button"
+                      className="slash-option"
+                      role="option"
+                      onClick={() => chooseSlashSuggestion({
+                        command: slashSubmenu.command.name,
+                        args: [],
+                        label: slashSubmenu.command.name,
+                        detail: slashSubmenu.command.description,
+                      })}
+                    >
+                      <span className="slash-option-label">{slashSubmenu.command.name}</span>
+                      <span className="slash-option-detail">
+                        {slashSubmenu.command.description}
+                      </span>
+                    </button>
+                    {slashSubmenu.candidates.length === 0 && (
+                      <div className="slash-note">nothing available</div>
+                    )}
+                    {slashSubmenu.candidates.map(candidate => (
+                      <button
+                        key={`${candidate.command}-${candidate.args.join(' ')}-${candidate.label}`}
+                        type="button"
+                        className="slash-option"
+                        role="option"
+                        onClick={() => chooseSlashSuggestion(candidate)}
+                      >
+                        <span className="slash-option-label">{candidate.label}</span>
+                        {candidate.detail && (
+                          <span className="slash-option-detail">{candidate.detail}</span>
+                        )}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                {slashBusy && <div className="slash-note">loading commands...</div>}
+                {slashError && <div className="slash-note error">{slashError}</div>}
+                {!slashBusy && !slashError && slashCommands.length === 0 && (
+                  <div className="slash-note">no commands</div>
+                )}
+                {!slashBusy && !slashError && slashCommands.map(command => (
+                  <button
+                    key={command.name}
+                    type="button"
+                    className="slash-command"
+                    role="option"
+                    onClick={() => selectSlashCommand(command)}
+                  >
+                    <span className="slash-name">{command.name}</span>
+                    <span className="slash-description">{command.description}</span>
+                  </button>
+                ))}
+              </>
             )}
-            {!slashBusy && !slashError && slashCommands.map(command => (
-              <button
-                key={command.name}
-                type="button"
-                className="slash-command"
-                role="option"
-                onClick={() => selectSlashCommand(command)}
-              >
-                <span className="slash-name">{command.name}</span>
-                <span className="slash-description">{command.description}</span>
-              </button>
-            ))}
           </div>
         )}
         <textarea
           ref={composerRef}
           value={prompt}
-          onChange={event => setPrompt(event.target.value)}
+          onChange={event => {
+            setPrompt(event.target.value)
+            setSlashSubmenu(null)
+          }}
           onKeyDown={event => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -1740,7 +1844,7 @@ function SlashBlock({ message }: { message: DisplayMessage }) {
       >
         <span className="marker">{open ? '[-]' : '[+]'}</span>
         <span className="slash-status">slash</span>
-        <span className="slash-command" title={line}>{line}</span>
+        <span className="slash-block-command" title={line}>{line}</span>
       </button>
       {open && (
         <div className="slash-result">
@@ -2091,4 +2195,5 @@ const api = {
   streamRun,
   codingCommands,
   codingSlash,
+  codingSlashCandidates,
 }

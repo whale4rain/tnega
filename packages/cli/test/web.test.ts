@@ -1387,6 +1387,62 @@ describe('web server', () => {
       text: '# fixture\n\n# Fixture Skill\nDo the fixture thing.\n',
     })
 
+    const historyBefore = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{ type: string; payload: { kind?: string } }>
+    }
+    const slashMetaBefore = historyBefore.events.filter(
+      event => event.type === 'meta' && event.payload.kind === 'slash',
+    ).length
+
+    const skillCandidates = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/slash-candidates?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/skills' }),
+      },
+    )
+    expect(skillCandidates.status).toBe(200)
+    const skillCandidatesBody = await skillCandidates.json() as {
+      candidates: Array<{ command: string; args: string[]; label: string; detail?: string }>
+    }
+    expect(skillCandidatesBody.candidates).toEqual([
+      {
+        command: '/skills',
+        args: ['fixture'],
+        label: 'fixture',
+        detail: 'Fixture Skill',
+      },
+    ])
+
+    const mcpCandidates = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/coding/slash-candidates?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: '/mcp' }),
+      },
+    )
+    expect(mcpCandidates.status).toBe(200)
+    const mcpCandidatesBody = await mcpCandidates.json() as {
+      candidates: Array<{ command: string; args: string[]; label: string }>
+    }
+    expect(mcpCandidatesBody.candidates).toEqual([])
+
+    const historyAfter = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      events: Array<{ type: string; payload: { kind?: string } }>
+    }
+    const slashMetaAfter = historyAfter.events.filter(
+      event => event.type === 'meta' && event.payload.kind === 'slash',
+    ).length
+    expect(slashMetaAfter).toBe(slashMetaBefore)
+
     const mcp = await apiFetch(
       server.url,
       `/api/sessions/${id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,

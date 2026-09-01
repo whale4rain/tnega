@@ -6,7 +6,7 @@ import { connectMcpServers, type McpRuntime } from './mcp.js'
 import { generatePlan } from './plan.js'
 import { listSkills, skillReadTool, skillTool } from './skills.js'
 import { createSlashRegistry, type SlashCommandResult } from './slash.js'
-import type { CodingSurvey, Plan, SlashCommand } from './types.js'
+import type { CodingSurvey, Plan, SlashCommand, SlashSuggestion } from './types.js'
 
 export interface CodingAgentOptions {
   cwd: string
@@ -22,6 +22,7 @@ export interface CodingService {
   generatePlan(adapter: LLMAdapter, messages: readonly ModelMessage[], signal?: AbortSignal): Promise<Plan>
   commands(): SlashCommand[]
   runCommand(name: string, args: string[]): Promise<SlashCommandResult>
+  suggestCommand(name: string): Promise<SlashSuggestion[]>
   survey(): CodingSurvey
 }
 
@@ -157,6 +158,19 @@ export function createCodingAgentPlugin(
       }
 
       const slash = createSlashRegistry()
+      const slashContext = (): Parameters<typeof slash.run>[2] => ({
+        cwd,
+        tools: service.tools.list(),
+        ...(mode ? { mode } : {}),
+        ...(setMode ? { setMode } : {}),
+        ...(skillEntries.length ? { skills: skillEntries } : {}),
+        ...(mcpRuntime ? {
+          mcp: {
+            surveys: mcpRuntime.surveys,
+            tools: mcpRuntime.tools,
+          },
+        } : {}),
+      })
       const survey = (): CodingSurvey => ({
         agentType: 'coding',
         mode: mode ?? 'auto',
@@ -171,19 +185,8 @@ export function createCodingAgentPlugin(
       ctx.provide('coding', {
         generatePlan,
         commands: () => slash.list(),
-        runCommand: async (name, args) => slash.run(name, args, {
-          cwd,
-          tools: service.tools.list(),
-          ...(mode ? { mode } : {}),
-          ...(setMode ? { setMode } : {}),
-          ...(skillEntries.length ? { skills: skillEntries } : {}),
-          ...(mcpRuntime ? {
-            mcp: {
-              surveys: mcpRuntime.surveys,
-              tools: mcpRuntime.tools,
-            },
-          } : {}),
-        }),
+        runCommand: async (name, args) => slash.run(name, args, slashContext()),
+        suggestCommand: async (name) => slash.suggest(name, slashContext()),
         survey,
       } satisfies CodingService)
 

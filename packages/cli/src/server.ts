@@ -341,7 +341,7 @@ async function handleApi(
     return
   }
 
-  const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash)$/)
+  const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash|slash-candidates)$/)
   if (codingMatch) {
     const id = codingMatch[1]!
     const action = codingMatch[2]!
@@ -360,6 +360,10 @@ async function handleApi(
     }
     if (action === 'slash' && req.method === 'POST') {
       await handleCodingSlash(req, res, workspace, id)
+      return
+    }
+    if (action === 'slash-candidates' && req.method === 'POST') {
+      await handleCodingSlashCandidates(req, res, workspace, id)
       return
     }
     sendError(res, 405, 'method not allowed')
@@ -866,6 +870,48 @@ async function handleCodingSlash(
   const args = Array.isArray(body.args)
     ? body.args.filter((arg): arg is string => typeof arg === 'string')
     : []
+  const result = await withCodingAgent(workspace, id, async (coding, sessionLog) => {
+    const result: SlashCommandResult = await coding.runCommand(name, args)
+    await sessionLog.append('meta', {
+      kind: 'slash',
+      command: name,
+      args,
+      result,
+    })
+    return result
+  })
+  sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
+}
+
+async function handleCodingSlashCandidates(
+  req: IncomingMessage,
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const summary = await readSessionSummary(workspace, id)
+  if (summary.agentType !== 'coding') {
+    sendError(res, 400, 'session is not a coding session')
+    return
+  }
+  const body = await readJsonBody(req)
+  const name = typeof body.name === 'string' && body.name.trim()
+    ? body.name.trim()
+    : ''
+  if (!name) {
+    sendError(res, 400, 'name is required')
+    return
+  }
+  const candidates = await withCodingAgent(workspace, id, coding => coding.suggestCommand(name))
+  sendJson(res, 200, { candidates })
+}
+
+async function withCodingAgent<T>(
+  workspace: string,
+  id: string,
+  run: (coding: CodingService, sessionLog: SessionLog) => Promise<T>,
+): Promise<T> {
+  const summary = await readSessionSummary(workspace, id)
   const root = new Context()
   let fiber: { dispose: () => Promise<void> } | undefined
   try {
@@ -882,15 +928,8 @@ async function handleCodingSlash(
       },
     }))
     const coding = root.get('coding') as CodingService
-    const result: SlashCommandResult = await coding.runCommand(name, args)
     const sessionLog = root.get('session') as SessionLog
-    await sessionLog.append('meta', {
-      kind: 'slash',
-      command: name,
-      args,
-      result,
-    })
-    sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
+    return await run(coding, sessionLog)
   } finally {
     await fiber?.dispose()
   }

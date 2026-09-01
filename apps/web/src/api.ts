@@ -4,6 +4,7 @@ import type {
   SessionSummary,
   SlashCommand,
   SlashCommandResult,
+  SlashSuggestion,
   StreamEvent,
 } from './types'
 
@@ -153,6 +154,18 @@ export function codingSlash(
   return request(`/api/sessions/${id}/coding/slash?${query.toString()}`, {
     method: 'POST',
     body: JSON.stringify({ name, args }),
+  })
+}
+
+export function codingSlashCandidates(
+  workspace: string,
+  id: string,
+  name: string,
+): Promise<{ candidates: SlashSuggestion[] }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${id}/coding/slash-candidates?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
   })
 }
 

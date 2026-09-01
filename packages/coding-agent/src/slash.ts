@@ -2,8 +2,8 @@ import type { ToolDefinition } from '@tnega/tools'
 import type { SessionMode } from '@tnega/session'
 import { listSkills, readSkill, type SkillEntry } from './skills.js'
 import type { McpSurvey } from './mcp.js'
-import type { SlashCommand, SlashCommandResult } from './types.js'
-export type { SlashCommandResult } from './types.js'
+import type { SlashCommand, SlashCommandResult, SlashSuggestion } from './types.js'
+export type { SlashCommandResult, SlashSuggestion } from './types.js'
 
 export interface SlashContext {
   tools: readonly ToolDefinition[]
@@ -22,15 +22,30 @@ export type SlashHandler = (
   context: SlashContext,
 ) => SlashCommandResult | Promise<SlashCommandResult>
 
-export class SlashRegistry {
-  private _commands = new Map<string, { description: string; handler: SlashHandler }>()
+export type SlashSuggester = (
+  context: SlashContext,
+) => SlashSuggestion[] | Promise<SlashSuggestion[]>
 
-  register(name: string, description: string, handler: SlashHandler): void {
+export class SlashRegistry {
+  private _commands = new Map<string, {
+    description: string
+    handler: SlashHandler
+    suggest?: SlashSuggester
+  }>()
+
+  register(
+    name: string,
+    description: string,
+    handler: SlashHandler,
+    suggest?: SlashSuggester,
+  ): void {
     const normalized = name.startsWith('/') ? name : `/${name}`
     if (this._commands.has(normalized)) {
       throw new Error(`slash command already registered: ${normalized}`)
     }
-    this._commands.set(normalized, { description, handler })
+    this._commands.set(normalized, suggest
+      ? { description, handler, suggest }
+      : { description, handler })
   }
 
   list(): SlashCommand[] {
@@ -47,6 +62,12 @@ export class SlashRegistry {
       return { kind: 'text', text: `unknown slash command: ${normalized}` }
     }
     return entry.handler(args, context)
+  }
+
+  async suggest(name: string, context: SlashContext): Promise<SlashSuggestion[]> {
+    const normalized = name.startsWith('/') ? name : `/${name}`
+    const entry = this._commands.get(normalized)
+    return entry?.suggest ? entry.suggest(context) : []
   }
 
   has(name: string): boolean {
@@ -130,24 +151,109 @@ export function createSlashRegistry(): SlashRegistry {
         text: `# ${name}\n\n${content}`,
       }
     },
+    async (context) => {
+      const skills = context.skills ?? await listSkills(context.cwd)
+      return skills.map(skill => ({
+        command: '/skills',
+        args: [skill.name],
+        label: skill.name,
+        detail: skill.description,
+      }))
+    },
   )
   registry.register(
     '/mcp',
     'Show connected MCP servers and their tools.',
-    (_args, context) => ({
-      kind: 'json',
-      value: {
-        servers: (context.mcp?.surveys ?? []).map(survey => ({
-          name: survey.name,
-          status: survey.status,
-          toolCount: survey.toolCount,
-          ...(survey.error ? { error: survey.error } : {}),
-        })),
-        tools: (context.mcp?.tools ?? context.tools)
-          .filter(tool => tool.schema.name.startsWith('mcp__'))
-          .map(tool => tool.schema.name),
-      },
-    }),
+    async (args, context) => {
+      const surveys = context.mcp?.surveys ?? []
+      const tools = (context.mcp?.tools ?? context.tools)
+        .filter(tool => tool.schema.name.startsWith('mcp__'))
+      if (args.length === 0) {
+        return {
+          kind: 'json',
+          value: {
+            servers: surveys.map(survey => ({
+              name: survey.name,
+              status: survey.status,
+              toolCount: survey.toolCount,
+              ...(survey.error ? { error: survey.error } : {}),
+            })),
+            tools: tools.map(tool => tool.schema.name),
+          },
+        }
+      }
+      const serverName = args[0]!
+      const survey = surveys.find(entry => entry.name === serverName)
+      if (!survey) {
+        return {
+          kind: 'text',
+          text: `unknown mcp server: ${serverName}`,
+        }
+      }
+      const serverTools = tools.filter(tool =>
+        tool.schema.name.startsWith(`mcp__${serverName}__`),
+      )
+      if (args.length === 1) {
+        return {
+          kind: 'json',
+          value: {
+            server: {
+              name: survey.name,
+              status: survey.status,
+              toolCount: survey.toolCount,
+              ...(survey.error ? { error: survey.error } : {}),
+            },
+            tools: serverTools.map(tool => tool.schema.name),
+          },
+        }
+      }
+      const toolName = args.slice(1).join('__')
+      const tool = serverTools.find(entry =>
+        entry.schema.name === `mcp__${serverName}__${toolName}`,
+      )
+      if (!tool) {
+        return {
+          kind: 'text',
+          text: `unknown mcp tool: ${args.slice(1).join(' ')} on server ${serverName}`,
+        }
+      }
+      return {
+        kind: 'json',
+        value: {
+          server: survey.name,
+          tool: tool.schema.name,
+          description: tool.schema.description,
+          schema: tool.schema.parameters ?? {},
+        },
+      }
+    },
+    async (context) => {
+      const surveys = context.mcp?.surveys ?? []
+      const tools = (context.mcp?.tools ?? context.tools)
+        .filter(tool => tool.schema.name.startsWith('mcp__'))
+      const suggestions: SlashSuggestion[] = []
+      for (const survey of surveys) {
+        suggestions.push({
+          command: '/mcp',
+          args: [survey.name],
+          label: survey.name,
+          detail: `${survey.status} / ${survey.toolCount} tools`,
+        })
+      }
+      for (const tool of tools) {
+        const parts = tool.schema.name.split('__')
+        const server = parts[1]
+        if (parts[0] === 'mcp' && server) {
+          suggestions.push({
+            command: '/mcp',
+            args: [server, parts.slice(2).join('__')],
+            label: tool.schema.name,
+            detail: tool.schema.description,
+          })
+        }
+      }
+      return suggestions
+    },
   )
   return registry
 }

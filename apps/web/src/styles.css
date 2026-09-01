@@ -710,6 +710,91 @@ textarea {
   color: var(--danger);
 }
 
+.slash-menu-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-height: 28px;
+  padding: 2px 4px 4px;
+}
+
+.slash-back {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 2px 4px;
+}
+
+.slash-menu-command {
+  color: var(--ink);
+  flex: 0 0 auto;
+  font-family:
+    "Cascadia Code",
+    "JetBrains Mono",
+    "Fira Code",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-weight: 600;
+}
+
+.slash-menu-hint {
+  color: var(--mute);
+  flex: 1;
+  font-size: 12px;
+  text-align: right;
+}
+
+.slash-option {
+  align-items: baseline;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: flex-start;
+  min-height: 32px;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: normal;
+}
+
+.slash-option:hover {
+  background: var(--surface-soft);
+}
+
+.slash-option-label {
+  color: var(--ink);
+  font-family:
+    "Cascadia Code",
+    "JetBrains Mono",
+    "Fira Code",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-weight: 600;
+}
+
+.slash-option-detail {
+  color: var(--mute);
+  font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .context-ring {
   align-items: center;
   display: flex;
@@ -1177,7 +1262,7 @@ textarea {
   font-weight: 600;
 }
 
-.slash-command {
+.slash-block-command {
   flex: 1;
   font-family:
     "Cascadia Code",

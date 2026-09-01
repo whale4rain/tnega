@@ -100,6 +100,95 @@ describe('createSlashRegistry', () => {
         tools: ['mcp__files__read'],
       },
     })
+    const mcpServer = await registry.run('/mcp', ['files'], {
+      cwd,
+      tools,
+      mcp: {
+        surveys: [{ name: 'files', status: 'connected', toolCount: 1 }],
+        tools: [{ schema: { name: 'mcp__files__read', description: 'read' }, execute: () => '' }],
+      },
+    })
+    expect(mcpServer).toEqual({
+      kind: 'json',
+      value: {
+        server: { name: 'files', status: 'connected', toolCount: 1 },
+        tools: ['mcp__files__read'],
+      },
+    })
+    const mcpTool = await registry.run('/mcp', ['files', 'read'], {
+      cwd,
+      tools,
+      mcp: {
+        surveys: [{ name: 'files', status: 'connected', toolCount: 1 }],
+        tools: [{ schema: { name: 'mcp__files__read', description: 'read' }, execute: () => '' }],
+      },
+    })
+    expect(mcpTool).toEqual({
+      kind: 'json',
+      value: {
+        server: 'files',
+        tool: 'mcp__files__read',
+        description: 'read',
+        schema: {},
+      },
+    })
+    const mcpMissing = await registry.run('/mcp', ['nope'], {
+      cwd,
+      tools,
+      mcp: {
+        surveys: [{ name: 'files', status: 'connected', toolCount: 1 }],
+        tools: [{ schema: { name: 'mcp__files__read', description: 'read' }, execute: () => '' }],
+      },
+    })
+    expect(mcpMissing).toEqual({ kind: 'text', text: 'unknown mcp server: nope' })
     await rm(cwd, { recursive: true, force: true })
+  })
+})
+
+describe('slash suggestions', () => {
+  const registry = createSlashRegistry()
+  const skills = [{ name: 'typescript', path: 'x', description: 'TypeScript Style' }]
+  const mcpTools = [{ schema: { name: 'mcp__files__read', description: 'read' }, execute: () => '' }]
+  const mcp = {
+    surveys: [{ name: 'files', status: 'connected' as const, toolCount: 1 }],
+    tools: mcpTools,
+  }
+
+  it('suggests workspace skills', async () => {
+    const suggestions = await registry.suggest('/skills', {
+      cwd: '.',
+      tools: [],
+      skills,
+    })
+    expect(suggestions).toEqual([
+      {
+        command: '/skills',
+        args: ['typescript'],
+        label: 'typescript',
+        detail: 'TypeScript Style',
+      },
+    ])
+  })
+
+  it('suggests mcp servers and tools', async () => {
+    const suggestions = await registry.suggest('/mcp', {
+      cwd: '.',
+      tools: mcpTools,
+      mcp,
+    })
+    expect(suggestions).toEqual([
+      { command: '/mcp', args: ['files'], label: 'files', detail: 'connected / 1 tools' },
+      {
+        command: '/mcp',
+        args: ['files', 'read'],
+        label: 'mcp__files__read',
+        detail: 'read',
+      },
+    ])
+  })
+
+  it('returns no suggestions for commands without a picker', async () => {
+    expect(await registry.suggest('/mode', { cwd: '.', tools: [] })).toEqual([])
+    expect(await registry.suggest('/nope', { cwd: '.', tools: [] })).toEqual([])
   })
 })

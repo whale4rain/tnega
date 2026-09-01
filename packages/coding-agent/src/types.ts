@@ -20,6 +20,13 @@ export interface SlashCommand {
   description: string
 }
 
+export interface SlashSuggestion {
+  command: string
+  args: string[]
+  label: string
+  detail?: string
+}
+
 export type SlashCommandResult =
   | { kind: 'text'; text: string }
   | { kind: 'json'; value: unknown }
