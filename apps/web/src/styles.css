@@ -757,6 +757,55 @@ textarea {
   padding: 4px 0;
 }
 
+.tool-group-toggle {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.tool-group-kind {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.tool-group-count {
+  color: var(--mute);
+  flex: 0 0 auto;
+  font-size: 12px;
+  min-width: 28px;
+  text-align: right;
+}
+
+.tool-group-names {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-group-status {
+  color: var(--mute);
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.tool-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.tool-group-items .message.tool {
+  padding: 0;
+}
+
 .tool-toggle {
   align-items: center;
   background: var(--surface-soft);

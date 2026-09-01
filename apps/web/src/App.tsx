@@ -4,6 +4,12 @@ import remarkGfm from 'remark-gfm'
 import type { Ref } from 'react'
 import { ConversationNav } from './ConversationNav'
 import {
+  formatToolGroupNames,
+  formatToolGroupStatus,
+  groupToolMessages,
+  summarizeToolGroup,
+} from './toolGroups'
+import {
   clearSessionSelection,
   readSessionSelection,
   readWorkspaceSelection,
@@ -637,6 +643,8 @@ function ChatView({
     return indexes
   }, [messages])
 
+  const renderItems = useMemo(() => groupToolMessages(messages), [messages])
+
   const scrollToBottom = useCallback(() => {
     const node = scrollRef.current
     if (node) node.scrollTop = node.scrollHeight
@@ -1131,34 +1139,45 @@ function ChatView({
       <div className="messages-viewport">
         <div className="messages" ref={scrollRef} onScroll={handleMessagesScroll}>
           {messages.length === 0 && <div className="empty-line">no messages</div>}
-          {messages.map((message, index) => (
-            <MessageBlock
-              key={message.id}
-              message={message}
-              active={message.role === 'user' && userIndexes[navIndex] === index}
-              userRef={message.role === 'user'
-                ? node => {
-                    if (node) userRefs.current.set(message.id, node)
-                    else userRefs.current.delete(message.id)
-                  }
-                : undefined}
-              editing={editingId === message.id}
-              editDraft={editingId === message.id ? editDraft : ''}
-              onEditDraftChange={setEditDraft}
-              onBeginEdit={message.role === 'user' && !running && !compacting
-                ? () => beginEdit(message)
-                : undefined}
-              onSubmitEdit={message.role === 'user' && editingId === message.id
-                ? () => void submitEdit()
-                : undefined}
-              onCancelEdit={message.role === 'user' && editingId === message.id
-                ? cancelEdit
-                : undefined}
-              onForkAt={message.role === 'user' && !running && !compacting
-                ? () => forkHere(message.id)
-                : undefined}
-            />
-          ))}
+          {renderItems.map(item => {
+            if (item.kind === 'tools') {
+              return (
+                <ToolGroupBlock
+                  key={`tools-${item.tools[0]?.id ?? 'empty'}`}
+                  tools={item.tools}
+                />
+              )
+            }
+            const { message, sourceIndex } = item
+            return (
+              <MessageBlock
+                key={message.id}
+                message={message}
+                active={message.role === 'user' && userIndexes[navIndex] === sourceIndex}
+                userRef={message.role === 'user'
+                  ? node => {
+                      if (node) userRefs.current.set(message.id, node)
+                      else userRefs.current.delete(message.id)
+                    }
+                  : undefined}
+                editing={editingId === message.id}
+                editDraft={editingId === message.id ? editDraft : ''}
+                onEditDraftChange={setEditDraft}
+                onBeginEdit={message.role === 'user' && !running && !compacting
+                  ? () => beginEdit(message)
+                  : undefined}
+                onSubmitEdit={message.role === 'user' && editingId === message.id
+                  ? () => void submitEdit()
+                  : undefined}
+                onCancelEdit={message.role === 'user' && editingId === message.id
+                  ? cancelEdit
+                  : undefined}
+                onForkAt={message.role === 'user' && !running && !compacting
+                  ? () => forkHere(message.id)
+                  : undefined}
+              />
+            )
+          })}
           {runState === 'cancelling' && (
             <div className="run-note">cancelling</div>
           )}
@@ -1404,6 +1423,37 @@ function ContextRing({ context }: { context: ContextUsage }) {
         />
       </svg>
       <span className="context-ring-label">{percent}%</span>
+    </div>
+  )
+}
+
+function ToolGroupBlock({ tools }: { tools: DisplayMessage[] }) {
+  const [open, setOpen] = useState(false)
+  const summary = summarizeToolGroup(tools)
+  const names = formatToolGroupNames(summary.names)
+  const status = formatToolGroupStatus(summary)
+  const marker = open ? '[-]' : '[+]'
+  return (
+    <div className="message tool-group">
+      <button
+        type="button"
+        className="tool-group-toggle"
+        onClick={() => setOpen(open => !open)}
+        aria-expanded={open}
+      >
+        <span className="marker">{marker}</span>
+        <span className="tool-group-kind">tool</span>
+        <span className="tool-group-count">x{summary.count}</span>
+        <span className="tool-group-names" title={names}>{names}</span>
+        <span className="tool-group-status">{status}</span>
+      </button>
+      {open && (
+        <div className="tool-group-items">
+          {tools.map(message => (
+            <ToolBlock key={message.id} message={message} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
