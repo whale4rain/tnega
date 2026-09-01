@@ -43,15 +43,7 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         }
         break
       case 'system/message':
-        // System messages are model-internal by default; `hidden: false`
-        // opts a message into the visible transcript.
-        if (event.payload.content && event.payload.hidden === false) {
-          messages.push({
-            id: event.id,
-            role: 'system',
-            content: event.payload.content,
-          })
-        }
+        // System prompts are raw model context, not part of the transcript.
         break
       case 'tool/call':
         messages.push({
