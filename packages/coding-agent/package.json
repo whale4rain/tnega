@@ -1,0 +1,17 @@
+{
+  "name": "@tnega/coding-agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@tnega/agent": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/llm": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}
