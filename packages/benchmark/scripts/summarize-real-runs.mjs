@@ -11,12 +11,20 @@ const tasksFile = join(dataDir, 'tasks.json')
 
 const parsedTasks = JSON.parse(await readFile(tasksFile, 'utf8'))
 const tasksById = new Map((parsedTasks.tasks ?? []).map(task => [task.id, task]))
-const [bcbVerified, sweVerified] = await Promise.all([
+const [bcbVerified, sweVerified, humanevalVerified, mbppVerified] = await Promise.all([
   readVerified(join(dataDir, 'verified-bigcodebench.json')),
   readVerified(join(dataDir, 'verified-swebench.json')),
+  readVerified(join(dataDir, 'verified-humaneval.json')),
+  readVerified(join(dataDir, 'verified-mbpp.json')),
 ])
 const valid = new Map([
   ...[...bcbVerified]
+    .filter(row => row.goldPass === true)
+    .map(row => [row.instanceId, row]),
+  ...[...humanevalVerified]
+    .filter(row => row.goldPass === true)
+    .map(row => [row.instanceId, row]),
+  ...[...mbppVerified]
     .filter(row => row.goldPass === true)
     .map(row => [row.instanceId, row]),
   ...[...sweVerified]
@@ -26,7 +34,16 @@ const valid = new Map([
 
 const runs = await collectRuns(runsDir)
 const rows = []
+const latestByTask = new Map()
 for (const run of runs) {
+  const taskId = run.taskIds?.[0]
+  if (!taskId) continue
+  const previous = latestByTask.get(taskId)
+  if (!previous || (run.createdAt ?? 0) > (previous.createdAt ?? 0)) {
+    latestByTask.set(taskId, run)
+  }
+}
+for (const run of latestByTask.values()) {
   const taskId = run.taskIds?.[0]
   const task = tasksById.get(taskId)
   const check = run.verdicts?.find(verdict => verdict.strategy === 'check')
