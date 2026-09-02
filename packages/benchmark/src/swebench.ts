@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   writeFile,
 } from 'node:fs/promises'
@@ -66,8 +67,11 @@ export async function importSweBench(
     .filter(row => !idFilter || idFilter.has(row.instance_id))
     .slice(0, options.subset ?? 50)
 
-  const tasks: BenchmarkTask[] = []
-  for (const row of selected) {
+  await prefetchSwebenchArchives(options, selected)
+  console.log(
+    `archives ready, materializing ${selected.length} snapshots (concurrency 12)`,
+  )
+  const records = await mapWithConcurrency(selected, 12, async (row, index) => {
     const snapshotDir = await ensureRepoSnapshot(options, row)
     const fixtureFiles = await patchedFixtureFiles(options, row, snapshotDir)
     const testNodes = testNodeIds(row)
@@ -110,20 +114,19 @@ export async function importSweBench(
         testFiles: testFilesFromPatch(row.test_patch),
       },
     }
-    tasks.push({
-      task,
-      meta: {
-        dataset: 'swebench',
-        instanceId: row.instance_id,
-        version: row.version ?? version,
-        repo: row.repo,
-        baseCommit: row.base_commit,
-        failToPass: testNodes.failToPass,
-        passToPass: testNodes.passToPass,
-      },
-      fixtureDir: snapshotDir,
-    })
-  }
+    const meta = {
+      dataset: 'swebench',
+      instanceId: row.instance_id,
+      version: row.version ?? version,
+      repo: row.repo,
+      baseCommit: row.base_commit,
+      failToPass: testNodes.failToPass,
+      passToPass: testNodes.passToPass,
+    }
+    console.log(`materialized ${index + 1}/${selected.length} ${row.instance_id}`)
+    return { task, meta, fixtureDir: snapshotDir }
+  })
+  const tasks = records.map(({ task, meta, fixtureDir }) => ({ task, meta, fixtureDir }))
 
   const tasksFile = await writeTasksFile(
     options.outDir,
@@ -150,6 +153,66 @@ export async function importSweBench(
   }
 }
 
+async function prefetchSwebenchArchives(
+  options: BenchmarkImportOptions,
+  rows: readonly SweBenchRow[],
+): Promise<void> {
+  const reposDir = join(options.outDir, '.cache', 'repos')
+  const unique = new Map<string, SweBenchRow>()
+  for (const row of rows) {
+    unique.set(`${row.repo.replaceAll('/', '__')}-${row.base_commit}`, row)
+  }
+  const missing: SweBenchRow[] = []
+  for (const row of unique.values()) {
+    try {
+      await access(swebenchArchivePath(reposDir, row))
+    } catch {
+      missing.push(row)
+    }
+  }
+  if (!missing.length) return
+  console.log(`prefetching ${missing.length} missing archives (concurrency 8)`)
+  await mapWithConcurrency(missing, 8, row =>
+    downloadSwebenchArchive(reposDir, row),
+  )
+}
+
+async function downloadSwebenchArchive(
+  reposDir: string,
+  row: SweBenchRow,
+): Promise<void> {
+  await downloadFile(
+    `https://codeload.github.com/${row.repo}/tar.gz/${row.base_commit}`,
+    swebenchArchivePath(reposDir, row),
+    false,
+  )
+}
+
+function swebenchArchivePath(reposDir: string, row: SweBenchRow): string {
+  return join(reposDir, 'archives', `${row.repo.replaceAll('/', '__')}-${row.base_commit}.tar.gz`)
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = []
+  let cursor = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = cursor
+      cursor += 1
+      if (index >= items.length) return
+      const item = items[index]
+      if (item === undefined) return
+      results[index] = await worker(item, index)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
 async function ensureRepoSnapshot(
   options: BenchmarkImportOptions,
   row: SweBenchRow,
@@ -166,7 +229,7 @@ async function ensureRepoSnapshot(
 
   const archiveDir = join(reposDir, 'archives')
   await mkdir(archiveDir, { recursive: true })
-  const archive = join(archiveDir, `${key}.tar.gz`)
+  const archive = swebenchArchivePath(reposDir, row)
   try {
     await access(archive)
   } catch {
@@ -182,8 +245,7 @@ async function ensureRepoSnapshot(
   try {
     await extractArchive(archive, extractDir)
     const top = await singleDirectory(extractDir)
-    await mkdir(snapshotDir, { recursive: true })
-    await cp(join(extractDir, top), snapshotDir, { recursive: true })
+    await rename(join(extractDir, top), snapshotDir)
     await writeFile(join(snapshotDir, '.tnega-snapshot'), `${row.base_commit}\n`, 'utf8')
   } finally {
     await rm(extractDir, { recursive: true, force: true })
