@@ -29,16 +29,15 @@ const existing = args.force
 const selected = candidates
   .filter(task => !existing.has(task.id))
   .slice(0, args.limit)
+const concurrency = Math.max(1, args.concurrency)
 
 if (!selected.length) {
   console.log('no unrun tasks to evaluate')
   process.exit(0)
 }
 
-console.log(`evaluating ${selected.length} tasks (dataset=${args.dataset ?? 'all'}, limit=${args.limit ?? 'none'})`)
-const rows = []
-let failed = 0
-for (const task of selected) {
+console.log(`evaluating ${selected.length} tasks (dataset=${args.dataset ?? 'all'}, limit=${args.limit ?? 'none'}, concurrency=${concurrency})`)
+const rows = await mapWithConcurrency(selected, concurrency, async task => {
   const output = join(runsDir, `${safeId(task.id)}.json`)
   const startedAt = Date.now()
   const result = await runCli([
@@ -58,8 +57,7 @@ for (const task of selected) {
   const check = run?.verdicts?.find(verdict => verdict.strategy === 'check')
   const trace = run?.verdicts?.find(verdict => verdict.strategy === 'trace')
   const ok = result.code === 0 && check?.status === 'pass'
-  if (!ok) failed += 1
-  rows.push({
+  const row = {
     task: task.id,
     ok,
     check: check?.status,
@@ -69,11 +67,13 @@ for (const task of selected) {
     tokens: run?.summary?.budget?.tokens,
     durationMs,
     stderr: result.stderr.trim().slice(0, 500),
-  })
+  }
   console.log(
     `${ok ? 'PASS' : 'FAIL'}\t${task.id}\tcheck=${check?.status ?? '-'}\ttrace=${trace?.status ?? '-'}\tturns=${run?.summary?.budget?.turns ?? '-'}\ttokens=${run?.summary?.budget?.tokens ?? '-'}\t${durationMs}ms`,
   )
-}
+  return row
+})
+const failed = rows.filter(row => !row.ok).length
 
 const summary = {
   ranAt: new Date().toISOString(),
@@ -149,6 +149,7 @@ function parseArgs(values) {
     valid: false,
     timeoutMs: undefined,
     noCache: false,
+    concurrency: 1,
     ids: new Set(),
   }
   let cursor = 0
@@ -169,6 +170,14 @@ function parseArgs(values) {
       cursor += 1
       continue
     }
+    if (arg === '--concurrency') {
+      parsed.concurrency = Number(values[cursor + 1])
+      if (!Number.isInteger(parsed.concurrency) || parsed.concurrency < 1) {
+        throw new Error('--concurrency requires a positive integer')
+      }
+      cursor += 2
+      continue
+    }
     const eq = arg.indexOf('=')
     const name = eq >= 0 ? arg.slice(2, eq) : arg.slice(2)
     const value = eq >= 0 ? arg.slice(eq + 1) : values[cursor + 1]
@@ -178,11 +187,29 @@ function parseArgs(values) {
     else if (name === 'limit') parsed.limit = Number(value)
     else if (name === 'runs-dir') parsed.runsDir = value
     else if (name === 'timeout-ms') parsed.timeoutMs = Number(value)
+    else if (name === 'concurrency') parsed.concurrency = Number(value)
     else if (name === 'ids') parsed.ids = new Set(value.split(',').map(item => item.trim()).filter(Boolean))
     else throw new Error(`unknown option: --${name}`)
     cursor += eq >= 0 ? 1 : 2
   }
+  if (!Number.isInteger(parsed.concurrency) || parsed.concurrency < 1) {
+    throw new Error('--concurrency requires a positive integer')
+  }
   return parsed
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length)
+  let next = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next
+      next += 1
+      results[index] = await worker(items[index])
+    }
+  })
+  await Promise.all(runners)
+  return results
 }
 
 async function readValidIds(dataset) {
