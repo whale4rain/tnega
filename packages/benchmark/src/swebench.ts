@@ -180,7 +180,7 @@ async function ensureRepoSnapshot(
   const extractDir = join(reposDir, `.extract-${randomUUID()}`)
   await mkdir(extractDir, { recursive: true })
   try {
-    await runCommand('tar', ['-xzf', archive, '-C', extractDir])
+    await extractArchive(archive, extractDir)
     const top = await singleDirectory(extractDir)
     await mkdir(snapshotDir, { recursive: true })
     await cp(join(extractDir, top), snapshotDir, { recursive: true })
@@ -189,6 +189,16 @@ async function ensureRepoSnapshot(
     await rm(extractDir, { recursive: true, force: true })
   }
   return snapshotDir
+}
+
+async function extractArchive(archive: string, destDir: string): Promise<void> {
+  const script = [
+    'import os,sys,tarfile',
+    'src,dst=sys.argv[1],sys.argv[2]',
+    'os.makedirs(dst,exist_ok=True)',
+    'with tarfile.open(src,"r:gz") as t: t.extractall(dst, filter="data")',
+  ].join('\n')
+  await runCommand('python', ['-c', script, archive, destDir])
 }
 
 async function patchedFixtureFiles(
@@ -202,7 +212,10 @@ async function patchedFixtureFiles(
   }
   const workDir = await mkdtemp(join(tmpdir(), 'tnega-swe-patch-'))
   try {
+    const renames = patchRenamePairs(row.test_patch)
+    const renamedTargets = new Set(renames.map(pair => pair.to))
     for (const target of targets) {
+      if (renamedTargets.has(target)) continue
       const source = join(snapshotDir, target)
       const destination = join(workDir, target)
       try {
@@ -211,6 +224,17 @@ async function patchedFixtureFiles(
         await cp(source, destination)
       } catch {
         await mkdir(dirname(destination), { recursive: true })
+      }
+    }
+    for (const pair of renames) {
+      const source = join(snapshotDir, pair.from)
+      const destination = join(workDir, pair.from)
+      await access(source)
+      await mkdir(dirname(destination), { recursive: true })
+      await cp(source, destination)
+      const renamedFile = join(workDir, pair.to)
+      if (renamedTargets.has(pair.to)) {
+        await mkdir(dirname(renamedFile), { recursive: true })
       }
     }
     const patchFile = join(workDir, 'test.patch')
@@ -282,16 +306,40 @@ function patchTargetPaths(patch: string): string[] {
   const paths: string[] = []
   for (const rawLine of patch.split(/\r?\n/)) {
     const line = rawLine.trim()
-    if (!line.startsWith('+++ ')) continue
-    let target = line.slice(4).trim()
-    if (target.startsWith('b/')) target = target.slice(2)
-    else if (target.startsWith('a/')) target = target.slice(2)
-    if (target.startsWith('"') && target.endsWith('"')) {
-      target = target.slice(1, -1)
+    if (line.startsWith('+++ ')) {
+      let target = line.slice(4).trim()
+      if (target.startsWith('b/')) target = target.slice(2)
+      else if (target.startsWith('a/')) target = target.slice(2)
+      if (target.startsWith('"') && target.endsWith('"')) {
+        target = target.slice(1, -1)
+      }
+      if (target && target !== '/dev/null') paths.push(target)
+    } else if (line.startsWith('rename to ')) {
+      const target = line.slice('rename to '.length).trim()
+      if (target) paths.push(target)
     }
-    if (target && target !== '/dev/null') paths.push(target)
   }
   return [...new Set(paths)]
+}
+
+function patchRenamePairs(patch: string): Array<{ from: string; to: string }> {
+  const pairs: Array<{ from: string; to: string }> = []
+  const lines = patch.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i += 1) {
+    const fromLine = lines[i]!.trim()
+    const toLine = lines[i + 1]?.trim() ?? ''
+    if (
+      fromLine.startsWith('rename from ') &&
+      toLine.startsWith('rename to ')
+    ) {
+      pairs.push({
+        from: fromLine.slice('rename from '.length).trim(),
+        to: toLine.slice('rename to '.length).trim(),
+      })
+      i += 1
+    }
+  }
+  return pairs
 }
 
 async function singleDirectory(dir: string): Promise<string> {
