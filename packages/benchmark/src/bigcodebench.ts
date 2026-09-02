@@ -1,10 +1,11 @@
-import { access, mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join, relative } from 'node:path'
-import { asyncBufferFromFile, parquetReadObjects } from 'hyparquet'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join, relative } from 'node:path'
 
 import type { Task } from '@tnega/eval'
 
 import { saveManifest, writeTasksFile } from './manifest.js'
+import { downloadParquet, readParquetRows } from './parquet.js'
+import { STDLIB, importsOnlyStdlib } from './stdlib.js'
 import type {
   BenchmarkImportOptions,
   BenchmarkManifest,
@@ -14,100 +15,6 @@ import type {
 
 const BIGCODEBENCH_DATASET = 'bigcode/bigcodebench'
 const DEFAULT_VERSION = 'v0.1.4'
-
-const STDLIB = new Set([
-  'abc',
-  'argparse',
-  'array',
-  'asyncio',
-  'base64',
-  'binascii',
-  'bisect',
-  'builtins',
-  'calendar',
-  'cmath',
-  'collections',
-  'configparser',
-  'concurrent',
-  'contextlib',
-  'contextvars',
-  'copy',
-  'csv',
-  'dataclasses',
-  'datetime',
-  'decimal',
-  'difflib',
-  'dis',
-  'doctest',
-  'enum',
-  'errno',
-  'fnmatch',
-  'fractions',
-  'functools',
-  'gc',
-  'glob',
-  'hashlib',
-  'heapq',
-  'hmac',
-  'html',
-  'http',
-  'importlib',
-  'inspect',
-  'io',
-  'ipaddress',
-  'itertools',
-  'json',
-  'logging',
-  'math',
-  'marshal',
-  'mmap',
-  'multiprocessing',
-  'numbers',
-  'operator',
-  'os',
-  'pathlib',
-  'pickle',
-  'platform',
-  'pprint',
-  'queue',
-  'random',
-  're',
-  'reprlib',
-  'select',
-  'shelve',
-  'shutil',
-  'signal',
-  'socket',
-  'sqlite3',
-  'ssl',
-  'stat',
-  'statistics',
-  'string',
-  'struct',
-  'subprocess',
-  'sys',
-  'tarfile',
-  'tempfile',
-  'textwrap',
-  'threading',
-  'time',
-  'token',
-  'tokenize',
-  'traceback',
-  'types',
-  'typing',
-  'unittest',
-  'unicodedata',
-  'urllib',
-  'uuid',
-  'weakref',
-  'webbrowser',
-  'zlib',
-  'zipfile',
-  'mock',
-  'pytest',
-  'solution',
-])
 
 interface BigCodeBenchRow {
   task_id: string
@@ -134,17 +41,8 @@ function isStdlibOnly(libs: readonly string[]): boolean {
 export function isBigCodeBenchEligible(row: { libs?: string; test?: string }): boolean {
   return (
     isStdlibOnly(parseLibs(row.libs))
-    && testImports(row.test ?? '').every(lib => STDLIB.has(lib))
+    && importsOnlyStdlib(row.test ?? '')
   )
-}
-
-function testImports(test: string): string[] {
-  const modules: string[] = []
-  for (const match of test.matchAll(/^\s*(?:from|import)\s+([A-Za-z_][\w.]*)/gm)) {
-    const name = match[1]!
-    modules.push(name.split('.')[0]!)
-  }
-  return modules
 }
 
 function safeTaskId(taskId: string): string {
@@ -241,26 +139,4 @@ export async function importBigCodeBench(
     manifestFile: manifestFile_,
     dir: options.outDir,
   }
-}
-
-async function downloadParquet(url: string, file: string, force: boolean): Promise<void> {
-  try {
-    await access(file)
-    if (!force) return
-  } catch {
-    // file missing, download
-  }
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`failed to download ${url}: ${response.status} ${response.statusText}`)
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, bytes)
-}
-
-async function readParquetRows<T>(file: string): Promise<T[]> {
-  const buffer = await asyncBufferFromFile(file)
-  const rows = await parquetReadObjects({ file: buffer })
-  return rows as T[]
 }

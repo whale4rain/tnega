@@ -1,6 +1,6 @@
 import type { Task } from '@tnega/eval'
 
-export type BenchmarkSource = 'bigcodebench' | 'swebench'
+export type BenchmarkSource = 'bigcodebench' | 'swebench' | 'humaneval' | 'mbpp'
 
 export interface BenchmarkImportOptions {
   /** Destination directory for the materialized benchmark. */
@@ -29,6 +29,7 @@ export interface BenchmarkTaskMeta {
   baseCommit?: string
   failToPass?: string[]
   passToPass?: string[]
+  testCount?: number
 }
 
 export interface BenchmarkTask {

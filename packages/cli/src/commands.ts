@@ -37,6 +37,8 @@ import {
 import { parseYaml } from './yaml.js'
 import {
   importBigCodeBench,
+  importHumanEval,
+  importMbpp,
   importSweBench,
   type BenchmarkImportOptions,
   type ImportedBenchmark,
@@ -776,6 +778,16 @@ export async function importBenchmarkCommand(
   const previousTasks = await readTaskEntries(join(outDir, 'tasks.json'))
   if (options.source === 'bigcodebench') {
     const result = await importBigCodeBench(common)
+    await mergeTasksFile(result.tasksFile, previousTasks, options.source)
+    return result
+  }
+  if (options.source === 'humaneval') {
+    const result = await importHumanEval(common)
+    await mergeTasksFile(result.tasksFile, previousTasks, options.source)
+    return result
+  }
+  if (options.source === 'mbpp') {
+    const result = await importMbpp(common)
     await mergeTasksFile(result.tasksFile, previousTasks, options.source)
     return result
   }

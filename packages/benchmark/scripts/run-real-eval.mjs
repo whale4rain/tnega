@@ -186,13 +186,18 @@ function parseArgs(values) {
 }
 
 async function readValidIds(dataset) {
-  const file = dataset === 'bigcodebench'
-    ? 'verified-bigcodebench.json'
-    : 'verified-swebench.json'
+  const files = {
+    bigcodebench: 'verified-bigcodebench.json',
+    humaneval: 'verified-humaneval.json',
+    mbpp: 'verified-mbpp.json',
+    swebench: 'verified-swebench.json',
+  }
+  const file = files[dataset]
+  if (!file) return undefined
   const verified = JSON.parse(await readFile(join(dataDir, file), 'utf8'))
-  const valid = dataset === 'bigcodebench'
-    ? row => row.goldPass === true
-    : row => row.basePass === false && row.goldPass === true
+  const valid = dataset === 'swebench'
+    ? row => row.basePass === false && row.goldPass === true
+    : row => row.goldPass === true
   return new Set(
     verified
       .filter(valid)
