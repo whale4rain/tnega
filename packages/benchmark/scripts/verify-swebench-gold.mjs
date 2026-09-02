@@ -20,13 +20,14 @@ const selectedRows = rows.filter(row =>
 )
 
 const results = []
-for (const row of selectedRows) {
+const verified = await mapWithConcurrency(selectedRows, 6, async (row, index) => {
   const result = await verifyInstance(row)
-  results.push(result)
   console.log(
-    `${result.instanceId}\tbase=${result.basePass ? 'PASS' : 'FAIL'}\tgold=${result.goldPass ? 'PASS' : 'FAIL'}\texit=${result.exitCode}\t${result.reason}`,
+    `[${index + 1}/${selectedRows.length}] ${result.instanceId}\tbase=${result.basePass ? 'PASS' : 'FAIL'}\tgold=${result.goldPass ? 'PASS' : 'FAIL'}\texit=${result.exitCode}\t${result.reason}`,
   )
-}
+  return result
+})
+results.push(...verified)
 
 const outputFile = join(dataDir, 'verified-swebench.json')
 await writeFile(outputFile, `${JSON.stringify(results, null, 2)}\n`, 'utf8')
@@ -40,6 +41,23 @@ async function importedSwebenchIds() {
     if (task.artifacts?.dataset === 'swebench') ids.add(task.id)
   }
   return ids
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = []
+  let cursor = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = cursor
+      cursor += 1
+      if (index >= items.length) return
+      const item = items[index]
+      if (item === undefined) return
+      results[index] = await worker(item, index)
+    }
+  })
+  await Promise.all(workers)
+  return results
 }
 
 async function verifyInstance(row) {
