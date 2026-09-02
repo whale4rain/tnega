@@ -62,13 +62,22 @@ SWE-bench 建立真实测试任务集，再跑真实 LLM 评测与自进化闭�
 - [x] CLI `eval import-benchmark`：支持 `--subset / --repo / --ids / --version / --mirror / --force`
 - [x] BigCodeBench 只导入实现与测试均为标准库的任务，避免隐式 pip 依赖
 - [x] 按 dataset 合并 tasks.json，manifest 记录双数据源版本与数量
-- [x] 导入 200 个 BigCodeBench 任务与 50 个 SWE-bench Verified 实例（sympy / requests / seaborn）
+- [x] 导入 274 个 BigCodeBench 任务与 50 个 SWE-bench Verified 实例（sympy / requests / seaborn）
 - [x] CLI `eval run --task <id>` 支持从 tasks.json 过滤单个真实任务
-- [x] 金标准校验：BigCodeBench 200 中 181 个用官方解法通过；SWE 抽样 9 个中 6 个满足 base-fail / gold-pass，其余为本机 Python 3.11 或依赖版本差异
+- [x] 金标准校验：BigCodeBench 274 中 250 个用官方解法通过；SWE 50 中 28 个满足 base-fail / gold-pass，其余为本机 Python 3.11 或依赖版本差异
 - [x] M4 真实 LLM API 冒烟：deepseek-v4-flash 跑 BigCodeBench/0（check 1/1 + trace 0.86，score 0.93）与 SWE-bench seaborn-3187（check 失败 + trace 0.708，score 0.354），权限 / check / trace / 结果落盘链路端到端可用
 - [x] 首批真实评测批次：7/7 BigCodeBench check 通过；SWE 5 个中 1 个 check 通过、3 个 trace 通过，结果见 `docs/eval-results.md`
-- [ ] benchmark 扩量与真实评测批次：SWE-bench Verified 按仓库扩量、Terminal-Bench、BigCodeBench 全量
-- [ ] 失败 trace 回流：从真实运行失败会话生成 draft task，人工审阅后入库
+- [x] BigCodeBench 扩量到 stdlib-only 全量 274 个任务（`import-benchmark --subset 300`）
+- [x] BigCodeBench 全量金标准校验：274 个中 250 个官方解法通过，24 个在本机环境不可判（见 `verified-bigcodebench.json`）
+- [x] SWE-bench Verified 全量金标准校验（导入的 50 个）：28 个满足 base-fail / gold-pass，22 个因 Python 3.11 / 旧依赖不可判（见 `verified-swebench.json`）
+- [x] HumanEval 导入：164 个任务全量金标准通过（官方解法 164/164，见 `verified-humaneval.json`）
+- [x] MBPP full test 导入：500 个任务金标准通过 499/500（MBPP/180 官方解法自身不过测，见 `verified-mbpp.json`）
+- [ ] 全量真实评测批次：250 个可判 BigCodeBench + 28 个可判 SWE-bench 实例（deepseek-v4-flash）
+- [ ] 全量真实评测批次：164 个 HumanEval + 499 个 MBPP（deepseek-v4-flash）
+- [ ] SWE-bench Verified 扩量到全量 500 实例并按仓库做 base/gold 金标准校验
+- [ ] benchmark 扩量：Terminal-Bench（需 Linux 环境，Windows 暂缓）
+- [x] 失败 trace 回流：从真实运行失败会话生成 draft task（`extract-failed-runs.mjs --valid`，含最终输出与最后 write_file 内容）
+- [ ] 失败 draft 人工审阅后入库：审阅 `data/benchmarks/drafts/` 后合并进 tasks.json
 
 ## M15 coding agent 与 web 前端架构
 
