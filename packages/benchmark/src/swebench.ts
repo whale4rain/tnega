@@ -245,12 +245,26 @@ async function ensureRepoSnapshot(
   try {
     await extractArchive(archive, extractDir)
     const top = await singleDirectory(extractDir)
-    await rename(join(extractDir, top), snapshotDir)
+    await renameRetry(join(extractDir, top), snapshotDir)
     await writeFile(join(snapshotDir, '.tnega-snapshot'), `${row.base_commit}\n`, 'utf8')
   } finally {
     await rm(extractDir, { recursive: true, force: true })
   }
   return snapshotDir
+}
+
+async function renameRetry(source: string, destination: string): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await rename(source, destination)
+      return
+    } catch (error) {
+      lastError = error
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+  }
+  throw lastError
 }
 
 async function extractArchive(archive: string, destDir: string): Promise<void> {
