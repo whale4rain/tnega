@@ -276,7 +276,7 @@ export class AgentService {
     const injected = this.inbox.injected()
     this.ctx.emit('agent/start', { input: claimed, options, injected })
 
-    let messages = this._initialMessages(claimed)
+    let messages = await this._initialMessages(claimed)
     const steps: AgentStep[] = []
     let output = ''
     let finishReason: AgentFinishReason = 'stop'
@@ -699,8 +699,14 @@ export class AgentService {
     }
   }
 
-  private _initialMessages(input: AgentInput): ModelMessage[] {
-    const systemPrompt = this.inbox.injected().get('agentSystem')
+  private async _initialMessages(input: AgentInput): Promise<ModelMessage[]> {
+    const promptService = this.ctx.reflect.get('systemPrompt', false) as
+      | { assemble(options?: object): Promise<{ text: string }> }
+      | undefined
+    const assembled = promptService
+      ? (await promptService.assemble()).text.trim()
+      : undefined
+    const systemPrompt = assembled || this.inbox.injected().get('agentSystem')
     const systemMessage = typeof systemPrompt === 'string' && systemPrompt
       ? [{ role: 'system' as const, content: systemPrompt }]
       : []
