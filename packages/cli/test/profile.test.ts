@@ -57,18 +57,16 @@ describe('agent profile and boot', () => {
       bundles: [marker],
       options: { builtinTools: false },
     }
-    const options = bootAgentRuntime(
-      { cwd: dir, sessionFile: join(dir, 'boot.jsonl') },
+    const runtime = await createAgentRuntime({
+      cwd: dir,
+      sessionFile: join(dir, 'boot.jsonl'),
       profile,
-      {
-        llm: {
-          async complete() {
-            return { content: 'ok', finishReason: 'stop' }
-          },
-        } satisfies LLMAdapter,
-      },
-    )
-    const runtime = await createAgentRuntime(options)
+      llm: {
+        async complete() {
+          return { content: 'ok', finishReason: 'stop' }
+        },
+      } satisfies LLMAdapter,
+    })
     try {
       expect(runtime.root.get('bootMarker')).toEqual({ from: 'bundle' })
       const loop = runtime.root.get('agentLoop') as AgentLoop

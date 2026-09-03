@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { Context, type Plugin } from '@tnega/core'
+import type { AgentProfile } from './profile.js'
 import {
   agent,
   defineAgent,
@@ -175,6 +176,7 @@ export { resolveLlmEnv } from './config.js'
 export interface AgentRuntimeOptions {
   cwd: string
   sessionFile: string
+  profile?: AgentProfile
   llm?: LLMAdapter
   inbox?: AgentInbox
   allowNetwork?: boolean
@@ -594,32 +596,37 @@ export async function runAgentCommand(
 export async function createAgentRuntime(
   options: AgentRuntimeOptions,
 ): Promise<AgentRuntime> {
+  const merged: AgentRuntimeOptions = {
+    ...(options.profile?.options ?? {}),
+    ...options,
+    plugins: [...(options.profile?.bundles ?? []), ...(options.plugins ?? [])],
+  }
   const root = new Context()
   const fibers: Array<{ dispose: () => Promise<void> }> = []
   const sessionFiber = await root.plugin(session, {
-    file: options.sessionFile,
-    ...(options.sessionProjector ? { projector: options.sessionProjector } : {}),
+    file: merged.sessionFile,
+    ...(merged.sessionProjector ? { projector: merged.sessionProjector } : {}),
   })
   fibers.push(sessionFiber)
-  const toolsFiber = await root.plugin(tools, options.toolPolicy ?? {})
+  const toolsFiber = await root.plugin(tools, merged.toolPolicy ?? {})
   fibers.push(toolsFiber)
-  if (options.builtinTools !== false) {
-    const builtinConfig: BuiltinToolsConfig = { cwd: options.cwd }
-    if (options.allowNetwork) builtinConfig.allowNetwork = true
-    if (options.allowShell) builtinConfig.allowShell = true
-    if (options.builtinTools && typeof options.builtinTools === 'object') {
-      Object.assign(builtinConfig, options.builtinTools)
+  if (merged.builtinTools !== false) {
+    const builtinConfig: BuiltinToolsConfig = { cwd: merged.cwd }
+    if (merged.allowNetwork) builtinConfig.allowNetwork = true
+    if (merged.allowShell) builtinConfig.allowShell = true
+    if (merged.builtinTools && typeof merged.builtinTools === 'object') {
+      Object.assign(builtinConfig, merged.builtinTools)
     }
     const builtinToolsFiber = await root.plugin(builtinTools, builtinConfig)
     fibers.push(builtinToolsFiber)
   }
-  if (options.agent) {
-    const definitionFiber = await root.plugin(defineAgent(options.agent), {
-      ...(options.llm ? { llm: options.llm } : {}),
-      ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
-      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
-      ...(options.inbox ? { inbox: options.inbox } : {}),
-      ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
+  if (merged.agent) {
+    const definitionFiber = await root.plugin(defineAgent(merged.agent), {
+      ...(merged.llm ? { llm: merged.llm } : {}),
+      ...(merged.maxTurns !== undefined ? { maxTurns: merged.maxTurns } : {}),
+      ...(merged.maxSteps !== undefined ? { maxSteps: merged.maxSteps } : {}),
+      ...(merged.inbox ? { inbox: merged.inbox } : {}),
+      ...(merged.contextBudget ? { contextBudget: merged.contextBudget } : {}),
     })
     fibers.push(definitionFiber)
   } else {
@@ -630,15 +637,15 @@ export async function createAgentRuntime(
       inbox?: AgentInbox
       contextBudget?: AgentContextBudget
     } = {}
-    if (options.llm) agentConfig.llm = options.llm
-    if (options.maxTurns !== undefined) agentConfig.maxTurns = options.maxTurns
-    if (options.maxSteps !== undefined) agentConfig.maxSteps = options.maxSteps
-    if (options.inbox) agentConfig.inbox = options.inbox
-    if (options.contextBudget) agentConfig.contextBudget = options.contextBudget
+    if (merged.llm) agentConfig.llm = merged.llm
+    if (merged.maxTurns !== undefined) agentConfig.maxTurns = merged.maxTurns
+    if (merged.maxSteps !== undefined) agentConfig.maxSteps = merged.maxSteps
+    if (merged.inbox) agentConfig.inbox = merged.inbox
+    if (merged.contextBudget) agentConfig.contextBudget = merged.contextBudget
     const agentFiber = await root.plugin(agent, agentConfig)
     fibers.push(agentFiber)
   }
-  for (const plugin of options.plugins ?? []) {
+  for (const plugin of merged.plugins ?? []) {
     const fiber = await root.plugin(plugin)
     fibers.push(fiber)
   }
