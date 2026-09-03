@@ -1250,3 +1250,31 @@ describe('agent loop', () => {
     })
   })
 })
+
+describe('request header snapshots across steps', () => {
+  it('does not append a header when the envelope is unchanged', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('header-stable.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const { adapter } = fakeLLM([
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+        finishReason: 'tool_calls',
+      },
+      { content: 'done', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'sum' })
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    const headers = events.filter(event => event.type === 'request/header')
+    expect(headers).toHaveLength(1)
+    expect((headers[0]?.payload as { reason: string }).reason).toBe('initial')
+  })
+})

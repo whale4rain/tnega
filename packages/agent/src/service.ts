@@ -671,16 +671,35 @@ export class AgentService {
         ? { temperature: request.options.temperature }
         : {}),
     }
-    await session.append('request/header', {
-      reason: 'initial',
+    const nextHeader = {
       ...(Object.keys(config).length ? { config } : {}),
       ...(system !== undefined ? { system } : {}),
       ...(tools.length ? { tools } : {}),
-    })
-    await session.append('request/context', {
+    }
+    const previousHeader = session.requestHeader()
+    const changedHeader = previousHeader && (
+      previousHeader.system !== nextHeader.system
+      || JSON.stringify(previousHeader.tools ?? []) !== JSON.stringify(nextHeader.tools ?? [])
+      || JSON.stringify(previousHeader.config ?? {}) !== JSON.stringify(nextHeader.config ?? {})
+    )
+    if (!previousHeader) {
+      await session.append('request/header', { reason: 'initial', ...nextHeader })
+    } else if (changedHeader) {
+      await session.append('request/header', { reason: 'change', ...nextHeader })
+    }
+
+    const nextContext = {
       ...(request.options.provider ? { provider: request.options.provider } : {}),
       ...(request.options.model ? { model: request.options.model } : {}),
-    })
+    }
+    const previousContext = session.requestContext()
+    if (
+      previousContext?.provider !== nextContext.provider
+      || previousContext?.model !== nextContext.model
+      || (previousContext === undefined)
+    ) {
+      await session.append('request/context', nextContext)
+    }
     const requested = input.filter(isUserOrSystemMessage)
     const surface = (await session.deriveMessages()).filter(isUserOrSystemMessage)
     const prefix = commonSurfacePrefix(requested, surface)
