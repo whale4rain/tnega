@@ -17,4 +17,11 @@ describe('stdlib import filter', () => {
   it('rejects third-party imports', () => {
     expect(importsOnlyStdlib('import numpy')).toBe(false)
   })
+
+  it('allows explicitly listed local modules', () => {
+    expect(importsOnlyStdlib(
+      'import unittest\nfrom solution import *\n',
+      ['solution'],
+    )).toBe(true)
+  })
 })

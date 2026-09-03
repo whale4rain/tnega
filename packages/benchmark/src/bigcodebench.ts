@@ -41,7 +41,7 @@ function isStdlibOnly(libs: readonly string[]): boolean {
 export function isBigCodeBenchEligible(row: { libs?: string; test?: string }): boolean {
   return (
     isStdlibOnly(parseLibs(row.libs))
-    && importsOnlyStdlib(row.test ?? '')
+    && importsOnlyStdlib(row.test ?? '', ['solution'])
   )
 }
 

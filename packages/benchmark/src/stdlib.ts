@@ -100,8 +100,18 @@ export function parseSourceImports(source: string): string[] {
   return modules
 }
 
-export function importsOnlyStdlib(...sources: readonly string[]): boolean {
+export function importsOnlyStdlib(
+  ...sourcesAndLocal: Array<readonly string[] | string>
+): boolean {
+  const sources: string[] = []
+  let localModules: string[] = []
+  for (const entry of sourcesAndLocal) {
+    if (Array.isArray(entry)) localModules = entry
+    else if (typeof entry === 'string') sources.push(entry)
+  }
   return sources.every(source =>
-    parseSourceImports(source).every(module => STDLIB.has(module)),
+    parseSourceImports(source).every(module =>
+      STDLIB.has(module) || localModules.includes(module),
+    ),
   )
 }
