@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Context, Plugin } from '@tnega/core'
 import { SessionLog, type SessionProjector } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
+import { DurableInbox, type DurableInboxMessage } from './inbox-durable.js'
 import type {
   AgentCancelCause,
   AgentContextBudget,
@@ -9,6 +10,11 @@ import type {
   AgentInput,
   LLMAdapter,
 } from './types.js'
+
+export interface LiveInboxView {
+  readonly size: number
+  snapshot(): { nextTurn: readonly DurableInboxMessage[]; nextStep: readonly DurableInboxMessage[] }
+}
 
 export type AgentStatus = 'idle' | 'running'
 
@@ -19,7 +25,7 @@ export interface AgentCancelOptions {
 export interface LiveAgent {
   readonly id: string
   readonly status: AgentStatus
-  readonly inbox: AgentInbox
+  readonly inbox: LiveInboxView
   readonly session: SessionLog
   readonly ctx: Context
   followup(input: AgentInput): void
@@ -61,14 +67,21 @@ class LiveAgentImpl implements LiveAgent {
   private _controller: AbortController | undefined
   private _drainPromise: Promise<void> | undefined
   private _busy = false
+  private _writeTail: Promise<void> = Promise.resolve()
+  private _pendingWrite: Promise<void> | undefined
+  private _durable: DurableInbox
+  private _agentSystem: string | undefined
 
   constructor(
     private _ctx: Context,
     private _service: AgentService,
     readonly id: string,
-    readonly inbox: AgentInbox,
+    readonly inbox: LiveInboxView,
     readonly session: SessionLog,
-  ) {}
+    durable: DurableInbox,
+  ) {
+    this._durable = durable
+  }
 
   get status(): AgentStatus {
     return this._status
@@ -87,7 +100,9 @@ class LiveAgentImpl implements LiveAgent {
   }
 
   inject(key: string, value: unknown): void {
-    this.inbox.inject(key, value)
+    if (key === 'agentSystem' && typeof value === 'string') {
+      this._agentSystem = value
+    }
   }
 
   send(input: AgentInput, options: { mode?: 'followup' | 'steer' } = {}): void {
@@ -96,30 +111,59 @@ class LiveAgentImpl implements LiveAgent {
 
   private _send(input: AgentInput, target: 'followup' | 'steer'): void {
     if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
-    const message = target === 'steer' ? this.inbox.steer(input) : this.inbox.followup(input)
-    this._ctx.emit('agent/inbox/inserted', {
-      id: this.id,
-      target,
-      input: message,
-      inboxSeq: this.inbox.size,
+    const text = input.text ?? ''
+    const content = input.messages ?? input.context
+    const task = this._writeTail.then(async () => {
+      const message = target === 'steer'
+        ? await this._durable.steer({ text, ...(content !== undefined ? { content } : {}) })
+        : await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
+      this._ctx.emit('agent/inbox/inserted', {
+        id: this.id,
+        target,
+        input: message,
+        inboxSeq: this._durable.size,
+      })
+    }).catch((error: unknown) => {
+      this._ctx.emit('agent/error', { id: this.id, error })
     })
-    queueMicrotask(() => this._wake())
+    this._writeTail = task
+    this._pendingWrite = task
+    task.finally(() => {
+      if (this._pendingWrite === task) this._pendingWrite = undefined
+      queueMicrotask(() => this._wake())
+    })
   }
 
   cancel(cause: AgentCancelCause, options: AgentCancelOptions = {}): void {
     if (!options.keepInbox) {
-      let input = this.inbox.claim()
-      while (input) {
-        this._ctx.emit('agent/inbox/discarded', { id: this.id, input })
-        input = this.inbox.claim()
-      }
+      const task = this._writeTail.then(async () => {
+        const before = this._durable.snapshot()
+        for (const message of [...before.nextStep, ...before.nextTurn]) {
+          this._ctx.emit('agent/inbox/discarded', { id: this.id, message })
+        }
+        await this._durable.clear()
+      }).catch((error: unknown) => {
+        this._ctx.emit('agent/error', { id: this.id, error })
+      })
+      this._writeTail = task
+      this._pendingWrite = task
+      task.finally(() => {
+        if (this._pendingWrite === task) this._pendingWrite = undefined
+      })
     }
     this._controller?.abort(cause)
   }
 
   async whenIdle(): Promise<void> {
-    while (this._drainPromise || this.inbox.size) {
-      await this._drainPromise?.catch(() => undefined)
+    while (this._pendingWrite) await this._pendingWrite
+    while (true) {
+      const drain = this._drainPromise
+      if (drain) {
+        await drain.catch(() => undefined)
+        continue
+      }
+      if (!this._durable.size) break
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
     }
   }
 
@@ -127,18 +171,28 @@ class LiveAgentImpl implements LiveAgent {
     if (this._disposed) return
     this._disposed = true
     this.cancel({ type: 'user' })
+    await this._writeTail.catch(() => undefined)
     await this._drainPromise?.catch(() => undefined)
     this._setStatus('idle')
   }
 
+  /** Start draining currently pending durable work without a new input. */
+  wakeNow(): void {
+    this._wake()
+  }
+
   private _wake(): void {
-    if (!this._disposed && !this._drainPromise && !this._busy && this.inbox.size) {
-      const task = this._drain()
-      this._drainPromise = task
-      task.finally(() => {
-        if (this._drainPromise === task) this._drainPromise = undefined
-      })
-    }
+    if (this._disposed || this._drainPromise || this._busy) return
+    const task = this._drainAll()
+    this._drainPromise = task
+    task.finally(() => {
+      if (this._drainPromise === task) this._drainPromise = undefined
+    })
+  }
+
+  private async _drainAll(): Promise<void> {
+    await this._writeTail.catch(() => undefined)
+    if (this._durable.size) await this._drain()
   }
 
   private async _drain(): Promise<void> {
@@ -146,9 +200,12 @@ class LiveAgentImpl implements LiveAgent {
     this._setStatus('running')
     try {
       while (!this._disposed) {
-        const input = this.inbox.claim()
-        if (!input) break
-        this._ctx.emit('agent/inbox/claimed', { id: this.id, input })
+        const durableMessage = await this._durable.claim()
+        if (!durableMessage) break
+        const input: AgentInput = {
+          ...(durableMessage.text !== undefined ? { text: durableMessage.text } : {}),
+        }
+        this._ctx.emit('agent/inbox/claimed', { id: this.id, message: durableMessage, input })
         const controller = new AbortController()
         this._controller = controller
         try {
@@ -246,6 +303,7 @@ export class AgentRegistry {
 async function buildHandle(
   ctx: Context,
   options: AgentCreationOptions,
+  resume = false,
 ): Promise<AgentHandle> {
   const log = new SessionLog(
     options.file,
@@ -256,19 +314,34 @@ async function buildHandle(
     },
   )
   await log.init()
-  const inbox = new AgentInbox()
+  const durable = resume
+    ? await DurableInbox.restore(log)
+    : new DurableInbox(log)
+  const injected = new AgentInbox()
+  const inboxView: LiveInboxView = {
+    get size() {
+      return durable.size
+    },
+    snapshot: () => durable.snapshot(),
+  }
   const service = new AgentService(ctx, {
     session: log,
-    inbox,
+    inbox: injected,
     ...(options.llm ? { llm: options.llm } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
     ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
     ...(options.hooks ? { hooks: options.hooks } : {}),
   })
-  if (options.system) inbox.inject('agentSystem', options.system)
-  const agent = new LiveAgentImpl(ctx, service, options.id ?? randomUUID(), inbox, log)
-  for (const input of options.initial ?? []) inbox.followup(input)
+  if (options.system) injected.inject('agentSystem', options.system)
+  const agent = new LiveAgentImpl(ctx, service, options.id ?? randomUUID(), inboxView, log, durable)
+  if (options.system) agent.inject('agentSystem', options.system)
+  for (const input of options.initial ?? []) {
+    await durable.insert({ text: input.text ?? '' })
+  }
+  if (resume && durable.size) {
+    setTimeout(() => agent.wakeNow(), 0)
+  }
   return { agent, dispose: () => agent.dispose() }
 }
 
@@ -280,7 +353,7 @@ export const agents = {
     ctx.provide('agents', registry)
     registry.setFactory({
       create: (options) => buildHandle(ctx, options),
-      resume: (options) => buildHandle(ctx, options),
+      resume: (options) => buildHandle(ctx, options, true),
     })
     return () => {
       for (const agent of registry.list()) {

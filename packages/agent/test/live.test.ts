@@ -4,10 +4,12 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
+import { SessionLog } from '@tnega/session'
 import { tools } from '@tnega/tools'
 
 import {
   agents,
+  DurableInbox,
   type AgentRegistry,
   type LiveAgent,
   type LLMAdapter,
@@ -178,5 +180,40 @@ describe('live agent typing', () => {
     expect(typeof agent.whenIdle).toBe('function')
     expect(agent.status).toBe('idle')
     await handle.dispose()
+  })
+})
+
+describe('live agent resume', () => {
+  it('restores durable pending work and continues draining', async () => {
+    const file = await tempFile('resume.jsonl')
+    const prior = new SessionLog(file)
+    await prior.init()
+    const priorInbox = new DurableInbox(prior)
+    await priorInbox.insert({ text: 'pending' })
+    await prior.flush()
+    await prior.close()
+
+    const root = await mountRoot()
+    const calls: string[] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        calls.push(messages.at(-1)?.content ?? '')
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const registry = dynamic(root).agents as AgentRegistry
+    const resumed = await registry.resume({
+      id: 'resumed-agent',
+      file,
+      llm,
+    })
+    await resumed.agent.whenIdle()
+    expect(calls).toEqual(['pending'])
+
+    resumed.agent.followup({ text: 'after-resume' })
+    await resumed.agent.whenIdle()
+    expect(calls).toEqual(['pending', 'after-resume'])
+
+    await resumed.dispose()
   })
 })
