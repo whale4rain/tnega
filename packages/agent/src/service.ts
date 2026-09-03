@@ -92,6 +92,8 @@ export class AgentInbox {
 
 export interface AgentConfig {
   llm?: LLMAdapter
+  /** Bind the loop to a specific session instead of the ctx-provided singleton. */
+  session?: SessionLog
   maxTurns?: number
   maxSteps?: number
   inbox?: AgentInbox
@@ -759,6 +761,7 @@ export class AgentService {
   }
 
   private _session(): SessionLog {
+    if (this.config.session) return this.config.session
     const session = (this.ctx as unknown as { session?: SessionLog }).session
     if (!session) throw new AgentError('session service is required')
     return session
