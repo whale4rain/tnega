@@ -140,4 +140,39 @@ describe('system prompt assembly', () => {
       tools: [{ name: 'read', description: 'read a file' }],
     })
   })
+
+  it('renders registered variables into section templates', async () => {
+    const root = await mountRoot()
+    const service = dynamic(root).systemPrompt as SystemPromptService
+    service.registerSection({
+      name: 'persona',
+      content: 'Agent ${name} on workspace ${workspace}.',
+    })
+    service.registerVariable('name', () => 'tester')
+    service.registerVariable('workspace', () => '/tmp/demo')
+
+    const assembly = await service.assemble()
+    expect(assembly.variables).toEqual({ name: 'tester', workspace: '/tmp/demo' })
+    expect(assembly.text).toBe('Agent tester on workspace /tmp/demo.')
+  })
+
+  it('appends dynamic contexts in registration order', async () => {
+    const root = await mountRoot()
+    const service = dynamic(root).systemPrompt as SystemPromptService
+    service.registerSection({ name: 'persona', content: 'Base.' })
+    service.registerContext({
+      name: 'repo',
+      order: 2,
+      content: () => 'Repo: ${repo}.',
+    })
+    service.registerContext({
+      name: 'user',
+      order: 1,
+      content: () => 'User: tester.',
+    })
+    service.registerVariable('repo', () => 'tnega')
+
+    const assembly = await service.assemble()
+    expect(assembly.text).toBe('Base.\n\nUser: tester.\n\nRepo: tnega.')
+  })
 })
