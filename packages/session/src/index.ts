@@ -3,7 +3,23 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 
-export const SESSION_FORMAT_VERSION = 4
+export const SESSION_FORMAT_VERSION = 5
+
+/** Serialized tool schema, structurally compatible with @tnega/tools ToolSchema. */
+export interface ToolSchemaSnapshot {
+  name: string
+  description: string
+  parameters?: Record<string, unknown>
+}
+
+/** Call configuration recorded beside a request so it can be reconstructed. */
+export interface LlmCallConfig {
+  provider?: string
+  model?: string
+  maxTokens?: number
+  temperature?: number
+  reasoningEffort?: string
+}
 
 export class SessionFormatError extends Error {
   override name = 'SessionFormatError'
@@ -80,6 +96,10 @@ export interface ToolCallPayload {
   id: string
   name: string
   arguments: unknown
+  /** Exact raw arguments JSON as produced by the model; preserves serialization. */
+  argRaw?: string
+  turn?: number
+  step?: number
 }
 
 export interface ToolResultErrorPayload {
@@ -96,6 +116,9 @@ export interface ToolResultPayload {
   durationMs?: number
   output?: unknown
   error?: ToolResultErrorPayload
+  argRaw?: string
+  turn?: number
+  step?: number
 }
 
 export type CancelCause =
@@ -104,11 +127,13 @@ export type CancelCause =
   | { type: 'timeout'; timeoutMs: number }
 
 export interface TurnStartPayload {
+  turn: number
   input?: unknown
   reason?: string
 }
 
 export interface TurnEndPayload {
+  turn: number
   finishReason?: string
   output?: string
   steps?: number
@@ -118,11 +143,13 @@ export interface TurnEndPayload {
 }
 
 export interface StepStartPayload {
-  index: number
+  turn: number
+  step: number
 }
 
 export interface StepEndPayload {
-  index: number
+  turn: number
+  step: number
   finishReason?: string
   toolCalls?: number
   interrupted?: boolean
@@ -140,6 +167,31 @@ export interface LLMRetryPayload {
 export interface LLMRetryStartedPayload {
   retryId: string
   retry: number
+}
+
+/** How a `request/header` snapshot enters the log. */
+export type RequestHeaderReason =
+  | 'initial'
+  | 'resume'
+  | 'change'
+  | 'series'
+  | 'change-series'
+
+export interface RequestHeaderPayload {
+  reason: RequestHeaderReason
+  config?: LlmCallConfig
+  /** Rendered system prompt; absent for a system-less request. */
+  system?: string
+  /** Assembled tool schemas; absent for a tool-less request. */
+  tools?: ToolSchemaSnapshot[]
+  /** True when this snapshot also begins a new model-message series. */
+  startsSeries?: boolean
+}
+
+export interface RequestContextPayload {
+  provider?: string
+  model?: string
+  contextWindow?: number
 }
 
 export interface CheckpointPayload {
@@ -175,6 +227,8 @@ export type SessionEventType =
   | 'assistant/chunk'
   | 'tool/call'
   | 'tool/result'
+  | 'request/header'
+  | 'request/context'
   | 'plan'
   | 'checkpoint'
   | 'compaction/start'
@@ -193,7 +247,16 @@ export interface SessionEventBase<T extends SessionEventType, P> {
   ts: number
   type: T
   payload: P
+  /** Surface placement; required on message-producing events. */
+  surfaceOp?: SurfaceOp
+  /** Seqs of earlier raw events this event derives from. */
+  sourceEventSeqs?: number[]
 }
+
+/** The message-producing subset of surface event types. */
+export type SurfaceEventType = 'user/message' | 'assistant/message' | 'tool/result'
+
+export type SurfaceOp = 'append' | { op: 'replace'; start: number; end: number }
 
 export type SessionEvent =
   | SessionEventBase<'user/message', UserMessagePayload>
@@ -202,6 +265,8 @@ export type SessionEvent =
   | SessionEventBase<'system/message', SystemMessagePayload>
   | SessionEventBase<'tool/call', ToolCallPayload>
   | SessionEventBase<'tool/result', ToolResultPayload>
+  | SessionEventBase<'request/header', RequestHeaderPayload>
+  | SessionEventBase<'request/context', RequestContextPayload>
   | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', CheckpointPayload>
   | SessionEventBase<'compaction/start', CompactionStartPayload>
@@ -271,12 +336,88 @@ function clone<T>(value: T): T {
   return structuredClone(value)
 }
 
+function previousSurfaceSeq(nodes: readonly number[]): number | undefined {
+  return nodes.at(-1)
+}
+
 export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
   const messages: ModelMessage[] = []
   for (const event of events) {
     applyMessageProjection(messages, event)
   }
   return messages
+}
+
+export function isAppendSurfaceEvent(event: SessionEvent): boolean {
+  return isSurfaceEventType(event.type) && event.surfaceOp === 'append'
+}
+
+export function isSurfaceEventType(type: SessionEventType): type is SurfaceEventType {
+  return type === 'user/message'
+    || type === 'assistant/message'
+    || type === 'tool/result'
+}
+
+/** Detached current surface nodes plus every replacement's shadowed ranges. */
+export interface SurfaceFoldReplacement {
+  seq: number
+  start: number
+  end: number
+  shadowedSeqs: number[]
+}
+
+export interface SurfaceFoldResult {
+  nodes: number[]
+  replacements: SurfaceFoldReplacement[]
+}
+
+export function foldSurface(events: readonly SessionEvent[]): SurfaceFoldResult {
+  const nodes: number[] = []
+  const replacements: SurfaceFoldReplacement[] = []
+  for (const event of events) {
+    if (!isSurfaceEventType(event.type)) continue
+    const op = event.surfaceOp ?? 'append'
+    if (op === 'append') {
+      nodes.push(event.seq)
+      continue
+    }
+    const startIndex = nodes.indexOf(op.start)
+    if (startIndex < 0) continue
+    const endIndex = nodes.indexOf(op.end, startIndex)
+    if (endIndex < 0) continue
+    const shadowed = nodes.splice(startIndex, endIndex - startIndex + 1)
+    nodes.splice(startIndex, 0, event.seq)
+    replacements.push({
+      seq: event.seq,
+      start: op.start,
+      end: op.end,
+      shadowedSeqs: shadowed,
+    })
+  }
+  return { nodes, replacements }
+}
+
+export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
+  if (!isSurfaceEventType(event.type)) return null
+  const messages: ModelMessage[] = []
+  applyMessageProjection(messages, event)
+  return messages[0] ?? null
+}
+
+export function foldRequestHeader(events: readonly SessionEvent[]): RequestHeaderPayload | undefined {
+  let header: RequestHeaderPayload | undefined
+  for (const event of events) {
+    if (event.type === 'request/header') header = clone(event.payload)
+  }
+  return header
+}
+
+export function foldRequestContext(events: readonly SessionEvent[]): RequestContextPayload | undefined {
+  let context: RequestContextPayload | undefined
+  for (const event of events) {
+    if (event.type === 'request/context') context = clone(event.payload)
+  }
+  return context
 }
 
 function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): void {
@@ -339,6 +480,8 @@ function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): 
       break
     }
     case 'assistant/chunk':
+    case 'request/header':
+    case 'request/context':
     case 'compaction/start':
     case 'compaction/end':
     case 'plan':
@@ -402,6 +545,9 @@ export function estimateEventTokens(event: SessionEvent): number {
       return 0
     case 'llm/retry':
     case 'llm/retry-started':
+      return 0
+    case 'request/header':
+    case 'request/context':
       return 0
     case 'turn/start':
     case 'turn/end':
@@ -527,13 +673,16 @@ export function repairUnclosed(
   }
   for (const step of openSteps) {
     push('step/end', {
-      index: step.payload.index,
+      turn: step.payload.turn,
+      step: step.payload.step,
       finishReason: 'interrupted',
       interrupted: true,
     })
   }
   for (let i = 0; i < openTurns.length; i++) {
+    const turn = openTurns[i]!.payload.turn
     push('turn/end', {
+      turn,
       finishReason: 'interrupted',
       interrupted: true,
     })
@@ -573,6 +722,9 @@ export function estimateContextUsage(
 export class SessionLog {
   private _events: SessionEvent[] = []
   private _surface: ModelMessage[] = []
+  private _surfaceNodes: number[] = []
+  private _requestHeader: RequestHeaderPayload | undefined
+  private _requestContext: RequestContextPayload | undefined
   private _loaded = false
   private _nextSeq = 1
   private _queue: Promise<unknown> = Promise.resolve()
@@ -612,6 +764,8 @@ export class SessionLog {
   append(type: 'system/message', payload: SystemMessagePayload): Promise<SessionEvent>
   append(type: 'tool/call', payload: ToolCallPayload): Promise<SessionEvent>
   append(type: 'tool/result', payload: ToolResultPayload): Promise<SessionEvent>
+  append(type: 'request/header', payload: RequestHeaderPayload): Promise<SessionEvent>
+  append(type: 'request/context', payload: RequestContextPayload): Promise<SessionEvent>
   append(type: 'plan', payload: PlanPayload): Promise<SessionEvent>
   append(type: 'checkpoint', payload: CheckpointPayload): Promise<SessionEvent>
   append(type: 'compaction/start', payload: CompactionStartPayload): Promise<SessionEvent>
@@ -637,6 +791,13 @@ export class SessionLog {
     payload: SessionEvent['payload'],
   ): SessionEvent {
       const eventPayload = clone(payload)
+      const event = {
+        id: randomUUID(),
+        seq: this._nextSeq,
+        ts: Date.now(),
+        type: type as SessionEvent['type'],
+        payload: eventPayload,
+      } as SessionEvent
       if (isMessageEventType(type)) {
         for (let index = this._events.length - 1; index >= 0; index -= 1) {
           const previous = this._events[index]
@@ -646,14 +807,14 @@ export class SessionLog {
             break
           }
         }
+        event.surfaceOp ??= 'append'
+        const previous = previousSurfaceSeq(this._surfaceNodes)
+        event.sourceEventSeqs ??= previous === undefined ? [] : [previous]
+      } else if (type === 'request/header') {
+        event.sourceEventSeqs ??= []
+      } else if (type === 'request/context') {
+        event.sourceEventSeqs ??= []
       }
-      const event = {
-        id: randomUUID(),
-        seq: this._nextSeq,
-        ts: Date.now(),
-        type: type as SessionEvent['type'],
-        payload: eventPayload,
-      } as SessionEvent
       this._nextSeq += 1
       return event
   }
@@ -661,6 +822,9 @@ export class SessionLog {
   private _commitEvent(event: SessionEvent): void {
     this._events.push(event)
     this._surface = clone(this._projector(this._events))
+    this._surfaceNodes = foldSurface(this._events).nodes
+    if (event.type === 'request/header') this._requestHeader = clone(event.payload)
+    if (event.type === 'request/context') this._requestContext = clone(event.payload)
     this._broadcast?.('event', event)
     this._enqueue(event)
   }
@@ -708,6 +872,18 @@ export class SessionLog {
     return this._run(async () => {
       await this._ensureLoaded()
       return this._resolveLineage(messageId)
+    })
+  }
+
+  /** The next turn number: one more than the highest recorded `turn/start`. */
+  async nextTurn(): Promise<number> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      let max = 0
+      for (const event of this._events) {
+        if (event.type === 'turn/start') max = Math.max(max, event.payload.turn)
+      }
+      return max + 1
     })
   }
 
@@ -768,6 +944,16 @@ export class SessionLog {
       await this._ensureLoaded()
       return clone(this._surface)
     })
+  }
+
+  /** The latest `request/header` snapshot, or undefined before the first one. */
+  requestHeader(): RequestHeaderPayload | undefined {
+    return this._requestHeader ? clone(this._requestHeader) : undefined
+  }
+
+  /** The latest resolved route metadata, or undefined before the first one. */
+  requestContext(): RequestContextPayload | undefined {
+    return this._requestContext ? clone(this._requestContext) : undefined
   }
 
   estimateContext(limit = DEFAULT_CONTEXT_LIMIT): Promise<ContextUsage> {
@@ -877,6 +1063,9 @@ export class SessionLog {
     if (owner && owner !== this && owner._loaded) {
       this._events = owner._events.map(event => clone(event))
       this._surface = clone(owner._surface)
+      this._surfaceNodes = [...owner._surfaceNodes]
+      this._requestHeader = owner._requestHeader ? clone(owner._requestHeader) : undefined
+      this._requestContext = owner._requestContext ? clone(owner._requestContext) : undefined
       this._nextSeq = owner._nextSeq
       this._loaded = true
       return
@@ -894,12 +1083,16 @@ export class SessionLog {
       await writeFile(this.file, `${JSON.stringify(meta)}\n`, 'utf8')
       this._events = [meta]
       this._surface = clone(this._projector(this._events))
+      this._surfaceNodes = foldSurface(this._events).nodes
       this._nextSeq = 2
       this._loaded = true
       return
     }
     this._events = read.events
     this._surface = clone(this._projector(this._events))
+    this._surfaceNodes = foldSurface(this._events).nodes
+    this._requestHeader = foldRequestHeader(this._events)
+    this._requestContext = foldRequestContext(this._events)
     this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
     this._loaded = true
   }

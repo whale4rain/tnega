@@ -46,6 +46,12 @@ export {
   safeCompactSplit,
   session,
   suffixStartIndexForTokens,
+  deriveEventMessage,
+  foldRequestContext,
+  foldRequestHeader,
+  foldSurface,
+  isAppendSurfaceEvent,
+  isSurfaceEventType,
   type CheckpointPayload,
   type CompactOptions,
   type ContextUsage,
@@ -71,6 +77,14 @@ export {
   type TurnStartPayload,
   type CompactionEndPayload,
   type CompactionStartPayload,
+  type LlmCallConfig,
+  type RequestContextPayload,
+  type RequestHeaderPayload,
+  type RequestHeaderReason,
+  type SurfaceEventType,
+  type SurfaceFoldReplacement,
+  type SurfaceFoldResult,
+  type SurfaceOp,
 } from '../packages/session/src/index.js'
 
 export {

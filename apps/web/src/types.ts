@@ -17,6 +17,8 @@ export interface SessionEventBase<T extends string, P> {
   ts: number
   type: T
   payload: P
+  surfaceOp?: 'append' | { op: 'replace'; start: number; end: number }
+  sourceEventSeqs?: number[]
 }
 
 export interface UserMessagePayload {
@@ -50,6 +52,9 @@ export interface ToolCallPayload {
   id: string
   name: string
   arguments: unknown
+  argRaw?: string
+  turn?: number
+  step?: number
 }
 
 export interface ToolResultPayload {
@@ -60,6 +65,9 @@ export interface ToolResultPayload {
   durationMs?: number
   output?: unknown
   error?: { name?: string; message: string; stack?: string }
+  argRaw?: string
+  turn?: number
+  step?: number
 }
 
 export interface CompactionStartPayload {
@@ -118,11 +126,31 @@ export type SessionEvent =
       failure?: { name?: string; message: string; stack?: string }
     }>
   | SessionEventBase<'llm/retry-started', { retryId: string; retry: number }>
+  | SessionEventBase<'request/header', {
+      reason: 'initial' | 'resume' | 'change' | 'series' | 'change-series'
+      config?: {
+        provider?: string
+        model?: string
+        maxTokens?: number
+        temperature?: number
+        reasoningEffort?: string
+      }
+      system?: string
+      tools?: Array<{ name: string; description: string; parameters?: Record<string, unknown> }>
+      startsSeries?: boolean
+    }>
+  | SessionEventBase<'request/context', {
+      provider?: string
+      model?: string
+      contextWindow?: number
+    }>
   | SessionEventBase<'turn/start', {
+      turn: number
       input?: unknown
       reason?: string
     }>
   | SessionEventBase<'turn/end', {
+      turn: number
       finishReason?: string
       output?: string
       steps?: number
@@ -130,9 +158,10 @@ export type SessionEvent =
       cancelCause?: CancelCause
       error?: { name?: string; message: string; stack?: string }
     }>
-  | SessionEventBase<'step/start', { index: number }>
+  | SessionEventBase<'step/start', { turn: number; step: number }>
   | SessionEventBase<'step/end', {
-      index: number
+      turn: number
+      step: number
       finishReason?: string
       toolCalls?: number
       interrupted?: boolean

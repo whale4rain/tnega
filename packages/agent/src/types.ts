@@ -27,6 +27,9 @@ export interface LLMCompletion {
 export interface CompleteOptions {
   maxSteps?: number
   signal?: AbortSignal
+  provider?: string
+  model?: string
+  temperature?: number
 }
 
 export interface LLMMessageStartEvent {

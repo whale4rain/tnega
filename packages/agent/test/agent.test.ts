@@ -748,17 +748,19 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/chunk',
       'assistant/message',
       'step/end',
       'turn/end',
     ])
-    expect(durableEvents[4]).toMatchObject({
+    expect(durableEvents[6]).toMatchObject({
       type: 'assistant/chunk',
       payload: { id: 'm1', content: 'partial', index: 0 },
     })
-    expect(durableEvents[5]?.payload).toMatchObject({
+    expect(durableEvents[7]?.payload).toMatchObject({
       content: 'partial',
       interrupted: true,
     })
@@ -800,6 +802,8 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/message',
       'tool/call',
@@ -807,12 +811,12 @@ describe('agent loop', () => {
       'step/end',
       'turn/end',
     ])
-    expect(events[7]?.payload).toMatchObject({
+    expect(events[9]?.payload).toMatchObject({
       finishReason: 'cancelled',
       interrupted: true,
       cancelCause: { type: 'abort' },
     })
-    expect(events[8]?.payload).toMatchObject({
+    expect(events[10]?.payload).toMatchObject({
       finishReason: 'cancelled',
       cancelCause: { type: 'abort' },
     })
@@ -875,19 +879,22 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/message',
       'step/end',
       'turn/end',
     ])
     expect(events[1]?.payload).toMatchObject({ reason: 'user' })
-    expect(events[2]?.payload).toEqual({ index: 0 })
-    expect(events[5]?.payload).toMatchObject({
-      index: 0,
+    expect(events[2]?.payload).toEqual({ turn: 1, step: 0 })
+    expect(events[7]?.payload).toMatchObject({
+      turn: 1,
+      step: 0,
       finishReason: 'stop',
       toolCalls: 0,
     })
-    expect(events[6]?.payload).toMatchObject({ finishReason: 'stop', steps: 1 })
+    expect(events[8]?.payload).toMatchObject({ finishReason: 'stop', steps: 1 })
   })
 
   it('persists a new user turn without duplicating history', async () => {
@@ -1098,6 +1105,8 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'llm/retry',
       'llm/retry-started',
@@ -1177,6 +1186,8 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/chunk',
       'assistant/message',
@@ -1187,11 +1198,11 @@ describe('agent loop', () => {
       'step/end',
       'turn/end',
     ])
-    expect(events[4]).toMatchObject({
+    expect(events[6]).toMatchObject({
       type: 'assistant/chunk',
       payload: { id: 'm1', content: 'recover', index: 0 },
     })
-    expect(events[5]?.payload).toMatchObject({ content: 'recover', interrupted: true })
+    expect(events[7]?.payload).toMatchObject({ content: 'recover', interrupted: true })
     expect(await log.deriveMessages()).toEqual([
       { role: 'user', content: 'go' },
       { role: 'assistant', content: 'recover' },
@@ -1219,17 +1230,20 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'step/end',
       'turn/end',
     ])
-    expect(events[4]?.payload).toMatchObject({
-      index: 0,
+    expect(events[6]?.payload).toMatchObject({
+      turn: 1,
+      step: 0,
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
     })
-    expect(events[5]?.payload).toMatchObject({
+    expect(events[7]?.payload).toMatchObject({
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },

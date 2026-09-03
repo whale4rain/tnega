@@ -285,7 +285,9 @@ export class AgentService {
       injected,
     })
 
+    const turn = await session.nextTurn()
     await session.append('turn/start', {
+      turn,
       input: claimed.text ?? claimed,
       reason: 'user',
     })
@@ -317,7 +319,7 @@ export class AgentService {
         break
       }
 
-      await session.append('step/start', { index })
+      await session.append('step/start', { turn, step: index })
       currentStepIndex = index
 
       const requestedInput = copyMessages(preStep.messages)
@@ -372,7 +374,7 @@ export class AgentService {
             }
             llmMessages = copyMessages(streamRequest.messages)
             if (!persistedStepInput) {
-              await this._persistStepInput(session, llmMessages)
+              await this._persistStepInput(session, request, llmMessages)
               persistedStepInput = true
             }
             let chunkIndex = 0
@@ -391,7 +393,7 @@ export class AgentService {
             completion = completionFromStreamEvents(streamEvents)
           } else {
             if (!persistedStepInput) {
-              await this._persistStepInput(session, llmMessages)
+              await this._persistStepInput(session, request, llmMessages)
               persistedStepInput = true
             }
             completion = await llm.complete(llmMessages, request.tools, request.options)
@@ -522,7 +524,8 @@ export class AgentService {
       }
 
       await session.append('step/end', {
-        index,
+        turn,
+        step: index,
         finishReason: completion.finishReason,
         toolCalls: toolCalls.length,
       })
@@ -560,7 +563,8 @@ export class AgentService {
       if (currentStepIndex !== undefined) {
         const cancelled = options.signal?.aborted
         await session.append('step/end', {
-          index: currentStepIndex,
+          turn,
+          step: currentStepIndex,
           finishReason: cancelled
             ? 'cancelled'
             : turnError
@@ -572,6 +576,7 @@ export class AgentService {
         })
       }
       await session.append('turn/end', {
+        turn,
         finishReason: turnError
           ? (options.signal?.aborted ? 'cancelled' : 'error')
           : finishReason,
@@ -647,8 +652,32 @@ export class AgentService {
 
   private async _persistStepInput(
     session: SessionLog,
+    request: AgentRequestEvent,
     input: readonly ModelMessage[],
   ): Promise<void> {
+    const system = input.find(message => message.role === 'system')?.content
+    const tools = request.tools.map(tool => ({
+      name: tool.schema.name,
+      description: tool.schema.description,
+      ...(tool.schema.parameters ? { parameters: tool.schema.parameters } : {}),
+    }))
+    const config = {
+      ...(request.options.provider ? { provider: request.options.provider } : {}),
+      ...(request.options.model ? { model: request.options.model } : {}),
+      ...(request.options.temperature !== undefined
+        ? { temperature: request.options.temperature }
+        : {}),
+    }
+    await session.append('request/header', {
+      reason: 'initial',
+      ...(Object.keys(config).length ? { config } : {}),
+      ...(system !== undefined ? { system } : {}),
+      ...(tools.length ? { tools } : {}),
+    })
+    await session.append('request/context', {
+      ...(request.options.provider ? { provider: request.options.provider } : {}),
+      ...(request.options.model ? { model: request.options.model } : {}),
+    })
     const requested = input.filter(isUserOrSystemMessage)
     const surface = (await session.deriveMessages()).filter(isUserOrSystemMessage)
     const prefix = commonSurfacePrefix(requested, surface)
