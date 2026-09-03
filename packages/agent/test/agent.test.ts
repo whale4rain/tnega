@@ -943,8 +943,9 @@ describe('agent loop', () => {
     await root.plugin(session, { file: await tempFile('multi-turn-repeat.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([
-      { content: 'first answer', finishReason: 'stop' },
-      { content: 'second answer', finishReason: 'stop' },
+      { content: 'answer a', finishReason: 'stop' },
+      { content: 'answer b', finishReason: 'stop' },
+      { content: 'answer c', finishReason: 'stop' },
     ])
     await root.plugin(agent, { llm: adapter })
 
@@ -953,12 +954,18 @@ describe('agent loop', () => {
     const log = dynamic(root).session as SessionLog
     const history = await log.deriveMessages()
     await loop({ messages: [...history, { role: 'user', content: 'first' }] })
+    const history2 = await log.deriveMessages()
+    await loop({ messages: [...history2, { role: 'user', content: 'first' }] })
 
     const userMessages = (await log.read()).filter(
       (event): event is Extract<SessionEvent, { type: 'user/message' }> =>
         event.type === 'user/message',
     )
-    expect(userMessages.map(event => event.payload.content)).toEqual(['first', 'first'])
+    expect(userMessages.map(event => event.payload.content)).toEqual([
+      'first',
+      'first',
+      'first',
+    ])
   })
 
   it('persists only the delta when pre-step rewrites multi-user history', async () => {
