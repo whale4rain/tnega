@@ -184,11 +184,22 @@ describe('live agent typing', () => {
 })
 
 describe('live agent resume', () => {
-  it('restores durable pending work and continues draining', async () => {
+  it('persists identity and restores durable pending work on resume', async () => {
     const file = await tempFile('resume.jsonl')
     const prior = new SessionLog(file)
     await prior.init()
     const priorInbox = new DurableInbox(prior)
+    await prior.append('meta', {
+      kind: 'agent',
+      agentId: 'resumed-agent',
+      agentType: 'coding',
+      mode: 'plan',
+      title: 'Resume fixture',
+      owner: 'root-agent',
+      parentSessionId: 'parent-session',
+      forkedAtMessageId: 'message-9',
+      createdAt: 1,
+    })
     await priorInbox.insert({ text: 'pending' })
     await prior.flush()
     await prior.close()
@@ -207,6 +218,20 @@ describe('live agent resume', () => {
       file,
       llm,
     })
+    expect(resumed.agent.meta).toMatchObject({
+      agentId: 'resumed-agent',
+      agentType: 'coding',
+      mode: 'plan',
+      title: 'Resume fixture',
+      owner: 'root-agent',
+      parentSessionId: 'parent-session',
+      forkedAtMessageId: 'message-9',
+      createdAt: 1,
+    })
+    expect(resumed.agent.agentType).toBe('coding')
+    expect(resumed.agent.mode).toBe('plan')
+    expect(resumed.agent.owner).toBe('root-agent')
+    expect(resumed.agent.parentSessionId).toBe('parent-session')
     await resumed.agent.whenIdle()
     expect(calls).toEqual(['pending'])
 
@@ -215,5 +240,49 @@ describe('live agent resume', () => {
     expect(calls).toEqual(['pending', 'after-resume'])
 
     await resumed.dispose()
+  })
+
+  it('rejects a resume whose identity conflicts with the session meta', async () => {
+    const file = await tempFile('resume-mismatch.jsonl')
+    const prior = new SessionLog(file)
+    await prior.init()
+    await prior.append('meta', {
+      kind: 'agent',
+      agentId: 'stored-agent',
+      agentType: 'general',
+    })
+    await prior.flush()
+    await prior.close()
+
+    const root = await mountRoot()
+    const registry = dynamic(root).agents as AgentRegistry
+    await expect(registry.resume({
+      id: 'different-agent',
+      file,
+      llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
+    })).rejects.toThrow(/agent id mismatch/)
+
+    await expect(registry.resume({
+      id: 'stored-agent',
+      file,
+      agentType: 'coding',
+      llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
+    })).rejects.toThrow(/agent type mismatch/)
+
+    await expect(registry.resume({
+      id: 'stored-agent',
+      file,
+      mode: 'execute',
+      llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
+    })).rejects.toThrow(/agent mode mismatch/)
+  })
+
+  it('resume requires a stable session id', async () => {
+    const root = await mountRoot()
+    const registry = dynamic(root).agents as AgentRegistry
+    await expect(registry.resume({
+      file: await tempFile('resume-no-id.jsonl'),
+      llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
+    })).rejects.toThrow(/stable session id/)
   })
 })

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type { Context, Plugin } from '@tnega/core'
-import { SessionLog, type SessionProjector } from '@tnega/session'
+import { SessionLog, type SessionEvent, type SessionProjector } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
+import { AgentError } from './service.js'
 import { DurableInbox, type DurableInboxMessage } from './inbox-durable.js'
 import type {
   AgentCancelCause,
@@ -10,6 +11,17 @@ import type {
   AgentInput,
   LLMAdapter,
 } from './types.js'
+
+export interface AgentSessionMeta {
+  agentId: string
+  agentType?: 'general' | 'coding'
+  mode?: 'auto' | 'plan' | 'execute'
+  title?: string
+  owner?: string
+  parentSessionId?: string
+  forkedAtMessageId?: string
+  createdAt?: number
+}
 
 export interface LiveInboxView {
   readonly size: number
@@ -24,6 +36,11 @@ export interface AgentCancelOptions {
 
 export interface LiveAgent {
   readonly id: string
+  readonly meta: AgentSessionMeta
+  readonly agentType: 'general' | 'coding' | undefined
+  readonly mode: 'auto' | 'plan' | 'execute' | undefined
+  readonly owner: string | undefined
+  readonly parentSessionId: string | undefined
   readonly status: AgentStatus
   readonly inbox: LiveInboxView
   readonly session: SessionLog
@@ -43,8 +60,16 @@ export interface AgentHandle {
 }
 
 export interface AgentCreationOptions {
-  id?: string
   file: string
+  /** Stable identity shared by this process and future resumes. */
+  sessionId?: string
+  agentType?: 'general' | 'coding'
+  mode?: 'auto' | 'plan' | 'execute'
+  title?: string
+  owner?: string
+  parentSessionId?: string
+  forkedAtMessageId?: string
+  id?: string
   llm?: LLMAdapter
   system?: string
   projector?: SessionProjector
@@ -53,7 +78,6 @@ export interface AgentCreationOptions {
   contextBudget?: AgentContextBudget
   hooks?: AgentHooks
   initial?: readonly AgentInput[]
-  owner?: string
 }
 
 export interface AgentFactory {
@@ -79,8 +103,25 @@ class LiveAgentImpl implements LiveAgent {
     readonly inbox: LiveInboxView,
     readonly session: SessionLog,
     durable: DurableInbox,
+    readonly meta: AgentSessionMeta,
   ) {
     this._durable = durable
+  }
+
+  get agentType(): 'general' | 'coding' | undefined {
+    return this.meta.agentType
+  }
+
+  get mode(): 'auto' | 'plan' | 'execute' | undefined {
+    return this.meta.mode
+  }
+
+  get owner(): string | undefined {
+    return this.meta.owner
+  }
+
+  get parentSessionId(): string | undefined {
+    return this.meta.parentSessionId
   }
 
   get status(): AgentStatus {
@@ -248,11 +289,11 @@ export class AgentRegistry {
 
   async create(options: AgentCreationOptions): Promise<AgentHandle> {
     if (!this._factory) throw new Error('no agent factory registered')
-    const id = options.id ?? randomUUID()
+    const id = options.id ?? options.sessionId ?? randomUUID()
     if (this._agents.has(id)) throw new Error(`agent already registered: ${id}`)
     const handle = await this._factory.create({ ...options, id })
     this._agents.set(id, handle.agent)
-    this._owners.set(id, options.owner)
+    this._owners.set(id, handle.agent.owner)
     this._ctx.emit('agent/created', { id, agent: handle.agent })
     return {
       agent: handle.agent,
@@ -262,11 +303,14 @@ export class AgentRegistry {
 
   async resume(options: AgentCreationOptions): Promise<AgentHandle> {
     if (!this._factory) throw new Error('no agent factory registered')
-    const id = options.id ?? randomUUID()
+    if (!options.id && !options.sessionId) {
+      throw new AgentError('agent resume requires a stable session id')
+    }
+    const id = options.id ?? options.sessionId!
     if (this._agents.has(id)) throw new Error(`agent already registered: ${id}`)
     const handle = await this._factory.resume({ ...options, id })
     this._agents.set(id, handle.agent)
-    this._owners.set(id, options.owner)
+    this._owners.set(id, handle.agent.owner)
     this._ctx.emit('agent/created', { id, agent: handle.agent })
     return {
       agent: handle.agent,
@@ -305,6 +349,18 @@ async function buildHandle(
   options: AgentCreationOptions,
   resume = false,
 ): Promise<AgentHandle> {
+  const fileMeta = await readAgentMeta(options.file)
+  if (resume && !fileMeta) {
+    throw new AgentError(`no agent session meta found for resume: ${options.file}`)
+  }
+  const requestedId = options.id ?? options.sessionId ?? randomUUID()
+  if (fileMeta?.agentId && fileMeta.agentId !== requestedId) {
+    throw new AgentError(
+      `agent id mismatch: session belongs to ${fileMeta.agentId}, requested ${requestedId}`,
+    )
+  }
+  const agentId = fileMeta?.agentId ?? requestedId
+  if (!agentId) throw new AgentError('agent requires a stable identity')
   const log = new SessionLog(
     options.file,
     options.projector,
@@ -314,6 +370,51 @@ async function buildHandle(
     },
   )
   await log.init()
+  const fileEvents = await log.read()
+  const durableMeta = readDurableAgentMeta(fileEvents)
+  if (durableMeta) {
+    if (durableMeta.agentId !== agentId) {
+      throw new AgentError(
+        `agent id mismatch: session belongs to ${durableMeta.agentId}, requested ${agentId}`,
+      )
+    }
+    if (options.agentType && durableMeta.agentType !== options.agentType) {
+      throw new AgentError(
+        `agent type mismatch: session is ${durableMeta.agentType ?? 'untyped'}, requested ${options.agentType}`,
+      )
+    }
+    if (options.mode && durableMeta.mode !== options.mode) {
+      throw new AgentError(
+        `agent mode mismatch: session is ${durableMeta.mode ?? 'unset'}, requested ${options.mode}`,
+      )
+    }
+  }
+  const boundMeta: AgentSessionMeta = {
+    ...fileMeta,
+    ...(durableMeta ?? {}),
+    ...(options.title ? { title: options.title } : {}),
+    ...(options.owner ? { owner: options.owner } : {}),
+    ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+    ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
+    agentId,
+  }
+  const resolvedAgentType = options.agentType ?? durableMeta?.agentType
+  if (resolvedAgentType) boundMeta.agentType = resolvedAgentType
+  const resolvedMode = options.mode ?? durableMeta?.mode
+  if (resolvedMode) boundMeta.mode = resolvedMode
+  if (!durableMeta) {
+    await log.append('meta', {
+      kind: 'agent',
+      agentId,
+      ...(boundMeta.agentType ? { agentType: boundMeta.agentType } : {}),
+      ...(boundMeta.mode ? { mode: boundMeta.mode } : {}),
+      ...(boundMeta.title ? { title: boundMeta.title } : {}),
+      ...(boundMeta.owner ? { owner: boundMeta.owner } : {}),
+      ...(boundMeta.parentSessionId ? { parentSessionId: boundMeta.parentSessionId } : {}),
+      ...(boundMeta.forkedAtMessageId ? { forkedAtMessageId: boundMeta.forkedAtMessageId } : {}),
+      ...(boundMeta.createdAt !== undefined ? { createdAt: boundMeta.createdAt } : {}),
+    })
+  }
   const durable = resume
     ? await DurableInbox.restore(log)
     : new DurableInbox(log)
@@ -334,15 +435,75 @@ async function buildHandle(
     ...(options.hooks ? { hooks: options.hooks } : {}),
   })
   if (options.system) injected.inject('agentSystem', options.system)
-  const agent = new LiveAgentImpl(ctx, service, options.id ?? randomUUID(), inboxView, log, durable)
+  const agent = new LiveAgentImpl(ctx, service, agentId, inboxView, log, durable, boundMeta)
   if (options.system) agent.inject('agentSystem', options.system)
   for (const input of options.initial ?? []) {
-    await durable.insert({ text: input.text ?? '' })
+    if (!resume) await durable.insert({ text: input.text ?? '' })
   }
   if (resume && durable.size) {
     setTimeout(() => agent.wakeNow(), 0)
   }
   return { agent, dispose: () => agent.dispose() }
+}
+
+async function readAgentMeta(
+  file: string,
+): Promise<{ agentId?: string; createdAt?: number } | undefined> {
+  const lines = await import('node:fs/promises').then(fs => fs.readFile(file, 'utf8'))
+    .catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+      throw error
+    })
+  if (lines === undefined) return undefined
+  for (const line of lines.split('\n')) {
+    if (!line.trim()) continue
+    let record: Record<string, unknown>
+    try {
+      const parsed = JSON.parse(line) as unknown
+      record = parsed && typeof parsed === 'object'
+        ? parsed as Record<string, unknown>
+        : {}
+    } catch {
+      continue
+    }
+    if (record.type !== 'meta') continue
+    const payload = record.payload as Record<string, unknown> | undefined
+    if (!payload || payload.kind !== 'agent') continue
+    return {
+      ...(typeof payload.agentId === 'string' ? { agentId: payload.agentId } : {}),
+      ...(typeof payload.createdAt === 'number' ? { createdAt: payload.createdAt } : {}),
+    }
+  }
+  return undefined
+}
+
+function readDurableAgentMeta(events: readonly SessionEvent[]): AgentSessionMeta | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'meta') continue
+    const payload = event.payload as Record<string, unknown>
+    if (payload.kind !== 'agent') continue
+    const meta: AgentSessionMeta = {
+      agentId: typeof payload.agentId === 'string' ? payload.agentId : '',
+    }
+    if (payload.agentType === 'general' || payload.agentType === 'coding') {
+      meta.agentType = payload.agentType
+    }
+    if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'execute') {
+      meta.mode = payload.mode
+    }
+    if (typeof payload.title === 'string') meta.title = payload.title
+    if (typeof payload.owner === 'string') meta.owner = payload.owner
+    if (typeof payload.parentSessionId === 'string') {
+      meta.parentSessionId = payload.parentSessionId
+    }
+    if (typeof payload.forkedAtMessageId === 'string') {
+      meta.forkedAtMessageId = payload.forkedAtMessageId
+    }
+    if (typeof payload.createdAt === 'number') meta.createdAt = payload.createdAt
+    return meta
+  }
+  return undefined
 }
 
 export const agents = {
