@@ -214,6 +214,11 @@ class LiveAgentImpl implements LiveAgent {
     this.cancel({ type: 'user' })
     await this._writeTail.catch(() => undefined)
     await this._drainPromise?.catch(() => undefined)
+    const writeTail = this._writeTail
+    if (writeTail !== this._drainPromise && this._pendingWrite) {
+      this._pendingWrite = undefined
+      await writeTail.catch(() => undefined)
+    }
     this._setStatus('idle')
   }
 
