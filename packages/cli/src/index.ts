@@ -14,6 +14,7 @@ import {
 } from './commands.js'
 import { startWebServer } from './server.js'
 export * from './profile.js'
+export * from './profile-file.js'
 
 export type {
   AgentRuntime,
