@@ -78,6 +78,19 @@ export function isSessionId(value: string): boolean {
   return SESSION_ID_PATTERN.test(value)
 }
 
+async function withSessionLog<T>(
+  file: string,
+  run: (log: SessionLog) => Promise<T>,
+): Promise<T> {
+  const log = new SessionLog(file)
+  await log.init()
+  try {
+    return await run(log)
+  } finally {
+    await log.close()
+  }
+}
+
 export async function ensureSessionDir(workspace: string): Promise<string> {
   const dir = sessionDir(workspace)
   await mkdir(dir, { recursive: true })
@@ -226,12 +239,12 @@ export async function forkSession(
 ): Promise<SessionSummary> {
   const source = sessionFile(workspace, id)
   const meta = await readSessionMeta(source)
-  const log = new SessionLog(source)
-  await log.init()
-  const allEvents = await log.read()
-  const events = options.messageId
-    ? await log.forkAt(options.messageId)
-    : allEvents.filter(event => event.type !== 'meta')
+  const events = await withSessionLog(source, async (log) => {
+    const allEvents = await log.read()
+    return options.messageId
+      ? await log.forkAt(options.messageId)
+      : allEvents.filter(event => event.type !== 'meta')
+  })
   const fork = await createSession(workspace, {
     title: options.title?.trim() || `${meta.payload.title} fork`,
     createdAt: meta.payload.createdAt,
@@ -281,9 +294,7 @@ export async function readSessionMessages(
   workspace: string,
   id: string,
 ): Promise<ModelMessage[]> {
-  const log = new SessionLog(sessionFile(workspace, id))
-  await log.init()
-  return log.deriveMessages()
+  return withSessionLog(sessionFile(workspace, id), log => log.deriveMessages())
 }
 
 export async function estimateContextUsage(
@@ -313,33 +324,33 @@ export async function prepareSessionCompact(
   id: string,
   keepTokens: number,
 ): Promise<SessionCompactPreparation> {
-  const log = new SessionLog(sessionFile(workspace, id))
-  await log.init()
-  const allEvents = await log.read()
-  const events = allEvents.filter(event => event.type !== 'meta')
-  const suffixStart = suffixStartIndexForTokens(events, keepTokens)
-  const split = safeCompactSplit(events, suffixStart)
-  const prefix = events.slice(0, split)
-  let previousSummary: string | undefined
-  let summaryStart = 0
-  for (let index = prefix.length - 1; index >= 0; index -= 1) {
-    const event = prefix[index]
-    if (
-      event?.type === 'checkpoint'
-      && typeof event.payload.summary === 'string'
-      && event.payload.summary
-    ) {
-      previousSummary = event.payload.summary
-      summaryStart = index + 1
-      break
+  return withSessionLog(sessionFile(workspace, id), async (log) => {
+    const allEvents = await log.read()
+    const events = allEvents.filter(event => event.type !== 'meta')
+    const suffixStart = suffixStartIndexForTokens(events, keepTokens)
+    const split = safeCompactSplit(events, suffixStart)
+    const prefix = events.slice(0, split)
+    let previousSummary: string | undefined
+    let summaryStart = 0
+    for (let index = prefix.length - 1; index >= 0; index -= 1) {
+      const event = prefix[index]
+      if (
+        event?.type === 'checkpoint'
+        && typeof event.payload.summary === 'string'
+        && event.payload.summary
+      ) {
+        previousSummary = event.payload.summary
+        summaryStart = index + 1
+        break
+      }
     }
-  }
-  const tokensBefore = estimateMessageTokens(await log.deriveMessages())
-  return {
-    prefixMessages: projectEvents(prefix.slice(summaryStart)),
-    previousSummary,
-    tokensBefore,
-  }
+    const tokensBefore = estimateMessageTokens(await log.deriveMessages())
+    return {
+      prefixMessages: projectEvents(prefix.slice(summaryStart)),
+      previousSummary,
+      tokensBefore,
+    }
+  })
 }
 
 export async function compactSession(
@@ -348,20 +359,21 @@ export async function compactSession(
   options: CompactSessionOptions = {},
 ): Promise<SessionSummary> {
   const file = sessionFile(workspace, id)
-  const log = new SessionLog(file)
-  await log.init()
-  await log.compact({
-    ...(options.keep !== undefined ? { keep: options.keep } : {}),
-    ...(options.keepTokens !== undefined ? { keepTokens: options.keepTokens } : {}),
-    ...(options.checkpointMessages?.length
-      ? { messages: [...options.checkpointMessages] }
-      : {}),
-    ...(options.summary ? { summary: options.summary } : {}),
-    ...(options.tokensBefore !== undefined
-      ? { tokensBefore: options.tokensBefore }
-      : {}),
+  return withSessionLog(file, async (log) => {
+    await log.compact({
+      ...(options.keep !== undefined ? { keep: options.keep } : {}),
+      ...(options.keepTokens !== undefined ? { keepTokens: options.keepTokens } : {}),
+      ...(options.checkpointMessages?.length
+        ? { messages: [...options.checkpointMessages] }
+        : {}),
+      ...(options.summary ? { summary: options.summary } : {}),
+      ...(options.tokensBefore !== undefined
+        ? { tokensBefore: options.tokensBefore }
+        : {}),
+    })
+    await log.flush()
+    return readSessionSummary(workspace, id)
   })
-  return readSessionSummary(workspace, id)
 }
 
 export async function deleteSession(workspace: string, id: string): Promise<void> {

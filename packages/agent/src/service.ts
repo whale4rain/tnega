@@ -25,6 +25,7 @@ import type {
   AgentRunResult,
   AgentStep,
   AgentStreamEvent,
+  LLMStreamRequestEvent,
   AgentTurnStoppingEvent,
   CompleteOptions,
   LLMAdapter,
@@ -39,10 +40,15 @@ export class AgentError extends Error {
 
 export class AgentInbox {
   private _queue: AgentInput[] = []
+  private _steerQueue: AgentInput[] = []
   private _injected = new Map<string, unknown>()
 
   get size(): number {
-    return this._queue.length
+    return this._queue.length + this._steerQueue.length
+  }
+
+  get steerSize(): number {
+    return this._steerQueue.length
   }
 
   push(input: AgentInput): AgentInput {
@@ -50,12 +56,29 @@ export class AgentInbox {
     return input
   }
 
+  followup(input: AgentInput): AgentInput {
+    return this.push(input)
+  }
+
+  steer(input: AgentInput): AgentInput {
+    this._steerQueue.push(input)
+    return input
+  }
+
+  send(
+    input: AgentInput,
+    options: { mode?: 'followup' | 'steer'; wake?: boolean } = {},
+  ): AgentInput {
+    if (options.mode === 'steer') return this.steer(input)
+    return this.followup(input)
+  }
+
   claim(): AgentInput | undefined {
-    return this._queue.shift()
+    return this._steerQueue.shift() ?? this._queue.shift()
   }
 
   peek(): AgentInput | undefined {
-    return this._queue[0]
+    return this._steerQueue[0] ?? this._queue[0]
   }
 
   inject(key: string, value: unknown): void {
@@ -315,11 +338,11 @@ export class AgentService {
         throw new AgentError('agent/request must return a request payload')
       }
       let llmMessages = copyMessages(request.messages)
-      await this._persistStepInput(session, llmMessages)
 
       let completion: LLMCompletion | undefined
       const streamMethod = useStream ? llm.stream : undefined
       let attempt = 0
+      let persistedStepInput = false
       while (true) {
         if (options.signal?.aborted) {
           finishReason = 'cancelled'
@@ -328,12 +351,49 @@ export class AgentService {
         const streamEvents: LLMStreamEvent[] = []
         try {
           if (streamMethod) {
-            for await (const event of streamMethod(llmMessages, request.tools, request.options)) {
+            const streamRequest: LLMStreamRequestEvent = {
+              index,
+              messages: llmMessages,
+              tools: request.tools,
+              options: request.options,
+            }
+            const stream = await this.ctx.waterfallAsync(
+              'llm/stream',
+              streamRequest,
+              async (payload: LLMStreamRequestEvent) => {
+                if (!streamMethod) {
+                  throw new AgentError('llm.stream is required for streaming runs')
+                }
+                return streamMethod(payload.messages, payload.tools, payload.options)
+              },
+            )
+            if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
+              throw new AgentError('llm/stream must return an async iterable stream')
+            }
+            llmMessages = copyMessages(streamRequest.messages)
+            if (!persistedStepInput) {
+              await this._persistStepInput(session, llmMessages)
+              persistedStepInput = true
+            }
+            let chunkIndex = 0
+            for await (const event of stream) {
               streamEvents.push(event)
+              if (event.type === 'message_delta') {
+                await session.append('assistant/chunk', {
+                  id: event.id,
+                  content: event.delta,
+                  index: chunkIndex,
+                })
+                chunkIndex += 1
+              }
               yield event
             }
             completion = completionFromStreamEvents(streamEvents)
           } else {
+            if (!persistedStepInput) {
+              await this._persistStepInput(session, llmMessages)
+              persistedStepInput = true
+            }
             completion = await llm.complete(llmMessages, request.tools, request.options)
           }
           break

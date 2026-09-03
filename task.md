@@ -28,6 +28,7 @@
 | M13 agent core 对外边界 | 已完成 |
 | M14 LLM provider 抽象与 Anthropic Messages | 已完成 |
 | M15 coding agent 与 web 前端架构 | 已完成 |
+| DSH v0.2.0 core 对齐 | 进行中 |
 
 ## 开发约定
 
@@ -36,6 +37,20 @@
 - 每个较大阶段完成且测试通过后，git commit。
 - 阶段完成后更新本文件的状态表。
 - 非目标：子代理、插件市场、生产级沙箱、多模态。
+
+## DSH v0.2.0 core 对齐
+
+目标：按 DeepSeek Harness 设计对齐 `session` / `agent` / `tools` / `llm` 核心，独立消费插件暂不做，coding-agent 尽量不动。不保证向后兼容。
+
+- [x] session：turn / step 生命周期事件、raw / surface 分离的持久化族（内存事实层 + 异步批量 JSONL 落盘）
+- [x] session：compaction 三事件事务（`compaction/start` -> `checkpoint` -> `compaction/end`）
+- [x] agent：`AgentInbox.followup / steer / send`，steer 独立优先队列
+- [x] agent：`llm/stream` waterfall，支持改写最终请求与短路返回
+- [x] agent：流式 chunk 落 durable `assistant/chunk` 事件
+- [x] tools：`pre-execute` / `execute` / `post-execute` 三层 waterfall，兼容旧 policy 语义
+- [x] web：`assistant/chunk` 与 compaction 事件类型同步，不污染 transcript
+- [x] 全量 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` 验证
+- [x] 按功能点逐个 git commit
 
 ## M15 coding agent 与 web 前端架构
 

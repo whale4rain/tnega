@@ -42,6 +42,10 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
           })
         }
         break
+      case 'assistant/chunk':
+      case 'compaction/start':
+      case 'compaction/end':
+        break
       case 'system/message':
         // System prompts are raw model context, not part of the transcript.
         break

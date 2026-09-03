@@ -80,15 +80,18 @@ describe('ToolsService pipeline', () => {
     const root = new Context()
     await root.plugin(tools)
     const order: string[] = []
-    root.on('tools/pre-execute', (request: ToolRequest) => {
+    root.on('tools/pre-execute', (request: ToolRequest, next: () => unknown) => {
       order.push('pre')
       request.input = { a: 10, b: 20 }
+      return next()
     })
-    root.on('tools/execute', () => {
+    root.on('tools/execute', (_request: ToolRequest, next: () => unknown) => {
       order.push('execute')
+      return next()
     })
-    root.on('tools/post-execute', (payload: ToolStagePayload) => {
+    root.on('tools/post-execute', (payload: ToolStagePayload, next: () => unknown) => {
       order.push(`post:${payload.result.ok}`)
+      return next()
     })
     root.on('tools/result', (payload: ToolStagePayload) => {
       order.push('result')
@@ -114,8 +117,9 @@ describe('ToolsService pipeline', () => {
     const root = new Context()
     await root.plugin(tools)
     const order: string[] = []
-    root.on('tools/post-execute', (payload: ToolStagePayload) => {
+    root.on('tools/post-execute', (payload: ToolStagePayload, next: () => unknown) => {
       order.push(`post:${payload.result.ok}`)
+      return next()
     })
     root.on('tools/result', (payload: ToolStagePayload) => {
       order.push(`result:${payload.result.error?.message ?? 'none'}`)
@@ -133,6 +137,67 @@ describe('ToolsService pipeline', () => {
     expect(result.ok).toBe(false)
     expect(result.error?.message).toBe('boom')
     expect(order).toEqual(['post:false', 'result:boom'])
+  })
+
+  it('short-circuits tools/pre-execute into a failed result', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    root.on('tools/pre-execute', () => undefined)
+    let executed = false
+    const service = dynamic(root).tools as ToolsService
+    service.register({
+      schema: { name: 'blocked', description: 'blocked' },
+      execute: () => {
+        executed = true
+        return 'never'
+      },
+    })
+
+    const result = await service.execute('blocked', {})
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).toBe('ToolAuthorizationError')
+    expect(result.error?.message).toContain('rejected')
+    expect(executed).toBe(false)
+  })
+
+  it('lets tools/execute wrap the default executor result', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    root.on('tools/execute', async (
+      request: ToolRequest,
+      next: () => Promise<ToolResult>,
+    ) => {
+      const inner = await next()
+      return {
+        ...inner,
+        output: `wrapped:${String(inner.output)}`,
+      }
+    })
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+
+    const result = await service.execute('add', { a: 1, b: 2 })
+    expect(result.ok).toBe(true)
+    expect(result.output).toBe('wrapped:3')
+  })
+
+  it('lets tools/post-execute short-circuit the truncator', async () => {
+    const root = new Context()
+    await root.plugin(tools, {
+      truncator: async (result: ToolResult) => ({
+        ...result,
+        output: 'truncated',
+      }),
+    })
+    root.on('tools/post-execute', (payload: ToolStagePayload) => ({
+      ...payload.result,
+      output: 'normalized',
+    }))
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+
+    const result = await service.execute('add', { a: 1, b: 2 })
+    expect(result.output).toBe('normalized')
   })
 
   it('passes callId through to the result', async () => {

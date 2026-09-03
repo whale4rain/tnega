@@ -30,6 +30,12 @@ export interface AssistantMessagePayload {
   interrupted?: boolean
 }
 
+export interface AssistantChunkPayload {
+  id: string
+  content: string
+  index?: number
+}
+
 export interface SystemMessagePayload {
   content: string
   name?: string
@@ -56,6 +62,17 @@ export interface ToolResultPayload {
   error?: { name?: string; message: string; stack?: string }
 }
 
+export interface CompactionStartPayload {
+  boundary?: number
+  keep?: number
+  tokensBefore?: number
+}
+
+export interface CompactionEndPayload {
+  checkpointId?: string
+  keep?: number
+}
+
 export type CancelCause =
   | { type: 'user' }
   | { type: 'abort'; message?: string }
@@ -79,10 +96,13 @@ export interface PlanPayload {
 export type SessionEvent =
   | SessionEventBase<'user/message', UserMessagePayload>
   | SessionEventBase<'assistant/message', AssistantMessagePayload>
+  | SessionEventBase<'assistant/chunk', AssistantChunkPayload>
   | SessionEventBase<'system/message', SystemMessagePayload>
   | SessionEventBase<'tool/call', ToolCallPayload>
   | SessionEventBase<'tool/result', ToolResultPayload>
   | SessionEventBase<'plan', PlanPayload>
+  | SessionEventBase<'compaction/start', CompactionStartPayload>
+  | SessionEventBase<'compaction/end', CompactionEndPayload>
   | SessionEventBase<'checkpoint', {
       messages: ModelMessage[]
       summary?: string

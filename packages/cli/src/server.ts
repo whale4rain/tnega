@@ -700,18 +700,17 @@ async function handleRun(
       if (plan) await trackPlanTool(next.value, plan, sessionLog, emitSse)
     }
     await autoTitle(workspace, id, prompt)
-    if (!res.destroyed && !res.writableEnded) {
-      writeSse(res, { type: 'done' })
-      res.end()
-    }
+    await runtime.dispose()
+    runtime = undefined
+    if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
   } catch (error) {
     if (!res.destroyed && !res.writableEnded) {
       writeSse(res, { type: 'error', message: errorMessage(error) })
-      res.end()
     }
   } finally {
     context.activeRuns.delete(key)
-    await runtime.dispose()
+    if (runtime) await runtime.dispose()
+    if (!res.destroyed && !res.writableEnded) res.end()
   }
 }
 

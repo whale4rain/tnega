@@ -3,11 +3,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { SessionLog } from '@tnega/session'
+
 import {
+  compactSession,
   createSession,
   forkSession,
   patchSessionMeta,
   readSessionSummary,
+  sessionFile,
 } from '../src/store.js'
 
 const dirs: string[] = []
@@ -103,5 +107,24 @@ describe('session metadata', () => {
       agentType: 'coding',
       mode: 'plan',
     })
+  })
+
+  it('flushes compacted events before reading the summary from disk', async () => {
+    const workspace = await tempDir('tnega-store-compact-flush-')
+    const summary = await createSession(workspace, { title: 'compact' })
+    const writer = new SessionLog(sessionFile(workspace, summary.id))
+    await writer.init()
+    await writer.append('user/message', { content: 'hello' })
+    await writer.append('assistant/message', { content: 'world' })
+
+    const compacted = await compactSession(workspace, summary.id, {
+      keep: 0,
+      summary: 'kept',
+    })
+    expect(compacted.eventCount).toBeGreaterThan(1)
+
+    const reloaded = await readSessionSummary(workspace, summary.id)
+    expect(reloaded.eventCount).toBeGreaterThan(1)
+    await writer.close()
   })
 })
