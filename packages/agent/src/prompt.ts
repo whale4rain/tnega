@@ -15,10 +15,22 @@ export interface PromptAssembly {
   sections: readonly PromptSection[]
   text: string
   context?: SystemPromptAssemblyOptions
+  tools?: readonly { name: string; description: string; parameters?: Record<string, unknown> }[]
 }
+
+export type ToolSchemaSnapshot = {
+  name: string
+  description: string
+  parameters?: Record<string, unknown>
+}
+
+export type ToolSchemaProvider = (
+  context: SystemPromptAssemblyOptions,
+) => readonly ToolSchemaSnapshot[] | Promise<readonly ToolSchemaSnapshot[]>
 
 export class SystemPromptService {
   private _sections = new Map<string, PromptSection>()
+  private _toolProviders: ToolSchemaProvider[] = []
   private _ctx: Context | undefined
 
   constructor(ctx?: Context) {
@@ -44,6 +56,31 @@ export class SystemPromptService {
       .sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
   }
 
+  registerTools(provider: ToolSchemaProvider): () => void {
+    if (typeof provider !== 'function') throw new TypeError('tool provider must be a function')
+    this._toolProviders.push(provider)
+    this._emitChange()
+    return () => {
+      const index = this._toolProviders.indexOf(provider)
+      if (index >= 0) this._toolProviders.splice(index, 1)
+      this._emitChange()
+    }
+  }
+
+  async toolSchemas(options: SystemPromptAssemblyOptions = {}): Promise<ToolSchemaSnapshot[]> {
+    const seen = new Set<string>()
+    const tools: ToolSchemaSnapshot[] = []
+    for (const provider of this._toolProviders) {
+      for (const schema of await provider(options)) {
+        if (!seen.has(schema.name)) {
+          seen.add(schema.name)
+          tools.push(schema)
+        }
+      }
+    }
+    return tools
+  }
+
   async assemble(
     options: SystemPromptAssemblyOptions = {},
     ctx?: Context,
@@ -55,6 +92,8 @@ export class SystemPromptService {
       text: sections.map(section => section.content).filter(Boolean).join('\n\n'),
       ...(Object.keys(options).length ? { context: options } : {}),
     }
+    const tools = await this.toolSchemas(options)
+    if (tools.length) base.tools = tools
     if (!activeCtx) return base
     const resolved = await activeCtx.waterfallAsync(
       'system-prompt/assemble',

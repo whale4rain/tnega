@@ -33,16 +33,23 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
 
-function fakeLLM(): { adapter: LLMAdapter; messages: Array<readonly import('@tnega/session').ModelMessage[]> } {
+function fakeLLM(): {
+  adapter: LLMAdapter
+  messages: Array<readonly import('@tnega/session').ModelMessage[]>
+  toolInputs: Array<readonly { schema: { name: string; description: string } }[]>
+} {
   const messages: Array<readonly import('@tnega/session').ModelMessage[]> = []
+  const toolInputs: Array<readonly { schema: { name: string; description: string } }[]> = []
   return {
     adapter: {
-      async complete(input) {
+      async complete(input, tools) {
         messages.push(input)
+        toolInputs.push(tools as readonly { schema: { name: string; description: string } }[])
         return { content: 'ok', finishReason: 'stop' } satisfies LLMCompletion
       },
     },
     messages,
+    toolInputs,
   }
 }
 
@@ -104,5 +111,33 @@ describe('system prompt assembly', () => {
       content: 'Assembled coding persona.',
     })
     expect(messages[0]?.[1]).toEqual({ role: 'user', content: 'hello' })
+  })
+
+  it('assembles tool schemas and persists them in the request header', async () => {
+    const root = await mountRoot()
+    const service = dynamic(root).systemPrompt as SystemPromptService
+    service.registerTools(() => [
+      { name: 'read', description: 'read a file', parameters: { type: 'object' } },
+    ])
+    const { adapter, toolInputs } = fakeLLM()
+    await root.plugin(defineAgent({
+      name: 'tooled-prompt',
+      system: 'You can read.',
+    }), { llm: adapter })
+
+    const loop = root.get('agentLoop') as (input: { text: string }) => Promise<unknown>
+    await loop({ text: 'read it' })
+    expect(toolInputs[0]?.[0]?.schema).toMatchObject({
+      name: 'read',
+      description: 'read a file',
+      parameters: { type: 'object' },
+    })
+
+    const log = dynamic(root).session as import('@tnega/session').SessionLog
+    const events = await log.read()
+    const header = events.find(event => event.type === 'request/header')
+    expect(header?.payload).toMatchObject({
+      tools: [{ name: 'read', description: 'read a file' }],
+    })
   })
 })

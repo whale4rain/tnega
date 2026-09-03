@@ -8,7 +8,8 @@ import {
   type SessionLog,
   type ToolResultPayload,
 } from '@tnega/session'
-import type { ToolError, ToolResult } from '@tnega/tools'
+import type { ToolDefinition, ToolError, ToolResult } from '@tnega/tools'
+import type { ToolSchemaSnapshot } from './prompt.js'
 import type { ToolsService } from '@tnega/tools'
 
 import type {
@@ -326,7 +327,7 @@ export class AgentService {
 
       const requestedInput = copyMessages(preStep.messages)
       this.ctx.emit('agent/step', { index, input: copyMessages(requestedInput) })
-      const availableTools = finalTurnGranted ? [] : tools.list()
+      const availableTools = finalTurnGranted ? [] : await this._resolveAvailableTools()
       const completeOptions: CompleteOptions = {
         maxSteps: maxSteps - steps.length,
       }
@@ -777,6 +778,22 @@ export class AgentService {
     const tools = (this.ctx as unknown as { tools?: ToolsService }).tools
     if (!tools) throw new AgentError('tools service is required')
     return tools
+  }
+
+  private async _resolveAvailableTools(): Promise<readonly ToolDefinition[]> {
+    const promptService = this.ctx.reflect.get('systemPrompt', false) as
+      | { toolSchemas(options?: object): Promise<readonly ToolSchemaSnapshot[]> }
+      | undefined
+    if (promptService) {
+      const schemas = await promptService.toolSchemas()
+      return schemas.map(schema => ({
+        schema,
+        execute: async () => {
+          throw new Error('schema-only tool from prompt assembly')
+        },
+      }))
+    }
+    return this._tools().list()
   }
 
   private _llm(): LLMAdapter | undefined {
