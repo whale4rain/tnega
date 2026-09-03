@@ -466,6 +466,7 @@ export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
       apiKey,
       ...(model ? { model } : {}),
       ...(baseUrl ? { baseUrl } : {}),
+      ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
       ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
       ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(systemConfig.temperature !== undefined
@@ -558,6 +559,7 @@ export async function runAgentCommand(
     apiKey,
     ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
+    ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(systemConfig.temperature !== undefined
@@ -690,6 +692,7 @@ export async function runEvolveCommand(
     apiKey,
     ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
+    ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(systemConfig.temperature !== undefined

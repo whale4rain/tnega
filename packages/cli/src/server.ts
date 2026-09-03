@@ -263,6 +263,9 @@ async function handleApi(
     if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
     if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
     if (typeof body.model === 'string') patch.model = body.model
+    if (body.protocol === 'anthropic' || body.protocol === 'openai') {
+      patch.protocol = body.protocol
+    }
     if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
       patch.temperature = body.temperature
     }
@@ -504,6 +507,7 @@ async function compactContext(
     apiKey,
     baseUrl: effective.baseUrl,
     model: effective.model,
+    ...(effective.protocol ? { protocol: effective.protocol } : {}),
     maxTokens: 4096,
     timeoutMs: 180_000,
     ...(effective.temperature !== undefined
@@ -977,12 +981,14 @@ function adapterFromConfig(
     apiKey: string
     baseUrl: string
     model: string
+    protocol?: 'anthropic' | 'openai'
     temperature?: number
   } = {
     apiKey,
     baseUrl: effective.baseUrl,
     model: effective.model,
   }
+  if (effective.protocol) options.protocol = effective.protocol
   if (effective.temperature !== undefined) options.temperature = effective.temperature
   return createLlmAdapter(options)
 }
@@ -1003,6 +1009,7 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
       apiKeySet: Boolean(config.apiKey),
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       ...(config.model ? { model: config.model } : {}),
+      ...(config.protocol ? { protocol: config.protocol } : {}),
       ...(config.temperature !== undefined
         ? { temperature: config.temperature }
         : {}),

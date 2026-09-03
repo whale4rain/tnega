@@ -379,6 +379,34 @@ describe('agent run command', () => {
     expect(body.max_tokens).toBe(16)
   })
 
+  it('uses the Anthropic wire protocol when config protocol is anthropic', async () => {
+    const dir = await tempDir('tnega-cli-agent-anthropic-protocol-')
+    const configFile = join(dir, 'config.json')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'sk-ant-custom',
+      model: 'my-anthropic-model',
+      baseUrl: 'https://anthropic.example.com/v1',
+      protocol: 'anthropic',
+    }), 'utf8')
+    const fetchMock = vi.fn(async () => anthropicResponse('custom anthropic')) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runAgentCommand({
+      prompt: 'hello',
+      cwd: dir,
+      configFile,
+    })
+
+    expect(result.run.output).toBe('custom anthropic')
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'https://anthropic.example.com/v1/messages',
+    )
+    const headers = fetchMock.mock.calls[0]![1]!.headers as Record<string, string>
+    expect(headers['x-api-key']).toBe('sk-ant-custom')
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as { model: string }
+    expect(body.model).toBe('my-anthropic-model')
+  })
+
   it('retries a transient LLM failure with the configured limits', async () => {
     const dir = await tempDir('tnega-cli-agent-retry-')
     vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
