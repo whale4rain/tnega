@@ -1,8 +1,36 @@
 import type { Context, Plugin } from '@tnega/core'
-import type { AgentRunResult } from '@tnega/agent'
+import type { AgentRunResult, LLMAdapter } from '@tnega/agent'
 import type { ModelMessage } from '@tnega/session'
 
 export type VerdictStatus = 'pass' | 'fail' | 'skip' | 'error'
+
+export interface EvalWorkspaceFixture {
+  /** Template directory relative to the tasks file. */
+  root?: string
+  /** Explicit file entries; use content or from. */
+  files?: Array<{ path: string; content?: string; from?: string }>
+}
+
+export interface EvalShellPolicy {
+  enabled: boolean
+  /** Allowed command prefixes, e.g. ["pytest", "pip install", "node"]. */
+  allow?: string[]
+  /** Denied command prefixes, e.g. ["rm", "taskkill"]. */
+  deny?: string[]
+}
+
+export interface TaskPermissions {
+  /** Tool whitelist; defaults to the safe builtin set. */
+  tools?: string[]
+  /** Shell policy; disabled by default. */
+  shell?: EvalShellPolicy
+  /** Network tools; false by default. */
+  network?: boolean
+  /** Skill tools; follows candidate config by default. */
+  skills?: boolean
+  /** MCP is always false during eval. */
+  mcp?: boolean
+}
 
 export interface TaskAssertion {
   /** Exact output match, or a list of required substrings. */
@@ -32,6 +60,18 @@ export interface Task {
   strategies?: string[]
   budget?: TaskBudget
   artifacts?: Record<string, unknown>
+  fixture?: EvalWorkspaceFixture
+  /** Setup command or hook, run inside the workspace before the agent. */
+  setup?: string | ((workspace: string) => void | Promise<void>)
+  /** Success check: command (exit 0) or predicate. */
+  check?: string | ((evidence: Evidence, workspace: string) => boolean | Promise<boolean>)
+  /** Teardown command or hook, run after the trial. */
+  teardown?: string | ((workspace: string) => void | Promise<void>)
+  /** Default 3; must be >= 1. */
+  trials?: number
+  permissions?: TaskPermissions
+  /** Default 'train'. */
+  split?: 'train' | 'val'
 }
 
 export interface CandidateMetadata {
@@ -49,12 +89,41 @@ export interface CandidatePreset {
   model?: Record<string, unknown>
 }
 
+export interface TrialTraceMetrics {
+  steps: number
+  turns: number
+  toolCalls: number
+  toolErrors: number
+  invalidToolCalls: number
+  retries: number
+  tokens: number
+  cost: number
+  recoveredAfterError: boolean
+}
+
+export interface TrialTrace {
+  file: string
+  startedAt: number
+  endedAt: number
+  durationMs: number
+  metrics: TrialTraceMetrics
+}
+
+export interface TrialEvidence {
+  trial: number
+  verdicts: Verdict[]
+  trace: TrialTrace
+  agentResult?: AgentRunResult
+  artifacts: Record<string, unknown>
+}
+
 export interface Evidence {
   task: Task
   agentResult?: AgentRunResult
   messages: ModelMessage[]
   artifacts: Record<string, unknown>
   strategyOutputs: Record<string, unknown>
+  trials?: TrialEvidence[]
 }
 
 export interface Verdict {
@@ -87,6 +156,7 @@ export interface EvalRun {
   candidate: CandidateMetadata
   taskIds: string[]
   verdicts: Verdict[]
+  trialSummaries?: TrialSummary[]
   summary: {
     total: number
     passed: number
@@ -108,6 +178,37 @@ export interface EvalRun {
   }
 }
 
+export interface TrialSummary {
+  taskId: string
+  trials: number
+  passed: number
+  passRate: number
+  scoreMean: number
+  scoreMedian: number
+  scoreStddev: number
+  costMean: number
+  stepsMean: number
+}
+
+export interface CodingEvalAgentConfig {
+  systemPrompt?: string
+  maxTurns?: number
+  maxSteps?: number
+}
+
+export interface CodingEvalCodingConfig {
+  skills?: boolean
+  planTools?: boolean
+  mcp?: boolean
+  planPrompt?: string
+}
+
+export interface CodingEvalConfig {
+  llm: LLMAdapter
+  agent?: CodingEvalAgentConfig
+  coding?: CodingEvalCodingConfig
+}
+
 export interface EvalRunOptions {
   candidate: CandidatePreset
   tasks: readonly Task[]
@@ -118,6 +219,7 @@ export interface EvalRunOptions {
   cacheDir?: string
   outputFile?: string
   runCandidate?: (ctx: Context, task: Task) => Promise<AgentRunResult>
+  coding?: CodingEvalConfig
 }
 
 export interface StrategyContext {

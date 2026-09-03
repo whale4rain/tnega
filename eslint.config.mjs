@@ -8,10 +8,23 @@ export default tseslint.config(
       'apps/web/dist/**',
       'node_modules/**',
       'coverage/**',
+      'data/benchmarks/**',
     ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ['packages/benchmark/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        URL: 'readonly',
+        clearTimeout: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly',
+      },
+    },
+  },
   {
     files: ['apps/web/src/**/*.{ts,tsx}'],
     languageOptions: {

@@ -39,6 +39,16 @@ export interface GateStrategyOptions {
   minScore?: number
 }
 
+export interface CheckStrategyOptions {
+  /** Minimum pass rate over trials, default 1. */
+  passRate?: number
+}
+
+export interface TraceStrategyOptions {
+  /** Minimum aggregate trace score, default 0.7. */
+  passThreshold?: number
+}
+
 function errorVerdict(taskId: string, strategy: string, message: string): Verdict {
   return {
     taskId,
@@ -357,6 +367,65 @@ export function gateStrategy(options: GateStrategyOptions = {}): EvalStrategy {
   }
 }
 
+export function checkStrategy(options: CheckStrategyOptions = {}): EvalStrategy {
+  return {
+    name: 'check',
+    async evaluate(_ctx, task, evidence) {
+      if (!evidence.trials?.length) {
+        return assertStrategy().evaluate(_ctx, task, evidence)
+      }
+      const trials = evidence.trials
+      const passed = trials.filter(trial =>
+        trial.verdicts.some(verdict => verdict.status === 'pass')).length
+      const score = trials.length ? passed / trials.length : 0
+      const threshold = options.passRate ?? 1
+      return {
+        taskId: task.id,
+        strategy: 'check',
+        status: score >= threshold ? 'pass' : 'fail',
+        score,
+        reason: `${passed}/${trials.length} trials passed`,
+      }
+    },
+  }
+}
+
+export function traceStrategy(options: TraceStrategyOptions = {}): EvalStrategy {
+  return {
+    name: 'trace',
+    async evaluate(_ctx, task, evidence) {
+      if (!evidence.trials?.length) {
+        return {
+          taskId: task.id,
+          strategy: 'trace',
+          status: 'skip',
+          score: 1,
+          reason: 'no trace',
+        }
+      }
+      const scores = evidence.trials.map((trial) => {
+        const metrics = trial.trace.metrics
+        if (metrics.toolCalls === 0 && metrics.steps === 0) return 0
+        const calls = Math.max(1, metrics.toolCalls)
+        const penalty =
+          (metrics.invalidToolCalls / calls) * 0.5
+          + (metrics.toolErrors / calls) * 0.3
+          + Math.min(1, metrics.retries / Math.max(1, metrics.steps)) * 0.2
+        return Math.max(0, 1 - penalty)
+      })
+      const score = scores.reduce((sum, value) => sum + value, 0) / scores.length
+      const threshold = options.passThreshold ?? 0.7
+      return {
+        taskId: task.id,
+        strategy: 'trace',
+        status: score >= threshold ? 'pass' : 'fail',
+        score,
+        reason: `trace score ${score.toFixed(3)}`,
+      }
+    },
+  }
+}
+
 export interface StrategyRegistry {
   register(definition: EvalStrategyDefinition): () => void
   unregister(name: string): boolean
@@ -414,5 +483,7 @@ export function defaultStrategyDefinitions(): EvalStrategyDefinition[] {
     allStrategy(),
     weightedStrategy(),
     gateStrategy(),
+    checkStrategy(),
+    traceStrategy(),
   ]
 }

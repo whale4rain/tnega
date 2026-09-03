@@ -1,0 +1,32 @@
+outputDir: .tnega/runs
+candidates:
+  deepseek:
+    coding: true
+    model: deepseek-v4-flash
+defaultCandidate: deepseek
+tasks:
+  - id: py-fib
+    name: implement fibonacci
+    inputText: |
+      实现 math.py 中的 fib(n)（n>=0，返回第 n 个斐波那契数），
+      并通过全部单元测试。不要修改 test_math.py。
+    fixture:
+      root: fixtures/py-math
+    check: python -m unittest discover -s . -p "test_*.py" -v
+    trials: 3
+    split: val
+    permissions:
+      shell:
+        enabled: true
+        allow: [python]
+  - id: write-answer
+    name: write a file
+    inputText: |
+      在 workspace 中创建 answer.txt，内容只包含一行：ok
+    check: python -c "assert open('answer.txt', encoding='utf-8').read().strip() == 'ok'"
+    trials: 3
+    split: val
+    permissions:
+      shell:
+        enabled: true
+        allow: [python]

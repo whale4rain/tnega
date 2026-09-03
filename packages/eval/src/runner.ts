@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import type { AgentInput, AgentLoop, AgentRunResult } from '@tnega/agent'
 import type { SessionLog } from '@tnega/session'
 import { session } from '@tnega/session'
 import { tools } from '@tnega/tools'
+import { createCodingEvalRuntime, type CodingEvalRuntime } from './codingRuntime.js'
+import { createEvalToolPolicy } from './policy.js'
+import { deriveTraceMetrics } from './trace.js'
 import {
   type BudgetUsage,
   type Evidence,
@@ -14,9 +17,13 @@ import {
   type EvalRunOptions,
   type RunBudget,
   type Task,
+  type TaskPermissions,
+  type TrialEvidence,
+  type TrialSummary,
   type Verdict,
 } from './types.js'
 import { clone, hashJson, loadJson, saveJson } from './utils.js'
+import { createTaskWorkspace, runWorkspaceCommand } from './workspace.js'
 import type { StrategyRegistry } from './strategies.js'
 
 interface TaskRunState {
@@ -40,12 +47,15 @@ export class EvalRunner {
       .isolate('agentLoop')
       .isolate('session')
       .isolate('tools')
-    const candidateFiber = runScope.plugin(options.candidate.plugin, options.candidate.config)
-    try {
-      await candidateFiber
-    } catch (error) {
-      this._abort(runScope, id, `candidate failed to load: ${this._message(error)}`)
-      throw error
+    let candidateFiber: { dispose(): Promise<void> } | undefined
+    if (!options.coding) {
+      candidateFiber = runScope.plugin(options.candidate.plugin, options.candidate.config)
+      try {
+        await candidateFiber
+      } catch (error) {
+        this._abort(runScope, id, `candidate failed to load: ${this._message(error)}`)
+        throw error
+      }
     }
 
     const candidate = {
@@ -113,7 +123,7 @@ export class EvalRunner {
 
       const taskStartedAt = Date.now()
       const cacheKey = options.cache
-        ? this._cacheKey(task, options.candidate, modelConfigHash)
+        ? this._cacheKey(task, options, modelConfigHash)
         : undefined
       const cachedEvidence = cacheKey ? await this._loadCachedEvidence(cacheKey) : undefined
 
@@ -129,24 +139,40 @@ export class EvalRunner {
           scope: runScope,
         })
       } else {
-      const state = await this._createTaskScope(runScope, task)
-        try {
+        if (options.coding) {
           this.ctx.emit('eval/task-start', {
             runId: id,
             task,
-            scope: state.scope,
+            scope: runScope,
           })
           this._armTimeout(task, controller)
-          evidence = await this._runTask(
-            state.scope,
+          evidence = await this._runCodingTask(
             task,
             options,
             run,
             controller,
             usage,
           )
-        } finally {
-          await state.dispose()
+        } else {
+          const state = await this._createTaskScope(runScope, task)
+          try {
+            this.ctx.emit('eval/task-start', {
+              runId: id,
+              task,
+              scope: state.scope,
+            })
+            this._armTimeout(task, controller)
+            evidence = await this._runTask(
+              state.scope,
+              task,
+              options,
+              run,
+              controller,
+              usage,
+            )
+          } finally {
+            await state.dispose()
+          }
         }
         usage.timeMs = Date.now() - startedAt
         if (cacheKey) {
@@ -167,7 +193,9 @@ export class EvalRunner {
         ? task.strategies
         : options.strategyNames?.length
           ? options.strategyNames
-          : ['assert']
+          : options.coding
+            ? ['check', 'trace']
+            : ['assert']
       for (const name of strategyNames) {
         const strategy = this.strategies.get(name)
         const verdict = strategy
@@ -195,6 +223,13 @@ export class EvalRunner {
         })
       }
 
+      if (evidence.trials?.length) {
+        run.trialSummaries = [
+          ...(run.trialSummaries ?? []),
+          this._aggregateTrials(task, evidence.trials),
+        ]
+      }
+
       if (this._exceeded(budget, usage)) {
         aborted = true
         abortedReason = 'budget exceeded'
@@ -208,7 +243,7 @@ export class EvalRunner {
     run.aborted = aborted
     if (abortedReason) run.abortedReason = abortedReason
 
-    await candidateFiber.dispose()
+    await candidateFiber?.dispose()
     this.ctx.emit('eval/run-end', { run: clone(run) })
     if (options.outputFile) {
       await saveJson(options.outputFile, run)
@@ -310,13 +345,217 @@ export class EvalRunner {
     }
   }
 
+  private async _runCodingTask(
+    task: Task,
+    options: EvalRunOptions,
+    run: EvalRun,
+    controller: AbortController,
+    usage: BudgetUsage,
+  ): Promise<Evidence> {
+    const coding = options.coding
+    if (!coding) throw new Error('coding config required')
+    const trials = Math.max(1, task.trials ?? 3)
+    const trialEvidence: TrialEvidence[] = []
+
+    for (let trial = 1; trial <= trials; trial += 1) {
+      if (controller.signal.aborted) break
+      const workspace = await createTaskWorkspace(task, this._fixtureRoot(task))
+      const tracesDir = join(this.outputDir, run.id, 'traces')
+      const sessionFile = join(tracesDir, `${task.id}-${trial}.jsonl`)
+      const toolPolicyOptions: { workspace: string; permissions?: TaskPermissions } = {
+        workspace: workspace.dir,
+      }
+      if (task.permissions !== undefined) {
+        toolPolicyOptions.permissions = task.permissions
+      }
+      const toolPolicy = createEvalToolPolicy(toolPolicyOptions)
+      let runtime: CodingEvalRuntime | undefined
+      const startedAt = Date.now()
+      const artifacts: Record<string, unknown> = {}
+      let agentResult: AgentRunResult | undefined
+      let error: unknown
+      try {
+        await mkdir(tracesDir, { recursive: true })
+        const agentConfig: {
+          systemPrompt?: string
+          maxTurns?: number
+          maxSteps?: number
+        } = {}
+        if (coding.agent?.systemPrompt !== undefined) {
+          agentConfig.systemPrompt = coding.agent.systemPrompt
+        }
+        const maxTurns = task.budget?.maxTurns ?? coding.agent?.maxTurns
+        const maxSteps = task.budget?.maxSteps ?? coding.agent?.maxSteps
+        if (maxTurns !== undefined) agentConfig.maxTurns = maxTurns
+        if (maxSteps !== undefined) agentConfig.maxSteps = maxSteps
+        const skills = task.permissions?.skills ?? coding.coding?.skills
+        const codingConfig: {
+          skills?: boolean
+          planTools: boolean
+          mcp: boolean
+          planPrompt?: string
+        } = {
+          planTools: coding.coding?.planTools ?? true,
+          mcp: false,
+        }
+        if (skills !== undefined) codingConfig.skills = skills
+        if (coding.coding?.planPrompt !== undefined) {
+          codingConfig.planPrompt = coding.coding.planPrompt
+        }
+        runtime = await createCodingEvalRuntime({
+          cwd: workspace.dir,
+          sessionFile,
+          toolPolicy,
+          allowShell: task.permissions?.shell?.enabled ?? false,
+          allowNetwork: task.permissions?.network ?? false,
+          config: {
+            llm: coding.llm,
+            agent: agentConfig,
+            coding: codingConfig,
+          },
+        })
+        const input: AgentInput = {
+          ...(task.inputText !== undefined ? { text: task.inputText } : {}),
+          ...(task.messages?.length ? { messages: clone(task.messages) } : {}),
+        }
+        agentResult = await runtime.loop(input, { signal: controller.signal })
+        usage.turns += agentResult.steps.length
+        usage.tokens += this._tokens(agentResult)
+        usage.cost += this._cost(agentResult)
+      } catch (caught) {
+        error = caught
+        artifacts.error = this._errorPayload(caught)
+      }
+
+      const check = error ? undefined : await this._runCheck(
+        task,
+        workspace.dir,
+        agentResult,
+        controller.signal,
+      )
+      const sessionLog = runtime?.root.get('session') as { flush(): Promise<number> } | undefined
+      await sessionLog?.flush()
+      const trace = await deriveTraceMetrics(
+        sessionFile,
+        startedAt,
+        Date.now(),
+        {
+          ...(agentResult ? { tokens: this._tokens(agentResult) } : {}),
+          ...(agentResult ? { cost: this._cost(agentResult) } : {}),
+        },
+      )
+      trialEvidence.push({
+        trial,
+        verdicts: check
+          ? [{
+              taskId: task.id,
+              strategy: 'check',
+              status: check.ok ? 'pass' : 'fail',
+              score: check.ok ? 1 : 0,
+              ...(check.reason ? { reason: check.reason } : {}),
+              ...(check.output !== undefined ? { output: check.output } : {}),
+            }]
+          : [],
+        trace,
+        ...(agentResult ? { agentResult: clone(agentResult) } : {}),
+        artifacts,
+      })
+
+      await runtime?.dispose()
+      await workspace.dispose()
+      usage.timeMs = Date.now() - run.createdAt
+    }
+
+    return {
+      task,
+      messages: [],
+      artifacts: {},
+      strategyOutputs: {},
+      trials: trialEvidence,
+    }
+  }
+
+  private async _runCheck(
+    task: Task,
+    cwd: string,
+    agentResult: AgentRunResult | undefined,
+    signal: AbortSignal,
+  ): Promise<{ ok: boolean; reason?: string; output?: string } | undefined> {
+    if (typeof task.check === 'function') {
+      const evidence: Evidence = {
+        task,
+        ...(agentResult ? { agentResult } : {}),
+        messages: [],
+        artifacts: {},
+        strategyOutputs: {},
+      }
+      const ok = await task.check(evidence, cwd)
+      return {
+        ok,
+        ...(ok ? { reason: 'check passed' } : { reason: 'check failed' }),
+      }
+    }
+    if (typeof task.check === 'string') {
+      const result = await runWorkspaceCommand(cwd, task.check, { signal })
+      return {
+        ok: result.exitCode === 0,
+        ...(result.exitCode === 0
+          ? { reason: 'command passed' }
+          : { reason: `command exited ${result.exitCode}` }),
+        output: `${result.stdout}\n${result.stderr}`.trim().slice(0, 4000),
+      }
+    }
+    return undefined
+  }
+
+  private _aggregateTrials(task: Task, trials: readonly TrialEvidence[]): TrialSummary {
+    const passed = trials.filter(trial => trial.verdicts.some(verdict => verdict.status === 'pass')).length
+    const scores = trials.map(trial => trial.verdicts.at(-1)?.score ?? 0)
+    const count = scores.length
+    const passRate = count ? passed / count : 0
+    const scoreMean = count
+      ? scores.reduce((sum, score) => sum + score, 0) / count
+      : 0
+    const sorted = [...scores].sort((a, b) => a - b)
+    const scoreMedian = count
+      ? count % 2
+        ? sorted[Math.floor(count / 2)] ?? 0
+        : ((sorted[count / 2 - 1] ?? 0) + (sorted[count / 2] ?? 0)) / 2
+      : 0
+    const scoreStddev = count
+      ? Math.sqrt(scores.reduce((sum, score) => sum + (score - scoreMean) ** 2, 0) / count)
+      : 0
+    const costMean = count
+      ? trials.reduce((sum, trial) => sum + trial.trace.metrics.cost, 0) / count
+      : 0
+    const stepsMean = count
+      ? trials.reduce((sum, trial) => sum + trial.trace.metrics.steps, 0) / count
+      : 0
+    return {
+      taskId: task.id,
+      trials: count,
+      passed,
+      passRate,
+      scoreMean,
+      scoreMedian,
+      scoreStddev,
+      costMean,
+      stepsMean,
+    }
+  }
+
+  private _fixtureRoot(task: Task): string | undefined {
+    if (!task.fixture?.root) return undefined
+    return resolve(task.fixture.root)
+  }
+
   private _loop(scope: Context): AgentLoop | undefined {
     return scope.get('agentLoop') as AgentLoop | undefined
   }
 
   private _cacheKey(
     task: Task,
-    candidate: { name: string; version?: string; config?: Record<string, unknown> },
+    options: EvalRunOptions,
     modelConfigHash: string | undefined,
   ): string {
     return hashJson({
@@ -325,12 +564,24 @@ export class EvalRunner {
         input: task.input,
         inputText: task.inputText,
         messages: task.messages,
+        fixture: task.fixture,
+        setup: task.setup,
+        check: task.check,
+        trials: task.trials,
+        permissions: task.permissions,
+        split: task.split,
       },
       candidate: {
-        name: candidate.name,
-        version: candidate.version,
-        config: candidate.config,
+        name: options.candidate.name,
+        version: options.candidate.version,
+        config: options.candidate.config,
       },
+      coding: options.coding
+        ? {
+            agent: options.coding.agent,
+            coding: options.coding.coding,
+          }
+        : undefined,
       model: modelConfigHash,
     })
   }

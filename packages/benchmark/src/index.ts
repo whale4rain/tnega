@@ -1,0 +1,10 @@
+export * from './bigcodebench.js'
+export * from './humaneval.js'
+export * from './manifest.js'
+export * from './mbpp.js'
+export * from './parquet.js'
+export * from './stdlib.js'
+export * from './swebench.js'
+export * from './types.js'
+
+export const name = '@tnega/benchmark'

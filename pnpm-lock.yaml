@@ -46,11 +46,23 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/benchmark:
+    dependencies:
+      '@tnega/eval':
+        specifier: workspace:*
+        version: link:../eval
+      hyparquet:
+        specifier: ^1.29.2
+        version: 1.29.2
+
   packages/cli:
     dependencies:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/benchmark':
+        specifier: workspace:*
+        version: link:../benchmark
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
@@ -101,6 +113,9 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/coding-agent':
+        specifier: workspace:*
+        version: link:../coding-agent
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
@@ -908,6 +923,9 @@ packages:
   http-errors@2.0.1:
     resolution: {integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==}
     engines: {node: '>= 0.8'}
+
+  hyparquet@1.29.2:
+    resolution: {integrity: sha512-2LxinZ8X0JqToST+9OXcy9t3t5Q7ZneMTkSqUx/36Hv18pCTk/N71IWZc7APTSNG1Me39l/jjEvzZSZ0R+Knbw==}
 
   iconv-lite@0.7.3:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
@@ -2153,6 +2171,8 @@ snapshots:
       setprototypeof: 1.2.0
       statuses: 2.0.2
       toidentifier: 1.0.1
+
+  hyparquet@1.29.2: {}
 
   iconv-lite@0.7.3:
     dependencies:

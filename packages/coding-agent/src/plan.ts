@@ -127,11 +127,12 @@ export async function generatePlan(
   adapter: LLMAdapter,
   messages: readonly ModelMessage[],
   signal?: AbortSignal,
+  prompt = PLAN_GENERATION_PROMPT,
 ): Promise<Plan> {
   let previous: string | undefined
   for (let attempt = 0; attempt <= PLAN_GENERATION_MAX_RETRIES; attempt += 1) {
     const planningMessages: ModelMessage[] = [
-      { role: 'system', content: PLAN_GENERATION_PROMPT },
+      { role: 'system', content: prompt },
       ...messages,
     ]
     if (previous !== undefined) {

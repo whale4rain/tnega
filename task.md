@@ -29,6 +29,7 @@
 | M14 LLM provider 抽象与 Anthropic Messages | 已完成 |
 | M15 coding agent 与 web 前端架构 | 已完成 |
 | DSH v0.2.0 core 对齐 | 进行中 |
+| M16 eval benchmark 与真实评测 | 进行中 |
 
 ## 开发约定
 
@@ -51,6 +52,34 @@
 - [x] web：`assistant/chunk` 与 compaction 事件类型同步，不污染 transcript
 - [x] 全量 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` 验证
 - [x] 按功能点逐个 git commit
+
+## M16 eval benchmark 与真实评测
+
+目标：把公开真实 benchmark 导入为可运行的 eval tasks，先用 BigCodeBench 与
+SWE-bench 建立真实测试任务集，再跑真实 LLM 评测与自进化闭环。
+
+- [x] `packages/benchmark`：BigCodeBench 与 SWE-bench Verified 导入器，物化 fixture 与 tasks.json
+- [x] CLI `eval import-benchmark`：支持 `--subset / --repo / --ids / --version / --mirror / --force`
+- [x] BigCodeBench 只导入实现与测试均为标准库的任务，避免隐式 pip 依赖
+- [x] 按 dataset 合并 tasks.json，manifest 记录双数据源版本与数量
+- [x] 导入 274 个 BigCodeBench 任务、164 个 HumanEval、499 个 MBPP 与 SWE-bench Verified 全量 500 实例
+- [x] CLI `eval run --task <id>` 支持从 tasks.json 过滤单个真实任务
+- [x] 金标准校验：BigCodeBench 274 中 250 个通过；HumanEval 164/164 通过；MBPP 499/500 通过（MBPP/180 官方解法自身不过测）；SWE-bench Verified 500 中 54 个满足 base-fail / gold-pass
+- [x] M4 真实 LLM API 冒烟：deepseek-v4-flash 跑 BigCodeBench/0（check 1/1 + trace 0.86，score 0.93）与 SWE-bench seaborn-3187（check 失败 + trace 0.708，score 0.354），权限 / check / trace / 结果落盘链路端到端可用
+- [x] 首批真实评测批次：7/7 BigCodeBench check 通过；SWE 5 个中 1 个 check 通过、3 个 trace 通过，结果见 `docs/eval-results.md`
+- [x] BigCodeBench 扩量到 stdlib-only 全量 274 个任务（`import-benchmark --subset 300`）
+- [x] BigCodeBench 全量金标准校验：274 个中 250 个官方解法通过，24 个在本机环境不可判（见 `verified-bigcodebench.json`）
+- [x] SWE-bench Verified 全量 500 实例金标准校验：54 个本机可判（见 `verified-swebench.json`）
+- [x] HumanEval 导入：164 个任务全量金标准通过（官方解法 164/164，见 `verified-humaneval.json`）
+- [x] MBPP full test 导入：500 个任务金标准通过 499/500（MBPP/180 官方解法自身不过测，见 `verified-mbpp.json`）
+- [x] 全量真实评测：250 个可判 BigCodeBench 中 243 个 check 通过
+- [x] 全量真实评测：164 个 HumanEval 全部通过；499 个 MBPP 中 492 个有效运行全部通过（7 个 LLM 超时无有效 verdict）
+- [ ] SWE-bench 全量可判实例真实评测：54 个中 28 个已有干净结果（18 check 通过），其余因额度 429 / 沙箱限制暂停，本轮不再续跑
+- [ ] benchmark 扩量：Terminal-Bench（需 Linux 环境，Windows 暂缓）
+- [x] 失败 trace 回流：从真实运行失败会话生成 draft task（`extract-failed-runs.mjs --valid`，含最终输出与最后 write_file 内容）
+- [ ] 失败 draft 人工审阅后入库：审阅 `data/benchmarks/drafts/` 后合并进 tasks.json
+
+真实评测结果见 `docs/eval-results.md`。
 
 ## M15 coding agent 与 web 前端架构
 
