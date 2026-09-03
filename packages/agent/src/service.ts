@@ -780,7 +780,11 @@ export class AgentService {
   }
 
   private _llm(): LLMAdapter | undefined {
-    return this.config.llm
+    if (this.config.llm) return this.config.llm
+    const service = this.ctx.reflect.get('llm', false) as
+      | { current(): LLMAdapter | undefined }
+      | undefined
+    return service?.current()
   }
 }
 

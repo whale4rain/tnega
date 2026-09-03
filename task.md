@@ -49,6 +49,7 @@
 - [x] agent：`AgentInbox.followup / steer / send`，steer 独立优先队列
 - [x] agent：live `ctx.agents` 注册表（`create`/`resume`/`get`/`list`/`roots`/`isOwnedBy`）、`AgentHandle` 与 `agent/created` / `agent/disposed` / `agent/status` / `agent/inbox/*` 生命周期事件
 - [x] agent：system-prompt assembly seam（`SystemPromptService.registerSection` / `assemble`、`system-prompt/assemble` waterfall、`system-prompt/change` 通知，默认 loop 与 `defineAgent` 接入）
+- [x] agent：LLM provider seam（`llm-service` 插件与 `LlmService.register / setCurrent / current`，默认 loop 在 config 无 adapter 时回退到 `ctx.llm`）
 - [x] agent：`llm/stream` waterfall，支持改写最终请求与短路返回
 - [x] agent：流式 chunk 落 durable `assistant/chunk` 事件
 - [x] tools：`pre-execute` / `execute` / `post-execute` 三层 waterfall，兼容旧 policy 语义
@@ -61,6 +62,7 @@
 - session：`SESSION_FORMAT_VERSION` 升至 5，新增 `request/header` / `request/context` 与坐标化 `turn`/`step`，`foldSurface` / `foldRequestHeader` / `foldRequestContext` 可重建折叠，agent 每次 step 持久化请求 envelope；同步 web 事件类型与根包导出，`packages/session/README.md` 记录设计理念。
 - agent：新增 live agent registry（`agents` 插件与 `AgentRegistry`），支持 handle 级 session 绑定、driver 唤醒、steer 优先、typed cancel 与 dispose；同步根包导出。
 - agent：新增 system-prompt assembly seam（可排序 prompt sections、assemble waterfall 与 change 事件），`AgentDefinition.system` 注册为 persona section，默认 loop 从 ctx 组装。
+- agent：新增 LLM provider seam，`LlmService` 支持多 provider 注册与切换，agent loop 无 config adapter 时从 `ctx.llm` 取当前 provider。
 
 ## M16 eval benchmark 与真实评测
 
