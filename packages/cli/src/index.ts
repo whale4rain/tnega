@@ -231,7 +231,6 @@ interface ParsedEvolveRunArgs {
   cwd?: string
   outputDir?: string
   configFile?: string
-  profile?: string
   maxIterations?: number
   maxRuns?: number
   baseSystem?: string
@@ -465,9 +464,6 @@ function assignEvolveRunOption(
     case 'config-file':
       parsed.configFile = value
       return
-    case 'profile':
-      parsed.profile = value
-      return
     case 'iterations':
       parsed.maxIterations = parseFiniteNumber('--iterations', value)
       return
@@ -527,6 +523,9 @@ function assignRunAgentOption(
     case 'config':
     case 'config-file':
       parsed.configFile = value
+      return
+    case 'profile':
+      parsed.profile = value
       return
     case 'model':
       parsed.model = value
