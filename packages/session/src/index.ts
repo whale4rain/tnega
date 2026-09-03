@@ -218,6 +218,13 @@ export interface PlanPayload {
   summary?: string
 }
 
+export interface InboxSplicePayload {
+  target: 'next-turn' | 'next-step'
+  index?: number
+  deleteCount?: number
+  inserted?: Array<{ id: string; content: string; mode?: 'followup' | 'steer' }>
+}
+
 export type AgentType = 'general' | 'coding'
 
 export type SessionMode = 'auto' | 'plan' | 'execute'
@@ -229,6 +236,7 @@ export type SessionEventType =
   | 'tool/result'
   | 'request/header'
   | 'request/context'
+  | 'agent/inbox/spliced'
   | 'plan'
   | 'checkpoint'
   | 'compaction/start'
@@ -267,6 +275,7 @@ export type SessionEvent =
   | SessionEventBase<'tool/result', ToolResultPayload>
   | SessionEventBase<'request/header', RequestHeaderPayload>
   | SessionEventBase<'request/context', RequestContextPayload>
+  | SessionEventBase<'agent/inbox/spliced', InboxSplicePayload>
   | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', CheckpointPayload>
   | SessionEventBase<'compaction/start', CompactionStartPayload>
@@ -482,6 +491,7 @@ function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): 
     case 'assistant/chunk':
     case 'request/header':
     case 'request/context':
+    case 'agent/inbox/spliced':
     case 'compaction/start':
     case 'compaction/end':
     case 'plan':
@@ -548,6 +558,7 @@ export function estimateEventTokens(event: SessionEvent): number {
       return 0
     case 'request/header':
     case 'request/context':
+    case 'agent/inbox/spliced':
       return 0
     case 'turn/start':
     case 'turn/end':
@@ -766,6 +777,7 @@ export class SessionLog {
   append(type: 'tool/result', payload: ToolResultPayload): Promise<SessionEvent>
   append(type: 'request/header', payload: RequestHeaderPayload): Promise<SessionEvent>
   append(type: 'request/context', payload: RequestContextPayload): Promise<SessionEvent>
+  append(type: 'agent/inbox/spliced', payload: InboxSplicePayload): Promise<SessionEvent>
   append(type: 'plan', payload: PlanPayload): Promise<SessionEvent>
   append(type: 'checkpoint', payload: CheckpointPayload): Promise<SessionEvent>
   append(type: 'compaction/start', payload: CompactionStartPayload): Promise<SessionEvent>
@@ -813,6 +825,8 @@ export class SessionLog {
       } else if (type === 'request/header') {
         event.sourceEventSeqs ??= []
       } else if (type === 'request/context') {
+        event.sourceEventSeqs ??= []
+      } else if (type === 'agent/inbox/spliced') {
         event.sourceEventSeqs ??= []
       }
       this._nextSeq += 1
