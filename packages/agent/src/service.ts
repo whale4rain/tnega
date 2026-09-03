@@ -95,6 +95,8 @@ export interface AgentConfig {
   llm?: LLMAdapter
   /** Bind the loop to a specific session instead of the ctx-provided singleton. */
   session?: SessionLog
+  /** Fail fast when the actual request would not be reconstructable from the log. */
+  assertReplayable?: boolean
   maxTurns?: number
   maxSteps?: number
   inbox?: AgentInbox
@@ -347,6 +349,9 @@ export class AgentService {
             llmMessages = copyMessages(streamRequest.messages)
             if (!persistedStepInput) {
               await this._persistStepInput(session, request, llmMessages)
+              if (this.config.assertReplayable) {
+                await this._assertReplayable(session, llmMessages)
+              }
               persistedStepInput = true
             }
             let chunkIndex = 0
@@ -366,6 +371,9 @@ export class AgentService {
           } else {
             if (!persistedStepInput) {
               await this._persistStepInput(session, request, llmMessages)
+              if (this.config.assertReplayable) {
+                await this._assertReplayable(session, llmMessages)
+              }
               persistedStepInput = true
             }
             completion = await llm.complete(llmMessages, request.tools, request.options)
@@ -690,6 +698,35 @@ export class AgentService {
           ...(message.name ? { name: message.name } : {}),
         })
       }
+    }
+  }
+
+  private async _assertReplayable(
+    session: SessionLog,
+    input: readonly ModelMessage[],
+  ): Promise<void> {
+    const reconstructed = await session.deriveMessages()
+    const canonical = (messages: readonly ModelMessage[]) => messages
+      .filter(message => message.role !== 'system')
+      .map(message => ({
+        role: message.role,
+        content: message.content,
+        ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+        ...(message.name ? { name: message.name } : {}),
+        ...(message.tool_calls?.length
+          ? { tool_calls: message.tool_calls.map(call => ({
+              id: call.id,
+              name: call.name,
+              args: JSON.stringify(call.arguments ?? {}),
+            })) }
+          : {}),
+      }))
+    const actual = canonical(input)
+    const replay = canonical(reconstructed)
+    if (JSON.stringify(actual) !== JSON.stringify(replay)) {
+      throw new AgentError(
+        `request is not reconstructable from session log: actual=${JSON.stringify(actual)} replay=${JSON.stringify(replay)}`,
+      )
     }
   }
 

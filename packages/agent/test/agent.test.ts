@@ -1168,6 +1168,28 @@ describe('agent loop', () => {
     ])
   })
 
+  it('enforces replayability when assertReplayable is enabled', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('assert-replay.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const { adapter } = fakeLLM([
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+        finishReason: 'tool_calls',
+      },
+      { content: 'done', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter, assertReplayable: true })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'sum' })
+    expect(result.output).toBe('done')
+    expect(result.steps).toHaveLength(2)
+  })
+
   it('keeps the interrupted stream prefix in the retried request history', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('request-error-stream.jsonl') })
