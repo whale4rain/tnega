@@ -512,6 +512,11 @@ export class AgentService {
       currentStepIndex = undefined
 
       const nextMessages = this._extendMessages(llmMessages, completion, toolResults)
+      const concludesTurn = toolResults.some(result => result.concludesTurn === true)
+      if (concludesTurn) {
+        finishReason = 'stop'
+        break
+      }
       if (toolCalls.length === 0) {
         finishReason = completion.finishReason === 'length'
           ? 'length'

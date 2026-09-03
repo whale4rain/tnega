@@ -1190,6 +1190,35 @@ describe('agent loop', () => {
     expect(result.steps).toHaveLength(2)
   })
 
+  it('stops the turn when a tool result concludes the turn', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('concludes-turn.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register({
+      ...addTool(),
+      metadata: { concludesTurn: true },
+    })
+    let calls = 0
+    const adapter: LLMAdapter = {
+      async complete() {
+        calls += 1
+        return {
+          content: '',
+          toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+          finishReason: 'tool_calls',
+        }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'sum' })
+    expect(calls).toBe(1)
+    expect(result.steps).toHaveLength(1)
+    expect(result.finishReason).toBe('stop')
+  })
+
   it('keeps the interrupted stream prefix in the retried request history', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('request-error-stream.jsonl') })

@@ -66,6 +66,8 @@ export interface ToolResult {
   input: unknown
   output?: unknown
   error?: ToolError
+  /** When true, the agent turn should stop after this tool result. */
+  concludesTurn?: boolean
   startedAt: number
   durationMs: number
 }
@@ -290,6 +292,7 @@ export class ToolsService extends Service<never> {
       durationMs: Date.now() - request.startedAt,
     }
     if (request.options.callId) result.callId = request.options.callId
+    this._applyConcludesTurn(request, result)
     return result
   }
 
@@ -303,7 +306,14 @@ export class ToolsService extends Service<never> {
       durationMs: Date.now() - request.startedAt,
     }
     if (request.options.callId) result.callId = request.options.callId
+    this._applyConcludesTurn(request, result)
     return result
+  }
+
+  private _applyConcludesTurn(request: ToolRequest, result: ToolResult): void {
+    const declares = (request.tool.metadata as { concludesTurn?: unknown } | undefined)
+      ?.concludesTurn
+    if (declares === true) result.concludesTurn = true
   }
 }
 
