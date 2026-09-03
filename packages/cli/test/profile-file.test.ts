@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
+  bootAgentRuntimeFromFile,
   readAgentProfile,
   resolveProfileFile,
   generalAgentProfile,
@@ -78,5 +79,28 @@ describe('loadable profile files', () => {
 
   it('exposes the shipped general profile', () => {
     expect(generalAgentProfile.name).toBe('general')
+  })
+
+  it('boots runtime options from a profile file', async () => {
+    const dir = await tempDir()
+    const file = join(dir, 'boot.json')
+    await writeFile(
+      file,
+      JSON.stringify({
+        name: 'boot',
+        bundles: [],
+        options: { allowShell: true, builtinTools: false },
+      }),
+      'utf8',
+    )
+    const options = await bootAgentRuntimeFromFile(
+      { cwd: dir, sessionFile: join(dir, 'session.jsonl') },
+      file,
+      { allowNetwork: true },
+    )
+    expect(options.cwd).toBe(dir)
+    expect(options.allowShell).toBe(true)
+    expect(options.allowNetwork).toBe(true)
+    expect(options.plugins).toEqual([])
   })
 })

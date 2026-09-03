@@ -2,8 +2,9 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { Plugin } from '@tnega/core'
+import type { AgentRuntimeOptions } from './commands.js'
 import type { AgentProfile } from './profile.js'
-import { generalAgentProfile } from './profile.js'
+import { bootAgentRuntime, generalAgentProfile } from './profile.js'
 import { parseYaml } from './yaml.js'
 
 /** A serializable reference to a bundle: a built-in name, or an explicit bundler module. */
@@ -116,6 +117,15 @@ export async function ensureProfileDir(): Promise<string> {
   const dir = profileDir()
   await mkdir(dir, { recursive: true })
   return dir
+}
+
+export async function bootAgentRuntimeFromFile(
+  base: Parameters<typeof bootAgentRuntime>[0],
+  nameOrFile: string,
+  overlay: Parameters<typeof bootAgentRuntime>[2] = {},
+): Promise<AgentRuntimeOptions> {
+  const profile = await readAgentProfile(nameOrFile)
+  return bootAgentRuntime(base, profile, overlay)
 }
 
 export { generalAgentProfile }
