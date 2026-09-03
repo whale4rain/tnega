@@ -303,6 +303,7 @@ export {
 
 export {
   CliError,
+  bootAgentRuntime,
   compareCommand,
   createAgentRuntime,
   formatAgentRun,
@@ -312,12 +313,14 @@ export {
   loadTasksFile,
   main,
   parseYaml,
+  generalAgentProfile,
   resolveLlmEnv,
   runAgentCommand,
   runCommand,
   runEvolveCommand,
   type AgentRuntime,
   type AgentRuntimeOptions,
+  type AgentProfile,
   type EvolveFileConfig,
   type LlmEnvConfig,
   type RunAgentCommandOptions,

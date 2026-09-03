@@ -13,6 +13,7 @@ import {
   runEvolveCommand,
 } from './commands.js'
 import { startWebServer } from './server.js'
+export * from './profile.js'
 
 export type {
   AgentRuntime,
