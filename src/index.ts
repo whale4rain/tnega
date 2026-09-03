@@ -99,6 +99,7 @@ export {
   builtinTools,
   createBuiltinToolDefinitions,
   evaluateExpression,
+  localExecutionProvider,
   tools,
   validateSchema,
   validateToolInput,
@@ -117,6 +118,11 @@ export {
   type ToolSchema,
   type ToolStagePayload,
   type ToolsConfig,
+  type ExecutionProvider,
+  type HttpRequest,
+  type HttpResponse,
+  type ShellRequest,
+  type ShellResult,
 } from '../packages/tools/src/index.js'
 
 export {

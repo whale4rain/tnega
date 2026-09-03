@@ -54,6 +54,7 @@
 - [x] agent：`request/header` / `request/context` 变化快照语义（首个 envelope 写 `initial`，同 loop 内 tools/system/config 变化才追加 `change`，context 仅在 route 变化时记录）
 - [x] agent：durable inbox（session `agent/inbox/spliced` 事件族，`DurableInbox.insert / steer / claim / clear` 全部落日志，`restore` 从日志重建 next-turn / next-step 双队列）
 - [x] agent：live agent 使用 durable inbox（`followup` / `steer` 写入 splice 日志，driver 从 durable 队列 claim），`ctx.agents.resume()` 恢复 pending work 并自动续跑
+- [x] tools：execution provider seam（`ExecutionProvider.runShell / fetchHttp`、`localExecutionProvider`，内置 `shell` / `http_get` 经 config 注入的执行体运行）
 - [x] agent：`llm/stream` waterfall，支持改写最终请求与短路返回
 - [x] agent：流式 chunk 落 durable `assistant/chunk` 事件
 - [x] tools：`pre-execute` / `execute` / `post-execute` 三层 waterfall，兼容旧 policy 语义
@@ -71,6 +72,7 @@
 - agent：跨 step 只追加变化的 request envelope 快照，日志可区分 loop 内的 model-message series。
 - agent：durable inbox 以 splice 事件记录 pending work，崩溃/重启后可重建双列表。
 - agent：live agent 的发送/claim 走 durable inbox，resume 会恢复未完成输入并继续驱动。
+- tools：shell / http 执行收口到可替换 provider，便于后续沙箱/远程后端替换。
 
 ## M16 eval benchmark 与真实评测
 

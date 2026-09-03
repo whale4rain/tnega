@@ -6,6 +6,7 @@ import { Context } from '@tnega/core'
 import {
   builtinTools,
   createBuiltinToolDefinitions,
+  type ExecutionProvider,
   tools,
   type BuiltinToolsConfig,
   type ToolResult,
@@ -133,6 +134,60 @@ describe('builtinTools plugin lifecycle', () => {
     const expandedNames = expanded.map(tool => tool.schema.name)
     expect(expandedNames).toContain('http_get')
     expect(expandedNames).toContain('shell')
+  })
+})
+
+describe('execution provider seam', () => {
+  it('routes shell tool execution through the injected provider', async () => {
+    const calls: string[] = []
+    const execution: ExecutionProvider = {
+      async runShell(request) {
+        calls.push(request.command)
+        return { exitCode: 0, stdout: 'mocked', stderr: '' }
+      },
+      async fetchHttp() {
+        throw new Error('unexpected network call')
+      },
+    }
+    const dir = await tempDir('tnega-tools-exec-shell-')
+    const shell = createBuiltinToolDefinitions({
+      cwd: dir,
+      allowShell: true,
+      execution,
+    }).find(tool => tool.schema.name === 'shell')!
+
+    const result = await shell.execute({ command: 'echo hi' }, {})
+    expect(calls).toEqual(['echo hi'])
+    expect(result).toEqual({ exitCode: 0, stdout: 'mocked', stderr: '' })
+  })
+
+  it('routes http_get execution through the injected provider', async () => {
+    const urls: string[] = []
+    const execution: ExecutionProvider = {
+      async runShell() {
+        throw new Error('unexpected shell call')
+      },
+      async fetchHttp(request) {
+        urls.push(request.url)
+        return {
+          status: 200,
+          ok: true,
+          headers: { 'content-type': 'text/plain' },
+          body: 'mocked',
+          truncated: false,
+        }
+      },
+    }
+    const dir = await tempDir('tnega-tools-exec-http-')
+    const httpGet = createBuiltinToolDefinitions({
+      cwd: dir,
+      allowNetwork: true,
+      execution,
+    }).find(tool => tool.schema.name === 'http_get')!
+
+    const result = await httpGet.execute({ url: 'https://example.com/a' }, {})
+    expect(urls).toEqual(['https://example.com/a'])
+    expect(result).toMatchObject({ status: 200, body: 'mocked' })
   })
 })
 

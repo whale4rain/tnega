@@ -11,6 +11,7 @@ import type {
 export * from './builtins.js'
 export * from './calc.js'
 export * from './path.js'
+export * from './execution.js'
 export {
   ToolAuthorizationError,
   validateSchema,
