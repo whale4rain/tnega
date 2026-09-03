@@ -388,11 +388,12 @@ async function handleApi(
     }
     if (action === undefined && req.method === 'GET') {
       const summary = await readSessionSummary(workspace, id)
-      const events = await readSessionEvents(workspace, id)
+      const detail = await readSessionEvents(workspace, id)
       const contextUsage = await estimateContextUsage(workspace, id)
       sendJson(res, 200, {
         summary,
-        events,
+        events: detail.events,
+        surface: detail.surface,
         context: contextUsage,
         running: isActive(context.activeRuns, workspace, id),
       })
@@ -958,7 +959,7 @@ async function autoTitle(workspace: string, id: string, prompt: string): Promise
 async function readSessionEvents(
   workspace: string,
   id: string,
-): Promise<unknown[]> {
+): Promise<{ events: unknown[]; surface: unknown[] }> {
   const runtime = await createAgentRuntime({
     cwd: workspace,
     sessionFile: sessionFilePath(workspace, id),
@@ -967,7 +968,24 @@ async function readSessionEvents(
   try {
     const session = runtime.root.get('session') as SessionLog
     const events = await session.read()
-    return JSON.parse(JSON.stringify(events)) as unknown[]
+    const surface = await session.surfaceEvents()
+    const surfaceSeqs = new Set(surface.map(event => (event as { seq: number }).seq))
+    const cleanEvents = events.filter(event => {
+      const type = (event as { type: string }).type
+      if (type === 'tool/call') return true
+      if (
+        type !== 'user/message'
+        && type !== 'assistant/message'
+        && type !== 'tool/result'
+      ) {
+        return true
+      }
+      return surfaceSeqs.has((event as { seq: number }).seq)
+    })
+    return {
+      events: JSON.parse(JSON.stringify(cleanEvents)) as unknown[],
+      surface: JSON.parse(JSON.stringify(surface)) as unknown[],
+    }
   } finally {
     await runtime.dispose()
   }

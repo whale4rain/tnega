@@ -960,6 +960,18 @@ export class SessionLog {
     })
   }
 
+  /** The ordered surface events, after compaction replacements are applied. */
+  surfaceEvents(): Promise<SessionEvent[]> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      const bySeq = new Map(this._events.map(event => [event.seq, event] as const))
+      return this._surfaceNodes
+        .map(seq => bySeq.get(seq))
+        .filter((event): event is SessionEvent => event !== undefined)
+        .map(event => clone(event))
+    })
+  }
+
   /** The latest `request/header` snapshot, or undefined before the first one. */
   requestHeader(): RequestHeaderPayload | undefined {
     return this._requestHeader ? clone(this._requestHeader) : undefined

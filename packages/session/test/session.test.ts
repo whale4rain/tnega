@@ -1080,6 +1080,25 @@ describe('v5 surface folding', () => {
   })
 })
 
+describe('SessionLog surfaceEvents', () => {
+  it('returns only events that survive the surface projection', async () => {
+    const log = new SessionLog(await tempFile('surface-events.jsonl'))
+    await log.append('user/message', { content: 'one' })
+    await log.append('assistant/message', { content: 'answer' })
+    await log.append('assistant/chunk', { id: 'c1', content: 'partial', index: 0 })
+
+    const surface = await log.surfaceEvents()
+    expect(surface.map(event => event.type)).toEqual([
+      'user/message',
+      'assistant/message',
+    ])
+    expect(surface.map(event => event.payload)).toMatchObject([
+      { content: 'one' },
+      { content: 'answer' },
+    ])
+  })
+})
+
 describe('context budget', () => {
   it('estimates tokens from messages and tool call arguments', () => {
     const messages: ModelMessage[] = [

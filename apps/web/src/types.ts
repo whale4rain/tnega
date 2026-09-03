@@ -172,6 +172,7 @@ export type SessionEvent =
 export interface SessionDetail {
   summary: SessionSummary
   events: SessionEvent[]
+  surface: SessionEvent[]
   context: ContextUsage
   running: boolean
 }
