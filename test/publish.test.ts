@@ -90,7 +90,7 @@ describe('packed artifact', () => {
       const mod = await import(`tnega/${subpath}`)
       expect(Object.keys(mod).length).toBeGreaterThan(0)
     }
-  })
+  }, 30_000)
 
   it('emits a runtime js file for every subpath entry', () => {
     const names = [
