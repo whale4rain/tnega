@@ -129,37 +129,6 @@ function isUserOrSystemMessage(
   return message.role === 'system' || message.role === 'user'
 }
 
-function sameSurfaceMessage(left: ModelMessage, right: ModelMessage): boolean {
-  return left.role === right.role
-    && left.content === right.content
-    && (left.name ?? '') === (right.name ?? '')
-}
-
-function commonSurfacePrefix(
-  left: readonly ModelMessage[],
-  right: readonly ModelMessage[],
-): number {
-  const max = Math.min(left.length, right.length)
-  let count = 0
-  while (count < max && sameSurfaceMessage(left[count]!, right[count]!)) count += 1
-  return count
-}
-
-function commonSurfaceSuffix(
-  left: readonly ModelMessage[],
-  right: readonly ModelMessage[],
-): number {
-  const max = Math.min(left.length, right.length)
-  let count = 0
-  while (
-    count < max
-    && sameSurfaceMessage(left[left.length - 1 - count]!, right[right.length - 1 - count]!)
-  ) {
-    count += 1
-  }
-  return count
-}
-
 function stringify(value: unknown): string {
   if (typeof value === 'string') return value
   try {
@@ -702,9 +671,14 @@ export class AgentService {
     }
     const requested = input.filter(isUserOrSystemMessage)
     const surface = (await session.deriveMessages()).filter(isUserOrSystemMessage)
-    const prefix = commonSurfacePrefix(requested, surface)
-    const suffix = commonSurfaceSuffix(requested.slice(prefix), surface.slice(prefix))
-    for (const message of requested.slice(prefix, requested.length - suffix)) {
+    // The session surface is the durable history. A caller may include the full
+    // derived history as model context; only the tail that is not already in
+    // the surface is new. Text-based prefix/suffix matching is unsafe because
+    // the same user text can legitimately repeat across turns, so append by
+    // count and only when the requested sequence is actually longer.
+    const known = Math.min(surface.length, requested.length)
+    const newCount = requested.length - known
+    for (const message of requested.slice(requested.length - Math.max(0, newCount))) {
       if (message.role === 'user') {
         await session.append('user/message', {
           content: message.content,
