@@ -49,6 +49,7 @@ import {
   resolveLlmEnv,
   systemConfigPath,
 } from './config.js'
+import { readAgentProfile } from './profile-file.js'
 import {
   createLlmProposeRule,
   evolvePlugin,
@@ -107,6 +108,7 @@ export interface RunAgentCommandOptions {
   cwd?: string
   sessionFile?: string
   configFile?: string
+  profile?: string
   model?: string
   baseUrl?: string
   maxTokens?: number
@@ -542,6 +544,10 @@ export async function runAgentCommand(
   const cwd = options.cwd ?? process.cwd()
   const sessionFile = resolve(cwd, options.sessionFile ?? join('.tnega', 'run.jsonl'))
   const configFile = options.configFile ?? systemConfigPath()
+  const profile = options.profile
+    ? await readAgentProfile(options.profile)
+    : undefined
+  const profileOptions = (profile?.options ?? {}) as Record<string, unknown>
   const systemConfig = await readSystemConfig(configFile)
   const envConfig = resolveLlmEnv(process.env)
   const apiKey = envConfig.apiKey ?? systemConfig.apiKey
@@ -551,31 +557,61 @@ export async function runAgentCommand(
     )
   }
 
-  const model = options.model ?? envConfig.model ?? systemConfig.model
+  const model = options.model
+    ?? profileOptions.model
+    ?? envConfig.model
+    ?? systemConfig.model
+  const profileBaseUrl = typeof profileOptions.baseUrl === 'string'
+    ? profileOptions.baseUrl
+    : undefined
   const baseUrl = options.baseUrl
+    ?? profileBaseUrl
     ?? envConfig.baseUrl
     ?? systemConfig.baseUrl
   const adapter = createLlmAdapter({
     apiKey,
-    ...(model ? { model } : {}),
+    ...(typeof model === 'string' && model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
-    ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
+    ...(protocolFrom(profileOptions) ?? systemConfig.protocol
+      ? { protocol: protocolFrom(profileOptions) ?? systemConfig.protocol }
+      : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+    ...(options.maxTokens === undefined && typeof profileOptions.maxTokens === 'number'
+      ? { maxTokens: profileOptions.maxTokens }
+      : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(systemConfig.temperature !== undefined
       && options.temperature === undefined
+      && profileOptions.temperature === undefined
       ? { temperature: systemConfig.temperature }
       : {}),
+    ...(options.temperature === undefined
+      && typeof profileOptions.temperature === 'number'
+      ? { temperature: profileOptions.temperature }
+      : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options.timeoutMs === undefined && typeof profileOptions.timeoutMs === 'number'
+      ? { timeoutMs: profileOptions.timeoutMs }
+      : {}),
     ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+    ...(options.maxRetries === undefined && typeof profileOptions.maxRetries === 'number'
+      ? { maxRetries: profileOptions.maxRetries }
+      : {}),
     ...(options.retryDelayMs !== undefined
       ? { retryDelayMs: options.retryDelayMs }
       : {}),
+    ...(options.retryDelayMs === undefined
+      && typeof profileOptions.retryDelayMs === 'number'
+      ? { retryDelayMs: profileOptions.retryDelayMs }
+      : {}),
   })
+  const profileRuntimeOptions = runtimeOptionsFromProfile(profileOptions)
   const context = await createAgentRuntime({
     cwd,
     sessionFile,
     llm: adapter,
+    ...(profile ? { profile } : {}),
+    ...profileRuntimeOptions,
     ...(options.allowNetwork !== undefined
       ? { allowNetwork: options.allowNetwork }
       : {}),
@@ -593,6 +629,40 @@ export async function runAgentCommand(
   } finally {
     await context.dispose()
   }
+}
+
+function protocolFrom(
+  options: Record<string, unknown>,
+): 'anthropic' | 'openai' | undefined {
+  return options.protocol === 'anthropic' || options.protocol === 'openai'
+    ? options.protocol
+    : undefined
+}
+
+function runtimeOptionsFromProfile(
+  options: Record<string, unknown>,
+): Pick<
+  AgentRuntimeOptions,
+  'allowNetwork' | 'allowShell' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+> {
+  const builtinTools = options.builtinTools === false
+    || (options.builtinTools && typeof options.builtinTools === 'object')
+    ? options.builtinTools as AgentRuntimeOptions['builtinTools']
+    : undefined
+  const result: Partial<Pick<
+    AgentRuntimeOptions,
+    'allowNetwork' | 'allowShell' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+  >> = {}
+  if (options.allowNetwork === true) result.allowNetwork = true
+  if (options.allowShell === true) result.allowShell = true
+  if (typeof options.maxTurns === 'number' && Number.isFinite(options.maxTurns)) {
+    result.maxTurns = options.maxTurns
+  }
+  if (typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps)) {
+    result.maxSteps = options.maxSteps
+  }
+  if (builtinTools !== undefined) result.builtinTools = builtinTools
+  return result
 }
 
 export async function createAgentRuntime(

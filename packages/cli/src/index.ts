@@ -58,6 +58,7 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
         ...(parsed.sessionFile ? { sessionFile: parsed.sessionFile } : {}),
         ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
+        ...(parsed.profile ? { profile: parsed.profile } : {}),
         ...(parsed.model ? { model: parsed.model } : {}),
         ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
         ...(parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {}),
@@ -205,6 +206,7 @@ interface ParsedRunAgentArgs {
   cwd?: string
   sessionFile?: string
   configFile?: string
+  profile?: string
   model?: string
   baseUrl?: string
   maxTokens?: number
@@ -229,6 +231,7 @@ interface ParsedEvolveRunArgs {
   cwd?: string
   outputDir?: string
   configFile?: string
+  profile?: string
   maxIterations?: number
   maxRuns?: number
   baseSystem?: string
@@ -355,6 +358,13 @@ function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
       cursor += 1
       continue
     }
+    if (arg === '--profile') {
+      const value = args[cursor + 1]
+      if (!value) throw new CliError('--profile requires a value')
+      parsed.profile = value
+      cursor += 2
+      continue
+    }
 
     const eq = arg.indexOf('=')
     const name = eq >= 0 ? arg.slice(2, eq) : arg.slice(2)
@@ -454,6 +464,9 @@ function assignEvolveRunOption(
     case 'config':
     case 'config-file':
       parsed.configFile = value
+      return
+    case 'profile':
+      parsed.profile = value
       return
     case 'iterations':
       parsed.maxIterations = parseFiniteNumber('--iterations', value)

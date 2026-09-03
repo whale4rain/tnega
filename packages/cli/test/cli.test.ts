@@ -407,6 +407,71 @@ describe('agent run command', () => {
     expect(body.model).toBe('my-anthropic-model')
   })
 
+  it('loads run settings from a profile file below explicit flags', async () => {
+    const dir = await tempDir('tnega-cli-agent-profile-')
+    const profileFile = join(dir, 'profile.json')
+    await writeFile(profileFile, JSON.stringify({
+      name: 'run-profile',
+      bundles: [],
+      options: {
+        model: 'profile-model',
+        baseUrl: 'https://profile.example.com/v1',
+        maxTurns: 2,
+        maxSteps: 4,
+        temperature: 0.2,
+      },
+    }), 'utf8')
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    const fetchMock = vi.fn(async () => openaiResponse('profile says hi')) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runAgentCommand({
+      prompt: 'say hi',
+      cwd: dir,
+      profile: profileFile,
+      maxTurns: 1,
+    })
+
+    expect(result.run.output).toBe('profile says hi')
+    const call = fetchMock.mock.calls[0]!
+    expect(String(call[0])).toBe('https://profile.example.com/v1/chat/completions')
+    const body = JSON.parse(String(call[1]!.body)) as {
+      model: string
+      temperature: number
+    }
+    expect(body.model).toBe('profile-model')
+    expect(body.temperature).toBe(0.2)
+    expect(result.run.steps).toHaveLength(1)
+  })
+
+  it('wires a profile through main run', async () => {
+    const dir = await tempDir('tnega-cli-agent-profile-main-')
+    const profileFile = join(dir, 'profile.json')
+    await writeFile(profileFile, JSON.stringify({
+      name: 'main-profile',
+      options: {
+        model: 'profile-model',
+        baseUrl: 'https://profile.example.com/v1',
+        maxTokens: 8,
+      },
+    }), 'utf8')
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn(async () => openaiResponse('profile main')))
+    const output = captureStdout()
+
+    const code = await main([
+      'run',
+      '--profile',
+      profileFile,
+      '--cwd',
+      dir,
+      'profile prompt',
+    ])
+
+    expect(code).toBe(0)
+    expect(output()).toContain('profile main')
+  })
+
   it('retries a transient LLM failure with the configured limits', async () => {
     const dir = await tempDir('tnega-cli-agent-retry-')
     vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
