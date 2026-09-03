@@ -21,7 +21,6 @@ import { saveManifest, writeTasksFile } from './manifest.js'
 import type {
   BenchmarkImportOptions,
   BenchmarkManifest,
-  BenchmarkTask,
   ImportedBenchmark,
 } from './types.js'
 
