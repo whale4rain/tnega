@@ -343,7 +343,6 @@ export class ToolsService extends Service<never> {
       durationMs: Date.now() - request.startedAt,
     }
     if (request.options.callId) result.callId = request.options.callId
-    this._applyConcludesTurn(request, result)
     return result
   }
 

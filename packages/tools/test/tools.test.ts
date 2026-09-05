@@ -244,6 +244,27 @@ describe('ToolsService pipeline', () => {
     expect(terminal.concludesTurn).toBe(true)
   })
 
+  it('does not conclude the turn on a failed execution', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register({
+      schema: { name: 'fail', description: 'fail' },
+      execute: () => {
+        throw new Error('boom')
+      },
+      metadata: { concludesTurn: true },
+    })
+
+    const result = await service.execute(
+      'fail',
+      {},
+      { concludesTurn: true },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.concludesTurn).toBeUndefined()
+  })
+
   it('denies a call when any monotonic guard rejects it', async () => {
     const root = new Context()
     await root.plugin(tools)
