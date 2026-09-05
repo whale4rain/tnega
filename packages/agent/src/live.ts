@@ -317,7 +317,13 @@ class LiveAgentImpl implements LiveAgent {
           await this._service.run(input, { signal: controller.signal })
         } catch (error) {
           if (!controller.signal.aborted) {
-            this._ctx.emit('agent/error', { id: this.id, error })
+            const step = await this._failedStep()
+            this._ctx.emit('agent/error', {
+              id: this.id,
+              agent: this,
+              error,
+              ...(step !== undefined ? { turn, step } : {}),
+            })
           }
         } finally {
           if (this._controller === controller) this._controller = undefined
@@ -334,6 +340,19 @@ class LiveAgentImpl implements LiveAgent {
     if (previous === status) return
     this._status = status
     this._ctx.emit('agent/status', { id: this.id, status, previous })
+  }
+
+  private async _failedStep(): Promise<number | undefined> {
+    const events = await this.session.read()
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]
+      if (event?.type === 'step/end'
+        && (event.payload.finishReason === 'error'
+          || event.payload.interrupted === true)) {
+        return event.payload.step
+      }
+    }
+    return undefined
   }
 }
 

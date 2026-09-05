@@ -163,6 +163,24 @@ describe('live agent registry', () => {
     expect(handle.agent.status).toBe('idle')
   })
 
+  it('reports failed run coordinates on agent/error', async () => {
+    const root = await mountRoot()
+    const errors: Array<{ turn?: number; step?: number }> = []
+    root.on('agent/error', (payload: { turn?: number; step?: number }) => {
+      errors.push({ ...(payload.turn !== undefined ? { turn: payload.turn } : {}), ...(payload.step !== undefined ? { step: payload.step } : {}) })
+    })
+    const llm: LLMAdapter = {
+      async complete() {
+        throw new Error('run exploded')
+      },
+    }
+    const handle = await createHandle(root, await tempFile('run-error.jsonl'), llm)
+    handle.agent.followup({ text: 'boom' })
+    await handle.agent.whenIdle()
+    expect(errors).toEqual([{ turn: 1, step: 0 }])
+    await handle.dispose()
+  })
+
   it('exposes roots and ownership for registry queries', async () => {
     const root = await mountRoot()
     const parent = await createHandle(root, await tempFile('owner-parent.jsonl'))
