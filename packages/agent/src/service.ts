@@ -410,15 +410,22 @@ export class AgentService {
             break
           }
           attempt += 1
+          const failure = toToolError(error)
           const decision = await this.ctx.waterfallAsync(
             'agent/request-error',
             {
               index,
+              turn,
+              step: index,
               messages: copyMessages(llmMessages),
               tools: request.tools,
               options: request.options,
               attempt,
               error,
+              failure,
+              ...(request.options.provider ? { provider: request.options.provider } : {}),
+              ...(request.options.model ? { model: request.options.model } : {}),
+              ...(options.signal ? { signal: options.signal } : {}),
             } satisfies AgentRequestErrorEvent,
             () => undefined,
           ) as AgentRequestRetryDecision

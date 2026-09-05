@@ -177,11 +177,19 @@ export interface AgentRequestEvent {
 
 export interface AgentRequestErrorEvent {
   index: number
+  turn: number
+  step: number
   messages: readonly ModelMessage[]
   tools: readonly ToolDefinition[]
   options: CompleteOptions
   attempt: number
   error: unknown
+  /** Normalized durable failure fact surfaced to recovery listeners. */
+  failure: { name: string; message: string; stack?: string }
+  provider?: string
+  model?: string
+  signal?: AbortSignal
+  retryPolicy?: { maxRetries: number; retryDelayMs: number }
 }
 
 export type AgentRequestRetryDecision =

@@ -1117,6 +1117,12 @@ describe('agent loop', () => {
     root.on('agent/request-error', async (payload: AgentRequestErrorEvent) => {
       await Promise.resolve()
       seen.push({ index: payload.index, attempt: payload.attempt })
+      expect(payload.turn).toBe(1)
+      expect(payload.step).toBe(0)
+      expect(payload.failure).toMatchObject({
+        name: 'Error',
+        message: 'transient model failure',
+      })
       return { kind: 'retry' }
     })
 
