@@ -197,12 +197,12 @@ describe('live agent registry', () => {
     expect(events.some(event => event === 'inserted')).toBe(true)
   })
 
-  it('claims steering input before ordinary followups', async () => {
+  it('claims steering and followup inputs in one step batch', async () => {
     const root = await mountRoot()
-    const calls: string[] = []
+    const calls: string[][] = []
     const llm: LLMAdapter = {
       async complete(messages) {
-        calls.push(messages.at(-1)?.content ?? '')
+        calls.push(messages.map(message => message.content))
         return { content: 'done', finishReason: 'stop' }
       },
     }
@@ -211,7 +211,7 @@ describe('live agent registry', () => {
     handle.agent.steer({ text: 'urgent' })
 
     await handle.agent.whenIdle()
-    expect(calls).toEqual(['urgent', 'queued'])
+    expect(calls).toEqual([['urgent', 'queued']])
   })
 
   it('aborts the active run on cancel and reports a typed cause', async () => {

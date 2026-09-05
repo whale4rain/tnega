@@ -396,27 +396,25 @@ class LiveAgentImpl implements LiveAgent {
     this._setStatus('running')
     try {
       while (!this._disposed) {
-        const durableMessage = await this._durable.claim()
-        if (!durableMessage) break
+        const batch = await this._durable.claimBatch()
+        if (!batch.length) break
         const history = await this.session.deriveMessages()
-        const input: AgentInput = history.length
-          ? {
-              messages: [
-                ...history,
-                { role: 'user' as const, content: durableMessage.text ?? '' },
-              ],
-            }
-          : {
-              ...(durableMessage.text !== undefined ? { text: durableMessage.text } : {}),
-            }
+        const userMessages = batch
+          .filter(message => message.text !== undefined)
+          .map(message => ({ role: 'user' as const, content: message.text ?? '' }))
+        const input: AgentInput = history.length || batch.length > 1
+          ? { messages: [...history, ...userMessages] }
+          : { text: userMessages[0]?.content ?? '' }
         const turn = await this._nextTurnNumber()
-        this._ctx.emit('agent/inbox/claimed', {
-          id: this.id,
-          agent: this,
-          message: durableMessage,
-          input,
-          turn,
-        })
+        for (const message of batch) {
+          this._ctx.emit('agent/inbox/claimed', {
+            id: this.id,
+            agent: this,
+            message,
+            input: { text: message.text ?? '' },
+            turn,
+          })
+        }
         const controller = new AbortController()
         this._controller = controller
         try {
