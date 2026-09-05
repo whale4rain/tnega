@@ -1445,4 +1445,31 @@ describe('request header snapshots across steps', () => {
       contextWindow: 1_000_000,
     })
   })
+
+  it('records a new request context when route capacity changes', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-context-capacity-change.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(llmService)
+    const service = dynamic(root).llm as LlmService
+    let capacity = 100_000
+    const adapter = fakeLLM([
+      { content: 'ok', finishReason: 'stop' },
+      { content: 'ok2', finishReason: 'stop' },
+    ]).adapter
+    ;(adapter as unknown as { model?: string }).model = 'catalog-model'
+    service.register('catalog', adapter)
+    service.setCapacityResolver(() => capacity)
+    await root.plugin(agent)
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    capacity = 1_000_000
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const contexts = (await log.read()).filter(event => event.type === 'request/context')
+    expect(contexts.map(event => (event.payload as { contextWindow?: number }).contextWindow))
+      .toEqual([100_000, 1_000_000])
+  })
 })

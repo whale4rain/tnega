@@ -729,6 +729,7 @@ export class AgentService {
     if (
       previousContext?.provider !== nextContext.provider
       || previousContext?.model !== nextContext.model
+      || previousContext?.contextWindow !== nextContext.contextWindow
       || (previousContext === undefined)
     ) {
       await session.append('request/context', nextContext)
