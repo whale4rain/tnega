@@ -76,4 +76,71 @@ describe('durable inbox', () => {
     expect(splices.some(event => (event.payload.deleteCount ?? 0) === Number.POSITIVE_INFINITY)).toBe(true)
     await log.close()
   })
+
+  it('replaces and removes pending messages by stable id', async () => {
+    const file = await tempFile('inbox-replace.jsonl')
+    const log = new SessionLog(file)
+    await log.init()
+    const inbox = new DurableInbox(log)
+
+    const first = await inbox.insert({ text: 'first' })
+    const second = await inbox.insert({ text: 'second' })
+    const replaced = await inbox.replace(first.id, { text: 'replaced' })
+    expect(replaced).toBeDefined()
+    expect(replaced!.id).not.toBe(first.id)
+    expect(inbox.snapshot().nextTurn.map(message => message.text)).toEqual([
+      'replaced',
+      'second',
+    ])
+
+    const removed = await inbox.remove(second.id)
+    expect(removed?.id).toBe(second.id)
+    expect(inbox.snapshot().nextTurn.map(message => message.text)).toEqual(['replaced'])
+
+    expect(inbox.get(replaced!.id)).toMatchObject({ text: 'replaced' })
+    expect(inbox.get(second.id)).toBeUndefined()
+    await log.close()
+  })
+
+  it('restores replaced and removed messages from durable splices', async () => {
+    const file = await tempFile('inbox-replace-restore.jsonl')
+    const first = new SessionLog(file)
+    await first.init()
+    const inbox = new DurableInbox(first)
+    const alpha = await inbox.insert({ text: 'alpha' })
+    const beta = await inbox.insert({ text: 'beta' })
+    await inbox.replace(alpha.id, { text: 'alpha2' })
+    await inbox.remove(beta.id)
+    await first.flush()
+    await first.close()
+
+    const second = new SessionLog(file)
+    await second.init()
+    const restored = await DurableInbox.restore(second)
+    expect(restored.snapshot().nextTurn.map(message => message.text)).toEqual(['alpha2'])
+    await second.close()
+  })
+
+  it('inserts at an explicit queue index', async () => {
+    const file = await tempFile('inbox-insert-at.jsonl')
+    const log = new SessionLog(file)
+    await log.init()
+    const inbox = new DurableInbox(log)
+    const first = await inbox.insert({ text: 'first' })
+    const third = await inbox.insert({ text: 'third' })
+    await inbox.insertAt({ text: 'second' }, 'next-turn', 1)
+
+    expect(inbox.snapshot().nextTurn.map(message => message.text)).toEqual([
+      'first',
+      'second',
+      'third',
+    ])
+    await inbox.insertAt({ text: 'urgent-second' }, 'next-step', 1)
+    expect(inbox.snapshot().nextStep.map(message => message.text)).toEqual([
+      'urgent-second',
+    ])
+    void first
+    void third
+    await log.close()
+  })
 })
