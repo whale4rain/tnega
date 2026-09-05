@@ -684,7 +684,8 @@ export class AgentService {
       ...(tools.length ? { tools } : {}),
     }
     const previousHeader = session.requestHeader()
-    const isFirstRequest = previousHeader === undefined && !this._persistedRequest
+    const isFirstRequest = !this._persistedRequest
+    const isResume = isFirstRequest && previousHeader !== undefined
     this._persistedRequest = true
     const changedHeader = previousHeader && (
       previousHeader.system !== nextHeader.system
@@ -693,7 +694,11 @@ export class AgentService {
     )
     if (isFirstRequest) {
       await session.append('request/header', {
-        reason: this._seriesStarted ? 'series' : 'initial',
+        reason: this._seriesStarted
+          ? 'series'
+          : isResume
+            ? 'resume'
+            : 'initial',
         ...nextHeader,
         ...(this._seriesStarted ? { startsSeries: true } : {}),
       })

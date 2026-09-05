@@ -302,6 +302,11 @@ describe('live agent resume', () => {
       forkedAtMessageId: 'message-9',
       createdAt: 1,
     })
+    await prior.append('request/header', {
+      reason: 'initial',
+      system: 'previous system',
+      tools: [{ name: 'old_tool', description: 'old tool' }],
+    })
     await priorInbox.insert({ text: 'pending' })
     await prior.flush()
     await prior.close()
@@ -341,6 +346,10 @@ describe('live agent resume', () => {
     expect(resumed.agent.parentSessionId).toBe('parent-session')
     await resumed.agent.whenIdle()
     expect(calls).toEqual(['pending'])
+
+    const events = await resumed.agent.session.read()
+    const headers = events.filter(event => event.type === 'request/header')
+    expect((headers.at(-1)?.payload as { reason: string }).reason).toBe('resume')
 
     resumed.agent.followup({ text: 'after-resume' })
     await resumed.agent.whenIdle()
