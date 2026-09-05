@@ -398,9 +398,17 @@ class LiveAgentImpl implements LiveAgent {
       while (!this._disposed) {
         const durableMessage = await this._durable.claim()
         if (!durableMessage) break
-        const input: AgentInput = {
-          ...(durableMessage.text !== undefined ? { text: durableMessage.text } : {}),
-        }
+        const history = await this.session.deriveMessages()
+        const input: AgentInput = history.length
+          ? {
+              messages: [
+                ...history,
+                { role: 'user' as const, content: durableMessage.text ?? '' },
+              ],
+            }
+          : {
+              ...(durableMessage.text !== undefined ? { text: durableMessage.text } : {}),
+            }
         const turn = await this._nextTurnNumber()
         this._ctx.emit('agent/inbox/claimed', {
           id: this.id,

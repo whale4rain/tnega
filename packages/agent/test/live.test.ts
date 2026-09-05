@@ -131,6 +131,28 @@ describe('live agent registry', () => {
     expect(sessionStarts).toEqual(['startup'])
   })
 
+  it('includes session history in later followup requests', async () => {
+    const root = await mountRoot()
+    const requests: string[][] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        requests.push(messages.map(message => message.content))
+        return { content: 'answer', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('history-followup.jsonl'), llm)
+    handle.agent.followup({ text: 'first' })
+    await handle.agent.whenIdle()
+    handle.agent.followup({ text: 'second' })
+    await handle.agent.whenIdle()
+
+    expect(requests).toEqual([
+      ['first'],
+      ['first', 'answer', 'second'],
+    ])
+    await handle.dispose()
+  })
+
   it('replaces and removes pending messages by id', async () => {
     const root = await mountRoot()
     const events: string[] = []
