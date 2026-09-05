@@ -291,6 +291,33 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
+  it('holds followups until maintenance settles', async () => {
+    const root = await mountRoot()
+    const calls: string[] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        calls.push(messages.at(-1)?.content ?? '')
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('maintenance-wait.jsonl'), llm)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const maintenance = handle.agent.runMaintenance(async () => {
+      await gate
+    })
+
+    handle.agent.followup({ text: 'after maintenance' })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(calls).toEqual([])
+
+    release()
+    await maintenance
+    await handle.agent.whenIdle()
+    expect(calls).toEqual(['after maintenance'])
+    await handle.dispose()
+  })
+
   it('reports failed run coordinates on agent/error', async () => {
     const root = await mountRoot()
     const errors: Array<{ turn?: number; step?: number }> = []
