@@ -204,12 +204,29 @@ async function cancellableDelay(ms: number, signal?: AbortSignal): Promise<boole
 
 export class AgentService {
   readonly inbox: AgentInbox
+  private _seriesStarted = false
+  private _persistedRequest = false
 
   constructor(
     private ctx: Context,
     private config: AgentConfig = {},
   ) {
     this.inbox = config.inbox ?? new AgentInbox()
+  }
+
+  /** Call when a request begins an explicit new model-message series. */
+  startSeries(): void {
+    this._seriesStarted = true
+  }
+
+  /** Clear any pending series marker after a completed run. */
+  endSeriesBoundary(): void {
+    this._seriesStarted = false
+  }
+
+  /** True when this service instance has already persisted a model-visible step. */
+  get hasPersistedRequest(): boolean {
+    return this._persistedRequest
   }
 
   async run(input?: AgentInput, options: AgentRunOptions = {}): Promise<AgentRunResult> {
@@ -659,16 +676,33 @@ export class AgentService {
       ...(tools.length ? { tools } : {}),
     }
     const previousHeader = session.requestHeader()
+    const isFirstRequest = previousHeader === undefined && !this._persistedRequest
+    this._persistedRequest = true
     const changedHeader = previousHeader && (
       previousHeader.system !== nextHeader.system
       || JSON.stringify(previousHeader.tools ?? []) !== JSON.stringify(nextHeader.tools ?? [])
       || JSON.stringify(previousHeader.config ?? {}) !== JSON.stringify(nextHeader.config ?? {})
     )
-    if (!previousHeader) {
-      await session.append('request/header', { reason: 'initial', ...nextHeader })
+    if (isFirstRequest) {
+      await session.append('request/header', {
+        reason: this._seriesStarted ? 'series' : 'initial',
+        ...nextHeader,
+        ...(this._seriesStarted ? { startsSeries: true } : {}),
+      })
     } else if (changedHeader) {
-      await session.append('request/header', { reason: 'change', ...nextHeader })
+      await session.append('request/header', {
+        reason: this._seriesStarted ? 'change-series' : 'change',
+        ...nextHeader,
+        startsSeries: true,
+      })
+    } else if (this._seriesStarted) {
+      await session.append('request/header', {
+        reason: 'series',
+        ...nextHeader,
+        startsSeries: true,
+      })
     }
+    this._seriesStarted = false
 
     const nextContext = {
       ...(request.options.provider ? { provider: request.options.provider } : {}),

@@ -1358,4 +1358,61 @@ describe('request header snapshots across steps', () => {
     expect(headers).toHaveLength(1)
     expect((headers[0]?.payload as { reason: string }).reason).toBe('initial')
   })
+
+  it('records explicit series boundaries as series headers', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('header-series.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([
+      { content: 'one', finishReason: 'stop' },
+      { content: 'two', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+    const service = dynamic(root).agent as AgentService
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    service.startSeries()
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const headers = (await log.read())
+      .filter(event => event.type === 'request/header')
+    expect(headers.map(event => (event.payload as { reason: string }).reason)).toEqual([
+      'initial',
+      'series',
+    ])
+    expect((headers[1]?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+  })
+
+  it('records a changed envelope at a series boundary as change-series', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('header-change-series.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const { adapter } = fakeLLM([
+      { content: 'one', finishReason: 'stop' },
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+        finishReason: 'tool_calls',
+      },
+    ])
+    await root.plugin(agent, { llm: adapter })
+    const agentService = dynamic(root).agent as AgentService
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    agentService.startSeries()
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const headers = (await log.read())
+      .filter(event => event.type === 'request/header')
+    const reasons = headers.map(event => (event.payload as { reason: string }).reason)
+    expect(reasons[0]).toBe('initial')
+    expect(reasons.at(-1)).toBe('series')
+    expect((headers.at(-1)?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+  })
 })
