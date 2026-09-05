@@ -109,6 +109,8 @@ export interface AgentRunResult {
   input: AgentInput
   output: string
   finishReason: AgentFinishReason
+  /** Durable turn number this run executed, when a turn was opened. */
+  turn?: number
   steps: readonly AgentStep[]
   messages: readonly ModelMessage[]
 }

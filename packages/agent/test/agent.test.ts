@@ -205,6 +205,7 @@ describe('agent loop', () => {
 
     expect(result.output).toBe('hello')
     expect(result.finishReason).toBe('stop')
+    expect(result.turn).toBe(1)
     expect(result.steps).toHaveLength(1)
     expect(events).toEqual(['start', 'turn-start', 'step', 'turn-end', 'end'])
     expect(calls).toHaveLength(1)

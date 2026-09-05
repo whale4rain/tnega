@@ -605,6 +605,7 @@ export class AgentService {
       input: claimed,
       output,
       finishReason,
+      turn,
       steps,
       messages: copyMessages(messages),
     }
