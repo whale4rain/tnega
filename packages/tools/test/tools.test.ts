@@ -209,6 +209,41 @@ describe('ToolsService pipeline', () => {
     const result = await service.execute('add', { a: 1, b: 2 }, { callId: 'c1' })
     expect(result.callId).toBe('c1')
   })
+
+  it('denies a call when any monotonic guard rejects it', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    let executed = false
+    const service = dynamic(root).tools as ToolsService
+    service.register({
+      schema: { name: 'guarded', description: 'guarded' },
+      execute: () => {
+        executed = true
+        return 'ok'
+      },
+    })
+    service.guard(request => request.name === 'guarded' ? 'blocked by guard' : undefined)
+
+    const result = await service.execute('guarded', {})
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).toBe('ToolAuthorizationError')
+    expect(result.error?.message).toBe('blocked by guard')
+    expect(executed).toBe(false)
+  })
+
+  it('unregisters guards with their disposer', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const dispose = service.guard(() => 'deny everything')
+    expect((await service.execute('add', { a: 1, b: 2 })).ok).toBe(false)
+
+    dispose()
+    const result = await service.execute('add', { a: 1, b: 2 })
+    expect(result.ok).toBe(true)
+    expect(result.output).toBe(3)
+  })
 })
 
 describe('ToolsService scope', () => {

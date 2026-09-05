@@ -89,6 +89,15 @@ export interface ToolsConfig extends ToolPolicy {
   [key: string]: unknown
 }
 
+/**
+ * Final pre-dispatch check evaluated after the `tools/pre-execute` waterfall.
+ * A returned reason denies the call; `undefined` leaves it unchanged. Guards
+ * are monotonic: no later listener can re-allow a denied call.
+ */
+export type ToolGuard = (
+  request: ToolRequest,
+) => string | undefined | Promise<string | undefined>
+
 export class ToolNotFoundError extends Error {
   override name = 'ToolNotFoundError'
 
@@ -124,6 +133,7 @@ export class ToolsService extends Service<never> {
   static provide = 'tools'
 
   private _tools = new Map<string, ToolDefinition>()
+  private _guards = new Set<ToolGuard>()
   private _policy: {
     validator: ToolInputValidator
     authorizer?: ToolAuthorizer
@@ -155,6 +165,17 @@ export class ToolsService extends Service<never> {
 
   unregister(name: string): boolean {
     return this._tools.delete(name)
+  }
+
+  /** Register a monotonic guard evaluated after pre-execute policy. */
+  guard(guard: ToolGuard): Disposable {
+    if (typeof guard !== 'function') throw new TypeError('tool guard must be a function')
+    return this.ctx.fiber.effect(() => {
+      this._guards.add(guard)
+      return () => {
+        this._guards.delete(guard)
+      }
+    }, 'ctx.tools.guard()')
   }
 
   has(name: string): boolean {
@@ -199,6 +220,8 @@ export class ToolsService extends Service<never> {
         throw new ToolAuthorizationError(`tool rejected by tools/pre-execute: ${name}`)
       }
       request = resolved
+      const denial = await this._checkGuards(request)
+      if (denial) throw new ToolAuthorizationError(denial)
     } catch (error) {
       preError = error
     }
@@ -271,6 +294,14 @@ export class ToolsService extends Service<never> {
     }
     const validator = policy?.validator ?? this._policy.validator
     if (validator) await validator(request.input, request.tool)
+  }
+
+  private async _checkGuards(request: ToolRequest): Promise<string | undefined> {
+    for (const guard of this._guards) {
+      const denial = await guard(request)
+      if (denial) return denial
+    }
+    return undefined
   }
 
   private _validate(definition: ToolDefinition): void {
