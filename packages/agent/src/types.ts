@@ -162,6 +162,8 @@ export interface AgentTurnStartEvent {
 
 export interface AgentStepEvent {
   index: number
+  turn?: number
+  step?: number
   input: readonly ModelMessage[]
 }
 
@@ -209,17 +211,22 @@ export type AgentRequestRetryDecision =
 
 export interface AgentTurnStoppingEvent {
   index: number
+  turn?: number
   steps: readonly AgentStep[]
   finishReason: AgentFinishReason
 }
 
 export interface AgentToolCallEvent {
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
 }
 
 export interface AgentToolResultEvent {
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
   result: ToolResult
 }
@@ -237,12 +244,16 @@ export type AgentEndEvent = AgentTurnEndEvent
 export interface AgentToolStartEvent {
   type: 'tool/start'
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
 }
 
 export interface AgentToolEndEvent {
   type: 'tool/end'
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
   result: ToolResult
 }

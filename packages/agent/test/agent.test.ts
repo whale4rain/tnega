@@ -272,11 +272,13 @@ describe('agent loop', () => {
 
     const events: string[] = []
     const toolResults: string[] = []
+    const coordinates: Array<{ turn?: number; step?: number }> = []
     root.on('agent/start', () => events.push('start'))
     root.on('agent/turn-start', () => events.push('turn-start'))
     root.on('agent/step', () => events.push('step'))
     root.on('agent/tool-call', (payload: AgentToolCallEvent) => {
       events.push(`tool-call:${payload.call.id}`)
+      coordinates.push({ turn: payload.turn, step: payload.step })
     })
     root.on('agent/tool-result', (payload: AgentToolResultEvent) => {
       events.push(`tool-result:${payload.result.output}`)
@@ -294,6 +296,9 @@ describe('agent loop', () => {
     expect(result.steps[0]!.toolResults[0]!.output).toBe(3)
     expect(result.steps[0]!.toolResults[0]!.callId).toBe('c1')
     expect(toolResults).toEqual(['3'])
+    expect(coordinates).toEqual([
+      { turn: 1, step: 0 },
+    ])
     expect(events).toEqual([
       'start',
       'turn-start',

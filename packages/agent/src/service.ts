@@ -319,7 +319,12 @@ export class AgentService {
       currentStepIndex = index
 
       const requestedInput = copyMessages(preStep.messages)
-      this.ctx.emit('agent/step', { index, input: copyMessages(requestedInput) })
+      this.ctx.emit('agent/step', {
+        index,
+        turn,
+        step: index,
+        input: copyMessages(requestedInput),
+      })
       const availableTools = finalTurnGranted ? [] : await this._resolveAvailableTools()
       const completeOptions: CompleteOptions = {
         maxSteps: maxSteps - steps.length,
@@ -469,8 +474,8 @@ export class AgentService {
         })
       }
       for (const call of toolCalls) {
-        this.ctx.emit('agent/tool-call', { index, call })
-        yield { type: 'tool/start', index, call }
+        this.ctx.emit('agent/tool-call', { index, turn, step: index, call })
+        yield { type: 'tool/start', index, turn, step: index, call }
         await session.append('tool/call', {
           id: call.id,
           name: call.name,
@@ -510,8 +515,14 @@ export class AgentService {
           if (result.error.stack) toolResultPayload.error.stack = result.error.stack
         }
         await session.append('tool/result', toolResultPayload)
-        yield { type: 'tool/end', index, call, result }
-        this.ctx.emit('agent/tool-result', { index, call, result })
+        yield { type: 'tool/end', index, turn, step: index, call, result }
+        this.ctx.emit('agent/tool-result', {
+          index,
+          turn,
+          step: index,
+          call,
+          result,
+        })
       }
       if (options.signal?.aborted) {
         finishReason = 'cancelled'
@@ -554,6 +565,7 @@ export class AgentService {
             : 'stop'
         const keepGoing = await this.ctx.serial('agent/turn-stopping', {
           index,
+          turn,
           steps: copySteps(steps),
           finishReason,
         } satisfies AgentTurnStoppingEvent) as unknown
