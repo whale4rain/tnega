@@ -1050,18 +1050,20 @@ describe('agent loop', () => {
     ])
   })
 
-  it('lets agent/request wrap the final request payload', async () => {
+  it('keeps agent/request messages read-only while pre-step owns the rewrite', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('request-wrap.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
     await root.plugin(agent, { llm: adapter })
 
-    root.on('agent/request', (payload: AgentRequestEvent, next) => {
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
       payload.messages = [
-        ...payload.messages.filter(message => message.role !== 'user'),
         { role: 'user', content: 'wrapped' },
       ]
+      return next()
+    })
+    root.on('agent/request', (payload: AgentRequestEvent, next) => {
       payload.options = { ...payload.options, maxSteps: 1 }
       return next()
     })

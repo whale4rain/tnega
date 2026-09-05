@@ -170,7 +170,8 @@ export interface AgentPreStepEvent {
 
 export interface AgentRequestEvent {
   index: number
-  messages: ModelMessage[]
+  /** Read-only snapshot of the model-visible messages for this request. */
+  readonly messages: readonly ModelMessage[]
   tools: readonly ToolDefinition[]
   options: CompleteOptions
 }

@@ -328,10 +328,10 @@ export class AgentService {
         tools: availableTools,
         options: completeOptions,
       }, (payload: AgentRequestEvent) => payload)
-      if (!request || !Array.isArray(request.messages)) {
+      if (!request || !request.options || !request.tools) {
         throw new AgentError('agent/request must return a request payload')
       }
-      let llmMessages = copyMessages(request.messages)
+      let llmMessages = copyMessages(requestedInput)
 
       let completion: LLMCompletion | undefined
       const streamMethod = useStream ? llm.stream : undefined
