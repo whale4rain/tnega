@@ -223,6 +223,55 @@ describe('live agent registry', () => {
     expect(handle.agent.status).toBe('idle')
   })
 
+  it('runs maintenance while idle and follows it in whenIdle', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('maintenance.jsonl'))
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let sawSignal: AbortSignal | undefined
+
+    const task = handle.agent.runMaintenance(async (signal) => {
+      sawSignal = signal
+      await gate
+      return 42
+    })
+    let settled = false
+    void task.then(() => { settled = true }, () => { settled = true })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(settled).toBe(false)
+    expect(handle.agent.status).toBe('idle')
+    expect(sawSignal?.aborted).toBe(false)
+
+    release()
+    await expect(task).resolves.toBe(42)
+    expect(settled).toBe(true)
+    await handle.dispose()
+  })
+
+  it('rejects maintenance while a run is busy', async () => {
+    const root = await mountRoot()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const llm: LLMAdapter = {
+      async complete() {
+        await gate
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('maintenance-busy.jsonl'), llm)
+    handle.agent.followup({ text: 'busy' })
+    await new Promise<void>((resolve) => {
+      root.on('agent/status', (event: { status: string; id: string }) => {
+        if (event.status === 'running' && event.id === handle.agent.id) resolve()
+      })
+    })
+
+    expect(() => handle.agent.runMaintenance(async () => undefined)).toThrow(/busy/)
+    release()
+    await handle.agent.whenIdle()
+    await handle.dispose()
+  })
+
   it('reports failed run coordinates on agent/error', async () => {
     const root = await mountRoot()
     const errors: Array<{ turn?: number; step?: number }> = []

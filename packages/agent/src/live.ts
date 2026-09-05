@@ -65,6 +65,7 @@ export interface LiveAgent {
   send(input: AgentInput, options?: { mode?: 'followup' | 'steer' }): void
   cancel(cause: AgentCancelCause, options?: AgentCancelOptions): void
   whenIdle(): Promise<void>
+  runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>
   dispose(): Promise<void>
 }
 
@@ -110,6 +111,10 @@ class LiveAgentImpl implements LiveAgent {
   private _writeTail: Promise<void> = Promise.resolve()
   private _pendingWrite: Promise<void> | undefined
   private _sessionStarted = false
+  private _maintenance:
+    | { promise: Promise<void>; controller: AbortController }
+    | undefined
+  private _maintenanceBusy = false
   private _setupDisposers: Array<() => Promise<void> | void> = []
   private _scopeClosed = false
   private _durable: DurableInbox
@@ -286,6 +291,11 @@ class LiveAgentImpl implements LiveAgent {
   async whenIdle(): Promise<void> {
     while (this._pendingWrite) await this._pendingWrite
     while (true) {
+      const maintenance = this._maintenance
+      if (maintenance) {
+        await maintenance.promise.catch(() => undefined)
+        continue
+      }
       const drain = this._drainPromise
       if (drain) {
         await drain.catch(() => undefined)
@@ -296,12 +306,38 @@ class LiveAgentImpl implements LiveAgent {
     }
   }
 
+  /** Run one non-turn maintenance task from the true idle phase. */
+  runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
+    if (this._maintenanceBusy || this._drainPromise || this._pendingWrite) {
+      throw new Error('agent is busy; maintenance can only run while idle')
+    }
+    this._maintenanceBusy = true
+    const controller = new AbortController()
+    const result = Promise.resolve()
+      .then(async () => {
+        const value = await task(controller.signal)
+        return value
+      })
+      .finally(() => {
+        this._maintenanceBusy = false
+        if (this._maintenance?.controller === controller) {
+          this._maintenance = undefined
+        }
+        queueMicrotask(() => this._wake())
+      })
+    this._maintenance = { promise: result.then(() => undefined, () => undefined), controller }
+    return result
+  }
+
   async dispose(): Promise<void> {
     if (this._disposed) return
     this._disposed = true
     this.cancel({ type: 'user' })
     await this._writeTail.catch(() => undefined)
     await this._drainPromise?.catch(() => undefined)
+    if (this._maintenance) this._maintenance.controller.abort({ type: 'disposed' })
+    await this._maintenance?.promise.catch(() => undefined)
     if (!this._scopeClosed) {
       this._scopeClosed = true
       await Promise.all([...this._setupDisposers].reverse().map(dispose => dispose()))
@@ -341,7 +377,7 @@ class LiveAgentImpl implements LiveAgent {
   }
 
   private _wake(): void {
-    if (this._disposed || this._drainPromise || this._busy) return
+    if (this._disposed || this._drainPromise || this._busy || this._maintenanceBusy) return
     const task = this._drainAll()
     this._drainPromise = task
     task.finally(() => {
