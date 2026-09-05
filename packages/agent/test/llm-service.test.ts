@@ -67,4 +67,20 @@ describe('llm service seam', () => {
     const result = await agentService.run({ text: 'hello' })
     expect(result.output).toBe('from ctx llm')
   })
+
+  it('reports route capacity through an optional resolver', async () => {
+    const root = new Context()
+    await root.plugin(llmService)
+    const service = dynamic(root).llm as LlmService
+    const adapter = namedAdapter('catalog model')
+    ;(adapter as unknown as { model?: string }).model = 'deepseek-v4-flash'
+    service.register('catalog', adapter)
+    service.setCapacityResolver(model => model === 'deepseek-v4-flash' ? 1_000_000 : undefined)
+
+    expect(service.routeCapacity()).toMatchObject({
+      provider: 'catalog',
+      model: 'deepseek-v4-flash',
+      contextWindow: 1_000_000,
+    })
+  })
 })

@@ -5,6 +5,7 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   estimateContextUsage,
   type ModelMessage,
+  type RequestContextPayload,
   type SessionLog,
   type ToolResultPayload,
 } from '@tnega/session'
@@ -711,9 +712,18 @@ export class AgentService {
     }
     this._seriesStarted = false
 
-    const nextContext = {
+    const nextContext: RequestContextPayload = {
       ...(request.options.provider ? { provider: request.options.provider } : {}),
       ...(request.options.model ? { model: request.options.model } : {}),
+    }
+    const llmService = this.ctx.reflect.get('llm', false) as
+      | { routeCapacity(): unknown }
+      | undefined
+    const routeCapacity = llmService?.routeCapacity?.() as
+      | { provider?: string; model?: string; contextWindow?: number }
+      | undefined
+    if (routeCapacity?.contextWindow !== undefined) {
+      nextContext.contextWindow = routeCapacity.contextWindow
     }
     const previousContext = session.requestContext()
     if (

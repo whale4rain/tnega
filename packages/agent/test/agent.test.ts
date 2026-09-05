@@ -11,6 +11,8 @@ import {
   agent,
   AgentError,
   AgentInbox,
+  llmService,
+  type LlmService,
   type AgentService,
   type AgentStreamEvent,
   type AgentLoop,
@@ -1420,5 +1422,27 @@ describe('request header snapshots across steps', () => {
     expect(reasons[0]).toBe('initial')
     expect(reasons.at(-1)).toBe('series')
     expect((headers.at(-1)?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+  })
+
+  it('records contextWindow on request context when route capacity is available', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-context-capacity.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(llmService)
+    const service = dynamic(root).llm as LlmService
+    const adapter = fakeLLM([{ content: 'ok', finishReason: 'stop' }]).adapter
+    ;(adapter as unknown as { model?: string }).model = 'deepseek-v4-flash'
+    service.register('catalog', adapter)
+    service.setCapacityResolver(model => model === 'deepseek-v4-flash' ? 1_000_000 : undefined)
+    await root.plugin(agent)
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'hi' })
+
+    const log = dynamic(root).session as SessionLog
+    const contexts = (await log.read()).filter(event => event.type === 'request/context')
+    expect(contexts.at(-1)?.payload).toMatchObject({
+      contextWindow: 1_000_000,
+    })
   })
 })
