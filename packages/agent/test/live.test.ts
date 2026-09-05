@@ -272,6 +272,25 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
+  it('cancels an active maintenance task', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('maintenance-cancel.jsonl'))
+    let sawSignal: AbortSignal | undefined
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const task = handle.agent.runMaintenance(async (signal) => {
+      sawSignal = signal
+      await gate
+      if (signal.aborted) throw new Error('maintenance cancelled')
+      return 'done'
+    })
+    handle.agent.cancel({ type: 'user' })
+    release()
+    await expect(task).rejects.toThrow('maintenance cancelled')
+    expect(sawSignal?.aborted).toBe(true)
+    await handle.dispose()
+  })
+
   it('reports failed run coordinates on agent/error', async () => {
     const root = await mountRoot()
     const errors: Array<{ turn?: number; step?: number }> = []

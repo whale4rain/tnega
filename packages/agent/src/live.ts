@@ -286,6 +286,7 @@ class LiveAgentImpl implements LiveAgent {
       })
     }
     this._controller?.abort(cause)
+    this._maintenance?.controller.abort(cause)
   }
 
   async whenIdle(): Promise<void> {
