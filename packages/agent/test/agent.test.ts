@@ -1474,4 +1474,32 @@ describe('request header snapshots across steps', () => {
     expect(contexts.map(event => (event.payload as { contextWindow?: number }).contextWindow))
       .toEqual([100_000, 1_000_000])
   })
+
+  it('clears route capacity in request context when it disappears', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-context-capacity-clear.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(llmService)
+    const service = dynamic(root).llm as LlmService
+    let capacity: number | undefined = 100_000
+    const adapter = fakeLLM([
+      { content: 'ok', finishReason: 'stop' },
+      { content: 'ok2', finishReason: 'stop' },
+    ]).adapter
+    ;(adapter as unknown as { model?: string }).model = 'catalog-model'
+    service.register('catalog', adapter)
+    service.setCapacityResolver(() => capacity)
+    await root.plugin(agent)
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    capacity = undefined
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const contexts = (await log.read()).filter(event => event.type === 'request/context')
+    const windows = contexts.map(event =>
+      (event.payload as { contextWindow?: number }).contextWindow)
+    expect(windows).toEqual([100_000, undefined])
+  })
 })
