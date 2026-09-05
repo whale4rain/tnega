@@ -10,6 +10,7 @@ import { tools } from '@tnega/tools'
 import {
   agents,
   DurableInbox,
+  type DurableInboxMessage,
   type AgentRegistry,
   type LiveAgent,
   type LLMAdapter,
@@ -70,6 +71,21 @@ async function createHandle(
   })
 }
 
+async function waitForPending(
+  agent: LiveAgent,
+  text: string,
+): Promise<DurableInboxMessage | undefined> {
+  const timeoutAt = Date.now() + 1000
+  while (Date.now() < timeoutAt) {
+    const snapshot = agent.inbox.snapshot()
+    const found = [...snapshot.nextTurn, ...snapshot.nextStep]
+      .find(message => message.text === text)
+    if (found) return found
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+  return undefined
+}
+
 describe('live agent registry', () => {
   it('creates, lists and disposes agents with lifecycle events', async () => {
     const root = await mountRoot()
@@ -113,6 +129,50 @@ describe('live agent registry', () => {
     expect(calls).toEqual(['one', 'two'])
     expect(claimedTurns).toEqual([1, 2])
     expect(sessionStarts).toEqual(['startup'])
+  })
+
+  it('replaces and removes pending messages by id', async () => {
+    const root = await mountRoot()
+    const events: string[] = []
+    const calls: string[] = []
+    root.on('agent/inbox/inserted', () => events.push('inserted'))
+    root.on('agent/inbox/discarded', () => events.push('discarded'))
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const llm: LLMAdapter = {
+      async complete(messages, _tools, options) {
+        if (calls.length === 0) {
+          await gate
+          if (options?.signal?.aborted) throw new Error('cancelled')
+        }
+        calls.push(messages.at(-1)?.content ?? '')
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('pending-mutate.jsonl'), llm)
+
+    handle.agent.followup({ text: 'blocked' })
+    await new Promise<void>((resolve) => {
+      root.on('agent/status', (event: { status: string; id: string }) => {
+        if (event.status === 'running' && event.id === handle.agent.id) resolve()
+      })
+    })
+
+    handle.agent.followup({ text: 'to-remove' })
+    const pending = await waitForPending(handle.agent, 'to-remove')
+    expect(pending).toBeDefined()
+    handle.agent.removeMessage(pending!.id)
+
+    handle.agent.followup({ text: 'to-replace' })
+    const second = await waitForPending(handle.agent, 'to-replace')
+    expect(second).toBeDefined()
+    handle.agent.replaceMessage(second!.id, { text: 'replaced' })
+
+    release()
+    await handle.agent.whenIdle()
+    expect(calls).toEqual(['blocked', 'replaced'])
+    expect(events.some(event => event === 'discarded')).toBe(true)
+    expect(events.some(event => event === 'inserted')).toBe(true)
   })
 
   it('claims steering input before ordinary followups', async () => {

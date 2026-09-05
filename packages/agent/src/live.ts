@@ -59,6 +59,8 @@ export interface LiveAgent {
   readonly agentCtx: Context
   followup(input: AgentInput): void
   steer(input: AgentInput): void
+  replaceMessage(messageId: string, input: AgentInput): void
+  removeMessage(messageId: string): void
   inject(key: string, value: unknown): void
   send(input: AgentInput, options?: { mode?: 'followup' | 'steer' }): void
   cancel(cause: AgentCancelCause, options?: AgentCancelOptions): void
@@ -163,6 +165,46 @@ class LiveAgentImpl implements LiveAgent {
     this._send(input, 'followup')
   }
 
+  /** Replace one pending inbox message by durable message id. */
+  replaceMessage(messageId: string, input: AgentInput): void {
+    this._mutatePending(async () => {
+      const previous = this._durable.get(messageId)
+      if (!previous) return
+      const replacement = await this._durable.replace(messageId, {
+        text: input.text ?? '',
+        ...(input.messages !== undefined || input.context !== undefined
+          ? { content: input.messages ?? input.context }
+          : {}),
+      })
+      if (!replacement) return
+      this._ctx.emit('agent/inbox/discarded', {
+        id: this.id,
+        agent: this,
+        message: previous,
+      })
+      this._ctx.emit('agent/inbox/inserted', {
+        id: this.id,
+        agent: this,
+        target: this._findTarget(messageId) ?? 'next-turn',
+        input: replacement,
+        inboxSeq: this._durable.size,
+      })
+    })
+  }
+
+  /** Remove one pending inbox message by durable message id. */
+  removeMessage(messageId: string): void {
+    this._mutatePending(async () => {
+      const removed = await this._durable.remove(messageId)
+      if (!removed) return
+      this._ctx.emit('agent/inbox/discarded', {
+        id: this.id,
+        agent: this,
+        message: removed,
+      })
+    })
+  }
+
   steer(input: AgentInput): void {
     this._send(input, 'steer')
   }
@@ -200,6 +242,25 @@ class LiveAgentImpl implements LiveAgent {
       if (this._pendingWrite === task) this._pendingWrite = undefined
       queueMicrotask(() => this._wake())
     })
+  }
+
+  private _mutatePending(task: () => Promise<void>): void {
+    if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
+    const chained = this._writeTail.then(task).catch((error: unknown) => {
+      this._ctx.emit('agent/error', { id: this.id, error })
+    })
+    this._writeTail = chained
+    this._pendingWrite = chained
+    chained.finally(() => {
+      if (this._pendingWrite === chained) this._pendingWrite = undefined
+    })
+  }
+
+  private _findTarget(messageId: string): 'next-turn' | 'next-step' | undefined {
+    const snapshot = this._durable.snapshot()
+    if (snapshot.nextStep.some(message => message.id === messageId)) return 'next-step'
+    if (snapshot.nextTurn.some(message => message.id === messageId)) return 'next-turn'
+    return undefined
   }
 
   cancel(cause: AgentCancelCause, options: AgentCancelOptions = {}): void {
