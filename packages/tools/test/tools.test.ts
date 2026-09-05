@@ -210,6 +210,22 @@ describe('ToolsService pipeline', () => {
     expect(result.callId).toBe('c1')
   })
 
+  it('marks a runtime concludesTurn option on the result', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+
+    const normal = await service.execute('add', { a: 1, b: 2 })
+    expect(normal.concludesTurn).toBeUndefined()
+    const terminal = await service.execute(
+      'add',
+      { a: 1, b: 2 },
+      { callId: 'c1', concludesTurn: true },
+    )
+    expect(terminal.concludesTurn).toBe(true)
+  })
+
   it('denies a call when any monotonic guard rejects it', async () => {
     const root = new Context()
     await root.plugin(tools)

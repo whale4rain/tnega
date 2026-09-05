@@ -38,6 +38,8 @@ export interface ToolSchema {
 export interface ToolExecuteOptions {
   callId?: string
   signal?: AbortSignal
+  /** Runtime opt-in: mark a successful result as concluding the agent turn. */
+  concludesTurn?: boolean
   [key: string]: unknown
 }
 
@@ -342,9 +344,11 @@ export class ToolsService extends Service<never> {
   }
 
   private _applyConcludesTurn(request: ToolRequest, result: ToolResult): void {
-    const declares = (request.tool.metadata as { concludesTurn?: unknown } | undefined)
+    const staticDeclares = (request.tool.metadata as { concludesTurn?: unknown } | undefined)
       ?.concludesTurn
-    if (declares === true) result.concludesTurn = true
+    if (staticDeclares === true || request.options.concludesTurn === true) {
+      result.concludesTurn = true
+    }
   }
 }
 
