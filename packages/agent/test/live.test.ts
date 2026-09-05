@@ -91,6 +91,14 @@ describe('live agent registry', () => {
   it('wakes the driver and drains queued followups', async () => {
     const root = await mountRoot()
     const calls: string[] = []
+    const claimedTurns: number[] = []
+    const sessionStarts: string[] = []
+    root.on('agent/inbox/claimed', (payload: { turn?: number }) => {
+      if (payload.turn !== undefined) claimedTurns.push(payload.turn)
+    })
+    root.on('agent/session-start', (payload: { source: string }) => {
+      sessionStarts.push(payload.source)
+    })
     const llm: LLMAdapter = {
       async complete(messages) {
         calls.push(messages.at(-1)?.content ?? '')
@@ -103,6 +111,8 @@ describe('live agent registry', () => {
 
     await handle.agent.whenIdle()
     expect(calls).toEqual(['one', 'two'])
+    expect(claimedTurns).toEqual([1, 2])
+    expect(sessionStarts).toEqual(['startup'])
   })
 
   it('claims steering input before ordinary followups', async () => {
@@ -287,11 +297,16 @@ describe('live agent resume', () => {
       },
     }
     const registry = dynamic(root).agents as AgentRegistry
+    const sessionStarts: string[] = []
+    root.on('agent/session-start', (payload: { source: string }) => {
+      sessionStarts.push(payload.source)
+    })
     const resumed = await registry.resume({
       id: 'resumed-agent',
       file,
       llm,
     })
+    expect(sessionStarts).toEqual(['resume'])
     expect(resumed.agent.meta).toMatchObject({
       agentId: 'resumed-agent',
       agentType: 'coding',

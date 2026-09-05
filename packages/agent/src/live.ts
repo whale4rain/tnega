@@ -107,6 +107,7 @@ class LiveAgentImpl implements LiveAgent {
   private _busy = false
   private _writeTail: Promise<void> = Promise.resolve()
   private _pendingWrite: Promise<void> | undefined
+  private _sessionStarted = false
   private _setupDisposers: Array<() => Promise<void> | void> = []
   private _scopeClosed = false
   private _durable: DurableInbox
@@ -252,6 +253,27 @@ class LiveAgentImpl implements LiveAgent {
     this._setStatus('idle')
   }
 
+  /** Publish the agent lifecycle session-start notification once. */
+  async publishSessionStart(source: 'startup' | 'resume' = 'startup'): Promise<void> {
+    if (this._sessionStarted) return
+    this._sessionStarted = true
+    this._ctx.emit('agent/session-start', {
+      id: this.id,
+      agent: this,
+      source,
+    })
+  }
+
+  /** Current durable turn number for a newly claimed inbox item. */
+  private async _nextTurnNumber(): Promise<number> {
+    const events = await this.session.read()
+    let max = 0
+    for (const event of events) {
+      if (event.type === 'turn/start') max = Math.max(max, event.payload.turn)
+    }
+    return max + 1
+  }
+
   /** Start draining currently pending durable work without a new input. */
   wakeNow(): void {
     this._wake()
@@ -281,7 +303,14 @@ class LiveAgentImpl implements LiveAgent {
         const input: AgentInput = {
           ...(durableMessage.text !== undefined ? { text: durableMessage.text } : {}),
         }
-        this._ctx.emit('agent/inbox/claimed', { id: this.id, message: durableMessage, input })
+        const turn = await this._nextTurnNumber()
+        this._ctx.emit('agent/inbox/claimed', {
+          id: this.id,
+          agent: this,
+          message: durableMessage,
+          input,
+          turn,
+        })
         const controller = new AbortController()
         this._controller = controller
         try {
@@ -496,6 +525,7 @@ async function buildHandle(
     await log.close().catch(() => undefined)
     throw error
   }
+  await agent.publishSessionStart(resume ? 'resume' : 'startup')
   for (const input of options.initial ?? []) {
     if (!resume) await durable.insert({ text: input.text ?? '' })
   }
