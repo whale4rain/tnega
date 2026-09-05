@@ -535,6 +535,46 @@ describe('live agent resume', () => {
     await resumed.dispose()
   })
 
+  it('restores structured pending content on resume', async () => {
+    const file = await tempFile('resume-structured.jsonl')
+    const prior = new SessionLog(file)
+    await prior.init()
+    await prior.append('meta', {
+      kind: 'agent',
+      agentId: 'resume-structured',
+    })
+    const priorInbox = new DurableInbox(prior)
+    const structured = [
+      { role: 'system' as const, content: 'system context' },
+      { role: 'user' as const, content: 'user context' },
+    ]
+    await priorInbox.insert({
+      text: 'plain prompt',
+      content: structured,
+    })
+    await prior.flush()
+    await prior.close()
+
+    const root = await mountRoot()
+    let seen: ModelMessage[] | undefined
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        seen = [...messages]
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const registry = dynamic(root).agents as AgentRegistry
+    const resumed = await registry.resume({
+      id: 'resume-structured',
+      file,
+      llm,
+    })
+    await resumed.agent.whenIdle()
+    expect(seen?.filter(message => message.role !== 'system')
+      .map(message => message.content)).toEqual(['user context'])
+    await resumed.dispose()
+  })
+
   it('rejects a resume whose identity conflicts with the session meta', async () => {
     const file = await tempFile('resume-mismatch.jsonl')
     const prior = new SessionLog(file)

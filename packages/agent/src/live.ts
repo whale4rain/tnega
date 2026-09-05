@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Context, Plugin } from '@tnega/core'
 import { SessionLog, type SessionEvent, type SessionProjector } from '@tnega/session'
+import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
 import { DurableInbox, type DurableInboxMessage } from './inbox-durable.js'
@@ -399,12 +400,23 @@ class LiveAgentImpl implements LiveAgent {
         const batch = await this._durable.claimBatch()
         if (!batch.length) break
         const history = await this.session.deriveMessages()
-        const userMessages = batch
+        const structured = batch.filter(message => message.content !== undefined)
+        const plain = batch.filter(message => message.content === undefined)
+        const plainMessages = plain
           .filter(message => message.text !== undefined)
           .map(message => ({ role: 'user' as const, content: message.text ?? '' }))
-        const input: AgentInput = history.length || batch.length > 1
-          ? { messages: [...history, ...userMessages] }
-          : { text: userMessages[0]?.content ?? '' }
+        const input: AgentInput = structured.length
+          ? {
+              messages: [
+                ...history,
+                ...structured.flatMap(message => Array.isArray(message.content)
+                  ? message.content as ModelMessage[]
+                  : [{ role: 'user' as const, content: String(message.content ?? '') }]),
+              ],
+            }
+          : history.length || batch.length > 1
+            ? { messages: [...history, ...plainMessages] }
+            : { text: plainMessages[0]?.content ?? '' }
         const turn = await this._nextTurnNumber()
         for (const message of batch) {
           this._ctx.emit('agent/inbox/claimed', {
