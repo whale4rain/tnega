@@ -23,6 +23,16 @@ export interface AgentSessionMeta {
   createdAt?: number
 }
 
+/** Synchronous finalizer invoked immediately before agent publication. */
+export interface AgentSetupCommit {
+  commit(): void
+}
+
+/** Compose an unpublished agent scope; a throw rejects the whole creation. */
+export type AgentSetup = (
+  agentCtx: Context,
+) => AgentSetupCommit | Promise<AgentSetupCommit | void> | void
+
 export interface LiveInboxView {
   readonly size: number
   snapshot(): { nextTurn: readonly DurableInboxMessage[]; nextStep: readonly DurableInboxMessage[] }
@@ -45,6 +55,8 @@ export interface LiveAgent {
   readonly inbox: LiveInboxView
   readonly session: SessionLog
   readonly ctx: Context
+  /** The scoped context setup composes before publication. */
+  readonly agentCtx: Context
   followup(input: AgentInput): void
   steer(input: AgentInput): void
   inject(key: string, value: unknown): void
@@ -70,6 +82,8 @@ export interface AgentCreationOptions {
   parentSessionId?: string
   forkedAtMessageId?: string
   id?: string
+  /** Optional composition callback run before the agent is published. */
+  setup?: AgentSetup
   llm?: LLMAdapter
   system?: string
   projector?: SessionProjector
@@ -93,11 +107,14 @@ class LiveAgentImpl implements LiveAgent {
   private _busy = false
   private _writeTail: Promise<void> = Promise.resolve()
   private _pendingWrite: Promise<void> | undefined
+  private _setupDisposers: Array<() => Promise<void> | void> = []
+  private _scopeClosed = false
   private _durable: DurableInbox
   private _agentSystem: string | undefined
 
   constructor(
     private _ctx: Context,
+    private _agentCtx: Context,
     private _service: AgentService,
     readonly id: string,
     readonly inbox: LiveInboxView,
@@ -122,6 +139,15 @@ class LiveAgentImpl implements LiveAgent {
 
   get parentSessionId(): string | undefined {
     return this.meta.parentSessionId
+  }
+
+  get agentCtx(): Context {
+    return this._agentCtx
+  }
+
+  trackSetupDispose(dispose: () => Promise<void> | void): void {
+    if (this._scopeClosed) void dispose()
+    else this._setupDisposers.push(dispose)
   }
 
   get status(): AgentStatus {
@@ -214,6 +240,10 @@ class LiveAgentImpl implements LiveAgent {
     this.cancel({ type: 'user' })
     await this._writeTail.catch(() => undefined)
     await this._drainPromise?.catch(() => undefined)
+    if (!this._scopeClosed) {
+      this._scopeClosed = true
+      await Promise.all([...this._setupDisposers].reverse().map(dispose => dispose()))
+    }
     const writeTail = this._writeTail
     if (writeTail !== this._drainPromise && this._pendingWrite) {
       this._pendingWrite = undefined
@@ -440,8 +470,32 @@ async function buildHandle(
     ...(options.hooks ? { hooks: options.hooks } : {}),
   })
   if (options.system) injected.inject('agentSystem', options.system)
-  const agent = new LiveAgentImpl(ctx, service, agentId, inboxView, log, durable, boundMeta)
+  const agentScope = await ctx.inject([], (scopeCtx: Context) => {
+    scopeCtx.isolate('agentScope').provide('agentScope', scopeCtx)
+  })
+  await agentScope
+  const agentCtx = agentScope.ctx
+  const agent = new LiveAgentImpl(
+    ctx,
+    agentCtx,
+    service,
+    agentId,
+    inboxView,
+    log,
+    durable,
+    boundMeta,
+  )
+  agent.trackSetupDispose(() => agentScope.dispose())
   if (options.system) agent.inject('agentSystem', options.system)
+  let setupResult: AgentSetupCommit | void
+  try {
+    setupResult = await options.setup?.(agentCtx)
+    setupResult?.commit()
+  } catch (error) {
+    await agent.dispose().catch(() => undefined)
+    await log.close().catch(() => undefined)
+    throw error
+  }
   for (const input of options.initial ?? []) {
     if (!resume) await durable.insert({ text: input.text ?? '' })
   }

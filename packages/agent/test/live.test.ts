@@ -58,6 +58,7 @@ async function createHandle(
   file: string,
   llm?: LLMAdapter,
   owner?: string,
+  setup?: (agentCtx: Context) => void,
 ) {
   const registry = dynamic(root).agents as AgentRegistry
   return registry.create({
@@ -65,6 +66,7 @@ async function createHandle(
     file,
     ...(owner ? { owner } : {}),
     llm: llm ?? (dynamic(root).agentFactoryLLM as LLMAdapter),
+    ...(setup ? { setup } : {}),
   })
 }
 
@@ -164,6 +166,78 @@ describe('live agent registry', () => {
     expect(registry.roots()).toEqual([parent.agent])
     expect(registry.isOwnedBy(child.agent.id, parent.agent.id)).toBe(true)
     expect(registry.isOwnedBy(parent.agent.id, child.agent.id)).toBe(false)
+  })
+
+  it('runs setup against agentCtx and cleans its registrations on dispose', async () => {
+    const root = await mountRoot()
+    const order: string[] = []
+    let setupCtx: Context | undefined
+    const handle = await createHandle(
+      root,
+      await tempFile('setup-scope.jsonl'),
+      fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
+      undefined,
+      (agentCtx) => {
+        setupCtx = agentCtx
+        order.push('setup')
+        agentCtx.provide('agentSetupMarker', { from: 'setup' })
+        agentCtx.on('agent-custom', () => order.push('custom-event'))
+      },
+    )
+    expect(setupCtx).toBe(handle.agent.agentCtx)
+    expect((handle.agent.agentCtx as unknown as {
+      get(name: string): unknown
+    }).get('agentSetupMarker')).toEqual({ from: 'setup' })
+
+    handle.agent.agentCtx.emit('agent-custom')
+    expect(order).toEqual(['setup', 'custom-event'])
+
+    await handle.dispose()
+    expect((handle.agent.agentCtx as unknown as {
+      get(name: string): unknown
+    }).get('agentSetupMarker')).toBeUndefined()
+    handle.agent.agentCtx.emit('agent-custom')
+    expect(order).toEqual(['setup', 'custom-event'])
+  })
+
+  it('rolls back a failed setup without registering the agent', async () => {
+    const root = await mountRoot()
+    const file = await tempFile('setup-fail.jsonl')
+    const registry = dynamic(root).agents as AgentRegistry
+    await expect(registry.create({
+      id: 'setup-fail-agent',
+      file,
+      llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
+      setup: (agentCtx) => {
+        agentCtx.provide('shouldRollback', true)
+        throw new Error('setup exploded')
+      },
+    })).rejects.toThrow('setup exploded')
+
+    expect(registry.get('setup-fail-agent')).toBeUndefined()
+    expect(registry.list()).toHaveLength(0)
+  })
+
+  it('rolls back when the setup publication commit throws', async () => {
+    const root = await mountRoot()
+    const file = await tempFile('setup-commit-fail.jsonl')
+    const registry = dynamic(root).agents as AgentRegistry
+    await expect(registry.create({
+      id: 'setup-commit-fail-agent',
+      file,
+      llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
+      setup: (agentCtx) => {
+        agentCtx.provide('commitMarker', true)
+        return {
+          commit: () => {
+            throw new Error('commit exploded')
+          },
+        }
+      },
+    })).rejects.toThrow('commit exploded')
+
+    expect(registry.get('setup-commit-fail-agent')).toBeUndefined()
+    expect(registry.list()).toHaveLength(0)
   })
 })
 
