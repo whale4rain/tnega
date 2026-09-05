@@ -305,11 +305,15 @@ export class AgentService {
       const stepInput = copyMessages(messages)
       const preStep = this.ctx.waterfall('agent/pre-step', {
         index,
+        turn,
+        step: index,
         messages: stepInput,
+        ...(options.signal ? { signal: options.signal } : {}),
       }, (payload: AgentPreStepEvent) => payload)
       if (!preStep || !Array.isArray(preStep.messages) || !preStep.messages.length) {
         break
       }
+      if (preStep.startsRequestSeries) this._seriesStarted = true
 
       await session.append('step/start', { turn, step: index })
       currentStepIndex = index

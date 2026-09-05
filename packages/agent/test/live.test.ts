@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
-import { SessionLog } from '@tnega/session'
+import { SessionLog, type ModelMessage } from '@tnega/session'
 import { tools } from '@tnega/tools'
 
 import {

@@ -165,7 +165,15 @@ export interface AgentStepEvent {
 
 export interface AgentPreStepEvent {
   index: number
+  /** Durable turn that will own the proposed step. */
+  turn?: number
+  /** Durable step proposed by the loop. */
+  step?: number
+  /** Cancellation signal for the current turn. */
+  signal?: AbortSignal
   messages: ModelMessage[]
+  /** Begin a distinct model-message series before this step's admitted messages. */
+  startsRequestSeries?: boolean
 }
 
 export interface AgentRequestEvent {

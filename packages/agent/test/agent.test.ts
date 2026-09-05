@@ -1050,6 +1050,36 @@ describe('agent loop', () => {
     ])
   })
 
+  it('starts a request series from pre-step', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('pre-step-series.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([
+      { content: 'first', finishReason: 'stop' },
+      { content: 'second', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    let secondTurn = false
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
+      if (secondTurn) payload.startsRequestSeries = true
+      secondTurn = true
+      return next()
+    })
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const headers = (await log.read())
+      .filter(event => event.type === 'request/header')
+    expect(headers.map(event => (event.payload as { reason: string }).reason)).toEqual([
+      'initial',
+      'series',
+    ])
+    expect((headers.at(-1)?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+  })
+
   it('keeps agent/request messages read-only while pre-step owns the rewrite', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('request-wrap.jsonl') })
