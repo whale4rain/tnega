@@ -164,4 +164,30 @@ describe('durable inbox', () => {
     expect(inbox.snapshot().nextTurn.map(message => message.text)).toEqual(['two'])
     await log.close()
   })
+
+  it('preserves structured content across restore', async () => {
+    const file = await tempFile('inbox-structured-restore.jsonl')
+    const first = new SessionLog(file)
+    await first.init()
+    const inbox = new DurableInbox(first)
+    const messages = [
+      { role: 'user' as const, content: 'from history' },
+      { role: 'user' as const, content: 'followup' },
+    ]
+    await inbox.insert({
+      text: 'text projection',
+      content: messages,
+    })
+    await first.flush()
+    await first.close()
+
+    const second = new SessionLog(file)
+    await second.init()
+    const restored = await DurableInbox.restore(second)
+    expect(restored.snapshot().nextTurn[0]).toMatchObject({
+      text: 'text projection',
+      content: messages,
+    })
+    await second.close()
+  })
 })

@@ -13,6 +13,10 @@ function contentOf(input: { text?: string; content?: unknown }): string {
   return input.text ?? ''
 }
 
+function payloadOf(input: { text?: string; content?: unknown }): unknown | undefined {
+  return input.content !== undefined ? input.content : undefined
+}
+
 export class DurableInbox {
   private _nextTurn: DurableInboxMessage[] = []
   private _nextStep: DurableInboxMessage[] = []
@@ -34,7 +38,11 @@ export class DurableInbox {
     await this._session.append('agent/inbox/spliced', {
       target,
       index: list.length - 1,
-      inserted: [{ id: message.id, content: contentOf(message) }],
+      inserted: [{
+        id: message.id,
+        content: contentOf(message),
+        ...(payloadOf(message) !== undefined ? { payload: payloadOf(message) } : {}),
+      }],
     })
     return message
   }
@@ -49,7 +57,12 @@ export class DurableInbox {
     await this._session.append('agent/inbox/spliced', {
       target: 'next-step',
       index: 0,
-      inserted: [{ id: message.id, content: contentOf(message), mode: 'steer' }],
+      inserted: [{
+        id: message.id,
+        content: contentOf(message),
+        ...(payloadOf(message) !== undefined ? { payload: payloadOf(message) } : {}),
+        mode: 'steer',
+      }],
     })
     return message
   }
@@ -141,7 +154,12 @@ export class DurableInbox {
     await this._session.append('agent/inbox/spliced', {
       target,
       index: safeIndex,
-      inserted: [{ id: message.id, content: contentOf(message), mode }],
+      inserted: [{
+        id: message.id,
+        content: contentOf(message),
+        ...(payloadOf(message) !== undefined ? { payload: payloadOf(message) } : {}),
+        mode,
+      }],
     })
     return message
   }
@@ -168,7 +186,13 @@ export class DurableInbox {
       target,
       index,
       deleteCount: 1,
-      inserted: [{ id: replacement.id, content: contentOf(replacement) }],
+      inserted: [{
+        id: replacement.id,
+        content: contentOf(replacement),
+        ...(payloadOf(replacement) !== undefined
+          ? { payload: payloadOf(replacement) }
+          : {}),
+      }],
     })
     return replacement
   }
@@ -233,6 +257,7 @@ export class DurableInbox {
         const message: DurableInboxMessage = {
           id: item.id,
           ...(item.content !== undefined ? { text: item.content } : {}),
+          ...(item.payload !== undefined ? { content: item.payload } : {}),
         }
         if (item.mode === 'steer') {
           list.unshift(message)

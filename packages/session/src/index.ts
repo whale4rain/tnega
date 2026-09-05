@@ -222,7 +222,13 @@ export interface InboxSplicePayload {
   target: 'next-turn' | 'next-step'
   index?: number
   deleteCount?: number
-  inserted?: Array<{ id: string; content: string; mode?: 'followup' | 'steer' }>
+  inserted?: Array<{
+    id: string
+    content: string
+    /** Structured message payload preserved across restart when present. */
+    payload?: unknown
+    mode?: 'followup' | 'steer'
+  }>
 }
 
 export type AgentType = 'general' | 'coding'
