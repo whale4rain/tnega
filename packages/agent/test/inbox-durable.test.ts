@@ -143,4 +143,25 @@ describe('durable inbox', () => {
     void third
     await log.close()
   })
+
+  it('claims all steering plus one queued turn in one batch', async () => {
+    const file = await tempFile('inbox-claim-batch.jsonl')
+    const log = new SessionLog(file)
+    await log.init()
+    const inbox = new DurableInbox(log)
+    await inbox.insert({ text: 'one' })
+    await inbox.insert({ text: 'two' })
+    await inbox.steer({ text: 'steer-a' })
+    await inbox.steer({ text: 'steer-b' })
+
+    const batch = await inbox.claimBatch()
+    expect(batch.map(message => message.text)).toEqual([
+      'steer-b',
+      'steer-a',
+      'one',
+    ])
+    expect(inbox.size).toBe(1)
+    expect(inbox.snapshot().nextTurn.map(message => message.text)).toEqual(['two'])
+    await log.close()
+  })
 })

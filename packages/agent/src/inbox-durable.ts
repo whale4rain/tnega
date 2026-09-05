@@ -76,6 +76,34 @@ export class DurableInbox {
     return undefined
   }
 
+  /**
+   * Claim the complete proposed step batch: every pending next-step input plus
+   * one next-turn message at a turn boundary. Returns an empty array when
+   * nothing is pending.
+   */
+  async claimBatch(): Promise<DurableInboxMessage[]> {
+    const claimed: DurableInboxMessage[] = []
+    if (this._nextStep.length) {
+      const removed = this._nextStep.splice(0)
+      claimed.push(...removed)
+      await this._session.append('agent/inbox/spliced', {
+        target: 'next-step',
+        index: 0,
+        deleteCount: removed.length,
+      })
+    }
+    const nextTurn = this._nextTurn.shift()
+    if (nextTurn) {
+      claimed.push(nextTurn)
+      await this._session.append('agent/inbox/spliced', {
+        target: 'next-turn',
+        index: 0,
+        deleteCount: 1,
+      })
+    }
+    return claimed
+  }
+
   async clear(): Promise<void> {
     if (this._nextTurn.length) {
       this._nextTurn = []
