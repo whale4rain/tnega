@@ -33,15 +33,33 @@ describe('ToolsService registry', () => {
     const root = new Context()
     await root.plugin(tools)
     const service = dynamic(root).tools as ToolsService
+    const changes: number[] = []
+    root.on('tools/change', () => changes.push(changes.length + 1))
 
     expect(service.has('add')).toBe(false)
     const dispose = service.register(addTool())
+    expect(changes).toEqual([1])
     expect(service.has('add')).toBe(true)
     expect(service.list().map(tool => tool.schema.name)).toEqual(['add'])
     expect(service.toSpecs()).toEqual([{ name: 'add', description: 'add two numbers' }])
 
     dispose()
+    expect(changes).toEqual([1, 2])
     expect(service.has('add')).toBe(false)
+  })
+
+  it('emits tools/change on direct unregister', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    let changes = 0
+    root.on('tools/change', () => changes += 1)
+    service.register(addTool())
+    expect(changes).toBe(1)
+    expect(service.unregister('add')).toBe(true)
+    expect(changes).toBe(2)
+    expect(service.unregister('add')).toBe(false)
+    expect(changes).toBe(2)
   })
 
   it('rejects duplicate tools in the same scope', async () => {

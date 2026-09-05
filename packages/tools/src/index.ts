@@ -159,14 +159,18 @@ export class ToolsService extends Service<never> {
         throw new ToolAlreadyRegisteredError(name)
       }
       this._tools.set(name, definition)
+      this.ctx.emit('tools/change')
       return () => {
         this._tools.delete(name)
+        this.ctx.emit('tools/change')
       }
     }, `ctx.tools.register(${JSON.stringify(name)})`)
   }
 
   unregister(name: string): boolean {
-    return this._tools.delete(name)
+    const removed = this._tools.delete(name)
+    if (removed) this.ctx.emit('tools/change')
+    return removed
   }
 
   /** Register a monotonic guard evaluated after pre-execute policy. */
