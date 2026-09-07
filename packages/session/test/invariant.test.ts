@@ -124,7 +124,7 @@ describe('session invariant companion', () => {
       seq: 1,
       ts: 1,
       type: 'meta',
-      payload: { formatVersion: 5 },
+      payload: { formatVersion: 6 },
     }
     const raw = [
       meta,

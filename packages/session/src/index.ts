@@ -4,7 +4,14 @@ import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
 
-export const SESSION_FORMAT_VERSION = 5
+/**
+ * v6 breaks from v5 in one place: compaction. A v5 `checkpoint` embedded a
+ * full-surface snapshot in `payload.messages`; v6 stores only the compacted
+ * *prefix* and shadows a raw seq range via `surfaceOp.replace`, with the kept
+ * tail reordered after the checkpoint so projection continues incrementally.
+ * v5 logs are rejected (no migration in the pre-release window).
+ */
+export const SESSION_FORMAT_VERSION = 6
 
 /** Serialized tool schema, structurally compatible with @tnega/tools ToolSchema. */
 export interface ToolSchemaSnapshot {
@@ -196,10 +203,18 @@ export interface RequestContextPayload {
 }
 
 export interface CheckpointPayload {
+  /** The compacted prefix: messages the model keeps seeing after compaction. */
   messages: ModelMessage[]
   summary?: string
   tokensBefore?: number
-  surfaceOp?: 'replace'
+  /**
+   * The raw seq range this checkpoint shadows, when written by a v6
+   * compaction: every surface event with seq in [start, end] is removed from
+   * the surface and replaced by `messages`. `'replace'` (bare string) is the
+   * legacy v5 form and shadows nothing structurally; projection treats it as
+   * a full-surface seed.
+   */
+  surfaceOp?: { op: 'replace'; start: number; end: number } | 'replace'
   /** @deprecated v0.2 keeps raw events in place; use messages instead. */
   snapshot?: SessionEvent[]
 }
@@ -385,6 +400,18 @@ export function isSurfaceEventType(type: SessionEventType): type is SurfaceEvent
     || type === 'tool/result'
 }
 
+/** A v6 checkpoint shadows a raw seq range; legacy ('replace') shadows nothing structurally. */
+export function checkpointShadowRange(
+  event: SessionEvent,
+): { start: number; end: number } | undefined {
+  if (event.type !== 'checkpoint') return undefined
+  const op = event.payload.surfaceOp
+  if (typeof op === 'object' && op !== null && op.op === 'replace') {
+    return { start: op.start, end: op.end }
+  }
+  return undefined
+}
+
 /** Detached current surface nodes plus every replacement's shadowed ranges. */
 export interface SurfaceFoldReplacement {
   seq: number
@@ -402,6 +429,33 @@ export function foldSurface(events: readonly SessionEvent[]): SurfaceFoldResult 
   const nodes: number[] = []
   const replacements: SurfaceFoldReplacement[] = []
   for (const event of events) {
+    if (event.type === 'checkpoint') {
+      const range = checkpointShadowRange(event)
+      if (!range) continue // A range-less checkpoint is an inert marker.
+      const startIndex = nodes.findIndex(node => node >= range.start)
+      if (startIndex < 0) {
+        // Nothing in range is currently on the surface (e.g. a checkpoint that
+        // shadows already-removed events). Its own seq still marks the prefix
+        // seed so derive() can restart from `messages`.
+        nodes.push(event.seq)
+        continue
+      }
+      const shadowed: number[] = []
+      let cursor = startIndex
+      while (cursor < nodes.length && nodes[cursor]! <= range.end) {
+        shadowed.push(nodes[cursor]!)
+        cursor += 1
+      }
+      nodes.splice(startIndex, shadowed.length)
+      nodes.splice(startIndex, 0, event.seq)
+      replacements.push({
+        seq: event.seq,
+        start: range.start,
+        end: range.end,
+        shadowedSeqs: shadowed,
+      })
+      continue
+    }
     if (!isSurfaceEventType(event.type)) continue
     const op = event.surfaceOp ?? 'append'
     if (op === 'append') {
@@ -770,6 +824,44 @@ export function repairUnclosed(
   return synthetic
 }
 
+/**
+ * Reassign fresh monotonic seqs to an event array (used after a physical
+ * reorder) and rewrite every seq cross-reference to the new values:
+ * message `sourceEventSeqs` and any `checkpoint` shadow ranges.
+ */
+export function resequenceEvents(
+  events: readonly SessionEvent[],
+): SessionEvent[] {
+  const byId = new Map<string, SessionEvent>()
+  for (const event of events) {
+    if (byId.has(event.id)) {
+      throw new Error(`duplicate event id during resequence: ${event.id}`)
+    }
+    byId.set(event.id, clone(event))
+  }
+  const oldToNew = new Map<number, number>()
+  let seq = 1
+  for (const original of events) {
+    const copy = byId.get(original.id)!
+    copy.seq = seq
+    oldToNew.set(original.seq, seq)
+    seq += 1
+  }
+  const remapSeq = (value: number): number => oldToNew.get(value) ?? value
+  for (const copy of byId.values()) {
+    if (copy.sourceEventSeqs) {
+      copy.sourceEventSeqs = copy.sourceEventSeqs.map(remapSeq)
+    }
+    if (copy.type === 'checkpoint') {
+      const op = copy.payload.surfaceOp
+      if (typeof op === 'object' && op !== null && op.op === 'replace') {
+        copy.payload.surfaceOp = { op: 'replace', start: remapSeq(op.start), end: remapSeq(op.end) }
+      }
+    }
+  }
+  return [...byId.values()].sort((left, right) => left.seq - right.seq)
+}
+
 export function resolveCompactKeep(
   events: readonly SessionEvent[],
   options: CompactOptions,
@@ -1107,46 +1199,109 @@ export class SessionLog {
       let splitIndex = Math.max(0, nonMeta.length - keep)
       splitIndex = safeCompactSplit(nonMeta, splitIndex)
       const rawSplit = rawIndices[splitIndex] ?? events.length
-      const suffix = events.slice(rawSplit)
-      let messages: ModelMessage[]
-      if (options.messages) {
-        messages = this._projector([
-          {
-            id: randomUUID(),
-            seq: 0,
-            ts: 0,
-            type: 'checkpoint',
-            payload: { messages: clone(options.messages) },
-          },
-          ...suffix,
-        ])
-      } else {
-        messages = this._projector(events)
+
+      if (!options.messages?.length) {
+        // No replacement prefix was supplied, so nothing is compressed away:
+        // keep the historical marker behaviour (full-surface snapshot appended
+        // in place) so derive stays unchanged and no data is dropped.
+        const messages = this._projector(events)
+        const compactionStart = this._buildEvent('compaction/start', {
+          ...(splitIndex > 0 ? { boundary: splitIndex } : {}),
+          ...(options.keep !== undefined ? { keep: options.keep } : {}),
+          ...(options.tokensBefore !== undefined
+            ? { tokensBefore: options.tokensBefore }
+            : {}),
+        })
+        this._commitEvent(compactionStart)
+        const checkpoint = this._buildEvent('checkpoint', {
+          messages,
+          surfaceOp: 'replace',
+          ...(options.summary ? { summary: options.summary } : {}),
+          ...(options.tokensBefore !== undefined
+            ? { tokensBefore: options.tokensBefore }
+            : {}),
+        })
+        this._commitEvent(checkpoint)
+        const compactionEnd = this._buildEvent('compaction/end', {
+          checkpointId: checkpoint.id,
+          ...(options.keep !== undefined ? { keep: options.keep } : {}),
+        })
+        this._commitEvent(compactionEnd)
+        return this._events.length
       }
-      const compactionStart = this._buildEvent('compaction/start', {
+
+      // Real compaction: the checkpoint carries only the replacement prefix
+      // and shadows the raw seq range it replaces; the kept tail is re-emitted
+      // AFTER the checkpoint so projection continues from the prefix + tail.
+      const head = events.slice(0, rawSplit)
+      const tail = events.slice(rawSplit)
+      const surfaceInHead = head.filter(event => isSurfaceEventType(event.type))
+      const start = surfaceInHead[0]?.seq
+      const end = surfaceInHead.at(-1)?.seq
+      const range = start !== undefined && end !== undefined ? { start, end } : undefined
+      const now = Date.now()
+      const startEvent = this._makeCompactEvent('compaction/start', {
         ...(splitIndex > 0 ? { boundary: splitIndex } : {}),
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
         ...(options.tokensBefore !== undefined
           ? { tokensBefore: options.tokensBefore }
           : {}),
-      })
-      this._commitEvent(compactionStart)
-      const checkpoint = this._buildEvent('checkpoint', {
-        messages,
-        surfaceOp: 'replace',
+      }, now)
+      const checkpoint = this._makeCompactEvent('checkpoint', {
+        messages: clone(options.messages),
+        ...(range ? { surfaceOp: { op: 'replace', start: range.start, end: range.end } } : {}),
         ...(options.summary ? { summary: options.summary } : {}),
         ...(options.tokensBefore !== undefined
           ? { tokensBefore: options.tokensBefore }
           : {}),
-      })
-      this._commitEvent(checkpoint)
-      const compactionEnd = this._buildEvent('compaction/end', {
+      }, now + 1)
+      const endEvent = this._makeCompactEvent('compaction/end', {
         checkpointId: checkpoint.id,
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
-      })
-      this._commitEvent(compactionEnd)
+      }, now + 2)
+      const reordered = resequenceEvents([
+        ...head,
+        startEvent,
+        checkpoint,
+        endEvent,
+        ...tail,
+      ])
+      await this._replaceEvents(reordered)
       return this._events.length
     })
+  }
+
+  /** Build a compaction lifecycle event with a fresh id (seq assigned later). */
+  private _makeCompactEvent(
+    type: 'compaction/start' | 'compaction/end' | 'checkpoint',
+    payload: Record<string, unknown>,
+    ts: number,
+  ): SessionEvent {
+    return {
+      id: randomUUID(),
+      seq: 0,
+      ts,
+      type: type as SessionEvent['type'],
+      payload: clone(payload),
+      sourceEventSeqs: [],
+    } as SessionEvent
+  }
+
+  /** Replace the in-memory event store and rewrite the JSONL file. */
+  private async _replaceEvents(next: readonly SessionEvent[]): Promise<void> {
+    await this._drainWrite()
+    this._pending.splice(0)
+    this._events = next.map(event => clone(event))
+    this._surface = clone(this._projector(this._events))
+    this._surfaceNodes = foldSurface(this._events).nodes
+    this._requestHeader = foldRequestHeader(this._events)
+    this._requestContext = foldRequestContext(this._events)
+    this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
+    await writeFile(
+      this.file,
+      `${this._events.map(event => JSON.stringify(event)).join('\n')}\n`,
+      'utf8',
+    )
   }
 
   close(): Promise<void> {

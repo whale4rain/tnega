@@ -115,7 +115,7 @@ export type SessionEvent =
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
-      surfaceOp?: 'replace'
+      surfaceOp?: { op: 'replace'; start: number; end: number } | 'replace'
       snapshot?: SessionEvent[]
     }>
   | SessionEventBase<'meta', Record<string, unknown>>

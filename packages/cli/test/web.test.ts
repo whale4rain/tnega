@@ -666,12 +666,18 @@ describe('web server', () => {
     const checkpoint = after.events[checkpointIndex]
     expect(typeof checkpoint?.payload?.summary).toBe('string')
     expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
+    // v6: the checkpoint replaces the compressed surface. Message events that
+    // were compressed away no longer appear on the returned surface (they stay
+    // in the raw log for replay), so the original prompt is not re-visible.
+    const visibleMessages = after.events.filter(isMessageEvent)
     expect(
-      after.events.slice(0, checkpointIndex).some(
-        event => isMessageEvent(event)
-          && event.payload?.content === 'a very long conversation with lots of words',
+      visibleMessages.some(
+        event => event.payload?.content === 'a very long conversation with lots of words',
       ),
-    ).toBe(true)
+    ).toBe(false)
+    expect(
+      after.events.filter(event => event.type === 'checkpoint').length,
+    ).toBeGreaterThan(0)
   })
 
   it('keeps recent raw events and a surface checkpoint after compacting a long session', async () => {
@@ -759,13 +765,15 @@ describe('web server', () => {
     expect(checkpointIndex).toBeGreaterThanOrEqual(0)
     const checkpoint = after.events[checkpointIndex]
     expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
+    // v6: the checkpoint prefix is the compressed summary; the recent tail is
+    // preserved as raw message events AFTER the checkpoint, so the recent
+    // request is visible on the surface again (not baked into the snapshot).
+    const tailMessages = after.events.slice(checkpointIndex + 1).filter(isMessageEvent)
+    expect(tailMessages.some(event => event.payload?.content === 'recent request')).toBe(true)
     expect(
-      checkpoint?.payload?.messages?.some(
-        message => message.content === 'recent request',
-      ) ?? false,
-    ).toBe(true)
-    const rawBefore = after.events.slice(0, checkpointIndex).filter(isMessageEvent)
-    expect(rawBefore.some(event => event.payload?.content === 'recent request')).toBe(true)
+      checkpoint?.payload?.messages?.some(message => message.content === 'recent request')
+        ?? false,
+    ).toBe(false)
   })
 
   it('streams a run through SSE and persists the final message', async () => {

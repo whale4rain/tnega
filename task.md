@@ -88,6 +88,22 @@
 - [x] 全量 typecheck / lint / test / build / publish 测试通过（real-LLM smoke 与 2 个环境 key 泄漏的 cli 测试为本机 pre-existing 失败，与本次改动无关）。
 - [x] git commit（按功能点拆 3 个：meta-patch 投影化 / invariant companion / 包 README）
 
+## Session compaction 对齐 DSH：surface 边界替换 + 增量续投（v6）
+
+对照 DSH 学习稿第 5 讲的 compaction 语义，把「全量快照式 checkpoint」重构为
+「边界替换 + 重排写」的增量续投模型（曾实测：旧实现 compact 后
+`surfaceEvents()` 与 `deriveMessages()` 分叉、server 事件过滤膨胀、token 双计）：
+
+- [x] session：`SESSION_FORMAT_VERSION` 升至 6；v5 旧日志（快照式 checkpoint）在 `init()` 被 `SessionFormatError` 拒绝
+- [x] session：`checkpoint.payload.messages` 语义从「整条 surface 快照」改为「压缩前缀」，`surfaceOp` 支持 `{ op: 'replace', start, end }` 遮蔽范围（读取时兼容旧 `'replace'` 字符串）
+- [x] session：`foldSurface()` 把带范围 checkpoint 当作 surface 替换节点（移除遮蔽 seq 并插入 checkpoint 节点、后续消息续 append），`deriveMessages()` / `surfaceEvents()` / UI 投影共用同一折叠规则、compact 后三者一致
+- [x] session：`compact()` 日志重排写 —— head/元数据 → `compaction/start` → `checkpoint`（压缩前缀 + 遮蔽范围）→ `compaction/end` → kept-tail 尾部消息 → 其余 raw 坐标事件，经 `resequenceEvents()` 重分配 seq 保持单调，`_replaceEvents()` 同步内存事实层与 JSONL 文件
+- [x] session：`estimateEventTokens(checkpoint)` 只估压缩前缀，不再与保留的 raw 消息重复计 token
+- [x] cli / web 适配：`server.readSessionEvents` 过滤随修复后的 `surfaceEvents()` 自动排除 pre-compact 消息；web `projectEvents` checkpoint 渲染改为「重建 + 续投」，压缩摘要作为 `compacted` 行保留；`apps/web/src/types.ts` surfaceOp 类型同步
+- [x] 测试：session compact 系列改 v6 布局（checkpoint 后接 kept-tail、checkpoint.messages = 前缀）；新增 derive==surface 一致性 / 嵌套 compact / reopen 不变量回归；web compact e2e 改 v6 事件序语义；invariant 与 format fixture 升 v6
+- [x] 全量 typecheck / lint / test / build 通过（real-LLM smoke 与 2 个环境 key 泄漏的 cli 测试为本机 pre-existing 失败，与本次改动无关；另修 HEAD 遗留的 `agent.test.ts` exactOptionalPropertyTypes 类型错误）
+- [x] git commit（compaction v6 单一大提交 + agent 测试类型修复小提交）
+
 ## M16 eval benchmark 与真实评测
 
 目标：把公开真实 benchmark 导入为可运行的 eval tasks，先用 BigCodeBench 与
