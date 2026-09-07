@@ -278,7 +278,10 @@ describe('agent loop', () => {
     root.on('agent/step', () => events.push('step'))
     root.on('agent/tool-call', (payload: AgentToolCallEvent) => {
       events.push(`tool-call:${payload.call.id}`)
-      coordinates.push({ turn: payload.turn, step: payload.step })
+      coordinates.push({
+        ...(payload.turn !== undefined ? { turn: payload.turn } : {}),
+        ...(payload.step !== undefined ? { step: payload.step } : {}),
+      })
     })
     root.on('agent/tool-result', (payload: AgentToolResultEvent) => {
       events.push(`tool-result:${payload.result.output}`)
