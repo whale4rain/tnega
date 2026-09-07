@@ -7,6 +7,7 @@ import type { AgentProfile } from './profile.js'
 import {
   agent,
   defineAgent,
+  systemPrompt,
   type AgentContextBudget,
   type AgentDefinition,
   type AgentInbox,
@@ -17,7 +18,7 @@ import {
   type LLMAdapter,
 } from '@tnega/agent'
 import { createLlmAdapter } from '@tnega/llm'
-import { session, type SessionProjector } from '@tnega/session'
+import { session } from '@tnega/session'
 import {
   builtinTools,
   tools,
@@ -187,7 +188,6 @@ export interface AgentRuntimeOptions {
   maxSteps?: number
   contextBudget?: AgentContextBudget
   agent?: AgentDefinition
-  sessionProjector?: SessionProjector
   toolPolicy?: ToolPolicy
   builtinTools?: false | BuiltinToolsConfig
   plugins?: readonly Plugin[]
@@ -677,7 +677,6 @@ export async function createAgentRuntime(
   const fibers: Array<{ dispose: () => Promise<void> }> = []
   const sessionFiber = await root.plugin(session, {
     file: merged.sessionFile,
-    ...(merged.sessionProjector ? { projector: merged.sessionProjector } : {}),
   })
   fibers.push(sessionFiber)
   const toolsFiber = await root.plugin(tools, merged.toolPolicy ?? {})
@@ -691,6 +690,36 @@ export async function createAgentRuntime(
     }
     const builtinToolsFiber = await root.plugin(builtinTools, builtinConfig)
     fibers.push(builtinToolsFiber)
+  }
+  // Wire the prompt-assembly seam into the default composition: the system
+  // prompt is assembled from registered sections and every executable tool is
+  // exposed as a schema provider, so `assemble().text`/`tools` are the single
+  // path the loop reads when a systemPrompt service is present.
+  const promptFiber = await root.plugin(systemPrompt)
+  fibers.push(promptFiber)
+  const promptService = root.get('systemPrompt') as {
+    registerTools(
+      provider: () => readonly {
+        name: string
+        description: string
+        parameters?: Record<string, unknown>
+      }[],
+    ): () => void
+  } | undefined
+  const toolRegistry = root.get('tools') as {
+    list(): ReadonlyArray<{
+      schema: {
+        name: string
+        description: string
+        parameters?: Record<string, unknown>
+      }
+    }>
+  } | undefined
+  let disposePromptTools: (() => void) | undefined
+  if (promptService && toolRegistry) {
+    disposePromptTools = promptService.registerTools(() => (
+      toolRegistry.list().map(tool => tool.schema)
+    ))
   }
   if (merged.agent) {
     const definitionFiber = await root.plugin(defineAgent(merged.agent), {
@@ -724,6 +753,7 @@ export async function createAgentRuntime(
   return {
     root,
     dispose: async () => {
+      disposePromptTools?.()
       for (const fiber of [...fibers].reverse()) await fiber.dispose()
     },
   }

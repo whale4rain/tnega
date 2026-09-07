@@ -23,9 +23,10 @@ tnega evolve run tasks.yml               # 自进化循环
 - `AgentProfile`：`{ name, bundles, options }`，bundle 先装，profile 默认选项与调用方
   overlay 后覆盖。
 - `bootAgentRuntime` / `bootAgentRuntimeFromFile`：profile + overlay → runtime options。
-- `createAgentRuntime` 接受 `AgentDefinition` / `SessionProjector` / `ToolPolicy` /
-  `builtinTools: false` / 自定义 `inbox` / `plugins`；`llm` 可选。web / headless / eval
-  三种产品形态复用同一工厂，差异全在组合与薄消费者代码。
+- `createAgentRuntime` 接受 `AgentDefinition` / `ToolPolicy` /
+  `builtinTools: false` / 自定义 `inbox` / `plugins`；`llm` 可选。默认组合会挂载
+  prompt 组装 seam（`systemPrompt`）并把可执行工具注册为 schema 提供者。web / headless /
+  eval 三种产品形态复用同一工厂，差异全在组合与薄消费者代码。
 
 profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
 `$XDG_CONFIG_HOME/tnega/profiles/<name>.json`，可引用内置 bundle 名或内联插件。

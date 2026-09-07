@@ -471,6 +471,11 @@ export class AgentService {
       if (toolCalls.length) {
         await session.append('assistant/message', {
           content: completion.content ?? '',
+          toolCalls: toolCalls.map(call => ({
+            id: call.id,
+            name: call.name,
+            arguments: call.arguments,
+          })),
         })
       }
       for (const call of toolCalls) {
@@ -910,19 +915,21 @@ export class AgentService {
   }
 
   private async _resolveAvailableTools(): Promise<readonly ToolDefinition[]> {
+    // Executable tools are the single source of truth. When a system-prompt
+    // service is mounted, its assembled schema list narrows what the model
+    // sees — but only to tools that are actually registered, so a declared
+    // schema can never advertise an un-executable stub.
+    const executable = this._tools().list()
     const promptService = this.ctx.reflect.get('systemPrompt', false) as
       | { toolSchemas(options?: object): Promise<readonly ToolSchemaSnapshot[]> }
       | undefined
-    if (promptService) {
-      const schemas = await promptService.toolSchemas()
-      return schemas.map(schema => ({
-        schema,
-        execute: async () => {
-          throw new Error('schema-only tool from prompt assembly')
-        },
-      }))
-    }
-    return this._tools().list()
+    if (!promptService) return executable
+    const schemas = await promptService.toolSchemas()
+    if (!schemas.length) return executable
+    const byName = new Map(executable.map(tool => [tool.schema.name, tool] as const))
+    return schemas
+      .map(schema => byName.get(schema.name))
+      .filter((tool): tool is ToolDefinition => tool !== undefined)
   }
 
   private _llm(): LLMAdapter | undefined {

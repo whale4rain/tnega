@@ -10,6 +10,7 @@ import {
   type InvariantContext,
 } from '@tnega/core'
 import {
+  SESSION_FORMAT_VERSION,
   SessionLog,
   checkBalancedSteps,
   checkBalancedToolCalls,
@@ -124,7 +125,7 @@ describe('session invariant companion', () => {
       seq: 1,
       ts: 1,
       type: 'meta',
-      payload: { formatVersion: 6 },
+      payload: { formatVersion: SESSION_FORMAT_VERSION },
     }
     const raw = [
       meta,

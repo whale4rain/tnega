@@ -23,6 +23,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 import { Context } from '@tnega/core'
 import {
+  SESSION_FORMAT_VERSION,
   checkSessionInvariants,
   estimateContextUsage,
   estimateEventTokens,
@@ -52,11 +53,6 @@ type DynamicContext = Context & {
 
 const dynamic = (ctx: Context): DynamicContext => ctx as unknown as DynamicContext
 
-type MessageEvent = Extract<
-  SessionEvent,
-  { type: 'user/message' | 'assistant/message' | 'system/message' }
->
-
 const dirs: string[] = []
 
 async function tempFile(name: string): Promise<string> {
@@ -72,7 +68,7 @@ function withFormatMeta(events: SessionEvent[]): SessionEvent[] {
       seq: 1,
       ts: 1,
       type: 'meta',
-      payload: { formatVersion: 6 },
+      payload: { formatVersion: SESSION_FORMAT_VERSION },
     },
     ...events.map((event, index) => ({ ...event, seq: event.seq + 1, ts: index + 2 })),
   ]
@@ -331,11 +327,18 @@ describe('SessionLog forkAt', () => {
     const log = new SessionLog(await tempFile('fork-at-checkpoint.jsonl'))
     await log.append('user/message', { content: 'old user' })
     await log.append('assistant/message', { content: 'old reply' })
-    await log.compact()
+    await log.append('user/message', { content: 'still here' })
+    await log.append('assistant/message', { content: 'kept reply' })
+    await log.compact({
+      messages: [{ role: 'system', content: 'summarized' }],
+      keep: 2,
+    })
     const next = await log.append('user/message', { content: 'recent' })
 
     const selected = await log.forkAt(next.id)
     expect(selected.map(event => event.type)).toEqual([
+      'user/message',
+      'assistant/message',
       'user/message',
       'assistant/message',
       'compaction/start',
@@ -343,10 +346,24 @@ describe('SessionLog forkAt', () => {
       'compaction/end',
       'user/message',
     ])
+    expect(selected.map(event => (event.payload as { content?: string }).content))
+      .toEqual([
+        'old user',
+        'old reply',
+        'still here',
+        'kept reply',
+        undefined,
+        undefined,
+        undefined,
+        'recent',
+      ])
     const checkpoint = selected.find(event => event.type === 'checkpoint')!
-    const payload = checkpoint.payload as { messages?: ModelMessage[]; surfaceOp?: string }
-    expect(payload.messages).toHaveLength(2)
-    expect(payload.surfaceOp).toBe('replace')
+    const payload = checkpoint.payload as {
+      messages?: ModelMessage[]
+      surfaceOp?: { op: string; start: number; end: number }
+    }
+    expect(payload.messages).toEqual([{ role: 'system', content: 'summarized' }])
+    expect(payload.surfaceOp).toMatchObject({ op: 'replace' })
   })
 })
 
@@ -354,7 +371,12 @@ describe('SessionLog deriveMessages', () => {
   it('projects user, assistant, tool call and tool result history', async () => {
     const log = new SessionLog(await tempFile('derive.jsonl'))
     await log.append('user/message', { content: 'calculate 1+2' })
-    await log.append('assistant/message', { content: '' })
+    await log.append('assistant/message', {
+      content: '',
+      toolCalls: [{ id: 'c1', name: 'add', arguments: { a: 1, b: 2 } }],
+    })
+    // `tool/call` is log-only: it correlates the pair but never re-enters the
+    // transcript on its own.
     await log.append('tool/call', { id: 'c1', name: 'add', arguments: { a: 1, b: 2 } })
     await log.append('tool/result', {
       id: 'r1',
@@ -381,7 +403,10 @@ describe('SessionLog deriveMessages', () => {
   it('projects failed tool results as error text', async () => {
     const log = new SessionLog(await tempFile('derive-error.jsonl'))
     await log.append('user/message', { content: 'do it' })
-    await log.append('tool/call', { id: 'c1', name: 'boom', arguments: {} })
+    await log.append('assistant/message', {
+      content: '',
+      toolCalls: [{ id: 'c1', name: 'boom', arguments: {} }],
+    })
     await log.append('tool/result', {
       id: 'r1',
       toolCallId: 'c1',
@@ -701,125 +726,69 @@ describe('compact boundary safety', () => {
 })
 
 describe('SessionLog compact', () => {
-  it('keeps derived history after compacting into a checkpoint', async () => {
-    const log = new SessionLog(await tempFile('compact.jsonl'))
+  it('keeps derived history when nothing is worth shadowing', async () => {
+    const log = new SessionLog(await tempFile('compact-none.jsonl'))
     await log.append('user/message', { content: '1+2' })
-    await log.append('assistant/message', { content: '' })
-    await log.append('tool/call', { id: 'c1', name: 'add', arguments: { a: 1, b: 2 } })
-    await log.append('tool/result', { id: 'r1', toolCallId: 'c1', name: 'add', ok: true, output: 3 })
+    await log.append('assistant/message', { content: '3' })
     const before = await log.deriveMessages()
 
+    // Without a replacement prefix there is no summary to write, so compaction
+    // is a no-op: no events are appended and the model view is unchanged.
     const count = await log.compact({ summary: 'structured summary', tokensBefore: 120 })
-    expect(count).toBe(8)
+    expect(count).toBe((await log.read()).length)
     expect(await log.deriveMessages()).toEqual(before)
+    expect((await log.read()).filter(event => event.type === 'checkpoint')).toHaveLength(0)
+  })
+
+  it('appends an append-only compaction and keeps the recent tail', async () => {
+    const log = new SessionLog(await tempFile('compact-v7.jsonl'))
+    for (const [role, content] of [
+      ['user', 'a'],
+      ['assistant', 'A'],
+      ['user', 'recent long'],
+      ['assistant', 'tail reply'],
+    ] as const) {
+      if (role === 'user') await log.append('user/message', { content })
+      else await log.append('assistant/message', { content })
+    }
+    const beforeCount = (await log.read()).length
+
+    const count = await log.compact({
+      keepTokens: 6,
+      summary: 'structured summary',
+      tokensBefore: 120,
+      messages: [{ role: 'system', content: 'structured summary' }],
+    })
+    expect(count).toBe(beforeCount + 3)
 
     const events = await log.read()
-    expect(events.at(-2)!.type).toBe('checkpoint')
-    const checkpoint = events.at(-2)!.payload as {
-      messages: ModelMessage[]
-      summary?: string
-      tokensBefore?: number
-      surfaceOp?: string
-    }
-    expect(checkpoint.messages).toEqual(before)
-    expect(checkpoint.summary).toBe('structured summary')
-    expect(checkpoint.tokensBefore).toBe(120)
-    expect(checkpoint.surfaceOp).toBe('replace')
-    expect(events.at(-1)!.type).toBe('compaction/end')
+    // The three compaction events are appended last, in order, while the older
+    // messages physically stay in place before them (append-only, seqs intact).
     expect(events.slice(-3).map(event => event.type)).toEqual([
       'compaction/start',
       'checkpoint',
       'compaction/end',
     ])
-    expect(events.slice(0, -1).map(event => event.type)).toEqual([
-      'meta',
-      'user/message',
-      'assistant/message',
-      'tool/call',
-      'tool/result',
-      'compaction/start',
-      'checkpoint',
-    ])
-  })
+    const startIndex = events.findIndex(event => event.type === 'compaction/start')
+    expect(events.findIndex(event => event.type === 'assistant/message' && event.payload.content === 'a')).toBeLessThan(startIndex)
+    expect(events.findIndex(event => event.type === 'assistant/message' && event.payload.content === 'A')).toBeLessThan(startIndex)
 
-  it('keeps the latest raw events and still reconstructs history', async () => {
-    const log = new SessionLog(await tempFile('compact-keep.jsonl'))
-    await log.append('user/message', { content: '1+2' })
-    await log.append('assistant/message', { content: '' })
-    await log.append('tool/call', { id: 'c1', name: 'add', arguments: { a: 1, b: 2 } })
-    await log.append('tool/result', { id: 'r1', toolCallId: 'c1', name: 'add', ok: true, output: 3 })
-    await log.append('assistant/message', { content: '3' })
-    const before = await log.deriveMessages()
-
-    const count = await log.compact({ keep: 2 })
-    expect(count).toBe(9)
-    expect(await log.deriveMessages()).toEqual(before)
-
-    const events = await log.read()
-    expect(events.at(-2)!.type).toBe('checkpoint')
-    expect(events.slice(0, -1).map(event => event.type)).toEqual([
-      'meta',
-      'user/message',
-      'assistant/message',
-      'tool/call',
-      'tool/result',
-      'assistant/message',
-      'compaction/start',
-      'checkpoint',
-    ])
-    const checkpoint = events.at(-2)!.payload as { surfaceOp?: string }
-    expect(checkpoint.surfaceOp).toBe('replace')
-  })
-
-  it('stores explicit compacted messages as the replacement prefix (v6)', async () => {
-    const log = new SessionLog(await tempFile('compact-messages.jsonl'))
-    const u1 = await log.append('user/message', { content: 'old context' })
-    await log.append('assistant/message', { content: 'done' })
-
-    const compacted: ModelMessage[] = [
-      { role: 'system', content: 'compacted summary' },
-    ]
-    const count = await log.compact({
-      keepTokens: 1,
-      summary: 'compacted summary',
-      tokensBefore: 100,
-      messages: compacted,
-    })
-    expect(count).toBe(6)
-
-    const events = await log.read()
-    // v6 reorder: checkpoint sits after the shadowed head and the kept tail is
-    // re-emitted after compaction/end.
-    expect(events.map(event => event.type)).toEqual([
-      'meta',
-      'user/message',
-      'compaction/start',
-      'checkpoint',
-      'compaction/end',
-      'assistant/message',
-    ])
-    const checkpoint = events.find(event => event.type === 'checkpoint')!.payload as {
+    const checkpoint = events.at(-2)!.payload as {
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
       surfaceOp?: { op: string; start: number; end: number }
     }
-    // checkpoint carries only the replacement prefix, not the kept tail.
-    expect(checkpoint.messages).toEqual(compacted)
-    expect(checkpoint.summary).toBe('compacted summary')
-    expect(checkpoint.tokensBefore).toBe(100)
-    // it shadows exactly the raw head message seq (u1).
-    expect(checkpoint.surfaceOp).toEqual({ op: 'replace', start: u1.seq, end: u1.seq })
-    // model view = prefix + kept tail.
+    expect(checkpoint.messages).toEqual([{ role: 'system', content: 'structured summary' }])
+    expect(checkpoint.summary).toBe('structured summary')
+    expect(checkpoint.tokensBefore).toBe(120)
+    expect(checkpoint.surfaceOp).toMatchObject({ op: 'replace' })
+
+    // Model view = replacement prefix + the recent user turn.
     expect(await log.deriveMessages()).toEqual([
-      ...compacted,
-      { role: 'assistant', content: 'done' },
-    ])
-    // surface events = the checkpoint node + kept tail message.
-    const surface = await log.surfaceEvents()
-    expect(surface.map(event => event.type)).toEqual([
-      'checkpoint',
-      'assistant/message',
+      { role: 'system', content: 'structured summary' },
+      { role: 'user', content: 'recent long' },
+      { role: 'assistant', content: 'tail reply' },
     ])
   })
 
@@ -827,11 +796,19 @@ describe('SessionLog compact', () => {
     const log = new SessionLog(await tempFile('compact-append.jsonl'))
     await log.append('user/message', { content: 'a' })
     await log.append('assistant/message', { content: 'b' })
-    await log.compact()
+    await log.append('user/message', { content: 'recent' })
+    await log.append('assistant/message', { content: 'r' })
+    await log.compact({ messages: [{ role: 'system', content: 'S' }], keepTokens: 3 })
 
     const event = await log.append('user/message', { content: 'c' })
-    expect(event.seq).toBe(7)
-    expect((await log.deriveMessages()).map(message => message.content)).toEqual(['a', 'b', 'c'])
+    // seq continues contiguously from the appended log — nothing was rewritten.
+    expect(event.seq).toBe((await log.read()).length)
+    expect((await log.deriveMessages()).map(message => message.content)).toEqual([
+      'S',
+      'recent',
+      'r',
+      'c',
+    ])
   })
 
   it('keeps derive, surface and invariants consistent after a v6 compact', async () => {
@@ -954,7 +931,7 @@ describe('session plugin', () => {
   it('invokes a custom broadcast callback', async () => {
     const broadcasts: string[] = []
     const file = await tempFile('broadcast-custom.jsonl')
-    const log = new SessionLog(file, undefined, (type, payload) => {
+    const log = new SessionLog(file, (type, payload) => {
       broadcasts.push(`${type}:${(payload as { type?: string }).type ?? 'flush'}`)
     })
     await log.append('user/message', { content: 'a' })
@@ -1001,82 +978,125 @@ describe('projectEvents', () => {
   })
 })
 
-describe('SessionProjector', () => {
-  it('derives messages through a custom projector', async () => {
-    const file = await tempFile('projector.jsonl')
-    const log = new SessionLog(file, (events) => (
-      events
-        .filter((event): event is MessageEvent => (
-          event.type === 'user/message'
-          || event.type === 'assistant/message'
-          || event.type === 'system/message'
-        ))
-        .map((event) => ({
-          role: 'system' as const,
-          content: `[${event.type.split('/')[0]}] ${event.payload.content}`,
-        }))
-    ))
-    await log.append('user/message', { content: 'hello' })
-    await log.append('assistant/message', { content: 'hi' })
-
-    expect(await log.deriveMessages()).toEqual([
-      { role: 'system', content: '[user] hello' },
-      { role: 'system', content: '[assistant] hi' },
-    ])
-    const usage = await log.estimateContext(100)
-    expect(usage.tokens).toBe(Math.ceil('[user] hello'.length / 4) + Math.ceil('[assistant] hi'.length / 4))
-    expect(usage.limit).toBe(100)
-  })
-
-  it('passes a projector through the session plugin', async () => {
-    const root = new Context()
-    const fiber = root.plugin(session, {
-      file: await tempFile('projector-plugin.jsonl'),
-      projector: (events: readonly SessionEvent[]) => (
-        events
-          .filter((event: SessionEvent): event is MessageEvent => (
-            event.type === 'user/message'
-            || event.type === 'assistant/message'
-            || event.type === 'system/message'
-          ))
-          .map((event: MessageEvent) => ({
-            role: 'assistant' as const,
-            content: event.payload.content.toUpperCase(),
-          }))
-      ),
-    })
-    await fiber
-
-    const log = dynamic(root).session as SessionLog
-    await log.append('user/message', { content: 'ping' })
-    expect(await log.deriveMessages()).toEqual([{ role: 'assistant', content: 'PING' }])
-    await fiber.dispose()
-  })
-
-  it('uses the projector when compacting into a checkpoint', async () => {
-    const file = await tempFile('projector-compact.jsonl')
-    const log = new SessionLog(file, (events: readonly SessionEvent[]) => {
-      const messages: ModelMessage[] = []
-      for (const event of events) {
-        if (event.type === 'checkpoint') {
-          messages.splice(0, messages.length, ...event.payload.messages)
-        } else if (
-          event.type === 'user/message'
-          || event.type === 'assistant/message'
-          || event.type === 'system/message'
-        ) {
-          messages.push({ role: 'system', content: event.payload.content })
-        }
-      }
-      return messages
-    })
+describe('surface-node derivation', () => {
+  it('projects an appended conversation exactly as recorded', async () => {
+    const log = new SessionLog(await tempFile('surface-append.jsonl'))
     await log.append('user/message', { content: 'a' })
-    await log.append('assistant/message', { content: 'b' })
+    await log.append('assistant/message', { content: 'A' })
+    await log.append('user/message', { content: 'b' })
+    await log.append('assistant/message', {
+      content: 'B',
+      toolCalls: [{ id: 't1', name: 'read', arguments: { file: 'x' } }],
+    })
+    await log.append('tool/result', {
+      id: 'r1',
+      toolCallId: 't1',
+      name: 'read',
+      ok: true,
+      output: 'file body',
+    })
 
-    await log.compact()
     expect(await log.deriveMessages()).toEqual([
-      { role: 'system', content: 'a' },
-      { role: 'system', content: 'b' },
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'A' },
+      { role: 'user', content: 'b' },
+      {
+        role: 'assistant',
+        content: 'B',
+        tool_calls: [{ id: 't1', name: 'read', arguments: { file: 'x' } }],
+      },
+      { role: 'tool', content: 'file body', tool_call_id: 't1', name: 'read' },
+    ])
+  })
+
+  it('skips a content-less assistant message that requested no tools', async () => {
+    const log = new SessionLog(await tempFile('surface-empty-assistant.jsonl'))
+    await log.append('user/message', { content: 'a' })
+    await log.append('assistant/message', { content: '' })
+    await log.append('user/message', { content: 'b' })
+
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'a' },
+      { role: 'user', content: 'b' },
+    ])
+  })
+
+  it('compacts append-only: prefix + kept tail in surface order, seqs immutable', async () => {
+    const file = await tempFile('compact-surface.jsonl')
+    const log = new SessionLog(file)
+    for (const [role, content] of [
+      ['user', 'a'],
+      ['assistant', 'A'],
+      ['user', 'b'],
+      ['assistant', 'B'],
+      ['user', 'c'],
+      ['assistant', 'C'],
+    ] as const) {
+      if (role === 'user') await log.append('user/message', { content })
+      else await log.append('assistant/message', { content })
+    }
+    const before = await log.read()
+    const beforeCount = before.length
+
+    const count = await log.compact({
+      messages: [{ role: 'system', content: 'summarized' }],
+      keep: 2,
+    })
+
+    // Compaction only appended: seq stays a contiguous 1..n and the old head
+    // messages physically precede the compaction markers in the file.
+    expect(count).toBeGreaterThan(beforeCount)
+    const events = await log.read()
+    expect(events.map(event => event.seq)).toEqual(
+      events.map((_, index) => index + 1),
+    )
+    const headIndex = events.findIndex(event => event.type === 'assistant/message' && event.payload.content === 'A')
+    const checkpointIndex = events.findIndex(event => event.type === 'checkpoint')
+    expect(headIndex).toBeGreaterThan(-1)
+    expect(checkpointIndex).toBeGreaterThan(headIndex)
+
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'system', content: 'summarized' },
+      { role: 'user', content: 'c' },
+      { role: 'assistant', content: 'C' },
+    ])
+    expect((await log.surfaceEvents()).map(event => event.type)).toEqual([
+      'checkpoint',
+      'user/message',
+      'assistant/message',
+    ])
+
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    expect(await reopened.deriveMessages()).toEqual([
+      { role: 'system', content: 'summarized' },
+      { role: 'user', content: 'c' },
+      { role: 'assistant', content: 'C' },
+    ])
+  })
+
+  it('nests a second compaction over an already-compacted session', async () => {
+    const log = new SessionLog(await tempFile('compact-nested.jsonl'))
+    for (const [role, content] of [
+      ['user', 'a'],
+      ['assistant', 'A'],
+      ['user', 'b'],
+      ['assistant', 'B'],
+      ['user', 'c'],
+      ['assistant', 'C'],
+    ] as const) {
+      if (role === 'user') await log.append('user/message', { content })
+      else await log.append('assistant/message', { content })
+    }
+    await log.compact({ messages: [{ role: 'system', content: 'summary-1' }], keep: 2 })
+    await log.append('user/message', { content: 'd' })
+    await log.append('assistant/message', { content: 'D' })
+    await log.compact({ messages: [{ role: 'system', content: 'summary-2' }], keep: 2 })
+
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'system', content: 'summary-2' },
+      { role: 'user', content: 'd' },
+      { role: 'assistant', content: 'D' },
     ])
   })
 })
@@ -1349,34 +1369,37 @@ describe('context budget', () => {
     expect(resolveCompactKeep(events, {})).toBe(0)
   })
 
-  it('compacts by keepTokens and preserves projected history', async () => {
+  it('compacts by keepTokens and preserves the retained tail', async () => {
     const log = new SessionLog(await tempFile('compact-tokens.jsonl'))
     await log.append('user/message', { content: 'aaaa' })
     await log.append('user/message', { content: 'bbbbbbbb' })
     await log.append('user/message', { content: 'cccccccc' })
-    const before = await log.deriveMessages()
 
-    const count = await log.compact({ keepTokens: 3 })
+    const count = await log.compact({
+      keepTokens: 3,
+      messages: [{ role: 'system', content: 'summary' }],
+    })
     expect(count).toBe(7)
-    expect(await log.deriveMessages()).toEqual(before)
 
+    // Append-only: every original message stays in the log; only the head
+    // (aaaa) left the surface.
     const events = await log.read()
     expect(events.at(-2)!.type).toBe('checkpoint')
     expect(events
       .filter(event => event.type === 'user/message')
       .map(event => (event.payload as { content: string }).content))
-      .toEqual([
-      'aaaa',
-      'bbbbbbbb',
-      'cccccccc',
-    ])
-    const checkpoint = events.at(-2)!.payload as { messages: ModelMessage[]; surfaceOp?: string }
-    expect(checkpoint.messages).toEqual([
-      { role: 'user', content: 'aaaa' },
+      .toEqual(['aaaa', 'bbbbbbbb', 'cccccccc'])
+    const checkpoint = events.at(-2)!.payload as {
+      messages: ModelMessage[]
+      surfaceOp?: { op: string; start: number; end: number }
+    }
+    expect(checkpoint.messages).toEqual([{ role: 'system', content: 'summary' }])
+    expect(checkpoint.surfaceOp).toMatchObject({ op: 'replace' })
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'system', content: 'summary' },
       { role: 'user', content: 'bbbbbbbb' },
       { role: 'user', content: 'cccccccc' },
     ])
-    expect(checkpoint.surfaceOp).toBe('replace')
   })
 })
 

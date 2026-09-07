@@ -14,7 +14,6 @@ import {
 } from '@tnega/agent'
 import type {
   ModelMessage,
-  SessionEvent,
 } from '@tnega/session'
 import type { ToolDefinition, ToolPolicy } from '@tnega/tools'
 
@@ -305,36 +304,6 @@ describe('createAgentRuntime composition', () => {
         .toEqual(expect.arrayContaining([
           expect.objectContaining({ role: 'tool', content: 'pong-trunc' }),
         ]))
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
-  it('uses the injected session projector for derived messages', async () => {
-    const dir = await tempDir('tnega-runtime-projector-')
-    const { adapter } = fakeLLM([{ content: 'projected', finishReason: 'stop' }])
-    const projector = (events: readonly SessionEvent[]): ModelMessage[] => [
-      {
-        role: 'user',
-        content: `projected ${events.length} events`,
-      },
-    ]
-    const runtime = await createAgentRuntime(runtimeOptions(dir, {
-      llm: adapter,
-      builtinTools: false,
-      sessionProjector: projector,
-      agent: { name: 'projector-agent' },
-    }))
-    try {
-      const loop = runtime.root.get('agentLoop') as AgentLoop
-      await loop({ text: 'hello' })
-      const session = dynamic(runtime.root).session as {
-        deriveMessages(): Promise<readonly ModelMessage[]>
-      }
-      const messages = await session.deriveMessages()
-      expect(messages).toEqual([
-        { role: 'user', content: expect.stringContaining('projected') },
-      ])
     } finally {
       await runtime.dispose()
     }

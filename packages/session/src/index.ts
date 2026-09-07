@@ -5,13 +5,23 @@ import type { Context } from '@tnega/core'
 import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
 
 /**
- * v6 breaks from v5 in one place: compaction. A v5 `checkpoint` embedded a
- * full-surface snapshot in `payload.messages`; v6 stores only the compacted
- * *prefix* and shadows a raw seq range via `surfaceOp.replace`, with the kept
- * tail reordered after the checkpoint so projection continues incrementally.
- * v5 logs are rejected (no migration in the pre-release window).
+ * v7 derives model-visible messages from the *folded surface* instead of from
+ * raw file order, so compaction can stay strictly append-only.
+ *
+ * v6 rewrote the log on every real compaction: the kept tail was physically
+ * reordered after the checkpoint (and every seq renumbered) purely so that a
+ * file-order projection would equal the surface. v7 removes that coupling:
+ * `deriveMessages()` walks the surface nodes in surface position order (a
+ * replacement node may carry a *higher* seq than the nodes that follow it),
+ * so compaction appends `compaction/start` → `checkpoint` (prefix +
+ * `surfaceOp.replace` range) → `compaction/end` and never rewrites history.
+ * To keep every surface node self-describing, `assistant/message` now carries
+ * its own `toolCalls` (the assistant turn is not reassembled from separate
+ * `tool/call` events at projection time).
+ *
+ * v6 logs are rejected (no migration in the pre-release window).
  */
-export const SESSION_FORMAT_VERSION = 6
+export const SESSION_FORMAT_VERSION = 7
 
 /** Serialized tool schema, structurally compatible with @tnega/tools ToolSchema. */
 export interface ToolSchemaSnapshot {
@@ -68,6 +78,13 @@ export interface AssistantMessagePayload {
   name?: string
   parentId?: string
   interrupted?: boolean
+  /**
+   * The tool requests this assistant turn made, when it made any. The model
+   * transcript is derived node-by-node from the surface, so an assistant turn
+   * must carry its calls itself rather than being reassembled from the
+   * separate (log-only) `tool/call` events that follow it.
+   */
+  toolCalls?: ModelToolCall[]
 }
 
 export interface AssistantChunkPayload {
@@ -208,11 +225,14 @@ export interface CheckpointPayload {
   summary?: string
   tokensBefore?: number
   /**
-   * The raw seq range this checkpoint shadows, when written by a v6
-   * compaction: every surface event with seq in [start, end] is removed from
-   * the surface and replaced by `messages`. `'replace'` (bare string) is the
-   * legacy v5 form and shadows nothing structurally; projection treats it as
-   * a full-surface seed.
+   * The surface span this checkpoint shadows, when written by a v7
+   * compaction: `start`/`end` are the seqs of the first and last *surface
+   * nodes* being replaced (surface positions, so `start` may be numerically
+   * greater than `end` after an earlier compaction). The fold removes every
+   * live node between those two positions and inserts this checkpoint there;
+   * the kept tail stays in place and the log is never rewritten.
+   * `'replace'` (bare string) is the legacy v5 form and shadows nothing
+   * structurally; projection treats it as a full-surface seed.
    */
   surfaceOp?: { op: 'replace'; start: number; end: number } | 'replace'
   /** @deprecated v0.2 keeps raw events in place; use messages instead. */
@@ -293,8 +313,18 @@ export interface SessionEventBase<T extends SessionEventType, P> {
   sourceEventSeqs?: number[]
 }
 
-/** The message-producing subset of surface event types. */
-export type SurfaceEventType = 'user/message' | 'assistant/message' | 'tool/result'
+/**
+ * The message-producing subset of event types. Every variant is a surface
+ * node that carries `surfaceOp` and participates in the ordered fold.
+ * `system/message` is included because tnega keeps the system prompt on the
+ * transcript (OpenAI-style), so it must be replaceable and derivable like any
+ * other message rather than living only in `request/header`.
+ */
+export type SurfaceEventType =
+  | 'user/message'
+  | 'system/message'
+  | 'assistant/message'
+  | 'tool/result'
 
 export type SurfaceOp = 'append' | { op: 'replace'; start: number; end: number }
 
@@ -335,7 +365,6 @@ function isMessageEvent(
 
 export interface SessionConfig {
   file: string
-  projector?: SessionProjector
   broadcast?: SessionBroadcast
 }
 
@@ -348,8 +377,6 @@ export interface CompactOptions {
 }
 
 export type ReplayReducer<T> = (state: T, event: SessionEvent) => T | Promise<T>
-
-export type SessionProjector = (events: readonly SessionEvent[]) => ModelMessage[]
 
 export type SessionBroadcast = (
   type: 'event' | 'flush',
@@ -382,10 +409,22 @@ function previousSurfaceSeq(nodes: readonly number[]): number | undefined {
   return nodes.at(-1)
 }
 
+/**
+ * Project an event list to model messages, in the list's own order. Each
+ * surface event is mapped through {@link deriveEventMessage}; a `checkpoint`
+ * splices its compacted prefix in at its position. This is the building block
+ * both {@link deriveSurfaceMessages} (surface order) and callers holding a
+ * compact slice (e.g. the events a summarizer will read) share.
+ */
 export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
   const messages: ModelMessage[] = []
   for (const event of events) {
-    applyMessageProjection(messages, event)
+    if (event.type === 'checkpoint') {
+      messages.splice(0, messages.length, ...clone(event.payload.messages))
+      continue
+    }
+    const message = deriveEventMessage(event)
+    if (message) messages.push(message)
   }
   return messages
 }
@@ -396,11 +435,12 @@ export function isAppendSurfaceEvent(event: SessionEvent): boolean {
 
 export function isSurfaceEventType(type: SessionEventType): type is SurfaceEventType {
   return type === 'user/message'
+    || type === 'system/message'
     || type === 'assistant/message'
     || type === 'tool/result'
 }
 
-/** A v6 checkpoint shadows a raw seq range; legacy ('replace') shadows nothing structurally. */
+/** A v7 checkpoint shadows a surface span; legacy ('replace') shadows nothing structurally. */
 export function checkpointShadowRange(
   event: SessionEvent,
 ): { start: number; end: number } | undefined {
@@ -425,35 +465,47 @@ export interface SurfaceFoldResult {
   replacements: SurfaceFoldReplacement[]
 }
 
+/**
+ * Fold a log's surface operations into the current surface node order.
+ *
+ * The surface is *positional*: a replacement removes the live nodes between
+ * the positions of `start`/`end` and inserts the replacing event's seq there,
+ * so surface order is independent of raw seq order — after compaction the
+ * checkpoint node may carry a higher seq than the kept tail that follows it.
+ */
 export function foldSurface(events: readonly SessionEvent[]): SurfaceFoldResult {
   const nodes: number[] = []
   const replacements: SurfaceFoldReplacement[] = []
+
+  const applyReplace = (seq: number, start: number, end: number): void => {
+    const startIndex = nodes.indexOf(start)
+    if (startIndex < 0) {
+      // The shadowed head is already gone (defensive; our writer always
+      // shadows live nodes). Keep the prefix visible by anchoring at the tail.
+      nodes.push(seq)
+      return
+    }
+    const endIndex = nodes.indexOf(end, startIndex)
+    if (endIndex < 0) {
+      nodes.push(seq)
+      return
+    }
+    const shadowed = nodes.splice(startIndex, endIndex - startIndex + 1)
+    nodes.splice(startIndex, 0, seq)
+    replacements.push({ seq, start, end, shadowedSeqs: shadowed })
+  }
+
   for (const event of events) {
     if (event.type === 'checkpoint') {
       const range = checkpointShadowRange(event)
-      if (!range) continue // A range-less checkpoint is an inert marker.
-      const startIndex = nodes.findIndex(node => node >= range.start)
-      if (startIndex < 0) {
-        // Nothing in range is currently on the surface (e.g. a checkpoint that
-        // shadows already-removed events). Its own seq still marks the prefix
-        // seed so derive() can restart from `messages`.
+      if (!range) {
+        // A range-less checkpoint is a prefix seed: it contributes its own
+        // node at its surface position (used when compaction runs before any
+        // durable history exists to shadow).
         nodes.push(event.seq)
         continue
       }
-      const shadowed: number[] = []
-      let cursor = startIndex
-      while (cursor < nodes.length && nodes[cursor]! <= range.end) {
-        shadowed.push(nodes[cursor]!)
-        cursor += 1
-      }
-      nodes.splice(startIndex, shadowed.length)
-      nodes.splice(startIndex, 0, event.seq)
-      replacements.push({
-        seq: event.seq,
-        start: range.start,
-        end: range.end,
-        shadowedSeqs: shadowed,
-      })
+      applyReplace(event.seq, range.start, range.end)
       continue
     }
     if (!isSurfaceEventType(event.type)) continue
@@ -462,27 +514,80 @@ export function foldSurface(events: readonly SessionEvent[]): SurfaceFoldResult 
       nodes.push(event.seq)
       continue
     }
-    const startIndex = nodes.indexOf(op.start)
-    if (startIndex < 0) continue
-    const endIndex = nodes.indexOf(op.end, startIndex)
-    if (endIndex < 0) continue
-    const shadowed = nodes.splice(startIndex, endIndex - startIndex + 1)
-    nodes.splice(startIndex, 0, event.seq)
-    replacements.push({
-      seq: event.seq,
-      start: op.start,
-      end: op.end,
-      shadowedSeqs: shadowed,
-    })
+    applyReplace(event.seq, op.start, op.end)
   }
   return { nodes, replacements }
 }
 
+/**
+ * Derive one surface node's model-visible message. A content-less assistant
+ * turn (e.g. a max-token cutoff with no output and no tool calls) is skipped
+ * so it never enters a provider transcript; `tool/result` yields the `tool`
+ * role message that pairs with the assistant's `toolCalls`.
+ */
 export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
-  if (!isSurfaceEventType(event.type)) return null
+  switch (event.type) {
+    case 'user/message': {
+      const message: ModelMessage = { role: 'user', content: event.payload.content }
+      if (event.payload.name) message.name = event.payload.name
+      return message
+    }
+    case 'system/message': {
+      const message: ModelMessage = { role: 'system', content: event.payload.content }
+      if (event.payload.name) message.name = event.payload.name
+      return message
+    }
+    case 'assistant/message': {
+      const toolCalls = event.payload.toolCalls
+      if (!event.payload.content && !(toolCalls && toolCalls.length)) return null
+      const message: ModelMessage = { role: 'assistant', content: event.payload.content }
+      if (event.payload.name) message.name = event.payload.name
+      if (toolCalls?.length) message.tool_calls = clone(toolCalls)
+      return message
+    }
+    case 'tool/result': {
+      const failed = !event.payload.ok
+      const message: ModelMessage = {
+        role: 'tool',
+        content: failed
+          ? `error: ${event.payload.error?.message ?? 'unknown'}`
+          : stringify(event.payload.output),
+        tool_call_id: event.payload.toolCallId,
+      }
+      message.name = event.payload.name
+      if (failed) {
+        message.toolOk = false
+        if (event.payload.error) message.toolError = event.payload.error
+      }
+      return message
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * Derive the model transcript strictly from the folded surface: walk the
+ * surface nodes in surface position order (so a checkpoint's prefix is placed
+ * where it replaced history, whatever its raw seq), mapping each node through
+ * {@link deriveEventMessage}. This is the single source of the model's view;
+ * raw log order never influences it.
+ */
+export function deriveSurfaceMessages(events: readonly SessionEvent[]): ModelMessage[] {
+  const { nodes } = foldSurface(events)
+  const bySeq = new Map(events.map(event => [event.seq, event] as const))
   const messages: ModelMessage[] = []
-  applyMessageProjection(messages, event)
-  return messages[0] ?? null
+  for (const seq of nodes) {
+    const event = bySeq.get(seq)
+    if (!event) continue
+    if (event.type === 'checkpoint') {
+      messages.splice(0, messages.length, ...clone(event.payload.messages))
+      continue
+    }
+    const message = deriveEventMessage(event)
+    if (message) messages.push(message)
+  }
+  return messages
 }
 
 export function foldRequestHeader(events: readonly SessionEvent[]): RequestHeaderPayload | undefined {
@@ -550,84 +655,6 @@ export function foldMetaFromLog(log: { read(): Promise<SessionEvent[]> }): Promi
   return log.read().then(foldSessionMeta)
 }
 
-function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): void {
-  switch (event.type) {
-    case 'checkpoint':
-      messages.splice(0, messages.length, ...clone(event.payload.messages))
-      break
-    case 'user/message': {
-      const message: ModelMessage = { role: 'user', content: event.payload.content }
-      if (event.payload.name) message.name = event.payload.name
-      messages.push(message)
-      break
-    }
-    case 'assistant/message': {
-      const message: ModelMessage = { role: 'assistant', content: event.payload.content }
-      if (event.payload.name) message.name = event.payload.name
-      messages.push(message)
-      break
-    }
-    case 'system/message': {
-      const message: ModelMessage = { role: 'system', content: event.payload.content }
-      if (event.payload.name) message.name = event.payload.name
-      messages.push(message)
-      break
-    }
-    case 'tool/call': {
-      const last = messages.at(-1)
-      if (!last || last.role !== 'assistant') {
-        messages.push({
-          role: 'assistant',
-          content: '',
-          tool_calls: [],
-        })
-      } else if (!last.tool_calls) {
-        last.tool_calls = []
-      }
-      messages.at(-1)!.tool_calls!.push({
-        id: event.payload.id,
-        name: event.payload.name,
-        arguments: event.payload.arguments,
-      })
-      break
-    }
-    case 'tool/result': {
-      const failed = !event.payload.ok
-      const content = failed
-        ? `error: ${event.payload.error?.message ?? 'unknown'}`
-        : stringify(event.payload.output)
-      const message: ModelMessage = {
-        role: 'tool',
-        content,
-        tool_call_id: event.payload.toolCallId,
-      }
-      message.name = event.payload.name
-      if (failed) {
-        message.toolOk = false
-        if (event.payload.error) message.toolError = event.payload.error
-      }
-      messages.push(message)
-      break
-    }
-    case 'assistant/chunk':
-    case 'request/header':
-    case 'request/context':
-    case 'agent/inbox/spliced':
-    case 'compaction/start':
-    case 'compaction/end':
-    case 'plan':
-    case 'meta':
-    case 'meta/patch':
-    case 'llm/retry':
-    case 'llm/retry-started':
-    case 'turn/start':
-    case 'turn/end':
-    case 'step/start':
-    case 'step/end':
-      break
-  }
-}
-
 function stringify(value: unknown): string {
   if (typeof value === 'string') return value
   try {
@@ -652,9 +679,16 @@ export function estimateMessageTokens(messages: readonly ModelMessage[]): number
 export function estimateEventTokens(event: SessionEvent): number {
   switch (event.type) {
     case 'user/message':
-    case 'assistant/message':
     case 'system/message':
       return Math.ceil(event.payload.content.length / 4)
+    case 'assistant/message': {
+      let tokens = Math.ceil(event.payload.content.length / 4)
+      for (const call of event.payload.toolCalls ?? []) {
+        const raw = JSON.stringify(call.arguments ?? {}) ?? ''
+        tokens += Math.ceil(raw.length / 4)
+      }
+      return tokens
+    }
     case 'assistant/chunk':
       return Math.ceil(event.payload.content.length / 4)
     case 'tool/call': {
@@ -824,44 +858,6 @@ export function repairUnclosed(
   return synthetic
 }
 
-/**
- * Reassign fresh monotonic seqs to an event array (used after a physical
- * reorder) and rewrite every seq cross-reference to the new values:
- * message `sourceEventSeqs` and any `checkpoint` shadow ranges.
- */
-export function resequenceEvents(
-  events: readonly SessionEvent[],
-): SessionEvent[] {
-  const byId = new Map<string, SessionEvent>()
-  for (const event of events) {
-    if (byId.has(event.id)) {
-      throw new Error(`duplicate event id during resequence: ${event.id}`)
-    }
-    byId.set(event.id, clone(event))
-  }
-  const oldToNew = new Map<number, number>()
-  let seq = 1
-  for (const original of events) {
-    const copy = byId.get(original.id)!
-    copy.seq = seq
-    oldToNew.set(original.seq, seq)
-    seq += 1
-  }
-  const remapSeq = (value: number): number => oldToNew.get(value) ?? value
-  for (const copy of byId.values()) {
-    if (copy.sourceEventSeqs) {
-      copy.sourceEventSeqs = copy.sourceEventSeqs.map(remapSeq)
-    }
-    if (copy.type === 'checkpoint') {
-      const op = copy.payload.surfaceOp
-      if (typeof op === 'object' && op !== null && op.op === 'replace') {
-        copy.payload.surfaceOp = { op: 'replace', start: remapSeq(op.start), end: remapSeq(op.end) }
-      }
-    }
-  }
-  return [...byId.values()].sort((left, right) => left.seq - right.seq)
-}
-
 export function resolveCompactKeep(
   events: readonly SessionEvent[],
   options: CompactOptions,
@@ -907,7 +903,6 @@ export class SessionLog {
 
   constructor(
     readonly file: string,
-    private _projector: SessionProjector = projectEvents,
     private _broadcast?: SessionBroadcast,
   ) {}
 
@@ -997,12 +992,22 @@ export class SessionLog {
 
   private _commitEvent(event: SessionEvent): void {
     this._events.push(event)
-    this._surface = clone(this._projector(this._events))
-    this._surfaceNodes = foldSurface(this._events).nodes
+    this._refreshSurface()
     if (event.type === 'request/header') this._requestHeader = clone(event.payload)
     if (event.type === 'request/context') this._requestContext = clone(event.payload)
     this._broadcast?.('event', event)
     this._enqueue(event)
+  }
+
+  /**
+   * Rebuild both surface views from the committed log. The nodes come from the
+   * positional {@link foldSurface} fold; the messages come from
+   * {@link deriveSurfaceMessages}, which walks those nodes in surface order —
+   * the model view is a pure function of the surface, never of raw file order.
+   */
+  private _refreshSurface(): void {
+    this._surfaceNodes = foldSurface(this._events).nodes
+    this._surface = deriveSurfaceMessages(this._events)
   }
 
   private _enqueue(event: SessionEvent): void {
@@ -1155,7 +1160,7 @@ export class SessionLog {
   estimateContext(limit = DEFAULT_CONTEXT_LIMIT): Promise<ContextUsage> {
     return this._run(async () => {
       await this._ensureLoaded()
-      return estimateContextUsage(this._projector(this._events), limit)
+      return estimateContextUsage(this._surface, limit)
     })
   }
 
@@ -1183,125 +1188,77 @@ export class SessionLog {
     })
   }
 
+  /**
+   * Compact the session without ever rewriting history.
+   *
+   * The surface (not the raw log) is the unit of compaction. A kept suffix —
+   * measured in tokens via `keepTokens`, or in nodes via `keep`, and always
+   * snapped to start on a fresh `user/message` turn so a tool result never
+   * outlives the assistant call it answers — stays visible; every earlier
+   * surface node is shadowed by the checkpoint's `surfaceOp.replace` range.
+   * The three compaction events are appended like any other event, so seqs
+   * stay immutable, live observers see the transition, and a crash can only
+   * leave an orphaned `compaction/start` rather than a torn rewrite.
+   *
+   * Returns the new event count, or the unchanged count when there is no
+   * useful surface span to shadow.
+   */
   compact(options: CompactOptions = {}): Promise<number> {
     return this._run(async () => {
       await this._ensureLoaded()
       const events = this._events
-      const nonMeta: SessionEvent[] = []
-      const rawIndices: number[] = []
-      for (let index = 0; index < events.length; index += 1) {
-        const event = events[index]!
-        if (event.type === 'meta') continue
-        nonMeta.push(event)
-        rawIndices.push(index)
-      }
-      const keep = resolveCompactKeep(nonMeta, options)
-      let splitIndex = Math.max(0, nonMeta.length - keep)
-      splitIndex = safeCompactSplit(nonMeta, splitIndex)
-      const rawSplit = rawIndices[splitIndex] ?? events.length
+      const bySeq = new Map(events.map(event => [event.seq, event] as const))
+      const surfaceEvents = foldSurface(events).nodes
+        .map(seq => bySeq.get(seq))
+        .filter((event): event is SessionEvent => event !== undefined)
 
-      if (!options.messages?.length) {
-        // No replacement prefix was supplied, so nothing is compressed away:
-        // keep the historical marker behaviour (full-surface snapshot appended
-        // in place) so derive stays unchanged and no data is dropped.
-        const messages = this._projector(events)
-        const compactionStart = this._buildEvent('compaction/start', {
-          ...(splitIndex > 0 ? { boundary: splitIndex } : {}),
-          ...(options.keep !== undefined ? { keep: options.keep } : {}),
-          ...(options.tokensBefore !== undefined
-            ? { tokensBefore: options.tokensBefore }
-            : {}),
-        })
-        this._commitEvent(compactionStart)
-        const checkpoint = this._buildEvent('checkpoint', {
-          messages,
-          surfaceOp: 'replace',
-          ...(options.summary ? { summary: options.summary } : {}),
-          ...(options.tokensBefore !== undefined
-            ? { tokensBefore: options.tokensBefore }
-            : {}),
-        })
-        this._commitEvent(checkpoint)
-        const compactionEnd = this._buildEvent('compaction/end', {
-          checkpointId: checkpoint.id,
-          ...(options.keep !== undefined ? { keep: options.keep } : {}),
-        })
-        this._commitEvent(compactionEnd)
-        return this._events.length
+      const keep = resolveCompactKeep(surfaceEvents, options)
+      let split = Math.max(0, surfaceEvents.length - keep)
+      // The retained tail must open on a fresh user turn: shadowing an
+      // assistant step while keeping its tool results would leave an orphan
+      // tool message at the head of the transcript. Prefer the next user
+      // boundary; when the candidate sits inside the final turn, keep that
+      // whole turn instead of cutting it.
+      if (split < surfaceEvents.length && surfaceEvents[split]!.type !== 'user/message') {
+        let next = split
+        while (next < surfaceEvents.length && surfaceEvents[next]!.type !== 'user/message') next += 1
+        if (next < surfaceEvents.length) {
+          split = next
+        } else {
+          let lastUser = surfaceEvents.length - 1
+          while (lastUser >= 0 && surfaceEvents[lastUser]!.type !== 'user/message') lastUser -= 1
+          split = lastUser >= 0 ? lastUser : surfaceEvents.length
+        }
       }
+      const shadowed = surfaceEvents.slice(0, split)
+      if (!options.messages?.length) return this._events.length
 
-      // Real compaction: the checkpoint carries only the replacement prefix
-      // and shadows the raw seq range it replaces; the kept tail is re-emitted
-      // AFTER the checkpoint so projection continues from the prefix + tail.
-      const head = events.slice(0, rawSplit)
-      const tail = events.slice(rawSplit)
-      const surfaceInHead = head.filter(event => isSurfaceEventType(event.type))
-      const start = surfaceInHead[0]?.seq
-      const end = surfaceInHead.at(-1)?.seq
-      const range = start !== undefined && end !== undefined ? { start, end } : undefined
-      const now = Date.now()
-      const startEvent = this._makeCompactEvent('compaction/start', {
-        ...(splitIndex > 0 ? { boundary: splitIndex } : {}),
+      // A compaction needs a summary to write. When there is history to
+      // shadow the checkpoint replaces that head span; when there is none (a
+      // budget trip before anything is durable) the checkpoint seeds the
+      // surface with the compacted prefix instead.
+      const range = shadowed.length
+        ? { start: shadowed[0]!.seq, end: shadowed[shadowed.length - 1]!.seq }
+        : undefined
+      const boundary = split
+      this._commitEvent(this._buildEvent('compaction/start', {
+        ...(boundary > 0 ? { boundary } : {}),
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
-        ...(options.tokensBefore !== undefined
-          ? { tokensBefore: options.tokensBefore }
-          : {}),
-      }, now)
-      const checkpoint = this._makeCompactEvent('checkpoint', {
+        ...(options.tokensBefore !== undefined ? { tokensBefore: options.tokensBefore } : {}),
+      }))
+      const checkpoint = this._buildEvent('checkpoint', {
         messages: clone(options.messages),
         ...(range ? { surfaceOp: { op: 'replace', start: range.start, end: range.end } } : {}),
         ...(options.summary ? { summary: options.summary } : {}),
-        ...(options.tokensBefore !== undefined
-          ? { tokensBefore: options.tokensBefore }
-          : {}),
-      }, now + 1)
-      const endEvent = this._makeCompactEvent('compaction/end', {
+        ...(options.tokensBefore !== undefined ? { tokensBefore: options.tokensBefore } : {}),
+      })
+      this._commitEvent(checkpoint)
+      this._commitEvent(this._buildEvent('compaction/end', {
         checkpointId: checkpoint.id,
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
-      }, now + 2)
-      const reordered = resequenceEvents([
-        ...head,
-        startEvent,
-        checkpoint,
-        endEvent,
-        ...tail,
-      ])
-      await this._replaceEvents(reordered)
+      }))
       return this._events.length
     })
-  }
-
-  /** Build a compaction lifecycle event with a fresh id (seq assigned later). */
-  private _makeCompactEvent(
-    type: 'compaction/start' | 'compaction/end' | 'checkpoint',
-    payload: Record<string, unknown>,
-    ts: number,
-  ): SessionEvent {
-    return {
-      id: randomUUID(),
-      seq: 0,
-      ts,
-      type: type as SessionEvent['type'],
-      payload: clone(payload),
-      sourceEventSeqs: [],
-    } as SessionEvent
-  }
-
-  /** Replace the in-memory event store and rewrite the JSONL file. */
-  private async _replaceEvents(next: readonly SessionEvent[]): Promise<void> {
-    await this._drainWrite()
-    this._pending.splice(0)
-    this._events = next.map(event => clone(event))
-    this._surface = clone(this._projector(this._events))
-    this._surfaceNodes = foldSurface(this._events).nodes
-    this._requestHeader = foldRequestHeader(this._events)
-    this._requestContext = foldRequestContext(this._events)
-    this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
-    await writeFile(
-      this.file,
-      `${this._events.map(event => JSON.stringify(event)).join('\n')}\n`,
-      'utf8',
-    )
   }
 
   close(): Promise<void> {
@@ -1349,15 +1306,13 @@ export class SessionLog {
       }
       await writeFile(this.file, `${JSON.stringify(meta)}\n`, 'utf8')
       this._events = [meta]
-      this._surface = clone(this._projector(this._events))
-      this._surfaceNodes = foldSurface(this._events).nodes
+      this._refreshSurface()
       this._nextSeq = 2
       this._loaded = true
       return
     }
     this._events = read.events
-    this._surface = clone(this._projector(this._events))
-    this._surfaceNodes = foldSurface(this._events).nodes
+    this._refreshSurface()
     this._requestHeader = foldRequestHeader(this._events)
     this._requestContext = foldRequestContext(this._events)
     this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
@@ -1468,7 +1423,7 @@ export class SessionLog {
 export const session = {
   name: 'session',
   apply: async (ctx: Context, config: SessionConfig) => {
-    const log = new SessionLog(config.file, config.projector, config.broadcast ?? ((type, payload) => {
+    const log = new SessionLog(config.file, config.broadcast ?? ((type, payload) => {
       if (type === 'event') ctx.emit('session/event', payload)
       else ctx.emit('session/flush', payload)
     }))

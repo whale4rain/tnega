@@ -157,10 +157,12 @@ describe('session metadata', () => {
     await writer.init()
     await writer.append('user/message', { content: 'hello' })
     await writer.append('assistant/message', { content: 'world' })
+    await writer.flush()
 
     const compacted = await compactSession(workspace, summary.id, {
-      keep: 0,
+      keepTokens: 1,
       summary: 'kept',
+      checkpointMessages: [{ role: 'system', content: 'kept' }],
     })
     expect(compacted.eventCount).toBeGreaterThan(1)
 

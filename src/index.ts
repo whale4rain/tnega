@@ -84,7 +84,6 @@ export {
   type SessionEventType,
   type SessionInvariantFailure,
   type SessionMode,
-  type SessionProjector,
   type AssistantChunkPayload,
   type StepEndPayload,
   type StepStartPayload,

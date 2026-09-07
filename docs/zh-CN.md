@@ -187,17 +187,17 @@ for (const fiber of [agentFiber, builtinFiber, toolsFiber, sessionFiber].reverse
 M13 为外部 agent 补齐的三个主要契约：
 
 - `AgentDefinition`：`defineAgent({ name, version?, system?, tools?, loop?, hooks? })` 返回普通插件。默认 loop 使用 `config.llm` 并注入 `agentSystem`，同时执行 `beforeRun` / `afterRun` hooks；传入自定义 `loop` 时，tnega 同样负责 system 注入与 hooks 包装；`tools` 随插件挂载和卸载自动注册、注销，并派发 `agent/definition` 元数据事件。
-- `SessionProjector` 与 context budget：`session` 插件可通过 `projector` 配置自定义 JSONL 事件到模型消息的投影；`SessionLog.deriveMessages()`、`estimateContext()` 与 `compact({ keepTokens })` 共用同一投影器。默认 loop 内置 context budget：传入 `contextBudget: { limit, compactRatio, keepTokens, summarize }` 后，每个 step 前会按 token 估算检查用量，超过 `compactRatio` 时先调用 `summarize`，再执行 `session.compact` 保留最近 `keepTokens`，并派发 `agent/context-compact` 事件。
+- `SessionLog.deriveMessages()` 由折叠后的 surface 派生（模型视图是 surface 的纯函数，与 raw 文件序无关）；`estimateContext()` 与 `compact({ keepTokens, messages })` 共用同一 surface。默认 loop 内置 context budget：传入 `contextBudget: { limit, compactRatio, keepTokens, summarize }` 后，每个 step 前会按 token 估算检查用量，超过 `compactRatio` 时先调用 `summarize`，再执行 `session.compact` 保留最近 `keepTokens`，并派发 `agent/context-compact` 事件。
 - `ToolPolicy`：`validator`、`authorizer`、`truncator` 可配置在 `tools` 全局层，也可覆盖在单个 `ToolDefinition.policy`。执行顺序为 `pre-execute → authorizer → validator → execute → truncator → post-execute / result`；策略拒绝会返回 `ToolResult.ok === false` 而不是把异常抛给 agent loop。
 
-另外 `createAgentRuntime` 支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、自定义 `inbox`、`sessionProjector`、`toolPolicy`、`contextBudget`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期，并直接嵌入评测与进化闭环。
+另外 `createAgentRuntime` 支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、自定义 `inbox`、`toolPolicy`、`contextBudget`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期，并直接嵌入评测与进化闭环。默认组合会挂载 prompt 组装 seam（`systemPrompt`）并把全部可执行工具注册为 schema 提供者，使系统提示与工具从同一装配路径产出。
 
 除根入口外，发布包还提供按域拆分的子路径导出：
 
 ```text
 tnega/agent         # AgentLoop / AgentDefinition / AgentService / inbox / context budget
 tnega/core          # Context / Fiber / Effect / Event / Registry / Reflect
-tnega/session       # SessionLog / projector / compact / token 估算
+tnega/session       # SessionLog / surface 折叠 / compact / token 估算
 tnega/tools         # ToolsService / ToolDefinition / ToolPolicy
 tnega/eval          # EvalStrategy / Task / Verdict / EvalRun
 tnega/evolve        # Candidate / ExperimentLog / propose / gate

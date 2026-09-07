@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Context, Plugin } from '@tnega/core'
-import { SessionLog, type SessionEvent, type SessionProjector } from '@tnega/session'
+import { SessionLog, type SessionEvent } from '@tnega/session'
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
@@ -90,7 +90,6 @@ export interface AgentCreationOptions {
   setup?: AgentSetup
   llm?: LLMAdapter
   system?: string
-  projector?: SessionProjector
   maxTurns?: number
   maxSteps?: number
   contextBudget?: AgentContextBudget
@@ -562,7 +561,6 @@ async function buildHandle(
   if (!agentId) throw new AgentError('agent requires a stable identity')
   const log = new SessionLog(
     options.file,
-    options.projector,
     (type, payload) => {
       if (type === 'event') ctx.emit('session/event', payload)
       else ctx.emit('session/flush', payload)

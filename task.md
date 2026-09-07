@@ -108,6 +108,26 @@
 
 - agent：修复 resume 重复持久化旧 user turn —— `_persistStepInput` 原按 user+system 计数对齐，web 每次 resume 前置的 run-scoped system 使 `newCount` 偏大，尾部切片把紧挨真新消息的旧 user 一并重新 append（实测 d851027d：8 条 user / 应为 4 条，plan 模式因多一个 system 更明显）。改为以 durable user 前缀对齐、只追加对齐点之后的新消息；新增回归测试覆盖「run-scoped system + 全量 history + 新 user」的 resume 输入形状。
 
+## Session compaction v7：surface 派生 + 纯 append-only
+
+对照 DSH 实际实现复核发现 v6 治标未治本：derive 仍是文件序投影，为让投影等于
+surface 每次 compact 都要整写重排；DSH 的根模型是从 surface 节点折叠派生，
+天然 append-only。v7 采纳后置建议（ADR 0004「更新 2026-09-08」）：
+
+- [x] session：`deriveMessages()` 改由 `foldSurface` 节点位置序派生（替换是位置语义，`start` 可 `> end`），模型视图成为 surface 的纯函数
+- [x] session：`compact()` 纯追加（`compaction/start -> checkpoint -> compaction/end` 走普通 `_commitEvent`，广播落盘照常），kept-tail 留在原处，无整写/无重排 seq；无前缀=no-op；空历史有前缀时写 rangeless checkpoint 作为 surface 前缀种子
+- [x] session：`assistant/message` 自带 `toolCalls`（派生不再靠相邻 `tool/call` 重组，`tool/call` 降为 log-only）；空内容且无调用 assistant 跳过；`system/message` 纳入 surface 节点
+- [x] session：移除整数组 `SessionProjector` seam（与 surface 唯一派生源冲突）；`SESSION_FORMAT_VERSION = 7`（≤6 拒绝）
+- [x] cli/server：`readSessionEvents` 按 surface 会话序返回 events（checkpoint 置于替换位、丢弃被遮蔽消息与孤儿 tool/call），前端 `projectEvents` 渲染与 derive 一致
+- [x] 默认 seam 接线：`createAgentRuntime` 挂载 `systemPrompt` 并把可执行工具注册为 schema 提供者；`_resolveAvailableTools` 只暴露"已声明且已注册"工具（消除 schema-only stub 静默暴露）
+- [x] 文档：ADR 0004 追加 v7 决策；session README / cli README / docs/zh-CN.md 同步
+- [x] 全量 typecheck / lint / test / build 通过（real-LLM smoke 与 2 个环境 key 泄漏的 cli 测试为本机 pre-existing 失败）
+
+### 提交记录（compaction v7，分支 `codex/session-surface-appendonly`）
+
+- 单一大提交（session 核心 + server/store 适配 + 测试 + docs）。LiveAgent 多轮
+  queue-drain 仍是库层能力，web/CLI「一次 run ≈ 一个 turn」的产品路径未改。
+
 ## M16 eval benchmark 与真实评测
 
 目标：把公开真实 benchmark 导入为可运行的 eval tasks，先用 BigCodeBench 与
