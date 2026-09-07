@@ -231,6 +231,15 @@ export interface InboxSplicePayload {
   }>
 }
 
+/** A durable change to session display metadata (title, mode, agentType). */
+export interface MetaPatchPayload {
+  /** Keys changed by this event; only present keys are touched. */
+  fields: Array<'title' | 'agentType' | 'mode'>
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
+}
+
 export type AgentType = 'general' | 'coding'
 
 export type SessionMode = 'auto' | 'plan' | 'execute'
@@ -248,6 +257,7 @@ export type SessionEventType =
   | 'compaction/start'
   | 'compaction/end'
   | 'meta'
+  | 'meta/patch'
   | 'llm/retry'
   | 'llm/retry-started'
   | 'turn/start'
@@ -287,6 +297,7 @@ export type SessionEvent =
   | SessionEventBase<'compaction/start', CompactionStartPayload>
   | SessionEventBase<'compaction/end', CompactionEndPayload>
   | SessionEventBase<'meta', Record<string, unknown>>
+  | SessionEventBase<'meta/patch', MetaPatchPayload>
   | SessionEventBase<'llm/retry', LLMRetryPayload>
   | SessionEventBase<'llm/retry-started', LLMRetryStartedPayload>
   | SessionEventBase<'turn/start', TurnStartPayload>
@@ -435,6 +446,55 @@ export function foldRequestContext(events: readonly SessionEvent[]): RequestCont
   return context
 }
 
+/**
+ * Session display metadata, rebuilt from the immutable events: the head
+ * `meta` base followed by every `meta/patch` in seq order. No mutable
+ * side file or in-place rewrite is involved, so title/mode/agentType stay
+ * replayable and fork-clean like every other durable fact.
+ */
+export function foldSessionMeta(events: readonly SessionEvent[]): {
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
+} {
+  const meta: { title?: string; agentType?: AgentType; mode?: SessionMode } = {}
+  for (const event of events) {
+    if (event.type === 'meta') {
+      const payload = event.payload as Record<string, unknown>
+      if (typeof payload.title === 'string') meta.title = payload.title
+      if (payload.agentType === 'general' || payload.agentType === 'coding') {
+        meta.agentType = payload.agentType
+      }
+      if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'execute') {
+        meta.mode = payload.mode
+      }
+      continue
+    }
+    if (event.type === 'meta/patch') {
+      const patch = event.payload
+      if (patch.fields.includes('title') && typeof patch.title === 'string') {
+        meta.title = patch.title
+      }
+      if (patch.fields.includes('agentType') && patch.agentType !== undefined) {
+        meta.agentType = patch.agentType
+      }
+      if (patch.fields.includes('mode') && patch.mode !== undefined) {
+        meta.mode = patch.mode
+      }
+    }
+  }
+  return meta
+}
+
+/** Convenience wrapper: fold session metadata from a `SessionLog`'s events. */
+export function foldMetaFromLog(log: { read(): Promise<SessionEvent[]> }): Promise<{
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
+}> {
+  return log.read().then(foldSessionMeta)
+}
+
 function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): void {
   switch (event.type) {
     case 'checkpoint':
@@ -502,6 +562,7 @@ function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): 
     case 'compaction/end':
     case 'plan':
     case 'meta':
+    case 'meta/patch':
     case 'llm/retry':
     case 'llm/retry-started':
     case 'turn/start':
@@ -558,6 +619,7 @@ export function estimateEventTokens(event: SessionEvent): number {
     case 'compaction/start':
     case 'compaction/end':
     case 'meta':
+    case 'meta/patch':
       return 0
     case 'llm/retry':
     case 'llm/retry-started':
@@ -789,6 +851,7 @@ export class SessionLog {
   append(type: 'compaction/start', payload: CompactionStartPayload): Promise<SessionEvent>
   append(type: 'compaction/end', payload: CompactionEndPayload): Promise<SessionEvent>
   append(type: 'meta', payload: Record<string, unknown>): Promise<SessionEvent>
+  append(type: 'meta/patch', payload: MetaPatchPayload): Promise<SessionEvent>
   append(type: 'llm/retry', payload: LLMRetryPayload): Promise<SessionEvent>
   append(type: 'llm/retry-started', payload: LLMRetryStartedPayload): Promise<SessionEvent>
   append(type: 'turn/start', payload: TurnStartPayload): Promise<SessionEvent>
@@ -986,6 +1049,14 @@ export class SessionLog {
   /** The latest resolved route metadata, or undefined before the first one. */
   requestContext(): RequestContextPayload | undefined {
     return this._requestContext ? clone(this._requestContext) : undefined
+  }
+
+  /** Display metadata folded from the durable `meta` + `meta/patch` events. */
+  meta(): Promise<{ title?: string; agentType?: AgentType; mode?: SessionMode }> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      return foldSessionMeta(this._events)
+    })
   }
 
   estimateContext(limit = DEFAULT_CONTEXT_LIMIT): Promise<ContextUsage> {

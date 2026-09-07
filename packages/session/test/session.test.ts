@@ -29,6 +29,7 @@ import {
   deriveEventMessage,
   foldRequestContext,
   foldRequestHeader,
+  foldSessionMeta,
   foldSurface,
   isAppendSurfaceEvent,
   projectEvents,
@@ -1045,6 +1046,64 @@ describe('v5 reconstructable request state', () => {
       finishReason: 'stop',
     })
     expect(events.find(event => event.type === 'turn/end')?.payload).toMatchObject({ turn: 1 })
+  })
+})
+
+describe('durable meta patches', () => {
+  it('folds the head meta plus later meta/patch events in order', async () => {
+    const log = new SessionLog(await tempFile('meta-patch.jsonl'))
+    await log.append('meta', {
+      kind: 'session',
+      title: 'before',
+      agentType: 'general',
+      mode: 'auto',
+    })
+    await log.append('meta/patch', { fields: ['title'], title: 'after' })
+    await log.append('meta/patch', { fields: ['mode', 'agentType'], mode: 'execute', agentType: 'coding' })
+
+    const events = await log.read()
+    expect(foldSessionMeta(events)).toEqual({
+      title: 'after',
+      mode: 'execute',
+      agentType: 'coding',
+    })
+    expect(await log.meta()).toEqual({
+      title: 'after',
+      mode: 'execute',
+      agentType: 'coding',
+    })
+  })
+
+  it('does not project meta/patch events into the model surface', async () => {
+    const log = new SessionLog(await tempFile('meta-patch-surface.jsonl'))
+    await log.append('user/message', { content: 'hello' })
+    await log.append('meta/patch', { fields: ['title'], title: 't' })
+    expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'hello' }])
+    const events = await log.read()
+    for (const event of events.filter(event => event.type === 'meta/patch')) {
+      expect(estimateEventTokens(event)).toBe(0)
+    }
+  })
+
+  it('rebuilds the folded metadata after reload', async () => {
+    const file = await tempFile('meta-patch-reload.jsonl')
+    const first = new SessionLog(file)
+    await first.append('meta', {
+      kind: 'session',
+      title: 'a',
+      agentType: 'general',
+      mode: 'auto',
+    })
+    await first.append('meta/patch', { fields: ['title', 'mode'], title: 'b', mode: 'plan' })
+    await first.close()
+
+    const second = new SessionLog(file)
+    expect(await second.meta()).toEqual({
+      title: 'b',
+      agentType: 'general',
+      mode: 'plan',
+    })
+    await second.close()
   })
 })
 
