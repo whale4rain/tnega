@@ -78,6 +78,16 @@
 - cli：agent runtime 提供 profile+bundle+boot 组合入口，作为后续 web/headless/eval 产品形态的共同启动层。
 - cli：runtime 组合入口可直接传入 profile，bundles 先于调用方 plugins 挂载。
 
+## DSH 对齐补强（"做了但只做了一半"部分）
+
+对照 DSH 学习稿逐条核查后，把三处「已有雏形但不完整」的能力补齐：
+
+- [x] session 显示元数据改为**投影事实 + append-only**：新增 durable `meta/patch` 事件（`fields` 白名单 + title/agentType/mode），`foldSessionMeta()` / `SessionLog.meta()` 从 `meta` + `meta/patch` 事件折叠当前值；`patchSessionMeta` / `setSessionTitle` 不再整写 head meta，而是追加事件；fork 折叠源会话当前态到新 head，truncate 保留全部 meta/patch。崩溃 / 并发下标题与模式保持可重建。
+- [x] 每包 invariant companion：core 新增 `InvariantRegistry` / `assertInvariants` / `invariant` 插件（中央注册，运行时持续断言跨数据关系）；session 导出 `./invariant`（`checkSessionInvariants`：turn/step/tool-call 成对闭合 + seq 单调），`SessionLog.runInvariants()` 自检；`packages/session/test/invariant.test.ts` 覆盖失衡检测与注册中心。
+- [x] packages 级 README：为 core / agent / tools / eval / evolve / llm / cli / coding-agent / benchmark 与 `apps/web` 补齐各包 README（角色 / 关键 API / 事件 / 测试），与既有 `packages/session/README.md` 风格一致。
+- [x] 全量 typecheck / lint / test / build / publish 测试通过（real-LLM smoke 与 2 个环境 key 泄漏的 cli 测试为本机 pre-existing 失败，与本次改动无关）。
+- [x] git commit（按功能点拆 3 个：meta-patch 投影化 / invariant companion / 包 README）
+
 ## M16 eval benchmark 与真实评测
 
 目标：把公开真实 benchmark 导入为可运行的 eval tasks，先用 BigCodeBench 与
