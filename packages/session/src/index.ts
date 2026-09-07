@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
+import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
 
 export const SESSION_FORMAT_VERSION = 5
 
@@ -1082,6 +1083,14 @@ export class SessionLog {
     })
   }
 
+  /** Structural violations in the loaded event stream (empty = balanced). */
+  runInvariants(): Promise<SessionInvariantFailure[]> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      return checkSessionInvariants(this._events)
+    })
+  }
+
   compact(options: CompactOptions = {}): Promise<number> {
     return this._run(async () => {
       await this._ensureLoaded()
@@ -1313,5 +1322,7 @@ export const session = {
     return () => log.close()
   },
 }
+
+export * from './invariant.js'
 
 export const name = '@tnega/session'

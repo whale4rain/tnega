@@ -1,6 +1,7 @@
 export * from './context.js'
 export * from './events.js'
 export * from './fiber.js'
+export * from './invariant.js'
 export * from './logger.js'
 export * from './reflect.js'
 export * from './registry.js'
