@@ -58,3 +58,39 @@ Web GET `/sessions/:id` 过去只返回 raw `events`，前端直接
 - 重启 Web 服务以使用修复代码。
 - 前端可将整页 transcript 改为直接使用 `surface` 字段投影，
   当前阶段先由服务端返回干净 `events`，保证旧前端逻辑无需改动即可恢复。
+
+---
+
+## 追加（2026-09-07）：计数去重回归与根治
+
+上一版「按 `user/system` 数量差只追加尾部新增」的修复仍有一个缺口：它把
+requested 与 surface 都按 `user + system` **混合**计数。web 每次 resume 都会在
+模型输入最前面放 run 级 system prompt（coding agent / plan 上下文），这些
+system 不在 durable surface 里，把数量差撑大后，从尾部切片会连同真新消息前面的
+旧 `user/message` 一起重新 append。实测会话 `d851027d`：日志里出现
+`hi/read project1/test this project` 等前序 user 的重复事件，derive 有 8 条 user
+（应 4 条）；plan 模式因多一个 run system 而更明显。前端渲染是对坏日志的忠实还原。
+
+### 根治（`packages/agent/src/service.ts` `_persistStepInput`）
+
+durable user 序列总是 requested user 序列的**前缀**（新 turn 恒在末尾），因此改为
+**只按 user 计数对齐**，仅追加对齐点之后的新消息（user/system 都可，但 run 级
+system 位于首个 durable user 之前、自然被跳过）；全新日志（surface 为空）仍整段
+持久化，保住首个 `system/message` 与首条 user。
+
+回归测试：`agent.test.ts` *does not re-append old user turns when a resumed run
+prepends a run-scoped system prompt* —— 复现 resume 输入形状
+`[run system, ...全量 derive history, 新 user]`，断言旧 user 不被重复 append
+（已确认旧代码失败、新代码通过）。
+
+### 附带（`packages/cli/src/server.ts` `handleRun`）
+
+coding 会话首轮会把 coding system 持久化为 durable `system/message`，因此 resume
+轮的 derive history 已经以它开头；服务端不再前置第二份 coding system，避免模型输入
+重复（Anthropic 协议下避免 top-level system 被重复拼接）。
+web e2e 两轮 coding run 断言第二轮请求里 `You are Tnega` 只出现一次
+（已确认去掉该改动时失败）。
+
+> 本轮 compaction 语义变更（checkpoint 全量快照 → surface 边界替换，v6）见
+> `docs/adr/0004-session-compaction-boundary-replace.md` 与
+> `packages/session/README.md`。

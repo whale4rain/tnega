@@ -678,8 +678,14 @@ async function handleRun(
         emit: emitSse,
       })
     }
+    // A coding session's first run persists its system prompt as a durable
+    // system/message, so a resumed run's derived history already leads with it;
+    // prepending it again would duplicate the coding system in the model input
+    // (and in the top-level system once Anthropic folds the messages).
     const messages: ModelMessage[] = [
-      ...(coding ? [{ role: 'system' as const, content: CODING_SYSTEM_PROMPT }] : []),
+      ...(coding && history[0]?.role !== 'system'
+        ? [{ role: 'system' as const, content: CODING_SYSTEM_PROMPT }]
+        : []),
       ...(plan ? [{ role: 'system' as const, content: planToContext(plan) }] : []),
       ...history,
       { role: 'user' as const, content: prompt },

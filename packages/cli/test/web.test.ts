@@ -25,8 +25,10 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
   url: string
   close: () => Promise<void>
   requestCount: () => number
+  bodies: () => Array<{ stream?: boolean; messages?: Array<{ role: string; content?: string }> }>
 }> {
   let count = 0
+  const recorded: Array<{ stream?: boolean; messages?: Array<{ role: string; content?: string }> }> = []
   const chunks = [
     {
       id: 'chatcmpl-mock',
@@ -55,7 +57,8 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
         res.end('body required')
         return
       }
-      const parsed = JSON.parse(body) as { stream?: boolean }
+      const parsed = JSON.parse(body) as { stream?: boolean; messages?: Array<{ role: string; content?: string }> }
+      recorded.push(parsed)
       const respond = (): void => {
         if (parsed.stream !== true) {
           res.writeHead(200, {
@@ -102,6 +105,7 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
   const entry = {
     url,
     requestCount: () => count,
+    bodies: () => recorded,
     close: () => new Promise<void>((resolve, reject) => {
       server.close(error => error ? reject(error) : resolve())
     }),
@@ -1189,6 +1193,16 @@ describe('web server', () => {
     expect(second).toContain('event: plan/items')
     expect(second).toContain('event: plan/done')
     expect(mock.requestCount()).toBe(3)
+
+    // A resumed coding run must not double the coding system prompt: the first
+    // run persisted it as a durable system/message, which already leads the
+    // derived history, so the server prepends it again only on a fresh log.
+    const resumedRun = mock.bodies().at(-1)
+    const codingSystems = (resumedRun?.messages ?? []).filter(
+      message => message.role === 'system'
+        && (message.content ?? '').includes('You are Tnega'),
+    )
+    expect(codingSystems).toHaveLength(1)
 
     const detail = await apiFetch(
       server.url,
