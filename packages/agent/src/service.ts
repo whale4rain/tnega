@@ -757,27 +757,47 @@ export class AgentService {
       await session.append('request/context', nextContext)
     }
     const requested = input.filter(isUserOrSystemMessage)
-    const surface = (await session.deriveMessages()).filter(isUserOrSystemMessage)
-    // The session surface is the durable history. A caller may include the full
-    // derived history as model context; only the tail that is not already in
-    // the surface is new. Text-based prefix/suffix matching is unsafe because
-    // the same user text can legitimately repeat across turns, so append by
-    // count and only when the requested sequence is actually longer.
-    const known = Math.min(surface.length, requested.length)
-    const newCount = requested.length - known
-    for (const message of requested.slice(requested.length - Math.max(0, newCount))) {
-      if (message.role === 'user') {
-        await session.append('user/message', {
-          content: message.content,
-          ...(message.name ? { name: message.name } : {}),
-        })
-      } else {
-        await session.append('system/message', {
-          content: message.content,
-          ...(message.name ? { name: message.name } : {}),
-        })
+    const surface = await session.deriveMessages()
+    // The session surface is the durable history. A caller (e.g. the web run
+    // handler) includes the full derived history as model context and also
+    // prepends run-scoped system prompts that are NOT part of the surface.
+    // Counting those systems against the surface inflates the "new" tail and
+    // re-appends already-persisted user turns (every resumed run duplicated
+    // the preceding user message in the log). Durable user messages are always
+    // a prefix of the requested user messages — new turns arrive last — so
+    // anchor on users: only what follows the last durable user is genuinely
+    // new. Text-based matching stays unsafe because the same user text can
+    // legitimately repeat across turns.
+    const appendDurable = async (messages: readonly ModelMessage[]): Promise<void> => {
+      for (const message of messages) {
+        if (message.role === 'user') {
+          await session.append('user/message', {
+            content: message.content,
+            ...(message.name ? { name: message.name } : {}),
+          })
+        } else {
+          await session.append('system/message', {
+            content: message.content,
+            ...(message.name ? { name: message.name } : {}),
+          })
+        }
       }
     }
+    if (surface.length === 0) {
+      // Fresh log: nothing is durable yet; persist the whole requested head so
+      // the initial system prompt and first user turn land in the log.
+      await appendDurable(requested)
+      return
+    }
+    const durableUsers = surface.filter(message => message.role === 'user').length
+    let seenUsers = 0
+    const newTail: ModelMessage[] = []
+    for (const message of requested) {
+      if (message.role === 'user') seenUsers += 1
+      if (seenUsers <= durableUsers) continue // already on the durable surface
+      newTail.push(message)
+    }
+    await appendDurable(newTail)
   }
 
   private async _assertReplayable(

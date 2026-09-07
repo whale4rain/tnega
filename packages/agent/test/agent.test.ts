@@ -979,6 +979,56 @@ describe('agent loop', () => {
     ])
   })
 
+  it('does not re-append old user turns when a resumed run prepends a run-scoped system prompt', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('resume-system-skew.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([
+      { content: 'first answer', finishReason: 'stop' },
+      { content: 'second answer', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const systemPrompt = 'You are a coding agent'
+    const loop = root.get('agentLoop') as AgentLoop
+    // First run mirrors the web server shape: a run-scoped system prompt is
+    // part of the model input and becomes durable on a fresh log.
+    await loop({
+      text: 'first',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: 'first' },
+      ],
+    })
+    const log = dynamic(root).session as SessionLog
+    const history = await log.deriveMessages()
+    // Resumed run also mirrors the server: the caller prepends the same
+    // run-scoped system prompt (not part of the durable surface) ahead of the
+    // full derived history, then appends the new user turn.
+    await loop({
+      text: 'second',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...history,
+        { role: 'user', content: 'second' },
+      ],
+    })
+
+    const userMessages = (await log.read()).filter(
+      (event): event is Extract<SessionEvent, { type: 'user/message' }> =>
+        event.type === 'user/message',
+    )
+    expect(userMessages.map(event => event.payload.content)).toEqual([
+      'first',
+      'second',
+    ])
+    const surface = await log.deriveMessages()
+    expect(surface.filter(message => message.role === 'user').map(message => message.content)).toEqual([
+      'first',
+      'second',
+    ])
+  })
+
   it('persists only the delta when pre-step rewrites multi-user history', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('pre-step-delta.jsonl') })

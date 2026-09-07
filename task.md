@@ -104,6 +104,10 @@
 - [x] 全量 typecheck / lint / test / build 通过（real-LLM smoke 与 2 个环境 key 泄漏的 cli 测试为本机 pre-existing 失败，与本次改动无关；另修 HEAD 遗留的 `agent.test.ts` exactOptionalPropertyTypes 类型错误）
 - [x] git commit（compaction v6 单一大提交 + agent 测试类型修复小提交）
 
+### 提交记录（compaction v6 后置修复）
+
+- agent：修复 resume 重复持久化旧 user turn —— `_persistStepInput` 原按 user+system 计数对齐，web 每次 resume 前置的 run-scoped system 使 `newCount` 偏大，尾部切片把紧挨真新消息的旧 user 一并重新 append（实测 d851027d：8 条 user / 应为 4 条，plan 模式因多一个 system 更明显）。改为以 durable user 前缀对齐、只追加对齐点之后的新消息；新增回归测试覆盖「run-scoped system + 全量 history + 新 user」的 resume 输入形状。
+
 ## M16 eval benchmark 与真实评测
 
 目标：把公开真实 benchmark 导入为可运行的 eval tasks，先用 BigCodeBench 与
