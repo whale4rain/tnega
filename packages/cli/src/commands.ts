@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { Context, type Plugin } from '@tnega/core'
+import type { AgentProfile } from './profile.js'
 import {
   agent,
   defineAgent,
@@ -48,6 +49,7 @@ import {
   resolveLlmEnv,
   systemConfigPath,
 } from './config.js'
+import { readAgentProfile } from './profile-file.js'
 import {
   createLlmProposeRule,
   evolvePlugin,
@@ -106,6 +108,7 @@ export interface RunAgentCommandOptions {
   cwd?: string
   sessionFile?: string
   configFile?: string
+  profile?: string
   model?: string
   baseUrl?: string
   maxTokens?: number
@@ -175,6 +178,7 @@ export { resolveLlmEnv } from './config.js'
 export interface AgentRuntimeOptions {
   cwd: string
   sessionFile: string
+  profile?: AgentProfile
   llm?: LLMAdapter
   inbox?: AgentInbox
   allowNetwork?: boolean
@@ -464,6 +468,7 @@ export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
       apiKey,
       ...(model ? { model } : {}),
       ...(baseUrl ? { baseUrl } : {}),
+      ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
       ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
       ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(systemConfig.temperature !== undefined
@@ -539,6 +544,10 @@ export async function runAgentCommand(
   const cwd = options.cwd ?? process.cwd()
   const sessionFile = resolve(cwd, options.sessionFile ?? join('.tnega', 'run.jsonl'))
   const configFile = options.configFile ?? systemConfigPath()
+  const profile = options.profile
+    ? await readAgentProfile(options.profile)
+    : undefined
+  const profileOptions = (profile?.options ?? {}) as Record<string, unknown>
   const systemConfig = await readSystemConfig(configFile)
   const envConfig = resolveLlmEnv(process.env)
   const apiKey = envConfig.apiKey ?? systemConfig.apiKey
@@ -548,30 +557,61 @@ export async function runAgentCommand(
     )
   }
 
-  const model = options.model ?? envConfig.model ?? systemConfig.model
+  const model = options.model
+    ?? profileOptions.model
+    ?? envConfig.model
+    ?? systemConfig.model
+  const profileBaseUrl = typeof profileOptions.baseUrl === 'string'
+    ? profileOptions.baseUrl
+    : undefined
   const baseUrl = options.baseUrl
+    ?? profileBaseUrl
     ?? envConfig.baseUrl
     ?? systemConfig.baseUrl
   const adapter = createLlmAdapter({
     apiKey,
-    ...(model ? { model } : {}),
+    ...(typeof model === 'string' && model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
+    ...(protocolFrom(profileOptions) ?? systemConfig.protocol
+      ? { protocol: protocolFrom(profileOptions) ?? systemConfig.protocol }
+      : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+    ...(options.maxTokens === undefined && typeof profileOptions.maxTokens === 'number'
+      ? { maxTokens: profileOptions.maxTokens }
+      : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(systemConfig.temperature !== undefined
       && options.temperature === undefined
+      && profileOptions.temperature === undefined
       ? { temperature: systemConfig.temperature }
       : {}),
+    ...(options.temperature === undefined
+      && typeof profileOptions.temperature === 'number'
+      ? { temperature: profileOptions.temperature }
+      : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options.timeoutMs === undefined && typeof profileOptions.timeoutMs === 'number'
+      ? { timeoutMs: profileOptions.timeoutMs }
+      : {}),
     ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+    ...(options.maxRetries === undefined && typeof profileOptions.maxRetries === 'number'
+      ? { maxRetries: profileOptions.maxRetries }
+      : {}),
     ...(options.retryDelayMs !== undefined
       ? { retryDelayMs: options.retryDelayMs }
       : {}),
+    ...(options.retryDelayMs === undefined
+      && typeof profileOptions.retryDelayMs === 'number'
+      ? { retryDelayMs: profileOptions.retryDelayMs }
+      : {}),
   })
+  const profileRuntimeOptions = runtimeOptionsFromProfile(profileOptions)
   const context = await createAgentRuntime({
     cwd,
     sessionFile,
     llm: adapter,
+    ...(profile ? { profile } : {}),
+    ...profileRuntimeOptions,
     ...(options.allowNetwork !== undefined
       ? { allowNetwork: options.allowNetwork }
       : {}),
@@ -591,35 +631,74 @@ export async function runAgentCommand(
   }
 }
 
+function protocolFrom(
+  options: Record<string, unknown>,
+): 'anthropic' | 'openai' | undefined {
+  return options.protocol === 'anthropic' || options.protocol === 'openai'
+    ? options.protocol
+    : undefined
+}
+
+function runtimeOptionsFromProfile(
+  options: Record<string, unknown>,
+): Pick<
+  AgentRuntimeOptions,
+  'allowNetwork' | 'allowShell' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+> {
+  const builtinTools = options.builtinTools === false
+    || (options.builtinTools && typeof options.builtinTools === 'object')
+    ? options.builtinTools as AgentRuntimeOptions['builtinTools']
+    : undefined
+  const result: Partial<Pick<
+    AgentRuntimeOptions,
+    'allowNetwork' | 'allowShell' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+  >> = {}
+  if (options.allowNetwork === true) result.allowNetwork = true
+  if (options.allowShell === true) result.allowShell = true
+  if (typeof options.maxTurns === 'number' && Number.isFinite(options.maxTurns)) {
+    result.maxTurns = options.maxTurns
+  }
+  if (typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps)) {
+    result.maxSteps = options.maxSteps
+  }
+  if (builtinTools !== undefined) result.builtinTools = builtinTools
+  return result
+}
+
 export async function createAgentRuntime(
   options: AgentRuntimeOptions,
 ): Promise<AgentRuntime> {
+  const merged: AgentRuntimeOptions = {
+    ...(options.profile?.options ?? {}),
+    ...options,
+    plugins: [...(options.profile?.bundles ?? []), ...(options.plugins ?? [])],
+  }
   const root = new Context()
   const fibers: Array<{ dispose: () => Promise<void> }> = []
   const sessionFiber = await root.plugin(session, {
-    file: options.sessionFile,
-    ...(options.sessionProjector ? { projector: options.sessionProjector } : {}),
+    file: merged.sessionFile,
+    ...(merged.sessionProjector ? { projector: merged.sessionProjector } : {}),
   })
   fibers.push(sessionFiber)
-  const toolsFiber = await root.plugin(tools, options.toolPolicy ?? {})
+  const toolsFiber = await root.plugin(tools, merged.toolPolicy ?? {})
   fibers.push(toolsFiber)
-  if (options.builtinTools !== false) {
-    const builtinConfig: BuiltinToolsConfig = { cwd: options.cwd }
-    if (options.allowNetwork) builtinConfig.allowNetwork = true
-    if (options.allowShell) builtinConfig.allowShell = true
-    if (options.builtinTools && typeof options.builtinTools === 'object') {
-      Object.assign(builtinConfig, options.builtinTools)
+  if (merged.builtinTools !== false) {
+    const builtinConfig: BuiltinToolsConfig = { cwd: merged.cwd }
+    if (merged.allowNetwork) builtinConfig.allowNetwork = true
+    if (merged.allowShell) builtinConfig.allowShell = true
+    if (merged.builtinTools && typeof merged.builtinTools === 'object') {
+      Object.assign(builtinConfig, merged.builtinTools)
     }
     const builtinToolsFiber = await root.plugin(builtinTools, builtinConfig)
     fibers.push(builtinToolsFiber)
   }
-  if (options.agent) {
-    const definitionFiber = await root.plugin(defineAgent(options.agent), {
-      ...(options.llm ? { llm: options.llm } : {}),
-      ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
-      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
-      ...(options.inbox ? { inbox: options.inbox } : {}),
-      ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
+  if (merged.agent) {
+    const definitionFiber = await root.plugin(defineAgent(merged.agent), {
+      ...(merged.llm ? { llm: merged.llm } : {}),
+      ...(merged.maxTurns !== undefined ? { maxTurns: merged.maxTurns } : {}),
+      ...(merged.maxSteps !== undefined ? { maxSteps: merged.maxSteps } : {}),
+      ...(merged.inbox ? { inbox: merged.inbox } : {}),
+      ...(merged.contextBudget ? { contextBudget: merged.contextBudget } : {}),
     })
     fibers.push(definitionFiber)
   } else {
@@ -630,15 +709,15 @@ export async function createAgentRuntime(
       inbox?: AgentInbox
       contextBudget?: AgentContextBudget
     } = {}
-    if (options.llm) agentConfig.llm = options.llm
-    if (options.maxTurns !== undefined) agentConfig.maxTurns = options.maxTurns
-    if (options.maxSteps !== undefined) agentConfig.maxSteps = options.maxSteps
-    if (options.inbox) agentConfig.inbox = options.inbox
-    if (options.contextBudget) agentConfig.contextBudget = options.contextBudget
+    if (merged.llm) agentConfig.llm = merged.llm
+    if (merged.maxTurns !== undefined) agentConfig.maxTurns = merged.maxTurns
+    if (merged.maxSteps !== undefined) agentConfig.maxSteps = merged.maxSteps
+    if (merged.inbox) agentConfig.inbox = merged.inbox
+    if (merged.contextBudget) agentConfig.contextBudget = merged.contextBudget
     const agentFiber = await root.plugin(agent, agentConfig)
     fibers.push(agentFiber)
   }
-  for (const plugin of options.plugins ?? []) {
+  for (const plugin of merged.plugins ?? []) {
     const fiber = await root.plugin(plugin)
     fibers.push(fiber)
   }
@@ -683,6 +762,7 @@ export async function runEvolveCommand(
     apiKey,
     ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
+    ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(systemConfig.temperature !== undefined

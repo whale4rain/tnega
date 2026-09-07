@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from 'node:child_process'
 import {
   appendFile,
   mkdir,
@@ -18,6 +17,7 @@ import type {
   ToolsService,
 } from './index.js'
 import { evaluateExpression } from './calc.js'
+import { localExecutionProvider, type ExecutionProvider } from './execution.js'
 import { resolveInside } from './path.js'
 
 export interface BuiltinToolsConfig {
@@ -30,6 +30,7 @@ export interface BuiltinToolsConfig {
   maxSearchBytes?: number
   maxResults?: number
   timeoutMs?: number
+  execution?: ExecutionProvider
 }
 
 interface NormalizedBuiltinToolsConfig {
@@ -42,6 +43,7 @@ interface NormalizedBuiltinToolsConfig {
   maxSearchBytes: number
   maxResults: number
   timeoutMs: number
+  execution: ExecutionProvider
 }
 
 export class ToolInputError extends Error {
@@ -71,6 +73,7 @@ function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinTool
     maxSearchBytes: config.maxSearchBytes ?? 1024 * 1024,
     maxResults: config.maxResults ?? 200,
     timeoutMs: config.timeoutMs ?? 15_000,
+    execution: config.execution ?? localExecutionProvider,
   }
 }
 
@@ -609,22 +612,12 @@ function httpGetTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
       }
       const headers = optionalRecord(args.headers, 'headers') ?? {}
       const maxBytes = optionalNumber(args.maxBytes, 'maxBytes') ?? config.maxReadBytes
-      const init: RequestInit = { headers }
-      if (options.signal) init.signal = options.signal
-      const response = await fetch(url, init)
-      const buffer = Buffer.from(await response.arrayBuffer())
-      const truncated = buffer.byteLength > maxBytes
-      const headerMap: Record<string, string> = {}
-      response.headers.forEach((value, key) => {
-        headerMap[key] = value
+      return config.execution.fetchHttp({
+        url: url.href,
+        ...(Object.keys(headers).length ? { headers } : {}),
+        ...(maxBytes !== config.maxReadBytes ? { maxBytes } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
       })
-      return {
-        status: response.status,
-        ok: response.ok,
-        headers: headerMap,
-        body: buffer.subarray(0, maxBytes).toString('utf8'),
-        truncated,
-      }
     },
     {
       type: 'object',
@@ -650,13 +643,13 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
       const command = stringField(args.command, 'command')
       const cwd = await resolveInside(config.cwd, optionalString(args.cwd, 'cwd') ?? '.')
       const timeoutMs = optionalNumber(args.timeoutMs, 'timeoutMs') ?? config.timeoutMs
-      const result = await runShellCommand(
+      const result = await config.execution.runShell({
         command,
         cwd,
         timeoutMs,
-        config.maxWriteBytes,
-        options.signal,
-      )
+        maxBuffer: config.maxWriteBytes,
+        ...(options.signal ? { signal: options.signal } : {}),
+      })
       return {
         exitCode: result.exitCode,
         stdout: result.stdout,
@@ -673,98 +666,6 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
       required: ['command'],
     },
   )
-}
-
-interface ShellResult {
-  exitCode: number
-  stdout: string
-  stderr: string
-}
-
-async function killProcessTree(child: ChildProcess): Promise<void> {
-  if (child.pid === undefined) return
-  if (process.platform === 'win32') {
-    await new Promise<void>((resolve) => {
-      const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
-        stdio: 'ignore',
-        windowsHide: true,
-      })
-      killer.on('error', () => resolve())
-      killer.on('exit', () => resolve())
-    })
-  } else {
-    try {
-      process.kill(-child.pid, 'SIGKILL')
-    } catch {
-      // The process group is already gone.
-    }
-    child.kill('SIGKILL')
-  }
-}
-
-function runShellCommand(
-  command: string,
-  cwd: string,
-  timeoutMs: number,
-  maxBuffer: number,
-  signal?: AbortSignal,
-): Promise<ShellResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, {
-      cwd,
-      shell: true,
-      windowsHide: true,
-      ...(process.platform === 'win32' ? {} : { detached: true }),
-    })
-    let stdout = ''
-    let stderr = ''
-    let settled = false
-    let timer: NodeJS.Timeout | undefined
-    let onAbort: () => void = () => {}
-    const append = (target: string, chunk: Buffer, limit: number): string => {
-      if (target.length >= limit) return target
-      return target + chunk.toString('utf8').slice(0, limit - target.length)
-    }
-    const cleanup = (): void => {
-      if (timer) clearTimeout(timer)
-      signal?.removeEventListener('abort', onAbort)
-    }
-    const finish = (action: () => void): void => {
-      if (settled) return
-      settled = true
-      cleanup()
-      action()
-    }
-    const fail = (message: string): void => {
-      finish(() => {
-        void killProcessTree(child).finally(() => reject(new Error(message)))
-      })
-    }
-    onAbort = () => fail('shell command cancelled')
-    if (signal) {
-      if (signal.aborted) onAbort()
-      else signal.addEventListener('abort', onAbort, { once: true })
-    }
-    if (timeoutMs > 0) {
-      timer = setTimeout(() => fail(`shell command timed out after ${timeoutMs}ms`), timeoutMs)
-    }
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout = append(stdout, chunk, maxBuffer)
-    })
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr = append(stderr, chunk, maxBuffer)
-    })
-    child.on('error', (error) => {
-      finish(() => resolve({ exitCode: 1, stdout, stderr: message(error) }))
-    })
-    child.on('close', (code, closeSignal) => {
-      finish(() => resolve({
-        exitCode: code ?? 1,
-        stdout,
-        stderr: closeSignal ? `killed by ${closeSignal}` : stderr,
-      }))
-    })
-  })
 }
 
 export function createBuiltinToolDefinitions(

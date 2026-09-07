@@ -2,8 +2,32 @@ import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
+import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
 
-export const SESSION_FORMAT_VERSION = 4
+/**
+ * v6 breaks from v5 in one place: compaction. A v5 `checkpoint` embedded a
+ * full-surface snapshot in `payload.messages`; v6 stores only the compacted
+ * *prefix* and shadows a raw seq range via `surfaceOp.replace`, with the kept
+ * tail reordered after the checkpoint so projection continues incrementally.
+ * v5 logs are rejected (no migration in the pre-release window).
+ */
+export const SESSION_FORMAT_VERSION = 6
+
+/** Serialized tool schema, structurally compatible with @tnega/tools ToolSchema. */
+export interface ToolSchemaSnapshot {
+  name: string
+  description: string
+  parameters?: Record<string, unknown>
+}
+
+/** Call configuration recorded beside a request so it can be reconstructed. */
+export interface LlmCallConfig {
+  provider?: string
+  model?: string
+  maxTokens?: number
+  temperature?: number
+  reasoningEffort?: string
+}
 
 export class SessionFormatError extends Error {
   override name = 'SessionFormatError'
@@ -80,6 +104,10 @@ export interface ToolCallPayload {
   id: string
   name: string
   arguments: unknown
+  /** Exact raw arguments JSON as produced by the model; preserves serialization. */
+  argRaw?: string
+  turn?: number
+  step?: number
 }
 
 export interface ToolResultErrorPayload {
@@ -96,6 +124,9 @@ export interface ToolResultPayload {
   durationMs?: number
   output?: unknown
   error?: ToolResultErrorPayload
+  argRaw?: string
+  turn?: number
+  step?: number
 }
 
 export type CancelCause =
@@ -104,11 +135,13 @@ export type CancelCause =
   | { type: 'timeout'; timeoutMs: number }
 
 export interface TurnStartPayload {
+  turn: number
   input?: unknown
   reason?: string
 }
 
 export interface TurnEndPayload {
+  turn: number
   finishReason?: string
   output?: string
   steps?: number
@@ -118,11 +151,13 @@ export interface TurnEndPayload {
 }
 
 export interface StepStartPayload {
-  index: number
+  turn: number
+  step: number
 }
 
 export interface StepEndPayload {
-  index: number
+  turn: number
+  step: number
   finishReason?: string
   toolCalls?: number
   interrupted?: boolean
@@ -142,11 +177,44 @@ export interface LLMRetryStartedPayload {
   retry: number
 }
 
+/** How a `request/header` snapshot enters the log. */
+export type RequestHeaderReason =
+  | 'initial'
+  | 'resume'
+  | 'change'
+  | 'series'
+  | 'change-series'
+
+export interface RequestHeaderPayload {
+  reason: RequestHeaderReason
+  config?: LlmCallConfig
+  /** Rendered system prompt; absent for a system-less request. */
+  system?: string
+  /** Assembled tool schemas; absent for a tool-less request. */
+  tools?: ToolSchemaSnapshot[]
+  /** True when this snapshot also begins a new model-message series. */
+  startsSeries?: boolean
+}
+
+export interface RequestContextPayload {
+  provider?: string
+  model?: string
+  contextWindow?: number
+}
+
 export interface CheckpointPayload {
+  /** The compacted prefix: messages the model keeps seeing after compaction. */
   messages: ModelMessage[]
   summary?: string
   tokensBefore?: number
-  surfaceOp?: 'replace'
+  /**
+   * The raw seq range this checkpoint shadows, when written by a v6
+   * compaction: every surface event with seq in [start, end] is removed from
+   * the surface and replaced by `messages`. `'replace'` (bare string) is the
+   * legacy v5 form and shadows nothing structurally; projection treats it as
+   * a full-surface seed.
+   */
+  surfaceOp?: { op: 'replace'; start: number; end: number } | 'replace'
   /** @deprecated v0.2 keeps raw events in place; use messages instead. */
   snapshot?: SessionEvent[]
 }
@@ -166,6 +234,28 @@ export interface PlanPayload {
   summary?: string
 }
 
+export interface InboxSplicePayload {
+  target: 'next-turn' | 'next-step'
+  index?: number
+  deleteCount?: number
+  inserted?: Array<{
+    id: string
+    content: string
+    /** Structured message payload preserved across restart when present. */
+    payload?: unknown
+    mode?: 'followup' | 'steer'
+  }>
+}
+
+/** A durable change to session display metadata (title, mode, agentType). */
+export interface MetaPatchPayload {
+  /** Keys changed by this event; only present keys are touched. */
+  fields: Array<'title' | 'agentType' | 'mode'>
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
+}
+
 export type AgentType = 'general' | 'coding'
 
 export type SessionMode = 'auto' | 'plan' | 'execute'
@@ -175,11 +265,15 @@ export type SessionEventType =
   | 'assistant/chunk'
   | 'tool/call'
   | 'tool/result'
+  | 'request/header'
+  | 'request/context'
+  | 'agent/inbox/spliced'
   | 'plan'
   | 'checkpoint'
   | 'compaction/start'
   | 'compaction/end'
   | 'meta'
+  | 'meta/patch'
   | 'llm/retry'
   | 'llm/retry-started'
   | 'turn/start'
@@ -193,7 +287,16 @@ export interface SessionEventBase<T extends SessionEventType, P> {
   ts: number
   type: T
   payload: P
+  /** Surface placement; required on message-producing events. */
+  surfaceOp?: SurfaceOp
+  /** Seqs of earlier raw events this event derives from. */
+  sourceEventSeqs?: number[]
 }
+
+/** The message-producing subset of surface event types. */
+export type SurfaceEventType = 'user/message' | 'assistant/message' | 'tool/result'
+
+export type SurfaceOp = 'append' | { op: 'replace'; start: number; end: number }
 
 export type SessionEvent =
   | SessionEventBase<'user/message', UserMessagePayload>
@@ -202,11 +305,15 @@ export type SessionEvent =
   | SessionEventBase<'system/message', SystemMessagePayload>
   | SessionEventBase<'tool/call', ToolCallPayload>
   | SessionEventBase<'tool/result', ToolResultPayload>
+  | SessionEventBase<'request/header', RequestHeaderPayload>
+  | SessionEventBase<'request/context', RequestContextPayload>
+  | SessionEventBase<'agent/inbox/spliced', InboxSplicePayload>
   | SessionEventBase<'plan', PlanPayload>
   | SessionEventBase<'checkpoint', CheckpointPayload>
   | SessionEventBase<'compaction/start', CompactionStartPayload>
   | SessionEventBase<'compaction/end', CompactionEndPayload>
   | SessionEventBase<'meta', Record<string, unknown>>
+  | SessionEventBase<'meta/patch', MetaPatchPayload>
   | SessionEventBase<'llm/retry', LLMRetryPayload>
   | SessionEventBase<'llm/retry-started', LLMRetryStartedPayload>
   | SessionEventBase<'turn/start', TurnStartPayload>
@@ -271,12 +378,176 @@ function clone<T>(value: T): T {
   return structuredClone(value)
 }
 
+function previousSurfaceSeq(nodes: readonly number[]): number | undefined {
+  return nodes.at(-1)
+}
+
 export function projectEvents(events: readonly SessionEvent[]): ModelMessage[] {
   const messages: ModelMessage[] = []
   for (const event of events) {
     applyMessageProjection(messages, event)
   }
   return messages
+}
+
+export function isAppendSurfaceEvent(event: SessionEvent): boolean {
+  return isSurfaceEventType(event.type) && event.surfaceOp === 'append'
+}
+
+export function isSurfaceEventType(type: SessionEventType): type is SurfaceEventType {
+  return type === 'user/message'
+    || type === 'assistant/message'
+    || type === 'tool/result'
+}
+
+/** A v6 checkpoint shadows a raw seq range; legacy ('replace') shadows nothing structurally. */
+export function checkpointShadowRange(
+  event: SessionEvent,
+): { start: number; end: number } | undefined {
+  if (event.type !== 'checkpoint') return undefined
+  const op = event.payload.surfaceOp
+  if (typeof op === 'object' && op !== null && op.op === 'replace') {
+    return { start: op.start, end: op.end }
+  }
+  return undefined
+}
+
+/** Detached current surface nodes plus every replacement's shadowed ranges. */
+export interface SurfaceFoldReplacement {
+  seq: number
+  start: number
+  end: number
+  shadowedSeqs: number[]
+}
+
+export interface SurfaceFoldResult {
+  nodes: number[]
+  replacements: SurfaceFoldReplacement[]
+}
+
+export function foldSurface(events: readonly SessionEvent[]): SurfaceFoldResult {
+  const nodes: number[] = []
+  const replacements: SurfaceFoldReplacement[] = []
+  for (const event of events) {
+    if (event.type === 'checkpoint') {
+      const range = checkpointShadowRange(event)
+      if (!range) continue // A range-less checkpoint is an inert marker.
+      const startIndex = nodes.findIndex(node => node >= range.start)
+      if (startIndex < 0) {
+        // Nothing in range is currently on the surface (e.g. a checkpoint that
+        // shadows already-removed events). Its own seq still marks the prefix
+        // seed so derive() can restart from `messages`.
+        nodes.push(event.seq)
+        continue
+      }
+      const shadowed: number[] = []
+      let cursor = startIndex
+      while (cursor < nodes.length && nodes[cursor]! <= range.end) {
+        shadowed.push(nodes[cursor]!)
+        cursor += 1
+      }
+      nodes.splice(startIndex, shadowed.length)
+      nodes.splice(startIndex, 0, event.seq)
+      replacements.push({
+        seq: event.seq,
+        start: range.start,
+        end: range.end,
+        shadowedSeqs: shadowed,
+      })
+      continue
+    }
+    if (!isSurfaceEventType(event.type)) continue
+    const op = event.surfaceOp ?? 'append'
+    if (op === 'append') {
+      nodes.push(event.seq)
+      continue
+    }
+    const startIndex = nodes.indexOf(op.start)
+    if (startIndex < 0) continue
+    const endIndex = nodes.indexOf(op.end, startIndex)
+    if (endIndex < 0) continue
+    const shadowed = nodes.splice(startIndex, endIndex - startIndex + 1)
+    nodes.splice(startIndex, 0, event.seq)
+    replacements.push({
+      seq: event.seq,
+      start: op.start,
+      end: op.end,
+      shadowedSeqs: shadowed,
+    })
+  }
+  return { nodes, replacements }
+}
+
+export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
+  if (!isSurfaceEventType(event.type)) return null
+  const messages: ModelMessage[] = []
+  applyMessageProjection(messages, event)
+  return messages[0] ?? null
+}
+
+export function foldRequestHeader(events: readonly SessionEvent[]): RequestHeaderPayload | undefined {
+  let header: RequestHeaderPayload | undefined
+  for (const event of events) {
+    if (event.type === 'request/header') header = clone(event.payload)
+  }
+  return header
+}
+
+export function foldRequestContext(events: readonly SessionEvent[]): RequestContextPayload | undefined {
+  let context: RequestContextPayload | undefined
+  for (const event of events) {
+    if (event.type === 'request/context') context = clone(event.payload)
+  }
+  return context
+}
+
+/**
+ * Session display metadata, rebuilt from the immutable events: the head
+ * `meta` base followed by every `meta/patch` in seq order. No mutable
+ * side file or in-place rewrite is involved, so title/mode/agentType stay
+ * replayable and fork-clean like every other durable fact.
+ */
+export function foldSessionMeta(events: readonly SessionEvent[]): {
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
+} {
+  const meta: { title?: string; agentType?: AgentType; mode?: SessionMode } = {}
+  for (const event of events) {
+    if (event.type === 'meta') {
+      const payload = event.payload as Record<string, unknown>
+      if (typeof payload.title === 'string') meta.title = payload.title
+      if (payload.agentType === 'general' || payload.agentType === 'coding') {
+        meta.agentType = payload.agentType
+      }
+      if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'execute') {
+        meta.mode = payload.mode
+      }
+      continue
+    }
+    if (event.type === 'meta/patch') {
+      const patch = event.payload
+      if (patch.fields.includes('title') && typeof patch.title === 'string') {
+        meta.title = patch.title
+      }
+      if (patch.fields.includes('agentType') && patch.agentType !== undefined) {
+        meta.agentType = patch.agentType
+      }
+      if (patch.fields.includes('mode') && patch.mode !== undefined) {
+        meta.mode = patch.mode
+      }
+    }
+  }
+  return meta
+}
+
+/** Convenience wrapper: fold session metadata from a `SessionLog`'s events. */
+export function foldMetaFromLog(log: { read(): Promise<SessionEvent[]> }): Promise<{
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
+}> {
+  return log.read().then(foldSessionMeta)
 }
 
 function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): void {
@@ -339,10 +610,14 @@ function applyMessageProjection(messages: ModelMessage[], event: SessionEvent): 
       break
     }
     case 'assistant/chunk':
+    case 'request/header':
+    case 'request/context':
+    case 'agent/inbox/spliced':
     case 'compaction/start':
     case 'compaction/end':
     case 'plan':
     case 'meta':
+    case 'meta/patch':
     case 'llm/retry':
     case 'llm/retry-started':
     case 'turn/start':
@@ -399,9 +674,14 @@ export function estimateEventTokens(event: SessionEvent): number {
     case 'compaction/start':
     case 'compaction/end':
     case 'meta':
+    case 'meta/patch':
       return 0
     case 'llm/retry':
     case 'llm/retry-started':
+      return 0
+    case 'request/header':
+    case 'request/context':
+    case 'agent/inbox/spliced':
       return 0
     case 'turn/start':
     case 'turn/end':
@@ -527,18 +807,59 @@ export function repairUnclosed(
   }
   for (const step of openSteps) {
     push('step/end', {
-      index: step.payload.index,
+      turn: step.payload.turn,
+      step: step.payload.step,
       finishReason: 'interrupted',
       interrupted: true,
     })
   }
   for (let i = 0; i < openTurns.length; i++) {
+    const turn = openTurns[i]!.payload.turn
     push('turn/end', {
+      turn,
       finishReason: 'interrupted',
       interrupted: true,
     })
   }
   return synthetic
+}
+
+/**
+ * Reassign fresh monotonic seqs to an event array (used after a physical
+ * reorder) and rewrite every seq cross-reference to the new values:
+ * message `sourceEventSeqs` and any `checkpoint` shadow ranges.
+ */
+export function resequenceEvents(
+  events: readonly SessionEvent[],
+): SessionEvent[] {
+  const byId = new Map<string, SessionEvent>()
+  for (const event of events) {
+    if (byId.has(event.id)) {
+      throw new Error(`duplicate event id during resequence: ${event.id}`)
+    }
+    byId.set(event.id, clone(event))
+  }
+  const oldToNew = new Map<number, number>()
+  let seq = 1
+  for (const original of events) {
+    const copy = byId.get(original.id)!
+    copy.seq = seq
+    oldToNew.set(original.seq, seq)
+    seq += 1
+  }
+  const remapSeq = (value: number): number => oldToNew.get(value) ?? value
+  for (const copy of byId.values()) {
+    if (copy.sourceEventSeqs) {
+      copy.sourceEventSeqs = copy.sourceEventSeqs.map(remapSeq)
+    }
+    if (copy.type === 'checkpoint') {
+      const op = copy.payload.surfaceOp
+      if (typeof op === 'object' && op !== null && op.op === 'replace') {
+        copy.payload.surfaceOp = { op: 'replace', start: remapSeq(op.start), end: remapSeq(op.end) }
+      }
+    }
+  }
+  return [...byId.values()].sort((left, right) => left.seq - right.seq)
 }
 
 export function resolveCompactKeep(
@@ -573,6 +894,9 @@ export function estimateContextUsage(
 export class SessionLog {
   private _events: SessionEvent[] = []
   private _surface: ModelMessage[] = []
+  private _surfaceNodes: number[] = []
+  private _requestHeader: RequestHeaderPayload | undefined
+  private _requestContext: RequestContextPayload | undefined
   private _loaded = false
   private _nextSeq = 1
   private _queue: Promise<unknown> = Promise.resolve()
@@ -612,11 +936,15 @@ export class SessionLog {
   append(type: 'system/message', payload: SystemMessagePayload): Promise<SessionEvent>
   append(type: 'tool/call', payload: ToolCallPayload): Promise<SessionEvent>
   append(type: 'tool/result', payload: ToolResultPayload): Promise<SessionEvent>
+  append(type: 'request/header', payload: RequestHeaderPayload): Promise<SessionEvent>
+  append(type: 'request/context', payload: RequestContextPayload): Promise<SessionEvent>
+  append(type: 'agent/inbox/spliced', payload: InboxSplicePayload): Promise<SessionEvent>
   append(type: 'plan', payload: PlanPayload): Promise<SessionEvent>
   append(type: 'checkpoint', payload: CheckpointPayload): Promise<SessionEvent>
   append(type: 'compaction/start', payload: CompactionStartPayload): Promise<SessionEvent>
   append(type: 'compaction/end', payload: CompactionEndPayload): Promise<SessionEvent>
   append(type: 'meta', payload: Record<string, unknown>): Promise<SessionEvent>
+  append(type: 'meta/patch', payload: MetaPatchPayload): Promise<SessionEvent>
   append(type: 'llm/retry', payload: LLMRetryPayload): Promise<SessionEvent>
   append(type: 'llm/retry-started', payload: LLMRetryStartedPayload): Promise<SessionEvent>
   append(type: 'turn/start', payload: TurnStartPayload): Promise<SessionEvent>
@@ -637,6 +965,13 @@ export class SessionLog {
     payload: SessionEvent['payload'],
   ): SessionEvent {
       const eventPayload = clone(payload)
+      const event = {
+        id: randomUUID(),
+        seq: this._nextSeq,
+        ts: Date.now(),
+        type: type as SessionEvent['type'],
+        payload: eventPayload,
+      } as SessionEvent
       if (isMessageEventType(type)) {
         for (let index = this._events.length - 1; index >= 0; index -= 1) {
           const previous = this._events[index]
@@ -646,14 +981,16 @@ export class SessionLog {
             break
           }
         }
+        event.surfaceOp ??= 'append'
+        const previous = previousSurfaceSeq(this._surfaceNodes)
+        event.sourceEventSeqs ??= previous === undefined ? [] : [previous]
+      } else if (type === 'request/header') {
+        event.sourceEventSeqs ??= []
+      } else if (type === 'request/context') {
+        event.sourceEventSeqs ??= []
+      } else if (type === 'agent/inbox/spliced') {
+        event.sourceEventSeqs ??= []
       }
-      const event = {
-        id: randomUUID(),
-        seq: this._nextSeq,
-        ts: Date.now(),
-        type: type as SessionEvent['type'],
-        payload: eventPayload,
-      } as SessionEvent
       this._nextSeq += 1
       return event
   }
@@ -661,6 +998,9 @@ export class SessionLog {
   private _commitEvent(event: SessionEvent): void {
     this._events.push(event)
     this._surface = clone(this._projector(this._events))
+    this._surfaceNodes = foldSurface(this._events).nodes
+    if (event.type === 'request/header') this._requestHeader = clone(event.payload)
+    if (event.type === 'request/context') this._requestContext = clone(event.payload)
     this._broadcast?.('event', event)
     this._enqueue(event)
   }
@@ -708,6 +1048,18 @@ export class SessionLog {
     return this._run(async () => {
       await this._ensureLoaded()
       return this._resolveLineage(messageId)
+    })
+  }
+
+  /** The next turn number: one more than the highest recorded `turn/start`. */
+  async nextTurn(): Promise<number> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      let max = 0
+      for (const event of this._events) {
+        if (event.type === 'turn/start') max = Math.max(max, event.payload.turn)
+      }
+      return max + 1
     })
   }
 
@@ -770,6 +1122,36 @@ export class SessionLog {
     })
   }
 
+  /** The ordered surface events, after compaction replacements are applied. */
+  surfaceEvents(): Promise<SessionEvent[]> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      const bySeq = new Map(this._events.map(event => [event.seq, event] as const))
+      return this._surfaceNodes
+        .map(seq => bySeq.get(seq))
+        .filter((event): event is SessionEvent => event !== undefined)
+        .map(event => clone(event))
+    })
+  }
+
+  /** The latest `request/header` snapshot, or undefined before the first one. */
+  requestHeader(): RequestHeaderPayload | undefined {
+    return this._requestHeader ? clone(this._requestHeader) : undefined
+  }
+
+  /** The latest resolved route metadata, or undefined before the first one. */
+  requestContext(): RequestContextPayload | undefined {
+    return this._requestContext ? clone(this._requestContext) : undefined
+  }
+
+  /** Display metadata folded from the durable `meta` + `meta/patch` events. */
+  meta(): Promise<{ title?: string; agentType?: AgentType; mode?: SessionMode }> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      return foldSessionMeta(this._events)
+    })
+  }
+
   estimateContext(limit = DEFAULT_CONTEXT_LIMIT): Promise<ContextUsage> {
     return this._run(async () => {
       await this._ensureLoaded()
@@ -793,6 +1175,14 @@ export class SessionLog {
     })
   }
 
+  /** Structural violations in the loaded event stream (empty = balanced). */
+  runInvariants(): Promise<SessionInvariantFailure[]> {
+    return this._run(async () => {
+      await this._ensureLoaded()
+      return checkSessionInvariants(this._events)
+    })
+  }
+
   compact(options: CompactOptions = {}): Promise<number> {
     return this._run(async () => {
       await this._ensureLoaded()
@@ -809,46 +1199,109 @@ export class SessionLog {
       let splitIndex = Math.max(0, nonMeta.length - keep)
       splitIndex = safeCompactSplit(nonMeta, splitIndex)
       const rawSplit = rawIndices[splitIndex] ?? events.length
-      const suffix = events.slice(rawSplit)
-      let messages: ModelMessage[]
-      if (options.messages) {
-        messages = this._projector([
-          {
-            id: randomUUID(),
-            seq: 0,
-            ts: 0,
-            type: 'checkpoint',
-            payload: { messages: clone(options.messages) },
-          },
-          ...suffix,
-        ])
-      } else {
-        messages = this._projector(events)
+
+      if (!options.messages?.length) {
+        // No replacement prefix was supplied, so nothing is compressed away:
+        // keep the historical marker behaviour (full-surface snapshot appended
+        // in place) so derive stays unchanged and no data is dropped.
+        const messages = this._projector(events)
+        const compactionStart = this._buildEvent('compaction/start', {
+          ...(splitIndex > 0 ? { boundary: splitIndex } : {}),
+          ...(options.keep !== undefined ? { keep: options.keep } : {}),
+          ...(options.tokensBefore !== undefined
+            ? { tokensBefore: options.tokensBefore }
+            : {}),
+        })
+        this._commitEvent(compactionStart)
+        const checkpoint = this._buildEvent('checkpoint', {
+          messages,
+          surfaceOp: 'replace',
+          ...(options.summary ? { summary: options.summary } : {}),
+          ...(options.tokensBefore !== undefined
+            ? { tokensBefore: options.tokensBefore }
+            : {}),
+        })
+        this._commitEvent(checkpoint)
+        const compactionEnd = this._buildEvent('compaction/end', {
+          checkpointId: checkpoint.id,
+          ...(options.keep !== undefined ? { keep: options.keep } : {}),
+        })
+        this._commitEvent(compactionEnd)
+        return this._events.length
       }
-      const compactionStart = this._buildEvent('compaction/start', {
+
+      // Real compaction: the checkpoint carries only the replacement prefix
+      // and shadows the raw seq range it replaces; the kept tail is re-emitted
+      // AFTER the checkpoint so projection continues from the prefix + tail.
+      const head = events.slice(0, rawSplit)
+      const tail = events.slice(rawSplit)
+      const surfaceInHead = head.filter(event => isSurfaceEventType(event.type))
+      const start = surfaceInHead[0]?.seq
+      const end = surfaceInHead.at(-1)?.seq
+      const range = start !== undefined && end !== undefined ? { start, end } : undefined
+      const now = Date.now()
+      const startEvent = this._makeCompactEvent('compaction/start', {
         ...(splitIndex > 0 ? { boundary: splitIndex } : {}),
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
         ...(options.tokensBefore !== undefined
           ? { tokensBefore: options.tokensBefore }
           : {}),
-      })
-      this._commitEvent(compactionStart)
-      const checkpoint = this._buildEvent('checkpoint', {
-        messages,
-        surfaceOp: 'replace',
+      }, now)
+      const checkpoint = this._makeCompactEvent('checkpoint', {
+        messages: clone(options.messages),
+        ...(range ? { surfaceOp: { op: 'replace', start: range.start, end: range.end } } : {}),
         ...(options.summary ? { summary: options.summary } : {}),
         ...(options.tokensBefore !== undefined
           ? { tokensBefore: options.tokensBefore }
           : {}),
-      })
-      this._commitEvent(checkpoint)
-      const compactionEnd = this._buildEvent('compaction/end', {
+      }, now + 1)
+      const endEvent = this._makeCompactEvent('compaction/end', {
         checkpointId: checkpoint.id,
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
-      })
-      this._commitEvent(compactionEnd)
+      }, now + 2)
+      const reordered = resequenceEvents([
+        ...head,
+        startEvent,
+        checkpoint,
+        endEvent,
+        ...tail,
+      ])
+      await this._replaceEvents(reordered)
       return this._events.length
     })
+  }
+
+  /** Build a compaction lifecycle event with a fresh id (seq assigned later). */
+  private _makeCompactEvent(
+    type: 'compaction/start' | 'compaction/end' | 'checkpoint',
+    payload: Record<string, unknown>,
+    ts: number,
+  ): SessionEvent {
+    return {
+      id: randomUUID(),
+      seq: 0,
+      ts,
+      type: type as SessionEvent['type'],
+      payload: clone(payload),
+      sourceEventSeqs: [],
+    } as SessionEvent
+  }
+
+  /** Replace the in-memory event store and rewrite the JSONL file. */
+  private async _replaceEvents(next: readonly SessionEvent[]): Promise<void> {
+    await this._drainWrite()
+    this._pending.splice(0)
+    this._events = next.map(event => clone(event))
+    this._surface = clone(this._projector(this._events))
+    this._surfaceNodes = foldSurface(this._events).nodes
+    this._requestHeader = foldRequestHeader(this._events)
+    this._requestContext = foldRequestContext(this._events)
+    this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
+    await writeFile(
+      this.file,
+      `${this._events.map(event => JSON.stringify(event)).join('\n')}\n`,
+      'utf8',
+    )
   }
 
   close(): Promise<void> {
@@ -877,6 +1330,9 @@ export class SessionLog {
     if (owner && owner !== this && owner._loaded) {
       this._events = owner._events.map(event => clone(event))
       this._surface = clone(owner._surface)
+      this._surfaceNodes = [...owner._surfaceNodes]
+      this._requestHeader = owner._requestHeader ? clone(owner._requestHeader) : undefined
+      this._requestContext = owner._requestContext ? clone(owner._requestContext) : undefined
       this._nextSeq = owner._nextSeq
       this._loaded = true
       return
@@ -894,12 +1350,16 @@ export class SessionLog {
       await writeFile(this.file, `${JSON.stringify(meta)}\n`, 'utf8')
       this._events = [meta]
       this._surface = clone(this._projector(this._events))
+      this._surfaceNodes = foldSurface(this._events).nodes
       this._nextSeq = 2
       this._loaded = true
       return
     }
     this._events = read.events
     this._surface = clone(this._projector(this._events))
+    this._surfaceNodes = foldSurface(this._events).nodes
+    this._requestHeader = foldRequestHeader(this._events)
+    this._requestContext = foldRequestContext(this._events)
     this._nextSeq = (this._events.at(-1)?.seq ?? 0) + 1
     this._loaded = true
   }
@@ -1017,5 +1477,7 @@ export const session = {
     return () => log.close()
   },
 }
+
+export * from './invariant.js'
 
 export const name = '@tnega/session'

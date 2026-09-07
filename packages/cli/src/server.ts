@@ -263,6 +263,9 @@ async function handleApi(
     if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
     if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
     if (typeof body.model === 'string') patch.model = body.model
+    if (body.protocol === 'anthropic' || body.protocol === 'openai') {
+      patch.protocol = body.protocol
+    }
     if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
       patch.temperature = body.temperature
     }
@@ -385,11 +388,12 @@ async function handleApi(
     }
     if (action === undefined && req.method === 'GET') {
       const summary = await readSessionSummary(workspace, id)
-      const events = await readSessionEvents(workspace, id)
+      const detail = await readSessionEvents(workspace, id)
       const contextUsage = await estimateContextUsage(workspace, id)
       sendJson(res, 200, {
         summary,
-        events,
+        events: detail.events,
+        surface: detail.surface,
         context: contextUsage,
         running: isActive(context.activeRuns, workspace, id),
       })
@@ -504,6 +508,7 @@ async function compactContext(
     apiKey,
     baseUrl: effective.baseUrl,
     model: effective.model,
+    ...(effective.protocol ? { protocol: effective.protocol } : {}),
     maxTokens: 4096,
     timeoutMs: 180_000,
     ...(effective.temperature !== undefined
@@ -673,8 +678,14 @@ async function handleRun(
         emit: emitSse,
       })
     }
+    // A coding session's first run persists its system prompt as a durable
+    // system/message, so a resumed run's derived history already leads with it;
+    // prepending it again would duplicate the coding system in the model input
+    // (and in the top-level system once Anthropic folds the messages).
     const messages: ModelMessage[] = [
-      ...(coding ? [{ role: 'system' as const, content: CODING_SYSTEM_PROMPT }] : []),
+      ...(coding && history[0]?.role !== 'system'
+        ? [{ role: 'system' as const, content: CODING_SYSTEM_PROMPT }]
+        : []),
       ...(plan ? [{ role: 'system' as const, content: planToContext(plan) }] : []),
       ...history,
       { role: 'user' as const, content: prompt },
@@ -954,7 +965,7 @@ async function autoTitle(workspace: string, id: string, prompt: string): Promise
 async function readSessionEvents(
   workspace: string,
   id: string,
-): Promise<unknown[]> {
+): Promise<{ events: unknown[]; surface: unknown[] }> {
   const runtime = await createAgentRuntime({
     cwd: workspace,
     sessionFile: sessionFilePath(workspace, id),
@@ -963,7 +974,24 @@ async function readSessionEvents(
   try {
     const session = runtime.root.get('session') as SessionLog
     const events = await session.read()
-    return JSON.parse(JSON.stringify(events)) as unknown[]
+    const surface = await session.surfaceEvents()
+    const surfaceSeqs = new Set(surface.map(event => (event as { seq: number }).seq))
+    const cleanEvents = events.filter(event => {
+      const type = (event as { type: string }).type
+      if (type === 'tool/call') return true
+      if (
+        type !== 'user/message'
+        && type !== 'assistant/message'
+        && type !== 'tool/result'
+      ) {
+        return true
+      }
+      return surfaceSeqs.has((event as { seq: number }).seq)
+    })
+    return {
+      events: JSON.parse(JSON.stringify(cleanEvents)) as unknown[],
+      surface: JSON.parse(JSON.stringify(surface)) as unknown[],
+    }
   } finally {
     await runtime.dispose()
   }
@@ -977,12 +1005,14 @@ function adapterFromConfig(
     apiKey: string
     baseUrl: string
     model: string
+    protocol?: 'anthropic' | 'openai'
     temperature?: number
   } = {
     apiKey,
     baseUrl: effective.baseUrl,
     model: effective.model,
   }
+  if (effective.protocol) options.protocol = effective.protocol
   if (effective.temperature !== undefined) options.temperature = effective.temperature
   return createLlmAdapter(options)
 }
@@ -1003,6 +1033,7 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
       apiKeySet: Boolean(config.apiKey),
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       ...(config.model ? { model: config.model } : {}),
+      ...(config.protocol ? { protocol: config.protocol } : {}),
       ...(config.temperature !== undefined
         ? { temperature: config.temperature }
         : {}),

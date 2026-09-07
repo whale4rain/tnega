@@ -23,9 +23,16 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 import { Context } from '@tnega/core'
 import {
+  checkSessionInvariants,
   estimateContextUsage,
   estimateEventTokens,
   estimateMessageTokens,
+  deriveEventMessage,
+  foldRequestContext,
+  foldRequestHeader,
+  foldSessionMeta,
+  foldSurface,
+  isAppendSurfaceEvent,
   projectEvents,
   repairUnclosed,
   resolveCompactKeep,
@@ -65,13 +72,13 @@ function withFormatMeta(events: SessionEvent[]): SessionEvent[] {
       seq: 1,
       ts: 1,
       type: 'meta',
-      payload: { formatVersion: 4 },
+      payload: { formatVersion: 6 },
     },
     ...events.map((event, index) => ({ ...event, seq: event.seq + 1, ts: index + 2 })),
   ]
 }
 
-async function writeV4(file: string, events: SessionEvent[]): Promise<void> {
+async function writeV5(file: string, events: SessionEvent[]): Promise<void> {
   const all = withFormatMeta(events)
   await writeFile(file, `${all.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
 }
@@ -226,7 +233,7 @@ describe('SessionLog lineage', () => {
       { id: 'b', seq: 2, ts: 2, type: 'assistant/message', payload: { content: 'b' } },
       { id: 'c', seq: 3, ts: 3, type: 'user/message', payload: { content: 'c' } },
     ]
-    await writeV4(file, events)
+    await writeV5(file, events)
 
     const log = new SessionLog(file)
     await log.init()
@@ -311,7 +318,7 @@ describe('SessionLog forkAt', () => {
         payload: { content: 'second', parentId: 'first' },
       },
     ]
-    await writeV4(file, events)
+    await writeV5(file, events)
 
     const log = new SessionLog(file)
     await log.init()
@@ -450,12 +457,12 @@ describe('SessionLog lifecycle and repair', () => {
 
   it('appends lifecycle events without affecting the message surface', async () => {
     const log = new SessionLog(await tempFile('lifecycle.jsonl'))
-    await log.append('turn/start', { input: 'hello', reason: 'user' })
-    await log.append('step/start', { index: 0 })
+    await log.append('turn/start', { turn: 1, input: 'hello', reason: 'user' })
+    await log.append('step/start', { turn: 1, step: 0 })
     await log.append('user/message', { content: 'hello' })
     await log.append('assistant/message', { content: 'hi' })
-    await log.append('step/end', { index: 0 })
-    await log.append('turn/end', { finishReason: 'stop', steps: 1 })
+    await log.append('step/end', { turn: 1, step: 0 })
+    await log.append('turn/end', { turn: 1, finishReason: 'stop', steps: 1 })
 
     expect(await log.deriveMessages()).toEqual([
       { role: 'user', content: 'hello' },
@@ -483,20 +490,20 @@ describe('SessionLog lifecycle and repair', () => {
 
   it('repairs unclosed tool calls, steps and turns on load', async () => {
     const file = await tempFile('repair.jsonl')
-    await writeV4(file, [
+    await writeV5(file, [
       {
         id: 'turn-1',
         seq: 1,
         ts: 1,
         type: 'turn/start',
-        payload: { input: 'go' },
+        payload: { turn: 1, input: 'go' },
       },
       {
         id: 'step-1',
         seq: 2,
         ts: 2,
         type: 'step/start',
-        payload: { index: 0 },
+        payload: { turn: 1, step: 0 },
       },
       {
         id: 'call-1',
@@ -530,11 +537,11 @@ describe('SessionLog lifecycle and repair', () => {
     })
     expect(events[5]).toMatchObject({
       type: 'step/end',
-      payload: { index: 0, interrupted: true, finishReason: 'interrupted' },
+      payload: { turn: 1, step: 0, interrupted: true, finishReason: 'interrupted' },
     })
     expect(events[6]).toMatchObject({
       type: 'turn/end',
-      payload: { interrupted: true, finishReason: 'interrupted' },
+      payload: { turn: 1, interrupted: true, finishReason: 'interrupted' },
     })
   })
 
@@ -542,8 +549,8 @@ describe('SessionLog lifecycle and repair', () => {
     const file = await tempFile('live-reader.jsonl')
     const writer = new SessionLog(file)
     await writer.init()
-    await writer.append('turn/start', { input: 'go', reason: 'user' })
-    await writer.append('step/start', { index: 0 })
+    await writer.append('turn/start', { turn: 1, input: 'go', reason: 'user' })
+    await writer.append('step/start', { turn: 1, step: 0 })
     await writer.append('user/message', { content: 'go' })
     await writer.flush()
 
@@ -561,8 +568,8 @@ describe('SessionLog lifecycle and repair', () => {
     const text = await readFile(file, 'utf8')
     expect(text.trimEnd().split('\n')).toHaveLength(4)
 
-    await writer.append('step/end', { index: 0 })
-    await writer.append('turn/end', { finishReason: 'stop', steps: 1 })
+    await writer.append('step/end', { turn: 1, step: 0 })
+    await writer.append('turn/end', { turn: 1, finishReason: 'stop', steps: 1 })
     await writer.close()
     const reopened = new SessionLog(file)
     await reopened.init()
@@ -612,7 +619,7 @@ describe('SessionLog lifecycle and repair', () => {
 
   it('drops a torn tail and rewrites the file', async () => {
     const file = await tempFile('torn.jsonl')
-    await writeV4(file, [
+    await writeV5(file, [
       {
         id: 'm1',
         seq: 1,
@@ -764,9 +771,9 @@ describe('SessionLog compact', () => {
     expect(checkpoint.surfaceOp).toBe('replace')
   })
 
-  it('stores explicit compacted messages instead of the prefix projection', async () => {
+  it('stores explicit compacted messages as the replacement prefix (v6)', async () => {
     const log = new SessionLog(await tempFile('compact-messages.jsonl'))
-    await log.append('user/message', { content: 'old context' })
+    const u1 = await log.append('user/message', { content: 'old context' })
     await log.append('assistant/message', { content: 'done' })
 
     const compacted: ModelMessage[] = [
@@ -781,23 +788,38 @@ describe('SessionLog compact', () => {
     expect(count).toBe(6)
 
     const events = await log.read()
-    expect(events.at(-2)!.type).toBe('checkpoint')
-    const checkpoint = events.at(-2)!.payload as {
+    // v6 reorder: checkpoint sits after the shadowed head and the kept tail is
+    // re-emitted after compaction/end.
+    expect(events.map(event => event.type)).toEqual([
+      'meta',
+      'user/message',
+      'compaction/start',
+      'checkpoint',
+      'compaction/end',
+      'assistant/message',
+    ])
+    const checkpoint = events.find(event => event.type === 'checkpoint')!.payload as {
       messages: ModelMessage[]
       summary?: string
       tokensBefore?: number
-      surfaceOp?: string
+      surfaceOp?: { op: string; start: number; end: number }
     }
-    expect(checkpoint.messages).toEqual([
-      ...compacted,
-      { role: 'assistant', content: 'done' },
-    ])
+    // checkpoint carries only the replacement prefix, not the kept tail.
+    expect(checkpoint.messages).toEqual(compacted)
     expect(checkpoint.summary).toBe('compacted summary')
     expect(checkpoint.tokensBefore).toBe(100)
-    expect(checkpoint.surfaceOp).toBe('replace')
+    // it shadows exactly the raw head message seq (u1).
+    expect(checkpoint.surfaceOp).toEqual({ op: 'replace', start: u1.seq, end: u1.seq })
+    // model view = prefix + kept tail.
     expect(await log.deriveMessages()).toEqual([
       ...compacted,
       { role: 'assistant', content: 'done' },
+    ])
+    // surface events = the checkpoint node + kept tail message.
+    const surface = await log.surfaceEvents()
+    expect(surface.map(event => event.type)).toEqual([
+      'checkpoint',
+      'assistant/message',
     ])
   })
 
@@ -810,6 +832,73 @@ describe('SessionLog compact', () => {
     const event = await log.append('user/message', { content: 'c' })
     expect(event.seq).toBe(7)
     expect((await log.deriveMessages()).map(message => message.content)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('keeps derive, surface and invariants consistent after a v6 compact', async () => {
+    const file = await tempFile('compact-consistency.jsonl')
+    const log = new SessionLog(file)
+    await log.append('turn/start', { turn: 1, input: 'go', reason: 'user' })
+    await log.append('step/start', { turn: 1, step: 0 })
+    await log.append('user/message', { content: 'old1' })
+    await log.append('assistant/message', { content: '' })
+    await log.append('tool/call', { id: 'c1', name: 'add', arguments: {} })
+    await log.append('tool/result', { id: 'r1', toolCallId: 'c1', name: 'add', ok: true, output: 3 })
+    await log.append('step/end', { turn: 1, step: 0 })
+    await log.append('turn/end', { turn: 1, finishReason: 'stop' })
+    await log.append('turn/start', { turn: 2, input: 'recent', reason: 'user' })
+    await log.append('user/message', { content: 'recent request' })
+    await log.append('assistant/message', { content: 'tail reply' })
+    await log.append('turn/end', { turn: 2, finishReason: 'stop' })
+
+    await log.compact({
+      keepTokens: 1,
+      summary: 'S',
+      messages: [{ role: 'system', content: 'S' }],
+    })
+    const events = await log.read()
+    expect(checkSessionInvariants(events)).toEqual([])
+
+    // derive == surface projection: both carry the replacement prefix + tail.
+    const derive = await log.deriveMessages()
+    expect(derive.some(message => message.content === 'S')).toBe(true)
+    expect(derive.some(message => message.content === 'tail reply')).toBe(true)
+
+    // Close + reopen: the reordered file reloads with balanced structure and
+    // the same model view.
+    await log.close()
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    expect(checkSessionInvariants(await reopened.read())).toEqual([])
+    const reDerive = await reopened.deriveMessages()
+    expect(reDerive.some(message => message.content === 'S')).toBe(true)
+    expect(reDerive.some(message => message.content === 'tail reply')).toBe(true)
+    await reopened.close()
+  })
+
+  it('supports nested compaction of an already-compacted log', async () => {
+    const file = await tempFile('compact-nested.jsonl')
+    const log = new SessionLog(file)
+    for (let index = 0; index < 6; index += 1) {
+      await log.append('user/message', { content: `q${index}` })
+      await log.append('assistant/message', { content: `a${index}` })
+    }
+    await log.compact({ keepTokens: 1, summary: 'S1', messages: [{ role: 'system', content: 'S1' }] })
+    await log.append('user/message', { content: 'fresh' })
+    await log.append('assistant/message', { content: 'fresh reply' })
+    await log.compact({ keepTokens: 1, summary: 'S2', messages: [{ role: 'system', content: 'S2' }] })
+
+    const events = await log.read()
+    expect(checkSessionInvariants(events)).toEqual([])
+    expect(events.filter(event => event.type === 'checkpoint')).toHaveLength(2)
+    const derive = await log.deriveMessages()
+    expect(derive.some(message => message.content === 'S2')).toBe(true)
+    expect(derive.some(message => message.content === 'fresh reply')).toBe(true)
+
+    await log.close()
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    expect(checkSessionInvariants(await reopened.read())).toEqual([])
+    await reopened.close()
   })
 })
 
@@ -988,6 +1077,166 @@ describe('SessionProjector', () => {
     expect(await log.deriveMessages()).toEqual([
       { role: 'system', content: 'a' },
       { role: 'system', content: 'b' },
+    ])
+  })
+})
+
+describe('v5 reconstructable request state', () => {
+  it('records a request header snapshot and folds the latest one', async () => {
+    const log = new SessionLog(await tempFile('request-header.jsonl'))
+    await log.append('request/header', {
+      reason: 'initial',
+      config: { provider: 'deepseek', model: 'v4-flash', maxTokens: 4096 },
+      system: 'You are Tnega.',
+      tools: [{ name: 'read', description: 'read a file' }],
+    })
+    await log.append('request/header', {
+      reason: 'change',
+      config: { provider: 'deepseek', model: 'v4-flash', maxTokens: 8192 },
+    })
+
+    const events = await log.read()
+    expect(events.filter(event => event.type === 'request/header')).toHaveLength(2)
+    expect(foldRequestHeader(events)).toMatchObject({
+      reason: 'change',
+      config: { provider: 'deepseek', model: 'v4-flash', maxTokens: 8192 },
+    })
+    expect(log.requestHeader()).toMatchObject({ reason: 'change' })
+  })
+
+  it('records route capacity separately and folds the latest record', async () => {
+    const log = new SessionLog(await tempFile('request-context.jsonl'))
+    await log.append('request/context', { provider: 'deepseek', model: 'v4-flash', contextWindow: 128000 })
+    await log.append('request/context', { provider: 'other', model: 'm' })
+
+    const events = await log.read()
+    expect(foldRequestContext(events)).toEqual({ provider: 'other', model: 'm' })
+    expect(log.requestContext()).toEqual({ provider: 'other', model: 'm' })
+  })
+
+  it('scopes turn and step events with numeric coordinates', async () => {
+    const log = new SessionLog(await tempFile('coordinates.jsonl'))
+    await log.append('turn/start', { turn: 1, input: 'go', reason: 'user' })
+    await log.append('step/start', { turn: 1, step: 0 })
+    await log.append('step/end', { turn: 1, step: 0, finishReason: 'stop' })
+    await log.append('turn/end', { turn: 1, finishReason: 'stop', steps: 1 })
+
+    const events = await log.read()
+    expect(events.find(event => event.type === 'step/start')?.payload).toEqual({ turn: 1, step: 0 })
+    expect(events.find(event => event.type === 'step/end')?.payload).toEqual({
+      turn: 1,
+      step: 0,
+      finishReason: 'stop',
+    })
+    expect(events.find(event => event.type === 'turn/end')?.payload).toMatchObject({ turn: 1 })
+  })
+})
+
+describe('durable meta patches', () => {
+  it('folds the head meta plus later meta/patch events in order', async () => {
+    const log = new SessionLog(await tempFile('meta-patch.jsonl'))
+    await log.append('meta', {
+      kind: 'session',
+      title: 'before',
+      agentType: 'general',
+      mode: 'auto',
+    })
+    await log.append('meta/patch', { fields: ['title'], title: 'after' })
+    await log.append('meta/patch', { fields: ['mode', 'agentType'], mode: 'execute', agentType: 'coding' })
+
+    const events = await log.read()
+    expect(foldSessionMeta(events)).toEqual({
+      title: 'after',
+      mode: 'execute',
+      agentType: 'coding',
+    })
+    expect(await log.meta()).toEqual({
+      title: 'after',
+      mode: 'execute',
+      agentType: 'coding',
+    })
+  })
+
+  it('does not project meta/patch events into the model surface', async () => {
+    const log = new SessionLog(await tempFile('meta-patch-surface.jsonl'))
+    await log.append('user/message', { content: 'hello' })
+    await log.append('meta/patch', { fields: ['title'], title: 't' })
+    expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'hello' }])
+    const events = await log.read()
+    for (const event of events.filter(event => event.type === 'meta/patch')) {
+      expect(estimateEventTokens(event)).toBe(0)
+    }
+  })
+
+  it('rebuilds the folded metadata after reload', async () => {
+    const file = await tempFile('meta-patch-reload.jsonl')
+    const first = new SessionLog(file)
+    await first.append('meta', {
+      kind: 'session',
+      title: 'a',
+      agentType: 'general',
+      mode: 'auto',
+    })
+    await first.append('meta/patch', { fields: ['title', 'mode'], title: 'b', mode: 'plan' })
+    await first.close()
+
+    const second = new SessionLog(file)
+    expect(await second.meta()).toEqual({
+      title: 'b',
+      agentType: 'general',
+      mode: 'plan',
+    })
+    await second.close()
+  })
+})
+
+describe('v5 surface folding', () => {
+  it('marks append surface events and folds a replace operation', () => {
+    const appended: SessionEvent = {
+      id: 'a',
+      seq: 1,
+      ts: 1,
+      type: 'user/message',
+      payload: { content: 'old' },
+      surfaceOp: 'append',
+      sourceEventSeqs: [],
+    }
+    const replacement: SessionEvent = {
+      id: 'r',
+      seq: 2,
+      ts: 2,
+      type: 'assistant/message',
+      payload: { content: 'new' },
+      surfaceOp: { op: 'replace', start: 1, end: 1 },
+      sourceEventSeqs: [1],
+    }
+    expect(isAppendSurfaceEvent(appended)).toBe(true)
+    expect(isAppendSurfaceEvent(replacement)).toBe(false)
+    const folded = foldSurface([appended, replacement])
+    expect(folded.nodes).toEqual([2])
+    expect(folded.replacements).toEqual([
+      { seq: 2, start: 1, end: 1, shadowedSeqs: [1] },
+    ])
+    expect(deriveEventMessage(appended)).toEqual({ role: 'user', content: 'old' })
+    expect(deriveEventMessage(replacement)).toEqual({ role: 'assistant', content: 'new' })
+  })
+})
+
+describe('SessionLog surfaceEvents', () => {
+  it('returns only events that survive the surface projection', async () => {
+    const log = new SessionLog(await tempFile('surface-events.jsonl'))
+    await log.append('user/message', { content: 'one' })
+    await log.append('assistant/message', { content: 'answer' })
+    await log.append('assistant/chunk', { id: 'c1', content: 'partial', index: 0 })
+
+    const surface = await log.surfaceEvents()
+    expect(surface.map(event => event.type)).toEqual([
+      'user/message',
+      'assistant/message',
+    ])
+    expect(surface.map(event => event.payload)).toMatchObject([
+      { content: 'one' },
+      { content: 'answer' },
     ])
   })
 })

@@ -5,10 +5,12 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   estimateContextUsage,
   type ModelMessage,
+  type RequestContextPayload,
   type SessionLog,
   type ToolResultPayload,
 } from '@tnega/session'
-import type { ToolError, ToolResult } from '@tnega/tools'
+import type { ToolDefinition, ToolError, ToolResult } from '@tnega/tools'
+import type { ToolSchemaSnapshot } from './prompt.js'
 import type { ToolsService } from '@tnega/tools'
 
 import type {
@@ -92,6 +94,10 @@ export class AgentInbox {
 
 export interface AgentConfig {
   llm?: LLMAdapter
+  /** Bind the loop to a specific session instead of the ctx-provided singleton. */
+  session?: SessionLog
+  /** Fail fast when the actual request would not be reconstructable from the log. */
+  assertReplayable?: boolean
   maxTurns?: number
   maxSteps?: number
   inbox?: AgentInbox
@@ -124,37 +130,6 @@ function isUserOrSystemMessage(
   message: ModelMessage,
 ): message is ModelMessage & { role: 'system' | 'user' } {
   return message.role === 'system' || message.role === 'user'
-}
-
-function sameSurfaceMessage(left: ModelMessage, right: ModelMessage): boolean {
-  return left.role === right.role
-    && left.content === right.content
-    && (left.name ?? '') === (right.name ?? '')
-}
-
-function commonSurfacePrefix(
-  left: readonly ModelMessage[],
-  right: readonly ModelMessage[],
-): number {
-  const max = Math.min(left.length, right.length)
-  let count = 0
-  while (count < max && sameSurfaceMessage(left[count]!, right[count]!)) count += 1
-  return count
-}
-
-function commonSurfaceSuffix(
-  left: readonly ModelMessage[],
-  right: readonly ModelMessage[],
-): number {
-  const max = Math.min(left.length, right.length)
-  let count = 0
-  while (
-    count < max
-    && sameSurfaceMessage(left[left.length - 1 - count]!, right[right.length - 1 - count]!)
-  ) {
-    count += 1
-  }
-  return count
 }
 
 function stringify(value: unknown): string {
@@ -230,12 +205,29 @@ async function cancellableDelay(ms: number, signal?: AbortSignal): Promise<boole
 
 export class AgentService {
   readonly inbox: AgentInbox
+  private _seriesStarted = false
+  private _persistedRequest = false
 
   constructor(
     private ctx: Context,
     private config: AgentConfig = {},
   ) {
     this.inbox = config.inbox ?? new AgentInbox()
+  }
+
+  /** Call when a request begins an explicit new model-message series. */
+  startSeries(): void {
+    this._seriesStarted = true
+  }
+
+  /** Clear any pending series marker after a completed run. */
+  endSeriesBoundary(): void {
+    this._seriesStarted = false
+  }
+
+  /** True when this service instance has already persisted a model-visible step. */
+  get hasPersistedRequest(): boolean {
+    return this._persistedRequest
   }
 
   async run(input?: AgentInput, options: AgentRunOptions = {}): Promise<AgentRunResult> {
@@ -274,7 +266,7 @@ export class AgentService {
     const injected = this.inbox.injected()
     this.ctx.emit('agent/start', { input: claimed, options, injected })
 
-    let messages = this._initialMessages(claimed)
+    let messages = await this._initialMessages(claimed)
     const steps: AgentStep[] = []
     let output = ''
     let finishReason: AgentFinishReason = 'stop'
@@ -285,7 +277,9 @@ export class AgentService {
       injected,
     })
 
+    const turn = await session.nextTurn()
     await session.append('turn/start', {
+      turn,
       input: claimed.text ?? claimed,
       reason: 'user',
     })
@@ -311,18 +305,27 @@ export class AgentService {
       const stepInput = copyMessages(messages)
       const preStep = this.ctx.waterfall('agent/pre-step', {
         index,
+        turn,
+        step: index,
         messages: stepInput,
+        ...(options.signal ? { signal: options.signal } : {}),
       }, (payload: AgentPreStepEvent) => payload)
       if (!preStep || !Array.isArray(preStep.messages) || !preStep.messages.length) {
         break
       }
+      if (preStep.startsRequestSeries) this._seriesStarted = true
 
-      await session.append('step/start', { index })
+      await session.append('step/start', { turn, step: index })
       currentStepIndex = index
 
       const requestedInput = copyMessages(preStep.messages)
-      this.ctx.emit('agent/step', { index, input: copyMessages(requestedInput) })
-      const availableTools = finalTurnGranted ? [] : tools.list()
+      this.ctx.emit('agent/step', {
+        index,
+        turn,
+        step: index,
+        input: copyMessages(requestedInput),
+      })
+      const availableTools = finalTurnGranted ? [] : await this._resolveAvailableTools()
       const completeOptions: CompleteOptions = {
         maxSteps: maxSteps - steps.length,
       }
@@ -334,10 +337,10 @@ export class AgentService {
         tools: availableTools,
         options: completeOptions,
       }, (payload: AgentRequestEvent) => payload)
-      if (!request || !Array.isArray(request.messages)) {
+      if (!request || !request.options || !request.tools) {
         throw new AgentError('agent/request must return a request payload')
       }
-      let llmMessages = copyMessages(request.messages)
+      let llmMessages = copyMessages(requestedInput)
 
       let completion: LLMCompletion | undefined
       const streamMethod = useStream ? llm.stream : undefined
@@ -372,7 +375,10 @@ export class AgentService {
             }
             llmMessages = copyMessages(streamRequest.messages)
             if (!persistedStepInput) {
-              await this._persistStepInput(session, llmMessages)
+              await this._persistStepInput(session, request, llmMessages)
+              if (this.config.assertReplayable) {
+                await this._assertReplayable(session, llmMessages)
+              }
               persistedStepInput = true
             }
             let chunkIndex = 0
@@ -391,7 +397,10 @@ export class AgentService {
             completion = completionFromStreamEvents(streamEvents)
           } else {
             if (!persistedStepInput) {
-              await this._persistStepInput(session, llmMessages)
+              await this._persistStepInput(session, request, llmMessages)
+              if (this.config.assertReplayable) {
+                await this._assertReplayable(session, llmMessages)
+              }
               persistedStepInput = true
             }
             completion = await llm.complete(llmMessages, request.tools, request.options)
@@ -411,15 +420,22 @@ export class AgentService {
             break
           }
           attempt += 1
+          const failure = toToolError(error)
           const decision = await this.ctx.waterfallAsync(
             'agent/request-error',
             {
               index,
+              turn,
+              step: index,
               messages: copyMessages(llmMessages),
               tools: request.tools,
               options: request.options,
               attempt,
               error,
+              failure,
+              ...(request.options.provider ? { provider: request.options.provider } : {}),
+              ...(request.options.model ? { model: request.options.model } : {}),
+              ...(options.signal ? { signal: options.signal } : {}),
             } satisfies AgentRequestErrorEvent,
             () => undefined,
           ) as AgentRequestRetryDecision
@@ -458,8 +474,8 @@ export class AgentService {
         })
       }
       for (const call of toolCalls) {
-        this.ctx.emit('agent/tool-call', { index, call })
-        yield { type: 'tool/start', index, call }
+        this.ctx.emit('agent/tool-call', { index, turn, step: index, call })
+        yield { type: 'tool/start', index, turn, step: index, call }
         await session.append('tool/call', {
           id: call.id,
           name: call.name,
@@ -499,8 +515,14 @@ export class AgentService {
           if (result.error.stack) toolResultPayload.error.stack = result.error.stack
         }
         await session.append('tool/result', toolResultPayload)
-        yield { type: 'tool/end', index, call, result }
-        this.ctx.emit('agent/tool-result', { index, call, result })
+        yield { type: 'tool/end', index, turn, step: index, call, result }
+        this.ctx.emit('agent/tool-result', {
+          index,
+          turn,
+          step: index,
+          call,
+          result,
+        })
       }
       if (options.signal?.aborted) {
         finishReason = 'cancelled'
@@ -522,13 +544,19 @@ export class AgentService {
       }
 
       await session.append('step/end', {
-        index,
+        turn,
+        step: index,
         finishReason: completion.finishReason,
         toolCalls: toolCalls.length,
       })
       currentStepIndex = undefined
 
       const nextMessages = this._extendMessages(llmMessages, completion, toolResults)
+      const concludesTurn = toolResults.some(result => result.concludesTurn === true)
+      if (concludesTurn) {
+        finishReason = 'stop'
+        break
+      }
       if (toolCalls.length === 0) {
         finishReason = completion.finishReason === 'length'
           ? 'length'
@@ -537,6 +565,7 @@ export class AgentService {
             : 'stop'
         const keepGoing = await this.ctx.serial('agent/turn-stopping', {
           index,
+          turn,
           steps: copySteps(steps),
           finishReason,
         } satisfies AgentTurnStoppingEvent) as unknown
@@ -560,7 +589,8 @@ export class AgentService {
       if (currentStepIndex !== undefined) {
         const cancelled = options.signal?.aborted
         await session.append('step/end', {
-          index: currentStepIndex,
+          turn,
+          step: currentStepIndex,
           finishReason: cancelled
             ? 'cancelled'
             : turnError
@@ -572,6 +602,7 @@ export class AgentService {
         })
       }
       await session.append('turn/end', {
+        turn,
         finishReason: turnError
           ? (options.signal?.aborted ? 'cancelled' : 'error')
           : finishReason,
@@ -586,6 +617,7 @@ export class AgentService {
       input: claimed,
       output,
       finishReason,
+      turn,
       steps,
       messages: copyMessages(messages),
     }
@@ -647,29 +679,164 @@ export class AgentService {
 
   private async _persistStepInput(
     session: SessionLog,
+    request: AgentRequestEvent,
     input: readonly ModelMessage[],
   ): Promise<void> {
+    const system = input.find(message => message.role === 'system')?.content
+    const tools = request.tools.map(tool => ({
+      name: tool.schema.name,
+      description: tool.schema.description,
+      ...(tool.schema.parameters ? { parameters: tool.schema.parameters } : {}),
+    }))
+    const config = {
+      ...(request.options.provider ? { provider: request.options.provider } : {}),
+      ...(request.options.model ? { model: request.options.model } : {}),
+      ...(request.options.temperature !== undefined
+        ? { temperature: request.options.temperature }
+        : {}),
+    }
+    const nextHeader = {
+      ...(Object.keys(config).length ? { config } : {}),
+      ...(system !== undefined ? { system } : {}),
+      ...(tools.length ? { tools } : {}),
+    }
+    const previousHeader = session.requestHeader()
+    const isFirstRequest = !this._persistedRequest
+    const isResume = isFirstRequest && previousHeader !== undefined
+    this._persistedRequest = true
+    const changedHeader = previousHeader && (
+      previousHeader.system !== nextHeader.system
+      || JSON.stringify(previousHeader.tools ?? []) !== JSON.stringify(nextHeader.tools ?? [])
+      || JSON.stringify(previousHeader.config ?? {}) !== JSON.stringify(nextHeader.config ?? {})
+    )
+    if (isFirstRequest) {
+      await session.append('request/header', {
+        reason: this._seriesStarted
+          ? 'series'
+          : isResume
+            ? 'resume'
+            : 'initial',
+        ...nextHeader,
+        ...(this._seriesStarted ? { startsSeries: true } : {}),
+      })
+    } else if (changedHeader) {
+      await session.append('request/header', {
+        reason: this._seriesStarted ? 'change-series' : 'change',
+        ...nextHeader,
+        startsSeries: true,
+      })
+    } else if (this._seriesStarted) {
+      await session.append('request/header', {
+        reason: 'series',
+        ...nextHeader,
+        startsSeries: true,
+      })
+    }
+    this._seriesStarted = false
+
+    const nextContext: RequestContextPayload = {
+      ...(request.options.provider ? { provider: request.options.provider } : {}),
+      ...(request.options.model ? { model: request.options.model } : {}),
+    }
+    const llmService = this.ctx.reflect.get('llm', false) as
+      | { routeCapacity(): unknown }
+      | undefined
+    const routeCapacity = llmService?.routeCapacity?.() as
+      | { provider?: string; model?: string; contextWindow?: number }
+      | undefined
+    if (routeCapacity?.contextWindow !== undefined) {
+      nextContext.contextWindow = routeCapacity.contextWindow
+    }
+    const previousContext = session.requestContext()
+    if (
+      previousContext?.provider !== nextContext.provider
+      || previousContext?.model !== nextContext.model
+      || previousContext?.contextWindow !== nextContext.contextWindow
+      || (previousContext === undefined)
+    ) {
+      await session.append('request/context', nextContext)
+    }
     const requested = input.filter(isUserOrSystemMessage)
-    const surface = (await session.deriveMessages()).filter(isUserOrSystemMessage)
-    const prefix = commonSurfacePrefix(requested, surface)
-    const suffix = commonSurfaceSuffix(requested.slice(prefix), surface.slice(prefix))
-    for (const message of requested.slice(prefix, requested.length - suffix)) {
-      if (message.role === 'user') {
-        await session.append('user/message', {
-          content: message.content,
-          ...(message.name ? { name: message.name } : {}),
-        })
-      } else {
-        await session.append('system/message', {
-          content: message.content,
-          ...(message.name ? { name: message.name } : {}),
-        })
+    const surface = await session.deriveMessages()
+    // The session surface is the durable history. A caller (e.g. the web run
+    // handler) includes the full derived history as model context and also
+    // prepends run-scoped system prompts that are NOT part of the surface.
+    // Counting those systems against the surface inflates the "new" tail and
+    // re-appends already-persisted user turns (every resumed run duplicated
+    // the preceding user message in the log). Durable user messages are always
+    // a prefix of the requested user messages — new turns arrive last — so
+    // anchor on users: only what follows the last durable user is genuinely
+    // new. Text-based matching stays unsafe because the same user text can
+    // legitimately repeat across turns.
+    const appendDurable = async (messages: readonly ModelMessage[]): Promise<void> => {
+      for (const message of messages) {
+        if (message.role === 'user') {
+          await session.append('user/message', {
+            content: message.content,
+            ...(message.name ? { name: message.name } : {}),
+          })
+        } else {
+          await session.append('system/message', {
+            content: message.content,
+            ...(message.name ? { name: message.name } : {}),
+          })
+        }
       }
+    }
+    if (surface.length === 0) {
+      // Fresh log: nothing is durable yet; persist the whole requested head so
+      // the initial system prompt and first user turn land in the log.
+      await appendDurable(requested)
+      return
+    }
+    const durableUsers = surface.filter(message => message.role === 'user').length
+    let seenUsers = 0
+    const newTail: ModelMessage[] = []
+    for (const message of requested) {
+      if (message.role === 'user') seenUsers += 1
+      if (seenUsers <= durableUsers) continue // already on the durable surface
+      newTail.push(message)
+    }
+    await appendDurable(newTail)
+  }
+
+  private async _assertReplayable(
+    session: SessionLog,
+    input: readonly ModelMessage[],
+  ): Promise<void> {
+    const reconstructed = await session.deriveMessages()
+    const canonical = (messages: readonly ModelMessage[]) => messages
+      .filter(message => message.role !== 'system')
+      .map(message => ({
+        role: message.role,
+        content: message.content,
+        ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+        ...(message.name ? { name: message.name } : {}),
+        ...(message.tool_calls?.length
+          ? { tool_calls: message.tool_calls.map(call => ({
+              id: call.id,
+              name: call.name,
+              args: JSON.stringify(call.arguments ?? {}),
+            })) }
+          : {}),
+      }))
+    const actual = canonical(input)
+    const replay = canonical(reconstructed)
+    if (JSON.stringify(actual) !== JSON.stringify(replay)) {
+      throw new AgentError(
+        `request is not reconstructable from session log: actual=${JSON.stringify(actual)} replay=${JSON.stringify(replay)}`,
+      )
     }
   }
 
-  private _initialMessages(input: AgentInput): ModelMessage[] {
-    const systemPrompt = this.inbox.injected().get('agentSystem')
+  private async _initialMessages(input: AgentInput): Promise<ModelMessage[]> {
+    const promptService = this.ctx.reflect.get('systemPrompt', false) as
+      | { assemble(options?: object): Promise<{ text: string }> }
+      | undefined
+    const assembled = promptService
+      ? (await promptService.assemble()).text.trim()
+      : undefined
+    const systemPrompt = assembled || this.inbox.injected().get('agentSystem')
     const systemMessage = typeof systemPrompt === 'string' && systemPrompt
       ? [{ role: 'system' as const, content: systemPrompt }]
       : []
@@ -730,6 +897,7 @@ export class AgentService {
   }
 
   private _session(): SessionLog {
+    if (this.config.session) return this.config.session
     const session = (this.ctx as unknown as { session?: SessionLog }).session
     if (!session) throw new AgentError('session service is required')
     return session
@@ -741,8 +909,28 @@ export class AgentService {
     return tools
   }
 
+  private async _resolveAvailableTools(): Promise<readonly ToolDefinition[]> {
+    const promptService = this.ctx.reflect.get('systemPrompt', false) as
+      | { toolSchemas(options?: object): Promise<readonly ToolSchemaSnapshot[]> }
+      | undefined
+    if (promptService) {
+      const schemas = await promptService.toolSchemas()
+      return schemas.map(schema => ({
+        schema,
+        execute: async () => {
+          throw new Error('schema-only tool from prompt assembly')
+        },
+      }))
+    }
+    return this._tools().list()
+  }
+
   private _llm(): LLMAdapter | undefined {
-    return this.config.llm
+    if (this.config.llm) return this.config.llm
+    const service = this.ctx.reflect.get('llm', false) as
+      | { current(): LLMAdapter | undefined }
+      | undefined
+    return service?.current()
   }
 }
 

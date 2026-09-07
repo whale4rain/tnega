@@ -13,6 +13,8 @@ import {
   runEvolveCommand,
 } from './commands.js'
 import { startWebServer } from './server.js'
+export * from './profile.js'
+export * from './profile-file.js'
 
 export type {
   AgentRuntime,
@@ -56,6 +58,7 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.cwd ? { cwd: parsed.cwd } : {}),
         ...(parsed.sessionFile ? { sessionFile: parsed.sessionFile } : {}),
         ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
+        ...(parsed.profile ? { profile: parsed.profile } : {}),
         ...(parsed.model ? { model: parsed.model } : {}),
         ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
         ...(parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {}),
@@ -203,6 +206,7 @@ interface ParsedRunAgentArgs {
   cwd?: string
   sessionFile?: string
   configFile?: string
+  profile?: string
   model?: string
   baseUrl?: string
   maxTokens?: number
@@ -351,6 +355,13 @@ function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
     if (arg === '--allow-shell') {
       parsed.allowShell = true
       cursor += 1
+      continue
+    }
+    if (arg === '--profile') {
+      const value = args[cursor + 1]
+      if (!value) throw new CliError('--profile requires a value')
+      parsed.profile = value
+      cursor += 2
       continue
     }
 
@@ -512,6 +523,9 @@ function assignRunAgentOption(
     case 'config':
     case 'config-file':
       parsed.configFile = value
+      return
+    case 'profile':
+      parsed.profile = value
       return
     case 'model':
       parsed.model = value

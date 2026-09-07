@@ -11,6 +11,8 @@ import {
   agent,
   AgentError,
   AgentInbox,
+  llmService,
+  type LlmService,
   type AgentService,
   type AgentStreamEvent,
   type AgentLoop,
@@ -203,6 +205,7 @@ describe('agent loop', () => {
 
     expect(result.output).toBe('hello')
     expect(result.finishReason).toBe('stop')
+    expect(result.turn).toBe(1)
     expect(result.steps).toHaveLength(1)
     expect(events).toEqual(['start', 'turn-start', 'step', 'turn-end', 'end'])
     expect(calls).toHaveLength(1)
@@ -269,11 +272,16 @@ describe('agent loop', () => {
 
     const events: string[] = []
     const toolResults: string[] = []
+    const coordinates: Array<{ turn?: number; step?: number }> = []
     root.on('agent/start', () => events.push('start'))
     root.on('agent/turn-start', () => events.push('turn-start'))
     root.on('agent/step', () => events.push('step'))
     root.on('agent/tool-call', (payload: AgentToolCallEvent) => {
       events.push(`tool-call:${payload.call.id}`)
+      coordinates.push({
+        ...(payload.turn !== undefined ? { turn: payload.turn } : {}),
+        ...(payload.step !== undefined ? { step: payload.step } : {}),
+      })
     })
     root.on('agent/tool-result', (payload: AgentToolResultEvent) => {
       events.push(`tool-result:${payload.result.output}`)
@@ -291,6 +299,9 @@ describe('agent loop', () => {
     expect(result.steps[0]!.toolResults[0]!.output).toBe(3)
     expect(result.steps[0]!.toolResults[0]!.callId).toBe('c1')
     expect(toolResults).toEqual(['3'])
+    expect(coordinates).toEqual([
+      { turn: 1, step: 0 },
+    ])
     expect(events).toEqual([
       'start',
       'turn-start',
@@ -748,17 +759,19 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/chunk',
       'assistant/message',
       'step/end',
       'turn/end',
     ])
-    expect(durableEvents[4]).toMatchObject({
+    expect(durableEvents[6]).toMatchObject({
       type: 'assistant/chunk',
       payload: { id: 'm1', content: 'partial', index: 0 },
     })
-    expect(durableEvents[5]?.payload).toMatchObject({
+    expect(durableEvents[7]?.payload).toMatchObject({
       content: 'partial',
       interrupted: true,
     })
@@ -800,6 +813,8 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/message',
       'tool/call',
@@ -807,12 +822,12 @@ describe('agent loop', () => {
       'step/end',
       'turn/end',
     ])
-    expect(events[7]?.payload).toMatchObject({
+    expect(events[9]?.payload).toMatchObject({
       finishReason: 'cancelled',
       interrupted: true,
       cancelCause: { type: 'abort' },
     })
-    expect(events[8]?.payload).toMatchObject({
+    expect(events[10]?.payload).toMatchObject({
       finishReason: 'cancelled',
       cancelCause: { type: 'abort' },
     })
@@ -875,19 +890,22 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/message',
       'step/end',
       'turn/end',
     ])
     expect(events[1]?.payload).toMatchObject({ reason: 'user' })
-    expect(events[2]?.payload).toEqual({ index: 0 })
-    expect(events[5]?.payload).toMatchObject({
-      index: 0,
+    expect(events[2]?.payload).toEqual({ turn: 1, step: 0 })
+    expect(events[7]?.payload).toMatchObject({
+      turn: 1,
+      step: 0,
       finishReason: 'stop',
       toolCalls: 0,
     })
-    expect(events[6]?.payload).toMatchObject({ finishReason: 'stop', steps: 1 })
+    expect(events[8]?.payload).toMatchObject({ finishReason: 'stop', steps: 1 })
   })
 
   it('persists a new user turn without duplicating history', async () => {
@@ -929,6 +947,86 @@ describe('agent loop', () => {
         event.type === 'user/message',
     )
     expect(userMessages.map(event => event.payload.content)).toEqual(['first', 'second'])
+  })
+
+  it('does not duplicate history when the new user text repeats an old one', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('multi-turn-repeat.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([
+      { content: 'answer a', finishReason: 'stop' },
+      { content: 'answer b', finishReason: 'stop' },
+      { content: 'answer c', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    const log = dynamic(root).session as SessionLog
+    const history = await log.deriveMessages()
+    await loop({ messages: [...history, { role: 'user', content: 'first' }] })
+    const history2 = await log.deriveMessages()
+    await loop({ messages: [...history2, { role: 'user', content: 'first' }] })
+
+    const userMessages = (await log.read()).filter(
+      (event): event is Extract<SessionEvent, { type: 'user/message' }> =>
+        event.type === 'user/message',
+    )
+    expect(userMessages.map(event => event.payload.content)).toEqual([
+      'first',
+      'first',
+      'first',
+    ])
+  })
+
+  it('does not re-append old user turns when a resumed run prepends a run-scoped system prompt', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('resume-system-skew.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([
+      { content: 'first answer', finishReason: 'stop' },
+      { content: 'second answer', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const systemPrompt = 'You are a coding agent'
+    const loop = root.get('agentLoop') as AgentLoop
+    // First run mirrors the web server shape: a run-scoped system prompt is
+    // part of the model input and becomes durable on a fresh log.
+    await loop({
+      text: 'first',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: 'first' },
+      ],
+    })
+    const log = dynamic(root).session as SessionLog
+    const history = await log.deriveMessages()
+    // Resumed run also mirrors the server: the caller prepends the same
+    // run-scoped system prompt (not part of the durable surface) ahead of the
+    // full derived history, then appends the new user turn.
+    await loop({
+      text: 'second',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...history,
+        { role: 'user', content: 'second' },
+      ],
+    })
+
+    const userMessages = (await log.read()).filter(
+      (event): event is Extract<SessionEvent, { type: 'user/message' }> =>
+        event.type === 'user/message',
+    )
+    expect(userMessages.map(event => event.payload.content)).toEqual([
+      'first',
+      'second',
+    ])
+    const surface = await log.deriveMessages()
+    expect(surface.filter(message => message.role === 'user').map(message => message.content)).toEqual([
+      'first',
+      'second',
+    ])
   })
 
   it('persists only the delta when pre-step rewrites multi-user history', async () => {
@@ -1011,18 +1109,50 @@ describe('agent loop', () => {
     ])
   })
 
-  it('lets agent/request wrap the final request payload', async () => {
+  it('starts a request series from pre-step', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('pre-step-series.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([
+      { content: 'first', finishReason: 'stop' },
+      { content: 'second', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    let secondTurn = false
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
+      if (secondTurn) payload.startsRequestSeries = true
+      secondTurn = true
+      return next()
+    })
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const headers = (await log.read())
+      .filter(event => event.type === 'request/header')
+    expect(headers.map(event => (event.payload as { reason: string }).reason)).toEqual([
+      'initial',
+      'series',
+    ])
+    expect((headers.at(-1)?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+  })
+
+  it('keeps agent/request messages read-only while pre-step owns the rewrite', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('request-wrap.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
     await root.plugin(agent, { llm: adapter })
 
-    root.on('agent/request', (payload: AgentRequestEvent, next) => {
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
       payload.messages = [
-        ...payload.messages.filter(message => message.role !== 'user'),
         { role: 'user', content: 'wrapped' },
       ]
+      return next()
+    })
+    root.on('agent/request', (payload: AgentRequestEvent, next) => {
       payload.options = { ...payload.options, maxSteps: 1 }
       return next()
     })
@@ -1080,6 +1210,12 @@ describe('agent loop', () => {
     root.on('agent/request-error', async (payload: AgentRequestErrorEvent) => {
       await Promise.resolve()
       seen.push({ index: payload.index, attempt: payload.attempt })
+      expect(payload.turn).toBe(1)
+      expect(payload.step).toBe(0)
+      expect(payload.failure).toMatchObject({
+        name: 'Error',
+        message: 'transient model failure',
+      })
       return { kind: 'retry' }
     })
 
@@ -1098,6 +1234,8 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'llm/retry',
       'llm/retry-started',
@@ -1127,6 +1265,57 @@ describe('agent loop', () => {
       { role: 'user', content: 'go' },
       { role: 'assistant', content: 'recovered' },
     ])
+  })
+
+  it('enforces replayability when assertReplayable is enabled', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('assert-replay.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const { adapter } = fakeLLM([
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+        finishReason: 'tool_calls',
+      },
+      { content: 'done', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter, assertReplayable: true })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'sum' })
+    expect(result.output).toBe('done')
+    expect(result.steps).toHaveLength(2)
+  })
+
+  it('stops the turn when a tool result concludes the turn', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('concludes-turn.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register({
+      ...addTool(),
+      metadata: { concludesTurn: true },
+    })
+    let calls = 0
+    const adapter: LLMAdapter = {
+      async complete() {
+        calls += 1
+        return {
+          content: '',
+          toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+          finishReason: 'tool_calls',
+        }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'sum' })
+    expect(calls).toBe(1)
+    expect(result.steps).toHaveLength(1)
+    expect(result.finishReason).toBe('stop')
   })
 
   it('keeps the interrupted stream prefix in the retried request history', async () => {
@@ -1177,6 +1366,8 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'assistant/chunk',
       'assistant/message',
@@ -1187,11 +1378,11 @@ describe('agent loop', () => {
       'step/end',
       'turn/end',
     ])
-    expect(events[4]).toMatchObject({
+    expect(events[6]).toMatchObject({
       type: 'assistant/chunk',
       payload: { id: 'm1', content: 'recover', index: 0 },
     })
-    expect(events[5]?.payload).toMatchObject({ content: 'recover', interrupted: true })
+    expect(events[7]?.payload).toMatchObject({ content: 'recover', interrupted: true })
     expect(await log.deriveMessages()).toEqual([
       { role: 'user', content: 'go' },
       { role: 'assistant', content: 'recover' },
@@ -1219,20 +1410,185 @@ describe('agent loop', () => {
       'meta',
       'turn/start',
       'step/start',
+      'request/header',
+      'request/context',
       'user/message',
       'step/end',
       'turn/end',
     ])
-    expect(events[4]?.payload).toMatchObject({
-      index: 0,
+    expect(events[6]?.payload).toMatchObject({
+      turn: 1,
+      step: 0,
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
     })
-    expect(events[5]?.payload).toMatchObject({
+    expect(events[7]?.payload).toMatchObject({
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
     })
+  })
+})
+
+describe('request header snapshots across steps', () => {
+  it('does not append a header when the envelope is unchanged', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('header-stable.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const { adapter } = fakeLLM([
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+        finishReason: 'tool_calls',
+      },
+      { content: 'done', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'sum' })
+
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    const headers = events.filter(event => event.type === 'request/header')
+    expect(headers).toHaveLength(1)
+    expect((headers[0]?.payload as { reason: string }).reason).toBe('initial')
+  })
+
+  it('records explicit series boundaries as series headers', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('header-series.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([
+      { content: 'one', finishReason: 'stop' },
+      { content: 'two', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+    const service = dynamic(root).agent as AgentService
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    service.startSeries()
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const headers = (await log.read())
+      .filter(event => event.type === 'request/header')
+    expect(headers.map(event => (event.payload as { reason: string }).reason)).toEqual([
+      'initial',
+      'series',
+    ])
+    expect((headers[1]?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+  })
+
+  it('records a changed envelope at a series boundary as change-series', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('header-change-series.jsonl') })
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const { adapter } = fakeLLM([
+      { content: 'one', finishReason: 'stop' },
+      {
+        content: '',
+        toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })],
+        finishReason: 'tool_calls',
+      },
+    ])
+    await root.plugin(agent, { llm: adapter })
+    const agentService = dynamic(root).agent as AgentService
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    agentService.startSeries()
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const headers = (await log.read())
+      .filter(event => event.type === 'request/header')
+    const reasons = headers.map(event => (event.payload as { reason: string }).reason)
+    expect(reasons[0]).toBe('initial')
+    expect(reasons.at(-1)).toBe('series')
+    expect((headers.at(-1)?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+  })
+
+  it('records contextWindow on request context when route capacity is available', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-context-capacity.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(llmService)
+    const service = dynamic(root).llm as LlmService
+    const adapter = fakeLLM([{ content: 'ok', finishReason: 'stop' }]).adapter
+    ;(adapter as unknown as { model?: string }).model = 'deepseek-v4-flash'
+    service.register('catalog', adapter)
+    service.setCapacityResolver(model => model === 'deepseek-v4-flash' ? 1_000_000 : undefined)
+    await root.plugin(agent)
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'hi' })
+
+    const log = dynamic(root).session as SessionLog
+    const contexts = (await log.read()).filter(event => event.type === 'request/context')
+    expect(contexts.at(-1)?.payload).toMatchObject({
+      contextWindow: 1_000_000,
+    })
+  })
+
+  it('records a new request context when route capacity changes', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-context-capacity-change.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(llmService)
+    const service = dynamic(root).llm as LlmService
+    let capacity = 100_000
+    const adapter = fakeLLM([
+      { content: 'ok', finishReason: 'stop' },
+      { content: 'ok2', finishReason: 'stop' },
+    ]).adapter
+    ;(adapter as unknown as { model?: string }).model = 'catalog-model'
+    service.register('catalog', adapter)
+    service.setCapacityResolver(() => capacity)
+    await root.plugin(agent)
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    capacity = 1_000_000
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const contexts = (await log.read()).filter(event => event.type === 'request/context')
+    expect(contexts.map(event => (event.payload as { contextWindow?: number }).contextWindow))
+      .toEqual([100_000, 1_000_000])
+  })
+
+  it('clears route capacity in request context when it disappears', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-context-capacity-clear.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(llmService)
+    const service = dynamic(root).llm as LlmService
+    let capacity: number | undefined = 100_000
+    const adapter = fakeLLM([
+      { content: 'ok', finishReason: 'stop' },
+      { content: 'ok2', finishReason: 'stop' },
+    ]).adapter
+    ;(adapter as unknown as { model?: string }).model = 'catalog-model'
+    service.register('catalog', adapter)
+    service.setCapacityResolver(() => capacity)
+    await root.plugin(agent)
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'first' })
+    capacity = undefined
+    await loop({ text: 'second' })
+
+    const log = dynamic(root).session as SessionLog
+    const contexts = (await log.read()).filter(event => event.type === 'request/context')
+    const windows = contexts.map(event =>
+      (event.payload as { contextWindow?: number }).contextWindow)
+    expect(windows).toEqual([100_000, undefined])
   })
 })

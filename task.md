@@ -45,13 +45,68 @@
 
 - [x] session：turn / step 生命周期事件、raw / surface 分离的持久化族（内存事实层 + 异步批量 JSONL 落盘）
 - [x] session：compaction 三事件事务（`compaction/start` -> `checkpoint` -> `compaction/end`）
+- [x] session：v5 可重建请求层（`request/header` / `request/context` 快照、坐标化 `turn`/`step`、surface `sourceEventSeqs`，`deriveMessages()` 严格由日志重建模型输入）
 - [x] agent：`AgentInbox.followup / steer / send`，steer 独立优先队列
+- [x] agent：live `ctx.agents` 注册表（`create`/`resume`/`get`/`list`/`roots`/`isOwnedBy`）、`AgentHandle` 与 `agent/created` / `agent/disposed` / `agent/status` / `agent/inbox/*` 生命周期事件
+- [x] agent：system-prompt assembly seam（`SystemPromptService.registerSection` / `assemble`、`system-prompt/assemble` waterfall、`system-prompt/change` 通知，默认 loop 与 `defineAgent` 接入）
+- [x] agent：LLM provider seam（`llm-service` 插件与 `LlmService.register / setCurrent / current`，默认 loop 在 config 无 adapter 时回退到 `ctx.llm`）
+- [x] agent：工具 schema 并入 prompt assembly seam（`SystemPromptService.registerTools`，默认 loop 优先取组装后的 schemas、回退 `ToolsService.list`，`request/header` 记录模型实际看到的 tools）
+- [x] agent：`request/header` / `request/context` 变化快照语义（首个 envelope 写 `initial`，同 loop 内 tools/system/config 变化才追加 `change`，context 仅在 route 变化时记录）
+- [x] agent：durable inbox（session `agent/inbox/spliced` 事件族，`DurableInbox.insert / steer / claim / clear` 全部落日志，`restore` 从日志重建 next-turn / next-step 双队列）
+- [x] agent：live agent 使用 durable inbox（`followup` / `steer` 写入 splice 日志，driver 从 durable 队列 claim），`ctx.agents.resume()` 恢复 pending work 并自动续跑
+- [x] tools：execution provider seam（`ExecutionProvider.runShell / fetchHttp`、`localExecutionProvider`，内置 `shell` / `http_get` 经 config 注入的执行体运行）
+- [x] cli：profile / boot 组合层（`AgentProfile`、`bootAgentRuntime`，bundle 先装、profile 默认选项与 overlay 后覆盖）
+- [x] cli：`createAgentRuntime` 直接消费 `options.profile`（内部合并 profile 默认选项与 bundles）
 - [x] agent：`llm/stream` waterfall，支持改写最终请求与短路返回
 - [x] agent：流式 chunk 落 durable `assistant/chunk` 事件
 - [x] tools：`pre-execute` / `execute` / `post-execute` 三层 waterfall，兼容旧 policy 语义
 - [x] web：`assistant/chunk` 与 compaction 事件类型同步，不污染 transcript
 - [x] 全量 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` 验证
 - [x] 按功能点逐个 git commit
+
+### 提交记录（DSH v0.2.0 core 对齐）
+
+- session：`SESSION_FORMAT_VERSION` 升至 5，新增 `request/header` / `request/context` 与坐标化 `turn`/`step`，`foldSurface` / `foldRequestHeader` / `foldRequestContext` 可重建折叠，agent 每次 step 持久化请求 envelope；同步 web 事件类型与根包导出，`packages/session/README.md` 记录设计理念。
+- agent：新增 live agent registry（`agents` 插件与 `AgentRegistry`），支持 handle 级 session 绑定、driver 唤醒、steer 优先、typed cancel 与 dispose；同步根包导出。
+- agent：新增 system-prompt assembly seam（可排序 prompt sections、assemble waterfall 与 change 事件），`AgentDefinition.system` 注册为 persona section，默认 loop 从 ctx 组装。
+- agent：新增 LLM provider seam，`LlmService` 支持多 provider 注册与切换，agent loop 无 config adapter 时从 `ctx.llm` 取当前 provider。
+- agent：工具 schema 与 system prompt 统一走 assembly seam，模型看到的 tool schemas 与 `request/header` 日志一致。
+- agent：跨 step 只追加变化的 request envelope 快照，日志可区分 loop 内的 model-message series。
+- agent：durable inbox 以 splice 事件记录 pending work，崩溃/重启后可重建双列表。
+- agent：live agent 的发送/claim 走 durable inbox，resume 会恢复未完成输入并继续驱动。
+- tools：shell / http 执行收口到可替换 provider，便于后续沙箱/远程后端替换。
+- cli：agent runtime 提供 profile+bundle+boot 组合入口，作为后续 web/headless/eval 产品形态的共同启动层。
+- cli：runtime 组合入口可直接传入 profile，bundles 先于调用方 plugins 挂载。
+
+## DSH 对齐补强（"做了但只做了一半"部分）
+
+对照 DSH 学习稿逐条核查后，把三处「已有雏形但不完整」的能力补齐：
+
+- [x] session 显示元数据改为**投影事实 + append-only**：新增 durable `meta/patch` 事件（`fields` 白名单 + title/agentType/mode），`foldSessionMeta()` / `SessionLog.meta()` 从 `meta` + `meta/patch` 事件折叠当前值；`patchSessionMeta` / `setSessionTitle` 不再整写 head meta，而是追加事件；fork 折叠源会话当前态到新 head，truncate 保留全部 meta/patch。崩溃 / 并发下标题与模式保持可重建。
+- [x] 每包 invariant companion：core 新增 `InvariantRegistry` / `assertInvariants` / `invariant` 插件（中央注册，运行时持续断言跨数据关系）；session 导出 `./invariant`（`checkSessionInvariants`：turn/step/tool-call 成对闭合 + seq 单调），`SessionLog.runInvariants()` 自检；`packages/session/test/invariant.test.ts` 覆盖失衡检测与注册中心。
+- [x] packages 级 README：为 core / agent / tools / eval / evolve / llm / cli / coding-agent / benchmark 与 `apps/web` 补齐各包 README（角色 / 关键 API / 事件 / 测试），与既有 `packages/session/README.md` 风格一致。
+- [x] 全量 typecheck / lint / test / build / publish 测试通过（real-LLM smoke 与 2 个环境 key 泄漏的 cli 测试为本机 pre-existing 失败，与本次改动无关）。
+- [x] git commit（按功能点拆 3 个：meta-patch 投影化 / invariant companion / 包 README）
+
+## Session compaction 对齐 DSH：surface 边界替换 + 增量续投（v6）
+
+对照 DSH 学习稿第 5 讲的 compaction 语义，把「全量快照式 checkpoint」重构为
+「边界替换 + 重排写」的增量续投模型（曾实测：旧实现 compact 后
+`surfaceEvents()` 与 `deriveMessages()` 分叉、server 事件过滤膨胀、token 双计）：
+
+- [x] session：`SESSION_FORMAT_VERSION` 升至 6；v5 旧日志（快照式 checkpoint）在 `init()` 被 `SessionFormatError` 拒绝
+- [x] session：`checkpoint.payload.messages` 语义从「整条 surface 快照」改为「压缩前缀」，`surfaceOp` 支持 `{ op: 'replace', start, end }` 遮蔽范围（读取时兼容旧 `'replace'` 字符串）
+- [x] session：`foldSurface()` 把带范围 checkpoint 当作 surface 替换节点（移除遮蔽 seq 并插入 checkpoint 节点、后续消息续 append），`deriveMessages()` / `surfaceEvents()` / UI 投影共用同一折叠规则、compact 后三者一致
+- [x] session：`compact()` 日志重排写 —— head/元数据 → `compaction/start` → `checkpoint`（压缩前缀 + 遮蔽范围）→ `compaction/end` → kept-tail 尾部消息 → 其余 raw 坐标事件，经 `resequenceEvents()` 重分配 seq 保持单调，`_replaceEvents()` 同步内存事实层与 JSONL 文件
+- [x] session：`estimateEventTokens(checkpoint)` 只估压缩前缀，不再与保留的 raw 消息重复计 token
+- [x] cli / web 适配：`server.readSessionEvents` 过滤随修复后的 `surfaceEvents()` 自动排除 pre-compact 消息；web `projectEvents` checkpoint 渲染改为「重建 + 续投」，压缩摘要作为 `compacted` 行保留；`apps/web/src/types.ts` surfaceOp 类型同步
+- [x] 测试：session compact 系列改 v6 布局（checkpoint 后接 kept-tail、checkpoint.messages = 前缀）；新增 derive==surface 一致性 / 嵌套 compact / reopen 不变量回归；web compact e2e 改 v6 事件序语义；invariant 与 format fixture 升 v6
+- [x] 全量 typecheck / lint / test / build 通过（real-LLM smoke 与 2 个环境 key 泄漏的 cli 测试为本机 pre-existing 失败，与本次改动无关；另修 HEAD 遗留的 `agent.test.ts` exactOptionalPropertyTypes 类型错误）
+- [x] git commit（compaction v6 单一大提交 + agent 测试类型修复小提交）
+
+### 提交记录（compaction v6 后置修复）
+
+- agent：修复 resume 重复持久化旧 user turn —— `_persistStepInput` 原按 user+system 计数对齐，web 每次 resume 前置的 run-scoped system 使 `newCount` 偏大，尾部切片把紧挨真新消息的旧 user 一并重新 append（实测 d851027d：8 条 user / 应为 4 条，plan 模式因多一个 system 更明显）。改为以 durable user 前缀对齐、只追加对齐点之后的新消息；新增回归测试覆盖「run-scoped system + 全量 history + 新 user」的 resume 输入形状。
 
 ## M16 eval benchmark 与真实评测
 

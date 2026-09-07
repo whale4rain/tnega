@@ -11,6 +11,7 @@ import type {
 export * from './builtins.js'
 export * from './calc.js'
 export * from './path.js'
+export * from './execution.js'
 export {
   ToolAuthorizationError,
   validateSchema,
@@ -37,6 +38,8 @@ export interface ToolSchema {
 export interface ToolExecuteOptions {
   callId?: string
   signal?: AbortSignal
+  /** Runtime opt-in: mark a successful result as concluding the agent turn. */
+  concludesTurn?: boolean
   [key: string]: unknown
 }
 
@@ -65,6 +68,8 @@ export interface ToolResult {
   input: unknown
   output?: unknown
   error?: ToolError
+  /** When true, the agent turn should stop after this tool result. */
+  concludesTurn?: boolean
   startedAt: number
   durationMs: number
 }
@@ -85,6 +90,15 @@ export interface ToolStagePayload {
 export interface ToolsConfig extends ToolPolicy {
   [key: string]: unknown
 }
+
+/**
+ * Final pre-dispatch check evaluated after the `tools/pre-execute` waterfall.
+ * A returned reason denies the call; `undefined` leaves it unchanged. Guards
+ * are monotonic: no later listener can re-allow a denied call.
+ */
+export type ToolGuard = (
+  request: ToolRequest,
+) => string | undefined | Promise<string | undefined>
 
 export class ToolNotFoundError extends Error {
   override name = 'ToolNotFoundError'
@@ -121,6 +135,7 @@ export class ToolsService extends Service<never> {
   static provide = 'tools'
 
   private _tools = new Map<string, ToolDefinition>()
+  private _guards = new Set<ToolGuard>()
   private _policy: {
     validator: ToolInputValidator
     authorizer?: ToolAuthorizer
@@ -144,14 +159,29 @@ export class ToolsService extends Service<never> {
         throw new ToolAlreadyRegisteredError(name)
       }
       this._tools.set(name, definition)
+      this.ctx.emit('tools/change')
       return () => {
         this._tools.delete(name)
+        this.ctx.emit('tools/change')
       }
     }, `ctx.tools.register(${JSON.stringify(name)})`)
   }
 
   unregister(name: string): boolean {
-    return this._tools.delete(name)
+    const removed = this._tools.delete(name)
+    if (removed) this.ctx.emit('tools/change')
+    return removed
+  }
+
+  /** Register a monotonic guard evaluated after pre-execute policy. */
+  guard(guard: ToolGuard): Disposable {
+    if (typeof guard !== 'function') throw new TypeError('tool guard must be a function')
+    return this.ctx.fiber.effect(() => {
+      this._guards.add(guard)
+      return () => {
+        this._guards.delete(guard)
+      }
+    }, 'ctx.tools.guard()')
   }
 
   has(name: string): boolean {
@@ -196,6 +226,8 @@ export class ToolsService extends Service<never> {
         throw new ToolAuthorizationError(`tool rejected by tools/pre-execute: ${name}`)
       }
       request = resolved
+      const denial = await this._checkGuards(request)
+      if (denial) throw new ToolAuthorizationError(denial)
     } catch (error) {
       preError = error
     }
@@ -270,6 +302,14 @@ export class ToolsService extends Service<never> {
     if (validator) await validator(request.input, request.tool)
   }
 
+  private async _checkGuards(request: ToolRequest): Promise<string | undefined> {
+    for (const guard of this._guards) {
+      const denial = await guard(request)
+      if (denial) return denial
+    }
+    return undefined
+  }
+
   private _validate(definition: ToolDefinition): void {
     if (!definition || typeof definition.schema?.name !== 'string' || !definition.schema.name) {
       throw new TypeError('tool definition requires a non-empty schema.name')
@@ -289,6 +329,7 @@ export class ToolsService extends Service<never> {
       durationMs: Date.now() - request.startedAt,
     }
     if (request.options.callId) result.callId = request.options.callId
+    this._applyConcludesTurn(request, result)
     return result
   }
 
@@ -303,6 +344,14 @@ export class ToolsService extends Service<never> {
     }
     if (request.options.callId) result.callId = request.options.callId
     return result
+  }
+
+  private _applyConcludesTurn(request: ToolRequest, result: ToolResult): void {
+    const staticDeclares = (request.tool.metadata as { concludesTurn?: unknown } | undefined)
+      ?.concludesTurn
+    if (staticDeclares === true || request.options.concludesTurn === true) {
+      result.concludesTurn = true
+    }
   }
 }
 

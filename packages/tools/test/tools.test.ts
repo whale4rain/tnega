@@ -33,15 +33,33 @@ describe('ToolsService registry', () => {
     const root = new Context()
     await root.plugin(tools)
     const service = dynamic(root).tools as ToolsService
+    const changes: number[] = []
+    root.on('tools/change', () => changes.push(changes.length + 1))
 
     expect(service.has('add')).toBe(false)
     const dispose = service.register(addTool())
+    expect(changes).toEqual([1])
     expect(service.has('add')).toBe(true)
     expect(service.list().map(tool => tool.schema.name)).toEqual(['add'])
     expect(service.toSpecs()).toEqual([{ name: 'add', description: 'add two numbers' }])
 
     dispose()
+    expect(changes).toEqual([1, 2])
     expect(service.has('add')).toBe(false)
+  })
+
+  it('emits tools/change on direct unregister', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    let changes = 0
+    root.on('tools/change', () => changes += 1)
+    service.register(addTool())
+    expect(changes).toBe(1)
+    expect(service.unregister('add')).toBe(true)
+    expect(changes).toBe(2)
+    expect(service.unregister('add')).toBe(false)
+    expect(changes).toBe(2)
   })
 
   it('rejects duplicate tools in the same scope', async () => {
@@ -208,6 +226,78 @@ describe('ToolsService pipeline', () => {
 
     const result = await service.execute('add', { a: 1, b: 2 }, { callId: 'c1' })
     expect(result.callId).toBe('c1')
+  })
+
+  it('marks a runtime concludesTurn option on the result', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+
+    const normal = await service.execute('add', { a: 1, b: 2 })
+    expect(normal.concludesTurn).toBeUndefined()
+    const terminal = await service.execute(
+      'add',
+      { a: 1, b: 2 },
+      { callId: 'c1', concludesTurn: true },
+    )
+    expect(terminal.concludesTurn).toBe(true)
+  })
+
+  it('does not conclude the turn on a failed execution', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register({
+      schema: { name: 'fail', description: 'fail' },
+      execute: () => {
+        throw new Error('boom')
+      },
+      metadata: { concludesTurn: true },
+    })
+
+    const result = await service.execute(
+      'fail',
+      {},
+      { concludesTurn: true },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.concludesTurn).toBeUndefined()
+  })
+
+  it('denies a call when any monotonic guard rejects it', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    let executed = false
+    const service = dynamic(root).tools as ToolsService
+    service.register({
+      schema: { name: 'guarded', description: 'guarded' },
+      execute: () => {
+        executed = true
+        return 'ok'
+      },
+    })
+    service.guard(request => request.name === 'guarded' ? 'blocked by guard' : undefined)
+
+    const result = await service.execute('guarded', {})
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).toBe('ToolAuthorizationError')
+    expect(result.error?.message).toBe('blocked by guard')
+    expect(executed).toBe(false)
+  })
+
+  it('unregisters guards with their disposer', async () => {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    service.register(addTool())
+    const dispose = service.guard(() => 'deny everything')
+    expect((await service.execute('add', { a: 1, b: 2 })).ok).toBe(false)
+
+    dispose()
+    const result = await service.execute('add', { a: 1, b: 2 })
+    expect(result.ok).toBe(true)
+    expect(result.output).toBe(3)
   })
 })
 

@@ -14,11 +14,13 @@ import {
   SessionLog,
   estimateContextUsage as estimateSessionContextUsage,
   estimateMessageTokens,
+  foldSessionMeta,
   projectEvents,
   safeCompactSplit,
   suffixStartIndexForTokens,
   type ContextUsage,
   type AgentType,
+  type MetaPatchPayload,
   type ModelMessage,
   type SessionEvent,
   type SessionMode,
@@ -121,10 +123,17 @@ export async function createSession(
       ...(options.mode ? { mode: options.mode } : {}),
     },
   }
-  await writeFile(sessionFile(workspace, id), `${JSON.stringify(meta)}\n`, 'utf8')
+  const workspaceDir = resolve(workspace)
+  await writeFile(sessionFile(workspaceDir, id), `${JSON.stringify(meta)}\n`, 'utf8')
   return {
     id,
-    ...meta.payload,
+    title,
+    workspace: workspaceDir,
+    createdAt,
+    ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+    ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
+    ...(options.agentType ? { agentType: options.agentType } : {}),
+    ...(options.mode ? { mode: options.mode } : {}),
     updatedAt: createdAt,
     eventCount: 1,
   }
@@ -157,44 +166,37 @@ export async function readSessionSummary(
   workspace: string,
   id: string,
 ): Promise<SessionSummary> {
-  const file = sessionFile(workspace, id)
-  const meta = await readSessionMeta(file)
-  const events = await readEventLines(file)
+  const workspaceDir = resolve(workspace)
+  const file = sessionFile(workspaceDir, id)
+  const raw = await readEventLines(file)
+  const events = raw
+    .map(line => parseSessionEvent(line))
+    .filter((event): event is SessionEvent => event !== undefined)
   const fileStat = await stat(file)
-  const createdAt = meta.payload.createdAt
+  const headMeta = events.find(event => event.type === 'meta')
+  const headPayload = headMeta?.payload as Record<string, unknown> | undefined
+  const createdAt = headPayload && typeof headPayload.createdAt === 'number'
+    ? headPayload.createdAt
+    : Date.now()
+  const folded = foldSessionMeta(events)
   const updatedAt = Math.max(createdAt, fileStat.mtimeMs)
-  return {
+  const summary: SessionSummary = {
     id,
-    ...meta.payload,
+    title: folded.title ?? 'New session',
+    workspace: workspaceDir,
+    createdAt,
     updatedAt,
-    eventCount: events.length,
+    eventCount: raw.length,
   }
-}
-
-export async function readSessionMeta(file: string): Promise<SessionMetaEvent> {
-  const lines = await readEventLines(file)
-  for (const line of lines) {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(line)
-    } catch {
-      continue
-    }
-    if (isMetaEvent(parsed)) return parsed
+  if (folded.agentType) summary.agentType = folded.agentType
+  if (folded.mode) summary.mode = folded.mode
+  if (headPayload && typeof headPayload.parentSessionId === 'string') {
+    summary.parentSessionId = headPayload.parentSessionId
   }
-  const now = Date.now()
-  const fallback: SessionMetaEvent = {
-    id: randomUUID(),
-    seq: 1,
-    ts: now,
-    type: 'meta',
-    payload: {
-      title: 'New session',
-      workspace: '',
-      createdAt: now,
-    },
+  if (headPayload && typeof headPayload.forkedAtMessageId === 'string') {
+    summary.forkedAtMessageId = headPayload.forkedAtMessageId
   }
-  return fallback
+  return summary
 }
 
 export async function setSessionTitle(
@@ -211,24 +213,25 @@ export async function patchSessionMeta(
   patch: SessionMetaPatch,
 ): Promise<SessionSummary> {
   const file = sessionFile(workspace, id)
-  const lines = await readEventLines(file)
-  let meta = await readSessionMeta(file)
-  const payload: SessionMetaPayload & { formatVersion?: number } = { ...meta.payload }
+  const fields: MetaPatchPayload['fields'] = []
+  const payload: MetaPatchPayload = { fields }
   if (patch.title !== undefined) {
+    fields.push('title')
     payload.title = patch.title.trim() || 'New session'
   }
-  if (patch.agentType !== undefined) payload.agentType = patch.agentType
-  if (patch.mode !== undefined) payload.mode = patch.mode
-  meta = {
-    ...meta,
-    payload,
+  if (patch.agentType !== undefined) {
+    fields.push('agentType')
+    payload.agentType = patch.agentType
   }
-  const next: string[] = [JSON.stringify(meta)]
-  for (const line of lines) {
-    if (isMetaLine(line)) continue
-    next.push(line)
+  if (patch.mode !== undefined) {
+    fields.push('mode')
+    payload.mode = patch.mode
   }
-  await writeAtomic(file, `${next.join('\n')}${next.length ? '\n' : ''}`)
+  if (!fields.length) return readSessionSummary(workspace, id)
+  await withSessionLog(file, async (log) => {
+    await log.append('meta/patch', payload)
+    await log.flush()
+  })
   return readSessionSummary(workspace, id)
 }
 
@@ -238,25 +241,36 @@ export async function forkSession(
   options: { title?: string; messageId?: string } = {},
 ): Promise<SessionSummary> {
   const source = sessionFile(workspace, id)
-  const meta = await readSessionMeta(source)
   const events = await withSessionLog(source, async (log) => {
     const allEvents = await log.read()
-    return options.messageId
-      ? await log.forkAt(options.messageId)
-      : allEvents.filter(event => event.type !== 'meta')
+    if (options.messageId) return log.forkAt(options.messageId)
+    return allEvents
   })
+  const headMeta = events.find(event => event.type === 'meta')
+  const createdAt = headMeta && (headMeta.payload as Record<string, unknown>).createdAt
+  // A fork is a new session: its head meta carries the source's current
+  // metadata (title/agentType/mode folded over the source's meta patches), so
+  // the source's meta/patch events need no replay here.
+  const folded = foldSessionMeta(events)
+  const body = events.filter(event => event.type !== 'meta' && event.type !== 'meta/patch')
   const fork = await createSession(workspace, {
-    title: options.title?.trim() || `${meta.payload.title} fork`,
-    createdAt: meta.payload.createdAt,
+    title: options.title?.trim() || `${folded.title ?? 'New session'} fork`,
+    ...(typeof createdAt === 'number' ? { createdAt } : {}),
     parentSessionId: id,
-    ...(meta.payload.agentType ? { agentType: meta.payload.agentType } : {}),
-    ...(meta.payload.mode ? { mode: meta.payload.mode } : {}),
+    ...(folded.agentType ? { agentType: folded.agentType } : {}),
+    ...(folded.mode ? { mode: folded.mode } : {}),
     ...(options.messageId ? { forkedAtMessageId: options.messageId } : {}),
   })
-  const target = sessionFile(workspace, fork.id)
-  const forkMeta = await readSessionMeta(target)
-  const next = [JSON.stringify(forkMeta), ...events.map(event => JSON.stringify(event))]
-  await writeAtomic(target, `${next.join('\n')}\n`)
+  if (body.length) {
+    const target = sessionFile(workspace, fork.id)
+    await writeAtomic(
+      target,
+      [
+        ...(await readEventLines(target)),
+        ...body.map(event => JSON.stringify(event)),
+      ].join('\n') + '\n',
+    )
+  }
   return readSessionSummary(workspace, fork.id)
 }
 
@@ -266,26 +280,21 @@ export async function truncateSessionAt(
   messageId: string,
 ): Promise<SessionSummary> {
   const file = sessionFile(workspace, id)
-  const lines = await readEventLines(file)
-  const events: SessionEvent[] = []
-  for (const line of lines) {
-    const event = parseSessionEvent(line)
-    if (event) events.push(event)
-  }
+  const events = (await readEventLines(file))
+    .map(line => parseSessionEvent(line))
+    .filter((event): event is SessionEvent => event !== undefined)
   const targetIndex = events.findIndex(
     event => event.id === messageId && event.type === 'user/message',
   )
   if (targetIndex < 0) {
     throw new TypeError(`user message not found: ${messageId}`)
   }
-  const meta = await readSessionMeta(file)
-  const next = [
-    JSON.stringify(meta),
-    ...events
-      .slice(0, targetIndex)
-      .filter(event => event.type !== 'meta')
-      .map(event => JSON.stringify(event)),
-  ]
+  // Keep every event before the target message in its original order (head
+  // meta and meta/patch events stay where they are), so seq stays monotonic
+  // and truncation rolls the conversation back to just before that point.
+  const next = events
+    .slice(0, targetIndex)
+    .map(event => JSON.stringify(event))
   await writeAtomic(file, `${next.join('\n')}\n`)
   return readSessionSummary(workspace, id)
 }
@@ -402,24 +411,6 @@ async function writeAtomic(file: string, content: string): Promise<void> {
   const target = `${file}.tmp`
   await writeFile(target, content, 'utf8')
   await rename(target, file)
-}
-
-function isMetaEvent(value: unknown): value is SessionMetaEvent {
-  if (!value || typeof value !== 'object') return false
-  const record = value as Record<string, unknown>
-  const payload = record.payload as Record<string, unknown> | undefined
-  return record.type === 'meta'
-    && typeof payload?.title === 'string'
-    && typeof payload.workspace === 'string'
-    && typeof payload.createdAt === 'number'
-}
-
-function isMetaLine(line: string): boolean {
-  try {
-    return (JSON.parse(line) as Record<string, unknown>).type === 'meta'
-  } catch {
-    return false
-  }
 }
 
 function parseSessionEvent(line: string): SessionEvent | undefined {

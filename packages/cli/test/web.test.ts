@@ -25,8 +25,10 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
   url: string
   close: () => Promise<void>
   requestCount: () => number
+  bodies: () => Array<{ stream?: boolean; messages?: Array<{ role: string; content?: string }> }>
 }> {
   let count = 0
+  const recorded: Array<{ stream?: boolean; messages?: Array<{ role: string; content?: string }> }> = []
   const chunks = [
     {
       id: 'chatcmpl-mock',
@@ -55,7 +57,8 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
         res.end('body required')
         return
       }
-      const parsed = JSON.parse(body) as { stream?: boolean }
+      const parsed = JSON.parse(body) as { stream?: boolean; messages?: Array<{ role: string; content?: string }> }
+      recorded.push(parsed)
       const respond = (): void => {
         if (parsed.stream !== true) {
           res.writeHead(200, {
@@ -102,6 +105,7 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
   const entry = {
     url,
     requestCount: () => count,
+    bodies: () => recorded,
     close: () => new Promise<void>((resolve, reject) => {
       server.close(error => error ? reject(error) : resolve())
     }),
@@ -666,12 +670,18 @@ describe('web server', () => {
     const checkpoint = after.events[checkpointIndex]
     expect(typeof checkpoint?.payload?.summary).toBe('string')
     expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
+    // v6: the checkpoint replaces the compressed surface. Message events that
+    // were compressed away no longer appear on the returned surface (they stay
+    // in the raw log for replay), so the original prompt is not re-visible.
+    const visibleMessages = after.events.filter(isMessageEvent)
     expect(
-      after.events.slice(0, checkpointIndex).some(
-        event => isMessageEvent(event)
-          && event.payload?.content === 'a very long conversation with lots of words',
+      visibleMessages.some(
+        event => event.payload?.content === 'a very long conversation with lots of words',
       ),
-    ).toBe(true)
+    ).toBe(false)
+    expect(
+      after.events.filter(event => event.type === 'checkpoint').length,
+    ).toBeGreaterThan(0)
   })
 
   it('keeps recent raw events and a surface checkpoint after compacting a long session', async () => {
@@ -759,13 +769,15 @@ describe('web server', () => {
     expect(checkpointIndex).toBeGreaterThanOrEqual(0)
     const checkpoint = after.events[checkpointIndex]
     expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
+    // v6: the checkpoint prefix is the compressed summary; the recent tail is
+    // preserved as raw message events AFTER the checkpoint, so the recent
+    // request is visible on the surface again (not baked into the snapshot).
+    const tailMessages = after.events.slice(checkpointIndex + 1).filter(isMessageEvent)
+    expect(tailMessages.some(event => event.payload?.content === 'recent request')).toBe(true)
     expect(
-      checkpoint?.payload?.messages?.some(
-        message => message.content === 'recent request',
-      ) ?? false,
-    ).toBe(true)
-    const rawBefore = after.events.slice(0, checkpointIndex).filter(isMessageEvent)
-    expect(rawBefore.some(event => event.payload?.content === 'recent request')).toBe(true)
+      checkpoint?.payload?.messages?.some(message => message.content === 'recent request')
+        ?? false,
+    ).toBe(false)
   })
 
   it('streams a run through SSE and persists the final message', async () => {
@@ -1181,6 +1193,16 @@ describe('web server', () => {
     expect(second).toContain('event: plan/items')
     expect(second).toContain('event: plan/done')
     expect(mock.requestCount()).toBe(3)
+
+    // A resumed coding run must not double the coding system prompt: the first
+    // run persisted it as a durable system/message, which already leads the
+    // derived history, so the server prepends it again only on a fresh log.
+    const resumedRun = mock.bodies().at(-1)
+    const codingSystems = (resumedRun?.messages ?? []).filter(
+      message => message.role === 'system'
+        && (message.content ?? '').includes('You are Tnega'),
+    )
+    expect(codingSystems).toHaveLength(1)
 
     const detail = await apiFetch(
       server.url,

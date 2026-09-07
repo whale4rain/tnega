@@ -27,6 +27,9 @@ export interface LLMCompletion {
 export interface CompleteOptions {
   maxSteps?: number
   signal?: AbortSignal
+  provider?: string
+  model?: string
+  temperature?: number
 }
 
 export interface LLMMessageStartEvent {
@@ -106,6 +109,8 @@ export interface AgentRunResult {
   input: AgentInput
   output: string
   finishReason: AgentFinishReason
+  /** Durable turn number this run executed, when a turn was opened. */
+  turn?: number
   steps: readonly AgentStep[]
   messages: readonly ModelMessage[]
 }
@@ -157,28 +162,47 @@ export interface AgentTurnStartEvent {
 
 export interface AgentStepEvent {
   index: number
+  turn?: number
+  step?: number
   input: readonly ModelMessage[]
 }
 
 export interface AgentPreStepEvent {
   index: number
+  /** Durable turn that will own the proposed step. */
+  turn?: number
+  /** Durable step proposed by the loop. */
+  step?: number
+  /** Cancellation signal for the current turn. */
+  signal?: AbortSignal
   messages: ModelMessage[]
+  /** Begin a distinct model-message series before this step's admitted messages. */
+  startsRequestSeries?: boolean
 }
 
 export interface AgentRequestEvent {
   index: number
-  messages: ModelMessage[]
+  /** Read-only snapshot of the model-visible messages for this request. */
+  readonly messages: readonly ModelMessage[]
   tools: readonly ToolDefinition[]
   options: CompleteOptions
 }
 
 export interface AgentRequestErrorEvent {
   index: number
+  turn: number
+  step: number
   messages: readonly ModelMessage[]
   tools: readonly ToolDefinition[]
   options: CompleteOptions
   attempt: number
   error: unknown
+  /** Normalized durable failure fact surfaced to recovery listeners. */
+  failure: { name: string; message: string; stack?: string }
+  provider?: string
+  model?: string
+  signal?: AbortSignal
+  retryPolicy?: { maxRetries: number; retryDelayMs: number }
 }
 
 export type AgentRequestRetryDecision =
@@ -187,17 +211,22 @@ export type AgentRequestRetryDecision =
 
 export interface AgentTurnStoppingEvent {
   index: number
+  turn?: number
   steps: readonly AgentStep[]
   finishReason: AgentFinishReason
 }
 
 export interface AgentToolCallEvent {
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
 }
 
 export interface AgentToolResultEvent {
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
   result: ToolResult
 }
@@ -215,12 +244,16 @@ export type AgentEndEvent = AgentTurnEndEvent
 export interface AgentToolStartEvent {
   type: 'tool/start'
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
 }
 
 export interface AgentToolEndEvent {
   type: 'tool/end'
   index: number
+  turn?: number
+  step?: number
   call: LLMToolCall
   result: ToolResult
 }

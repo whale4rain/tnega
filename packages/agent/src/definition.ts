@@ -4,6 +4,7 @@ import type { ToolDefinition } from '@tnega/tools'
 
 import { agent, AgentService, type AgentConfig } from './service.js'
 import type { AgentHooks, AgentInput, AgentLoop } from './types.js'
+import type { SystemPromptService } from './prompt.js'
 
 export type AgentDefinitionHooks = AgentHooks
 
@@ -82,6 +83,16 @@ export function defineAgent(
         await agentFiber
         agentService = ctx.reflect.get('agent') as AgentService
         if (system) agentService.inbox.inject('agentSystem', system)
+      }
+
+      if (system) {
+        const prompt = ctx.reflect.get('systemPrompt') as SystemPromptService | undefined
+        if (prompt) {
+          ctx.fiber.effect(() => prompt.registerSection({
+            name: `${name}:persona`,
+            content: system,
+          }), `ctx.systemPrompt.section(${JSON.stringify(name)})`)
+        }
       }
 
       for (const tool of definition.tools ?? []) {
