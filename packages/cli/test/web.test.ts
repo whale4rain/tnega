@@ -1521,6 +1521,66 @@ describe('web server', () => {
   })
 })
 
+describe('web server with resident agents', () => {
+  it('keeps a resident durable-inbox agent across runs without duplicating turns', async () => {
+    const dir = await tempDir('tnega-web-resident-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('resident ok')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile, resident: true })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    async function run(prompt: string): Promise<void> {
+      const response = await apiFetch(
+        server.url,
+        `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt,
+            allowNetwork: false,
+            allowShell: false,
+          }),
+        },
+      )
+      expect(response.status).toBe(200)
+      await response.text()
+    }
+
+    await run('first turn')
+    await run('second turn')
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      running: boolean
+      surface: Array<{ type: string; payload: { content?: string } }>
+    }
+    expect(detail.running).toBe(false)
+    const users = detail.surface
+      .filter(event => event.type === 'user/message')
+      .map(event => event.payload.content)
+    // The resident agent persisted each turn exactly once: no duplicated or
+    // re-spliced history across the two runs.
+    expect(users).toEqual(['first turn', 'second turn'])
+    expect(mock.bodies().length).toBe(2)
+  })
+})
+
 async function mkdir(parent: string, name: string): Promise<string> {
   const path = join(parent, name)
   await import('node:fs/promises').then(fs => fs.mkdir(path, { recursive: true }))

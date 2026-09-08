@@ -292,6 +292,10 @@ export function formatCancelCause(cause: CancelCause): string {
   switch (cause.type) {
     case 'user':
       return 'user'
+    case 'parent':
+      return 'parent'
+    case 'disposed':
+      return 'disposed'
     case 'abort':
       return cause.message ? `abort: ${cause.message}` : 'abort'
     case 'timeout':

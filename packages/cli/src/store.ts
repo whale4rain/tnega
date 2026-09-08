@@ -16,7 +16,6 @@ import {
   estimateMessageTokens,
   foldSessionMeta,
   projectEvents,
-  safeCompactSplit,
   suffixStartIndexForTokens,
   type ContextUsage,
   type AgentType,
@@ -334,11 +333,12 @@ export async function prepareSessionCompact(
   keepTokens: number,
 ): Promise<SessionCompactPreparation> {
   return withSessionLog(sessionFile(workspace, id), async (log) => {
-    const allEvents = await log.read()
-    const events = allEvents.filter(event => event.type !== 'meta')
-    const suffixStart = suffixStartIndexForTokens(events, keepTokens)
-    const split = safeCompactSplit(events, suffixStart)
-    const prefix = events.slice(0, split)
+    // Compaction shadows a head span of the *surface*; prepare the summarizer
+    // input from the same folded surface so it sees exactly what will be
+    // replaced.
+    const surface = await log.surfaceEvents()
+    const split = suffixStartIndexForTokens(surface, keepTokens)
+    const prefix = surface.slice(0, split)
     let previousSummary: string | undefined
     let summaryStart = 0
     for (let index = prefix.length - 1; index >= 0; index -= 1) {

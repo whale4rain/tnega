@@ -8,6 +8,7 @@ import {
   type RequestContextPayload,
   type SessionLog,
   type ToolResultPayload,
+  type TurnEndReason,
 } from '@tnega/session'
 import type { ToolDefinition, ToolError, ToolResult } from '@tnega/tools'
 import type { ToolSchemaSnapshot } from './prompt.js'
@@ -159,7 +160,9 @@ function copyCompletion(completion: LLMCompletion): LLMCompletion {
 function isCancelCause(value: unknown): value is AgentCancelCause {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
-  if (record.type === 'user') return true
+  if (record.type === 'user' || record.type === 'parent' || record.type === 'disposed') {
+    return true
+  }
   if (
     record.type === 'abort'
     && (record.message === undefined || typeof record.message === 'string')
@@ -177,6 +180,37 @@ function cancelCauseFromSignal(signal?: AbortSignal): AgentCancelCause | undefin
   const reason = signal.reason
   if (isCancelCause(reason)) return reason
   return { type: 'abort' }
+}
+
+/** Map a completed loop to the typed durable reason a `turn/end` records. */
+function toTurnEndReason(fields: {
+  cancelled: boolean
+  turnError: unknown
+  finishReason: AgentFinishReason
+  cancelCause?: AgentCancelCause
+}): TurnEndReason {
+  const { cancelled, turnError, finishReason, cancelCause } = fields
+  if (cancelled || finishReason === 'cancelled') {
+    return { kind: 'aborted', cause: cancelCause ?? { type: 'user' } }
+  }
+  if (turnError || finishReason === 'error') {
+    return {
+      kind: 'error',
+      error: turnError
+        ? toToolError(turnError)
+        : { name: 'TurnError', message: finishReason },
+    }
+  }
+  switch (finishReason) {
+    case 'length':
+      return { kind: 'max-tokens' }
+    case 'max_steps':
+      return { kind: 'max-steps' }
+    case 'max_turns':
+      return { kind: 'max-turns' }
+    default:
+      return { kind: 'completed' }
+  }
 }
 
 function partialStreamContent(events: readonly LLMStreamEvent[]): string {
@@ -471,6 +505,11 @@ export class AgentService {
       if (toolCalls.length) {
         await session.append('assistant/message', {
           content: completion.content ?? '',
+          toolCalls: toolCalls.map(call => ({
+            id: call.id,
+            name: call.name,
+            arguments: call.arguments,
+          })),
         })
       }
       for (const call of toolCalls) {
@@ -606,6 +645,14 @@ export class AgentService {
         finishReason: turnError
           ? (options.signal?.aborted ? 'cancelled' : 'error')
           : finishReason,
+        reason: toTurnEndReason({
+          cancelled: options.signal?.aborted ?? false,
+          turnError,
+          finishReason: turnError
+            ? (options.signal?.aborted ? 'cancelled' : 'error')
+            : finishReason,
+          ...(cancelCause ? { cancelCause } : {}),
+        }),
         ...(cancelCause ? { cancelCause } : {}),
         ...(output ? { output } : {}),
         ...(steps.length ? { steps: steps.length } : {}),
@@ -910,19 +957,21 @@ export class AgentService {
   }
 
   private async _resolveAvailableTools(): Promise<readonly ToolDefinition[]> {
+    // Executable tools are the single source of truth. When a system-prompt
+    // service is mounted, its assembled schema list narrows what the model
+    // sees — but only to tools that are actually registered, so a declared
+    // schema can never advertise an un-executable stub.
+    const executable = this._tools().list()
     const promptService = this.ctx.reflect.get('systemPrompt', false) as
       | { toolSchemas(options?: object): Promise<readonly ToolSchemaSnapshot[]> }
       | undefined
-    if (promptService) {
-      const schemas = await promptService.toolSchemas()
-      return schemas.map(schema => ({
-        schema,
-        execute: async () => {
-          throw new Error('schema-only tool from prompt assembly')
-        },
-      }))
-    }
-    return this._tools().list()
+    if (!promptService) return executable
+    const schemas = await promptService.toolSchemas()
+    if (!schemas.length) return executable
+    const byName = new Map(executable.map(tool => [tool.schema.name, tool] as const))
+    return schemas
+      .map(schema => byName.get(schema.name))
+      .filter((tool): tool is ToolDefinition => tool !== undefined)
   }
 
   private _llm(): LLMAdapter | undefined {

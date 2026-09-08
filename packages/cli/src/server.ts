@@ -3,7 +3,14 @@ import { readFile, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AgentStreamEvent } from '@tnega/agent'
+import {
+  agents,
+  type AgentCreationOptions,
+  type AgentHandle,
+  type AgentRegistry,
+  type AgentStreamEvent,
+  type LiveAgent,
+} from '@tnega/agent'
 import { Context } from '@tnega/core'
 import {
   CODING_SYSTEM_PROMPT,
@@ -21,9 +28,10 @@ import {
   session,
   type ModelMessage,
   type PlanPayload,
+  type SessionEvent,
   type SessionLog,
 } from '@tnega/session'
-import { tools } from '@tnega/tools'
+import { builtinTools, tools } from '@tnega/tools'
 import {
   createAgentRuntime,
   resolveLlmEnv,
@@ -143,12 +151,20 @@ export interface WebServerOptions {
   host?: string
   webRoot?: string
   configFile?: string
+  /** Run sessions through resident durable-inbox agents (auto mode). */
+  resident?: boolean
 }
 
 export interface WebServer {
   url: string
   port: number
   close: () => Promise<void>
+}
+
+interface ResidentAgentEntry {
+  agent: LiveAgent
+  dispose: () => Promise<void>
+  signature: string
 }
 
 export async function startWebServer(
@@ -159,10 +175,13 @@ export async function startWebServer(
   const webRoot = options.webRoot ?? defaultWebRoot()
   const configFile = options.configFile
   const activeRuns = new Map<string, AbortController>()
+  const residentAgents = new Map<string, ResidentAgentEntry>()
   let actualPort = port
   const context: ServerContext = {
     webRoot,
     activeRuns,
+    resident: options.resident === true,
+    residentAgents,
     ...(configFile ? { configFile } : {}),
   }
 
@@ -188,6 +207,8 @@ export async function startWebServer(
         if (error) rejectClose(error)
         else resolveClose()
       })
+      for (const entry of residentAgents.values()) void entry.dispose()
+      residentAgents.clear()
     }),
   }
 }
@@ -196,6 +217,8 @@ interface ServerContext {
   webRoot: string
   configFile?: string
   activeRuns: Map<string, AbortController>
+  resident?: boolean
+  residentAgents?: Map<string, ResidentAgentEntry>
 }
 
 async function handleRequest(
@@ -625,6 +648,18 @@ async function handleRun(
     return
   }
 
+  if (context.resident && mode === 'auto') {
+    await runResidentTurn(context, res, workspace, id, {
+      prompt,
+      allowNetwork,
+      allowShell,
+      coding,
+      effective,
+      apiKey,
+    })
+    return
+  }
+
   const controller = new AbortController()
   const adapter = adapterFromConfig(effective, apiKey)
   let runtime: AgentRuntime | undefined
@@ -721,6 +756,158 @@ async function handleRun(
   } finally {
     context.activeRuns.delete(key)
     if (runtime) await runtime.dispose()
+    if (!res.destroyed && !res.writableEnded) res.end()
+  }
+}
+
+interface ResidentRunRequest {
+  prompt: string
+  allowNetwork: boolean
+  allowShell: boolean
+  coding: boolean
+  effective: EffectiveLlmConfig
+  apiKey: string
+}
+
+/** A minimal runtime for a resident agent: tools + builtins (+coding) + agents. */
+async function createResidentRuntime(
+  workspace: string,
+  req: ResidentRunRequest,
+): Promise<{ root: Context; dispose: () => Promise<void> }> {
+  const root = new Context()
+  const fibers: Array<{ dispose: () => Promise<void> }> = []
+  fibers.push(await root.plugin(tools))
+  fibers.push(await root.plugin(builtinTools, {
+    cwd: workspace,
+    ...(req.allowNetwork ? { allowNetwork: true } : {}),
+    ...(req.allowShell ? { allowShell: true } : {}),
+  }))
+  if (req.coding) {
+    fibers.push(await root.plugin(createCodingAgentPlugin({
+      cwd: workspace,
+      mode: 'auto',
+      registerAgent: false,
+    })))
+  }
+  fibers.push(await root.plugin(agents))
+  return {
+    root,
+    dispose: async () => {
+      for (const fiber of [...fibers].reverse()) await fiber.dispose()
+    },
+  }
+}
+
+async function ensureResidentAgent(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+  req: ResidentRunRequest,
+): Promise<ResidentAgentEntry> {
+  const key = runKey(workspace, id)
+  const signature = [
+    req.effective.baseUrl,
+    req.effective.model,
+    req.effective.protocol ?? '',
+    req.effective.temperature ?? '',
+    String(req.allowNetwork),
+    String(req.allowShell),
+    req.coding ? 'coding' : 'general',
+    'auto',
+  ].join('|')
+  const existing = context.residentAgents?.get(key)
+  if (existing && existing.signature === signature) return existing
+  if (existing) {
+    await existing.dispose()
+    context.residentAgents?.delete(key)
+  }
+
+  const runtime = await createResidentRuntime(workspace, req)
+  let agent: LiveAgent
+  let disposeAgent: () => Promise<void>
+  try {
+    const registry = (runtime.root as unknown as { agents: AgentRegistry }).agents
+    const options: AgentCreationOptions = {
+      file: sessionFilePath(workspace, id),
+      sessionId: id,
+      id,
+      mode: 'auto',
+      llm: adapterFromConfig(req.effective, req.apiKey),
+      manualStreaming: true,
+    }
+    if (req.coding) options.agentType = 'coding'
+    let handle: AgentHandle
+    try {
+      handle = await registry.resume(options)
+    } catch (error) {
+      if (!isAgentMetaMissing(error)) throw error
+      handle = await registry.create(options)
+    }
+    agent = handle.agent
+    disposeAgent = handle.dispose
+  } catch (error) {
+    await runtime.dispose()
+    throw error
+  }
+
+  const entry: ResidentAgentEntry = {
+    agent,
+    signature,
+    dispose: async () => {
+      await disposeAgent().catch(() => undefined)
+      await runtime.dispose()
+    },
+  }
+  context.residentAgents?.set(key, entry)
+  return entry
+}
+
+function isAgentMetaMissing(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('no agent session meta found')
+}
+
+async function runResidentTurn(
+  context: ServerContext,
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+  req: ResidentRunRequest,
+): Promise<void> {
+  const key = runKey(workspace, id)
+  const controller = new AbortController()
+  context.activeRuns.set(key, controller)
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  res.flushHeaders()
+
+  try {
+    const entry = await ensureResidentAgent(context, workspace, id, req)
+    const agent = entry.agent
+    // A coding session keeps its persona as the durable leading system message,
+    // seeded once so every derived request begins with it.
+    if (req.coding) {
+      const history = await agent.session.deriveMessages()
+      if (!history.some(message => message.role === 'system')) {
+        await agent.session.append('system/message', { content: CODING_SYSTEM_PROMPT })
+      }
+    }
+    agent.followup({ text: req.prompt })
+    for await (const event of agent.runTurns(controller.signal)) {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    }
+    await agent.session.flush()
+    await autoTitle(workspace, id, req.prompt)
+    if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
+  } catch (error) {
+    if (!res.destroyed && !res.writableEnded) {
+      writeSse(res, { type: 'error', message: errorMessage(error) })
+    }
+  } finally {
+    context.activeRuns.delete(key)
     if (!res.destroyed && !res.writableEnded) res.end()
   }
 }
@@ -973,23 +1160,54 @@ async function readSessionEvents(
   })
   try {
     const session = runtime.root.get('session') as SessionLog
-    const events = await session.read()
+    // The surface is the conversation in model order. Return the raw log in
+    // that order (each raw event anchored to the surface node it belongs to,
+    // shadowed messages and orphaned tool calls dropped), so the client can
+    // replay a transcript without re-deriving the surface itself.
     const surface = await session.surfaceEvents()
-    const surfaceSeqs = new Set(surface.map(event => (event as { seq: number }).seq))
-    const cleanEvents = events.filter(event => {
-      const type = (event as { type: string }).type
-      if (type === 'tool/call') return true
-      if (
-        type !== 'user/message'
-        && type !== 'assistant/message'
-        && type !== 'tool/result'
-      ) {
-        return true
+    const rank = new Map<number, number>()
+    surface.forEach((event, index) => rank.set(event.seq, index))
+    const declaredCallIds = new Set<string>()
+    for (const event of surface) {
+      if (event.type === 'assistant/message') {
+        for (const call of event.payload.toolCalls ?? []) declaredCallIds.add(call.id)
+      } else if (event.type === 'tool/result') {
+        declaredCallIds.add(event.payload.toolCallId)
       }
-      return surfaceSeqs.has((event as { seq: number }).seq)
-    })
+    }
+
+    const isMessage = (type: string): boolean => (
+      type === 'user/message'
+      || type === 'system/message'
+      || type === 'assistant/message'
+      || type === 'tool/result'
+    )
+    const END = surface.length
+    const ordered: Array<{ event: SessionEvent; order: [number, number] }> = []
+    for (const event of await session.read()) {
+      const type = event.type
+      const liveRank = rank.get(event.seq)
+      if (liveRank !== undefined) {
+        ordered.push({ event, order: [liveRank, event.seq] })
+        continue
+      }
+      if (isMessage(type)) continue // shadowed message: off the surface
+      if (type === 'checkpoint') continue // superseded by a newer checkpoint
+      if (type === 'tool/call' && !declaredCallIds.has(event.payload.id)) continue
+      // Anchor a raw structural event to the next live surface node so it is
+      // delivered before the message it decorates.
+      let anchor = END
+      for (const liveEvent of surface) {
+        if (liveEvent.seq > event.seq) anchor = Math.min(anchor, rank.get(liveEvent.seq)!)
+      }
+      ordered.push({ event, order: [anchor, event.seq] })
+    }
+    ordered.sort((left, right) => (
+      left.order[0] - right.order[0] || left.order[1] - right.order[1]
+    ))
+    const events = ordered.map(entry => entry.event)
     return {
-      events: JSON.parse(JSON.stringify(cleanEvents)) as unknown[],
+      events: JSON.parse(JSON.stringify(events)) as unknown[],
       surface: JSON.parse(JSON.stringify(surface)) as unknown[],
     }
   } finally {

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Context, Plugin } from '@tnega/core'
-import { SessionLog, type SessionEvent, type SessionProjector } from '@tnega/session'
+import { SessionLog, type SessionEvent } from '@tnega/session'
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
@@ -10,6 +10,7 @@ import type {
   AgentContextBudget,
   AgentHooks,
   AgentInput,
+  AgentStreamEvent,
   LLMAdapter,
 } from './types.js'
 
@@ -66,6 +67,13 @@ export interface LiveAgent {
   send(input: AgentInput, options?: { mode?: 'followup' | 'steer' }): void
   cancel(cause: AgentCancelCause, options?: AgentCancelOptions): void
   whenIdle(): Promise<void>
+  /**
+   * Drain currently queued durable work as a live event stream, one turn per
+   * claimed inbox item. In manual-streaming mode this is the only drain; the
+   * generator settles when the queue is empty, so callers stream a run and
+   * stop at quiescence.
+   */
+  runTurns(signal?: AbortSignal): AsyncGenerator<AgentStreamEvent, void, void>
   runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>
   dispose(): Promise<void>
 }
@@ -90,12 +98,13 @@ export interface AgentCreationOptions {
   setup?: AgentSetup
   llm?: LLMAdapter
   system?: string
-  projector?: SessionProjector
   maxTurns?: number
   maxSteps?: number
   contextBudget?: AgentContextBudget
   hooks?: AgentHooks
   initial?: readonly AgentInput[]
+  /** Disable the automatic drain; callers drive turns via `runTurns`. */
+  manualStreaming?: boolean
 }
 
 export interface AgentFactory {
@@ -120,6 +129,7 @@ class LiveAgentImpl implements LiveAgent {
   private _scopeClosed = false
   private _durable: DurableInbox
   private _agentSystem: string | undefined
+  private _manualStreaming = false
 
   constructor(
     private _ctx: Context,
@@ -130,8 +140,10 @@ class LiveAgentImpl implements LiveAgent {
     readonly session: SessionLog,
     durable: DurableInbox,
     readonly meta: AgentSessionMeta,
+    manualStreaming = false,
   ) {
     this._durable = durable
+    this._manualStreaming = manualStreaming
   }
 
   get agentType(): 'general' | 'coding' | undefined {
@@ -335,7 +347,7 @@ class LiveAgentImpl implements LiveAgent {
   async dispose(): Promise<void> {
     if (this._disposed) return
     this._disposed = true
-    this.cancel({ type: 'user' })
+    this.cancel({ type: 'disposed' })
     await this._writeTail.catch(() => undefined)
     await this._drainPromise?.catch(() => undefined)
     if (this._maintenance) this._maintenance.controller.abort({ type: 'disposed' })
@@ -379,7 +391,13 @@ class LiveAgentImpl implements LiveAgent {
   }
 
   private _wake(): void {
-    if (this._disposed || this._drainPromise || this._busy || this._maintenanceBusy) return
+    if (
+      this._disposed
+      || this._manualStreaming
+      || this._drainPromise
+      || this._busy
+      || this._maintenanceBusy
+    ) return
     const task = this._drainAll()
     this._drainPromise = task
     task.finally(() => {
@@ -389,34 +407,30 @@ class LiveAgentImpl implements LiveAgent {
 
   private async _drainAll(): Promise<void> {
     await this._writeTail.catch(() => undefined)
-    if (this._durable.size) await this._drain()
+    if (this._durable.size) {
+      // Automatic (library) drain: consume the queue, discarding the stream.
+      for await (const _ of this._streamTurns()) void _
+    }
   }
 
-  private async _drain(): Promise<void> {
+  /** Public drain over queued durable work (manual-streaming mode). */
+  async *runTurns(signal?: AbortSignal): AsyncGenerator<AgentStreamEvent, void, void> {
+    if (this._manualStreaming) await this._writeTail.catch(() => undefined)
+    if (this._busy || this._disposed) return
+    yield* this._streamTurns(signal)
+  }
+
+  private async *_streamTurns(
+    signal?: AbortSignal,
+  ): AsyncGenerator<AgentStreamEvent, void, void> {
+    if (this._busy || this._disposed) return
     this._busy = true
     this._setStatus('running')
     try {
       while (!this._disposed) {
         const batch = await this._durable.claimBatch()
         if (!batch.length) break
-        const history = await this.session.deriveMessages()
-        const structured = batch.filter(message => message.content !== undefined)
-        const plain = batch.filter(message => message.content === undefined)
-        const plainMessages = plain
-          .filter(message => message.text !== undefined)
-          .map(message => ({ role: 'user' as const, content: message.text ?? '' }))
-        const input: AgentInput = structured.length
-          ? {
-              messages: [
-                ...history,
-                ...structured.flatMap(message => Array.isArray(message.content)
-                  ? message.content as ModelMessage[]
-                  : [{ role: 'user' as const, content: String(message.content ?? '') }]),
-              ],
-            }
-          : history.length || batch.length > 1
-            ? { messages: [...history, ...plainMessages] }
-            : { text: plainMessages[0]?.content ?? '' }
+        const input = await this._inputForBatch(batch)
         const turn = await this._nextTurnNumber()
         for (const message of batch) {
           this._ctx.emit('agent/inbox/claimed', {
@@ -429,8 +443,15 @@ class LiveAgentImpl implements LiveAgent {
         }
         const controller = new AbortController()
         this._controller = controller
+        const forward = (): void => controller.abort(signal?.reason)
+        if (signal?.aborted) controller.abort(signal.reason)
+        else signal?.addEventListener('abort', forward, { once: true })
         try {
-          await this._service.run(input, { signal: controller.signal })
+          if (this._manualStreaming) {
+            yield* this._service.runStream(input, { signal: controller.signal })
+          } else {
+            await this._service.run(input, { signal: controller.signal })
+          }
         } catch (error) {
           if (!controller.signal.aborted) {
             const step = await this._failedStep()
@@ -440,8 +461,10 @@ class LiveAgentImpl implements LiveAgent {
               error,
               ...(step !== undefined ? { turn, step } : {}),
             })
+            if (this._manualStreaming) throw error
           }
         } finally {
+          signal?.removeEventListener('abort', forward)
           if (this._controller === controller) this._controller = undefined
         }
       }
@@ -449,6 +472,31 @@ class LiveAgentImpl implements LiveAgent {
       this._busy = false
       this._setStatus('idle')
     }
+  }
+
+  private async _inputForBatch(
+    batch: readonly DurableInboxMessage[],
+  ): Promise<AgentInput> {
+    const history = await this.session.deriveMessages()
+    const structured = batch.filter(message => message.content !== undefined)
+    const plain = batch.filter(message => message.content === undefined)
+    const plainMessages = plain
+      .filter(message => message.text !== undefined)
+      .map(message => ({ role: 'user' as const, content: message.text ?? '' }))
+    if (structured.length) {
+      return {
+        messages: [
+          ...history,
+          ...structured.flatMap(message => Array.isArray(message.content)
+            ? message.content as ModelMessage[]
+            : [{ role: 'user' as const, content: String(message.content ?? '') }]),
+        ],
+      }
+    }
+    if (history.length || batch.length > 1) {
+      return { messages: [...history, ...plainMessages] }
+    }
+    return { text: plainMessages[0]?.content ?? '' }
   }
 
   private _setStatus(status: AgentStatus): void {
@@ -562,7 +610,6 @@ async function buildHandle(
   if (!agentId) throw new AgentError('agent requires a stable identity')
   const log = new SessionLog(
     options.file,
-    options.projector,
     (type, payload) => {
       if (type === 'event') ctx.emit('session/event', payload)
       else ctx.emit('session/flush', payload)
@@ -648,6 +695,7 @@ async function buildHandle(
     log,
     durable,
     boundMeta,
+    options.manualStreaming === true,
   )
   agent.trackSetupDispose(() => agentScope.dispose())
   if (options.system) agent.inject('agentSystem', options.system)
@@ -664,7 +712,7 @@ async function buildHandle(
   for (const input of options.initial ?? []) {
     if (!resume) await durable.insert({ text: input.text ?? '' })
   }
-  if (resume && durable.size) {
+  if (resume && durable.size && options.manualStreaming !== true) {
     setTimeout(() => agent.wakeNow(), 0)
   }
   return { agent, dispose: () => agent.dispose() }

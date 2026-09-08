@@ -116,13 +116,13 @@ describe('system prompt assembly', () => {
   it('assembles tool schemas and persists them in the request header', async () => {
     const root = await mountRoot()
     const service = dynamic(root).systemPrompt as SystemPromptService
-    service.registerTools(() => [
-      { name: 'read', description: 'read a file', parameters: { type: 'object' } },
-    ])
+    const schema = { name: 'read', description: 'read a file', parameters: { type: 'object' } }
+    service.registerTools(() => [schema])
     const { adapter, toolInputs } = fakeLLM()
     await root.plugin(defineAgent({
       name: 'tooled-prompt',
       system: 'You can read.',
+      tools: [{ schema, execute: () => 'file content' }],
     }), { llm: adapter })
 
     const loop = root.get('agentLoop') as (input: { text: string }) => Promise<unknown>
