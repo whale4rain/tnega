@@ -91,6 +91,7 @@ export {
   type ToolResultErrorPayload,
   type ToolResultPayload,
   type TurnEndPayload,
+  type TurnEndReason,
   type TurnStartPayload,
   type CompactionEndPayload,
   type CompactionStartPayload,

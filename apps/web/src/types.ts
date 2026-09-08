@@ -83,8 +83,21 @@ export interface CompactionEndPayload {
 
 export type CancelCause =
   | { type: 'user' }
+  | { type: 'parent' }
+  | { type: 'disposed' }
   | { type: 'abort'; message?: string }
   | { type: 'timeout'; timeoutMs: number }
+
+/** Why a turn ended; written on `turn/end.reason`. */
+export type TurnEndReason =
+  | { kind: 'completed' }
+  | { kind: 'aborted'; cause: CancelCause }
+  | { kind: 'blocked' }
+  | { kind: 'error'; error?: { name?: string; message: string; stack?: string } }
+  | { kind: 'max-tokens' }
+  | { kind: 'max-steps' }
+  | { kind: 'max-turns' }
+  | { kind: 'interrupted' }
 
 export type PlanItemStatus = 'pending' | 'done' | 'failed'
 
@@ -152,6 +165,7 @@ export type SessionEvent =
   | SessionEventBase<'turn/end', {
       turn: number
       finishReason?: string
+      reason?: TurnEndReason
       output?: string
       steps?: number
       interrupted?: boolean

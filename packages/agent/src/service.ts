@@ -8,6 +8,7 @@ import {
   type RequestContextPayload,
   type SessionLog,
   type ToolResultPayload,
+  type TurnEndReason,
 } from '@tnega/session'
 import type { ToolDefinition, ToolError, ToolResult } from '@tnega/tools'
 import type { ToolSchemaSnapshot } from './prompt.js'
@@ -159,7 +160,9 @@ function copyCompletion(completion: LLMCompletion): LLMCompletion {
 function isCancelCause(value: unknown): value is AgentCancelCause {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
-  if (record.type === 'user') return true
+  if (record.type === 'user' || record.type === 'parent' || record.type === 'disposed') {
+    return true
+  }
   if (
     record.type === 'abort'
     && (record.message === undefined || typeof record.message === 'string')
@@ -177,6 +180,37 @@ function cancelCauseFromSignal(signal?: AbortSignal): AgentCancelCause | undefin
   const reason = signal.reason
   if (isCancelCause(reason)) return reason
   return { type: 'abort' }
+}
+
+/** Map a completed loop to the typed durable reason a `turn/end` records. */
+function toTurnEndReason(fields: {
+  cancelled: boolean
+  turnError: unknown
+  finishReason: AgentFinishReason
+  cancelCause?: AgentCancelCause
+}): TurnEndReason {
+  const { cancelled, turnError, finishReason, cancelCause } = fields
+  if (cancelled || finishReason === 'cancelled') {
+    return { kind: 'aborted', cause: cancelCause ?? { type: 'user' } }
+  }
+  if (turnError || finishReason === 'error') {
+    return {
+      kind: 'error',
+      error: turnError
+        ? toToolError(turnError)
+        : { name: 'TurnError', message: finishReason },
+    }
+  }
+  switch (finishReason) {
+    case 'length':
+      return { kind: 'max-tokens' }
+    case 'max_steps':
+      return { kind: 'max-steps' }
+    case 'max_turns':
+      return { kind: 'max-turns' }
+    default:
+      return { kind: 'completed' }
+  }
 }
 
 function partialStreamContent(events: readonly LLMStreamEvent[]): string {
@@ -611,6 +645,14 @@ export class AgentService {
         finishReason: turnError
           ? (options.signal?.aborted ? 'cancelled' : 'error')
           : finishReason,
+        reason: toTurnEndReason({
+          cancelled: options.signal?.aborted ?? false,
+          turnError,
+          finishReason: turnError
+            ? (options.signal?.aborted ? 'cancelled' : 'error')
+            : finishReason,
+          ...(cancelCause ? { cancelCause } : {}),
+        }),
         ...(cancelCause ? { cancelCause } : {}),
         ...(output ? { output } : {}),
         ...(steps.length ? { steps: steps.length } : {}),

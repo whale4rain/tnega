@@ -148,8 +148,24 @@ export interface ToolResultPayload {
 
 export type CancelCause =
   | { type: 'user' }
+  | { type: 'parent' }
+  | { type: 'disposed' }
   | { type: 'abort'; message?: string }
   | { type: 'timeout'; timeoutMs: number }
+
+/**
+ * Why a turn ended — the durable machine outcome, distinct from the
+ * per-step model `finishReason`. Written on `turn/end`.
+ */
+export type TurnEndReason =
+  | { kind: 'completed' }
+  | { kind: 'aborted'; cause: CancelCause }
+  | { kind: 'blocked' }
+  | { kind: 'error'; error: ToolResultErrorPayload }
+  | { kind: 'max-tokens' }
+  | { kind: 'max-steps' }
+  | { kind: 'max-turns' }
+  | { kind: 'interrupted' }
 
 export interface TurnStartPayload {
   turn: number
@@ -160,6 +176,8 @@ export interface TurnStartPayload {
 export interface TurnEndPayload {
   turn: number
   finishReason?: string
+  /** The typed durable reason this turn ended. Supersedes `finishReason`. */
+  reason?: TurnEndReason
   output?: string
   steps?: number
   interrupted?: boolean
