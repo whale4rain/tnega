@@ -125,8 +125,15 @@ surface 每次 compact 都要整写重排；DSH 的根模型是从 surface 节�
 
 ### 提交记录（compaction v7，分支 `codex/session-surface-appendonly`）
 
-- 单一大提交（session 核心 + server/store 适配 + 测试 + docs）。LiveAgent 多轮
-  queue-drain 仍是库层能力，web/CLI「一次 run ≈ 一个 turn」的产品路径未改。
+- `e5d36b1` session 核心（surface 派生 + append-only compact）+ server/store 适配 + 测试 + docs。
+- `a389fe8`（v7 后置）：
+  - `turn/end.reason` 类型化（`TurnEndReason` 判别联合），`CancelCause` 补 `parent`/`disposed`；
+    loop 落 typed reason，`LiveAgent.dispose()` 以 `disposed` 取消。
+  - LiveAgent 常驻多轮接线：`runTurns()` 流式 drain（manual 模式禁用自动 drain、resume 不自动续跑），
+    web `startWebServer({ resident: true })` 让 `auto` 会话走常驻 durable-inbox agent（跨请求保活、
+    编码 persona 作为 durable 引导 system 持久化），新增 SSE e2e 断言两次运行各只持久化一次 user。
+  - 边界：web `plan/execute` 会话仍走原有按请求构造输入的单轮路径（保留）；常驻 runtime 不复用
+    系统 `session` 服务以避免双 SessionLog owner 分叉（resident 用最小 ctx：tools/builtins/coding/agents）。
 
 ## M16 eval benchmark 与真实评测
 
