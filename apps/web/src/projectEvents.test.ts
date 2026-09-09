@@ -224,29 +224,66 @@ describe('projectEvents', () => {
     expect(messages[1]).toMatchObject({ role: 'assistant', content: 'ok' })
   })
 
-  it('hides model-internal system messages from checkpoint payloads', () => {
+  it('renders assistant tool calls as tool cards and resolves them', () => {
     const events: SessionEvent[] = [
-      ev('checkpoint', {
-        surfaceOp: 'replace',
-        messages: [
-          { role: 'system', content: 'You are Tnega' },
-          { role: 'user', content: 'hello' },
-          { role: 'assistant', content: 'ok' },
-        ],
-        summary: 'compacted summary',
-        tokensBefore: 100,
-      }, 1),
+      ev('user/message', { content: 'read it' }, 1),
+      ev('assistant/message', {
+        content: '',
+        toolCalls: [{ id: 'c1', name: 'read', arguments: { file: 'x' } }],
+      }, 2),
+      ev('tool/result', {
+        id: 'r1',
+        toolCallId: 'c1',
+        name: 'read',
+        ok: true,
+        output: 'file body',
+      }, 3),
     ]
 
     const messages = projectEvents(events)
 
-    expect(messages).toHaveLength(3)
-    expect(messages[0]).toMatchObject({ role: 'user', content: 'hello' })
-    expect(messages[1]).toMatchObject({ role: 'assistant', content: 'ok' })
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({ role: 'user', content: 'read it' })
+    expect(messages[1]).toMatchObject({
+      role: 'tool',
+      tool: {
+        callId: 'c1',
+        name: 'read',
+        status: 'done',
+        ok: true,
+        outputText: 'file body',
+      },
+    })
+  })
+
+  it('keeps prior history and marks compaction without truncating', () => {
+    const events: SessionEvent[] = [
+      ev('user/message', { content: 'hello' }, 1),
+      ev('assistant/message', { content: 'world' }, 2),
+      ev('checkpoint', {
+        surfaceOp: 'replace',
+        messages: [{ role: 'system', content: 'You are Tnega' }],
+        summary: 'compacted summary',
+        tokensBefore: 100,
+      }, 3),
+      ev('user/message', { content: 'after' }, 4),
+    ]
+
+    const messages = projectEvents(events)
+
+    // The transcript keeps the messages above the marker and continues below
+    // it — compaction only ever adds a marker, never hides history.
+    expect(messages.map(message => `${message.role}:${message.content}`)).toEqual([
+      'user:hello',
+      'assistant:world',
+      'system:compacted summary',
+      'user:after',
+    ])
     expect(messages[2]).toMatchObject({
       role: 'system',
       content: 'compacted summary',
       compacted: true,
+      tokensBefore: 100,
     })
   })
 })

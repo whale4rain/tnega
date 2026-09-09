@@ -608,6 +608,73 @@ export function deriveSurfaceMessages(events: readonly SessionEvent[]): ModelMes
   return messages
 }
 
+/**
+ * Project the log into a human-facing transcript (the web view). Unlike the
+ * model surface, a compaction does **not** hide the history it summarized:
+ * shadowed messages are kept in place, and each live checkpoint is retained
+ * as a marker exactly where it replaced them (with nested checkpoints
+ * expanded recursively). Readers see the full conversation; the model keeps
+ * deriving from the folded surface via {@link deriveSurfaceMessages}.
+ */
+export function transcriptEvents(events: readonly SessionEvent[]): SessionEvent[] {
+  const bySeq = new Map(events.map(event => [event.seq, event] as const))
+  const { nodes, replacements } = foldSurface(events)
+
+  const shadowedOf = new Map<number, SessionEvent[]>()
+  for (const replacement of replacements) {
+    shadowedOf.set(replacement.seq, replacement.shadowedSeqs
+      .map(seq => bySeq.get(seq))
+      .filter((event): event is SessionEvent => event !== undefined))
+  }
+
+  const isVisible = (event: SessionEvent): boolean => (
+    event.type !== 'system/message' && isSurfaceEventType(event.type)
+  )
+
+  const skeleton: SessionEvent[] = []
+  const appendHistory = (checkpointSeq: number): void => {
+    for (const shadowed of shadowedOf.get(checkpointSeq) ?? []) {
+      if (shadowed.type === 'checkpoint') appendHistory(shadowed.seq)
+      else if (isVisible(shadowed)) skeleton.push(shadowed)
+    }
+  }
+  for (const seq of nodes) {
+    const event = bySeq.get(seq)
+    if (!event) continue
+    if (event.type === 'checkpoint') appendHistory(event.seq)
+    skeleton.push(event)
+  }
+
+  // Declared tool calls travel on their assistant message, so the matching
+  // log-only `tool/call` records would double-render: drop those, keep the
+  // legacy ones that have no assistant declaration.
+  const declaredCalls = new Set<string>()
+  for (const event of events) {
+    if (event.type === 'assistant/message') {
+      for (const call of event.payload.toolCalls ?? []) declaredCalls.add(call.id)
+    }
+  }
+  const inSkeleton = new Set(skeleton.map(event => event.id))
+  const structure = events
+    .filter(event => !inSkeleton.has(event.id))
+    .filter(event => event.type !== 'compaction/start' && event.type !== 'compaction/end')
+    .filter(event => event.type !== 'checkpoint') // superseded markers: history shown via the live chain
+    .filter(event => !(event.type === 'tool/call' && declaredCalls.has(event.payload.id)))
+
+  const ordered = [...skeleton]
+  for (const event of structure) {
+    let index = ordered.length
+    for (let cursor = ordered.length - 1; cursor >= 0; cursor -= 1) {
+      if (ordered[cursor]!.seq <= event.seq) {
+        index = cursor + 1
+        break
+      }
+    }
+    ordered.splice(index, 0, event)
+  }
+  return ordered
+}
+
 export function foldRequestHeader(events: readonly SessionEvent[]): RequestHeaderPayload | undefined {
   let header: RequestHeaderPayload | undefined
   for (const event of events) {

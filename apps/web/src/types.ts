@@ -30,6 +30,8 @@ export interface AssistantMessagePayload {
   content: string
   name?: string
   interrupted?: boolean
+  /** The tool requests this assistant turn made, when it made any. */
+  toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
 }
 
 export interface AssistantChunkPayload {

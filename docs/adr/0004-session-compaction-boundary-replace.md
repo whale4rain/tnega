@@ -70,9 +70,11 @@ append-only、seq 永不可变。v6 治标（输出一致）但没治本（派�
 5. **移除整数组 `SessionProjector` seam**。投影不再可插拔——它是 DSH 没有的
    自定义机制，且与"surface 是唯一派生源"冲突。
 6. **`SESSION_FORMAT_VERSION = 7`**，≤6 旧日志 `init()` 拒绝（预发布期无迁移）。
-7. **下游适配**：`cli/server.readSessionEvents` 按 surface 会话序返回事件
-   （checkpoint 置于替换位置、丢弃被遮蔽消息与孤儿 tool/call），前端继续用
-   `projectEvents` 渲染即可获得与 derive 一致的 transcript。
+7. **下游适配**：`cli/server.readSessionEvents` 返回两个视图 —— `events` 经
+   `transcriptEvents()` 生成**人类 transcript**（保留被压缩历史，live checkpoint
+   作为摘要 marker 就地标记，嵌套递归展开），`surface` 维持模型视图
+   （被遮蔽历史不可见）。前端 `projectEvents` 把 checkpoint 渲染为 marker
+   （不再清空历史），assistant 消息用自身的 `toolCalls` 渲染工具卡。
 8. **seam 默认接线**：`createAgentRuntime` 默认挂载 `systemPrompt` 组装服务，
    并把 `ToolsService` 全部可执行工具注册为 schema 提供者；loop 的
    `_resolveAvailableTools` 只把"已声明且已注册"的工具给模型（消除
@@ -82,8 +84,9 @@ append-only、seq 永不可变。v6 治标（输出一致）但没治本（派�
 
 - seq 重新成为不可变日志位置；外部游标在 compact 后不再失效；compact 转换对
   `session/event` 订阅者可见；崩溃最坏只留孤儿 `compaction/start`，无整写撕裂。
-- 模型视图 / `surfaceEvents()` / server 返回 / token 估算同源同序，机制上无法分叉。
-- 代价与既有取舍：旧 v6/v5 真实会话日志不可打开；web transcript 依赖服务端
-  排序后的 events（等价于 v6 的文件序行为）；多轮 queue-drain 的 `LiveAgent`
-  注册表仍是库层能力，web/CLI 的"一次 run ≈ 一个 turn"路径保持不变（产品层
-  未改，见 `docs/research` 对照结论）。
+- **模型与读者解耦**：模型上下文（surface）随 compaction 收缩；读者看到的
+  transcript（`transcriptEvents`）始终是完整对话。token 估算只数 surface。
+- 代价与既有取舍：旧 v6/v5 真实会话日志不可打开；多轮 queue-drain 的
+  `LiveAgent` 常驻已接入 web `auto` 会话（`runTurns` 流式 drain），
+  `plan/execute` 会话仍走按请求构造输入的单轮路径（见 `docs/research` 对照）。
+

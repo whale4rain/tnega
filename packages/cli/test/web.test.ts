@@ -670,15 +670,15 @@ describe('web server', () => {
     const checkpoint = after.events[checkpointIndex]
     expect(typeof checkpoint?.payload?.summary).toBe('string')
     expect(checkpoint?.payload?.messages?.length).toBeGreaterThan(0)
-    // v6: the checkpoint replaces the compressed surface. Message events that
-    // were compressed away no longer appear on the returned surface (they stay
-    // in the raw log for replay), so the original prompt is not re-visible.
+    // Compaction summarizes the model's view but never the human transcript:
+    // the original prompt stays visible above the checkpoint marker, while the
+    // surface (context.tokens) no longer counts it.
     const visibleMessages = after.events.filter(isMessageEvent)
     expect(
       visibleMessages.some(
         event => event.payload?.content === 'a very long conversation with lots of words',
       ),
-    ).toBe(false)
+    ).toBe(true)
     expect(
       after.events.filter(event => event.type === 'checkpoint').length,
     ).toBeGreaterThan(0)

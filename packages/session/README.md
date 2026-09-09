@@ -21,6 +21,14 @@ Session 是 Tnega 的**消息历史真源**：一个工作区内以 JSONL 追加
 大于其后的节点）。每条 `assistant/message` 自带 `toolCalls`，所以工具调用
 无需在投影期靠相邻的 `tool/call` 事件重组——节点自描述、可独立派生。
 
+## 人类 transcript 与模型 surface 是两种投影
+
+- **模型（`deriveMessages()`）**：走折叠后的 surface，compaction 遮蔽的历史
+  对它不可见（`deriveSurfaceMessages`）。
+- **人类 transcript（`transcriptEvents()`）**：面向 web/读者，compaction
+  **从不隐藏历史**——被遮蔽的旧消息原样保留，live checkpoint 只在它取代的
+  位置留下一条摘要 marker（嵌套压缩递归展开）。模型省上下文，读者不失忆。
+
 ## Compaction：append-only 边界替换（v7）
 
 v7 起 compaction 是对齐 DSH 的**纯追加边界替换**：
@@ -32,8 +40,9 @@ v7 起 compaction 是对齐 DSH 的**纯追加边界替换**：
 - 保留的最近消息**留在原位**（物理上仍在 checkpoint 之前），fold 把它排在
   checkpoint 节点之后：模型看到 `[前缀] + 之后的节点`，被压缩的旧 raw 事件
   原样保留供回放。
-- 因此在任何时候 `deriveMessages()`、`surfaceEvents()` 与 UI 投影都
-  **共用同一套 surface 折叠**，不会分叉；token 估算只数当前 surface。
+- 因此在任何时候 `deriveMessages()` 与 `surfaceEvents()` 都**共用同一套 surface
+  折叠**、不会分叉；token 估算只数当前 surface。UI 的历史展示用
+  `transcriptEvents()`（保留被压缩历史，见上），二者各司其职。
 
 `SESSION_FORMAT_VERSION = 7`（v6→v7 断裂点：v6 每次真实 compact 会整写文件
 并重排所有 seq；v7 改为 surface 派生 + 纯追加，并让 `assistant/message` 自带

@@ -42,6 +42,7 @@ import {
   SessionFormatError,
   session,
   suffixStartIndexForTokens,
+  transcriptEvents,
   type ModelMessage,
   type PlanPayload,
   type SessionEvent,
@@ -1403,3 +1404,77 @@ describe('context budget', () => {
   })
 })
 
+
+describe('transcriptEvents', () => {
+  it('keeps shadowed history for the web while derive hides it from the model', async () => {
+    const log = new SessionLog(await tempFile('transcript.jsonl'))
+    for (const [role, content] of [
+      ['user', 'a'],
+      ['assistant', 'A'],
+      ['user', 'b'],
+      ['assistant', 'B'],
+    ] as const) {
+      if (role === 'user') await log.append('user/message', { content })
+      else await log.append('assistant/message', { content })
+    }
+    await log.compact({
+      messages: [{ role: 'system', content: 'summarized' }],
+      summary: 'summarized',
+      keep: 2,
+    })
+
+    // Model view: shadowed history gone, prefix + kept tail remain.
+    expect((await log.deriveMessages()).map(message => message.content))
+      .toEqual(['summarized', 'b', 'B'])
+
+    // Human transcript: nothing is hidden; the checkpoint is a marker in place.
+    const transcript = transcriptEvents(await log.read())
+    const types = transcript
+      .filter(event => event.type !== 'meta')
+      .map(event => event.type)
+    expect(types).toEqual([
+      'user/message',
+      'assistant/message',
+      'checkpoint',
+      'user/message',
+      'assistant/message',
+    ])
+    const contents = transcript
+      .filter(event => event.type === 'user/message')
+      .map(event => (event.payload as { content: string }).content)
+    expect(contents).toEqual(['a', 'b'])
+    expect(transcript.find(event => event.type === 'checkpoint')?.payload)
+      .toMatchObject({ summary: 'summarized' })
+  })
+
+  it('expands nested compactions into a readable marker chain', async () => {
+    const log = new SessionLog(await tempFile('transcript-nested.jsonl'))
+    for (const [role, content] of [
+      ['user', 'a'],
+      ['assistant', 'A'],
+      ['user', 'b'],
+      ['assistant', 'B'],
+      ['user', 'c'],
+      ['assistant', 'C'],
+    ] as const) {
+      if (role === 'user') await log.append('user/message', { content })
+      else await log.append('assistant/message', { content })
+    }
+    await log.compact({ messages: [{ role: 'system', content: 's1' }], summary: 's1', keep: 2 })
+    await log.append('user/message', { content: 'd' })
+    await log.append('assistant/message', { content: 'D' })
+    await log.compact({ messages: [{ role: 'system', content: 's2' }], summary: 's2', keep: 2 })
+
+    const transcript = transcriptEvents(await log.read())
+    const markers = transcript.filter(event => event.type === 'checkpoint')
+    // The second compaction superseded the first, so only the live checkpoint
+    // remains as a marker — but the first one's full history is still shown
+    // above it (recursively expanded), nothing for the reader is lost.
+    expect(markers.map(event => (event.payload as { summary?: string }).summary))
+      .toEqual(['s2'])
+    const users = transcript
+      .filter(event => event.type === 'user/message')
+      .map(event => (event.payload as { content: string }).content)
+    expect(users).toEqual(['a', 'b', 'c', 'd'])
+  })
+})

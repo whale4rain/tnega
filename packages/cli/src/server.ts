@@ -26,9 +26,9 @@ import {
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
 import {
   session,
+  transcriptEvents,
   type ModelMessage,
   type PlanPayload,
-  type SessionEvent,
   type SessionLog,
 } from '@tnega/session'
 import { builtinTools, tools } from '@tnega/tools'
@@ -1160,54 +1160,14 @@ async function readSessionEvents(
   })
   try {
     const session = runtime.root.get('session') as SessionLog
-    // The surface is the conversation in model order. Return the raw log in
-    // that order (each raw event anchored to the surface node it belongs to,
-    // shadowed messages and orphaned tool calls dropped), so the client can
-    // replay a transcript without re-deriving the surface itself.
+    // Two views of the same log:
+    //  - `events` is the human transcript (append history, compaction markers
+    //    at their place) — compaction never hides history from the reader;
+    //  - `surface` is the model view (shadowed messages removed).
+    const events = await session.read()
     const surface = await session.surfaceEvents()
-    const rank = new Map<number, number>()
-    surface.forEach((event, index) => rank.set(event.seq, index))
-    const declaredCallIds = new Set<string>()
-    for (const event of surface) {
-      if (event.type === 'assistant/message') {
-        for (const call of event.payload.toolCalls ?? []) declaredCallIds.add(call.id)
-      } else if (event.type === 'tool/result') {
-        declaredCallIds.add(event.payload.toolCallId)
-      }
-    }
-
-    const isMessage = (type: string): boolean => (
-      type === 'user/message'
-      || type === 'system/message'
-      || type === 'assistant/message'
-      || type === 'tool/result'
-    )
-    const END = surface.length
-    const ordered: Array<{ event: SessionEvent; order: [number, number] }> = []
-    for (const event of await session.read()) {
-      const type = event.type
-      const liveRank = rank.get(event.seq)
-      if (liveRank !== undefined) {
-        ordered.push({ event, order: [liveRank, event.seq] })
-        continue
-      }
-      if (isMessage(type)) continue // shadowed message: off the surface
-      if (type === 'checkpoint') continue // superseded by a newer checkpoint
-      if (type === 'tool/call' && !declaredCallIds.has(event.payload.id)) continue
-      // Anchor a raw structural event to the next live surface node so it is
-      // delivered before the message it decorates.
-      let anchor = END
-      for (const liveEvent of surface) {
-        if (liveEvent.seq > event.seq) anchor = Math.min(anchor, rank.get(liveEvent.seq)!)
-      }
-      ordered.push({ event, order: [anchor, event.seq] })
-    }
-    ordered.sort((left, right) => (
-      left.order[0] - right.order[0] || left.order[1] - right.order[1]
-    ))
-    const events = ordered.map(entry => entry.event)
     return {
-      events: JSON.parse(JSON.stringify(events)) as unknown[],
+      events: JSON.parse(JSON.stringify(transcriptEvents(events))) as unknown[],
       surface: JSON.parse(JSON.stringify(surface)) as unknown[],
     }
   } finally {

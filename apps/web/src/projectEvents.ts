@@ -5,7 +5,6 @@ import type {
   DisplayEndState,
   DisplayMessage,
   DisplayRetry,
-  ModelMessage,
   SessionEvent,
 } from './types'
 
@@ -40,6 +39,9 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
             content: event.payload.content,
             ...(event.payload.interrupted ? { interrupted: true } : {}),
           })
+        }
+        if (event.payload.toolCalls?.length) {
+          pushToolCallCards(messages, toolIndex, event.payload.toolCalls, event.id)
         }
         break
       case 'assistant/chunk':
@@ -96,17 +98,17 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
       case 'checkpoint': {
-        messages.splice(0, messages.length)
-        toolIndex.clear()
-        for (const item of event.payload.messages) {
-          pushModelMessage(messages, toolIndex, item, event.id)
-        }
+        // A compaction summarizes history for the model but never hides it
+        // from the reader: the transcript keeps every message above, and this
+        // marker notes where earlier context was replaced. Do not truncate.
         messages.push({
           id: event.id,
           role: 'system',
           content: event.payload.summary ?? '',
           compacted: true,
-          tokensBefore: event.payload.tokensBefore,
+          ...(event.payload.tokensBefore !== undefined
+            ? { tokensBefore: event.payload.tokensBefore }
+            : {}),
         })
         break
       }
@@ -178,64 +180,26 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
   return messages
 }
 
-function pushModelMessage(
+/** Render an assistant turn's tool requests as pending tool cards. */
+function pushToolCallCards(
   messages: DisplayMessage[],
   toolIndex: Map<string, number>,
-  item: ModelMessage,
+  calls: Array<{ id: string; name: string; arguments: unknown }>,
   sourceId: string,
 ): void {
-  if (item.role === 'system') return
-  if (item.role === 'tool') {
-    const index = toolIndex.get(item.tool_call_id ?? '')
-    const legacyFailed = item.content.startsWith('error: ')
-    const failed = item.toolOk === false
-      || (item.toolOk === undefined && legacyFailed)
-    const errorText = item.toolError?.message
-      ?? (legacyFailed ? item.content.slice(7) : undefined)
-    if (index !== undefined && messages[index]?.tool) {
-      const target = messages[index]!.tool!
-      target.status = 'done'
-      target.ok = !failed
-      target.errorText = errorText
-      target.outputText = failed ? undefined : item.content
-    } else {
-      messages.push({
-        id: `${sourceId}-${messages.length}`,
-        role: 'tool',
-        content: '',
-        tool: {
-          callId: item.tool_call_id ?? '',
-          name: item.name ?? 'tool',
-          argumentsText: '',
-          status: 'done',
-          ok: !failed,
-          outputText: failed ? undefined : item.content,
-          errorText,
-        },
-      })
-    }
-    return
-  }
-  if (item.role === 'user' || item.role === 'assistant') {
+  for (const call of calls) {
     messages.push({
-      id: `${sourceId}-${messages.length}`,
-      role: item.role,
-      content: item.content,
+      id: `${sourceId}-tool-${call.id}`,
+      role: 'tool',
+      content: '',
+      tool: {
+        callId: call.id,
+        name: call.name,
+        argumentsText: prettyJson(call.arguments),
+        status: 'pending',
+      },
     })
-    for (const call of item.tool_calls ?? []) {
-      messages.push({
-        id: `${sourceId}-tool-${call.id}`,
-        role: 'tool',
-        content: '',
-        tool: {
-          callId: call.id,
-          name: call.name,
-          argumentsText: prettyJson(call.arguments),
-          status: 'pending',
-        },
-      })
-      toolIndex.set(call.id, messages.length - 1)
-    }
+    toolIndex.set(call.id, messages.length - 1)
   }
 }
 
