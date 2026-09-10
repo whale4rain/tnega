@@ -235,6 +235,53 @@ describe('live agent registry', () => {
     expect(requests).toEqual([['steer now']])
   })
 
+  it.each(['afterRun', 'idle status'] as const)(
+    'runs steer submitted during %s cleanup as a later turn',
+    async boundary => {
+      const root = await mountRoot()
+      const requests: string[] = []
+      const llm: LLMAdapter = {
+        async complete(messages) {
+          requests.push(messages.at(-1)!.content)
+          return { content: 'done', finishReason: 'stop' }
+        },
+      }
+      let steered = false
+      const sendLateSteer = (): void => {
+        if (steered) return
+        steered = true
+        handle.agent.steer({ text: 'during cleanup' })
+      }
+      const registry = dynamic(root).agents as AgentRegistry
+      const handle = await registry.create({
+        id: 'cleanup-steer', file: await tempFile(`cleanup-steer-${boundary}.jsonl`), llm,
+        hooks: {
+          afterRun: async () => {
+            if (boundary !== 'afterRun' || steered) return
+            sendLateSteer()
+            await waitForPending(handle.agent, 'during cleanup')
+          },
+        },
+      })
+      root.on('agent/status', (payload: { id: string; status: string }) => {
+        if (boundary === 'idle status' && payload.id === handle.agent.id && payload.status === 'idle') {
+          sendLateSteer()
+        }
+      })
+
+      try {
+        handle.agent.followup({ text: 'first' })
+        await expect.poll(() => requests).toEqual(['first', 'during cleanup'])
+        await handle.agent.whenIdle()
+        expect(handle.agent.inbox.size).toBe(0)
+        expect((await handle.agent.session.read())
+          .filter(event => event.type === 'turn/start')).toHaveLength(2)
+      } finally {
+        await handle.dispose()
+      }
+    },
+  )
+
   it('durably stages inject input without waking until a followup arrives', async () => {
     const root = await mountRoot()
     const calls: string[][] = []
@@ -331,6 +378,48 @@ describe('live agent registry', () => {
       .filter(event => event.type === 'turn/start')
     expect(turns).toHaveLength(1)
     await handle.dispose()
+  })
+
+  it('consumes an in-turn steer reservation before cleanup stages inert inject input', async () => {
+    const root = await mountRoot()
+    const calls: string[] = []
+    const registry = dynamic(root).agents as AgentRegistry
+    const handle = await registry.create({
+      id: 'consumed-steer', file: await tempFile('consumed-steer.jsonl'),
+      llm: {
+        async complete(messages) {
+          calls.push(messages.at(-1)!.content)
+          return { content: 'done', finishReason: 'stop' }
+        },
+      },
+      hooks: {
+        afterRun: async () => {
+          handle.agent.inject({ text: 'staged only' })
+          await waitForPending(handle.agent, 'staged only')
+        },
+      },
+    })
+    let steered = false
+    root.on('agent/turn-stopping', () => {
+      if (steered) return
+      steered = true
+      handle.agent.steer({ text: 'in-turn steer' })
+    })
+
+    handle.agent.followup({ text: 'first' })
+    const idle = handle.agent.whenIdle().then(() => true)
+    try {
+      await expect(Promise.race([
+        idle,
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 1000)),
+      ])).resolves.toBe(true)
+      expect(calls).toEqual(['first', 'in-turn steer'])
+      expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text)).toEqual(['staged only'])
+      expect((await handle.agent.session.read()).filter(event => event.type === 'turn/start')).toHaveLength(1)
+    } finally {
+      await handle.dispose()
+      await idle
+    }
   })
 
   it('admits tool-time inject input after the tool result in the same turn', async () => {

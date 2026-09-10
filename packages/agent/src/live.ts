@@ -435,6 +435,7 @@ class LiveAgentImpl implements LiveAgent {
     this._drainPromise = task
     task.finally(() => {
       if (this._drainPromise === task) this._drainPromise = undefined
+      if (this._hasQueuedWork()) queueMicrotask(() => this._wake())
     })
   }
 
@@ -459,20 +460,18 @@ class LiveAgentImpl implements LiveAgent {
     if (this._busy || this._disposed) return
     this._busy = true
     this._setStatus('running')
-    let openedTurn = false
     try {
       while (!this._disposed) {
-        // next-step messages supplement an already-running turn or the next
-        // queued followup; by themselves they never create a new turn.
+        // A waking steer may open a later turn if the preceding turn has
+        // already passed its last next-step boundary. Inject stays inert.
         const snapshot = this._durable.snapshot()
         if (
           !snapshot.nextTurn.length
-          && !(this._wakeReserved && !openedTurn && snapshot.nextStep.length)
+          && !(this._wakeReserved && snapshot.nextStep.length)
         ) break
+        this._wakeReserved = false
         const batch = await this._durable.claimBatch()
         if (!batch.length) break
-        if (!openedTurn) this._wakeReserved = false
-        openedTurn = true
         const input = await this._inputForBatch(batch, true)
         const turn = await this._nextTurnNumber()
         for (const message of batch) {
@@ -541,6 +540,9 @@ class LiveAgentImpl implements LiveAgent {
 
   async claimNextStepInputs(): Promise<readonly AgentInput[]> {
     await this._writeTail
+    // Claiming next-step input spends its wake reservation. Clear before
+    // awaiting the durable claim so a newly arriving steer retains its wake.
+    this._wakeReserved = false
     const batch = await this._durable.claimNextStep()
     return batch.length ? [await this._inputForBatch(batch, false)] : []
   }
