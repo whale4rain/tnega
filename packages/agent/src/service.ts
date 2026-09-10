@@ -1070,7 +1070,8 @@ export class AgentService {
   }
 
   private _tools(): ToolsService {
-    const tools = (this.ctx as unknown as { tools?: ToolsService }).tools
+    const scoped = this.ctx.reflect.get('tools', false) as ToolsService | undefined
+    const tools = scoped ?? (this.ctx as unknown as { tools?: ToolsService }).tools
     if (!tools) throw new AgentError('tools service is required')
     return tools
   }

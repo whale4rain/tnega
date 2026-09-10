@@ -1010,6 +1010,70 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
+  it('advertises and executes nested setup tools while siblings retain root tools', async () => {
+    const root = await mountRoot()
+    const executions: string[] = []
+    const advertised: Array<{ agent: string; tools: string[] }> = []
+    const rootTools = dynamic(root).tools as ToolsService
+    rootTools.register({
+      schema: { name: 'root_tool', description: 'shared fallback tool' },
+      execute: () => {
+        executions.push('root')
+        return 'root result'
+      },
+    })
+    const adapter = (name: string): LLMAdapter => ({
+      async complete(messages, availableTools) {
+        advertised.push({ agent: name, tools: availableTools.map(tool => tool.schema.name) })
+        return messages.at(-1)?.role === 'tool'
+          ? { content: 'done', finishReason: 'stop' }
+          : {
+              toolCalls: [{ id: `${name}-call`, name: `${name}_tool`, arguments: {} }],
+              finishReason: 'tool_calls',
+            }
+      },
+    })
+    const registry = dynamic(root).agents as AgentRegistry
+    const scoped = await registry.create({
+      id: 'nested-tools', file: await tempFile('nested-tools.jsonl'), llm: adapter('scoped'),
+      setup: async agentCtx => {
+        await agentCtx.plugin(child => {
+          new ToolsService(child).register({
+            schema: { name: 'scoped_tool', description: 'tool from a setup plugin' },
+            execute: () => {
+              executions.push('scoped')
+              return 'scoped result'
+            },
+          })
+        })
+      },
+    })
+    const sibling = await registry.create({
+      id: 'nested-tools-sibling', file: await tempFile('nested-tools-sibling.jsonl'), llm: adapter('root'),
+    })
+    try {
+      scoped.agent.followup({ text: 'use scoped tool' })
+      await scoped.agent.whenIdle()
+      sibling.agent.followup({ text: 'use root tool' })
+      await sibling.agent.whenIdle()
+
+      expect(advertised).toEqual([
+        { agent: 'scoped', tools: ['scoped_tool'] },
+        { agent: 'scoped', tools: ['scoped_tool'] },
+        { agent: 'root', tools: ['root_tool'] },
+        { agent: 'root', tools: ['root_tool'] },
+      ])
+      expect(executions).toEqual(['scoped', 'root'])
+      expect((await scoped.agent.session.read()).filter(event => event.type === 'tool/result'))
+        .toMatchObject([{ payload: { name: 'scoped_tool', ok: true, output: 'scoped result' } }])
+      expect((await sibling.agent.session.read()).filter(event => event.type === 'tool/result'))
+        .toMatchObject([{ payload: { name: 'root_tool', ok: true, output: 'root result' } }])
+      expect(rootTools.list().map(tool => tool.schema.name)).toEqual(['root_tool'])
+    } finally {
+      await Promise.all([scoped.dispose(), sibling.dispose()])
+    }
+  })
+
   it('rolls back a failed setup without registering the agent', async () => {
     const root = await mountRoot()
     const file = await tempFile('setup-fail.jsonl')
