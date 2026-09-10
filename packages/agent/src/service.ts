@@ -174,6 +174,17 @@ function canonicalMessages(messages: readonly ModelMessage[]): string {
   })))
 }
 
+function freezeMessages(messages: readonly ModelMessage[]): void {
+  const visited = new Set<object>()
+  const freeze = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null || visited.has(value)) return
+    visited.add(value)
+    for (const child of Object.values(value)) freeze(child)
+    Object.freeze(value)
+  }
+  freeze(messages)
+}
+
 function requestHeaderFor(
   request: Pick<AgentRequestEvent, 'tools' | 'options'>,
   input: readonly ModelMessage[],
@@ -467,6 +478,10 @@ export class AgentService {
           streamRequest.tools = request.tools
           streamRequest.options = request.options
           const prepareRequest = async (): Promise<void> => {
+            // Waterfalls may rewrite messages until consumption begins. Lazy
+            // streams must consume that same validated transcript thereafter.
+            freezeMessages(streamRequest.messages)
+            Object.defineProperty(streamRequest, 'messages', { writable: false, configurable: false })
             llmMessages = copyMessages(streamRequest.messages)
             await this._persistStepInput(session, streamRequest, llmMessages, admittedHistory)
             await this._assertReplayable(session, streamRequest, llmMessages)

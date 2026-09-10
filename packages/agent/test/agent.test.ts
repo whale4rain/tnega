@@ -974,6 +974,61 @@ describe('agent loop', () => {
     await expect(service.run({ text: 'go' })).rejects.toThrow('not reconstructable')
   })
 
+  it.each(['append', 'replace', 'change-role'] as const)(
+    'rejects a lazy short-circuit transcript %s before dispatch',
+    async (mutation) => {
+      const root = new Context()
+      await root.plugin(session, { file: await tempFile(`lazy-short-circuit-${mutation}.jsonl`) })
+      await root.plugin(tools)
+      const requests: ModelMessage[][] = []
+      const adapter: LLMAdapter = {
+        async complete() {
+          throw new Error('complete should not be used')
+        },
+        async *stream(messages) {
+          requests.push(structuredClone([...messages]))
+          yield { type: 'message_delta', id: 'never', delta: 'never' }
+          yield { type: 'message_stop', id: 'never', finishReason: 'stop' }
+        },
+      }
+      await root.plugin(agent, { llm: adapter })
+      root.on('llm/stream', async (payload: LLMStreamRequestEvent) =>
+        (async function* (): AsyncGenerator<LLMStreamEvent> {
+          if (mutation === 'append') payload.messages.push({ role: 'assistant', content: 'unowned' })
+          if (mutation === 'replace') payload.messages = [{ role: 'assistant', content: 'unowned' }]
+          if (mutation === 'change-role') payload.messages[0]!.role = 'assistant'
+          yield* adapter.stream!(payload.messages, payload.tools, payload.options)
+        })())
+
+      const service = dynamic(root).agent as AgentService
+      await expect(service.run({ text: 'go' })).rejects.toThrow()
+      expect(requests).toEqual([])
+      const log = dynamic(root).session as SessionLog
+      expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'go' }])
+      expect((await log.read()).filter(event => event.type === 'step/end' || event.type === 'turn/end'))
+        .toMatchObject([{ payload: { finishReason: 'error' } }, { payload: { finishReason: 'error' } }])
+    },
+  )
+
+  it('rejects a lazy next stream transcript mutation before dispatch', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('lazy-next-stream.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      const stream = await next()
+      return (async function* (): AsyncGenerator<LLMStreamEvent> {
+        payload.messages.push({ role: 'assistant', content: 'unowned' })
+        yield* stream
+      })()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).rejects.toThrow()
+    expect(calls).toHaveLength(0)
+  })
+
   it('makes each retry user and system replacement replayable before dispatch', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('retry-replaced-transcript.jsonl') })
