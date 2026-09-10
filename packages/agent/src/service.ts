@@ -98,7 +98,7 @@ export interface AgentConfig {
   llm?: LLMAdapter
   /** Bind the loop to a specific session instead of the ctx-provided singleton. */
   session?: SessionLog
-  /** Fail fast when the actual request would not be reconstructable from the log. */
+  /** Compatibility diagnostic flag; request replayability is always enforced. */
   assertReplayable?: boolean
   maxTurns?: number
   maxSteps?: number
@@ -123,7 +123,7 @@ function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
       copy.tool_calls = message.tool_calls.map(call => ({
         id: call.id,
         name: call.name,
-        arguments: call.arguments,
+        arguments: structuredClone(call.arguments),
       }))
     }
     return copy
@@ -158,6 +158,20 @@ function copyCompletion(completion: LLMCompletion): LLMCompletion {
     }))
   }
   return copy
+}
+
+function canonicalMessages(messages: readonly ModelMessage[]): string {
+  return JSON.stringify(messages.map(message => ({
+    role: message.role,
+    content: message.content,
+    ...(message.name ? { name: message.name } : {}),
+    ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+    ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
+    ...(message.toolOk !== undefined ? { toolOk: message.toolOk } : {}),
+    ...(message.toolError ? {
+      toolError: { name: message.toolError.name, message: message.toolError.message },
+    } : {}),
+  })))
 }
 
 function requestHeaderFor(
@@ -320,14 +334,14 @@ export class AgentService {
   }
 
   async run(input?: AgentInput, options: AgentRunOptions = {}): Promise<AgentRunResult> {
-    return consumeAgentStream(this._stream(input, options, false))
+    return consumeAgentStream(this._stream(input, options))
   }
 
   async *runStream(
     input?: AgentInput,
     options: AgentRunOptions = {},
   ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
-    const iterator = this._stream(input, options, true)[Symbol.asyncIterator]()
+    const iterator = this._stream(input, options)[Symbol.asyncIterator]()
     while (true) {
       const next = await iterator.next()
       if (next.done) return next.value
@@ -338,7 +352,6 @@ export class AgentService {
   private async *_stream(
     input?: AgentInput,
     options: AgentRunOptions = {},
-    useNativeStream = true,
   ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
     const claimed = input ?? this.inbox.claim()
     if (!claimed) throw new AgentError('no agent input available')
@@ -348,7 +361,7 @@ export class AgentService {
     const tools = this._tools()
     const llm = this._llm()
     if (!llm) throw new AgentError('no LLM adapter available')
-    const streamAdapter = useNativeStream ? llm.stream : undefined
+    const streamAdapter = llm.stream
     const persistChunks = streamAdapter !== undefined
 
     const maxTurns = options.maxTurns ?? this.config.maxTurns ?? 64
@@ -410,6 +423,9 @@ export class AgentService {
       currentStepIndex = index
 
       const requestedInput = copyMessages(preStep.messages)
+      // Request rewrites may replace the current surface, but retries retain
+      // the durable owners present when this step was admitted.
+      const admittedHistory = await session.deriveMessages()
       this.ctx.emit('agent/step', {
         index,
         turn,
@@ -422,15 +438,6 @@ export class AgentService {
       }
       if (options.signal) completeOptions.signal = options.signal
 
-      const request = this.ctx.waterfall('agent/request', {
-        index,
-        messages: requestedInput,
-        tools: availableTools,
-        options: completeOptions,
-      }, (payload: AgentRequestEvent) => payload)
-      if (!request || !request.options || !request.tools) {
-        throw new AgentError('agent/request must return a request payload')
-      }
       let llmMessages = copyMessages(requestedInput)
 
       let completion: LLMCompletion | undefined
@@ -441,28 +448,45 @@ export class AgentService {
           break
         }
         const streamEvents: LLMStreamEvent[] = []
+        const streamRequest: LLMStreamRequestEvent = {
+          index,
+          messages: copyMessages(requestedInput),
+          tools: [...availableTools],
+          options: { ...completeOptions },
+        }
         try {
-          const streamRequest: LLMStreamRequestEvent = {
+          const request = this.ctx.waterfall('agent/request', {
             index,
-            messages: llmMessages,
-            tools: request.tools,
-            options: request.options,
+            messages: copyMessages(requestedInput),
+            tools: streamRequest.tools,
+            options: streamRequest.options,
+          }, (payload: AgentRequestEvent) => payload)
+          if (!request || !request.options || !request.tools) {
+            throw new AgentError('agent/request must return a request payload')
+          }
+          streamRequest.tools = request.tools
+          streamRequest.options = request.options
+          const prepareRequest = async (): Promise<void> => {
+            llmMessages = copyMessages(streamRequest.messages)
+            await this._persistStepInput(session, streamRequest, llmMessages, admittedHistory)
+            await this._assertReplayable(session, streamRequest, llmMessages)
           }
           const stream = await this.ctx.waterfallAsync(
             'llm/stream',
             streamRequest,
-            async (payload: LLMStreamRequestEvent) => streamAdapter
-              ? streamAdapter(payload.messages, payload.tools, payload.options)
-              : completeAsStream(llm, payload.messages, payload.tools, payload.options),
+            (payload: LLMStreamRequestEvent) => (async function* () {
+              // A listener can consume next() itself. Guard that dispatch too.
+              await prepareRequest()
+              yield* streamAdapter
+                ? streamAdapter.call(llm, payload.messages, payload.tools, payload.options)
+                : completeAsStream(llm, payload.messages, payload.tools, payload.options)
+            })(),
           )
           if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
             throw new AgentError('llm/stream must return an async iterable stream')
           }
-          llmMessages = copyMessages(streamRequest.messages)
-          await this._persistStepInput(session, streamRequest, llmMessages)
-          if (this.config.assertReplayable) {
-            await this._assertReplayable(session, streamRequest, llmMessages)
-          }
+          // Short-circuit streams must obey the same request invariant.
+          await prepareRequest()
           let chunkIndex = 0
           for await (const event of stream) {
             streamEvents.push(event)
@@ -479,15 +503,11 @@ export class AgentService {
           completion = completionFromStreamEvents(streamEvents)
           break
         } catch (error) {
-          const content = partialStreamContent(streamEvents)
-          if (content) {
-            await session.append('assistant/message', {
-              content,
-              interrupted: true,
-            })
-            llmMessages = await session.deriveMessages()
-          }
           if (options.signal?.aborted) {
+            const content = partialStreamContent(streamEvents)
+            if (content) {
+              await session.append('assistant/message', { content, interrupted: true })
+            }
             finishReason = 'cancelled'
             break
           }
@@ -499,14 +519,14 @@ export class AgentService {
               index,
               turn,
               step: index,
-              messages: copyMessages(llmMessages),
-              tools: request.tools,
-              options: request.options,
+              messages: copyMessages(streamRequest.messages),
+              tools: [...streamRequest.tools],
+              options: { ...streamRequest.options },
               attempt,
               error,
               failure,
-              ...(request.options.provider ? { provider: request.options.provider } : {}),
-              ...(request.options.model ? { model: request.options.model } : {}),
+              ...(streamRequest.options.provider ? { provider: streamRequest.options.provider } : {}),
+              ...(streamRequest.options.model ? { model: streamRequest.options.model } : {}),
               ...(options.signal ? { signal: options.signal } : {}),
             } satisfies AgentRequestErrorEvent,
             () => undefined,
@@ -770,7 +790,22 @@ export class AgentService {
     session: SessionLog,
     request: Pick<AgentRequestEvent, 'tools' | 'options'>,
     input: readonly ModelMessage[],
+    admittedHistory: readonly ModelMessage[],
   ): Promise<void> {
+    const surface = await session.deriveMessages()
+    const owned = admittedHistory.filter(message => !isUserOrSystemMessage(message))
+    let ownerIndex = 0
+    for (const message of input) {
+      if (isUserOrSystemMessage(message)) continue
+      const actual = canonicalMessages([message])
+      while (ownerIndex < owned.length && canonicalMessages([owned[ownerIndex]!]) !== actual) {
+        ownerIndex += 1
+      }
+      if (ownerIndex === owned.length) {
+        throw new AgentError('request is not reconstructable from session log: unowned or reordered assistant/tool message')
+      }
+      ownerIndex += 1
+    }
     const nextHeader = requestHeaderFor(request, input)
     const previousHeader = session.requestHeader()
     const isFirstRequest = !this._persistedRequest
@@ -828,20 +863,19 @@ export class AgentService {
     ) {
       await session.append('request/context', nextContext)
     }
-    const requested = input.filter(isUserOrSystemMessage)
-    const surface = await session.deriveMessages()
-    // The session surface is the durable history. A caller (e.g. the web run
-    // handler) includes the full derived history as model context and also
-    // prepends run-scoped system prompts that are NOT part of the surface.
-    // Counting those systems against the surface inflates the "new" tail and
-    // re-appends already-persisted user turns (every resumed run duplicated
-    // the preceding user message in the log). Durable user messages are always
-    // a prefix of the requested user messages — new turns arrive last — so
-    // anchor on users: only what follows the last durable user is genuinely
-    // new. Text-based matching stays unsafe because the same user text can
-    // legitimately repeat across turns.
-    const appendDurable = async (messages: readonly ModelMessage[]): Promise<void> => {
-      for (const message of messages) {
+    const isSurfacePrefix = (messages: readonly ModelMessage[]): boolean =>
+      canonicalMessages(messages.slice(0, surface.length)) === canonicalMessages(surface)
+    // A run-scoped leading system may be owned by the effective header. Remove
+    // exactly that prefix when the remaining transcript extends the surface.
+    const requested = surface.length > 0
+      && input[0]?.role === 'system'
+      && input[0].content === nextHeader.system
+      && isSurfacePrefix(input.slice(1))
+      ? input.slice(1)
+      : input
+    const tail = requested.slice(surface.length)
+    if (isSurfacePrefix(requested) && tail.every(isUserOrSystemMessage)) {
+      for (const message of tail) {
         if (message.role === 'user') {
           await session.append('user/message', {
             content: message.content,
@@ -854,22 +888,15 @@ export class AgentService {
           })
         }
       }
-    }
-    if (surface.length === 0) {
-      // Fresh log: nothing is durable yet; persist the whole requested head so
-      // the initial system prompt and first user turn land in the log.
-      await appendDurable(requested)
       return
     }
-    const durableUsers = surface.filter(message => message.role === 'user').length
-    let seenUsers = 0
-    const newTail: ModelMessage[] = []
-    for (const message of requested) {
-      if (message.role === 'user') seenUsers += 1
-      if (seenUsers <= durableUsers) continue // already on the durable surface
-      newTail.push(message)
-    }
-    await appendDurable(newTail)
+    // Rewrites replace the model surface through the existing append-only
+    // checkpoint operation. Prior raw history and its message owners remain.
+    const nodes = await session.surfaceEvents()
+    await session.append('checkpoint', {
+      messages: copyMessages(requested),
+      surfaceOp: { op: 'replace', start: nodes[0]!.seq, end: nodes.at(-1)!.seq },
+    })
   }
 
   private async _assertReplayable(
@@ -878,29 +905,17 @@ export class AgentService {
     input: readonly ModelMessage[],
   ): Promise<void> {
     const reconstructed = await session.deriveMessages()
-    const canonical = (messages: readonly ModelMessage[]) => messages
-      .filter(message => message.role !== 'system')
-      .map(message => ({
-        role: message.role,
-        content: message.content,
-        ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
-        ...(message.name ? { name: message.name } : {}),
-        ...(message.tool_calls?.length
-          ? { tool_calls: message.tool_calls.map(call => ({
-              id: call.id,
-              name: call.name,
-              args: JSON.stringify(call.arguments ?? {}),
-            })) }
-          : {}),
-      }))
-    const actual = canonical(input)
-    const replay = canonical(reconstructed)
-    if (JSON.stringify(actual) !== JSON.stringify(replay)) {
+    const actual = canonicalMessages(input)
+    const replay = canonicalMessages(reconstructed)
+    const header = session.requestHeader()
+    const headerOwnsPrefix = input[0]?.role === 'system'
+      && input[0].content === header?.system
+      && canonicalMessages(input.slice(1)) === replay
+    if (actual !== replay && !headerOwnsPrefix) {
       throw new AgentError(
-        `request is not reconstructable from session log: actual=${JSON.stringify(actual)} replay=${JSON.stringify(replay)}`,
+        `request is not reconstructable from session log: actual=${actual} replay=${replay}`,
       )
     }
-    const header = session.requestHeader()
     const expected = requestHeaderFor(request, input)
     if (
       header?.system !== expected.system
@@ -960,7 +975,7 @@ export class AgentService {
         arguments: call.arguments,
       }))
     }
-    next.push(assistant)
+    if (assistant.content || toolCalls.length) next.push(assistant)
 
     for (const call of toolCalls) {
       const result = toolResults.find(candidate => candidate.callId === call.id)
