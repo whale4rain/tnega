@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { Context, type Plugin } from '@tnega/core'
+import { Context, symbols, type Plugin } from '@tnega/core'
 import { SessionLog, type SessionEvent } from '@tnega/session'
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
@@ -117,11 +117,12 @@ function createAgentRuntimeContext(agentCtx: Context): Context {
   const runtimeCtx = agentCtx.extend()
   Object.defineProperty(runtimeCtx, Context.filter, {
     value: (target: Context) => {
-      let ancestor = agentCtx.fiber
+      const targetScope = target[symbols.isolate].agentScope
+      let ancestor = agentCtx
       while (true) {
-        if (target.fiber === ancestor) return true
-        if (ancestor.parent.fiber === ancestor) return false
-        ancestor = ancestor.parent.fiber
+        if (targetScope === ancestor[symbols.isolate].agentScope) return true
+        if (ancestor.fiber.parent.fiber === ancestor.fiber) return false
+        ancestor = ancestor.fiber.parent
       }
     },
   })

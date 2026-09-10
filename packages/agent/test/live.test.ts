@@ -17,6 +17,7 @@ import {
   type LiveAgent,
   type LLMAdapter,
   type LLMCompletion,
+  type LLMStreamRequestEvent,
 } from '../src/index.js'
 
 type DynamicContext = Context & {
@@ -805,6 +806,68 @@ describe('live agent registry', () => {
       'scoped-event-runner:idle',
     ])
     await Promise.all([watcher.dispose(), runner.dispose()])
+  })
+
+  it('composes shared and nested setup plugin middleware without sibling leakage', async () => {
+    const root = await mountRoot()
+    const requests: Array<{ provider?: string; model?: string }> = []
+    const scopedStatuses: string[] = []
+    const sharedStatuses: string[] = []
+    const llm: LLMAdapter = {
+      async complete(_messages, _tools, options) {
+        requests.push({ provider: options.provider, model: options.model })
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(async sharedCtx => {
+      await sharedCtx.plugin(pluginCtx => {
+        pluginCtx.on('llm/stream', (payload: LLMStreamRequestEvent, next) => {
+          payload.options.provider = 'shared'
+          return next()
+        })
+        pluginCtx.on('agent/status', (payload: { id: string; status: string }) => {
+          sharedStatuses.push(`${payload.id}:${payload.status}`)
+        })
+      })
+    })
+    const registry = dynamic(root).agents as AgentRegistry
+    const scoped = await registry.create({
+      id: 'plugin-scoped',
+      file: await tempFile('plugin-scoped.jsonl'),
+      llm,
+      setup: async agentCtx => {
+        await agentCtx.plugin(async setupCtx => {
+          await setupCtx.plugin(pluginCtx => {
+            pluginCtx.on('llm/stream', (payload: LLMStreamRequestEvent, next) => {
+              payload.options.model = 'scoped'
+              return next()
+            })
+            pluginCtx.on('agent/status', (payload: { id: string; status: string }) => {
+              scopedStatuses.push(`${payload.id}:${payload.status}`)
+            })
+          })
+        })
+      },
+    })
+    const sibling = await registry.create({
+      id: 'plugin-sibling', file: await tempFile('plugin-sibling.jsonl'), llm,
+    })
+
+    scoped.agent.followup({ text: 'scoped' })
+    await scoped.agent.whenIdle()
+    sibling.agent.followup({ text: 'sibling' })
+    await sibling.agent.whenIdle()
+
+    expect(requests).toEqual([
+      { provider: 'shared', model: 'scoped' },
+      { provider: 'shared', model: undefined },
+    ])
+    expect(scopedStatuses).toEqual(['plugin-scoped:running', 'plugin-scoped:idle'])
+    expect(sharedStatuses).toEqual([
+      'plugin-scoped:running', 'plugin-scoped:idle',
+      'plugin-sibling:running', 'plugin-sibling:idle',
+    ])
+    await Promise.all([scoped.dispose(), sibling.dispose()])
   })
 
   it('uses tools registered by setup only for that live agent', async () => {
