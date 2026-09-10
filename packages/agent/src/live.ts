@@ -130,6 +130,7 @@ class LiveAgentImpl implements LiveAgent {
   private _scopeClosed = false
   private _durable: DurableInbox
   private _manualStreaming = false
+  private _wakeReserved = false
 
   constructor(
     private _ctx: Context,
@@ -239,12 +240,16 @@ class LiveAgentImpl implements LiveAgent {
     if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
     const text = input.text ?? ''
     const content = input.messages ?? input.context
+    const steeredAfterAbort = target === 'steer' && this._controller?.signal.aborted === true
     const task = this._writeTail.then(async () => {
       const message = target === 'followup'
         ? await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
         : target === 'steer'
-        ? await this._durable.steer({ text, ...(content !== undefined ? { content } : {}) })
+        ? steeredAfterAbort
+          ? await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
+          : await this._durable.steer({ text, ...(content !== undefined ? { content } : {}) })
         : await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) }, 'next-step')
+      if (target !== 'inject') this._wakeReserved = true
       this._ctx.emit('agent/inbox/inserted', {
         id: this.id,
         target: target === 'followup' ? 'followup' : 'steer',
@@ -315,9 +320,7 @@ class LiveAgentImpl implements LiveAgent {
         await drain.catch(() => undefined)
         continue
       }
-      // next-step input is deliberately inert while idle: it joins the next
-      // claimed turn, but is not itself work that `whenIdle()` waits on.
-      if (!this._durable.snapshot().nextTurn.length) break
+      if (!this._hasQueuedWork()) break
       await new Promise<void>(resolve => setTimeout(resolve, 0))
     }
   }
@@ -409,7 +412,7 @@ class LiveAgentImpl implements LiveAgent {
 
   private async _drainAll(): Promise<void> {
     await this._writeTail.catch(() => undefined)
-    if (this._durable.size) {
+    if (this._hasQueuedWork()) {
       // Automatic (library) drain: consume the queue, discarding the stream.
       for await (const _ of this._streamTurns()) void _
     }
@@ -428,13 +431,20 @@ class LiveAgentImpl implements LiveAgent {
     if (this._busy || this._disposed) return
     this._busy = true
     this._setStatus('running')
+    let openedTurn = false
     try {
       while (!this._disposed) {
         // next-step messages supplement an already-running turn or the next
         // queued followup; by themselves they never create a new turn.
-        if (!this._durable.snapshot().nextTurn.length) break
+        const snapshot = this._durable.snapshot()
+        if (
+          !snapshot.nextTurn.length
+          && !(this._wakeReserved && !openedTurn && snapshot.nextStep.length)
+        ) break
         const batch = await this._durable.claimBatch()
         if (!batch.length) break
+        if (!openedTurn) this._wakeReserved = false
+        openedTurn = true
         const input = await this._inputForBatch(batch, true)
         const turn = await this._nextTurnNumber()
         for (const message of batch) {
@@ -475,8 +485,14 @@ class LiveAgentImpl implements LiveAgent {
       }
     } finally {
       this._busy = false
+      if (!this._durable.size) this._wakeReserved = false
       this._setStatus('idle')
     }
+  }
+
+  private _hasQueuedWork(): boolean {
+    const snapshot = this._durable.snapshot()
+    return snapshot.nextTurn.length > 0 || (this._wakeReserved && snapshot.nextStep.length > 0)
   }
 
   private async _inputForBatch(

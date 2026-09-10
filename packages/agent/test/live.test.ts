@@ -214,6 +214,24 @@ describe('live agent registry', () => {
     expect(calls).toEqual([['urgent', 'queued']])
   })
 
+  it('opens one turn for idle steer while idle inject remains inert', async () => {
+    const root = await mountRoot()
+    const requests: string[][] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        requests.push(messages.map(message => message.content))
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('idle-steer.jsonl'), llm)
+
+    handle.agent.steer({ text: 'steer now' })
+    await handle.agent.whenIdle()
+
+    await handle.dispose()
+    expect(requests).toEqual([['steer now']])
+  })
+
   it('durably stages inject input without waking until a followup arrives', async () => {
     const root = await mountRoot()
     const calls: string[][] = []
@@ -430,6 +448,43 @@ describe('live agent registry', () => {
     release()
     await handle.agent.whenIdle()
     expect(handle.agent.status).toBe('idle')
+  })
+
+  it('runs steer submitted after abort as a later turn', async () => {
+    const root = await mountRoot()
+    const requests: string[][] = []
+    let began!: () => void
+    const started = new Promise<void>(resolve => { began = resolve })
+    const llm: LLMAdapter = {
+      async complete(messages, _tools, options) {
+        requests.push(messages.map(message => message.content))
+        if (requests.length === 1) {
+          began()
+          await new Promise<void>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), {
+              once: true,
+            })
+          })
+        }
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('post-abort-steer.jsonl'), llm)
+    const running = new Promise<void>(resolve => {
+      root.on('agent/status', (event: { id: string; status: string }) => {
+        if (event.id === handle.agent.id && event.status === 'running') resolve()
+      })
+    })
+
+    handle.agent.followup({ text: 'active' })
+    await running
+    await started
+    handle.agent.cancel({ type: 'user' }, { keepInbox: true })
+    handle.agent.steer({ text: 'after abort' })
+    await handle.agent.whenIdle()
+
+    await handle.dispose()
+    expect(requests).toContainEqual(expect.arrayContaining(['after abort']))
   })
 
   it('runs maintenance while idle and follows it in whenIdle', async () => {
