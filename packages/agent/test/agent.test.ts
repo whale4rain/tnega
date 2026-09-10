@@ -1272,6 +1272,64 @@ describe('agent loop', () => {
     })
   })
 
+  it('records aborted results for tool calls not started after cancellation', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('tool-batch-cancel.jsonl') })
+    await root.plugin(tools)
+    const controller = new AbortController()
+    let secondExecutions = 0
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'cancel', description: 'cancel the batch' },
+      execute: () => {
+        controller.abort({ type: 'user' })
+        return 'cancelled first'
+      },
+    })
+    toolService.register({
+      schema: { name: 'second', description: 'must not run' },
+      execute: () => {
+        secondExecutions += 1
+        return 'unexpected'
+      },
+    })
+    const adapter: LLMAdapter = {
+      complete: async () => ({
+        content: '',
+        toolCalls: [
+          toolCall('c1', 'cancel', {}),
+          toolCall('c2', 'second', {}),
+        ],
+        finishReason: 'tool_calls',
+      }),
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    const result = await service.run({ text: 'go' }, { signal: controller.signal })
+
+    expect(result.finishReason).toBe('cancelled')
+    expect(secondExecutions).toBe(0)
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    const toolEvents = events.filter(event => event.type === 'tool/call' || event.type === 'tool/result')
+    expect(toolEvents).toMatchObject([
+      { type: 'tool/call', payload: { id: 'c1', name: 'cancel' } },
+      { type: 'tool/result', payload: { toolCallId: 'c1', ok: true } },
+      { type: 'tool/call', payload: { id: 'c2', name: 'second' } },
+      {
+        type: 'tool/result',
+        payload: {
+          id: 'c2',
+          toolCallId: 'c2',
+          name: 'second',
+          ok: false,
+          error: { name: 'AbortError', message: 'tool call aborted: user' },
+        },
+      },
+    ])
+  })
+
   it('preserves a typed user cancellation cause in durable events', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('tool-cancel-user.jsonl') })

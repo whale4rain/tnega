@@ -262,6 +262,14 @@ function cancelCauseFromSignal(signal?: AbortSignal): AgentCancelCause | undefin
   return { type: 'abort' }
 }
 
+function abortedToolError(signal?: AbortSignal): ToolError {
+  const cause = cancelCauseFromSignal(signal)
+  return {
+    name: 'AbortError',
+    message: `tool call aborted: ${cause?.type ?? 'abort'}`,
+  }
+}
+
 /** Map a completed loop to the typed durable reason a `turn/end` records. */
 function toTurnEndReason(fields: {
   cancelled: boolean
@@ -597,17 +605,29 @@ export class AgentService {
         if (options.signal) toolOptions.signal = options.signal
         const startedAt = Date.now()
         let result: ToolResult
-        try {
-          result = await tools.execute(call.name, call.arguments, toolOptions)
-        } catch (error) {
+        if (options.signal?.aborted) {
           result = {
             ok: false,
             name: call.name,
             callId: call.id,
             input: call.arguments,
-            error: toToolError(error),
+            error: abortedToolError(options.signal),
             startedAt,
             durationMs: Date.now() - startedAt,
+          }
+        } else {
+          try {
+            result = await tools.execute(call.name, call.arguments, toolOptions)
+          } catch (error) {
+            result = {
+              ok: false,
+              name: call.name,
+              callId: call.id,
+              input: call.arguments,
+              error: toToolError(error),
+              startedAt,
+              durationMs: Date.now() - startedAt,
+            }
           }
         }
         toolResults.push(result)
