@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Context, Plugin } from '@tnega/core'
+import { Context, type Plugin } from '@tnega/core'
 import { SessionLog, type SessionEvent } from '@tnega/session'
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
@@ -111,6 +111,30 @@ export interface AgentCreationOptions {
 export interface AgentFactory {
   create(options: AgentCreationOptions): Promise<AgentHandle>
   resume(options: AgentCreationOptions): Promise<AgentHandle>
+}
+
+function createAgentRuntimeContext(agentCtx: Context): Context {
+  const runtimeCtx = agentCtx.extend()
+  Object.defineProperty(runtimeCtx, Context.filter, {
+    value: (target: Context) => {
+      let ancestor = agentCtx.fiber
+      while (true) {
+        if (target.fiber === ancestor) return true
+        if (ancestor.parent.fiber === ancestor) return false
+        ancestor = ancestor.parent.fiber
+      }
+    },
+  })
+  const events = agentCtx.events as unknown as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >
+  for (const method of ['emit', 'parallel', 'serial', 'bail', 'waterfall', 'waterfallAsync']) {
+    Object.defineProperty(runtimeCtx, method, {
+      value: (...args: unknown[]) => events[method]!(runtimeCtx, ...args),
+    })
+  }
+  return runtimeCtx
 }
 
 class LiveAgentImpl implements LiveAgent {
@@ -693,8 +717,19 @@ async function buildHandle(
     },
     snapshot: () => durable.snapshot(),
   }
+  let agentCtx!: Context
+  const agentScope = await ctx.inject([], (scopeCtx: Context) => {
+    agentCtx = scopeCtx
+      .isolate('agentScope')
+      .isolate('llm')
+      .isolate('tools')
+      .isolate('systemPrompt')
+    agentCtx.provide('agentScope', agentCtx)
+  })
+  await agentScope
+  const runtimeCtx = createAgentRuntimeContext(agentCtx)
   let claimNextStep: () => Promise<readonly AgentInput[]> = async () => []
-  const service = new AgentService(ctx, {
+  const service = new AgentService(runtimeCtx, {
     session: log,
     inbox: injected,
     ...(options.llm ? { llm: options.llm } : {}),
@@ -705,13 +740,8 @@ async function buildHandle(
     claimNextStep: () => claimNextStep(),
   })
   if (options.system) injected.inject('agentSystem', options.system)
-  const agentScope = await ctx.inject([], (scopeCtx: Context) => {
-    scopeCtx.isolate('agentScope').provide('agentScope', scopeCtx)
-  })
-  await agentScope
-  const agentCtx = agentScope.ctx
   const agent = new LiveAgentImpl(
-    ctx,
+    agentCtx,
     agentCtx,
     service,
     agentId,

@@ -5,11 +5,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
 import { SessionLog, type ModelMessage } from '@tnega/session'
-import { tools, type ToolsService } from '@tnega/tools'
+import { tools, ToolsService } from '@tnega/tools'
 
 import {
   agents,
   DurableInbox,
+  LlmService,
   type DurableInboxMessage,
   type AgentRegistry,
   type LiveAgent,
@@ -676,6 +677,97 @@ describe('live agent registry', () => {
     }).get('agentSetupMarker')).toBeUndefined()
     handle.agent.agentCtx.emit('agent-custom')
     expect(order).toEqual(['setup', 'custom-event'])
+  })
+
+  it('uses setup-scoped LLM middleware without affecting another live agent', async () => {
+    const root = await mountRoot()
+    let rootCalls = 0
+    let scopedCalls = 0
+    let scopedMiddlewareCalls = 0
+    const rootLlm: LLMAdapter = {
+      async complete() {
+        rootCalls += 1
+        return { content: 'root', finishReason: 'stop' }
+      },
+    }
+    const scopedLlm: LLMAdapter = {
+      async complete(_messages, _tools, options) {
+        scopedCalls += 1
+        expect(options.provider).toBe('scoped')
+        return { content: 'scoped', finishReason: 'stop' }
+      },
+    }
+    const rootLlmService = new LlmService()
+    rootLlmService.register('root', rootLlm)
+    root.provide('llm', rootLlmService)
+    const scopedLlmService = new LlmService()
+    scopedLlmService.register('scoped', scopedLlm)
+    const registry = dynamic(root).agents as AgentRegistry
+    const scoped = await registry.create({
+      id: 'scoped-runtime-agent',
+      file: await tempFile('scoped-runtime.jsonl'),
+      setup: (agentCtx) => {
+        agentCtx.provide('llm', scopedLlmService)
+        agentCtx.on('llm/stream', async (payload, next) => {
+          scopedMiddlewareCalls += 1
+          payload.options = { ...payload.options, provider: 'scoped' }
+          return next()
+        })
+      },
+    })
+    const sibling = await registry.create({
+      id: 'root-runtime-agent',
+      file: await tempFile('root-runtime.jsonl'),
+      llm: rootLlm,
+    })
+
+    scoped.agent.followup({ text: 'scoped' })
+    sibling.agent.followup({ text: 'root' })
+    await Promise.all([scoped.agent.whenIdle(), sibling.agent.whenIdle()])
+
+    expect(scopedCalls).toBe(1)
+    expect(scopedMiddlewareCalls).toBe(1)
+    expect(rootCalls).toBe(1)
+    await Promise.all([scoped.dispose(), sibling.dispose()])
+  })
+
+  it('uses tools registered by setup only for that live agent', async () => {
+    const root = await mountRoot()
+    let toolExecutions = 0
+    let requests = 0
+    const llm: LLMAdapter = {
+      async complete() {
+        requests += 1
+        return requests === 1
+          ? {
+              toolCalls: [{ id: 'scoped-tool-call', name: 'scoped_tool', arguments: {} }],
+              finishReason: 'tool_calls',
+            }
+          : { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const registry = dynamic(root).agents as AgentRegistry
+    const handle = await registry.create({
+      id: 'scoped-tools-agent',
+      file: await tempFile('scoped-tools.jsonl'),
+      llm,
+      setup: (agentCtx) => {
+        const scopedTools = new ToolsService(agentCtx)
+        scopedTools.register({
+          schema: { name: 'scoped_tool', description: 'runs in the agent scope' },
+          execute: () => {
+            toolExecutions += 1
+            return { content: 'scoped result' }
+          },
+        })
+      },
+    })
+
+    handle.agent.followup({ text: 'use scoped tool' })
+    await handle.agent.whenIdle()
+
+    expect(toolExecutions).toBe(1)
+    await handle.dispose()
   })
 
   it('rolls back a failed setup without registering the agent', async () => {
