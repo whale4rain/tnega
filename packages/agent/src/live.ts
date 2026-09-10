@@ -63,7 +63,8 @@ export interface LiveAgent {
   steer(input: AgentInput): void
   replaceMessage(messageId: string, input: AgentInput): void
   removeMessage(messageId: string): void
-  inject(key: string, value: unknown): void
+  /** Durably stage model-visible input for the next step without waking idle work. */
+  inject(input: AgentInput): void
   send(input: AgentInput, options?: { mode?: 'followup' | 'steer' }): void
   cancel(cause: AgentCancelCause, options?: AgentCancelOptions): void
   whenIdle(): Promise<void>
@@ -128,7 +129,6 @@ class LiveAgentImpl implements LiveAgent {
   private _setupDisposers: Array<() => Promise<void> | void> = []
   private _scopeClosed = false
   private _durable: DurableInbox
-  private _agentSystem: string | undefined
   private _manualStreaming = false
 
   constructor(
@@ -227,27 +227,27 @@ class LiveAgentImpl implements LiveAgent {
     this._send(input, 'steer')
   }
 
-  inject(key: string, value: unknown): void {
-    if (key === 'agentSystem' && typeof value === 'string') {
-      this._agentSystem = value
-    }
+  inject(input: AgentInput): void {
+    this._send(input, 'inject')
   }
 
   send(input: AgentInput, options: { mode?: 'followup' | 'steer' } = {}): void {
     this._send(input, options.mode === 'steer' ? 'steer' : 'followup')
   }
 
-  private _send(input: AgentInput, target: 'followup' | 'steer'): void {
+  private _send(input: AgentInput, target: 'followup' | 'steer' | 'inject'): void {
     if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
     const text = input.text ?? ''
     const content = input.messages ?? input.context
     const task = this._writeTail.then(async () => {
-      const message = target === 'steer'
+      const message = target === 'followup'
+        ? await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
+        : target === 'steer'
         ? await this._durable.steer({ text, ...(content !== undefined ? { content } : {}) })
-        : await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
+        : await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) }, 'next-step')
       this._ctx.emit('agent/inbox/inserted', {
         id: this.id,
-        target,
+        target: target === 'followup' ? 'followup' : 'steer',
         input: message,
         inboxSeq: this._durable.size,
       })
@@ -258,7 +258,7 @@ class LiveAgentImpl implements LiveAgent {
     this._pendingWrite = task
     task.finally(() => {
       if (this._pendingWrite === task) this._pendingWrite = undefined
-      queueMicrotask(() => this._wake())
+      if (target !== 'inject') queueMicrotask(() => this._wake())
     })
   }
 
@@ -303,8 +303,8 @@ class LiveAgentImpl implements LiveAgent {
   }
 
   async whenIdle(): Promise<void> {
-    while (this._pendingWrite) await this._pendingWrite
     while (true) {
+      while (this._pendingWrite) await this._pendingWrite
       const maintenance = this._maintenance
       if (maintenance) {
         await maintenance.promise.catch(() => undefined)
@@ -315,7 +315,9 @@ class LiveAgentImpl implements LiveAgent {
         await drain.catch(() => undefined)
         continue
       }
-      if (!this._durable.size) break
+      // next-step input is deliberately inert while idle: it joins the next
+      // claimed turn, but is not itself work that `whenIdle()` waits on.
+      if (!this._durable.snapshot().nextTurn.length) break
       await new Promise<void>(resolve => setTimeout(resolve, 0))
     }
   }
@@ -428,9 +430,12 @@ class LiveAgentImpl implements LiveAgent {
     this._setStatus('running')
     try {
       while (!this._disposed) {
+        // next-step messages supplement an already-running turn or the next
+        // queued followup; by themselves they never create a new turn.
+        if (!this._durable.snapshot().nextTurn.length) break
         const batch = await this._durable.claimBatch()
         if (!batch.length) break
-        const input = await this._inputForBatch(batch)
+        const input = await this._inputForBatch(batch, true)
         const turn = await this._nextTurnNumber()
         for (const message of batch) {
           this._ctx.emit('agent/inbox/claimed', {
@@ -476,27 +481,24 @@ class LiveAgentImpl implements LiveAgent {
 
   private async _inputForBatch(
     batch: readonly DurableInboxMessage[],
+    includeHistory: boolean,
   ): Promise<AgentInput> {
-    const history = await this.session.deriveMessages()
-    const structured = batch.filter(message => message.content !== undefined)
-    const plain = batch.filter(message => message.content === undefined)
-    const plainMessages = plain
-      .filter(message => message.text !== undefined)
-      .map(message => ({ role: 'user' as const, content: message.text ?? '' }))
-    if (structured.length) {
-      return {
-        messages: [
-          ...history,
-          ...structured.flatMap(message => Array.isArray(message.content)
-            ? message.content as ModelMessage[]
-            : [{ role: 'user' as const, content: String(message.content ?? '') }]),
-        ],
-      }
-    }
-    if (history.length || batch.length > 1) {
-      return { messages: [...history, ...plainMessages] }
-    }
-    return { text: plainMessages[0]?.content ?? '' }
+    const history = includeHistory ? await this.session.deriveMessages() : []
+    const messages = batch.flatMap(message => message.content !== undefined
+      ? Array.isArray(message.content)
+        ? message.content as ModelMessage[]
+        : [{ role: 'user' as const, content: String(message.content ?? '') }]
+      : message.text !== undefined
+        ? [{ role: 'user' as const, content: message.text }]
+        : [])
+    if (history.length || messages.length > 1) return { messages: [...history, ...messages] }
+    return { text: messages[0]?.content ?? '' }
+  }
+
+  async claimNextStepInputs(): Promise<readonly AgentInput[]> {
+    await this._writeTail
+    const batch = await this._durable.claimNextStep()
+    return batch.length ? [await this._inputForBatch(batch, false)] : []
   }
 
   private _setStatus(status: AgentStatus): void {
@@ -671,6 +673,7 @@ async function buildHandle(
     },
     snapshot: () => durable.snapshot(),
   }
+  let claimNextStep: () => Promise<readonly AgentInput[]> = async () => []
   const service = new AgentService(ctx, {
     session: log,
     inbox: injected,
@@ -679,6 +682,7 @@ async function buildHandle(
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
     ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
     ...(options.hooks ? { hooks: options.hooks } : {}),
+    claimNextStep: () => claimNextStep(),
   })
   if (options.system) injected.inject('agentSystem', options.system)
   const agentScope = await ctx.inject([], (scopeCtx: Context) => {
@@ -697,8 +701,8 @@ async function buildHandle(
     boundMeta,
     options.manualStreaming === true,
   )
+  claimNextStep = () => agent.claimNextStepInputs()
   agent.trackSetupDispose(() => agentScope.dispose())
-  if (options.system) agent.inject('agentSystem', options.system)
   let setupResult: AgentSetupCommit | void
   try {
     setupResult = await options.setup?.(agentCtx)
@@ -712,7 +716,7 @@ async function buildHandle(
   for (const input of options.initial ?? []) {
     if (!resume) await durable.insert({ text: input.text ?? '' })
   }
-  if (resume && durable.size && options.manualStreaming !== true) {
+  if (resume && durable.snapshot().nextTurn.length && options.manualStreaming !== true) {
     setTimeout(() => agent.wakeNow(), 0)
   }
   return { agent, dispose: () => agent.dispose() }

@@ -714,6 +714,106 @@ describe('agent loop', () => {
     ])
   })
 
+  it('routes non-streaming run calls through llm/stream', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('run-stream-waterfall.jsonl') })
+    await root.plugin(tools)
+    const requests: ModelMessage[][] = []
+    const adapter: LLMAdapter = {
+      async complete(messages) {
+        requests.push([...messages])
+        return { content: 'ok', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.messages = [...payload.messages, { role: 'user', content: 'routed' }]
+      return next()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'ok' })
+    expect(requests).toEqual([[{ role: 'user', content: 'go' }, { role: 'user', content: 'routed' }]])
+  })
+
+  it('persists stream-rewritten tools and route configuration', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-envelope.jsonl') })
+    await root.plugin(tools)
+    const registered = addTool()
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register(registered)
+    const requests: Array<{ tools: readonly ToolDefinition[]; provider?: string; model?: string; temperature?: number }> = []
+    const adapter: LLMAdapter = {
+      async complete(_messages, availableTools, options) {
+        requests.push({
+          tools: [...availableTools],
+          ...(options.provider ? { provider: options.provider } : {}),
+          ...(options.model ? { model: options.model } : {}),
+          ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+        })
+        return { content: 'ok', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter, assertReplayable: true })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.tools = []
+      payload.options = {
+        ...payload.options,
+        provider: 'routed-provider',
+        model: 'routed-model',
+        temperature: 0.25,
+      }
+      return next()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'ok' })
+    expect(requests).toEqual([{
+      tools: [],
+      provider: 'routed-provider',
+      model: 'routed-model',
+      temperature: 0.25,
+    }])
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toMatchObject({
+      config: { provider: 'routed-provider', model: 'routed-model', temperature: 0.25 },
+    })
+    expect(log.requestHeader()?.tools).toBeUndefined()
+    expect(log.requestContext()).toMatchObject({ provider: 'routed-provider', model: 'routed-model' })
+  })
+
+  it('persists the final routed request envelope after a retry', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('retry-final-envelope.jsonl') })
+    await root.plugin(tools)
+    let calls = 0
+    const received: string[] = []
+    const adapter: LLMAdapter = {
+      async complete(_messages, _tools, options) {
+        received.push(options.provider!)
+        calls += 1
+        if (calls === 1) throw new Error('retry me')
+        return { content: 'recovered', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter, assertReplayable: true })
+    let routes = 0
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      routes += 1
+      payload.options = { ...payload.options, provider: `route-${routes}` }
+      return next()
+    })
+    root.on('agent/request-error', async () => ({ kind: 'retry' }))
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'recovered' })
+    expect(received).toEqual(['route-1', 'route-2'])
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toMatchObject({ config: { provider: 'route-2' } })
+    expect(log.requestContext()).toMatchObject({ provider: 'route-2' })
+  })
+
   it('marks a run cancelled when the stream aborts', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('stream-cancel.jsonl') })

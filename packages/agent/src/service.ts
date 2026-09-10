@@ -20,6 +20,7 @@ import type {
   AgentFinishReason,
   AgentHooks,
   AgentInput,
+  AgentNextStepClaimer,
   AgentPreStepEvent,
   AgentRequestErrorEvent,
   AgentRequestEvent,
@@ -104,6 +105,8 @@ export interface AgentConfig {
   inbox?: AgentInbox
   hooks?: AgentHooks
   contextBudget?: AgentContextBudget
+  /** Optional live-agent seam for work admitted after the first step. */
+  claimNextStep?: AgentNextStepClaimer
 }
 
 function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
@@ -155,6 +158,58 @@ function copyCompletion(completion: LLMCompletion): LLMCompletion {
     }))
   }
   return copy
+}
+
+function requestHeaderFor(
+  request: Pick<AgentRequestEvent, 'tools' | 'options'>,
+  input: readonly ModelMessage[],
+): {
+  config?: { provider?: string; model?: string; temperature?: number }
+  system?: string
+  tools?: ToolSchemaSnapshot[]
+} {
+  const system = input.find(message => message.role === 'system')?.content
+  const tools = request.tools.map(tool => ({
+    name: tool.schema.name,
+    description: tool.schema.description,
+    ...(tool.schema.parameters ? { parameters: tool.schema.parameters } : {}),
+  }))
+  const config = {
+    ...(request.options.provider ? { provider: request.options.provider } : {}),
+    ...(request.options.model ? { model: request.options.model } : {}),
+    ...(request.options.temperature !== undefined
+      ? { temperature: request.options.temperature }
+      : {}),
+  }
+  return {
+    ...(Object.keys(config).length ? { config } : {}),
+    ...(system !== undefined ? { system } : {}),
+    ...(tools.length ? { tools } : {}),
+  }
+}
+
+async function* completeAsStream(
+  llm: LLMAdapter,
+  messages: readonly ModelMessage[],
+  tools: readonly ToolDefinition[],
+  options: CompleteOptions,
+): AsyncGenerator<LLMStreamEvent, void, void> {
+  const id = randomUUID()
+  yield { type: 'message_start', id }
+  const completion = await llm.complete(messages, tools, options)
+  if (completion.content) yield { type: 'message_delta', id, delta: completion.content }
+  for (let index = 0; index < (completion.toolCalls?.length ?? 0); index += 1) {
+    const call = completion.toolCalls![index]!
+    yield { type: 'toolcall_start', id: call.id, index, name: call.name }
+    yield {
+      type: 'toolcall_end',
+      id: call.id,
+      index,
+      name: call.name,
+      arguments: call.arguments,
+    }
+  }
+  yield { type: 'message_stop', id, finishReason: completion.finishReason }
 }
 
 function isCancelCause(value: unknown): value is AgentCancelCause {
@@ -272,7 +327,7 @@ export class AgentService {
     input?: AgentInput,
     options: AgentRunOptions = {},
   ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
-    const iterator = this._stream(input, options)[Symbol.asyncIterator]()
+    const iterator = this._stream(input, options, true)[Symbol.asyncIterator]()
     while (true) {
       const next = await iterator.next()
       if (next.done) return next.value
@@ -283,7 +338,7 @@ export class AgentService {
   private async *_stream(
     input?: AgentInput,
     options: AgentRunOptions = {},
-    useStream = true,
+    useNativeStream = true,
   ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
     const claimed = input ?? this.inbox.claim()
     if (!claimed) throw new AgentError('no agent input available')
@@ -293,6 +348,8 @@ export class AgentService {
     const tools = this._tools()
     const llm = this._llm()
     if (!llm) throw new AgentError('no LLM adapter available')
+    const streamAdapter = useNativeStream ? llm.stream : undefined
+    const persistChunks = streamAdapter !== undefined
 
     const maxTurns = options.maxTurns ?? this.config.maxTurns ?? 64
     const maxSteps = options.maxSteps ?? this.config.maxSteps ?? 64
@@ -377,9 +434,7 @@ export class AgentService {
       let llmMessages = copyMessages(requestedInput)
 
       let completion: LLMCompletion | undefined
-      const streamMethod = useStream ? llm.stream : undefined
       let attempt = 0
-      let persistedStepInput = false
       while (true) {
         if (options.signal?.aborted) {
           finishReason = 'cancelled'
@@ -387,58 +442,41 @@ export class AgentService {
         }
         const streamEvents: LLMStreamEvent[] = []
         try {
-          if (streamMethod) {
-            const streamRequest: LLMStreamRequestEvent = {
-              index,
-              messages: llmMessages,
-              tools: request.tools,
-              options: request.options,
-            }
-            const stream = await this.ctx.waterfallAsync(
-              'llm/stream',
-              streamRequest,
-              async (payload: LLMStreamRequestEvent) => {
-                if (!streamMethod) {
-                  throw new AgentError('llm.stream is required for streaming runs')
-                }
-                return streamMethod(payload.messages, payload.tools, payload.options)
-              },
-            )
-            if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
-              throw new AgentError('llm/stream must return an async iterable stream')
-            }
-            llmMessages = copyMessages(streamRequest.messages)
-            if (!persistedStepInput) {
-              await this._persistStepInput(session, request, llmMessages)
-              if (this.config.assertReplayable) {
-                await this._assertReplayable(session, llmMessages)
-              }
-              persistedStepInput = true
-            }
-            let chunkIndex = 0
-            for await (const event of stream) {
-              streamEvents.push(event)
-              if (event.type === 'message_delta') {
-                await session.append('assistant/chunk', {
-                  id: event.id,
-                  content: event.delta,
-                  index: chunkIndex,
-                })
-                chunkIndex += 1
-              }
-              yield event
-            }
-            completion = completionFromStreamEvents(streamEvents)
-          } else {
-            if (!persistedStepInput) {
-              await this._persistStepInput(session, request, llmMessages)
-              if (this.config.assertReplayable) {
-                await this._assertReplayable(session, llmMessages)
-              }
-              persistedStepInput = true
-            }
-            completion = await llm.complete(llmMessages, request.tools, request.options)
+          const streamRequest: LLMStreamRequestEvent = {
+            index,
+            messages: llmMessages,
+            tools: request.tools,
+            options: request.options,
           }
+          const stream = await this.ctx.waterfallAsync(
+            'llm/stream',
+            streamRequest,
+            async (payload: LLMStreamRequestEvent) => streamAdapter
+              ? streamAdapter(payload.messages, payload.tools, payload.options)
+              : completeAsStream(llm, payload.messages, payload.tools, payload.options),
+          )
+          if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
+            throw new AgentError('llm/stream must return an async iterable stream')
+          }
+          llmMessages = copyMessages(streamRequest.messages)
+          await this._persistStepInput(session, streamRequest, llmMessages)
+          if (this.config.assertReplayable) {
+            await this._assertReplayable(session, streamRequest, llmMessages)
+          }
+          let chunkIndex = 0
+          for await (const event of stream) {
+            streamEvents.push(event)
+            if (persistChunks && event.type === 'message_delta') {
+              await session.append('assistant/chunk', {
+                id: event.id,
+                content: event.delta,
+                index: chunkIndex,
+              })
+              chunkIndex += 1
+            }
+            yield event
+          }
+          completion = completionFromStreamEvents(streamEvents)
           break
         } catch (error) {
           const content = partialStreamContent(streamEvents)
@@ -596,7 +634,8 @@ export class AgentService {
         finishReason = 'stop'
         break
       }
-      if (toolCalls.length === 0) {
+      let nextStepMessages = await this._claimNextStepMessages()
+      if (toolCalls.length === 0 && nextStepMessages.length === 0) {
         finishReason = completion.finishReason === 'length'
           ? 'length'
           : completion.finishReason === 'error'
@@ -608,7 +647,10 @@ export class AgentService {
           steps: copySteps(steps),
           finishReason,
         } satisfies AgentTurnStoppingEvent) as unknown
-        if (!keepGoing) break
+        if (!keepGoing) {
+          nextStepMessages = await this._claimNextStepMessages()
+          if (nextStepMessages.length === 0) break
+        }
       }
       if (index + 1 >= maxTurns && !finalTurnGranted) {
         finalTurnGranted = true
@@ -618,7 +660,7 @@ export class AgentService {
       }
       if (toolCalls.length) finishReason = 'tool_calls'
       index += 1
-      messages = nextMessages
+      messages = [...nextMessages, ...nextStepMessages]
     }
     } catch (error) {
       turnError = error
@@ -726,27 +768,10 @@ export class AgentService {
 
   private async _persistStepInput(
     session: SessionLog,
-    request: AgentRequestEvent,
+    request: Pick<AgentRequestEvent, 'tools' | 'options'>,
     input: readonly ModelMessage[],
   ): Promise<void> {
-    const system = input.find(message => message.role === 'system')?.content
-    const tools = request.tools.map(tool => ({
-      name: tool.schema.name,
-      description: tool.schema.description,
-      ...(tool.schema.parameters ? { parameters: tool.schema.parameters } : {}),
-    }))
-    const config = {
-      ...(request.options.provider ? { provider: request.options.provider } : {}),
-      ...(request.options.model ? { model: request.options.model } : {}),
-      ...(request.options.temperature !== undefined
-        ? { temperature: request.options.temperature }
-        : {}),
-    }
-    const nextHeader = {
-      ...(Object.keys(config).length ? { config } : {}),
-      ...(system !== undefined ? { system } : {}),
-      ...(tools.length ? { tools } : {}),
-    }
+    const nextHeader = requestHeaderFor(request, input)
     const previousHeader = session.requestHeader()
     const isFirstRequest = !this._persistedRequest
     const isResume = isFirstRequest && previousHeader !== undefined
@@ -849,6 +874,7 @@ export class AgentService {
 
   private async _assertReplayable(
     session: SessionLog,
+    request: Pick<AgentRequestEvent, 'tools' | 'options'>,
     input: readonly ModelMessage[],
   ): Promise<void> {
     const reconstructed = await session.deriveMessages()
@@ -874,6 +900,26 @@ export class AgentService {
         `request is not reconstructable from session log: actual=${JSON.stringify(actual)} replay=${JSON.stringify(replay)}`,
       )
     }
+    const header = session.requestHeader()
+    const expected = requestHeaderFor(request, input)
+    if (
+      header?.system !== expected.system
+      || JSON.stringify(header?.tools ?? []) !== JSON.stringify(expected.tools ?? [])
+      || JSON.stringify(header?.config ?? {}) !== JSON.stringify(expected.config ?? {})
+    ) {
+      throw new AgentError('request envelope is not reconstructable from session log')
+    }
+  }
+
+  private async _claimNextStepMessages(): Promise<ModelMessage[]> {
+    const inputs = await this.config.claimNextStep?.() ?? []
+    return inputs.flatMap(input => input.messages?.length
+      ? copyMessages(input.messages)
+      : input.text
+        ? [{ role: 'user' as const, content: input.text }]
+        : input.context !== undefined
+          ? [{ role: 'user' as const, content: stringify(input.context) }]
+          : [])
   }
 
   private async _initialMessages(input: AgentInput): Promise<ModelMessage[]> {

@@ -12,6 +12,8 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
 - **live / durable 分流**：`agent/*` 事件是 live（观察/拦截正在发生的事）；真正落日志的是
   session 的 durable 事件（`turn/*`、`step/*`、`user/message` 等）。模型看到的语义必须
   从 durable 重建（model-visible ⟺ logged），live 事件只承载引用。
+- **inbox 边界**：`followup()` 留在下一 turn；`steer()` 与 `inject(input)` 都写入 durable
+  `next-step` 队列。后者不会唤醒空闲 agent，二者在运行中都会在最近的 step 边界并入当前 turn。
 
 ## 三层组件
 
@@ -32,6 +34,10 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
 - `agent/request-error` — 请求失败恢复缝（重试决策 `{ kind: 'retry' }`）
 - `agent/turn-stopping` — serial：依序问"要停吗"，首个 bail 出"不停"就继续
 - inbox 系列：`agent/inbox/inserted` / `claimed` / `discarded` / `spliced`
+
+`run()` 和 `runStream()` 都会经过 `llm/stream`。适配器只有 `complete()` 时，driver 会把
+结果规范化为内部 stream；`request/header` 与 `request/context` 始终记录 waterfall 改写后的
+最终 messages、tools 与 route 配置。
 
 ## 使用
 

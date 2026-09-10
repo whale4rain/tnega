@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
 import { SessionLog, type ModelMessage } from '@tnega/session'
-import { tools } from '@tnega/tools'
+import { tools, type ToolsService } from '@tnega/tools'
 
 import {
   agents,
@@ -212,6 +212,193 @@ describe('live agent registry', () => {
 
     await handle.agent.whenIdle()
     expect(calls).toEqual([['urgent', 'queued']])
+  })
+
+  it('durably stages inject input without waking until a followup arrives', async () => {
+    const root = await mountRoot()
+    const calls: string[][] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        calls.push(messages.map(message => message.content))
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('inject-idle.jsonl'), llm)
+
+    handle.agent.inject({ text: 'injected context' })
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(handle.agent.status).toBe('idle')
+    expect(calls).toEqual([])
+    expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
+      .toEqual(['injected context'])
+
+    handle.agent.followup({ text: 'go' })
+    await handle.agent.whenIdle()
+
+    expect(calls).toEqual([['injected context', 'go']])
+    await handle.dispose()
+  })
+
+  it('settles whenIdle while only injected next-step input is staged', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('inject-idle-settle.jsonl'))
+
+    handle.agent.inject({ text: 'staged only' })
+    const idle = handle.agent.whenIdle().then(() => true)
+    try {
+      await expect(Promise.race([
+        idle,
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 50)),
+      ])).resolves.toBe(true)
+    } finally {
+      await handle.dispose()
+      await idle
+    }
+  })
+
+  it('keeps steering submitted from turn-stopping in the same turn', async () => {
+    const root = await mountRoot()
+    const calls: string[][] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        calls.push(messages.map(message => message.content))
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('turn-stopping-steer.jsonl'), llm)
+    let steered = false
+    root.on('agent/turn-stopping', () => {
+      if (!steered) {
+        steered = true
+        handle.agent.steer({ text: 'one more thing' })
+      }
+    })
+
+    handle.agent.followup({ text: 'go' })
+    await handle.agent.whenIdle()
+
+    expect(calls).toEqual([['go'], ['go', 'done', 'one more thing']])
+    const turns = (await handle.agent.session.read())
+      .filter(event => event.type === 'turn/start')
+    expect(turns).toHaveLength(1)
+    await handle.dispose()
+  })
+
+  it('admits tool-time inject input after the tool result in the same turn', async () => {
+    const root = await mountRoot()
+    const requests: string[][] = []
+    let calls = 0
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        requests.push(messages.map(message => message.content))
+        calls += 1
+        return calls === 1
+          ? {
+              content: '',
+              toolCalls: [{ id: 'notice', name: 'notice_tool', arguments: {} }],
+              finishReason: 'tool_calls',
+            }
+          : { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('tool-inject.jsonl'), llm)
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'notice_tool', description: 'injects a notice' },
+      execute: () => {
+        handle.agent.inject({ text: 'tool-time context' })
+        handle.agent.inject({ messages: [{ role: 'system', content: 'tool-time system' }] })
+        return 'tool result'
+      },
+    })
+
+    handle.agent.followup({ text: 'go' })
+    await handle.agent.whenIdle()
+
+    expect(requests).toEqual([
+      ['go'],
+      ['go', '', 'tool result', 'tool-time context', 'tool-time system'],
+    ])
+    const events = await handle.agent.session.read()
+    const resultIndex = events.findIndex(event => event.type === 'tool/result')
+    const contextIndex = events.findIndex(event => event.type === 'user/message'
+      && event.payload.content === 'tool-time context')
+    const systemIndex = events.findIndex(event => event.type === 'system/message'
+      && event.payload.content === 'tool-time system')
+    expect(contextIndex).toBeGreaterThan(resultIndex)
+    expect(systemIndex).toBeGreaterThan(resultIndex)
+    expect(events.filter(event => event.type === 'turn/start')).toHaveLength(1)
+    await handle.dispose()
+  })
+
+  it('keeps injected input pending when a tool concludes the turn', async () => {
+    const root = await mountRoot()
+    let calls = 0
+    const llm: LLMAdapter = {
+      async complete() {
+        calls += 1
+        return calls === 1
+          ? {
+              content: '',
+              toolCalls: [{ id: 'finish', name: 'finish_tool', arguments: {} }],
+              finishReason: 'tool_calls',
+            }
+          : { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('concluding-tool-inject.jsonl'), llm)
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'finish_tool', description: 'concludes after injecting' },
+      metadata: { concludesTurn: true },
+      execute: () => {
+        handle.agent.inject({ text: 'preserve this' })
+        return 'finished'
+      },
+    })
+
+    handle.agent.followup({ text: 'go' })
+    await handle.agent.whenIdle()
+    expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
+      .toEqual(['preserve this'])
+
+    handle.agent.followup({ text: 'continue' })
+    await handle.agent.whenIdle()
+    expect(calls).toBe(2)
+    await handle.dispose()
+  })
+
+  it('keeps a followup received during a request for a later turn', async () => {
+    const root = await mountRoot()
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const requests: string[][] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        requests.push(messages.map(message => message.content))
+        if (requests.length === 1) await gate
+        return { content: `answer ${requests.length}`, finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('running-followup.jsonl'), llm)
+    handle.agent.followup({ text: 'first' })
+    await new Promise<void>(resolve => {
+      root.on('agent/status', (event: { id: string; status: string }) => {
+        if (event.id === handle.agent.id && event.status === 'running') resolve()
+      })
+    })
+    handle.agent.followup({ text: 'second' })
+    release()
+    await handle.agent.whenIdle()
+
+    expect(requests).toEqual([
+      ['first'],
+      ['first', 'answer 1', 'second'],
+    ])
+    expect((await handle.agent.session.read()).filter(event => event.type === 'turn/start'))
+      .toHaveLength(2)
+    await handle.dispose()
   })
 
   it('aborts the active run on cancel and reports a typed cause', async () => {
@@ -572,6 +759,36 @@ describe('live agent resume', () => {
     await resumed.agent.whenIdle()
     expect(seen?.filter(message => message.role !== 'system')
       .map(message => message.content)).toEqual(['user context'])
+    await resumed.dispose()
+  })
+
+  it('does not wake an inject-only inbox after resume', async () => {
+    const file = await tempFile('resume-inject-only.jsonl')
+    const prior = new SessionLog(file)
+    await prior.init()
+    await prior.append('meta', { kind: 'agent', agentId: 'resume-inject-only' })
+    const priorInbox = new DurableInbox(prior)
+    await priorInbox.insert({ text: 'staged context' }, 'next-step')
+    await prior.flush()
+    await prior.close()
+
+    const root = await mountRoot()
+    const calls: string[] = []
+    const registry = dynamic(root).agents as AgentRegistry
+    const resumed = await registry.resume({
+      id: 'resume-inject-only',
+      file,
+      llm: {
+        async complete(messages) {
+          calls.push(messages.at(-1)?.content ?? '')
+          return { content: 'done', finishReason: 'stop' }
+        },
+      },
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(calls).toEqual([])
+    expect(resumed.agent.inbox.snapshot().nextStep.map(message => message.text))
+      .toEqual(['staged context'])
     await resumed.dispose()
   })
 
