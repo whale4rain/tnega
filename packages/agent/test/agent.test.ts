@@ -1220,6 +1220,83 @@ describe('agent loop', () => {
     ])
   })
 
+  it('settles completed tool calls when the stream aborts before dispatch', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-tool-batch-cancel.jsonl') })
+    await root.plugin(tools)
+    const controller = new AbortController()
+    const executions: string[] = []
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'first', description: 'must not run' },
+      execute: () => {
+        executions.push('first')
+        return 'unexpected'
+      },
+    })
+    toolService.register({
+      schema: { name: 'second', description: 'must not run' },
+      execute: () => {
+        executions.push('second')
+        return 'unexpected'
+      },
+    })
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('complete should not be used')
+      },
+      stream: async function* () {
+        yield { type: 'message_start', id: 'm1' }
+        yield { type: 'toolcall_start', id: 'c1', index: 0, name: 'first' }
+        yield { type: 'toolcall_end', id: 'c1', index: 0, name: 'first', arguments: {} }
+        yield { type: 'toolcall_start', id: 'c2', index: 1, name: 'second' }
+        yield { type: 'toolcall_end', id: 'c2', index: 1, name: 'second', arguments: {} }
+        yield { type: 'message_stop', id: 'm1', finishReason: 'tool_calls' }
+        controller.abort({ type: 'user' })
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    const result = await service.run({ text: 'go' }, { signal: controller.signal })
+
+    expect(result.finishReason).toBe('cancelled')
+    expect(executions).toEqual([])
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.filter(event => event.type === 'assistant/message')).toMatchObject([
+      {
+        payload: {
+          content: '',
+          toolCalls: [
+            { id: 'c1', name: 'first', arguments: {} },
+            { id: 'c2', name: 'second', arguments: {} },
+          ],
+        },
+      },
+    ])
+    expect(events.filter(event => event.type === 'tool/call' || event.type === 'tool/result')).toMatchObject([
+      { type: 'tool/call', payload: { id: 'c1', name: 'first' } },
+      {
+        type: 'tool/result',
+        payload: {
+          toolCallId: 'c1',
+          ok: false,
+          error: { name: 'AbortError', message: 'tool call aborted: user' },
+        },
+      },
+      { type: 'tool/call', payload: { id: 'c2', name: 'second' } },
+      {
+        type: 'tool/result',
+        payload: {
+          toolCallId: 'c2',
+          ok: false,
+          error: { name: 'AbortError', message: 'tool call aborted: user' },
+        },
+      },
+    ])
+  })
+
   it('waits for an in-flight tool before marking the run cancelled', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('tool-cancel.jsonl') })

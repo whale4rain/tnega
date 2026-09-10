@@ -574,11 +574,20 @@ export class AgentService {
           await session.append('llm/retry-started', { retryId, retry: attempt })
         }
       }
-      if (options.signal?.aborted) break
-      if (!completion) throw new AgentError('LLM adapter did not produce a completion')
+      if (!completion) {
+        if (options.signal?.aborted) {
+          finishReason = 'cancelled'
+          break
+        }
+        throw new AgentError('LLM adapter did not produce a completion')
+      }
 
       const toolCalls = completion.toolCalls ?? []
-      if (finalTurnGranted && toolCalls.length) {
+      if (options.signal?.aborted && toolCalls.length === 0) {
+        finishReason = 'cancelled'
+        break
+      }
+      if (finalTurnGranted && toolCalls.length && !options.signal?.aborted) {
         finishReason = 'max_turns'
         break
       }
