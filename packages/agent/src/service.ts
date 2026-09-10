@@ -174,7 +174,7 @@ function canonicalMessages(messages: readonly ModelMessage[]): string {
   })))
 }
 
-function freezeMessages(messages: readonly ModelMessage[]): void {
+function freezeRequestData(data: unknown): void {
   const visited = new Set<object>()
   const freeze = (value: unknown): void => {
     if (typeof value !== 'object' || value === null || visited.has(value)) return
@@ -182,7 +182,21 @@ function freezeMessages(messages: readonly ModelMessage[]): void {
     for (const child of Object.values(value)) freeze(child)
     Object.freeze(value)
   }
-  freeze(messages)
+  freeze(data)
+}
+
+function lockStreamRequest(request: LLMStreamRequestEvent): void {
+  freezeRequestData(request.messages)
+  request.tools = Object.freeze(request.tools.map(tool => {
+    // Tool definitions belong to the registry. Lock a request-local schema
+    // snapshot so later requests can still update the registered definition.
+    const schema = structuredClone(tool.schema)
+    freezeRequestData(schema)
+    return Object.freeze({ ...tool, schema })
+  }))
+  // The signal remains live; only the request's option bindings are locked.
+  Object.freeze(request.options)
+  Object.freeze(request)
 }
 
 function requestHeaderFor(
@@ -485,15 +499,15 @@ export class AgentService {
           }
           streamRequest.tools = request.tools
           streamRequest.options = request.options
-          const prepareRequest = async (): Promise<void> => {
-            // Waterfalls may rewrite messages until consumption begins. Lazy
-            // streams must consume that same validated transcript thereafter.
-            freezeMessages(streamRequest.messages)
-            Object.defineProperty(streamRequest, 'messages', { writable: false, configurable: false })
+          let preparation: Promise<void> | undefined
+          const prepareRequest = (): Promise<void> => preparation ??= (async () => {
+            // Waterfalls may rewrite the envelope until consumption begins.
+            // Lazy streams must dispatch the same request that is persisted.
+            lockStreamRequest(streamRequest)
             llmMessages = copyMessages(streamRequest.messages)
             await this._persistStepInput(session, streamRequest, llmMessages, admittedHistory)
             await this._assertReplayable(session, streamRequest, llmMessages)
-          }
+          })()
           const stream = await this.ctx.waterfallAsync(
             'llm/stream',
             streamRequest,

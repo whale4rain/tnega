@@ -1029,6 +1029,104 @@ describe('agent loop', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it.each([
+    'options-replace', 'provider', 'model', 'temperature',
+    'tools-replace', 'tools-append', 'tool-schema', 'tool-parameters',
+  ] as const)('rejects lazy short-circuit envelope mutation: %s', async mutation => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile(`lazy-envelope-${mutation}.jsonl`) })
+    await root.plugin(tools)
+    const tool = addTool()
+    tool.schema.parameters = { type: 'object', required: ['value'] }
+    ;(dynamic(root).tools as ToolsService).register(tool)
+    let adapterCalls = 0
+    const adapter: LLMAdapter = {
+      async complete() { throw new Error('complete should not be used') },
+      async *stream() {
+        adapterCalls += 1
+        yield { type: 'message_stop', id: 'never', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent) => {
+      payload.options = {
+        ...payload.options, provider: 'planned-provider', model: 'planned-model', temperature: 0.25,
+      }
+      return (async function* (): AsyncGenerator<LLMStreamEvent> {
+        if (mutation === 'options-replace') payload.options = { provider: 'late-provider' }
+        if (mutation === 'provider') payload.options.provider = 'late-provider'
+        if (mutation === 'model') payload.options.model = 'late-model'
+        if (mutation === 'temperature') payload.options.temperature = 1
+        if (mutation === 'tools-replace') payload.tools = []
+        if (mutation === 'tools-append') (payload.tools as ToolDefinition[]).push(addTool())
+        if (mutation === 'tool-schema') payload.tools[0]!.schema.name = 'late-tool'
+        if (mutation === 'tool-parameters') payload.tools[0]!.schema.parameters!.required!.push('late')
+        yield* adapter.stream!(payload.messages, payload.tools, payload.options)
+      })()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).rejects.toThrow()
+    expect(adapterCalls).toBe(0)
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toMatchObject({
+      config: { provider: 'planned-provider', model: 'planned-model', temperature: 0.25 },
+      tools: [{ name: 'add', parameters: { required: ['value'] } }],
+    })
+    expect(log.requestContext()).toMatchObject({ provider: 'planned-provider', model: 'planned-model' })
+  })
+
+  it('dispatches a short-circuit stream with its persisted envelope and live abort signal', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('short-circuit-locked-envelope.jsonl') })
+    await root.plugin(tools)
+    const tool = addTool()
+    ;(dynamic(root).tools as ToolsService).register(tool)
+    const log = dynamic(root).session as SessionLog
+    const controller = new AbortController()
+    const observed: unknown[] = []
+    const adapter: LLMAdapter = {
+      async complete() { throw new Error('complete should not be used') },
+      async *stream(messages, availableTools, options) {
+        observed.push({
+          messages: [...messages],
+          tools: availableTools.map(item => item.schema),
+          provider: options.provider,
+          model: options.model,
+          header: log.requestHeader(),
+          context: log.requestContext(),
+        })
+        yield { type: 'message_delta', id: 'routed', delta: 'ok' }
+        yield { type: 'message_stop', id: 'routed', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent) => {
+      payload.options = { ...payload.options, provider: 'routed-provider', model: 'routed-model' }
+      return (async function* (): AsyncGenerator<LLMStreamEvent> {
+        yield* adapter.stream!(payload.messages, payload.tools, payload.options)
+        controller.abort({ type: 'user' })
+      })()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' }, { signal: controller.signal }))
+      .resolves.toMatchObject({ finishReason: 'cancelled' })
+    expect(observed).toEqual([{
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [{ name: 'add', description: 'add two numbers' }],
+      provider: 'routed-provider', model: 'routed-model',
+      header: {
+        reason: 'initial', config: { provider: 'routed-provider', model: 'routed-model' },
+        tools: [{ name: 'add', description: 'add two numbers' }],
+      },
+      context: { provider: 'routed-provider', model: 'routed-model' },
+    }])
+    tool.schema.description = 'updated for a later request'
+    expect((dynamic(root).tools as ToolsService).list()[0]!.schema.description)
+      .toBe('updated for a later request')
+  })
+
   it('makes each retry user and system replacement replayable before dispatch', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('retry-replaced-transcript.jsonl') })
