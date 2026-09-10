@@ -142,9 +142,11 @@ class LiveAgentImpl implements LiveAgent {
     durable: DurableInbox,
     readonly meta: AgentSessionMeta,
     manualStreaming = false,
+    wakeReserved = false,
   ) {
     this._durable = durable
     this._manualStreaming = manualStreaming
+    this._wakeReserved = wakeReserved
   }
 
   get agentType(): 'general' | 'coding' | undefined {
@@ -294,6 +296,7 @@ class LiveAgentImpl implements LiveAgent {
           this._ctx.emit('agent/inbox/discarded', { id: this.id, message })
         }
         await this._durable.clear()
+        this._wakeReserved = false
       }).catch((error: unknown) => {
         this._ctx.emit('agent/error', { id: this.id, error })
       })
@@ -682,6 +685,7 @@ async function buildHandle(
   const durable = resume
     ? await DurableInbox.restore(log)
     : new DurableInbox(log)
+  const restoredWakeReservation = resume && hasRestoredWakeReservation(fileEvents)
   const injected = new AgentInbox()
   const inboxView: LiveInboxView = {
     get size() {
@@ -716,6 +720,7 @@ async function buildHandle(
     durable,
     boundMeta,
     options.manualStreaming === true,
+    restoredWakeReservation,
   )
   claimNextStep = () => agent.claimNextStepInputs()
   agent.trackSetupDispose(() => agentScope.dispose())
@@ -732,10 +737,45 @@ async function buildHandle(
   for (const input of options.initial ?? []) {
     if (!resume) await durable.insert({ text: input.text ?? '' })
   }
-  if (resume && durable.snapshot().nextTurn.length && options.manualStreaming !== true) {
+  if (
+    resume
+    && (durable.snapshot().nextTurn.length || restoredWakeReservation)
+    && options.manualStreaming !== true
+  ) {
     setTimeout(() => agent.wakeNow(), 0)
   }
   return { agent, dispose: () => agent.dispose() }
+}
+
+function hasRestoredWakeReservation(events: readonly SessionEvent[]): boolean {
+  type PendingInboxEntry = { wakes: boolean }
+  const nextTurn: PendingInboxEntry[] = []
+  const nextStep: PendingInboxEntry[] = []
+  for (const event of events) {
+    if (event.type !== 'agent/inbox/spliced') continue
+    const payload = event.payload
+    const list = payload.target === 'next-step' ? nextStep : nextTurn
+    const count = payload.deleteCount ?? 0
+    if (count === Number.POSITIVE_INFINITY) {
+      list.length = 0
+    } else if (count > 0 && payload.index !== undefined) {
+      list.splice(payload.index, count)
+    }
+    let insertedOffset = 0
+    for (const inserted of payload.inserted ?? []) {
+      const entry = { wakes: payload.target === 'next-step' && inserted.mode === 'steer' }
+      if (inserted.mode === 'steer') {
+        list.unshift(entry)
+      } else {
+        const index = payload.index === undefined
+          ? list.length
+          : Math.min(list.length, payload.index + insertedOffset)
+        list.splice(index, 0, entry)
+        insertedOffset += 1
+      }
+    }
+  }
+  return nextStep.some(entry => entry.wakes)
 }
 
 async function readAgentMeta(

@@ -258,6 +258,33 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
+  it('keeps an inject idle after cancellation clears a wake reservation', async () => {
+    const root = await mountRoot()
+    const calls: string[] = []
+    const handle = await createHandle(root, await tempFile('cancel-clears-wake.jsonl'), {
+      async complete(messages) {
+        calls.push(messages.at(-1)?.content ?? '')
+        return { content: 'done', finishReason: 'stop' }
+      },
+    })
+
+    handle.agent.steer({ text: 'discarded steer' })
+    handle.agent.cancel({ type: 'user' })
+    await handle.agent.whenIdle()
+    handle.agent.inject({ text: 'staged context' })
+
+    const settled = await Promise.race([
+      handle.agent.whenIdle().then(() => true),
+      new Promise<boolean>(resolve => setTimeout(() => resolve(false), 50)),
+    ])
+    const staged = handle.agent.inbox.snapshot().nextStep.map(message => message.text)
+    await handle.dispose()
+
+    expect(settled).toBe(true)
+    expect(calls).toEqual([])
+    expect(staged).toEqual(['staged context'])
+  })
+
   it('settles whenIdle while only injected next-step input is staged', async () => {
     const root = await mountRoot()
     const handle = await createHandle(root, await tempFile('inject-idle-settle.jsonl'))
@@ -483,8 +510,12 @@ describe('live agent registry', () => {
     handle.agent.steer({ text: 'after abort' })
     await handle.agent.whenIdle()
 
+    const turns = (await handle.agent.session.read())
+      .filter(event => event.type === 'turn/start')
+      .map(event => event.payload.turn)
     await handle.dispose()
     expect(requests).toContainEqual(expect.arrayContaining(['after abort']))
+    expect(turns).toEqual([1, 2])
   })
 
   it('runs maintenance while idle and follows it in whenIdle', async () => {
@@ -845,6 +876,35 @@ describe('live agent resume', () => {
     expect(resumed.agent.inbox.snapshot().nextStep.map(message => message.text))
       .toEqual(['staged context'])
     await resumed.dispose()
+  })
+
+  it('wakes an idle steer restored from the durable inbox', async () => {
+    const file = await tempFile('resume-idle-steer.jsonl')
+    const prior = new SessionLog(file)
+    await prior.init()
+    await prior.append('meta', { kind: 'agent', agentId: 'resume-idle-steer' })
+    const priorInbox = new DurableInbox(prior)
+    await priorInbox.steer({ text: 'restored steer' })
+    await prior.flush()
+    await prior.close()
+
+    const root = await mountRoot()
+    const calls: string[] = []
+    const registry = dynamic(root).agents as AgentRegistry
+    const resumed = await registry.resume({
+      id: 'resume-idle-steer',
+      file,
+      llm: {
+        async complete(messages) {
+          calls.push(messages.at(-1)?.content ?? '')
+          return { content: 'done', finishReason: 'stop' }
+        },
+      },
+    })
+
+    await resumed.agent.whenIdle()
+    await resumed.dispose()
+    expect(calls).toEqual(['restored steer'])
   })
 
   it('rejects a resume whose identity conflicts with the session meta', async () => {
