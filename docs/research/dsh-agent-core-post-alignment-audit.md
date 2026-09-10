@@ -17,6 +17,27 @@ tnega 先在父 `ctx` 上创建 `AgentService`，之后才创建 `agentScope`；
 所以在 `setup(agentCtx)` 注册的 scoped LLM、tools 或 `llm/stream` / tool middleware
 并不在实际执行路径上，多个 agent 仍共享 root 服务与事件域。
 
+## P1 — idle `steer()` 被误当成惰性 inject，不会开启 turn
+
+DSH 的 `steer()` 是 wakeup 输入：在空闲时立即启动 driver；`inject()` 才是唯一
+不唤醒的 `next-step` 写入（`D:\task\deepseek-harness\packages\core\agent-loop\src\agent.ts:181-190,218-236`；
+`D:\task\deepseek-harness\packages\core\agent-loop\tests\loop.spec.ts:900-925`）。
+
+tnega 最近为避免 inject-only 队列单独运行，把 drain 的首个 batch 限制为必须存在
+`nextTurn`。因此 idle `steer()` 虽写入并触发 `_wake()`，`_streamTurns()` 仍立刻退出
+（`packages/agent/src/live.ts:238-262,425-438`）。需要持久化/内存中的 wake reservation
+来区分“可开 turn 的 steer”与“只等待自然 wake 的 inject”，而不是仅以队列 target 判断。
+
+## P1 — `run()` 没有在 adapter 支持时采用同一原生 stream 管线
+
+DSH 的 loop 对每个模型请求都消费 stream，非流式消费者只是消费该 stream 的另一层接口
+（`D:\task\deepseek-harness\packages\core\agent-loop\src\agent.ts:390-400`）。这保证
+stream 生命周期、chunk 与失败语义不会因调用入口不同而变化。
+
+tnega 的 `run()` 显式传入 `false`，使 `_stream()` 忽略已实现的 `llm.stream` 而改走
+`completeAsStream()`；只有 `runStream()` 才调用原生 stream（`packages/agent/src/service.ts:322-352,452-456`）。
+这不满足“缺少 stream 时才将 complete 规范化”的对齐目标，且会丢失 provider 流特有行为。
+
 ## P1 — 取消中的 steer 会滞留在 next-step，不能开启后续 turn
 
 DSH 在写 inbox 前同步检查活动是否已经 abort：唤醒型输入会重分类到 `next-turn`，并在
@@ -57,6 +78,11 @@ DSH 对 error/aborted stream attempt 写不可见的 `assistant/attempt` 后进�
 tnega 只要失败前收到了 delta，便写入 `assistant/message { interrupted: true }`，重新
 `deriveMessages()` 后进入 retry（`packages/agent/src/service.ts:481-531`）。所以网络/提供方
 错误的 partial output 会被作为历史发送给重试模型，改变本应同请求的 retry 语义。
+
+此外，retry 的下一次 `llm/stream` 输入基于上一 attempt 已被 waterfall 改写的
+`llmMessages`，而不是该 step 的稳定 admitted transcript（`packages/agent/src/service.ts:445-465,481-531`）。
+非幂等 listener（例如 append 一条路由提示）会在每次 retry 再叠加一次，令 adapter 实收
+请求和持久化的“最终请求”都偏离初始 step。
 
 ## P2 — 失败 attempt 与可重连流协议未被 durable 表达
 
