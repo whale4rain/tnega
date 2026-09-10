@@ -11,6 +11,7 @@ import {
   agents,
   DurableInbox,
   LlmService,
+  SystemPromptService,
   type DurableInboxMessage,
   type AgentRegistry,
   type LiveAgent,
@@ -718,7 +719,6 @@ describe('live agent registry', () => {
     const sibling = await registry.create({
       id: 'root-runtime-agent',
       file: await tempFile('root-runtime.jsonl'),
-      llm: rootLlm,
     })
 
     scoped.agent.followup({ text: 'scoped' })
@@ -728,6 +728,36 @@ describe('live agent registry', () => {
     expect(scopedCalls).toBe(1)
     expect(scopedMiddlewareCalls).toBe(1)
     expect(rootCalls).toBe(1)
+    await Promise.all([scoped.dispose(), sibling.dispose()])
+  })
+
+  it('inherits root system prompt defaults while setup overrides remain local', async () => {
+    const root = await mountRoot()
+    const requests: string[][] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        requests.push(messages.map(message => message.content))
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    const rootPrompt = new SystemPromptService()
+    rootPrompt.registerSection({ name: 'system', content: 'root instructions' })
+    root.provide('systemPrompt', rootPrompt)
+    const scopedPrompt = new SystemPromptService()
+    scopedPrompt.registerSection({ name: 'system', content: 'scoped instructions' })
+    const scoped = await createHandle(root, await tempFile('scoped-prompt.jsonl'), llm,
+      undefined, agentCtx => { agentCtx.provide('systemPrompt', scopedPrompt) })
+    const sibling = await createHandle(root, await tempFile('root-prompt.jsonl'), llm)
+
+    scoped.agent.followup({ text: 'scoped' })
+    await scoped.agent.whenIdle()
+    sibling.agent.followup({ text: 'root' })
+    await sibling.agent.whenIdle()
+
+    expect(requests).toEqual([
+      ['scoped instructions', 'scoped'],
+      ['root instructions', 'root'],
+    ])
     await Promise.all([scoped.dispose(), sibling.dispose()])
   })
 

@@ -757,6 +757,11 @@ async function buildHandle(
   let setupResult: AgentSetupCommit | void
   try {
     setupResult = await options.setup?.(agentCtx)
+    for (const name of ['llm', 'systemPrompt']) {
+      if (agentCtx.reflect.get(name, false) !== undefined) continue
+      const inherited = ctx.reflect.get(name, false)
+      if (inherited !== undefined) agentCtx.provide(name, inherited)
+    }
     setupResult?.commit()
   } catch (error) {
     await agent.dispose().catch(() => undefined)
