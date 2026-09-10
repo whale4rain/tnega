@@ -731,6 +731,52 @@ describe('live agent registry', () => {
     await Promise.all([scoped.dispose(), sibling.dispose()])
   })
 
+  it('keeps setup lifecycle and inbox listeners scoped while root observes both agents', async () => {
+    const root = await mountRoot()
+    const rootStatuses: string[] = []
+    const rootInbox: string[] = []
+    const scopedEvents: string[] = []
+    root.on('agent/status', (payload: { id: string; status: string }) => {
+      rootStatuses.push(`${payload.id}:${payload.status}`)
+    })
+    root.on('agent/inbox/inserted', (payload: { id: string }) => {
+      rootInbox.push(payload.id)
+    })
+    const registry = dynamic(root).agents as AgentRegistry
+    const watcher = await registry.create({
+      id: 'scoped-event-watcher',
+      file: await tempFile('scoped-event-watcher.jsonl'),
+      llm: fakeLLM([{ content: 'watcher', finishReason: 'stop' }]),
+      setup: (agentCtx) => {
+        agentCtx.on('agent/status', (payload: { id: string; status: string }) => {
+          scopedEvents.push(`status:${payload.id}:${payload.status}`)
+        })
+        agentCtx.on('agent/inbox/inserted', (payload: { id: string }) => {
+          scopedEvents.push(`inserted:${payload.id}`)
+        })
+        agentCtx.on('agent/inbox/claimed', (payload: { id: string }) => {
+          scopedEvents.push(`claimed:${payload.id}`)
+        })
+      },
+    })
+    const runner = await registry.create({
+      id: 'scoped-event-runner',
+      file: await tempFile('scoped-event-runner.jsonl'),
+      llm: fakeLLM([{ content: 'runner', finishReason: 'stop' }]),
+    })
+
+    runner.agent.followup({ text: 'run' })
+    await runner.agent.whenIdle()
+
+    expect(scopedEvents).toEqual([])
+    expect(rootInbox).toEqual(['scoped-event-runner'])
+    expect(rootStatuses).toEqual([
+      'scoped-event-runner:running',
+      'scoped-event-runner:idle',
+    ])
+    await Promise.all([watcher.dispose(), runner.dispose()])
+  })
+
   it('uses tools registered by setup only for that live agent', async () => {
     const root = await mountRoot()
     let toolExecutions = 0

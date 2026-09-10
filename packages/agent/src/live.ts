@@ -741,7 +741,7 @@ async function buildHandle(
   })
   if (options.system) injected.inject('agentSystem', options.system)
   const agent = new LiveAgentImpl(
-    agentCtx,
+    runtimeCtx,
     agentCtx,
     service,
     agentId,
