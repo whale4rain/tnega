@@ -997,10 +997,10 @@ export class AgentService {
 
   private async _initialMessages(input: AgentInput): Promise<ModelMessage[]> {
     const promptService = this.ctx.reflect.get('systemPrompt', false) as
-      | { assemble(options?: object): Promise<{ text: string }> }
+      | { assemble(options?: object, ctx?: Context): Promise<{ text: string }> }
       | undefined
     const assembled = promptService
-      ? (await promptService.assemble()).text.trim()
+      ? (await promptService.assemble({}, this.ctx)).text.trim()
       : undefined
     const systemPrompt = assembled || this.inbox.injected().get('agentSystem')
     const systemMessage = typeof systemPrompt === 'string' && systemPrompt

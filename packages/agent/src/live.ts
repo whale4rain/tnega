@@ -117,10 +117,10 @@ function createAgentRuntimeContext(agentCtx: Context): Context {
   const runtimeCtx = agentCtx.extend()
   Object.defineProperty(runtimeCtx, Context.filter, {
     value: (target: Context) => {
-      const targetScope = target[symbols.isolate].agentScope
+      const targetScope = target[symbols.isolate]!.agentScope
       let ancestor = agentCtx
       while (true) {
-        if (targetScope === ancestor[symbols.isolate].agentScope) return true
+        if (targetScope === ancestor[symbols.isolate]!.agentScope) return true
         if (ancestor.fiber.parent.fiber === ancestor.fiber) return false
         ancestor = ancestor.fiber.parent
       }

@@ -18,6 +18,7 @@ import {
   type LLMAdapter,
   type LLMCompletion,
   type LLMStreamRequestEvent,
+  type PromptAssembly,
 } from '../src/index.js'
 
 type DynamicContext = Context & {
@@ -899,12 +900,15 @@ describe('live agent registry', () => {
 
   it('composes shared and nested setup plugin middleware without sibling leakage', async () => {
     const root = await mountRoot()
-    const requests: Array<{ provider?: string; model?: string }> = []
+    const rootPrompt = new SystemPromptService(root)
+    rootPrompt.registerSection({ name: 'system', content: 'base' })
+    root.provide('systemPrompt', rootPrompt)
+    const requests: Array<{ provider: string | undefined; model: string | undefined; system: string }> = []
     const scopedStatuses: string[] = []
     const sharedStatuses: string[] = []
     const llm: LLMAdapter = {
-      async complete(_messages, _tools, options) {
-        requests.push({ provider: options.provider, model: options.model })
+      async complete(messages, _tools, options) {
+        requests.push({ provider: options.provider, model: options.model, system: messages[0]!.content })
         return { content: 'done', finishReason: 'stop' }
       },
     }
@@ -912,6 +916,10 @@ describe('live agent registry', () => {
       await sharedCtx.plugin(pluginCtx => {
         pluginCtx.on('llm/stream', (payload: LLMStreamRequestEvent, next) => {
           payload.options.provider = 'shared'
+          return next()
+        })
+        pluginCtx.on('system-prompt/assemble', (payload: PromptAssembly, next) => {
+          payload.text += ' shared'
           return next()
         })
         pluginCtx.on('agent/status', (payload: { id: string; status: string }) => {
@@ -931,6 +939,10 @@ describe('live agent registry', () => {
               payload.options.model = 'scoped'
               return next()
             })
+            pluginCtx.on('system-prompt/assemble', (payload: PromptAssembly, next) => {
+              payload.text += ' scoped'
+              return next()
+            })
             pluginCtx.on('agent/status', (payload: { id: string; status: string }) => {
               scopedStatuses.push(`${payload.id}:${payload.status}`)
             })
@@ -948,8 +960,8 @@ describe('live agent registry', () => {
     await sibling.agent.whenIdle()
 
     expect(requests).toEqual([
-      { provider: 'shared', model: 'scoped' },
-      { provider: 'shared', model: undefined },
+      { provider: 'shared', model: 'scoped', system: 'base shared scoped' },
+      { provider: 'shared', model: undefined, system: 'base shared' },
     ])
     expect(scopedStatuses).toEqual(['plugin-scoped:running', 'plugin-scoped:idle'])
     expect(sharedStatuses).toEqual([
