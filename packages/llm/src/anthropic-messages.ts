@@ -147,7 +147,11 @@ export function anthropicMessagesAdapter(
 
         let sawEvent = false
         try {
-          for await (const event of parseAnthropicStream(response.body)) {
+          const contentType = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()
+          const events = contentType === 'application/json'
+            ? parseJSONCompletionStream(response)
+            : parseAnthropicStream(response.body)
+          for await (const event of events) {
             sawEvent = true
             yield event
           }
@@ -531,6 +535,27 @@ async function* parseAnthropicStream(
 
 function toIndex(block: AnthropicContentBlock): number {
   return typeof block.index === 'number' ? block.index : 0
+}
+
+async function* parseJSONCompletionStream(response: Response): AsyncGenerator<LLMStreamEvent> {
+  const payload = await parseJson(response)
+  const completion = parseCompletion(payload)
+  const record = payload as AnthropicMessagePayload | null
+  const id = typeof record?.id === 'string' && record.id ? record.id : randomUUID()
+  const model = typeof record?.model === 'string' && record.model ? record.model : undefined
+  yield { type: 'message_start', id, ...(model ? { model } : {}) }
+  if (completion.content) yield { type: 'message_delta', id, delta: completion.content }
+  for (const [index, call] of (completion.toolCalls ?? []).entries()) {
+    yield { type: 'toolcall_start', id: call.id, index, name: call.name }
+    yield {
+      type: 'toolcall_end',
+      id: call.id,
+      index,
+      name: call.name,
+      arguments: call.arguments,
+    }
+  }
+  yield { type: 'message_stop', id, finishReason: completion.finishReason }
 }
 
 function toStreamError(error: unknown, timeoutMs: number): OpenAICompatibleError {
