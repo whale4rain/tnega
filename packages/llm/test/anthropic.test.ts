@@ -297,6 +297,59 @@ describe('anthropicMessagesAdapter', () => {
     expect(body.stream).toBe(true)
   })
 
+  it('normalizes a JSON completion returned to a stream request', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      id: 'json-message',
+      model: 'minimax-m3',
+      content: [{ type: 'text', text: 'hel' }, { type: 'text', text: 'lo' }],
+      stop_reason: 'max_tokens',
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events = await collectStream(anthropicMessagesAdapter({ apiKey: 'test-key' }), [
+      { role: 'user', content: 'say hello' },
+    ])
+
+    expect(events).toEqual([
+      { type: 'message_start', id: 'json-message', model: 'minimax-m3' },
+      { type: 'message_delta', id: 'json-message', delta: 'hello' },
+      { type: 'message_stop', id: 'json-message', finishReason: 'length' },
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toMatchObject({ stream: true })
+  })
+
+  it('normalizes JSON text and tool blocks into stream events', async () => {
+    const fetchMock = vi.fn(async () => {
+      const response = jsonResponse({
+        id: 'json-tools',
+        content: [
+          { type: 'text', text: 'checking' },
+          { type: 'tool_use', id: 'c1', name: 'add', input: { a: 1, b: 2 } },
+          { type: 'tool_use', id: 'c2', name: 'echo', input: { text: 'hello' } },
+        ],
+        stop_reason: 'tool_use',
+      })
+      response.headers.set('content-type', 'Application/JSON; charset=utf-8')
+      return response
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events = await collectStream(anthropicMessagesAdapter({ apiKey: 'test-key' }), [
+      { role: 'user', content: 'call tools' },
+    ])
+
+    expect(events).toEqual([
+      { type: 'message_start', id: 'json-tools' },
+      { type: 'message_delta', id: 'json-tools', delta: 'checking' },
+      { type: 'toolcall_start', id: 'c1', index: 0, name: 'add' },
+      { type: 'toolcall_end', id: 'c1', index: 0, name: 'add', arguments: { a: 1, b: 2 } },
+      { type: 'toolcall_start', id: 'c2', index: 1, name: 'echo' },
+      { type: 'toolcall_end', id: 'c2', index: 1, name: 'echo', arguments: { text: 'hello' } },
+      { type: 'message_stop', id: 'json-tools', finishReason: 'tool_calls' },
+    ])
+  })
+
   it('streams split input_json_delta into tool start and end events', async () => {
     const fetchMock = vi.fn(async () => sseResponse([
       'event: message_start\n',

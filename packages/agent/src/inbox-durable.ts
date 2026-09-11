@@ -117,6 +117,18 @@ export class DurableInbox {
     return claimed
   }
 
+  /** Claim every input waiting for the next step, without consuming a turn. */
+  async claimNextStep(): Promise<DurableInboxMessage[]> {
+    if (!this._nextStep.length) return []
+    const claimed = this._nextStep.splice(0)
+    await this._session.append('agent/inbox/spliced', {
+      target: 'next-step',
+      index: 0,
+      deleteCount: claimed.length,
+    })
+    return claimed
+  }
+
   async clear(): Promise<void> {
     if (this._nextTurn.length) {
       this._nextTurn = []

@@ -58,6 +58,7 @@
 - [x] cli：profile / boot 组合层（`AgentProfile`、`bootAgentRuntime`，bundle 先装、profile 默认选项与 overlay 后覆盖）
 - [x] cli：`createAgentRuntime` 直接消费 `options.profile`（内部合并 profile 默认选项与 bundles）
 - [x] agent：`llm/stream` waterfall，支持改写最终请求与短路返回
+- [x] agent：DSH inbox / request 对齐：`inject(input)` durable next-step 且 idle 不唤醒，运行中 steer/inject 在同 turn 后续 step 认领；`run()` 同样经过 `llm/stream`，请求 envelope 记录 waterfall 后的最终 tools/config
 - [x] agent：流式 chunk 落 durable `assistant/chunk` 事件
 - [x] tools：`pre-execute` / `execute` / `post-execute` 三层 waterfall，兼容旧 policy 语义
 - [x] web：`assistant/chunk` 与 compaction 事件类型同步，不污染 transcript

@@ -20,6 +20,7 @@ import type {
   AgentFinishReason,
   AgentHooks,
   AgentInput,
+  AgentNextStepClaimer,
   AgentPreStepEvent,
   AgentRequestErrorEvent,
   AgentRequestEvent,
@@ -97,13 +98,15 @@ export interface AgentConfig {
   llm?: LLMAdapter
   /** Bind the loop to a specific session instead of the ctx-provided singleton. */
   session?: SessionLog
-  /** Fail fast when the actual request would not be reconstructable from the log. */
+  /** Compatibility diagnostic flag; request replayability is always enforced. */
   assertReplayable?: boolean
   maxTurns?: number
   maxSteps?: number
   inbox?: AgentInbox
   hooks?: AgentHooks
   contextBudget?: AgentContextBudget
+  /** Optional live-agent seam for work admitted after the first step. */
+  claimNextStep?: AgentNextStepClaimer
 }
 
 function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
@@ -120,7 +123,7 @@ function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
       copy.tool_calls = message.tool_calls.map(call => ({
         id: call.id,
         name: call.name,
-        arguments: call.arguments,
+        arguments: structuredClone(call.arguments),
       }))
     }
     return copy
@@ -157,6 +160,97 @@ function copyCompletion(completion: LLMCompletion): LLMCompletion {
   return copy
 }
 
+function canonicalMessages(messages: readonly ModelMessage[]): string {
+  return JSON.stringify(messages.map(message => ({
+    role: message.role,
+    content: message.content,
+    ...(message.name ? { name: message.name } : {}),
+    ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+    ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
+    ...(message.toolOk !== undefined ? { toolOk: message.toolOk } : {}),
+    ...(message.toolError ? {
+      toolError: { name: message.toolError.name, message: message.toolError.message },
+    } : {}),
+  })))
+}
+
+function freezeRequestData(data: unknown): void {
+  const visited = new Set<object>()
+  const freeze = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null || visited.has(value)) return
+    visited.add(value)
+    for (const child of Object.values(value)) freeze(child)
+    Object.freeze(value)
+  }
+  freeze(data)
+}
+
+function lockStreamRequest(request: LLMStreamRequestEvent): void {
+  freezeRequestData(request.messages)
+  request.tools = Object.freeze(request.tools.map(tool => {
+    // Tool definitions belong to the registry. Lock a request-local schema
+    // snapshot so later requests can still update the registered definition.
+    const schema = structuredClone(tool.schema)
+    freezeRequestData(schema)
+    return Object.freeze({ ...tool, schema })
+  }))
+  // The signal remains live; only the request's option bindings are locked.
+  Object.freeze(request.options)
+  Object.freeze(request)
+}
+
+function requestHeaderFor(
+  request: Pick<AgentRequestEvent, 'tools' | 'options'>,
+  input: readonly ModelMessage[],
+): {
+  config?: { provider?: string; model?: string; temperature?: number }
+  system?: string
+  tools?: ToolSchemaSnapshot[]
+} {
+  const system = input.find(message => message.role === 'system')?.content
+  const tools = request.tools.map(tool => ({
+    name: tool.schema.name,
+    description: tool.schema.description,
+    ...(tool.schema.parameters ? { parameters: tool.schema.parameters } : {}),
+  }))
+  const config = {
+    ...(request.options.provider ? { provider: request.options.provider } : {}),
+    ...(request.options.model ? { model: request.options.model } : {}),
+    ...(request.options.temperature !== undefined
+      ? { temperature: request.options.temperature }
+      : {}),
+  }
+  return {
+    ...(Object.keys(config).length ? { config } : {}),
+    ...(system !== undefined ? { system } : {}),
+    ...(tools.length ? { tools } : {}),
+  }
+}
+
+async function* completeAsStream(
+  llm: LLMAdapter,
+  messages: readonly ModelMessage[],
+  tools: readonly ToolDefinition[],
+  options: CompleteOptions,
+): AsyncGenerator<LLMStreamEvent, void, void> {
+  const id = randomUUID()
+  yield { type: 'message_start', id }
+  const completion = await llm.complete(messages, tools, options)
+  if (completion.content) yield { type: 'message_delta', id, delta: completion.content }
+  for (let index = 0; index < (completion.toolCalls?.length ?? 0); index += 1) {
+    const call = completion.toolCalls![index]!
+    yield { type: 'toolcall_start', id: call.id, index, name: call.name }
+    yield {
+      type: 'toolcall_end',
+      id: call.id,
+      index,
+      name: call.name,
+      arguments: call.arguments,
+    }
+  }
+  yield { type: 'message_stop', id, finishReason: completion.finishReason }
+}
+
 function isCancelCause(value: unknown): value is AgentCancelCause {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
@@ -180,6 +274,14 @@ function cancelCauseFromSignal(signal?: AbortSignal): AgentCancelCause | undefin
   const reason = signal.reason
   if (isCancelCause(reason)) return reason
   return { type: 'abort' }
+}
+
+function abortedToolError(signal?: AbortSignal): ToolError {
+  const cause = cancelCauseFromSignal(signal)
+  return {
+    name: 'AbortError',
+    message: `tool call aborted: ${cause?.type ?? 'abort'}`,
+  }
 }
 
 /** Map a completed loop to the typed durable reason a `turn/end` records. */
@@ -265,7 +367,7 @@ export class AgentService {
   }
 
   async run(input?: AgentInput, options: AgentRunOptions = {}): Promise<AgentRunResult> {
-    return consumeAgentStream(this._stream(input, options, false))
+    return consumeAgentStream(this._stream(input, options))
   }
 
   async *runStream(
@@ -283,7 +385,6 @@ export class AgentService {
   private async *_stream(
     input?: AgentInput,
     options: AgentRunOptions = {},
-    useStream = true,
   ): AsyncGenerator<AgentStreamEvent, AgentRunResult, void> {
     const claimed = input ?? this.inbox.claim()
     if (!claimed) throw new AgentError('no agent input available')
@@ -293,6 +394,8 @@ export class AgentService {
     const tools = this._tools()
     const llm = this._llm()
     if (!llm) throw new AgentError('no LLM adapter available')
+    const streamAdapter = llm.stream
+    const persistChunks = streamAdapter !== undefined
 
     const maxTurns = options.maxTurns ?? this.config.maxTurns ?? 64
     const maxSteps = options.maxSteps ?? this.config.maxSteps ?? 64
@@ -353,6 +456,9 @@ export class AgentService {
       currentStepIndex = index
 
       const requestedInput = copyMessages(preStep.messages)
+      // Request rewrites may replace the current surface, but retries retain
+      // the durable owners present when this step was admitted.
+      const admittedHistory = await session.deriveMessages()
       this.ctx.emit('agent/step', {
         index,
         turn,
@@ -365,91 +471,80 @@ export class AgentService {
       }
       if (options.signal) completeOptions.signal = options.signal
 
-      const request = this.ctx.waterfall('agent/request', {
-        index,
-        messages: requestedInput,
-        tools: availableTools,
-        options: completeOptions,
-      }, (payload: AgentRequestEvent) => payload)
-      if (!request || !request.options || !request.tools) {
-        throw new AgentError('agent/request must return a request payload')
-      }
       let llmMessages = copyMessages(requestedInput)
 
       let completion: LLMCompletion | undefined
-      const streamMethod = useStream ? llm.stream : undefined
       let attempt = 0
-      let persistedStepInput = false
       while (true) {
         if (options.signal?.aborted) {
           finishReason = 'cancelled'
           break
         }
         const streamEvents: LLMStreamEvent[] = []
+        const streamRequest: LLMStreamRequestEvent = {
+          index,
+          messages: copyMessages(requestedInput),
+          tools: [...availableTools],
+          options: { ...completeOptions },
+        }
         try {
-          if (streamMethod) {
-            const streamRequest: LLMStreamRequestEvent = {
-              index,
-              messages: llmMessages,
-              tools: request.tools,
-              options: request.options,
-            }
-            const stream = await this.ctx.waterfallAsync(
-              'llm/stream',
-              streamRequest,
-              async (payload: LLMStreamRequestEvent) => {
-                if (!streamMethod) {
-                  throw new AgentError('llm.stream is required for streaming runs')
-                }
-                return streamMethod(payload.messages, payload.tools, payload.options)
-              },
-            )
-            if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
-              throw new AgentError('llm/stream must return an async iterable stream')
-            }
-            llmMessages = copyMessages(streamRequest.messages)
-            if (!persistedStepInput) {
-              await this._persistStepInput(session, request, llmMessages)
-              if (this.config.assertReplayable) {
-                await this._assertReplayable(session, llmMessages)
-              }
-              persistedStepInput = true
-            }
-            let chunkIndex = 0
-            for await (const event of stream) {
-              streamEvents.push(event)
-              if (event.type === 'message_delta') {
-                await session.append('assistant/chunk', {
-                  id: event.id,
-                  content: event.delta,
-                  index: chunkIndex,
-                })
-                chunkIndex += 1
-              }
-              yield event
-            }
-            completion = completionFromStreamEvents(streamEvents)
-          } else {
-            if (!persistedStepInput) {
-              await this._persistStepInput(session, request, llmMessages)
-              if (this.config.assertReplayable) {
-                await this._assertReplayable(session, llmMessages)
-              }
-              persistedStepInput = true
-            }
-            completion = await llm.complete(llmMessages, request.tools, request.options)
+          const request = this.ctx.waterfall('agent/request', {
+            index,
+            messages: copyMessages(requestedInput),
+            tools: streamRequest.tools,
+            options: streamRequest.options,
+          }, (payload: AgentRequestEvent) => payload)
+          if (!request || !request.options || !request.tools) {
+            throw new AgentError('agent/request must return a request payload')
           }
+          streamRequest.tools = request.tools
+          streamRequest.options = request.options
+          let preparation: Promise<void> | undefined
+          const prepareRequest = (): Promise<void> => preparation ??= (async () => {
+            // Waterfalls may rewrite the envelope until consumption begins.
+            // Lazy streams must dispatch the same request that is persisted.
+            lockStreamRequest(streamRequest)
+            llmMessages = copyMessages(streamRequest.messages)
+            await this._persistStepInput(session, streamRequest, llmMessages, admittedHistory)
+            await this._assertReplayable(session, streamRequest, llmMessages)
+          })()
+          const stream = await this.ctx.waterfallAsync(
+            'llm/stream',
+            streamRequest,
+            (payload: LLMStreamRequestEvent) => (async function* () {
+              // A listener can consume next() itself. Guard that dispatch too.
+              await prepareRequest()
+              yield* streamAdapter
+                ? streamAdapter.call(llm, payload.messages, payload.tools, payload.options)
+                : completeAsStream(llm, payload.messages, payload.tools, payload.options)
+            })(),
+          )
+          if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
+            throw new AgentError('llm/stream must return an async iterable stream')
+          }
+          // Short-circuit streams must obey the same request invariant.
+          await prepareRequest()
+          let chunkIndex = 0
+          for await (const event of stream) {
+            streamEvents.push(event)
+            if (persistChunks && event.type === 'message_delta') {
+              await session.append('assistant/chunk', {
+                id: event.id,
+                content: event.delta,
+                index: chunkIndex,
+              })
+              chunkIndex += 1
+            }
+            yield event
+          }
+          completion = completionFromStreamEvents(streamEvents)
           break
         } catch (error) {
-          const content = partialStreamContent(streamEvents)
-          if (content) {
-            await session.append('assistant/message', {
-              content,
-              interrupted: true,
-            })
-            llmMessages = await session.deriveMessages()
-          }
           if (options.signal?.aborted) {
+            const content = partialStreamContent(streamEvents)
+            if (content) {
+              await session.append('assistant/message', { content, interrupted: true })
+            }
             finishReason = 'cancelled'
             break
           }
@@ -461,14 +556,14 @@ export class AgentService {
               index,
               turn,
               step: index,
-              messages: copyMessages(llmMessages),
-              tools: request.tools,
-              options: request.options,
+              messages: copyMessages(streamRequest.messages),
+              tools: [...streamRequest.tools],
+              options: { ...streamRequest.options },
               attempt,
               error,
               failure,
-              ...(request.options.provider ? { provider: request.options.provider } : {}),
-              ...(request.options.model ? { model: request.options.model } : {}),
+              ...(streamRequest.options.provider ? { provider: streamRequest.options.provider } : {}),
+              ...(streamRequest.options.model ? { model: streamRequest.options.model } : {}),
               ...(options.signal ? { signal: options.signal } : {}),
             } satisfies AgentRequestErrorEvent,
             () => undefined,
@@ -493,11 +588,20 @@ export class AgentService {
           await session.append('llm/retry-started', { retryId, retry: attempt })
         }
       }
-      if (options.signal?.aborted) break
-      if (!completion) throw new AgentError('LLM adapter did not produce a completion')
+      if (!completion) {
+        if (options.signal?.aborted) {
+          finishReason = 'cancelled'
+          break
+        }
+        throw new AgentError('LLM adapter did not produce a completion')
+      }
 
       const toolCalls = completion.toolCalls ?? []
-      if (finalTurnGranted && toolCalls.length) {
+      if (options.signal?.aborted && toolCalls.length === 0) {
+        finishReason = 'cancelled'
+        break
+      }
+      if (finalTurnGranted && toolCalls.length && !options.signal?.aborted) {
         finishReason = 'max_turns'
         break
       }
@@ -524,17 +628,29 @@ export class AgentService {
         if (options.signal) toolOptions.signal = options.signal
         const startedAt = Date.now()
         let result: ToolResult
-        try {
-          result = await tools.execute(call.name, call.arguments, toolOptions)
-        } catch (error) {
+        if (options.signal?.aborted) {
           result = {
             ok: false,
             name: call.name,
             callId: call.id,
             input: call.arguments,
-            error: toToolError(error),
+            error: abortedToolError(options.signal),
             startedAt,
             durationMs: Date.now() - startedAt,
+          }
+        } else {
+          try {
+            result = await tools.execute(call.name, call.arguments, toolOptions)
+          } catch (error) {
+            result = {
+              ok: false,
+              name: call.name,
+              callId: call.id,
+              input: call.arguments,
+              error: toToolError(error),
+              startedAt,
+              durationMs: Date.now() - startedAt,
+            }
           }
         }
         toolResults.push(result)
@@ -596,7 +712,8 @@ export class AgentService {
         finishReason = 'stop'
         break
       }
-      if (toolCalls.length === 0) {
+      let nextStepMessages = await this._claimNextStepMessages()
+      if (toolCalls.length === 0 && nextStepMessages.length === 0) {
         finishReason = completion.finishReason === 'length'
           ? 'length'
           : completion.finishReason === 'error'
@@ -608,7 +725,10 @@ export class AgentService {
           steps: copySteps(steps),
           finishReason,
         } satisfies AgentTurnStoppingEvent) as unknown
-        if (!keepGoing) break
+        if (!keepGoing) {
+          nextStepMessages = await this._claimNextStepMessages()
+          if (nextStepMessages.length === 0) break
+        }
       }
       if (index + 1 >= maxTurns && !finalTurnGranted) {
         finalTurnGranted = true
@@ -618,7 +738,7 @@ export class AgentService {
       }
       if (toolCalls.length) finishReason = 'tool_calls'
       index += 1
-      messages = nextMessages
+      messages = [...nextMessages, ...nextStepMessages]
     }
     } catch (error) {
       turnError = error
@@ -726,27 +846,25 @@ export class AgentService {
 
   private async _persistStepInput(
     session: SessionLog,
-    request: AgentRequestEvent,
+    request: Pick<AgentRequestEvent, 'tools' | 'options'>,
     input: readonly ModelMessage[],
+    admittedHistory: readonly ModelMessage[],
   ): Promise<void> {
-    const system = input.find(message => message.role === 'system')?.content
-    const tools = request.tools.map(tool => ({
-      name: tool.schema.name,
-      description: tool.schema.description,
-      ...(tool.schema.parameters ? { parameters: tool.schema.parameters } : {}),
-    }))
-    const config = {
-      ...(request.options.provider ? { provider: request.options.provider } : {}),
-      ...(request.options.model ? { model: request.options.model } : {}),
-      ...(request.options.temperature !== undefined
-        ? { temperature: request.options.temperature }
-        : {}),
+    const surface = await session.deriveMessages()
+    const owned = admittedHistory.filter(message => !isUserOrSystemMessage(message))
+    let ownerIndex = 0
+    for (const message of input) {
+      if (isUserOrSystemMessage(message)) continue
+      const actual = canonicalMessages([message])
+      while (ownerIndex < owned.length && canonicalMessages([owned[ownerIndex]!]) !== actual) {
+        ownerIndex += 1
+      }
+      if (ownerIndex === owned.length) {
+        throw new AgentError('request is not reconstructable from session log: unowned or reordered assistant/tool message')
+      }
+      ownerIndex += 1
     }
-    const nextHeader = {
-      ...(Object.keys(config).length ? { config } : {}),
-      ...(system !== undefined ? { system } : {}),
-      ...(tools.length ? { tools } : {}),
-    }
+    const nextHeader = requestHeaderFor(request, input)
     const previousHeader = session.requestHeader()
     const isFirstRequest = !this._persistedRequest
     const isResume = isFirstRequest && previousHeader !== undefined
@@ -803,20 +921,19 @@ export class AgentService {
     ) {
       await session.append('request/context', nextContext)
     }
-    const requested = input.filter(isUserOrSystemMessage)
-    const surface = await session.deriveMessages()
-    // The session surface is the durable history. A caller (e.g. the web run
-    // handler) includes the full derived history as model context and also
-    // prepends run-scoped system prompts that are NOT part of the surface.
-    // Counting those systems against the surface inflates the "new" tail and
-    // re-appends already-persisted user turns (every resumed run duplicated
-    // the preceding user message in the log). Durable user messages are always
-    // a prefix of the requested user messages — new turns arrive last — so
-    // anchor on users: only what follows the last durable user is genuinely
-    // new. Text-based matching stays unsafe because the same user text can
-    // legitimately repeat across turns.
-    const appendDurable = async (messages: readonly ModelMessage[]): Promise<void> => {
-      for (const message of messages) {
+    const isSurfacePrefix = (messages: readonly ModelMessage[]): boolean =>
+      canonicalMessages(messages.slice(0, surface.length)) === canonicalMessages(surface)
+    // A run-scoped leading system may be owned by the effective header. Remove
+    // exactly that prefix when the remaining transcript extends the surface.
+    const requested = surface.length > 0
+      && input[0]?.role === 'system'
+      && input[0].content === nextHeader.system
+      && isSurfacePrefix(input.slice(1))
+      ? input.slice(1)
+      : input
+    const tail = requested.slice(surface.length)
+    if (isSurfacePrefix(requested) && tail.every(isUserOrSystemMessage)) {
+      for (const message of tail) {
         if (message.role === 'user') {
           await session.append('user/message', {
             content: message.content,
@@ -829,59 +946,61 @@ export class AgentService {
           })
         }
       }
-    }
-    if (surface.length === 0) {
-      // Fresh log: nothing is durable yet; persist the whole requested head so
-      // the initial system prompt and first user turn land in the log.
-      await appendDurable(requested)
       return
     }
-    const durableUsers = surface.filter(message => message.role === 'user').length
-    let seenUsers = 0
-    const newTail: ModelMessage[] = []
-    for (const message of requested) {
-      if (message.role === 'user') seenUsers += 1
-      if (seenUsers <= durableUsers) continue // already on the durable surface
-      newTail.push(message)
-    }
-    await appendDurable(newTail)
+    // Rewrites replace the model surface through the existing append-only
+    // checkpoint operation. Prior raw history and its message owners remain.
+    const nodes = await session.surfaceEvents()
+    await session.append('checkpoint', {
+      messages: copyMessages(requested),
+      surfaceOp: { op: 'replace', start: nodes[0]!.seq, end: nodes.at(-1)!.seq },
+    })
   }
 
   private async _assertReplayable(
     session: SessionLog,
+    request: Pick<AgentRequestEvent, 'tools' | 'options'>,
     input: readonly ModelMessage[],
   ): Promise<void> {
     const reconstructed = await session.deriveMessages()
-    const canonical = (messages: readonly ModelMessage[]) => messages
-      .filter(message => message.role !== 'system')
-      .map(message => ({
-        role: message.role,
-        content: message.content,
-        ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
-        ...(message.name ? { name: message.name } : {}),
-        ...(message.tool_calls?.length
-          ? { tool_calls: message.tool_calls.map(call => ({
-              id: call.id,
-              name: call.name,
-              args: JSON.stringify(call.arguments ?? {}),
-            })) }
-          : {}),
-      }))
-    const actual = canonical(input)
-    const replay = canonical(reconstructed)
-    if (JSON.stringify(actual) !== JSON.stringify(replay)) {
+    const actual = canonicalMessages(input)
+    const replay = canonicalMessages(reconstructed)
+    const header = session.requestHeader()
+    const headerOwnsPrefix = input[0]?.role === 'system'
+      && input[0].content === header?.system
+      && canonicalMessages(input.slice(1)) === replay
+    if (actual !== replay && !headerOwnsPrefix) {
       throw new AgentError(
-        `request is not reconstructable from session log: actual=${JSON.stringify(actual)} replay=${JSON.stringify(replay)}`,
+        `request is not reconstructable from session log: actual=${actual} replay=${replay}`,
       )
     }
+    const expected = requestHeaderFor(request, input)
+    if (
+      header?.system !== expected.system
+      || JSON.stringify(header?.tools ?? []) !== JSON.stringify(expected.tools ?? [])
+      || JSON.stringify(header?.config ?? {}) !== JSON.stringify(expected.config ?? {})
+    ) {
+      throw new AgentError('request envelope is not reconstructable from session log')
+    }
+  }
+
+  private async _claimNextStepMessages(): Promise<ModelMessage[]> {
+    const inputs = await this.config.claimNextStep?.() ?? []
+    return inputs.flatMap(input => input.messages?.length
+      ? copyMessages(input.messages)
+      : input.text
+        ? [{ role: 'user' as const, content: input.text }]
+        : input.context !== undefined
+          ? [{ role: 'user' as const, content: stringify(input.context) }]
+          : [])
   }
 
   private async _initialMessages(input: AgentInput): Promise<ModelMessage[]> {
     const promptService = this.ctx.reflect.get('systemPrompt', false) as
-      | { assemble(options?: object): Promise<{ text: string }> }
+      | { assemble(options?: object, ctx?: Context): Promise<{ text: string }> }
       | undefined
     const assembled = promptService
-      ? (await promptService.assemble()).text.trim()
+      ? (await promptService.assemble({}, this.ctx)).text.trim()
       : undefined
     const systemPrompt = assembled || this.inbox.injected().get('agentSystem')
     const systemMessage = typeof systemPrompt === 'string' && systemPrompt
@@ -914,7 +1033,7 @@ export class AgentService {
         arguments: call.arguments,
       }))
     }
-    next.push(assistant)
+    if (assistant.content || toolCalls.length) next.push(assistant)
 
     for (const call of toolCalls) {
       const result = toolResults.find(candidate => candidate.callId === call.id)
@@ -951,7 +1070,8 @@ export class AgentService {
   }
 
   private _tools(): ToolsService {
-    const tools = (this.ctx as unknown as { tools?: ToolsService }).tools
+    const scoped = this.ctx.reflect.get('tools', false) as ToolsService | undefined
+    const tools = scoped ?? (this.ctx as unknown as { tools?: ToolsService }).tools
     if (!tools) throw new AgentError('tools service is required')
     return tools
   }

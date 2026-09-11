@@ -714,6 +714,543 @@ describe('agent loop', () => {
     ])
   })
 
+  it('uses native stream for run when the adapter supplies one', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('run-native-stream.jsonl') })
+    await root.plugin(tools)
+    let completeCalls = 0
+    let streamCalls = 0
+    const adapter: LLMAdapter = {
+      async complete() {
+        completeCalls += 1
+        return { content: 'fallback', finishReason: 'stop' }
+      },
+      async *stream() {
+        streamCalls += 1
+        yield { type: 'message_delta', id: 'native', delta: 'native output' }
+        yield { type: 'message_stop', id: 'native', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'native output' })
+    expect(streamCalls).toBe(1)
+    expect(completeCalls).toBe(0)
+    const log = dynamic(root).session as SessionLog
+    expect((await log.read()).filter(event => event.type === 'assistant/chunk')).toHaveLength(1)
+  })
+
+  it('routes non-streaming run calls through llm/stream', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('run-stream-waterfall.jsonl') })
+    await root.plugin(tools)
+    const requests: ModelMessage[][] = []
+    const adapter: LLMAdapter = {
+      async complete(messages) {
+        requests.push([...messages])
+        return { content: 'ok', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.messages = [...payload.messages, { role: 'user', content: 'routed' }]
+      return next()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'ok' })
+    expect(requests).toEqual([[{ role: 'user', content: 'go' }, { role: 'user', content: 'routed' }]])
+  })
+
+  it('persists stream-rewritten tools and route configuration', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-envelope.jsonl') })
+    await root.plugin(tools)
+    const registered = addTool()
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register(registered)
+    const requests: Array<{ tools: readonly ToolDefinition[]; provider?: string; model?: string; temperature?: number }> = []
+    const adapter: LLMAdapter = {
+      async complete(_messages, availableTools, options) {
+        requests.push({
+          tools: [...availableTools],
+          ...(options.provider ? { provider: options.provider } : {}),
+          ...(options.model ? { model: options.model } : {}),
+          ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+        })
+        return { content: 'ok', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter, assertReplayable: true })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.tools = []
+      payload.options = {
+        ...payload.options,
+        provider: 'routed-provider',
+        model: 'routed-model',
+        temperature: 0.25,
+      }
+      return next()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'ok' })
+    expect(requests).toEqual([{
+      tools: [],
+      provider: 'routed-provider',
+      model: 'routed-model',
+      temperature: 0.25,
+    }])
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toMatchObject({
+      config: { provider: 'routed-provider', model: 'routed-model', temperature: 0.25 },
+    })
+    expect(log.requestHeader()?.tools).toBeUndefined()
+    expect(log.requestContext()).toMatchObject({ provider: 'routed-provider', model: 'routed-model' })
+  })
+
+  it('persists the final routed request envelope after a retry', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('retry-final-envelope.jsonl') })
+    await root.plugin(tools)
+    let calls = 0
+    const received: string[] = []
+    const adapter: LLMAdapter = {
+      async complete(_messages, _tools, options) {
+        received.push(options.provider!)
+        calls += 1
+        if (calls === 1) throw new Error('retry me')
+        return { content: 'recovered', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter, assertReplayable: true })
+    let routes = 0
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      routes += 1
+      payload.options = { ...payload.options, provider: `route-${routes}` }
+      return next()
+    })
+    root.on('agent/request-error', async () => ({ kind: 'retry' }))
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'recovered' })
+    expect(received).toEqual(['route-1', 'route-2'])
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toMatchObject({ config: { provider: 'route-2' } })
+    expect(log.requestContext()).toMatchObject({ provider: 'route-2' })
+  })
+
+  it('rebuilds retries from admitted messages without accumulating waterfall edits', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('retry-admitted-input.jsonl') })
+    await root.plugin(tools)
+    const requests: ModelMessage[][] = []
+    const adapter: LLMAdapter = {
+      async complete(messages) {
+        requests.push(structuredClone([...messages]))
+        if (requests.length === 1) throw new Error('retry once')
+        return { content: 'recovered', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
+      payload.messages = [{ role: 'user', content: 'admitted' }]
+      return next()
+    })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.messages[0]!.content += ' routed'
+      payload.messages.push({ role: 'user', content: 'route hint' })
+      return next()
+    })
+    root.on('agent/request-error', async (payload: AgentRequestErrorEvent) =>
+      payload.attempt === 1 ? { kind: 'retry' } : undefined)
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'recovered' })
+    expect(requests).toEqual([
+      [{ role: 'user', content: 'admitted routed' }, { role: 'user', content: 'route hint' }],
+      [{ role: 'user', content: 'admitted routed' }, { role: 'user', content: 'route hint' }],
+    ])
+    const log = dynamic(root).session as SessionLog
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'admitted routed' },
+      { role: 'user', content: 'route hint' },
+      { role: 'assistant', content: 'recovered' },
+    ])
+  })
+
+  it('re-enters request waterfalls and recovers from the final failed envelope', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('retry-request-envelope.jsonl') })
+    await root.plugin(tools)
+    const registered = addTool()
+    ;(dynamic(root).tools as ToolsService).register(registered)
+    const received: Array<{ provider: string | undefined; model: string | undefined; temperature: number | undefined }> = []
+    const adapter: LLMAdapter = {
+      async complete(_messages, _tools, options) {
+        received.push({ provider: options.provider, model: options.model, temperature: options.temperature })
+        if (received.length === 1) throw new Error('route unavailable')
+        return { content: 'recovered', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    let requestCalls = 0
+    root.on('agent/request', (payload: AgentRequestEvent, next) => {
+      requestCalls += 1
+      payload.options.provider = `proposal-${requestCalls}`
+      payload.options.temperature = (payload.options.temperature ?? 0) + 0.25
+      return next()
+    })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.tools = []
+      payload.options = { ...payload.options, provider: `route-${requestCalls}`, model: `model-${requestCalls}` }
+      return next()
+    })
+    const failures: AgentRequestErrorEvent[] = []
+    root.on('agent/request-error', async (payload: AgentRequestErrorEvent) => {
+      failures.push(payload)
+      return payload.attempt === 1 ? { kind: 'retry' } : undefined
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'recovered' })
+    expect(failures).toMatchObject([{
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [],
+      provider: 'route-1',
+      model: 'model-1',
+      options: { provider: 'route-1', model: 'model-1', temperature: 0.25 },
+    }])
+    expect(received).toEqual([
+      { provider: 'route-1', model: 'model-1', temperature: 0.25 },
+      { provider: 'route-2', model: 'model-2', temperature: 0.25 },
+    ])
+    expect(requestCalls).toBe(2)
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toMatchObject({
+      config: { provider: 'route-2', model: 'model-2', temperature: 0.25 },
+    })
+    expect(log.requestContext()).toMatchObject({ provider: 'route-2', model: 'model-2' })
+  })
+
+  it.each([
+    { role: 'assistant', content: 'unowned answer' },
+    { role: 'tool', content: 'unowned result', name: 'add', tool_call_id: 'ghost' },
+  ] satisfies ModelMessage[])('rejects an unowned $role message without replay opt-in', async (message) => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile(`unowned-${message.role}.jsonl`) })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      payload.messages.push(message)
+      return next()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).rejects.toThrow('not reconstructable')
+    expect(calls).toHaveLength(0)
+    const log = dynamic(root).session as SessionLog
+    expect((await log.read()).filter(event => event.type === 'step/end' || event.type === 'turn/end'))
+      .toMatchObject([{ payload: { finishReason: 'error' } }, { payload: { finishReason: 'error' } }])
+    expect(await log.deriveMessages()).not.toContainEqual(message)
+  })
+
+  it('checks transcript ownership even when llm/stream short-circuits', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('unowned-short-circuit.jsonl') })
+    await root.plugin(tools)
+    const { adapter } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent) => {
+      payload.messages.push({ role: 'assistant', content: 'unowned' })
+      return (async function* (): AsyncGenerator<LLMStreamEvent> {
+        yield { type: 'message_stop', id: 'wrapped', finishReason: 'stop' }
+      })()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).rejects.toThrow('not reconstructable')
+  })
+
+  it.each(['append', 'replace', 'change-role'] as const)(
+    'rejects a lazy short-circuit transcript %s before dispatch',
+    async (mutation) => {
+      const root = new Context()
+      await root.plugin(session, { file: await tempFile(`lazy-short-circuit-${mutation}.jsonl`) })
+      await root.plugin(tools)
+      const requests: ModelMessage[][] = []
+      const adapter: LLMAdapter = {
+        async complete() {
+          throw new Error('complete should not be used')
+        },
+        async *stream(messages) {
+          requests.push(structuredClone([...messages]))
+          yield { type: 'message_delta', id: 'never', delta: 'never' }
+          yield { type: 'message_stop', id: 'never', finishReason: 'stop' }
+        },
+      }
+      await root.plugin(agent, { llm: adapter })
+      root.on('llm/stream', async (payload: LLMStreamRequestEvent) =>
+        (async function* (): AsyncGenerator<LLMStreamEvent> {
+          if (mutation === 'append') payload.messages.push({ role: 'assistant', content: 'unowned' })
+          if (mutation === 'replace') payload.messages = [{ role: 'assistant', content: 'unowned' }]
+          if (mutation === 'change-role') payload.messages[0]!.role = 'assistant'
+          yield* adapter.stream!(payload.messages, payload.tools, payload.options)
+        })())
+
+      const service = dynamic(root).agent as AgentService
+      await expect(service.run({ text: 'go' })).rejects.toThrow()
+      expect(requests).toEqual([])
+      const log = dynamic(root).session as SessionLog
+      expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'go' }])
+      expect((await log.read()).filter(event => event.type === 'step/end' || event.type === 'turn/end'))
+        .toMatchObject([{ payload: { finishReason: 'error' } }, { payload: { finishReason: 'error' } }])
+    },
+  )
+
+  it('rejects a lazy next stream transcript mutation before dispatch', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('lazy-next-stream.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      const stream = await next()
+      return (async function* (): AsyncGenerator<LLMStreamEvent> {
+        payload.messages.push({ role: 'assistant', content: 'unowned' })
+        yield* stream
+      })()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).rejects.toThrow()
+    expect(calls).toHaveLength(0)
+  })
+
+  it.each([
+    'options-replace', 'provider', 'model', 'temperature',
+    'tools-replace', 'tools-append', 'tool-schema', 'tool-parameters',
+  ] as const)('rejects lazy short-circuit envelope mutation: %s', async mutation => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile(`lazy-envelope-${mutation}.jsonl`) })
+    await root.plugin(tools)
+    const tool = addTool()
+    tool.schema.parameters = { type: 'object', required: ['value'] }
+    ;(dynamic(root).tools as ToolsService).register(tool)
+    let adapterCalls = 0
+    const adapter: LLMAdapter = {
+      async complete() { throw new Error('complete should not be used') },
+      async *stream() {
+        adapterCalls += 1
+        yield { type: 'message_stop', id: 'never', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent) => {
+      payload.options = {
+        ...payload.options, provider: 'planned-provider', model: 'planned-model', temperature: 0.25,
+      }
+      return (async function* (): AsyncGenerator<LLMStreamEvent> {
+        if (mutation === 'options-replace') payload.options = { provider: 'late-provider' }
+        if (mutation === 'provider') payload.options.provider = 'late-provider'
+        if (mutation === 'model') payload.options.model = 'late-model'
+        if (mutation === 'temperature') payload.options.temperature = 1
+        if (mutation === 'tools-replace') payload.tools = []
+        if (mutation === 'tools-append') (payload.tools as ToolDefinition[]).push(addTool())
+        if (mutation === 'tool-schema') payload.tools[0]!.schema.name = 'late-tool'
+        if (mutation === 'tool-parameters') payload.tools[0]!.schema.parameters!.required!.push('late')
+        yield* adapter.stream!(payload.messages, payload.tools, payload.options)
+      })()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).rejects.toThrow()
+    expect(adapterCalls).toBe(0)
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toMatchObject({
+      config: { provider: 'planned-provider', model: 'planned-model', temperature: 0.25 },
+      tools: [{ name: 'add', parameters: { required: ['value'] } }],
+    })
+    expect(log.requestContext()).toMatchObject({ provider: 'planned-provider', model: 'planned-model' })
+  })
+
+  it('dispatches a short-circuit stream with its persisted envelope and live abort signal', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('short-circuit-locked-envelope.jsonl') })
+    await root.plugin(tools)
+    const tool = addTool()
+    ;(dynamic(root).tools as ToolsService).register(tool)
+    const log = dynamic(root).session as SessionLog
+    const controller = new AbortController()
+    const observed: unknown[] = []
+    const adapter: LLMAdapter = {
+      async complete() { throw new Error('complete should not be used') },
+      async *stream(messages, availableTools, options) {
+        observed.push({
+          messages: [...messages],
+          tools: availableTools.map(item => item.schema),
+          provider: options.provider,
+          model: options.model,
+          header: log.requestHeader(),
+          context: log.requestContext(),
+        })
+        yield { type: 'message_delta', id: 'routed', delta: 'ok' }
+        yield { type: 'message_stop', id: 'routed', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent) => {
+      payload.options = { ...payload.options, provider: 'routed-provider', model: 'routed-model' }
+      return (async function* (): AsyncGenerator<LLMStreamEvent> {
+        yield* adapter.stream!(payload.messages, payload.tools, payload.options)
+        controller.abort({ type: 'user' })
+      })()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' }, { signal: controller.signal }))
+      .resolves.toMatchObject({ finishReason: 'cancelled' })
+    expect(observed).toEqual([{
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [{ name: 'add', description: 'add two numbers' }],
+      provider: 'routed-provider', model: 'routed-model',
+      header: {
+        reason: 'initial', config: { provider: 'routed-provider', model: 'routed-model' },
+        tools: [{ name: 'add', description: 'add two numbers' }],
+      },
+      context: { provider: 'routed-provider', model: 'routed-model' },
+    }])
+    tool.schema.description = 'updated for a later request'
+    expect((dynamic(root).tools as ToolsService).list()[0]!.schema.description)
+      .toBe('updated for a later request')
+  })
+
+  it('makes each retry user and system replacement replayable before dispatch', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('retry-replaced-transcript.jsonl') })
+    await root.plugin(tools)
+    const log = dynamic(root).session as SessionLog
+    const requests: ModelMessage[][] = []
+    const replay: ModelMessage[][] = []
+    const adapter: LLMAdapter = {
+      async complete(messages) {
+        requests.push(structuredClone([...messages]))
+        replay.push(await log.deriveMessages())
+        if (requests.length === 1) throw new Error('retry once')
+        return { content: 'recovered', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    let attempt = 0
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      attempt += 1
+      payload.messages = [
+        { role: 'system', content: `system ${attempt}` },
+        { role: 'user', content: `user ${attempt}` },
+      ]
+      return next()
+    })
+    root.on('agent/request-error', async (payload: AgentRequestErrorEvent) =>
+      payload.attempt === 1 ? { kind: 'retry' } : undefined)
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'recovered' })
+    expect(requests).toEqual([
+      [{ role: 'system', content: 'system 1' }, { role: 'user', content: 'user 1' }],
+      [{ role: 'system', content: 'system 2' }, { role: 'user', content: 'user 2' }],
+    ])
+    expect(replay).toEqual(requests)
+  })
+
+  it.each([
+    { retained: 'earlier', retainedIndex: 0 },
+    { retained: 'go', retainedIndex: 2 },
+  ])('can retry admitted history after a failed attempt retains only $retained', async ({ retained, retainedIndex }) => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('retry-omitted-history.jsonl') })
+    await root.plugin(tools)
+    const log = dynamic(root).session as SessionLog
+    await log.append('user/message', { content: 'earlier' })
+    await log.append('assistant/message', { content: 'earlier answer' })
+    const requests: ModelMessage[][] = []
+    const adapter: LLMAdapter = {
+      async complete(messages) {
+        requests.push(structuredClone([...messages]))
+        if (requests.length === 1) throw new Error('retry once')
+        return { content: 'recovered', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+    let attempt = 0
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      attempt += 1
+      if (attempt === 1) payload.messages = [payload.messages[retainedIndex]!]
+      return next()
+    })
+    root.on('agent/request-error', async (payload: AgentRequestErrorEvent) =>
+      payload.attempt === 1 ? { kind: 'retry' } : undefined)
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ messages: [...await log.deriveMessages(), { role: 'user', content: 'go' }] }))
+      .resolves.toMatchObject({ output: 'recovered' })
+    expect(requests).toEqual([
+      [{ role: 'user', content: retained }],
+      [
+        { role: 'user', content: 'earlier' },
+        { role: 'assistant', content: 'earlier answer' },
+        { role: 'user', content: 'go' },
+      ],
+    ])
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'earlier' },
+      { role: 'assistant', content: 'earlier answer' },
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'recovered' },
+    ])
+  })
+
+  it('continues after an empty assistant response using the durable transcript', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('empty-assistant-continue.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([
+      { content: '', finishReason: 'stop' },
+      { content: 'done', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+    let stopping = 0
+    root.on('agent/turn-stopping', () => ++stopping === 1 ? 'continue' : undefined)
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ text: 'go' })).resolves.toMatchObject({ output: 'done' })
+    expect(calls[1]!.messages).toEqual([{ role: 'user', content: 'go' }])
+  })
+
+  it('rejects reordered assistant and tool messages already on the durable surface', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('reordered-tool-transcript.jsonl') })
+    await root.plugin(tools)
+    const log = dynamic(root).session as SessionLog
+    await log.append('user/message', { content: 'sum' })
+    await log.append('assistant/message', { content: '', toolCalls: [toolCall('c1', 'add', { a: 1, b: 2 })] })
+    await log.append('tool/call', { id: 'c1', name: 'add', arguments: { a: 1, b: 2 } })
+    await log.append('tool/result', { id: 'result-c1', toolCallId: 'c1', name: 'add', ok: true, output: 3 })
+    const { adapter, calls } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+    root.on('llm/stream', async (payload: LLMStreamRequestEvent, next) => {
+      const [user, assistant, tool] = payload.messages
+      payload.messages = [user!, tool!, assistant!]
+      return next()
+    })
+
+    const service = dynamic(root).agent as AgentService
+    await expect(service.run({ messages: await log.deriveMessages() })).rejects.toThrow('not reconstructable')
+    expect(calls).toHaveLength(0)
+    expect((await log.deriveMessages()).map(message => message.role)).toEqual(['user', 'assistant', 'tool'])
+  })
+
   it('marks a run cancelled when the stream aborts', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('stream-cancel.jsonl') })
@@ -781,6 +1318,83 @@ describe('agent loop', () => {
     ])
   })
 
+  it('settles completed tool calls when the stream aborts before dispatch', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('stream-tool-batch-cancel.jsonl') })
+    await root.plugin(tools)
+    const controller = new AbortController()
+    const executions: string[] = []
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'first', description: 'must not run' },
+      execute: () => {
+        executions.push('first')
+        return 'unexpected'
+      },
+    })
+    toolService.register({
+      schema: { name: 'second', description: 'must not run' },
+      execute: () => {
+        executions.push('second')
+        return 'unexpected'
+      },
+    })
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('complete should not be used')
+      },
+      stream: async function* () {
+        yield { type: 'message_start', id: 'm1' }
+        yield { type: 'toolcall_start', id: 'c1', index: 0, name: 'first' }
+        yield { type: 'toolcall_end', id: 'c1', index: 0, name: 'first', arguments: {} }
+        yield { type: 'toolcall_start', id: 'c2', index: 1, name: 'second' }
+        yield { type: 'toolcall_end', id: 'c2', index: 1, name: 'second', arguments: {} }
+        yield { type: 'message_stop', id: 'm1', finishReason: 'tool_calls' }
+        controller.abort({ type: 'user' })
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    const result = await service.run({ text: 'go' }, { signal: controller.signal })
+
+    expect(result.finishReason).toBe('cancelled')
+    expect(executions).toEqual([])
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    expect(events.filter(event => event.type === 'assistant/message')).toMatchObject([
+      {
+        payload: {
+          content: '',
+          toolCalls: [
+            { id: 'c1', name: 'first', arguments: {} },
+            { id: 'c2', name: 'second', arguments: {} },
+          ],
+        },
+      },
+    ])
+    expect(events.filter(event => event.type === 'tool/call' || event.type === 'tool/result')).toMatchObject([
+      { type: 'tool/call', payload: { id: 'c1', name: 'first' } },
+      {
+        type: 'tool/result',
+        payload: {
+          toolCallId: 'c1',
+          ok: false,
+          error: { name: 'AbortError', message: 'tool call aborted: user' },
+        },
+      },
+      { type: 'tool/call', payload: { id: 'c2', name: 'second' } },
+      {
+        type: 'tool/result',
+        payload: {
+          toolCallId: 'c2',
+          ok: false,
+          error: { name: 'AbortError', message: 'tool call aborted: user' },
+        },
+      },
+    ])
+  })
+
   it('waits for an in-flight tool before marking the run cancelled', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('tool-cancel.jsonl') })
@@ -831,6 +1445,64 @@ describe('agent loop', () => {
       finishReason: 'cancelled',
       cancelCause: { type: 'abort' },
     })
+  })
+
+  it('records aborted results for tool calls not started after cancellation', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('tool-batch-cancel.jsonl') })
+    await root.plugin(tools)
+    const controller = new AbortController()
+    let secondExecutions = 0
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register({
+      schema: { name: 'cancel', description: 'cancel the batch' },
+      execute: () => {
+        controller.abort({ type: 'user' })
+        return 'cancelled first'
+      },
+    })
+    toolService.register({
+      schema: { name: 'second', description: 'must not run' },
+      execute: () => {
+        secondExecutions += 1
+        return 'unexpected'
+      },
+    })
+    const adapter: LLMAdapter = {
+      complete: async () => ({
+        content: '',
+        toolCalls: [
+          toolCall('c1', 'cancel', {}),
+          toolCall('c2', 'second', {}),
+        ],
+        finishReason: 'tool_calls',
+      }),
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    const result = await service.run({ text: 'go' }, { signal: controller.signal })
+
+    expect(result.finishReason).toBe('cancelled')
+    expect(secondExecutions).toBe(0)
+    const log = dynamic(root).session as SessionLog
+    const events = await log.read()
+    const toolEvents = events.filter(event => event.type === 'tool/call' || event.type === 'tool/result')
+    expect(toolEvents).toMatchObject([
+      { type: 'tool/call', payload: { id: 'c1', name: 'cancel' } },
+      { type: 'tool/result', payload: { toolCallId: 'c1', ok: true } },
+      { type: 'tool/call', payload: { id: 'c2', name: 'second' } },
+      {
+        type: 'tool/result',
+        payload: {
+          id: 'c2',
+          toolCallId: 'c2',
+          name: 'second',
+          ok: false,
+          error: { name: 'AbortError', message: 'tool call aborted: user' },
+        },
+      },
+    ])
   })
 
   it('preserves a typed user cancellation cause in durable events', async () => {
@@ -1137,6 +1809,10 @@ describe('agent loop', () => {
       'series',
     ])
     expect((headers.at(-1)?.payload as { startsSeries?: boolean }).startsSeries).toBe(true)
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'second' },
+      { role: 'assistant', content: 'second' },
+    ])
   })
 
   it('keeps agent/request messages read-only while pre-step owns the rewrite', async () => {
@@ -1318,7 +1994,7 @@ describe('agent loop', () => {
     expect(result.finishReason).toBe('stop')
   })
 
-  it('keeps the interrupted stream prefix in the retried request history', async () => {
+  it('excludes a failed non-cancelled stream prefix from retry history', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('request-error-stream.jsonl') })
     await root.plugin(tools)
@@ -1350,14 +2026,12 @@ describe('agent loop', () => {
     expect(result.output).toBe('ed')
     expect(result.steps[0]!.input).toEqual([
       { role: 'user', content: 'go' },
-      { role: 'assistant', content: 'recover' },
     ])
     expect(result.steps[0]!.completion.content).toBe('ed')
     expect(calls).toBe(2)
     expect(requests[0]).toEqual([{ role: 'user', content: 'go' }])
     expect(requests[1]).toEqual([
       { role: 'user', content: 'go' },
-      { role: 'assistant', content: 'recover' },
     ])
 
     const log = dynamic(root).session as SessionLog
@@ -1370,7 +2044,6 @@ describe('agent loop', () => {
       'request/context',
       'user/message',
       'assistant/chunk',
-      'assistant/message',
       'llm/retry',
       'llm/retry-started',
       'assistant/chunk',
@@ -1382,10 +2055,10 @@ describe('agent loop', () => {
       type: 'assistant/chunk',
       payload: { id: 'm1', content: 'recover', index: 0 },
     })
-    expect(events[7]?.payload).toMatchObject({ content: 'recover', interrupted: true })
+    expect(events.filter(event => event.type === 'assistant/message'))
+      .toMatchObject([{ payload: { content: 'ed' } }])
     expect(await log.deriveMessages()).toEqual([
       { role: 'user', content: 'go' },
-      { role: 'assistant', content: 'recover' },
       { role: 'assistant', content: 'ed' },
     ])
   })

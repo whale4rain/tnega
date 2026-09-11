@@ -122,6 +122,9 @@ export interface AgentRunOptions {
   contextBudget?: AgentContextBudget
 }
 
+/** Pulls inputs admitted at a live agent's next-step boundary. */
+export type AgentNextStepClaimer = () => Promise<readonly AgentInput[]>
+
 export interface AgentContextBudget {
   limit?: number
   compactRatio?: number

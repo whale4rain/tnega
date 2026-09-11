@@ -459,6 +459,61 @@ describe('openaiCompatAdapter', () => {
     expect(body.stream).toBe(true)
   })
 
+  it('normalizes a JSON completion returned to a stream request', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      id: 'json-message',
+      model: 'deepseek-v4-flash',
+      choices: [{ message: { content: 'hello' }, finish_reason: 'length' }],
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events = await collectStream(openaiCompatAdapter({ apiKey: 'test-key' }), [
+      { role: 'user', content: 'say hello' },
+    ])
+
+    expect(events).toEqual([
+      { type: 'message_start', id: 'json-message', model: 'deepseek-v4-flash' },
+      { type: 'message_delta', id: 'json-message', delta: 'hello' },
+      { type: 'message_stop', id: 'json-message', finishReason: 'length' },
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toMatchObject({ stream: true })
+  })
+
+  it('normalizes JSON tool calls and their arguments into stream events', async () => {
+    const fetchMock = vi.fn(async () => {
+      const response = jsonResponse({
+        id: 'json-tools',
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [
+              { id: 'c1', type: 'function', function: { name: 'add', arguments: '{"a":1,"b":2}' } },
+              { id: 'c2', type: 'function', function: { name: 'echo', arguments: 'not-json' } },
+            ],
+          },
+          finish_reason: 'tool_calls',
+        }],
+      })
+      response.headers.set('content-type', 'Application/JSON; charset=utf-8')
+      return response
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events = await collectStream(openaiCompatAdapter({ apiKey: 'test-key' }), [
+      { role: 'user', content: 'call tools' },
+    ])
+
+    expect(events).toEqual([
+      { type: 'message_start', id: 'json-tools' },
+      { type: 'toolcall_start', id: 'c1', index: 0, name: 'add' },
+      { type: 'toolcall_end', id: 'c1', index: 0, name: 'add', arguments: { a: 1, b: 2 } },
+      { type: 'toolcall_start', id: 'c2', index: 1, name: 'echo' },
+      { type: 'toolcall_end', id: 'c2', index: 1, name: 'echo', arguments: 'not-json' },
+      { type: 'message_stop', id: 'json-tools', finishReason: 'tool_calls' },
+    ])
+  })
+
   it('streams split tool call deltas into start and end events', async () => {
     const fetchMock = vi.fn(async () => sseResponse([
       'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"add","arguments":"{\\"a\\":"}}]}}]}\n\n',
