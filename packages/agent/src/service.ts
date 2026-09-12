@@ -4,6 +4,9 @@ import { randomUUID } from 'node:crypto'
 import {
   DEFAULT_CONTEXT_LIMIT,
   estimateContextUsage,
+  type AssistantMessagePayload,
+  type AssistantStreamChunk,
+  type AssistantStreamRecord,
   type ModelMessage,
   type RequestContextPayload,
   type SessionLog,
@@ -16,6 +19,7 @@ import type { ToolsService } from '@tnega/tools'
 
 import type {
   AgentContextBudget,
+  AgentAssistantStreamEvent,
   AgentCancelCause,
   AgentFinishReason,
   AgentHooks,
@@ -339,10 +343,60 @@ async function cancellableDelay(ms: number, signal?: AbortSignal): Promise<boole
   })
 }
 
+/** Owns accumulation, transient framing and exactly one durable settlement. */
+class AssistantStreamAttempt {
+  private readonly attemptId = randomUUID()
+  private readonly records: AssistantStreamRecord[] = []
+  private ended = false
+
+  constructor(
+    private readonly session: SessionLog,
+    private readonly turn: number,
+    private readonly step: number,
+    private readonly nextRevision: () => number,
+  ) {}
+
+  start(): AgentAssistantStreamEvent {
+    return { type: 'assistant/stream', frame: {
+      type: 'start', attemptId: this.attemptId, revision: this.nextRevision(),
+      turn: this.turn, step: this.step,
+    } }
+  }
+
+  push(chunk: AssistantStreamChunk): AgentAssistantStreamEvent {
+    if (this.ended) throw new AgentError('assistant attempt is already settled')
+    const record = { time: Date.now(), chunk: structuredClone(chunk) }
+    const index = this.records.length
+    this.records.push(record)
+    return { type: 'assistant/stream', frame: {
+      type: 'chunk', attemptId: this.attemptId, revision: this.nextRevision(), index,
+      ...structuredClone(record),
+    } }
+  }
+
+  async settle(message?: AssistantMessagePayload): Promise<AgentAssistantStreamEvent> {
+    if (this.ended) throw new AgentError('assistant attempt is already settled')
+    const eventType = message ? 'assistant/message' : 'assistant/attempt'
+    const event = message
+      ? await this.session.append('assistant/message', { ...message, stream: this.records })
+      : await this.session.append('assistant/attempt', { turn: this.turn, step: this.step, stream: this.records })
+    this.ended = true
+    return { type: 'assistant/stream', frame: {
+      type: 'end', attemptId: this.attemptId, revision: this.nextRevision(), index: this.records.length,
+      outcome: { kind: 'committed', eventType, seq: event.seq },
+    } }
+  }
+}
+
 export class AgentService {
   readonly inbox: AgentInbox
   private _seriesStarted = false
   private _persistedRequest = false
+  private _streamRevision = 0
+
+  private _attempt(session: SessionLog, turn: number, step: number): AssistantStreamAttempt {
+    return new AssistantStreamAttempt(session, turn, step, () => ++this._streamRevision)
+  }
 
   constructor(
     private ctx: Context,
@@ -474,6 +528,7 @@ export class AgentService {
       let llmMessages = copyMessages(requestedInput)
 
       let completion: LLMCompletion | undefined
+      let activeAttempt: AssistantStreamAttempt | undefined
       let attempt = 0
       while (true) {
         if (options.signal?.aborted) {
@@ -481,6 +536,8 @@ export class AgentService {
           break
         }
         const streamEvents: LLMStreamEvent[] = []
+        activeAttempt = this._attempt(session, turn, index)
+        yield activeAttempt.start()
         const streamRequest: LLMStreamRequestEvent = {
           index,
           messages: copyMessages(requestedInput),
@@ -526,7 +583,8 @@ export class AgentService {
           await prepareRequest()
           let chunkIndex = 0
           for await (const event of stream) {
-            streamEvents.push(event)
+            streamEvents.push(structuredClone(event))
+            yield activeAttempt.push(event)
             if (persistChunks && event.type === 'message_delta') {
               await session.append('assistant/chunk', {
                 id: event.id,
@@ -540,14 +598,14 @@ export class AgentService {
           completion = completionFromStreamEvents(streamEvents)
           break
         } catch (error) {
+          yield activeAttempt.push({ type: 'stream_error', error: toToolError(error) })
           if (options.signal?.aborted) {
             const content = partialStreamContent(streamEvents)
-            if (content) {
-              await session.append('assistant/message', { content, interrupted: true })
-            }
+            yield await activeAttempt.settle(content ? { content, interrupted: true } : undefined)
             finishReason = 'cancelled'
             break
           }
+          yield await activeAttempt.settle()
           attempt += 1
           const failure = toToolError(error)
           const decision = await this.ctx.waterfallAsync(
@@ -588,7 +646,7 @@ export class AgentService {
           await session.append('llm/retry-started', { retryId, retry: attempt })
         }
       }
-      if (!completion) {
+      if (!completion || !activeAttempt) {
         if (options.signal?.aborted) {
           finishReason = 'cancelled'
           break
@@ -598,16 +656,20 @@ export class AgentService {
 
       const toolCalls = completion.toolCalls ?? []
       if (options.signal?.aborted && toolCalls.length === 0) {
+        yield activeAttempt.push({ type: 'stream_error', error: { name: 'AbortError', message: 'stream aborted' } })
+        yield await activeAttempt.settle()
         finishReason = 'cancelled'
         break
       }
       if (finalTurnGranted && toolCalls.length && !options.signal?.aborted) {
+        yield activeAttempt.push({ type: 'stream_error', error: { name: 'AgentError', message: 'maximum turns reached' } })
+        yield await activeAttempt.settle()
         finishReason = 'max_turns'
         break
       }
       const toolResults: ToolResult[] = []
       if (toolCalls.length) {
-        await session.append('assistant/message', {
+        yield await activeAttempt.settle({
           content: completion.content ?? '',
           toolCalls: toolCalls.map(call => ({
             id: call.id,
@@ -695,7 +757,7 @@ export class AgentService {
         output = completion.content
       }
       if (!toolCalls.length) {
-        await session.append('assistant/message', { content: completion.content ?? '' })
+        yield await activeAttempt.settle({ content: completion.content ?? '' })
       }
 
       await session.append('step/end', {

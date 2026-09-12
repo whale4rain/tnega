@@ -530,6 +530,140 @@ describe('agent loop', () => {
     expect(result.finishReason).toBe('cancelled')
   })
 
+  it('settles a failed stream once without adding its prefix to model history', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('attempt-failure.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(agent, { llm: {
+      complete: async () => { throw new Error('unused') },
+      async *stream() {
+        yield { type: 'message_delta', id: 'failed', delta: 'discarded' }
+        throw new Error('connection lost')
+      },
+    } satisfies LLMAdapter })
+    const service = root.get('agent') as AgentService
+    const log = root.get('session') as SessionLog
+    const events: AgentStreamEvent[] = []
+    await expect((async () => {
+      for await (const event of service.runStream({ text: 'go' })) events.push(event)
+    })()).rejects.toThrow('connection lost')
+    const attempts = (await log.read()).filter(event => event.type === 'assistant/attempt')
+    expect(attempts).toHaveLength(1)
+    expect(attempts[0]?.payload).toMatchObject({ turn: 1, step: 0, stream: [
+      { time: expect.any(Number), chunk: { type: 'message_delta', id: 'failed', delta: 'discarded' } },
+      { time: expect.any(Number), chunk: { type: 'stream_error', error: { message: 'connection lost' } } },
+    ] })
+    const frames = events.filter(event => event.type === 'assistant/stream').map(event => event.frame)
+    expect(frames.map(frame => frame.type)).toEqual(['start', 'chunk', 'chunk', 'end'])
+    expect(frames.at(-1)).toMatchObject({ outcome: {
+      kind: 'committed', eventType: 'assistant/attempt', seq: attempts[0]?.seq,
+    } })
+    expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'go' }])
+    expect(await log.runInvariants()).toEqual([])
+    await log.close()
+  })
+
+  it('allocates distinct attempts and increasing lifecycle revisions across retries and runs', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('attempt-retry.jsonl') })
+    await root.plugin(tools)
+    let calls = 0
+    await root.plugin(agent, { llm: {
+      complete: async () => { throw new Error('unused') },
+      async *stream() {
+        calls += 1
+        yield { type: 'message_delta', id: 'provider-reused-id', delta: calls === 1 ? 'failed' : 'ok' }
+        if (calls === 1) throw new Error('retry')
+        yield { type: 'message_stop', id: 'provider-reused-id', finishReason: 'stop' }
+      },
+    } satisfies LLMAdapter })
+    root.on('agent/request-error', async () => ({ kind: 'retry' }))
+    const service = root.get('agent') as AgentService
+    const first = await collectStream(service.runStream({ text: 'go' }))
+    const second = await collectStream(service.runStream({ text: 'again' }))
+    const frames = [...first.events, ...second.events]
+      .filter(event => event.type === 'assistant/stream').map(event => event.frame)
+    const starts = frames.filter(frame => frame.type === 'start')
+    expect(starts).toHaveLength(3)
+    expect(new Set(starts.map(frame => frame.attemptId)).size).toBe(3)
+    expect(frames.map(frame => frame.revision)).toEqual(Array.from({ length: frames.length }, (_, i) => i + 1))
+    for (const start of starts) {
+      const attempt = frames.filter(frame => frame.attemptId === start.attemptId)
+      expect(attempt[0]?.type).toBe('start')
+      expect(attempt.at(-1)?.type).toBe('end')
+      expect(attempt.filter(frame => frame.type === 'chunk').map(frame => frame.index)).toEqual([0, 1])
+    }
+    const log = root.get('session') as SessionLog
+    expect((await log.read()).filter(event => event.type === 'assistant/attempt')).toHaveLength(1)
+    expect(first.result.output).toBe('ok')
+    await log.close()
+  })
+
+  it.each(['throw', 'return'] as const)('settles cancellation without a message when the stream ends by %s', async (ending) => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile(`attempt-cancel-${ending}.jsonl`) })
+    await root.plugin(tools)
+    const controller = new AbortController()
+    await root.plugin(agent, { llm: {
+      complete: async () => { throw new Error('unused') },
+      async *stream() {
+        yield { type: 'message_start', id: 'cancelled' }
+        controller.abort({ type: 'user' })
+        if (ending === 'throw') throw new Error('aborted')
+      },
+    } satisfies LLMAdapter })
+    const service = root.get('agent') as AgentService
+    const { events, result } = await collectStream(service.runStream({ text: 'go' }, { signal: controller.signal }))
+    const log = root.get('session') as SessionLog
+    const attempts = (await log.read()).filter(event => event.type === 'assistant/attempt')
+    expect(attempts).toHaveLength(1)
+    expect(attempts[0]?.payload.stream.map(record => record.chunk.type)).toEqual(['message_start', 'stream_error'])
+    expect(events.filter(event => event.type === 'assistant/stream').at(-1)).toMatchObject({ frame: {
+      type: 'end', outcome: { kind: 'committed', eventType: 'assistant/attempt', seq: attempts[0]?.seq },
+    } })
+    expect(result.finishReason).toBe('cancelled')
+    expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'go' }])
+    expect(await log.runInvariants()).toEqual([])
+    await log.close()
+  })
+
+  it('publishes start before consuming and end only after committing the normalized assistant stream', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('attempt-success.jsonl') })
+    await root.plugin(tools)
+    const order: string[] = []
+    await root.plugin(agent, { llm: {
+      complete: async () => { throw new Error('unused') },
+      async *stream() {
+        order.push('consume')
+        yield { type: 'message_delta', id: 'ok', delta: 'done' }
+        yield { type: 'message_stop', id: 'ok', finishReason: 'stop' }
+      },
+    } satisfies LLMAdapter })
+    const log = root.get('session') as SessionLog
+    root.on('session/event', (event: SessionEvent) => {
+      if (event.type === 'assistant/message') order.push('commit')
+    })
+    const service = root.get('agent') as AgentService
+    for await (const event of service.runStream({ text: 'go' })) {
+      if (event.type !== 'assistant/stream') continue
+      const frame = event.frame
+      order.push(frame.type)
+      if (frame.type === 'end') {
+        const committed = (await log.read()).find(item => item.seq === frame.outcome.seq)
+        expect(committed).toMatchObject({ type: 'assistant/message', payload: { content: 'done', stream: [
+          { chunk: { type: 'message_delta', id: 'ok', delta: 'done' } },
+          { chunk: { type: 'message_stop', id: 'ok', finishReason: 'stop' } },
+        ] } })
+      }
+      if (frame.type === 'chunk' && frame.chunk.type === 'message_delta') frame.chunk.delta = 'consumer mutation'
+    }
+    expect(order).toEqual(['start', 'consume', 'chunk', 'chunk', 'commit', 'end'])
+    expect((await log.read()).filter(event => event.type === 'assistant/attempt')).toHaveLength(0)
+    expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'go' }, { role: 'assistant', content: 'done' }])
+    await log.close()
+  })
+
   it('streams LLM deltas and returns the collected result', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('stream.jsonl') })
@@ -545,7 +679,7 @@ describe('agent loop', () => {
     const service = dynamic(root).agent as AgentService
     const { events, result } = await collectStream(service.runStream({ text: 'hi' }))
 
-    expect(events.map(event => event.type)).toEqual([
+    expect(events.filter(event => event.type !== 'assistant/stream').map(event => event.type)).toEqual([
       'message_start',
       'message_delta',
       'message_delta',
@@ -601,7 +735,7 @@ describe('agent loop', () => {
     const service = dynamic(root).agent as AgentService
     const { events, result } = await collectStream(service.runStream({ text: '1+2' }))
 
-    expect(events.map(event => event.type)).toEqual([
+    expect(events.filter(event => event.type !== 'assistant/stream').map(event => event.type)).toEqual([
       'message_start',
       'toolcall_start',
       'toolcall_end',
@@ -1283,7 +1417,7 @@ describe('agent loop', () => {
       service.runStream({ text: 'go' }, { signal: controller.signal }),
     )
 
-    expect(events.map(event => event.type)).toEqual([
+    expect(events.filter(event => event.type !== 'assistant/stream').map(event => event.type)).toEqual([
       'message_start',
       'message_delta',
       'run/end',
@@ -1913,6 +2047,7 @@ describe('agent loop', () => {
       'request/header',
       'request/context',
       'user/message',
+      'assistant/attempt',
       'llm/retry',
       'llm/retry-started',
       'assistant/message',
@@ -2044,6 +2179,7 @@ describe('agent loop', () => {
       'request/context',
       'user/message',
       'assistant/chunk',
+      'assistant/attempt',
       'llm/retry',
       'llm/retry-started',
       'assistant/chunk',
@@ -2086,17 +2222,18 @@ describe('agent loop', () => {
       'request/header',
       'request/context',
       'user/message',
+      'assistant/attempt',
       'step/end',
       'turn/end',
     ])
-    expect(events[6]?.payload).toMatchObject({
+    expect(events.find(event => event.type === 'step/end')?.payload).toMatchObject({
       turn: 1,
       step: 0,
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },
     })
-    expect(events[7]?.payload).toMatchObject({
+    expect(events.find(event => event.type === 'turn/end')?.payload).toMatchObject({
       finishReason: 'error',
       interrupted: true,
       error: { name: 'Error', message: 'model exploded' },

@@ -77,6 +77,8 @@ export interface UserMessagePayload {
 
 export interface AssistantMessagePayload {
   content: string
+  /** Committed normalized stream for reconnect consumers; not model history. */
+  stream?: AssistantStreamRecord[]
   name?: string
   parentId?: string
   interrupted?: boolean
@@ -453,6 +455,14 @@ function isSessionEvent(value: unknown): value is SessionEvent {
     && typeof record.ts === 'number'
     && typeof record.type === 'string'
     && 'payload' in record
+}
+
+/** Replay committed streams in raw durable order, including shadowed messages. */
+export function assistantStreams(events: readonly SessionEvent[]): AssistantStreamRecord[][] {
+  return events.flatMap(event => {
+    if (event.type !== 'assistant/message' && event.type !== 'assistant/attempt') return []
+    return event.payload.stream === undefined ? [] : [clone(event.payload.stream)]
+  })
 }
 
 function clone<T>(value: T): T {

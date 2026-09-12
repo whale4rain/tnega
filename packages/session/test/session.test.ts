@@ -24,6 +24,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 import { Context } from '@tnega/core'
 import {
   SESSION_FORMAT_VERSION,
+  assistantStreams,
   checkSessionInvariants,
   estimateContextUsage,
   estimateEventTokens,
@@ -56,6 +57,42 @@ type DynamicContext = Context & {
 const dynamic = (ctx: Context): DynamicContext => ctx as unknown as DynamicContext
 
 const dirs: string[] = []
+
+it('replays copied committed assistant streams in durable order including shadowed messages', async () => {
+  const log = new SessionLog(await tempFile('reconnect-streams.jsonl'))
+  await log.init()
+  await log.append('turn/start', { turn: 1 })
+  await log.append('step/start', { turn: 1, step: 0 })
+  await log.append('assistant/chunk', { id: 'legacy', content: 'not replayed' })
+  await log.append('assistant/attempt', { turn: 1, step: 0, stream: [
+    { time: 10, chunk: { type: 'stream_error', error: { message: 'failed' } } },
+  ] })
+  const message = await log.append('assistant/message', { content: 'done', stream: [
+    { time: 9, chunk: { type: 'toolcall_end', id: 'call', index: 0, name: 'tool', arguments: { nested: ['original'] } } },
+  ] })
+  await log.append('assistant/message', { content: 'legacy message' })
+  await log.append('checkpoint', { messages: [{ role: 'system', content: 'summary' }],
+    surfaceOp: { op: 'replace', start: message.seq, end: message.seq } })
+  const events = await log.read()
+  const streams = assistantStreams(events)
+  expect(streams).toEqual([
+    [{ time: 10, chunk: { type: 'stream_error', error: { message: 'failed' } } }],
+    [{ time: 9, chunk: { type: 'toolcall_end', id: 'call', index: 0, name: 'tool', arguments: { nested: ['original'] } } }],
+  ])
+  const chunk = streams[1]?.[0]?.chunk
+  if (chunk?.type === 'toolcall_end') {
+    const args = chunk.arguments
+    if (typeof args === 'object' && args !== null && 'nested' in args && Array.isArray(args.nested)) {
+      args.nested[0] = 'mutated'
+    }
+  }
+  streams[0]?.splice(0)
+  expect(assistantStreams(events)).toEqual([
+    [{ time: 10, chunk: { type: 'stream_error', error: { message: 'failed' } } }],
+    [{ time: 9, chunk: { type: 'toolcall_end', id: 'call', index: 0, name: 'tool', arguments: { nested: ['original'] } } }],
+  ])
+  await log.close()
+})
 
 async function tempFile(name: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'tnega-session-'))

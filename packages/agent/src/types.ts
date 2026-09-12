@@ -1,4 +1,4 @@
-import type { CancelCause, ContextUsage, ModelMessage } from '@tnega/session'
+import type { AssistantStreamChunk, CancelCause, ContextUsage, ModelMessage } from '@tnega/session'
 import type { ToolDefinition, ToolResult } from '@tnega/tools'
 
 export type AgentCancelCause = CancelCause
@@ -266,8 +266,23 @@ export interface AgentRunEndEvent {
   run: AgentRunResult
 }
 
+/** Transient identity and ordering, scoped to the Agent service lifecycle. */
+export type AssistantStreamFrame = { attemptId: string; revision: number } & (
+  | { type: 'start'; turn: number; step: number }
+  | { type: 'chunk'; index: number; time: number; chunk: AssistantStreamChunk }
+  | { type: 'end'; index: number; outcome: {
+    kind: 'committed'; eventType: 'assistant/message' | 'assistant/attempt'; seq: number
+  } }
+)
+
+export interface AgentAssistantStreamEvent {
+  type: 'assistant/stream'
+  frame: AssistantStreamFrame
+}
+
 export type AgentStreamEvent =
   | LLMStreamEvent
+  | AgentAssistantStreamEvent
   | AgentToolStartEvent
   | AgentToolEndEvent
   | AgentRunEndEvent

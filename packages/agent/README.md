@@ -39,6 +39,26 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
 结果规范化为内部 stream；`request/header` 与 `request/context` 始终记录 waterfall 改写后的
 最终 messages、tools 与 route 配置。
 
+## 可重连的 assistant stream
+
+`runStream()` 在原有 LLM Stream Event 与工具事件之外发布
+`{ type: 'assistant/stream', frame }`。每次调用尝试有独立的临时 `attemptId`；
+`revision` 在同一个 `AgentService` 生命周期内严格递增，跨重试和 Agent Run
+不重置。`start` 先于 stream 消费，`chunk` 按接收顺序携带 `index/time/chunk`，
+`end.outcome` 只在 Session 提交后提供 `{ kind: 'committed', eventType, seq }`。
+客户端可用 `(attemptId, revision)` 去重；这些临时身份不会写入 Session。
+
+成功结果在 `assistant/message.stream` 保存 Session 定义的
+`AssistantStreamRecord[]`。失败、重试以及未提交消息的取消尝试写入唯一的
+`assistant/attempt`，并在 stream 末尾保存 `stream_error`。取消时已有的文本
+前缀仍按原行为提交为 interrupted `assistant/message`，同时携带 stream。
+`assistant/attempt` 不产生模型消息，重试输入仍由原有 durable surface 重建。
+
+重连后使用 `assistantStreams(await session.read())` 按 durable 事件顺序取回
+已提交消息和 attempt 的 stream 深拷贝，包括 compaction 遮蔽的旧消息；不读取
+legacy `assistant/chunk`，它只作为文本增量的兼容投影保留。
+`append()` 的提交指 Session 内存事实及广播完成；JSONL 落盘仍使用 `flush()`。
+
 ## 使用
 
 ```ts
