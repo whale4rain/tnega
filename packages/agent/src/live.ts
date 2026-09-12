@@ -315,10 +315,14 @@ class LiveAgentImpl implements LiveAgent {
   }
 
   private _mutatePending(task: () => Promise<void>, wakes = false): Promise<void> {
-    if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
+    if (this._disposed) return Promise.reject(new Error(`agent disposed: ${this.id}`))
     const result = this._writeTail.then(task)
     const recovered = result.catch((error: unknown) => {
-      this._ctx.emit('agent/error', { id: this.id, error })
+      try {
+        this._ctx.emit('agent/error', { id: this.id, error })
+      } catch {
+        // Observers must not poison the durable mutation queue.
+      }
     })
     this._writeTail = recovered
     this._pendingWrite = recovered

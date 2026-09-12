@@ -34,16 +34,17 @@ export class DurableInbox {
       ...(input.content !== undefined ? { content: input.content } : {}),
     }
     const list = target === 'next-step' ? this._nextStep : this._nextTurn
-    list.push(message)
+    const index = list.length
     await this._session.append('agent/inbox/spliced', {
       target,
-      index: list.length - 1,
+      index,
       inserted: [{
         id: message.id,
         content: contentOf(message),
         ...(payloadOf(message) !== undefined ? { payload: payloadOf(message) } : {}),
       }],
     })
+    list.push(message)
     return message
   }
 
@@ -53,7 +54,6 @@ export class DurableInbox {
       ...(input.text !== undefined ? { text: input.text } : {}),
       ...(input.content !== undefined ? { content: input.content } : {}),
     }
-    this._nextStep.unshift(message)
     await this._session.append('agent/inbox/spliced', {
       target: 'next-step',
       index: 0,
@@ -64,26 +64,29 @@ export class DurableInbox {
         mode: 'steer',
       }],
     })
+    this._nextStep.unshift(message)
     return message
   }
 
   async claim(): Promise<DurableInboxMessage | undefined> {
-    const steered = this._nextStep.shift()
+    const steered = this._nextStep[0]
     if (steered) {
       await this._session.append('agent/inbox/spliced', {
         target: 'next-step',
         index: 0,
         deleteCount: 1,
       })
+      this._nextStep.shift()
       return steered
     }
-    const next = this._nextTurn.shift()
+    const next = this._nextTurn[0]
     if (next) {
       await this._session.append('agent/inbox/spliced', {
         target: 'next-turn',
         index: 0,
         deleteCount: 1,
       })
+      this._nextTurn.shift()
       return next
     }
     return undefined
@@ -97,22 +100,24 @@ export class DurableInbox {
   async claimBatch(): Promise<DurableInboxMessage[]> {
     const claimed: DurableInboxMessage[] = []
     if (this._nextStep.length) {
-      const removed = this._nextStep.splice(0)
-      claimed.push(...removed)
+      const removed = [...this._nextStep]
       await this._session.append('agent/inbox/spliced', {
         target: 'next-step',
         index: 0,
         deleteCount: removed.length,
       })
+      this._nextStep.splice(0, removed.length)
+      claimed.push(...removed)
     }
-    const nextTurn = this._nextTurn.shift()
+    const nextTurn = this._nextTurn[0]
     if (nextTurn) {
-      claimed.push(nextTurn)
       await this._session.append('agent/inbox/spliced', {
         target: 'next-turn',
         index: 0,
         deleteCount: 1,
       })
+      this._nextTurn.shift()
+      claimed.push(nextTurn)
     }
     return claimed
   }
@@ -120,31 +125,32 @@ export class DurableInbox {
   /** Claim every input waiting for the next step, without consuming a turn. */
   async claimNextStep(): Promise<DurableInboxMessage[]> {
     if (!this._nextStep.length) return []
-    const claimed = this._nextStep.splice(0)
+    const claimed = [...this._nextStep]
     await this._session.append('agent/inbox/spliced', {
       target: 'next-step',
       index: 0,
       deleteCount: claimed.length,
     })
+    this._nextStep.splice(0, claimed.length)
     return claimed
   }
 
   async clear(): Promise<void> {
     if (this._nextTurn.length) {
-      this._nextTurn = []
       await this._session.append('agent/inbox/spliced', {
         target: 'next-turn',
         index: 0,
         deleteCount: Number.POSITIVE_INFINITY,
       })
+      this._nextTurn = []
     }
     if (this._nextStep.length) {
-      this._nextStep = []
       await this._session.append('agent/inbox/spliced', {
         target: 'next-step',
         index: 0,
         deleteCount: Number.POSITIVE_INFINITY,
       })
+      this._nextStep = []
     }
   }
 
@@ -162,7 +168,6 @@ export class DurableInbox {
     }
     const list = target === 'next-step' ? this._nextStep : this._nextTurn
     const safeIndex = Math.max(0, Math.min(index, list.length))
-    list.splice(safeIndex, 0, message)
     await this._session.append('agent/inbox/spliced', {
       target,
       index: safeIndex,
@@ -173,6 +178,7 @@ export class DurableInbox {
         mode,
       }],
     })
+    list.splice(safeIndex, 0, message)
     return message
   }
 
@@ -193,7 +199,6 @@ export class DurableInbox {
     }
     const target = entry.target
     const index = entry.index
-    entry.list.splice(index, 1, replacement)
     await this._session.append('agent/inbox/spliced', {
       target,
       index,
@@ -206,6 +211,7 @@ export class DurableInbox {
           : {}),
       }],
     })
+    entry.list.splice(index, 1, replacement)
     return replacement
   }
 
@@ -213,12 +219,12 @@ export class DurableInbox {
   async remove(messageId: string): Promise<DurableInboxMessage | undefined> {
     const entry = this._find(messageId)
     if (!entry) return undefined
-    entry.list.splice(entry.index, 1)
     await this._session.append('agent/inbox/spliced', {
       target: entry.target,
       index: entry.index,
       deleteCount: 1,
     })
+    entry.list.splice(entry.index, 1)
     return entry.message
   }
 

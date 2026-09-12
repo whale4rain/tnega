@@ -222,7 +222,7 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
-  it('rejects failed waking writes without waking and recovers later mutations', async () => {
+  it('rolls back failed followups and drains only later durable input', async () => {
     const root = await mountRoot()
     const errors: unknown[] = []
     const inserted: string[] = []
@@ -244,8 +244,44 @@ describe('live agent registry', () => {
     expect(errors).toEqual([persistenceFailure])
     expect(calls).toEqual([])
     expect(handle.agent.status).toBe('idle')
+    await expect(handle.agent.followup({ text: 'durable followup' })).resolves.toBeUndefined()
+    await handle.agent.whenIdle()
+    expect(calls).toEqual(['durable followup'])
+    expect(inserted).toEqual(['followup'])
+    await handle.dispose()
+  })
+
+  it('returns rejected promises for every inbox mutation after disposal', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('disposed-inbox-mutations.jsonl'))
+    await handle.dispose()
+
+    const mutations = [
+      () => handle.agent.followup({ text: 'followup' }),
+      () => handle.agent.steer({ text: 'steer' }),
+      () => handle.agent.inject({ text: 'inject' }),
+      () => handle.agent.send({ text: 'send' }),
+      () => handle.agent.replaceMessage('missing', { text: 'replacement' }),
+      () => handle.agent.removeMessage('missing'),
+    ]
+    for (const mutate of mutations) {
+      await expect(mutate()).rejects.toThrow(`agent disposed: ${handle.agent.id}`)
+    }
+  })
+
+  it('recovers the write tail when an agent error observer throws', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('throwing-error-observer.jsonl'))
+    const persistenceFailure = new Error('inbox append failed')
+    root.on('agent/error', () => {
+      throw new Error('observer failed')
+    })
+    vi.spyOn(handle.agent.session, 'append').mockRejectedValueOnce(persistenceFailure)
+
+    await expect(handle.agent.inject({ text: 'failed mutation' })).rejects.toThrow('inbox append failed')
     await expect(handle.agent.inject({ text: 'later staged context' })).resolves.toBeUndefined()
-    expect(inserted).toEqual(['inject'])
+    expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
+      .toEqual(['later staged context'])
     await handle.dispose()
   })
 
