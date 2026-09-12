@@ -14,6 +14,11 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
   从 durable 重建（model-visible ⟺ logged），live 事件只承载引用。
 - **inbox 边界**：`followup()` 留在下一 turn；`steer()` 与 `inject(input)` 都写入 durable
   `next-step` 队列。后者不会唤醒空闲 agent，二者在运行中都会在最近的 step 边界并入当前 turn。
+  `followup`、`steer`、`inject`、`send`、`replaceMessage` 与 `removeMessage` 都返回
+  `Promise<void>`：resolve 表示 splice 已 durable 且 live observation 已发出；reject 表示
+  持久化失败（同时仍会发布 `agent/error`）。写入失败不会阻塞后续 mutation，也不会唤醒 agent。
+  `agent/inbox/inserted.target` 对新消息是 API intent（`followup`、`steer` 或 `inject`）；
+  replacement 则保留原消息的 durable target（`next-turn` 或 `next-step`）。
 
 ## 三层组件
 
@@ -80,7 +85,7 @@ const handle = await root.get('agents').create({
   sessionId: '<id>',
   llm: adapter,
 })
-handle.agent.followup({ text: 'do the thing' })
+await handle.agent.followup({ text: 'do the thing' })
 await handle.agent.whenIdle()
 await handle.dispose()
 ```

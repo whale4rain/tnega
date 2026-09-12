@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Context } from '@tnega/core'
 import { SessionLog, type ModelMessage } from '@tnega/session'
@@ -13,6 +13,7 @@ import {
   LlmService,
   SystemPromptService,
   type DurableInboxMessage,
+  type AgentInboxInsertedEvent,
   type AgentRegistry,
   type LiveAgent,
   type LLMAdapter,
@@ -199,6 +200,53 @@ describe('live agent registry', () => {
     expect(calls).toEqual(['blocked', 'replaced'])
     expect(events.some(event => event === 'discarded')).toBe(true)
     expect(events.some(event => event === 'inserted')).toBe(true)
+  })
+
+  it('reports inject intent and preserves a replacement next-step target', async () => {
+    const root = await mountRoot()
+    const inserted: Array<Pick<AgentInboxInsertedEvent, 'target' | 'input'>> = []
+    root.on('agent/inbox/inserted', (payload: Pick<AgentInboxInsertedEvent, 'target' | 'input'>) => {
+      inserted.push(payload)
+    })
+    const handle = await createHandle(root, await tempFile('replace-next-step.jsonl'))
+
+    await handle.agent.inject({ text: 'staged context' })
+    const pending = handle.agent.inbox.snapshot().nextStep[0]
+    expect(pending).toBeDefined()
+    await handle.agent.replaceMessage(pending!.id, { text: 'updated context' })
+
+    expect(inserted.map(event => ({ target: event.target, text: event.input.text }))).toEqual([
+      { target: 'inject', text: 'staged context' },
+      { target: 'next-step', text: 'updated context' },
+    ])
+    await handle.dispose()
+  })
+
+  it('rejects failed waking writes without waking and recovers later mutations', async () => {
+    const root = await mountRoot()
+    const errors: unknown[] = []
+    const inserted: string[] = []
+    const calls: string[] = []
+    root.on('agent/error', (payload: { error: unknown }) => errors.push(payload.error))
+    root.on('agent/inbox/inserted', (payload: { target: string }) => inserted.push(payload.target))
+    const handle = await createHandle(root, await tempFile('failed-inbox-write.jsonl'), {
+      async complete(messages) {
+        calls.push(messages.at(-1)?.content ?? '')
+        return { content: 'done', finishReason: 'stop' }
+      },
+    })
+    const persistenceFailure = new Error('inbox append failed')
+    vi.spyOn(handle.agent.session, 'append').mockRejectedValueOnce(persistenceFailure)
+
+    await expect(handle.agent.followup({ text: 'not durable' })).rejects.toThrow('inbox append failed')
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(errors).toEqual([persistenceFailure])
+    expect(calls).toEqual([])
+    expect(handle.agent.status).toBe('idle')
+    await expect(handle.agent.inject({ text: 'later staged context' })).resolves.toBeUndefined()
+    expect(inserted).toEqual(['inject'])
+    await handle.dispose()
   })
 
   it('claims steering and followup inputs in one step batch', async () => {

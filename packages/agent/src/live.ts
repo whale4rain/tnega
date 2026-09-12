@@ -4,7 +4,11 @@ import { SessionLog, type SessionEvent } from '@tnega/session'
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
-import { DurableInbox, type DurableInboxMessage } from './inbox-durable.js'
+import {
+  DurableInbox,
+  type DurableInboxMessage,
+  type DurableTarget,
+} from './inbox-durable.js'
 import type {
   AgentCancelCause,
   AgentContextBudget,
@@ -46,6 +50,24 @@ export interface AgentCancelOptions {
   keepInbox?: boolean
 }
 
+/** Public API intent for a newly inserted inbox message. */
+export type AgentInboxInsertionIntent = 'followup' | 'steer' | 'inject'
+
+/** Target carried by an inbox insertion observation. */
+export type AgentInboxInsertedTarget = AgentInboxInsertionIntent | DurableTarget
+
+export interface AgentInboxInsertedEvent {
+  id: string
+  agent: LiveAgent
+  /**
+   * New messages report their public API intent. Replacements report the
+   * durable queue target that contained the replaced message.
+   */
+  target: AgentInboxInsertedTarget
+  input: DurableInboxMessage
+  inboxSeq: number
+}
+
 export interface LiveAgent {
   readonly id: string
   readonly meta: AgentSessionMeta
@@ -59,13 +81,13 @@ export interface LiveAgent {
   readonly ctx: Context
   /** The scoped context setup composes before publication. */
   readonly agentCtx: Context
-  followup(input: AgentInput): void
-  steer(input: AgentInput): void
-  replaceMessage(messageId: string, input: AgentInput): void
-  removeMessage(messageId: string): void
+  followup(input: AgentInput): Promise<void>
+  steer(input: AgentInput): Promise<void>
+  replaceMessage(messageId: string, input: AgentInput): Promise<void>
+  removeMessage(messageId: string): Promise<void>
   /** Durably stage model-visible input for the next step without waking idle work. */
-  inject(input: AgentInput): void
-  send(input: AgentInput, options?: { mode?: 'followup' | 'steer' }): void
+  inject(input: AgentInput): Promise<void>
+  send(input: AgentInput, options?: { mode?: 'followup' | 'steer' }): Promise<void>
   cancel(cause: AgentCancelCause, options?: AgentCancelOptions): void
   whenIdle(): Promise<void>
   /**
@@ -207,15 +229,16 @@ class LiveAgentImpl implements LiveAgent {
     return this._ctx
   }
 
-  followup(input: AgentInput): void {
-    this._send(input, 'followup')
+  followup(input: AgentInput): Promise<void> {
+    return this._send(input, 'followup')
   }
 
   /** Replace one pending inbox message by durable message id. */
-  replaceMessage(messageId: string, input: AgentInput): void {
-    this._mutatePending(async () => {
+  replaceMessage(messageId: string, input: AgentInput): Promise<void> {
+    return this._mutatePending(async () => {
       const previous = this._durable.get(messageId)
-      if (!previous) return
+      const target = this._findTarget(messageId)
+      if (!previous || !target) return
       const replacement = await this._durable.replace(messageId, {
         text: input.text ?? '',
         ...(input.messages !== undefined || input.context !== undefined
@@ -228,19 +251,20 @@ class LiveAgentImpl implements LiveAgent {
         agent: this,
         message: previous,
       })
-      this._ctx.emit('agent/inbox/inserted', {
+      const event: AgentInboxInsertedEvent = {
         id: this.id,
         agent: this,
-        target: this._findTarget(messageId) ?? 'next-turn',
+        target,
         input: replacement,
         inboxSeq: this._durable.size,
-      })
+      }
+      this._ctx.emit('agent/inbox/inserted', event)
     })
   }
 
   /** Remove one pending inbox message by durable message id. */
-  removeMessage(messageId: string): void {
-    this._mutatePending(async () => {
+  removeMessage(messageId: string): Promise<void> {
+    return this._mutatePending(async () => {
       const removed = await this._durable.remove(messageId)
       if (!removed) return
       this._ctx.emit('agent/inbox/discarded', {
@@ -251,24 +275,26 @@ class LiveAgentImpl implements LiveAgent {
     })
   }
 
-  steer(input: AgentInput): void {
-    this._send(input, 'steer')
+  steer(input: AgentInput): Promise<void> {
+    return this._send(input, 'steer')
   }
 
-  inject(input: AgentInput): void {
-    this._send(input, 'inject')
+  inject(input: AgentInput): Promise<void> {
+    return this._send(input, 'inject')
   }
 
-  send(input: AgentInput, options: { mode?: 'followup' | 'steer' } = {}): void {
-    this._send(input, options.mode === 'steer' ? 'steer' : 'followup')
+  send(input: AgentInput, options: { mode?: 'followup' | 'steer' } = {}): Promise<void> {
+    return this._send(input, options.mode === 'steer' ? 'steer' : 'followup')
   }
 
-  private _send(input: AgentInput, target: 'followup' | 'steer' | 'inject'): void {
-    if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
+  private _send(
+    input: AgentInput,
+    target: AgentInboxInsertionIntent,
+  ): Promise<void> {
     const text = input.text ?? ''
     const content = input.messages ?? input.context
     const steeredAfterAbort = target === 'steer' && this._controller?.signal.aborted === true
-    const task = this._writeTail.then(async () => {
+    return this._mutatePending(async () => {
       const message = target === 'followup'
         ? await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
         : target === 'steer'
@@ -277,33 +303,35 @@ class LiveAgentImpl implements LiveAgent {
           : await this._durable.steer({ text, ...(content !== undefined ? { content } : {}) })
         : await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) }, 'next-step')
       if (target !== 'inject') this._wakeReserved = true
-      this._ctx.emit('agent/inbox/inserted', {
+      const event: AgentInboxInsertedEvent = {
         id: this.id,
-        target: target === 'followup' ? 'followup' : 'steer',
+        agent: this,
+        target,
         input: message,
         inboxSeq: this._durable.size,
-      })
-    }).catch((error: unknown) => {
-      this._ctx.emit('agent/error', { id: this.id, error })
-    })
-    this._writeTail = task
-    this._pendingWrite = task
-    task.finally(() => {
-      if (this._pendingWrite === task) this._pendingWrite = undefined
-      if (target !== 'inject') queueMicrotask(() => this._wake())
-    })
+      }
+      this._ctx.emit('agent/inbox/inserted', event)
+    }, target !== 'inject')
   }
 
-  private _mutatePending(task: () => Promise<void>): void {
+  private _mutatePending(task: () => Promise<void>, wakes = false): Promise<void> {
     if (this._disposed) throw new Error(`agent disposed: ${this.id}`)
-    const chained = this._writeTail.then(task).catch((error: unknown) => {
+    const result = this._writeTail.then(task)
+    const recovered = result.catch((error: unknown) => {
       this._ctx.emit('agent/error', { id: this.id, error })
     })
-    this._writeTail = chained
-    this._pendingWrite = chained
-    chained.finally(() => {
-      if (this._pendingWrite === chained) this._pendingWrite = undefined
-    })
+    this._writeTail = recovered
+    this._pendingWrite = recovered
+    void result.then(
+      () => {
+        if (this._pendingWrite === recovered) this._pendingWrite = undefined
+        if (wakes) queueMicrotask(() => this._wake())
+      },
+      () => {
+        if (this._pendingWrite === recovered) this._pendingWrite = undefined
+      },
+    )
+    return result
   }
 
   private _findTarget(messageId: string): 'next-turn' | 'next-step' | undefined {
