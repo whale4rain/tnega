@@ -470,11 +470,13 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
-  it('keeps injected input pending when a tool concludes the turn', async () => {
+  it('consumes injected input after a concluding tool in the same turn', async () => {
     const root = await mountRoot()
+    const requests: string[][] = []
     let calls = 0
     const llm: LLMAdapter = {
-      async complete() {
+      async complete(messages) {
+        requests.push(messages.map(message => message.content))
         calls += 1
         return calls === 1
           ? {
@@ -491,19 +493,20 @@ describe('live agent registry', () => {
       schema: { name: 'finish_tool', description: 'concludes after injecting' },
       metadata: { concludesTurn: true },
       execute: () => {
-        handle.agent.inject({ text: 'preserve this' })
+        handle.agent.inject({ text: 'same turn' })
         return 'finished'
       },
     })
 
     handle.agent.followup({ text: 'go' })
     await handle.agent.whenIdle()
-    expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
-      .toEqual(['preserve this'])
-
-    handle.agent.followup({ text: 'continue' })
-    await handle.agent.whenIdle()
     expect(calls).toBe(2)
+    expect(requests).toEqual([
+      ['go'],
+      ['go', '', 'finished', 'same turn'],
+    ])
+    expect((await handle.agent.session.read()).filter(event => event.type === 'turn/start'))
+      .toHaveLength(1)
     await handle.dispose()
   })
 

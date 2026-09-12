@@ -708,11 +708,11 @@ export class AgentService {
 
       const nextMessages = this._extendMessages(llmMessages, completion, toolResults)
       const concludesTurn = toolResults.some(result => result.concludesTurn === true)
-      if (concludesTurn) {
+      let nextStepMessages = await this._claimNextStepMessages()
+      if (concludesTurn && nextStepMessages.length === 0) {
         finishReason = 'stop'
         break
       }
-      let nextStepMessages = await this._claimNextStepMessages()
       if (toolCalls.length === 0 && nextStepMessages.length === 0) {
         finishReason = completion.finishReason === 'length'
           ? 'length'
