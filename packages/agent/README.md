@@ -40,6 +40,10 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
 - `agent/turn-stopping` — serial：依序问"要停吗"，首个 bail 出"不停"就继续
 - inbox 系列：`agent/inbox/inserted` / `claimed` / `discarded` / `spliced`
 
+`agent/pre-step` 与 `agent/request` 使用异步 waterfall：监听器可以先 `await` 再改写
+payload 并调用 `next()`；同步监听器的行为不变。driver 会等待 pre-step 完成后才写入
+`step/start`，并等待 request 完成后才持久化最终请求信封或调用 adapter。
+
 `run()` 和 `runStream()` 都会经过 `llm/stream`。适配器只有 `complete()` 时，driver 会把
 结果规范化为内部 stream；`request/header` 与 `request/context` 始终记录 waterfall 改写后的
 最终 messages、tools 与 route 配置。

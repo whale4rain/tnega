@@ -1915,6 +1915,38 @@ describe('agent loop', () => {
     ])
   })
 
+  it('awaits agent/pre-step rewrites before admitting and persisting the step input', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('async-pre-step.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+
+    root.on('agent/pre-step', async (payload: AgentPreStepEvent, next) => {
+      await Promise.resolve()
+      payload.messages = [
+        { role: 'system', content: 'async system' },
+        { role: 'user', content: 'async admitted' },
+      ]
+      return next()
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'original' })
+
+    expect(calls[0]!.messages).toEqual([
+      { role: 'system', content: 'async system' },
+      { role: 'user', content: 'async admitted' },
+    ])
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toEqual({ reason: 'initial', system: 'async system' })
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'system', content: 'async system' },
+      { role: 'user', content: 'async admitted' },
+      { role: 'assistant', content: 'ok' },
+    ])
+  })
+
   it('starts a request series from pre-step', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('pre-step-series.jsonl') })
@@ -1976,6 +2008,59 @@ describe('agent loop', () => {
       { role: 'user', content: 'wrapped' },
       { role: 'assistant', content: 'ok' },
     ])
+  })
+
+  it('awaits agent/request route, tool and option rewrites before dispatch and persistence', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('async-request.jsonl') })
+    await root.plugin(tools)
+    const registered = addTool()
+    ;(dynamic(root).tools as ToolsService).register(registered)
+    const received: Array<{
+      messages: readonly ModelMessage[]
+      tools: readonly ToolDefinition[]
+      options: { provider?: string; model?: string; temperature?: number }
+    }> = []
+    const adapter: LLMAdapter = {
+      async complete(messages, availableTools, options) {
+        received.push({ messages, tools: availableTools, options })
+        return { content: 'ok', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    root.on('agent/request', async (payload: AgentRequestEvent, next) => {
+      await Promise.resolve()
+      payload.tools = [registered]
+      payload.options = {
+        ...payload.options,
+        provider: 'async-provider',
+        model: 'async-model',
+        temperature: 0.75,
+      }
+      return next()
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'original' })
+
+    expect(received).toEqual([{
+      messages: [{ role: 'user', content: 'original' }],
+      tools: [registered],
+      options: {
+        maxSteps: 64,
+        provider: 'async-provider',
+        model: 'async-model',
+        temperature: 0.75,
+      },
+    }])
+    const log = dynamic(root).session as SessionLog
+    expect(log.requestHeader()).toEqual({
+      reason: 'initial',
+      tools: [{ name: 'add', description: 'add two numbers' }],
+      config: { provider: 'async-provider', model: 'async-model', temperature: 0.75 },
+    })
+    expect(log.requestContext()).toEqual({ provider: 'async-provider', model: 'async-model' })
   })
 
   it('lets agent/turn-stopping keep the turn alive', async () => {

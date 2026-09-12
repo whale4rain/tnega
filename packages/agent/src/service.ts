@@ -494,7 +494,7 @@ export class AgentService {
       }
 
       const stepInput = copyMessages(messages)
-      const preStep = this.ctx.waterfall('agent/pre-step', {
+      const preStep = await this.ctx.waterfallAsync('agent/pre-step', {
         index,
         turn,
         step: index,
@@ -545,7 +545,7 @@ export class AgentService {
           options: { ...completeOptions },
         }
         try {
-          const request = this.ctx.waterfall('agent/request', {
+          const request = await this.ctx.waterfallAsync('agent/request', {
             index,
             messages: copyMessages(requestedInput),
             tools: streamRequest.tools,
