@@ -98,3 +98,10 @@ provider/model/contextWindow。它们都是 log-only 事件（不产生 LLM 消�
 
 `forkAt()` / `lineage()` 基于事件 id 与 `parentId` 构造可复用的 fork 前缀，
 不依赖全量 raw 顺序。
+
+`new SessionLog(file, broadcast?, publicationContext?)` 可指定 live 通知的发布
+Context；未提供自定义 `broadcast` 时，`session/event` 与 `session/flush`
+经该 Context 分发。显式 `broadcast` 优先，既有独立构造与 Session 插件的默认
+广播行为不变。Live Agent 在 Session 初始化前建立 runtime scope，使初始化
+元数据及后续通知都隔离于兄弟 Agent，同时根监听器仍可观察所有 Agent。
+该作用域只控制通知分发，不改变事件顺序、JSONL 写入、回放或文件级 Session 所有权。

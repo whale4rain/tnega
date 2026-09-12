@@ -1064,6 +1064,26 @@ describe('session plugin', () => {
 
     expect(broadcasts).toEqual(['event:user/message', 'flush:flush'])
   })
+
+  it('keeps custom broadcast precedence when a publication Context is provided', async () => {
+    const root = new Context()
+    const contextEvents: unknown[] = []
+    const broadcasts: string[] = []
+    root.on('session/event', (event: SessionEvent) => { contextEvents.push(event) })
+    root.on('session/flush', (payload: unknown) => { contextEvents.push(payload) })
+    const log = new SessionLog(await tempFile('broadcast-owner-override.jsonl'), type => {
+      broadcasts.push(type)
+    }, root)
+    try {
+      await log.append('user/message', { content: 'custom publication' })
+      await log.flush()
+
+      expect(broadcasts).toEqual(['event', 'flush'])
+      expect(contextEvents).toEqual([])
+    } finally {
+      await log.close()
+    }
+  })
 })
 
 describe('projectEvents', () => {

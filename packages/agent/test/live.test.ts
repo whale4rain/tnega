@@ -1,10 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Context } from '@tnega/core'
-import { SessionLog, type ModelMessage } from '@tnega/session'
+import { SessionLog, type ModelMessage, type SessionEvent } from '@tnega/session'
 import { tools, ToolsService } from '@tnega/tools'
 
 import {
@@ -1049,6 +1049,67 @@ describe('live agent registry', () => {
     await Promise.all([watcher.dispose(), runner.dispose()])
   })
 
+  it('scopes session events and flush notifications while root observes both agents', async () => {
+    const root = await mountRoot()
+    const rootEvents: SessionEvent[] = []
+    const scopedEvents: SessionEvent[] = []
+    const nestedEvents: SessionEvent[] = []
+    const rootFlushes: string[] = []
+    const scopedFlushes: string[] = []
+    root.on('session/event', (event: SessionEvent) => { rootEvents.push(event) })
+    root.on('session/flush', (payload: { file: string }) => { rootFlushes.push(payload.file) })
+    const registry = dynamic(root).agents as AgentRegistry
+    const watcher = await registry.create({
+      id: 'session-watcher',
+      file: await tempFile('session-watcher.jsonl'),
+      llm: fakeLLM([{ content: 'watcher reply', finishReason: 'stop' }]),
+      setup: async agentCtx => {
+        agentCtx.on('session/event', (event: SessionEvent) => { scopedEvents.push(event) })
+        agentCtx.on('session/flush', (payload: { file: string }) => { scopedFlushes.push(payload.file) })
+        await agentCtx.plugin(pluginCtx => {
+          pluginCtx.on('session/event', (event: SessionEvent) => { nestedEvents.push(event) })
+        })
+      },
+    })
+    const initialEvents = await watcher.agent.session.read()
+    const sibling = await registry.create({
+      id: 'session-sibling',
+      file: await tempFile('session-sibling.jsonl'),
+      llm: fakeLLM([{ content: 'sibling reply', finishReason: 'stop' }]),
+    })
+    try {
+      await watcher.agent.followup({ text: 'watcher input' })
+      await watcher.agent.whenIdle()
+      await sibling.agent.followup({ text: 'sibling input' })
+      await sibling.agent.whenIdle()
+
+      const watcherEvents = await watcher.agent.session.read()
+      const siblingEvents = await sibling.agent.session.read()
+      expect(scopedEvents).toEqual(watcherEvents.slice(initialEvents.length))
+      expect(nestedEvents).toEqual(scopedEvents)
+      expect(scopedEvents.some(event => event.type === 'assistant/message')).toBe(true)
+      expect(rootEvents.map(event => event.id).sort()).toEqual(
+        [...watcherEvents.slice(1), ...siblingEvents.slice(1)].map(event => event.id).sort(),
+      )
+
+      rootFlushes.length = 0
+      scopedFlushes.length = 0
+      await watcher.agent.session.flush()
+      await sibling.agent.session.flush()
+      expect(scopedFlushes).toEqual([watcher.agent.session.file])
+      expect(rootFlushes).toEqual([watcher.agent.session.file, sibling.agent.session.file])
+      for (const [log, events] of [
+        [watcher.agent.session, watcherEvents],
+        [sibling.agent.session, siblingEvents],
+      ] as const) {
+        const lines = (await readFile(log.file, 'utf8')).trim().split('\n')
+        expect(lines.map(line => JSON.parse(line))).toEqual(events)
+      }
+    } finally {
+      await Promise.all([watcher.dispose(), sibling.dispose()])
+    }
+  })
+
   it('composes shared and nested setup plugin middleware without sibling leakage', async () => {
     const root = await mountRoot()
     const rootPrompt = new SystemPromptService(root)
@@ -1223,6 +1284,20 @@ describe('live agent registry', () => {
     } finally {
       await Promise.all([scoped.dispose(), sibling.dispose()])
     }
+  })
+
+  it('releases the agent scope when Session initialization fails', async () => {
+    const root = await mountRoot()
+    const registry = dynamic(root).agents as AgentRegistry
+    const pluginsBefore = root.registry.size
+    const file = await tempFile('invalid-session.jsonl')
+    await writeFile(file, '{}\n', 'utf8')
+
+    await expect(registry.create({ id: 'invalid-session', file })).rejects.toThrow('formatVersion')
+
+    expect(registry.list()).toEqual([])
+    expect(root.registry.size).toBe(pluginsBefore)
+    expect(await readFile(file, 'utf8')).toBe('{}\n')
   })
 
   it('rolls back a failed setup without registering the agent', async () => {

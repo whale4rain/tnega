@@ -687,70 +687,6 @@ async function buildHandle(
   }
   const agentId = fileMeta?.agentId ?? requestedId
   if (!agentId) throw new AgentError('agent requires a stable identity')
-  const log = new SessionLog(
-    options.file,
-    (type, payload) => {
-      if (type === 'event') ctx.emit('session/event', payload)
-      else ctx.emit('session/flush', payload)
-    },
-  )
-  await log.init()
-  const fileEvents = await log.read()
-  const durableMeta = readDurableAgentMeta(fileEvents)
-  if (durableMeta) {
-    if (durableMeta.agentId !== agentId) {
-      throw new AgentError(
-        `agent id mismatch: session belongs to ${durableMeta.agentId}, requested ${agentId}`,
-      )
-    }
-    if (options.agentType && durableMeta.agentType !== options.agentType) {
-      throw new AgentError(
-        `agent type mismatch: session is ${durableMeta.agentType ?? 'untyped'}, requested ${options.agentType}`,
-      )
-    }
-    if (options.mode && durableMeta.mode !== options.mode) {
-      throw new AgentError(
-        `agent mode mismatch: session is ${durableMeta.mode ?? 'unset'}, requested ${options.mode}`,
-      )
-    }
-  }
-  const boundMeta: AgentSessionMeta = {
-    ...fileMeta,
-    ...(durableMeta ?? {}),
-    ...(options.title ? { title: options.title } : {}),
-    ...(options.owner ? { owner: options.owner } : {}),
-    ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
-    ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
-    agentId,
-  }
-  const resolvedAgentType = options.agentType ?? durableMeta?.agentType
-  if (resolvedAgentType) boundMeta.agentType = resolvedAgentType
-  const resolvedMode = options.mode ?? durableMeta?.mode
-  if (resolvedMode) boundMeta.mode = resolvedMode
-  if (!durableMeta) {
-    await log.append('meta', {
-      kind: 'agent',
-      agentId,
-      ...(boundMeta.agentType ? { agentType: boundMeta.agentType } : {}),
-      ...(boundMeta.mode ? { mode: boundMeta.mode } : {}),
-      ...(boundMeta.title ? { title: boundMeta.title } : {}),
-      ...(boundMeta.owner ? { owner: boundMeta.owner } : {}),
-      ...(boundMeta.parentSessionId ? { parentSessionId: boundMeta.parentSessionId } : {}),
-      ...(boundMeta.forkedAtMessageId ? { forkedAtMessageId: boundMeta.forkedAtMessageId } : {}),
-      ...(boundMeta.createdAt !== undefined ? { createdAt: boundMeta.createdAt } : {}),
-    })
-  }
-  const durable = resume
-    ? await DurableInbox.restore(log)
-    : new DurableInbox(log)
-  const restoredWakeReservation = resume && hasRestoredWakeReservation(fileEvents)
-  const injected = new AgentInbox()
-  const inboxView: LiveInboxView = {
-    get size() {
-      return durable.size
-    },
-    snapshot: () => durable.snapshot(),
-  }
   let agentCtx!: Context
   const agentScope = await ctx.inject([], (scopeCtx: Context) => {
     agentCtx = scopeCtx
@@ -762,58 +698,121 @@ async function buildHandle(
   })
   await agentScope
   const runtimeCtx = createAgentRuntimeContext(agentCtx)
-  let claimNextStep: () => Promise<readonly AgentInput[]> = async () => []
-  const service = new AgentService(runtimeCtx, {
-    session: log,
-    inbox: injected,
-    ...(options.llm ? { llm: options.llm } : {}),
-    ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
-    ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
-    ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
-    ...(options.hooks ? { hooks: options.hooks } : {}),
-    claimNextStep: () => claimNextStep(),
-  })
-  if (options.system) injected.inject('agentSystem', options.system)
-  const agent = new LiveAgentImpl(
-    runtimeCtx,
-    agentCtx,
-    service,
-    agentId,
-    inboxView,
-    log,
-    durable,
-    boundMeta,
-    options.manualStreaming === true,
-    restoredWakeReservation,
-  )
-  claimNextStep = () => agent.claimNextStepInputs()
-  agent.trackSetupDispose(() => agentScope.dispose())
-  let setupResult: AgentSetupCommit | void
+  const log = new SessionLog(options.file, undefined, runtimeCtx)
   try {
-    setupResult = await options.setup?.(agentCtx)
-    for (const name of ['llm', 'systemPrompt']) {
-      if (agentCtx.reflect.get(name, false) !== undefined) continue
-      const inherited = ctx.reflect.get(name, false)
-      if (inherited !== undefined) agentCtx.provide(name, inherited)
+    await log.init()
+    const fileEvents = await log.read()
+    const durableMeta = readDurableAgentMeta(fileEvents)
+    if (durableMeta) {
+      if (durableMeta.agentId !== agentId) {
+        throw new AgentError(
+          `agent id mismatch: session belongs to ${durableMeta.agentId}, requested ${agentId}`,
+        )
+      }
+      if (options.agentType && durableMeta.agentType !== options.agentType) {
+        throw new AgentError(
+          `agent type mismatch: session is ${durableMeta.agentType ?? 'untyped'}, requested ${options.agentType}`,
+        )
+      }
+      if (options.mode && durableMeta.mode !== options.mode) {
+        throw new AgentError(
+          `agent mode mismatch: session is ${durableMeta.mode ?? 'unset'}, requested ${options.mode}`,
+        )
+      }
     }
-    setupResult?.commit()
+    const boundMeta: AgentSessionMeta = {
+      ...fileMeta,
+      ...(durableMeta ?? {}),
+      ...(options.title ? { title: options.title } : {}),
+      ...(options.owner ? { owner: options.owner } : {}),
+      ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+      ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
+      agentId,
+    }
+    const resolvedAgentType = options.agentType ?? durableMeta?.agentType
+    if (resolvedAgentType) boundMeta.agentType = resolvedAgentType
+    const resolvedMode = options.mode ?? durableMeta?.mode
+    if (resolvedMode) boundMeta.mode = resolvedMode
+    if (!durableMeta) {
+      await log.append('meta', {
+        kind: 'agent',
+        agentId,
+        ...(boundMeta.agentType ? { agentType: boundMeta.agentType } : {}),
+        ...(boundMeta.mode ? { mode: boundMeta.mode } : {}),
+        ...(boundMeta.title ? { title: boundMeta.title } : {}),
+        ...(boundMeta.owner ? { owner: boundMeta.owner } : {}),
+        ...(boundMeta.parentSessionId ? { parentSessionId: boundMeta.parentSessionId } : {}),
+        ...(boundMeta.forkedAtMessageId ? { forkedAtMessageId: boundMeta.forkedAtMessageId } : {}),
+        ...(boundMeta.createdAt !== undefined ? { createdAt: boundMeta.createdAt } : {}),
+      })
+    }
+    const durable = resume
+      ? await DurableInbox.restore(log)
+      : new DurableInbox(log)
+    const restoredWakeReservation = resume && hasRestoredWakeReservation(fileEvents)
+    const injected = new AgentInbox()
+    const inboxView: LiveInboxView = {
+      get size() {
+        return durable.size
+      },
+      snapshot: () => durable.snapshot(),
+    }
+    let claimNextStep: () => Promise<readonly AgentInput[]> = async () => []
+    const service = new AgentService(runtimeCtx, {
+      session: log,
+      inbox: injected,
+      ...(options.llm ? { llm: options.llm } : {}),
+      ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
+      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+      ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
+      ...(options.hooks ? { hooks: options.hooks } : {}),
+      claimNextStep: () => claimNextStep(),
+    })
+    if (options.system) injected.inject('agentSystem', options.system)
+    const agent = new LiveAgentImpl(
+      runtimeCtx,
+      agentCtx,
+      service,
+      agentId,
+      inboxView,
+      log,
+      durable,
+      boundMeta,
+      options.manualStreaming === true,
+      restoredWakeReservation,
+    )
+    claimNextStep = () => agent.claimNextStepInputs()
+    agent.trackSetupDispose(() => agentScope.dispose())
+    let setupResult: AgentSetupCommit | void
+    try {
+      setupResult = await options.setup?.(agentCtx)
+      for (const name of ['llm', 'systemPrompt']) {
+        if (agentCtx.reflect.get(name, false) !== undefined) continue
+        const inherited = ctx.reflect.get(name, false)
+        if (inherited !== undefined) agentCtx.provide(name, inherited)
+      }
+      setupResult?.commit()
+    } catch (error) {
+      await agent.dispose().catch(() => undefined)
+      await log.close().catch(() => undefined)
+      throw error
+    }
+    await agent.publishSessionStart(resume ? 'resume' : 'startup')
+    for (const input of options.initial ?? []) {
+      if (!resume) await durable.insert({ text: input.text ?? '' })
+    }
+    if (
+      resume
+      && (durable.snapshot().nextTurn.length || restoredWakeReservation)
+      && options.manualStreaming !== true
+    ) {
+      setTimeout(() => agent.wakeNow(), 0)
+    }
+    return { agent, dispose: () => agent.dispose() }
   } catch (error) {
-    await agent.dispose().catch(() => undefined)
-    await log.close().catch(() => undefined)
+    await Promise.resolve().then(() => agentScope.dispose()).catch(() => undefined)
     throw error
   }
-  await agent.publishSessionStart(resume ? 'resume' : 'startup')
-  for (const input of options.initial ?? []) {
-    if (!resume) await durable.insert({ text: input.text ?? '' })
-  }
-  if (
-    resume
-    && (durable.snapshot().nextTurn.length || restoredWakeReservation)
-    && options.manualStreaming !== true
-  ) {
-    setTimeout(() => agent.wakeNow(), 0)
-  }
-  return { agent, dispose: () => agent.dispose() }
 }
 
 function hasRestoredWakeReservation(events: readonly SessionEvent[]): boolean {

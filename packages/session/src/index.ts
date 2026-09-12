@@ -1039,7 +1039,15 @@ export class SessionLog {
   constructor(
     readonly file: string,
     private _broadcast?: SessionBroadcast,
-  ) {}
+    publicationContext?: Context,
+  ) {
+    if (!this._broadcast && publicationContext) {
+      this._broadcast = (type, payload) => {
+        if (type === 'event') publicationContext.emit('session/event', payload)
+        else publicationContext.emit('session/flush', payload)
+      }
+    }
+  }
 
   init(): Promise<void> {
     return this._run(async () => {
