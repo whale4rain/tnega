@@ -314,8 +314,14 @@ class LiveAgentImpl implements LiveAgent {
     }, target !== 'inject')
   }
 
-  private _mutatePending(task: () => Promise<void>, wakes = false): Promise<void> {
-    if (this._disposed) return Promise.reject(new Error(`agent disposed: ${this.id}`))
+  private _mutatePending(
+    task: () => Promise<void>,
+    wakes = false,
+    allowDisposed = false,
+  ): Promise<void> {
+    if (this._disposed && !allowDisposed) {
+      return Promise.reject(new Error(`agent disposed: ${this.id}`))
+    }
     const result = this._writeTail.then(task)
     const recovered = result.catch((error: unknown) => {
       try {
@@ -347,21 +353,14 @@ class LiveAgentImpl implements LiveAgent {
 
   cancel(cause: AgentCancelCause, options: AgentCancelOptions = {}): void {
     if (!options.keepInbox) {
-      const task = this._writeTail.then(async () => {
+      void this._mutatePending(async () => {
         const before = this._durable.snapshot()
+        await this._durable.clear()
         for (const message of [...before.nextStep, ...before.nextTurn]) {
           this._ctx.emit('agent/inbox/discarded', { id: this.id, message })
         }
-        await this._durable.clear()
         this._wakeReserved = false
-      }).catch((error: unknown) => {
-        this._ctx.emit('agent/error', { id: this.id, error })
-      })
-      this._writeTail = task
-      this._pendingWrite = task
-      task.finally(() => {
-        if (this._pendingWrite === task) this._pendingWrite = undefined
-      })
+      }, false, true)
     }
     this._controller?.abort(cause)
     this._maintenance?.controller.abort(cause)

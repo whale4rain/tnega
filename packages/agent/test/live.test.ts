@@ -285,6 +285,52 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
+  it('emits cancellation discards after the durable inbox is clear', async () => {
+    const root = await mountRoot()
+    const discarded: string[] = []
+    const handle = await createHandle(root, await tempFile('cancel-discard-order.jsonl'))
+    root.on('agent/inbox/discarded', (payload: { message: DurableInboxMessage }) => {
+      discarded.push(`${payload.message.text}:${handle.agent.inbox.size}`)
+    })
+
+    await handle.agent.inject({ text: 'first staged input' })
+    await handle.agent.inject({ text: 'second staged input' })
+    handle.agent.cancel({ type: 'user' })
+    await handle.agent.whenIdle()
+
+    expect(discarded).toEqual(['first staged input:0', 'second staged input:0'])
+    await handle.dispose()
+  })
+
+  it('keeps pending inbox messages unobserved after a failed cancellation clear', async () => {
+    const root = await mountRoot()
+    const discarded: string[] = []
+    const errors: unknown[] = []
+    root.on('agent/inbox/discarded', (payload: { message: DurableInboxMessage }) => {
+      discarded.push(payload.message.text ?? '')
+    })
+    root.on('agent/error', (payload: { error: unknown }) => {
+      errors.push(payload.error)
+      throw new Error('observer failed')
+    })
+    const handle = await createHandle(root, await tempFile('cancel-clear-failure.jsonl'))
+    await handle.agent.inject({ text: 'still pending' })
+    const persistenceFailure = new Error('clear append failed')
+    vi.spyOn(handle.agent.session, 'append').mockRejectedValueOnce(persistenceFailure)
+
+    handle.agent.cancel({ type: 'user' })
+    await expect(handle.agent.whenIdle()).resolves.toBeUndefined()
+    expect(discarded).toEqual([])
+    expect(errors).toEqual([persistenceFailure])
+    expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
+      .toEqual(['still pending'])
+
+    await expect(handle.agent.inject({ text: 'later staged input' })).resolves.toBeUndefined()
+    expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
+      .toEqual(['still pending', 'later staged input'])
+    await handle.dispose()
+  })
+
   it('claims steering and followup inputs in one step batch', async () => {
     const root = await mountRoot()
     const calls: string[][] = []
