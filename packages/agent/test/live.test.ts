@@ -288,17 +288,26 @@ describe('live agent registry', () => {
   it('emits cancellation discards after the durable inbox is clear', async () => {
     const root = await mountRoot()
     const discarded: string[] = []
-    const handle = await createHandle(root, await tempFile('cancel-discard-order.jsonl'))
+    const registry = dynamic(root).agents as AgentRegistry
+    const handle = await registry.create({
+      id: 'cancel-discard-order',
+      file: await tempFile('cancel-discard-order.jsonl'),
+      llm: fakeLLM([{ content: 'done', finishReason: 'stop' }]),
+      manualStreaming: true,
+    })
     root.on('agent/inbox/discarded', (payload: { message: DurableInboxMessage }) => {
       discarded.push(`${payload.message.text}:${handle.agent.inbox.size}`)
     })
 
-    await handle.agent.inject({ text: 'first staged input' })
-    await handle.agent.inject({ text: 'second staged input' })
+    await handle.agent.inject({ text: 'staged step input' })
+    await handle.agent.followup({ text: 'queued turn input' })
     handle.agent.cancel({ type: 'user' })
     await handle.agent.whenIdle()
 
-    expect(discarded).toEqual(['first staged input:0', 'second staged input:0'])
+    expect(discarded).toEqual(['staged step input:0', 'queued turn input:0'])
+    expect((await handle.agent.session.read()).filter(event => event.type === 'agent/inbox/spliced'
+      && event.payload.target === 'all'))
+      .toMatchObject([{ payload: { target: 'all' } }])
     await handle.dispose()
   })
 
@@ -313,21 +322,30 @@ describe('live agent registry', () => {
       errors.push(payload.error)
       throw new Error('observer failed')
     })
-    const handle = await createHandle(root, await tempFile('cancel-clear-failure.jsonl'))
-    await handle.agent.inject({ text: 'still pending' })
+    const registry = dynamic(root).agents as AgentRegistry
+    const handle = await registry.create({
+      id: 'cancel-clear-failure',
+      file: await tempFile('cancel-clear-failure.jsonl'),
+      llm: fakeLLM([{ content: 'done', finishReason: 'stop' }]),
+      manualStreaming: true,
+    })
+    await handle.agent.inject({ text: 'staged step input' })
+    await handle.agent.followup({ text: 'queued turn input' })
     const persistenceFailure = new Error('clear append failed')
     vi.spyOn(handle.agent.session, 'append').mockRejectedValueOnce(persistenceFailure)
 
     handle.agent.cancel({ type: 'user' })
-    await expect(handle.agent.whenIdle()).resolves.toBeUndefined()
+    await expect.poll(() => errors).toEqual([persistenceFailure])
     expect(discarded).toEqual([])
     expect(errors).toEqual([persistenceFailure])
-    expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
-      .toEqual(['still pending'])
+    expect(handle.agent.inbox.snapshot()).toMatchObject({
+      nextTurn: [{ text: 'queued turn input' }],
+      nextStep: [{ text: 'staged step input' }],
+    })
 
     await expect(handle.agent.inject({ text: 'later staged input' })).resolves.toBeUndefined()
     expect(handle.agent.inbox.snapshot().nextStep.map(message => message.text))
-      .toEqual(['still pending', 'later staged input'])
+      .toEqual(['staged step input', 'later staged input'])
     await handle.dispose()
   })
 

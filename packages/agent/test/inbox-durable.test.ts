@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SessionLog } from '@tnega/session'
 
@@ -62,19 +62,55 @@ describe('durable inbox', () => {
     await second.close()
   })
 
-  it('clears both queues through durable splices', async () => {
+  it('clears both queues through one atomic durable splice and restores empty', async () => {
     const file = await tempFile('inbox-clear.jsonl')
-    const log = new SessionLog(file)
-    await log.init()
-    const inbox = new DurableInbox(log)
+    const first = new SessionLog(file)
+    await first.init()
+    const inbox = new DurableInbox(first)
     await inbox.insert({ text: 'one' })
     await inbox.steer({ text: 'two' })
     await inbox.clear()
 
     expect(inbox.size).toBe(0)
-    const splices = (await log.read()).filter(event => event.type === 'agent/inbox/spliced')
-    expect(splices.some(event => (event.payload.deleteCount ?? 0) === Number.POSITIVE_INFINITY)).toBe(true)
-    await log.close()
+    const clearSplices = (await first.read()).filter(event => event.type === 'agent/inbox/spliced'
+      && event.payload.target === 'all')
+    expect(clearSplices).toMatchObject([{ payload: { target: 'all' } }])
+    await first.flush()
+    await first.close()
+
+    const second = new SessionLog(file)
+    await second.init()
+    const restored = await DurableInbox.restore(second)
+    expect(restored.snapshot()).toEqual({ nextTurn: [], nextStep: [] })
+    await second.close()
+  })
+
+  it('keeps both queues durable and reopenable when an atomic clear append fails', async () => {
+    const file = await tempFile('inbox-clear-failure.jsonl')
+    const first = new SessionLog(file)
+    await first.init()
+    const inbox = new DurableInbox(first)
+    await inbox.insert({ text: 'queued turn' })
+    await inbox.steer({ text: 'staged step' })
+    const persistenceFailure = new Error('clear append failed')
+    vi.spyOn(first, 'append').mockRejectedValueOnce(persistenceFailure)
+
+    await expect(inbox.clear()).rejects.toThrow('clear append failed')
+    expect(inbox.snapshot()).toMatchObject({
+      nextTurn: [{ text: 'queued turn' }],
+      nextStep: [{ text: 'staged step' }],
+    })
+    await first.flush()
+    await first.close()
+
+    const second = new SessionLog(file)
+    await second.init()
+    const restored = await DurableInbox.restore(second)
+    expect(restored.snapshot()).toMatchObject({
+      nextTurn: [{ text: 'queued turn' }],
+      nextStep: [{ text: 'staged step' }],
+    })
+    await second.close()
   })
 
   it('replaces and removes pending messages by stable id', async () => {

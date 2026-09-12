@@ -136,22 +136,12 @@ export class DurableInbox {
   }
 
   async clear(): Promise<void> {
-    if (this._nextTurn.length) {
-      await this._session.append('agent/inbox/spliced', {
-        target: 'next-turn',
-        index: 0,
-        deleteCount: Number.POSITIVE_INFINITY,
-      })
-      this._nextTurn = []
-    }
-    if (this._nextStep.length) {
-      await this._session.append('agent/inbox/spliced', {
-        target: 'next-step',
-        index: 0,
-        deleteCount: Number.POSITIVE_INFINITY,
-      })
-      this._nextStep = []
-    }
+    if (!this._nextTurn.length && !this._nextStep.length) return
+    await this._session.append('agent/inbox/spliced', {
+      target: 'all',
+    })
+    this._nextTurn = []
+    this._nextStep = []
   }
 
   /** Insert a message at an explicit target/index boundary. */
@@ -261,6 +251,11 @@ export class DurableInbox {
     for (const event of events) {
       if (event.type !== 'agent/inbox/spliced') continue
       const payload = event.payload
+      if (payload.target === 'all') {
+        this._nextTurn.length = 0
+        this._nextStep.length = 0
+        continue
+      }
       const list = payload.target === 'next-step' ? this._nextStep : this._nextTurn
       const count = payload.deleteCount ?? 0
       if (count === Number.POSITIVE_INFINITY) {

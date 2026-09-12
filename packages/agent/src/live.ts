@@ -823,6 +823,11 @@ function hasRestoredWakeReservation(events: readonly SessionEvent[]): boolean {
   for (const event of events) {
     if (event.type !== 'agent/inbox/spliced') continue
     const payload = event.payload
+    if (payload.target === 'all') {
+      nextTurn.length = 0
+      nextStep.length = 0
+      continue
+    }
     const list = payload.target === 'next-step' ? nextStep : nextTurn
     const count = payload.deleteCount ?? 0
     if (count === Number.POSITIVE_INFINITY) {

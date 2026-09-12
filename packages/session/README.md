@@ -66,7 +66,13 @@ Stream Event，不生成模型消息、不加入 surface，也不计入模型上
 stream 以 `message_stop` 或 `stream_error` 收尾。Agent 生命周期内的临时
 attempt id 和 revision 不作为 Session 身份持久化。
 
-当前 `SESSION_FORMAT_VERSION = 8`。v8 新增 attempt ledger；v7 及更早日志在
+## Atomic inbox clear（v9）
+
+`agent/inbox/spliced` 的 `target: 'all'` 是清空 `next-turn` 与 `next-step` 的单一
+原子 splice。它避免取消操作在第二个队列写入失败时留下半清空的 durable inbox；恢复时同一
+event 会同时清空两个队列。
+
+当前 `SESSION_FORMAT_VERSION = 9`。v9 新增 atomic inbox clear；v8 及更早日志在
 `init()` 时会被 `SessionFormatError` 拒绝，原文件保持不变，明确不做原地迁移。
 新工作使用新 Session，旧日志留存归档。决策背景见
 [ADR 0005](../../docs/adr/0005-assistant-attempt-ledger.md)。
