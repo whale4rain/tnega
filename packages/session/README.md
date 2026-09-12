@@ -8,7 +8,7 @@ Session 是 Tnega 的**消息历史真源**：一个工作区内以 JSONL 追加
 模型历史由**折叠后的 surface** 派生，而不是 raw 文件序：
 
 - **Raw 层**：`session.read()` 返回追加的事件流（永不重写、永不重排，`seq`
-  恒为日志长度、永不变）。`assistant/chunk`、`tool/call`、`turn/*`、`step/*`
+  恒为日志长度、永不变）。`assistant/chunk`、`assistant/attempt`、`tool/call`、`turn/*`、`step/*`
   等只关心回放与 UI 还原的事件属于这里，不产生 LLM 消息。
 - **Surface 层**：`session.deriveMessages()` 投影出模型实际看到的消息历史。
   `user/message`、`system/message`、`assistant/message`、`tool/result` 都是
@@ -44,9 +44,32 @@ v7 起 compaction 是对齐 DSH 的**纯追加边界替换**：
   折叠**、不会分叉；token 估算只数当前 surface。UI 的历史展示用
   `transcriptEvents()`（保留被压缩历史，见上），二者各司其职。
 
-`SESSION_FORMAT_VERSION = 7`（v6→v7 断裂点：v6 每次真实 compact 会整写文件
-并重排所有 seq；v7 改为 surface 派生 + 纯追加，并让 `assistant/message` 自带
-`toolCalls`）。旧版本日志在 `init()` 时会被 `SessionFormatError` 拒绝。
+v6→v7 断裂点：v6 每次真实 compact 会整写文件并重排所有 seq；v7 改为
+surface 派生 + 纯追加，并让 `assistant/message` 自带 `toolCalls`。
+
+## Assistant attempt ledger（v8）
+
+`assistant/attempt` 是一次未提交 `assistant/message` 的模型调用尝试的终态记录，
+payload 为 `{ turn, step, stream }`。它保存失败、重试或取消时已收到的归一化
+Stream Event，不生成模型消息、不加入 surface，也不计入模型上下文 token。
+
+`AssistantStreamRecord` 由 Session 定义为 `{ time, chunk }`，数组顺序就是接收
+顺序，保留每次增量边界；时间戳为非负安全整数，不要求跨记录单调（时钟可能回拨）。
+`AssistantStreamChunk` 支持 `message_start`、`message_delta`、`toolcall_start`、
+`toolcall_end`、`message_stop` 和带序列化错误的 `stream_error`。
+工具参数必须是 JSON 可序列化值。调用方先将 provider 数据归一化，再写入 Session；
+本包不依赖 Agent 或 provider 类型。
+
+`checkAssistantAttempts()`（包含于 `runInvariants()`）检查记录所属的 turn 与 step
+在该事件之前已开始、尚未结束，并校验 stream 形状。一次 step 可以保存多次失败
+尝试；尚未收到分块的失败可以保存空数组。记录自身表示尝试已终结，因此不强制
+stream 以 `message_stop` 或 `stream_error` 收尾。Agent 生命周期内的临时
+attempt id 和 revision 不作为 Session 身份持久化。
+
+当前 `SESSION_FORMAT_VERSION = 8`。v8 新增 attempt ledger；v7 及更早日志在
+`init()` 时会被 `SessionFormatError` 拒绝，原文件保持不变，明确不做原地迁移。
+新工作使用新 Session，旧日志留存归档。决策背景见
+[ADR 0005](../../docs/adr/0005-assistant-attempt-ledger.md)。
 
 ## 可重建请求
 

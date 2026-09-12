@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -18,6 +18,7 @@ import {
   checkMonotonicSeq,
   checkSessionInvariants,
   type SessionEvent,
+  type AssistantStreamRecord,
 } from '@tnega/session'
 
 const dirs: string[] = []
@@ -67,6 +68,66 @@ function result(id: string, seq: number): SessionEvent {
     payload: { id, toolCallId: id, name: 'read_file', ok: true, output: 'x' },
   }
 }
+
+function attempt(turn: number, step: number, seq: number, stream: AssistantStreamRecord[] = []): SessionEvent {
+  return { id: `attempt-${seq}`, seq, ts: seq, type: 'assistant/attempt', payload: { turn, step, stream } }
+}
+
+describe('assistant attempt invariants', () => {
+  it('rejects an Error instance that would lose its message in JSONL', () => {
+    const events = [
+      turnStart(1, 1), stepStart(1, 0, 2),
+      attempt(1, 0, 3, [{ time: 100, chunk: { type: 'stream_error', error: new Error('connection lost') } }]),
+      stepEnd(1, 0, 4), turnEnd(1, 5),
+    ]
+    expect(checkSessionInvariants(events).map(failure => failure.name)).toContain('assistant/attempt-invalid-stream')
+  })
+
+  it('accepts multiple settled attempts in one step, including an empty stream', () => {
+    expect(checkSessionInvariants([
+      turnStart(1, 1), stepStart(1, 0, 2), attempt(1, 0, 3),
+      attempt(1, 0, 4, [{ time: 100, chunk: { type: 'message_stop', id: 'm1', finishReason: 'cancelled' } }]),
+      stepEnd(1, 0, 5), turnEnd(1, 6),
+    ])).toEqual([])
+  })
+
+  it.each([
+    { label: 'without a step', events: [turnStart(1, 1), attempt(1, 0, 2), turnEnd(1, 3)] },
+    { label: 'after step end', events: [turnStart(1, 1), stepStart(1, 0, 2), stepEnd(1, 0, 3), attempt(1, 0, 4), turnEnd(1, 5)] },
+    { label: 'in the wrong step', events: [turnStart(1, 1), stepStart(1, 0, 2), attempt(1, 1, 3), stepEnd(1, 0, 4), turnEnd(1, 5)] },
+    { label: 'in the wrong turn', events: [turnStart(1, 1), stepStart(1, 0, 2), attempt(2, 0, 3), stepEnd(1, 0, 4), turnEnd(1, 5)] },
+    { label: 'after turn end', events: [turnStart(1, 1), stepStart(1, 0, 2), turnEnd(1, 3), attempt(1, 0, 4), stepEnd(1, 0, 5)] },
+  ])('rejects an attempt $label', ({ events }) => {
+    expect(checkSessionInvariants(events).map(failure => failure.name)).toContain('assistant/attempt-without-open-step')
+  })
+
+  it.each([
+    { label: 'missing array', stream: null },
+    { label: 'null record', stream: [null] },
+    { label: 'negative timestamp', stream: [{ time: -1, chunk: { type: 'message_delta', id: 'm1', delta: 'x' } }] },
+    { label: 'fractional timestamp', stream: [{ time: 0.5, chunk: { type: 'message_delta', id: 'm1', delta: 'x' } }] },
+    { label: 'unknown provider event', stream: [{ time: 1, chunk: { type: 'provider_chunk' } }] },
+    { label: 'missing delta', stream: [{ time: 1, chunk: { type: 'message_delta', id: 'm1' } }] },
+    { label: 'invalid start model', stream: [{ time: 1, chunk: { type: 'message_start', id: 'm1', model: 2 } }] },
+    { label: 'negative tool index', stream: [{ time: 1, chunk: { type: 'toolcall_start', id: 'c1', index: -1, name: 'read' } }] },
+    { label: 'missing tool arguments', stream: [{ time: 1, chunk: { type: 'toolcall_end', id: 'c1', index: 0, name: 'read' } }] },
+    { label: 'unknown finish reason', stream: [{ time: 1, chunk: { type: 'message_stop', id: 'm1', finishReason: 'unknown' } }] },
+    { label: 'missing error message', stream: [{ time: 1, chunk: { type: 'stream_error', error: { name: 'Error' } } }] },
+  ])('rejects a malformed persisted stream: $label', async ({ stream }) => {
+    const file = await tempFile('invalid-attempt.jsonl')
+    const events = [
+      { id: 'meta', seq: 1, ts: 1, type: 'meta', payload: { formatVersion: SESSION_FORMAT_VERSION } },
+      turnStart(1, 2), stepStart(1, 0, 3),
+      { id: 'attempt', seq: 4, ts: 4, type: 'assistant/attempt', payload: { turn: 1, step: 0, stream } },
+      stepEnd(1, 0, 5), turnEnd(1, 6),
+    ]
+    await writeFile(file, events.map(event => JSON.stringify(event)).join('\n') + '\n', 'utf8')
+    const log = new SessionLog(file)
+    await log.init()
+    expect((await log.runInvariants()).map(failure => failure.name)).toContain('assistant/attempt-invalid-stream')
+    await log.close()
+  })
+})
 
 describe('session invariant companion', () => {
   it('accepts a balanced lifecycle stream', () => {

@@ -19,9 +19,11 @@ import { checkSessionInvariants, type SessionInvariantFailure } from './invarian
  * its own `toolCalls` (the assistant turn is not reassembled from separate
  * `tool/call` events at projection time).
  *
- * v6 logs are rejected (no migration in the pre-release window).
+ * v8 adds terminal, log-only `assistant/attempt` records for attempts without
+ * a surface message. Stream chunks are normalized before entering Session.
+ * v7 and older logs are rejected without in-place migration.
  */
-export const SESSION_FORMAT_VERSION = 7
+export const SESSION_FORMAT_VERSION = 8
 
 /** Serialized tool schema, structurally compatible with @tnega/tools ToolSchema. */
 export interface ToolSchemaSnapshot {
@@ -91,6 +93,38 @@ export interface AssistantChunkPayload {
   id: string
   content: string
   index?: number
+}
+
+/** Session-owned normalized model output; never a provider wire payload. */
+export type AssistantStreamChunk =
+  | { type: 'message_start'; id: string; model?: string }
+  | { type: 'message_delta'; id: string; delta: string }
+  | { type: 'toolcall_start'; id: string; index: number; name: string }
+  | { type: 'toolcall_end'; id: string; index: number; name: string; arguments: unknown }
+  | { type: 'message_stop'; id: string; finishReason: AssistantStreamFinishReason }
+  | { type: 'stream_error'; error: ToolResultErrorPayload }
+
+export type AssistantStreamFinishReason =
+  | 'stop'
+  | 'tool_calls'
+  | 'length'
+  | 'max_turns'
+  | 'max_steps'
+  | 'error'
+  | 'cancelled'
+
+/** One delivered chunk with its timestamp; array order preserves delivery order. */
+export interface AssistantStreamRecord {
+  time: number
+  chunk: AssistantStreamChunk
+}
+
+/** Terminal settlement of an attempt that committed no assistant/message. */
+export interface AssistantAttemptPayload {
+  turn: number
+  step: number
+  /** May be empty when the request fails before delivering any chunks. */
+  stream: AssistantStreamRecord[]
 }
 
 export interface SystemMessagePayload {
@@ -301,6 +335,7 @@ export type SessionMode = 'auto' | 'plan' | 'execute'
 export type SessionEventType =
   | MessageEventType
   | 'assistant/chunk'
+  | 'assistant/attempt'
   | 'tool/call'
   | 'tool/result'
   | 'request/header'
@@ -350,6 +385,7 @@ export type SessionEvent =
   | SessionEventBase<'user/message', UserMessagePayload>
   | SessionEventBase<'assistant/message', AssistantMessagePayload>
   | SessionEventBase<'assistant/chunk', AssistantChunkPayload>
+  | SessionEventBase<'assistant/attempt', AssistantAttemptPayload>
   | SessionEventBase<'system/message', SystemMessagePayload>
   | SessionEventBase<'tool/call', ToolCallPayload>
   | SessionEventBase<'tool/result', ToolResultPayload>
@@ -787,6 +823,7 @@ export function estimateEventTokens(event: SessionEvent): number {
       return Math.ceil(raw.length / 4)
     }
     case 'plan':
+    case 'assistant/attempt':
       return 0
     case 'checkpoint':
       return estimateMessageTokens(event.payload.messages)
@@ -1013,6 +1050,7 @@ export class SessionLog {
   append(type: 'user/message', payload: UserMessagePayload): Promise<SessionEvent>
   append(type: 'assistant/message', payload: AssistantMessagePayload): Promise<SessionEvent>
   append(type: 'assistant/chunk', payload: AssistantChunkPayload): Promise<SessionEvent>
+  append(type: 'assistant/attempt', payload: AssistantAttemptPayload): Promise<SessionEvent>
   append(type: 'system/message', payload: SystemMessagePayload): Promise<SessionEvent>
   append(type: 'tool/call', payload: ToolCallPayload): Promise<SessionEvent>
   append(type: 'tool/result', payload: ToolResultPayload): Promise<SessionEvent>

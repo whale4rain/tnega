@@ -44,6 +44,7 @@ import {
   suffixStartIndexForTokens,
   transcriptEvents,
   type ModelMessage,
+  type AssistantStreamRecord,
   type PlanPayload,
   type SessionEvent,
 } from '../src/index.js'
@@ -85,6 +86,51 @@ afterEach(async () => {
 })
 
 describe('SessionLog append', () => {
+  it('preserves a failed attempt stream across reopen without adding model history', async () => {
+    const file = await tempFile('assistant-attempt.jsonl')
+    const log = new SessionLog(file)
+    await log.append('user/message', { content: 'hello' })
+    await log.append('turn/start', { turn: 1 })
+    await log.append('step/start', { turn: 1, step: 0 })
+    const stream: AssistantStreamRecord[] = [
+      { time: 100, chunk: { type: 'message_start', id: 'm1', model: 'test' } },
+      { time: 101, chunk: { type: 'message_delta', id: 'm1', delta: 'part' } },
+      { time: 101, chunk: { type: 'message_delta', id: 'm1', delta: 'ial' } },
+      { time: 102, chunk: { type: 'toolcall_start', id: 'c1', index: 0, name: 'read' } },
+      { time: 103, chunk: { type: 'toolcall_end', id: 'c1', index: 0, name: 'read', arguments: { path: 'a' } } },
+      { time: 104, chunk: { type: 'stream_error', error: { name: 'NetworkError', message: 'connection lost' } } },
+    ]
+    const attempt = await log.append('assistant/attempt', { turn: 1, step: 0, stream })
+    stream[1] = { time: 999, chunk: { type: 'message_delta', id: 'm1', delta: 'mutated' } }
+    expect(estimateEventTokens(attempt)).toBe(0)
+    expect(deriveEventMessage(attempt)).toBeNull()
+    expect(await log.deriveMessages()).toEqual([{ role: 'user', content: 'hello' }])
+    await log.append('step/end', { turn: 1, step: 0, finishReason: 'error' })
+    await log.append('turn/end', { turn: 1, finishReason: 'error' })
+    await log.close()
+
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    const events = await reopened.read()
+    expect(events.find(event => event.type === 'assistant/attempt')).toEqual(attempt)
+    expect(attempt.payload).toMatchObject({
+      turn: 1,
+      step: 0,
+      stream: [
+        { time: 100, chunk: { type: 'message_start', id: 'm1', model: 'test' } },
+        { time: 101, chunk: { type: 'message_delta', id: 'm1', delta: 'part' } },
+        { time: 101, chunk: { type: 'message_delta', id: 'm1', delta: 'ial' } },
+        { time: 102, chunk: { type: 'toolcall_start', id: 'c1', index: 0, name: 'read' } },
+        { time: 103, chunk: { type: 'toolcall_end', id: 'c1', index: 0, name: 'read', arguments: { path: 'a' } } },
+        { time: 104, chunk: { type: 'stream_error', error: { name: 'NetworkError', message: 'connection lost' } } },
+      ],
+    })
+    expect(attempt.surfaceOp).toBeUndefined()
+    expect(await reopened.deriveMessages()).toEqual([{ role: 'user', content: 'hello' }])
+    expect(await reopened.runInvariants()).toEqual([])
+    await reopened.close()
+  })
+
   it('appends events with monotonic seq and writes JSONL', async () => {
     const file = await tempFile('basic.jsonl')
     const log = new SessionLog(file)
@@ -678,6 +724,16 @@ describe('SessionLog lifecycle and repair', () => {
 
     const log = new SessionLog(file)
     await expect(log.init()).rejects.toBeInstanceOf(SessionFormatError)
+  })
+
+  it('rejects v7 logs without rewriting or migrating them', async () => {
+    const file = await tempFile('format-v7.jsonl')
+    const raw = `${JSON.stringify({
+      id: 'meta-v7', seq: 1, ts: 1, type: 'meta', payload: { formatVersion: 7 },
+    })}\n`
+    await writeFile(file, raw, 'utf8')
+    await expect(new SessionLog(file).init()).rejects.toBeInstanceOf(SessionFormatError)
+    expect(await readFile(file, 'utf8')).toBe(raw)
   })
 })
 

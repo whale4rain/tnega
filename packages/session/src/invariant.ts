@@ -130,6 +130,94 @@ export function checkMonotonicSeq(events: readonly SessionEvent[]): SessionInvar
   return failures
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+/** Tool arguments must survive JSONL persistence without losing values. */
+function isJsonValue(value: unknown, ancestors = new Set<object>()): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value !== 'object' || ancestors.has(value)) return false
+  if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype
+    && Object.getPrototypeOf(value) !== null) return false
+  ancestors.add(value)
+  const valid = (Array.isArray(value) ? Array.from(value) : Object.values(value))
+    .every(member => isJsonValue(member, ancestors))
+  ancestors.delete(value)
+  return valid
+}
+
+function isStreamRecord(value: unknown): boolean {
+  if (!isRecord(value) || !isNonNegativeInteger(value.time) || !isRecord(value.chunk)) return false
+  const chunk = value.chunk
+  if (chunk.type === 'stream_error') {
+    return isRecord(chunk.error)
+      && typeof chunk.error.message === 'string'
+      && (chunk.error.name === undefined || typeof chunk.error.name === 'string')
+      && (chunk.error.stack === undefined || typeof chunk.error.stack === 'string')
+  }
+  if (typeof chunk.id !== 'string') return false
+  switch (chunk.type) {
+    case 'message_start':
+      return chunk.model === undefined || typeof chunk.model === 'string'
+    case 'message_delta':
+      return typeof chunk.delta === 'string'
+    case 'toolcall_start':
+    case 'toolcall_end':
+      return isNonNegativeInteger(chunk.index) && typeof chunk.name === 'string'
+        && (chunk.type === 'toolcall_start' || isJsonValue(chunk.arguments))
+    case 'message_stop':
+      return chunk.finishReason === 'stop' || chunk.finishReason === 'tool_calls'
+        || chunk.finishReason === 'length' || chunk.finishReason === 'max_turns'
+        || chunk.finishReason === 'max_steps' || chunk.finishReason === 'error'
+        || chunk.finishReason === 'cancelled'
+    default:
+      return false
+  }
+}
+
+/** A terminal attempt belongs to an open durable step, never to a live attempt id. */
+export function checkAssistantAttempts(events: readonly SessionEvent[]): SessionInvariantFailure[] {
+  const turns = new Set<number>()
+  const steps = new Map<string, number>()
+  const failures: SessionInvariantFailure[] = []
+  for (const event of events) {
+    if (event.type === 'turn/start') turns.add(event.payload.turn)
+    if (event.type === 'turn/end') {
+      turns.delete(event.payload.turn)
+      for (const [key, turn] of steps) {
+        if (turn === event.payload.turn) steps.delete(key)
+      }
+    }
+    if (event.type === 'step/start' && turns.has(event.payload.turn)) {
+      steps.set(`${event.payload.turn}:${event.payload.step}`, event.payload.turn)
+    }
+    if (event.type === 'step/end') steps.delete(`${event.payload.turn}:${event.payload.step}`)
+    if (event.type !== 'assistant/attempt') continue
+    const payload: unknown = event.payload
+    if (!isRecord(payload) || !isNonNegativeInteger(payload.turn) || !isNonNegativeInteger(payload.step)
+      || !turns.has(payload.turn) || !steps.has(`${payload.turn}:${payload.step}`)) {
+      failures.push({
+        name: 'assistant/attempt-without-open-step',
+        detail: `assistant/attempt at seq ${event.seq} has no matching open turn and step`,
+      })
+    }
+    if (!isRecord(payload) || !Array.isArray(payload.stream) || !payload.stream.every(isStreamRecord)) {
+      failures.push({
+        name: 'assistant/attempt-invalid-stream',
+        detail: `assistant/attempt at seq ${event.seq} must contain an ordered array of normalized stream records`,
+      })
+    }
+  }
+  return failures
+}
+
 /** Aggregate all structural session checks over an event stream. */
 export function checkSessionInvariants(
   events: readonly SessionEvent[],
@@ -139,5 +227,6 @@ export function checkSessionInvariants(
     ...checkBalancedSteps(events),
     ...checkBalancedToolCalls(events),
     ...checkMonotonicSeq(events),
+    ...checkAssistantAttempts(events),
   ]
 }
