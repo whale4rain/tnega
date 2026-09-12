@@ -270,6 +270,11 @@ describe('eval compare command', () => {
 
 describe('agent run command', () => {
   it('resolves the API key from environment variables without accepting code-level keys', () => {
+    expect(resolveLlmEnv({ TNEGA_API_KEY: 'tnega' })).toEqual({ apiKey: 'tnega' })
+    expect(resolveLlmEnv({
+      TNEGA_API_KEY: 'tnega',
+      OPENCODE_GO_API_KEY: 'legacy',
+    })).toEqual({ apiKey: 'tnega' })
     expect(resolveLlmEnv({ OPENCODE_GO_API_KEY: 'a' })).toEqual({ apiKey: 'a' })
     expect(resolveLlmEnv({ OPENAI_API_KEY: 'b' })).toEqual({ apiKey: 'b' })
     expect(resolveLlmEnv({ DEEPSEEK_API_KEY: 'c' })).toEqual({ apiKey: 'c' })
@@ -336,6 +341,7 @@ describe('agent run command', () => {
   })
 
   it('rejects a run without an API key', async () => {
+    vi.stubEnv('TNEGA_API_KEY', '')
     vi.stubEnv('OPENCODE_GO_API_KEY', '')
     vi.stubEnv('OPENAI_API_KEY', '')
     vi.stubEnv('DEEPSEEK_API_KEY', '')
@@ -349,6 +355,10 @@ describe('agent run command', () => {
   })
 
   it('reads the API key and model from a config file through the Anthropic adapter', async () => {
+    vi.stubEnv('TNEGA_API_KEY', '')
+    vi.stubEnv('OPENCODE_GO_API_KEY', '')
+    vi.stubEnv('OPENAI_API_KEY', '')
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
     const dir = await tempDir('tnega-cli-agent-config-')
     const configFile = join(dir, 'config.json')
     await writeFile(configFile, JSON.stringify({
@@ -380,6 +390,10 @@ describe('agent run command', () => {
   })
 
   it('uses the Anthropic wire protocol when config protocol is anthropic', async () => {
+    vi.stubEnv('TNEGA_API_KEY', '')
+    vi.stubEnv('OPENCODE_GO_API_KEY', '')
+    vi.stubEnv('OPENAI_API_KEY', '')
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
     const dir = await tempDir('tnega-cli-agent-anthropic-protocol-')
     const configFile = join(dir, 'config.json')
     await writeFile(configFile, JSON.stringify({
@@ -611,6 +625,7 @@ describe('evolve run command', () => {
   })
 
   it('rejects a run without an API key', async () => {
+    vi.stubEnv('TNEGA_API_KEY', '')
     vi.stubEnv('OPENCODE_GO_API_KEY', '')
     vi.stubEnv('OPENAI_API_KEY', '')
     vi.stubEnv('DEEPSEEK_API_KEY', '')

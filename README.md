@@ -17,11 +17,11 @@ pnpm add -g tnega
 ## Quick Start
 
 ```bash
-export OPENCODE_GO_API_KEY=sk-...
+export TNEGA_API_KEY=sk-...
 tnega run "Reply with: hello"
 ```
 
-`tnega run` uses OpenCode Go's `deepseek-v4-flash` model through the OpenAI compatible endpoint by default. `minimax-m3` is also available through the Anthropic Messages endpoint. The API key can also come from `~/.tnega/config.json` (Windows: `%USERPROFILE%\.tnega\config.json`) with fields `apiKey`, `model`, `baseUrl`, and `temperature`. Precedence: CLI flags > environment variables > config file > defaults.
+`tnega run` uses OpenCode Go's `deepseek-v4-flash` model through the OpenAI compatible endpoint by default. `minimax-m3` is also available through the Anthropic Messages endpoint. Set `TNEGA_API_KEY` for the API key; `OPENCODE_GO_API_KEY`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY` remain compatible fallbacks. The API key can also come from `%USERPROFILE%\.tnega\config.json` on Windows or `~/.config/tnega/config.json` on Linux/macOS, with `apiKey`, `model`, `baseUrl`, `protocol`, and `temperature` fields. Precedence: CLI flags > environment variables > config file > defaults.
 
 Run a deterministic eval without an API key:
 
@@ -82,7 +82,7 @@ const fiber = await root.plugin(
     version: '0.3.0',
     system: 'You are a coding agent.',
   }),
-  { llm: openaiCompatAdapter({ apiKey: process.env.OPENCODE_GO_API_KEY! }) },
+  { llm: openaiCompatAdapter({ apiKey: process.env.TNEGA_API_KEY! }) },
 )
 
 const loop = root.get('agentLoop')

@@ -46,7 +46,7 @@ import { Context, defineAgent, openaiCompatAdapter } from 'tnega'
 
 const root = new Context()
 await root.plugin(defineAgent({ name: 'coding-agent', system: '...' }), {
-  llm: openaiCompatAdapter({ apiKey: process.env.OPENCODE_GO_API_KEY! }),
+  llm: openaiCompatAdapter({ apiKey: process.env.TNEGA_API_KEY! }),
 })
 const loop = root.get('agentLoop')
 const result = await loop({ text: 'hi' })

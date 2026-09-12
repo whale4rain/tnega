@@ -11,7 +11,7 @@
 真实 LLM 冒烟测试：`test/deepseek-tools.smoke.test.ts`。API key 只从环境变量读取，不写入代码或仓库：
 
 ```powershell
-$env:OPENCODE_GO_API_KEY = "sk-***"
+$env:TNEGA_API_KEY = "sk-***"
 pnpm vitest run test/deepseek-tools.smoke.test.ts
 ```
 

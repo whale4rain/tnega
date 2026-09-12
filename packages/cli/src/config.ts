@@ -134,7 +134,10 @@ export function effectiveApiKey(
 
 export function resolveLlmEnv(env: NodeJS.ProcessEnv = process.env): LlmEnvConfig {
   const config: LlmEnvConfig = {}
-  const apiKey = env.OPENCODE_GO_API_KEY || env.OPENAI_API_KEY || env.DEEPSEEK_API_KEY
+  const apiKey = env.TNEGA_API_KEY
+    || env.OPENCODE_GO_API_KEY
+    || env.OPENAI_API_KEY
+    || env.DEEPSEEK_API_KEY
   if (apiKey) config.apiKey = apiKey
   if (env.OPENCODE_GO_BASE_URL) config.baseUrl = env.OPENCODE_GO_BASE_URL
   if (env.OPENCODE_GO_MODEL) config.model = env.OPENCODE_GO_MODEL

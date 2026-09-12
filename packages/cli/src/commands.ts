@@ -453,7 +453,7 @@ export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
     const apiKey = envConfig.apiKey ?? systemConfig.apiKey
     if (!apiKey) {
       throw new CliError(
-        'missing LLM API key for coding eval; set OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
+        'missing LLM API key for coding eval; set TNEGA_API_KEY (or OPENCODE_GO_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
       )
     }
     const model = options.model
@@ -553,7 +553,7 @@ export async function runAgentCommand(
   const apiKey = envConfig.apiKey ?? systemConfig.apiKey
   if (!apiKey) {
     throw new CliError(
-      'missing LLM API key; set OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
+      'missing LLM API key; set TNEGA_API_KEY (or OPENCODE_GO_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
     )
   }
 
@@ -780,7 +780,7 @@ export async function runEvolveCommand(
   const apiKey = envConfig.apiKey ?? systemConfig.apiKey
   if (!apiKey) {
     throw new CliError(
-      'missing LLM API key; set OPENCODE_GO_API_KEY (or OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
+      'missing LLM API key; set TNEGA_API_KEY (or OPENCODE_GO_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
     )
   }
 

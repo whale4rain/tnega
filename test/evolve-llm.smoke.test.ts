@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest'
 import { runEvolveCommand } from '../packages/cli/src/index.js'
 
 const hasApiKey = Boolean(
-  process.env.OPENCODE_GO_API_KEY
+  process.env.TNEGA_API_KEY
+    || process.env.OPENCODE_GO_API_KEY
     || process.env.OPENAI_API_KEY
     || process.env.DEEPSEEK_API_KEY,
 )

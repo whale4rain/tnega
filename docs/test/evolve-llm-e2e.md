@@ -11,12 +11,12 @@
 真实 LLM 冒烟测试文件：`test/evolve-llm.smoke.test.ts`。API key 只从环境变量读取，不写入代码或仓库：
 
 ```powershell
-$env:OPENCODE_GO_API_KEY = "sk-***"
+$env:TNEGA_API_KEY = "sk-***"
 $env:TNEGA_EVOLVE_ARTIFACT_DIR = ".tnega/evolve-llm-e2e"
 pnpm vitest run test/evolve-llm.smoke.test.ts
 ```
 
-未设置 `OPENCODE_GO_API_KEY` 时该测试自动跳过。
+未设置 `TNEGA_API_KEY`（或兼容变量）时该测试自动跳过。
 
 ## 实验配置
 
