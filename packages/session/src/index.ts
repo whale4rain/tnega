@@ -1219,6 +1219,8 @@ export class SessionLog {
           event.type === 'meta'
           || event.type === 'llm/retry'
           || event.type === 'llm/retry-started'
+          // Message forks omit the owning lifecycle, including its attempt ledger.
+          || event.type === 'assistant/attempt'
           || event.type.startsWith('turn/')
           || event.type.startsWith('step/')
         ) {

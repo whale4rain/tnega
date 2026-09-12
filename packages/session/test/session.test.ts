@@ -292,6 +292,37 @@ describe('SessionLog lineage', () => {
 })
 
 describe('SessionLog forkAt', () => {
+  it('keeps a message fork valid after a failed attempt and reopen', async () => {
+    const log = new SessionLog(await tempFile('fork-at-attempt.jsonl'))
+    await log.append('user/message', { content: 'hello' })
+    await log.append('turn/start', { turn: 1 })
+    await log.append('step/start', { turn: 1, step: 0 })
+    const attempt = await log.append('assistant/attempt', {
+      turn: 1,
+      step: 0,
+      stream: [{ time: 100, chunk: { type: 'stream_error', error: { message: 'retry me' } } }],
+    })
+    const answer = await log.append('assistant/message', { content: 'hi' })
+    await log.append('step/end', { turn: 1, step: 0, finishReason: 'stop' })
+    await log.append('turn/end', { turn: 1, finishReason: 'stop' })
+
+    const selected = await log.forkAt(answer.id)
+    expect(checkSessionInvariants(selected)).toEqual([])
+    expect(selected.map(event => event.type)).toEqual(['user/message', 'assistant/message'])
+    expect((await log.read()).find(event => event.id === attempt.id)).toEqual(attempt)
+    const file = await tempFile('fork-at-attempt-child.jsonl')
+    await writeV5(file, selected)
+    const fork = new SessionLog(file)
+    await fork.init()
+    expect(await fork.runInvariants()).toEqual([])
+    expect(await fork.deriveMessages()).toEqual([
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'hi' },
+    ])
+    await fork.close()
+    await log.close()
+  })
+
   it('copies the message lineage up to the selected message', async () => {
     const log = new SessionLog(await tempFile('fork-at.jsonl'))
     const a = await log.append('user/message', { content: 'a' })
