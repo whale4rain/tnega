@@ -1358,6 +1358,44 @@ describe('live agent typing', () => {
 })
 
 describe('live agent resume', () => {
+  it.each([true, false])('restores remaining wake intent after an all-queue prefix claim (steer remains: %s)', async (steerRemains) => {
+    const file = await tempFile('resume-prefix-claim.jsonl')
+    const prior = new SessionLog(file)
+    await prior.init()
+    await prior.append('meta', { kind: 'agent', agentId: 'resume-prefix-claim' })
+    const inbox = new DurableInbox(prior)
+    if (steerRemains) {
+      await inbox.steer({ text: 'remaining' })
+      await inbox.insertAt({ text: 'claimed' }, 'next-step', 0)
+    } else {
+      await inbox.insert({ text: 'remaining' }, 'next-step')
+      await inbox.steer({ text: 'claimed' })
+    }
+    await prior.append('agent/inbox/spliced', {
+      target: 'all', deleteCounts: { nextStep: 1, nextTurn: 0 },
+    })
+    await prior.close()
+
+    const root = await mountRoot()
+    const calls: string[] = []
+    const registry = dynamic(root).agents as AgentRegistry
+    const resumed = await registry.resume({
+      id: 'resume-prefix-claim', file,
+      llm: {
+        async complete(messages) {
+          calls.push(messages.at(-1)?.content ?? '')
+          return { content: 'done', finishReason: 'stop' }
+        },
+      },
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await resumed.agent.whenIdle()
+    expect(calls).toEqual(steerRemains ? ['remaining'] : [])
+    expect(resumed.agent.inbox.snapshot().nextStep.map(message => message.text))
+      .toEqual(steerRemains ? [] : ['remaining'])
+    await resumed.dispose()
+  })
+
   it('persists identity and restores durable pending work on resume', async () => {
     const file = await tempFile('resume.jsonl')
     const prior = new SessionLog(file)

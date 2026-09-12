@@ -19,14 +19,17 @@ import { checkSessionInvariants, type SessionInvariantFailure } from './invarian
  * its own `toolCalls` (the assistant turn is not reassembled from separate
  * `tool/call` events at projection time).
  *
+ * v10 extends the all-queue splice with explicit prefix delete counts, so a
+ * mixed next-step/next-turn claim commits as one fact. v9 and older logs are
+ * rejected without in-place migration.
+ *
  * v9 adds an atomic `agent/inbox/spliced` clear target for both pending inbox
  * queues, so cancellation cannot durably remove only one queue.
  *
  * v8 adds terminal, log-only `assistant/attempt` records for attempts without
  * a surface message. Stream chunks are normalized before entering Session.
- * v8 and older logs are rejected without in-place migration.
  */
-export const SESSION_FORMAT_VERSION = 9
+export const SESSION_FORMAT_VERSION = 10
 
 /** Serialized tool schema, structurally compatible with @tnega/tools ToolSchema. */
 export interface ToolSchemaSnapshot {
@@ -311,8 +314,12 @@ export interface PlanPayload {
   summary?: string
 }
 
-export interface InboxSplicePayload {
-  target: 'next-turn' | 'next-step' | 'all'
+export type InboxSplicePayload = {
+  target: 'all'
+  /** Prefix removals from both queues; omitted means clear both queues. */
+  deleteCounts?: { nextTurn: number; nextStep: number }
+} | {
+  target: 'next-turn' | 'next-step'
   index?: number
   deleteCount?: number
   inserted?: Array<{

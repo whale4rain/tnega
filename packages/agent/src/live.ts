@@ -823,8 +823,8 @@ function hasRestoredWakeReservation(events: readonly SessionEvent[]): boolean {
     if (event.type !== 'agent/inbox/spliced') continue
     const payload = event.payload
     if (payload.target === 'all') {
-      nextTurn.length = 0
-      nextStep.length = 0
+      nextTurn.splice(0, payload.deleteCounts?.nextTurn ?? nextTurn.length)
+      nextStep.splice(0, payload.deleteCounts?.nextStep ?? nextStep.length)
       continue
     }
     const list = payload.target === 'next-step' ? nextStep : nextTurn

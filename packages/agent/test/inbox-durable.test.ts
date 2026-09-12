@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { SessionLog } from '@tnega/session'
+import { SessionLog, type SessionEvent } from '@tnega/session'
 
 import { DurableInbox } from '../src/index.js'
 
@@ -20,6 +20,105 @@ afterEach(async () => {
 })
 
 describe('durable inbox', () => {
+  it('serializes steering before a concurrent next-step claim without duplicate input', async () => {
+    const log = new SessionLog(await tempFile('steer-claim-race.jsonl'))
+    await log.init()
+    const inbox = new DurableInbox(log)
+    await inbox.steer({ text: 'A' })
+
+    const steering = inbox.steer({ text: 'B' })
+    const claiming = inbox.claimNextStep()
+    await steering
+    expect((await claiming).map(message => message.text)).toEqual(['B', 'A'])
+    expect(await inbox.claimNextStep()).toEqual([])
+    expect((await DurableInbox.restore(log)).snapshot()).toEqual({ nextTurn: [], nextStep: [] })
+    await log.close()
+  })
+
+  it('serializes replacement before a concurrent claim without claiming stale input', async () => {
+    const log = new SessionLog(await tempFile('replace-claim-race.jsonl'))
+    await log.init()
+    const inbox = new DurableInbox(log)
+    const first = await inbox.steer({ text: 'old' })
+
+    const replacing = inbox.replace(first.id, { text: 'replacement' })
+    const claiming = inbox.claimNextStep()
+    const replacement = await replacing
+    expect(await claiming).toEqual([replacement])
+    expect(await inbox.claimNextStep()).toEqual([])
+    expect((await DurableInbox.restore(log)).snapshot()).toEqual({ nextTurn: [], nextStep: [] })
+    await log.close()
+  })
+
+  it('keeps both queues when a mixed claim append fails and retries each input once', async () => {
+    const file = await tempFile('mixed-claim-failure.jsonl')
+    const log = new SessionLog(file)
+    await log.init()
+    const inbox = new DurableInbox(log)
+    await inbox.insert({ text: 'turn' })
+    await inbox.steer({ text: 'step' })
+    const before = await log.read()
+    const append = log.append.bind(log)
+    const failure = vi.spyOn(log, 'append').mockImplementation(async (
+      type: SessionEvent['type'], payload: SessionEvent['payload'],
+    ) => {
+      if (type !== 'agent/inbox/spliced' || !('target' in payload)) throw new Error('unexpected append')
+      // Reject the turn removal, whether committed separately or atomically.
+      if (payload.target === 'next-turn' || payload.target === 'all') throw new Error('claim append failed')
+      if (payload.target === 'next-step' && typeof payload.index === 'number' && typeof payload.deleteCount === 'number') {
+        return append('agent/inbox/spliced', {
+          target: 'next-step', index: payload.index, deleteCount: payload.deleteCount,
+        })
+      }
+      throw new Error('unexpected splice')
+    })
+
+    await expect(inbox.claimBatch()).rejects.toThrow('claim append failed')
+    expect(inbox.snapshot()).toMatchObject({ nextTurn: [{ text: 'turn' }], nextStep: [{ text: 'step' }] })
+    expect(await log.read()).toEqual(before)
+    expect(await log.deriveMessages()).toEqual([])
+    failure.mockRestore()
+    // A rejected operation must not poison the serial tail.
+    await inbox.insert({ text: 'later turn' })
+    await log.close()
+
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    const restored = await DurableInbox.restore(reopened)
+    expect((await restored.claimBatch()).map(message => message.text)).toEqual(['step', 'turn'])
+    expect((await restored.claimBatch()).map(message => message.text)).toEqual(['later turn'])
+    expect(await restored.claimBatch()).toEqual([])
+    await reopened.close()
+  })
+
+  it('does not resurrect input when replacement follows a concurrent claim', async () => {
+    const log = new SessionLog(await tempFile('claim-replace-race.jsonl'))
+    await log.init()
+    const inbox = new DurableInbox(log)
+    const first = await inbox.insert({ text: 'claimed' })
+    const claiming = inbox.claim()
+    const replacing = inbox.replace(first.id, { text: 'resurrected' })
+    expect(await claiming).toEqual(first)
+    expect(await replacing).toBeUndefined()
+    expect(await inbox.claimBatch()).toEqual([])
+    expect((await DurableInbox.restore(log)).size).toBe(0)
+    await log.close()
+  })
+
+  it('preserves an insertion ordered after a concurrent clear', async () => {
+    const log = new SessionLog(await tempFile('clear-insert-race.jsonl'))
+    await log.init()
+    const inbox = new DurableInbox(log)
+    await inbox.insert({ text: 'old' })
+    const clearing = inbox.clear()
+    const inserting = inbox.insertAt({ text: 'new' }, 'next-turn', 1)
+    await clearing
+    const inserted = await inserting
+    expect(inbox.snapshot()).toEqual({ nextTurn: [inserted], nextStep: [] })
+    expect((await DurableInbox.restore(log)).snapshot()).toEqual(inbox.snapshot())
+    await log.close()
+  })
+
   it('persists insert, steer and claim as inbox splices', async () => {
     const file = await tempFile('inbox-events.jsonl')
     const log = new SessionLog(file)
@@ -198,6 +297,11 @@ describe('durable inbox', () => {
     ])
     expect(inbox.size).toBe(1)
     expect(inbox.snapshot().nextTurn.map(message => message.text)).toEqual(['two'])
+    const splices = (await log.read()).filter(event => event.type === 'agent/inbox/spliced')
+    expect(splices).toHaveLength(5)
+    expect((await DurableInbox.restore(log)).snapshot()).toMatchObject({
+      nextTurn: [{ text: 'two' }], nextStep: [],
+    })
     await log.close()
   })
 

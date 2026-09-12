@@ -72,7 +72,16 @@ attempt id 和 revision 不作为 Session 身份持久化。
 原子 splice。它避免取消操作在第二个队列写入失败时留下半清空的 durable inbox；恢复时同一
 event 会同时清空两个队列。
 
-当前 `SESSION_FORMAT_VERSION = 9`。v9 新增 atomic inbox clear；v8 及更早日志在
+## Atomic inbox claim（v10）
+
+`target: 'all'` 可携带 `deleteCounts: { nextTurn, nextStep }`，分别删除两个队列的
+指定长度前缀；省略 `deleteCounts` 时仍表示清空两个队列。混合领取全部 next-step
+输入与一个 next-turn 输入只追加这一条事件，append 失败时两个队列都保持原状。
+DurableInbox 内部串行化每次修改和领取的读取、append 与队列更新，避免并发操作读到旧索引。
+恢复 inbox 和唤醒状态时使用相同删除计数。append 仍是 Session 内存事实提交边界，
+JSONL 落盘仍由 `flush()` 完成。
+
+当前 `SESSION_FORMAT_VERSION = 10`。v10 新增 atomic inbox claim；v9 及更早日志在
 `init()` 时会被 `SessionFormatError` 拒绝，原文件保持不变，明确不做原地迁移。
 新工作使用新 Session，旧日志留存归档。决策背景见
 [ADR 0005](../../docs/adr/0005-assistant-attempt-ledger.md)。

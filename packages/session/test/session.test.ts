@@ -123,6 +123,31 @@ afterEach(async () => {
 })
 
 describe('SessionLog append', () => {
+  it('persists both atomic inbox claim counts as one log-only event', async () => {
+    const file = await tempFile('atomic-inbox-claim.jsonl')
+    const log = new SessionLog(file)
+    await log.init()
+    await log.append('agent/inbox/spliced', {
+      target: 'all', deleteCounts: { nextTurn: 1, nextStep: 2 },
+    })
+    await log.close()
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    expect((await reopened.read()).filter(event => event.type === 'agent/inbox/spliced'))
+      .toMatchObject([{ payload: { target: 'all', deleteCounts: { nextTurn: 1, nextStep: 2 } } }])
+    expect(await reopened.deriveMessages()).toEqual([])
+    await reopened.close()
+  })
+
+  it('rejects v9 logs without rewriting their atomic clear semantics', async () => {
+    const file = await tempFile('v9-inbox.jsonl')
+    const original = `${JSON.stringify({ id: 'v9', seq: 1, ts: 1, type: 'meta', payload: { formatVersion: 9 } })}\n`
+    await writeFile(file, original, 'utf8')
+    const log = new SessionLog(file)
+    await expect(log.init()).rejects.toBeInstanceOf(SessionFormatError)
+    expect(await readFile(file, 'utf8')).toBe(original)
+  })
+
   it('preserves a failed attempt stream across reopen without adding model history', async () => {
     const file = await tempFile('assistant-attempt.jsonl')
     const log = new SessionLog(file)
