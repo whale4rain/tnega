@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Context, FiberState } from '@tnega/core'
 import { SessionLog, session, type ModelMessage, type SessionEvent } from '@tnega/session'
@@ -593,6 +593,31 @@ describe('agent loop', () => {
       { role: 'user', content: 'go' },
       { role: 'assistant', content: 'recovered' },
     ])
+    await log.close()
+  })
+
+  it('publishes an abandoned attempt end when terminal settlement rejects', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('attempt-abandoned.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(agent, { llm: {
+      complete: async () => { throw new Error('unused') },
+      async *stream() { throw new Error('provider failed') },
+    } satisfies LLMAdapter })
+    const log = root.get('session') as SessionLog
+    const append = log.append.bind(log)
+    vi.spyOn(log, 'append').mockImplementation(async (type, payload) => {
+      if (type === 'assistant/attempt') throw new Error('settlement failed')
+      return append(type as never, payload as never)
+    })
+    const service = root.get('agent') as AgentService
+    const events: AgentStreamEvent[] = []
+    await expect((async () => {
+      for await (const event of service.runStream({ text: 'go' })) events.push(event)
+    })()).rejects.toThrow('settlement failed')
+    expect(events.filter(event => event.type === 'assistant/stream').at(-1)).toMatchObject({ frame: {
+      type: 'end', outcome: { kind: 'abandoned' },
+    } })
     await log.close()
   })
 

@@ -377,9 +377,19 @@ class AssistantStreamAttempt {
   async settle(message?: AssistantMessagePayload): Promise<AgentAssistantStreamEvent> {
     if (this.ended) throw new AgentError('assistant attempt is already settled')
     const eventType = message ? 'assistant/message' : 'assistant/attempt'
-    const event = message
-      ? await this.session.append('assistant/message', { ...message, stream: this.records })
-      : await this.session.append('assistant/attempt', { turn: this.turn, step: this.step, stream: this.records })
+    let event
+    try {
+      event = message
+        ? await this.session.append('assistant/message', { ...message, stream: this.records })
+        : await this.session.append('assistant/attempt', { turn: this.turn, step: this.step, stream: this.records })
+    } catch (cause) {
+      this.ended = true
+      const frame: AgentAssistantStreamEvent = { type: 'assistant/stream', frame: {
+        type: 'end', attemptId: this.attemptId, revision: this.nextRevision(), index: this.records.length,
+        outcome: { kind: 'abandoned' },
+      } }
+      throw new AttemptSettlementError(cause, frame)
+    }
     this.ended = true
     return { type: 'assistant/stream', frame: {
       type: 'end', attemptId: this.attemptId, revision: this.nextRevision(), index: this.records.length,
@@ -388,7 +398,28 @@ class AssistantStreamAttempt {
   }
 }
 
+class AttemptSettlementError extends Error {
+  constructor(readonly cause: unknown, readonly frame: AgentAssistantStreamEvent) {
+    super('assistant attempt settlement failed')
+  }
+}
+
 export class AgentService {
+  private async *settleAttempt(
+    attempt: AssistantStreamAttempt,
+    message?: AssistantMessagePayload,
+  ): AsyncGenerator<AgentAssistantStreamEvent, void, void> {
+    try {
+      yield await attempt.settle(message)
+    } catch (error) {
+      if (error instanceof AttemptSettlementError) {
+        yield error.frame
+        throw error.cause
+      }
+      throw error
+    }
+  }
+
   readonly inbox: AgentInbox
   private _seriesStarted = false
   private _persistedRequest = false
@@ -606,11 +637,11 @@ export class AgentService {
           yield activeAttempt.push({ type: 'stream_error', error: toToolError(error) })
           if (options.signal?.aborted) {
             const content = partialStreamContent(streamEvents)
-            yield await activeAttempt.settle(content ? { content, interrupted: true } : undefined)
+            yield* this.settleAttempt(activeAttempt, content ? { content, interrupted: true } : undefined)
             finishReason = 'cancelled'
             break
           }
-          yield await activeAttempt.settle()
+          yield* this.settleAttempt(activeAttempt)
           attempt += 1
           const failure = toToolError(error)
           const decision = await this.ctx.waterfallAsync(
@@ -662,19 +693,19 @@ export class AgentService {
       const toolCalls = completion.toolCalls ?? []
       if (options.signal?.aborted && toolCalls.length === 0) {
         yield activeAttempt.push({ type: 'stream_error', error: { name: 'AbortError', message: 'stream aborted' } })
-        yield await activeAttempt.settle()
+        yield* this.settleAttempt(activeAttempt)
         finishReason = 'cancelled'
         break
       }
       if (finalTurnGranted && toolCalls.length && !options.signal?.aborted) {
         yield activeAttempt.push({ type: 'stream_error', error: { name: 'AgentError', message: 'maximum turns reached' } })
-        yield await activeAttempt.settle()
+        yield* this.settleAttempt(activeAttempt)
         finishReason = 'max_turns'
         break
       }
       const toolResults: ToolResult[] = []
       if (toolCalls.length) {
-        yield await activeAttempt.settle({
+        yield* this.settleAttempt(activeAttempt, {
           content: completion.content ?? '',
           toolCalls: toolCalls.map(call => ({
             id: call.id,
@@ -762,7 +793,7 @@ export class AgentService {
         output = completion.content
       }
       if (!toolCalls.length) {
-        yield await activeAttempt.settle({ content: completion.content ?? '' })
+        yield* this.settleAttempt(activeAttempt, { content: completion.content ?? '' })
       }
 
       await session.append('step/end', {

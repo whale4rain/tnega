@@ -272,7 +272,7 @@ export type AssistantStreamFrame = { attemptId: string; revision: number } & (
   | { type: 'chunk'; index: number; time: number; chunk: AssistantStreamChunk }
   | { type: 'end'; index: number; outcome: {
     kind: 'committed'; eventType: 'assistant/message' | 'assistant/attempt'; seq: number
-  } }
+  } | { kind: 'abandoned' } }
 )
 
 export interface AgentAssistantStreamEvent {
