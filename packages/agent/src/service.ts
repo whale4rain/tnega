@@ -596,6 +596,9 @@ export class AgentService {
             yield event
           }
           completion = completionFromStreamEvents(streamEvents)
+          if (completion.finishReason === 'error' || completion.finishReason === 'cancelled') {
+            throw new AgentError(`LLM stream finished with ${completion.finishReason}`)
+          }
           break
         } catch (error) {
           yield activeAttempt.push({ type: 'stream_error', error: toToolError(error) })

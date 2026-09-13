@@ -563,6 +563,39 @@ describe('agent loop', () => {
     await log.close()
   })
 
+  it('routes an error stop through request recovery without committing a message', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('attempt-error-stop.jsonl') })
+    await root.plugin(tools)
+    let streams = 0
+    await root.plugin(agent, { llm: {
+      complete: async () => { throw new Error('unused') },
+      async *stream() {
+        streams += 1
+        if (streams === 1) {
+          yield { type: 'message_delta', id: 'failed', delta: 'discarded' }
+          yield { type: 'message_stop', id: 'failed', finishReason: 'error' }
+          return
+        }
+        yield { type: 'message_delta', id: 'ok', delta: 'recovered' }
+        yield { type: 'message_stop', id: 'ok', finishReason: 'stop' }
+      },
+    } satisfies LLMAdapter })
+    let recoveries = 0
+    root.on('agent/request-error', async () => { recoveries += 1; return { kind: 'retry' } })
+    const service = root.get('agent') as AgentService
+    const { result } = await collectStream(service.runStream({ text: 'go' }))
+    const log = root.get('session') as SessionLog
+    expect(recoveries).toBe(1)
+    expect(result.output).toBe('recovered')
+    expect((await log.read()).filter(event => event.type === 'assistant/attempt')).toHaveLength(1)
+    expect(await log.deriveMessages()).toEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'recovered' },
+    ])
+    await log.close()
+  })
+
   it('allocates distinct attempts and increasing lifecycle revisions across retries and runs', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('attempt-retry.jsonl') })
