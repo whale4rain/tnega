@@ -14,6 +14,7 @@ import type {
   AgentContextBudget,
   AgentHooks,
   AgentInput,
+  AgentLoop,
   AgentStreamEvent,
   LLMAdapter,
 } from './types.js'
@@ -178,6 +179,7 @@ class LiveAgentImpl implements LiveAgent {
   private _durable: DurableInbox
   private _manualStreaming = false
   private _wakeReserved = false
+  private _loop: AgentLoop | undefined
 
   constructor(
     private _ctx: Context,
@@ -231,6 +233,10 @@ class LiveAgentImpl implements LiveAgent {
 
   followup(input: AgentInput): Promise<void> {
     return this._send(input, 'followup')
+  }
+
+  setLoop(loop: AgentLoop | undefined): void {
+    this._loop = loop
   }
 
   /** Replace one pending inbox message by durable message id. */
@@ -529,9 +535,15 @@ class LiveAgentImpl implements LiveAgent {
         else signal?.addEventListener('abort', forward, { once: true })
         try {
           if (this._manualStreaming) {
-            yield* this._service.runStream(input, { signal: controller.signal, turn })
+            if (this._loop) {
+              const run = await this._loop(input, { signal: controller.signal, turn })
+              yield { type: 'run/end', run }
+            } else {
+              yield* this._service.runStream(input, { signal: controller.signal, turn })
+            }
           } else {
-            await this._service.run(input, { signal: controller.signal, turn })
+            if (this._loop) await this._loop(input, { signal: controller.signal, turn })
+            else await this._service.run(input, { signal: controller.signal, turn })
           }
         } catch (error) {
           if (!controller.signal.aborted) {
@@ -811,6 +823,8 @@ async function buildHandle(
         const inherited = ctx.reflect.get(name, false)
         if (inherited !== undefined) agentCtx.provide(name, inherited)
       }
+      const loop = agentCtx.reflect.get('agentLoop', false) as AgentLoop | undefined
+      agent.setLoop(loop)
       setupResult?.commit()
     } catch (error) {
       await agent.dispose().catch(() => undefined)

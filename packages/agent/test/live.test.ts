@@ -14,6 +14,8 @@ import {
   SystemPromptService,
   type DurableInboxMessage,
   type AgentInboxInsertedEvent,
+  type AgentInput,
+  type AgentRunOptions,
   type AgentRegistry,
   type LiveAgent,
   type LLMAdapter,
@@ -210,6 +212,27 @@ describe('live agent registry', () => {
     expect(calls).toEqual(['blocked', 'replaced'])
     expect(events.some(event => event === 'discarded')).toBe(true)
     expect(events.some(event => event === 'inserted')).toBe(true)
+  })
+
+  it('uses a scoped agentLoop for automatic live drains', async () => {
+    const root = await mountRoot()
+    const seen: string[] = []
+    const handle = await createHandle(root, await tempFile('custom-live-loop.jsonl'), undefined, undefined, agentCtx => {
+      agentCtx.provide('agentLoop', async (input: AgentInput = {}, options: AgentRunOptions = {}) => {
+        seen.push(input.text ?? '')
+        const log = agentCtx.get('session') as SessionLog
+        await log.append('turn/end', {
+          turn: options.turn!, finishReason: 'stop', reason: { kind: 'stop' }, steps: 0,
+        })
+        return { output: 'custom', finishReason: 'stop', turn: options.turn, steps: [], messages: [] }
+      })
+    })
+
+    await handle.agent.followup({ text: 'custom input' })
+    await handle.agent.whenIdle()
+
+    expect(seen).toEqual(['custom input'])
+    await handle.dispose()
   })
 
   it('publishes claimed events for next-step inputs', async () => {
