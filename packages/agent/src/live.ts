@@ -586,6 +586,18 @@ class LiveAgentImpl implements LiveAgent {
     // Claiming next-step input spends its wake reservation only after the
     // durable mutation succeeds. A failed append must remain wakeable.
     this._wakeReserved = false
+    if (batch.length) {
+      const turn = (await this._nextTurnNumber()) - 1
+      for (const message of batch) {
+        this._ctx.emit('agent/inbox/claimed', {
+          id: this.id,
+          agent: this,
+          message,
+          input: { text: message.text ?? '' },
+          turn,
+        })
+      }
+    }
     return batch.length ? [await this._inputForBatch(batch, false)] : []
   }
 

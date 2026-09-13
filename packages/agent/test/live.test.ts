@@ -212,6 +212,33 @@ describe('live agent registry', () => {
     expect(events.some(event => event === 'inserted')).toBe(true)
   })
 
+  it('publishes claimed events for next-step inputs', async () => {
+    const root = await mountRoot()
+    const claims: Array<{ text: string; turn?: number }> = []
+    root.on('agent/inbox/claimed', (payload: { message: DurableInboxMessage; turn?: number }) => {
+      claims.push({ text: payload.message.text ?? '', turn: payload.turn })
+    })
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        return { content: messages.at(-1)?.content === 'second' ? 'done' : 'first', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('claimed-next-step.jsonl'), llm)
+    let steered = false
+    root.on('agent/turn-stopping', async () => {
+      if (!steered) {
+        steered = true
+        await handle.agent.steer({ text: 'second' })
+      }
+    })
+
+    await handle.agent.followup({ text: 'first' })
+    await handle.agent.whenIdle()
+
+    expect(claims).toEqual([{ text: 'first', turn: 1 }, { text: 'second', turn: 1 }])
+    await handle.dispose()
+  })
+
   it('reports inject intent and preserves a replacement next-step target', async () => {
     const root = await mountRoot()
     const inserted: Array<Pick<AgentInboxInsertedEvent, 'target' | 'input'>> = []
