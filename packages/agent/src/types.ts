@@ -120,6 +120,8 @@ export interface AgentRunOptions {
   maxSteps?: number
   signal?: AbortSignal
   contextBudget?: AgentContextBudget
+  /** Reuse a durable turn opened by the live inbox driver. */
+  turn?: number
 }
 
 /** Pulls inputs admitted at a live agent's next-step boundary. */

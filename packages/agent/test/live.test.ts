@@ -214,7 +214,7 @@ describe('live agent registry', () => {
 
   it('publishes claimed events for next-step inputs', async () => {
     const root = await mountRoot()
-    const claims: Array<{ text: string; turn?: number }> = []
+    const claims: Array<{ text: string; turn: number | undefined }> = []
     root.on('agent/inbox/claimed', (payload: { message: DurableInboxMessage; turn?: number }) => {
       claims.push({ text: payload.message.text ?? '', turn: payload.turn })
     })
@@ -236,6 +236,20 @@ describe('live agent registry', () => {
     await handle.agent.whenIdle()
 
     expect(claims).toEqual([{ text: 'first', turn: 1 }, { text: 'second', turn: 1 }])
+    await handle.dispose()
+  })
+
+  it('opens the durable turn before claiming its inbox batch', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('turn-before-claim.jsonl'))
+
+    await handle.agent.followup({ text: 'go' })
+    await handle.agent.whenIdle()
+
+    const events = await handle.agent.session.read()
+    expect(events.findIndex(event => event.type === 'turn/start')).toBeLessThan(
+      events.findIndex(event => event.type === 'agent/inbox/spliced' && event.payload.target === 'all'),
+    )
     await handle.dispose()
   })
 

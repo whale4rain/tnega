@@ -500,12 +500,14 @@ export class AgentService {
       injected,
     })
 
-    const turn = await session.nextTurn()
-    await session.append('turn/start', {
-      turn,
-      input: claimed.text ?? claimed,
-      reason: 'user',
-    })
+    const turn = options.turn ?? await session.nextTurn()
+    if (options.turn === undefined) {
+      await session.append('turn/start', {
+        turn,
+        input: claimed.text ?? claimed,
+        reason: 'user',
+      })
+    }
 
     let index = 0
     let finalTurnGranted = false
