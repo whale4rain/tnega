@@ -710,7 +710,8 @@ describe('agent loop', () => {
       if (frame.type === 'end') {
         expect(frame.outcome.kind).toBe('committed')
         if (frame.outcome.kind !== 'committed') continue
-        const committed = (await log.read()).find(item => item.seq === frame.outcome.seq)
+        const { seq } = frame.outcome
+        const committed = (await log.read()).find(item => item.seq === seq)
         expect(committed).toMatchObject({ type: 'assistant/message', payload: { content: 'done', stream: [
           { chunk: { type: 'message_delta', id: 'ok', delta: 'done' } },
           { chunk: { type: 'message_stop', id: 'ok', finishReason: 'stop' } },
