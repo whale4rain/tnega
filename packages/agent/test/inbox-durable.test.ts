@@ -29,7 +29,7 @@ describe('durable inbox', () => {
     const steering = inbox.steer({ text: 'B' })
     const claiming = inbox.claimNextStep()
     await steering
-    expect((await claiming).map(message => message.text)).toEqual(['B', 'A'])
+    expect((await claiming).map(message => message.text)).toEqual(['A', 'B'])
     expect(await inbox.claimNextStep()).toEqual([])
     expect((await DurableInbox.restore(log)).snapshot()).toEqual({ nextTurn: [], nextStep: [] })
     await log.close()
@@ -291,8 +291,8 @@ describe('durable inbox', () => {
 
     const batch = await inbox.claimBatch()
     expect(batch.map(message => message.text)).toEqual([
-      'steer-b',
       'steer-a',
+      'steer-b',
       'one',
     ])
     expect(inbox.size).toBe(1)
