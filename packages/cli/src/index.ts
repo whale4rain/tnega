@@ -45,6 +45,7 @@ export {
   runEvolveCommand,
 } from './commands.js'
 export { parseYaml } from './yaml.js'
+export { effectiveApiKey } from './config.js'
 export type { CompareResult, EvalRun }
 
 export function main(argv: readonly string[]): Promise<number> {

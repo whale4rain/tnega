@@ -106,7 +106,7 @@ export function effectiveLlmConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): EffectiveLlmConfig {
   const envConfig = resolveLlmEnv(env)
-  const apiKey = envConfig.apiKey ?? config.apiKey
+  const apiKey = effectiveApiKey(config, env)
   const baseUrl = envConfig.baseUrl ?? config.baseUrl ?? DEFAULT_OPENCODE_GO_BASE_URL
   const model = envConfig.model ?? config.model ?? DEFAULT_MODEL
   const result: EffectiveLlmConfig = {
@@ -132,6 +132,8 @@ export function effectiveApiKey(
   config: SystemConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
+  if (env.TNEGA_API_KEY) return env.TNEGA_API_KEY
+  if (config.protocol && config.apiKey) return config.apiKey
   return resolveLlmEnv(env).apiKey ?? config.apiKey
 }
 

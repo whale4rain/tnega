@@ -7,6 +7,7 @@ import type { EvolveStepResult } from '@tnega/evolve'
 
 import {
   CliError,
+  effectiveApiKey,
   compareCommand,
   formatEvolveResult,
   formatCompare,
@@ -287,6 +288,13 @@ describe('agent run command', () => {
     })
   })
 
+  it('keeps an explicit Anthropic config key ahead of unrelated provider keys', () => {
+    expect(effectiveApiKey(
+      { apiKey: 'anthropic-key', protocol: 'anthropic' },
+      { DEEPSEEK_API_KEY: 'deepseek-key' },
+    )).toBe('anthropic-key')
+  })
+
   it('runs an agent against a mocked OpenAI compatible endpoint and never writes the key', async () => {
     const dir = await tempDir('tnega-cli-agent-')
     vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
@@ -401,6 +409,7 @@ describe('agent run command', () => {
       model: 'my-anthropic-model',
       baseUrl: 'https://anthropic.example.com/v1',
       protocol: 'anthropic',
+      apiKeyHeader: 'api-key',
     }), 'utf8')
     const fetchMock = vi.fn(async () => anthropicResponse('custom anthropic')) as FetchMock
     vi.stubGlobal('fetch', fetchMock)
@@ -416,7 +425,8 @@ describe('agent run command', () => {
       'https://anthropic.example.com/v1/messages',
     )
     const headers = fetchMock.mock.calls[0]![1]!.headers as Record<string, string>
-    expect(headers['x-api-key']).toBe('sk-ant-custom')
+    expect(headers['api-key']).toBe('sk-ant-custom')
+    expect(headers['x-api-key']).toBeUndefined()
     const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as { model: string }
     expect(body.model).toBe('my-anthropic-model')
   })

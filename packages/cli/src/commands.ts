@@ -46,6 +46,7 @@ import {
   type ImportedBenchmark,
 } from '@tnega/benchmark'
 import {
+  effectiveApiKey,
   readSystemConfig,
   resolveLlmEnv,
   systemConfigPath,
@@ -450,7 +451,7 @@ export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
   if (candidate.coding) {
     const systemConfig = await readSystemConfig()
     const envConfig = resolveLlmEnv(process.env)
-    const apiKey = envConfig.apiKey ?? systemConfig.apiKey
+    const apiKey = effectiveApiKey(systemConfig)
     if (!apiKey) {
       throw new CliError(
         'missing LLM API key for coding eval; set TNEGA_API_KEY (or OPENCODE_GO_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
@@ -469,6 +470,7 @@ export async function runCommand(options: RunCommandOptions): Promise<EvalRun> {
       ...(model ? { model } : {}),
       ...(baseUrl ? { baseUrl } : {}),
       ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
+      ...(systemConfig.apiKeyHeader ? { apiKeyHeader: systemConfig.apiKeyHeader } : {}),
       ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
       ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(systemConfig.temperature !== undefined
@@ -550,7 +552,7 @@ export async function runAgentCommand(
   const profileOptions = (profile?.options ?? {}) as Record<string, unknown>
   const systemConfig = await readSystemConfig(configFile)
   const envConfig = resolveLlmEnv(process.env)
-  const apiKey = envConfig.apiKey ?? systemConfig.apiKey
+  const apiKey = effectiveApiKey(systemConfig)
   if (!apiKey) {
     throw new CliError(
       'missing LLM API key; set TNEGA_API_KEY (or OPENCODE_GO_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
@@ -575,6 +577,7 @@ export async function runAgentCommand(
     ...(protocolFrom(profileOptions) ?? systemConfig.protocol
       ? { protocol: protocolFrom(profileOptions) ?? systemConfig.protocol }
       : {}),
+    ...(systemConfig.apiKeyHeader ? { apiKeyHeader: systemConfig.apiKeyHeader } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.maxTokens === undefined && typeof profileOptions.maxTokens === 'number'
       ? { maxTokens: profileOptions.maxTokens }
@@ -777,7 +780,7 @@ export async function runEvolveCommand(
   const configFile = options.configFile ?? systemConfigPath()
   const systemConfig = await readSystemConfig(configFile)
   const envConfig = resolveLlmEnv(process.env)
-  const apiKey = envConfig.apiKey ?? systemConfig.apiKey
+  const apiKey = effectiveApiKey(systemConfig)
   if (!apiKey) {
     throw new CliError(
       'missing LLM API key; set TNEGA_API_KEY (or OPENCODE_GO_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY) or configure it in the tnega config file',
@@ -793,6 +796,7 @@ export async function runEvolveCommand(
     ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(systemConfig.protocol ? { protocol: systemConfig.protocol } : {}),
+    ...(systemConfig.apiKeyHeader ? { apiKeyHeader: systemConfig.apiKeyHeader } : {}),
     ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(systemConfig.temperature !== undefined
