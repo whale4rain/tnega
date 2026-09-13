@@ -492,6 +492,7 @@ export class AgentService {
     const steps: AgentStep[] = []
     let output = ''
     let finishReason: AgentFinishReason = 'stop'
+    let lengthReached = false
 
     this.ctx.emit('agent/turn-start', {
       input: claimed,
@@ -691,6 +692,7 @@ export class AgentService {
       }
 
       const toolCalls = completion.toolCalls ?? []
+      if (completion.finishReason === 'length') lengthReached = true
       if (options.signal?.aborted && toolCalls.length === 0) {
         yield activeAttempt.push({ type: 'stream_error', error: { name: 'AbortError', message: 'stream aborted' } })
         yield* this.settleAttempt(activeAttempt)
@@ -807,12 +809,8 @@ export class AgentService {
       const nextMessages = this._extendMessages(llmMessages, completion, toolResults)
       const concludesTurn = toolResults.some(result => result.concludesTurn === true)
       let nextStepMessages = await this._claimNextStepMessages()
-      if (concludesTurn && nextStepMessages.length === 0) {
-        finishReason = 'stop'
-        break
-      }
-      if (toolCalls.length === 0 && nextStepMessages.length === 0) {
-        finishReason = completion.finishReason === 'length'
+      if ((toolCalls.length === 0 || concludesTurn) && nextStepMessages.length === 0) {
+        finishReason = lengthReached
           ? 'length'
           : completion.finishReason === 'error'
             ? 'error'

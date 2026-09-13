@@ -60,7 +60,7 @@ export class DurableInbox {
       }
       await this._session.append('agent/inbox/spliced', {
         target: 'next-step',
-        index: 0,
+        index: this._nextStep.length,
         inserted: [{
           id: message.id,
           content: contentOf(message),
@@ -68,7 +68,7 @@ export class DurableInbox {
           mode: 'steer',
         }],
       })
-      this._nextStep.unshift(message)
+      this._nextStep.push(message)
       return message
     })
   }
