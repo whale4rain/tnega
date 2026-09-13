@@ -229,9 +229,10 @@ function attachEndState(
     ...(payload.error ? { error: payload.error } : {}),
   }
   const target = lastAssistantFrom(messages, fromIndex)
-  if (target) {
-    if (payload.interrupted) target.interrupted = true
-    target.endState = endState
+  const userTarget = target ?? lastUserFrom(messages, fromIndex)
+  if (userTarget) {
+    if (payload.interrupted) userTarget.interrupted = true
+    userTarget.endState = endState
     return
   }
   if (!pushFallback) return
@@ -243,6 +244,17 @@ function attachEndState(
     content: marker,
     endState,
   })
+}
+
+function lastUserFrom(
+  messages: DisplayMessage[],
+  fromIndex: number,
+): DisplayMessage | undefined {
+  for (let index = messages.length - 1; index >= fromIndex; index -= 1) {
+    const entry = messages[index]
+    if (entry && entry.role === 'user') return entry
+  }
+  return undefined
 }
 
 function endMarker(payload: EndPayload): string {

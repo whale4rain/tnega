@@ -165,6 +165,21 @@ describe('anthropicMessagesAdapter', () => {
     ])
   })
 
+  it('supports providers that require api-key for Anthropic Messages authentication', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      content: [{ type: 'text', text: 'ok' }],
+      stop_reason: 'end_turn',
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    await anthropicMessagesAdapter({ apiKey: 'test-key', apiKeyHeader: 'api-key' })
+      .complete([{ role: 'user', content: 'hi' }], [], {})
+
+    const headers = fetchMock.mock.calls[0]![1]!.headers as Record<string, string>
+    expect(headers['api-key']).toBe('test-key')
+    expect(headers['x-api-key']).toBeUndefined()
+  })
+
   it('normalizes a base URL that already ends with /messages', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       content: [{ type: 'text', text: 'hi' }],

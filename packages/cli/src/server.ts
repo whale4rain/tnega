@@ -1184,6 +1184,7 @@ function adapterFromConfig(
     baseUrl: string
     model: string
     protocol?: 'anthropic' | 'openai'
+    apiKeyHeader?: 'x-api-key' | 'api-key'
     temperature?: number
   } = {
     apiKey,
@@ -1191,6 +1192,7 @@ function adapterFromConfig(
     model: effective.model,
   }
   if (effective.protocol) options.protocol = effective.protocol
+  if (effective.apiKeyHeader) options.apiKeyHeader = effective.apiKeyHeader
   if (effective.temperature !== undefined) options.temperature = effective.temperature
   return createLlmAdapter(options)
 }

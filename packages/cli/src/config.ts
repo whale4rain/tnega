@@ -14,6 +14,7 @@ export interface SystemConfig {
   baseUrl?: string
   model?: string
   protocol?: 'anthropic' | 'openai'
+  apiKeyHeader?: 'x-api-key' | 'api-key'
   temperature?: number
   workspaces?: string[]
 }
@@ -23,6 +24,7 @@ export interface EffectiveLlmConfig {
   baseUrl: string
   model: string
   protocol?: 'anthropic' | 'openai'
+  apiKeyHeader?: 'x-api-key' | 'api-key'
   temperature?: number
 }
 
@@ -113,6 +115,7 @@ export function effectiveLlmConfig(
     model,
   }
   if (config.protocol) result.protocol = config.protocol
+  if (config.apiKeyHeader) result.apiKeyHeader = config.apiKeyHeader
   if (config.temperature !== undefined) result.temperature = config.temperature
   return result
 }
@@ -153,6 +156,9 @@ function normalizeConfig(value: unknown): SystemConfig {
   if (typeof record.model === 'string' && record.model) config.model = record.model
   if (record.protocol === 'anthropic' || record.protocol === 'openai') {
     config.protocol = record.protocol
+  }
+  if (record.apiKeyHeader === 'x-api-key' || record.apiKeyHeader === 'api-key') {
+    config.apiKeyHeader = record.apiKeyHeader
   }
   if (typeof record.temperature === 'number' && Number.isFinite(record.temperature)) {
     config.temperature = record.temperature

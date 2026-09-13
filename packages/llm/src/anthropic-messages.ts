@@ -200,7 +200,7 @@ function buildRequest(
       headers: {
         'content-type': 'application/json',
         'anthropic-version': ANTHROPIC_VERSION,
-        ...(config.apiKey ? { 'x-api-key': config.apiKey } : {}),
+        ...(config.apiKey ? { [config.apiKeyHeader ?? 'x-api-key']: config.apiKey } : {}),
       },
       body: JSON.stringify(body),
       ...(signal ? { signal } : {}),

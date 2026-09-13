@@ -101,10 +101,10 @@ describe('projectEvents', () => {
 
     const messages = projectEvents(events)
 
-    expect(messages).toHaveLength(2)
-    expect(messages[1]).toMatchObject({
-      role: 'system',
-      content: '[cancel timeout 5000ms]',
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({
+      role: 'user',
+      content: 'go',
       endState: {
         finishReason: 'cancelled',
         cancelCause: { type: 'timeout', timeoutMs: 5000 },
@@ -195,9 +195,9 @@ describe('projectEvents', () => {
       content: '[retry 1]',
       retry: { retryId: 'r4', retry: 1, started: true },
     })
-    expect(messages[4]).toMatchObject({
-      role: 'system',
-      content: '[cancel user]',
+    expect(messages[2]).toMatchObject({
+      role: 'user',
+      content: 'two',
       endState: { finishReason: 'cancelled', cancelCause: { type: 'user' } },
     })
   })
