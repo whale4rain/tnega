@@ -399,7 +399,7 @@ class AssistantStreamAttempt {
 }
 
 class AttemptSettlementError extends Error {
-  constructor(readonly cause: unknown, readonly frame: AgentAssistantStreamEvent) {
+  constructor(override readonly cause: unknown, readonly frame: AgentAssistantStreamEvent) {
     super('assistant attempt settlement failed')
   }
 }

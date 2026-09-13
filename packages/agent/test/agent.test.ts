@@ -607,7 +607,7 @@ describe('agent loop', () => {
     const log = root.get('session') as SessionLog
     const append = log.append.bind(log)
     vi.spyOn(log, 'append').mockImplementation(async (type, payload) => {
-      if (type === 'assistant/attempt') throw new Error('settlement failed')
+      if ((type as string) === 'assistant/attempt') throw new Error('settlement failed')
       return append(type as never, payload as never)
     })
     const service = root.get('agent') as AgentService
@@ -708,6 +708,8 @@ describe('agent loop', () => {
       const frame = event.frame
       order.push(frame.type)
       if (frame.type === 'end') {
+        expect(frame.outcome.kind).toBe('committed')
+        if (frame.outcome.kind !== 'committed') continue
         const committed = (await log.read()).find(item => item.seq === frame.outcome.seq)
         expect(committed).toMatchObject({ type: 'assistant/message', payload: { content: 'done', stream: [
           { chunk: { type: 'message_delta', id: 'ok', delta: 'done' } },
