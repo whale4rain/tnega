@@ -425,6 +425,7 @@ class LiveAgentImpl implements LiveAgent {
       this._pendingWrite = undefined
       await writeTail.catch(() => undefined)
     }
+    await this.session.close()
     this._setStatus('idle')
   }
 
@@ -464,10 +465,20 @@ class LiveAgentImpl implements LiveAgent {
     ) return
     const task = this._drainAll()
     this._drainPromise = task
-    task.finally(() => {
-      if (this._drainPromise === task) this._drainPromise = undefined
-      if (this._hasQueuedWork()) queueMicrotask(() => this._wake())
-    })
+    void task.then(
+      () => {
+        if (this._drainPromise === task) this._drainPromise = undefined
+        if (this._hasQueuedWork()) queueMicrotask(() => this._wake())
+      },
+      (error: unknown) => {
+        if (this._drainPromise === task) this._drainPromise = undefined
+        try {
+          this._ctx.emit('agent/error', { id: this.id, agent: this, error })
+        } catch {
+          // Observers must not turn a contained drain failure into an unhandled rejection.
+        }
+      },
+    )
   }
 
   private async _drainAll(): Promise<void> {
@@ -500,8 +511,8 @@ class LiveAgentImpl implements LiveAgent {
           !snapshot.nextTurn.length
           && !(this._wakeReserved && snapshot.nextStep.length)
         ) break
-        this._wakeReserved = false
         const batch = await this._durable.claimBatch()
+        this._wakeReserved = false
         if (!batch.length) break
         const input = await this._inputForBatch(batch, true)
         const turn = await this._nextTurnNumber()
@@ -571,10 +582,10 @@ class LiveAgentImpl implements LiveAgent {
 
   async claimNextStepInputs(): Promise<readonly AgentInput[]> {
     await this._writeTail
-    // Claiming next-step input spends its wake reservation. Clear before
-    // awaiting the durable claim so a newly arriving steer retains its wake.
-    this._wakeReserved = false
     const batch = await this._durable.claimNextStep()
+    // Claiming next-step input spends its wake reservation only after the
+    // durable mutation succeeds. A failed append must remain wakeable.
+    this._wakeReserved = false
     return batch.length ? [await this._inputForBatch(batch, false)] : []
   }
 

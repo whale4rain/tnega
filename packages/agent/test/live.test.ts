@@ -109,6 +109,16 @@ describe('live agent registry', () => {
     expect(events).toEqual(['created', 'disposed'])
   })
 
+  it('closes its owned session log when disposed', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('close-session.jsonl'))
+    const close = vi.spyOn(handle.agent.session, 'close')
+
+    await handle.dispose()
+
+    expect(close).toHaveBeenCalledOnce()
+  })
+
   it('wakes the driver and drains queued followups', async () => {
     const root = await mountRoot()
     const calls: string[] = []
