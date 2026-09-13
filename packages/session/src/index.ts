@@ -719,7 +719,7 @@ export function transcriptEvents(events: readonly SessionEvent[]): SessionEvent[
 
   const ordered = [...skeleton]
   for (const event of structure) {
-    let index = ordered.length
+    let index = 0
     for (let cursor = ordered.length - 1; cursor >= 0; cursor -= 1) {
       if (ordered[cursor]!.seq <= event.seq) {
         index = cursor + 1

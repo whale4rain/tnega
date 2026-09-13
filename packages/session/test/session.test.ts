@@ -1575,6 +1575,26 @@ describe('context budget', () => {
 
 
 describe('transcriptEvents', () => {
+  it('preserves lifecycle event order around visible messages', async () => {
+    const log = new SessionLog(await tempFile('transcript-lifecycle-order.jsonl'))
+    await log.init()
+    await log.append('turn/start', { turn: 1 })
+    await log.append('user/message', { content: 'failed input' })
+    await log.append('turn/end', {
+      turn: 1,
+      finishReason: 'error',
+      error: { message: 'request failed' },
+    })
+    await log.append('turn/start', { turn: 2 })
+    await log.append('user/message', { content: 'next input' })
+    await log.append('assistant/message', { content: 'next answer' })
+    await log.append('turn/end', { turn: 2, finishReason: 'stop' })
+
+    expect(transcriptEvents(await log.read()).map(event => event.seq)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ])
+  })
+
   it('keeps shadowed history for the web while derive hides it from the model', async () => {
     const log = new SessionLog(await tempFile('transcript.jsonl'))
     for (const [role, content] of [
