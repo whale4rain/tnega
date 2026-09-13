@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -310,7 +310,7 @@ describe('agent run command', () => {
 
     expect(result.run.output).toBe('agent says hi')
     expect(result.run.finishReason).toBe('stop')
-    expect(result.sessionFile).toBe(join(dir, '.tnega', 'run.jsonl'))
+    expect(result.sessionFile).toBe(join(dir, '.tnega', 'run-v10.jsonl'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const init = fetchMock.mock.calls[0]![1]!
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer test-key')
@@ -321,6 +321,34 @@ describe('agent run command', () => {
     const sessionText = await readFile(result.sessionFile, 'utf8')
     expect(sessionText).toContain('agent says hi')
     expect(sessionText).not.toContain('test-key')
+  })
+
+  it('starts a new default session instead of reading a legacy run log', async () => {
+    const dir = await tempDir('tnega-cli-agent-legacy-session-')
+    const sessionDir = join(dir, '.tnega')
+    const legacyFile = join(sessionDir, 'run.jsonl')
+    const legacy = JSON.stringify({
+      id: 'legacy',
+      seq: 1,
+      ts: 1,
+      type: 'message',
+      payload: { role: 'user', content: 'old input' },
+    })
+    await mkdir(sessionDir, { recursive: true })
+    await writeFile(legacyFile, `${legacy}\n`, 'utf8')
+    vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn(async () => openaiResponse('new answer')))
+
+    const result = await runAgentCommand({
+      prompt: 'new input',
+      cwd: dir,
+      configFile: join(dir, 'missing-config.json'),
+      maxTokens: 16,
+    })
+
+    expect(result.sessionFile).toBe(join(sessionDir, 'run-v10.jsonl'))
+    expect(await readFile(legacyFile, 'utf8')).toBe(`${legacy}\n`)
+    expect(await readFile(result.sessionFile, 'utf8')).toContain('"formatVersion":10')
   })
 
   it('defaults to deepseek-v4-flash through the OpenAI compatible endpoint', async () => {

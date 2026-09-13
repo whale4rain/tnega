@@ -18,7 +18,7 @@ import {
   type LLMAdapter,
 } from '@tnega/agent'
 import { createLlmAdapter } from '@tnega/llm'
-import { session } from '@tnega/session'
+import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
 import {
   builtinTools,
   tools,
@@ -544,7 +544,8 @@ export async function runAgentCommand(
   options: RunAgentCommandOptions,
 ): Promise<RunAgentCommandResult> {
   const cwd = options.cwd ?? process.cwd()
-  const sessionFile = resolve(cwd, options.sessionFile ?? join('.tnega', 'run.jsonl'))
+  const sessionFile = resolve(cwd, options.sessionFile
+    ?? join('.tnega', `run-v${SESSION_FORMAT_VERSION}.jsonl`))
   const configFile = options.configFile ?? systemConfigPath()
   const profile = options.profile
     ? await readAgentProfile(options.profile)
