@@ -507,16 +507,12 @@ class LiveAgentImpl implements LiveAgent {
         // A waking steer may open a later turn if the preceding turn has
         // already passed its last next-step boundary. Inject stays inert.
         const snapshot = this._durable.snapshot()
-        if (
-          !snapshot.nextTurn.length
-          && !(this._wakeReserved && snapshot.nextStep.length)
-        ) break
+        if (!snapshot.nextTurn.length && !this._wakeReserved) break
         const turn = await this._nextTurnNumber()
         await this.session.append('turn/start', { turn, reason: 'user' })
         const batch = await this._durable.claimBatch()
         this._wakeReserved = false
-        if (!batch.length) break
-        const input = await this._inputForBatch(batch, true)
+        const input = batch.length ? await this._inputForBatch(batch, true) : { text: '' }
         for (const message of batch) {
           this._ctx.emit('agent/inbox/claimed', {
             id: this.id,

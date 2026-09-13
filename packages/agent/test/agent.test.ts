@@ -2511,6 +2511,23 @@ describe('request header snapshots across steps', () => {
     })
   })
 
+  it('records the final request contextWindow over the default route capacity', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('request-context-final-capacity.jsonl') })
+    await root.plugin(tools)
+    await root.plugin(agent, { llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]).adapter })
+    root.on('agent/request', (payload: AgentRequestEvent, next) => {
+      payload.options.contextWindow = 32_000
+      return next()
+    })
+
+    await (root.get('agentLoop') as AgentLoop)({ text: 'hi' })
+
+    const log = dynamic(root).session as SessionLog
+    expect((await log.read()).findLast(event => event.type === 'request/context')?.payload)
+      .toMatchObject({ contextWindow: 32_000 })
+  })
+
   it('records a new request context when route capacity changes', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('request-context-capacity-change.jsonl') })

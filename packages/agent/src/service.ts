@@ -489,6 +489,7 @@ export class AgentService {
     this.ctx.emit('agent/start', { input: claimed, options, injected })
 
     let messages = await this._initialMessages(claimed)
+    let claimedMessages = messages.filter(message => message.role === 'user')
     const steps: AgentStep[] = []
     let output = ''
     let finishReason: AgentFinishReason = 'stop'
@@ -533,6 +534,7 @@ export class AgentService {
         turn,
         step: index,
         messages: stepInput,
+        claimedMessages: copyMessages(claimedMessages),
         ...(options.signal ? { signal: options.signal } : {}),
       }, (payload: AgentPreStepEvent) => payload)
       if (
@@ -842,6 +844,7 @@ export class AgentService {
       if (toolCalls.length) finishReason = 'tool_calls'
       index += 1
       messages = [...nextMessages, ...nextStepMessages]
+      claimedMessages = nextStepMessages.filter(message => message.role === 'user')
     }
     } catch (error) {
       turnError = error
@@ -1006,13 +1009,16 @@ export class AgentService {
       ...(request.options.provider ? { provider: request.options.provider } : {}),
       ...(request.options.model ? { model: request.options.model } : {}),
     }
+    if (request.options.contextWindow !== undefined) {
+      nextContext.contextWindow = request.options.contextWindow
+    }
     const llmService = this.ctx.reflect.get('llm', false) as
       | { routeCapacity(): unknown }
       | undefined
     const routeCapacity = llmService?.routeCapacity?.() as
       | { provider?: string; model?: string; contextWindow?: number }
       | undefined
-    if (routeCapacity?.contextWindow !== undefined) {
+    if (nextContext.contextWindow === undefined && routeCapacity?.contextWindow !== undefined) {
       nextContext.contextWindow = routeCapacity.contextWindow
     }
     const previousContext = session.requestContext()

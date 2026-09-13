@@ -30,6 +30,8 @@ export interface CompleteOptions {
   provider?: string
   model?: string
   temperature?: number
+  /** Capacity of the final model route, for durable request diagnostics. */
+  contextWindow?: number
 }
 
 export interface LLMMessageStartEvent {
@@ -181,6 +183,8 @@ export interface AgentPreStepEvent {
   /** Cancellation signal for the current turn. */
   signal?: AbortSignal
   messages: ModelMessage[]
+  /** Newly claimed user messages for this proposed step, excluding history. */
+  claimedMessages: ModelMessage[]
   /** Admit this proposed step, or end the turn before a model request. */
   admission?: 'enter' | 'reject'
   /** Begin a distinct model-message series before this step's admitted messages. */
