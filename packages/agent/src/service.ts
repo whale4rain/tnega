@@ -597,7 +597,9 @@ export class AgentService {
           }
           completion = completionFromStreamEvents(streamEvents)
           if (completion.finishReason === 'error' || completion.finishReason === 'cancelled') {
-            throw new AgentError(`LLM stream finished with ${completion.finishReason}`)
+            const terminalReason = completion.finishReason
+            completion = undefined
+            throw new AgentError(`LLM stream finished with ${terminalReason}`)
           }
           break
         } catch (error) {
