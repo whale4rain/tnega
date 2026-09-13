@@ -228,6 +228,8 @@ describe('live agent registry', () => {
     await handle.agent.whenIdle()
 
     expect(seen).toEqual(['custom input'])
+    expect((await handle.agent.session.read()).filter(event => event.type === 'turn/end'))
+      .toHaveLength(1)
     await handle.dispose()
   })
 

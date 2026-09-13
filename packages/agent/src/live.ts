@@ -15,6 +15,7 @@ import type {
   AgentHooks,
   AgentInput,
   AgentLoop,
+  AgentRunResult,
   AgentStreamEvent,
   LLMAdapter,
 } from './types.js'
@@ -237,6 +238,29 @@ class LiveAgentImpl implements LiveAgent {
 
   setLoop(loop: AgentLoop | undefined): void {
     this._loop = loop
+  }
+
+  private async _closeCustomTurn(turn: number, run: AgentRunResult): Promise<void> {
+    const events = await this.session.read()
+    if (events.some(event => event.type === 'turn/end' && event.payload.turn === turn)) return
+    const reason = run.finishReason === 'length'
+      ? { kind: 'max-tokens' as const }
+      : run.finishReason === 'max_steps'
+        ? { kind: 'max-steps' as const }
+        : run.finishReason === 'max_turns'
+          ? { kind: 'max-turns' as const }
+          : run.finishReason === 'cancelled'
+            ? { kind: 'interrupted' as const }
+            : run.finishReason === 'error'
+              ? { kind: 'interrupted' as const }
+              : { kind: 'completed' as const }
+    await this.session.append('turn/end', {
+      turn,
+      finishReason: run.finishReason,
+      reason,
+      ...(run.output ? { output: run.output } : {}),
+      ...(run.steps.length ? { steps: run.steps.length } : {}),
+    })
   }
 
   /** Replace one pending inbox message by durable message id. */
@@ -537,12 +561,16 @@ class LiveAgentImpl implements LiveAgent {
           if (this._manualStreaming) {
             if (this._loop) {
               const run = await this._loop(input, { signal: controller.signal, turn })
+              await this._closeCustomTurn(turn, run)
               yield { type: 'run/end', run }
             } else {
               yield* this._service.runStream(input, { signal: controller.signal, turn })
             }
           } else {
-            if (this._loop) await this._loop(input, { signal: controller.signal, turn })
+            if (this._loop) {
+              const run = await this._loop(input, { signal: controller.signal, turn })
+              await this._closeCustomTurn(turn, run)
+            }
             else await this._service.run(input, { signal: controller.signal, turn })
           }
         } catch (error) {
