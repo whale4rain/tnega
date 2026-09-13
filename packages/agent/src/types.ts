@@ -179,6 +179,8 @@ export interface AgentPreStepEvent {
   /** Cancellation signal for the current turn. */
   signal?: AbortSignal
   messages: ModelMessage[]
+  /** Admit this proposed step, or end the turn before a model request. */
+  admission?: 'enter' | 'reject'
   /** Begin a distinct model-message series before this step's admitted messages. */
   startsRequestSeries?: boolean
 }

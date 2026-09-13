@@ -1976,6 +1976,24 @@ describe('agent loop', () => {
     ])
   })
 
+  it('lets agent/pre-step reject a proposed step without calling the model', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('pre-step-reject.jsonl') })
+    await root.plugin(tools)
+    const { adapter, calls } = fakeLLM([{ content: 'unused', finishReason: 'stop' }])
+    await root.plugin(agent, { llm: adapter })
+    root.on('agent/pre-step', (payload: AgentPreStepEvent, next) => {
+      payload.admission = 'reject'
+      return next()
+    })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    const result = await loop({ text: 'blocked' })
+
+    expect(calls).toHaveLength(0)
+    expect(result.steps).toHaveLength(0)
+  })
+
   it('awaits agent/pre-step rewrites before admitting and persisting the step input', async () => {
     const root = new Context()
     await root.plugin(session, { file: await tempFile('async-pre-step.jsonl') })

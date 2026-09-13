@@ -533,7 +533,12 @@ export class AgentService {
         messages: stepInput,
         ...(options.signal ? { signal: options.signal } : {}),
       }, (payload: AgentPreStepEvent) => payload)
-      if (!preStep || !Array.isArray(preStep.messages) || !preStep.messages.length) {
+      if (
+        !preStep
+        || preStep.admission === 'reject'
+        || !Array.isArray(preStep.messages)
+        || !preStep.messages.length
+      ) {
         break
       }
       if (preStep.startsRequestSeries) this._seriesStarted = true
