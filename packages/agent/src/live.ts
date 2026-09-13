@@ -263,6 +263,21 @@ class LiveAgentImpl implements LiveAgent {
     })
   }
 
+  private async _closeFailedCustomTurn(turn: number, error: unknown): Promise<void> {
+    const events = await this.session.read()
+    if (events.some(event => event.type === 'turn/end' && event.payload.turn === turn)) return
+    const failure = error instanceof Error
+      ? { name: error.name, message: error.message, ...(error.stack ? { stack: error.stack } : {}) }
+      : { name: 'Error', message: String(error) }
+    await this.session.append('turn/end', {
+      turn,
+      finishReason: 'error',
+      reason: { kind: 'error', error: failure },
+      interrupted: true,
+      error: failure,
+    })
+  }
+
   /** Replace one pending inbox message by durable message id. */
   replaceMessage(messageId: string, input: AgentInput): Promise<void> {
     return this._mutatePending(async () => {
@@ -574,6 +589,7 @@ class LiveAgentImpl implements LiveAgent {
             else await this._service.run(input, { signal: controller.signal, turn })
           }
         } catch (error) {
+          if (this._loop) await this._closeFailedCustomTurn(turn, error)
           if (!controller.signal.aborted) {
             const step = await this._failedStep()
             this._ctx.emit('agent/error', {

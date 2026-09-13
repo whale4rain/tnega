@@ -233,6 +233,20 @@ describe('live agent registry', () => {
     await handle.dispose()
   })
 
+  it('closes a turn when a scoped agentLoop throws', async () => {
+    const root = await mountRoot()
+    const handle = await createHandle(root, await tempFile('custom-live-loop-error.jsonl'), undefined, undefined, agentCtx => {
+      agentCtx.provide('agentLoop', async () => { throw new Error('custom failure') })
+    })
+
+    await handle.agent.followup({ text: 'custom input' })
+    await handle.agent.whenIdle()
+
+    expect((await handle.agent.session.read()).filter(event => event.type === 'turn/end'))
+      .toMatchObject([{ payload: { finishReason: 'error' } }])
+    await handle.dispose()
+  })
+
   it('publishes claimed events for next-step inputs', async () => {
     const root = await mountRoot()
     const claims: Array<{ text: string; turn: number | undefined }> = []
