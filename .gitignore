@@ -12,3 +12,6 @@ coverage/
 
 # materialized benchmark data is reproducible via `pnpm tnega eval import-benchmark`
 data/benchmarks/
+
+# Unused or past docs
+docs/bin/
