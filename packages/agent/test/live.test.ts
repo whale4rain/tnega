@@ -220,10 +220,6 @@ describe('live agent registry', () => {
     const handle = await createHandle(root, await tempFile('custom-live-loop.jsonl'), undefined, undefined, agentCtx => {
       agentCtx.provide('agentLoop', async (input: AgentInput = {}, options: AgentRunOptions = {}) => {
         seen.push(input.text ?? '')
-        const log = agentCtx.get('session') as SessionLog
-        await log.append('turn/end', {
-          turn: options.turn!, finishReason: 'stop', reason: { kind: 'stop' }, steps: 0,
-        })
         return { output: 'custom', finishReason: 'stop', turn: options.turn, steps: [], messages: [] }
       })
     })
