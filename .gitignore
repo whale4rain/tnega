@@ -1,6 +1,7 @@
 node_modules/
 .worktrees/
 dist/
+apps/desktop/out/
 coverage/
 *.log
 .DS_Store

@@ -1,0 +1,21 @@
+{
+  "name": "@tnega/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "pnpm --workspace-root build && pnpm build && electron .",
+    "typecheck": "tsc -p tsconfig.json",
+    "package": "pnpm --workspace-root build && pnpm build && electron-builder"
+  },
+  "dependencies": {
+    "@tnega/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2"
+  }
+}

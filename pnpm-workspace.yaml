@@ -1,9 +1,11 @@
 packages:
   - packages/*
+  - apps/*
 
 onlyBuiltDependencies:
   - esbuild
 allowBuilds:
+  electron-winstaller: false
   esbuild: true
 minimumReleaseAgeExclude:
   - tnega@0.1.1
