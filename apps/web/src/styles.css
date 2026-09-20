@@ -1480,3 +1480,117 @@ textarea {
     gap: 8px 16px;
   }
 }
+
+/* Desktop editorial layer: warm paper, decisive ink, and flat hierarchy. */
+:root,
+:root[data-theme="light"] {
+  --canvas: #faf9f6;
+  --surface-soft: #f3f1eb;
+  --surface-card: #ffffff;
+  --ink: #141413;
+  --ink-deep: #141413;
+  --charcoal: #34332f;
+  --body: #34332f;
+  --mute: #696762;
+  --stone: #77746e;
+  --ash: #a29f97;
+  --hairline: #dedbd3;
+  --hairline-strong: #9b978d;
+  --accent: #a9583c;
+  --clay: #a9583c;
+  --danger: #b42318;
+  --danger-bg: #fff0ed;
+  --warning: #9a6700;
+  --success: #16763b;
+  --on-dark: #faf9f6;
+  --overlay: rgba(20, 20, 19, 0.35);
+}
+
+:root[data-theme="dark"] {
+  --canvas: #1d1d1b;
+  --surface-soft: #292824;
+  --surface-card: #24231f;
+  --ink: #f4f1e9;
+  --ink-deep: #ffffff;
+  --charcoal: #ddd8ce;
+  --body: #ddd8ce;
+  --mute: #b8b2a7;
+  --stone: #9f988d;
+  --ash: #716d65;
+  --hairline: #4d4a43;
+  --hairline-strong: #827d73;
+  --accent: #d58b6d;
+  --clay: #d58b6d;
+  --danger: #ff8f7b;
+  --danger-bg: #482722;
+  --warning: #f0bd54;
+  --success: #6fc28b;
+  --on-dark: #1d1d1b;
+  --overlay: rgba(0, 0, 0, 0.6);
+}
+
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button, input, textarea, select { border-radius: 0; }
+button { border-color: var(--hairline); font-weight: 500; min-height: 32px; padding: 5px 10px; }
+button:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--on-dark); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--clay); outline-offset: 2px; }
+input[type="text"], input[type="password"], input[type="number"], textarea { background: var(--surface-card); border-color: var(--hairline-strong); border-radius: 0; }
+
+.topbar { background: var(--canvas); border-bottom-color: var(--hairline); flex-basis: 52px; padding: 0 20px; }
+.brand { font-family: Georgia, "Times New Roman", serif; font-size: 21px; letter-spacing: -0.03em; }
+.workspace-label { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; text-align: left; }
+.theme-toggle { min-width: 0; }
+.body { grid-template-columns: 286px minmax(0, 1fr); }
+.sidebar { background: var(--surface-soft); border-right-color: var(--hairline); }
+.pane-header { border-bottom: 0; flex-basis: 42px; font-size: 12px; font-weight: 600; letter-spacing: .06em; padding: 0 16px; text-transform: uppercase; }
+.sessions-pane { border-top-color: var(--hairline); }
+.workspace-row, .session-row { border-bottom: 0; margin: 0 8px; min-height: 44px; padding: 3px 6px; }
+.workspace-row.active, .session-row.active { background: var(--ink); color: var(--on-dark); }
+.workspace-row.active .session-meta, .session-row.active .session-meta, .workspace-row.active .agent-badge, .session-row.active .agent-badge { color: #d8d3c9; }
+.workspace-select, .session-select { border-radius: 0; }
+.workspace-select:hover, .session-select:hover { background: transparent; }
+.workspace-row.active .workspace-select:hover, .session-row.active .session-select:hover { color: var(--on-dark); }
+.session-title { font-weight: 600; }
+.session-meta, .count { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; }
+.agent-badge { border: 1px solid currentColor; padding: 0 4px; }
+.pane-form { border-top: 0; padding: 8px 14px; }
+.workspace-picker { margin: 0 14px 14px; }
+.main { background: var(--canvas); }
+.chat-header { border-bottom-color: var(--hairline); flex-direction: row; gap: 16px; padding: 16px 32px; }
+.chat-title { font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 600; }
+.chat-meta { align-items: center; gap: 10px; }
+.mode-switch { margin-left: 0; }
+.mode-option, .mode-option:first-child, .mode-option:last-child { border-radius: 0; }
+.mode-option.active, .tab-active { background: var(--ink); border-color: var(--ink); }
+.messages { margin: 0 auto; max-width: 940px; padding: 28px 48px 44px; width: 100%; }
+.message { border-bottom: 0; margin-bottom: 24px; padding: 0; }
+.message-label { border-bottom: 1px solid var(--hairline); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: .06em; margin-bottom: 9px; padding-bottom: 6px; text-transform: uppercase; }
+.message.user .message-label, .message.assistant .message-label { color: var(--mute); }
+.message.user .message-label::before { color: var(--clay); content: "You"; }
+.message.assistant .message-label::before { color: var(--ink); content: "Tnega"; }
+.message.user .message-label > :first-child, .message.assistant .message-label > :first-child { display: none; }
+.message.user { background: var(--surface-soft); border-left: 3px solid var(--clay); padding: 14px 16px; }
+.message.user .message-label { margin-top: -2px; }
+.message.assistant { padding: 0 2px; }
+.message-body { font-size: 15px; line-height: 1.65; }
+.md h1 { font-family: Georgia, "Times New Roman", serif; font-size: 28px; }
+.md h2 { font-family: Georgia, "Times New Roman", serif; font-size: 22px; }
+.md pre, .md code, .tool-arguments, .tool-output, .tool-error { border-radius: 0; }
+.plan-panel { margin: 0 auto; max-width: 940px; padding: 12px 48px 0; width: 100%; }
+.plan-toggle, .tool-group-toggle, .tool-toggle, .slash-toggle { background: var(--surface-soft); border-radius: 0; }
+.composer { background: var(--canvas); border-top-color: var(--hairline); margin: 0 auto; max-width: 1040px; padding: 12px 48px 18px; width: 100%; }
+.composer textarea { font-size: 15px; min-height: 96px; }
+.permissions { font-size: 12px; gap: 20px; }
+.toggle-mark { color: var(--clay); font-family: "JetBrains Mono", ui-monospace, monospace; }
+.button-primary { border-radius: 0 0 12px 0; min-height: 36px; padding: 7px 16px; }
+.settings { margin: 0 auto; max-width: 900px; padding: 48px; }
+
+@media (max-width: 860px) {
+  .chat-header { padding: 12px 16px; }
+  .messages, .composer, .plan-panel { padding-left: 20px; padding-right: 20px; }
+}

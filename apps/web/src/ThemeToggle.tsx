@@ -6,9 +6,9 @@ interface ThemeToggleProps {
 }
 
 const LABELS: Record<ThemePreference, string> = {
-  system: '[auto]',
-  light: '[light]',
-  dark: '[dark]',
+  system: 'System theme',
+  light: 'Light theme',
+  dark: 'Dark theme',
 }
 
 export function ThemeToggle({ value, onChange }: ThemeToggleProps) {

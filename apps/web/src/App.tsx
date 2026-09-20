@@ -335,7 +335,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">tnega web</div>
+        <div className="brand">Tnega</div>
         <div className="workspace-label" title={workspace ?? ''}>
           {workspace ? displayPath(workspace) : 'no workspace'}
         </div>
@@ -348,16 +348,16 @@ export default function App() {
             type="button"
             className="menu-button"
             onClick={() => setSidebarOpen(open => !open)}
-            title="sidebar"
+            title="Open navigation"
           >
-            [menu]
+            Menu
           </button>
           <button
             type="button"
             className={view === 'settings' ? 'tab-active' : ''}
             onClick={() => setView(view === 'settings' ? 'chat' : 'settings')}
           >
-            {view === 'settings' ? '[chat]' : '[settings]'}
+            {view === 'settings' ? 'Chat' : 'Settings'}
           </button>
         </div>
       </header>
@@ -384,9 +384,9 @@ export default function App() {
         <main className="main">
           {error && (
             <div className="error-banner" role="alert">
-              <span className="marker">[!]</span>
+              <span className="marker">Error</span>
               <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} title="dismiss">[x]</button>
+              <button type="button" onClick={() => setError(null)} title="Dismiss">Close</button>
             </div>
           )}
           {view === 'settings' ? (
@@ -467,7 +467,7 @@ function WorkspacePane({
   return (
     <section className="pane">
       <div className="pane-header">
-        <span>[workspaces]</span>
+        <span>Workspaces</span>
         <span className="count">{workspaces.length}</span>
       </div>
       <div className="pane-list">
@@ -482,7 +482,6 @@ function WorkspacePane({
               onClick={() => onSelect(item)}
               title={item}
             >
-              <span className="marker">{item === current ? '[x]' : '[ ]'}</span>
               <span className="ellipsis">{displayPath(item)}</span>
             </button>
             <button
@@ -491,7 +490,7 @@ function WorkspacePane({
               onClick={() => void onRemove(item)}
               title="remove workspace"
             >
-              [x]
+              Remove
             </button>
           </div>
         ))}
@@ -509,7 +508,7 @@ function WorkspacePane({
           spellCheck={false}
         />
         <button type="button" onClick={() => void submit()} disabled={busy} title="add workspace">
-          [+]
+          Add
         </button>
       </div>
       {canPickWorkspace && (
@@ -566,7 +565,7 @@ function SessionPane({
   return (
     <section className="pane sessions-pane">
       <div className="pane-header">
-        <span>[sessions]</span>
+        <span>Sessions</span>
         <div className="pane-header-actions">
           <span className="count">{sessions.length}</span>
           <button
@@ -576,7 +575,7 @@ function SessionPane({
             disabled={!workspace}
             title="new session"
           >
-            [+]
+            New
           </button>
         </div>
       </div>
@@ -620,7 +619,7 @@ function SessionPane({
                 <span className="session-title ellipsis">{session.title}</span>
                 {session.agentType && (
                   <span className={`agent-badge ${session.agentType}`}>
-                    [{session.agentType}]
+                    {session.agentType}
                   </span>
                 )}
                 <span className="session-meta">
@@ -635,7 +634,7 @@ function SessionPane({
                 onClick={() => beginRename(session)}
                 title="rename"
               >
-                [r]
+                Rename
               </button>
               <button
                 type="button"
@@ -643,7 +642,7 @@ function SessionPane({
                 onClick={() => void onFork(session.id)}
                 title="fork"
               >
-                [f]
+                Fork
               </button>
               <button
                 type="button"
@@ -651,7 +650,7 @@ function SessionPane({
                 onClick={() => void onDelete(session.id)}
                 title="delete"
               >
-                [x]
+                Delete
               </button>
             </div>
           </div>
