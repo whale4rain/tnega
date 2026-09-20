@@ -18,6 +18,7 @@ import {
   writeWorkspaceSelection,
 } from './sessionSelection'
 import { ThemeToggle, type ThemePreference } from './ThemeToggle'
+import { hasDesktopWorkspacePicker, pickDesktopWorkspace } from './desktopBridge'
 import { PlanPanel } from './PlanPanel'
 import {
   applyPlanStreamEvent,
@@ -439,6 +440,7 @@ function WorkspacePane({
 }: WorkspacePaneProps) {
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
+  const canPickWorkspace = hasDesktopWorkspacePicker()
 
   async function submit() {
     if (!path.trim() || busy) return
@@ -446,6 +448,17 @@ function WorkspacePane({
     try {
       await onAdd(path)
       setPath('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function chooseWorkspace() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const selected = await pickDesktopWorkspace()
+      if (selected) await onAdd(selected)
     } finally {
       setBusy(false)
     }
@@ -499,6 +512,16 @@ function WorkspacePane({
           [+]
         </button>
       </div>
+      {canPickWorkspace && (
+        <button
+          type="button"
+          className="workspace-picker"
+          onClick={() => void chooseWorkspace()}
+          disabled={busy}
+        >
+          Choose folder
+        </button>
+      )}
     </section>
   )
 }
