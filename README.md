@@ -68,6 +68,23 @@ stdio MCP servers from `.tnega/mcp.json`, and a slash command registry. The web
 server enables it per session through `agentType: "coding"`, while general
 sessions keep the default loop unchanged.
 
+## Desktop client
+
+The Electron client packages the same local console as a native desktop app. It
+starts the Tnega server on an ephemeral loopback address and never exposes Node,
+Shell, or filesystem access directly to the renderer. Folder selection is a
+small, validated native bridge; every Tool Permission remains an explicit choice
+for each Agent Run.
+
+```bash
+pnpm --filter @tnega/desktop dev       # build and launch locally
+pnpm --filter @tnega/desktop package   # produce a platform installer
+```
+
+The desktop app and `tnega web` share System Config and Workspace/Session data.
+See [`apps/desktop/README.md`](apps/desktop/README.md) for packaging targets and
+the security model.
+
 ## Library
 
 Tnega is published as a library as well as a CLI. Use the root package or domain subpaths (`tnega/core`, `tnega/agent`, `tnega/coding-agent`, `tnega/eval`, `tnega/evolve`, `tnega/session`, `tnega/tools`, `tnega/llm`, ...):
