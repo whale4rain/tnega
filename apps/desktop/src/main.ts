@@ -9,7 +9,7 @@ let allowedOrigin = ''
 
 function appRoot(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'tnega-runtime')
-  return join(dirname(fileURLToPath(import.meta.url)), '../../../..')
+  return join(dirname(fileURLToPath(import.meta.url)), '../../..')
 }
 
 function webRoot(): string {
