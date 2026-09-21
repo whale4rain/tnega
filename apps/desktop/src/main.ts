@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -56,7 +56,12 @@ async function createWindow(): Promise<void> {
     minWidth: 960,
     minHeight: 640,
     backgroundColor: '#faf9f6',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#181818',
+      symbolColor: '#c7c7c7',
+      height: 52,
+    },
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -68,6 +73,7 @@ async function createWindow(): Promise<void> {
     if (/^https?:/u.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  window.maximize()
   await window.loadURL(server.url)
 }
 
@@ -80,6 +86,7 @@ async function closeAndExit(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null)
   installDesktopHandlers()
   await createWindow()
   app.on('activate', () => {
