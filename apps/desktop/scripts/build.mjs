@@ -12,6 +12,9 @@ const shared = {
   sourcemap: true,
   target: 'node22',
   external: ['electron'],
+  banner: {
+    js: "import { createRequire as __tnegaCreateRequire } from 'node:module'; const require = __tnegaCreateRequire(import.meta.url);",
+  },
 }
 
 await Promise.all([

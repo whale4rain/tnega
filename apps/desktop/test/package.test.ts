@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 const configPath = resolve(import.meta.dirname, '../electron-builder.yml')
+const buildScriptPath = resolve(import.meta.dirname, '../scripts/build.mjs')
 
 async function readBuilderConfig(): Promise<string> {
   try {
@@ -20,5 +21,11 @@ describe('desktop packaging', () => {
     expect(config).toContain('extraResources:')
     expect(config).toContain('../../dist')
     expect(config).toContain('tnega-runtime')
+  })
+
+  test('provides CommonJS compatibility to bundled Node dependencies', async () => {
+    const buildScript = await readFile(buildScriptPath, 'utf8')
+
+    expect(buildScript).toContain("createRequire as __tnegaCreateRequire")
   })
 })
