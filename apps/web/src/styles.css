@@ -79,9 +79,11 @@ button:not(.rt-reset):hover:not(:disabled) {
 button:focus-visible,
 textarea:focus-visible,
 input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: 1px solid var(--mute);
+  outline-offset: 2px;
 }
+.rt-TextFieldRoot:focus-within { outline: none; box-shadow: inset 0 0 0 1px var(--mute); }
+.rt-TextFieldInput:focus-visible { outline: none; }
 input:not(.rt-reset),
 textarea,
 select:not(.rt-reset) {
@@ -103,9 +105,9 @@ select:not(.rt-reset) {
   overflow: hidden;
 }
 .window-bar {
-  height: 52px;
+  height: 32px;
   flex-shrink: 0;
-  padding: 0 150px 0 22px;
+  padding: 0 140px 0 16px;
   background: var(--sidebar);
   -webkit-app-region: drag;
   user-select: none;
@@ -114,10 +116,11 @@ select:not(.rt-reset) {
   -webkit-app-region: no-drag;
 }
 .brand {
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: -0.6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
 }
+.window-bar .rt-IconButton { width: 24px; height: 24px; }
 .window-divider {
   height: 15px;
   width: 1px;
@@ -129,7 +132,7 @@ select:not(.rt-reset) {
   align-items: center;
   gap: 7px;
   color: var(--mute);
-  font-size: 12px;
+  font-size: 11px;
 }
 .workbench-body {
   position: relative;
@@ -188,7 +191,7 @@ select:not(.rt-reset) {
   }
 }
 .sidebar-top {
-  padding: 12px 14px 20px;
+  padding: 8px 14px 16px;
 }
 .sidebar-project {
   padding: 10px 20px;
@@ -265,7 +268,7 @@ select:not(.rt-reset) {
   background: var(--sidebar);
 }
 .tool-panel-heading {
-  height: 52px;
+  height: 44px;
   padding: 0 18px;
   font-size: 13px;
   border-bottom: 1px solid var(--hairline);
@@ -295,10 +298,11 @@ select:not(.rt-reset) {
   display: flex;
   align-items: center;
   gap: 16px;
-  min-height: 54px;
-  padding: 10px 28px;
+  min-height: 44px;
+  padding: 5px 20px;
   font-size: 12px;
   flex-wrap: wrap;
+  border-bottom: 1px solid var(--hairline);
 }
 .chat-title-line,
 .chat-meta,
@@ -312,7 +316,7 @@ select:not(.rt-reset) {
   max-width: 55%;
 }
 .chat-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
 }
 .chat-meta {
@@ -950,7 +954,7 @@ button.send-button:hover:not(:disabled) {
   background: var(--surface-card);
 }
 .disclosure-trigger:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 1px solid var(--mute);
   outline-offset: 2px;
 }
 .disclosure-trigger > svg {

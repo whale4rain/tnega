@@ -58,13 +58,13 @@ export function WorkbenchShell({
             aria-controls="workspace-navigation"
             onClick={() => setOpen(!open)}
           >
-            <PanelLeft size={18} />
+            <PanelLeft size={15} />
           </IconButton>
         </Tooltip>
         <span className="brand">Tnega</span>
         <span className="window-divider" />
         <span className="window-caption">
-          <Code2 size={14} /> Code workspace
+          <Code2 size={12} /> Code
         </span>
       </header>
       <div className="workbench-body flex min-h-0 flex-1">
@@ -95,7 +95,7 @@ export function WorkbenchShell({
                 aria-label="Close tools panel"
                 onClick={() => setActiveTool(null)}
               >
-                <X size={16} />
+                <X size={12} />
               </IconButton>
             </div>
             <div className="tool-placeholder">

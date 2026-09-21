@@ -14,6 +14,14 @@ export function groupToolMessages(messages: DisplayMessage[]): MessageRenderItem
   }
 
   messages.forEach((message, sourceIndex) => {
+    // Streaming emits empty assistant placeholders around tool calls. They are
+    // not prose and must not split a single activity group into separate rows.
+    if (
+      message.role === 'assistant' && !message.content.trim() &&
+      !message.interrupted && !message.retry &&
+      !message.endState?.error && !message.endState?.cancelCause &&
+      (!message.pending || tools.length > 0 || messages[sourceIndex + 1]?.role === 'tool')
+    ) return
     if (message.role === 'tool') {
       tools.push(message)
       return

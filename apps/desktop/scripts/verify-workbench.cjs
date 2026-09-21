@@ -86,6 +86,8 @@ events.splice(
     },
   },
 )
+// Some providers stream whitespace-only assistant frames between tool calls.
+events.splice(3, 0, { id: 'blank-assistant', type: 'assistant/message', payload: { content: '  \n ' } })
 events.push({
   id: 'plan',
   type: 'plan',
@@ -215,6 +217,19 @@ async function run() {
     metrics.planBottom < metrics.inputTop,
     'plan belongs above the input',
   )
+  const chrome = await win.webContents.executeJavaScript(`(() => {
+    const search = document.querySelector('[aria-label="Search sessions"]'); search.focus();
+    return { height: document.querySelector('.window-bar').getBoundingClientRect().height,
+      outline: getComputedStyle(search).outlineStyle,
+      fieldOutline: getComputedStyle(search.closest('.rt-TextFieldRoot')).outlineStyle,
+      groups: document.querySelectorAll('.messages > .tool-group').length,
+      assistants: document.querySelectorAll('.message.assistant').length };
+  })()`)
+  assert.equal(chrome.height, 32)
+  assert.equal(chrome.outline, 'none')
+  assert.equal(chrome.fieldOutline, 'none')
+  assert.equal(chrome.groups, 1)
+  assert.equal(chrome.assistants, 1)
   await win.webContents.executeJavaScript(
     `document.querySelector('.tool-group > summary').click()`,
   )
