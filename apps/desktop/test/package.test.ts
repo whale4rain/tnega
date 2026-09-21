@@ -5,6 +5,10 @@ import { describe, expect, test } from 'vitest'
 const configPath = resolve(import.meta.dirname, '../electron-builder.yml')
 const buildScriptPath = resolve(import.meta.dirname, '../scripts/build.mjs')
 const iconPath = resolve(import.meta.dirname, '../build/icon.ico')
+const desktopPackageScriptPath = resolve(
+  import.meta.dirname,
+  '../../../scripts/package-desktop.mjs',
+)
 
 async function readBuilderConfig(): Promise<string> {
   try {
@@ -47,5 +51,12 @@ describe('desktop packaging', () => {
     const buildScript = await readFile(buildScriptPath, 'utf8')
 
     expect(buildScript).toContain("createRequire as __tnegaCreateRequire")
+  })
+
+  test('provides a root desktop packaging script', async () => {
+    const script = await readFile(desktopPackageScriptPath, 'utf8')
+
+    expect(script).toContain('@tnega/desktop')
+    expect(script).toContain('release')
   })
 })
