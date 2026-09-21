@@ -99,6 +99,8 @@ select:not(.rt-reset) {
 .radix-themes {
   --default-font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   --cursor-button: pointer;
+}
+.radix-themes[data-is-root-theme='true'] {
   background: var(--canvas);
   color: var(--ink);
 }

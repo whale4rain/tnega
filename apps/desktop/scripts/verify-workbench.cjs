@@ -231,6 +231,21 @@ async function run() {
   assert.equal(chrome.fieldOutline, 'none')
   assert.equal(chrome.groups, 1)
   assert.equal(chrome.assistants, 1)
+  await win.webContents.executeJavaScript(`document.querySelector('[aria-label="Toggle Terminal"]').dispatchEvent(new FocusEvent('focusin', { bubbles: true }))`)
+  await waitFor(`!!document.querySelector('.rt-TooltipText')`)
+  const toolTooltip = await win.webContents.executeJavaScript(`(() => {
+    const text = document.querySelector('.rt-TooltipText');
+    return { foreground: getComputedStyle(text).color, background: getComputedStyle(text.closest('.rt-TooltipContent')).backgroundColor };
+  })()`)
+  // Radix uses display-p3 on capable renderers; these tooltip colors are neutral grays.
+  const luminance = (color) => {
+    const values = color.match(/[\d.]+/g).map(Number)
+    const channels = color.startsWith('color(') ? values.slice(1, 4) : values.slice(0, 3).map((value) => value / 255)
+    return channels.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
+  }
+  const fg = luminance(toolTooltip.foreground), bg = luminance(toolTooltip.background)
+  assert.ok((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) >= 4.5, `tool tooltip must have readable contrast: ${JSON.stringify(toolTooltip)}`)
+  await win.webContents.executeJavaScript(`document.querySelector('[aria-label="Toggle Terminal"]').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))`)
   const surfaces = await win.webContents.executeJavaScript(`(() => {
     const main = document.querySelector('.main');
     const message = document.querySelector('.message.user');
