@@ -3,9 +3,11 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startWebServer, type WebServer } from '@tnega/cli'
+import { closeDesktopRuntime } from './shutdown.js'
 
 let server: WebServer | undefined
 let allowedOrigin = ''
+let quitting = false
 
 function appRoot(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'tnega-runtime')
@@ -69,6 +71,14 @@ async function createWindow(): Promise<void> {
   await window.loadURL(server.url)
 }
 
+async function closeAndExit(): Promise<void> {
+  if (quitting) return
+  quitting = true
+  await closeDesktopRuntime(server)
+  server = undefined
+  app.exit(0)
+}
+
 app.whenReady().then(async () => {
   installDesktopHandlers()
   await createWindow()
@@ -81,9 +91,11 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (process.platform !== 'darwin') void closeAndExit()
 })
 
-app.on('before-quit', () => {
-  void server?.close()
+app.on('before-quit', event => {
+  if (quitting) return
+  event.preventDefault()
+  void closeAndExit()
 })
