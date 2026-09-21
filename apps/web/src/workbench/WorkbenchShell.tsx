@@ -61,10 +61,7 @@ export function WorkbenchShell({
             <PanelLeft size={18} />
           </IconButton>
         </Tooltip>
-        <span className="brand">
-          <img src="/tnega-icon.png" alt="Tnega icon" />
-          Tnega
-        </span>
+        <span className="brand">Tnega</span>
         <span className="window-divider" />
         <span className="window-caption">
           <Code2 size={14} /> Code workspace

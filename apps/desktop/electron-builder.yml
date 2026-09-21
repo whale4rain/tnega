@@ -9,6 +9,7 @@ extraResources:
   - from: ../../dist
     to: tnega-runtime/dist
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:

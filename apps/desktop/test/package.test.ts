@@ -23,6 +23,12 @@ describe('desktop packaging', () => {
     expect(config).toContain('tnega-runtime')
   })
 
+  test('uses the Tnega icon for Windows packages', async () => {
+    const config = await readBuilderConfig()
+
+    expect(config).toContain('icon: build/icon.ico')
+  })
+
   test('provides CommonJS compatibility to bundled Node dependencies', async () => {
     const buildScript = await readFile(buildScriptPath, 'utf8')
 
