@@ -3,6 +3,7 @@ node_modules/
 dist/
 apps/desktop/out/
 apps/desktop/release/
+apps/desktop/desktop-dev.log.err
 coverage/
 *.log
 .DS_Store
