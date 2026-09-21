@@ -21,6 +21,12 @@ function shell() {
   )
 }
 describe('workbench navigation', () => {
+  it('shows the Tnega icon in the application header', () => {
+    shell()
+    expect(screen.getByRole('img', { name: 'Tnega icon' }).getAttribute('src')).toBe(
+      '/tnega-icon.png',
+    )
+  })
   it('collapses and restores navigation and remembers the choice across mounts', () => {
     const view = shell()
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))

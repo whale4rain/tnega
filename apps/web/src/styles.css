@@ -110,9 +110,17 @@ select:not(.rt-reset) {
   -webkit-app-region: no-drag;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 19px;
   font-weight: 650;
   letter-spacing: -0.6px;
+}
+.brand img {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
 }
 .window-divider {
   height: 15px;
