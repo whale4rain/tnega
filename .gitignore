@@ -4,6 +4,7 @@ dist/
 apps/desktop/out/
 apps/desktop/release/
 apps/desktop/desktop-dev.log.err
+apps/desktop/desktop-package.log*
 coverage/
 *.log
 .DS_Store
