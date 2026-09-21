@@ -66,8 +66,9 @@ export function WorkspaceSidebar(props: Props) {
   }
   return (
     <>
-      <div className="sidebar-top flex flex-col gap-4">
+      <div className="sidebar-top flex flex-col">
         <SegmentedControl.Root
+          size="1"
           value={agent}
           onValueChange={(value) => {
             if (value === 'coding' || value === 'general') setAgent(value)
@@ -87,7 +88,7 @@ export function WorkspaceSidebar(props: Props) {
         </SegmentedControl.Root>
         <Button
           color="gray"
-          variant="soft"
+          variant="ghost"
           onClick={() => void perform(() => props.onNew({ agentType: agent }))}
           disabled={!props.workspace || busy}
         >
@@ -104,6 +105,7 @@ export function WorkspaceSidebar(props: Props) {
           </TextField.Slot>
         </TextField.Root>
       </div>
+      <div className="sidebar-section-label">Projects</div>
       <div className="sidebar-project flex items-center justify-between gap-2">
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>

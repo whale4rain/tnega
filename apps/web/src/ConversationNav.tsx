@@ -1,48 +1,59 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Tooltip } from '@radix-ui/themes'
 
 interface ConversationNavProps {
-  count: number
+  turns: { id: string; content: string }[]
   index: number
-  onPrevious: () => void
-  onNext: () => void
+  onSelect: (index: number) => void
 }
 
 export function ConversationNav({
-  count,
+  turns,
   index,
-  onPrevious,
-  onNext,
+  onSelect,
 }: ConversationNavProps) {
-  if (count < 2) return null
-  const prevDisabled = index <= 0
-  const nextDisabled = index >= count - 1
+  const markers = useRef<(HTMLButtonElement | null)[]>([])
+  useEffect(() => {
+    const marker = markers.current[index]
+    const ruler = marker?.parentElement
+    if (marker && ruler) {
+      ruler.scrollTop = marker.offsetTop - ruler.clientHeight / 2 + marker.clientHeight / 2
+    }
+  }, [index])
+  if (turns.length < 2) return null
   return (
-    <div
+    <nav
       className="conversation-nav"
-      role="navigation"
-      aria-label="conversation navigation"
+      aria-label="Conversation navigation"
     >
-      <button
-        type="button"
-        className="icon-button"
-        onClick={onPrevious}
-        disabled={prevDisabled}
-        title="previous user message"
-      >
-        <ChevronUp size={14} />
-      </button>
-      <span className="count">
-        {index + 1}/{count}
-      </span>
-      <button
-        type="button"
-        className="icon-button"
-        onClick={onNext}
-        disabled={nextDisabled}
-        title="next user message"
-      >
-        <ChevronDown size={14} />
-      </button>
-    </div>
+      {turns.map((turn, position) => {
+        const preview = turn.content.trim().replace(/\s+/g, ' ').slice(0, 240) || 'Empty message'
+        return (
+          <Tooltip key={turn.id} className="turn-tooltip" side="right" delayDuration={150} content={
+            <span className="turn-preview"><strong>Turn {position + 1}</strong><span>{preview}</span></span>
+          }>
+            <button
+              type="button"
+              className="turn-marker"
+              ref={(node) => { markers.current[position] = node }}
+              aria-label={`Turn ${position + 1}: ${preview}`}
+              aria-current={position === index ? 'step' : undefined}
+              onClick={() => onSelect(position)}
+              onKeyDown={(event) => {
+                const target = event.key === 'ArrowUp' ? position - 1
+                  : event.key === 'ArrowDown' ? position + 1
+                  : event.key === 'Home' ? 0
+                  : event.key === 'End' ? turns.length - 1 : undefined
+                if (target === undefined) return
+                event.preventDefault()
+                const next = Math.max(0, Math.min(turns.length - 1, target))
+                markers.current[next]?.focus()
+                onSelect(next)
+              }}
+            ><span aria-hidden="true" /></button>
+          </Tooltip>
+        )
+      })}
+    </nav>
   )
 }

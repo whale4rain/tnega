@@ -104,6 +104,7 @@ events.push({
     ],
   },
 })
+events.push({ id: 'u2', type: 'user/message', payload: { content: 'Add recovery tests and keep the public API stable.' } })
 events.forEach((event, index) => {
   event.seq = index + 1
   event.ts = index + 1
@@ -230,6 +231,44 @@ async function run() {
   assert.equal(chrome.fieldOutline, 'none')
   assert.equal(chrome.groups, 1)
   assert.equal(chrome.assistants, 1)
+  const surfaces = await win.webContents.executeJavaScript(`(() => {
+    const main = document.querySelector('.main');
+    const message = document.querySelector('.message.user');
+    const bubble = message.querySelector('.message-body');
+    const rect = bubble.getBoundingClientRect();
+    const column = document.querySelector('.messages').getBoundingClientRect();
+    return {
+      ratio: rect.width / column.width,
+      rightGap: Math.abs(rect.right - column.right),
+      bubbleColor: getComputedStyle(bubble).backgroundColor,
+      border: getComputedStyle(bubble).borderTopWidth,
+      radius: parseFloat(getComputedStyle(main).borderTopLeftRadius),
+      shell: getComputedStyle(document.querySelector('.workbench-body')).backgroundColor,
+      top: getComputedStyle(document.querySelector('.window-bar')).backgroundColor,
+      canvas: getComputedStyle(main).backgroundColor,
+      row: document.querySelector('.session-item').getBoundingClientRect().height,
+    };
+  })()`)
+  assert.ok(surfaces.ratio <= 0.71, 'user bubble must not fill the transcript width')
+  assert.ok(surfaces.rightGap < 2, 'user bubble must align right')
+  assert.equal(surfaces.bubbleColor, 'rgb(38, 61, 112)')
+  assert.equal(surfaces.border, '0px')
+  assert.ok(surfaces.radius >= 12)
+  assert.equal(surfaces.shell, surfaces.top)
+  assert.notEqual(surfaces.shell, surfaces.canvas)
+  assert.ok(surfaces.row <= 32, 'sidebar rows must stay compact')
+  await win.webContents.executeJavaScript(`document.querySelector('.turn-marker').dispatchEvent(new FocusEvent('focusin', { bubbles: true }))`)
+  await waitFor(`!!document.querySelector('[role="tooltip"]')`)
+  const tooltipContrast = await win.webContents.executeJavaScript(`(() => {
+    const style = getComputedStyle(document.querySelector('.turn-tooltip'));
+    return { text: getComputedStyle(document.querySelector('.turn-preview')).color, background: style.backgroundColor };
+  })()`)
+  assert.notEqual(tooltipContrast.text, tooltipContrast.background)
+  assert.equal(tooltipContrast.text, 'rgb(217, 217, 212)')
+  await writeFile(join(output, 'workbench-navigation-preview.png'), (await win.webContents.capturePage()).toPNG())
+  await win.webContents.executeJavaScript(`document.querySelector('.turn-marker:last-child').click()`)
+  await waitFor(`document.querySelector('.turn-marker:last-child').getAttribute('aria-current') === 'step'`)
+  await win.webContents.executeJavaScript(`document.querySelector('.turn-marker').dispatchEvent(new FocusEvent('focusout', { bubbles: true })); document.querySelector('.conversation-scroll').scrollTop = 0`)
   await win.webContents.executeJavaScript(
     `document.querySelector('.tool-group > summary').click()`,
   )
@@ -267,6 +306,7 @@ async function run() {
   )
   win.setSize(600, 800)
   await waitFor('innerWidth <= 600')
+  assert.ok(await win.webContents.executeJavaScript(`document.querySelector('.conversation-nav').getBoundingClientRect().right <= document.querySelector('.messages').getBoundingClientRect().left`), 'turn ruler must not overlap narrow transcript')
   assert.equal(
     await win.webContents.executeJavaScript(
       'document.documentElement.scrollWidth > innerWidth',

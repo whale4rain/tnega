@@ -262,16 +262,6 @@ export function ChatView({
     node.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
 
-  function goToUser(offset: number) {
-    const next = Math.min(
-      Math.max(navIndex + offset, 0),
-      Math.max(userIndexes.length - 1, 0),
-    )
-    if (next === navIndex) return
-    setNavIndex(next)
-    scrollToUserMessage(next)
-  }
-
   const running = runState === 'running' || runState === 'cancelling'
 
   async function runPrompt(text: string) {
@@ -1048,10 +1038,12 @@ export function ChatView({
           </div>
         </div>
         <ConversationNav
-          count={userIndexes.length}
+          turns={userIndexes.map((index) => messages[index])}
           index={navIndex}
-          onPrevious={() => goToUser(-1)}
-          onNext={() => goToUser(1)}
+          onSelect={(index) => {
+            setNavIndex(index)
+            scrollToUserMessage(index)
+          }}
         />
         {showJump && (
           <button
