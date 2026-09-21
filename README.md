@@ -82,12 +82,14 @@ for each Agent Run.
 
 ```bash
 pnpm --filter @tnega/desktop dev       # build and launch locally
-pnpm --filter @tnega/desktop package   # produce a platform installer
+pnpm package:desktop                   # produce the Windows installer
 ```
 
 The desktop app and `tnega web` share System Config and Workspace/Session data.
 See [`apps/desktop/README.md`](apps/desktop/README.md) for packaging targets and
-the security model.
+the security model. Contributors should read
+[`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md) before changing the desktop
+client.
 
 ## Library
 

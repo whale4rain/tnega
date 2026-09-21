@@ -8,6 +8,7 @@ Tnega 是一个 eval-first 的 Agent Harness。核心包将可组合插件生命
 - 改动某个包时，先看该包的 `README.md`、`src/` 和相邻的 `test/`。只阅读与当前改动相关的文档和代码。
 - 改动公开入口或发布产物时，检查根 `package.json` 的 `exports` 与 `scripts/build.mjs`。
 - 改动 Web UI 时，查看 `apps/web/src/` 的对应模块和测试；根 Vitest 配置会发现这些测试。
+- 改动 `apps/desktop` 的 Electron 主进程、preload、打包配置、应用图标或安装包时，先阅读 `apps/desktop/AGENTS.md`。
 
 ## 代码布局
 
