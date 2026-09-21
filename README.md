@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/tnega-icon.png" alt="Tnega icon" width="160" />
+</p>
+
 # Tnega
 
 [中文](docs/zh-CN.md)
