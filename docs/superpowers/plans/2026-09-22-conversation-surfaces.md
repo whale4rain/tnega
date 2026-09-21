@@ -12,12 +12,16 @@
 
 ## Tasks
 
-- [ ] Add ConversationNav interaction tests: selecting arbitrary turns, keyboard previous/next, empty/single turn, and accessible preview text. Run and observe failures, replace arrow/count controls with Radix Tooltip markers, wire onSelect to existing scrollToUserMessage, rerun and commit.
-- [ ] Extend hidden Electron fixture to assert gray shell continuity, rounded main corner, right-aligned bubble width <=70%, no message border, compact session rows, and marker navigation. Run against old build to confirm failure.
-- [ ] Update styles.css theme/shell/bubbles/sidebar; move user actions below text in Transcript.tsx, remove visible You label, keep accessible label. Compact sidebar top controls and project/session indentation without removing existing actions. Match desktop overlay to shell. Build, run fixture, inspect screenshots at wide/narrow sizes, and commit.
-- [ ] Run Web and Desktop tests, scoped lint, typechecks and build. Package to a fresh ignored release subdirectory if an existing executable is running. Report exact executable path.
+- [x] Add ConversationNav tests; replace arrows with accessible Radix Tooltip markers and connect direct selection to scrolling.
+- [x] Extend the hidden Electron fixture; confirm the old full-width bubble fails before implementing the new layout.
+- [x] Update theme, shell, bubbles and sidebar. Use CSS to position existing message actions below the bubble without changing their handlers. Verify wide and narrow screenshots.
+- [x] Run Web/Desktop tests, scoped lint, typechecks and build; generate the Windows executable and installer.
 
 ## Constraints
+
+- Preserve working tree changes, all session operations, keyboard focus visibility, light theme and narrow layouts.
+- No new dependencies, persistence/API changes, fake tools, or interruption of running user applications.
+- Generated release files remain ignored. Each independently verified change gets a Conventional Commit.
 
 ## Verification record
 
@@ -25,8 +29,4 @@
 - Visual test first failed on full-width user messages; wide/narrow Electron fixture now passes, including tooltip foreground, right alignment and ruler gutter.
 - Web/Desktop suite: 50 tests passed. Both typechecks, scoped Web ESLint and root build passed.
 - Independent review found a narrow-layout ruler overlap; reserved a 32px gutter and added a geometry assertion.
-- Packaging resource index matches the final verified build; installer generation is in progress.
-
-- Preserve working tree changes, all session operations, keyboard focus visibility, light theme and narrow layouts.
-- No new dependencies, persistence/API changes, fake tools, or interruption of running user applications.
-- Generated release files remain ignored. Each independently verified change gets a Conventional Commit.
+- `pnpm package:desktop` passed; packaged stylesheet SHA256 matches the final verified build. Artifacts: `apps/desktop/release/win-unpacked/Tnega.exe` and `apps/desktop/release/Tnega Setup 0.1.0.exe`.
