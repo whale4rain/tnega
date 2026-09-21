@@ -1,3 +1,5 @@
+import { ChevronDown, ChevronUp } from 'lucide-react'
+
 interface ConversationNavProps {
   count: number
   index: number
@@ -27,7 +29,7 @@ export function ConversationNav({
         disabled={prevDisabled}
         title="previous user message"
       >
-        [^]
+        <ChevronUp size={14} />
       </button>
       <span className="count">
         {index + 1}/{count}
@@ -39,7 +41,7 @@ export function ConversationNav({
         disabled={nextDisabled}
         title="next user message"
       >
-        [v]
+        <ChevronDown size={14} />
       </button>
     </div>
   )

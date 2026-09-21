@@ -9,13 +9,21 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 - 多轮聊天；工具权限开关（network / shell，运行时选择一次，run 期间不可改）。
 - 会话粒度 mode 切换 `auto / plan / execute`；plan 面板实时显示 todo 状态。
 - 斜杠命令菜单（coding 会话）；fork；自动标题。
-- 主题切换；浅色 manpage 视觉风格。
+- Coding 工作台：可折叠并记忆状态的侧栏、会话搜索、居中正文和底部输入区。
+- 右侧 Files / Changes / Terminal 图标可打开占位面板；尚未连接工具，不执行文件或终端操作。
+- Radix Themes 提供菜单、对话框、按钮、选择器和提示，Tailwind 提供布局工具类；统一深浅主题、无衬线正文和等宽代码字体。
 
 ## 结构
 
 | 文件 | 角色 |
 |---|---|
-| `App.tsx` | 主布局与路由（大型组件已拆） |
+| `App.tsx` | API 状态、会话选择、主题和视图组装 |
+| `workbench/WorkbenchShell.tsx` | 窗口布局、折叠侧栏、工具面板插槽 |
+| `workbench/WorkspaceSidebar.tsx` | 工作区、会话搜索、操作菜单和对话框 |
+| `workbench/ComposerFrame.tsx` | 输入区容器、权限、模型设置入口和模式 |
+| `workbench/SettingsView.tsx` | 模型配置表单 |
+| `conversation/ChatView.tsx` | 会话运行、流式消费和输入行为 |
+| `conversation/Transcript.tsx` | Markdown 消息、工具组、压缩和命令结果 |
 | `ConversationNav.tsx` / `sessionSelection.ts` | 会话列表与选择 |
 | `PlanPanel.tsx` / `planDisplay.ts` | plan 面板与 slash 消息显示 |
 | `projectEvents.ts` | 把 session 事件流投影成 transcript（人类视图；system 提示与 compaction 进程不污染） |
@@ -35,6 +43,8 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 ```bash
 pnpm --filter @tnega/web dev      # Vite dev server
 pnpm build                        # 构建生产 dist
+pnpm --filter @tnega/desktop exec electron scripts/verify-workbench.cjs
+# 隐藏窗口 + fixture API 验证布局并输出 release/workbench-preview.png，不读取用户数据
 ```
 
 ## 测试
