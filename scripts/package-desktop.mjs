@@ -4,10 +4,10 @@ import { resolve } from 'node:path'
 import process from 'node:process'
 
 const root = resolve(import.meta.dirname, '..')
-const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-const packaging = spawnSync(pnpm, ['--filter', '@tnega/desktop', 'package'], {
+const packaging = spawnSync('pnpm', ['--filter', '@tnega/desktop', 'package'], {
   cwd: root,
   stdio: 'inherit',
+  shell: process.platform === 'win32',
 })
 
 if (packaging.status !== 0) {

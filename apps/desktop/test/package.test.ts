@@ -58,5 +58,6 @@ describe('desktop packaging', () => {
 
     expect(script).toContain('@tnega/desktop')
     expect(script).toContain('release')
+    expect(script).toContain("shell: process.platform === 'win32'")
   })
 })
