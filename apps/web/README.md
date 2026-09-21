@@ -10,6 +10,8 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 - 会话粒度 mode 切换 `auto / plan / execute`；plan 面板实时显示 todo 状态。
 - 斜杠命令菜单（coding 会话）；fork；自动标题。
 - Coding 工作台：可折叠并记忆状态的侧栏、会话搜索、居中正文和底部输入区。
+- 对话使用紧凑的 13px 正文与 1.6 行高；消息和吸附输入区共用全高滚动容器。Plan 显示在输入框上方，可折叠。
+- 工具调用默认显示操作、路径／命令预览与执行状态，展开后查看输入输出；多次连续调用折叠成活动组。
 - 右侧 Files / Changes / Terminal 图标可打开占位面板；尚未连接工具，不执行文件或终端操作。
 - Radix Themes 提供菜单、对话框、按钮、选择器和提示，Tailwind 提供布局工具类；统一深浅主题、无衬线正文和等宽代码字体。
 
@@ -24,6 +26,7 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 | `workbench/SettingsView.tsx` | 模型配置表单 |
 | `conversation/ChatView.tsx` | 会话运行、流式消费和输入行为 |
 | `conversation/Transcript.tsx` | Markdown 消息、工具组、压缩和命令结果 |
+| `conversation/ToolActivity.tsx` / `Disclosure.tsx` | 工具活动摘要与共用可访问折叠组件 |
 | `ConversationNav.tsx` / `sessionSelection.ts` | 会话列表与选择 |
 | `PlanPanel.tsx` / `planDisplay.ts` | plan 面板与 slash 消息显示 |
 | `projectEvents.ts` | 把 session 事件流投影成 transcript（人类视图；system 提示与 compaction 进程不污染） |

@@ -2,11 +2,8 @@ import { useState, type Ref } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Pencil, GitFork } from 'lucide-react'
-import {
-  formatToolGroupNames,
-  formatToolGroupStatus,
-  summarizeToolGroup,
-} from '../toolGroups'
+import { ToolBlock } from './ToolActivity'
+export { ToolGroupBlock } from './ToolActivity'
 import { formatCancelCause } from '../projectEvents'
 import { prettyJson } from '../api'
 import type { DisplayMessage, ContextUsage } from '../types'
@@ -191,76 +188,6 @@ export function ContextRing({ context }: { context: ContextUsage }) {
         />
       </svg>
       <span className="context-ring-label">{percent}%</span>
-    </div>
-  )
-}
-
-export function ToolGroupBlock({ tools }: { tools: DisplayMessage[] }) {
-  const [open, setOpen] = useState(false)
-  const summary = summarizeToolGroup(tools)
-  const names = formatToolGroupNames(summary.names)
-  const status = formatToolGroupStatus(summary)
-  const marker = open ? '[-]' : '[+]'
-  return (
-    <div className="message tool-group">
-      <button
-        type="button"
-        className="tool-group-toggle"
-        onClick={() => setOpen((open) => !open)}
-        aria-expanded={open}
-      >
-        <span className="marker">{marker}</span>
-        <span className="tool-group-kind">tool</span>
-        <span className="tool-group-count">x{summary.count}</span>
-        <span className="tool-group-names" title={names}>
-          {names}
-        </span>
-        <span className="tool-group-status">{status}</span>
-      </button>
-      {open && (
-        <div className="tool-group-items">
-          {tools.map((message) => (
-            <ToolBlock key={message.id} message={message} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ToolBlock({ message }: { message: DisplayMessage }) {
-  const [open, setOpen] = useState(false)
-  const tool = message.tool!
-  const marker = open ? '[-]' : '[+]'
-  const status = tool.status === 'pending' ? 'run' : tool.ok ? 'ok' : 'err'
-  return (
-    <div className="message tool">
-      <button
-        type="button"
-        className="tool-toggle"
-        onClick={() => setOpen((open) => !open)}
-      >
-        <span className="marker">{marker}</span>
-        <span className="tool-status">{status}</span>
-        <span className="tool-name">{tool.name}</span>
-        <span className="tool-id">{tool.callId.slice(0, 8)}</span>
-      </button>
-      {open && (
-        <div className="tool-detail">
-          {tool.argumentsText && (
-            <pre className="tool-arguments">{tool.argumentsText}</pre>
-          )}
-          {tool.status === 'done' &&
-            tool.ok &&
-            tool.outputText !== undefined && (
-              <pre className="tool-output">{tool.outputText}</pre>
-            )}
-          {tool.status === 'done' && !tool.ok && (
-            <pre className="tool-error">{tool.errorText ?? 'tool failed'}</pre>
-          )}
-          {tool.status === 'pending' && <div className="run-note">running</div>}
-        </div>
-      )}
     </div>
   )
 }

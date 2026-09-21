@@ -40,6 +40,72 @@ const events = [
     },
   },
 ]
+events.splice(
+  1,
+  0,
+  {
+    id: 'call1',
+    type: 'tool/call',
+    payload: {
+      id: 'read1',
+      name: 'read_file',
+      arguments: { path: 'src/session/store.ts' },
+    },
+  },
+  {
+    id: 'result1',
+    type: 'tool/result',
+    payload: {
+      id: 'result1',
+      toolCallId: 'read1',
+      name: 'read_file',
+      ok: true,
+      output: 'export interface SessionStore { close(): Promise<void> }',
+      durationMs: 12,
+    },
+  },
+  {
+    id: 'call2',
+    type: 'tool/call',
+    payload: {
+      id: 'shell1',
+      name: 'shell',
+      arguments: { command: 'pnpm test -- session' },
+    },
+  },
+  {
+    id: 'result2',
+    type: 'tool/result',
+    payload: {
+      id: 'result2',
+      toolCallId: 'shell1',
+      name: 'shell',
+      ok: true,
+      output: 'Tests: 12 passed',
+      durationMs: 890,
+    },
+  },
+)
+events.push({
+  id: 'plan',
+  type: 'plan',
+  payload: {
+    summary: 'Refine session boundaries',
+    status: 'running',
+    items: [
+      { id: 'p1', title: 'Inspect the session store', status: 'done' },
+      {
+        id: 'p2',
+        title: 'Extract projection and add recovery tests',
+        status: 'pending',
+      },
+    ],
+  },
+})
+events.forEach((event, index) => {
+  event.seq = index + 1
+  event.ts = index + 1
+})
 const server = createServer(async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname
   if (path.startsWith('/api/')) {
@@ -105,6 +171,7 @@ async function run() {
       partition: 'workbench-visual-test',
       contextIsolation: true,
       sandbox: true,
+      backgroundThrottling: false,
     },
   })
   await win.loadURL(`http://127.0.0.1:${server.address().port}`)
@@ -115,7 +182,7 @@ async function run() {
   await waitFor(`!!document.querySelector('.message.assistant')`)
   await mkdir(output, { recursive: true })
   await win.webContents.executeJavaScript(
-    `document.querySelector('.messages').scrollTop = 0`,
+    `document.querySelector('.conversation-scroll').scrollTop = 0`,
   )
   await new Promise((resolve) => setTimeout(resolve, 150))
   await writeFile(
@@ -129,17 +196,52 @@ async function run() {
     input: document.querySelector('.composer').getBoundingClientRect().bottom,
     viewport: innerHeight,
     overflow: document.documentElement.scrollWidth > innerWidth,
-    flex: getComputedStyle(document.querySelector('.workbench-body')).display
+    flex: getComputedStyle(document.querySelector('.workbench-body')).display,
+    scrollBottom: document.querySelector('.conversation-scroll').getBoundingClientRect().bottom,
+    planBottom: document.querySelector('.plan-panel').getBoundingClientRect().bottom,
+    inputTop: document.querySelector('.composer').getBoundingClientRect().top
   })`)
   assert.equal(metrics.flex, 'flex')
-  assert.equal(metrics.size, '15px')
+  assert.equal(metrics.size, '13px')
   assert.equal(metrics.overflow, false)
   assert.ok(metrics.input < metrics.viewport)
+  assert.ok(
+    Math.abs(metrics.scrollBottom - metrics.viewport) <= 1,
+    'scroll track must reach the window bottom',
+  )
+  assert.ok(
+    metrics.planBottom < metrics.inputTop,
+    'plan belongs above the input',
+  )
+  await win.webContents.executeJavaScript(
+    `document.querySelector('.tool-group > summary').click()`,
+  )
+  await waitFor(`document.querySelector('.tool-group').open`)
+  await win.webContents.executeJavaScript(
+    `document.querySelector('.tool-group-items summary').click()`,
+  )
+  await waitFor(`document.querySelector('.tool-group-items details').open`)
+  await new Promise((resolve) => setTimeout(resolve, 220))
+  await writeFile(
+    join(output, 'workbench-activity-preview.png'),
+    (await win.webContents.capturePage()).toPNG(),
+  )
+  await win.webContents.executeJavaScript(
+    `const scroller = document.querySelector('.conversation-scroll'); scroller.scrollTop = scroller.scrollHeight`,
+  )
+  await new Promise((resolve) => setTimeout(resolve, 220))
+  const latestVisible = await win.webContents.executeJavaScript(
+    `document.querySelector('.messages').getBoundingClientRect().bottom <= document.querySelector('.composer-surface').getBoundingClientRect().top + 1`,
+  )
+  assert.ok(
+    latestVisible,
+    'last message must not be hidden behind the composer',
+  )
   await win.webContents.executeJavaScript(
     `document.querySelector('[aria-label="Collapse sidebar"]').click(); document.querySelector('[aria-label="Toggle Files"]').click()`,
   )
   await waitFor(
-    `!document.querySelector('.workspace-sidebar') && !!document.querySelector('.tools-panel')`,
+    `document.querySelector('.workspace-sidebar').getAttribute('aria-hidden') === 'true' && !!document.querySelector('.tools-panel')`,
   )
   await writeFile(
     join(output, 'workbench-tools-preview.png'),
@@ -152,6 +254,21 @@ async function run() {
       'document.documentElement.scrollWidth > innerWidth',
     ),
     false,
+  )
+  await win.webContents.executeJavaScript(
+    `document.querySelector('[aria-label="Close tools panel"]').click()`,
+  )
+  await waitFor(`getComputedStyle(document.querySelector('.workspace-sidebar')).visibility === 'hidden'`)
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  assert.ok(
+    await win.webContents.executeJavaScript(
+      `document.querySelector('.composer').getBoundingClientRect().bottom < innerHeight`,
+    ),
+    'input must remain visible on narrow windows',
+  )
+  await writeFile(
+    join(output, 'workbench-mobile-preview.png'),
+    (await win.webContents.capturePage()).toPNG(),
   )
   console.log(
     JSON.stringify({ status: 'passed', metrics, screenshots: output }),

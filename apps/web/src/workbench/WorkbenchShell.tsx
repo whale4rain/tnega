@@ -75,15 +75,15 @@ export function WorkbenchShell({
             onClick={() => setOpen(false)}
           />
         )}
-        {open && (
-          <aside
-            id="workspace-navigation"
-            className="workspace-sidebar"
-            aria-label="Workspace navigation"
-          >
-            {sidebar}
-          </aside>
-        )}
+        <aside
+          id="workspace-navigation"
+          className={`workspace-sidebar${open ? '' : ' collapsed'}`}
+          aria-label="Workspace navigation"
+          aria-hidden={!open}
+          inert={!open}
+        >
+          <div className="sidebar-content">{sidebar}</div>
+        </aside>
         <main className="main min-w-0 flex-1">{children}</main>
         {tool && (
           <aside className="tools-panel" aria-label={`${tool.title} panel`}>

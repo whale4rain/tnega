@@ -93,6 +93,7 @@ export function ChatView({
   const planRef = useRef<DisplayPlan | undefined>(undefined)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerSurfaceRef = useRef<HTMLDivElement | null>(null)
   const userRefs = useRef(new Map<string, HTMLDivElement>())
   const stickToBottomRef = useRef(true)
   const streamDeltaRef = useRef(new Map<string, string>())
@@ -113,6 +114,16 @@ export function ChatView({
     const node = scrollRef.current
     if (node) node.scrollTop = node.scrollHeight
   }, [])
+
+  useEffect(() => {
+    const surface = composerSurfaceRef.current
+    if (!surface || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      if (stickToBottomRef.current) scrollToBottom()
+    })
+    observer.observe(surface)
+    return () => observer.disconnect()
+  }, [sessionId, summary?.id, scrollToBottom])
 
   useEffect(() => {
     setNavIndex(0)
@@ -773,76 +784,268 @@ export function ChatView({
           </div>
         </div>
       </div>
-      <PlanPanel plan={plan} />
       <div className="messages-viewport">
         <div
-          className="messages"
+          className="conversation-scroll"
           ref={scrollRef}
           onScroll={handleMessagesScroll}
         >
-          {messages.length === 0 && (
-            <div className="conversation-welcome">
-              <Code2 size={28} strokeWidth={1.4} />
-              <h2>Let’s work on your code.</h2>
-              <p>Describe a task, ask a question, or type / for commands.</p>
-            </div>
-          )}
-          {renderItems.map((item) => {
-            if (item.kind === 'tools') {
+          <div className="messages">
+            {messages.length === 0 && (
+              <div className="conversation-welcome">
+                <Code2 size={28} strokeWidth={1.4} />
+                <h2>Let’s work on your code.</h2>
+                <p>Describe a task, ask a question, or type / for commands.</p>
+              </div>
+            )}
+            {renderItems.map((item) => {
+              if (item.kind === 'tools') {
+                return (
+                  <ToolGroupBlock
+                    key={`tools-${item.tools[0]?.id ?? 'empty'}`}
+                    tools={item.tools}
+                  />
+                )
+              }
+              const { message, sourceIndex } = item
               return (
-                <ToolGroupBlock
-                  key={`tools-${item.tools[0]?.id ?? 'empty'}`}
-                  tools={item.tools}
+                <MessageBlock
+                  key={message.id}
+                  message={message}
+                  active={
+                    message.role === 'user' &&
+                    userIndexes[navIndex] === sourceIndex
+                  }
+                  userRef={
+                    message.role === 'user'
+                      ? (node) => {
+                          if (node) userRefs.current.set(message.id, node)
+                          else userRefs.current.delete(message.id)
+                        }
+                      : undefined
+                  }
+                  editing={editingId === message.id}
+                  editDraft={editingId === message.id ? editDraft : ''}
+                  onEditDraftChange={setEditDraft}
+                  onBeginEdit={
+                    message.role === 'user' && !running && !compacting
+                      ? () => beginEdit(message)
+                      : undefined
+                  }
+                  onSubmitEdit={
+                    message.role === 'user' && editingId === message.id
+                      ? () => void submitEdit()
+                      : undefined
+                  }
+                  onCancelEdit={
+                    message.role === 'user' && editingId === message.id
+                      ? cancelEdit
+                      : undefined
+                  }
+                  onForkAt={
+                    message.role === 'user' && !running && !compacting
+                      ? () => forkHere(message.id)
+                      : undefined
+                  }
                 />
               )
-            }
-            const { message, sourceIndex } = item
-            return (
-              <MessageBlock
-                key={message.id}
-                message={message}
-                active={
-                  message.role === 'user' &&
-                  userIndexes[navIndex] === sourceIndex
-                }
-                userRef={
-                  message.role === 'user'
-                    ? (node) => {
-                        if (node) userRefs.current.set(message.id, node)
-                        else userRefs.current.delete(message.id)
-                      }
-                    : undefined
-                }
-                editing={editingId === message.id}
-                editDraft={editingId === message.id ? editDraft : ''}
-                onEditDraftChange={setEditDraft}
-                onBeginEdit={
-                  message.role === 'user' && !running && !compacting
-                    ? () => beginEdit(message)
-                    : undefined
-                }
-                onSubmitEdit={
-                  message.role === 'user' && editingId === message.id
-                    ? () => void submitEdit()
-                    : undefined
-                }
-                onCancelEdit={
-                  message.role === 'user' && editingId === message.id
-                    ? cancelEdit
-                    : undefined
-                }
-                onForkAt={
-                  message.role === 'user' && !running && !compacting
-                    ? () => forkHere(message.id)
-                    : undefined
-                }
+            })}
+            {runState === 'cancelling' && (
+              <div className="run-note">cancelling</div>
+            )}
+            {compacting && (
+              <div className="run-note">compacting context...</div>
+            )}
+          </div>
+          <div className="composer-surface" ref={composerSurfaceRef}>
+            {runError && (
+              <div className="error-banner" role="alert">
+                <span className="marker">[!]</span>
+                <span>{runError}</span>
+                <button
+                  type="button"
+                  onClick={() => setRunError(null)}
+                  title="dismiss"
+                >
+                  [x]
+                </button>
+              </div>
+            )}
+            <ComposerFrame
+              accessory={<PlanPanel plan={plan} />}
+              model={model}
+              workspace={workspace}
+              apiKeySet={apiKeySet}
+              onSettings={onSettings}
+              allowNetwork={allowNetwork}
+              allowShell={allowShell}
+              onNetwork={setAllowNetwork}
+              onShell={setAllowShell}
+              disabled={running || compacting}
+              mode={isCoding ? mode : undefined}
+              onMode={onModeChange}
+            >
+              {isCoding && slashMenuVisible && (
+                <div
+                  className="slash-menu"
+                  role="listbox"
+                  aria-label="slash commands"
+                >
+                  {slashSubmenu ? (
+                    <>
+                      <div className="slash-menu-header">
+                        <button
+                          type="button"
+                          className="slash-back"
+                          onClick={closeSlashSubmenu}
+                          title="back to commands"
+                        >
+                          [back]
+                        </button>
+                        <span className="slash-menu-command">
+                          {slashSubmenu.command.name}
+                        </span>
+                        <span className="slash-menu-hint">select to run</span>
+                      </div>
+                      {slashSubmenu.busy && (
+                        <div className="slash-note">loading...</div>
+                      )}
+                      {slashSubmenu.error && (
+                        <div className="slash-note error">
+                          {slashSubmenu.error}
+                        </div>
+                      )}
+                      {!slashSubmenu.busy && !slashSubmenu.error && (
+                        <>
+                          <button
+                            type="button"
+                            className="slash-option"
+                            role="option"
+                            onClick={() =>
+                              chooseSlashSuggestion({
+                                command: slashSubmenu.command.name,
+                                args: [],
+                                label: slashSubmenu.command.name,
+                                detail: slashSubmenu.command.description,
+                              })
+                            }
+                          >
+                            <span className="slash-option-label">
+                              {slashSubmenu.command.name}
+                            </span>
+                            <span className="slash-option-detail">
+                              {slashSubmenu.command.description}
+                            </span>
+                          </button>
+                          {slashSubmenu.candidates.length === 0 && (
+                            <div className="slash-note">nothing available</div>
+                          )}
+                          {slashSubmenu.candidates.map((candidate) => (
+                            <button
+                              key={`${candidate.command}-${candidate.args.join(' ')}-${candidate.label}`}
+                              type="button"
+                              className="slash-option"
+                              role="option"
+                              onClick={() => chooseSlashSuggestion(candidate)}
+                            >
+                              <span className="slash-option-label">
+                                {candidate.label}
+                              </span>
+                              {candidate.detail && (
+                                <span className="slash-option-detail">
+                                  {candidate.detail}
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {slashBusy && (
+                        <div className="slash-note">loading commands...</div>
+                      )}
+                      {slashError && (
+                        <div className="slash-note error">{slashError}</div>
+                      )}
+                      {!slashBusy &&
+                        !slashError &&
+                        slashCommands.length === 0 && (
+                          <div className="slash-note">no commands</div>
+                        )}
+                      {!slashBusy &&
+                        !slashError &&
+                        slashCommands.map((command) => (
+                          <button
+                            key={command.name}
+                            type="button"
+                            className="slash-command"
+                            role="option"
+                            onClick={() => selectSlashCommand(command)}
+                          >
+                            <span className="slash-name">{command.name}</span>
+                            <span className="slash-description">
+                              {command.description}
+                            </span>
+                          </button>
+                        ))}
+                    </>
+                  )}
+                </div>
+              )}
+              <textarea
+                ref={composerRef}
+                value={prompt}
+                onChange={(event) => {
+                  setPrompt(event.target.value)
+                  setSlashSubmenu(null)
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault()
+                    void startRun()
+                  }
+                }}
+                aria-label="Message Tnega"
+                placeholder="Ask Tnega to build, fix, or explore…"
+                rows={2}
+                disabled={running || compacting}
+                spellCheck={false}
               />
-            )
-          })}
-          {runState === 'cancelling' && (
-            <div className="run-note">cancelling</div>
-          )}
-          {compacting && <div className="run-note">compacting context...</div>}
+              <div className="composer-actions">
+                {running ? (
+                  <IconButton
+                    type="button"
+                    className="button-danger send-button"
+                    aria-label="Stop response"
+                    title="Stop response"
+                    onClick={cancelRun}
+                    disabled={runState !== 'running'}
+                  >
+                    <Square size={15} fill="currentColor" />
+                  </IconButton>
+                ) : (
+                  <IconButton
+                    type="button"
+                    className="button-primary send-button"
+                    aria-label="Send message"
+                    title="Send message (Enter)"
+                    onClick={() => void startRun()}
+                    disabled={
+                      !prompt.trim() || !apiKeySet || compacting || slashBusy
+                    }
+                  >
+                    <ArrowUp size={18} />
+                  </IconButton>
+                )}
+              </div>
+            </ComposerFrame>
+          </div>
         </div>
         <ConversationNav
           count={userIndexes.length}
@@ -853,194 +1056,15 @@ export function ChatView({
         {showJump && (
           <button
             type="button"
-            className="button-primary jump-bottom"
+            className="jump-bottom"
             onClick={jumpToBottom}
             title="back to bottom"
+            aria-label="Back to latest message"
           >
             <ChevronDown size={16} />
           </button>
         )}
       </div>
-      {runError && (
-        <div className="error-banner" role="alert">
-          <span className="marker">[!]</span>
-          <span>{runError}</span>
-          <button
-            type="button"
-            onClick={() => setRunError(null)}
-            title="dismiss"
-          >
-            [x]
-          </button>
-        </div>
-      )}
-      <ComposerFrame
-        model={model}
-        workspace={workspace}
-        apiKeySet={apiKeySet}
-        onSettings={onSettings}
-        allowNetwork={allowNetwork}
-        allowShell={allowShell}
-        onNetwork={setAllowNetwork}
-        onShell={setAllowShell}
-        disabled={running || compacting}
-        mode={isCoding ? mode : undefined}
-        onMode={onModeChange}
-      >
-        {isCoding && slashMenuVisible && (
-          <div
-            className="slash-menu"
-            role="listbox"
-            aria-label="slash commands"
-          >
-            {slashSubmenu ? (
-              <>
-                <div className="slash-menu-header">
-                  <button
-                    type="button"
-                    className="slash-back"
-                    onClick={closeSlashSubmenu}
-                    title="back to commands"
-                  >
-                    [back]
-                  </button>
-                  <span className="slash-menu-command">
-                    {slashSubmenu.command.name}
-                  </span>
-                  <span className="slash-menu-hint">select to run</span>
-                </div>
-                {slashSubmenu.busy && (
-                  <div className="slash-note">loading...</div>
-                )}
-                {slashSubmenu.error && (
-                  <div className="slash-note error">{slashSubmenu.error}</div>
-                )}
-                {!slashSubmenu.busy && !slashSubmenu.error && (
-                  <>
-                    <button
-                      type="button"
-                      className="slash-option"
-                      role="option"
-                      onClick={() =>
-                        chooseSlashSuggestion({
-                          command: slashSubmenu.command.name,
-                          args: [],
-                          label: slashSubmenu.command.name,
-                          detail: slashSubmenu.command.description,
-                        })
-                      }
-                    >
-                      <span className="slash-option-label">
-                        {slashSubmenu.command.name}
-                      </span>
-                      <span className="slash-option-detail">
-                        {slashSubmenu.command.description}
-                      </span>
-                    </button>
-                    {slashSubmenu.candidates.length === 0 && (
-                      <div className="slash-note">nothing available</div>
-                    )}
-                    {slashSubmenu.candidates.map((candidate) => (
-                      <button
-                        key={`${candidate.command}-${candidate.args.join(' ')}-${candidate.label}`}
-                        type="button"
-                        className="slash-option"
-                        role="option"
-                        onClick={() => chooseSlashSuggestion(candidate)}
-                      >
-                        <span className="slash-option-label">
-                          {candidate.label}
-                        </span>
-                        {candidate.detail && (
-                          <span className="slash-option-detail">
-                            {candidate.detail}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                {slashBusy && (
-                  <div className="slash-note">loading commands...</div>
-                )}
-                {slashError && (
-                  <div className="slash-note error">{slashError}</div>
-                )}
-                {!slashBusy && !slashError && slashCommands.length === 0 && (
-                  <div className="slash-note">no commands</div>
-                )}
-                {!slashBusy &&
-                  !slashError &&
-                  slashCommands.map((command) => (
-                    <button
-                      key={command.name}
-                      type="button"
-                      className="slash-command"
-                      role="option"
-                      onClick={() => selectSlashCommand(command)}
-                    >
-                      <span className="slash-name">{command.name}</span>
-                      <span className="slash-description">
-                        {command.description}
-                      </span>
-                    </button>
-                  ))}
-              </>
-            )}
-          </div>
-        )}
-        <textarea
-          ref={composerRef}
-          value={prompt}
-          onChange={(event) => {
-            setPrompt(event.target.value)
-            setSlashSubmenu(null)
-          }}
-          onKeyDown={(event) => {
-            if (
-              event.key === 'Enter' &&
-              !event.shiftKey &&
-              !event.nativeEvent.isComposing
-            ) {
-              event.preventDefault()
-              void startRun()
-            }
-          }}
-          aria-label="Message Tnega"
-          placeholder="Ask Tnega to build, fix, or explore…"
-          rows={3}
-          disabled={running || compacting}
-          spellCheck={false}
-        />
-        <div className="composer-actions">
-          {running ? (
-            <IconButton
-              type="button"
-              className="button-danger send-button"
-              aria-label="Stop response"
-              title="Stop response"
-              onClick={cancelRun}
-              disabled={runState !== 'running'}
-            >
-              <Square size={15} fill="currentColor" />
-            </IconButton>
-          ) : (
-            <IconButton
-              type="button"
-              className="button-primary send-button"
-              aria-label="Send message"
-              title="Send message (Enter)"
-              onClick={() => void startRun()}
-              disabled={!prompt.trim() || !apiKeySet || compacting || slashBusy}
-            >
-              <ArrowUp size={18} />
-            </IconButton>
-          )}
-        </div>
-      </ComposerFrame>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { workspaceName } from './workspace'
 
 interface Props {
   children: ReactNode
+  accessory?: ReactNode
   workspace: string
   model?: string
   apiKeySet: boolean
@@ -20,6 +21,7 @@ interface Props {
 export function ComposerFrame(props: Props) {
   return (
     <section className="composer-dock" aria-label="Message composer">
+      {props.accessory}
       {!props.apiKeySet && (
         <div className="config-notice">
           Connect a model to start a conversation.
