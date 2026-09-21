@@ -5,7 +5,7 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 
 ## 功能
 
-- 侧栏最近工作区 + 添加路径；会话列表（general / coding 徽标）。
+- 侧栏同时显示全部已添加工作区，每个工作区独立展开其会话；可按工作区新建、重命名、分支和删除会话，搜索覆盖所有工作区。
 - 多轮聊天；工具权限开关（network / shell，运行时选择一次，run 期间不可改）。
 - 会话粒度 mode 切换 `auto / plan / execute`；plan 面板实时显示 todo 状态。
 - 斜杠命令菜单（coding 会话）；fork；自动标题。
@@ -24,6 +24,7 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 | `App.tsx` | API 状态、会话选择、主题和视图组装 |
 | `workbench/WorkbenchShell.tsx` | 窗口布局、折叠侧栏、工具面板插槽 |
 | `workbench/WorkspaceSidebar.tsx` | 工作区、会话搜索、操作菜单和对话框 |
+| `workbench/WorkspaceTree.tsx` | 按工作区分组的会话树、独立折叠和工作区范围的操作入口 |
 | `workbench/ComposerFrame.tsx` | 输入区容器、权限、模型设置入口和模式 |
 | `workbench/SettingsView.tsx` | 模型配置表单 |
 | `conversation/ChatView.tsx` | 会话运行、流式消费和输入行为 |

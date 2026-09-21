@@ -10,9 +10,7 @@ import {
 } from '@radix-ui/themes'
 import {
   Code2,
-  FolderOpen,
   MessageSquare,
-  MoreHorizontal,
   Plus,
   Search,
   Settings,
@@ -20,7 +18,7 @@ import {
 } from 'lucide-react'
 import type { SessionSummary } from '../types'
 import type { ThemePreference } from '../ThemeToggle'
-import { workspaceName } from './workspace'
+import { WorkspaceTree } from './WorkspaceTree'
 import {
   hasDesktopWorkspacePicker,
   pickDesktopWorkspace,
@@ -31,14 +29,16 @@ interface Props {
   workspace: string | null
   sessions: SessionSummary[]
   selectedId: string | null
-  onWorkspace: (path: string) => void
   onAdd: (path: string) => Promise<void>
   onRemove: (path: string) => Promise<void>
-  onSelect: (id: string) => void
-  onNew: (options: { agentType: 'general' | 'coding' }) => Promise<void>
-  onRename: (id: string, title: string) => Promise<void>
-  onFork: (id: string) => Promise<void>
-  onDelete: (id: string) => Promise<void>
+  onSelect: (workspace: string, id: string) => void
+  onNew: (
+    options: { agentType: 'general' | 'coding' },
+    workspace?: string,
+  ) => Promise<void>
+  onRename: (workspace: string, id: string, title: string) => Promise<void>
+  onFork: (workspace: string, id: string) => Promise<void>
+  onDelete: (workspace: string, id: string) => Promise<void>
   onSettings: () => void
   theme: ThemePreference
   onTheme: (theme: ThemePreference) => void
@@ -105,46 +105,8 @@ export function WorkspaceSidebar(props: Props) {
           </TextField.Slot>
         </TextField.Root>
       </div>
-      <div className="sidebar-section-label">Projects</div>
-      <div className="sidebar-project flex items-center justify-between gap-2">
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            <Button variant="ghost" color="gray" className="project-trigger">
-              <FolderOpen size={15} />
-              <span className="truncate">
-                {props.workspace
-                  ? workspaceName(props.workspace)
-                  : 'Workspaces'}
-              </span>
-              <DropdownMenu.TriggerIcon />
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content>
-            {props.workspaces.map((item) => (
-              <DropdownMenu.Item
-                key={item}
-                onSelect={() => props.onWorkspace(item)}
-              >
-                {item}
-              </DropdownMenu.Item>
-            ))}
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item onSelect={() => setAdding(true)}>
-              Add workspace…
-            </DropdownMenu.Item>
-            {props.workspace && (
-              <DropdownMenu.Item
-                color="red"
-                onSelect={() => {
-                  if (props.workspace)
-                    void perform(() => props.onRemove(props.workspace!))
-                }}
-              >
-                Remove from list
-              </DropdownMenu.Item>
-            )}
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+      <div className="sidebar-section-label flex items-center justify-between">
+        <span>Projects</span>
         <Tooltip content="Add workspace">
           <IconButton
             variant="ghost"
@@ -156,81 +118,29 @@ export function WorkspaceSidebar(props: Props) {
           </IconButton>
         </Tooltip>
       </div>
-      <nav className="session-list" aria-label="Sessions">
-        {props.sessions
-          .filter((session) =>
-            session.title.toLowerCase().includes(search.toLowerCase()),
-          )
-          .map((session) => (
-            <div
-              key={session.id}
-              className={`session-item ${session.id === props.selectedId ? 'selected' : ''}`}
-            >
-              <button
-                className="session-link"
-                onClick={() => props.onSelect(session.id)}
-                aria-current={
-                  session.id === props.selectedId ? 'page' : undefined
-                }
-                title={session.title}
-              >
-                <span className="session-dot" />
-                <span className="truncate">
-                  {session.title || 'Untitled session'}
-                </span>
-              </button>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  <IconButton
-                    variant="ghost"
-                    color="gray"
-                    size="1"
-                    aria-label={`Actions for ${session.title}`}
-                  >
-                    <MoreHorizontal size={16} />
-                  </IconButton>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content>
-                  <DropdownMenu.Item
-                    onSelect={() => {
-                      setRename(session)
-                      setTitle(session.title)
-                    }}
-                  >
-                    Rename…
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Item
-                    onSelect={() =>
-                      void perform(() => props.onFork(session.id))
-                    }
-                  >
-                    Fork session
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item
-                    color="red"
-                    onSelect={() =>
-                      void perform(() => props.onDelete(session.id))
-                    }
-                  >
-                    Delete session…
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
-            </div>
-          ))}
-        {!props.sessions.length && (
-          <p className="sidebar-hint">
-            {props.workspace
-              ? 'Start a session to explore your code.'
-              : 'Add a workspace to get started.'}
-          </p>
-        )}
-        {props.sessions.length > 0 &&
-          !props.sessions.some((session) =>
-            session.title.toLowerCase().includes(search.toLowerCase()),
-          ) && <p className="sidebar-hint">No matching sessions.</p>}
-      </nav>
+      <WorkspaceTree
+        workspaces={props.workspaces}
+        workspace={props.workspace}
+        sessions={props.sessions}
+        selectedId={props.selectedId}
+        search={search}
+        busy={busy}
+        onSelect={props.onSelect}
+        onNew={(workspace) =>
+          void perform(() => props.onNew({ agentType: agent }, workspace))
+        }
+        onRemove={(workspace) => void perform(() => props.onRemove(workspace))}
+        onRename={(session) => {
+          setRename(session)
+          setTitle(session.title)
+        }}
+        onFork={(workspace, id) =>
+          void perform(() => props.onFork(workspace, id))
+        }
+        onDelete={(workspace, id) =>
+          void perform(() => props.onDelete(workspace, id))
+        }
+      />
       {error && (
         <p role="alert" className="sidebar-hint danger">
           {error}
@@ -263,13 +173,23 @@ export function WorkspaceSidebar(props: Props) {
           </DropdownMenu.Content>
         </DropdownMenu.Root>
       </footer>
-      <Dialog.Root open={adding} onOpenChange={open => { setAdding(open); setError('') }}>
+      <Dialog.Root
+        open={adding}
+        onOpenChange={(open) => {
+          setAdding(open)
+          setError('')
+        }}
+      >
         <Dialog.Content maxWidth="440px">
           <Dialog.Title>Add workspace</Dialog.Title>
           <Dialog.Description size="2" mb="4">
             Choose the local project you want to work on.
           </Dialog.Description>
-          {error && <p role="alert" className="danger">{error}</p>}
+          {error && (
+            <p role="alert" className="danger">
+              {error}
+            </p>
+          )}
           <form
             onSubmit={(event) => {
               event.preventDefault()
@@ -326,13 +246,21 @@ export function WorkspaceSidebar(props: Props) {
           <Dialog.Description size="2" mb="4">
             Give this conversation a recognizable name.
           </Dialog.Description>
-          {error && <p role="alert" className="danger">{error}</p>}
+          {error && (
+            <p role="alert" className="danger">
+              {error}
+            </p>
+          )}
           <form
             onSubmit={(event) => {
               event.preventDefault()
               if (rename && title.trim())
                 void perform(async () => {
-                  await props.onRename(rename.id, title.trim())
+                  await props.onRename(
+                    rename.workspace,
+                    rename.id,
+                    title.trim(),
+                  )
                   setRename(null)
                 })
             }}

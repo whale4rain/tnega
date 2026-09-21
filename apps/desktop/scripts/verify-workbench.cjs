@@ -8,6 +8,8 @@ const assert = require('node:assert/strict')
 const webRoot = join(__dirname, '../../../dist/web')
 const output = join(__dirname, '../release')
 const workspace = 'D:/projects/tnega'
+const otherWorkspace = 'D:/projects/docs'
+const emptyWorkspace = 'D:/projects/playground'
 const summary = {
   id: 'preview',
   workspace,
@@ -110,7 +112,10 @@ events.forEach((event, index) => {
   event.ts = index + 1
 })
 const server = createServer(async (req, res) => {
-  const path = new URL(req.url, 'http://localhost').pathname
+  const url = new URL(req.url, 'http://localhost')
+  const path = url.pathname
+  const requestedWorkspace = url.searchParams.get('workspace') || workspace
+  const fixtureSummary = requestedWorkspace === workspace ? summary : { ...summary, workspace: requestedWorkspace, title: 'Improve the documentation' }
   if (path.startsWith('/api/')) {
     const value =
       path === '/api/config'
@@ -121,18 +126,15 @@ const server = createServer(async (req, res) => {
             env: { apiKeySet: false },
           }
         : path === '/api/workspaces'
-          ? { workspaces: [workspace] }
+          ? { workspaces: [workspace, otherWorkspace, emptyWorkspace] }
           : path === '/api/sessions'
             ? {
-                sessions: [
-                  summary,
-                  { ...summary, id: 'second', title: 'Explore the codebase' },
-                ],
+                sessions: requestedWorkspace === emptyWorkspace ? [] : requestedWorkspace === workspace ? [summary, { ...summary, id: 'second', title: 'Explore the codebase' }] : [fixtureSummary],
               }
             : path.includes('commands')
               ? { commands: [] }
               : {
-                  summary,
+                  summary: fixtureSummary,
                   events,
                   running: false,
                   context: { ratio: 0.12, tokens: 12000, limit: 100000 },
@@ -185,6 +187,8 @@ async function run() {
     `document.querySelector('.session-link').click()`,
   )
   await waitFor(`!!document.querySelector('.message.assistant')`)
+  await waitFor(`document.querySelectorAll('.workspace-group').length === 3 && document.querySelectorAll('.session-link').length === 3`)
+  assert.equal(await win.webContents.executeJavaScript(`document.querySelectorAll('.session-link[aria-current="page"]').length`), 1, 'only the selected workspace/session pair may be highlighted')
   await mkdir(output, { recursive: true })
   await win.webContents.executeJavaScript(
     `document.querySelector('.conversation-scroll').scrollTop = 0`,
@@ -245,6 +249,7 @@ async function run() {
   }
   const fg = luminance(toolTooltip.foreground), bg = luminance(toolTooltip.background)
   assert.ok((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) >= 4.5, `tool tooltip must have readable contrast: ${JSON.stringify(toolTooltip)}`)
+  await writeFile(join(output, 'workbench-tooltip-preview.png'), (await win.webContents.capturePage()).toPNG())
   await win.webContents.executeJavaScript(`document.querySelector('[aria-label="Toggle Terminal"]').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))`)
   const surfaces = await win.webContents.executeJavaScript(`(() => {
     const main = document.querySelector('.main');

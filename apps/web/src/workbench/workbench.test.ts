@@ -63,7 +63,7 @@ describe('workbench navigation', () => {
         Theme,
         {},
         createElement(WorkspaceSidebar, {
-          workspaces: ['/project'],
+          workspaces: ['/project', '/other'],
           workspace: '/project',
           selectedId: 'one',
           theme: 'dark',
@@ -75,7 +75,6 @@ describe('workbench navigation', () => {
             updatedAt: 0,
             eventCount: 0,
           })),
-          onWorkspace: vi.fn(),
           onAdd: action,
           onRemove: action,
           onSelect,
@@ -93,8 +92,66 @@ describe('workbench navigation', () => {
     })
     expect(screen.queryByRole('button', { name: 'Add tests' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Fix parser' }))
-    expect(onSelect).toHaveBeenCalledWith('0')
+    expect(onSelect).toHaveBeenCalledWith('/project', '0')
     fireEvent.click(screen.getByRole('button', { name: 'New session' }))
     expect(onNew).toHaveBeenCalledWith({ agentType: 'coding' })
+  })
+  it('renders independent workspace groups instead of a workspace switcher', () => {
+    const action = vi.fn().mockResolvedValue(undefined)
+    const onNew = vi.fn().mockResolvedValue(undefined)
+    render(
+      createElement(
+        Theme,
+        {},
+        createElement(WorkspaceSidebar, {
+          workspaces: ['/project', '/other'],
+          workspace: '/project',
+          selectedId: 'same',
+          theme: 'dark',
+          sessions: ['/project', '/other'].map((workspace) => ({
+            id: 'same',
+            title: `Session in ${workspace}`,
+            workspace,
+            createdAt: 0,
+            updatedAt: 0,
+            eventCount: 0,
+          })),
+          onSelect: vi.fn(),
+          onAdd: action,
+          onRemove: action,
+          onNew,
+          onRename: action,
+          onFork: action,
+          onDelete: action,
+          onSettings: vi.fn(),
+          onTheme: vi.fn(),
+        }),
+      ),
+    )
+    expect(
+      screen
+        .getByRole('button', { name: 'Session in /other' })
+        .getAttribute('aria-current'),
+    ).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse project' }))
+    expect(
+      screen.queryByRole('button', { name: 'Session in /project' }),
+    ).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Session in /other' }),
+    ).toBeTruthy()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'New session in other' }),
+    )
+    expect(onNew).toHaveBeenCalledWith({ agentType: 'coding' }, '/other')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search sessions' }), {
+      target: { value: 'Session in /project' },
+    })
+    expect(
+      screen.getByRole('button', { name: 'Session in /project' }),
+    ).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Session in /other' }),
+    ).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Theme } from '@radix-ui/themes'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
@@ -54,8 +54,10 @@ export default function App() {
   const [workspace, setWorkspace] = useState<string | null>(() =>
     readWorkspaceSelection(localStorage),
   )
+  const currentWorkspace = useRef(workspace)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const selection = useRef<{ workspace: string; id: string } | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [context, setContext] = useState<ContextUsage | null>(null)
   const [sessionRunning, setSessionRunning] = useState(false)
@@ -87,7 +89,9 @@ export default function App() {
         setConfig(nextConfig)
         const stored = nextWorkspaces.workspaces
         setWorkspaces(stored)
-        setWorkspace(resolveWorkspaceSelection(localStorage, stored))
+        const nextWorkspace = resolveWorkspaceSelection(localStorage, stored)
+        currentWorkspace.current = nextWorkspace
+        setWorkspace(nextWorkspace)
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(messageOf(reason))
@@ -98,71 +102,86 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!workspace) return
     let cancelled = false
-    api
-      .listSessions(workspace)
-      .then(({ sessions: next }) => {
-        if (cancelled) return
-        setSessions(next)
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setError(messageOf(reason))
-      })
+    for (const path of workspaces) {
+      void api
+        .listSessions(path)
+        .then(({ sessions: next }) => {
+          if (!cancelled)
+            setSessions((current) => [
+              ...current.filter((item) => item.workspace !== path),
+              ...next,
+            ])
+        })
+        .catch((reason: unknown) => {
+          if (!cancelled) setError(`${path}: ${messageOf(reason)}`)
+        })
+    }
     return () => {
       cancelled = true
     }
-  }, [workspace])
+  }, [workspaces])
 
-  const selectSession = useCallback(
-    (id: string) => {
-      if (!workspace) return
-      setSessionId(id)
-      setError(null)
-      setMessages([])
-      api
-        .getSession(workspace, id)
-        .then((detail) => {
-          setSummary(detail.summary)
-          setContext(detail.context)
-          setSessionRunning(detail.running)
-          setMessages(projectEvents(detail.events))
-          setPlan(latestPlanFromEvents(detail.events))
-        })
-        .catch((reason: unknown) => setError(messageOf(reason)))
-    },
-    [workspace],
-  )
+  const selectSession = useCallback((path: string, id: string) => {
+    const target = { workspace: path, id }
+    selection.current = target
+    currentWorkspace.current = path
+    setWorkspace(path)
+    setSessionId(id)
+    writeWorkspaceSelection(localStorage, path)
+    writeSessionSelection(localStorage, path, id)
+    setError(null)
+    setMessages([])
+    setSummary(null)
+    setContext(null)
+    setSessionRunning(false)
+    setPlan(undefined)
+    api
+      .getSession(path, id)
+      .then((detail) => {
+        if (selection.current !== target) return
+        setSummary(detail.summary)
+        setContext(detail.context)
+        setSessionRunning(detail.running)
+        setMessages(projectEvents(detail.events))
+        setPlan(latestPlanFromEvents(detail.events))
+      })
+      .catch((reason: unknown) => {
+        if (selection.current === target) setError(messageOf(reason))
+      })
+  }, [])
 
   useEffect(() => {
     if (workspace) writeWorkspaceSelection(localStorage, workspace)
   }, [workspace])
 
   useEffect(() => {
-    if (!workspace || !sessionId) return
-    writeSessionSelection(localStorage, workspace, sessionId)
-  }, [workspace, sessionId])
-
-  useEffect(() => {
-    if (!workspace || !sessions.length) return
+    if (!workspace || sessionId) return
+    const available = sessions.filter(
+      (session) => session.workspace === workspace,
+    )
+    if (!available.length) return
     const preferred = readSessionSelection(localStorage, workspace)
     if (!preferred || sessionId === preferred) return
-    if (!sessions.some((session) => session.id === preferred)) {
+    if (!available.some((session) => session.id === preferred)) {
       clearSessionSelection(localStorage, workspace)
       return
     }
-    selectSession(preferred)
+    selectSession(workspace, preferred)
   }, [sessions, workspace, sessionId, selectSession])
 
   const selectWorkspace = useCallback(
     (next: string) => {
       if (next === workspace) return
+      selection.current = null
+      currentWorkspace.current = next
       setWorkspace(next)
       setSessionId(null)
       setSummary(null)
       setContext(null)
       setSessionRunning(false)
       setMessages([])
+      setPlan(undefined)
     },
     [workspace],
   )
@@ -170,14 +189,20 @@ export default function App() {
   const refreshSession = useCallback(
     async (id: string) => {
       if (!workspace) return
+      const target = selection.current
+      if (target?.workspace !== workspace || target.id !== id) return
       const detail = await api.getSession(workspace, id)
+      if (selection.current !== target) return detail
       setSummary(detail.summary)
       setContext(detail.context)
       setSessionRunning(detail.running)
       setMessages(projectEvents(detail.events))
       setPlan(latestPlanFromEvents(detail.events))
       const next = await api.listSessions(workspace)
-      setSessions(next.sessions)
+      setSessions((current) => [
+        ...current.filter((item) => item.workspace !== workspace),
+        ...next.sessions,
+      ])
       return detail
     },
     [workspace],
@@ -188,7 +213,6 @@ export default function App() {
     try {
       const result = await api.addWorkspace(path.trim())
       setWorkspaces(result.workspaces)
-      setSessions([])
       selectWorkspace(result.path)
     } catch (reason) {
       setError(messageOf(reason))
@@ -200,9 +224,14 @@ export default function App() {
     try {
       const result = await api.removeWorkspace(path)
       setWorkspaces(result.workspaces)
-      if (workspace === path) {
+      setSessions((current) =>
+        current.filter((session) => session.workspace !== path),
+      )
+      clearSessionSelection(localStorage, path)
+      if (currentWorkspace.current === path) {
+        selection.current = null
+        currentWorkspace.current = null
         setWorkspace(null)
-        setSessions([])
         setSessionId(null)
         setSummary(null)
         setContext(null)
@@ -220,41 +249,40 @@ export default function App() {
       agentType?: 'general' | 'coding'
       mode?: 'auto' | 'plan' | 'execute'
     } = {},
+    targetWorkspace = workspace,
   ) {
-    if (!workspace) return
+    if (!targetWorkspace) return
     try {
-      const { session } = await api.createSession(workspace, options)
+      const { session } = await api.createSession(targetWorkspace, options)
       setSessions((current) => [session, ...current])
-      selectSession(session.id)
+      selectSession(targetWorkspace, session.id)
     } catch (reason) {
       setError(messageOf(reason))
     }
   }
 
-  async function handleRename(id: string, title: string) {
-    if (!workspace || !title.trim()) return
+  async function handleRename(path: string, id: string, title: string) {
+    if (!title.trim()) return
     try {
-      const { summary: next } = await api.renameSession(
-        workspace,
-        id,
-        title.trim(),
-      )
+      const { summary: next } = await api.renameSession(path, id, title.trim())
       setSessions((current) =>
-        current.map((session) => (session.id === id ? next : session)),
+        current.map((session) =>
+          session.workspace === path && session.id === id ? next : session,
+        ),
       )
-      if (sessionId === id) setSummary(next)
+      if (selection.current?.workspace === path && selection.current.id === id)
+        setSummary(next)
     } catch (reason) {
       setError(messageOf(reason))
       throw reason
     }
   }
 
-  async function handleFork(id: string) {
-    if (!workspace) return
+  async function handleFork(path: string, id: string) {
     try {
-      const { session } = await api.forkSession(workspace, id)
+      const { session } = await api.forkSession(path, id)
       setSessions((current) => [session, ...current])
-      selectSession(session.id)
+      selectSession(path, session.id)
     } catch (reason) {
       setError(messageOf(reason))
     }
@@ -265,19 +293,28 @@ export default function App() {
     try {
       const { session } = await api.forkSession(workspace, id, { messageId })
       setSessions((current) => [session, ...current])
-      selectSession(session.id)
+      selectSession(workspace, session.id)
     } catch (reason) {
       setError(messageOf(reason))
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!workspace) return
+  async function handleDelete(path: string, id: string) {
     if (!window.confirm(`delete session ${id.slice(0, 8)}?`)) return
     try {
-      await api.deleteSession(workspace, id)
-      setSessions((current) => current.filter((session) => session.id !== id))
-      if (sessionId === id) {
+      await api.deleteSession(path, id)
+      setSessions((current) =>
+        current.filter(
+          (session) => session.workspace !== path || session.id !== id,
+        ),
+      )
+      if (readSessionSelection(localStorage, path) === id)
+        clearSessionSelection(localStorage, path)
+      if (
+        selection.current?.workspace === path &&
+        selection.current.id === id
+      ) {
+        selection.current = null
         setSessionId(null)
         setSummary(null)
         setContext(null)
@@ -300,9 +337,17 @@ export default function App() {
           mode: nextMode,
         },
       )
-      setSummary(next)
+      if (
+        selection.current?.workspace === workspace &&
+        selection.current.id === sessionId
+      )
+        setSummary(next)
       setSessions((current) =>
-        current.map((session) => (session.id === sessionId ? next : session)),
+        current.map((session) =>
+          session.workspace === workspace && session.id === sessionId
+            ? next
+            : session,
+        ),
       )
     } catch (reason) {
       setError(messageOf(reason))
@@ -329,16 +374,15 @@ export default function App() {
             workspace={workspace}
             sessions={sessions}
             selectedId={sessionId}
-            onWorkspace={selectWorkspace}
             onAdd={handleAddWorkspace}
             onRemove={handleRemoveWorkspace}
-            onSelect={(id) => {
+            onSelect={(path, id) => {
               setView('chat')
-              selectSession(id)
+              selectSession(path, id)
             }}
-            onNew={async (options) => {
+            onNew={async (options, path) => {
               setView('chat')
-              await handleNewSession(options)
+              await handleNewSession(options, path)
             }}
             onRename={handleRename}
             onFork={handleFork}
