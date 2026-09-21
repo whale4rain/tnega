@@ -175,6 +175,8 @@ async function run() {
     },
   })
   await win.loadURL(`http://127.0.0.1:${server.address().port}`)
+  // Capture settled layouts rather than paused compositor animation frames in a hidden window.
+  await win.webContents.executeJavaScript(`document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '* , *::before, *::after, *::details-content { transition: none !important; animation: none !important; }' }))`)
   await waitFor(`!!document.querySelector('.session-link')`)
   await win.webContents.executeJavaScript(
     `document.querySelector('.session-link').click()`,
@@ -221,6 +223,7 @@ async function run() {
     `document.querySelector('.tool-group-items summary').click()`,
   )
   await waitFor(`document.querySelector('.tool-group-items details').open`)
+  await waitFor(`document.querySelector('.tool-group-items .tool-detail').getBoundingClientRect().height > 40`)
   await new Promise((resolve) => setTimeout(resolve, 220))
   await writeFile(
     join(output, 'workbench-activity-preview.png'),
