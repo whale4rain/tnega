@@ -17,7 +17,15 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
 })
-function setup(apiKeySet = true, plan?: DisplayPlan) {
+function setup(apiKeySet = true, plan?: DisplayPlan, sessionRunning = false) {
+  const summary = {
+    id: 'one',
+    title: 'Test',
+    workspace: '/project',
+    createdAt: 0,
+    updatedAt: 0,
+    eventCount: 0,
+  }
   const stream = vi.spyOn(api, 'streamRun').mockResolvedValue(undefined)
   render(
     createElement(
@@ -26,22 +34,25 @@ function setup(apiKeySet = true, plan?: DisplayPlan) {
       createElement(ChatView, {
         workspace: '/project',
         sessionId: 'one',
-        summary: {
-          id: 'one',
-          title: 'Test',
-          workspace: '/project',
-          createdAt: 0,
-          updatedAt: 0,
-          eventCount: 0,
-        },
+        summary,
         context: null,
-        sessionRunning: false,
+        sessionRunning,
         messages: [],
         apiKeySet,
         plan,
         onSettings: vi.fn(),
         onNewSession: vi.fn().mockResolvedValue(undefined),
-        onRefresh: vi.fn().mockResolvedValue(undefined),
+        onRefresh: vi.fn().mockResolvedValue(
+          sessionRunning
+            ? {
+              summary,
+              events: [],
+              surface: [],
+              context: { tokens: 0, limit: 0, ratio: 0 },
+              running: true,
+            }
+            : undefined,
+        ),
         onForkAt: vi.fn().mockResolvedValue(undefined),
         onMessagesChange: vi.fn(),
         onPlanChange: vi.fn(),
@@ -98,4 +109,21 @@ it('places the live plan above the input and lets it collapse without losing the
   fireEvent.click(screen.getByText('Plan'))
   expect(plan.querySelector('details')?.open).toBe(false)
   expect(screen.getByDisplayValue('Keep drafting')).toBeTruthy()
+})
+
+it('keeps the composer typable during a run and only blocks sending', async () => {
+  const { stream, input } = setup(true, undefined, true)
+
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Stop response' })).toBeTruthy(),
+  )
+  expect(input.hasAttribute('disabled')).toBe(false)
+
+  fireEvent.change(input, { target: { value: 'a follow-up thought' } })
+  expect(screen.getByDisplayValue('a follow-up thought')).toBeTruthy()
+
+  fireEvent.keyDown(input, { key: 'Enter' })
+  expect(stream).not.toHaveBeenCalled()
+  // The refused send leaves the draft in place instead of dropping it.
+  expect(screen.getByDisplayValue('a follow-up thought')).toBeTruthy()
 })

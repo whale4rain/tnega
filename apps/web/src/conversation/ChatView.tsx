@@ -1004,7 +1004,10 @@ export function ChatView({
                 aria-label="Message Tnega"
                 placeholder="Ask Tnega to build, fix, or explore…"
                 rows={2}
-                disabled={running || compacting}
+                // Kept typable during a run: `startRun` already refuses to send
+                // while running, so the draft survives instead of the box going
+                // dead on the user.
+                disabled={compacting}
                 spellCheck={false}
               />
               <div className="composer-actions">
