@@ -21,6 +21,18 @@ server 复用 CLI runtime。改动前阅读同目录 `README.md`，再阅读相�
 - 生成 Windows 安装包：从仓库根运行 `pnpm package:desktop`；安装包输出到
   `apps/desktop/release/`。
 
+打包时 electron-builder 要从 GitHub 拉 electron 主包与 NSIS / winCodeSign 等构建
+工具，这些下载在部分网络下会 `connect ETIMEDOUT`。改用镜像即可：
+
+```bash
+ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ \
+ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ \
+pnpm package:desktop
+```
+
+打包中途失败会在 `release/` 留下 `win-unpacked.tmp`，它被占用时下一次会以
+`EPERM: rename 'win-unpacked.tmp' -> 'win-unpacked'` 失败；删掉该 `.tmp` 再重跑即可。
+
 ## 完成标准
 
 - 修改打包配置、图标或根打包脚本时，运行
