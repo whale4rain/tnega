@@ -1,5 +1,9 @@
 # Session History Repair Report
 
+> 状态：历史记录
+> 取代关系：当前 Session 语义以 `packages/session/README.md` 和 `docs/adr/0004-session-compaction-boundary-replace.md` 为准
+> 当前实现：仅历史修复记录；当前格式为 Session v10，见 `packages/session/README.md`
+
 ## 结论
 
 Web 对话“暂停后乱掉”的直接原因**不是前端渲染算法**，而是后端曾把
@@ -91,6 +95,6 @@ coding 会话首轮会把 coding system 持久化为 durable `system/message`，
 web e2e 两轮 coding run 断言第二轮请求里 `You are Tnega` 只出现一次
 （已确认去掉该改动时失败）。
 
-> 本轮 compaction 语义变更（checkpoint 全量快照 → surface 边界替换，v6）见
+> 本轮历史 compaction 语义变更（checkpoint 全量快照 → surface 边界替换，v6）见
 > `docs/adr/0004-session-compaction-boundary-replace.md` 与
 > `packages/session/README.md`。

@@ -1,4 +1,8 @@
-# Session compaction：surface 边界替换 + 重排写（v6）
+# Session compaction：surface 边界替换的演进（v6 → v7）
+
+> 状态：历史决策记录
+> 取代关系：本文 v6 决策已被本文后续 v7 更新取代；当前格式和后续版本见 `packages/session/README.md`
+> 当前实现：Session v10；v7 的 surface 派生与 append-only 语义仍是当前 compaction 基础，v8-v10 见 `docs/adr/0005-assistant-attempt-ledger.md` 与包 README
 
 compaction 原实现是**全量快照式**：`checkpoint.payload.messages` 固化「当前整条
 surface」的快照（`projectEvents(events)` 全量，或调用方显式传入压缩后的消息）。

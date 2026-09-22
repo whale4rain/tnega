@@ -1,5 +1,9 @@
 # Agent Eval 与自进化调研
 
+> 状态：历史研究
+> 取代关系：设计细节由当前实现和 `packages/eval`、`packages/evolve` README 取代
+> 当前实现：研究依据仍可参考；已实现能力和结果见 `docs/eval-results.md`
+
 > 日期：2026-09-02
 > 目的：为 tnega 下一阶段 coding-agent eval 与自进化设计提供依据。
 

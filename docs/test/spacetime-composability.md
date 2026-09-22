@@ -1,5 +1,9 @@
 # 时空可组合极端压力测试记录
 
+> 状态：历史验证记录
+> 取代关系：无；本文记录 M1 压力测试，不定义当前 core API
+> 当前实现：测试入口以 `packages/core/test/space-time.extreme.test.ts` 和当前 core README 为准
+
 日期：2026-08-23
 
 范围：M1 core 时空语义（Context / Fiber / Effect / Event / Registry / Reflect）

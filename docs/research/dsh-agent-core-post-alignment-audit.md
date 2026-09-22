@@ -1,5 +1,9 @@
 # DSH Agent Core 对齐后语义审计
 
+> 状态：已取代
+> 取代关系：已被 `dsh-agent-core-current-alignment-audit.md` 取代
+> 当前实现：仅保留为 2026-09-11 的历史差距快照；当前差距见 current alignment audit
+
 > 审计日期：2026-09-11  
 > 对比基线：tnega `486dd8f`（工作树 `agent-core-semantics`）与
 > `D:\task\deepseek-harness` 的一手源码。  

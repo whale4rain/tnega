@@ -1,5 +1,9 @@
 # 真实 benchmark 评测结果
 
+> 状态：当前
+> 取代关系：无
+> 当前实现：`packages/eval`、`packages/benchmark`；本文保存评测结果快照
+
 ## 2026-09-02 有效结果汇总
 
 数据源与任务规模：

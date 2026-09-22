@@ -1,5 +1,9 @@
 # Tnega
 
+> 状态：当前
+> 取代关系：无
+> 当前实现：根包、各 `packages/*/README.md` 和 CLI/Web 源码；本文是中文用户入口
+
 [English](../README.md)
 
 Tnega 是 "agent" 的逆写，也是本项目想做的事：把 Agent 本身当作可以被观察、修改、回滚和进化的对象。
@@ -29,7 +33,7 @@ export TNEGA_API_KEY=sk-...
 tnega run "Reply with: hello"
 ```
 
-`tnega run` 默认通过 OpenAI 兼容协议调用 OpenCode Go 的 `deepseek-v4-flash`；`minimax-m3` 走 Anthropic Messages 协议，同样内置在能力表中。首选环境变量为 `TNEGA_API_KEY`；`OPENCODE_GO_API_KEY`、`OPENAI_API_KEY` 和 `DEEPSEEK_API_KEY` 仍兼容。key 也可以放在系统配置文件中：Windows 为 `%USERPROFILE%\.tnega\config.json`，Linux / macOS 为 `~/.config/tnega/config.json`，文件内可写 `apiKey`、`model`、`baseUrl`、`protocol`、`temperature`。优先级为命令行参数 > 环境变量 > 配置文件 > 默认值。
+`tnega run` 默认通过 OpenAI 兼容协议调用 OpenCode Go 的 `deepseek-v4-flash`；`minimax-m3` 走 Anthropic Messages 协议，同样内置在能力表中。首选环境变量为 `TNEGA_API_KEY`；`OPENCODE_GO_API_KEY`、`OPENAI_API_KEY` 和 `DEEPSEEK_API_KEY` 仍兼容。key 也可以放在系统配置文件中：Windows 为 `%USERPROFILE%\.tnega\config.json`，Linux / macOS 为 `~/.config/tnega/config.json`，文件内可写 `apiKey`、`model`、`baseUrl`、`protocol`、`temperature`。优先级为命令行参数 > 环境变量 > 配置文件 > 默认值。旧版 Windows `%APPDATA%\tnega\config.json` 仅作为迁移来源。
 
 不需要 API key 的确定性评测：
 

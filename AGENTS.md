@@ -1,6 +1,6 @@
 # Tnega 开发指南
 
-Tnega 是一个 eval-first 的 Agent Harness。核心包将可组合插件生命周期、Agent Run、Session、Tools、LLM 和 Eval 作为平级能力；Web 应用是其本地控制台。
+Tnega 是一个 eval-first 的 Agent Harness。核心包将可组合插件生命周期、Agent Run、Session、Tools、LLM 和 Eval 作为平级能力。
 
 ## 先定位，再阅读
 
@@ -19,6 +19,7 @@ Tnega 是一个 eval-first 的 Agent Harness。核心包将可组合插件生命
 - `packages/eval`、`packages/evolve`、`packages/benchmark`：评测、演化和基准能力。
 - `packages/cli`：CLI、配置、工作区和 Web server 组装层；`packages/coding-agent`：coding session 的 plan、skills、MCP 与 slash commands。
 - `apps/web`：React/Vite 本地 UI；`src/`：根包的公开聚合导出。
+- `apps/desktop`: 客户端实现
 
 ## 设计不变量
 

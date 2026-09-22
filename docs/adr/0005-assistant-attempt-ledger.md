@@ -1,5 +1,9 @@
 # Session 保存未产生模型消息的 assistant attempt
 
+> 状态：当前
+> 取代关系：无；后续 Session v9/v10 仅在同一格式演进链上追加能力
+> 当前实现：`packages/session/README.md`、`packages/session/src/index.ts`；当前 Session 格式为 v10
+
 模型请求可能在已返回部分内容后失败、重试或取消。只保留 `assistant/message`
 会丢失这些尝试，保存为模型消息又会把未提交输出带进后续请求。对齐 DSH 的终态
 attempt 语义，Session v8 增加 log-only `assistant/attempt`，payload 为

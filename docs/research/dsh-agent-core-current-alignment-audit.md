@@ -1,5 +1,9 @@
 # DSH Agent Core 当前语义对齐审计（post-v10）
 
+> 状态：当前审计
+> 取代关系：取代 `dsh-agent-core-post-alignment-audit.md` 作为当前差距基线
+> 当前实现：审计基线为 Session v10；实现事实以 `packages/agent`、`packages/session` 源码和测试为准
+
 > 2026-09-13；tnega `5228280` / Session v10；DSH `c291e7961a`。
 > tnega 路径相对 `D:\task\tnega`；DSH 路径相对 `D:\task\deepseek-harness`。
 > 本文核对上述 HEAD 的一手源码；没有改动实现或运行新增复现测试。

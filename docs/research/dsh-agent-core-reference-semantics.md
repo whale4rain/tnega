@@ -1,5 +1,9 @@
 # DSH agent-core 参考语义清单
 
+> 状态：参考基线
+> 取代关系：无；本文不是 tnega 当前实现规范
+> 当前实现：仅作为外部语义参考；tnega 当前差异见 `dsh-agent-core-current-alignment-audit.md`
+
 > 调研日期：2026-09-11  
 > 目的：以 DeepSeek Harness（DSH）学习文档为一手参考，列出 `agent`、默认
 > `agent-loop` 与 `session` 事实层应具备的可观察语义，供 tnega 的
