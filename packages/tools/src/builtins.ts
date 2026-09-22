@@ -432,21 +432,36 @@ function toEntry(cwd: string, dir: string, entry: { name: string; isDirectory():
   }
 }
 
+/**
+ * Raised when a tool notices the caller's abort mid-walk. The agent loop reads
+ * the abort from its own signal and settles the turn as cancelled; the error
+ * only has to be honest about why the result is incomplete.
+ */
+export class ToolAbortError extends Error {
+  override name = 'AbortError'
+
+  constructor() {
+    super('tool call aborted')
+  }
+}
+
 async function collectEntries(
   cwd: string,
   excludes: ReadonlySet<string>,
   dir: string,
   max: number,
+  signal?: AbortSignal,
 ): Promise<DirectoryEntry[]> {
   const entries: DirectoryEntry[] = []
   const children = await readdir(dir, { withFileTypes: true })
   for (const entry of children) {
     if (entries.length >= max) break
+    if (signal?.aborted) throw new ToolAbortError()
     const isDirectory = entry.isDirectory()
     if (isDirectory && excludes.has(entry.name)) continue
     entries.push(toEntry(cwd, dir, entry))
     if (isDirectory) {
-      entries.push(...await collectEntries(cwd, excludes, join(dir, entry.name), max))
+      entries.push(...await collectEntries(cwd, excludes, join(dir, entry.name), max, signal))
     }
   }
   return entries
@@ -456,14 +471,20 @@ function listDirTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   return definition(
     'list_dir',
     'List directory entries inside the workspace. Returns [{ name, path, type }].',
-    async (input) => {
+    async (input, options: ToolExecuteOptions) => {
       const args = record(input)
       const base = await resolveInside(config.cwd, optionalString(args.path, 'path') ?? '.')
       const stats = await stat(base)
       if (!stats.isDirectory()) throw new ToolInputError(`not a directory: ${args.path ?? '.'}`)
       const recursive = optionalBoolean(args.recursive, 'recursive') ?? false
       const entries = recursive
-        ? await collectEntries(config.cwd, config.searchExcludeSet, base, config.maxResults)
+        ? await collectEntries(
+            config.cwd,
+            config.searchExcludeSet,
+            base,
+            config.maxResults,
+            options.signal,
+          )
         : (await readdir(base, { withFileTypes: true }))
           .map(entry => toEntry(config.cwd, base, entry))
       return entries.slice(0, config.maxResults)

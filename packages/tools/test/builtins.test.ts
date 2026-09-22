@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -301,6 +301,23 @@ describe('file tools', () => {
 
     const onDisk = await readFile(join(dir, 'notes', 'a.txt'), 'utf8')
     expect(onDisk).toBe('first+second')
+  })
+
+  it('stops a recursive listing when the caller aborts', async () => {
+    const dir = await tempDir('tnega-tools-list-abort-')
+    await mkdir(join(dir, 'a'), { recursive: true })
+    await writeFile(join(dir, 'a', 'f.txt'), 'x', 'utf8')
+    const { service } = await mount({ cwd: dir })
+
+    const controller = new AbortController()
+    controller.abort()
+    const result = await service.execute(
+      'list_dir',
+      { recursive: true },
+      { signal: controller.signal },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).toBe('AbortError')
   })
 
   it('rejects paths that escape the workspace', async () => {
