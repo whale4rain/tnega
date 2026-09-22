@@ -141,7 +141,7 @@ read_file, write_file, list_dir, glob, grep
 - `http_get`：需要 `--allow-network`
 - `shell`：需要 `--allow-shell`，工作目录被限制在 `--cwd` 内
 
-文件工具使用路径沙箱：`read_file / write_file / list_dir / glob / grep / shell` 均被限制在 `--cwd` 内，拒绝绝对路径越界、`..` 越界与 symlink 越界。读取默认上限 256 KiB，写入默认上限 1 MiB，搜索结果默认 200 条，shell 默认 15 秒超时。
+文件工具使用路径沙箱：`read_file / write_file / list_dir / glob / grep / shell` 均被限制在 `--cwd` 内，拒绝绝对路径越界、`..` 越界与 symlink 越界。`read_file` 读取默认上限 256 KiB，超出时返回前缀并把 `truncated` 置为 `true`（不会报错），`maxBytes` 可按文件调整；写入默认上限 1 MiB，搜索结果默认 200 条，shell 默认 15 秒超时。
 
 `glob` 与 `grep` 是「工作区搜索」能力缝的 Consumer：`@tnega/search` 拥有 `ctx.search`
 契约（Service Definition），`@tnega/search-ripgrep` 提供实现（Service Provider），

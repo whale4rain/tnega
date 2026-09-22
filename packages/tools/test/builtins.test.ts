@@ -326,7 +326,7 @@ describe('file tools', () => {
     expect(writeEscape.error?.message).toContain('escapes')
   })
 
-  it('rejects binary files and byte limits', async () => {
+  it('rejects binary files and truncates over-long reads', async () => {
     const dir = await tempDir('tnega-tools-limits-')
     const { service } = await mount({ cwd: dir, maxWriteBytes: 4 })
     await writeFile(join(dir, 'binary.dat'), Buffer.from([0, 1, 2, 3]))
@@ -335,14 +335,34 @@ describe('file tools', () => {
     const binary = await fail(service, 'read_file', { path: 'binary.dat' })
     expect(binary.error?.message).toContain('binary')
 
-    const tooLarge = await fail(service, 'read_file', { path: 'long.txt', maxBytes: 4 })
-    expect(tooLarge.error?.message).toContain('exceeds')
+    // An over-long file is a reported prefix, not a failure.
+    expect(await ok(service, 'read_file', { path: 'long.txt', maxBytes: 4 })).toEqual({
+      path: 'long.txt',
+      bytes: 10,
+      content: '1234',
+      truncated: true,
+    })
+    expect(await ok(service, 'read_file', { path: 'long.txt' }))
+      .toMatchObject({ bytes: 10, content: '1234567890', truncated: false })
 
     const writeTooLarge = await fail(service, 'write_file', {
       path: 'big.txt',
       content: 'hello',
     })
     expect(writeTooLarge.error?.message).toContain('exceeds')
+  })
+
+  it('cuts a truncated read on a UTF-8 boundary', async () => {
+    const dir = await tempDir('tnega-tools-utf8-')
+    const { service } = await mount({ cwd: dir })
+    // `记` is three bytes; cutting at four keeps the two ASCII bytes and drops
+    // the partial rune instead of emitting a replacement character.
+    await writeFile(join(dir, 'note.txt'), 'ab记忆', 'utf8')
+
+    expect(await ok(service, 'read_file', { path: 'note.txt', maxBytes: 4 }))
+      .toEqual({ path: 'note.txt', bytes: 8, content: 'ab', truncated: true })
+    expect(await ok(service, 'read_file', { path: 'note.txt', maxBytes: 5 }))
+      .toMatchObject({ content: 'ab记', truncated: true })
   })
 })
 

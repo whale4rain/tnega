@@ -1,6 +1,7 @@
 import {
   appendFile,
   mkdir,
+  open,
   readFile,
   readdir,
   stat,
@@ -315,32 +316,65 @@ function stripQuotes(value: string): string {
   return value
 }
 
+/**
+ * Drop a trailing byte prefix that ends mid-UTF-8-sequence, so decoding a
+ * truncated read never leaves a replacement character at the cut.
+ */
+function trimPartialUtf8(buffer: Buffer): Buffer {
+  for (let back = 1; back <= 3 && back <= buffer.length; back += 1) {
+    const byte = buffer[buffer.length - back]!
+    if ((byte & 0x80) === 0) return buffer
+    if ((byte & 0xc0) === 0xc0) {
+      const needed = byte >= 0xf0 ? 4 : byte >= 0xe0 ? 3 : 2
+      return back === needed ? buffer : buffer.subarray(0, buffer.length - back)
+    }
+  }
+  return buffer
+}
+
+async function readPrefix(target: string, maxBytes: number): Promise<Buffer> {
+  const handle = await open(target, 'r')
+  try {
+    const buffer = Buffer.allocUnsafe(maxBytes)
+    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0)
+    return buffer.subarray(0, bytesRead)
+  } finally {
+    await handle.close()
+  }
+}
+
 function readFileTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   return definition(
     'read_file',
-    'Read a UTF-8 text file inside the workspace. Returns { path, bytes, content }.',
+    'Read a UTF-8 text file inside the workspace. Returns { path, bytes, content, truncated }: `bytes` is the whole file size, `content` is its first `maxBytes` bytes, and `truncated` reports whether anything was left out.',
     async (input) => {
       const args = record(input)
       const target = await resolveInside(config.cwd, stringField(args.path, 'path'))
       const stats = await stat(target)
       if (stats.isDirectory()) throw new ToolInputError(`not a file: ${args.path}`)
       const maxBytes = optionalNumber(args.maxBytes, 'maxBytes') ?? config.maxReadBytes
-      if (stats.size > maxBytes) {
-        throw new ToolInputError(`file exceeds ${maxBytes} bytes: ${args.path}`)
-      }
-      const buffer = await readFile(target)
+      if (maxBytes <= 0) throw new ToolInputError(`maxBytes must be positive: ${maxBytes}`)
+      // An over-long file is a prefix, not an error: the caller asked to read it,
+      // and the truncation is reported so a partial view is never mistaken for
+      // the whole file.
+      const truncated = stats.size > maxBytes
+      const buffer = truncated
+        ? await readPrefix(target, maxBytes)
+        : await readFile(target)
       if (buffer.includes(0)) throw new ToolInputError(`file is binary: ${args.path}`)
+      const content = truncated ? trimPartialUtf8(buffer) : buffer
       return {
         path: displayPath(config.cwd, target),
-        bytes: buffer.byteLength,
-        content: buffer.toString('utf8'),
+        bytes: stats.size,
+        content: content.toString('utf8'),
+        truncated,
       }
     },
     {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'file path relative to the workspace' },
-        maxBytes: { type: 'number', description: 'optional byte limit' },
+        maxBytes: { type: 'number', description: 'optional byte limit; longer files are truncated to it' },
       },
       required: ['path'],
     },
