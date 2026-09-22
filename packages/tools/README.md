@@ -21,26 +21,40 @@ tools/result       [parallel]   事后通知（审计、UI）
 
 ## 能力缝
 
-`execution.ts` 定义了可替换的执行边界：
+本包不再定义任何能力缝。执行边界与工作区搜索都已经是独立的能力缝，见
+`docs/adr/0006-capability-seams.md`：
 
-- `ExecutionProvider`：`runShell(request)` / `fetchHttp(request)`
-- `localExecutionProvider`：本机实现（`shell` / `http_get` 工具经它执行）
-- 换远程沙箱 = 换一个 Provider，Consumer（内置工具）零改动。
+- 执行边界（纯库，无 ctx key，尚不是缝）：`@tnega/execution`。本包 re-export 它，
+  所以 `ExecutionProvider` / `localExecutionProvider` 仍从 `@tnega/tools` 可用。
+- 工作区搜索（完整三角色）：`@tnega/search`（Service Definition，`ctx.search`）/
+  `@tnega/search-ripgrep`（Service Provider）/ `@tnega/tool-search`（Consumer，
+  模型可见的 `glob` / `grep`）。本包不再注册这两个工具。
 
-DSH 三角色：Consumer 只 import Service Definition，从不 import 具体 Provider。
-composition 层（CLI bundle）才 import Provider。
+三角色的依赖方向是：Provider → Definition，Consumer → Definition，Provider 与
+Consumer 互不依赖；Provider 的挑选属于 composition 层。
 
 ## 内置工具
 
 | 工具 | 说明 | 开关 |
 |---|---|---|
 | `echo` `now` `calculator` `json` | 纯计算/回显 | 默认 |
-| `read_file` `write_file` `list_dir` `glob` `grep` | 工作目录内文件操作，路径沙箱 | 默认 |
+| `read_file` `write_file` `list_dir` | 工作目录内文件操作，路径沙箱 | 默认 |
 | `shell` | 子进程执行 | `--allow-shell` |
 | `http_get` | 网络抓取 | `--allow-network` |
 
-文件工具拒绝二进制、限制读写/搜索字节；`calculator` 拒绝非法算术输入。
-`path.ts` 的 `resolveInside` 把一切路径限制在 cwd 内。
+`glob` / `grep` 由 `@tnega/tool-search` 注册，见上面的能力缝一节。
+
+文件工具拒绝二进制、限制读写字节；`calculator` 拒绝非法算术输入。
+`path.ts` 的 `resolveInside` 把一切路径限制在 cwd 内；`list_dir --recursive`
+会剪掉 `DEFAULT_SEARCH_EXCLUDES` 里的噪声目录。
+
+`shell` / `http_get` 的进程与网络执行走 `@tnega/execution` 的 `runShell` /
+`runProcess` / `fetchHttp`。
+
+`tools.execute` 为声明了 `ToolDefinition.timeoutMs` 的工具装上 deadline：它把
+组合后的 signal 交给工具，只有自己的计时器真的触发时才把结果替换成
+`ToolTimeoutError`；调用方的 signal 先中断时保留工具自己的 abort 结果。没有声明
+预算的工具不受影响。
 
 ## 事件
 

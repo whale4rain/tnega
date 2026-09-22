@@ -17,8 +17,12 @@ import type {
   ToolsService,
 } from './index.js'
 import { evaluateExpression } from './calc.js'
-import { localExecutionProvider, type ExecutionProvider } from './execution.js'
 import { resolveInside } from './path.js'
+import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
+import {
+  localExecutionProvider,
+  type ExecutionProvider,
+} from '@tnega/execution'
 
 export interface BuiltinToolsConfig {
   cwd?: string
@@ -27,9 +31,10 @@ export interface BuiltinToolsConfig {
   disabled?: readonly string[]
   maxReadBytes?: number
   maxWriteBytes?: number
-  maxSearchBytes?: number
   maxResults?: number
   timeoutMs?: number
+  /** 递归 `list_dir` 剪掉的目录名；默认与搜索能力的能力级默认值一致。 */
+  searchExcludes?: readonly string[]
   execution?: ExecutionProvider
 }
 
@@ -40,9 +45,9 @@ interface NormalizedBuiltinToolsConfig {
   disabled: readonly string[]
   maxReadBytes: number
   maxWriteBytes: number
-  maxSearchBytes: number
   maxResults: number
   timeoutMs: number
+  searchExcludeSet: ReadonlySet<string>
   execution: ExecutionProvider
 }
 
@@ -58,8 +63,6 @@ const DEFAULT_TOOL_NAMES = [
   'read_file',
   'write_file',
   'list_dir',
-  'glob',
-  'grep',
 ] as const
 
 function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinToolsConfig {
@@ -70,9 +73,9 @@ function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinTool
     disabled: [...(config.disabled ?? [])],
     maxReadBytes: config.maxReadBytes ?? 256 * 1024,
     maxWriteBytes: config.maxWriteBytes ?? 1024 * 1024,
-    maxSearchBytes: config.maxSearchBytes ?? 1024 * 1024,
     maxResults: config.maxResults ?? 200,
     timeoutMs: config.timeoutMs ?? 15_000,
+    searchExcludeSet: new Set(config.searchExcludes ?? DEFAULT_SEARCH_EXCLUDES),
     execution: config.execution ?? localExecutionProvider,
   }
 }
@@ -82,10 +85,13 @@ function definition(
   description: string,
   execute: ToolExecutor,
   parameters?: ToolParameterSchema,
+  timeoutMs?: number,
 ): ToolDefinition {
   const schema: ToolSchema = { name, description }
   if (parameters) schema.parameters = parameters
-  return { schema, execute }
+  const tool: ToolDefinition = { schema, execute }
+  if (timeoutMs !== undefined) tool.timeoutMs = timeoutMs
+  return tool
 }
 
 function record(value: unknown, label = 'input'): Record<string, unknown> {
@@ -394,7 +400,7 @@ function toEntry(cwd: string, dir: string, entry: { name: string; isDirectory():
 
 async function collectEntries(
   cwd: string,
-  root: string,
+  excludes: ReadonlySet<string>,
   dir: string,
   max: number,
 ): Promise<DirectoryEntry[]> {
@@ -402,9 +408,11 @@ async function collectEntries(
   const children = await readdir(dir, { withFileTypes: true })
   for (const entry of children) {
     if (entries.length >= max) break
+    const isDirectory = entry.isDirectory()
+    if (isDirectory && excludes.has(entry.name)) continue
     entries.push(toEntry(cwd, dir, entry))
-    if (entry.isDirectory()) {
-      entries.push(...await collectEntries(cwd, root, join(dir, entry.name), max))
+    if (isDirectory) {
+      entries.push(...await collectEntries(cwd, excludes, join(dir, entry.name), max))
     }
   }
   return entries
@@ -421,7 +429,7 @@ function listDirTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
       if (!stats.isDirectory()) throw new ToolInputError(`not a directory: ${args.path ?? '.'}`)
       const recursive = optionalBoolean(args.recursive, 'recursive') ?? false
       const entries = recursive
-        ? await collectEntries(config.cwd, base, base, config.maxResults)
+        ? await collectEntries(config.cwd, config.searchExcludeSet, base, config.maxResults)
         : (await readdir(base, { withFileTypes: true }))
           .map(entry => toEntry(config.cwd, base, entry))
       return entries.slice(0, config.maxResults)
@@ -432,164 +440,6 @@ function listDirTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
         path: { type: 'string', description: 'directory path relative to the workspace' },
         recursive: { type: 'boolean', description: 'include nested entries' },
       },
-    },
-  )
-}
-
-function normalizeGlobPattern(pattern: string): string {
-  return pattern.replaceAll('\\', '/').replace(/^\.\//, '')
-}
-
-function globToRegExp(pattern: string): RegExp {
-  let source = ''
-  let index = 0
-  while (index < pattern.length) {
-    const char = pattern[index]!
-    if (char === '*') {
-      if (pattern[index + 1] === '*') {
-        source += '.*'
-        index += 2
-        if (pattern[index] === '/') {
-          source += '/?'
-          index += 1
-        }
-      } else {
-        source += '[^/]*'
-        index += 1
-      }
-    } else if (char === '?') {
-      source += '[^/]'
-      index += 1
-    } else {
-      source += char.replace(/[\\^$+?.()|{}[\]]/g, '\\$&')
-      index += 1
-    }
-  }
-  return new RegExp(`^${source}$`)
-}
-
-async function walkFiles(
-  cwd: string,
-  root: string,
-  dir: string,
-  regex: RegExp,
-  matches: string[],
-  max: number,
-): Promise<void> {
-  if (matches.length >= max) return
-  const children = await readdir(dir, { withFileTypes: true })
-  for (const entry of children) {
-    if (matches.length >= max) return
-    const target = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      await walkFiles(cwd, root, target, regex, matches, max)
-    } else if (entry.isFile()) {
-      const rel = relative(root, target).split(sep).join('/')
-      if (regex.test(rel)) matches.push(displayPath(cwd, target))
-    }
-  }
-}
-
-function globTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
-  return definition(
-    'glob',
-    'Find files by glob pattern inside the workspace. Supports ** (any depth), * (within a segment) and ? (single character). Returns relative paths.',
-    async (input) => {
-      const args = record(input)
-      const pattern = normalizeGlobPattern(stringField(args.pattern, 'pattern'))
-      const root = await resolveInside(config.cwd, optionalString(args.base, 'base') ?? '.')
-      const regex = globToRegExp(pattern)
-      const matches: string[] = []
-      await walkFiles(config.cwd, root, root, regex, matches, config.maxResults)
-      return matches.slice(0, config.maxResults)
-    },
-    {
-      type: 'object',
-      properties: {
-        pattern: { type: 'string', description: 'glob pattern, e.g. "**/*.ts"' },
-        base: { type: 'string', description: 'directory to search, defaults to workspace root' },
-      },
-      required: ['pattern'],
-    },
-  )
-}
-
-interface GrepMatch {
-  file: string
-  line: number
-  text: string
-}
-
-async function grepWalk(
-  config: NormalizedBuiltinToolsConfig,
-  root: string,
-  dir: string,
-  regex: RegExp,
-  globRegex: RegExp | undefined,
-  matches: GrepMatch[],
-  max: number,
-): Promise<void> {
-  if (matches.length >= max) return
-  const children = await readdir(dir, { withFileTypes: true })
-  for (const entry of children) {
-    if (matches.length >= max) return
-    const target = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      await grepWalk(config, root, target, regex, globRegex, matches, max)
-      continue
-    }
-    if (!entry.isFile()) continue
-    const rel = relative(root, target).split(sep).join('/')
-    if (globRegex && !globRegex.test(rel)) continue
-    const stats = await stat(target)
-    if (stats.size > config.maxSearchBytes) continue
-    const buffer = await readFile(target)
-    if (buffer.includes(0)) continue
-    const lines = buffer.toString('utf8').split('\n')
-    for (let index = 0; index < lines.length; index += 1) {
-      if (matches.length >= max) return
-      const line = lines[index]!
-      if (regex.test(line)) {
-        matches.push({
-          file: displayPath(config.cwd, target),
-          line: index + 1,
-          text: line,
-        })
-      }
-    }
-  }
-}
-
-function grepTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
-  return definition(
-    'grep',
-    'Search text files for a regular expression. Returns [{ file, line, text }].',
-    async (input) => {
-      const args = record(input)
-      const pattern = stringField(args.pattern, 'pattern')
-      let regex: RegExp
-      try {
-        regex = new RegExp(pattern)
-      } catch (error) {
-        throw new ToolInputError(`invalid regular expression: ${message(error)}`)
-      }
-      const root = await resolveInside(config.cwd, optionalString(args.path, 'path') ?? '.')
-      const globPattern = optionalString(args.glob, 'glob')
-      const globRegex = globPattern ? globToRegExp(normalizeGlobPattern(globPattern)) : undefined
-      const max = optionalNumber(args.maxResults, 'maxResults') ?? config.maxResults
-      const matches: GrepMatch[] = []
-      await grepWalk(config, root, root, regex, globRegex, matches, max)
-      return matches
-    },
-    {
-      type: 'object',
-      properties: {
-        pattern: { type: 'string', description: 'regular expression to search for' },
-        path: { type: 'string', description: 'directory to search, defaults to workspace root' },
-        glob: { type: 'string', description: 'optional file glob filter, e.g. "**/*.md"' },
-        maxResults: { type: 'number', description: 'optional result limit' },
-      },
-      required: ['pattern'],
     },
   )
 }
@@ -681,8 +531,6 @@ export function createBuiltinToolDefinitions(
   if (!disabled.has('read_file')) definitions.push(readFileTool(normalized))
   if (!disabled.has('write_file')) definitions.push(writeFileTool(normalized))
   if (!disabled.has('list_dir')) definitions.push(listDirTool(normalized))
-  if (!disabled.has('glob')) definitions.push(globTool(normalized))
-  if (!disabled.has('grep')) definitions.push(grepTool(normalized))
   if (normalized.allowNetwork && !disabled.has('http_get')) {
     definitions.push(httpGetTool(normalized))
   }

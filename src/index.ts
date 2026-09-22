@@ -122,7 +122,6 @@ export {
   builtinTools,
   createBuiltinToolDefinitions,
   evaluateExpression,
-  localExecutionProvider,
   tools,
   validateSchema,
   validateToolInput,
@@ -141,12 +140,48 @@ export {
   type ToolSchema,
   type ToolStagePayload,
   type ToolsConfig,
+} from '../packages/tools/src/index.js'
+
+export {
+  localExecutionProvider,
   type ExecutionProvider,
   type HttpRequest,
   type HttpResponse,
+  type ProcessRequest,
+  type ProcessResult,
   type ShellRequest,
   type ShellResult,
-} from '../packages/tools/src/index.js'
+} from '../packages/execution/src/index.js'
+
+export {
+  SearchError,
+  SearchService,
+  DEFAULT_SEARCH_EXCLUDES,
+  DEFAULT_SEARCH_MAX_RESULTS,
+  DEFAULT_SEARCH_OUTPUT_MAX_BYTES,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+  type FindFilesRequest,
+  type FindFilesResult,
+  type FindFilesSpec,
+  type SearchErrorCode,
+  type SearchMatch,
+  type SearchSpecBase,
+  type SearchTextRequest,
+  type SearchTextResult,
+  type SearchTextSpec,
+} from '../packages/search/src/index.js'
+
+export {
+  RipgrepSearch,
+  searchRipgrep,
+  type Config as SearchRipgrepConfig,
+} from '../packages/search-ripgrep/src/index.js'
+
+export {
+  toolSearch,
+  DEFAULT_TOOL_SEARCH_NAMES,
+  type ToolSearchConfig,
+} from '../packages/tool-search/src/index.js'
 
 export {
   AgentError,

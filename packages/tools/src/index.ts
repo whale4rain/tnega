@@ -11,7 +11,7 @@ import type {
 export * from './builtins.js'
 export * from './calc.js'
 export * from './path.js'
-export * from './execution.js'
+export * from '@tnega/execution'
 export {
   ToolAuthorizationError,
   validateSchema,
@@ -53,6 +53,12 @@ export interface ToolDefinition {
   execute: ToolExecutor
   metadata?: Record<string, unknown>
   policy?: ToolPolicy
+  /**
+   * Cooperative wall-clock budget for one call. The registry arms a deadline
+   * and hands the tool a composed `signal`; the tool is expected to observe the
+   * abort and reach quiescence. A tool that declares none runs without one.
+   */
+  timeoutMs?: number
 }
 
 export interface ToolError {
@@ -113,6 +119,19 @@ export class ToolAlreadyRegisteredError extends Error {
 
   constructor(readonly toolName: string) {
     super(`tool already registered: ${toolName}`)
+  }
+}
+
+/**
+ * Raised in place of a tool's own result when the tool's declared budget
+ * expired. Only the registry's own deadline produces it, so a nested outer
+ * cancellation the tool already reported stays an ordinary abort.
+ */
+export class ToolTimeoutError extends Error {
+  override name = 'ToolTimeoutError'
+
+  constructor(readonly toolName: string, readonly timeoutMs: number) {
+    super(`tool call timed out after ${timeoutMs}ms: ${toolName}`)
   }
 }
 
@@ -204,11 +223,19 @@ export class ToolsService extends Service<never> {
     const tool = this._tools.get(name)
     if (!tool) throw new ToolNotFoundError(name)
 
+    const timeoutMs = tool.timeoutMs ?? 0
+    const deadline = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined
+    let toolOptions: ToolExecuteOptions = options
+    if (deadline !== undefined) {
+      const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline
+      toolOptions = { ...options, signal }
+    }
+
     let request: ToolRequest = {
       tool,
       name,
       input,
-      options,
+      options: toolOptions,
       startedAt: Date.now(),
     }
 
@@ -270,6 +297,12 @@ export class ToolsService extends Service<never> {
       if (normalized && typeof normalized.ok === 'boolean') result = normalized
     } catch (error) {
       result = this._failure(request, error)
+    }
+
+    // Only this call's own deadline produces a timeout. When the caller's
+    // signal aborted too, the tool's own abort result stands.
+    if (deadline?.aborted && !options.signal?.aborted) {
+      result = this._failure(request, new ToolTimeoutError(name, timeoutMs))
     }
 
     return this._finish(

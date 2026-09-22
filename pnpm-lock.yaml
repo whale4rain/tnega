@@ -149,9 +149,15 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/search-ripgrep':
+        specifier: workspace:*
+        version: link:../search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+      '@tnega/tool-search':
+        specifier: workspace:*
+        version: link:../tool-search
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
@@ -190,9 +196,15 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/search-ripgrep':
+        specifier: workspace:*
+        version: link:../search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+      '@tnega/tool-search':
+        specifier: workspace:*
+        version: link:../tool-search
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
@@ -216,6 +228,8 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/execution: {}
+
   packages/llm:
     dependencies:
       '@tnega/agent':
@@ -228,17 +242,57 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/search:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/search-ripgrep:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search
+
   packages/session:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
 
+  packages/tool-search:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
+    devDependencies:
+      '@tnega/search-ripgrep':
+        specifier: workspace:*
+        version: link:../search-ripgrep
+
   packages/tools:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search
 
 packages:
 

@@ -18,7 +18,9 @@ import {
   type LLMAdapter,
 } from '@tnega/agent'
 import { createLlmAdapter } from '@tnega/llm'
+import { searchRipgrep } from '@tnega/search-ripgrep'
 import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
+import { toolSearch } from '@tnega/tool-search'
 import {
   builtinTools,
   tools,
@@ -694,6 +696,10 @@ export async function createAgentRuntime(
     }
     const builtinToolsFiber = await root.plugin(builtinTools, builtinConfig)
     fibers.push(builtinToolsFiber)
+
+    // 搜索是一条能力缝：composition 层挑 Provider，模型可见的工具只认识 ctx.search。
+    fibers.push(await root.plugin(searchRipgrep, { cwd: merged.cwd }))
+    fibers.push(await root.plugin(toolSearch, { cwd: merged.cwd }))
   }
   // Wire the prompt-assembly seam into the default composition: the system
   // prompt is assembled from registered sections and every executable tool is

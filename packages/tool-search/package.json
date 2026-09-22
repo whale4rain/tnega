@@ -1,0 +1,17 @@
+{
+  "name": "@tnega/tool-search",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/search": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/search-ripgrep": "workspace:*"
+  }
+}

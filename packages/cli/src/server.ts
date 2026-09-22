@@ -31,6 +31,8 @@ import {
   type PlanPayload,
   type SessionLog,
 } from '@tnega/session'
+import { searchRipgrep } from '@tnega/search-ripgrep'
+import { toolSearch } from '@tnega/tool-search'
 import { builtinTools, tools } from '@tnega/tools'
 import {
   createAgentRuntime,
@@ -782,6 +784,9 @@ async function createResidentRuntime(
     ...(req.allowNetwork ? { allowNetwork: true } : {}),
     ...(req.allowShell ? { allowShell: true } : {}),
   }))
+  // 搜索缝：composition 层挑 Provider。
+  fibers.push(await root.plugin(searchRipgrep, { cwd: workspace }))
+  fibers.push(await root.plugin(toolSearch, { cwd: workspace }))
   if (req.coding) {
     fibers.push(await root.plugin(createCodingAgentPlugin({
       cwd: workspace,

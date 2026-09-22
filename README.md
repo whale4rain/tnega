@@ -63,6 +63,8 @@ Options include `--model`, `--base-url`, `--max-tokens`, `--temperature`, `--cwd
 
 The default tool set is `echo`, `now`, `calculator`, `json`, `read_file`, `write_file`, `list_dir`, `glob`, and `grep`. High-permission tools are opt-in: `http_get` requires `--allow-network`, `shell` requires `--allow-shell`. File and shell tools are confined to the working directory.
 
+`glob` and `grep` are the model-facing consumers of the workspace search capability seam: `@tnega/search` owns the `ctx.search` contract, `@tnega/search-ripgrep` provides it, and `@tnega/tool-search` contributes the tools. The tools only ever see `ctx.search`, so swapping the provider is a composition change. Traversal delegates to ripgrep: the provider builds a plain argv vector and spawns `rg` with no shell layer, so `.gitignore` handling, hidden files, and ignore rules are ripgrep's native behavior. It honors the workspace `.gitignore` by default (with `--no-require-git`, so this also applies outside a git repository) and always prunes `.git`, `node_modules`, and similar directories. `rg` must be on `PATH`, or be named by the provider's `ripgrepPath` option. See `docs/adr/0006-capability-seams.md`.
+
 ## Coding Agent
 
 `tnega/coding-agent` is a packaged agent plugin for workspace-oriented coding

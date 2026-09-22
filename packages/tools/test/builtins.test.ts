@@ -71,8 +71,6 @@ describe('builtinTools plugin lifecycle', () => {
     expect(names(service)).toEqual([
       'calculator',
       'echo',
-      'glob',
-      'grep',
       'json',
       'list_dir',
       'now',
@@ -145,6 +143,9 @@ describe('execution provider seam', () => {
         calls.push(request.command)
         return { exitCode: 0, stdout: 'mocked', stderr: '' }
       },
+      async runProcess() {
+        throw new Error('unexpected process call')
+      },
       async fetchHttp() {
         throw new Error('unexpected network call')
       },
@@ -166,6 +167,9 @@ describe('execution provider seam', () => {
     const execution: ExecutionProvider = {
       async runShell() {
         throw new Error('unexpected shell call')
+      },
+      async runProcess() {
+        throw new Error('unexpected process call')
       },
       async fetchHttp(request) {
         urls.push(request.url)
@@ -299,32 +303,6 @@ describe('file tools', () => {
     expect(onDisk).toBe('first+second')
   })
 
-  it('glob finds files and grep finds matching lines', async () => {
-    const dir = await tempDir('tnega-tools-search-')
-    const { service } = await mount({ cwd: dir })
-    const { mkdir } = await import('node:fs/promises')
-    await mkdir(join(dir, 'src'), { recursive: true })
-    await writeFile(join(dir, 'src', 'a.ts'), 'export const value = 1\n', 'utf8')
-    await writeFile(join(dir, 'README.md'), '# hello\nvalue: 2\n', 'utf8')
-
-    const matched = await ok(service, 'glob', { pattern: '**/*.ts' }) as string[]
-    expect(matched.sort()).toEqual(['src/a.ts'])
-
-    const grep = await ok(service, 'grep', { pattern: 'value' }) as Array<{
-      file: string
-      line: number
-      text: string
-    }>
-    expect(grep).toContainEqual({ file: 'src/a.ts', line: 1, text: 'export const value = 1' })
-    expect(grep).toContainEqual({ file: 'README.md', line: 2, text: 'value: 2' })
-
-    const filtered = await ok(service, 'grep', {
-      pattern: 'value',
-      glob: '**/*.md',
-    }) as Array<{ file: string }>
-    expect(filtered.map(item => item.file)).toEqual(['README.md'])
-  })
-
   it('rejects paths that escape the workspace', async () => {
     const dir = await tempDir('tnega-tools-escape-')
     const outside = await tempDir('tnega-tools-outside-')
@@ -451,3 +429,4 @@ describe('network and shell tools', () => {
     expect(result.error?.message).toContain('cancelled')
   })
 })
+

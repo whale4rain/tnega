@@ -14,7 +14,9 @@
     "@tnega/eval": "workspace:*",
     "@tnega/evolve": "workspace:*",
     "@tnega/llm": "workspace:*",
+    "@tnega/search-ripgrep": "workspace:*",
     "@tnega/session": "workspace:*",
+    "@tnega/tool-search": "workspace:*",
     "@tnega/tools": "workspace:*"
   }
 }

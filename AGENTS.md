@@ -14,7 +14,9 @@ Tnega 是一个 eval-first 的 Agent Harness。核心包将可组合插件生命
 
 - `packages/core`：Context、Fiber、Service、Registry 和事件分发的生命周期内核。
 - `packages/agent`：Agent loop、durable inbox、live agent、prompt 组装和 LLM service seam。
-- `packages/tools`：工具注册、执行管线、policy 与本地执行边界。
+- `packages/tools`：工具注册表、执行管线与 policy。
+- `packages/execution`：本机执行边界（shell / 无 shell 的 argv 进程 / HTTP）的词汇与实现。纯库，无 ctx key，不是缝。
+- `packages/search`：工作区搜索能力的 Service Definition（`ctx.search`）；`packages/search-ripgrep` 是它的 Provider；`packages/tool-search` 是消费它的 Consumer（模型可见的 `glob` / `grep`）。
 - `packages/session`：JSONL Session 持久化与重建不变量。
 - `packages/eval`、`packages/evolve`、`packages/benchmark`：评测、演化和基准能力。
 - `packages/cli`：CLI、配置、工作区和 Web server 组装层；`packages/coding-agent`：coding session 的 plan、skills、MCP 与 slash commands。
@@ -25,6 +27,7 @@ Tnega 是一个 eval-first 的 Agent Harness。核心包将可组合插件生命
 
 - 插件注册必须归属于其 Fiber；dispose 后效果按逆序撤销，且不能残留服务、事件监听或子进程。
 - 同一作用域的同名服务应明确失败；必需服务写入 `inject`，可选服务通过 `ctx.get()` 取得。
+- 能力缝的角色分工与依赖方向见 `docs/adr/0006-capability-seams.md`：Provider 与 Consumer 只依赖 Service Definition，两者互不依赖；Provider 的挑选属于 composition 层，Consumer 不得 import 或枚举具体 Provider。
 - Agent 的模型可见历史必须能由 durable Session 事件重建；live `agent/*` 事件只用于运行时观察或拦截。
 - 工具先记录调用意图、再执行、再记录结果。高权限 shell 与网络能力保持显式 opt-in，路径必须限制在 workspace 内。
 - 在调整公共类型、事件名称、生命周期或 package exports 时，同时更新直接消费者与最近的行为测试。

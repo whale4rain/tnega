@@ -2,6 +2,8 @@ import { defineAgent, type AgentLoop, type LLMAdapter } from '@tnega/agent'
 import { CODING_SYSTEM_PROMPT, createCodingAgentPlugin } from '@tnega/coding-agent'
 import { Context } from '@tnega/core'
 import { session } from '@tnega/session'
+import { searchRipgrep } from '@tnega/search-ripgrep'
+import { toolSearch } from '@tnega/tool-search'
 import { builtinTools, tools, type ToolPolicy } from '@tnega/tools'
 
 import type { CodingEvalConfig } from './types.js'
@@ -33,6 +35,9 @@ export async function createCodingEvalRuntime(
     allowShell: options.allowShell ?? false,
     disabled: [],
   })
+  // 搜索缝：composition 层挑 Provider。
+  await root.plugin(searchRipgrep, { cwd: options.cwd })
+  await root.plugin(toolSearch, { cwd: options.cwd })
 
   const agentConfig: {
     llm: LLMAdapter

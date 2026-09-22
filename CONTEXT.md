@@ -36,6 +36,26 @@ _Avoid_: delta message, wire frame
 每次 Agent Run 开始时选择的网络与 Shell 权限开关，运行期间不可修改。
 _Avoid_: capability flag
 
+**能力缝 (Seam)**:
+一个可替换能力的完整三角色：Service Definition、Service Provider、Consumer。单指其中任一
+角色时按角色称呼，不叫「缝」。例：`@tnega/search`（Definition）/ `@tnega/search-ripgrep`
+（Provider）/ `@tnega/tool-search`（Consumer）构成搜索缝。
+_Avoid_: capability、capability flag、extension point
+
+**Service Definition**:
+拥有 `ctx.<key>` 的抽象 Cordis `Service`，承载词汇类型、稳定错误码与能力级默认值。不是
+TypeScript `interface`。
+_Avoid_: interface、service contract
+
+**Service Provider**:
+提供某个 Service Definition 一份实现的插件。注册能力，不注册模型可见的工具。
+_Avoid_: backend、adapter、impl
+
+**Consumer**:
+程序化使用某个能力的插件，通常是模型可见的工具。只 import Service Definition，不 import
+具体 Provider，也不枚举 Provider 或探测可用性。
+_Avoid_: client、caller
+
 **Timeline**:
 一个 Agent Run 的可视化事件序列，展示消息、工具调用与工具结果。
 _Avoid_: log view

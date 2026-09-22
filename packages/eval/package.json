@@ -10,7 +10,9 @@
     "@tnega/agent": "workspace:*",
     "@tnega/coding-agent": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/search-ripgrep": "workspace:*",
     "@tnega/session": "workspace:*",
+    "@tnega/tool-search": "workspace:*",
     "@tnega/tools": "workspace:*"
   }
 }

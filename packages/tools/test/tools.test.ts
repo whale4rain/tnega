@@ -416,3 +416,77 @@ describe('ToolsService result shape', () => {
     expect(seen).toBe(result)
   })
 })
+
+describe('ToolsService tool timeout', () => {
+  /** A tool that only settles when its signal aborts, honoring the contract. */
+  function abortOnlyTool(name: string, timeoutMs?: number): ToolDefinition {
+    const tool: ToolDefinition = {
+      schema: { name, description: 'settles only when aborted' },
+      execute: (_input, options) => new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      }),
+    }
+    if (timeoutMs !== undefined) tool.timeoutMs = timeoutMs
+    return tool
+  }
+
+  async function serviceWith(...definitions: ToolDefinition[]): Promise<ToolsService> {
+    const root = new Context()
+    await root.plugin(tools)
+    const service = dynamic(root).tools as ToolsService
+    for (const definition of definitions) service.register(definition)
+    return service
+  }
+
+  it('fails a call that outlives its declared budget', async () => {
+    const service = await serviceWith(abortOnlyTool('slow', 30))
+
+    const result = await service.execute('slow', {})
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).toBe('ToolTimeoutError')
+    expect(result.error?.message).toContain('timed out after 30ms')
+  })
+
+  it('leaves a tool with no declared budget without a deadline', async () => {
+    let observed: AbortSignal | undefined
+    const service = await serviceWith({
+      schema: { name: 'plain', description: 'records its signal' },
+      execute: (_input, options) => {
+        observed = options.signal
+        return 'ok'
+      },
+    })
+
+    expect(await service.execute('plain', {})).toMatchObject({ ok: true, output: 'ok' })
+    expect(observed).toBeUndefined()
+  })
+
+  it('composes a declared budget with the caller signal', async () => {
+    let observed: AbortSignal | undefined
+    const service = await serviceWith({
+      schema: { name: 'signalled', description: 'records its signal' },
+      timeoutMs: 5_000,
+      execute: (_input, options) => {
+        observed = options.signal
+        return 'ok'
+      },
+    })
+
+    const controller = new AbortController()
+    await service.execute('signalled', {}, { signal: controller.signal })
+    expect(observed).toBeDefined()
+    expect(observed).not.toBe(controller.signal)
+    expect(observed?.aborted).toBe(false)
+  })
+
+  it('lets the caller abort stand instead of reporting a timeout', async () => {
+    const service = await serviceWith(abortOnlyTool('slow', 5_000))
+
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 10)
+    const result = await service.execute('slow', {}, { signal: controller.signal })
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).not.toBe('ToolTimeoutError')
+    expect(result.error?.message).toContain('aborted')
+  })
+})

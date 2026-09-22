@@ -141,9 +141,24 @@ read_file, write_file, list_dir, glob, grep
 - `http_get`：需要 `--allow-network`
 - `shell`：需要 `--allow-shell`，工作目录被限制在 `--cwd` 内
 
-文件工具使用路径沙箱：`read_file / write_file / list_dir / glob / grep / shell` 均被限制在 `--cwd` 内，拒绝绝对路径越界、`..` 越界与 symlink 越界。读取默认上限 256 KiB，写入与搜索默认上限 1 MiB，搜索结果默认 200 条，shell 默认 15 秒超时。
+文件工具使用路径沙箱：`read_file / write_file / list_dir / glob / grep / shell` 均被限制在 `--cwd` 内，拒绝绝对路径越界、`..` 越界与 symlink 越界。读取默认上限 256 KiB，写入默认上限 1 MiB，搜索结果默认 200 条，shell 默认 15 秒超时。
 
-以插件方式接入时，`builtinTools` 接受 `BuiltinToolsConfig`：`cwd / allowNetwork / allowShell / disabled / maxReadBytes / maxWriteBytes / maxSearchBytes / maxResults / timeoutMs`，`disabled` 可进一步关闭任一内置工具。
+`glob` 与 `grep` 是「工作区搜索」能力缝的 Consumer：`@tnega/search` 拥有 `ctx.search`
+契约（Service Definition），`@tnega/search-ripgrep` 提供实现（Service Provider），
+`@tnega/tool-search` 贡献模型可见的工具。工具只认识 `ctx.search`，换 Provider 属于
+composition 层的挂载选择，工具的 schema 与结果形状零改动。
+
+遍历交给 ripgrep：Provider 构造固定 argv 向量并 spawn `rg`（无 shell 层），因此
+`.gitignore`、隐藏文件与忽略规则由 ripgrep 原生处理。默认尊重工作区 `.gitignore`
+（用 `--no-require-git` 让它在非 git 仓库中也生效），并始终用取反 `--glob` 剪掉
+`.git`、`node_modules` 等目录；超时 30 秒，超出原始输出上限时明确失败而不是返回被截断的
+半截结果。`rg` 需在 `PATH` 上（或用 Provider 的 `ripgrepPath` 指定）。
+
+以插件方式接入时，`builtinTools` 接受 `BuiltinToolsConfig`：`cwd / allowNetwork /
+allowShell / disabled / maxReadBytes / maxWriteBytes / maxResults / timeoutMs /
+searchExcludes / execution`，`disabled` 可进一步关闭任一内置工具。`glob` / `grep` 由
+`@tnega/tool-search` 单独挂载，其配置为 `cwd / disabled / searchTimeoutMs /
+maxResults`。
 
 ## 作为库使用
 

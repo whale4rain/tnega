@@ -80,9 +80,13 @@ describe('packed artifact', () => {
       'eval',
       'events',
       'evolve',
+      'execution',
       'llm',
+      'search',
+      'search-ripgrep',
       'services',
       'session',
+      'tool-search',
       'tools',
     ]
     for (const subpath of subpaths) {
@@ -101,9 +105,13 @@ describe('packed artifact', () => {
       'eval',
       'events',
       'evolve',
+      'execution',
       'llm',
+      'search',
+      'search-ripgrep',
       'services',
       'session',
+      'tool-search',
       'tools',
     ]
     for (const name of names) {
