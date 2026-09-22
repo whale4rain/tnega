@@ -69,6 +69,48 @@ describe('ripgrep argument construction', () => {
     ])
   })
 
+  // ripgrep's --glob is gitignore-flavoured: a pattern without a slash matches a
+  // basename at any depth, so a bare `*` would mean "every file in the tree".
+  // The tools document path-glob semantics, so slash-less patterns get anchored.
+  it('anchors a slash-less pattern to the search root', () => {
+    expect(buildGlobArgv('*', honoring)).toContain('--glob=/*')
+    expect(buildGlobArgv('*.ts', honoring)).toContain('--glob=/*.ts')
+    expect(buildGlobArgv('?op.ts', honoring)).toContain('--glob=/?op.ts')
+    expect(buildGlobArgv('{a,b}.md', honoring)).toContain('--glob=/{a,b}.md')
+  })
+
+  it('leaves a pattern that already crosses segments alone', () => {
+    expect(buildGlobArgv('**/*.ts', honoring)).toContain('--glob=**/*.ts')
+    expect(buildGlobArgv('packages/*/README.md', honoring))
+      .toContain('--glob=packages/*/README.md')
+    // `**` alone still means "everything below the root".
+    expect(buildGlobArgv('**', honoring)).toContain('--glob=/**')
+  })
+
+  it('anchors the grep file filter the same way', () => {
+    expect(buildGrepArgv('value', { ...honoring, glob: '*.md' }))
+      .toContain('--glob=/*.md')
+    expect(buildGrepArgv('value', { ...honoring, glob: '**/*.md' }))
+      .toContain('--glob=**/*.md')
+  })
+
+  it('does not descend when the pattern can only match the search root', () => {
+    for (const pattern of ['*', '*.ts', '?op.ts', '{a,b}.md']) {
+      const argv = buildGlobArgv(pattern, honoring)
+      expect(argv).toContain('--max-depth')
+      expect(argv[argv.indexOf('--max-depth') + 1]).toBe('1')
+    }
+    // `**` crosses segments, so it must keep descending.
+    expect(buildGlobArgv('**', honoring)).not.toContain('--max-depth')
+    expect(buildGlobArgv('**/*.ts', honoring)).not.toContain('--max-depth')
+  })
+
+  it('bounds a root-only grep filter the same way', () => {
+    expect(buildGrepArgv('value', { ...honoring, glob: '*.md' })).toContain('--max-depth')
+    expect(buildGrepArgv('value', { ...honoring, glob: '**/*.md' })).not.toContain('--max-depth')
+    // No filter at all means a full recursive search.
+    expect(buildGrepArgv('value', honoring)).not.toContain('--max-depth')
+  })
 })
 
 describe('ripgrep binary resolution', () => {

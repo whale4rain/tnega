@@ -231,4 +231,24 @@ describe('the seam survives a provider swap', () => {
     expect(await ok(service, 'glob', { pattern: '**/*.ts', base: 'ignored' }))
       .toEqual(['ignored/b.ts'])
   })
+
+  it('treats a bare "*" as the search root entries, not the whole tree', async (context) => {
+    const cwd = await tempDir('tnega-tool-search-star-')
+    await mkdir(join(cwd, 'src', 'deep'), { recursive: true })
+    await writeFile(join(cwd, 'top.ts'), 'x', 'utf8')
+    await writeFile(join(cwd, 'src', 'a.ts'), 'y', 'utf8')
+    await writeFile(join(cwd, 'src', 'deep', 'b.ts'), 'z', 'utf8')
+
+    try {
+      await resolveRipgrepPath()
+    } catch {
+      context.skip()
+      return
+    }
+
+    const service = await mountSearch(searchRipgrep, cwd)
+    expect(await ok(service, 'glob', { pattern: '*' })).toEqual(['top.ts'])
+    expect((await ok(service, 'glob', { pattern: '**/*.ts' }) as string[]).sort())
+      .toEqual(['src/a.ts', 'src/deep/b.ts', 'top.ts'])
+  })
 })
