@@ -207,7 +207,7 @@ describe('createAgentRuntime composition', () => {
       })
       expect(String(calls[1]!.messages.at(-1)?.content))
         .toContain('Earlier context was compacted.')
-      expect(await readFile(join(dir, '.tnega', 'memory.md'), 'utf8'))
+      expect(await readFile(join(dir, '.tnega', 'MEMORY.md'), 'utf8'))
         .toContain('- Use pnpm')
     } finally {
       await runtime.dispose()

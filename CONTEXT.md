@@ -64,8 +64,8 @@ _Avoid_: client、caller
 _Avoid_: truncate、trim、dump
 
 **Memory**:
-跨 Session 的少量持久信息。全局 `~/.tnega/memory.md` 存用户明确要求记住的偏好；
-Workspace `.tnega/memory.md` 在压缩时整理长期有效的项目约定。每次 Agent Run 使用的
+跨 Session 的少量持久信息。全局 `~/.tnega/MEMORY.md` 存用户明确要求记住的偏好；
+Workspace `.tnega/MEMORY.md` 在压缩时整理长期有效的项目约定。每次 Agent Run 使用的
 快照进入请求记录；它不是 Session 的对话历史或压缩摘要。
 
 **Timeline**:

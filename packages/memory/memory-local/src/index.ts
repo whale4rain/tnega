@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
@@ -13,7 +13,7 @@ import {
 
 export interface LocalMemoryConfig {
   cwd?: string
-  /** Defaults to ~/.tnega/memory.md. Useful for isolated installations and tests. */
+  /** Defaults to ~/.tnega/MEMORY.md. Useful for isolated installations and tests. */
   globalFile?: string
 }
 
@@ -42,6 +42,32 @@ async function readText(path: string): Promise<string> {
   }
 }
 
+async function migrateLegacyFile(path: string): Promise<void> {
+  if (path !== join(dirname(path), 'MEMORY.md')) return
+  const directory = dirname(path)
+  let names: string[]
+  try {
+    names = await readdir(directory)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw new MemoryError(`could not inspect memory directory ${directory}`, 'MEMORY_FAILED', { cause: error })
+  }
+  if (names.includes('MEMORY.md') || !names.includes('memory.md')) return
+  const legacy = join(directory, 'memory.md')
+  const temp = join(directory, `.memory-${randomUUID()}.tmp`)
+  try {
+    await rename(legacy, temp)
+    try {
+      await rename(temp, path)
+    } catch (error) {
+      await rename(temp, legacy).catch(() => {})
+      throw error
+    }
+  } catch (error) {
+    throw new MemoryError(`could not migrate memory file ${legacy}`, 'MEMORY_FAILED', { cause: error })
+  }
+}
+
 async function writeAtomic(path: string, content: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   const temp = `${path}.${randomUUID()}.tmp`
@@ -60,15 +86,19 @@ export class LocalMemoryService extends MemoryService {
 
   constructor(ctx: Context, config: LocalMemoryConfig = {}) {
     super(ctx)
-    this.globalFile = resolve(config.globalFile ?? join(homedir(), '.tnega', 'memory.md'))
-    this.projectFile = resolve(config.cwd ?? process.cwd(), '.tnega', 'memory.md')
+    this.globalFile = resolve(config.globalFile ?? join(homedir(), '.tnega', 'MEMORY.md'))
+    this.projectFile = resolve(config.cwd ?? process.cwd(), '.tnega', 'MEMORY.md')
   }
 
   override read(scope: MemoryScope): Promise<string> {
     if (scope !== 'global' && scope !== 'project') {
       throw new MemoryError(`invalid memory scope: ${String(scope)}`, 'MEMORY_INVALID')
     }
-    return readText(scope === 'global' ? this.globalFile : this.projectFile)
+    const path = scope === 'global' ? this.globalFile : this.projectFile
+    return exclusive(path, async () => {
+      await migrateLegacyFile(path)
+      return readText(path)
+    })
   }
 
   override rememberGlobal(content: string): Promise<string> {
@@ -77,12 +107,13 @@ export class LocalMemoryService extends MemoryService {
       throw new MemoryError('global memory must be one non-empty line', 'MEMORY_INVALID')
     }
     return exclusive(this.globalFile, async () => {
+      await migrateLegacyFile(this.globalFile)
       const current = (await readText(this.globalFile)).trim()
       const line = `- ${entry.replace(/^-\s*/, '')}`
       if (current.split('\n').some(existing => existing.trim() === line)) return current
       const next = current ? `${current}\n${line}\n` : `# User preferences\n\n${line}\n`
       if (next.length > MAX_GLOBAL_MEMORY_CHARS) {
-        throw new MemoryError('global memory is full; edit ~/.tnega/memory.md before adding more', 'MEMORY_FULL')
+        throw new MemoryError('global memory is full; edit ~/.tnega/MEMORY.md before adding more', 'MEMORY_FULL')
       }
       await writeAtomic(this.globalFile, next)
       return next
@@ -95,6 +126,7 @@ export class LocalMemoryService extends MemoryService {
       throw new MemoryError('project memory exceeds its 4000 character limit', 'MEMORY_FULL')
     }
     return exclusive(this.projectFile, async () => {
+      await migrateLegacyFile(this.projectFile)
       if ((await readText(this.projectFile)).trim() === next) return
       await writeAtomic(this.projectFile, next ? `${next}\n` : '')
     })

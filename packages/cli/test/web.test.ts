@@ -670,7 +670,7 @@ describe('web server', () => {
       { method: 'POST', body: '{}' },
     )
     expect(compact.status).toBe(200)
-    expect(await readFile(join(workspace, '.tnega', 'memory.md'), 'utf8')).toBe('x\n')
+    expect(await readFile(join(workspace, '.tnega', 'MEMORY.md'), 'utf8')).toBe('x\n')
 
     const after = await apiFetch(
       server.url,

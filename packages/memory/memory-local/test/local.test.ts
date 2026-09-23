@@ -14,7 +14,7 @@ afterEach(async () => {
 it('keeps global and project memory in separate files and deduplicates explicit saves', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'tnega-memory-'))
   directories.push(cwd)
-  const globalFile = join(cwd, 'home', 'memory.md')
+  const globalFile = join(cwd, 'home', 'MEMORY.md')
   const root = new Context()
   try {
     await root.plugin(memoryLocal, { cwd, globalFile })
@@ -26,7 +26,7 @@ it('keeps global and project memory in separate files and deduplicates explicit 
     await memory.writeProject('# Project memory\n\n- Use pnpm')
     expect(await memory.read('global')).toContain('- Prefers concise answers')
     expect((await readFile(globalFile, 'utf8')).match(/Prefers concise answers/g)).toHaveLength(1)
-    expect(await readFile(join(cwd, '.tnega', 'memory.md'), 'utf8')).toContain('- Use pnpm')
+    expect(await readFile(join(cwd, '.tnega', 'MEMORY.md'), 'utf8')).toContain('- Use pnpm')
   } finally {
     await root.fiber.dispose()
   }
