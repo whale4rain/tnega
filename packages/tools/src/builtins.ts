@@ -7,7 +7,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@tnega/core'
 import type {
   ToolDefinition,
@@ -29,6 +29,8 @@ export interface BuiltinToolsConfig {
   cwd?: string
   allowNetwork?: boolean
   allowShell?: boolean
+  allowOutsideWorkspace?: boolean
+  allowPrivateNetwork?: boolean
   disabled?: readonly string[]
   maxReadBytes?: number
   maxWriteBytes?: number
@@ -43,6 +45,8 @@ interface NormalizedBuiltinToolsConfig {
   cwd: string
   allowNetwork: boolean
   allowShell: boolean
+  allowOutsideWorkspace: boolean
+  allowPrivateNetwork: boolean
   disabled: readonly string[]
   maxReadBytes: number
   maxWriteBytes: number
@@ -71,6 +75,8 @@ function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinTool
     cwd: config.cwd ?? process.cwd(),
     allowNetwork: config.allowNetwork ?? false,
     allowShell: config.allowShell ?? false,
+    allowOutsideWorkspace: config.allowOutsideWorkspace ?? false,
+    allowPrivateNetwork: config.allowPrivateNetwork ?? false,
     disabled: [...(config.disabled ?? [])],
     maxReadBytes: config.maxReadBytes ?? 256 * 1024,
     maxWriteBytes: config.maxWriteBytes ?? 1024 * 1024,
@@ -79,6 +85,12 @@ function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinTool
     searchExcludeSet: new Set(config.searchExcludes ?? DEFAULT_SEARCH_EXCLUDES),
     execution: config.execution ?? localExecutionProvider,
   }
+}
+
+function resolveToolPath(config: NormalizedBuiltinToolsConfig, path: string): Promise<string> {
+  return config.allowOutsideWorkspace
+    ? Promise.resolve(resolve(config.cwd, path))
+    : resolveInside(config.cwd, path)
 }
 
 function definition(
@@ -349,7 +361,7 @@ function readFileTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
     'Read a UTF-8 text file inside the workspace. Returns { path, bytes, content, truncated }: `bytes` is the whole file size, `content` is its first `maxBytes` bytes, and `truncated` reports whether anything was left out.',
     async (input) => {
       const args = record(input)
-      const target = await resolveInside(config.cwd, stringField(args.path, 'path'))
+      const target = await resolveToolPath(config, stringField(args.path, 'path'))
       const stats = await stat(target)
       if (stats.isDirectory()) throw new ToolInputError(`not a file: ${args.path}`)
       const maxBytes = optionalNumber(args.maxBytes, 'maxBytes') ?? config.maxReadBytes
@@ -387,7 +399,7 @@ function writeFileTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
     'Write UTF-8 text to a file inside the workspace, creating parent directories as needed. Returns { path, bytes, appended }.',
     async (input) => {
       const args = record(input)
-      const target = await resolveInside(config.cwd, stringField(args.path, 'path'))
+      const target = await resolveToolPath(config, stringField(args.path, 'path'))
       const content = stringField(args.content, 'content')
       const append = optionalBoolean(args.append, 'append') ?? false
       const bytes = Buffer.byteLength(content, 'utf8')
@@ -473,7 +485,7 @@ function listDirTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
     'List directory entries inside the workspace. Returns [{ name, path, type }].',
     async (input, options: ToolExecuteOptions) => {
       const args = record(input)
-      const base = await resolveInside(config.cwd, optionalString(args.path, 'path') ?? '.')
+      const base = await resolveToolPath(config, optionalString(args.path, 'path') ?? '.')
       const stats = await stat(base)
       if (!stats.isDirectory()) throw new ToolInputError(`not a directory: ${args.path ?? '.'}`)
       const recursive = optionalBoolean(args.recursive, 'recursive') ?? false
@@ -522,6 +534,7 @@ function httpGetTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
         ...(Object.keys(headers).length ? { headers } : {}),
         ...(maxBytes !== config.maxReadBytes ? { maxBytes } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
+        ...(config.allowPrivateNetwork ? { allowPrivate: true } : {}),
       })
     },
     {
@@ -546,7 +559,7 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
     async (input, options: ToolExecuteOptions) => {
       const args = record(input)
       const command = stringField(args.command, 'command')
-      const cwd = await resolveInside(config.cwd, optionalString(args.cwd, 'cwd') ?? '.')
+      const cwd = await resolveToolPath(config, optionalString(args.cwd, 'cwd') ?? '.')
       const timeoutMs = optionalNumber(args.timeoutMs, 'timeoutMs') ?? config.timeoutMs
       const result = await config.execution.runShell({
         command,

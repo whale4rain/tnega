@@ -17,21 +17,20 @@ import {
   createCodingAgentPlugin,
   createSlashRegistry,
   generatePlan,
-  planToContext,
   type CodingService,
   type Plan,
-  type PlanItem,
   type SlashCommandResult,
 } from '@tnega/coding-agent'
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
+import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from './goal.js'
 import { memoryLocal } from '@tnega/memory-local'
 import type { MemoryService } from '@tnega/memory'
 import {
   session,
+  SessionLog,
   transcriptEvents,
   type ModelMessage,
   type PlanPayload,
-  type SessionLog,
 } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { spillLocal } from '@tnega/spill-local'
@@ -41,7 +40,9 @@ import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSubagent } from '@tnega/tool-subagent'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
-import { builtinTools, tools } from '@tnega/tools'
+import { builtinTools, tools, type ToolsService } from '@tnega/tools'
+import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
+import { webSearchTool } from './web-search.js'
 import {
   createAgentRuntime,
   resolveLlmEnv,
@@ -192,11 +193,13 @@ export async function startWebServer(
   const webRoot = options.webRoot ?? defaultWebRoot()
   const configFile = options.configFile
   const activeRuns = new Map<string, AbortController>()
+  const approvals = new ApprovalBroker()
   const residentAgents = new Map<string, ResidentAgentEntry>()
   let actualPort = port
   const context: ServerContext = {
     webRoot,
     activeRuns,
+    approvals,
     resident: options.resident !== false,
     residentAgents,
     ...(configFile ? { configFile } : {}),
@@ -234,6 +237,7 @@ interface ServerContext {
   webRoot: string
   configFile?: string
   activeRuns: Map<string, AbortController>
+  approvals: ApprovalBroker
   resident?: boolean
   residentAgents?: Map<string, ResidentAgentEntry>
 }
@@ -288,6 +292,27 @@ async function handleApi(
 
   if (url.pathname === '/api/health') {
     sendJson(res, 200, { ok: true })
+    return
+  }
+
+  const approvalMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
+  if (approvalMatch && req.method === 'POST') {
+    const workspace = workspaceParam(url)
+    if (!workspace || !isSessionId(approvalMatch[1]!)) {
+      sendError(res, 400, 'valid workspace and session id are required')
+      return
+    }
+    const body = await readJsonBody(req)
+    if (typeof body.allow !== 'boolean') {
+      sendError(res, 400, 'allow must be a boolean')
+      return
+    }
+    const accepted = context.approvals.decide(approvalMatch[2]!, runKey(workspace, approvalMatch[1]!), body.allow)
+    if (!accepted) {
+      sendError(res, 404, 'approval request is no longer pending')
+      return
+    }
+    sendJson(res, 200, { accepted: true })
     return
   }
 
@@ -372,7 +397,7 @@ async function handleApi(
     const agentType = body.agentType === 'general' || body.agentType === 'coding'
       ? body.agentType
       : undefined
-    const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'execute'
+    const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal'
       ? body.mode
       : undefined
     const session = await createSession(workspace, {
@@ -402,6 +427,11 @@ async function handleApi(
       return
     }
     if (action === 'slash' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      await evictResident(context, workspace, id)
       await handleCodingSlash(req, res, workspace, id)
       return
     }
@@ -474,6 +504,16 @@ async function handleApi(
       sendJson(res, 200, { subagents: children })
       return
     }
+    if (action === 'goal' && req.method === 'GET') {
+      const log = new SessionLog(sessionFilePath(workspace, id))
+      await log.init()
+      try {
+        sendJson(res, 200, { goal: await readGoal(log) ?? null })
+      } finally {
+        await log.close()
+      }
+      return
+    }
     if (action === undefined && req.method === 'PATCH') {
       if (isActive(context.activeRuns, workspace, id)) {
         sendError(res, 409, 'session is running')
@@ -485,13 +525,14 @@ async function handleApi(
       if (body.agentType === 'general' || body.agentType === 'coding') {
         patch.agentType = body.agentType
       }
-      if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'execute') {
+      if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal') {
         patch.mode = body.mode
       }
       if (!Object.keys(patch).length) {
         sendError(res, 400, 'title, agentType or mode is required')
         return
       }
+      await evictResident(context, workspace, id)
       const summary = await patchSessionMeta(workspace, id, patch)
       sendJson(res, 200, { summary })
       return
@@ -501,6 +542,7 @@ async function handleApi(
         sendError(res, 409, 'session is running')
         return
       }
+      await evictResident(context, workspace, id)
       await deleteSession(workspace, id)
       res.writeHead(204)
       res.end()
@@ -522,6 +564,7 @@ async function handleApi(
         sendError(res, 409, 'session is running')
         return
       }
+      await evictResident(context, workspace, id)
       const body = await readJsonBody(req)
       if (typeof body.messageId !== 'string' || !body.messageId) {
         sendError(res, 400, 'messageId is required')
@@ -536,6 +579,7 @@ async function handleApi(
         sendError(res, 409, 'session is running')
         return
       }
+      await evictResident(context, workspace, id)
       const body = await readJsonBody(req)
       const keep = typeof body.keep === 'number' && Number.isFinite(body.keep)
         ? body.keep
@@ -697,8 +741,8 @@ async function handleRun(
     return
   }
   const prompt = body.prompt.trim()
-  const allowNetwork = body.allowNetwork === true
-  const allowShell = body.allowShell === true
+  const permission: PermissionMode = body.permission === 'workspace-write' || body.permission === 'bypass'
+    ? body.permission : body.allowShell === true ? 'workspace-write' : 'read-only'
   const summary = await readSessionSummary(workspace, id)
   const coding = summary.agentType === 'coding'
   const mode = summary.mode ?? 'auto'
@@ -715,17 +759,21 @@ async function handleRun(
     return
   }
 
-  if (context.resident && mode === 'auto') {
+  if (context.resident && (mode === 'auto' || mode === 'goal')) {
     await runResidentTurn(context, res, workspace, id, {
       prompt,
-      allowNetwork,
-      allowShell,
+      permission,
+      sessionId: id,
+      approvals: context.approvals,
       coding,
+      goalMode: mode === 'goal',
       effective,
       apiKey,
     })
     return
   }
+
+  await evictResident(context, workspace, id)
 
   const controller = new AbortController()
   const adapter = adapterFromConfig(effective, apiKey)
@@ -735,8 +783,15 @@ async function handleRun(
       cwd: workspace,
       sessionFile: sessionFilePath(workspace, id),
       llm: adapter,
-      allowNetwork,
-      allowShell,
+      allowNetwork: true,
+      allowShell: true,
+      builtinTools: {
+        cwd: workspace,
+        allowNetwork: true,
+        allowShell: true,
+        allowOutsideWorkspace: permission === 'bypass',
+        allowPrivateNetwork: permission === 'bypass',
+      },
       ...(coding
         ? {
             plugins: [createCodingAgentPlugin({
@@ -747,6 +802,9 @@ async function handleRun(
           }
         : {}),
     })
+    const toolService = runtime.root.get('tools') as ToolsService
+    toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
+    toolService.guard(permissionGuard(permission, runKey(workspace, id), context.approvals, { workspace }))
   } catch (error) {
     await runtime?.dispose()
     sendError(res, 500, `failed to start agent: ${errorMessage(error)}`)
@@ -762,23 +820,40 @@ async function handleRun(
     'x-accel-buffering': 'no',
   })
   res.flushHeaders()
+  const detachApproval = context.approvals.attach(key, event => {
+    if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+  })
+  res.once('close', () => {
+    detachApproval()
+    controller.abort({ type: 'user' })
+  })
 
   try {
     const sessionLog = runtime.root.get('session') as SessionLog
+    await sessionLog.append('meta', { kind: 'permission/run', mode: permission })
     const history = await sessionLog.deriveMessages()
     const emitSse = (event: Record<string, unknown>): void => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
     }
     let plan: Plan | undefined
-    if (coding && (mode === 'plan' || mode === 'execute')) {
+    if (mode === 'plan') {
       plan = await ensurePlanForRun({
         adapter,
         session: sessionLog,
-        mode,
         messages: [...history, { role: 'user' as const, content: prompt }],
         signal: controller.signal,
         emit: emitSse,
       })
+      await sessionLog.append('user/message', { content: prompt })
+      await sessionLog.append('assistant/message', {
+        content: [plan.summary ?? 'Plan', ...plan.items.map((item, index) => `${index + 1}. ${item.title}`)].join('\n'),
+      })
+      await sessionLog.flush()
+      await autoTitle(workspace, id, prompt)
+      await runtime.dispose()
+      runtime = undefined
+      if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
+      return
     }
     // A coding session's first run persists its system prompt as a durable
     // system/message, so a resumed run's derived history already leads with it;
@@ -788,7 +863,6 @@ async function handleRun(
       ...(coding && history[0]?.role !== 'system'
         ? [{ role: 'system' as const, content: CODING_SYSTEM_PROMPT }]
         : []),
-      ...(plan ? [{ role: 'system' as const, content: planToContext(plan) }] : []),
       ...history,
       { role: 'user' as const, content: prompt },
     ]
@@ -810,7 +884,6 @@ async function handleRun(
       } catch {
         // The client may have disconnected; the run itself must continue.
       }
-      if (plan) await trackPlanTool(next.value, plan, sessionLog, emitSse)
     }
     await autoTitle(workspace, id, prompt)
     await runtime.dispose()
@@ -821,6 +894,7 @@ async function handleRun(
       writeSse(res, { type: 'error', message: errorMessage(error) })
     }
   } finally {
+    detachApproval()
     context.activeRuns.delete(key)
     if (runtime) await runtime.dispose()
     if (!res.destroyed && !res.writableEnded) res.end()
@@ -829,11 +903,21 @@ async function handleRun(
 
 interface ResidentRunRequest {
   prompt: string
-  allowNetwork: boolean
-  allowShell: boolean
+  permission: PermissionMode
+  sessionId: string
+  approvals: ApprovalBroker
   coding: boolean
+  goalMode: boolean
   effective: EffectiveLlmConfig
   apiKey: string
+}
+
+async function evictResident(context: ServerContext, workspace: string, id: string): Promise<void> {
+  const key = runKey(workspace, id)
+  const entry = context.residentAgents?.get(key)
+  if (!entry) return
+  context.residentAgents?.delete(key)
+  await entry.dispose()
 }
 
 /** A minimal runtime for a resident agent: tools + builtins (+coding) + agents. */
@@ -848,8 +932,10 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(toolMemory))
   fibers.push(await root.plugin(builtinTools, {
     cwd: workspace,
-    ...(req.allowNetwork ? { allowNetwork: true } : {}),
-    ...(req.allowShell ? { allowShell: true } : {}),
+    allowNetwork: true,
+    allowShell: true,
+    allowOutsideWorkspace: req.permission === 'bypass',
+    allowPrivateNetwork: req.permission === 'bypass',
   }))
   // 搜索与溢出是两条能力缝：composition 层挑 Provider，模型可见的工具只认识
   // ctx.search，工具结果的上限只认识 ctx.spillStore。
@@ -865,11 +951,24 @@ async function createResidentRuntime(
     })))
   }
   fibers.push(await root.plugin(agents))
+  const toolService = root.get('tools') as ToolsService
+  const registry = root.get('agents') as AgentRegistry
+  toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
+  toolService.guard(permissionGuard(req.permission, runKey(workspace, req.sessionId), req.approvals, {
+    workspace,
+    agentMode: agentId => {
+      const meta = registry.get(agentId)?.meta
+      if (!meta?.subagentMode) return undefined
+      return meta.subagentPermission ?? (meta.subagentAllowShell ? 'workspace-write' : 'read-only')
+    },
+  }))
+  fibers.push(await root.plugin(goalTools))
   fibers.push(await root.plugin(subagentLocal, {
     cwd: workspace,
     llm: adapterFromConfig(req.effective, req.apiKey),
-    allowShell: req.allowShell,
-    allowNetwork: req.allowNetwork,
+    allowShell: req.permission !== 'read-only',
+    allowNetwork: true,
+    permission: req.permission,
   }))
   fibers.push(await root.plugin(toolSubagent))
   return {
@@ -892,8 +991,7 @@ async function ensureResidentAgent(
     req.effective.model,
     req.effective.protocol ?? '',
     req.effective.temperature ?? '',
-    String(req.allowNetwork),
-    String(req.allowShell),
+    req.permission,
     req.coding ? 'coding' : 'general',
     'auto',
   ].join('|')
@@ -966,10 +1064,18 @@ async function runResidentTurn(
     'x-accel-buffering': 'no',
   })
   res.flushHeaders()
+  const detachApproval = context.approvals.attach(key, event => {
+    if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+  })
+  res.once('close', () => {
+    detachApproval()
+    controller.abort({ type: 'user' })
+  })
 
   try {
     const entry = await ensureResidentAgent(context, workspace, id, req)
     const agent = entry.agent
+    await agent.session.append('meta', { kind: 'permission/run', mode: req.permission })
     // A coding session keeps its persona as the durable leading system message,
     // seeded once so every derived request begins with it.
     if (req.coding) {
@@ -978,18 +1084,43 @@ async function runResidentTurn(
         await agent.session.append('system/message', { content: CODING_SYSTEM_PROMPT })
       }
     }
-    agent.followup({ text: req.prompt })
-    for await (const event of agent.runTurns(controller.signal)) {
-      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    let goal = req.goalMode ? await readGoal(agent.session) : undefined
+    if (req.goalMode && !goal) goal = await createGoal(agent.session, req.prompt)
+    await agent.followup({ text: req.prompt })
+    while (true) {
+      for await (const event of agent.runTurns(controller.signal)) {
+        if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+      }
+      if (!req.goalMode) break
+      goal = await readGoal(agent.session)
+      if (!goal || goal.status !== 'active') break
+      if (controller.signal.aborted) {
+        await changeGoal(agent.session, 'paused', 'Run cancelled by the user')
+        break
+      }
+      const lastTurn = [...await agent.session.read()].reverse()
+        .find(event => event.type === 'turn/end')
+      if (lastTurn?.type === 'turn/end' && lastTurn.payload.finishReason !== 'stop') {
+        await changeGoal(agent.session, 'blocked', `Agent turn ended: ${lastTurn.payload.finishReason ?? 'unknown'}`)
+        break
+      }
+      const rounds = goal.rounds + 1
+      if (rounds >= goal.maxRounds) {
+        await writeGoal(agent.session, { ...goal, rounds, status: 'blocked', detail: 'Automatic round limit reached' })
+        break
+      }
+      await writeGoal(agent.session, { ...goal, rounds })
+      await agent.followup({ text: `<goal_round>\nObjective: ${JSON.stringify(goal.objective)}\nRound ${rounds + 1}/${goal.maxRounds}. Continue toward the objective using the current Session and Workspace. Call update_goal when complete, paused, or blocked.\n</goal_round>` })
     }
     await agent.session.flush()
-    await autoTitle(workspace, id, req.prompt)
+    await autoTitle(workspace, id, req.prompt, agent.session)
     if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
   } catch (error) {
     if (!res.destroyed && !res.writableEnded) {
       writeSse(res, { type: 'error', message: errorMessage(error) })
     }
   } finally {
+    detachApproval()
     context.activeRuns.delete(key)
     if (!res.destroyed && !res.writableEnded) res.end()
   }
@@ -998,30 +1129,12 @@ async function runResidentTurn(
 interface EnsurePlanForRunOptions {
   adapter: ReturnType<typeof openaiCompatAdapter>
   session: SessionLog
-  mode: 'plan' | 'execute'
   messages: readonly ModelMessage[]
   signal?: AbortSignal
   emit: (event: Record<string, unknown>) => void
 }
 
 async function ensurePlanForRun(options: EnsurePlanForRunOptions): Promise<Plan> {
-  if (options.mode === 'execute') {
-    const events = await options.session.read()
-    for (let index = events.length - 1; index >= 0; index -= 1) {
-      const event = events[index]
-      if (event?.type !== 'plan') continue
-      const plan = planFromPayload(event.payload)
-      if (!plan) continue
-      for (const item of plan.items) item.status = 'pending'
-      plan.status = 'pending'
-      await options.session.append('plan', planPayload(plan))
-      options.emit({ type: 'plan/start' })
-      options.emit({ type: 'plan/items', plan })
-      options.emit({ type: 'plan/done', plan })
-      return plan
-    }
-  }
-
   options.emit({ type: 'plan/start' })
   try {
     const plan = await generatePlan(options.adapter, options.messages, options.signal)
@@ -1038,39 +1151,6 @@ async function ensurePlanForRun(options: EnsurePlanForRunOptions): Promise<Plan>
   }
 }
 
-async function trackPlanTool(
-  event: AgentStreamEvent,
-  plan: Plan,
-  session: SessionLog,
-  emit: (event: Record<string, unknown>) => void,
-): Promise<void> {
-  if (event.type !== 'tool/end') return
-  const args = event.call.arguments && typeof event.call.arguments === 'object'
-    ? event.call.arguments as Record<string, unknown>
-    : {}
-  if (event.call.name === 'plan_execute_mark') {
-    if (event.result && event.result.ok === false) return
-    const id = typeof args.id === 'string' ? args.id : ''
-    const status = typeof args.status === 'string' ? args.status : ''
-    if (status !== 'pending' && status !== 'done' && status !== 'failed') return
-    const item = plan.items.find(candidate => candidate.id === id)
-    if (!item) return
-    item.status = status
-    plan.status = 'running'
-    await session.append('plan', planPayload(plan))
-    emit({ type: 'plan/item', item: { ...item } })
-    return
-  }
-  if (event.call.name === 'plan_execute_result') {
-    if (event.result && event.result.ok === false) return
-    const status = typeof args.status === 'string' ? args.status : ''
-    if (status !== 'done' && status !== 'failed') return
-    plan.status = status
-    await session.append('plan', planPayload(plan))
-    emit({ type: 'plan/done', plan: { ...plan, items: plan.items.map(item => ({ ...item })) } })
-  }
-}
-
 function planPayload(plan: Plan): PlanPayload {
   return {
     items: plan.items.map(item => ({
@@ -1082,37 +1162,6 @@ function planPayload(plan: Plan): PlanPayload {
     status: plan.status,
     ...(plan.summary ? { summary: plan.summary } : {}),
   }
-}
-
-function planFromPayload(payload: PlanPayload): Plan | undefined {
-  if (!Array.isArray(payload.items) || !payload.items.length) return undefined
-  const items: PlanItem[] = []
-  for (let index = 0; index < payload.items.length; index += 1) {
-    const entry = payload.items[index]!
-    const title = typeof entry.title === 'string' && entry.title.trim()
-      ? entry.title.trim()
-      : undefined
-    if (!title) return undefined
-    const status = entry.status === 'pending' || entry.status === 'done' || entry.status === 'failed'
-      ? entry.status
-      : 'pending'
-    const item: PlanItem = {
-      id: typeof entry.id === 'string' && entry.id ? entry.id : `plan-${index + 1}`,
-      title,
-      status,
-    }
-    if (typeof entry.detail === 'string' && entry.detail) item.detail = entry.detail
-    items.push(item)
-  }
-  const plan: Plan = {
-    items,
-    status: payload.status === 'pending' || payload.status === 'running'
-      || payload.status === 'done' || payload.status === 'failed'
-      ? payload.status
-      : 'pending',
-  }
-  if (typeof payload.summary === 'string' && payload.summary) plan.summary = payload.summary
-  return plan
 }
 
 async function handleCodingCommands(
@@ -1150,6 +1199,43 @@ async function handleCodingSlash(
   const args = Array.isArray(body.args)
     ? body.args.filter((arg): arg is string => typeof arg === 'string')
     : []
+  if (name === '/plan') {
+    await patchSessionMeta(workspace, id, { mode: 'plan' })
+    const result: SlashCommandResult = { kind: 'text', text: 'Plan mode selected. Send a request to generate a plan.' }
+    await appendSlashMeta(workspace, id, name, args, result)
+    sendJson(res, 200, { result, mode: 'plan' })
+    return
+  }
+
+  if (name === '/goal') {
+    const result = await withCodingAgent(workspace, id, async (_coding, log): Promise<SlashCommandResult> => {
+      const action = args[0]?.toLowerCase()
+      if (!action) {
+        return { kind: 'json', value: await readGoal(log) ?? { status: 'none' } }
+      }
+      if (args.length === 1 && action === 'clear') {
+        await log.append('meta', { kind: 'goal/clear' })
+        await log.append('meta/patch', { fields: ['mode'], mode: 'auto' })
+        await log.flush()
+        return { kind: 'text', text: 'Goal cleared.' }
+      }
+      if (args.length === 1 && (action === 'pause' || action === 'resume')) {
+        const goal = await changeGoal(log, action === 'pause' ? 'paused' : 'active')
+        if (action === 'resume') {
+          await log.append('meta/patch', { fields: ['mode'], mode: 'goal' })
+          await log.flush()
+        }
+        return { kind: 'json', value: goal }
+      }
+      const goal = await createGoal(log, args.join(' '))
+      await log.append('meta/patch', { fields: ['mode'], mode: 'goal' })
+      await log.flush()
+      return { kind: 'json', value: goal }
+    })
+    await appendSlashMeta(workspace, id, name, args, result)
+    sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
+    return
+  }
   const result = await withCodingAgent(workspace, id, async (coding, sessionLog) => {
     const result: SlashCommandResult = await coding.runCommand(name, args)
     await sessionLog.append('meta', {
@@ -1204,7 +1290,9 @@ async function withCodingAgent<T>(
       planTools: true,
       ...(summary.mode ? { mode: summary.mode } : {}),
       setMode: async (next) => {
-        await patchSessionMeta(workspace, id, { mode: next })
+        const activeLog = root.get('session') as SessionLog
+        await activeLog.append('meta/patch', { fields: ['mode'], mode: next })
+        await activeLog.flush()
       },
     }))
     const coding = root.get('coding') as CodingService
@@ -1225,10 +1313,17 @@ async function handleStopRun(
   controller.abort({ type: 'user' })
 }
 
-async function autoTitle(workspace: string, id: string, prompt: string): Promise<void> {
+async function autoTitle(
+  workspace: string, id: string, prompt: string, activeLog?: SessionLog,
+): Promise<void> {
   const summary = await readSessionSummary(workspace, id)
   if (summary.title === 'New session') {
-    await setSessionTitle(workspace, id, prompt.slice(0, 40))
+    if (activeLog) {
+      await activeLog.append('meta/patch', { fields: ['title'], title: prompt.slice(0, 40) })
+      await activeLog.flush()
+    } else {
+      await setSessionTitle(workspace, id, prompt.slice(0, 40))
+    }
   }
 }
 
@@ -1278,6 +1373,30 @@ function adapterFromConfig(
   if (effective.apiKeyHeader) options.apiKeyHeader = effective.apiKeyHeader
   if (effective.temperature !== undefined) options.temperature = effective.temperature
   return createLlmAdapter(options)
+}
+
+async function appendSlashMeta(
+  workspace: string, id: string, name: string, args: string[], result: SlashCommandResult,
+): Promise<void> {
+  const log = new SessionLog(sessionFilePath(workspace, id))
+  await log.init()
+  try {
+    await log.append('meta', { kind: 'slash', command: name, args, result })
+    await log.flush()
+  } finally {
+    await log.close()
+  }
+}
+
+function searchApiKey(effective: EffectiveLlmConfig, modelApiKey: string): string | undefined {
+  if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
+  try {
+    const host = new URL(effective.baseUrl).hostname.toLowerCase()
+    if (host === 'deepseek.com' || host.endsWith('.deepseek.com')) return modelApiKey
+  } catch {
+    // A non-URL model route cannot provide a DeepSeek search credential.
+  }
+  return undefined
 }
 
 function configSnapshot(config: SystemConfig): Record<string, unknown> {

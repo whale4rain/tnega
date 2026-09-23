@@ -7,15 +7,15 @@ server 内按会话激活。
 
 | 能力 | 说明 |
 |---|---|
-| plan 生成 | 用同一 LLM adapter 生成 JSON 计划（summary + items），稳健解析；`plan_execute_mark` / `plan_execute_result` 工具把执行状态写回 |
+| plan 生成 | 用同一 LLM adapter 生成 JSON 计划（summary + items）；Plan 模式只产出计划，不执行 |
 | skills | 扫描工作区 `.tnega/skills/<name>/SKILL.md`，提供 `skills_list` / `skill_read` |
 | MCP | 读取工作区 `.tnega/mcp.json`，stdio 传输，工具名 `mcp__<server>__<tool>`，dispose 时清理子进程 |
-| slash 命令 | `/plan`、`/mode` 等注册表，供 web 查询与执行 |
+| slash 命令 | `/plan`、`/goal`、`/mode` 等注册表，供 web 查询与执行 |
 
 ## 类型
 
 `AgentKind` / `SessionMode` / `Plan` / `PlanItemStatus` / `SlashCommand`。会话元数据
-`agentType: 'coding'` + `mode: 'auto' | 'plan' | 'execute'` 在创建/分叉时透传并持久化。
+`agentType: 'coding'` + `mode: 'auto' | 'plan' | 'goal'` 在创建/分叉时透传并持久化。
 
 ## 使用
 

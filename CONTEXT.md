@@ -38,7 +38,9 @@ Web 与 Agent 之间传输的归一化流式事件，只承载增量；最终状
 _Avoid_: delta message, wire frame
 
 **Tool Permission**:
-每次 Agent Run 开始时选择的网络与 Shell 权限开关，运行期间不可修改。
+每次 Agent Run 开始时选择的 `read-only`、`workspace-write` 或 `bypass` 权限预设。
+越权工具调用需要一次性人工批准；`workspace-write` 下的 Shell 因无系统沙箱也逐次批准。
+`read-only` 允许公开网络搜索与抓取，`bypass` 允许工作区外文件和私有网络访问。
 _Avoid_: capability flag
 
 **能力缝 (Seam)**:
@@ -72,6 +74,10 @@ _Avoid_: truncate、trim、dump
 跨 Session 的少量持久信息。全局 `~/.tnega/MEMORY.md` 存用户明确要求记住的偏好；
 Workspace `.tnega/MEMORY.md` 在压缩时整理长期有效的项目约定。每次 Agent Run 使用的
 快照进入请求记录；它不是 Session 的对话历史或压缩摘要。
+
+**Goal**:
+一个 Session 中持久的完成目标及其状态。Goal 模式可在同一 Agent Run 内自动推进有界轮次；
+`/goal` 控制目标，模型通过 `get_goal`、`update_goal` 报告完成或阻塞。
 
 **Timeline**:
 一个 Agent Run 的可视化事件序列，展示消息、工具调用与工具结果。

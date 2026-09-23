@@ -27,8 +27,9 @@ export interface AgentSessionMeta {
   subagentDepth?: number
   subagentAllowShell?: boolean
   subagentAllowNetwork?: boolean
+  subagentPermission?: 'read-only' | 'workspace-write' | 'bypass'
   agentType?: 'general' | 'coding'
-  mode?: 'auto' | 'plan' | 'execute'
+  mode?: 'auto' | 'plan' | 'goal' | 'execute'
   title?: string
   owner?: string
   parentSessionId?: string
@@ -79,7 +80,7 @@ export interface LiveAgent {
   readonly id: string
   readonly meta: AgentSessionMeta
   readonly agentType: 'general' | 'coding' | undefined
-  readonly mode: 'auto' | 'plan' | 'execute' | undefined
+  readonly mode: 'auto' | 'plan' | 'goal' | 'execute' | undefined
   readonly owner: string | undefined
   readonly parentSessionId: string | undefined
   readonly status: AgentStatus
@@ -118,7 +119,7 @@ export interface AgentCreationOptions {
   /** Stable identity shared by this process and future resumes. */
   sessionId?: string
   agentType?: 'general' | 'coding'
-  mode?: 'auto' | 'plan' | 'execute'
+  mode?: 'auto' | 'plan' | 'goal' | 'execute'
   title?: string
   owner?: string
   parentSessionId?: string
@@ -127,6 +128,7 @@ export interface AgentCreationOptions {
   subagentDepth?: number
   subagentAllowShell?: boolean
   subagentAllowNetwork?: boolean
+  subagentPermission?: 'read-only' | 'workspace-write' | 'bypass'
   createdAt?: number
   forkedAtMessageId?: string
   id?: string
@@ -214,7 +216,7 @@ class LiveAgentImpl implements LiveAgent {
     return this.meta.agentType
   }
 
-  get mode(): 'auto' | 'plan' | 'execute' | undefined {
+  get mode(): 'auto' | 'plan' | 'goal' | 'execute' | undefined {
     return this.meta.mode
   }
 
@@ -818,6 +820,7 @@ async function buildHandle(
       ...(options.subagentDepth !== undefined ? { subagentDepth: options.subagentDepth } : {}),
       ...(options.subagentAllowShell !== undefined ? { subagentAllowShell: options.subagentAllowShell } : {}),
       ...(options.subagentAllowNetwork !== undefined ? { subagentAllowNetwork: options.subagentAllowNetwork } : {}),
+      ...(options.subagentPermission ? { subagentPermission: options.subagentPermission } : {}),
       ...(options.createdAt !== undefined ? { createdAt: options.createdAt } : {}),
       ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
       agentId,
@@ -840,6 +843,7 @@ async function buildHandle(
         ...(boundMeta.subagentDepth !== undefined ? { subagentDepth: boundMeta.subagentDepth } : {}),
         ...(boundMeta.subagentAllowShell !== undefined ? { subagentAllowShell: boundMeta.subagentAllowShell } : {}),
         ...(boundMeta.subagentAllowNetwork !== undefined ? { subagentAllowNetwork: boundMeta.subagentAllowNetwork } : {}),
+        ...(boundMeta.subagentPermission ? { subagentPermission: boundMeta.subagentPermission } : {}),
         ...(boundMeta.forkedAtMessageId ? { forkedAtMessageId: boundMeta.forkedAtMessageId } : {}),
         ...(boundMeta.createdAt !== undefined ? { createdAt: boundMeta.createdAt } : {}),
       })
@@ -995,7 +999,8 @@ function readDurableAgentMeta(events: readonly SessionEvent[]): AgentSessionMeta
     if (payload.agentType === 'general' || payload.agentType === 'coding') {
       meta.agentType = payload.agentType
     }
-    if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'execute') {
+    if (payload.mode === 'execute') meta.mode = 'auto'
+    else if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'goal') {
       meta.mode = payload.mode
     }
     if (typeof payload.title === 'string') meta.title = payload.title
@@ -1014,6 +1019,8 @@ function readDurableAgentMeta(events: readonly SessionEvent[]): AgentSessionMeta
     if (typeof payload.subagentDepth === 'number') meta.subagentDepth = payload.subagentDepth
     if (typeof payload.subagentAllowShell === 'boolean') meta.subagentAllowShell = payload.subagentAllowShell
     if (typeof payload.subagentAllowNetwork === 'boolean') meta.subagentAllowNetwork = payload.subagentAllowNetwork
+    if (payload.subagentPermission === 'read-only' || payload.subagentPermission === 'workspace-write'
+      || payload.subagentPermission === 'bypass') meta.subagentPermission = payload.subagentPermission
     return meta
   }
   return undefined

@@ -45,70 +45,7 @@ You work iteratively in the user's repository:
 - Report exact file paths and command output in your final answer.
 - Keep the user's existing code conventions and do not rewrite unrelated code.
 
-When a plan is present, follow it and keep every item's status updated with the plan tools.`
-
-function planToolDefinitions(): ToolDefinition[] {
-  return [
-    {
-      schema: {
-        name: 'plan_execute_mark',
-        description: 'Mark one plan item as pending, done, or failed while executing the plan.',
-        parameters: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'plan item id, e.g. plan-1' },
-            status: {
-              type: 'string',
-              enum: ['pending', 'done', 'failed'],
-              description: 'new status for the item',
-            },
-          },
-          required: ['id', 'status'],
-        },
-      },
-      execute: (input) => {
-        const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-        const id = typeof record.id === 'string' ? record.id : ''
-        const status = typeof record.status === 'string' ? record.status : ''
-        if (!id) throw new TypeError('id is required')
-        if (status !== 'pending' && status !== 'done' && status !== 'failed') {
-          throw new TypeError(`invalid status: ${status}`)
-        }
-        return { id, status }
-      },
-    },
-    {
-      schema: {
-        name: 'plan_execute_result',
-        description: 'Report the final result and status of the current plan execution.',
-        parameters: {
-          type: 'object',
-          properties: {
-            status: {
-              type: 'string',
-              enum: ['done', 'failed'],
-              description: 'overall execution status',
-            },
-            summary: { type: 'string', description: 'what was completed or blocked' },
-          },
-          required: ['status'],
-        },
-      },
-      execute: (input) => {
-        const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-        const status = typeof record.status === 'string' ? record.status : ''
-        const summary = typeof record.summary === 'string' ? record.summary : undefined
-        if (status !== 'done' && status !== 'failed') {
-          throw new TypeError(`invalid status: ${status}`)
-        }
-        return {
-          status,
-          ...(summary ? { summary } : {}),
-        }
-      },
-    },
-  ]
-}
+In plan mode, produce a plan only. Do not edit files or execute the plan.`
 
 export function createCodingAgentPlugin(
   options: CodingAgentOptions,
@@ -116,7 +53,6 @@ export function createCodingAgentPlugin(
   const cwd = options.cwd
   const skillsEnabled = options.skills ?? true
   const mcpEnabled = options.mcp ?? true
-  const planToolsEnabled = options.planTools ?? true
   const mode = options.mode
   const setMode = options.setMode
   const registerAgent = options.registerAgent ?? true
@@ -127,9 +63,7 @@ export function createCodingAgentPlugin(
     apply: async (ctx: Context) => {
       const service = dynamic(ctx)
       const tools: ToolDefinition[] = []
-      const planTools = planToolsEnabled ? planToolDefinitions() : []
       const skillEntries = await listSkills(cwd)
-      tools.push(...planTools)
       let skillCount = 0
       let mcpServers = 0
       let mcpTools = 0
@@ -176,7 +110,7 @@ export function createCodingAgentPlugin(
       const survey = (): CodingSurvey => ({
         agentType: 'coding',
         mode: mode ?? 'auto',
-        planTools: planTools.length,
+        planTools: 0,
         skillsEnabled,
         skills: skillCount,
         mcpEnabled,

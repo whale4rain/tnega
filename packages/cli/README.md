@@ -37,6 +37,11 @@ profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
 - `POST /api/sessions/:id/runs` 返回 SSE；断连即取消；同 session 仅一个 active run。
 - coding 会话支持 `auto / plan / execute`；plan 面板通过 `plan/*` 事件实时推进。
 - `/api/coding/commands` / `slash` / `slash-candidates`。
+- coding 会话支持 Auto、Plan、Goal。Plan 只生成计划；Goal 状态记在 Session 中，
+  最多自动推进 5 轮，可用 `/goal` 控制或 `get_goal` / `update_goal` 工具更新。
+- 运行权限为 read-only、workspace-write、bypass。read-only 可抓取公开网页，
+  `web_search` 使用 DeepSeek 原生搜索；需要 `DEEPSEEK_API_KEY` 或 DeepSeek 模型凭据。
+  超出权限的工具调用经 SSE 发送一次性批准请求，并由 `POST /api/sessions/:id/approvals/:approvalId` 回答。
 - auto 会话使用 resident Agent；子代理通过 `spawn_subagent`、`list_subagent`、
   `send_agent_message` 工具工作。`GET /api/sessions/:id/subagents` 列出子代理，
   `GET /api/subagents/:id` 读取独立 Session。状态面板每 2 秒刷新。

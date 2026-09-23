@@ -25,6 +25,7 @@ export interface LocalSubagentConfig {
   maxDepth?: number
   allowShell?: boolean
   allowNetwork?: boolean
+  permission?: 'read-only' | 'workspace-write' | 'bypass'
 }
 
 function childRoot(workspace: string): string {
@@ -169,6 +170,7 @@ export class LocalSubagentService extends SubagentService {
   private readonly maxDepth: number
   private readonly allowShell: boolean
   private readonly allowNetwork: boolean
+  private readonly permission: 'read-only' | 'workspace-write' | 'bypass'
   private readonly handles = new Map<string, AgentHandle>()
   private readonly activating = new Map<string, Promise<LiveAgent>>()
   private readonly running = new Set<string>()
@@ -184,6 +186,7 @@ export class LocalSubagentService extends SubagentService {
     this.maxDepth = config.maxDepth ?? 2
     this.allowShell = config.allowShell === true
     this.allowNetwork = config.allowNetwork === true
+    this.permission = config.permission ?? 'read-only'
     if (!Number.isSafeInteger(this.maxConcurrent) || this.maxConcurrent < 1
       || !Number.isSafeInteger(this.maxDepth) || this.maxDepth < 1) {
       throw new SubagentError('subagent limits must be positive integers')
@@ -194,9 +197,9 @@ export class LocalSubagentService extends SubagentService {
       if (!id || (request.name !== 'shell' && request.name !== 'http_get')) return undefined
       const agent = this.agents.get(id)
       if (agent?.meta.subagentMode === undefined) return undefined
-      const allowed = request.name === 'shell'
+      const allowed = request.options.approvedElevation === true || (request.name === 'shell'
         ? agent.meta.subagentAllowShell === true
-        : agent.meta.subagentAllowNetwork === true
+        : agent.meta.subagentAllowNetwork === true)
       return allowed ? undefined : `${request.name} was not authorized when this subagent was created`
     })
   }
@@ -212,6 +215,10 @@ export class LocalSubagentService extends SubagentService {
     const id = randomUUID()
     const mode = request.mode ?? 'spawn'
     const label = request.label?.trim() || task.slice(0, 64)
+    const permission = parent.meta.subagentPermission === 'read-only'
+      ? 'read-only'
+      : parent.meta.subagentPermission === 'workspace-write' && this.permission === 'bypass'
+        ? 'workspace-write' : this.permission
     const createdAt = Date.now()
     const file = childFile(this.workspace, id)
     this.running.add(id)
@@ -231,6 +238,7 @@ export class LocalSubagentService extends SubagentService {
         subagentDepth: depth,
         subagentAllowShell: this.allowShell && parent.meta.subagentAllowShell !== false,
         subagentAllowNetwork: this.allowNetwork && parent.meta.subagentAllowNetwork !== false,
+        subagentPermission: permission,
         createdAt,
         ...(parent.agentType ? { agentType: parent.agentType } : {}),
       })

@@ -79,14 +79,19 @@ export function createSlashRegistry(): SlashRegistry {
   const registry = new SlashRegistry()
   registry.register(
     '/plan',
-    'Generate an implementation plan before executing. Used in plan and execute modes.',
+    'Generate an implementation plan without making changes.',
     () => ({ kind: 'text', text: '/plan is handled by the session run pipeline.' }),
   )
   registry.register(
+    '/goal',
+    'Show or set a persistent goal: /goal, /goal <objective>, /goal pause, /goal resume, /goal clear.',
+    () => ({ kind: 'text', text: '/goal is handled by the session goal pipeline.' }),
+  )
+  registry.register(
     '/mode',
-    'Show or switch the session mode: /mode, /mode plan, /mode execute, /mode auto.',
+    'Show or switch the session mode: /mode, /mode plan, /mode goal, /mode auto.',
     async (args, context) => {
-      const modes: SessionMode[] = ['auto', 'plan', 'execute']
+      const modes: SessionMode[] = ['auto', 'plan', 'goal']
       if (!args.length) {
         return {
           kind: 'json',
@@ -100,7 +105,7 @@ export function createSlashRegistry(): SlashRegistry {
       if (!modes.includes(requested as SessionMode)) {
         return {
           kind: 'text',
-          text: `invalid mode: ${args[0]}; expected auto, plan or execute`,
+          text: `invalid mode: ${args[0]}; expected auto, plan or goal`,
         }
       }
       const next = requested as SessionMode

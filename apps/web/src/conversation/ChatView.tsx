@@ -19,6 +19,7 @@ import type {
   SessionSummary,
   SessionEvent,
   SubagentEntry,
+  GoalState,
   SessionDetail,
   ContextUsage,
   SessionMetrics,
@@ -43,7 +44,7 @@ interface ChatViewProps {
   apiKeySet: boolean
   onNewSession: (options?: {
     agentType?: 'general' | 'coding'
-    mode?: 'auto' | 'plan' | 'execute'
+    mode?: 'auto' | 'plan' | 'goal'
   }) => Promise<void>
   onRefresh: (id: string) => Promise<SessionDetail | undefined>
   onForkAt: (id: string, messageId: string) => Promise<void>
@@ -53,7 +54,7 @@ interface ChatViewProps {
   onPlanChange: (
     updater: (current: DisplayPlan | undefined) => DisplayPlan | undefined,
   ) => void
-  onModeChange: (mode: 'auto' | 'plan' | 'execute') => Promise<void>
+  onModeChange: (mode: 'auto' | 'plan' | 'goal') => Promise<void>
 }
 
 export function ChatView({
@@ -77,8 +78,9 @@ export function ChatView({
 }: ChatViewProps) {
   const [prompt, setPrompt] = useState('')
   const [subagents, setSubagents] = useState<SubagentEntry[]>([])
-  const [allowNetwork, setAllowNetwork] = useState(false)
-  const [allowShell, setAllowShell] = useState(false)
+  const [goal, setGoal] = useState<GoalState | null>(null)
+  const [permission, setPermission] = useState<'read-only' | 'workspace-write' | 'bypass'>('read-only')
+  const [approvals, setApprovals] = useState<Array<{ id: string; tool: string; input: string }>>([])
   const [runState, setRunState] = useState<RunState>('idle')
   const [compacting, setCompacting] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
@@ -117,6 +119,21 @@ export function ChatView({
     const timer = window.setInterval(refresh, 2_000)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [workspace, sessionId])
+  useEffect(() => {
+    if (!workspace || !sessionId || summary?.mode !== 'goal') {
+      setGoal(null)
+      return
+    }
+    let cancelled = false
+    const refresh = () => {
+      void api.getGoal(workspace, sessionId)
+        .then(result => { if (!cancelled) setGoal(result.goal) })
+        .catch(() => { if (!cancelled) setGoal(null) })
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 2_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [workspace, sessionId, summary?.mode])
   const userRefs = useRef(new Map<string, HTMLDivElement>())
   const stickToBottomRef = useRef(true)
   const streamDeltaRef = useRef(new Map<string, string>())
@@ -287,6 +304,17 @@ export function ChatView({
 
   const running = runState === 'running' || runState === 'cancelling'
 
+  async function answerPendingApproval(allow: boolean): Promise<void> {
+    const approval = approvals[0]
+    if (!approval || !workspace || !sessionId) return
+    try {
+      await api.answerApproval(workspace, sessionId, approval.id, allow)
+      setApprovals(current => current.filter(item => item.id !== approval.id))
+    } catch (reason) {
+      setRunError(messageOf(reason))
+    }
+  }
+
   async function runPrompt(text: string) {
     const sent = text.trim()
     if (!workspace || !sessionId || !sent || running || compacting) return
@@ -322,8 +350,7 @@ export function ChatView({
             sessionId,
             {
               prompt: sent,
-              allowNetwork,
-              allowShell,
+              permission,
             },
             (event) => handleStreamEvent(event),
             controller.signal,
@@ -352,6 +379,7 @@ export function ChatView({
         setRunError(messageOf(reason))
       }
     } finally {
+      setApprovals([])
       abortRef.current = null
       setRunState('idle')
     }
@@ -359,6 +387,10 @@ export function ChatView({
 
   async function runSlash(name: string, args: string[]) {
     if (!workspace || !sessionId) return
+    const startGoal = name === '/goal' && args.length > 0
+      && !['pause', 'resume', 'clear'].includes(args[0]!.toLowerCase())
+      ? args.join(' ') : undefined
+    let accepted = false
     setRunError(null)
     setSlashBusy(true)
     try {
@@ -374,11 +406,13 @@ export function ChatView({
         },
       ])
       await onRefresh(sessionId)
+      accepted = true
     } catch (reason) {
       setRunError(messageOf(reason))
     } finally {
       setSlashBusy(false)
     }
+    if (accepted && startGoal) void runPrompt(startGoal)
   }
 
   function startRun() {
@@ -599,6 +633,10 @@ export function ChatView({
   }
 
   function handleStreamEvent(event: StreamEvent) {
+    if (event.type === 'approval/request') {
+      setApprovals(current => [...current, { id: event.id, tool: event.tool, input: event.input }])
+      return
+    }
     if (event.type === 'message_delta') {
       queueStreamDelta(event.id, event.delta)
       return
@@ -769,6 +807,19 @@ export function ChatView({
 
   return (
     <div className="chat">
+      {approvals[0] && (
+        <div className="approval-backdrop" role="dialog" aria-modal="true" aria-label="Tool approval">
+          <div className="approval-card">
+            <h3>Approve tool call?</h3>
+            <p>{approvals[0].tool} requests access beyond {permission} permissions.</p>
+            <pre>{approvals[0].input}</pre>
+            <div className="approval-actions">
+              <Button variant="soft" color="gray" onClick={() => void answerPendingApproval(false)}>Deny</Button>
+              <Button onClick={() => void answerPendingApproval(true)}>Allow once</Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="chat-header">
         <div className="chat-title-line">
           <div className="chat-title ellipsis" title={summary.id}>
@@ -797,6 +848,14 @@ export function ChatView({
           </div>
         </div>
       </div>
+      {goal && (
+        <div className="goal-panel" aria-label="Current goal">
+          <strong>Goal · {goal.status}</strong>
+          <span>{goal.objective}</span>
+          <span>{goal.rounds}/{goal.maxRounds} rounds</span>
+          {goal.detail && <small>{goal.detail}</small>}
+        </div>
+      )}
       {subagents.length > 0 && (
         <div className="subagent-panel" aria-label="Subagents">
           <div className="subagent-panel-title">Subagents · {subagents.length}</div>
@@ -896,10 +955,8 @@ export function ChatView({
               workspace={workspace}
               apiKeySet={apiKeySet}
               onSettings={onSettings}
-              allowNetwork={allowNetwork}
-              allowShell={allowShell}
-              onNetwork={setAllowNetwork}
-              onShell={setAllowShell}
+              permission={permission}
+              onPermission={setPermission}
               disabled={running || compacting}
               mode={isCoding ? mode : undefined}
               onMode={onModeChange}

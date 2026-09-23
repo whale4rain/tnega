@@ -366,7 +366,8 @@ export interface MetaPatchPayload {
 
 export type AgentType = 'general' | 'coding'
 
-export type SessionMode = 'auto' | 'plan' | 'execute'
+/** `execute` remains readable for pre-goal Sessions and is not offered for new selections. */
+export type SessionMode = 'auto' | 'plan' | 'goal' | 'execute'
 
 export type SessionEventType =
   | MessageEventType
@@ -804,7 +805,8 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
       if (payload.agentType === 'general' || payload.agentType === 'coding') {
         meta.agentType = payload.agentType
       }
-      if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'execute') {
+      if (payload.mode === 'execute') meta.mode = 'auto'
+      else if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'goal') {
         meta.mode = payload.mode
       }
       continue
@@ -818,7 +820,7 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
         meta.agentType = patch.agentType
       }
       if (patch.fields.includes('mode') && patch.mode !== undefined) {
-        meta.mode = patch.mode
+        meta.mode = patch.mode === 'execute' ? 'auto' : patch.mode
       }
     }
   }

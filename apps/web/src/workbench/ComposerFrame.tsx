@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { Button, DropdownMenu, Select } from '@radix-ui/themes'
-import { ChevronDown, FolderOpen, Shield } from 'lucide-react'
+import { Button, Select } from '@radix-ui/themes'
+import { FolderOpen, Shield } from 'lucide-react'
 import { workspaceName } from './workspace'
 
 interface Props {
@@ -10,13 +10,11 @@ interface Props {
   model?: string
   apiKeySet: boolean
   onSettings: () => void
-  allowNetwork: boolean
-  allowShell: boolean
-  onNetwork: (value: boolean) => void
-  onShell: (value: boolean) => void
+  permission: 'read-only' | 'workspace-write' | 'bypass'
+  onPermission: (value: 'read-only' | 'workspace-write' | 'bypass') => void
   disabled: boolean
-  mode?: 'auto' | 'plan' | 'execute'
-  onMode: (value: 'auto' | 'plan' | 'execute') => Promise<void>
+  mode?: 'auto' | 'plan' | 'goal'
+  onMode: (value: 'auto' | 'plan' | 'goal') => Promise<void>
 }
 export function ComposerFrame(props: Props) {
   return (
@@ -39,37 +37,22 @@ export function ComposerFrame(props: Props) {
       </div>
       <div className="composer">{props.children}</div>
       <div className="composer-toolbar flex items-center gap-3">
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            <Button
-              size="1"
-              variant="ghost"
-              color="gray"
-              disabled={props.disabled}
-            >
-              <Shield size={14} />
-              {props.allowShell || props.allowNetwork
-                ? 'Custom permissions'
-                : 'Restricted'}
-              <ChevronDown size={12} />
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content>
-            <DropdownMenu.Label>Tool access for this run</DropdownMenu.Label>
-            <DropdownMenu.CheckboxItem
-              checked={props.allowNetwork}
-              onCheckedChange={props.onNetwork}
-            >
-              Network access
-            </DropdownMenu.CheckboxItem>
-            <DropdownMenu.CheckboxItem
-              checked={props.allowShell}
-              onCheckedChange={props.onShell}
-            >
-              Shell commands
-            </DropdownMenu.CheckboxItem>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+        <Shield size={14} />
+        <Select.Root
+          value={props.permission}
+          disabled={props.disabled}
+          onValueChange={value => {
+            if (value === 'read-only' || value === 'workspace-write' || value === 'bypass')
+              props.onPermission(value)
+          }}
+        >
+          <Select.Trigger variant="ghost" aria-label="Tool permissions" />
+          <Select.Content>
+            <Select.Item value="read-only">Read only</Select.Item>
+            <Select.Item value="workspace-write">Workspace write</Select.Item>
+            <Select.Item value="bypass">Bypass</Select.Item>
+          </Select.Content>
+        </Select.Root>
         <span className="composer-shortcut">
           Enter to send · Shift + Enter for newline
         </span>
@@ -87,7 +70,7 @@ export function ComposerFrame(props: Props) {
             value={props.mode}
             disabled={props.disabled}
             onValueChange={(value) => {
-              if (value === 'auto' || value === 'plan' || value === 'execute')
+              if (value === 'auto' || value === 'plan' || value === 'goal')
                 void props.onMode(value)
             }}
           >
@@ -95,7 +78,7 @@ export function ComposerFrame(props: Props) {
             <Select.Content>
               <Select.Item value="auto">Auto</Select.Item>
               <Select.Item value="plan">Plan</Select.Item>
-              <Select.Item value="execute">Execute</Select.Item>
+              <Select.Item value="goal">Goal</Select.Item>
             </Select.Content>
           </Select.Root>
         )}

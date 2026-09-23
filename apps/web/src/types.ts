@@ -8,7 +8,7 @@ export interface SessionSummary {
   parentSessionId?: string
   forkedAtMessageId?: string
   agentType?: 'general' | 'coding'
-  mode?: 'auto' | 'plan' | 'execute'
+  mode?: 'auto' | 'plan' | 'goal'
 }
 
 export interface SessionEventBase<T extends string, P> {
@@ -213,6 +213,15 @@ export interface SubagentEntry {
   lastOutput?: string
 }
 
+export interface GoalState {
+  id: string
+  objective: string
+  status: 'active' | 'paused' | 'complete' | 'blocked'
+  rounds: number
+  maxRounds: number
+  detail?: string
+}
+
 /**
  * Provider-reported cost folded across a session's responses. A response that
  * reported no usage contributes nothing; `cacheHitRate` is absent until some
@@ -290,6 +299,7 @@ export type StreamEvent =
   | { type: 'plan/done'; plan: PlanPayload }
   | { type: 'plan/error'; message: string }
   | { type: 'run/end'; run: { output: string; finishReason: string } }
+  | { type: 'approval/request'; id: string; tool: string; input: string }
   | { type: 'done' }
   | { type: 'error'; message: string }
 

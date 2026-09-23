@@ -411,6 +411,17 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
   border-bottom: 1px solid var(--hairline);
   font-size: 11px;
 }
+.goal-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 20px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 11px;
+}
+.goal-panel > span:nth-child(2) { flex: 1; min-width: 180px; }
+.goal-panel small { width: 100%; color: var(--mute); }
 .subagent-panel-title {
   color: var(--mute);
   margin-bottom: 4px;
@@ -429,6 +440,25 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 .subagent-status.failed { color: var(--danger); }
 .subagent-detail { padding: 4px 0 8px 16px; color: var(--mute); }
 .subagent-detail p { margin: 6px 0 0; white-space: pre-wrap; }
+.approval-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 55%);
+}
+.approval-card {
+  width: min(520px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--ink);
+}
+.approval-card h3 { margin: 0 0 10px; }
+.approval-card pre { max-height: 230px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .messages-viewport {
   position: relative;
   min-height: 0;

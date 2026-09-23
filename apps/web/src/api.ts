@@ -3,6 +3,7 @@ import type {
   SessionDetail,
   SessionEvent,
   SessionSummary,
+  GoalState,
   SubagentEntry,
   SlashCommand,
   SlashCommandResult,
@@ -89,7 +90,7 @@ export function listSessions(workspace: string): Promise<{
 
 export function createSession(
   workspace: string,
-  options: { title?: string; agentType?: 'general' | 'coding'; mode?: 'auto' | 'plan' | 'execute' } = {},
+  options: { title?: string; agentType?: 'general' | 'coding'; mode?: 'auto' | 'plan' | 'goal' } = {},
 ): Promise<{ session: SessionSummary }> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions?${query.toString()}`, {
@@ -128,13 +129,18 @@ export function getSubagent(workspace: string, id: string): Promise<{ id: string
   return request(`/api/subagents/${id}?${query.toString()}`)
 }
 
+export function getGoal(workspace: string, id: string): Promise<{ goal: GoalState | null }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${id}/goal?${query.toString()}`)
+}
+
 export function patchSessionMeta(
   workspace: string,
   id: string,
   patch: {
     title?: string
     agentType?: 'general' | 'coding'
-    mode?: 'auto' | 'plan' | 'execute'
+    mode?: 'auto' | 'plan' | 'goal'
   },
 ): Promise<{ summary: SessionSummary }> {
   const query = new URLSearchParams({ workspace })
@@ -150,7 +156,7 @@ export function codingCommands(
 ): Promise<{
   commands: SlashCommand[]
   agentType: 'general' | 'coding'
-  mode: 'auto' | 'plan' | 'execute'
+  mode: 'auto' | 'plan' | 'goal'
 }> {
   const query = new URLSearchParams({ workspace })
   return request(`/api/sessions/${id}/coding/commands?${query.toString()}`)
@@ -241,8 +247,20 @@ export function deleteSession(workspace: string, id: string): Promise<void> {
 
 export interface RunBody {
   prompt: string
-  allowNetwork: boolean
-  allowShell: boolean
+  permission: 'read-only' | 'workspace-write' | 'bypass'
+}
+
+export function answerApproval(
+  workspace: string,
+  sessionId: string,
+  approvalId: string,
+  allow: boolean,
+): Promise<{ accepted: boolean }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/sessions/${sessionId}/approvals/${approvalId}?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify({ allow }),
+  })
 }
 
 export async function streamRun(

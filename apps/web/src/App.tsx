@@ -253,7 +253,7 @@ export default function App() {
   async function handleNewSession(
     options: {
       agentType?: 'general' | 'coding'
-      mode?: 'auto' | 'plan' | 'execute'
+      mode?: 'auto' | 'plan' | 'goal'
     } = {},
     targetWorkspace = workspace,
   ) {
@@ -333,7 +333,7 @@ export default function App() {
     }
   }
 
-  async function handleModeChange(nextMode: 'auto' | 'plan' | 'execute') {
+  async function handleModeChange(nextMode: 'auto' | 'plan' | 'goal') {
     if (!workspace || !sessionId) return
     try {
       const { summary: next } = await api.patchSessionMeta(
