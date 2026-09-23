@@ -185,12 +185,14 @@ export interface AgentStartEvent {
 }
 
 export interface AgentTurnStartEvent {
+  agentId?: string
   input: AgentInput
   messages: readonly ModelMessage[]
   injected: ReadonlyMap<string, unknown>
 }
 
 export interface AgentStepEvent {
+  agentId?: string
   index: number
   turn?: number
   step?: number
@@ -198,6 +200,7 @@ export interface AgentStepEvent {
 }
 
 export interface AgentPreStepEvent {
+  agentId?: string
   index: number
   /** Durable turn that will own the proposed step. */
   turn?: number

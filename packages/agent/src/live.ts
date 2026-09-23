@@ -22,6 +22,11 @@ import type {
 
 export interface AgentSessionMeta {
   agentId: string
+  subagentMode?: 'spawn' | 'fork'
+  subagentLabel?: string
+  subagentDepth?: number
+  subagentAllowShell?: boolean
+  subagentAllowNetwork?: boolean
   agentType?: 'general' | 'coding'
   mode?: 'auto' | 'plan' | 'execute'
   title?: string
@@ -117,6 +122,12 @@ export interface AgentCreationOptions {
   title?: string
   owner?: string
   parentSessionId?: string
+  subagentMode?: 'spawn' | 'fork'
+  subagentLabel?: string
+  subagentDepth?: number
+  subagentAllowShell?: boolean
+  subagentAllowNetwork?: boolean
+  createdAt?: number
   forkedAtMessageId?: string
   id?: string
   /** Optional composition callback run before the agent is published. */
@@ -802,6 +813,12 @@ async function buildHandle(
       ...(options.title ? { title: options.title } : {}),
       ...(options.owner ? { owner: options.owner } : {}),
       ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+      ...(options.subagentMode ? { subagentMode: options.subagentMode } : {}),
+      ...(options.subagentLabel ? { subagentLabel: options.subagentLabel } : {}),
+      ...(options.subagentDepth !== undefined ? { subagentDepth: options.subagentDepth } : {}),
+      ...(options.subagentAllowShell !== undefined ? { subagentAllowShell: options.subagentAllowShell } : {}),
+      ...(options.subagentAllowNetwork !== undefined ? { subagentAllowNetwork: options.subagentAllowNetwork } : {}),
+      ...(options.createdAt !== undefined ? { createdAt: options.createdAt } : {}),
       ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
       agentId,
     }
@@ -818,6 +835,11 @@ async function buildHandle(
         ...(boundMeta.title ? { title: boundMeta.title } : {}),
         ...(boundMeta.owner ? { owner: boundMeta.owner } : {}),
         ...(boundMeta.parentSessionId ? { parentSessionId: boundMeta.parentSessionId } : {}),
+        ...(boundMeta.subagentMode ? { subagentMode: boundMeta.subagentMode } : {}),
+        ...(boundMeta.subagentLabel ? { subagentLabel: boundMeta.subagentLabel } : {}),
+        ...(boundMeta.subagentDepth !== undefined ? { subagentDepth: boundMeta.subagentDepth } : {}),
+        ...(boundMeta.subagentAllowShell !== undefined ? { subagentAllowShell: boundMeta.subagentAllowShell } : {}),
+        ...(boundMeta.subagentAllowNetwork !== undefined ? { subagentAllowNetwork: boundMeta.subagentAllowNetwork } : {}),
         ...(boundMeta.forkedAtMessageId ? { forkedAtMessageId: boundMeta.forkedAtMessageId } : {}),
         ...(boundMeta.createdAt !== undefined ? { createdAt: boundMeta.createdAt } : {}),
       })
@@ -835,6 +857,7 @@ async function buildHandle(
     }
     let claimNextStep: () => Promise<readonly AgentInput[]> = async () => []
     const service = new AgentService(runtimeCtx, {
+      agentId,
       session: log,
       inbox: injected,
       ...(options.llm ? { llm: options.llm } : {}),
@@ -984,6 +1007,13 @@ function readDurableAgentMeta(events: readonly SessionEvent[]): AgentSessionMeta
       meta.forkedAtMessageId = payload.forkedAtMessageId
     }
     if (typeof payload.createdAt === 'number') meta.createdAt = payload.createdAt
+    if (payload.subagentMode === 'spawn' || payload.subagentMode === 'fork') {
+      meta.subagentMode = payload.subagentMode
+    }
+    if (typeof payload.subagentLabel === 'string') meta.subagentLabel = payload.subagentLabel
+    if (typeof payload.subagentDepth === 'number') meta.subagentDepth = payload.subagentDepth
+    if (typeof payload.subagentAllowShell === 'boolean') meta.subagentAllowShell = payload.subagentAllowShell
+    if (typeof payload.subagentAllowNetwork === 'boolean') meta.subagentAllowNetwork = payload.subagentAllowNetwork
     return meta
   }
   return undefined

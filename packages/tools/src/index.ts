@@ -38,6 +38,8 @@ export interface ToolSchema {
 export interface ToolExecuteOptions {
   callId?: string
   signal?: AbortSignal
+  /** Stable identity of the Agent executing this tool call, when available. */
+  agentId?: string
   /** Runtime opt-in: mark a successful result as concluding the agent turn. */
   concludesTurn?: boolean
   [key: string]: unknown

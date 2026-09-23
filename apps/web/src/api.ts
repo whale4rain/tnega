@@ -1,7 +1,9 @@
 import type {
   ConfigSnapshot,
   SessionDetail,
+  SessionEvent,
   SessionSummary,
+  SubagentEntry,
   SlashCommand,
   SlashCommandResult,
   SlashSuggestion,
@@ -114,6 +116,16 @@ export function renameSession(
   title: string,
 ): Promise<{ summary: SessionSummary }> {
   return patchSessionMeta(workspace, id, { title })
+}
+
+export function listSubagents(workspace: string, id: string): Promise<{ subagents: SubagentEntry[] }> {
+  const query = new URLSearchParams({ workspace, scope: 'descendants' })
+  return request(`/api/sessions/${id}/subagents?${query.toString()}`)
+}
+
+export function getSubagent(workspace: string, id: string): Promise<{ id: string; events: SessionEvent[] }> {
+  const query = new URLSearchParams({ workspace })
+  return request(`/api/subagents/${id}?${query.toString()}`)
 }
 
 export function patchSessionMeta(

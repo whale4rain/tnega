@@ -39,6 +39,9 @@ const packageDirs = {
   memory: 'packages/memory/memory',
   'memory-local': 'packages/memory/memory-local',
   'tool-memory': 'packages/memory/tool-memory',
+  subagent: 'packages/subagent/subagent',
+  'subagent-local': 'packages/subagent/subagent-local',
+  'tool-subagent': 'packages/subagent/tool-subagent',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -53,6 +56,8 @@ const libraryEntries = {
   llm: 'packages/llm/src/index.ts',
   memory: `${packageDir('memory')}/src/index.ts`,
   'memory-local': `${packageDir('memory-local')}/src/index.ts`,
+  subagent: `${packageDir('subagent')}/src/index.ts`,
+  'subagent-local': `${packageDir('subagent-local')}/src/index.ts`,
   search: `${packageDir('search')}/src/index.ts`,
   'search-ripgrep': `${packageDir('search-ripgrep')}/src/index.ts`,
   session: 'packages/session/src/index.ts',
@@ -61,6 +66,7 @@ const libraryEntries = {
   'tool-spill': `${packageDir('tool-spill')}/src/index.ts`,
   'tool-search': `${packageDir('tool-search')}/src/index.ts`,
   'tool-memory': `${packageDir('tool-memory')}/src/index.ts`,
+  'tool-subagent': `${packageDir('tool-subagent')}/src/index.ts`,
   tools: 'packages/tools/src/index.ts',
   'cli-runtime': 'packages/cli/src/index.ts',
   events: 'src/events.ts',

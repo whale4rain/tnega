@@ -28,6 +28,11 @@ _Avoid_: project, repo
 复制一个 Session 的事件日志得到的新 Session，二者此后独立演进。
 _Avoid_: duplicate, clone
 
+**Subagent**:
+由另一个 Agent 委派有界任务的 Agent。每个 Subagent 有独立的 Session 和 durable inbox；
+父子之间通过 inbox 消息通信，父 Agent 使用 `list_subagent` 查询状态。
+`spawn` 从空历史开始，`fork` 只复制父 Session 已完成的 turn。两者共享 Workspace。
+
 **Stream Event**:
 Web 与 Agent 之间传输的归一化流式事件，只承载增量；最终状态以 Session 持久化内容为准。
 _Avoid_: delta message, wire frame

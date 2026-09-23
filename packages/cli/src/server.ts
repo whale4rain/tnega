@@ -35,8 +35,11 @@ import {
 } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { spillLocal } from '@tnega/spill-local'
+import { listStoredSubagents, readSubagentEvents, subagentLocal } from '@tnega/subagent-local'
+import { SubagentError } from '@tnega/subagent'
 import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
+import { toolSubagent } from '@tnega/tool-subagent'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, tools } from '@tnega/tools'
 import {
@@ -164,7 +167,7 @@ export interface WebServerOptions {
   host?: string
   webRoot?: string
   configFile?: string
-  /** Run sessions through resident durable-inbox agents (auto mode). */
+  /** Run auto sessions through resident durable-inbox agents. Defaults to true. */
   resident?: boolean
 }
 
@@ -176,6 +179,7 @@ export interface WebServer {
 
 interface ResidentAgentEntry {
   agent: LiveAgent
+  registry: AgentRegistry
   dispose: () => Promise<void>
   signature: string
 }
@@ -193,7 +197,7 @@ export async function startWebServer(
   const context: ServerContext = {
     webRoot,
     activeRuns,
-    resident: options.resident === true,
+    resident: options.resident !== false,
     residentAgents,
     ...(configFile ? { configFile } : {}),
   }
@@ -215,14 +219,14 @@ export async function startWebServer(
   return {
     url: `http://${host}:${actualPort}`,
     port: actualPort,
-    close: () => new Promise((resolveClose, rejectClose) => {
-      server.close((error) => {
-        if (error) rejectClose(error)
-        else resolveClose()
+    close: async () => {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close(error => error ? rejectClose(error) : resolveClose())
       })
-      for (const entry of residentAgents.values()) void entry.dispose()
+      const entries = [...residentAgents.values()]
       residentAgents.clear()
-    }),
+      await Promise.all(entries.map(entry => entry.dispose()))
+    },
   }
 }
 
@@ -409,6 +413,30 @@ async function handleApi(
     return
   }
 
+  const subagentMatch = url.pathname.match(/^\/api\/subagents\/([^/]+)$/)
+  if (subagentMatch && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    const id = subagentMatch[1]!
+    if (!isSessionId(id)) {
+      sendError(res, 400, 'invalid subagent id')
+      return
+    }
+    const events = await readSubagentEvents(workspace, id).catch(error => {
+      if (error instanceof SubagentError) return undefined
+      throw error
+    })
+    if (!events) {
+      sendError(res, 404, 'subagent not found')
+      return
+    }
+    sendJson(res, 200, { id, events })
+    return
+  }
+
   const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
   if (sessionMatch) {
     const id = sessionMatch[1]!
@@ -437,6 +465,13 @@ async function handleApi(
         metrics,
         running: isActive(context.activeRuns, workspace, id),
       })
+      return
+    }
+    if (action === 'subagents' && req.method === 'GET') {
+      const scope = url.searchParams.get('scope') === 'descendants' ? 'descendants' : 'children'
+      const registry = context.residentAgents?.get(runKey(workspace, id))?.registry
+      const children = await listStoredSubagents(workspace, id, scope, registry)
+      sendJson(res, 200, { subagents: children })
       return
     }
     if (action === undefined && req.method === 'PATCH') {
@@ -830,6 +865,13 @@ async function createResidentRuntime(
     })))
   }
   fibers.push(await root.plugin(agents))
+  fibers.push(await root.plugin(subagentLocal, {
+    cwd: workspace,
+    llm: adapterFromConfig(req.effective, req.apiKey),
+    allowShell: req.allowShell,
+    allowNetwork: req.allowNetwork,
+  }))
+  fibers.push(await root.plugin(toolSubagent))
   return {
     root,
     dispose: async () => {
@@ -892,6 +934,7 @@ async function ensureResidentAgent(
 
   const entry: ResidentAgentEntry = {
     agent,
+    registry: (runtime.root as unknown as { agents: AgentRegistry }).agents,
     signature,
     dispose: async () => {
       await disposeAgent().catch(() => undefined)

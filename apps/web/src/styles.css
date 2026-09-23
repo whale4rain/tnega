@@ -404,6 +404,31 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
   color: var(--mute);
   font-size: 10px;
 }
+.subagent-panel {
+  max-height: 168px;
+  overflow: auto;
+  padding: 6px 20px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 11px;
+}
+.subagent-panel-title {
+  color: var(--mute);
+  margin-bottom: 4px;
+}
+.subagent-row summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 3px 0;
+}
+.subagent-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-mode { color: var(--mute); }
+.subagent-status { color: var(--mute); text-transform: capitalize; }
+.subagent-status.running { color: var(--accent); }
+.subagent-status.failed { color: var(--danger); }
+.subagent-detail { padding: 4px 0 8px 16px; color: var(--mute); }
+.subagent-detail p { margin: 6px 0 0; white-space: pre-wrap; }
 .messages-viewport {
   position: relative;
   min-height: 0;

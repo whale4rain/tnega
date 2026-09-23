@@ -104,6 +104,7 @@ export class AgentInbox {
 
 export interface AgentConfig {
   llm?: LLMAdapter
+  agentId?: string
   /** Bind the loop to a specific session instead of the ctx-provided singleton. */
   session?: SessionLog
   /** Compatibility diagnostic flag; request replayability is always enforced. */
@@ -505,6 +506,7 @@ export class AgentService {
     let lengthReached = false
 
     this.ctx.emit('agent/turn-start', {
+      ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
       input: claimed,
       messages: copyMessages(messages),
       injected,
@@ -539,6 +541,7 @@ export class AgentService {
 
       const stepInput = copyMessages(messages)
       const preStep = await this.ctx.waterfallAsync('agent/pre-step', {
+        ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
         index,
         turn,
         step: index,
@@ -764,7 +767,8 @@ export class AgentService {
           name: call.name,
           arguments: call.arguments,
         })
-        const toolOptions: { callId: string; signal?: AbortSignal } = { callId: call.id }
+        const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string } = { callId: call.id }
+        if (this.config.agentId) toolOptions.agentId = this.config.agentId
         if (options.signal) toolOptions.signal = options.signal
         const startedAt = Date.now()
         let result: ToolResult

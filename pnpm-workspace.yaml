@@ -3,6 +3,7 @@ packages:
   - packages/search/*
   - packages/spill/*
   - packages/memory/*
+  - packages/subagent/*
   - apps/*
 
 onlyBuiltDependencies:

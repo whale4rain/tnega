@@ -37,6 +37,9 @@ profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
 - `POST /api/sessions/:id/runs` 返回 SSE；断连即取消；同 session 仅一个 active run。
 - coding 会话支持 `auto / plan / execute`；plan 面板通过 `plan/*` 事件实时推进。
 - `/api/coding/commands` / `slash` / `slash-candidates`。
+- auto 会话使用 resident Agent；子代理通过 `spawn_subagent`、`list_subagent`、
+  `send_agent_message` 工具工作。`GET /api/sessions/:id/subagents` 列出子代理，
+  `GET /api/subagents/:id` 读取独立 Session。状态面板每 2 秒刷新。
 - 跨站防护：JSON content-type + `x-tnega-client: 1`。
 
 ## 会话存储（store.ts）

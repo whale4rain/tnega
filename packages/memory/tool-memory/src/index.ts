@@ -1,4 +1,4 @@
-import type { AgentContextCompactedEvent, AgentPreStepEvent, AgentTurnStartEvent, LLMAdapter } from '@tnega/agent'
+import type { AgentContextCompactedEvent, AgentPreStepEvent, AgentRegistry, AgentTurnStartEvent, LLMAdapter } from '@tnega/agent'
 import type { Context } from '@tnega/core'
 import type { MemoryService } from '@tnega/memory'
 import type { ModelMessage } from '@tnega/session'
@@ -39,6 +39,7 @@ export async function consolidateProjectMemory(
 function userRequestedMemory(event: AgentTurnStartEvent): boolean {
   const messages = event.input.messages ?? []
   const lastUser = [...messages].reverse().find(message => message.role === 'user')
+  if (lastUser?.name?.startsWith('agent:')) return false
   const text = event.input.text ?? lastUser?.content ?? ''
   return /(?:记住|记下来|记住我的|保存.{0,8}(?:记忆|偏好)|别忘了|remember (?:that|my|this)|save (?:this|my|that) (?:to |in )?memory|don't forget)/i.test(text)
 }
@@ -61,18 +62,29 @@ export const toolMemory = {
   apply(ctx: Context, config: ToolMemoryConfig = {}): void {
     const memory = ctx.get('memory') as MemoryService
     const tools = ctx.get('tools') as ToolsService
-    let explicitGlobalRequest = false
-    let runMemoryBlock = ''
+    const explicitGlobalRequests = new Map<string, boolean>()
+    const runMemoryBlocks = new Map<string, string>()
+    const isChild = (id: string): boolean => {
+      const registry = ctx.get('agents') as AgentRegistry | undefined
+      return registry?.get(id)?.meta.subagentMode !== undefined
+    }
 
     ctx.on('agent/turn-start', (event: AgentTurnStartEvent) => {
-      explicitGlobalRequest = userRequestedMemory(event)
-      runMemoryBlock = ''
+      const id = event.agentId ?? ''
+      explicitGlobalRequests.set(id, !isChild(id) && userRequestedMemory(event))
+      runMemoryBlocks.delete(id)
+    })
+    ctx.on('agent/disposed', (event: { id: string }) => {
+      explicitGlobalRequests.delete(event.id)
+      runMemoryBlocks.delete(event.id)
     })
     ctx.on('agent/pre-step', async (event: AgentPreStepEvent, next: () => unknown) => {
+      const id = event.agentId ?? ''
       if (event.index === 0) {
         const [global, project] = await Promise.all([memory.read('global'), memory.read('project')])
-        runMemoryBlock = memoryBlock(global, project)
+        runMemoryBlocks.set(id, memoryBlock(global, project))
       }
+      const runMemoryBlock = runMemoryBlocks.get(id) ?? ''
       if (runMemoryBlock && event.messages[0]?.content !== runMemoryBlock) {
         // Compaction may have replaced the request-local prefix between steps.
         // Keep this Agent Run's original snapshot without changing Session history.
@@ -98,8 +110,10 @@ export const toolMemory = {
           required: ['content'],
         },
       },
-      async execute(input) {
-        if (!explicitGlobalRequest) throw new Error('global memory requires an explicit user request')
+      async execute(input, options) {
+        if (!explicitGlobalRequests.get(options.agentId ?? '') || isChild(options.agentId ?? '')) {
+          throw new Error('global memory requires an explicit user request')
+        }
         if (!input || typeof input !== 'object' || Array.isArray(input)
           || typeof Reflect.get(input, 'content') !== 'string') {
           throw new TypeError('content must be a string')

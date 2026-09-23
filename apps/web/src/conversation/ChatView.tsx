@@ -17,6 +17,8 @@ import * as api from '../api'
 import { UsageMetrics } from './UsageMetrics'
 import type {
   SessionSummary,
+  SessionEvent,
+  SubagentEntry,
   SessionDetail,
   ContextUsage,
   SessionMetrics,
@@ -74,6 +76,7 @@ export function ChatView({
   onModeChange,
 }: ChatViewProps) {
   const [prompt, setPrompt] = useState('')
+  const [subagents, setSubagents] = useState<SubagentEntry[]>([])
   const [allowNetwork, setAllowNetwork] = useState(false)
   const [allowShell, setAllowShell] = useState(false)
   const [runState, setRunState] = useState<RunState>('idle')
@@ -98,6 +101,22 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const composerSurfaceRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!workspace || !sessionId) {
+      setSubagents([])
+      return
+    }
+    let cancelled = false
+    const refresh = () => {
+      void api.listSubagents(workspace, sessionId)
+        .then(result => { if (!cancelled) setSubagents(result.subagents) })
+        .catch(() => { if (!cancelled) setSubagents([]) })
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 2_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [workspace, sessionId])
   const userRefs = useRef(new Map<string, HTMLDivElement>())
   const stickToBottomRef = useRef(true)
   const streamDeltaRef = useRef(new Map<string, string>())
@@ -778,6 +797,12 @@ export function ChatView({
           </div>
         </div>
       </div>
+      {subagents.length > 0 && (
+        <div className="subagent-panel" aria-label="Subagents">
+          <div className="subagent-panel-title">Subagents · {subagents.length}</div>
+          {subagents.map(child => <SubagentRow key={child.id} workspace={workspace} child={child} />)}
+        </div>
+      )}
       <div className="messages-viewport">
         <div
           className="conversation-scroll"
@@ -1077,6 +1102,44 @@ function findPendingAssistant(
     if (entry && entry.role === 'assistant' && entry.pending) return entry
   }
   return undefined
+}
+
+function SubagentRow({ workspace, child }: { workspace: string; child: SubagentEntry }) {
+  const [events, setEvents] = useState<SessionEvent[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const transcript = events?.filter(event =>
+    event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/call',
+  ).slice(-12)
+
+  function load(): void {
+    setError(null)
+    void api.getSubagent(workspace, child.id)
+      .then(result => setEvents(result.events))
+      .catch(reason => setError(messageOf(reason)))
+  }
+
+  return (
+    <details className="subagent-row" onToggle={event => { if (event.currentTarget.open) load() }}>
+      <summary>
+        <span className="subagent-label" title={child.id}>{child.label}</span>
+        <span className="subagent-mode">{child.mode}</span>
+        <span className={`subagent-status ${child.status}`}>{child.status}</span>
+      </summary>
+      <div className="subagent-detail">
+        <div>{child.id}</div>
+        {error && <p>{error}</p>}
+        {!events && !error && <p>Loading session…</p>}
+        {transcript?.map(event => {
+          const label = event.type === 'tool/call' ? `tool: ${event.payload.name}`
+            : event.type === 'user/message' ? 'user' : 'assistant'
+          const content = event.type === 'tool/call'
+            ? JSON.stringify(event.payload.arguments)
+            : event.payload.content
+          return <p key={event.id}><strong>{label}</strong> {content}</p>
+        })}
+      </div>
+    </details>
+  )
 }
 
 function lastAssistant(messages: DisplayMessage[]): DisplayMessage | undefined {

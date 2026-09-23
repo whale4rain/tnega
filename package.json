@@ -60,6 +60,18 @@
       "types": "./dist/types/packages/memory/memory-local/src/index.d.ts",
       "import": "./dist/memory-local.js"
     },
+    "./subagent": {
+      "types": "./dist/types/packages/subagent/subagent/src/index.d.ts",
+      "import": "./dist/subagent.js"
+    },
+    "./subagent-local": {
+      "types": "./dist/types/packages/subagent/subagent-local/src/index.d.ts",
+      "import": "./dist/subagent-local.js"
+    },
+    "./tool-subagent": {
+      "types": "./dist/types/packages/subagent/tool-subagent/src/index.d.ts",
+      "import": "./dist/tool-subagent.js"
+    },
     "./search": {
       "types": "./dist/types/packages/search/search-definition/src/index.d.ts",
       "import": "./dist/search.js"

@@ -201,6 +201,18 @@ export interface ContextUsage {
   source?: 'provider' | 'estimate'
 }
 
+export interface SubagentEntry {
+  id: string
+  parentId: string
+  label: string
+  mode: 'spawn' | 'fork'
+  status: 'running' | 'idle' | 'ready' | 'failed'
+  createdAt: number
+  updatedAt: number
+  depth: number
+  lastOutput?: string
+}
+
 /**
  * Provider-reported cost folded across a session's responses. A response that
  * reported no usage contributes nothing; `cacheHitRate` is absent until some

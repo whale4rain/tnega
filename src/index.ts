@@ -6,6 +6,7 @@ export * as evalApi from '../packages/eval/src/index.js'
 export * as evolveApi from '../packages/evolve/src/index.js'
 export * as llmApi from '../packages/llm/src/index.js'
 export * as memoryApi from '../packages/memory/memory/src/index.js'
+export * as subagentApi from '../packages/subagent/subagent/src/index.js'
 
 export {
   CordisError,
