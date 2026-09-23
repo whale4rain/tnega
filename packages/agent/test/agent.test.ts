@@ -602,7 +602,7 @@ describe('agent loop', () => {
     await root.plugin(tools)
     await root.plugin(agent, { llm: {
       complete: async () => { throw new Error('unused') },
-      async *stream() { throw new Error('provider failed') },
+      stream() { throw new Error('provider failed') },
     } satisfies LLMAdapter })
     const log = root.get('session') as SessionLog
     const append = log.append.bind(log)

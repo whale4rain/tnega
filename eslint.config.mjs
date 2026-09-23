@@ -26,6 +26,30 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/desktop/scripts/build.mjs', 'scripts/package-desktop.mjs'],
+    languageOptions: {
+      globals: {
+        URL: 'readonly',
+        console: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['apps/desktop/scripts/verify-workbench.cjs'],
+    languageOptions: {
+      globals: {
+        URL: 'readonly',
+        __dirname: 'readonly',
+        console: 'readonly',
+        require: 'readonly',
+        setTimeout: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     files: ['apps/web/src/**/*.{ts,tsx}'],
     languageOptions: {
       globals: {
