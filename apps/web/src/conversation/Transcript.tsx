@@ -193,7 +193,7 @@ export function ContextRing({ context }: { context: ContextUsage }) {
 }
 
 function CompactionBlock({ message }: { message: DisplayMessage }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const tokens = message.tokensBefore
   const tokenText =
     tokens !== undefined ? `${tokens.toLocaleString()} tokens` : 'context'
