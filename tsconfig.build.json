@@ -10,6 +10,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "packages/*/src/**/*.ts"
+    "packages/*/src/**/*.ts",
+    "packages/*/*/src/**/*.ts"
   ]
 }

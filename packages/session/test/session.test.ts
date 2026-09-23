@@ -34,6 +34,7 @@ import {
   foldRequestHeader,
   foldSessionMeta,
   foldSurface,
+  foldUsage,
   isAppendSurfaceEvent,
   projectEvents,
   repairUnclosed,
@@ -1665,5 +1666,95 @@ describe('transcriptEvents', () => {
       .filter(event => event.type === 'user/message')
       .map(event => (event.payload as { content: string }).content)
     expect(users).toEqual(['a', 'b', 'c', 'd'])
+  })
+})
+
+describe('foldUsage', () => {
+  function assistant(
+    seq: number,
+    payload: {
+      content?: string
+      usage?: {
+        promptTokens: number
+        completionTokens: number
+        cachedTokens?: number
+      }
+      durationMs?: number
+    },
+  ): SessionEvent {
+    return {
+      id: `e${seq}`,
+      seq,
+      ts: seq,
+      type: 'assistant/message',
+      payload: { content: payload.content ?? 'ok', ...payload },
+      surfaceOp: 'append',
+    } as SessionEvent
+  }
+
+  it('sums what the provider reported and derives the cache rate', () => {
+    const metrics = foldUsage([
+      assistant(1, {
+        usage: { promptTokens: 1_000, completionTokens: 100, cachedTokens: 800 },
+      }),
+      assistant(2, {
+        usage: { promptTokens: 2_000, completionTokens: 200, cachedTokens: 1_500 },
+      }),
+    ])
+
+    expect(metrics).toEqual({
+      responses: 2,
+      promptTokens: 3_000,
+      completionTokens: 300,
+      cachedTokens: 2_300,
+      cacheHitRate: 2_300 / 3_000,
+    })
+  })
+
+  it('leaves the cache rate absent when no response reported cache accounting', () => {
+    const metrics = foldUsage([
+      assistant(1, { usage: { promptTokens: 1_000, completionTokens: 100 } }),
+    ])
+
+    // Absent, not zero: a provider that never mentions its cache must not read
+    // as a total miss.
+    expect(metrics.cacheHitRate).toBeUndefined()
+    expect(metrics.cachedTokens).toBe(0)
+    expect(metrics.promptTokens).toBe(1_000)
+  })
+
+  it('ignores responses that reported no usage at all', () => {
+    const metrics = foldUsage([
+      assistant(1, { content: 'unmeasured' }),
+      assistant(2, { usage: { promptTokens: 500, completionTokens: 50 } }),
+    ])
+
+    expect(metrics.responses).toBe(1)
+    expect(metrics.promptTokens).toBe(500)
+  })
+
+  it('reports throughput of the most recent measured response', () => {
+    const metrics = foldUsage([
+      assistant(1, {
+        usage: { promptTokens: 100, completionTokens: 90 },
+        durationMs: 1_000,
+      }),
+      assistant(2, {
+        usage: { promptTokens: 200, completionTokens: 40 },
+        durationMs: 2_000,
+      }),
+    ])
+
+    expect(metrics.tokensPerSecond).toBe(20)
+    expect(metrics.lastDurationMs).toBe(2_000)
+  })
+
+  it('reports no throughput when the response carries no measured duration', () => {
+    const metrics = foldUsage([
+      assistant(1, { usage: { promptTokens: 100, completionTokens: 90 } }),
+    ])
+
+    expect(metrics.tokensPerSecond).toBeUndefined()
+    expect(metrics.lastDurationMs).toBeUndefined()
   })
 })

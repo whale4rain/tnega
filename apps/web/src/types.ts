@@ -190,6 +190,7 @@ export interface SessionDetail {
   events: SessionEvent[]
   surface: SessionEvent[]
   context: ContextUsage
+  metrics: SessionMetrics
   running: boolean
 }
 
@@ -197,6 +198,22 @@ export interface ContextUsage {
   tokens: number
   limit: number
   ratio: number
+  source?: 'provider' | 'estimate'
+}
+
+/**
+ * Provider-reported cost folded across a session's responses. A response that
+ * reported no usage contributes nothing; `cacheHitRate` is absent until some
+ * response reports cache accounting, so "not reported" never renders as 0%.
+ */
+export interface SessionMetrics {
+  responses: number
+  promptTokens: number
+  completionTokens: number
+  cachedTokens: number
+  cacheHitRate?: number
+  tokensPerSecond?: number
+  lastDurationMs?: number
 }
 
 export interface ModelMessage {

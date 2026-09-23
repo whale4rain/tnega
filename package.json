@@ -53,23 +53,35 @@
       "import": "./dist/llm.js"
     },
     "./search": {
-      "types": "./dist/types/packages/search/src/index.d.ts",
+      "types": "./dist/types/packages/search/search-definition/src/index.d.ts",
       "import": "./dist/search.js"
     },
     "./search-ripgrep": {
-      "types": "./dist/types/packages/search-ripgrep/src/index.d.ts",
+      "types": "./dist/types/packages/search/search-ripgrep/src/index.d.ts",
       "import": "./dist/search-ripgrep.js"
     },
     "./services": {
       "types": "./dist/types/src/services.d.ts",
       "import": "./dist/services.js"
     },
+    "./spill": {
+      "types": "./dist/types/packages/spill/spill/src/index.d.ts",
+      "import": "./dist/spill.js"
+    },
+    "./spill-local": {
+      "types": "./dist/types/packages/spill/spill-local/src/index.d.ts",
+      "import": "./dist/spill-local.js"
+    },
+    "./tool-spill": {
+      "types": "./dist/types/packages/spill/tool-spill/src/index.d.ts",
+      "import": "./dist/tool-spill.js"
+    },
     "./session": {
       "types": "./dist/types/packages/session/src/index.d.ts",
       "import": "./dist/session.js"
     },
     "./tool-search": {
-      "types": "./dist/types/packages/tool-search/src/index.d.ts",
+      "types": "./dist/types/packages/search/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"
     },
     "./tools": {

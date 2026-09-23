@@ -40,7 +40,17 @@ export interface LlmProposeRuleOptions {
   model?: Record<string, unknown>
   ruleId?: string
   parse?: (content: string) => LlmProposal | Promise<LlmProposal>
+  /**
+   * Output cap for the proposal request itself, independent of the agent's own
+   * `maxTokens`. Reasoning tokens are billed against this cap, and a thinking
+   * model handed a conversation-sized budget answers with an empty body, so the
+   * default is deliberately generous.
+   */
+  maxTokens?: number
 }
+
+/** Output budget for the proposal request when the caller sets none. */
+export const DEFAULT_PROPOSAL_MAX_TOKENS = 8192
 
 export class LlmProposalError extends Error {
   override name = 'LlmProposalError'
@@ -94,6 +104,7 @@ export function llmCandidate(options: LlmCandidateOptions): Candidate {
 
 export function createLlmProposeRule(options: LlmProposeRuleOptions): ProposeRule {
   const parse = options.parse ?? parseLlmProposal
+  const maxTokens = options.maxTokens ?? DEFAULT_PROPOSAL_MAX_TOKENS
   return {
     id: options.ruleId ?? 'llm-propose',
     description: 'use an LLM to propose a system prompt mutation',
@@ -101,11 +112,16 @@ export function createLlmProposeRule(options: LlmProposeRuleOptions): ProposeRul
       const completion = await options.adapter.complete(
         [{ role: 'user', content: buildProposalPrompt(context) }],
         [],
-        {},
+        { maxTokens },
       )
       const content = completion.content
       if (!content) {
-        throw new LlmProposalError('LLM proposal returned no content')
+        // An empty body is almost always the cap, not the model: a thinking
+        // model spends the whole budget on reasoning and finishes on `length`
+        // with nothing left to say. Name that, so the caller can raise it.
+        throw new LlmProposalError(
+          `LLM proposal returned no content (finishReason: ${completion.finishReason}, maxTokens: ${maxTokens})`,
+        )
       }
       const proposal = await parse(content)
       return llmCandidate({

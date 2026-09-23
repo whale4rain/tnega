@@ -21,7 +21,17 @@ async function tempDir(prefix: string): Promise<string> {
   return dir
 }
 
-async function startMockLlm(content: string, delayMs = 0): Promise<{
+interface MockUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  prompt_cache_hit_tokens?: number
+}
+
+async function startMockLlm(
+  content: string,
+  delayMs = 0,
+  usage?: MockUsage,
+): Promise<{
   url: string
   close: () => Promise<void>
   requestCount: () => number
@@ -45,6 +55,19 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
       choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
     },
   ]
+  // A streamed reply only carries usage when the caller asked for it, which is
+  // exactly what the adapter does; the mock mirrors that so the test exercises
+  // the real wire shape rather than a convenient one.
+  const streamChunks = usage
+    ? [...chunks, {
+      id: 'chatcmpl-mock',
+      object: 'chat.completion.chunk',
+      created: Math.floor(Date.now() / 1000),
+      model: 'mock-model',
+      choices: [],
+      usage,
+    }]
+    : chunks
   const server = createServer((req, res) => {
     let body = ''
     req.on('data', chunk => {
@@ -76,6 +99,7 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
                 finish_reason: 'stop',
               },
             ],
+            ...(usage ? { usage } : {}),
           }))
           return
         }
@@ -83,7 +107,7 @@ async function startMockLlm(content: string, delayMs = 0): Promise<{
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',
         })
-        for (const chunk of chunks) {
+        for (const chunk of streamChunks) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`)
         }
         res.end()
@@ -778,6 +802,63 @@ describe('web server', () => {
       checkpoint?.payload?.messages?.some(message => message.content === 'recent request')
         ?? false,
     ).toBe(false)
+  })
+
+  it('reports provider usage and cache hit rate for a session', async () => {
+    const dir = await tempDir('tnega-web-usage-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('hello from mock', 0, {
+      prompt_tokens: 1_200,
+      completion_tokens: 40,
+      prompt_cache_hit_tokens: 900,
+    })
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const run = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: JSON.stringify({ prompt: 'hi' }) },
+    )
+    expect(run.status).toBe(200)
+    await run.text()
+
+    const detail = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+    ).then(r => r.json()) as {
+      metrics: {
+        responses: number
+        promptTokens: number
+        completionTokens: number
+        cachedTokens: number
+        cacheHitRate?: number
+        tokensPerSecond?: number
+      }
+    }
+
+    expect(detail.metrics).toMatchObject({
+      responses: 1,
+      promptTokens: 1_200,
+      completionTokens: 40,
+      cachedTokens: 900,
+      cacheHitRate: 0.75,
+    })
+    expect(typeof detail.metrics.tokensPerSecond).toBe('number')
   })
 
   it('streams a run through SSE and persists the final message', async () => {

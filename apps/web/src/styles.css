@@ -948,6 +948,28 @@ button.send-button:hover:not(:disabled) {
   justify-content: flex-end;
   gap: 8px;
 }
+/* Session measurements under the composer: quiet, numeric, and never padded
+   with a placeholder for a value the provider did not report. */
+.usage-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding: 6px 2px 0;
+  color: var(--mute);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.usage-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.usage-metric-label::after {
+  content: ':';
+}
+.usage-metric-value {
+  color: var(--ink);
+}
 .context-ring {
   position: relative;
   display: flex;
@@ -1165,6 +1187,28 @@ button.send-button:hover:not(:disabled) {
   font-size: 11px;
   line-height: 1.5;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tool-more {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+}
+.tool-more:hover {
+  text-decoration: underline;
+}
+/* Where the rest of a capped tool result went. */
+.tool-spill {
+  margin: 6px 0 0;
+  color: var(--mute);
+  font-size: 11px;
+}
+.tool-spill code {
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 @keyframes activity-spin {

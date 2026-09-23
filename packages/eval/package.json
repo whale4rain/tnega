@@ -12,7 +12,9 @@
     "@tnega/core": "workspace:*",
     "@tnega/search-ripgrep": "workspace:*",
     "@tnega/session": "workspace:*",
+    "@tnega/spill-local": "workspace:*",
     "@tnega/tool-search": "workspace:*",
+    "@tnega/tool-spill": "workspace:*",
     "@tnega/tools": "workspace:*"
   }
 }

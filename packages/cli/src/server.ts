@@ -32,6 +32,8 @@ import {
   type SessionLog,
 } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { spillLocal } from '@tnega/spill-local'
+import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
 import { builtinTools, tools } from '@tnega/tools'
 import {
@@ -59,6 +61,7 @@ import {
   patchSessionMeta,
   prepareSessionCompact,
   readSessionMessages,
+  readSessionMetrics,
   readSessionSummary,
   type SessionSummary,
   setSessionTitle,
@@ -68,6 +71,11 @@ import {
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
 const MAX_BODY_BYTES = 1024 * 1024
+// Independent of the automatic budget's retain ratio on purpose: a manual
+// compaction whose surface fits entirely under this budget falls back to
+// shadowing the whole surface (`keep` defaults to 0), so raising this value
+// past the surface size changes manual compaction from "keep the tail" to
+// "summarize everything". Keep it a deliberate choice, not a derived one.
 const KEEP_RECENT_TOKENS = 20_000
 
 const SUMMARIZATION_SYSTEM_PROMPT = `You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.
@@ -414,12 +422,16 @@ async function handleApi(
     if (action === undefined && req.method === 'GET') {
       const summary = await readSessionSummary(workspace, id)
       const detail = await readSessionEvents(workspace, id)
-      const contextUsage = await estimateContextUsage(workspace, id)
+      const [contextUsage, metrics] = await Promise.all([
+        estimateContextUsage(workspace, id),
+        readSessionMetrics(workspace, id),
+      ])
       sendJson(res, 200, {
         summary,
         events: detail.events,
         surface: detail.surface,
         context: contextUsage,
+        metrics,
         running: isActive(context.activeRuns, workspace, id),
       })
       return
@@ -534,7 +546,9 @@ async function compactContext(
     baseUrl: effective.baseUrl,
     model: effective.model,
     ...(effective.protocol ? { protocol: effective.protocol } : {}),
-    maxTokens: 4096,
+    // A thinking model bills its reasoning against this cap, so the budget has
+    // to cover the reasoning *plus* the summary it is the point of asking for.
+    maxTokens: 8192,
     timeoutMs: 180_000,
     ...(effective.temperature !== undefined
       ? { temperature: effective.temperature }
@@ -784,9 +798,12 @@ async function createResidentRuntime(
     ...(req.allowNetwork ? { allowNetwork: true } : {}),
     ...(req.allowShell ? { allowShell: true } : {}),
   }))
-  // 搜索缝：composition 层挑 Provider。
+  // 搜索与溢出是两条能力缝：composition 层挑 Provider，模型可见的工具只认识
+  // ctx.search，工具结果的上限只认识 ctx.spillStore。
   fibers.push(await root.plugin(searchRipgrep, { cwd: workspace }))
   fibers.push(await root.plugin(toolSearch, { cwd: workspace }))
+  fibers.push(await root.plugin(spillLocal, { cwd: workspace }))
+  fibers.push(await root.plugin(toolSpill))
   if (req.coding) {
     fibers.push(await root.plugin(createCodingAgentPlugin({
       cwd: workspace,

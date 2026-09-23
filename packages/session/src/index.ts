@@ -88,6 +88,10 @@ export interface AssistantMessagePayload {
   name?: string
   parentId?: string
   interrupted?: boolean
+  /** Provider-reported cost of this response, when the provider reported one. */
+  usage?: ModelUsage
+  /** Wall-clock milliseconds from request start to this response settling. */
+  durationMs?: number
   /**
    * The tool requests this assistant turn made, when it made any. The model
    * transcript is derived node-by-node from the surface, so an assistant turn
@@ -103,13 +107,33 @@ export interface AssistantChunkPayload {
   index?: number
 }
 
+/**
+ * What one model response cost, as the provider reported it. Every field is
+ * provider-supplied, so an absent one means "not reported" rather than zero —
+ * a provider that omits cache accounting must not read as a 100% cache miss.
+ */
+export interface ModelUsage {
+  promptTokens: number
+  completionTokens: number
+  /** Prompt tokens the provider served from its prompt cache. */
+  cachedTokens?: number
+  /** Reasoning tokens, billed inside `completionTokens`. */
+  reasoningTokens?: number
+  totalTokens?: number
+}
+
 /** Session-owned normalized model output; never a provider wire payload. */
 export type AssistantStreamChunk =
   | { type: 'message_start'; id: string; model?: string }
   | { type: 'message_delta'; id: string; delta: string }
   | { type: 'toolcall_start'; id: string; index: number; name: string }
   | { type: 'toolcall_end'; id: string; index: number; name: string; arguments: unknown }
-  | { type: 'message_stop'; id: string; finishReason: AssistantStreamFinishReason }
+  | {
+    type: 'message_stop'
+    id: string
+    finishReason: AssistantStreamFinishReason
+    usage?: ModelUsage
+  }
   | { type: 'stream_error'; error: ToolResultErrorPayload }
 
 export type AssistantStreamFinishReason =
@@ -453,9 +477,25 @@ export interface ContextUsage {
   tokens: number
   limit: number
   ratio: number
+  source?: 'provider' | 'estimate'
 }
 
 export const DEFAULT_CONTEXT_LIMIT = 128_000
+
+/**
+ * Automatic compaction starts once the conversation reaches this fraction of
+ * the context window — a band of headroom wide enough that one long tool
+ * result cannot push a step past the limit before compaction gets a chance.
+ */
+export const DEFAULT_CONTEXT_COMPACT_RATIO = 0.8
+
+/**
+ * Fraction of the context window kept verbatim when compacting: the most recent
+ * exchange survives word for word, everything older is replaced by the summary.
+ * Measured backwards from the newest message, so the retained tail is always
+ * the *latest* work rather than an arbitrary prefix of it.
+ */
+export const DEFAULT_CONTEXT_RETAIN_RATIO = 0.16
 
 function isSessionEvent(value: unknown): value is SessionEvent {
   if (typeof value !== 'object' || value === null) return false
@@ -623,9 +663,7 @@ export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
       const failed = !event.payload.ok
       const message: ModelMessage = {
         role: 'tool',
-        content: failed
-          ? `error: ${event.payload.error?.message ?? 'unknown'}`
-          : stringify(event.payload.output),
+        content: renderToolResult(event.payload),
         tool_call_id: event.payload.toolCallId,
       }
       message.name = event.payload.name
@@ -713,7 +751,7 @@ export function transcriptEvents(events: readonly SessionEvent[]): SessionEvent[
   const inSkeleton = new Set(skeleton.map(event => event.id))
   const structure = events
     .filter(event => !inSkeleton.has(event.id))
-    .filter(event => event.type !== 'compaction/start' && event.type !== 'compaction/end')
+    .filter(event => event.type !== 'compaction/start')
     .filter(event => event.type !== 'checkpoint') // superseded markers: history shown via the live chain
     .filter(event => !(event.type === 'tool/call' && declaredCalls.has(event.payload.id)))
 
@@ -787,6 +825,68 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
   return meta
 }
 
+/**
+ * What a session cost, folded from the usage its responses reported.
+ *
+ * Two silences are preserved rather than filled in. A response with no usage
+ * block contributes nothing, and `cacheHitRate` stays absent until some
+ * response reports cache accounting at all — a provider that never mentions
+ * its cache must not render as a 0% hit rate. When a response reports usage but
+ * no cache field, its prompt tokens count as misses, which understates the rate
+ * instead of claiming a hit the provider never confirmed.
+ */
+export interface SessionMetrics {
+  /** Responses that carried a usage block. */
+  responses: number
+  promptTokens: number
+  completionTokens: number
+  /** Prompt tokens served from the provider's prompt cache, as reported. */
+  cachedTokens: number
+  /** `cachedTokens / promptTokens`, 0..1; absent when no cache accounting arrived. */
+  cacheHitRate?: number
+  /** Output tokens per second of the most recent measured response. */
+  tokensPerSecond?: number
+  /** Wall-clock milliseconds of the most recent measured response. */
+  lastDurationMs?: number
+}
+
+export function foldUsage(events: readonly SessionEvent[]): SessionMetrics {
+  let responses = 0
+  let promptTokens = 0
+  let completionTokens = 0
+  let cachedTokens = 0
+  let cacheReported = false
+  let last: AssistantMessagePayload | undefined
+  for (const event of events) {
+    if (event.type !== 'assistant/message') continue
+    const usage = event.payload.usage
+    if (!usage) continue
+    responses += 1
+    promptTokens += usage.promptTokens
+    completionTokens += usage.completionTokens
+    if (usage.cachedTokens !== undefined) {
+      cachedTokens += usage.cachedTokens
+      cacheReported = true
+    }
+    last = event.payload
+  }
+  const metrics: SessionMetrics = {
+    responses,
+    promptTokens,
+    completionTokens,
+    cachedTokens,
+  }
+  if (cacheReported && promptTokens > 0) {
+    metrics.cacheHitRate = cachedTokens / promptTokens
+  }
+  const durationMs = last?.durationMs
+  if (last?.usage && durationMs !== undefined && durationMs > 0) {
+    metrics.lastDurationMs = durationMs
+    metrics.tokensPerSecond = last.usage.completionTokens / (durationMs / 1000)
+  }
+  return metrics
+}
+
 /** Convenience wrapper: fold session metadata from a `SessionLog`'s events. */
 export function foldMetaFromLog(log: { read(): Promise<SessionEvent[]> }): Promise<{
   title?: string
@@ -803,6 +903,21 @@ function stringify(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+/**
+ * The text one tool result contributes to the model transcript.
+ *
+ * This is *the* rule for it: the transcript fold, the token estimate, the
+ * agent's request assembly, and any consumer that wants to bound or spill tool
+ * output all read it from here, so a result can never be measured, sent, and
+ * replayed as three differently-rendered things.
+ */
+export function renderToolResult(
+  payload: Pick<ToolResultPayload, 'ok' | 'output' | 'error'>,
+): string {
+  if (!payload.ok) return `error: ${payload.error?.message ?? 'unknown'}`
+  return stringify(payload.output)
 }
 
 export function estimateMessageTokens(messages: readonly ModelMessage[]): number {
@@ -836,12 +951,8 @@ export function estimateEventTokens(event: SessionEvent): number {
       const raw = JSON.stringify(event.payload.arguments ?? {}) ?? ''
       return Math.ceil(raw.length / 4)
     }
-    case 'tool/result': {
-      const raw = event.payload.ok
-        ? stringify(event.payload.output)
-        : event.payload.error?.message ?? 'error'
-      return Math.ceil(raw.length / 4)
-    }
+    case 'tool/result':
+      return Math.ceil(renderToolResult(event.payload).length / 4)
     case 'plan':
     case 'assistant/attempt':
       return 0

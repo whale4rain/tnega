@@ -23,6 +23,23 @@ const common = {
   },
 }
 
+/**
+ * 每个包的物理目录：发布子路径名 → 仓库内路径。
+ *
+ * `packages/search/` 是搜索缝三个角色的共同容器，所以这三个包不在 `packages/<name>`
+ * 这一层。声明产物的重写（rewriteDeclarationImports）与库入口共用这张表。
+ */
+const packageDirs = {
+  search: 'packages/search/search-definition',
+  'search-ripgrep': 'packages/search/search-ripgrep',
+  'tool-search': 'packages/search/tool-search',
+  spill: 'packages/spill/spill',
+  'spill-local': 'packages/spill/spill-local',
+  'tool-spill': 'packages/spill/tool-spill',
+}
+
+const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
+
 const libraryEntries = {
   agent: 'packages/agent/src/index.ts',
   'coding-agent': 'packages/coding-agent/src/index.ts',
@@ -31,10 +48,13 @@ const libraryEntries = {
   evolve: 'packages/evolve/src/index.ts',
   execution: 'packages/execution/src/index.ts',
   llm: 'packages/llm/src/index.ts',
-  search: 'packages/search/src/index.ts',
-  'search-ripgrep': 'packages/search-ripgrep/src/index.ts',
+  search: `${packageDir('search')}/src/index.ts`,
+  'search-ripgrep': `${packageDir('search-ripgrep')}/src/index.ts`,
   session: 'packages/session/src/index.ts',
-  'tool-search': 'packages/tool-search/src/index.ts',
+  spill: `${packageDir('spill')}/src/index.ts`,
+  'spill-local': `${packageDir('spill-local')}/src/index.ts`,
+  'tool-spill': `${packageDir('tool-spill')}/src/index.ts`,
+  'tool-search': `${packageDir('tool-search')}/src/index.ts`,
   tools: 'packages/tools/src/index.ts',
   'cli-runtime': 'packages/cli/src/index.ts',
   events: 'src/events.ts',
@@ -99,7 +119,7 @@ async function rewriteDeclarationImports() {
   for (const file of files) {
     const text = await readFile(file, 'utf8')
     const rewritten = text.replace(/['"]@tnega\/([^'"]+)['"]/g, (match, spec) => {
-      const target = join(root, 'packages', spec, 'src/index.js')
+      const target = join(root, packageDir(spec), 'src/index.js')
       const path = relative(dirname(file), target).replaceAll('\\', '/')
       return JSON.stringify(path)
     })

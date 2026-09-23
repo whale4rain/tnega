@@ -13,6 +13,20 @@ export function combineSignal(
   return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
 }
 
+/**
+ * Fold a caller's per-request overrides into the adapter's configured defaults.
+ * The output cap is legitimately per call — a structured side request may need a
+ * budget unrelated to the conversation's — while the rest of the route (base
+ * URL, credentials, retries) stays owned by the adapter's configuration.
+ */
+export function withCallOverrides<T extends { maxTokens?: number }>(
+  config: T,
+  options: { maxTokens?: number },
+): T {
+  if (options.maxTokens === undefined) return config
+  return { ...config, maxTokens: options.maxTokens }
+}
+
 export function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status >= 500
 }

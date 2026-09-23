@@ -6,7 +6,7 @@ import type {
   LLMStreamEvent,
   LLMToolCall,
 } from '@tnega/agent'
-import type { ModelMessage } from '@tnega/session'
+import type { ModelMessage, ModelUsage } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
 import { OpenAICompatibleError } from './errors.js'
 import { DEFAULT_MODEL } from './models.js'
@@ -24,6 +24,7 @@ import {
   parseArguments,
   parseJson,
   sleep,
+  withCallOverrides,
 } from './shared.js'
 import type { LlmConfig } from './types.js'
 
@@ -49,6 +50,14 @@ interface AnthropicMessagePayload {
   stop_reason?: unknown
   error?: { message?: unknown }
   type?: unknown
+  usage?: unknown
+}
+
+/** Wire shape of an Anthropic usage block, on both streamed and buffered replies. */
+interface AnthropicUsage {
+  input_tokens?: unknown
+  output_tokens?: unknown
+  cache_read_input_tokens?: unknown
 }
 
 interface AnthropicToolCallState {
@@ -72,20 +81,21 @@ export function anthropicMessagesAdapter(
 ): LLMAdapter {
   return {
     async complete(messages, tools, options) {
-      const timeoutMs = config.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
-      const maxRetries = config.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
-      const retryDelayMs = config.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
+      const effective = withCallOverrides(config, options)
+      const timeoutMs = effective.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
+      const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
+      const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         const request = buildRequest(
           messages,
           tools,
-          config,
+          effective,
           combineSignal(options.signal, timeoutMs),
         )
         try {
           const response = await fetch(request.url, request.init)
           if (!isRetryableStatus(response.status) || attempt >= maxRetries) {
-            return parseResponse(response, config.apiKey)
+            return parseResponse(response, effective.apiKey)
           }
           await response.body?.cancel()
         } catch (error) {
@@ -104,14 +114,15 @@ export function anthropicMessagesAdapter(
       throw new OpenAICompatibleError(0, 'LLM request failed')
     },
     async *stream(messages, tools, options) {
-      const timeoutMs = config.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
-      const maxRetries = config.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
-      const retryDelayMs = config.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
+      const effective = withCallOverrides(config, options)
+      const timeoutMs = effective.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
+      const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
+      const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; ; attempt += 1) {
         const request = buildRequest(
           messages,
           tools,
-          config,
+          effective,
           combineSignal(options.signal, timeoutMs),
           true,
         )
@@ -138,7 +149,7 @@ export function anthropicMessagesAdapter(
             await sleep(retryDelayMs * 2 ** attempt)
             continue
           }
-          if (!response.ok) await assertOk(response, config.apiKey)
+          if (!response.ok) await assertOk(response, effective.apiKey)
           throw new OpenAICompatibleError(
             response.status,
             'LLM stream response had no body',
@@ -297,7 +308,45 @@ function parseCompletion(payload: unknown): LLMCompletion {
   const completion: LLMCompletion = { finishReason }
   if (text) completion.content = text
   if (toolCalls.length) completion.toolCalls = toolCalls
+  const usage = mergeUsage(undefined, parseAnthropicUsage(record?.usage))
+  if (usage) completion.usage = usage
   return completion
+}
+
+/**
+ * Read whichever counts a usage block carries. A streamed reply splits them:
+ * `message_start` announces the input side while `message_delta` carries the
+ * final output count, so each block contributes only what it states.
+ */
+function parseAnthropicUsage(value: unknown): Partial<ModelUsage> {
+  if (!value || typeof value !== 'object') return {}
+  const raw = value as AnthropicUsage
+  const usage: Partial<ModelUsage> = {}
+  const prompt = toCount(raw.input_tokens)
+  if (prompt !== undefined) usage.promptTokens = prompt
+  const completion = toCount(raw.output_tokens)
+  if (completion !== undefined) usage.completionTokens = completion
+  const cached = toCount(raw.cache_read_input_tokens)
+  if (cached !== undefined) usage.cachedTokens = cached
+  return usage
+}
+
+/** Fold a partial usage block in; nothing is reported until both required counts exist. */
+function mergeUsage(
+  current: ModelUsage | undefined,
+  next: Partial<ModelUsage>,
+): ModelUsage | undefined {
+  const merged = { ...current, ...next }
+  if (merged.promptTokens === undefined || merged.completionTokens === undefined) {
+    return undefined
+  }
+  return merged as ModelUsage
+}
+
+function toCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined
 }
 
 function parseToolCalls(blocks: AnthropicContentBlock[]): LLMToolCall[] {
@@ -351,6 +400,7 @@ async function* parseAnthropicStream(
   let messageStarted = false
   let text = ''
   let stopReason: unknown
+  let usage: ModelUsage | undefined
   let stopped = false
   let textBlockIndex: number | undefined
   const calls = new Map<number, AnthropicToolCallState>()
@@ -389,6 +439,7 @@ async function* parseAnthropicStream(
             model = typeof start.message?.model === 'string'
               ? start.message.model
               : undefined
+            usage = mergeUsage(usage, parseAnthropicUsage(start.message?.usage))
             messageStarted = true
             yield {
               type: 'message_start',
@@ -481,10 +532,14 @@ async function* parseAnthropicStream(
             continue
           }
           if (record?.type === 'message_delta') {
-            const delta = (record as { delta?: { stop_reason?: unknown } }).delta
-            if (delta?.stop_reason !== undefined) {
-              stopReason = delta.stop_reason
+            const raw = record as {
+              delta?: { stop_reason?: unknown }
+              usage?: unknown
             }
+            if (raw.delta?.stop_reason !== undefined) {
+              stopReason = raw.delta.stop_reason
+            }
+            usage = mergeUsage(usage, parseAnthropicUsage(raw.usage))
             continue
           }
           if (record?.type === 'message_stop') {
@@ -501,6 +556,7 @@ async function* parseAnthropicStream(
               type: 'message_stop',
               id: messageId,
               finishReason: toFinishReason(stopReason, text, calls.size > 0),
+              ...(usage ? { usage } : {}),
             }
             continue
           }
@@ -529,6 +585,7 @@ async function* parseAnthropicStream(
       type: 'message_stop',
       id: messageId,
       finishReason: toFinishReason(stopReason, text, calls.size > 0),
+      ...(usage ? { usage } : {}),
     }
   }
 }
@@ -555,7 +612,12 @@ async function* parseJSONCompletionStream(response: Response): AsyncGenerator<LL
       arguments: call.arguments,
     }
   }
-  yield { type: 'message_stop', id, finishReason: completion.finishReason }
+  yield {
+    type: 'message_stop',
+    id,
+    finishReason: completion.finishReason,
+    ...(completion.usage ? { usage: completion.usage } : {}),
+  }
 }
 
 function toStreamError(error: unknown, timeoutMs: number): OpenAICompatibleError {

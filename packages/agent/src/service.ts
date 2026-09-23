@@ -2,12 +2,16 @@ import type { Context } from '@tnega/core'
 import { randomUUID } from 'node:crypto'
 
 import {
+  DEFAULT_CONTEXT_COMPACT_RATIO,
   DEFAULT_CONTEXT_LIMIT,
+  DEFAULT_CONTEXT_RETAIN_RATIO,
   estimateContextUsage,
   type AssistantMessagePayload,
   type AssistantStreamChunk,
   type AssistantStreamRecord,
   type ModelMessage,
+  type ModelUsage,
+  renderToolResult,
   type RequestContextPayload,
   type SessionLog,
   type ToolResultPayload,
@@ -252,7 +256,12 @@ async function* completeAsStream(
       arguments: call.arguments,
     }
   }
-  yield { type: 'message_stop', id, finishReason: completion.finishReason }
+  yield {
+    type: 'message_stop',
+    id,
+    finishReason: completion.finishReason,
+    ...(completion.usage ? { usage: completion.usage } : {}),
+  }
 }
 
 function isCancelCause(value: unknown): value is AgentCancelCause {
@@ -570,7 +579,21 @@ export class AgentService {
 
       let completion: LLMCompletion | undefined
       let activeAttempt: AssistantStreamAttempt | undefined
+      // When the request that produced `completion` started, for throughput.
+      let requestStartedAt = 0
       let attempt = 0
+      /**
+       * Cost and latency of the response being committed. Only a real
+       * measurement is reported: a response that never started a request
+       * carries no duration, and a provider that reported no usage carries
+       * none, rather than a zero that would read as a free, instant reply.
+       */
+      const settledMeta = (): { durationMs?: number; usage?: ModelUsage } => {
+        const meta: { durationMs?: number; usage?: ModelUsage } = {}
+        if (requestStartedAt > 0) meta.durationMs = Date.now() - requestStartedAt
+        if (completion?.usage) meta.usage = completion.usage
+        return meta
+      }
       while (true) {
         if (options.signal?.aborted) {
           finishReason = 'cancelled'
@@ -622,6 +645,7 @@ export class AgentService {
           }
           // Short-circuit streams must obey the same request invariant.
           await prepareRequest()
+          requestStartedAt = Date.now()
           let chunkIndex = 0
           for await (const event of stream) {
             streamEvents.push(structuredClone(event))
@@ -647,7 +671,10 @@ export class AgentService {
           yield activeAttempt.push({ type: 'stream_error', error: toToolError(error) })
           if (options.signal?.aborted) {
             const content = partialStreamContent(streamEvents)
-            yield* this.settleAttempt(activeAttempt, content ? { content, interrupted: true } : undefined)
+            yield* this.settleAttempt(
+              activeAttempt,
+              content ? { content, interrupted: true, ...settledMeta() } : undefined,
+            )
             finishReason = 'cancelled'
             break
           }
@@ -723,6 +750,7 @@ export class AgentService {
             name: call.name,
             arguments: call.arguments,
           })),
+          ...settledMeta(),
         })
       }
       for (const call of toolCalls) {
@@ -804,7 +832,10 @@ export class AgentService {
         output = completion.content
       }
       if (!toolCalls.length) {
-        yield* this.settleAttempt(activeAttempt, { content: completion.content ?? '' })
+        yield* this.settleAttempt(activeAttempt, {
+          content: completion.content ?? '',
+          ...settledMeta(),
+        })
       }
 
       await session.append('step/end', {
@@ -920,13 +951,14 @@ export class AgentService {
     messages: readonly ModelMessage[],
   ): Promise<ModelMessage[]> {
     const limit = budget.limit ?? DEFAULT_CONTEXT_LIMIT
-    const compactRatio = budget.compactRatio ?? 0.9
+    const compactRatio = budget.compactRatio ?? DEFAULT_CONTEXT_COMPACT_RATIO
     if (limit <= 0 || compactRatio <= 0 || compactRatio > 1) {
       throw new AgentError('invalid context budget: limit must be positive and compactRatio must be in (0, 1]')
     }
     const usage = estimateContextUsage(messages, limit)
     if (usage.ratio < compactRatio) return copyMessages(messages)
-    const keepTokens = budget.keepTokens ?? Math.max(1, Math.floor(limit * 0.5))
+    const keepTokens = budget.keepTokens
+      ?? Math.max(1, Math.floor(limit * DEFAULT_CONTEXT_RETAIN_RATIO))
     const compactMessages = budget.summarize
       ? await budget.summarize(messages, usage)
       : [{ role: 'system' as const, content: defaultContextSummary(messages, usage) }]
@@ -1147,9 +1179,7 @@ export class AgentService {
     for (const call of toolCalls) {
       const result = toolResults.find(candidate => candidate.callId === call.id)
       const content = result
-        ? result.ok
-          ? stringify(result.output)
-          : `error: ${result.error?.message ?? 'unknown'}`
+        ? renderToolResult(result)
         : 'error: missing tool result'
       const message: ModelMessage = {
         role: 'tool',
@@ -1254,6 +1284,7 @@ function completionFromStreamEvents(events: readonly LLMStreamEvent[]): LLMCompl
   let content = ''
   const calls = new Map<number, LLMToolCall>()
   let finishReason: AgentFinishReason = 'error'
+  let usage: ModelUsage | undefined
   for (const event of events) {
     if (event.type === 'message_delta') {
       content += event.delta
@@ -1265,11 +1296,13 @@ function completionFromStreamEvents(events: readonly LLMStreamEvent[]): LLMCompl
       })
     } else if (event.type === 'message_stop') {
       finishReason = event.finishReason
+      if (event.usage) usage = event.usage
     }
   }
   const completion: LLMCompletion = { finishReason }
   if (content) completion.content = content
   if (calls.size) completion.toolCalls = [...calls.values()]
+  if (usage) completion.usage = usage
   return completion
 }
 

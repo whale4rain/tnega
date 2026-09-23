@@ -64,12 +64,12 @@ class FakeSearch extends SearchService {
     }
   }
 
-  override async findFiles(spec: FindFilesSpec): Promise<FindFilesResult> {
+  protected override async runFindFiles(spec: FindFilesSpec): Promise<FindFilesResult> {
     this.findSpecs.push(spec)
     return { paths: this._answers.files ?? [], truncated: this._answers.truncated ?? false }
   }
 
-  override async searchText(spec: SearchTextSpec): Promise<SearchTextResult> {
+  protected override async runSearchText(spec: SearchTextSpec): Promise<SearchTextResult> {
     this.textSpecs.push(spec)
     return { matches: this._answers.matches ?? [], truncated: this._answers.truncated ?? false }
   }

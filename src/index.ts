@@ -40,7 +40,9 @@ export {
 } from '../packages/core/src/index.js'
 
 export {
+  DEFAULT_CONTEXT_COMPACT_RATIO,
   DEFAULT_CONTEXT_LIMIT,
+  DEFAULT_CONTEXT_RETAIN_RATIO,
   SESSION_FORMAT_VERSION,
   SessionFormatError,
   SessionLog,
@@ -48,6 +50,7 @@ export {
   estimateEventTokens,
   estimateMessageTokens,
   foldSessionMeta,
+  foldUsage,
   projectEvents,
   repairUnclosed,
   resolveCompactKeep,
@@ -84,7 +87,9 @@ export {
   type SessionEventBase,
   type SessionEventType,
   type SessionInvariantFailure,
+  type SessionMetrics,
   type SessionMode,
+  type ModelUsage,
   type AssistantChunkPayload,
   type AssistantMessagePayload,
   type AssistantAttemptPayload,
@@ -169,19 +174,47 @@ export {
   type SearchTextRequest,
   type SearchTextResult,
   type SearchTextSpec,
-} from '../packages/search/src/index.js'
+} from '../packages/search/search-definition/src/index.js'
 
 export {
   RipgrepSearch,
   searchRipgrep,
   type Config as SearchRipgrepConfig,
-} from '../packages/search-ripgrep/src/index.js'
+} from '../packages/search/search-ripgrep/src/index.js'
 
 export {
   toolSearch,
   DEFAULT_TOOL_SEARCH_NAMES,
   type ToolSearchConfig,
-} from '../packages/tool-search/src/index.js'
+} from '../packages/search/tool-search/src/index.js'
+
+export {
+  SpillError,
+  SpillStore,
+  type SaveTextSpill,
+  type SpillErrorCode,
+  type SpillOwner,
+  type SpillRef,
+  type SpillSource,
+  type ToolSpillSource,
+} from '../packages/spill/spill/src/index.js'
+
+export {
+  LocalSpillStore,
+  spillLocal,
+  type Config as SpillLocalConfig,
+} from '../packages/spill/spill-local/src/index.js'
+
+export {
+  toolSpill,
+  composeSpillNotice,
+  formatSpillNotice,
+  DEFAULT_HEAD_BYTES,
+  DEFAULT_MAX_INLINE_BYTES,
+  DEFAULT_SPILL_SKIP,
+  DEFAULT_TAIL_BYTES,
+  type ToolSpillConfig,
+} from '../packages/spill/tool-spill/src/index.js'
 
 export {
   AgentError,
@@ -389,3 +422,17 @@ export {
   type RunEvolveCommandResult,
   type TasksFile,
 } from '../packages/cli/src/index.js'
+
+export type {
+  FindFilesPostEvent,
+  FindFilesPreEvent,
+  FindFilesResultEvent,
+  SearchErrorEvent,
+  SearchOperation,
+  SearchPostEvent,
+  SearchPreEvent,
+  SearchResultEvent,
+  SearchTextPostEvent,
+  SearchTextPreEvent,
+  SearchTextResultEvent,
+} from '../packages/search/search-definition/src/index.js'

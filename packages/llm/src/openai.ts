@@ -6,7 +6,7 @@ import type {
   LLMStreamEvent,
   LLMToolCall,
 } from '@tnega/agent'
-import type { ModelMessage } from '@tnega/session'
+import type { ModelMessage, ModelUsage } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
 import { OpenAICompatibleError } from './errors.js'
 import { DEFAULT_DEEPSEEK_MODEL } from './models.js'
@@ -25,6 +25,7 @@ import {
   parseJson,
   sleep,
   stringifyArguments,
+  withCallOverrides,
 } from './shared.js'
 import type { OpenAICompatibleConfig } from './types.js'
 
@@ -50,6 +51,17 @@ interface OpenAICompatiblePayload {
   model?: unknown
   choices?: unknown
   data?: unknown
+  usage?: unknown
+}
+
+/** Wire shape of a usage block; both OpenAI and DeepSeek spellings are accepted. */
+interface OpenAICompatibleUsage {
+  prompt_tokens?: unknown
+  completion_tokens?: unknown
+  total_tokens?: unknown
+  prompt_cache_hit_tokens?: unknown
+  prompt_tokens_details?: { cached_tokens?: unknown } | undefined
+  completion_tokens_details?: { reasoning_tokens?: unknown } | undefined
 }
 
 interface OpenAIStreamChoice {
@@ -77,20 +89,21 @@ interface RequestPayload {
 export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAdapter {
   return {
     async complete(messages, tools, options) {
-      const timeoutMs = config.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
-      const maxRetries = config.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
-      const retryDelayMs = config.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
+      const effective = withCallOverrides(config, options)
+      const timeoutMs = effective.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
+      const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
+      const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         const request = buildRequest(
           messages,
           tools,
-          config,
+          effective,
           combineSignal(options.signal, timeoutMs),
         )
         try {
           const response = await fetch(request.url, request.init)
           if (!isRetryableStatus(response.status) || attempt >= maxRetries) {
-            return parseResponse(response, config.apiKey)
+            return parseResponse(response, effective.apiKey)
           }
           await response.body?.cancel()
         } catch (error) {
@@ -109,14 +122,15 @@ export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAda
       throw new OpenAICompatibleError(0, 'LLM request failed')
     },
     async *stream(messages, tools, options) {
-      const timeoutMs = config.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
-      const maxRetries = config.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
-      const retryDelayMs = config.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
+      const effective = withCallOverrides(config, options)
+      const timeoutMs = effective.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
+      const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
+      const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; ; attempt += 1) {
         const request = buildRequest(
           messages,
           tools,
-          config,
+          effective,
           combineSignal(options.signal, timeoutMs),
           true,
         )
@@ -143,7 +157,7 @@ export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAda
             await sleep(retryDelayMs * 2 ** attempt)
             continue
           }
-          if (!response.ok) await assertOk(response, config.apiKey)
+          if (!response.ok) await assertOk(response, effective.apiKey)
           throw new OpenAICompatibleError(
             response.status,
             'LLM stream response had no body',
@@ -218,7 +232,13 @@ function buildRequest(
     model: config.model ?? DEFAULT_DEEPSEEK_MODEL,
     messages: messages.map(toOpenAIMessage),
   }
-  if (stream) body.stream = true
+  if (stream) {
+    body.stream = true
+    // A streamed response omits usage unless it is asked for, and streaming is
+    // the path the agent actually drives — without this every streamed step
+    // reports no cost at all.
+    body.stream_options = { include_usage: true }
+  }
   if (tools.length) {
     body.tools = tools.map(toOpenAITool)
   }
@@ -302,7 +322,39 @@ function parseCompletion(payload: unknown): LLMCompletion {
   }
   if (content !== undefined) completion.content = content
   if (toolCalls !== undefined) completion.toolCalls = toolCalls
+  const usage = parseUsage(record?.usage)
+  if (usage) completion.usage = usage
   return completion
+}
+
+/**
+ * Read a provider usage block. Both required counts must be present and
+ * numeric before any of it is trusted — a partial block is reported as no
+ * usage at all rather than as a response that used zero tokens.
+ */
+function parseUsage(value: unknown): ModelUsage | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as OpenAICompatibleUsage
+  const promptTokens = toCount(raw.prompt_tokens)
+  const completionTokens = toCount(raw.completion_tokens)
+  if (promptTokens === undefined || completionTokens === undefined) return undefined
+  const usage: ModelUsage = { promptTokens, completionTokens }
+  // OpenAI reports the cache under `prompt_tokens_details`; DeepSeek's native
+  // API reports it as a top-level hit count. Either spelling is the same fact.
+  const cached = toCount(raw.prompt_cache_hit_tokens)
+    ?? toCount(raw.prompt_tokens_details?.cached_tokens)
+  if (cached !== undefined) usage.cachedTokens = cached
+  const reasoning = toCount(raw.completion_tokens_details?.reasoning_tokens)
+  if (reasoning !== undefined) usage.reasoningTokens = reasoning
+  const total = toCount(raw.total_tokens)
+  if (total !== undefined) usage.totalTokens = total
+  return usage
+}
+
+function toCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined
 }
 
 function parseToolCalls(value: unknown): LLMToolCall[] | undefined {
@@ -362,6 +414,7 @@ async function* parseOpenAIStream(
   let model: string | undefined
   let messageStarted = false
   let finishReason: string | null | undefined
+  let usage: ModelUsage | undefined
   const calls = new Map<number, {
     index: number
     id: string
@@ -383,7 +436,7 @@ async function* parseOpenAIStream(
         const data = line.slice(5).trim()
         if (!data) continue
         if (data === '[DONE]') {
-          yield* finalizeStreamEvents(messageId, content, calls, finishReason)
+          yield* finalizeStreamEvents(messageId, content, calls, finishReason, usage)
           return
         }
         let payload: unknown
@@ -395,7 +448,7 @@ async function* parseOpenAIStream(
         const events = processStreamChunk(
           payload,
           { messageId, model, messageStarted },
-          { content, finishReason },
+          { content, finishReason, usage },
           calls,
         )
         messageId = events.messageId
@@ -403,6 +456,7 @@ async function* parseOpenAIStream(
         messageStarted = true
         content = events.content
         finishReason = events.finishReason
+        usage = events.usage
         for (const event of events.events) yield event
       }
     }
@@ -416,7 +470,7 @@ async function* parseOpenAIStream(
     }
   }
 
-  yield* finalizeStreamEvents(messageId, content, calls, finishReason)
+  yield* finalizeStreamEvents(messageId, content, calls, finishReason, usage)
 }
 
 async function* parseJSONCompletionStream(response: Response): AsyncGenerator<LLMStreamEvent> {
@@ -437,7 +491,12 @@ async function* parseJSONCompletionStream(response: Response): AsyncGenerator<LL
       arguments: call.arguments,
     }
   }
-  yield { type: 'message_stop', id, finishReason: completion.finishReason }
+  yield {
+    type: 'message_stop',
+    id,
+    finishReason: completion.finishReason,
+    ...(completion.usage ? { usage: completion.usage } : {}),
+  }
 }
 
 interface StreamChunkState {
@@ -446,12 +505,13 @@ interface StreamChunkState {
   messageStarted: boolean
   content: string
   finishReason: string | null | undefined
+  usage: ModelUsage | undefined
 }
 
 function processStreamChunk(
   payload: unknown,
   state: Pick<StreamChunkState, 'messageId' | 'model' | 'messageStarted'>,
-  progress: Pick<StreamChunkState, 'content' | 'finishReason'>,
+  progress: Pick<StreamChunkState, 'content' | 'finishReason' | 'usage'>,
   calls: Map<number, {
     index: number
     id: string
@@ -464,6 +524,7 @@ function processStreamChunk(
     id?: unknown
     model?: unknown
     choices?: unknown
+    usage?: unknown
   } | null
   const events: LLMStreamEvent[] = []
   let messageId = state.messageId
@@ -471,6 +532,9 @@ function processStreamChunk(
   let messageStarted = state.messageStarted
   let content = progress.content
   let finishReason = progress.finishReason
+  // The usage block trails the last content chunk on its own choice-less
+  // event, so it is read from whichever chunk carries it.
+  const usage = parseUsage(record?.usage) ?? progress.usage
 
   if (typeof record?.id === 'string' && record.id) messageId = record.id
   if (typeof record?.model === 'string' && record.model) model = record.model
@@ -529,6 +593,7 @@ function processStreamChunk(
     messageStarted,
     content,
     finishReason,
+    usage,
     events,
   }
 }
@@ -544,6 +609,7 @@ function finalizeStreamEvents(
     emitted: boolean
   }>,
   finishReason: string | null | undefined,
+  usage: ModelUsage | undefined,
 ): LLMStreamEvent[] {
   const events: LLMStreamEvent[] = []
   const toolCalls: LLMToolCall[] = []
@@ -566,6 +632,7 @@ function finalizeStreamEvents(
     type: 'message_stop',
     id: messageId,
     finishReason: toFinishReason(finishReason, content, toolCalls.length > 0),
+    ...(usage ? { usage } : {}),
   })
   return events
 }

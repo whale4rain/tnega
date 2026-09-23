@@ -2583,3 +2583,69 @@ describe('request header snapshots across steps', () => {
     expect(windows).toEqual([100_000, undefined])
   })
 })
+
+describe('response accounting', () => {
+  it('records provider usage and response latency on the committed message', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('usage.jsonl') })
+    await root.plugin(tools)
+    const adapter: LLMAdapter = {
+      complete: async () => {
+        throw new Error('complete should not be used')
+      },
+      async *stream() {
+        yield { type: 'message_start', id: 'm1' }
+        yield { type: 'message_delta', id: 'm1', delta: 'done' }
+        yield {
+          type: 'message_stop',
+          id: 'm1',
+          finishReason: 'stop',
+          usage: { promptTokens: 900, completionTokens: 30, cachedTokens: 512 },
+        }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'hi' })
+
+    const log = dynamic(root).session as SessionLog
+    const committed = (await log.read()).find(event => event.type === 'assistant/message')
+    const payload = committed?.payload as {
+      content: string
+      usage?: unknown
+      durationMs?: number
+    }
+    expect(payload.content).toBe('done')
+    expect(payload.usage).toEqual({
+      promptTokens: 900,
+      completionTokens: 30,
+      cachedTokens: 512,
+    })
+    expect(typeof payload.durationMs).toBe('number')
+    expect(payload.durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('records no usage when the provider reports none', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('no-usage.jsonl') })
+    await root.plugin(tools)
+    const adapter: LLMAdapter = {
+      async complete() {
+        return { content: 'done', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const loop = root.get('agentLoop') as AgentLoop
+    await loop({ text: 'hi' })
+
+    const log = dynamic(root).session as SessionLog
+    const committed = (await log.read()).find(event => event.type === 'assistant/message')
+    const payload = committed?.payload as { usage?: unknown; durationMs?: number }
+    // Absent, not zero: a provider that reports nothing must not read as a
+    // response that cost nothing.
+    expect(payload.usage).toBeUndefined()
+    expect(typeof payload.durationMs).toBe('number')
+  })
+})

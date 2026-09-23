@@ -16,6 +16,11 @@ Definition），构造时由基类完成 `ctx.search` 注册；它只依赖 `@tn
 @tnega/tool-search           ─┘
 ```
 
+本包只实现机制：`resolveFindFiles` / `resolveSearchText` 落定默认值，
+`runFindFiles` / `runSearchText` 落进程。`search/pre-search`、`search/post-search`、
+`search/result`、`search/error` 由 Service Definition 的模板方法统一派发。
+**这里不出现任何事件名** —— 事件面对 Provider 是透明的（也正因此不可绕过）。
+
 ## 机制
 
 `rg` 永远以固定 argv 向量启动（`@tnega/execution` 的 `runProcess`，`shell: false`），

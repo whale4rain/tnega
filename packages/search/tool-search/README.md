@@ -5,7 +5,7 @@
 ## 这是一条缝的哪一个角色
 
 本包是「工作区搜索」能力缝三角色里的 **Consumer**。它只依赖
-[`@tnega/search`](../search/README.md)（Service Definition）与 `@tnega/tools`
+[`@tnega/search`](../search-definition/README.md)（Service Definition）与 `@tnega/tools`
 （注册表），**从不 import 任何具体 Provider** —— 不 import `@tnega/search-ripgrep`，
 也不枚举 Provider、不探测可用性。进入这条缝的唯一路径是 `ctx.search.resolve*` 与
 `ctx.search.findFiles` / `ctx.search.searchText`。

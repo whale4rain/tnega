@@ -14,10 +14,12 @@ import { ComposerFrame } from '../workbench/ComposerFrame'
 import { MessageBlock, ToolGroupBlock, ContextRing } from './Transcript'
 import { ApiError, displayPath, prettyJson } from '../api'
 import * as api from '../api'
+import { UsageMetrics } from './UsageMetrics'
 import type {
   SessionSummary,
   SessionDetail,
   ContextUsage,
+  SessionMetrics,
   DisplayMessage,
   SlashCommand,
   SlashSuggestion,
@@ -32,6 +34,7 @@ interface ChatViewProps {
   sessionId: string | null
   summary: SessionSummary | null
   context: ContextUsage | null
+  metrics?: SessionMetrics | null
   sessionRunning: boolean
   messages: DisplayMessage[]
   plan?: DisplayPlan
@@ -58,6 +61,7 @@ export function ChatView({
   sessionId,
   summary,
   context,
+  metrics,
   sessionRunning,
   messages,
   plan,
@@ -1038,6 +1042,7 @@ export function ChatView({
                 )}
               </div>
             </ComposerFrame>
+            <UsageMetrics context={context} metrics={metrics} />
           </div>
         </div>
         <ConversationNav

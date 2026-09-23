@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -85,6 +85,47 @@ function pingTool(): ToolDefinition {
 }
 
 describe('createAgentRuntime composition', () => {
+  it('spills an oversized tool result and keeps the whole record on disk', async () => {
+    const dir = await tempDir('tnega-runtime-spill-')
+    const bytes = 60_000
+    const { adapter, calls } = fakeLLM([
+      {
+        content: '',
+        toolCalls: [{
+          id: 'call_spill',
+          name: 'shell',
+          arguments: { command: `node -e "process.stdout.write('S'.repeat(${bytes}))"` },
+        }],
+        finishReason: 'tool_calls',
+      },
+      { content: 'done', finishReason: 'stop' },
+    ])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, {
+      llm: adapter,
+      allowShell: true,
+    }))
+    try {
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      expect((await loop({ text: 'run it' })).output).toBe('done')
+
+      // What the model was handed on the following request.
+      const toolMessage = calls[1]!.messages.find(message => message.role === 'tool')
+      expect(toolMessage).toBeTruthy()
+      const content = String(toolMessage!.content)
+      expect(content).toContain('Omitted')
+      expect(content).toContain('.tnega/spill/')
+      expect(Buffer.byteLength(content, 'utf8')).toBeLessThanOrEqual(50_000)
+      expect(content).not.toContain('S'.repeat(50_000))
+
+      // ...and the complete output, at exactly the locator it was handed.
+      const locator = content.match(/stored at: (\S+)\./)?.[1]
+      expect(locator).toBeTruthy()
+      expect(await readFile(join(dir, locator!), 'utf8')).toContain('S'.repeat(bytes))
+    } finally {
+      await runtime.dispose()
+    }
+  }, 60_000)
+
   it('uses an injected inbox for queued inputs and injected context', async () => {
     const dir = await tempDir('tnega-runtime-inbox-')
     const inbox = new AgentInbox()

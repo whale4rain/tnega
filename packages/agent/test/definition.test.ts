@@ -67,6 +67,30 @@ async function mountRoot(): Promise<Context> {
   return root
 }
 
+/**
+ * Run one prompt against a fresh agent whose budget sets only `limit`, and
+ * report the compaction events it produced. Each case gets its own session so
+ * one case's history cannot shift another's token arithmetic.
+ */
+async function compactEventsFor(
+  limit: number,
+  text: string,
+): Promise<AgentContextCompactEvent[]> {
+  const root = await mountRoot()
+  const events: AgentContextCompactEvent[] = []
+  root.on('agent/context-compact', (value: AgentContextCompactEvent) => {
+    events.push(value)
+  })
+  const { adapter } = fakeLLM({ content: 'done', finishReason: 'stop' })
+  await root.plugin(defineAgent({ name: 'default-budget', system: 'SYS' }), {
+    llm: adapter,
+    contextBudget: { limit },
+  })
+  const loop = root.get('agentLoop') as AgentLoop
+  await loop({ text })
+  return events
+}
+
 describe('defineAgent contract', () => {
   it('requires a non-empty name', () => {
     expect(() => defineAgent({ name: '  ' })).toThrow(TypeError)
@@ -361,6 +385,16 @@ describe('defineAgent contract', () => {
     expect(events).toHaveLength(1)
     expect(events[0]!.keepTokens).toBe(16)
     expect(String(messages[0]!.at(-1)?.content)).toContain('summary of 2 messages')
+  })
+
+  it('starts compacting at 80% of the window and retains the newest 16%', async () => {
+    // 4 characters per estimated token: a 3000-character prompt plus the
+    // one-token system message lands at 751/1000, a 3400-character one at 851.
+    expect(await compactEventsFor(1000, 'x'.repeat(3000))).toHaveLength(0)
+
+    const events = await compactEventsFor(1000, 'x'.repeat(3400))
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ limit: 1000, keepTokens: 160 })
   })
 
   it('rejects invalid context budget configuration', async () => {

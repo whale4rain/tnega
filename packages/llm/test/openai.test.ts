@@ -638,3 +638,98 @@ describe('listModels', () => {
     )
   })
 })
+
+describe('request accounting', () => {
+  it('honours a per-call output cap over the configured default', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({ apiKey: 'test-key', maxTokens: 256 })
+    await adapter.complete([{ role: 'user', content: 'hi' }], [], { maxTokens: 4096 })
+    await adapter.complete([{ role: 'user', content: 'hi' }], [], {})
+
+    const bodyOf = (call: number) =>
+      JSON.parse(String(fetchMock.mock.calls[call]![1]!.body)) as { max_tokens?: number }
+    expect(bodyOf(0).max_tokens).toBe(4096)
+    expect(bodyOf(1).max_tokens).toBe(256)
+  })
+
+  it('reports provider usage on a buffered completion', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+      usage: {
+        prompt_tokens: 1200,
+        completion_tokens: 40,
+        total_tokens: 1240,
+        prompt_cache_hit_tokens: 1024,
+        prompt_tokens_details: { cached_tokens: 1024 },
+        completion_tokens_details: { reasoning_tokens: 12 },
+      },
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({ apiKey: 'test-key' })
+    const completion = await adapter.complete([{ role: 'user', content: 'hi' }], [], {})
+    expect(completion.usage).toEqual({
+      promptTokens: 1200,
+      completionTokens: 40,
+      cachedTokens: 1024,
+      reasoningTokens: 12,
+      totalTokens: 1240,
+    })
+  })
+
+  it('reports no usage at all rather than a half-read one', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10 },
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({ apiKey: 'test-key' })
+    const completion = await adapter.complete([{ role: 'user', content: 'hi' }], [], {})
+    expect(completion.usage).toBeUndefined()
+  })
+
+  it('asks for usage on a stream and attaches it to the stop event', async () => {
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"id":"m1","choices":[{"delta":{"content":"hi"}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+      'data: {"id":"m1","choices":[],"usage":{"prompt_tokens":900,"completion_tokens":30,"prompt_cache_hit_tokens":512}}\n\n',
+      'data: [DONE]\n\n',
+    ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({ apiKey: 'test-key' })
+    const events = await collectStream(adapter, [{ role: 'user', content: 'hi' }])
+
+    expect(events.at(-1)).toEqual({
+      type: 'message_stop',
+      id: 'm1',
+      finishReason: 'stop',
+      usage: { promptTokens: 900, completionTokens: 30, cachedTokens: 512 },
+    })
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as {
+      stream_options?: { include_usage?: boolean }
+    }
+    expect(body.stream_options).toEqual({ include_usage: true })
+  })
+
+  it('omits usage from the stop event when the stream never reports it', async () => {
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"id":"m1","choices":[{"delta":{"content":"hi"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = openaiCompatAdapter({ apiKey: 'test-key' })
+    const events = await collectStream(adapter, [{ role: 'user', content: 'hi' }])
+    expect(events.at(-1)).toEqual({
+      type: 'message_stop',
+      id: 'm1',
+      finishReason: 'stop',
+    })
+  })
+})

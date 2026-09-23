@@ -523,3 +523,89 @@ describe('anthropicMessagesAdapter', () => {
     expect(detail).toContain('[redacted]')
   })
 })
+
+describe('request accounting', () => {
+  it('honours a per-call output cap over the configured default', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      content: [{ type: 'text', text: 'hi' }],
+      stop_reason: 'end_turn',
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = anthropicMessagesAdapter({ apiKey: 'test-key', maxTokens: 256 })
+    await adapter.complete([{ role: 'user', content: 'hi' }], [], { maxTokens: 4096 })
+    await adapter.complete([{ role: 'user', content: 'hi' }], [], {})
+
+    const bodyOf = (call: number) =>
+      JSON.parse(String(fetchMock.mock.calls[call]![1]!.body)) as { max_tokens?: number }
+    expect(bodyOf(0).max_tokens).toBe(4096)
+    expect(bodyOf(1).max_tokens).toBe(256)
+  })
+
+  it('reports provider usage on a buffered completion', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      content: [{ type: 'text', text: 'hi' }],
+      stop_reason: 'end_turn',
+      usage: {
+        input_tokens: 1200,
+        output_tokens: 40,
+        cache_read_input_tokens: 1024,
+      },
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = anthropicMessagesAdapter({ apiKey: 'test-key' })
+    const completion = await adapter.complete([{ role: 'user', content: 'hi' }], [], {})
+    expect(completion.usage).toEqual({
+      promptTokens: 1200,
+      completionTokens: 40,
+      cachedTokens: 1024,
+    })
+  })
+
+  it('joins the input and output halves of a streamed usage report', async () => {
+    const fetchMock = vi.fn(async () => sseResponse([
+      'event: message_start\n',
+      'data: {"type":"message_start","message":{"id":"msg_1","model":"minimax-m3","usage":{"input_tokens":1200,"output_tokens":1,"cache_read_input_tokens":1024}}}\n\n',
+      'event: content_block_delta\n',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}\n\n',
+      'event: message_delta\n',
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":40}}\n\n',
+      'event: message_stop\n',
+      'data: {"type":"message_stop"}\n\n',
+    ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = anthropicMessagesAdapter({ apiKey: 'test-key' })
+    const events = await collectStream(adapter, [{ role: 'user', content: 'hi' }])
+
+    // `message_start` announces a placeholder output count; the real one only
+    // lands on `message_delta`, so the reported cost must be the joined pair.
+    expect(events.at(-1)).toEqual({
+      type: 'message_stop',
+      id: 'msg_1',
+      finishReason: 'stop',
+      usage: { promptTokens: 1200, completionTokens: 40, cachedTokens: 1024 },
+    })
+  })
+
+  it('omits usage from the stop event when the stream never reports it', async () => {
+    const fetchMock = vi.fn(async () => sseResponse([
+      'event: message_start\n',
+      'data: {"type":"message_start","message":{"id":"msg_1"}}\n\n',
+      'event: message_delta\n',
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n',
+      'event: message_stop\n',
+      'data: {"type":"message_stop"}\n\n',
+    ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = anthropicMessagesAdapter({ apiKey: 'test-key' })
+    const events = await collectStream(adapter, [{ role: 'user', content: 'hi' }])
+    expect(events.at(-1)).toEqual({
+      type: 'message_stop',
+      id: 'msg_1',
+      finishReason: 'stop',
+    })
+  })
+})

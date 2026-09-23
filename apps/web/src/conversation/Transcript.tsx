@@ -205,7 +205,7 @@ function CompactionBlock({ message }: { message: DisplayMessage }) {
         onClick={() => setOpen((open) => !open)}
       >
         <span className="marker">{open ? '[-]' : '[+]'}</span>
-        <span className="compaction-status">[compaction]</span>
+        <span className="compaction-status">[context compacted]</span>
         <span className="compaction-meta">
           {open
             ? `compacted from ${tokenText}`

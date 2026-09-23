@@ -18,6 +18,8 @@ type EndPayload = {
 export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
   const messages: DisplayMessage[] = []
   const toolIndex = new Map<string, number>()
+  const checkpoints = new Map<string, { summary?: string; tokensBefore?: number }>()
+  const announcedCheckpoints = new Set<string>()
   let turnStart = 0
   let turnOpen = false
   for (const event of events) {
@@ -46,8 +48,22 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       case 'assistant/chunk':
       case 'compaction/start':
-      case 'compaction/end':
         break
+      case 'compaction/end': {
+        const checkpointId = event.payload.checkpointId
+        const checkpoint = checkpointId ? checkpoints.get(checkpointId) : undefined
+        if (checkpointId) announcedCheckpoints.add(checkpointId)
+        messages.push({
+          id: event.id,
+          role: 'system',
+          content: checkpoint?.summary ?? '',
+          compacted: true,
+          ...(checkpoint?.tokensBefore !== undefined
+            ? { tokensBefore: checkpoint.tokensBefore }
+            : {}),
+        })
+        break
+      }
       case 'system/message':
         // System prompts are raw model context, not part of the transcript.
         break
@@ -98,14 +114,8 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
       case 'checkpoint': {
-        // A compaction summarizes history for the model but never hides it
-        // from the reader: the transcript keeps every message above, and this
-        // marker notes where earlier context was replaced. Do not truncate.
-        messages.push({
-          id: event.id,
-          role: 'system',
-          content: event.payload.summary ?? '',
-          compacted: true,
+        checkpoints.set(event.id, {
+          ...(event.payload.summary !== undefined ? { summary: event.payload.summary } : {}),
           ...(event.payload.tokensBefore !== undefined
             ? { tokensBefore: event.payload.tokensBefore }
             : {}),
@@ -176,6 +186,18 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
     }
+  }
+  for (const [checkpointId, checkpoint] of checkpoints) {
+    if (announcedCheckpoints.has(checkpointId)) continue
+    messages.push({
+      id: checkpointId,
+      role: 'system',
+      content: checkpoint.summary ?? '',
+      compacted: true,
+      ...(checkpoint.tokensBefore !== undefined
+        ? { tokensBefore: checkpoint.tokensBefore }
+        : {}),
+    })
   }
   return messages
 }

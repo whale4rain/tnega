@@ -1,5 +1,7 @@
 packages:
   - packages/*
+  - packages/search/*
+  - packages/spill/*
   - apps/*
 
 onlyBuiltDependencies:

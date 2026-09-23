@@ -139,3 +139,90 @@ export const DEFAULT_SEARCH_OUTPUT_MAX_BYTES = 20_000_000
 
 /** 单次搜索的默认结果条数上限。 */
 export const DEFAULT_SEARCH_MAX_RESULTS = 200
+
+/**
+ * 一次搜索操作的判别标签，与 `resolve*` / `findFiles` / `searchText` 一一对应。
+ */
+export type SearchOperation = 'findFiles' | 'searchText'
+
+/**
+ * `search/pre-search` 的负载（waterfallAsync）：spec 已完全解析、尚未执行。
+ *
+ * 监听器可以改写 `spec` 后再交给下一层（策略：收紧 excludes、强制 `.gitignore`、
+ * 收窄 pattern 或时间预算）。不调用 `next` 交出事件即失败，搜索以 `SearchError`
+ * （`SEARCH_FAILED`）拒绝，而不会被静默跳过。
+ */
+export interface FindFilesPreEvent {
+  op: 'findFiles'
+  spec: FindFilesSpec
+}
+
+export interface SearchTextPreEvent {
+  op: 'searchText'
+  spec: SearchTextSpec
+}
+
+export type SearchPreEvent = FindFilesPreEvent | SearchTextPreEvent
+
+/**
+ * `search/post-search` 的负载（waterfallAsync）：检索已有结果、尚未交给调用方。
+ *
+ * 监听器可以改写 `result`（脱敏、过滤、重排）；改写后的值必须仍是同一种合法结果，
+ * 否则搜索以 `SearchError`（`SEARCH_FAILED`）拒绝。
+ */
+export interface FindFilesPostEvent {
+  op: 'findFiles'
+  spec: FindFilesSpec
+  result: FindFilesResult
+}
+
+export interface SearchTextPostEvent {
+  op: 'searchText'
+  spec: SearchTextSpec
+  result: SearchTextResult
+}
+
+export type SearchPostEvent = FindFilesPostEvent | SearchTextPostEvent
+
+/**
+ * `search/result` 的负载（parallel）：一次检索正常结束。`truncated` 为真表示结果
+ * 条数上限生效，这不是失败。`spec` 是实际执行的那份 spec（`search/pre-search`
+ * 改写之后）。
+ */
+export interface FindFilesResultEvent {
+  op: 'findFiles'
+  spec: FindFilesSpec
+  result: FindFilesResult
+  /** 操作开始时间（`Date.now()`）。 */
+  startedAt: number
+  /** 操作耗时（毫秒）。 */
+  durationMs: number
+}
+
+export interface SearchTextResultEvent {
+  op: 'searchText'
+  spec: SearchTextSpec
+  result: SearchTextResult
+  /** 操作开始时间（`Date.now()`）。 */
+  startedAt: number
+  /** 操作耗时（毫秒）。 */
+  durationMs: number
+}
+
+export type SearchResultEvent = FindFilesResultEvent | SearchTextResultEvent
+
+/**
+ * `search/error` 的负载（parallel）：一次检索以基础设施失败结束。
+ *
+ * 只有基础设施失败才走到这里 —— pattern 无匹配与命中结果上限都是正常结果。
+ * `error` 为 `SearchError` 时保留稳定的 `code`。
+ */
+export interface SearchErrorEvent {
+  op: SearchOperation
+  spec: SearchSpecBase
+  error: Error
+  /** 操作开始时间（`Date.now()`）。 */
+  startedAt: number
+  /** 操作耗时（毫秒）。 */
+  durationMs: number
+}

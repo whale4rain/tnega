@@ -39,7 +39,8 @@ _Avoid_: capability flag
 **能力缝 (Seam)**:
 一个可替换能力的完整三角色：Service Definition、Service Provider、Consumer。单指其中任一
 角色时按角色称呼，不叫「缝」。例：`@tnega/search`（Definition）/ `@tnega/search-ripgrep`
-（Provider）/ `@tnega/tool-search`（Consumer）构成搜索缝。
+（Provider）/ `@tnega/tool-search`（Consumer）构成搜索缝；`@tnega/spill` / `@tnega/spill-local`
+/ `@tnega/tool-spill` 构成工具输出溢出缝。
 _Avoid_: capability、capability flag、extension point
 
 **Service Definition**:
@@ -55,6 +56,12 @@ _Avoid_: backend、adapter、impl
 程序化使用某个能力的插件，通常是模型可见的工具。只 import Service Definition，不 import
 具体 Provider，也不枚举 Provider 或探测可用性。
 _Avoid_: client、caller
+
+**溢出 (Spill)**:
+把过大的文本存到上下文之外、换回一个可检索定位符的动作。工具输出溢出缝在工具结果进入模型
+上下文前按字节上限判断，超出时整份落盘、模型只看到头尾预览加定位符。完整原文只存在于溢出
+文件里，日志与前端看到的都是预览（见 `docs/adr/0007-tool-output-spill.md`）。
+_Avoid_: truncate、trim、dump
 
 **Timeline**:
 一个 Agent Run 的可视化事件序列，展示消息、工具调用与工具结果。

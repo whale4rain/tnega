@@ -154,6 +154,17 @@ composition 层的挂载选择，工具的 schema 与结果形状零改动。
 `.git`、`node_modules` 等目录；超时 30 秒，超出原始输出上限时明确失败而不是返回被截断的
 半截结果。`rg` 需在 `PATH` 上（或用 Provider 的 `ripgrepPath` 指定）。
 
+过长的工具结果由「工具输出溢出」能力缝处理：`@tnega/spill` 拥有 `ctx.spillStore` 契约
+（Service Definition），`@tnega/spill-local` 提供文件系统实现（Service Provider），
+`@tnega/tool-spill` 贡献 `tools/post-execute` 策略（Consumer）。成功的工具结果超过
+`maxInlineBytes`（默认 50 000 字节）时，整份文本先落到 `<cwd>/.tnega/spill/` 下，模型
+拿到的是头尾预览加一行定位符，可按指引用 `read_file` 或 `grep` 读回；`read_file` 自身不在
+范围内（避免读回自己的溢出）。落盘失败时保留原文并记一条 warning，不会让成功的工具调用
+变成失败。Web 端把溢出说明单独渲染成定位符，并把输出渲染长度封顶（超出部分一次点击展开）。
+
+Web 端输入框下方常驻显示当前上下文用量、上一个响应的输出速度（tok/s）与缓存命中率；指标
+全部来自 provider 上报的 usage，未上报的指标显示为空缺而不是 0。
+
 以插件方式接入时，`builtinTools` 接受 `BuiltinToolsConfig`：`cwd / allowNetwork /
 allowShell / disabled / maxReadBytes / maxWriteBytes / maxResults / timeoutMs /
 searchExcludes / execution`，`disabled` 可进一步关闭任一内置工具。`glob` / `grep` 由
@@ -206,7 +217,7 @@ for (const fiber of [agentFiber, builtinFiber, toolsFiber, sessionFiber].reverse
 M13 为外部 agent 补齐的三个主要契约：
 
 - `AgentDefinition`：`defineAgent({ name, version?, system?, tools?, loop?, hooks? })` 返回普通插件。默认 loop 使用 `config.llm` 并注入 `agentSystem`，同时执行 `beforeRun` / `afterRun` hooks；传入自定义 `loop` 时，tnega 同样负责 system 注入与 hooks 包装；`tools` 随插件挂载和卸载自动注册、注销，并派发 `agent/definition` 元数据事件。
-- `SessionLog.deriveMessages()` 由折叠后的 surface 派生（模型视图是 surface 的纯函数，与 raw 文件序无关）；`estimateContext()` 与 `compact({ keepTokens, messages })` 共用同一 surface。默认 loop 内置 context budget：传入 `contextBudget: { limit, compactRatio, keepTokens, summarize }` 后，每个 step 前会按 token 估算检查用量，超过 `compactRatio` 时先调用 `summarize`，再执行 `session.compact` 保留最近 `keepTokens`，并派发 `agent/context-compact` 事件。
+- `SessionLog.deriveMessages()` 由折叠后的 surface 派生（模型视图是 surface 的纯函数，与 raw 文件序无关）；`estimateContext()` 与 `compact({ keepTokens, messages })` 共用同一 surface。默认 loop 内置 context budget：传入 `contextBudget: { limit, compactRatio, keepTokens, summarize }` 后，每个 step 前会按 token 估算检查用量，超过 `compactRatio` 时先调用 `summarize`，再执行 `session.compact` 保留最近 `keepTokens`，并派发 `agent/context-compact` 事件。默认 `compactRatio` 为 0.8、`keepTokens` 为预算的 16% —— 到八成时压缩，最近一段对话逐字保留，更早的部分由摘要接替。
 - `ToolPolicy`：`validator`、`authorizer`、`truncator` 可配置在 `tools` 全局层，也可覆盖在单个 `ToolDefinition.policy`。执行顺序为 `pre-execute → authorizer → validator → execute → truncator → post-execute / result`；策略拒绝会返回 `ToolResult.ok === false` 而不是把异常抛给 agent loop。
 
 另外 `createAgentRuntime` 支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、自定义 `inbox`、`toolPolicy`、`contextBudget`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期，并直接嵌入评测与进化闭环。默认组合会挂载 prompt 组装 seam（`systemPrompt`）并把全部可执行工具注册为 schema 提供者，使系统提示与工具从同一装配路径产出。

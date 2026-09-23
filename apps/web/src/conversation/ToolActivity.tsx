@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Check,
   CircleAlert,
@@ -8,6 +9,7 @@ import {
   Terminal,
   Wrench,
 } from 'lucide-react'
+import { boundedText, readSpillNotice } from '../toolOutput'
 import { summarizeToolGroup } from '../toolGroups'
 import type { DisplayMessage, DisplayTool } from '../types'
 import { Disclosure } from './Disclosure'
@@ -92,15 +94,61 @@ export function ToolBlock({ message }: { message: DisplayMessage }) {
         ) : (
           <>
             <h4>{failed ? 'Error' : 'Output'}</h4>
-            <pre className={failed ? 'tool-error' : undefined}>
-              {failed
+            <ToolOutput
+              failed={failed}
+              text={failed
                 ? (tool.errorText ?? 'Tool failed')
                 : (tool.outputText ?? 'Completed without text output.')}
-            </pre>
+            />
           </>
         )}
       </div>
     </Disclosure>
+  )
+}
+
+/**
+ * A tool's output, bounded for the page.
+ *
+ * A result the agent capped for the model ends in a spill notice; that notice
+ * is lifted out and shown as the pointer it is — where the rest of the output
+ * went — instead of being left as trailing prose inside a wall of text. What
+ * remains is rendered at most `MAX_RENDERED_CHARS` long, with the rest one
+ * click away: an unbounded `<pre>` is enough to freeze the conversation.
+ */
+function ToolOutput({ text, failed }: { text: string; failed: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  // Only a successful result can carry a spill notice; a failure keeps its
+  // message verbatim.
+  const notice = failed ? undefined : readSpillNotice(text)
+  const body = notice ? notice.preview : text
+  const clipped = boundedText(body)
+  const visible = expanded ? body : clipped.text
+  return (
+    <>
+      <pre className={`tool-output${failed ? ' tool-error' : ''}`}>
+        {visible}
+        {clipped.truncated && !expanded ? '\n…' : ''}
+      </pre>
+      {clipped.truncated && (
+        <button
+          type="button"
+          className="tool-more"
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded
+            ? '[show less]'
+            : `[show all ${clipped.totalChars.toLocaleString()} characters]`}
+        </button>
+      )}
+      {notice && (
+        <p className="tool-spill" role="note">
+          <span className="marker">[spilled]</span>{' '}
+          {notice.omittedBytes.toLocaleString()} bytes omitted; full result stored at{' '}
+          <code>{notice.locator}</code>. {notice.retrievalHint}
+        </p>
+      )}
+    </>
   )
 }
 

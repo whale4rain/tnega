@@ -1,0 +1,15 @@
+{
+  "name": "@tnega/tool-spill",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/spill": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}

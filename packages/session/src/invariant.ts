@@ -173,13 +173,24 @@ function isStreamRecord(value: unknown): boolean {
       return isNonNegativeInteger(chunk.index) && typeof chunk.name === 'string'
         && (chunk.type === 'toolcall_start' || isJsonValue(chunk.arguments))
     case 'message_stop':
-      return chunk.finishReason === 'stop' || chunk.finishReason === 'tool_calls'
+      return (chunk.finishReason === 'stop' || chunk.finishReason === 'tool_calls'
         || chunk.finishReason === 'length' || chunk.finishReason === 'max_turns'
         || chunk.finishReason === 'max_steps' || chunk.finishReason === 'error'
-        || chunk.finishReason === 'cancelled'
+        || chunk.finishReason === 'cancelled')
+        && (chunk.usage === undefined || isModelUsage(chunk.usage))
     default:
       return false
   }
+}
+
+/** Provider-reported cost: the two required counts must be real, non-negative integers. */
+function isModelUsage(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  if (!isNonNegativeInteger(value.promptTokens)) return false
+  if (!isNonNegativeInteger(value.completionTokens)) return false
+  return (value.cachedTokens === undefined || isNonNegativeInteger(value.cachedTokens))
+    && (value.reasoningTokens === undefined || isNonNegativeInteger(value.reasoningTokens))
+    && (value.totalTokens === undefined || isNonNegativeInteger(value.totalTokens))
 }
 
 /** A terminal attempt belongs to an open durable step, never to a live attempt id. */

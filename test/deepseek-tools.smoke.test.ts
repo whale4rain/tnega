@@ -33,8 +33,9 @@ describe('OpenCode Go real tool smoke', () => {
         expect(result.run.output).toContain('14')
 
         const sessionText = await readFile(result.sessionFile, 'utf8')
-        expect(sessionText).toContain('"tool-call"')
-        expect(sessionText).toContain('"tool-result"')
+        // Durable event type names, as written to the session log.
+        expect(sessionText).toContain('"tool/call"')
+        expect(sessionText).toContain('"tool/result"')
         expect(sessionText).not.toContain('sk-')
       } finally {
         await rm(dir, { recursive: true, force: true })

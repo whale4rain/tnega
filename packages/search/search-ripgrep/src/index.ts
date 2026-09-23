@@ -94,6 +94,10 @@ function resolveRoot(input: string | undefined): string {
 /**
  * ripgrep 支撑的工作区搜索 Provider。`rg` 永远以固定 argv 向量启动，模型可控的值
  * 都是独立参数，中间没有 shell 层。
+ *
+ * 本类只实现机制：`resolve*` 落定默认值，`runFindFiles` / `runSearchText` 落进程。
+ * `search/pre-search`、`search/post-search`、`search/result`、`search/error` 由
+ * `SearchService` 的模板方法统一派发，这里看不见也不需要知道事件名。
  */
 export class RipgrepSearch extends SearchService {
   private readonly _config: ResolvedConfig
@@ -118,7 +122,7 @@ export class RipgrepSearch extends SearchService {
     }
   }
 
-  override async findFiles(spec: FindFilesSpec): Promise<FindFilesResult> {
+  protected override async runFindFiles(spec: FindFilesSpec): Promise<FindFilesResult> {
     const stdout = await this._run(
       'findFiles',
       buildGlobArgv(spec.pattern, commandOptions(spec)),
@@ -131,7 +135,7 @@ export class RipgrepSearch extends SearchService {
     }
   }
 
-  override async searchText(spec: SearchTextSpec): Promise<SearchTextResult> {
+  protected override async runSearchText(spec: SearchTextSpec): Promise<SearchTextResult> {
     const stdout = await this._run(
       'searchText',
       buildGrepArgv(spec.pattern, commandOptions(spec)),

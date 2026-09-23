@@ -3,6 +3,8 @@ import { CODING_SYSTEM_PROMPT, createCodingAgentPlugin } from '@tnega/coding-age
 import { Context } from '@tnega/core'
 import { session } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { spillLocal } from '@tnega/spill-local'
+import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
 import { builtinTools, tools, type ToolPolicy } from '@tnega/tools'
 
@@ -38,6 +40,8 @@ export async function createCodingEvalRuntime(
   // 搜索缝：composition 层挑 Provider。
   await root.plugin(searchRipgrep, { cwd: options.cwd })
   await root.plugin(toolSearch, { cwd: options.cwd })
+  await root.plugin(spillLocal, { cwd: options.cwd })
+  await root.plugin(toolSpill)
 
   const agentConfig: {
     llm: LLMAdapter

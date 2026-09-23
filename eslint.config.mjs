@@ -9,6 +9,11 @@ export default tseslint.config(
       'node_modules/**',
       'coverage/**',
       'data/benchmarks/**',
+      // Build and packaging output that .gitignore already excludes; without
+      // these, linting fails on any checkout that has packaged the desktop app.
+      '.worktrees/**',
+      'apps/desktop/out/**',
+      'apps/desktop/release*/**',
     ],
   },
   js.configs.recommended,

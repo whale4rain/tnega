@@ -6,12 +6,19 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '..')
 
+// The full build (esbuild + vite + tsc) runs near 30s on a warm machine, so the
+// hook needs headroom well past the default budget; the inner timeout is what
+// turns a genuinely wedged build into a readable failure rather than a hang.
+const BUILD_TIMEOUT_MS = 120_000
+
 beforeAll(() => {
   execFileSync(process.execPath, ['scripts/build.mjs'], {
     cwd: root,
     stdio: 'pipe',
+    timeout: BUILD_TIMEOUT_MS,
+    maxBuffer: 64 * 1024 * 1024,
   })
-}, 30_000)
+}, BUILD_TIMEOUT_MS + 10_000)
 
 describe('publish metadata', () => {
   it('exposes tnega as a public CLI package', () => {
@@ -86,7 +93,10 @@ describe('packed artifact', () => {
       'search-ripgrep',
       'services',
       'session',
+      'spill',
+      'spill-local',
       'tool-search',
+      'tool-spill',
       'tools',
     ]
     for (const subpath of subpaths) {
@@ -111,7 +121,10 @@ describe('packed artifact', () => {
       'search-ripgrep',
       'services',
       'session',
+      'spill',
+      'spill-local',
       'tool-search',
+      'tool-spill',
       'tools',
     ]
     for (const name of names) {

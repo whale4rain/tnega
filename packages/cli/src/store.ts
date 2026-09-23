@@ -14,10 +14,12 @@ import {
   SessionLog,
   estimateContextUsage as estimateSessionContextUsage,
   estimateMessageTokens,
+  foldUsage,
   foldSessionMeta,
   projectEvents,
   suffixStartIndexForTokens,
   type ContextUsage,
+  type SessionMetrics,
   type AgentType,
   type MetaPatchPayload,
   type ModelMessage,
@@ -309,8 +311,32 @@ export async function estimateContextUsage(
   workspace: string,
   id: string,
 ): Promise<ContextUsage> {
-  const messages = await readSessionMessages(workspace, id)
-  return estimateSessionContextUsage(messages)
+  return withSessionLog(sessionFile(workspace, id), async log => {
+    const surface = await log.surfaceEvents()
+    const estimate = estimateSessionContextUsage(await log.deriveMessages())
+    const latestSurfaceEvent = surface.reduce<SessionEvent | undefined>(
+      (latest, event) => !latest || event.seq > latest.seq ? event : latest,
+      undefined,
+    )
+    if (latestSurfaceEvent?.type !== 'assistant/message' || !latestSurfaceEvent.payload.usage) {
+      return { ...estimate, source: 'estimate' }
+    }
+    const tokens = latestSurfaceEvent.payload.usage.promptTokens
+    return {
+      ...estimate,
+      tokens,
+      ratio: estimate.limit > 0 ? tokens / estimate.limit : 0,
+      source: 'provider',
+    }
+  })
+}
+
+/** Provider-reported cost and throughput of a session's committed responses. */
+export async function readSessionMetrics(
+  workspace: string,
+  id: string,
+): Promise<SessionMetrics> {
+  return withSessionLog(sessionFile(workspace, id), async log => foldUsage(await log.read()))
 }
 
 export interface CompactSessionOptions {

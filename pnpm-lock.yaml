@@ -151,13 +151,19 @@ importers:
         version: link:../llm
       '@tnega/search-ripgrep':
         specifier: workspace:*
-        version: link:../search-ripgrep
+        version: link:../search/search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+      '@tnega/spill-local':
+        specifier: workspace:*
+        version: link:../spill/spill-local
       '@tnega/tool-search':
         specifier: workspace:*
-        version: link:../tool-search
+        version: link:../search/tool-search
+      '@tnega/tool-spill':
+        specifier: workspace:*
+        version: link:../spill/tool-spill
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
@@ -198,13 +204,19 @@ importers:
         version: link:../core
       '@tnega/search-ripgrep':
         specifier: workspace:*
-        version: link:../search-ripgrep
+        version: link:../search/search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+      '@tnega/spill-local':
+        specifier: workspace:*
+        version: link:../spill/spill-local
       '@tnega/tool-search':
         specifier: workspace:*
-        version: link:../tool-search
+        version: link:../search/tool-search
+      '@tnega/tool-spill':
+        specifier: workspace:*
+        version: link:../spill/tool-spill
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
@@ -242,23 +254,39 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
-  packages/search:
+  packages/search/search-definition:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
 
-  packages/search-ripgrep:
+  packages/search/search-ripgrep:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       '@tnega/execution':
         specifier: workspace:*
-        version: link:../execution
+        version: link:../../execution
       '@tnega/search':
         specifier: workspace:*
-        version: link:../search
+        version: link:../search-definition
+
+  packages/search/tool-search:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search-definition
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+    devDependencies:
+      '@tnega/search-ripgrep':
+        specifier: workspace:*
+        version: link:../search-ripgrep
 
   packages/session:
     dependencies:
@@ -266,21 +294,35 @@ importers:
         specifier: workspace:*
         version: link:../core
 
-  packages/tool-search:
+  packages/spill/spill:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
-        version: link:../core
-      '@tnega/search':
+        version: link:../../core
+
+  packages/spill/spill-local:
+    dependencies:
+      '@tnega/core':
         specifier: workspace:*
-        version: link:../search
+        version: link:../../core
+      '@tnega/spill':
+        specifier: workspace:*
+        version: link:../spill
+
+  packages/spill/tool-spill:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/spill':
+        specifier: workspace:*
+        version: link:../spill
       '@tnega/tools':
         specifier: workspace:*
-        version: link:../tools
-    devDependencies:
-      '@tnega/search-ripgrep':
-        specifier: workspace:*
-        version: link:../search-ripgrep
+        version: link:../../tools
 
   packages/tools:
     dependencies:
@@ -292,7 +334,7 @@ importers:
         version: link:../execution
       '@tnega/search':
         specifier: workspace:*
-        version: link:../search
+        version: link:../search/search-definition
 
 packages:
 

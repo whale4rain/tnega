@@ -1,4 +1,10 @@
-import type { AssistantStreamChunk, CancelCause, ContextUsage, ModelMessage } from '@tnega/session'
+import type {
+  AssistantStreamChunk,
+  CancelCause,
+  ContextUsage,
+  ModelMessage,
+  ModelUsage,
+} from '@tnega/session'
 import type { ToolDefinition, ToolResult } from '@tnega/tools'
 
 export type AgentCancelCause = CancelCause
@@ -22,6 +28,8 @@ export interface LLMCompletion {
   content?: string
   toolCalls?: LLMToolCall[]
   finishReason: AgentFinishReason
+  /** Cost the provider reported for this response, when it reported any. */
+  usage?: ModelUsage
 }
 
 export interface CompleteOptions {
@@ -30,6 +38,12 @@ export interface CompleteOptions {
   provider?: string
   model?: string
   temperature?: number
+  /**
+   * Output cap for this call, overriding the adapter's configured default.
+   * Callers that need a different budget from the conversation's — a
+   * structured side request, for example — set it per call.
+   */
+  maxTokens?: number
   /** Capacity of the final model route, for durable request diagnostics. */
   contextWindow?: number
 }
@@ -65,6 +79,8 @@ export interface LLMMessageStopEvent {
   type: 'message_stop'
   id: string
   finishReason: AgentFinishReason
+  /** Cost the provider reported for this response, when it reported any. */
+  usage?: ModelUsage
 }
 
 export type LLMStreamEvent =

@@ -19,6 +19,7 @@ import * as api from './api'
 import type {
   ConfigSnapshot,
   ContextUsage,
+  SessionMetrics,
   DisplayMessage,
   SessionSummary,
 } from './types'
@@ -60,6 +61,7 @@ export default function App() {
   const selection = useRef<{ workspace: string; id: string } | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [context, setContext] = useState<ContextUsage | null>(null)
+  const [metrics, setMetrics] = useState<SessionMetrics | null>(null)
   const [sessionRunning, setSessionRunning] = useState(false)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
@@ -134,6 +136,7 @@ export default function App() {
     setMessages([])
     setSummary(null)
     setContext(null)
+    setMetrics(null)
     setSessionRunning(false)
     setPlan(undefined)
     api
@@ -142,6 +145,7 @@ export default function App() {
         if (selection.current !== target) return
         setSummary(detail.summary)
         setContext(detail.context)
+        setMetrics(detail.metrics)
         setSessionRunning(detail.running)
         setMessages(projectEvents(detail.events))
         setPlan(latestPlanFromEvents(detail.events))
@@ -179,6 +183,7 @@ export default function App() {
       setSessionId(null)
       setSummary(null)
       setContext(null)
+      setMetrics(null)
       setSessionRunning(false)
       setMessages([])
       setPlan(undefined)
@@ -195,6 +200,7 @@ export default function App() {
       if (selection.current !== target) return detail
       setSummary(detail.summary)
       setContext(detail.context)
+      setMetrics(detail.metrics)
       setSessionRunning(detail.running)
       setMessages(projectEvents(detail.events))
       setPlan(latestPlanFromEvents(detail.events))
@@ -420,6 +426,7 @@ export default function App() {
             sessionId={sessionId}
             summary={summary}
             context={context}
+            metrics={metrics}
             sessionRunning={sessionRunning}
             messages={messages}
             apiKeySet={config?.apiKeySet ?? false}

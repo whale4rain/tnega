@@ -20,6 +20,8 @@ import {
 import { createLlmAdapter } from '@tnega/llm'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
+import { spillLocal } from '@tnega/spill-local'
+import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
 import {
   builtinTools,
@@ -697,9 +699,12 @@ export async function createAgentRuntime(
     const builtinToolsFiber = await root.plugin(builtinTools, builtinConfig)
     fibers.push(builtinToolsFiber)
 
-    // 搜索是一条能力缝：composition 层挑 Provider，模型可见的工具只认识 ctx.search。
+    // 搜索与溢出是两条能力缝：composition 层挑 Provider，模型可见的工具只认识
+    // ctx.search，工具结果的上限只认识 ctx.spillStore。
     fibers.push(await root.plugin(searchRipgrep, { cwd: merged.cwd }))
     fibers.push(await root.plugin(toolSearch, { cwd: merged.cwd }))
+    fibers.push(await root.plugin(spillLocal, { cwd: merged.cwd }))
+    fibers.push(await root.plugin(toolSpill))
   }
   // Wire the prompt-assembly seam into the default composition: the system
   // prompt is assembled from registered sections and every executable tool is
