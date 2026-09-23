@@ -166,6 +166,13 @@ export interface AgentContextCompactEvent {
   messagesAfter: number
 }
 
+/** Awaited after a durable compaction; consumers may curate long-lived memory. */
+export interface AgentContextCompactedEvent {
+  summary: string
+  sourceMessages: readonly ModelMessage[]
+  llm: LLMAdapter
+}
+
 export interface AgentHooks {
   beforeRun?: (input: AgentInput, options: AgentRunOptions) => void | Promise<void>
   afterRun?: (result: AgentRunResult, options: AgentRunOptions) => void | Promise<void>
@@ -199,6 +206,8 @@ export interface AgentPreStepEvent {
   /** Cancellation signal for the current turn. */
   signal?: AbortSignal
   messages: ModelMessage[]
+  /** The first system message belongs to the request header, even on an empty Session. */
+  requestHeaderOwnsSystem?: boolean
   /** Newly claimed user messages for this proposed step, excluding history. */
   claimedMessages: ModelMessage[]
   /** Admit this proposed step, or end the turn before a model request. */

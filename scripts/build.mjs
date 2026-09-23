@@ -36,6 +36,9 @@ const packageDirs = {
   spill: 'packages/spill/spill',
   'spill-local': 'packages/spill/spill-local',
   'tool-spill': 'packages/spill/tool-spill',
+  memory: 'packages/memory/memory',
+  'memory-local': 'packages/memory/memory-local',
+  'tool-memory': 'packages/memory/tool-memory',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -48,6 +51,8 @@ const libraryEntries = {
   evolve: 'packages/evolve/src/index.ts',
   execution: 'packages/execution/src/index.ts',
   llm: 'packages/llm/src/index.ts',
+  memory: `${packageDir('memory')}/src/index.ts`,
+  'memory-local': `${packageDir('memory-local')}/src/index.ts`,
   search: `${packageDir('search')}/src/index.ts`,
   'search-ripgrep': `${packageDir('search-ripgrep')}/src/index.ts`,
   session: 'packages/session/src/index.ts',
@@ -55,6 +60,7 @@ const libraryEntries = {
   'spill-local': `${packageDir('spill-local')}/src/index.ts`,
   'tool-spill': `${packageDir('tool-spill')}/src/index.ts`,
   'tool-search': `${packageDir('tool-search')}/src/index.ts`,
+  'tool-memory': `${packageDir('tool-memory')}/src/index.ts`,
   tools: 'packages/tools/src/index.ts',
   'cli-runtime': 'packages/cli/src/index.ts',
   events: 'src/events.ts',

@@ -24,6 +24,8 @@ import {
   type SlashCommandResult,
 } from '@tnega/coding-agent'
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
+import { memoryLocal } from '@tnega/memory-local'
+import type { MemoryService } from '@tnega/memory'
 import {
   session,
   transcriptEvents,
@@ -35,6 +37,7 @@ import { searchRipgrep } from '@tnega/search-ripgrep'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
+import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, tools } from '@tnega/tools'
 import {
   createAgentRuntime,
@@ -570,7 +573,7 @@ async function compactContext(
   )
   const summary = completion.content?.trim()
   if (!summary) throw new HttpError(500, 'compression returned no summary')
-  return compactSession(
+  const result = await compactSession(
     workspace,
     id,
     {
@@ -582,6 +585,19 @@ async function compactContext(
       tokensBefore: preparation.tokensBefore,
     },
   )
+  const memoryRoot = new Context()
+  try {
+    await memoryRoot.plugin(memoryLocal, { cwd: workspace })
+    const memory = memoryRoot.get('memory') as MemoryService
+    try {
+      await consolidateProjectMemory(memory, adapter, summary, messages)
+    } catch (error) {
+      memoryRoot.logger.warn(`project memory update failed after compaction: ${errorMessage(error)}`)
+    }
+  } finally {
+    await memoryRoot.fiber.dispose()
+  }
+  return result
 }
 
 function buildCompactionPrompt(
@@ -793,6 +809,8 @@ async function createResidentRuntime(
   const root = new Context()
   const fibers: Array<{ dispose: () => Promise<void> }> = []
   fibers.push(await root.plugin(tools))
+  fibers.push(await root.plugin(memoryLocal, { cwd: workspace }))
+  fibers.push(await root.plugin(toolMemory))
   fibers.push(await root.plugin(builtinTools, {
     cwd: workspace,
     ...(req.allowNetwork ? { allowNetwork: true } : {}),

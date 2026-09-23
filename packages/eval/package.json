@@ -10,10 +10,12 @@
     "@tnega/agent": "workspace:*",
     "@tnega/coding-agent": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/memory-local": "workspace:*",
     "@tnega/search-ripgrep": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/spill-local": "workspace:*",
     "@tnega/tool-search": "workspace:*",
+    "@tnega/tool-memory": "workspace:*",
     "@tnega/tool-spill": "workspace:*",
     "@tnega/tools": "workspace:*"
   }

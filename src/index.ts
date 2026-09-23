@@ -5,6 +5,7 @@ export * as agentApi from '../packages/agent/src/index.js'
 export * as evalApi from '../packages/eval/src/index.js'
 export * as evolveApi from '../packages/evolve/src/index.js'
 export * as llmApi from '../packages/llm/src/index.js'
+export * as memoryApi from '../packages/memory/memory/src/index.js'
 
 export {
   CordisError,
@@ -217,6 +218,27 @@ export {
 } from '../packages/spill/tool-spill/src/index.js'
 
 export {
+  MAX_GLOBAL_MEMORY_CHARS,
+  MAX_PROJECT_MEMORY_CHARS,
+  MemoryError,
+  MemoryService,
+  type MemoryErrorCode,
+  type MemoryScope,
+} from '../packages/memory/memory/src/index.js'
+
+export {
+  LocalMemoryService,
+  memoryLocal,
+  type LocalMemoryConfig,
+} from '../packages/memory/memory-local/src/index.js'
+
+export {
+  consolidateProjectMemory,
+  toolMemory,
+  type ToolMemoryConfig,
+} from '../packages/memory/tool-memory/src/index.js'
+
+export {
   AgentError,
   AgentInbox,
   AgentRegistry,
@@ -232,6 +254,7 @@ export {
   type AgentCancelOptions,
   type AgentContextBudget,
   type AgentContextCompactEvent,
+  type AgentContextCompactedEvent,
   type AgentEndEvent,
   type AgentFinishReason,
   type AgentHooks,

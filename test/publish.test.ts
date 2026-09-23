@@ -89,6 +89,8 @@ describe('packed artifact', () => {
       'evolve',
       'execution',
       'llm',
+      'memory',
+      'memory-local',
       'search',
       'search-ripgrep',
       'services',
@@ -96,6 +98,7 @@ describe('packed artifact', () => {
       'spill',
       'spill-local',
       'tool-search',
+      'tool-memory',
       'tool-spill',
       'tools',
     ]
@@ -117,6 +120,8 @@ describe('packed artifact', () => {
       'evolve',
       'execution',
       'llm',
+      'memory',
+      'memory-local',
       'search',
       'search-ripgrep',
       'services',
@@ -124,6 +129,7 @@ describe('packed artifact', () => {
       'spill',
       'spill-local',
       'tool-search',
+      'tool-memory',
       'tool-spill',
       'tools',
     ]

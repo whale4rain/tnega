@@ -1,0 +1,15 @@
+{
+  "name": "@tnega/tool-memory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/memory": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  },
+  "devDependencies": { "@tnega/memory-local": "workspace:*" }
+}

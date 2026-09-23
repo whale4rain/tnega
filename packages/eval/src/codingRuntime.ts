@@ -1,11 +1,13 @@
 import { defineAgent, type AgentLoop, type LLMAdapter } from '@tnega/agent'
 import { CODING_SYSTEM_PROMPT, createCodingAgentPlugin } from '@tnega/coding-agent'
 import { Context } from '@tnega/core'
+import { memoryLocal } from '@tnega/memory-local'
 import { session } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
+import { toolMemory } from '@tnega/tool-memory'
 import { builtinTools, tools, type ToolPolicy } from '@tnega/tools'
 
 import type { CodingEvalConfig } from './types.js'
@@ -31,6 +33,8 @@ export async function createCodingEvalRuntime(
   const root = new Context()
   await root.plugin(session, { file: options.sessionFile })
   await root.plugin(tools, options.toolPolicy)
+  await root.plugin(memoryLocal, { cwd: options.cwd })
+  await root.plugin(toolMemory)
   await root.plugin(builtinTools, {
     cwd: options.cwd,
     allowNetwork: options.allowNetwork ?? false,

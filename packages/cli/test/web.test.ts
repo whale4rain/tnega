@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -670,6 +670,7 @@ describe('web server', () => {
       { method: 'POST', body: '{}' },
     )
     expect(compact.status).toBe(200)
+    expect(await readFile(join(workspace, '.tnega', 'memory.md'), 'utf8')).toBe('x\n')
 
     const after = await apiFetch(
       server.url,

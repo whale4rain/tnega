@@ -180,6 +180,7 @@ describe('createAgentRuntime composition', () => {
     const dir = await tempDir('tnega-runtime-budget-')
     const compactEvents: AgentContextCompactEvent[] = []
     const { adapter, calls } = fakeLLM([
+      { content: '# Project memory\n\n- Use pnpm', finishReason: 'stop' },
       { content: 'stop', finishReason: 'stop' },
       { content: 'stop again', finishReason: 'stop' },
     ])
@@ -204,8 +205,10 @@ describe('createAgentRuntime composition', () => {
         messagesBefore: 1,
         limit: 100,
       })
-      expect(String(calls[0]!.messages.at(-1)?.content))
+      expect(String(calls[1]!.messages.at(-1)?.content))
         .toContain('Earlier context was compacted.')
+      expect(await readFile(join(dir, '.tnega', 'memory.md'), 'utf8'))
+        .toContain('- Use pnpm')
     } finally {
       await runtime.dispose()
     }

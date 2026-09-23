@@ -52,6 +52,14 @@
       "types": "./dist/types/packages/llm/src/index.d.ts",
       "import": "./dist/llm.js"
     },
+    "./memory": {
+      "types": "./dist/types/packages/memory/memory/src/index.d.ts",
+      "import": "./dist/memory.js"
+    },
+    "./memory-local": {
+      "types": "./dist/types/packages/memory/memory-local/src/index.d.ts",
+      "import": "./dist/memory-local.js"
+    },
     "./search": {
       "types": "./dist/types/packages/search/search-definition/src/index.d.ts",
       "import": "./dist/search.js"
@@ -83,6 +91,10 @@
     "./tool-search": {
       "types": "./dist/types/packages/search/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"
+    },
+    "./tool-memory": {
+      "types": "./dist/types/packages/memory/tool-memory/src/index.d.ts",
+      "import": "./dist/tool-memory.js"
     },
     "./tools": {
       "types": "./dist/types/packages/tools/src/index.d.ts",

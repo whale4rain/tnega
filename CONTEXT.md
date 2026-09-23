@@ -63,6 +63,11 @@ _Avoid_: client、caller
 文件里，日志与前端看到的都是预览（见 `docs/adr/0007-tool-output-spill.md`）。
 _Avoid_: truncate、trim、dump
 
+**Memory**:
+跨 Session 的少量持久信息。全局 `~/.tnega/memory.md` 存用户明确要求记住的偏好；
+Workspace `.tnega/memory.md` 在压缩时整理长期有效的项目约定。每次 Agent Run 使用的
+快照进入请求记录；它不是 Session 的对话历史或压缩摘要。
+
 **Timeline**:
 一个 Agent Run 的可视化事件序列，展示消息、工具调用与工具结果。
 _Avoid_: log view

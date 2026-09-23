@@ -18,11 +18,13 @@ import {
   type LLMAdapter,
 } from '@tnega/agent'
 import { createLlmAdapter } from '@tnega/llm'
+import { memoryLocal } from '@tnega/memory-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
+import { toolMemory } from '@tnega/tool-memory'
 import {
   builtinTools,
   tools,
@@ -689,6 +691,8 @@ export async function createAgentRuntime(
   fibers.push(sessionFiber)
   const toolsFiber = await root.plugin(tools, merged.toolPolicy ?? {})
   fibers.push(toolsFiber)
+  fibers.push(await root.plugin(memoryLocal, { cwd: merged.cwd }))
+  fibers.push(await root.plugin(toolMemory, { writeTool: merged.builtinTools !== false }))
   if (merged.builtinTools !== false) {
     const builtinConfig: BuiltinToolsConfig = { cwd: merged.cwd }
     if (merged.allowNetwork) builtinConfig.allowNetwork = true

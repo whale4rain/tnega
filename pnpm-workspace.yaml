@@ -2,6 +2,7 @@ packages:
   - packages/*
   - packages/search/*
   - packages/spill/*
+  - packages/memory/*
   - apps/*
 
 onlyBuiltDependencies:

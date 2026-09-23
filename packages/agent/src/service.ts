@@ -534,7 +534,7 @@ export class AgentService {
         break
       }
       if (contextBudget) {
-        messages = await this._enforceContextBudget(session, contextBudget, messages)
+        messages = await this._enforceContextBudget(session, contextBudget, messages, llm)
       }
 
       const stepInput = copyMessages(messages)
@@ -626,7 +626,10 @@ export class AgentService {
             // Lazy streams must dispatch the same request that is persisted.
             lockStreamRequest(streamRequest)
             llmMessages = copyMessages(streamRequest.messages)
-            await this._persistStepInput(session, streamRequest, llmMessages, admittedHistory)
+            await this._persistStepInput(
+              session, streamRequest, llmMessages, admittedHistory,
+              preStep.requestHeaderOwnsSystem === true,
+            )
             await this._assertReplayable(session, streamRequest, llmMessages)
           })()
           const stream = await this.ctx.waterfallAsync(
@@ -949,6 +952,7 @@ export class AgentService {
     session: SessionLog,
     budget: AgentContextBudget,
     messages: readonly ModelMessage[],
+    llm?: LLMAdapter,
   ): Promise<ModelMessage[]> {
     const limit = budget.limit ?? DEFAULT_CONTEXT_LIMIT
     const compactRatio = budget.compactRatio ?? DEFAULT_CONTEXT_COMPACT_RATIO
@@ -971,6 +975,17 @@ export class AgentService {
       tokensBefore: usage.tokens,
       messages: compactMessages.map(message => copyMessages([message])[0]!),
     })
+    if (llm) {
+      try {
+        await this.ctx.parallel('agent/context-compacted', {
+          summary,
+          sourceMessages: copyMessages(messages),
+          llm,
+        })
+      } catch (error) {
+        this.ctx.logger.warn(`project memory update failed after compaction: ${String(error)}`)
+      }
+    }
     this.ctx.emit('agent/context-compact', {
       type: 'agent/context-compact',
       messagesBefore: messages.length,
@@ -987,6 +1002,7 @@ export class AgentService {
     request: Pick<AgentRequestEvent, 'tools' | 'options'>,
     input: readonly ModelMessage[],
     admittedHistory: readonly ModelMessage[],
+    requestHeaderOwnsSystem = false,
   ): Promise<void> {
     const surface = await session.deriveMessages()
     const owned = admittedHistory.filter(message => !isUserOrSystemMessage(message))
@@ -1066,7 +1082,7 @@ export class AgentService {
       canonicalMessages(messages.slice(0, surface.length)) === canonicalMessages(surface)
     // A run-scoped leading system may be owned by the effective header. Remove
     // exactly that prefix when the remaining transcript extends the surface.
-    const requested = surface.length > 0
+    const requested = (surface.length > 0 || requestHeaderOwnsSystem)
       && input[0]?.role === 'system'
       && input[0].content === nextHeader.system
       && isSurfacePrefix(input.slice(1))
