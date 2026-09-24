@@ -6,6 +6,7 @@ import type {
   DisplayEndState,
   DisplayMessage,
   DisplayRetry,
+  EditedFileSummary,
   SessionEvent,
 } from './types'
 
@@ -171,7 +172,19 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
       case 'meta': {
         if (event.payload.kind === 'files/edited'
           && Array.isArray(event.payload.files)) {
-          const files = event.payload.files.filter((path): path is string => typeof path === 'string')
+          const files: EditedFileSummary[] = event.payload.files.flatMap(value => {
+            if (typeof value === 'string') return [{ path: value }]
+            if (!value || typeof value !== 'object' || typeof value.path !== 'string') return []
+            const additions = value.additions
+            const deletions = value.deletions
+            return [{
+              path: value.path,
+              ...(typeof additions === 'number' && Number.isSafeInteger(additions) && additions >= 0
+                ? { additions } : {}),
+              ...(typeof deletions === 'number' && Number.isSafeInteger(deletions) && deletions >= 0
+                ? { deletions } : {}),
+            }]
+          })
           if (files.length) messages.push({
             id: event.id,
             role: 'file-edits',

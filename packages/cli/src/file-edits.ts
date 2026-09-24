@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
-import { lstat, readlink } from 'node:fs/promises'
-import { resolve, relative, isAbsolute, sep } from 'node:path'
+import { lstat, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve, relative, isAbsolute, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { SessionEvent } from '@tnega/session'
 
@@ -8,8 +9,17 @@ const runFile = promisify(execFile)
 
 interface GitBaseline {
   head: string
-  dirty: Map<string, string | null>
+  prefix: string
+  dirty: Map<string, { fingerprint: string | null; content: string | undefined }>
 }
+
+export interface EditedFile {
+  path: string
+  additions?: number
+  deletions?: number
+}
+
+const MAX_DIFF_BYTES = 4 * 1024 * 1024
 
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await runFile('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
@@ -55,19 +65,70 @@ async function fingerprint(workspace: string, path: string): Promise<string | nu
   }
 }
 
+async function fileContent(workspace: string, path: string): Promise<string | undefined> {
+  const safe = inside(workspace, path)
+  if (!safe) return undefined
+  try {
+    const target = resolve(workspace, safe)
+    const stats = await lstat(target)
+    if (stats.isSymbolicLink()) return await readlink(target)
+    if (!stats.isFile() || stats.size > MAX_DIFF_BYTES) return undefined
+    const buffer = await readFile(target)
+    if (buffer.includes(0)) return undefined
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/\r\n/g, '\n')
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return ''
+    return undefined
+  }
+}
+
+async function committedContent(workspace: string, baseline: GitBaseline, path: string): Promise<string | undefined> {
+  if (!baseline.head) return ''
+  try {
+    const text = await git(workspace, ['show', `${baseline.head}:${baseline.prefix}${path}`])
+    if (text.includes('\0') || Buffer.byteLength(text) > MAX_DIFF_BYTES) return undefined
+    return text.replace(/\r\n/g, '\n')
+  } catch (error) {
+    // Git uses exit 128 when a path is absent from the starting commit.
+    if (error && typeof error === 'object' && 'code' in error && error.code === 128) return ''
+    return undefined
+  }
+}
+
+async function lineStats(before: string, after: string, scratch: string, index: number): Promise<{ additions: number; deletions: number }> {
+  const oldPath = join(scratch, `${index}-before`)
+  const newPath = join(scratch, `${index}-after`)
+  await Promise.all([writeFile(oldPath, before), writeFile(newPath, after)])
+  let output: string
+  try {
+    output = await git(scratch, ['-c', 'color.ui=false', 'diff', '--no-index', '--no-ext-diff', '--numstat', '--', oldPath, newPath])
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 1
+      && 'stdout' in error && typeof error.stdout === 'string') output = error.stdout
+    else throw error
+  }
+  const match = output.match(/^(\d+)\t(\d+)\t/m)
+  if (!match && before !== after) throw new Error('Git did not report text line counts')
+  return { additions: match ? Number(match[1]) : 0, deletions: match ? Number(match[2]) : 0 }
+}
+
 /** Capture only already dirty files; clean tracked files are compared through Git. */
 export async function captureFileEditBaseline(workspace: string): Promise<GitBaseline | undefined> {
   try {
-    const [head, status] = await Promise.all([
+    const [head, prefix, status] = await Promise.all([
       git(workspace, ['rev-parse', '--verify', 'HEAD']).catch(() => ''),
+      git(workspace, ['rev-parse', '--show-prefix']),
       git(workspace, ['-c', 'status.relativePaths=true', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.']),
     ])
-    const dirty = new Map<string, string | null>()
+    const dirty = new Map<string, { fingerprint: string | null; content: string | undefined }>()
     await Promise.all(pathsFromStatus(status).map(async path => {
       const safe = inside(workspace, path)
-      if (safe) dirty.set(safe, await fingerprint(workspace, safe))
+      if (safe) dirty.set(safe, {
+        fingerprint: await fingerprint(workspace, safe),
+        content: await fileContent(workspace, safe),
+      })
     }))
-    return { head: head.trim(), dirty }
+    return { head: head.trim(), prefix: prefix.trimEnd(), dirty }
   } catch {
     // Non-Git workspaces still report explicit write_file tool results.
     return undefined
@@ -94,9 +155,9 @@ export async function editedFiles(
   baseline: GitBaseline | undefined,
   events: readonly SessionEvent[],
   afterSeq: number,
-): Promise<string[]> {
+): Promise<EditedFile[]> {
   const files = new Set(writtenPaths(workspace, events, afterSeq))
-  if (!baseline) return [...files].sort()
+  if (!baseline) return [...files].sort().map(path => ({ path }))
   try {
     const [head, status] = await Promise.all([
       git(workspace, ['rev-parse', '--verify', 'HEAD']).catch(() => ''),
@@ -116,7 +177,7 @@ export async function editedFiles(
     await Promise.all([...changed].map(async path => {
       const before = baseline.dirty.get(path)
       if (before !== undefined) {
-        if (before !== await fingerprint(workspace, path)) files.add(path)
+        if (before.fingerprint !== await fingerprint(workspace, path)) files.add(path)
       } else if (changed.has(path)) {
         files.add(path)
       }
@@ -124,5 +185,21 @@ export async function editedFiles(
   } catch {
     // Git may disappear or become unavailable mid-run. Explicit writes remain.
   }
-  return [...files].sort()
+  const paths = [...files].sort()
+  if (!paths.length) return []
+  const scratch = await mkdtemp(join(tmpdir(), 'tnega-file-edits-')).catch(() => undefined)
+  if (!scratch) return paths.map(path => ({ path }))
+  try {
+    return await Promise.all(paths.map(async (path, index): Promise<EditedFile> => {
+      const before = baseline.dirty.has(path)
+        ? baseline.dirty.get(path)?.content
+        : await committedContent(workspace, baseline, path)
+      const after = await fileContent(workspace, path)
+      if (before === undefined || after === undefined) return { path }
+      try { return { path, ...await lineStats(before, after, scratch, index) } }
+      catch { return { path } }
+    }))
+  } finally {
+    await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
+  }
 }

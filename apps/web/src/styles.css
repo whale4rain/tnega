@@ -458,12 +458,22 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 .subagent-card-detail > :not(:last-child) { margin-bottom: 12px; }
 .subagent-card-task { color: var(--mute); font-size: 11px; margin: 0; white-space: pre-wrap; }
 .file-edits-card { border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-card); overflow: hidden; }
-.file-edits-toggle { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 11px; text-align: left; }
-.file-edits-toggle > svg:first-child { color: var(--accent); flex-shrink: 0; }
-.file-edits-toggle > svg:last-child { margin-left: auto; color: var(--mute); transition: transform 150ms ease; }
-.file-edits-toggle > svg.expanded { transform: rotate(90deg); }
-.file-edits-list { list-style: none; margin: 0; padding: 7px 14px 10px 36px; border-top: 1px solid var(--hairline); color: var(--mute); }
-.file-edits-list li { padding: 3px 0; overflow-wrap: anywhere; }
+.file-edits-heading { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.file-edits-icon { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: 10px; background: var(--sidebar); color: var(--ink); }
+.file-edits-heading-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.file-edits-heading-copy strong { font-size: 13px; }
+.file-edits-stats { display: inline-flex; gap: 7px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.file-edits-stats span:first-child { color: var(--success); }
+.file-edits-stats span:last-child { color: var(--danger); }
+.file-edits-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hairline); }
+.file-edits-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; min-height: 36px; }
+.file-edits-path { min-width: 0; overflow-wrap: anywhere; }
+.file-edits-path > span { color: var(--mute); }
+.file-edits-path > strong { color: var(--ink); font-weight: 500; }
+button.file-edits-more { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 14px; border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: transparent; text-align: left; }
+button.file-edits-more:hover { background: color-mix(in srgb, var(--ink), transparent 95%); }
+.file-edits-more svg { transition: transform 150ms ease; }
+.file-edits-more svg.expanded { transform: rotate(-90deg); }
 .conversation-footer {
   width: min(820px, calc(100% - 64px));
   margin: 0 auto;

@@ -388,13 +388,19 @@ export interface DisplayEndState {
   error?: { name?: string; message: string; stack?: string }
 }
 
+export interface EditedFileSummary {
+  path: string
+  additions?: number
+  deletions?: number
+}
+
 export interface DisplayMessage {
   id: string
   role: 'user' | 'assistant' | 'tool' | 'system' | 'subagent' | 'file-edits'
   content: string
   tool?: DisplayTool
   subagent?: DisplaySubagent
-  editedFiles?: string[]
+  editedFiles?: EditedFileSummary[]
   slash?: SlashMetaPayload
   finishReason?: string
   pending?: boolean

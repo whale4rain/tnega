@@ -6,7 +6,7 @@ import { ToolBlock } from './ToolActivity'
 export { ToolGroupBlock } from './ToolActivity'
 import { formatCancelCause } from '../projectEvents'
 import { prettyJson } from '../api'
-import type { DisplayMessage, ContextUsage, SubagentEntry } from '../types'
+import type { DisplayMessage, ContextUsage, EditedFileSummary, SubagentEntry } from '../types'
 
 interface MessageBlockProps {
   message: DisplayMessage
@@ -149,20 +149,44 @@ export const MessageBlock = memo(function MessageBlock({
   )
 })
 
-function FileEditsBlock({ files }: { files: string[] }) {
+function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
   const [expanded, setExpanded] = useState(false)
+  const ordered = [...files].sort((a, b) =>
+    (b.additions ?? 0) + (b.deletions ?? 0) - (a.additions ?? 0) - (a.deletions ?? 0)
+    || a.path.localeCompare(b.path))
+  const shown = expanded ? ordered : ordered.slice(0, 3)
+  const remaining = files.length - 3
+  const hasStats = files.every(file => file.additions !== undefined && file.deletions !== undefined)
+  const additions = files.reduce((total, file) => total + (file.additions ?? 0), 0)
+  const deletions = files.reduce((total, file) => total + (file.deletions ?? 0), 0)
   return (
     <div className="message file-edits-card">
-      <button type="button" className="file-edits-toggle" aria-expanded={expanded}
-        onClick={() => setExpanded(value => !value)}>
-        <FilePenLine size={16} aria-hidden="true" />
-        <strong>已编辑 {files.length} 个文件</strong>
-        <ChevronRight size={14} className={expanded ? 'expanded' : ''} aria-hidden="true" />
-      </button>
-      {expanded && (
-        <ul className="file-edits-list">
-          {files.map(path => <li key={path} title={path}>{path}</li>)}
-        </ul>
+      <div className="file-edits-heading">
+        <span className="file-edits-icon"><FilePenLine size={19} aria-hidden="true" /></span>
+        <div className="file-edits-heading-copy">
+          <strong>已编辑 {files.length} 个文件</strong>
+          {hasStats && <span className="file-edits-stats"><span>+{additions}</span> <span>-{deletions}</span></span>}
+        </div>
+      </div>
+      <ul className="file-edits-list">
+        {shown.map(file => (
+          <li key={file.path} title={file.path}>
+            <span className="file-edits-path">
+              <span>{file.path.slice(0, file.path.lastIndexOf('/') + 1)}</span>
+              <strong>{file.path.slice(file.path.lastIndexOf('/') + 1)}</strong>
+            </span>
+            {(file.additions !== undefined || file.deletions !== undefined) && (
+              <span className="file-edits-stats"><span>+{file.additions ?? 0}</span> <span>-{file.deletions ?? 0}</span></span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {remaining > 0 && (
+        <button type="button" className="file-edits-more" aria-expanded={expanded}
+          onClick={() => setExpanded(value => !value)}>
+          {expanded ? '收起' : `再显示 ${remaining} 个文件`}
+          <ChevronRight size={14} className={expanded ? 'expanded' : ''} aria-hidden="true" />
+        </button>
       )}
     </div>
   )
