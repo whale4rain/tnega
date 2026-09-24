@@ -332,10 +332,13 @@ export async function readSessionMessages(
 export async function estimateContextUsage(
   workspace: string,
   id: string,
+  configuredWindow?: number,
 ): Promise<ContextUsage> {
   return withSessionLog(sessionFile(workspace, id), async log => {
     const surface = await log.surfaceEvents()
-    const estimate = estimateSessionContextUsage(await log.deriveMessages())
+    const estimate = estimateSessionContextUsage(
+      await log.deriveMessages(), configuredWindow ?? log.requestContext()?.contextWindow,
+    )
     const latestSurfaceEvent = surface.reduce<SessionEvent | undefined>(
       (latest, event) => !latest || event.seq > latest.seq ? event : latest,
       undefined,

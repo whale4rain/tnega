@@ -18,7 +18,7 @@ export interface AgentDefinition {
 }
 
 export interface DefineAgentConfig extends Partial<
-  Pick<AgentConfig, 'llm' | 'maxTurns' | 'maxSteps' | 'inbox' | 'contextBudget'>
+  Pick<AgentConfig, 'llm' | 'contextWindow' | 'maxTurns' | 'maxSteps' | 'inbox' | 'contextBudget'>
 > {
   [key: string]: unknown
 }
@@ -75,6 +75,7 @@ export function defineAgent(
         const agentConfig: AgentConfig = {}
         if (definition.hooks) agentConfig.hooks = definition.hooks
         if (config.llm) agentConfig.llm = config.llm
+        if (config.contextWindow !== undefined) agentConfig.contextWindow = config.contextWindow
         if (config.maxTurns !== undefined) agentConfig.maxTurns = config.maxTurns
         if (config.maxSteps !== undefined) agentConfig.maxSteps = config.maxSteps
         if (config.inbox) agentConfig.inbox = config.inbox

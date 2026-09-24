@@ -60,8 +60,9 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 
 独立于工作区，位于用户主目录。Windows：`%USERPROFILE%\.tnega\config.json`。
 原有单模型字段继续可用；`models` 可配置多个可切换路由。`id` 是 Session 里持久的选择键，
-`model` 是发给提供商的模型 ID（省略时与 `id` 相同）。`baseUrl`、`protocol`、`apiKeyEnv`
-和 `reasoningEfforts` 都按模型配置；未声明思考档位的自定义模型只使用端点默认行为。
+`model` 是发给提供商的模型 ID（省略时与 `id` 相同）。`baseUrl`、`protocol`、
+`apiKeyEnv`、`reasoningEfforts` 和 `contextWindow` 都可按模型配置；未声明思考档位的自定义模型只使用端点默认行为。
+`contextWindow` 是正整数，单位为 token，用于会话上下文占用显示；模型配置优先于顶层默认值。
 
 ```json
 {
@@ -73,7 +74,8 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
       "name": "Fast",
       "baseUrl": "https://opencode.ai/zen/go/v1",
       "protocol": "openai",
-      "apiKeyEnv": "OPENCODE_GO_API_KEY"
+      "apiKeyEnv": "OPENCODE_GO_API_KEY",
+      "contextWindow": 1000000
     },
     {
       "id": "reasoner",
@@ -82,6 +84,7 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
       "baseUrl": "https://api.openai.com/v1",
       "protocol": "openai",
       "apiKeyEnv": "OPENAI_API_KEY",
+      "contextWindow": 128000,
       "reasoningEfforts": ["low", "medium", "high"],
       "reasoningEffort": "medium"
     }

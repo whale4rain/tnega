@@ -21,6 +21,7 @@ const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export interface LocalSubagentConfig {
   cwd: string
   llm: LLMAdapter
+  contextWindow?: number
   maxConcurrent?: number
   maxDepth?: number
   allowShell?: boolean
@@ -166,6 +167,7 @@ export class LocalSubagentService extends SubagentService {
   private readonly workspace: string
   private readonly agents: AgentRegistry
   private readonly llm: LLMAdapter
+  private readonly contextWindow: number | undefined
   private readonly maxConcurrent: number
   private readonly maxDepth: number
   private readonly allowShell: boolean
@@ -183,6 +185,7 @@ export class LocalSubagentService extends SubagentService {
     if (!agents) throw new SubagentError('subagents require the live Agent registry')
     this.agents = agents
     this.llm = config.llm
+    this.contextWindow = config.contextWindow
     this.maxConcurrent = config.maxConcurrent ?? 3
     this.maxDepth = config.maxDepth ?? 2
     this.allowShell = config.allowShell === true
@@ -231,6 +234,7 @@ export class LocalSubagentService extends SubagentService {
         id,
         sessionId: id,
         llm: this.llm,
+        ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),
         system: CHILD_SYSTEM_PROMPT,
         owner: parent.id,
         parentSessionId: parent.id,
@@ -321,6 +325,7 @@ export class LocalSubagentService extends SubagentService {
     if (!stored) throw new SubagentError('subagent not found')
     const handle = await this.agents.resume({
       file: childFile(this.workspace, id), id, sessionId: id, llm: this.llm,
+      ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),
       system: CHILD_SYSTEM_PROMPT,
     })
     this.handles.set(id, handle)

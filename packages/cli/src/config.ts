@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
+import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, lookupModel, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
 
 export interface ConfiguredModel {
   /** Unique selector id. Defaults to the wire model id when model is omitted. */
@@ -15,6 +15,7 @@ export interface ConfiguredModel {
   apiKeyHeader?: 'x-api-key' | 'api-key'
   reasoningEfforts?: ReasoningEffort[]
   reasoningEffort?: ReasoningEffort
+  contextWindow?: number
 }
 
 export interface LlmEnvConfig {
@@ -31,6 +32,7 @@ export interface SystemConfig {
   apiKeyHeader?: 'x-api-key' | 'api-key'
   temperature?: number
   reasoningEffort?: ReasoningEffort
+  contextWindow?: number
   models?: ConfiguredModel[]
   workspaces?: string[]
 }
@@ -44,6 +46,7 @@ export interface EffectiveLlmConfig {
   apiKeyHeader?: 'x-api-key' | 'api-key'
   temperature?: number
   reasoningEffort?: ReasoningEffort
+  contextWindow?: number
 }
 
 export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort'> & {
@@ -146,6 +149,8 @@ export function effectiveLlmConfig(
   const apiKeyHeader = profile?.apiKeyHeader ?? config.apiKeyHeader
   if (apiKeyHeader) result.apiKeyHeader = apiKeyHeader
   if (config.temperature !== undefined) result.temperature = config.temperature
+  const contextWindow = profile?.contextWindow ?? config.contextWindow ?? lookupModel(model)?.contextWindow
+  if (contextWindow !== undefined) result.contextWindow = contextWindow
   const supported = modelCapabilities(model, protocol, profile ? profile.reasoningEfforts ?? [] : undefined).reasoningEfforts
   const defaultEffort = profile?.reasoningEffort ?? config.reasoningEffort
   if (defaultEffort && supported.includes(defaultEffort)) result.reasoningEffort = defaultEffort
@@ -158,6 +163,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
   protocol: LlmProtocol
   reasoningEfforts: readonly ReasoningEffort[]
   apiKeySet: boolean
+  contextWindow?: number
 }> {
   const effective = effectiveLlmConfig(config, env)
   const ids = config.models?.length
@@ -171,6 +177,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
       name: profile?.name ?? id,
       ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined),
       apiKeySet: route.apiKeySet,
+      ...(route.contextWindow !== undefined ? { contextWindow: route.contextWindow } : {}),
     }
   })
 }
@@ -224,6 +231,7 @@ function normalizeConfig(value: unknown): SystemConfig {
   if (typeof record.temperature === 'number' && Number.isFinite(record.temperature)) {
     config.temperature = record.temperature
   }
+  if (isContextWindow(record.contextWindow)) config.contextWindow = record.contextWindow
   if (record.reasoningEffort === 'low' || record.reasoningEffort === 'medium' || record.reasoningEffort === 'high') {
     config.reasoningEffort = record.reasoningEffort
   }
@@ -244,6 +252,8 @@ function normalizeConfig(value: unknown): SystemConfig {
       if (header === 'x-api-key' || header === 'api-key') model.apiKeyHeader = header
       const effort = stringField(entry, 'reasoningEffort')
       if (effort === 'low' || effort === 'medium' || effort === 'high') model.reasoningEffort = effort
+      const contextWindow = fieldOf(entry, 'contextWindow')
+      if (isContextWindow(contextWindow)) model.contextWindow = contextWindow
       const efforts = fieldOf(entry, 'reasoningEfforts')
       if (Array.isArray(efforts)) {
         model.reasoningEfforts = [...new Set(efforts.filter(isReasoningEffort))]
@@ -256,6 +266,10 @@ function normalizeConfig(value: unknown): SystemConfig {
       .filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))
   }
   return config
+}
+
+function isContextWindow(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
 
 function fieldOf(value: unknown, key: string): unknown {

@@ -104,6 +104,8 @@ export class AgentInbox {
 
 export interface AgentConfig {
   llm?: LLMAdapter
+  /** Capacity of the selected model, recorded with each request. */
+  contextWindow?: number
   agentId?: string
   /** Bind the loop to a specific session instead of the ctx-provided singleton. */
   session?: SessionLog
@@ -576,6 +578,7 @@ export class AgentService {
       const completeOptions: CompleteOptions = {
         maxSteps: maxSteps - steps.length,
       }
+      if (this.config.contextWindow !== undefined) completeOptions.contextWindow = this.config.contextWindow
       if (options.signal) completeOptions.signal = options.signal
 
       let llmMessages = copyMessages(requestedInput)

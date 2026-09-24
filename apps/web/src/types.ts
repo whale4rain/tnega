@@ -256,6 +256,7 @@ export interface LlmEffective {
   protocol?: 'anthropic' | 'openai'
   reasoningEffort?: 'low' | 'medium' | 'high'
   temperature?: number
+  contextWindow?: number
 }
 
 export interface ConfigSnapshot {
@@ -269,6 +270,7 @@ export interface ConfigSnapshot {
     protocol?: 'anthropic' | 'openai'
     reasoningEffort?: 'low' | 'medium' | 'high'
     temperature?: number
+    contextWindow?: number
     models: Array<{
       id: string
       model?: string
@@ -279,6 +281,7 @@ export interface ConfigSnapshot {
       apiKeySet: boolean
       reasoningEfforts?: Array<'low' | 'medium' | 'high'>
       reasoningEffort?: 'low' | 'medium' | 'high'
+      contextWindow?: number
     }>
   }
   env: {
@@ -292,6 +295,7 @@ export interface ConfigSnapshot {
     protocol: 'anthropic' | 'openai'
     reasoningEfforts: Array<'low' | 'medium' | 'high'>
     apiKeySet: boolean
+    contextWindow?: number
   }>
 }
 

@@ -188,6 +188,7 @@ export interface AgentRuntimeOptions {
   sessionFile: string
   profile?: AgentProfile
   llm?: LLMAdapter
+  contextWindow?: number
   inbox?: AgentInbox
   allowNetwork?: boolean
   allowShell?: boolean
@@ -743,6 +744,7 @@ export async function createAgentRuntime(
   if (merged.agent) {
     const definitionFiber = await root.plugin(defineAgent(merged.agent), {
       ...(merged.llm ? { llm: merged.llm } : {}),
+      ...(merged.contextWindow !== undefined ? { contextWindow: merged.contextWindow } : {}),
       ...(merged.maxTurns !== undefined ? { maxTurns: merged.maxTurns } : {}),
       ...(merged.maxSteps !== undefined ? { maxSteps: merged.maxSteps } : {}),
       ...(merged.inbox ? { inbox: merged.inbox } : {}),
@@ -752,12 +754,14 @@ export async function createAgentRuntime(
   } else {
     const agentConfig: {
       llm?: LLMAdapter
+      contextWindow?: number
       maxTurns?: number
       maxSteps?: number
       inbox?: AgentInbox
       contextBudget?: AgentContextBudget
     } = {}
     if (merged.llm) agentConfig.llm = merged.llm
+    if (merged.contextWindow !== undefined) agentConfig.contextWindow = merged.contextWindow
     if (merged.maxTurns !== undefined) agentConfig.maxTurns = merged.maxTurns
     if (merged.maxSteps !== undefined) agentConfig.maxSteps = merged.maxSteps
     if (merged.inbox) agentConfig.inbox = merged.inbox

@@ -135,6 +135,7 @@ export interface AgentCreationOptions {
   /** Optional composition callback run before the agent is published. */
   setup?: AgentSetup
   llm?: LLMAdapter
+  contextWindow?: number
   system?: string
   maxTurns?: number
   maxSteps?: number
@@ -870,6 +871,7 @@ async function buildHandle(
       session: log,
       inbox: injected,
       ...(options.llm ? { llm: options.llm } : {}),
+      ...(options.contextWindow !== undefined ? { contextWindow: options.contextWindow } : {}),
       ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
       ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
       ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),

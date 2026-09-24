@@ -490,8 +490,11 @@ async function handleApi(
     if (action === undefined && req.method === 'GET') {
       const summary = await readSessionSummary(workspace, id)
       const detail = await readSessionEvents(workspace, id)
+      const configuredWindow = effectiveLlmConfig(
+        await readSystemConfig(context.configFile), process.env, summary.model,
+      ).contextWindow
       const [contextUsage, metrics] = await Promise.all([
-        estimateContextUsage(workspace, id),
+        estimateContextUsage(workspace, id, configuredWindow),
         readSessionMetrics(workspace, id),
       ])
       sendJson(res, 200, {
@@ -815,6 +818,7 @@ async function handleRun(
       cwd: workspace,
       sessionFile: sessionFilePath(workspace, id),
       llm: adapter,
+      ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
       allowNetwork: true,
       allowShell: true,
       builtinTools: {
@@ -1019,6 +1023,7 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(subagentLocal, {
     cwd: workspace,
     llm: adapterFromConfig(req.effective, req.apiKey),
+    ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
     allowShell: req.permission !== 'read-only',
     allowNetwork: true,
     permission: req.permission,
@@ -1044,6 +1049,7 @@ async function ensureResidentAgent(
     req.effective.model,
     req.apiKey,
     req.effective.reasoningEffort ?? '',
+    req.effective.contextWindow ?? '',
     req.effective.protocol ?? '',
     req.effective.temperature ?? '',
     req.permission,
@@ -1068,6 +1074,7 @@ async function ensureResidentAgent(
       id,
       mode: 'auto',
       llm: adapterFromConfig(req.effective, req.apiKey),
+      ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
       manualStreaming: true,
     }
     if (req.coding) options.agentType = 'coding'
@@ -1495,6 +1502,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
       ...(effective.temperature !== undefined
         ? { temperature: effective.temperature }
         : {}),
+      ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
     },
     config: {
       apiKeySet: Boolean(config.apiKey),
@@ -1506,6 +1514,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
       ...(config.temperature !== undefined
         ? { temperature: config.temperature }
         : {}),
+      ...(config.contextWindow !== undefined ? { contextWindow: config.contextWindow } : {}),
       models: config.models?.map(model => ({
         id: model.id,
         ...(model.model ? { model: model.model } : {}),
@@ -1516,6 +1525,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
         apiKeySet: Boolean(model.apiKey || model.apiKeyEnv && process.env[model.apiKeyEnv]),
         ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
         ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
       })) ?? [],
     },
     env: {
