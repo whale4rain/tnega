@@ -30,7 +30,7 @@ export interface ModelDefinition {
 export type ReasoningEffort = 'low' | 'medium' | 'high'
 
 /** Request features are resolved by the LLM seam, not inferred by the UI. */
-export function modelCapabilities(model: string, protocol?: LlmProtocol): {
+export function modelCapabilities(model: string, protocol?: LlmProtocol, configuredEfforts?: readonly ReasoningEffort[]): {
   protocol: LlmProtocol
   reasoningEfforts: readonly ReasoningEffort[]
 } {
@@ -41,9 +41,9 @@ export function modelCapabilities(model: string, protocol?: LlmProtocol): {
     && /^claude-(?:opus|sonnet)-4[.-](?:6|[7-9])(?:[.-]|$)/iu.test(model)
   return {
     protocol: route,
-    reasoningEfforts: supportsOpenAiEffort || supportsAnthropicEffort
+    reasoningEfforts: configuredEfforts ?? (supportsOpenAiEffort || supportsAnthropicEffort
       ? ['low', 'medium', 'high']
-      : [],
+      : []),
   }
 }
 

@@ -58,8 +58,39 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 
 ## 系统配置（config.ts）
 
-独立于工作区，位于用户主目录：`apiKey` / `model` / `baseUrl` / `temperature` / 工作区列表。
-env > config file > 默认。Windows：`%USERPROFILE%\.tnega\config.json`。
+独立于工作区，位于用户主目录。Windows：`%USERPROFILE%\.tnega\config.json`。
+原有单模型字段继续可用；`models` 可配置多个可切换路由。`id` 是 Session 里持久的选择键，
+`model` 是发给提供商的模型 ID（省略时与 `id` 相同）。`baseUrl`、`protocol`、`apiKeyEnv`
+和 `reasoningEfforts` 都按模型配置；未声明思考档位的自定义模型只使用端点默认行为。
+
+```json
+{
+  "model": "fast",
+  "models": [
+    {
+      "id": "fast",
+      "model": "deepseek-v4-flash",
+      "name": "Fast",
+      "baseUrl": "https://opencode.ai/zen/go/v1",
+      "protocol": "openai",
+      "apiKeyEnv": "OPENCODE_GO_API_KEY"
+    },
+    {
+      "id": "reasoner",
+      "model": "gpt-5.2",
+      "name": "Reasoner",
+      "baseUrl": "https://api.openai.com/v1",
+      "protocol": "openai",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "reasoningEfforts": ["low", "medium", "high"],
+      "reasoningEffort": "medium"
+    }
+  ]
+}
+```
+
+每次请求读取配置文件，因此修改后无需重启；Settings 小窗里的 Reload file 可刷新选择列表。
+`apiKey` 也可逐模型填写，但 `apiKeyEnv` 可避免将密钥写入文件。
 
 ## 测试
 

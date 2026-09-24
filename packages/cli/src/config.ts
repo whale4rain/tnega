@@ -1,7 +1,21 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, type ReasoningEffort } from '@tnega/llm'
+import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
+
+export interface ConfiguredModel {
+  /** Unique selector id. Defaults to the wire model id when model is omitted. */
+  id: string
+  model?: string
+  name?: string
+  baseUrl?: string
+  protocol?: LlmProtocol
+  apiKey?: string
+  apiKeyEnv?: string
+  apiKeyHeader?: 'x-api-key' | 'api-key'
+  reasoningEfforts?: ReasoningEffort[]
+  reasoningEffort?: ReasoningEffort
+}
 
 export interface LlmEnvConfig {
   apiKey?: string
@@ -17,11 +31,13 @@ export interface SystemConfig {
   apiKeyHeader?: 'x-api-key' | 'api-key'
   temperature?: number
   reasoningEffort?: ReasoningEffort
+  models?: ConfiguredModel[]
   workspaces?: string[]
 }
 
 export interface EffectiveLlmConfig {
   apiKeySet: boolean
+  modelId: string
   baseUrl: string
   model: string
   protocol?: 'anthropic' | 'openai'
@@ -111,21 +127,52 @@ export async function updateSystemConfig(
 export function effectiveLlmConfig(
   config: SystemConfig,
   env: NodeJS.ProcessEnv = process.env,
+  selectedModel?: string,
 ): EffectiveLlmConfig {
   const envConfig = resolveLlmEnv(env)
-  const apiKey = effectiveApiKey(config, env)
-  const baseUrl = envConfig.baseUrl ?? config.baseUrl ?? DEFAULT_OPENCODE_GO_BASE_URL
-  const model = envConfig.model ?? config.model ?? DEFAULT_MODEL
+  const modelId = selectedModel ?? envConfig.model ?? config.model ?? config.models?.[0]?.id ?? DEFAULT_MODEL
+  const profile = config.models?.find(entry => entry.id === modelId)
+  const apiKey = effectiveApiKey(config, env, modelId)
+  const baseUrl = profile?.baseUrl ?? envConfig.baseUrl ?? config.baseUrl ?? DEFAULT_OPENCODE_GO_BASE_URL
+  const model = profile?.model ?? modelId
   const result: EffectiveLlmConfig = {
     apiKeySet: Boolean(apiKey),
     baseUrl,
     model,
+    modelId,
   }
-  if (config.protocol) result.protocol = config.protocol
-  if (config.apiKeyHeader) result.apiKeyHeader = config.apiKeyHeader
+  const protocol = profile?.protocol ?? (profile ? undefined : config.protocol)
+  if (protocol) result.protocol = protocol
+  const apiKeyHeader = profile?.apiKeyHeader ?? config.apiKeyHeader
+  if (apiKeyHeader) result.apiKeyHeader = apiKeyHeader
   if (config.temperature !== undefined) result.temperature = config.temperature
-  if (config.reasoningEffort) result.reasoningEffort = config.reasoningEffort
+  const supported = modelCapabilities(model, protocol, profile ? profile.reasoningEfforts ?? [] : undefined).reasoningEfforts
+  const defaultEffort = profile?.reasoningEffort ?? config.reasoningEffort
+  if (defaultEffort && supported.includes(defaultEffort)) result.reasoningEffort = defaultEffort
   return result
+}
+
+export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = process.env): Array<{
+  id: string
+  name: string
+  protocol: LlmProtocol
+  reasoningEfforts: readonly ReasoningEffort[]
+  apiKeySet: boolean
+}> {
+  const effective = effectiveLlmConfig(config, env)
+  const ids = config.models?.length
+    ? [...new Set([effective.modelId, ...config.models.map(entry => entry.id)])]
+    : [...new Set([effective.modelId, 'deepseek-v4-flash', 'deepseek-v4-pro', 'minimax-m3'])]
+  return ids.map(id => {
+    const profile = config.models?.find(entry => entry.id === id)
+    const route = effectiveLlmConfig(config, env, id)
+    return {
+      id,
+      name: profile?.name ?? id,
+      ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined),
+      apiKeySet: route.apiKeySet,
+    }
+  })
 }
 
 export function toLlmEnvConfig(config: SystemConfig): LlmEnvConfig {
@@ -139,7 +186,11 @@ export function toLlmEnvConfig(config: SystemConfig): LlmEnvConfig {
 export function effectiveApiKey(
   config: SystemConfig,
   env: NodeJS.ProcessEnv = process.env,
+  selectedModel?: string,
 ): string | undefined {
+  const profile = config.models?.find(entry => entry.id === selectedModel)
+  if (profile?.apiKeyEnv) return env[profile.apiKeyEnv] || profile.apiKey
+  if (profile?.apiKey) return profile.apiKey
   if (env.TNEGA_API_KEY) return env.TNEGA_API_KEY
   if (config.protocol && config.apiKey) return config.apiKey
   return resolveLlmEnv(env).apiKey ?? config.apiKey
@@ -176,9 +227,47 @@ function normalizeConfig(value: unknown): SystemConfig {
   if (record.reasoningEffort === 'low' || record.reasoningEffort === 'medium' || record.reasoningEffort === 'high') {
     config.reasoningEffort = record.reasoningEffort
   }
+  if (Array.isArray(record.models)) {
+    const seen = new Set<string>()
+    config.models = record.models.flatMap(entry => {
+      const id = stringField(entry, 'id')?.trim()
+      if (!id || seen.has(id)) return []
+      seen.add(id)
+      const model: ConfiguredModel = { id }
+      for (const field of ['model', 'name', 'baseUrl', 'apiKey', 'apiKeyEnv'] as const) {
+        const value = stringField(entry, field)?.trim()
+        if (value) model[field] = value
+      }
+      const protocol = stringField(entry, 'protocol')
+      if (protocol === 'openai' || protocol === 'anthropic') model.protocol = protocol
+      const header = stringField(entry, 'apiKeyHeader')
+      if (header === 'x-api-key' || header === 'api-key') model.apiKeyHeader = header
+      const effort = stringField(entry, 'reasoningEffort')
+      if (effort === 'low' || effort === 'medium' || effort === 'high') model.reasoningEffort = effort
+      const efforts = fieldOf(entry, 'reasoningEfforts')
+      if (Array.isArray(efforts)) {
+        model.reasoningEfforts = [...new Set(efforts.filter(isReasoningEffort))]
+      }
+      return [model]
+    })
+  }
   if (Array.isArray(record.workspaces)) {
     config.workspaces = record.workspaces
       .filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))
   }
   return config
+}
+
+function fieldOf(value: unknown, key: string): unknown {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? Reflect.get(value, key) : undefined
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  const field = fieldOf(value, key)
+  return typeof field === 'string' ? field : undefined
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return value === 'low' || value === 'medium' || value === 'high'
 }

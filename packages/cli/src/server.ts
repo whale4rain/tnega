@@ -21,7 +21,7 @@ import {
   type Plan,
   type SlashCommandResult,
 } from '@tnega/coding-agent'
-import { createLlmAdapter, MODEL_CATALOG, modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
+import { createLlmAdapter, modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
 import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from './goal.js'
 import { memoryLocal } from '@tnega/memory-local'
 import type { MemoryService } from '@tnega/memory'
@@ -51,7 +51,9 @@ import {
 import {
   effectiveApiKey,
   effectiveLlmConfig,
+  availableModels,
   readSystemConfig,
+  systemConfigPath,
   updateSystemConfig,
   type EffectiveLlmConfig,
   type SystemConfig,
@@ -319,7 +321,7 @@ async function handleApi(
 
   if (url.pathname === '/api/config' && req.method === 'GET') {
     const config = await readSystemConfig(context.configFile)
-    sendJson(res, 200, configSnapshot(config))
+    sendJson(res, 200, configSnapshot(config, context.configFile))
     return
   }
 
@@ -338,7 +340,7 @@ async function handleApi(
       patch.temperature = body.temperature
     }
     const config = await updateSystemConfig(patch, context.configFile)
-    sendJson(res, 200, configSnapshot(config))
+    sendJson(res, 200, configSnapshot(config, context.configFile))
     return
   }
 
@@ -618,17 +620,17 @@ async function compactContext(
 ): Promise<SessionSummary> {
   const sessionSummary = await readSessionSummary(workspace, id)
   const config = await readSystemConfig(context.configFile)
-  const effective = effectiveLlmConfig(config)
-  effective.model = sessionSummary.model ?? effective.model
-  const capabilities = modelCapabilities(effective.model, effective.protocol)
+  const effective = effectiveLlmConfig(config, process.env, sessionSummary.model)
+  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
+    ?? modelCapabilities(effective.model, effective.protocol)
   const selectedEffort = sessionSummary.reasoningEffort === 'default'
-    ? undefined : sessionSummary.reasoningEffort ?? effective.reasoningEffort
+    ? effective.reasoningEffort : sessionSummary.reasoningEffort ?? effective.reasoningEffort
   if (selectedEffort && capabilities.reasoningEfforts.includes(selectedEffort)) {
     effective.reasoningEffort = selectedEffort
   } else {
     delete effective.reasoningEffort
   }
-  const apiKey = effectiveApiKey(config)
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
   if (!effective.apiKeySet || !apiKey) {
     throw new HttpError(400, 'API key is not configured')
   }
@@ -653,6 +655,7 @@ async function compactContext(
     ...(effective.temperature !== undefined
       ? { temperature: effective.temperature }
       : {}),
+    ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
   })
   const completion = await adapter.complete(
     [
@@ -766,11 +769,11 @@ async function handleRun(
   const mode = summary.mode ?? 'auto'
 
   const config = await readSystemConfig(context.configFile)
-  const effective = effectiveLlmConfig(config)
-  effective.model = summary.model ?? effective.model
-  const capabilities = modelCapabilities(effective.model, effective.protocol)
+  const effective = effectiveLlmConfig(config, process.env, summary.model)
+  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
+    ?? modelCapabilities(effective.model, effective.protocol)
   const selectedEffort = summary.reasoningEffort === 'default'
-    ? undefined : summary.reasoningEffort ?? effective.reasoningEffort
+    ? effective.reasoningEffort : summary.reasoningEffort ?? effective.reasoningEffort
   if (selectedEffort && capabilities.reasoningEfforts.includes(selectedEffort)) {
     effective.reasoningEffort = selectedEffort
   } else {
@@ -780,7 +783,7 @@ async function handleRun(
     sendError(res, 400, 'API key is not configured')
     return
   }
-  const apiKey = effectiveApiKey(config)
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
   if (!apiKey) {
     sendError(res, 400, 'API key is not configured')
     return
@@ -1016,6 +1019,7 @@ async function ensureResidentAgent(
   const signature = [
     req.effective.baseUrl,
     req.effective.model,
+    req.apiKey,
     req.effective.reasoningEffort ?? '',
     req.effective.protocol ?? '',
     req.effective.temperature ?? '',
@@ -1429,7 +1433,7 @@ function searchApiKey(effective: EffectiveLlmConfig, modelApiKey: string): strin
   return undefined
 }
 
-function configSnapshot(config: SystemConfig): Record<string, unknown> {
+function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record<string, unknown> {
   const effective = effectiveLlmConfig(config)
   const env = resolveLlmEnv(process.env)
   return {
@@ -1437,6 +1441,7 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
     effective: {
       baseUrl: effective.baseUrl,
       model: effective.model,
+      modelId: effective.modelId,
       ...(effective.protocol ? { protocol: effective.protocol } : {}),
       ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
       ...(effective.temperature !== undefined
@@ -1445,6 +1450,7 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
     },
     config: {
       apiKeySet: Boolean(config.apiKey),
+      path,
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       ...(config.model ? { model: config.model } : {}),
       ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
@@ -1452,14 +1458,24 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
       ...(config.temperature !== undefined
         ? { temperature: config.temperature }
         : {}),
+      models: config.models?.map(model => ({
+        id: model.id,
+        ...(model.model ? { model: model.model } : {}),
+        ...(model.name ? { name: model.name } : {}),
+        ...(model.baseUrl ? { baseUrl: model.baseUrl } : {}),
+        ...(model.protocol ? { protocol: model.protocol } : {}),
+        ...(model.apiKeyEnv ? { apiKeyEnv: model.apiKeyEnv } : {}),
+        apiKeySet: Boolean(model.apiKey || model.apiKeyEnv && process.env[model.apiKeyEnv]),
+        ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+      })) ?? [],
     },
     env: {
       apiKeySet: Boolean(env.apiKey),
       ...(env.baseUrl ? { baseUrl: env.baseUrl } : {}),
       ...(env.model ? { model: env.model } : {}),
     },
-    models: [...new Set([...MODEL_CATALOG.map(model => model.id), effective.model])]
-      .map(id => ({ id, ...modelCapabilities(id, effective.protocol) })),
+    models: availableModels(config),
   }
 }
 

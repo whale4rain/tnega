@@ -84,7 +84,8 @@ Workspace `.tnega/MEMORY.md` 在压缩时整理长期有效的项目约定。每
 _Avoid_: log view
 
 **System Config**:
-独立于工作区、位于用户主目录的模型配置，包含 apiKey、model、baseUrl 与 temperature。
+独立于工作区、位于用户主目录的模型配置，包含默认模型和可选的多模型路由列表；
+每个路由可声明自己的凭据、协议和思考强度档位。
 _Avoid_: settings file, preferences
 
 **Recent Workspace**:
