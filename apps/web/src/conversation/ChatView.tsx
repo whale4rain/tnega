@@ -33,7 +33,7 @@ type RunState = 'idle' | 'running' | 'cancelling'
 
 interface ChatViewProps {
   model?: string
-  models: Array<{ id: string; reasoningEfforts: Array<'low' | 'medium' | 'high'> }>
+  models: Array<{ id: string; name: string; reasoningEfforts: Array<'low' | 'medium' | 'high'> }>
   reasoningEffort: 'default' | 'low' | 'medium' | 'high'
   onModelChange: (model: string) => Promise<void>
   onReasoningEffortChange: (effort: 'default' | 'low' | 'medium' | 'high') => Promise<void>

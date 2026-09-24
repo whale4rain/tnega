@@ -252,6 +252,7 @@ export interface ModelMessage {
 export interface LlmEffective {
   baseUrl: string
   model: string
+  modelId: string
   protocol?: 'anthropic' | 'openai'
   reasoningEffort?: 'low' | 'medium' | 'high'
   temperature?: number
@@ -262,11 +263,23 @@ export interface ConfigSnapshot {
   effective: LlmEffective
   config: {
     apiKeySet: boolean
+    path: string
     baseUrl?: string
     model?: string
     protocol?: 'anthropic' | 'openai'
     reasoningEffort?: 'low' | 'medium' | 'high'
     temperature?: number
+    models: Array<{
+      id: string
+      model?: string
+      name?: string
+      baseUrl?: string
+      protocol?: 'anthropic' | 'openai'
+      apiKeyEnv?: string
+      apiKeySet: boolean
+      reasoningEfforts?: Array<'low' | 'medium' | 'high'>
+      reasoningEffort?: 'low' | 'medium' | 'high'
+    }>
   }
   env: {
     apiKeySet: boolean
@@ -275,8 +288,10 @@ export interface ConfigSnapshot {
   }
   models: Array<{
     id: string
+    name: string
     protocol: 'anthropic' | 'openai'
     reasoningEfforts: Array<'low' | 'medium' | 'high'>
+    apiKeySet: boolean
   }>
 }
 

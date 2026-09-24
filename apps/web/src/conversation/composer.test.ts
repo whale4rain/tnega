@@ -39,7 +39,7 @@ function setup(apiKeySet = true, plan?: DisplayPlan, sessionRunning = false) {
         sessionRunning,
         messages: [],
         apiKeySet,
-        models: [{ id: 'deepseek-v4-flash', reasoningEfforts: [] }],
+        models: [{ id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', reasoningEfforts: [] }],
         reasoningEffort: 'default',
         onModelChange: vi.fn().mockResolvedValue(undefined),
         onReasoningEffortChange: vi.fn().mockResolvedValue(undefined),

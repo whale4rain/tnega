@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Theme } from '@radix-ui/themes'
+import { Dialog, Theme } from '@radix-ui/themes'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
 import { ChatView } from './conversation/ChatView'
 import { SettingsView } from './workbench/SettingsView'
-import { openSettingsWindow } from './desktopBridge'
 import type { ThemePreference } from './ThemeToggle'
 import {
   clearSessionSelection,
@@ -43,30 +42,7 @@ function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
 }
 
 export default function App() {
-  return new URLSearchParams(window.location.search).get('view') === 'settings'
-    ? <SettingsWindow /> : <ChatApp />
-}
-
-function SettingsWindow() {
-  const [config, setConfig] = useState<ConfigSnapshot | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  useEffect(() => {
-    document.documentElement.dataset.theme = resolveTheme(initialThemePreference())
-    document.title = 'Tnega Settings'
-  }, [])
-  useEffect(() => {
-    void api.getConfig().then(setConfig).catch(reason => setError(messageOf(reason)))
-  }, [])
-  return <Theme appearance={resolveTheme(initialThemePreference())} accentColor="gray" grayColor="gray" radius="large">
-    <div className="settings-window">
-      <div className="settings-window-bar">Tnega <span>Settings</span></div>
-      {error && <div className="error-banner" role="alert">{error}</div>}
-      <SettingsView config={config} onSaved={next => {
-        setConfig(next)
-        localStorage.setItem('tnega-config-revision', String(Date.now()))
-      }} />
-    </div>
-  </Theme>
+  return <ChatApp />
 }
 
 function ChatApp() {
@@ -95,6 +71,7 @@ function ChatApp() {
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const projected = useRef<{ id: string; seq: number } | null>(null)
   const restoredSelection = useRef(false)
 
@@ -435,7 +412,7 @@ function ChatApp() {
         model,
         reasoningEffort: 'default',
       })
-      setSummary(next)
+      if (selection.current?.workspace === workspace && selection.current.id === sessionId) setSummary(next)
       setSessions(current => current.map(item => item.workspace === workspace && item.id === sessionId ? next : item))
     } catch (reason) {
       setError(messageOf(reason))
@@ -446,12 +423,16 @@ function ChatApp() {
     if (!workspace || !sessionId) return
     try {
       const { summary: next } = await api.patchSessionMeta(workspace, sessionId, { reasoningEffort })
-      setSummary(next)
+      if (selection.current?.workspace === workspace && selection.current.id === sessionId) setSummary(next)
       setSessions(current => current.map(item => item.workspace === workspace && item.id === sessionId ? next : item))
     } catch (reason) {
       setError(messageOf(reason))
     }
   }
+
+  const currentModelId = summary?.model ?? config?.effective.modelId
+  const modelApiKeySet = config?.models.find(item => item.id === currentModelId)?.apiKeySet
+    ?? config?.apiKeySet ?? false
 
   return (
     <Theme
@@ -479,7 +460,7 @@ function ChatApp() {
             onRename={handleRename}
             onFork={handleFork}
             onDelete={handleDelete}
-            onSettings={openSettingsWindow}
+            onSettings={() => setSettingsOpen(true)}
             theme={themePreference}
             onTheme={setThemePreference}
           />
@@ -499,12 +480,12 @@ function ChatApp() {
           </div>
         )}
           <ChatView
-            model={summary?.model ?? config?.effective.model}
+            model={currentModelId}
             models={config?.models ?? []}
             reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
             onModelChange={handleModelChange}
             onReasoningEffortChange={handleReasoningEffortChange}
-            onSettings={openSettingsWindow}
+            onSettings={() => setSettingsOpen(true)}
             workspace={workspace}
             sessionId={sessionId}
             summary={summary}
@@ -512,7 +493,7 @@ function ChatApp() {
             metrics={metrics}
             sessionRunning={sessionRunning}
             messages={messages}
-            apiKeySet={config?.apiKeySet ?? false}
+            apiKeySet={modelApiKeySet}
             onNewSession={handleNewSession}
             onRefresh={refreshSession}
             onForkAt={handleForkAt}
@@ -522,6 +503,15 @@ function ChatApp() {
             onModeChange={handleModeChange}
           />
       </WorkbenchShell>
+      <Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <Dialog.Content className="settings-dialog" maxWidth="680px" aria-describedby={undefined}>
+          <Dialog.Title>Settings</Dialog.Title>
+          <SettingsView config={config} onReload={setConfig} onSaved={next => {
+            setConfig(next)
+            setSettingsOpen(false)
+          }} />
+        </Dialog.Content>
+      </Dialog.Root>
     </Theme>
   )
 }

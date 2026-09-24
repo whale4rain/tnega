@@ -6,23 +6,27 @@ import type { ConfigSnapshot } from '../types'
 interface SettingsViewProps {
   config: ConfigSnapshot | null
   onSaved: (config: ConfigSnapshot) => void
+  onReload: (config: ConfigSnapshot) => void
 }
 
-export function SettingsView({ config, onSaved }: SettingsViewProps) {
+export function SettingsView({ config, onSaved, onReload }: SettingsViewProps) {
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
   const [temperature, setTemperature] = useState('')
   const [protocol, setProtocol] = useState<'auto' | 'openai' | 'anthropic'>('auto')
-  const [reasoningEffort, setReasoningEffort] = useState('default')
+  const [reasoningEffort, setReasoningEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const supportedEfforts = config?.models.find(item => item.id === model)?.reasoningEfforts ?? []
+  const selectedEffort = reasoningEffort !== 'default' && supportedEfforts.includes(reasoningEffort)
+    ? reasoningEffort : 'default'
 
   useEffect(() => {
     if (!config) return
     setBaseUrl(config.config.baseUrl ?? config.effective.baseUrl)
-    setModel(config.config.model ?? config.effective.model)
+    setModel(config.config.model ?? config.effective.modelId)
     setProtocol(config.config.protocol ?? 'auto')
     setReasoningEffort(config.config.reasoningEffort ?? 'default')
     setTemperature(
@@ -43,7 +47,7 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
     if (model.trim()) patch.model = model.trim()
     else patch.model = ''
     patch.protocol = protocol === 'auto' ? '' : protocol
-    patch.reasoningEffort = reasoningEffort === 'default' ? '' : reasoningEffort
+    patch.reasoningEffort = selectedEffort === 'default' ? '' : selectedEffort
     if (temperature.trim()) {
       const value = Number(temperature)
       if (Number.isFinite(value)) patch.temperature = value
@@ -57,6 +61,15 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
       setError(messageOf(reason))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function reload() {
+    try {
+      setError(null)
+      onReload(await api.getConfig())
+    } catch (reason) {
+      setError(messageOf(reason))
     }
   }
 
@@ -126,13 +139,13 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
         </label>
         <label className="field">
           <span>Default thinking</span>
-          <Select.Root value={reasoningEffort} onValueChange={setReasoningEffort}>
+          <Select.Root value={selectedEffort} onValueChange={value => {
+            if (value === 'default' || value === 'low' || value === 'medium' || value === 'high') setReasoningEffort(value)
+          }} disabled={supportedEfforts.length === 0}>
             <Select.Trigger aria-label="Default thinking effort" />
             <Select.Content>
               <Select.Item value="default">Model default</Select.Item>
-              <Select.Item value="low">Low</Select.Item>
-              <Select.Item value="medium">Medium</Select.Item>
-              <Select.Item value="high">High</Select.Item>
+              {supportedEfforts.map(effort => <Select.Item key={effort} value={effort}>{effort}</Select.Item>)}
             </Select.Content>
           </Select.Root>
           <span className="field-note">Applied only when the model supports effort.</span>
@@ -156,6 +169,22 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
             effective: {config?.effective.model ?? '-'}
           </span>
         </label>
+      </div>
+      <div className="settings-profiles">
+        <div className="settings-profiles-heading">
+          <strong>Selectable models</strong>
+          <Button size="1" variant="ghost" color="gray" onClick={() => void reload()}>Reload file</Button>
+        </div>
+        <p>Configure multiple model routes in the <code>models</code> array of:</p>
+        <code className="settings-config-path">{config?.config.path ?? 'Loading…'}</code>
+        <div className="settings-model-list">
+          {config?.models.map(item => (
+            <div key={item.id} className="settings-model-row">
+              <span>{item.name}</span>
+              <span>{item.reasoningEfforts.length ? item.reasoningEfforts.join(' · ') : 'model default'}</span>
+            </div>
+          ))}
+        </div>
       </div>
       {error && (
         <div className="error-banner" role="alert">
