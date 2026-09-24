@@ -627,6 +627,12 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 }
 .message.user .md a { color: inherit; }
 .message.user .md pre { max-width: 100%; }
+.message.user .md code,
+.message.user .md pre {
+  background: transparent;
+  color: inherit;
+}
+.message.user .md pre { border-color: color-mix(in srgb, var(--user-ink), transparent 72%); }
 .message-label {
   font-size: 11px;
   color: var(--mute);
