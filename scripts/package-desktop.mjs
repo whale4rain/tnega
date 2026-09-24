@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
@@ -15,12 +15,14 @@ if (packaging.status !== 0) {
 }
 
 const release = resolve(root, 'apps/desktop/release')
+const desktopPackage = JSON.parse(await readFile(resolve(root, 'apps/desktop/package.json'), 'utf8'))
+const expectedName = `Tnega Setup ${desktopPackage.version}.exe`
 const installers = (await readdir(release, { withFileTypes: true }))
-  .filter((entry) => entry.isFile() && entry.name.endsWith('.exe'))
+  .filter((entry) => entry.isFile() && entry.name === expectedName)
   .map((entry) => resolve(release, entry.name))
 
 if (installers.length !== 1) {
-  throw new Error(`expected one Windows installer in ${release}`)
+  throw new Error(`expected ${expectedName} in ${release}`)
 }
 
 console.log(`Windows installer: ${installers[0]}`)
