@@ -8,6 +8,7 @@ import { closeDesktopRuntime } from './shutdown.js'
 let server: WebServer | undefined
 let allowedOrigin = ''
 let quitting = false
+let settingsWindow: BrowserWindow | undefined
 
 function appRoot(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'tnega-runtime')
@@ -30,6 +31,40 @@ function isTrustedSender(senderUrl: string): boolean {
 }
 
 function installDesktopHandlers(): void {
+  ipcMain.handle('tnega:open-settings', event => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '') || !server) return
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      if (settingsWindow.isMinimized()) settingsWindow.restore()
+      settingsWindow.focus()
+      return
+    }
+    settingsWindow = new BrowserWindow({
+      width: 820,
+      height: 700,
+      minWidth: 600,
+      minHeight: 500,
+      backgroundColor: '#222222',
+      title: 'Tnega Settings',
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#222222',
+        symbolColor: '#c7c7c7',
+        height: 32,
+      },
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        preload: join(dirname(fileURLToPath(import.meta.url)), 'preload.js'),
+      },
+    })
+    settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/u.test(url)) void shell.openExternal(url)
+      return { action: 'deny' }
+    })
+    settingsWindow.on('closed', () => { settingsWindow = undefined })
+    void settingsWindow.loadURL(`${server.url}/?view=settings`)
+  })
   ipcMain.handle('tnega:pick-workspace', async event => {
     if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined
     const result = await dialog.showOpenDialog({

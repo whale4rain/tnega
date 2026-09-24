@@ -901,6 +901,7 @@ button.send-button:hover:not(:disabled) {
 .composer-shortcut {
   font-size: 10px;
   opacity: 0.7;
+  margin-left: auto;
 }
 .config-notice {
   color: var(--warning);
@@ -1087,6 +1088,22 @@ button.send-button:hover:not(:disabled) {
   margin: 0 auto;
   padding: 40px 32px;
   overflow: auto;
+}
+.settings-window {
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+}
+.settings-window-bar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  background: var(--sidebar);
+  color: var(--mute);
+  font-size: 12px;
+  -webkit-app-region: drag;
 }
 .settings-header {
   display: flex;

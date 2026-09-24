@@ -33,6 +33,10 @@ type RunState = 'idle' | 'running' | 'cancelling'
 
 interface ChatViewProps {
   model?: string
+  models: Array<{ id: string; reasoningEfforts: Array<'low' | 'medium' | 'high'> }>
+  reasoningEffort: 'default' | 'low' | 'medium' | 'high'
+  onModelChange: (model: string) => Promise<void>
+  onReasoningEffortChange: (effort: 'default' | 'low' | 'medium' | 'high') => Promise<void>
   onSettings: () => void
   workspace: string | null
   sessionId: string | null
@@ -60,6 +64,10 @@ interface ChatViewProps {
 
 export function ChatView({
   model,
+  models,
+  reasoningEffort,
+  onModelChange,
+  onReasoningEffortChange,
   onSettings,
   workspace,
   sessionId,
@@ -1028,6 +1036,10 @@ export function ChatView({
             <ComposerFrame
               accessory={<PlanPanel plan={plan} />}
               model={model}
+              models={models}
+              reasoningEffort={reasoningEffort}
+              onModel={onModelChange}
+              onReasoningEffort={onReasoningEffortChange}
               workspace={workspace}
               apiKeySet={apiKeySet}
               onSettings={onSettings}

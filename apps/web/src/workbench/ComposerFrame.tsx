@@ -8,6 +8,10 @@ interface Props {
   accessory?: ReactNode
   workspace: string
   model?: string
+  models: Array<{ id: string; reasoningEfforts: Array<'low' | 'medium' | 'high'> }>
+  reasoningEffort: 'default' | 'low' | 'medium' | 'high'
+  onModel: (model: string) => Promise<void>
+  onReasoningEffort: (effort: 'default' | 'low' | 'medium' | 'high') => Promise<void>
   apiKeySet: boolean
   onSettings: () => void
   permission: 'read-only' | 'workspace-write' | 'bypass'
@@ -17,6 +21,12 @@ interface Props {
   onMode: (value: 'auto' | 'plan' | 'goal') => Promise<void>
 }
 export function ComposerFrame(props: Props) {
+  const selectedModel = props.models.find(item => item.id === props.model)
+  const models = selectedModel || !props.model
+    ? props.models : [{ id: props.model, reasoningEfforts: [] }, ...props.models]
+  const effort = props.reasoningEffort !== 'default'
+    && selectedModel?.reasoningEfforts.includes(props.reasoningEffort)
+    ? props.reasoningEffort : 'default'
   const permissionHint = {
     'read-only': 'Read workspace · public web search',
     'workspace-write': 'Write workspace · shell access',
@@ -62,15 +72,25 @@ export function ComposerFrame(props: Props) {
         <span className="composer-shortcut">
           Enter to send · Shift + Enter for newline
         </span>
-        <Button
-          className="model-button"
-          size="1"
-          color="gray"
-          variant="ghost"
-          onClick={props.onSettings}
-        >
-          {props.model || 'Configure model'}
-        </Button>
+        <Select.Root value={props.model || ''} disabled={props.disabled || !props.model}
+          onValueChange={value => { void props.onModel(value) }}>
+          <Select.Trigger variant="ghost" aria-label="Conversation model" />
+          <Select.Content>
+            {models.map(item => <Select.Item key={item.id} value={item.id}>{item.id}</Select.Item>)}
+          </Select.Content>
+        </Select.Root>
+        <Select.Root value={effort} disabled={props.disabled || !selectedModel?.reasoningEfforts.length}
+          onValueChange={value => {
+            if (value === 'default' || value === 'low' || value === 'medium' || value === 'high')
+              void props.onReasoningEffort(value)
+          }}>
+          <Select.Trigger variant="ghost" aria-label="Thinking effort" />
+          <Select.Content>
+            <Select.Item value="default">Thinking: default</Select.Item>
+            {selectedModel?.reasoningEfforts.map(effort =>
+              <Select.Item key={effort} value={effort}>{`Thinking: ${effort}`}</Select.Item>)}
+          </Select.Content>
+        </Select.Root>
         {props.mode && (
           <Select.Root
             value={props.mode}

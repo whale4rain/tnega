@@ -1,17 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Button, TextField } from '@radix-ui/themes'
+import { Button, Select, TextField } from '@radix-ui/themes'
 import * as api from '../api'
 import type { ConfigSnapshot } from '../types'
-
-const MODEL_OPTIONS = [
-  'deepseek-v4-flash',
-  'deepseek-v4-pro',
-  'minimax-m3',
-  'deepseek-chat',
-  'deepseek-reasoner',
-  'gpt-5.2',
-  'gpt-5.1',
-]
 
 interface SettingsViewProps {
   config: ConfigSnapshot | null
@@ -23,6 +13,8 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
   const [temperature, setTemperature] = useState('')
+  const [protocol, setProtocol] = useState<'auto' | 'openai' | 'anthropic'>('auto')
+  const [reasoningEffort, setReasoningEffort] = useState('default')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -31,6 +23,8 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
     if (!config) return
     setBaseUrl(config.config.baseUrl ?? config.effective.baseUrl)
     setModel(config.config.model ?? config.effective.model)
+    setProtocol(config.config.protocol ?? 'auto')
+    setReasoningEffort(config.config.reasoningEffort ?? 'default')
     setTemperature(
       config.config.temperature === undefined
         ? ''
@@ -48,6 +42,8 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
     else patch.baseUrl = ''
     if (model.trim()) patch.model = model.trim()
     else patch.model = ''
+    patch.protocol = protocol === 'auto' ? '' : protocol
+    patch.reasoningEffort = reasoningEffort === 'default' ? '' : reasoningEffort
     if (temperature.trim()) {
       const value = Number(temperature)
       if (Number.isFinite(value)) patch.temperature = value
@@ -109,11 +105,37 @@ export function SettingsView({ config, onSaved }: SettingsViewProps) {
             spellCheck={false}
           />
           <datalist id="model-options">
-            {MODEL_OPTIONS.map((option) => (
-              <option key={option} value={option} />
+            {config?.models.map((option) => (
+              <option key={option.id} value={option.id} />
             ))}
           </datalist>
           <span className="field-note">env: {config?.env.model ?? 'none'}</span>
+        </label>
+        <label className="field">
+          <span>Protocol</span>
+          <Select.Root value={protocol} onValueChange={value => {
+            if (value === 'auto' || value === 'openai' || value === 'anthropic') setProtocol(value)
+          }}>
+            <Select.Trigger aria-label="Model protocol" />
+            <Select.Content>
+              <Select.Item value="auto">Auto</Select.Item>
+              <Select.Item value="openai">OpenAI compatible</Select.Item>
+              <Select.Item value="anthropic">Anthropic compatible</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </label>
+        <label className="field">
+          <span>Default thinking</span>
+          <Select.Root value={reasoningEffort} onValueChange={setReasoningEffort}>
+            <Select.Trigger aria-label="Default thinking effort" />
+            <Select.Content>
+              <Select.Item value="default">Model default</Select.Item>
+              <Select.Item value="low">Low</Select.Item>
+              <Select.Item value="medium">Medium</Select.Item>
+              <Select.Item value="high">High</Select.Item>
+            </Select.Content>
+          </Select.Root>
+          <span className="field-note">Applied only when the model supports effort.</span>
         </label>
         <label className="field">
           <span>Temperature</span>

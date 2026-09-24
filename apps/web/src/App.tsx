@@ -4,6 +4,7 @@ import { WorkbenchShell } from './workbench/WorkbenchShell'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
 import { ChatView } from './conversation/ChatView'
 import { SettingsView } from './workbench/SettingsView'
+import { openSettingsWindow } from './desktopBridge'
 import type { ThemePreference } from './ThemeToggle'
 import {
   clearSessionSelection,
@@ -24,8 +25,6 @@ import type {
   SessionSummary,
 } from './types'
 
-type View = 'chat' | 'settings'
-
 const THEME_STORAGE_KEY = 'tnega-theme'
 
 function initialThemePreference(): ThemePreference {
@@ -44,6 +43,33 @@ function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
 }
 
 export default function App() {
+  return new URLSearchParams(window.location.search).get('view') === 'settings'
+    ? <SettingsWindow /> : <ChatApp />
+}
+
+function SettingsWindow() {
+  const [config, setConfig] = useState<ConfigSnapshot | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolveTheme(initialThemePreference())
+    document.title = 'Tnega Settings'
+  }, [])
+  useEffect(() => {
+    void api.getConfig().then(setConfig).catch(reason => setError(messageOf(reason)))
+  }, [])
+  return <Theme appearance={resolveTheme(initialThemePreference())} accentColor="gray" grayColor="gray" radius="large">
+    <div className="settings-window">
+      <div className="settings-window-bar">Tnega <span>Settings</span></div>
+      {error && <div className="error-banner" role="alert">{error}</div>}
+      <SettingsView config={config} onSaved={next => {
+        setConfig(next)
+        localStorage.setItem('tnega-config-revision', String(Date.now()))
+      }} />
+    </div>
+  </Theme>
+}
+
+function ChatApp() {
   const [themePreference, setThemePreference] = useState<ThemePreference>(
     initialThemePreference,
   )
@@ -68,7 +94,6 @@ export default function App() {
   const [sessionRunning, setSessionRunning] = useState(false)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
-  const [view, setView] = useState<View>('chat')
   const [error, setError] = useState<string | null>(null)
   const projected = useRef<{ id: string; seq: number } | null>(null)
   const restoredSelection = useRef(false)
@@ -167,6 +192,19 @@ export default function App() {
       .catch((reason: unknown) => {
         if (selection.current === target) setError(messageOf(reason))
       })
+  }, [])
+
+  useEffect(() => {
+    const refreshConfig = () => { void api.getConfig().then(setConfig).catch(reason => setError(messageOf(reason))) }
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === 'tnega-config-revision') refreshConfig()
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('focus', refreshConfig)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('focus', refreshConfig)
+    }
   }, [])
 
   useEffect(() => {
@@ -390,9 +428,29 @@ export default function App() {
     }
   }
 
-  async function handleConfigSaved(next: ConfigSnapshot) {
-    setConfig(next)
-    setView('chat')
+  async function handleModelChange(model: string) {
+    if (!workspace || !sessionId) return
+    try {
+      const { summary: next } = await api.patchSessionMeta(workspace, sessionId, {
+        model,
+        reasoningEffort: 'default',
+      })
+      setSummary(next)
+      setSessions(current => current.map(item => item.workspace === workspace && item.id === sessionId ? next : item))
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleReasoningEffortChange(reasoningEffort: 'default' | 'low' | 'medium' | 'high') {
+    if (!workspace || !sessionId) return
+    try {
+      const { summary: next } = await api.patchSessionMeta(workspace, sessionId, { reasoningEffort })
+      setSummary(next)
+      setSessions(current => current.map(item => item.workspace === workspace && item.id === sessionId ? next : item))
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
   }
 
   return (
@@ -413,21 +471,15 @@ export default function App() {
             onAdd={handleAddWorkspace}
             onRemove={handleRemoveWorkspace}
             onSelect={(path, id) => {
-              setView('chat')
               selectSession(path, id)
             }}
             onNew={async (options, path) => {
-              setView('chat')
               await handleNewSession(options, path)
             }}
             onRename={handleRename}
             onFork={handleFork}
             onDelete={handleDelete}
-            onSettings={() =>
-              setView((current) =>
-                current === 'settings' ? 'chat' : 'settings',
-              )
-            }
+            onSettings={openSettingsWindow}
             theme={themePreference}
             onTheme={setThemePreference}
           />
@@ -446,12 +498,13 @@ export default function App() {
             </button>
           </div>
         )}
-        {view === 'settings' ? (
-          <SettingsView config={config} onSaved={handleConfigSaved} />
-        ) : (
           <ChatView
-            model={config?.effective.model}
-            onSettings={() => setView('settings')}
+            model={summary?.model ?? config?.effective.model}
+            models={config?.models ?? []}
+            reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
+            onModelChange={handleModelChange}
+            onReasoningEffortChange={handleReasoningEffortChange}
+            onSettings={openSettingsWindow}
             workspace={workspace}
             sessionId={sessionId}
             summary={summary}
@@ -468,7 +521,6 @@ export default function App() {
             onPlanChange={setPlan}
             onModeChange={handleModeChange}
           />
-        )}
       </WorkbenchShell>
     </Theme>
   )

@@ -9,6 +9,8 @@ export interface SessionSummary {
   forkedAtMessageId?: string
   agentType?: 'general' | 'coding'
   mode?: 'auto' | 'plan' | 'goal'
+  model?: string
+  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
 }
 
 export interface SessionEventBase<T extends string, P> {
@@ -250,6 +252,8 @@ export interface ModelMessage {
 export interface LlmEffective {
   baseUrl: string
   model: string
+  protocol?: 'anthropic' | 'openai'
+  reasoningEffort?: 'low' | 'medium' | 'high'
   temperature?: number
 }
 
@@ -260,6 +264,8 @@ export interface ConfigSnapshot {
     apiKeySet: boolean
     baseUrl?: string
     model?: string
+    protocol?: 'anthropic' | 'openai'
+    reasoningEffort?: 'low' | 'medium' | 'high'
     temperature?: number
   }
   env: {
@@ -267,6 +273,11 @@ export interface ConfigSnapshot {
     baseUrl?: string
     model?: string
   }
+  models: Array<{
+    id: string
+    protocol: 'anthropic' | 'openai'
+    reasoningEfforts: Array<'low' | 'medium' | 'high'>
+  }>
 }
 
 export interface ToolCall {

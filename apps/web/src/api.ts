@@ -141,6 +141,8 @@ export function patchSessionMeta(
     title?: string
     agentType?: 'general' | 'coding'
     mode?: 'auto' | 'plan' | 'goal'
+    model?: string
+    reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
   },
 ): Promise<{ summary: SessionSummary }> {
   const query = new URLSearchParams({ workspace })

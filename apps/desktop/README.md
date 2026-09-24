@@ -27,7 +27,7 @@ pnpm --filter @tnega/desktop exec electron-builder --dir
 ## Security boundary
 
 Electron runs the Web UI with context isolation, sandboxing, and Node integration
-disabled. The preload bridge only provides native folder selection, revealing a
-Workspace, and the app version. The Agent Runtime stays behind the existing
+disabled. The preload bridge provides native folder selection, revealing a
+Workspace, opening the dedicated Settings window, and the app version. The Agent Runtime stays behind the existing
 loopback HTTP/SSE API. It continues to enforce Workspace path boundaries and
 requires users to choose network and Shell Tool Permissions for every Agent Run.
