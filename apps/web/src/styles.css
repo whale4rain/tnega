@@ -430,6 +430,33 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 .subagent-status { color: var(--mute); text-transform: capitalize; }
 .subagent-status.running { color: var(--accent); }
 .subagent-status.failed { color: var(--danger); }
+.subagent-card {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--ink);
+  overflow: hidden;
+}
+.subagent-card-line { display: flex; align-items: stretch; min-width: 0; }
+.subagent-card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  padding: 8px 11px;
+  text-align: left;
+}
+.subagent-card-toggle strong { min-width: 0; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-card-toggle > svg { flex-shrink: 0; color: var(--mute); }
+.subagent-card-toggle > svg:last-child { margin-left: auto; transition: transform 150ms ease; }
+.subagent-card-toggle > svg.expanded { transform: rotate(90deg); }
+.subagent-card-preview { flex: 1; min-width: 0; color: var(--mute); font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.subagent-card-open { display: grid; place-items: center; width: 34px; flex-shrink: 0; border-left: 1px solid var(--hairline); color: var(--mute); }
+.subagent-card-open:hover { color: var(--ink); }
+.subagent-card-detail { padding: 11px 14px; border-top: 1px solid var(--hairline); }
+.subagent-card-detail > :not(:last-child) { margin-bottom: 12px; }
+.subagent-card-task { color: var(--mute); font-size: 11px; margin: 0; white-space: pre-wrap; }
 .conversation-footer {
   width: min(820px, calc(100% - 64px));
   margin: 0 auto;
@@ -453,6 +480,7 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 .subagent-toggle:disabled { opacity: .7; cursor: default; }
 .subagent-total { color: var(--mute); }
 .subagent-sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 0 0 320px;
@@ -462,6 +490,28 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
   font-size: 12px;
   animation: panel-appear 160ms ease-out;
 }
+.subagent-resize-handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.subagent-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: calc(50% - 18px);
+  width: 2px;
+  height: 36px;
+  border-radius: 2px;
+  background: var(--hairline);
+}
+.subagent-resize-handle:hover,
+.subagent-resize-handle:focus-visible { background: color-mix(in srgb, var(--accent), transparent 75%); }
 .subagent-sidebar-heading {
   display: flex;
   align-items: center;
@@ -500,9 +550,9 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 .subagent-inspector-error { color: var(--danger); }
 .subagent-inspector-empty { color: var(--mute); }
 .subagent-transcript { margin-top: 16px; }
-.subagent-event { margin: 0 0 14px; }
-.subagent-event > span { color: var(--mute); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
-.subagent-event p { margin: 4px 0 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.subagent-transcript .message { font-size: 12px; margin-bottom: 16px; }
+.subagent-transcript .message.user > .message-body { max-width: 100%; }
+.subagent-transcript .subagent-card-toggle strong { max-width: 48%; }
 .approval-backdrop {
   position: fixed;
   inset: 0;
@@ -1151,6 +1201,7 @@ button.send-button:hover:not(:disabled) {
     width: min(320px, 100%);
     box-shadow: -12px 0 36px #0004;
   }
+  .subagent-resize-handle { display: none; }
   .subagent-total { display: none; }
   .conversation-footer { width: calc(100% - 64px); }
   button.sidebar-backdrop {

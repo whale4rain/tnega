@@ -20,7 +20,9 @@ export function groupToolMessages(messages: DisplayMessage[]): MessageRenderItem
       message.role === 'assistant' && !message.content.trim() &&
       !message.interrupted && !message.retry &&
       !message.endState?.error && !message.endState?.cancelCause &&
-      (!message.pending || tools.length > 0 || messages[sourceIndex + 1]?.role === 'tool')
+      (!message.pending || tools.length > 0 ||
+        messages[sourceIndex + 1]?.role === 'tool' ||
+        messages[sourceIndex + 1]?.role === 'subagent')
     ) return
     if (message.role === 'tool') {
       tools.push(message)

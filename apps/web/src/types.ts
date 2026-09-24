@@ -336,6 +336,17 @@ export interface DisplayTool {
   errorText?: string
 }
 
+export interface DisplaySubagent {
+  callId?: string
+  id?: string
+  label: string
+  task: string
+  mode: 'spawn' | 'fork'
+  status: 'starting' | 'running' | 'idle' | 'ready' | 'failed'
+  replies: string[]
+  error?: string
+}
+
 export interface DisplayRetry {
   retryId: string
   retry: number
@@ -353,9 +364,10 @@ export interface DisplayEndState {
 
 export interface DisplayMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system'
+  role: 'user' | 'assistant' | 'tool' | 'system' | 'subagent'
   content: string
   tool?: DisplayTool
+  subagent?: DisplaySubagent
   slash?: SlashMetaPayload
   finishReason?: string
   pending?: boolean

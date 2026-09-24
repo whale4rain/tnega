@@ -1,5 +1,6 @@
 import { prettyJson } from './api'
 import { formatSlashMessage, readSlashMetaEvent } from './planDisplay'
+import { agentIdFromName, appendAgentReply, mergeAgentReplies, subagentFromCall, subagentIdFromResult } from './subagentDisplay'
 import type {
   CancelCause,
   DisplayEndState,
@@ -26,6 +27,11 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
     switch (event.type) {
       case 'user/message':
         if (event.payload.content) {
+          const agentId = agentIdFromName(event.payload.name)
+          if (agentId) {
+            appendAgentReply(messages, agentId, event.payload.content)
+            break
+          }
           messages.push({
             id: event.id,
             role: 'user',
@@ -68,6 +74,17 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         // System prompts are raw model context, not part of the transcript.
         break
       case 'tool/call':
+        if (toolIndex.has(event.payload.id)) break
+        if (event.payload.name === 'spawn_subagent') {
+          messages.push({
+            id: event.id,
+            role: 'subagent',
+            content: '',
+            subagent: subagentFromCall(event.payload.id, event.payload.arguments),
+          })
+          toolIndex.set(event.payload.id, messages.length - 1)
+          break
+        }
         messages.push({
           id: event.id,
           role: 'tool',
@@ -83,7 +100,31 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       case 'tool/result': {
         const index = toolIndex.get(event.payload.toolCallId)
+        const subagent = index === undefined ? undefined : messages[index]?.subagent
+        if (subagent) {
+          const id = subagentIdFromResult(event.payload.output)
+          if (id) subagent.id = id
+          subagent.status = event.payload.ok ? 'running' : 'failed'
+          if (event.payload.error?.message) subagent.error = event.payload.error.message
+          break
+        }
         if (index === undefined) {
+          if (event.payload.name === 'spawn_subagent') {
+            messages.push({
+              id: event.id,
+              role: 'subagent',
+              content: '',
+              subagent: {
+                ...subagentFromCall(event.payload.toolCallId, undefined),
+                ...(subagentIdFromResult(event.payload.output)
+                  ? { id: subagentIdFromResult(event.payload.output) }
+                  : {}),
+                status: event.payload.ok ? 'running' : 'failed',
+                ...(event.payload.error?.message ? { error: event.payload.error.message } : {}),
+              },
+            })
+            break
+          }
           messages.push({
             id: event.id,
             role: 'tool',
@@ -199,6 +240,7 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         : {}),
     })
   }
+  mergeAgentReplies(messages)
   return messages
 }
 
@@ -210,6 +252,17 @@ function pushToolCallCards(
   sourceId: string,
 ): void {
   for (const call of calls) {
+    if (toolIndex.has(call.id)) continue
+    if (call.name === 'spawn_subagent') {
+      messages.push({
+        id: `${sourceId}-subagent-${call.id}`,
+        role: 'subagent',
+        content: '',
+        subagent: subagentFromCall(call.id, call.arguments),
+      })
+      toolIndex.set(call.id, messages.length - 1)
+      continue
+    }
     messages.push({
       id: `${sourceId}-tool-${call.id}`,
       role: 'tool',

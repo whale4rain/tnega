@@ -57,7 +57,10 @@ export default function App() {
   )
   const currentWorkspace = useRef(workspace)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    const selectedWorkspace = readWorkspaceSelection(localStorage)
+    return selectedWorkspace ? readSessionSelection(localStorage, selectedWorkspace) : null
+  })
   const selection = useRef<{ workspace: string; id: string } | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [context, setContext] = useState<ContextUsage | null>(null)
@@ -67,6 +70,8 @@ export default function App() {
   const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
   const [view, setView] = useState<View>('chat')
   const [error, setError] = useState<string | null>(null)
+  const projected = useRef<{ id: string; seq: number } | null>(null)
+  const restoredSelection = useRef(false)
 
   useEffect(() => {
     const root = document.documentElement
@@ -92,6 +97,13 @@ export default function App() {
         const stored = nextWorkspaces.workspaces
         setWorkspaces(stored)
         const nextWorkspace = resolveWorkspaceSelection(localStorage, stored)
+        if (nextWorkspace !== currentWorkspace.current) {
+          selection.current = null
+          setSessionId(null)
+          setSummary(null)
+          setMessages([])
+          projected.current = null
+        }
         currentWorkspace.current = nextWorkspace
         setWorkspace(nextWorkspace)
       })
@@ -134,6 +146,7 @@ export default function App() {
     writeSessionSelection(localStorage, path, id)
     setError(null)
     setMessages([])
+    projected.current = null
     setSummary(null)
     setContext(null)
     setMetrics(null)
@@ -147,6 +160,7 @@ export default function App() {
         setContext(detail.context)
         setMetrics(detail.metrics)
         setSessionRunning(detail.running)
+        projected.current = { id, seq: detail.events.at(-1)?.seq ?? 0 }
         setMessages(projectEvents(detail.events))
         setPlan(latestPlanFromEvents(detail.events))
       })
@@ -154,6 +168,13 @@ export default function App() {
         if (selection.current === target) setError(messageOf(reason))
       })
   }, [])
+
+  useEffect(() => {
+    if (restoredSelection.current) return
+    restoredSelection.current = true
+    if (!workspace || !sessionId) return
+    selectSession(workspace, sessionId)
+  }, [workspace, sessionId, selectSession])
 
   useEffect(() => {
     if (workspace) writeWorkspaceSelection(localStorage, workspace)
@@ -186,29 +207,36 @@ export default function App() {
       setMetrics(null)
       setSessionRunning(false)
       setMessages([])
+      projected.current = null
       setPlan(undefined)
     },
     [workspace],
   )
 
   const refreshSession = useCallback(
-    async (id: string) => {
+    async (id: string, refreshList = true) => {
       if (!workspace) return
       const target = selection.current
       if (target?.workspace !== workspace || target.id !== id) return
       const detail = await api.getSession(workspace, id)
       if (selection.current !== target) return detail
-      setSummary(detail.summary)
-      setContext(detail.context)
-      setMetrics(detail.metrics)
+      setSummary(current => sameValue(current, detail.summary) ? current : detail.summary)
+      setContext(current => sameValue(current, detail.context) ? current : detail.context)
+      setMetrics(current => sameValue(current, detail.metrics) ? current : detail.metrics)
       setSessionRunning(detail.running)
-      setMessages(projectEvents(detail.events))
-      setPlan(latestPlanFromEvents(detail.events))
-      const next = await api.listSessions(workspace)
-      setSessions((current) => [
-        ...current.filter((item) => item.workspace !== workspace),
-        ...next.sessions,
-      ])
+      const seq = detail.events.at(-1)?.seq ?? 0
+      if (projected.current?.id !== id || projected.current.seq !== seq) {
+        projected.current = { id, seq }
+        setMessages(projectEvents(detail.events))
+        setPlan(latestPlanFromEvents(detail.events))
+      }
+      if (refreshList) {
+        const next = await api.listSessions(workspace)
+        setSessions((current) => [
+          ...current.filter((item) => item.workspace !== workspace),
+          ...next.sessions,
+        ])
+      }
       return detail
     },
     [workspace],
@@ -243,6 +271,7 @@ export default function App() {
         setContext(null)
         setSessionRunning(false)
         setMessages([])
+        projected.current = null
         setPlan(undefined)
       }
     } catch (reason) {
@@ -306,7 +335,6 @@ export default function App() {
   }
 
   async function handleDelete(path: string, id: string) {
-    if (!window.confirm(`delete session ${id.slice(0, 8)}?`)) return
     try {
       await api.deleteSession(path, id)
       setSessions((current) =>
@@ -326,10 +354,12 @@ export default function App() {
         setContext(null)
         setSessionRunning(false)
         setMessages([])
+        projected.current = null
         setPlan(undefined)
       }
     } catch (reason) {
       setError(messageOf(reason))
+      throw reason
     }
   }
 
@@ -446,4 +476,8 @@ export default function App() {
 
 function messageOf(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason)
+}
+
+function sameValue(left: object | null, right: object): boolean {
+  return left !== null && JSON.stringify(left) === JSON.stringify(right)
 }

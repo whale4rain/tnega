@@ -1,12 +1,12 @@
-import { useState, type Ref } from 'react'
+import { memo, useState, type Ref } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Pencil, GitFork } from 'lucide-react'
+import { Pencil, GitFork, Bot, ChevronRight, PanelRight } from 'lucide-react'
 import { ToolBlock } from './ToolActivity'
 export { ToolGroupBlock } from './ToolActivity'
 import { formatCancelCause } from '../projectEvents'
 import { prettyJson } from '../api'
-import type { DisplayMessage, ContextUsage } from '../types'
+import type { DisplayMessage, ContextUsage, SubagentEntry } from '../types'
 
 interface MessageBlockProps {
   message: DisplayMessage
@@ -19,9 +19,12 @@ interface MessageBlockProps {
   onSubmitEdit?: () => void
   onCancelEdit?: () => void
   onForkAt?: () => void
+  onOpenSubagent?: (id: string) => void
+  subagentStatus?: SubagentEntry['status']
+  assistantLabel?: string
 }
 
-export function MessageBlock({
+export const MessageBlock = memo(function MessageBlock({
   message,
   active,
   userRef,
@@ -32,6 +35,9 @@ export function MessageBlock({
   onSubmitEdit,
   onCancelEdit,
   onForkAt,
+  onOpenSubagent,
+  subagentStatus,
+  assistantLabel = 'Tnega',
 }: MessageBlockProps) {
   if (message.role === 'tool' && message.tool) {
     return <ToolBlock message={message} />
@@ -51,6 +57,9 @@ export function MessageBlock({
       </div>
     )
   }
+  if (message.role === 'subagent' && message.subagent) {
+    return <SubagentBlock message={message} status={subagentStatus} onOpen={onOpenSubagent} />
+  }
   const className = `message ${message.role}${active ? ' active-user' : ''}${editing ? ' editing' : ''}`
   const isUser = message.role === 'user'
   const finishReason = message.finishReason ?? message.endState?.finishReason
@@ -58,7 +67,7 @@ export function MessageBlock({
     <div className={className} ref={userRef}>
       <div className="message-label">
         <span>
-          {message.role === 'assistant' ? 'Tnega' : 'You'}
+          {message.role === 'assistant' ? assistantLabel : 'You'}
           {message.pending ? ' ...' : ''}
           {message.interrupted ? ' / interrupted' : ''}
           {message.retry
@@ -133,6 +142,64 @@ export function MessageBlock({
         </div>
       )}
       <MessageStatus message={message} />
+    </div>
+  )
+})
+
+function SubagentBlock({
+  message,
+  status,
+  onOpen,
+}: {
+  message: DisplayMessage
+  status?: SubagentEntry['status']
+  onOpen?: (id: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const subagent = message.subagent
+  if (!subagent) return null
+  const agentId = subagent.id
+  const latest = subagent.replies.at(-1)
+  return (
+    <div className="message subagent-card">
+      <div className="subagent-card-line">
+        <button
+          type="button"
+          className="subagent-card-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(value => !value)}
+        >
+          <Bot size={15} aria-hidden="true" />
+          <strong>{subagent.label}</strong>
+          <span className={`subagent-status ${status ?? subagent.status}`}>
+            {status ?? subagent.status}
+          </span>
+          {latest && <span className="subagent-card-preview">{latest}</span>}
+          <ChevronRight size={14} className={expanded ? 'expanded' : ''} aria-hidden="true" />
+        </button>
+        {agentId && onOpen && (
+          <button
+            type="button"
+            className="subagent-card-open"
+            aria-label={`Open ${subagent.label} in tasks sidebar`}
+            title="Open task details"
+            onClick={() => onOpen(agentId)}
+          >
+            <PanelRight size={15} />
+          </button>
+        )}
+      </div>
+      {expanded && (
+        <div className="subagent-card-detail">
+          {subagent.task && <p className="subagent-card-task">{subagent.task}</p>}
+          {subagent.error && <p className="danger">{subagent.error}</p>}
+          {subagent.replies.map((reply, index) => (
+            <div className="md" key={`${message.id}-reply-${index}`}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{reply}</ReactMarkdown>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

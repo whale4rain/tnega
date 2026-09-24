@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import {
   Check,
   CircleAlert,
@@ -152,7 +152,7 @@ function ToolOutput({ text, failed }: { text: string; failed: boolean }) {
   )
 }
 
-export function ToolGroupBlock({ tools }: { tools: DisplayMessage[] }) {
+export const ToolGroupBlock = memo(function ToolGroupBlock({ tools }: { tools: DisplayMessage[] }) {
   if (tools.length === 1) return <ToolBlock message={tools[0]!} />
   const summary = summarizeToolGroup(tools)
   const labels = [
@@ -190,4 +190,4 @@ export function ToolGroupBlock({ tools }: { tools: DisplayMessage[] }) {
       </div>
     </Disclosure>
   )
-}
+})

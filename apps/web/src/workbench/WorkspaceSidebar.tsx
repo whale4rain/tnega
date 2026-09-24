@@ -50,6 +50,7 @@ export function WorkspaceSidebar(props: Props) {
   const [adding, setAdding] = useState(false)
   const [path, setPath] = useState('')
   const [rename, setRename] = useState<SessionSummary | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -137,9 +138,10 @@ export function WorkspaceSidebar(props: Props) {
         onFork={(workspace, id) =>
           void perform(() => props.onFork(workspace, id))
         }
-        onDelete={(workspace, id) =>
-          void perform(() => props.onDelete(workspace, id))
-        }
+        onDelete={(workspace, id) => {
+          const target = props.sessions.find(session => session.workspace === workspace && session.id === id)
+          if (target) setDeleteTarget(target)
+        }}
       />
       {error && (
         <p role="alert" className="sidebar-hint danger">
@@ -233,6 +235,25 @@ export function WorkspaceSidebar(props: Props) {
               </Button>
             </div>
           </form>
+        </Dialog.Content>
+      </Dialog.Root>
+      <Dialog.Root open={deleteTarget !== null} onOpenChange={open => { if (!open && !busy) setDeleteTarget(null) }}>
+        <Dialog.Content maxWidth="420px">
+          <Dialog.Title>Delete session?</Dialog.Title>
+          <Dialog.Description size="2" mb="4">
+            Delete “{deleteTarget?.title || 'Untitled session'}” and its conversation history?
+          </Dialog.Description>
+          {error && <p role="alert" className="danger">{error}</p>}
+          <div className="flex justify-end gap-3 mt-4">
+            <Button variant="soft" color="gray" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button color="red" disabled={busy} onClick={() => {
+              if (!deleteTarget) return
+              void perform(async () => {
+                await props.onDelete(deleteTarget.workspace, deleteTarget.id)
+                setDeleteTarget(null)
+              })
+            }}>Delete session</Button>
+          </div>
         </Dialog.Content>
       </Dialog.Root>
       <Dialog.Root

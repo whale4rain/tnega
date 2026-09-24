@@ -16,6 +16,7 @@ import { ApiError, displayPath, prettyJson } from '../api'
 import * as api from '../api'
 import { UsageMetrics } from './UsageMetrics'
 import { SubagentSidebar } from './SubagentSidebar'
+import { subagentFromCall, subagentIdFromResult } from '../subagentDisplay'
 import type {
   SessionSummary,
   SubagentEntry,
@@ -46,7 +47,7 @@ interface ChatViewProps {
     agentType?: 'general' | 'coding'
     mode?: 'auto' | 'plan' | 'goal'
   }) => Promise<void>
-  onRefresh: (id: string) => Promise<SessionDetail | undefined>
+  onRefresh: (id: string, refreshList?: boolean) => Promise<SessionDetail | undefined>
   onForkAt: (id: string, messageId: string) => Promise<void>
   onMessagesChange: (
     updater: (current: DisplayMessage[]) => DisplayMessage[],
@@ -79,6 +80,7 @@ export function ChatView({
   const [prompt, setPrompt] = useState('')
   const [subagents, setSubagents] = useState<SubagentEntry[]>([])
   const [showSubagents, setShowSubagents] = useState(false)
+  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null)
   const [goal, setGoal] = useState<GoalState | null>(null)
   const [permission, setPermission] = useState<'read-only' | 'workspace-write' | 'bypass'>('read-only')
   const [approvals, setApprovals] = useState<Array<{ id: string; tool: string; input: string }>>([])
@@ -111,26 +113,51 @@ export function ChatView({
       return
     }
     let cancelled = false
+    let pending = false
+    let previousStatuses: string | null = null
     const refresh = () => {
+      if (pending) return
+      pending = true
       void api.listSubagents(workspace, sessionId)
-        .then(result => { if (!cancelled) setSubagents(result.subagents) })
+        .then(result => {
+          if (!cancelled) {
+            const statuses = result.subagents.map(child => `${child.id}:${child.status}`).join('|')
+            if (previousStatuses !== null && statuses !== previousStatuses) {
+              void onRefresh(sessionId, false).catch(() => undefined)
+            }
+            previousStatuses = statuses
+            setSubagents(current =>
+              JSON.stringify(current) === JSON.stringify(result.subagents) ? current : result.subagents)
+          }
+        })
         .catch(() => { if (!cancelled) setSubagents([]) })
+        .finally(() => { pending = false })
     }
     refresh()
     const timer = window.setInterval(refresh, 2_000)
     return () => { cancelled = true; window.clearInterval(timer) }
+  }, [workspace, sessionId, onRefresh])
+  useEffect(() => {
+    setShowSubagents(false)
+    setSelectedSubagentId(null)
   }, [workspace, sessionId])
-  useEffect(() => setShowSubagents(false), [workspace, sessionId])
   useEffect(() => {
     if (!workspace || !sessionId || summary?.mode !== 'goal') {
       setGoal(null)
       return
     }
     let cancelled = false
+    let pending = false
     const refresh = () => {
+      if (pending) return
+      pending = true
       void api.getGoal(workspace, sessionId)
-        .then(result => { if (!cancelled) setGoal(result.goal) })
+        .then(result => {
+          if (!cancelled) setGoal(current =>
+            JSON.stringify(current) === JSON.stringify(result.goal) ? current : result.goal)
+        })
         .catch(() => { if (!cancelled) setGoal(null) })
+        .finally(() => { pending = false })
     }
     refresh()
     const timer = window.setInterval(refresh, 2_000)
@@ -155,6 +182,10 @@ export function ChatView({
   const scrollToBottom = useCallback(() => {
     const node = scrollRef.current
     if (node) node.scrollTop = node.scrollHeight
+  }, [])
+  const openSubagent = useCallback((id: string) => {
+    setSelectedSubagentId(id)
+    setShowSubagents(true)
   }, [])
 
   useEffect(() => {
@@ -217,11 +248,15 @@ export function ChatView({
   }, [sessionRunning])
 
   useEffect(() => {
-    if (!sessionRunning || !workspace || !sessionId) return
+    if ((!sessionRunning && !subagents.some(child => child.status === 'running'))
+      || !workspace || !sessionId) return
     let cancelled = false
+    let pending = false
     const poll = async (): Promise<void> => {
+      if (pending) return
+      pending = true
       try {
-        const detail = await onRefresh(sessionId)
+        const detail = await onRefresh(sessionId, false)
         if (cancelled) return
         if (detail?.running && runStateRef.current === 'idle') {
           setRunState('running')
@@ -230,17 +265,19 @@ export function ChatView({
         }
       } catch (reason) {
         if (!cancelled) setRunError(messageOf(reason))
+      } finally {
+        pending = false
       }
     }
     const timer = setInterval(() => {
       void poll()
-    }, 1000)
+    }, 2_500)
     void poll()
     return () => {
       cancelled = true
       clearInterval(timer)
     }
-  }, [onRefresh, sessionId, sessionRunning, workspace])
+  }, [onRefresh, sessionId, sessionRunning, subagents, workspace])
 
   useEffect(() => {
     if (navIndex >= userIndexes.length) {
@@ -694,6 +731,14 @@ export function ChatView({
           )
         }
         case 'tool/start':
+          if (event.call.name === 'spawn_subagent') {
+            return [...current, {
+              id: `live-subagent-${event.call.id}`,
+              role: 'subagent',
+              content: '',
+              subagent: subagentFromCall(event.call.id, event.call.arguments),
+            }]
+          }
           return [
             ...current,
             {
@@ -709,6 +754,20 @@ export function ChatView({
             },
           ]
         case 'tool/end': {
+          if (event.call.name === 'spawn_subagent') {
+            const agentId = subagentIdFromResult(event.result.output)
+            return current.map(message => message.subagent?.callId === event.call.id
+              ? {
+                  ...message,
+                  subagent: {
+                    ...message.subagent,
+                    ...(agentId ? { id: agentId } : {}),
+                    status: event.result.ok ? 'running' as const : 'failed' as const,
+                    ...(event.result.error?.message ? { error: event.result.error.message } : {}),
+                  },
+                }
+              : message)
+          }
           let targetIndex = -1
           for (let index = current.length - 1; index >= 0; index -= 1) {
             const entry = current[index]
@@ -795,7 +854,7 @@ export function ChatView({
     )
   }
 
-  if (!sessionId || !summary) {
+  if (!sessionId) {
     return (
       <div className="empty-state">
         <Code2 size={36} strokeWidth={1.2} />
@@ -826,10 +885,10 @@ export function ChatView({
       <div className="chat-content">
       <div className="chat-header">
         <div className="chat-title-line">
-          <div className="chat-title ellipsis" title={summary.id}>
-            {summary.title}
+          <div className="chat-title ellipsis" title={sessionId}>
+            {summary?.title ?? 'Loading session…'}
           </div>
-          {summary.agentType && (
+          {summary?.agentType && (
             <span className={`agent-badge ${summary.agentType}`}>
               [{summary.agentType}]
             </span>
@@ -938,6 +997,10 @@ export function ChatView({
                       ? () => forkHere(message.id)
                       : undefined
                   }
+                  onOpenSubagent={message.role === 'subagent' ? openSubagent : undefined}
+                  subagentStatus={message.subagent?.id
+                    ? subagents.find(child => child.id === message.subagent?.id)?.status
+                    : undefined}
                 />
               )
             })}
@@ -1177,7 +1240,14 @@ export function ChatView({
       </div>
       </div>
       {showSubagents && subagents.length > 0 && (
-        <SubagentSidebar key={sessionId} workspace={workspace} subagents={subagents} onClose={() => setShowSubagents(false)} />
+        <SubagentSidebar
+          key={sessionId}
+          workspace={workspace}
+          subagents={subagents}
+          selectedId={selectedSubagentId}
+          onSelect={setSelectedSubagentId}
+          onClose={() => setShowSubagents(false)}
+        />
       )}
     </div>
   )
