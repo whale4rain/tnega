@@ -174,6 +174,7 @@ export class LocalSubagentService extends SubagentService {
   private readonly handles = new Map<string, AgentHandle>()
   private readonly activating = new Map<string, Promise<LiveAgent>>()
   private readonly running = new Set<string>()
+  private readonly reported = new Map<string, string>()
 
   constructor(ctx: Context, config: LocalSubagentConfig) {
     super(ctx)
@@ -292,6 +293,7 @@ export class LocalSubagentService extends SubagentService {
         void this.settle(recipientId, senderId)
       }
     }
+    if (childToParent) this.reported.set(senderId, content)
   }
 
   override async list(parentId: string, scope: SubagentScope = 'children'): Promise<SubagentEntry[]> {
@@ -337,7 +339,7 @@ export class LocalSubagentService extends SubagentService {
       const output = own?.type === 'assistant/message' ? own.payload.content.trim() : ''
       const reason = end?.type === 'turn/end' ? end.payload.finishReason : 'error'
       const parent = this.agents.get(parentId)
-      if (parent) {
+      if (parent && this.reported.get(id)?.trim() !== output) {
         const report = reason === 'stop'
           ? `Subagent ${id} completed: ${output || '(no final text)'}`
           : `Subagent ${id} ended (${reason}): ${output || '(no final text)'}`
@@ -347,6 +349,7 @@ export class LocalSubagentService extends SubagentService {
       // The child Session remains available for inspection and later follow-up.
     } finally {
       this.running.delete(id)
+      this.reported.delete(id)
     }
   }
 }

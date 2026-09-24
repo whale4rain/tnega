@@ -1,6 +1,6 @@
 import { prettyJson } from './api'
 import { formatSlashMessage, readSlashMetaEvent } from './planDisplay'
-import { agentIdFromName, appendAgentReply, mergeAgentReplies, subagentFromCall, subagentIdFromResult } from './subagentDisplay'
+import { agentIdFromName, appendAgentReply, mergeAgentReplies, subagentFromCall, subagentIdFromResult, terminalSubagentId } from './subagentDisplay'
 import type {
   CancelCause,
   DisplayEndState,
@@ -27,7 +27,12 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
     switch (event.type) {
       case 'user/message':
         if (event.payload.content) {
+          // Older live inbox turns lost the name of a lone structured message.
+          // Recover only the provider's terminal envelope from those logs.
+          const legacyId = terminalSubagentId(event.payload.content)
           const agentId = agentIdFromName(event.payload.name)
+            ?? (legacyId && messages.some(message => message.subagent?.id === legacyId)
+              ? legacyId : undefined)
           if (agentId) {
             appendAgentReply(messages, agentId, event.payload.content)
             break

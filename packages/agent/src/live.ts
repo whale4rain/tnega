@@ -642,7 +642,12 @@ class LiveAgentImpl implements LiveAgent {
       : message.text !== undefined
         ? [{ role: 'user' as const, content: message.text }]
         : [])
-    if (history.length || messages.length > 1) return { messages: [...history, ...messages] }
+    // Structured inbox content carries message ownership (for example
+    // agent:<id>). Collapsing a single message to text loses its name when
+    // the Session records the next user/message event.
+    if (history.length || messages.length > 1 || batch.some(message => message.content !== undefined)) {
+      return { messages: [...history, ...messages] }
+    }
     return { text: messages[0]?.content ?? '' }
   }
 

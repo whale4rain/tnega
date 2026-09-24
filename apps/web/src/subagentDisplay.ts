@@ -7,6 +7,10 @@ export function agentIdFromName(name: string | undefined): string | undefined {
   return name?.match(AGENT_NAME)?.[1]
 }
 
+export function terminalSubagentId(content: string): string | undefined {
+  return content.match(/^Subagent ([0-9a-f-]{36}) (?:completed|ended)\b/i)?.[1]
+}
+
 export function subagentIdFromResult(output: unknown): string | undefined {
   return typeof output === 'string' ? output.match(START_RESULT)?.[1] : undefined
 }
@@ -30,7 +34,7 @@ export function appendAgentReply(messages: DisplayMessage[], id: string, content
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const subagent = messages[index]?.subagent
     if (subagent?.id !== id) continue
-    subagent.replies.push(displayContent)
+    if (subagent.replies.at(-1) !== displayContent) subagent.replies.push(displayContent)
     if (terminal) subagent.status = status
     return
   }
@@ -48,7 +52,9 @@ export function mergeAgentReplies(messages: DisplayMessage[]): void {
     if (!fallback?.id || fallback.callId) continue
     const card = messages.find(message => message.subagent?.callId && message.subagent.id === fallback.id)?.subagent
     if (!card) continue
-    card.replies.unshift(...fallback.replies)
+    for (const reply of fallback.replies) {
+      if (!card.replies.includes(reply)) card.replies.push(reply)
+    }
     if (fallback.status === 'failed' || fallback.status === 'ready') card.status = fallback.status
     messages.splice(index, 1)
   }
