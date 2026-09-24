@@ -22,8 +22,7 @@ interface Props {
 }
 export function ComposerFrame(props: Props) {
   const selectedModel = props.models.find(item => item.id === props.model)
-  const models = selectedModel || !props.model
-    ? props.models : [{ id: props.model, name: props.model, reasoningEfforts: [] }, ...props.models]
+  const models = props.models
   const selectedIndex = Math.max(0, models.findIndex(item => item.id === props.model))
   const [previewIndex, setPreviewIndex] = useState(selectedIndex)
   const [previewEffortIndex, setPreviewEffortIndex] = useState(0)

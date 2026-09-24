@@ -166,9 +166,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
   contextWindow?: number
 }> {
   const effective = effectiveLlmConfig(config, env)
-  const ids = config.models?.length
-    ? [...new Set([effective.modelId, ...config.models.map(entry => entry.id)])]
-    : [...new Set([effective.modelId, 'deepseek-v4-flash', 'deepseek-v4-pro', 'minimax-m3'])]
+  const ids = [...new Set([effective.modelId, ...(config.models?.map(entry => entry.id) ?? [])])]
   return ids.map(id => {
     const profile = config.models?.find(entry => entry.id === id)
     const route = effectiveLlmConfig(config, env, id)
