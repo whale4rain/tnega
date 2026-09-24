@@ -8,6 +8,17 @@
 
 **Tnega** is "agent" spelled backwards. It is an eval-first agent harness with spacetime-composable plugin lifecycles: components can be hot-swapped and rolled back safely, and Eval is a first-class citizen on par with the agent loop and tools.
 
+## Features
+
+- **Composable agent runtime:** scoped services, reversible plugin lifecycles, tools, LLM adapters, and evaluation share the same core.
+- **Durable conversations:** general and coding sessions use JSONL event logs; the UI supports session forks, context compaction, provider usage and cache metrics, and a readable activity timeline.
+- **Coding workflows:** Auto runs tools, Plan produces a plan, and Goal advances a persistent objective. Coding sessions also support slash commands, workspace skills, and configured MCP servers.
+- **Subagents:** agents can spawn or fork child sessions, communicate through durable inboxes, and inspect child progress. The UI shows child tasks and renders their conversations.
+- **Memory:** `~/.tnega/MEMORY.md` stores explicitly requested preferences; each workspace's `.tnega/MEMORY.md` records durable project conventions during compaction.
+- **Model selection:** configure multiple model routes, credentials, protocols, and supported thinking levels in System Config. The composer offers model and thinking sliders for each session.
+- **Tool permissions:** choose read-only, workspace-write, or bypass per run. Higher-permission actions request approval when required; workspace search uses ripgrep and public web search is available in read-only mode.
+- **Local Web and desktop UI:** the Electron app hosts the same loopback-backed interface, with an in-app Settings dialog. Eval and Evolve remain available from the CLI and library.
+
 ## Install
 
 Requires Node.js >= 22.
@@ -25,7 +36,7 @@ export TNEGA_API_KEY=sk-...
 tnega run "Reply with: hello"
 ```
 
-`tnega run` uses OpenCode Go's `deepseek-v4-flash` model through the OpenAI compatible endpoint by default. `minimax-m3` is also available through the Anthropic Messages endpoint. Set `TNEGA_API_KEY` for the API key; `OPENCODE_GO_API_KEY`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY` remain compatible fallbacks. The API key can also come from `%USERPROFILE%\.tnega\config.json` on Windows or `~/.config/tnega/config.json` on Linux/macOS, with `apiKey`, `model`, `baseUrl`, `protocol`, and `temperature` fields. Precedence: CLI flags > environment variables > config file > defaults.
+`tnega run` uses OpenCode Go's `deepseek-v4-flash` model through the OpenAI compatible endpoint by default. `minimax-m3` is also available through the Anthropic Messages endpoint. Set `TNEGA_API_KEY` for the API key; `OPENCODE_GO_API_KEY`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY` remain compatible fallbacks. System Config lives at `%USERPROFILE%\.tnega\config.json` on Windows or `~/.config/tnega/config.json` on Linux/macOS. It accepts the original `apiKey`, `model`, `baseUrl`, `protocol`, and `temperature` fields, plus a `models` array with per-model routes and `reasoningEfforts`. See the [multi-model configuration example](packages/cli/README.md#系统配置configts). CLI flags and environment variables override the legacy defaults; a selected model's explicit route and credential are used for that session.
 
 Run a deterministic eval without an API key:
 
@@ -40,11 +51,10 @@ tnega web
 # http://127.0.0.1:3080
 ```
 
-The web UI creates sessions as either `general` or `coding` agents. Coding
-sessions support `auto` / `plan` / `execute` modes; plan mode shows the LLM
-generated todo list above the composer and updates each item as tools mark it
-done or failed. `/` slash commands such as `/mode`, `/skills`, and `/mcp` are
-available in coding sessions.
+The web UI creates `general` or `coding` sessions. Coding sessions offer Auto,
+Plan, and Goal modes: Plan produces a plan without executing it, and Goal tracks
+a persistent objective. `/` slash commands such as `/mode`, `/skills`, and
+`/mcp` are available in coding sessions.
 
 ## CLI
 
@@ -86,6 +96,8 @@ for each Agent Run.
 pnpm --filter @tnega/desktop dev       # build and launch locally
 pnpm package:desktop                   # produce the Windows installer
 ```
+
+Download the Windows installer from [GitHub Releases](https://github.com/whale4rain/tnega/releases).
 
 The desktop app and `tnega web` share System Config and Workspace/Session data.
 See [`apps/desktop/README.md`](apps/desktop/README.md) for packaging targets and

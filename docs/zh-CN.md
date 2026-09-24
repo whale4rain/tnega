@@ -10,6 +10,17 @@ Tnega 是 "agent" 的逆写，也是本项目想做的事：把 Agent 本身当�
 
 Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空可组合思想，同时把简洁性作为硬约束，并把 Eval 提升为与 Agent Loop、Tools 平级的一等公民。
 
+## 支持的功能
+
+- 可组合的 Agent runtime：作用域服务、可逆插件生命周期、工具、模型适配器和评测。
+- 持久会话：JSONL 事件日志、会话分支、上下文压缩、模型用量与缓存命中统计、工具活动时间线。
+- Coding 会话：Auto、Plan、Goal 模式，斜杠命令、工作区技能和配置的 MCP 服务。
+- 子代理：独立 Session 与 durable inbox，支持 spawn / fork、父子消息和任务状态面板。
+- 记忆：用户明确要求记住的偏好写入全局 `MEMORY.md`；压缩时整理长期有效的工作区约定。
+- 多模型：系统配置文件可列出多个模型路由、凭据和思考档位；会话输入框下方可用滑块切换。
+- 工具权限：每次运行选择只读、工作区可写或 bypass；越权操作按需申请批准。
+- 本地 Web 与 Electron 桌面界面；CLI 和库同时提供 Eval 与 Evolve。
+
 ## 为什么做 Tnega
 
 - Agent = Model + Harness。模型负责思考，Harness 负责模型之外的一切：记忆、工具、权限、执行、评估。
@@ -49,8 +60,7 @@ tnega web
 ```
 
 Web UI 支持按会话选择 `general` / `coding` 两种 agent。coding 会话提供
-`auto` / `plan` / `execute` 模式：plan 模式会在输入框上方展示 LLM 生成的
-todo 计划，并随 `plan_execute_mark` / `plan_execute_result` 工具调用实时更新；
+`auto` / `plan` / `goal` 模式：plan 模式只生成计划，goal 模式跟踪持久目标；
 `/mode`、`/skills`、`/mcp` 等斜杠命令可直接从前端触发。
 
 ## CLI
