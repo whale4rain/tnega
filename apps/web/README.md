@@ -6,8 +6,9 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 ## 功能
 
 - 侧栏同时显示全部已添加工作区，每个工作区独立展开其会话；可按工作区新建、重命名、分支和删除会话，搜索覆盖所有工作区。
-- 多轮聊天；工具权限开关（network / shell，运行时选择一次，run 期间不可改）。
-- 会话粒度 mode 切换 `auto / plan / execute`；plan 面板实时显示 todo 状态。
+- 多轮聊天；工具权限可选只读、工作区可写、Bypass，运行期间不可改，越权请求显示单次审批。
+- 会话粒度 mode 切换 `auto / plan / goal`；plan 面板显示 todo 状态，goal 面板显示目标、轮次和暂停／继续操作。
+- 对话底部显示活动子代理数量，右侧任务栏列出子代理状态并查看各自的会话活动。
 - 斜杠命令菜单（coding 会话）；fork；自动标题。
 - Coding 工作台：可折叠并记忆状态的侧栏、会话搜索、居中正文和底部输入区。
 - 对话使用紧凑的 13px 正文与 1.6 行高；消息和吸附输入区共用全高滚动容器。Plan 显示在输入框上方，可折叠。
@@ -28,6 +29,7 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 | `workbench/ComposerFrame.tsx` | 输入区容器、权限、模型设置入口和模式 |
 | `workbench/SettingsView.tsx` | 模型配置表单 |
 | `conversation/ChatView.tsx` | 会话运行、流式消费和输入行为 |
+| `conversation/SubagentSidebar.tsx` | 子代理任务列表与会话活动侧栏 |
 | `conversation/Transcript.tsx` | Markdown 消息、工具组、压缩和命令结果 |
 | `conversation/ToolActivity.tsx` / `Disclosure.tsx` | 工具活动摘要与共用可访问折叠组件 |
 | `ConversationNav.tsx` / `sessionSelection.ts` | 会话列表与选择 |

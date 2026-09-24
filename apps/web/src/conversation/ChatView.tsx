@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, IconButton } from '@radix-ui/themes'
-import { ArrowUp, Square, ChevronDown, Code2 } from 'lucide-react'
+import { ArrowUp, Square, ChevronDown, Code2, ListTodo } from 'lucide-react'
 import { ConversationNav } from '../ConversationNav'
 import { groupToolMessages } from '../toolGroups'
 import { PlanPanel } from '../PlanPanel'
@@ -15,9 +15,9 @@ import { MessageBlock, ToolGroupBlock, ContextRing } from './Transcript'
 import { ApiError, displayPath, prettyJson } from '../api'
 import * as api from '../api'
 import { UsageMetrics } from './UsageMetrics'
+import { SubagentSidebar } from './SubagentSidebar'
 import type {
   SessionSummary,
-  SessionEvent,
   SubagentEntry,
   GoalState,
   SessionDetail,
@@ -78,6 +78,7 @@ export function ChatView({
 }: ChatViewProps) {
   const [prompt, setPrompt] = useState('')
   const [subagents, setSubagents] = useState<SubagentEntry[]>([])
+  const [showSubagents, setShowSubagents] = useState(false)
   const [goal, setGoal] = useState<GoalState | null>(null)
   const [permission, setPermission] = useState<'read-only' | 'workspace-write' | 'bypass'>('read-only')
   const [approvals, setApprovals] = useState<Array<{ id: string; tool: string; input: string }>>([])
@@ -119,6 +120,7 @@ export function ChatView({
     const timer = window.setInterval(refresh, 2_000)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [workspace, sessionId])
+  useEffect(() => setShowSubagents(false), [workspace, sessionId])
   useEffect(() => {
     if (!workspace || !sessionId || summary?.mode !== 'goal') {
       setGoal(null)
@@ -303,6 +305,7 @@ export function ChatView({
   }
 
   const running = runState === 'running' || runState === 'cancelling'
+  const activeSubagents = subagents.filter(child => child.status === 'running').length
 
   async function answerPendingApproval(allow: boolean): Promise<void> {
     const approval = approvals[0]
@@ -820,6 +823,7 @@ export function ChatView({
           </div>
         </div>
       )}
+      <div className="chat-content">
       <div className="chat-header">
         <div className="chat-title-line">
           <div className="chat-title ellipsis" title={summary.id}>
@@ -850,16 +854,25 @@ export function ChatView({
       </div>
       {goal && (
         <div className="goal-panel" aria-label="Current goal">
-          <strong>Goal · {goal.status}</strong>
-          <span>{goal.objective}</span>
-          <span>{goal.rounds}/{goal.maxRounds} rounds</span>
+          <div className="goal-panel-line">
+            <strong>Goal · {goal.status}</strong>
+            <span className="goal-objective">{goal.objective}</span>
+            <span>{goal.rounds}/{goal.maxRounds} rounds</span>
+            {(goal.status === 'active' || goal.status === 'paused' || goal.status === 'blocked') && (
+              <button
+                type="button"
+                className="goal-action"
+                disabled={running || slashBusy}
+                onClick={() => void runSlash('/goal', [goal.status === 'active' ? 'pause' : 'resume'])}
+              >
+                {goal.status === 'active' ? 'Pause' : 'Resume'}
+              </button>
+            )}
+          </div>
+          <div className="goal-progress" role="progressbar" aria-label="Goal rounds" aria-valuenow={goal.rounds} aria-valuemin={0} aria-valuemax={goal.maxRounds}>
+            <span style={{ width: `${Math.min(100, (goal.rounds / goal.maxRounds) * 100)}%` }} />
+          </div>
           {goal.detail && <small>{goal.detail}</small>}
-        </div>
-      )}
-      {subagents.length > 0 && (
-        <div className="subagent-panel" aria-label="Subagents">
-          <div className="subagent-panel-title">Subagents · {subagents.length}</div>
-          {subagents.map(child => <SubagentRow key={child.id} workspace={workspace} child={child} />)}
         </div>
       )}
       <div className="messages-viewport">
@@ -1124,7 +1137,22 @@ export function ChatView({
                 )}
               </div>
             </ComposerFrame>
-            <UsageMetrics context={context} metrics={metrics} />
+            <div className="conversation-footer">
+              <UsageMetrics context={context} metrics={metrics} />
+              <button
+                type="button"
+                className={`subagent-toggle${showSubagents && subagents.length > 0 ? ' active' : ''}`}
+                aria-label={`Show tasks: ${activeSubagents} active, ${subagents.length} total`}
+                aria-expanded={showSubagents && subagents.length > 0}
+                aria-controls="subagent-sidebar"
+                disabled={subagents.length === 0}
+                onClick={() => setShowSubagents(open => !open)}
+              >
+                <ListTodo size={14} aria-hidden="true" />
+                {activeSubagents} active task{activeSubagents === 1 ? '' : 's'}
+                {subagents.length > 0 && <span className="subagent-total">· {subagents.length} total</span>}
+              </button>
+            </div>
           </div>
         </div>
         <ConversationNav
@@ -1147,6 +1175,10 @@ export function ChatView({
           </button>
         )}
       </div>
+      </div>
+      {showSubagents && subagents.length > 0 && (
+        <SubagentSidebar key={sessionId} workspace={workspace} subagents={subagents} onClose={() => setShowSubagents(false)} />
+      )}
     </div>
   )
 }
@@ -1159,44 +1191,6 @@ function findPendingAssistant(
     if (entry && entry.role === 'assistant' && entry.pending) return entry
   }
   return undefined
-}
-
-function SubagentRow({ workspace, child }: { workspace: string; child: SubagentEntry }) {
-  const [events, setEvents] = useState<SessionEvent[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const transcript = events?.filter(event =>
-    event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/call',
-  ).slice(-12)
-
-  function load(): void {
-    setError(null)
-    void api.getSubagent(workspace, child.id)
-      .then(result => setEvents(result.events))
-      .catch(reason => setError(messageOf(reason)))
-  }
-
-  return (
-    <details className="subagent-row" onToggle={event => { if (event.currentTarget.open) load() }}>
-      <summary>
-        <span className="subagent-label" title={child.id}>{child.label}</span>
-        <span className="subagent-mode">{child.mode}</span>
-        <span className={`subagent-status ${child.status}`}>{child.status}</span>
-      </summary>
-      <div className="subagent-detail">
-        <div>{child.id}</div>
-        {error && <p>{error}</p>}
-        {!events && !error && <p>Loading session…</p>}
-        {transcript?.map(event => {
-          const label = event.type === 'tool/call' ? `tool: ${event.payload.name}`
-            : event.type === 'user/message' ? 'user' : 'assistant'
-          const content = event.type === 'tool/call'
-            ? JSON.stringify(event.payload.arguments)
-            : event.payload.content
-          return <p key={event.id}><strong>{label}</strong> {content}</p>
-        })}
-      </div>
-    </details>
-  )
 }
 
 function lastAssistant(messages: DisplayMessage[]): DisplayMessage | undefined {

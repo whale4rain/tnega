@@ -17,6 +17,11 @@ interface Props {
   onMode: (value: 'auto' | 'plan' | 'goal') => Promise<void>
 }
 export function ComposerFrame(props: Props) {
+  const permissionHint = {
+    'read-only': 'Read workspace · public web search',
+    'workspace-write': 'Write workspace · shell access',
+    bypass: 'Full access · no approval prompts',
+  }[props.permission]
   return (
     <section className="composer-dock" aria-label="Message composer">
       {props.accessory}
@@ -46,13 +51,14 @@ export function ComposerFrame(props: Props) {
               props.onPermission(value)
           }}
         >
-          <Select.Trigger variant="ghost" aria-label="Tool permissions" />
+          <Select.Trigger variant="ghost" aria-label="Tool permissions" title={permissionHint} />
           <Select.Content>
             <Select.Item value="read-only">Read only</Select.Item>
             <Select.Item value="workspace-write">Workspace write</Select.Item>
             <Select.Item value="bypass">Bypass</Select.Item>
           </Select.Content>
         </Select.Root>
+        <span className="permission-hint" title={permissionHint}>{permissionHint}</span>
         <span className="composer-shortcut">
           Enter to send · Shift + Enter for newline
         </span>
