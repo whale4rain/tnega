@@ -8,6 +8,7 @@ import type { SessionEvent } from '@tnega/session'
 const runFile = promisify(execFile)
 
 interface GitBaseline {
+  gitAvailable: boolean
   head: string
   prefix: string
   dirty: Map<string, { fingerprint: string | null; content: string | undefined }>
@@ -95,7 +96,30 @@ async function committedContent(workspace: string, baseline: GitBaseline, path: 
   }
 }
 
-async function lineStats(before: string, after: string, scratch: string, index: number): Promise<{ additions: number; deletions: number }> {
+function textLineStats(before: string, after: string): { additions: number; deletions: number } | undefined {
+  const oldLines = before.match(/[^\n]*\n|[^\n]+$/g) ?? []
+  const newLines = after.match(/[^\n]*\n|[^\n]+$/g) ?? []
+  if (oldLines.length * newLines.length > 4_000_000) return undefined
+  let next = new Uint32Array(newLines.length + 1)
+  let current = new Uint32Array(newLines.length + 1)
+  for (let oldIndex = oldLines.length - 1; oldIndex >= 0; oldIndex -= 1) {
+    for (let newIndex = newLines.length - 1; newIndex >= 0; newIndex -= 1) {
+      current[newIndex] = oldLines[oldIndex] === newLines[newIndex]
+        ? next[newIndex + 1]! + 1
+        : Math.max(next[newIndex]!, current[newIndex + 1]!)
+    }
+    const previous = next
+    next = current
+    current = previous
+  }
+  const unchanged = next[0]!
+  return { additions: newLines.length - unchanged, deletions: oldLines.length - unchanged }
+}
+
+async function lineStats(before: string, after: string, scratch: string | undefined, index: number): Promise<{ additions: number; deletions: number }> {
+  const direct = textLineStats(before, after)
+  if (direct) return direct
+  if (!scratch) throw new Error('scratch directory unavailable for large diff')
   const oldPath = join(scratch, `${index}-before`)
   const newPath = join(scratch, `${index}-after`)
   await Promise.all([writeFile(oldPath, before), writeFile(newPath, after)])
@@ -112,8 +136,8 @@ async function lineStats(before: string, after: string, scratch: string, index: 
   return { additions: match ? Number(match[1]) : 0, deletions: match ? Number(match[2]) : 0 }
 }
 
-/** Capture only already dirty files; clean tracked files are compared through Git. */
-export async function captureFileEditBaseline(workspace: string): Promise<GitBaseline | undefined> {
+/** Capture dirty Git files, or start a baseline for explicit writes outside Git. */
+export async function captureFileEditBaseline(workspace: string): Promise<GitBaseline> {
   try {
     const [head, prefix, status] = await Promise.all([
       git(workspace, ['rev-parse', '--verify', 'HEAD']).catch(() => ''),
@@ -128,11 +152,22 @@ export async function captureFileEditBaseline(workspace: string): Promise<GitBas
         content: await fileContent(workspace, safe),
       })
     }))
-    return { head: head.trim(), prefix: prefix.trimEnd(), dirty }
+    return { gitAvailable: true, head: head.trim(), prefix: prefix.trimEnd(), dirty }
   } catch {
-    // Non-Git workspaces still report explicit write_file tool results.
-    return undefined
+    return { gitAvailable: false, head: '', prefix: '', dirty: new Map() }
   }
+}
+
+/** Preserve the preimage when a workspace has no Git history to read later. */
+export async function captureWritePreimage(workspace: string, baseline: GitBaseline, input: unknown): Promise<void> {
+  if (baseline.gitAvailable || !input || typeof input !== 'object'
+    || !('path' in input) || typeof input.path !== 'string') return
+  const path = inside(workspace, input.path)
+  if (!path || baseline.dirty.has(path)) return
+  baseline.dirty.set(path, {
+    fingerprint: await fingerprint(workspace, path),
+    content: await fileContent(workspace, path),
+  })
 }
 
 function writtenPaths(workspace: string, events: readonly SessionEvent[], afterSeq: number): string[] {
@@ -149,7 +184,7 @@ function writtenPaths(workspace: string, events: readonly SessionEvent[], afterS
   return paths
 }
 
-/** Files changed during one Agent Run, including edits made by shell commands. */
+/** Files changed during one Agent Run; Git workspaces also include shell edits. */
 export async function editedFiles(
   workspace: string,
   baseline: GitBaseline | undefined,
@@ -173,22 +208,18 @@ export async function editedFiles(
         if (safe) changed.add(safe)
       }
     }
-    for (const path of baseline.dirty.keys()) changed.add(path)
     await Promise.all([...changed].map(async path => {
-      const before = baseline.dirty.get(path)
-      if (before !== undefined) {
-        if (before.fingerprint !== await fingerprint(workspace, path)) files.add(path)
-      } else if (changed.has(path)) {
-        files.add(path)
-      }
+      if (!baseline.dirty.has(path)) files.add(path)
     }))
   } catch {
-    // Git may disappear or become unavailable mid-run. Explicit writes remain.
+    // Non-Git workspaces and Git failures use captured write preimages.
   }
+  await Promise.all([...baseline.dirty].map(async ([path, before]) => {
+    if (before.fingerprint !== await fingerprint(workspace, path)) files.add(path)
+  }))
   const paths = [...files].sort()
   if (!paths.length) return []
   const scratch = await mkdtemp(join(tmpdir(), 'tnega-file-edits-')).catch(() => undefined)
-  if (!scratch) return paths.map(path => ({ path }))
   try {
     return await Promise.all(paths.map(async (path, index): Promise<EditedFile> => {
       const before = baseline.dirty.has(path)
@@ -200,6 +231,6 @@ export async function editedFiles(
       catch { return { path } }
     }))
   } finally {
-    await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
+    if (scratch) await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
   }
 }

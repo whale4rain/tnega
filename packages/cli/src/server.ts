@@ -42,7 +42,7 @@ import { toolSubagent } from '@tnega/tool-subagent'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
-import { captureFileEditBaseline, editedFiles } from './file-edits.js'
+import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
 import {
   createAgentRuntime,
@@ -185,6 +185,7 @@ export interface WebServer {
 interface ResidentAgentEntry {
   agent: LiveAgent
   registry: AgentRegistry
+  tools: ToolsService
   dispose: () => Promise<void>
   signature: string
 }
@@ -869,6 +870,12 @@ async function handleRun(
       startSeq: (await sessionLog.read()).at(-1)?.seq ?? 0,
       baseline: await captureFileEditBaseline(workspace),
     }
+    const editBaseline = editTracking.baseline
+    const toolService = runtime.root.get('tools') as ToolsService
+    toolService.guard(async request => {
+      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      return undefined
+    })
     const history = await sessionLog.deriveMessages()
     const emitSse = (event: Record<string, unknown>): void => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
@@ -1081,6 +1088,7 @@ async function ensureResidentAgent(
   const entry: ResidentAgentEntry = {
     agent,
     registry: (runtime.root as unknown as { agents: AgentRegistry }).agents,
+    tools: runtime.root.get('tools') as ToolsService,
     signature,
     dispose: async () => {
       await disposeAgent().catch(() => undefined)
@@ -1121,6 +1129,7 @@ async function runResidentTurn(
   })
 
   let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
+  let releaseWriteCapture: ReturnType<ToolsService['guard']> | undefined
 
   try {
     const entry = await ensureResidentAgent(context, workspace, id, req)
@@ -1131,6 +1140,11 @@ async function runResidentTurn(
       startSeq: (await agent.session.read()).at(-1)?.seq ?? 0,
       baseline: await captureFileEditBaseline(workspace),
     }
+    const editBaseline = editTracking.baseline
+    releaseWriteCapture = entry.tools.guard(async request => {
+      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      return undefined
+    })
     // A coding session keeps its persona as the durable leading system message,
     // seeded once so every derived request begins with it.
     if (req.coding) {
@@ -1175,6 +1189,7 @@ async function runResidentTurn(
       writeSse(res, { type: 'error', message: errorMessage(error) })
     }
   } finally {
+    await releaseWriteCapture?.()
     if (editTracking) {
       try {
         const edited = await editedFiles(workspace, editTracking.baseline,
