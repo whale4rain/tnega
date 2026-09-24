@@ -242,7 +242,8 @@ function buildRequest(
   if (tools.length) {
     body.tools = tools.map(toOpenAITool)
   }
-  if (config.temperature !== undefined) body.temperature = config.temperature
+  if (config.temperature !== undefined && config.reasoningEffort === undefined) body.temperature = config.temperature
+  if (config.reasoningEffort !== undefined) body.reasoning_effort = config.reasoningEffort
   if (config.maxTokens !== undefined) body.max_tokens = config.maxTokens
 
   return {

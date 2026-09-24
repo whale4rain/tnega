@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from './models.js'
+
 export interface LlmConfig {
   apiKey?: string
   /** Header used for API-key authentication with Anthropic-compatible providers. */
@@ -7,6 +9,7 @@ export interface LlmConfig {
   /** Force the wire protocol instead of inferring it from the model catalog. */
   protocol?: 'anthropic' | 'openai'
   temperature?: number
+  reasoningEffort?: ReasoningEffort
   maxTokens?: number
   timeoutMs?: number
   maxRetries?: number

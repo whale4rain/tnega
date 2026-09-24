@@ -11,6 +11,10 @@
 | `anthropicMessagesAdapter` | Anthropic Messages API | `minimax-m3` |
 
 `createLlmAdapter` 按模型表选择协议，未知模型回退 OpenAI。
+`modelCapabilities` 向配置与会话选择器提供协议及思考强度能力。支持的模型可设置
+`reasoningEffort`（low / medium / high）：OpenAI compatible 使用
+`reasoning_effort`，Anthropic Messages 使用 adaptive thinking 和
+`output_config.effort`。其他模型维持提供商默认行为。
 
 ## 流式
 

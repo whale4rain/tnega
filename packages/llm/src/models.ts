@@ -27,6 +27,26 @@ export interface ModelDefinition {
   pricing: ModelPricingMeta
 }
 
+export type ReasoningEffort = 'low' | 'medium' | 'high'
+
+/** Request features are resolved by the LLM seam, not inferred by the UI. */
+export function modelCapabilities(model: string, protocol?: LlmProtocol): {
+  protocol: LlmProtocol
+  reasoningEfforts: readonly ReasoningEffort[]
+} {
+  const route = protocol ?? lookupModel(model)?.protocol ?? 'openai'
+  const supportsOpenAiEffort = route === 'openai'
+    && /^(?:gpt-5(?:[.-]|$)|o[1-9](?:[.-]|$))/iu.test(model)
+  const supportsAnthropicEffort = route === 'anthropic'
+    && /^claude-(?:opus|sonnet)-4[.-](?:6|[7-9])(?:[.-]|$)/iu.test(model)
+  return {
+    protocol: route,
+    reasoningEfforts: supportsOpenAiEffort || supportsAnthropicEffort
+      ? ['low', 'medium', 'high']
+      : [],
+  }
+}
+
 export const DEFAULT_MODEL = 'deepseek-v4-flash'
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash'
 

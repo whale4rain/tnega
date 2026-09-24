@@ -202,7 +202,11 @@ function buildRequest(
   if (tools.length) {
     body.tools = tools.map(toAnthropicTool)
   }
-  if (config.temperature !== undefined) body.temperature = config.temperature
+  if (config.temperature !== undefined && config.reasoningEffort === undefined) body.temperature = config.temperature
+  if (config.reasoningEffort !== undefined) {
+    body.thinking = { type: 'adaptive' }
+    body.output_config = { effort: config.reasoningEffort }
+  }
 
   return {
     url: anthropicMessagesUrl(config.baseUrl),

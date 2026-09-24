@@ -8,6 +8,8 @@ export {
   DEFAULT_MODEL,
   MODEL_CATALOG,
   lookupModel,
+  modelCapabilities,
+  type ReasoningEffort,
   type LlmProtocol,
   type ModelDefinition,
   type ModelPricing,

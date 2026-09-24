@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL } from '@tnega/llm'
+import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, type ReasoningEffort } from '@tnega/llm'
 
 export interface LlmEnvConfig {
   apiKey?: string
@@ -16,6 +16,7 @@ export interface SystemConfig {
   protocol?: 'anthropic' | 'openai'
   apiKeyHeader?: 'x-api-key' | 'api-key'
   temperature?: number
+  reasoningEffort?: ReasoningEffort
   workspaces?: string[]
 }
 
@@ -26,6 +27,12 @@ export interface EffectiveLlmConfig {
   protocol?: 'anthropic' | 'openai'
   apiKeyHeader?: 'x-api-key' | 'api-key'
   temperature?: number
+  reasoningEffort?: ReasoningEffort
+}
+
+export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort'> & {
+  protocol?: 'anthropic' | 'openai' | ''
+  reasoningEffort?: ReasoningEffort | ''
 }
 
 export function systemConfigPath(): string {
@@ -85,7 +92,7 @@ export async function writeSystemConfig(
 }
 
 export async function updateSystemConfig(
-  patch: SystemConfig,
+  patch: SystemConfigPatch,
   file = systemConfigPath(),
 ): Promise<SystemConfig> {
   const current = await readSystemConfig(file)
@@ -117,6 +124,7 @@ export function effectiveLlmConfig(
   if (config.protocol) result.protocol = config.protocol
   if (config.apiKeyHeader) result.apiKeyHeader = config.apiKeyHeader
   if (config.temperature !== undefined) result.temperature = config.temperature
+  if (config.reasoningEffort) result.reasoningEffort = config.reasoningEffort
   return result
 }
 
@@ -164,6 +172,9 @@ function normalizeConfig(value: unknown): SystemConfig {
   }
   if (typeof record.temperature === 'number' && Number.isFinite(record.temperature)) {
     config.temperature = record.temperature
+  }
+  if (record.reasoningEffort === 'low' || record.reasoningEffort === 'medium' || record.reasoningEffort === 'high') {
+    config.reasoningEffort = record.reasoningEffort
   }
   if (Array.isArray(record.workspaces)) {
     config.workspaces = record.workspaces

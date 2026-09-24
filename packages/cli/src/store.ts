@@ -35,6 +35,8 @@ export interface SessionMetaPayload {
   forkedAtMessageId?: string
   agentType?: AgentType
   mode?: SessionMode
+  model?: string
+  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
 }
 
 export interface SessionSummary extends SessionMetaPayload {
@@ -50,12 +52,16 @@ export interface CreateSessionOptions {
   forkedAtMessageId?: string
   agentType?: AgentType
   mode?: SessionMode
+  model?: string
+  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
 }
 
 export interface SessionMetaPatch {
   title?: string
   agentType?: AgentType
   mode?: SessionMode
+  model?: string
+  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
 }
 
 interface SessionMetaEvent {
@@ -122,6 +128,8 @@ export async function createSession(
       ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
       ...(options.agentType ? { agentType: options.agentType } : {}),
       ...(options.mode ? { mode: options.mode } : {}),
+      ...(options.model ? { model: options.model } : {}),
+      ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
     },
   }
   const workspaceDir = resolve(workspace)
@@ -135,6 +143,8 @@ export async function createSession(
     ...(options.forkedAtMessageId ? { forkedAtMessageId: options.forkedAtMessageId } : {}),
     ...(options.agentType ? { agentType: options.agentType } : {}),
     ...(options.mode ? { mode: options.mode } : {}),
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
     updatedAt: createdAt,
     eventCount: 1,
   }
@@ -191,6 +201,8 @@ export async function readSessionSummary(
   }
   if (folded.agentType) summary.agentType = folded.agentType
   if (folded.mode) summary.mode = folded.mode
+  if (folded.model) summary.model = folded.model
+  if (folded.reasoningEffort) summary.reasoningEffort = folded.reasoningEffort
   if (headPayload && typeof headPayload.parentSessionId === 'string') {
     summary.parentSessionId = headPayload.parentSessionId
   }
@@ -228,6 +240,14 @@ export async function patchSessionMeta(
     fields.push('mode')
     payload.mode = patch.mode
   }
+  if (patch.model !== undefined) {
+    fields.push('model')
+    payload.model = patch.model
+  }
+  if (patch.reasoningEffort !== undefined) {
+    fields.push('reasoningEffort')
+    payload.reasoningEffort = patch.reasoningEffort
+  }
   if (!fields.length) return readSessionSummary(workspace, id)
   await withSessionLog(file, async (log) => {
     await log.append('meta/patch', payload)
@@ -260,6 +280,8 @@ export async function forkSession(
     parentSessionId: id,
     ...(folded.agentType ? { agentType: folded.agentType } : {}),
     ...(folded.mode ? { mode: folded.mode } : {}),
+    ...(folded.model ? { model: folded.model } : {}),
+    ...(folded.reasoningEffort ? { reasoningEffort: folded.reasoningEffort } : {}),
     ...(options.messageId ? { forkedAtMessageId: options.messageId } : {}),
   })
   if (body.length) {

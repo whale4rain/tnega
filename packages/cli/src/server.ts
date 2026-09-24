@@ -21,7 +21,7 @@ import {
   type Plan,
   type SlashCommandResult,
 } from '@tnega/coding-agent'
-import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
+import { createLlmAdapter, MODEL_CATALOG, modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
 import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from './goal.js'
 import { memoryLocal } from '@tnega/memory-local'
 import type { MemoryService } from '@tnega/memory'
@@ -55,6 +55,7 @@ import {
   updateSystemConfig,
   type EffectiveLlmConfig,
   type SystemConfig,
+  type SystemConfigPatch,
 } from './config.js'
 import {
   compactSession,
@@ -324,11 +325,13 @@ async function handleApi(
 
   if (url.pathname === '/api/config' && req.method === 'PUT') {
     const body = await readJsonBody(req)
-    const patch: SystemConfig = {}
+    const patch: SystemConfigPatch = {}
     if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
     if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
     if (typeof body.model === 'string') patch.model = body.model
-    if (body.protocol === 'anthropic' || body.protocol === 'openai') {
+    if (body.reasoningEffort === 'low' || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high'
+      || body.reasoningEffort === '') patch.reasoningEffort = body.reasoningEffort
+    if (body.protocol === 'anthropic' || body.protocol === 'openai' || body.protocol === '') {
       patch.protocol = body.protocol
     }
     if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
@@ -528,8 +531,13 @@ async function handleApi(
       if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal') {
         patch.mode = body.mode
       }
+      if (typeof body.model === 'string' && body.model.trim()) patch.model = body.model.trim()
+      if (body.reasoningEffort === 'default' || body.reasoningEffort === 'low'
+        || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high') {
+        patch.reasoningEffort = body.reasoningEffort
+      }
       if (!Object.keys(patch).length) {
-        sendError(res, 400, 'title, agentType or mode is required')
+        sendError(res, 400, 'session metadata is required')
         return
       }
       await evictResident(context, workspace, id)
@@ -608,8 +616,18 @@ async function compactContext(
   id: string,
   keep: number,
 ): Promise<SessionSummary> {
+  const sessionSummary = await readSessionSummary(workspace, id)
   const config = await readSystemConfig(context.configFile)
   const effective = effectiveLlmConfig(config)
+  effective.model = sessionSummary.model ?? effective.model
+  const capabilities = modelCapabilities(effective.model, effective.protocol)
+  const selectedEffort = sessionSummary.reasoningEffort === 'default'
+    ? undefined : sessionSummary.reasoningEffort ?? effective.reasoningEffort
+  if (selectedEffort && capabilities.reasoningEfforts.includes(selectedEffort)) {
+    effective.reasoningEffort = selectedEffort
+  } else {
+    delete effective.reasoningEffort
+  }
   const apiKey = effectiveApiKey(config)
   if (!effective.apiKeySet || !apiKey) {
     throw new HttpError(400, 'API key is not configured')
@@ -749,6 +767,15 @@ async function handleRun(
 
   const config = await readSystemConfig(context.configFile)
   const effective = effectiveLlmConfig(config)
+  effective.model = summary.model ?? effective.model
+  const capabilities = modelCapabilities(effective.model, effective.protocol)
+  const selectedEffort = summary.reasoningEffort === 'default'
+    ? undefined : summary.reasoningEffort ?? effective.reasoningEffort
+  if (selectedEffort && capabilities.reasoningEfforts.includes(selectedEffort)) {
+    effective.reasoningEffort = selectedEffort
+  } else {
+    delete effective.reasoningEffort
+  }
   if (!effective.apiKeySet) {
     sendError(res, 400, 'API key is not configured')
     return
@@ -989,6 +1016,7 @@ async function ensureResidentAgent(
   const signature = [
     req.effective.baseUrl,
     req.effective.model,
+    req.effective.reasoningEffort ?? '',
     req.effective.protocol ?? '',
     req.effective.temperature ?? '',
     req.permission,
@@ -1364,6 +1392,7 @@ function adapterFromConfig(
     protocol?: 'anthropic' | 'openai'
     apiKeyHeader?: 'x-api-key' | 'api-key'
     temperature?: number
+    reasoningEffort?: 'low' | 'medium' | 'high'
   } = {
     apiKey,
     baseUrl: effective.baseUrl,
@@ -1372,6 +1401,7 @@ function adapterFromConfig(
   if (effective.protocol) options.protocol = effective.protocol
   if (effective.apiKeyHeader) options.apiKeyHeader = effective.apiKeyHeader
   if (effective.temperature !== undefined) options.temperature = effective.temperature
+  if (effective.reasoningEffort) options.reasoningEffort = effective.reasoningEffort
   return createLlmAdapter(options)
 }
 
@@ -1407,6 +1437,8 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
     effective: {
       baseUrl: effective.baseUrl,
       model: effective.model,
+      ...(effective.protocol ? { protocol: effective.protocol } : {}),
+      ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
       ...(effective.temperature !== undefined
         ? { temperature: effective.temperature }
         : {}),
@@ -1415,6 +1447,7 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
       apiKeySet: Boolean(config.apiKey),
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       ...(config.model ? { model: config.model } : {}),
+      ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
       ...(config.protocol ? { protocol: config.protocol } : {}),
       ...(config.temperature !== undefined
         ? { temperature: config.temperature }
@@ -1425,6 +1458,8 @@ function configSnapshot(config: SystemConfig): Record<string, unknown> {
       ...(env.baseUrl ? { baseUrl: env.baseUrl } : {}),
       ...(env.model ? { model: env.model } : {}),
     },
+    models: [...new Set([...MODEL_CATALOG.map(model => model.id), effective.model])]
+      .map(id => ({ id, ...modelCapabilities(id, effective.protocol) })),
   }
 }
 

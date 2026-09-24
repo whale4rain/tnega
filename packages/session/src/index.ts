@@ -355,13 +355,15 @@ export type InboxSplicePayload = {
   }>
 }
 
-/** A durable change to session display metadata (title, mode, agentType). */
+/** A durable change to session display and model routing metadata. */
 export interface MetaPatchPayload {
   /** Keys changed by this event; only present keys are touched. */
-  fields: Array<'title' | 'agentType' | 'mode'>
+  fields: Array<'title' | 'agentType' | 'mode' | 'model' | 'reasoningEffort'>
   title?: string
   agentType?: AgentType
   mode?: SessionMode
+  model?: string
+  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
 }
 
 export type AgentType = 'general' | 'coding'
@@ -796,8 +798,16 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
   title?: string
   agentType?: AgentType
   mode?: SessionMode
+  model?: string
+  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
 } {
-  const meta: { title?: string; agentType?: AgentType; mode?: SessionMode } = {}
+  const meta: {
+    title?: string
+    agentType?: AgentType
+    mode?: SessionMode
+    model?: string
+    reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
+  } = {}
   for (const event of events) {
     if (event.type === 'meta') {
       const payload = event.payload as Record<string, unknown>
@@ -808,6 +818,11 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
       if (payload.mode === 'execute') meta.mode = 'auto'
       else if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'goal') {
         meta.mode = payload.mode
+      }
+      if (typeof payload.model === 'string') meta.model = payload.model
+      if (payload.reasoningEffort === 'default' || payload.reasoningEffort === 'low'
+        || payload.reasoningEffort === 'medium' || payload.reasoningEffort === 'high') {
+        meta.reasoningEffort = payload.reasoningEffort
       }
       continue
     }
@@ -821,6 +836,10 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
       }
       if (patch.fields.includes('mode') && patch.mode !== undefined) {
         meta.mode = patch.mode === 'execute' ? 'auto' : patch.mode
+      }
+      if (patch.fields.includes('model') && patch.model !== undefined) meta.model = patch.model
+      if (patch.fields.includes('reasoningEffort') && patch.reasoningEffort !== undefined) {
+        meta.reasoningEffort = patch.reasoningEffort
       }
     }
   }
