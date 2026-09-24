@@ -169,6 +169,17 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
       case 'meta': {
+        if (event.payload.kind === 'files/edited'
+          && Array.isArray(event.payload.files)) {
+          const files = event.payload.files.filter((path): path is string => typeof path === 'string')
+          if (files.length) messages.push({
+            id: event.id,
+            role: 'file-edits',
+            content: '',
+            editedFiles: files,
+          })
+          break
+        }
         const slash = readSlashMetaEvent(event)
         if (slash) {
           messages.push({

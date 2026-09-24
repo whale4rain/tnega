@@ -42,6 +42,7 @@ import { toolSubagent } from '@tnega/tool-subagent'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
+import { captureFileEditBaseline, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
 import {
   createAgentRuntime,
@@ -858,9 +859,16 @@ async function handleRun(
     controller.abort({ type: 'user' })
   })
 
+  let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
+
   try {
     const sessionLog = runtime.root.get('session') as SessionLog
     await sessionLog.append('meta', { kind: 'permission/run', mode: permission })
+    editTracking = {
+      session: sessionLog,
+      startSeq: (await sessionLog.read()).at(-1)?.seq ?? 0,
+      baseline: await captureFileEditBaseline(workspace),
+    }
     const history = await sessionLog.deriveMessages()
     const emitSse = (event: Record<string, unknown>): void => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
@@ -916,14 +924,22 @@ async function handleRun(
       }
     }
     await autoTitle(workspace, id, prompt)
-    await runtime.dispose()
-    runtime = undefined
     if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
   } catch (error) {
     if (!res.destroyed && !res.writableEnded) {
       writeSse(res, { type: 'error', message: errorMessage(error) })
     }
   } finally {
+    if (runtime && editTracking) {
+      try {
+        const edited = await editedFiles(workspace, editTracking.baseline,
+          await editTracking.session.read(), editTracking.startSeq)
+        if (edited.length) await editTracking.session.append('meta', { kind: 'files/edited', files: edited })
+        await editTracking.session.flush()
+      } catch {
+        // A file summary must not prevent the run from closing.
+      }
+    }
     detachApproval()
     context.activeRuns.delete(key)
     if (runtime) await runtime.dispose()
@@ -1104,10 +1120,17 @@ async function runResidentTurn(
     controller.abort({ type: 'user' })
   })
 
+  let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
+
   try {
     const entry = await ensureResidentAgent(context, workspace, id, req)
     const agent = entry.agent
     await agent.session.append('meta', { kind: 'permission/run', mode: req.permission })
+    editTracking = {
+      session: agent.session,
+      startSeq: (await agent.session.read()).at(-1)?.seq ?? 0,
+      baseline: await captureFileEditBaseline(workspace),
+    }
     // A coding session keeps its persona as the durable leading system message,
     // seeded once so every derived request begins with it.
     if (req.coding) {
@@ -1152,6 +1175,16 @@ async function runResidentTurn(
       writeSse(res, { type: 'error', message: errorMessage(error) })
     }
   } finally {
+    if (editTracking) {
+      try {
+        const edited = await editedFiles(workspace, editTracking.baseline,
+          await editTracking.session.read(), editTracking.startSeq)
+        if (edited.length) await editTracking.session.append('meta', { kind: 'files/edited', files: edited })
+        await editTracking.session.flush()
+      } catch {
+        // A file summary must not prevent the run from closing.
+      }
+    }
     detachApproval()
     context.activeRuns.delete(key)
     if (!res.destroyed && !res.writableEnded) res.end()

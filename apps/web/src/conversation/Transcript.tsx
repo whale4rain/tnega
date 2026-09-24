@@ -1,7 +1,7 @@
 import { memo, useState, type Ref } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Pencil, GitFork, Bot, ChevronRight, PanelRight } from 'lucide-react'
+import { Pencil, GitFork, Bot, ChevronRight, PanelRight, FilePenLine } from 'lucide-react'
 import { ToolBlock } from './ToolActivity'
 export { ToolGroupBlock } from './ToolActivity'
 import { formatCancelCause } from '../projectEvents'
@@ -59,6 +59,9 @@ export const MessageBlock = memo(function MessageBlock({
   }
   if (message.role === 'subagent' && message.subagent) {
     return <SubagentBlock message={message} status={subagentStatus} onOpen={onOpenSubagent} />
+  }
+  if (message.role === 'file-edits' && message.editedFiles) {
+    return <FileEditsBlock files={message.editedFiles} />
   }
   const className = `message ${message.role}${active ? ' active-user' : ''}${editing ? ' editing' : ''}`
   const isUser = message.role === 'user'
@@ -145,6 +148,25 @@ export const MessageBlock = memo(function MessageBlock({
     </div>
   )
 })
+
+function FileEditsBlock({ files }: { files: string[] }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="message file-edits-card">
+      <button type="button" className="file-edits-toggle" aria-expanded={expanded}
+        onClick={() => setExpanded(value => !value)}>
+        <FilePenLine size={16} aria-hidden="true" />
+        <strong>已编辑 {files.length} 个文件</strong>
+        <ChevronRight size={14} className={expanded ? 'expanded' : ''} aria-hidden="true" />
+      </button>
+      {expanded && (
+        <ul className="file-edits-list">
+          {files.map(path => <li key={path} title={path}>{path}</li>)}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 function SubagentBlock({
   message,

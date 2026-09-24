@@ -390,10 +390,11 @@ export interface DisplayEndState {
 
 export interface DisplayMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system' | 'subagent'
+  role: 'user' | 'assistant' | 'tool' | 'system' | 'subagent' | 'file-edits'
   content: string
   tool?: DisplayTool
   subagent?: DisplaySubagent
+  editedFiles?: string[]
   slash?: SlashMetaPayload
   finishReason?: string
   pending?: boolean

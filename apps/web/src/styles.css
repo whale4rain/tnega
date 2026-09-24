@@ -457,6 +457,13 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 .subagent-card-detail { padding: 11px 14px; border-top: 1px solid var(--hairline); }
 .subagent-card-detail > :not(:last-child) { margin-bottom: 12px; }
 .subagent-card-task { color: var(--mute); font-size: 11px; margin: 0; white-space: pre-wrap; }
+.file-edits-card { border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-card); overflow: hidden; }
+.file-edits-toggle { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 11px; text-align: left; }
+.file-edits-toggle > svg:first-child { color: var(--accent); flex-shrink: 0; }
+.file-edits-toggle > svg:last-child { margin-left: auto; color: var(--mute); transition: transform 150ms ease; }
+.file-edits-toggle > svg.expanded { transform: rotate(90deg); }
+.file-edits-list { list-style: none; margin: 0; padding: 7px 14px 10px 36px; border-top: 1px solid var(--hairline); color: var(--mute); }
+.file-edits-list li { padding: 3px 0; overflow-wrap: anywhere; }
 .conversation-footer {
   width: min(820px, calc(100% - 64px));
   margin: 0 auto;
