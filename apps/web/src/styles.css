@@ -1,7 +1,11 @@
-@layer theme, base, components, utilities;
+@layer reset, theme, base, components, legacy, astryx-base, utilities;
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
+@import '@astryxdesign/theme-neutral/theme.css';
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
 
+@layer legacy {
 :root {
   font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   --canvas: #faf9f6;
@@ -106,98 +110,9 @@ select:not(.rt-reset) {
   background: var(--canvas);
   color: var(--ink);
 }
-.workbench {
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.window-bar {
-  height: 32px;
-  flex-shrink: 0;
-  padding: 0 140px 0 16px;
-  background: var(--sidebar);
-  -webkit-app-region: drag;
-  user-select: none;
-}
-.window-bar button {
-  -webkit-app-region: no-drag;
-}
-.brand {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-}
-.window-bar .rt-IconButton { width: 24px; height: 24px; }
-.window-divider {
-  height: 15px;
-  width: 1px;
-  background: var(--hairline);
-  margin: 0 3px;
-}
-.window-caption {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--mute);
-  font-size: 11px;
-}
-.workbench-body {
-  position: relative;
-  background: var(--sidebar);
-}
-.sidebar-backdrop {
-  display: none;
-}
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--hairline) transparent;
-}
-.workspace-sidebar {
-  --sidebar-width: 264px;
-  width: var(--sidebar-width);
-  flex: 0 0 var(--sidebar-width);
-  background: var(--sidebar);
-  border-right: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  font-size: 13px;
-  overflow: hidden;
-  transition:
-    width 180ms ease,
-    flex-basis 180ms ease,
-    visibility 0s;
-}
-.sidebar-content {
-  width: var(--sidebar-width);
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.workspace-sidebar.collapsed {
-  width: 0;
-  flex-basis: 0;
-  border-right-width: 0;
-  visibility: hidden;
-  transition:
-    width 180ms ease,
-    flex-basis 180ms ease,
-    visibility 0s 180ms;
-}
-.tools-panel {
-  animation: panel-appear 160ms ease-out;
-}
-@keyframes panel-appear {
-  from {
-    opacity: 0;
-    transform: translateX(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 .sidebar-top {
   padding: 8px 12px 12px;
@@ -327,36 +242,16 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 .sidebar-footer {
   padding: 12px 20px;
 }
-.main {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--canvas);
-  border-radius: 14px 14px 0 0;
-}
-.tools-rail {
-  flex: 0 0 44px;
-  padding-top: 18px;
-  background: var(--sidebar);
-}
-.tools-panel {
-  width: 280px;
-  flex-shrink: 0;
-  border-left: 1px solid var(--hairline);
-  background: var(--sidebar);
-}
-.tool-panel-heading {
-  height: 44px;
-  padding: 0 18px;
-  font-size: 13px;
-  border-bottom: 1px solid var(--hairline);
-}
-.tool-placeholder {
-  padding: 64px 24px;
-  color: var(--mute);
-  text-align: center;
-  font-size: 13px;
-  line-height: 1.7;
+.tnega-workbench-layout { min-height: 0; }
+.tnega-side-nav.is-collapsed > * { visibility: hidden; }
+.tnega-tools-panel { display: flex; align-items: flex-start; gap: var(--spacing-3); }
+.tnega-tools-rail { display: flex; flex-direction: column; align-items: center; gap: var(--spacing-2); }
+.tnega-tool-content { flex: 1; min-width: 0; }
+.tnega-tool-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-2); }
+.tnega-tool-placeholder { display: flex; flex-direction: column; align-items: center; gap: var(--spacing-3); padding-top: calc(var(--spacing-6) * 2); text-align: center; }
+@keyframes panel-appear {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 .tool-placeholder svg {
   margin: auto;
@@ -1295,14 +1190,8 @@ button.send-button:hover:not(:disabled) {
 }
 @media (max-width: 1100px) {
   .permission-hint { display: none; }
-  .workspace-sidebar {
-    --sidebar-width: 230px;
-  }
   .composer-shortcut {
     display: none;
-  }
-  .tools-panel {
-    width: 240px;
   }
   .chat-meta > span {
     display: none;
@@ -1321,44 +1210,6 @@ button.send-button:hover:not(:disabled) {
   .subagent-resize-handle { display: none; }
   .subagent-total { display: none; }
   .conversation-footer { width: calc(100% - 64px); }
-  button.sidebar-backdrop {
-    display: block;
-    position: absolute;
-    inset: 0;
-    z-index: 14;
-    background: #0005;
-    border: 0;
-    border-radius: 0;
-  }
-  .workspace-sidebar {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 260px;
-    --sidebar-width: 260px;
-    z-index: 15;
-    box-shadow: 12px 0 36px #0005;
-    transition:
-      transform 180ms ease,
-      visibility 0s;
-  }
-  .workspace-sidebar.collapsed {
-    width: 260px;
-    transform: translateX(-100%);
-    transition:
-      transform 180ms ease,
-      visibility 0s 180ms;
-  }
-  .tools-panel {
-    position: absolute;
-    right: 44px;
-    top: 0;
-    bottom: 0;
-    width: min(280px, calc(100% - 44px));
-    z-index: 10;
-    box-shadow: -12px 0 36px #0004;
-  }
   .messages {
     width: calc(100% - 64px);
     padding: 16px 0 20px;
@@ -1371,9 +1222,6 @@ button.send-button:hover:not(:disabled) {
   }
   .chat-title-line {
     max-width: 60%;
-  }
-  .window-caption {
-    display: none;
   }
   .chat-header-actions button {
     font-size: 10px;
@@ -1924,4 +1772,5 @@ button.send-button:hover:not(:disabled) {
 .stream-state[data-state='connecting']::before,
 .stream-state[data-state='retrying']::before {
   background: var(--warning);
+}
 }

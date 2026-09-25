@@ -7,10 +7,14 @@
     "build": "tsc -p tsconfig.json && vite build",
     "dev": "vite",
     "typecheck": "tsc -p tsconfig.json",
+    "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@astryxdesign/core": "0.6.3",
+    "@astryxdesign/theme-neutral": "0.6.3",
     "@radix-ui/themes": "^3.3.0",
+    "@stylexjs/stylex": "^0.19.1",
     "lucide-react": "^1.47.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -18,6 +22,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@astryxdesign/cli": "0.6.3",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",

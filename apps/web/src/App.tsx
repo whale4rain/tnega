@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Dialog, Theme } from '@radix-ui/themes'
+import { Dialog, Theme as RadixTheme } from '@radix-ui/themes'
+import { Theme as AstryxTheme } from '@astryxdesign/core/theme'
+import { neutralTheme } from '@astryxdesign/theme-neutral/built'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
 import { ChatView } from './conversation/ChatView'
@@ -515,90 +517,92 @@ function ChatApp() {
     ?? config?.apiKeySet ?? false
 
   return (
-    <Theme
+    <RadixTheme
       appearance={appearance}
       accentColor="gray"
       grayColor="gray"
       radius="large"
       scaling="100%"
     >
-      <WorkbenchShell
-        sidebar={
-          <WorkspaceSidebar
-            workspaces={workspaces}
-            workspace={workspace}
-            sessions={sessions}
-            selectedId={sessionId}
-            projects={recentProjects}
-            selectedProjectId={project?.id ?? null}
-            onOpenProject={openProject}
-            onArchiveProject={handleArchiveProject}
-            onDeleteProject={handleDeleteProject}
-            onNewProject={() => setCreatingProject(true)}
-            onAdd={handleAddWorkspace}
-            onRemove={handleRemoveWorkspace}
-            onSelect={(path, id) => {
-              selectSession(path, id)
-            }}
-            onNew={async (options, path) => {
-              await handleNewSession(options, path)
-            }}
-            onRename={handleRename}
-            onFork={handleFork}
-            onDelete={handleDelete}
-            onSettings={() => setSettingsOpen(true)}
-            theme={themePreference}
-            onTheme={setThemePreference}
-          />
-        }
-      >
-        {error && (
-          <div className="error-banner" role="alert">
-            <span className="marker">Error</span>
-            <span>{error}</span>
-            <button type="button" onClick={() => setError(null)} title="Dismiss">
-              Close
-            </button>
-          </div>
-        )}
-        {project ? (
-          <ProjectExperience
-            workspace={project.workspace}
-            projectId={project.id}
-            models={config?.models ?? []}
-            model={config?.effective.modelId}
-            reasoningEffort={config?.effective.reasoningEffort ?? 'default'}
-            onModel={handleConfigModel}
-            onReasoningEffort={handleConfigReasoningEffort}
-            apiKeySet={modelApiKeySet}
-            onSettings={() => setSettingsOpen(true)}
-          />
-        ) : (
-        <ChatView
-            model={currentModelId}
-            models={config?.models ?? []}
-            reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
-            onModelChange={handleModelChange}
-            onReasoningEffortChange={handleReasoningEffortChange}
-            onSettings={() => setSettingsOpen(true)}
-            workspace={workspace}
-            sessionId={sessionId}
-            summary={summary}
-            context={context}
-            metrics={metrics}
-            sessionRunning={sessionRunning}
-            messages={messages}
-            apiKeySet={modelApiKeySet}
-            onNewSession={handleNewSession}
-            onRefresh={refreshSession}
-            onForkAt={handleForkAt}
-            onMessagesChange={setMessages}
-            plan={plan}
-            onPlanChange={setPlan}
-            onModeChange={handleModeChange}
-          />
-        )}
-      </WorkbenchShell>
+      <AstryxTheme theme={neutralTheme} mode={appearance}>
+        <WorkbenchShell
+          sidebar={
+            <WorkspaceSidebar
+              workspaces={workspaces}
+              workspace={workspace}
+              sessions={sessions}
+              selectedId={sessionId}
+              projects={recentProjects}
+              selectedProjectId={project?.id ?? null}
+              onOpenProject={openProject}
+              onArchiveProject={handleArchiveProject}
+              onDeleteProject={handleDeleteProject}
+              onNewProject={() => setCreatingProject(true)}
+              onAdd={handleAddWorkspace}
+              onRemove={handleRemoveWorkspace}
+              onSelect={(path, id) => {
+                selectSession(path, id)
+              }}
+              onNew={async (options, path) => {
+                await handleNewSession(options, path)
+              }}
+              onRename={handleRename}
+              onFork={handleFork}
+              onDelete={handleDelete}
+              onSettings={() => setSettingsOpen(true)}
+              theme={themePreference}
+              onTheme={setThemePreference}
+            />
+          }
+        >
+          {error && (
+            <div className="error-banner" role="alert">
+              <span className="marker">Error</span>
+              <span>{error}</span>
+              <button type="button" onClick={() => setError(null)} title="Dismiss">
+                Close
+              </button>
+            </div>
+          )}
+          {project ? (
+            <ProjectExperience
+              workspace={project.workspace}
+              projectId={project.id}
+              models={config?.models ?? []}
+              model={config?.effective.modelId}
+              reasoningEffort={config?.effective.reasoningEffort ?? 'default'}
+              onModel={handleConfigModel}
+              onReasoningEffort={handleConfigReasoningEffort}
+              apiKeySet={modelApiKeySet}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          ) : (
+            <ChatView
+              model={currentModelId}
+              models={config?.models ?? []}
+              reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
+              onModelChange={handleModelChange}
+              onReasoningEffortChange={handleReasoningEffortChange}
+              onSettings={() => setSettingsOpen(true)}
+              workspace={workspace}
+              sessionId={sessionId}
+              summary={summary}
+              context={context}
+              metrics={metrics}
+              sessionRunning={sessionRunning}
+              messages={messages}
+              apiKeySet={modelApiKeySet}
+              onNewSession={handleNewSession}
+              onRefresh={refreshSession}
+              onForkAt={handleForkAt}
+              onMessagesChange={setMessages}
+              plan={plan}
+              onPlanChange={setPlan}
+              onModeChange={handleModeChange}
+            />
+          )}
+        </WorkbenchShell>
+      </AstryxTheme>
       <NewProjectDialog
         open={creatingProject}
         defaultFolder={workspace ?? undefined}
@@ -614,7 +618,7 @@ function ChatApp() {
           }} />
         </Dialog.Content>
       </Dialog.Root>
-    </Theme>
+    </RadixTheme>
   )
 }
 
