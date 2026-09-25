@@ -5,8 +5,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Theme } from '@radix-ui/themes'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 
-beforeEach(() => localStorage.clear())
-afterEach(cleanup)
+beforeEach(() => {
+  localStorage.clear()
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 describe('workbench navigation', () => {
   it('searches sessions, selects a result, and creates coding sessions by default', () => {
     const onSelect = vi.fn(),
@@ -99,7 +114,7 @@ describe('workbench navigation', () => {
         .getByRole('button', { name: 'Session in /other' })
         .getAttribute('aria-current'),
     ).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse project' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Toggle children' })[0]!)
     expect(
       screen.queryByRole('button', { name: 'Session in /project' }),
     ).toBeNull()

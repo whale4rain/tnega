@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { DropdownMenu, IconButton } from '@radix-ui/themes'
-import { ChevronRight, FolderOpen, MoreHorizontal, Plus } from 'lucide-react'
+import { DropdownMenu, type DropdownMenuOption } from '@astryxdesign/core/DropdownMenu'
+import { HStack } from '@astryxdesign/core/Layout'
+import { TreeList, type TreeListItemData } from '@astryxdesign/core/TreeList'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { FolderOpen, MoreHorizontal, Plus } from 'lucide-react'
 import type { SessionSummary } from '../types'
 import { workspaceName } from './workspace'
 
@@ -19,8 +21,23 @@ interface Props {
   onDelete: (workspace: string, id: string) => void
 }
 
+function ActionsMenu({
+  label,
+  items,
+}: {
+  label: string
+  items: DropdownMenuOption[]
+}) {
+  return (
+    <DropdownMenu
+      button={{ label, icon: <MoreHorizontal size={15} />, variant: 'ghost', size: 'sm' }}
+      hasChevron={false}
+      items={items}
+    />
+  )
+}
+
 export function WorkspaceTree(props: Props) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const query = props.search.trim().toLowerCase()
   const groups = props.workspaces
     .map((path) => ({
@@ -41,132 +58,81 @@ export function WorkspaceTree(props: Props) {
         group.name.toLowerCase().includes(query),
     )
 
+  const items: TreeListItemData[] = groups.map(({ path, name, sessions }) => ({
+    id: path,
+    label: name,
+    description: path,
+    startContent: <FolderOpen size={15} aria-hidden="true" />,
+    isExpanded: true,
+    endContent: (
+      <HStack gap={1}>
+        <IconButton
+          label={`New session in ${name}`}
+          icon={<Plus size={14} />}
+          variant="ghost"
+          size="sm"
+          isDisabled={props.busy}
+          onClick={(event) => {
+            event.stopPropagation()
+            props.onNew(path)
+          }}
+        />
+        <ActionsMenu
+          label={`Actions for workspace ${name}`}
+          items={[
+            {
+              label: 'Remove from list',
+              isDisabled: props.busy,
+              variant: 'destructive',
+              onClick: () => props.onRemove(path),
+            },
+          ]}
+        />
+      </HStack>
+    ),
+    children: sessions.map((session) => ({
+      id: `${path}:${session.id}`,
+      label: session.title || 'Untitled session',
+      isSelected: path === props.workspace && session.id === props.selectedId,
+      onClick: () => props.onSelect(path, session.id),
+      endContent: (
+        <ActionsMenu
+          label={`Actions for ${session.title || 'Untitled session'}`}
+          items={[
+            {
+              label: 'Rename…',
+              isDisabled: props.busy,
+              onClick: () => props.onRename(session),
+            },
+            {
+              label: 'Fork session',
+              isDisabled: props.busy,
+              onClick: () => props.onFork(path, session.id),
+            },
+            { type: 'divider' },
+            {
+              label: 'Delete session…',
+              isDisabled: props.busy,
+              variant: 'destructive' as const,
+              onClick: () => props.onDelete(path, session.id),
+            },
+          ]}
+        />
+      ),
+    })),
+  }))
+
   return (
-    <nav className="session-list" aria-label="Sessions">
-      {groups.map(({ path, name, sessions }) => {
-        const open = !!query || !collapsed.has(path)
-        return (
-          <section className="workspace-group" aria-label={path} key={path}>
-            <div className="workspace-heading">
-              <button
-                className="workspace-toggle"
-                title={path}
-                aria-label={`${open ? 'Collapse' : 'Expand'} ${name}`}
-                aria-expanded={open}
-                onClick={() => {
-                  setCollapsed((current) => {
-                    const next = new Set(current)
-                    if (next.has(path)) next.delete(path)
-                    else next.add(path)
-                    return next
-                  })
-                }}
-              >
-                <span className="workspace-folder">
-                  <FolderOpen size={15} />
-                  <ChevronRight size={14} className={open ? 'expanded' : ''} />
-                </span>
-                <span className="truncate">{name}</span>
-              </button>
-              <IconButton
-                className="workspace-action"
-                variant="ghost"
-                color="gray"
-                size="1"
-                aria-label={`New session in ${name}`}
-                disabled={props.busy}
-                onClick={() => props.onNew(path)}
-              >
-                <Plus size={14} />
-              </IconButton>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  <IconButton
-                    className="workspace-action"
-                    variant="ghost"
-                    color="gray"
-                    size="1"
-                    aria-label={`Actions for workspace ${name}`}
-                  >
-                    <MoreHorizontal size={14} />
-                  </IconButton>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content>
-                  <DropdownMenu.Item
-                    color="red"
-                    disabled={props.busy}
-                    onSelect={() => props.onRemove(path)}
-                  >
-                    Remove from list
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
-            </div>
-            {open &&
-              sessions.map((session) => {
-                const selected =
-                  path === props.workspace && session.id === props.selectedId
-                return (
-                  <div
-                    key={session.id}
-                    className={`session-item${selected ? ' selected' : ''}`}
-                  >
-                    <button
-                      className="session-link"
-                      onClick={() => props.onSelect(path, session.id)}
-                      aria-current={selected ? 'page' : undefined}
-                      title={session.title}
-                    >
-                      <span className="truncate">
-                        {session.title || 'Untitled session'}
-                      </span>
-                    </button>
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger>
-                        <IconButton
-                          variant="ghost"
-                          color="gray"
-                          size="1"
-                          aria-label={`Actions for ${session.title}`}
-                        >
-                          <MoreHorizontal size={16} />
-                        </IconButton>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Content>
-                        <DropdownMenu.Item
-                          disabled={props.busy}
-                          onSelect={() => props.onRename(session)}
-                        >
-                          Rename…
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Item
-                          disabled={props.busy}
-                          onSelect={() => props.onFork(path, session.id)}
-                        >
-                          Fork session
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Separator />
-                        <DropdownMenu.Item
-                          disabled={props.busy}
-                          color="red"
-                          onSelect={() => props.onDelete(path, session.id)}
-                        >
-                          Delete session…
-                        </DropdownMenu.Item>
-                      </DropdownMenu.Content>
-                    </DropdownMenu.Root>
-                  </div>
-                )
-              })}
-          </section>
-        )
-      })}
+    <>
+      {items.length > 0 && (
+        <TreeList key={query} items={items} density="compact" variant="noGuides" />
+      )}
       {!props.workspaces.length && (
         <p className="sidebar-hint">Add a workspace to get started.</p>
       )}
       {!!query && !groups.length && (
         <p className="sidebar-hint">No matching sessions.</p>
       )}
-    </nav>
+    </>
   )
 }
