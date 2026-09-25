@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Badge, TextArea } from '@radix-ui/themes'
 import { ListTodo } from 'lucide-react'
 import * as api from './api'
@@ -54,6 +54,13 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [live, setLive] = useState<'connecting' | 'live' | 'retrying'>('connecting')
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const stored = Number(localStorage.getItem('tnega-project-panel-width'))
+    const max = Math.max(260, Math.min(720, window.innerWidth - 380))
+    return Math.max(260, Math.min(max, Number.isFinite(stored) && stored >= 260 ? stored : 380))
+  })
+  const panelDragging = useRef(false)
+  const panelRef = useRef<HTMLElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const selection = useRef<string | null>(null)
   // 正在生成的正文：按 Agent 攒起来，等整轮的回复发布出来就丢掉。逐块重渲染太碎，
@@ -68,6 +75,20 @@ export function ProjectExperience(props: ProjectExperienceProps) {
       setRendered(new Map(drafts.current))
     }, 16)
   }, [])
+  function resizePanel(event: PointerEvent<HTMLDivElement>) {
+    if (!panelDragging.current) return
+    const right = panelRef.current?.getBoundingClientRect().right
+    if (right === undefined) return
+    const max = Math.max(260, Math.min(720, window.innerWidth - 380))
+    setPanelWidth(Math.max(260, Math.min(max, right - event.clientX)))
+  }
+  function stopPanelResize(event: PointerEvent<HTMLDivElement>) {
+    if (!panelDragging.current) return
+    panelDragging.current = false
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    localStorage.setItem('tnega-project-panel-width', String(panelWidth))
+  }
   const clearDraft = useCallback((agentId: string) => {
     if (!drafts.current.delete(agentId)) return
     scheduleFlush()
@@ -433,7 +454,18 @@ export function ProjectExperience(props: ProjectExperienceProps) {
         />
       ) : (
         view && panel && (
-          <aside className="project-panel" aria-label={panel}>
+          <aside ref={panelRef} className="project-panel" aria-label={panel} style={{ flexBasis: panelWidth }}>
+            <div className="project-panel-resize-handle" role="separator" aria-label="Resize project panel"
+              aria-orientation="vertical" aria-valuenow={panelWidth} tabIndex={0}
+              onPointerDown={event => { panelDragging.current = true; event.currentTarget.setPointerCapture(event.pointerId) }}
+              onPointerMove={resizePanel} onPointerUp={stopPanelResize} onPointerCancel={stopPanelResize}
+              onKeyDown={event => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                event.preventDefault()
+                const next = Math.max(260, Math.min(720, panelWidth + (event.key === 'ArrowLeft' ? 24 : -24)))
+                setPanelWidth(next)
+                localStorage.setItem('tnega-project-panel-width', String(next))
+              }} />
             {panel === 'overview' && (
               <OverviewPanel view={view} onOpenThread={id => setThreadId(id)} />
             )}
@@ -448,6 +480,12 @@ export function ProjectExperience(props: ProjectExperienceProps) {
             )}
           </aside>
         )
+      )}
+      {view && error && (
+        <div className="error-toast" role="alert">
+          <span>{error}</span>
+          <button type="button" aria-label="Dismiss error" onClick={() => setError(null)}>Dismiss</button>
+        </div>
       )}
     </div>
   )

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import { ChevronRight, Loader2, X } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import { MessageBlock, projectEvents, type DisplayMessage } from './reuse'
+import { groupToolMessages } from '../toolGroups'
+import { ToolGroupBlock } from '../conversation/Transcript'
 import { threadStateLabel } from './state'
 import type { SessionEvent, ThreadRecord } from './types'
 
@@ -23,6 +25,7 @@ export interface ThreadPanelProps {
  */
 export function ThreadPanel(props: ThreadPanelProps) {
   const transcript = useMemo(() => projectEvents([...props.events]), [props.events])
+  const items = useMemo(() => groupToolMessages(transcript), [transcript])
   const { thread } = props
   const [width, setWidth] = useState(() => {
     const stored = Number(localStorage.getItem('tnega-thread-sidebar-width'))
@@ -84,7 +87,6 @@ export function ThreadPanel(props: ThreadPanelProps) {
             <span className="context-label">State</span>
             <span className="context-value">
               {thread ? threadStateLabel(thread.state) : 'loading'}
-              {thread?.state === 'working' && <Loader2 size={11} className="spin" aria-hidden="true" />}
             </span>
           </div>
           <div className="context-row">
@@ -110,9 +112,10 @@ export function ThreadPanel(props: ThreadPanelProps) {
           {!props.loading && !transcript.length && (
             <p className="panel-empty">Nothing yet — this thread has not run.</p>
           )}
-          {transcript.map(message => (
-            <TranscriptRow key={message.id} message={message} label={thread?.label} />
-          ))}
+          {items.map(item => item.kind === 'tools'
+            ? <ToolGroupBlock key={`tools-${item.tools[0]?.id ?? 'empty'}`} tools={item.tools} />
+            : <TranscriptRow key={item.message.id} message={item.message} label={thread?.label} />
+          )}
           {props.draft !== undefined && (
             <MessageBlock
               message={{ id: 'draft', role: 'assistant', content: props.draft, pending: true }}

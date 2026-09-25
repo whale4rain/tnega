@@ -13,11 +13,11 @@ export function OverviewPanel({
   onOpenThread: (threadId: string) => void
 }) {
   const buckets = threadBuckets(view.threads)
-  const groups: Array<{ title: string; threads: ThreadRecord[]; hint: string }> = [
-    { title: 'Waiting on you', threads: buckets.waiting, hint: 'These need an answer before they can continue.' },
-    { title: 'Working', threads: buckets.working, hint: 'Running now.' },
-    { title: 'Idle', threads: buckets.idle, hint: 'Started, with nothing in flight.' },
-    { title: 'Finished', threads: buckets.finished, hint: 'Done or failed.' },
+  const groups: Array<{ title: string; threads: ThreadRecord[] }> = [
+    { title: 'Waiting on you', threads: buckets.waiting },
+    { title: 'Working', threads: buckets.working },
+    { title: 'Idle', threads: buckets.idle },
+    { title: 'Finished', threads: buckets.finished },
   ]
   if (!groups.some(group => group.threads.length)) {
     return (
@@ -37,7 +37,6 @@ export function OverviewPanel({
             {group.title}
             <span className="overview-count">{group.threads.length}</span>
           </h3>
-          <p className="project-panel-hint">{group.hint}</p>
           {group.threads.map(thread => (
             <button
               key={thread.id}
@@ -48,7 +47,6 @@ export function OverviewPanel({
             >
               <span className="overview-row-label">{thread.label}</span>
               <span className="overview-row-state">{threadStateLabel(thread.state)}</span>
-              {thread.detail && <span className="overview-row-detail">{thread.detail}</span>}
             </button>
           ))}
         </section>

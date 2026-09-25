@@ -226,11 +226,12 @@ select:not(.rt-reset) {
 .project-list { list-style: none; margin: 0; padding: 0 8px 8px; }
 .project-row {
   display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
-  padding: 6px 8px; border: 1px solid transparent; border-radius: 7px;
-  color: var(--ink); text-align: left; background: transparent; cursor: pointer;
+  min-height: 42px; margin: 2px 0; padding: 5px 12px;
+  border: 0; border-radius: 7px; color: var(--ink); text-align: left;
+  background: transparent; cursor: pointer; font: inherit;
 }
-.project-row:hover, .project-row[aria-current='true'] { background: var(--surface-card); }
-.project-row[aria-current='true'] { border-color: var(--hairline); }
+.project-row:hover { background: color-mix(in srgb, var(--ink) 5%, var(--sidebar)); }
+.project-row[aria-current='true'] { background: color-mix(in srgb, var(--ink) 12%, var(--sidebar)); }
 .project-row-body { display: flex; flex-direction: column; min-width: 0; }
 .project-row-name, .project-row-folder { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-row-folder { color: var(--mute); font-size: 10px; }
@@ -877,13 +878,10 @@ pre {
 }
 .composer {
   position: relative;
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-  padding: 12px 14px 8px;
-  background: var(--surface-card);
-}
-.composer:focus-within {
-  border-color: var(--mute);
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 .composer textarea {
   resize: none;
@@ -1546,7 +1544,9 @@ button.send-button:hover:not(:disabled) {
 
 /* Overview / Library / Memory：右侧面板共用的行样式。 */
 .project-panel {
+  position: relative;
   flex: 0 0 clamp(320px, 34vw, 460px);
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1555,6 +1555,16 @@ button.send-button:hover:not(:disabled) {
   background: var(--surface-soft);
   overflow-y: auto;
 }
+.project-panel-resize-handle {
+  position: absolute; z-index: 3; top: 0; bottom: 0; left: -5px;
+  width: 10px; cursor: col-resize; touch-action: none;
+}
+.project-panel-resize-handle::after {
+  content: ''; position: absolute; left: 4px; top: calc(50% - 18px);
+  width: 2px; height: 36px; border-radius: 2px; background: var(--hairline);
+}
+.project-panel-resize-handle:hover,
+.project-panel-resize-handle:focus-visible { background: color-mix(in srgb, var(--accent), transparent 75%); }
 .project-panel-hint,
 .project-panel-empty {
   color: var(--mute);
