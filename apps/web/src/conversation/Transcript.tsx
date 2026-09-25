@@ -1,6 +1,7 @@
 import { memo, useState, type Ref } from 'react'
 import { ChatMessage, ChatMessageBubble, ChatSystemMessage } from '@astryxdesign/core/Chat'
 import { Button } from '@astryxdesign/core/Button'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import ReactMarkdown from 'react-markdown'
@@ -134,15 +135,28 @@ export const MessageBlock = memo(function MessageBlock({
 })
 
 function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
-  const [expanded, setExpanded] = useState(false)
   const ordered = [...files].sort((a, b) =>
     (b.additions ?? 0) + (b.deletions ?? 0) - (a.additions ?? 0) - (a.deletions ?? 0)
     || a.path.localeCompare(b.path))
-  const shown = expanded ? ordered : ordered.slice(0, 3)
   const remaining = files.length - 3
   const hasStats = files.every(file => file.additions !== undefined && file.deletions !== undefined)
   const additions = files.reduce((total, file) => total + (file.additions ?? 0), 0)
   const deletions = files.reduce((total, file) => total + (file.deletions ?? 0), 0)
+  const rows = (list: EditedFileSummary[]) => (
+    <ul className="file-edits-list">
+      {list.map(file => (
+        <li key={file.path} title={file.path}>
+          <span className="file-edits-path">
+            <span>{file.path.slice(0, file.path.lastIndexOf('/') + 1)}</span>
+            <strong>{file.path.slice(file.path.lastIndexOf('/') + 1)}</strong>
+          </span>
+          {(file.additions !== undefined || file.deletions !== undefined) && (
+            <span className="file-edits-stats"><span>+{file.additions ?? 0}</span> <span>-{file.deletions ?? 0}</span></span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
   return (
     <div className="message file-edits-card">
       <div className="file-edits-heading">
@@ -152,25 +166,11 @@ function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
           {hasStats && <span className="file-edits-stats"><span>+{additions}</span> <span>-{deletions}</span></span>}
         </div>
       </div>
-      <ul className="file-edits-list">
-        {shown.map(file => (
-          <li key={file.path} title={file.path}>
-            <span className="file-edits-path">
-              <span>{file.path.slice(0, file.path.lastIndexOf('/') + 1)}</span>
-              <strong>{file.path.slice(file.path.lastIndexOf('/') + 1)}</strong>
-            </span>
-            {(file.additions !== undefined || file.deletions !== undefined) && (
-              <span className="file-edits-stats"><span>+{file.additions ?? 0}</span> <span>-{file.deletions ?? 0}</span></span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {rows(ordered.slice(0, 3))}
       {remaining > 0 && (
-        <button type="button" className="file-edits-more" aria-expanded={expanded}
-          onClick={() => setExpanded(value => !value)}>
-          {expanded ? '收起' : `再显示 ${remaining} 个文件`}
-          <ChevronRight size={14} className={expanded ? 'expanded' : ''} aria-hidden="true" />
-        </button>
+        <Collapsible trigger={`再显示 ${remaining} 个文件`}>
+          {rows(ordered.slice(3))}
+        </Collapsible>
       )}
     </div>
   )
@@ -290,55 +290,45 @@ export function ContextRing({ context }: { context: ContextUsage }) {
 }
 
 function CompactionBlock({ message }: { message: DisplayMessage }) {
-  const [open, setOpen] = useState(false)
   const tokens = message.tokensBefore
   const tokenText =
     tokens !== undefined ? `${tokens.toLocaleString()} tokens` : 'context'
   return (
     <div className="message compaction">
-      <button
-        type="button"
-        className="compaction-toggle"
-        onClick={() => setOpen((open) => !open)}
+      <Collapsible
+        defaultIsOpen={false}
+        trigger={
+          <>
+            <span className="compaction-status">[context compacted]</span>
+            <span className="compaction-meta">compacted from {tokenText}</span>
+          </>
+        }
       >
-        <span className="marker">{open ? '[-]' : '[+]'}</span>
-        <span className="compaction-status">[context compacted]</span>
-        <span className="compaction-meta">
-          {open
-            ? `compacted from ${tokenText}`
-            : `compacted from ${tokenText} (expand)`}
-        </span>
-      </button>
-      {open && message.content && (
-        <div className="compaction-summary md">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {message.content}
-          </ReactMarkdown>
-        </div>
-      )}
+        {message.content && (
+          <div className="compaction-summary md">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
+      </Collapsible>
     </div>
   )
 }
 
 function SlashBlock({ message }: { message: DisplayMessage }) {
-  const [open, setOpen] = useState(true)
   const slash = message.slash!
   const line = [slash.command, ...slash.args].join(' ')
   return (
     <div className="message slash">
-      <button
-        type="button"
-        className="slash-toggle"
-        onClick={() => setOpen((open) => !open)}
-        aria-expanded={open}
+      <Collapsible
+        trigger={
+          <>
+            <span className="slash-status">slash</span>
+            <span className="slash-block-command">{line}</span>
+          </>
+        }
       >
-        <span className="marker">{open ? '[-]' : '[+]'}</span>
-        <span className="slash-status">slash</span>
-        <span className="slash-block-command" title={line}>
-          {line}
-        </span>
-      </button>
-      {open && (
         <div className="slash-result">
           {slash.result.kind === 'text' ? (
             <div className="slash-text md">
@@ -350,7 +340,7 @@ function SlashBlock({ message }: { message: DisplayMessage }) {
             <pre className="slash-json">{prettyJson(slash.result.value)}</pre>
           )}
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }

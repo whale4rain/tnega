@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { IconButton } from '@astryxdesign/core/IconButton'
 import { ChevronRight, X } from 'lucide-react'
 import { MessageBlock, projectEvents, type DisplayMessage } from './reuse'
 import { groupToolMessages } from '../toolGroups'
@@ -76,9 +77,13 @@ export function ThreadPanel(props: ThreadPanelProps) {
           <ChevronRight size={12} aria-hidden="true" />
           <span className="breadcrumb-current">{thread?.label ?? 'Thread'}</span>
         </nav>
-        <button type="button" className="icon-button" onClick={props.onClose} aria-label="Close thread">
-          <X size={15} aria-hidden="true" />
-        </button>
+        <IconButton
+          label="Close thread"
+          icon={<X size={15} aria-hidden="true" />}
+          variant="ghost"
+          size="sm"
+          onClick={props.onClose}
+        />
       </header>
 
       <div className="thread-panel-scroll" ref={transcriptRef}>

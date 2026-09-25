@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Button, TextArea } from '@radix-ui/themes'
+import { Button } from '@astryxdesign/core/Button'
+import { TextArea } from '@astryxdesign/core/TextArea'
 import { BookOpen, FileText, Link2 } from 'lucide-react'
 import * as api from './api'
 import { threadBuckets, threadStateLabel, type ProjectView } from './state'
@@ -166,17 +167,20 @@ export function MemoryPanel({
       {error && <div className="project-panel-error" role="alert">{error}</div>}
       {adding ? (
         <div className="memory-editor">
-          <TextArea value={draft} placeholder="A durable fact about this project." onChange={event => setDraft(event.target.value)} />
+          <TextArea label="Memory entry" isLabelHidden value={draft} placeholder="A durable fact about this project." onChange={setDraft} />
           <div className="memory-actions">
-            <Button size="1" onClick={() => void save(null)} disabled={!draft.trim()}>Save</Button>
-            <Button size="1" variant="soft" onClick={() => { setAdding(false); setDraft('') }}>Cancel</Button>
+            <Button label="Save" size="sm" onClick={() => void save(null)} isDisabled={!draft.trim()} />
+            <Button label="Cancel" size="sm" variant="secondary" onClick={() => { setAdding(false); setDraft('') }} />
           </div>
         </div>
       ) : (
-        <Button size="1" variant="soft" onClick={() => { setAdding(true); setDraft('') }}>
-          <BookOpen size={14} aria-hidden="true" />
-          Add memory
-        </Button>
+        <Button
+          label="Add memory"
+          size="sm"
+          variant="secondary"
+          icon={<BookOpen size={14} aria-hidden="true" />}
+          onClick={() => { setAdding(true); setDraft('') }}
+        />
       )}
       {!view.memory.length && !adding && (
         <p className="project-panel-hint">
@@ -188,11 +192,11 @@ export function MemoryPanel({
         <article key={fact.id} className="memory-row" data-editing={editing === fact.id}>
           {editing === fact.id ? (
             <div className="memory-editor">
-              <TextArea value={draft} onChange={event => setDraft(event.target.value)} />
+              <TextArea label="Memory entry" isLabelHidden value={draft} onChange={setDraft} />
               <div className="memory-actions">
-                <Button size="1" onClick={() => void save(fact)} disabled={!draft.trim()}>Save</Button>
-                <Button size="1" variant="soft" onClick={() => setEditing(null)}>Cancel</Button>
-                <Button size="1" color="red" variant="soft" onClick={() => void remove(fact)}>Delete</Button>
+                <Button label="Save" size="sm" onClick={() => void save(fact)} isDisabled={!draft.trim()} />
+                <Button label="Cancel" size="sm" variant="secondary" onClick={() => setEditing(null)} />
+                <Button label="Delete" size="sm" variant="destructive" onClick={() => void remove(fact)} />
               </div>
             </div>
           ) : (

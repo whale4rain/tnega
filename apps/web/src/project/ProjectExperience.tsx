@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
-import { Badge } from '@radix-ui/themes'
+import { Badge } from '@astryxdesign/core/Badge'
+import { Button } from '@astryxdesign/core/Button'
+import { ToggleButton, ToggleButtonGroup } from '@astryxdesign/core/ToggleButton'
 import { ListTodo } from 'lucide-react'
 import * as api from './api'
 import { LibraryPanel, MemoryPanel, OverviewPanel } from './SidePanels'
@@ -377,20 +379,21 @@ export function ProjectExperience(props: ProjectExperienceProps) {
             </span>
           </div>
           <div className="chat-header-actions">
-            {!!waiting.length && <Badge color="amber">{waiting.length} waiting on you</Badge>}
-            {(['overview', 'library', 'memory'] as const).map(entry => (
-              <button
-                key={entry}
-                type="button"
-                aria-pressed={!threadId && panel === entry}
-                onClick={() => {
-                  setThreadId(null)
-                  setPanel(current => (current === entry ? null : entry))
-                }}
-              >
-                {entry}
-              </button>
-            ))}
+            {!!waiting.length && <Badge variant="warning" label={`${waiting.length} waiting on you`} />}
+            {/* 单选、点当前项就是收起面板 —— 正好是 ToggleButtonGroup 的 single 语义。 */}
+            <ToggleButtonGroup
+              label="Project panels"
+              value={threadId ? null : panel}
+              size="sm"
+              onChange={value => {
+                setThreadId(null)
+                setPanel(value as 'overview' | 'library' | 'memory' | null)
+              }}
+            >
+              {(['overview', 'library', 'memory'] as const).map(entry => (
+                <ToggleButton key={entry} value={entry} label={entry} />
+              ))}
+            </ToggleButtonGroup>
           </div>
         </div>
 
@@ -465,17 +468,19 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                 placeholder="Ask for something, or add to the work in flight."
               />
               <div className="conversation-footer">
-                <button
-                  type="button"
+                <Button
                   className={`subagent-toggle${threadId ? ' active' : ''}`}
+                  label={`${tasks.filter(entry => entry.state === 'working').length} active tasks`}
+                  variant="ghost"
+                  size="sm"
+                  icon={<ListTodo size={14} aria-hidden="true" />}
                   aria-expanded={threadId !== null}
-                  disabled={!tasks.length}
+                  isDisabled={!tasks.length}
                   onClick={() => setThreadId(current => (current ? null : tasks[0]?.id ?? null))}
                 >
-                  <ListTodo size={14} aria-hidden="true" />
                   {tasks.filter(entry => entry.state === 'working').length} active task
                   {tasks.length > 0 && <span className="subagent-total">· {tasks.length} total</span>}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -537,7 +542,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
       {view && error && (
         <div className="error-toast" role="alert">
           <span>{error}</span>
-          <button type="button" aria-label="Dismiss error" onClick={() => setError(null)}>Dismiss</button>
+          <Button label="Dismiss" variant="ghost" size="sm" onClick={() => setError(null)} />
         </div>
       )}
     </div>
@@ -571,14 +576,16 @@ function ProjectMessage({
           </span>
         </div>
         <PlanPanel plan={plan} />
-        <button
-          type="button"
+        <Button
           className="thread-card-open"
-          disabled={!target}
+          label={replies === 1 ? 'Open thread: 1 reply' : `Open thread: ${replies} replies`}
+          variant="secondary"
+          size="sm"
+          isDisabled={!target}
           onClick={() => onOpenThread(target)}
         >
           {replies === 1 ? '1 reply' : `${replies} replies`}
-        </button>
+        </Button>
       </div>
     )
   }

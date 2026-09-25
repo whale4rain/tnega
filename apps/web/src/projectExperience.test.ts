@@ -154,15 +154,23 @@ function stream(): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+/**
+ * The composer's placeholder belongs to the Astryx contentEditable, which
+ * renders it as an element rather than an input `placeholder` attribute, so it
+ * is read as text.
+ */
+const COMPOSER_PLACEHOLDER = 'Ask for something, or add to the work in flight.'
+
 async function openProject(): Promise<void> {
   render(createElement(App))
   await waitFor(() => expect(screen.getByText('Alpha session')).toBeTruthy())
-  const row = await waitFor(() => screen.getByRole('button', { name: /Notes/ }))
+  // Anchored so the row's own overflow button — named "Project actions: Notes"
+  // — is not the match.
+  const row = await waitFor(() => screen.getByRole('button', { name: /^Notes/ }))
   await act(async () => {
     fireEvent.click(row)
   })
-  await waitFor(() =>
-    expect(screen.getByPlaceholderText('Ask for something, or add to the work in flight.')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText(COMPOSER_PLACEHOLDER)).toBeTruthy())
 }
 
 it('keeps showing the project after the session list arrives', async () => {
@@ -174,7 +182,7 @@ it('keeps showing the project after the session list arrives', async () => {
   await act(async () => {
     await new Promise(resolve => setTimeout(resolve, 50))
   })
-  expect(screen.getByPlaceholderText('Ask for something, or add to the work in flight.')).toBeTruthy()
+  expect(screen.getByText(COMPOSER_PLACEHOLDER)).toBeTruthy()
   expect(screen.getByText('Summarise the release notes')).toBeTruthy()
 })
 

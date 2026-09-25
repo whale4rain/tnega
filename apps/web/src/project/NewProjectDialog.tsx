@@ -1,5 +1,9 @@
 import { useState } from 'react'
-import { Button, Dialog, TextField } from '@radix-ui/themes'
+import { Banner } from '@astryxdesign/core/Banner'
+import { Button } from '@astryxdesign/core/Button'
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
+import { Stack } from '@astryxdesign/core/Stack'
+import { TextInput } from '@astryxdesign/core/TextInput'
 import { hasDesktopWorkspacePicker, pickDesktopWorkspace } from '../desktopBridge'
 
 export interface NewProjectInput {
@@ -50,8 +54,8 @@ export function NewProjectDialog({
   }
 
   return (
-    <Dialog.Root
-      open={open}
+    <Dialog
+      isOpen={open}
       onOpenChange={next => {
         onOpenChange(next)
         if (next) {
@@ -61,67 +65,70 @@ export function NewProjectDialog({
           setError('')
         }
       }}
+      width={480}
     >
-      <Dialog.Content maxWidth="480px">
-        <Dialog.Title>New project</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          Pick the folder this project works in. Its memory, threads and artifacts live there, and
-          its agents run there.
-        </Dialog.Description>
-        {error && <p role="alert" className="danger">{error}</p>}
+      <DialogHeader
+        title="New project"
+        subtitle="Pick the folder this project works in. Its memory, threads and artifacts live there, and its agents run there."
+        onOpenChange={() => onOpenChange(false)}
+      />
+      <Stack direction="vertical" gap={3} padding={3}>
+        {error && <Banner status="error" title={error} collapsible={false} />}
         <form
           onSubmit={event => {
             event.preventDefault()
             void submit()
           }}
         >
-          <div className="flex flex-col gap-3">
-            <TextField.Root
-              aria-label="Project name"
+          <Stack direction="vertical" gap={3}>
+            <TextInput
+              label="Project name"
+              isLabelHidden
               placeholder="Project name"
               value={name}
-              onChange={event => setName(event.target.value)}
-              autoFocus
+              onChange={setName}
+              hasAutoFocus
             />
-            <div className="flex gap-2">
-              <TextField.Root
-                aria-label="Project folder"
+            <Stack direction="horizontal" gap={2} align="end">
+              <TextInput
+                label="Project folder"
+                isLabelHidden
                 placeholder="Folder to work in"
                 value={folder}
-                onChange={event => setFolder(event.target.value)}
+                onChange={setFolder}
+                width="100%"
               />
               {hasDesktopWorkspacePicker() && (
                 <Button
-                  type="button"
-                  variant="soft"
-                  disabled={busy}
+                  label="Browse…"
+                  variant="secondary"
+                  isDisabled={busy}
                   onClick={() => {
                     void pickDesktopWorkspace().then(selected => {
                       if (selected) setFolder(selected)
                     })
                   }}
-                >
-                  Browse…
-                </Button>
+                />
               )}
-            </div>
-            <TextField.Root
-              aria-label="Project goal"
+            </Stack>
+            <TextInput
+              label="Project goal"
+              isLabelHidden
               placeholder="What is it for? (optional)"
               value={goal}
-              onChange={event => setGoal(event.target.value)}
+              onChange={setGoal}
             />
-          </div>
-          <div className="flex justify-end gap-3 mt-4">
-            <Dialog.Close>
-              <Button variant="soft" color="gray">Cancel</Button>
-            </Dialog.Close>
-            <Button type="submit" disabled={busy || !name.trim() || !folder.trim()}>
-              Create project
-            </Button>
-          </div>
+            <Stack direction="horizontal" gap={3} justify="end">
+              <Button label="Cancel" variant="secondary" onClick={() => onOpenChange(false)} />
+              <Button
+                label="Create project"
+                type="submit"
+                isDisabled={busy || !name.trim() || !folder.trim()}
+              />
+            </Stack>
+          </Stack>
         </form>
-      </Dialog.Content>
-    </Dialog.Root>
+      </Stack>
+    </Dialog>
   )
 }

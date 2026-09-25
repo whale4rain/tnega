@@ -35,7 +35,8 @@ it('shows context, throughput and cache hit rate together', () => {
     metrics: metrics({ cacheHitRate: 0.78, tokensPerSecond: 42.5, lastDurationMs: 9_400 }),
   }))
 
-  expect(screen.getByText('12k / 128k · 10%')).toBeTruthy()
+  const contextValue = screen.getByText(/· 10%$/)
+  expect(contextValue.textContent).toMatch(/\b12,?340 \/ 128,?000\b/)
   expect(screen.getByText('42.5 tok/s')).toBeTruthy()
   expect(screen.getByText('78%')).toBeTruthy()
 })
@@ -43,11 +44,13 @@ it('shows context, throughput and cache hit rate together', () => {
 it('omits a measurement the provider never reported', () => {
   render(createElement(UsageMetrics, { context, metrics: metrics() }))
 
-  expect(screen.getByText('12k / 128k · 10%')).toBeTruthy()
-  // No throughput and no cache rate were reported, so neither is rendered —
-  // least of all as a zero.
+  expect(screen.getByText(/· 10%$/)).toBeTruthy()
+  // No throughput was reported, so the speed readout is absent entirely rather
+  // than rendered as a zero. An unreported cache rate stays on screen but reads
+  // as unknown, which is not the same claim as "0% cached".
   expect(screen.queryByText('speed')).toBeNull()
-  expect(screen.queryByText('cache')).toBeNull()
+  expect(screen.getByText('cache hit rate')).toBeTruthy()
+  expect(screen.getByText('—')).toBeTruthy()
 })
 
 it('renders nothing before the session has measured anything', () => {
