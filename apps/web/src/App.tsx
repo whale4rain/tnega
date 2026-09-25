@@ -523,7 +523,7 @@ function ChatApp() {
             sessions={sessions}
             selectedId={sessionId}
             projects={recentProjects}
-            selectedProjectId={null}
+            selectedProjectId={project?.id ?? null}
             onOpenProject={openProject}
             onForgetProject={handleForgetProject}
             onNewProject={() => setCreatingProject(true)}

@@ -89,9 +89,6 @@ export function ComposerFrame(props: Props) {
           </Select.Root>
         )}
         <span className="permission-hint" title={permissionHint}>{permissionHint}</span>
-        <span className="composer-shortcut">
-          Enter to send · Shift + Enter for newline
-        </span>
         <Popover.Root>
           <Popover.Trigger>
             <Button className="model-control-trigger" size="1" color="gray" variant="ghost"
