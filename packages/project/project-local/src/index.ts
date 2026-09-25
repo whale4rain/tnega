@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { BlackboardError, type BlackboardService, type FactRecord } from '@tnega/blackboard'
 import type { Context } from '@tnega/core'
@@ -43,6 +43,7 @@ function toRecord(fact: FactRecord): ProjectRecord {
     updatedAt: fact.updatedAt,
   }
   if (typeof data.goal === 'string') record.goal = data.goal
+  if (data.archived === true) record.archived = true
   return record
 }
 
@@ -51,6 +52,7 @@ function toData(record: ProjectRecord): Record<string, unknown> {
     name: record.name,
     coordinatorId: record.coordinatorId,
     ...(record.goal !== undefined ? { goal: record.goal } : {}),
+    ...(record.archived ? { archived: true } : {}),
   }
 }
 
@@ -135,6 +137,12 @@ export class LocalProjectsService extends ProjectsService {
     }
     const next: ProjectRecord = { ...toRecord(fact), updatedAt: Date.now() }
     if (patch.name !== undefined) next.name = normalizeProjectName(patch.name)
+    if (patch.archived !== undefined) {
+      if (typeof patch.archived !== 'boolean') {
+        throw new ProjectError('project archived must be a boolean', 'PROJECT_INVALID')
+      }
+      next.archived = patch.archived
+    }
     if (patch.goal !== undefined) {
       if (patch.goal === null) delete next.goal
       else {
@@ -167,6 +175,23 @@ export class LocalProjectsService extends ProjectsService {
   override directory(id: string): string {
     this.assertId(id)
     return join(this.root, id)
+  }
+
+  override async delete(id: string, author: string): Promise<void> {
+    this.assertId(id)
+    const fact = await this.board.read('project', id)
+    if (!fact || fact.deleted) {
+      throw new ProjectError(`project not found: ${id}`, 'PROJECT_NOT_FOUND')
+    }
+    await this.board.commit({
+      kind: 'project',
+      id,
+      data: fact.data,
+      author: author?.trim() || this.author,
+      expectedVersion: fact.version,
+      deleted: true,
+    })
+    await rm(this.directory(id), { recursive: true, force: true })
   }
 
   private assertId(id: unknown): asserts id is string {

@@ -30,6 +30,17 @@ export function getProject(workspace: string, id: string): Promise<ProjectSnapsh
   return request(`/api/projects/${id}?${query(workspace)}`)
 }
 
+export function archiveProject(workspace: string, id: string, archived: boolean): Promise<{ project: ProjectRecord }> {
+  return request(`/api/projects/${id}?${query(workspace)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ archived }),
+  })
+}
+
+export function deleteProject(workspace: string, id: string): Promise<void> {
+  return request(`/api/projects/${id}?${query(workspace)}`, { method: 'DELETE' })
+}
+
 export function getThread(
   workspace: string,
   id: string,

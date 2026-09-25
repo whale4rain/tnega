@@ -75,6 +75,23 @@ export async function handleProjectApi(
     return
   }
 
+  if (rest === '' && req.method === 'PATCH') {
+    const body = await context.readJsonBody(req)
+    if (typeof body.archived !== 'boolean') {
+      context.sendError(res, 400, 'archived must be a boolean')
+      return
+    }
+    const project = await host.update(projectId, { archived: body.archived })
+    context.sendJson(res, 200, { project })
+    return
+  }
+
+  if (rest === '' && req.method === 'DELETE') {
+    await host.delete(projectId)
+    context.sendJson(res, 200, { deleted: true })
+    return
+  }
+
   if (rest === '/messages' && req.method === 'POST') {
     const body = await context.readJsonBody(req)
     if (typeof body.text !== 'string' || !body.text.trim()) {

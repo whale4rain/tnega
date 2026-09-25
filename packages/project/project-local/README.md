@@ -10,7 +10,7 @@
 ```
 
 身份是同一个 Blackboard 里的 `project` kind 记录，`data` 只有
-`{ name, coordinatorId, goal?, repo? }` —— `id` 由记录键提供，`createdAt` / `updatedAt`
+`{ name, coordinatorId, goal?, archived? }` —— `id` 由记录键提供，`createdAt` / `updatedAt`
 由缝的版本记录提供，不在 data 里重复一份。
 
 ## 取舍
@@ -20,6 +20,8 @@
 - **只建目录，不预建子目录**。一个还没用过的 Project 不该在磁盘上留下一堆空目录。
 - **并发修改走条件提交**。`update` 先读当前版本再提交；期间被改过就以
   `ProjectError`（`PROJECT_FAILED`）拒绝，由调用者重新读取后重试，而不是覆盖。
+- **删除同时清理身份与数据目录**。Provider 先把 Blackboard 身份标记为删除，再递归移除
+  `<root>/<projectId>`；归档只更新身份标记，数据和运行记录都保留。
 - **需要同一作用域里有 Blackboard**。Provider 通过 `inject: ['blackboard']` 声明这一点，
   由组合层挑选具体实现：本机场景是 `@tnega/blackboard-local`，挂载位置决定这份目录
   索引覆盖哪些 Project。

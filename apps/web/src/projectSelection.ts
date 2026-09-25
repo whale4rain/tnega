@@ -10,6 +10,7 @@ export interface RecentProject {
   id: string
   name: string
   openedAt: number
+  archived?: boolean
 }
 
 const KEY = 'tnega-recent-projects'
@@ -50,6 +51,12 @@ export function forgetProject(storage: Storage, id: string): RecentProject[] {
 
 export function renameRecentProject(storage: Storage, id: string, name: string): RecentProject[] {
   const next = readRecentProjects(storage).map(entry => (entry.id === id ? { ...entry, name } : entry))
+  storage.setItem(KEY, JSON.stringify(next))
+  return next
+}
+
+export function setRecentProjectArchived(storage: Storage, id: string, archived: boolean): RecentProject[] {
+  const next = readRecentProjects(storage).map(entry => (entry.id === id ? { ...entry, archived } : entry))
   storage.setItem(KEY, JSON.stringify(next))
   return next
 }

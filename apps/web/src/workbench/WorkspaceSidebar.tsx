@@ -10,13 +10,17 @@ import {
 } from '@radix-ui/themes'
 import {
   Code2,
+  Archive,
+  ArchiveRestore,
   FolderPlus,
   LayoutList,
   MessageSquare,
+  MoreHorizontal,
   Plus,
   Search,
   Settings,
   SunMoon,
+  Trash2,
 } from 'lucide-react'
 import type { SessionSummary } from '../types'
 import { folderName, type RecentProject } from '../projectSelection'
@@ -50,7 +54,8 @@ interface Props {
   selectedProjectId: string | null
   onOpenProject: (project: RecentProject) => void
   onNewProject: () => void
-  onForgetProject: (id: string) => void
+  onArchiveProject: (project: RecentProject, archived: boolean) => Promise<void>
+  onDeleteProject: (project: RecentProject) => Promise<void>
 }
 
 export function WorkspaceSidebar(props: Props) {
@@ -60,6 +65,8 @@ export function WorkspaceSidebar(props: Props) {
   const [path, setPath] = useState('')
   const [rename, setRename] = useState<SessionSummary | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionSummary | null>(null)
+  const [projectDeleteTarget, setProjectDeleteTarget] = useState<RecentProject | null>(null)
+  const [showArchivedProjects, setShowArchivedProjects] = useState(false)
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -128,28 +135,86 @@ export function WorkspaceSidebar(props: Props) {
           </IconButton>
         </Tooltip>
       </div>
-      {props.projects.length ? (
+      {props.projects.some(project => !project.archived) ? (
         <ul className="project-list" aria-label="Projects">
-          {props.projects.map(project => (
+          {props.projects.filter(project => !project.archived).map(project => (
             <li key={project.id}>
-              <button
-                type="button"
-                className="project-row"
-                aria-current={project.id === props.selectedProjectId ? 'true' : undefined}
-                onClick={() => props.onOpenProject(project)}
-                title={project.workspace}
-              >
-                <LayoutList size={15} aria-hidden="true" />
-                <span className="project-row-body">
-                  <span className="project-row-name">{project.name}</span>
-                  <span className="project-row-folder">{folderName(project.workspace)}</span>
-                </span>
-              </button>
+              <div className="project-row-wrap">
+                <button
+                  type="button"
+                  className="project-row"
+                  aria-current={project.id === props.selectedProjectId ? 'true' : undefined}
+                  onClick={() => props.onOpenProject(project)}
+                  title={project.workspace}
+                >
+                  <LayoutList size={15} aria-hidden="true" />
+                  <span className="project-row-body">
+                    <span className="project-row-name">{project.name}</span>
+                    <span className="project-row-folder">{folderName(project.workspace)}</span>
+                  </span>
+                </button>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger>
+                    <IconButton variant="ghost" color="gray" size="1" aria-label={`Project actions: ${project.name}`}>
+                      <MoreHorizontal size={15} />
+                    </IconButton>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="end">
+                    <DropdownMenu.Item onSelect={() => void perform(() => props.onArchiveProject(project, true))}>
+                      <Archive size={14} /> Archive project
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Separator />
+                    <DropdownMenu.Item color="red" onSelect={() => setProjectDeleteTarget(project)}>
+                      <Trash2 size={14} /> Delete project…
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="sidebar-hint">No projects yet. A project is a folder you keep working in.</p>
+        <p className="sidebar-hint">No active projects.</p>
+      )}
+      {props.projects.some(project => project.archived) && (
+        <>
+          <button type="button" className="sidebar-section-label archived-project-toggle" onClick={() => setShowArchivedProjects(value => !value)}>
+            {showArchivedProjects ? 'Hide archived' : `Archived (${props.projects.filter(project => project.archived).length})`}
+          </button>
+          {showArchivedProjects && (
+            <ul className="project-list" aria-label="Archived projects">
+              {props.projects.filter(project => project.archived).map(project => (
+                <li key={project.id}>
+                  <div className="project-row-wrap">
+                    <button type="button" className="project-row" onClick={() => props.onOpenProject(project)} title={project.workspace}>
+                      <LayoutList size={15} aria-hidden="true" />
+                      <span className="project-row-body">
+                        <span className="project-row-name">{project.name}</span>
+                        <span className="project-row-folder">{folderName(project.workspace)}</span>
+                      </span>
+                    </button>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger>
+                        <IconButton variant="ghost" color="gray" size="1" aria-label={`Project actions: ${project.name}`}>
+                          <MoreHorizontal size={15} />
+                        </IconButton>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Content align="end">
+                        <DropdownMenu.Item onSelect={() => void perform(() => props.onArchiveProject(project, false))}>
+                          <ArchiveRestore size={14} /> Restore project
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Separator />
+                        <DropdownMenu.Item color="red" onSelect={() => setProjectDeleteTarget(project)}>
+                          <Trash2 size={14} /> Delete project…
+                        </DropdownMenu.Item>
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Root>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
       <div className="sidebar-section-label flex items-center justify-between">
         <span>Workspaces</span>
@@ -298,6 +363,25 @@ export function WorkspaceSidebar(props: Props) {
                 setDeleteTarget(null)
               })
             }}>Delete session</Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Root>
+      <Dialog.Root open={projectDeleteTarget !== null} onOpenChange={open => { if (!open && !busy) setProjectDeleteTarget(null) }}>
+        <Dialog.Content maxWidth="440px">
+          <Dialog.Title>Delete project permanently?</Dialog.Title>
+          <Dialog.Description size="2" mb="4">
+            Delete “{projectDeleteTarget?.name}” and all its project data? This cannot be undone.
+          </Dialog.Description>
+          {error && <p role="alert" className="danger">{error}</p>}
+          <div className="flex justify-end gap-3 mt-4">
+            <Button variant="soft" color="gray" disabled={busy} onClick={() => setProjectDeleteTarget(null)}>Cancel</Button>
+            <Button color="red" disabled={busy} onClick={() => {
+              if (!projectDeleteTarget) return
+              void perform(async () => {
+                await props.onDeleteProject(projectDeleteTarget)
+                setProjectDeleteTarget(null)
+              })
+            }}>Delete project</Button>
           </div>
         </Dialog.Content>
       </Dialog.Root>

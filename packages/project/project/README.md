@@ -21,7 +21,7 @@ Provider 通过 `extends` 完成注册。
   Project 有自己的 ID、共享事实目录和 Agent 树，不被 Workspace 替代，也不与它等价。
 - **这里不装运行时**。本缝只管身份与目录，一个 Project 作用域里挂哪些 Provider 属于
   组合层（CLI 的 Project Host）。
-- **不删除**。没有 `remove`：删掉用户数据不可逆，而产品里也没有删除 Project 的需求。
+- **归档可恢复，删除永久生效**。归档是 Project 身份上的标记；永久删除由 Provider 同时移除身份和数据目录。
 
 ## `coordinatorId` 为什么在创建时就定下来
 

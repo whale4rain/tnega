@@ -127,6 +127,19 @@ export class ProjectHost {
     return await (await this.projects()).get(id)
   }
 
+  async update(id: string, patch: { archived?: boolean }, author = 'user'): Promise<ProjectRecord> {
+    return await (await this.projects()).update(id, patch, author)
+  }
+
+  async delete(id: string, author = 'user'): Promise<void> {
+    const mounted = this.open.get(id)
+    if (mounted) {
+      this.open.delete(id)
+      await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
+    }
+    await (await this.projects()).delete(id, author)
+  }
+
   /** 打开（或复用已打开的）Project 作用域，并保证协调者 Thread 存在。 */
   async mount(projectId: string): Promise<OpenProject> {
     const existing = this.open.get(projectId)

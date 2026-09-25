@@ -243,6 +243,46 @@ it('creates the folder a project asks for and keeps its data inside', async () =
   expect(listed.projects.map(entry => entry.id)).toEqual([project.id])
 })
 
+it('archives, restores, and permanently deletes a project', async () => {
+  const dir = await tempDir('tnega-web-project-lifecycle-')
+  const workspace = join(dir, 'workspace')
+  await mkdir(workspace, { recursive: true })
+  const configFile = join(dir, 'config.json')
+  await writeFile(configFile, JSON.stringify({
+    apiKey: 'test-key',
+    baseUrl: await startMockLlm('ready'),
+    model: 'mock-model',
+    temperature: 0,
+  }), 'utf8')
+  const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+  servers.push(server)
+  const basePath = `/api/projects?workspace=${encodeURIComponent(workspace)}`
+  const created = await apiFetch(server.url, basePath, {
+    method: 'POST', body: JSON.stringify({ name: 'Lifecycle' }),
+  }).then(response => response.json()) as { project: { id: string } }
+  const projectPath = join(workspace, '.tnega', 'projects', created.project.id)
+  expect(existsSync(projectPath)).toBe(true)
+
+  const projectUrl = `/api/projects/${created.project.id}?workspace=${encodeURIComponent(workspace)}`
+  const archived = await apiFetch(server.url, projectUrl, {
+    method: 'PATCH', body: JSON.stringify({ archived: true }),
+  }).then(response => response.json()) as { project: { archived?: boolean } }
+  expect(archived.project.archived).toBe(true)
+
+  const restored = await apiFetch(server.url, projectUrl, {
+    method: 'PATCH', body: JSON.stringify({ archived: false }),
+  }).then(response => response.json()) as { project: { archived?: boolean } }
+  expect(restored.project.archived).toBeUndefined()
+
+  const deleted = await apiFetch(server.url, projectUrl, { method: 'DELETE' })
+  expect(deleted.status).toBe(200)
+  expect(existsSync(projectPath)).toBe(false)
+  const listed = await apiFetch(server.url, basePath).then(response => response.json()) as {
+    projects: Array<{ id: string }>
+  }
+  expect(listed.projects).toEqual([])
+})
+
 const FRAME_BREAK = /\r?\n\r?\n/
 const LINE_BREAK = /\r?\n/
 

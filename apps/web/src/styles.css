@@ -230,6 +230,9 @@ select:not(.rt-reset) {
   border: 0; border-radius: 7px; color: var(--ink); text-align: left;
   background: transparent; cursor: pointer; font: inherit;
 }
+.project-row-wrap { display: flex; align-items: center; gap: 2px; padding-right: 4px; }
+.project-row-wrap .project-row { flex: 1; min-width: 0; }
+.archived-project-toggle { width: 100%; border: 0; background: transparent; color: var(--mute); text-align: left; cursor: pointer; }
 .project-row:hover { background: color-mix(in srgb, var(--ink) 5%, var(--sidebar)); }
 .project-row[aria-current='true'] { background: color-mix(in srgb, var(--ink) 12%, var(--sidebar)); }
 .project-row-body { display: flex; flex-direction: column; min-width: 0; }

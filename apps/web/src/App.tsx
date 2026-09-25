@@ -19,6 +19,7 @@ import {
   readRecentProjects,
   rememberProject,
   forgetProject,
+  setRecentProjectArchived,
   type RecentProject,
 } from './projectSelection'
 import { NewProjectDialog } from './project/NewProjectDialog'
@@ -229,9 +230,15 @@ function ChatApp() {
     }
   }
 
-  function handleForgetProject(id: string) {
-    setRecentProjects(forgetProject(localStorage, id))
-    setProject(current => (current?.id === id ? null : current))
+  async function handleArchiveProject(target: RecentProject, archived: boolean) {
+    await projectApi.archiveProject(target.workspace, target.id, archived)
+    setRecentProjects(setRecentProjectArchived(localStorage, target.id, archived))
+  }
+
+  async function handleDeleteProject(target: RecentProject) {
+    await projectApi.deleteProject(target.workspace, target.id)
+    setRecentProjects(forgetProject(localStorage, target.id))
+    setProject(current => current?.id === target.id ? null : current)
   }
 
   useEffect(() => {
@@ -525,7 +532,8 @@ function ChatApp() {
             projects={recentProjects}
             selectedProjectId={project?.id ?? null}
             onOpenProject={openProject}
-            onForgetProject={handleForgetProject}
+            onArchiveProject={handleArchiveProject}
+            onDeleteProject={handleDeleteProject}
             onNewProject={() => setCreatingProject(true)}
             onAdd={handleAddWorkspace}
             onRemove={handleRemoveWorkspace}

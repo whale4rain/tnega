@@ -32,6 +32,7 @@ export interface ProjectRecord {
   id: string
   name: string
   goal?: string
+  archived?: boolean
   coordinatorId: string
   createdAt: number
   updatedAt: number
@@ -40,6 +41,7 @@ export interface ProjectRecord {
 export interface ProjectPatch {
   name?: string
   goal?: string | null
+  archived?: boolean
 }
 
 export const MAX_PROJECT_NAME_CHARS = 200
@@ -72,8 +74,7 @@ export function normalizeProjectName(name: unknown): string {
  *   Agent 树；`Workspace`（见 `CONTEXT.md`）仍然是「一个绝对路径目录」，Project 不被
  *   它替代，也不与它等价。
  * - **这里不装运行时**。本缝只管身份与目录；Project 作用域里挂哪些 Provider 属于组合层。
- * - **不删除**。没有 `remove`：删掉用户数据不可逆，而产品里也没有删除 Project 的需求。
- *   需要停止使用时，不打开它即可。
+ * - 删除由用户显式触发；Provider 负责一致地删除身份和数据目录。
  */
 export abstract class ProjectsService extends Service {
   constructor(ctx: Context) {
@@ -94,6 +95,9 @@ export abstract class ProjectsService extends Service {
    * @throws ProjectError 找不到 Project（`PROJECT_NOT_FOUND`）、补丁非法（`PROJECT_INVALID`）。
    */
   abstract update(id: string, patch: ProjectPatch, author: string): Promise<ProjectRecord>
+
+  /** 永久删除 Project 身份与其数据目录。 */
+  abstract delete(id: string, author: string): Promise<void>
 
   /** Project 的磁盘目录；Provider 决定它落在哪里。 */
   abstract directory(id: string): string

@@ -8,6 +8,7 @@ export interface ProjectRecord {
   id: string
   name: string
   goal?: string
+  archived?: boolean
   coordinatorId: string
   repo?: { path: string; branch?: string }
   createdAt: number
