@@ -85,10 +85,17 @@ Left in place as Tnega components because they are content, not controls: the fi
 - Modify: remaining `apps/web/src` UI and styles, `apps/web/README.md`
 - Remove: only frontend test files proven obsolete after all surface migrations
 
-- [ ] Search the web app for remaining Radix component imports, bespoke controls that duplicate Astryx, obsolete tokens, and unused CSS; remove only items superseded by the migration.
-- [ ] Update the web README to describe the actual Astryx setup and current component boundaries.
-- [ ] Run `pnpm --filter @tnega/web typecheck`, `pnpm --filter @tnega/web build`, then `pnpm test` for full integration. Fix any regressions before committing.
-- [ ] Commit the remaining integration and cleanup as `refactor(web): complete Astryx frontend migration`.
+- [x] Search the web app for remaining Radix component imports, bespoke controls that duplicate Astryx, obsolete tokens, and unused CSS; remove only items superseded by the migration.
+- [x] Update the web README to describe the actual Astryx setup and current component boundaries.
+- [x] Run `pnpm --filter @tnega/web typecheck`, `pnpm --filter @tnega/web build`, then `pnpm test` for full integration. Fix any regressions before committing.
+- [x] Commit the remaining integration and cleanup as `refactor(web): complete Astryx frontend migration`.
+
+### Known gaps left after Phase 4
+
+- No browser has rendered the result. `apps/desktop/scripts/verify-workbench.cjs` was the visual check, and it still waits on pre-Astryx selectors, so the migrated layout has only been verified by typecheck, build, and jsdom behavior tests.
+- `apps/web/src/projectEvents.test.ts` fails on the compaction-marker position; the file is byte-identical to `main`, so the failure predates this work.
+- `apps/web/package-lock.json` is a stale npm lockfile in a pnpm workspace.
+
 
 ## Self-review
 
