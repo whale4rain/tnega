@@ -3,6 +3,7 @@ import { Dialog, Theme } from '@radix-ui/themes'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
 import { ChatView } from './conversation/ChatView'
+import { ProjectExperience } from './project/ProjectExperience'
 import { SettingsView } from './workbench/SettingsView'
 import type { ThemePreference } from './ThemeToggle'
 import {
@@ -72,6 +73,7 @@ function ChatApp() {
   const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [view, setView] = useState<'sessions' | 'projects'>('sessions')
   const projected = useRef<{ id: string; seq: number } | null>(null)
   const restoredSelection = useRef(false)
 
@@ -449,6 +451,8 @@ function ChatApp() {
             workspace={workspace}
             sessions={sessions}
             selectedId={sessionId}
+            view={view}
+            onView={setView}
             onAdd={handleAddWorkspace}
             onRemove={handleRemoveWorkspace}
             onSelect={(path, id) => {
@@ -479,6 +483,9 @@ function ChatApp() {
             </button>
           </div>
         )}
+        {view === 'projects' && workspace ? (
+          <ProjectExperience workspace={workspace} />
+        ) : (
           <ChatView
             model={currentModelId}
             models={config?.models ?? []}
@@ -502,6 +509,7 @@ function ChatApp() {
             onPlanChange={setPlan}
             onModeChange={handleModeChange}
           />
+        )}
       </WorkbenchShell>
       <Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
         <Dialog.Content className="settings-dialog" maxWidth="680px" aria-describedby={undefined}>

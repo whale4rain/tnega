@@ -67,6 +67,8 @@ describe('workbench navigation', () => {
           workspace: '/project',
           selectedId: 'one',
           theme: 'dark',
+        view: 'sessions',
+        onView: () => {},
           sessions: ['Fix parser', 'Add tests'].map((title, index) => ({
             id: String(index),
             title,
@@ -108,6 +110,8 @@ describe('workbench navigation', () => {
           workspace: '/project',
           selectedId: 'same',
           theme: 'dark',
+        view: 'sessions',
+        onView: () => {},
           sessions: ['/project', '/other'].map((workspace) => ({
             id: 'same',
             title: `Session in ${workspace}`,

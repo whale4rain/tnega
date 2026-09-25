@@ -1530,3 +1530,342 @@ button.send-button:hover:not(:disabled) {
     animation: none !important;
   }
 }
+
+/* ── Project ──────────────────────────────────────────────────────────────
+   Project 屏：中央是持续主对话，右侧按需打开 Thread 或状态面板。消息读 Box，
+   卡片读 Thread 记录，Thread 详情读那个 Agent 的 Session。 */
+.project-experience {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.project-header-main,
+.project-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.project-name {
+  font-weight: 600;
+}
+.project-goal,
+.project-picker {
+  color: var(--mute);
+  font-size: 0.85rem;
+  max-width: 40ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-picker {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 4px 6px;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+.project-create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-card);
+}
+.project-create-actions {
+  display: flex;
+  gap: 8px;
+}
+.project-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.project-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.project-conversation .messages-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.project-composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--hairline);
+}
+.project-composer textarea {
+  flex: 1;
+  min-height: 44px;
+}
+.project-empty {
+  padding: 32px 16px;
+  color: var(--mute);
+  text-align: center;
+}
+.project-empty-hint {
+  font-size: 0.85rem;
+  max-width: 52ch;
+  margin: 6px auto 0;
+}
+
+/* Thread 卡片：派工信封在时间线上的位置就是它的位置。 */
+.thread-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface-card);
+}
+.thread-card[data-state='failed'],
+.thread-card[data-state='blocked'] {
+  border-left-color: var(--danger);
+}
+.thread-card[data-state='done'] {
+  border-left-color: var(--success);
+}
+.thread-card-icon {
+  padding-top: 2px;
+  color: var(--mute);
+}
+.thread-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.thread-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+}
+.thread-card-state,
+.overview-row-state {
+  font-size: 0.75rem;
+  color: var(--mute);
+  text-transform: none;
+}
+.thread-card-goal,
+.thread-card-detail {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--mute);
+}
+.thread-card-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.project-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 0.85rem;
+  color: var(--mute);
+}
+.project-notice button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: inherit;
+}
+
+/* 右侧面板：Overview / Library / Memory / Thread 共用同一条边栏。 */
+.project-panel,
+.thread-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(46ch, 42vw);
+  min-width: 320px;
+  border-left: 1px solid var(--hairline);
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  gap: 12px;
+}
+.project-panel-hint,
+.project-panel-empty {
+  color: var(--mute);
+  font-size: 0.82rem;
+  margin: 2px 0;
+}
+.project-panel-error,
+.thread-panel-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+.overview section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin: 12px 0 4px;
+}
+.overview-count {
+  color: var(--mute);
+  font-weight: 400;
+}
+.overview-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.overview-row-detail {
+  grid-column: 1 / -1;
+  color: var(--mute);
+  font-size: 0.78rem;
+}
+.library-row {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.library-title {
+  margin: 0;
+  font-weight: 500;
+}
+.library-meta,
+.library-ref {
+  margin: 2px 0 0;
+  color: var(--mute);
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+.memory-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.memory-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.memory-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: var(--mute);
+  font-size: 0.78rem;
+}
+.memory-meta button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+}
+.memory-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.memory-actions {
+  display: flex;
+  gap: 6px;
+}
+.memory-history summary {
+  cursor: pointer;
+  color: var(--mute);
+  font-size: 0.78rem;
+}
+.memory-history ol {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: 0.78rem;
+  color: var(--mute);
+}
+.memory-history li span:first-child {
+  display: block;
+}
+
+.thread-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.thread-panel-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.thread-panel-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--mute);
+  font-size: 0.78rem;
+}
+.thread-panel-goal {
+  margin: 0;
+  color: var(--mute);
+  font-size: 0.85rem;
+}
+.thread-panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.thread-panel-empty {
+  color: var(--mute);
+  font-size: 0.85rem;
+}
+.thread-panel-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.icon-button {
+  background: none;
+  border: none;
+  color: var(--mute);
+  cursor: pointer;
+  padding: 4px;
+}
+.spin {
+  animation: tnega-spin 1.2s linear infinite;
+}
+@keyframes tnega-spin {
+  to { transform: rotate(360deg); }
+}

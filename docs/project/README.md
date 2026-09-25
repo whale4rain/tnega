@@ -33,9 +33,27 @@
 | `POST /api/projects/:id/messages` | 主对话发言：`{ text }`；回执表示信封落盘，不是模型回复 |
 | `POST /api/projects/:id/threads/:tid/messages` | 直接给某个 Thread 留言 |
 | `GET /api/projects/:id/threads/:tid` | 该 Thread 的记录与它的 Session 事件 |
+| `POST /api/projects/:id/memory` | 新增一条项目记忆 |
+| `GET /api/projects/:id/memory/:mid` | 该记忆的全部版本与来源 |
+| `PATCH /api/projects/:id/memory/:mid` | 改或删：`{ text, expected_version, deleted? }`；版本不符返回 409 与当前内容 |
 | `POST /api/projects/:id/approvals/:aid` | 越权调用的授权决定：`{ allow }` |
 | `GET /api/projects/:id/stream` | SSE：`after` 之后的消息 + 事实提交 + 授权请求 + 心跳 |
 
 UI 的投影规则：主对话读 `placement.kind === 'main'` 的信封（`dispatch` 渲染成 Thread 卡片，
 `threadId` 指向它代表的 Thread）；Thread 面板读该 Agent 的 Session 事件；卡片状态读
 Thread 记录；Library 与 Memory 读 Blackboard。不从模型文本里猜任何一件事。
+
+## Web 屏
+
+`apps/web/src/project/` 是 Project 屏：左边栏在 Sessions 与 Project 之间切换，Project 屏中央
+是持续主对话，右侧按需打开 Thread、Overview、Library 或 Memory。
+
+- **创建只要一个名称**。名称之外都可以后补；创建时不拉起任何 Agent。
+- **发完就显示**。发送成功的判据是信封落盘，不是模型回复；本地先画出这条消息，流里那条
+  按 `messageId` 去重。
+- **卡片跟着记录走**。派工信封的位置就是卡片的位置，卡片的状态读 Thread 记录 —— 刷新页面
+  之后卡片与 Thread 详情仍然一致。
+- **断线按游标补齐**。连接从快照的游标开始；重连时服务端先补 `after` 之后的消息，再持续
+  推送事实提交与授权请求。
+- **记忆可编辑、可追溯**。编辑带上读到的版本号；版本不符时界面拿到 409 与当前内容，重新
+  读取后再提交，改动留下版本历史。

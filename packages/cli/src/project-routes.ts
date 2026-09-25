@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { BlackboardError } from '@tnega/blackboard'
 import { PROJECT_ID_PATTERN } from '@tnega/project'
 import type { ProjectHost } from './project-host.js'
 
@@ -123,6 +124,72 @@ export async function handleProjectApi(
       context.sendJson(res, 200, { messageId: envelope.messageId, createdAt: envelope.createdAt })
       return
     }
+  }
+
+  const memory = /^\/memory\/([^/]+)$/.exec(rest)
+  if (memory) {
+    const memoryId = memory[1]!
+    if (!isProjectId(memoryId)) {
+      context.sendError(res, 400, 'a valid memory id is required')
+      return
+    }
+    if (req.method === 'GET') {
+      context.sendJson(res, 200, { history: await host.memoryHistory(projectId, memoryId) })
+      return
+    }
+    if (req.method === 'PATCH') {
+      const body = await context.readJsonBody(req)
+      const version = body.expected_version
+      if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) {
+        // 修改别人的记忆必须说明你读的是哪一版，否则就是一次静默覆盖。
+        context.sendError(res, 400, 'expected_version is required to change project memory')
+        return
+      }
+      const deleted = body.deleted === true
+      const text = typeof body.text === 'string' ? body.text.trim() : ''
+      if (!deleted && !text) {
+        context.sendError(res, 400, 'text must be a non-empty string')
+        return
+      }
+      try {
+        const record = await host.writeMemory(projectId, {
+          id: memoryId,
+          text,
+          expectedVersion: version,
+          ...(deleted ? { deleted: true } : {}),
+          ...(Array.isArray(body.tags)
+            ? { tags: body.tags.filter((tag): tag is string => typeof tag === 'string') }
+            : {}),
+        })
+        context.sendJson(res, 200, { record })
+      } catch (error) {
+        if (error instanceof BlackboardError && error.code === 'BLACKBOARD_CONFLICT') {
+          context.sendJson(res, 409, {
+            error: 'memory changed while you were editing it',
+            current: error.current,
+          })
+          return
+        }
+        throw error
+      }
+      return
+    }
+  }
+
+  if (rest === '/memory' && req.method === 'POST') {
+    const body = await context.readJsonBody(req)
+    if (typeof body.text !== 'string' || !body.text.trim()) {
+      context.sendError(res, 400, 'text must be a non-empty string')
+      return
+    }
+    const record = await host.writeMemory(projectId, {
+      text: body.text.trim(),
+      ...(Array.isArray(body.tags)
+        ? { tags: body.tags.filter((tag): tag is string => typeof tag === 'string') }
+        : {}),
+    })
+    context.sendJson(res, 200, { record })
+    return
   }
 
   if (rest === '/stream' && req.method === 'GET') {

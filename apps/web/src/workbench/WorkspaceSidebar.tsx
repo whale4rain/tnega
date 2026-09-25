@@ -10,6 +10,7 @@ import {
 } from '@radix-ui/themes'
 import {
   Code2,
+  LayoutList,
   MessageSquare,
   Plus,
   Search,
@@ -42,6 +43,9 @@ interface Props {
   onSettings: () => void
   theme: ThemePreference
   onTheme: (theme: ThemePreference) => void
+  /** 主区显示会话流还是 Project 屏。 */
+  view: 'sessions' | 'projects'
+  onView: (view: 'sessions' | 'projects') => void
 }
 
 export function WorkspaceSidebar(props: Props) {
@@ -68,6 +72,25 @@ export function WorkspaceSidebar(props: Props) {
   return (
     <>
       <div className="sidebar-top flex flex-col">
+        <SegmentedControl.Root
+          size="1"
+          value={props.view}
+          onValueChange={(value) => {
+            if (value === 'sessions' || value === 'projects') props.onView(value)
+          }}
+          aria-label="Workspace view"
+        >
+          <SegmentedControl.Item value="sessions">
+            <span className="flex items-center gap-2">
+              <MessageSquare size={15} /> Sessions
+            </span>
+          </SegmentedControl.Item>
+          <SegmentedControl.Item value="projects">
+            <span className="flex items-center gap-2">
+              <LayoutList size={15} /> Project
+            </span>
+          </SegmentedControl.Item>
+        </SegmentedControl.Root>
         <SegmentedControl.Root
           size="1"
           value={agent}
