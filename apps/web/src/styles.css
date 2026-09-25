@@ -878,10 +878,13 @@ pre {
 }
 .composer {
   position: relative;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 12px 14px 8px;
+  background: var(--surface-card);
+}
+.composer:focus-within {
+  border-color: var(--mute);
 }
 .composer textarea {
   resize: none;

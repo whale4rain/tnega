@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
-import type { BootEnvelope, ProjectStreamEvent } from './project/types'
+import type { BootEnvelope, ProjectStreamEvent, SessionEvent } from './project/types'
 
 const workspace = '/alpha'
 const projectId = '22222222-2222-4222-8222-222222222222'
@@ -17,6 +17,7 @@ interface Connection {
 }
 let connections: Connection[] = []
 let push: ((event: ProjectStreamEvent) => void) | undefined
+let coordinatorEvents: SessionEvent[] = []
 
 beforeEach(() => {
   localStorage.clear()
@@ -48,6 +49,9 @@ beforeEach(() => {
       })
     }
     if (url.pathname === `/api/projects/${projectId}`) return json(snapshot())
+    if (url.pathname === `/api/projects/${projectId}/threads/${coordinatorId}`) {
+      return json({ thread: snapshot().threads[0], events: coordinatorEvents })
+    }
     if (url.pathname === `/api/projects/${projectId}/stream`) return stream()
     throw new Error(`unexpected request: ${url.pathname}`)
   }))
@@ -56,6 +60,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   connections = []
+  coordinatorEvents = []
   push = undefined
   vi.unstubAllGlobals()
 })
@@ -118,6 +123,14 @@ function json(body: unknown): Response {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
+}
+
+function sessionEvent<T extends SessionEvent['type']>(
+  type: T,
+  payload: Extract<SessionEvent, { type: T }>['payload'],
+  seq: number,
+): SessionEvent {
+  return { id: `session-${seq}`, seq, ts: seq, type, payload } as SessionEvent
 }
 
 /** 一条开着的 SSE 连接：测试可以随时往里推一帧。 */
@@ -220,4 +233,25 @@ it('shows the reply while it is still being written', async () => {
     })
   })
   await waitFor(() => expect(screen.getAllByText(/notes look good/)).toHaveLength(1))
+})
+
+it('shows coordinator tool calls from its existing Session log', async () => {
+  coordinatorEvents = [
+    sessionEvent('turn/start', { turn: 1 }, 1),
+    sessionEvent('tool/call', {
+      id: 'call-1', name: 'list_threads', arguments: { wait_ms: 30_000 },
+    }, 2),
+  ]
+  await openProject()
+  expect((await screen.findAllByText('list_threads')).length).toBeGreaterThan(0)
+})
+
+it('shows child inbox messages from the coordinator Session log', async () => {
+  coordinatorEvents = [
+    sessionEvent('turn/start', { turn: 1 }, 1),
+    sessionEvent('user/message', { name: 'box:child-message', content: 'Child is still working.' }, 2),
+  ]
+  await openProject()
+  expect(await screen.findByText(/Message received from a thread:/)).toBeTruthy()
+  expect(screen.getByText(/Child is still working\./)).toBeTruthy()
 })

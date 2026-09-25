@@ -5,7 +5,16 @@ import * as api from './api'
 import { LibraryPanel, MemoryPanel, OverviewPanel } from './SidePanels'
 import { ThreadPanel } from './ThreadPanel'
 import { ComposerFrame } from '../workbench/ComposerFrame'
-import { MessageBlock, PlanPanel, latestPlanFromEvents, type DisplayPlan } from './reuse'
+import {
+  MessageBlock,
+  PlanPanel,
+  latestPlanFromEvents,
+  projectEvents,
+  type DisplayMessage,
+  type DisplayPlan,
+} from './reuse'
+import { groupToolMessages } from '../toolGroups'
+import { ToolGroupBlock } from '../conversation/Transcript'
 import {
   applyStreamEvent,
   fromSnapshot,
@@ -67,6 +76,24 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   // 攒到下一帧再画。
   const drafts = useRef(new Map<string, string>())
   const [rendered, setRendered] = useState<ReadonlyMap<string, string>>(new Map())
+  const coordinatorEvents = details.get(view?.coordinatorId ?? '') ?? []
+  const activityItems = useMemo(() => {
+    const lastTurnStart = [...coordinatorEvents].reverse().find(event => event.type === 'turn/start')?.seq ?? 0
+    const turnEvents = coordinatorEvents.filter(event => event.seq >= lastTurnStart)
+    const received = new Map<string, string>()
+    for (const event of turnEvents) {
+      if (event.type !== 'user/message' || !event.payload.name?.startsWith('box:')) continue
+      const messageId = event.payload.name.slice(4)
+      if (view?.messages.some(message => message.messageId === messageId)) continue
+      received.set(event.id, `Message received from a thread:\n${event.payload.content}`)
+    }
+    const visible: DisplayMessage[] = projectEvents(turnEvents).flatMap(message => {
+      if (message.role === 'tool' || message.role === 'subagent') return [message]
+      const content = received.get(message.id)
+      return content ? [{ id: message.id, role: 'system' as const, content }] : []
+    })
+    return groupToolMessages(visible)
+  }, [coordinatorEvents, view])
   const flush = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scheduleFlush = useCallback(() => {
     if (flush.current) return
@@ -201,7 +228,9 @@ export function ProjectExperience(props: ProjectExperienceProps) {
 
   // 还没结束的 Thread 才需要跟着看：它们的步骤会变。结束的留在最后一次读到的地方。
   const liveKey = (view?.threads ?? [])
-    .filter(thread => thread.depth > 0 && thread.state !== 'done' && thread.state !== 'failed')
+    .filter(thread => (thread.depth > 0 || thread.id === view?.coordinatorId)
+      && thread.state !== 'done' && thread.state !== 'failed'
+      && (thread.depth > 0 || thread.state === 'working'))
     .map(thread => thread.id)
     .sort()
     .join(' ')
@@ -221,6 +250,10 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   useEffect(() => {
     if (threadId) void loadThread(threadId, false)
   }, [threadId, loadThread])
+
+  useEffect(() => {
+    if (view?.coordinatorId) void loadThread(view.coordinatorId, true)
+  }, [view?.coordinatorId, loadThread])
 
   const plans = useMemo(() => {
     const map = new Map<string, DisplayPlan>()
@@ -370,6 +403,12 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                     pending: true,
                   }}
                 />
+              )}
+              {activityItems.map(item => item.kind === 'tools'
+                ? <ToolGroupBlock key={`coordinator-tools-${item.tools[0]?.id ?? 'empty'}`} tools={item.tools} />
+                : item.message.role === 'subagent'
+                  ? <MessageBlock key={item.message.id} message={item.message} />
+                  : <MessageBlock key={item.message.id} message={item.message} assistantLabel="Inbox" />
               )}
               {view && !view.messages.length && (
                 <div className="conversation-welcome">
