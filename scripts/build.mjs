@@ -42,6 +42,9 @@ const packageDirs = {
   subagent: 'packages/subagent/subagent',
   'subagent-local': 'packages/subagent/subagent-local',
   'tool-subagent': 'packages/subagent/tool-subagent',
+  // Project v2：每条缝的角色同样放在共同容器目录下。
+  blackboard: 'packages/project/blackboard',
+  'blackboard-local': 'packages/project/blackboard-local',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -56,6 +59,8 @@ const libraryEntries = {
   llm: 'packages/llm/src/index.ts',
   memory: `${packageDir('memory')}/src/index.ts`,
   'memory-local': `${packageDir('memory-local')}/src/index.ts`,
+  blackboard: `${packageDir('blackboard')}/src/index.ts`,
+  'blackboard-local': `${packageDir('blackboard-local')}/src/index.ts`,
   subagent: `${packageDir('subagent')}/src/index.ts`,
   'subagent-local': `${packageDir('subagent-local')}/src/index.ts`,
   search: `${packageDir('search')}/src/index.ts`,

@@ -24,6 +24,14 @@
       "types": "./dist/types/packages/cli/src/index.d.ts",
       "import": "./dist/cli-runtime.js"
     },
+    "./blackboard": {
+      "types": "./dist/types/packages/project/blackboard/src/index.d.ts",
+      "import": "./dist/blackboard.js"
+    },
+    "./blackboard-local": {
+      "types": "./dist/types/packages/project/blackboard-local/src/index.d.ts",
+      "import": "./dist/blackboard-local.js"
+    },
     "./coding-agent": {
       "types": "./dist/types/packages/coding-agent/src/index.d.ts",
       "import": "./dist/coding-agent.js"

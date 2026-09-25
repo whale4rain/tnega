@@ -315,6 +315,21 @@ importers:
         specifier: workspace:*
         version: link:../memory-local
 
+  packages/project/blackboard:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/project/blackboard-local:
+    dependencies:
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
   packages/search/search-definition:
     dependencies:
       '@tnega/core':

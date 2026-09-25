@@ -4,6 +4,8 @@ packages:
   - packages/spill/*
   - packages/memory/*
   - packages/subagent/*
+  - packages/project/*
+  - packages/loop/*
   - apps/*
 
 onlyBuiltDependencies:
