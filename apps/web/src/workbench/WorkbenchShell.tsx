@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { WindowBar } from './WindowBar'
 import { Badge, IconButton, Tooltip } from '@radix-ui/themes'
-import { Files, GitBranch, Terminal, X } from 'lucide-react'
+import { Code2, Files, GitBranch, PanelLeft, Terminal, X } from 'lucide-react'
 
 const tools = [
   {
@@ -49,12 +48,25 @@ export function WorkbenchShell({
   }, [])
   return (
     <div className="workbench">
-      <WindowBar
-        caption="Code"
-        icon="code"
-        sidebarOpen={open}
-        onToggleSidebar={() => setOpen(!open)}
-      />
+      <header className="window-bar flex items-center gap-3">
+        <Tooltip content={open ? 'Collapse sidebar' : 'Expand sidebar'}>
+          <IconButton
+            variant="ghost"
+            color="gray"
+            aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-expanded={open}
+            aria-controls="workspace-navigation"
+            onClick={() => setOpen(!open)}
+          >
+            <PanelLeft size={15} />
+          </IconButton>
+        </Tooltip>
+        <span className="brand">Tnega</span>
+        <span className="window-divider" />
+        <span className="window-caption">
+          <Code2 size={12} /> Code
+        </span>
+      </header>
       <div className="workbench-body flex min-h-0 flex-1">
         {open && (
           <button

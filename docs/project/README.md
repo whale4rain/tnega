@@ -45,26 +45,27 @@ Thread 记录；Library 与 Memory 读 Blackboard。不从模型文本里猜任�
 
 ## Web 屏
 
-`apps/web/src/project/` 是 Project 屏，三栏：
+Project 屏与会话屏共用同一套骨架：`WorkbenchShell` 里一块主内容加一个可选侧栏，左栏还是
+`WorkspaceSidebar`（Projects 一节在 Workspaces 之上）。切到 Project 只是换主内容，不是换界面。
 
-| 栏 | 内容 |
+| 位置 | 内容 |
 | --- | --- |
-| 应用级侧边栏（180px） | New、Projects（当前项目用低对比度灰底高亮）、Artifacts、Scheduled、Customize、Tasks（当前项目的 Thread）、Chats（普通会话） |
-| 主 Workspace | 顶部是 Project 名与文件夹，主体是持续主对话，底部是它自己的 Composer |
-| Thread 面板（按需打开） | `Threads > 线程名` 面包屑、线程上下文、结构化执行计划（✓ / ● / ○）、该 Agent 的回复，底部是它自己的 Composer |
+| 左栏 Projects | 最近打开的 Project（名称 + 它所在的文件夹）；`+` 新建。点一行就进 Project 屏，点会话就回会话屏 |
+| 顶部 | Project 名称、文件夹、目标，以及 Overview / Library / Memory 三个面板入口 |
+| 主对话 | 用户发言与协调者回复用会话屏的消息渲染；派工是一条线程卡片，直接显示该 Thread 的状态、步骤进度与回复数 |
+| 右下角 | `N active tasks · M total` 开关，打开右侧 Thread 栏 |
+| Thread 栏 | `Threads > 线程名` 面包屑、线程上下文、结构化执行计划（✓ / ● / ○）、该 Agent 的回复与工具行，底部是它自己的输入区 |
 
 信息按 Application → Project/Agent → Conversation → Thread → Task Execution 组织：
 
 - **Project 是长期工作空间**。一个 Project 就是一个文件夹：创建时选（或新建）目录，它的
-  记忆、Thread 与产物都在那个目录下，Agent 也在那里运行。左栏用一个入口列出它们。
-- **Thread 是一等公民**。派工在主对话里是一条卡片，卡片直接显示这个 Thread 的状态、步骤
-  进度与回复数；点开右侧面板看它的完整执行记录。
+  记忆、Thread 与产物都在那个目录下，Agent 也在那里运行。
+- **Thread 是一等公民**。派工卡片上的步骤与回复数直接读 Thread 的记录与它的 Session；
+  点开右侧栏看完整执行记录，并在那里直接留言。
 - **Task / Plan / Tool 是结构化对象**。步骤从 Session 的 `plan` 事件投影成 ✓ / ● / ○，
   工具调用是独立的行（可展开看输出），产物进 Library —— 都不从回复正文里猜。
-- **两个 Composer**。主对话与 Thread 各有一个输入区；模型与思考强度写的是这台机器的默认
-  配置（和设置里是同一份），上下文一栏显示这轮实际会看到的文件夹与权限。
-- **只有真实存在的入口**。`Scheduled` 按参考布局留了位置但标记为不可用 —— 目前没有定时
-  任务这个能力，放一个点了没反应的按钮比暂时不显示它更糟。
+- **输入区**。主对话与 Thread 各有一份，沿用会话屏的 `.composer-*` 度量；模型与思考强度
+  写的是这台机器的默认配置（和设置里是同一份），上下文一栏显示这轮会看到的文件夹与权限。
 
 创建只要名称与文件夹；目标可以后补，创建时不拉起任何 Agent。发完就显示（判据是信封落盘，
 不是模型回复；本地先画出来，流里那条按 `messageId` 去重）。断线按游标补齐：连接从快照的

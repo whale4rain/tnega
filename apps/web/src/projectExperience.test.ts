@@ -127,8 +127,8 @@ it('keeps showing the project after the session list arrives', async () => {
   // Project 屏在主区里：它自己的输入框就是标志。
   await waitFor(() =>
     expect(screen.getByPlaceholderText('Ask for something, or add to the work in flight.')).toBeTruthy())
-  // 应用级侧边栏是 Project 屏独有的：它出现就说明换屏成功了。
-  expect(screen.getByRole('button', { name: 'Customize' })).toBeTruthy()
+  // 顶部这三个面板入口是 Project 屏独有的：出现就说明换屏成功了。
+  expect(screen.getByRole('button', { name: 'overview' })).toBeTruthy()
 
   // 会话列表是异步到的；它不该把刚打开的 Project 挤回会话屏。
   await act(async () => {

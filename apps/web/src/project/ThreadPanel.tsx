@@ -3,8 +3,7 @@ import { ChevronRight, Loader2, X } from 'lucide-react'
 import { Composer, type ComposerProps } from './Composer'
 import { projectEvents, type DisplayMessage } from './reuse'
 import { threadStateLabel } from './state'
-import { markOf } from './MainWorkspace'
-import type { PlanStep } from './steps'
+import { markOf, type PlanStep } from './steps'
 import type { SessionEvent, ThreadRecord } from './types'
 
 export interface ThreadPanelProps {

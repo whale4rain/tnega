@@ -1679,240 +1679,50 @@ button.send-button:hover:not(:disabled) {
   to { transform: rotate(360deg); }
 }
 
-/* ── Project shell ────────────────────────────────────────────────────────
-   三栏：应用级侧边栏 / 主 Workspace / Thread 面板。近黑分层、极弱分割线、
-   圆角卡片；只有真实存在的入口出现在界面上。 */
-.project-shell {
-  position: relative;
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  background: var(--canvas);
-  color: var(--ink);
-  font-size: 13px;
-  line-height: 1.55;
-}
+/* ── Project ──────────────────────────────────────────────────────────────
+   Project 屏沿用会话屏的骨架与度量：`.chat` 里是内容加一个可选侧栏，消息走
+   `.messages` / `.message`，输入区走 `.composer-*`。这里只补它自己的东西：
+   线程卡片、结构化步骤、Thread 侧栏、以及右侧的 Overview / Library / Memory。 */
 
-.global-sidebar {
-  flex: 0 0 180px;
-  min-width: 180px;
+/* 派工在主对话里是一条卡片，不是一句聊天文本。 */
+.thread-card {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 8px;
-  background: var(--sidebar);
-  overflow-y: auto;
-}
-.sidebar-group {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-top: 12px;
-}
-.sidebar-group-title,
-.project-panel-head {
-  margin: 0 0 4px;
-  padding: 0 8px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--mute);
-  opacity: 0.75;
-}
-.sidebar-action,
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 5px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.sidebar-action:hover,
-.sidebar-item:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-}
-/* 当前项目用低对比度灰底高亮，不用边框。 */
-.sidebar-item[aria-current='true'] {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-}
-.sidebar-item:disabled {
-  color: var(--mute);
-  opacity: 0.5;
-  cursor: default;
-}
-.sidebar-item-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sidebar-item-meta {
-  color: var(--mute);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-.sidebar-empty {
-  margin: 2px 8px;
-  color: var(--mute);
-  font-size: 12px;
-}
-
-.main-workspace {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-.workspace-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--hairline);
-}
-.workspace-title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-.workspace-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-.project-path,
-.workspace-goal {
-  color: var(--mute);
-  font-size: 12px;
-  max-width: 40ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.workspace-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.ghost-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--mute);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  text-transform: capitalize;
-}
-.ghost-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  color: var(--ink);
-}
-.ghost-button[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  color: var(--ink);
-}
-.ghost-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.workspace-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.workspace-stream {
-  width: min(760px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 18px 0 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.stream-empty {
-  color: var(--mute);
-  text-align: center;
-  padding: 32px 0;
-}
-.stream-notice {
-  margin: 0;
-  color: var(--mute);
-  font-size: 12px;
-}
-
-/* 消息是卡片，不是气泡尾巴：深灰圆角、无边框。 */
-.bubble {
-  max-width: 78%;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--surface-card);
-  font-size: 13px;
-}
-.bubble > p {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.bubble[data-role='user'] {
-  align-self: flex-end;
-  background: color-mix(in srgb, var(--ink) 9%, var(--canvas));
-}
-
-/* Thread root：派工就是一张任务卡，带步骤与回复入口。 */
-.thread-root {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+  margin: 0 0 20px;
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--surface-soft);
+  font-size: 13px;
 }
-.thread-root > header {
+.thread-card-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
 }
-.thread-root-label {
-  font-weight: 600;
+.thread-card-title {
+  font-weight: 500;
 }
-.thread-root-state,
-.breadcrumb,
-.step-title,
-.tool-state {
+.thread-card-state,
+.thread-card-goal {
   color: var(--mute);
   font-size: 12px;
 }
-.thread-root-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.thread-root-goal {
+.thread-card-goal {
   margin: 0;
-  color: var(--mute);
+  overflow-wrap: anywhere;
+}
+.thread-card-open {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  color: var(--accent);
   font-size: 12px;
+  padding: 0;
 }
 
+/* 步骤：✓ 已完成、● 正在做、○ 还没开始、✗ 失败。 */
 .steps {
   list-style: none;
   margin: 0;
@@ -1947,62 +1757,17 @@ button.send-button:hover:not(:disabled) {
   color: var(--mute);
 }
 
-/* Composer：主对话与 Thread 各有一份。 */
-.composer {
-  border-top: 1px solid var(--hairline);
-  padding: 10px 14px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: var(--canvas);
-}
-.composer-input {
-  min-height: 40px;
-  font-size: 13px;
-}
-.composer-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.composer-context {
-  flex: 1;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--mute);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.composer-select {
-  background: transparent;
-  border: 0;
-  border-radius: 7px;
-  color: var(--mute);
-  font: inherit;
-  font-size: 11px;
-  padding: 3px 4px;
-  cursor: pointer;
-}
-.composer-select:hover {
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  color: var(--ink);
-}
-.composer-send {
-  flex-shrink: 0;
-}
-
-/* Thread 面板 */
+/* Thread 侧栏：和 SubagentSidebar 同一套度量。 */
 .thread-panel {
-  flex: 0 0 clamp(320px, 34vw, 460px);
+  position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  flex: 0 0 340px;
+  min-width: 0;
   border-left: 1px solid var(--hairline);
-  background: var(--surface-soft);
+  background: var(--sidebar);
+  font-size: 12px;
+  animation: panel-appear 160ms ease-out;
 }
 .thread-panel-head {
   display: flex;
@@ -2017,6 +1782,7 @@ button.send-button:hover:not(:disabled) {
   align-items: center;
   gap: 4px;
   min-width: 0;
+  color: var(--mute);
 }
 .breadcrumb-current {
   color: var(--ink);
@@ -2051,9 +1817,8 @@ button.send-button:hover:not(:disabled) {
 }
 .context-row {
   display: grid;
-  grid-template-columns: 78px 1fr;
+  grid-template-columns: 76px 1fr;
   gap: 8px;
-  font-size: 12px;
 }
 .context-label {
   color: var(--mute);
@@ -2065,17 +1830,15 @@ button.send-button:hover:not(:disabled) {
   overflow-wrap: anywhere;
 }
 .thread-transcript {
-  gap: 8px;
+  gap: 10px;
 }
 .panel-empty {
   margin: 0;
   color: var(--mute);
-  font-size: 12px;
 }
 .tool-row {
   border-radius: 8px;
   background: color-mix(in srgb, var(--ink) 4%, transparent);
-  font-size: 12px;
 }
 .tool-row > summary {
   display: flex;
@@ -2086,8 +1849,8 @@ button.send-button:hover:not(:disabled) {
   cursor: pointer;
   list-style: none;
 }
-.tool-name {
-  color: var(--ink);
+.tool-state {
+  color: var(--mute);
 }
 .tool-row[data-ok='false'] .tool-state {
   color: var(--danger);
@@ -2103,10 +1866,29 @@ button.send-button:hover:not(:disabled) {
   font-size: 11px;
 }
 
+/* 右侧的 Overview / Library / Memory，和 Thread 侧栏占同一个位置。 */
+.project-panel {
+  animation: panel-appear 160ms ease-out;
+}
+.composer-select {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: var(--mute);
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 4px;
+  cursor: pointer;
+}
+.composer-select:hover {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+}
 .error-toast {
-  position: absolute;
+  position: fixed;
   right: 16px;
   bottom: 16px;
+  z-index: 4;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2116,9 +1898,8 @@ button.send-button:hover:not(:disabled) {
   font-size: 12px;
 }
 .error-toast button {
-  background: none;
   border: 0;
+  background: none;
   color: var(--ink);
   cursor: pointer;
-  font-size: 12px;
 }

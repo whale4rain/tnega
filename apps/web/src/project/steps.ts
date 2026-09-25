@@ -49,3 +49,13 @@ export function threadReplies(
 export function threadStateOf(threads: readonly ThreadRecord[], id: string): ThreadRecord['state'] {
   return threads.find(thread => thread.id === id)?.state ?? 'idle'
 }
+
+/** 步骤标记：✓ 已完成、● 正在做、✗ 失败、○ 还没开始。 */
+export function markOf(mark: StepMark): string {
+  switch (mark) {
+    case 'done': return '✓'
+    case 'running': return '●'
+    case 'failed': return '✗'
+    case 'pending': return '○'
+  }
+}

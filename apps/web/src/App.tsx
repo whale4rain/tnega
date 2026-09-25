@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dialog, Theme } from '@radix-ui/themes'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
-import { WindowBar } from './workbench/WindowBar'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
 import { ChatView } from './conversation/ChatView'
 import { ProjectExperience } from './project/ProjectExperience'
@@ -36,16 +35,6 @@ import type {
 
 const THEME_STORAGE_KEY = 'tnega-theme'
 const LAST_VIEW_KEY = 'tnega-last-view'
-const PINNED_KEY = 'tnega-pinned-projects'
-
-function readPinned(): string[] {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(PINNED_KEY) ?? '[]')
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
-  } catch {
-    return []
-  }
-}
 
 function initialThemePreference(): ThemePreference {
   const stored = localStorage.getItem(THEME_STORAGE_KEY)
@@ -97,7 +86,6 @@ function ChatApp() {
   const [project, setProject] = useState<{ workspace: string; id: string } | null>(null)
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() =>
     readRecentProjects(localStorage))
-  const [pinned, setPinned] = useState<string[]>(readPinned)
   const [creatingProject, setCreatingProject] = useState(false)
   const projected = useRef<{ id: string; seq: number } | null>(null)
   const restoredSelection = useRef(false)
@@ -222,14 +210,6 @@ function ChatApp() {
       setError(messageOf(reason))
       throw reason
     }
-  }
-
-  function handleTogglePin(id: string) {
-    setPinned(current => {
-      const next = current.includes(id) ? current.filter(entry => entry !== id) : [...current, id]
-      localStorage.setItem(PINNED_KEY, JSON.stringify(next))
-      return next
-    })
   }
 
   /** 项目里跑的模型与思考强度就是这台机器的默认配置；这里改的就是设置里那一份。 */
@@ -535,73 +515,56 @@ function ChatApp() {
       radius="large"
       scaling="100%"
     >
-      {project ? (
-        <div className="workbench">
-          <WindowBar caption="Project" icon="project" />
+      <WorkbenchShell
+        sidebar={
+          <WorkspaceSidebar
+            workspaces={workspaces}
+            workspace={workspace}
+            sessions={sessions}
+            selectedId={sessionId}
+            projects={recentProjects}
+            selectedProjectId={null}
+            onOpenProject={openProject}
+            onForgetProject={handleForgetProject}
+            onNewProject={() => setCreatingProject(true)}
+            onAdd={handleAddWorkspace}
+            onRemove={handleRemoveWorkspace}
+            onSelect={(path, id) => {
+              selectSession(path, id)
+            }}
+            onNew={async (options, path) => {
+              await handleNewSession(options, path)
+            }}
+            onRename={handleRename}
+            onFork={handleFork}
+            onDelete={handleDelete}
+            onSettings={() => setSettingsOpen(true)}
+            theme={themePreference}
+            onTheme={setThemePreference}
+          />
+        }
+      >
+        {error && (
+          <div className="error-banner" role="alert">
+            <span className="marker">Error</span>
+            <span>{error}</span>
+            <button type="button" onClick={() => setError(null)} title="Dismiss">
+              Close
+            </button>
+          </div>
+        )}
+        {project ? (
           <ProjectExperience
             workspace={project.workspace}
             projectId={project.id}
-            projects={recentProjects}
-            pinned={pinned}
-            onTogglePin={handleTogglePin}
-            onOpenProject={openProject}
-            onNewProject={() => setCreatingProject(true)}
-            sessions={sessions.filter(entry => entry.workspace === project.workspace)}
-            selectedSessionId={null}
-            onOpenSession={(path, id) => selectSession(path, id)}
-            onSettings={() => setSettingsOpen(true)}
             models={config?.models ?? []}
             model={config?.effective.modelId}
             reasoningEffort={config?.effective.reasoningEffort ?? 'default'}
             onModel={handleConfigModel}
             onReasoningEffort={handleConfigReasoningEffort}
           />
-
-        </div>
-      ) : (
-        <WorkbenchShell
-          sidebar={
-            <WorkspaceSidebar
-              workspaces={workspaces}
-              workspace={workspace}
-              sessions={sessions}
-              selectedId={sessionId}
-              projects={recentProjects}
-              selectedProjectId={null}
-              onOpenProject={openProject}
-              onForgetProject={handleForgetProject}
-              onNewProject={() => setCreatingProject(true)}
-              onAdd={handleAddWorkspace}
-              onRemove={handleRemoveWorkspace}
-              onSelect={(path, id) => {
-                selectSession(path, id)
-              }}
-              onNew={async (options, path) => {
-                await handleNewSession(options, path)
-              }}
-              onRename={handleRename}
-              onFork={handleFork}
-              onDelete={handleDelete}
-              onSettings={() => setSettingsOpen(true)}
-              theme={themePreference}
-              onTheme={setThemePreference}
-            />
-          }
-        >
-        {error && (
-          <div className="error-banner" role="alert">
-            <span className="marker">Error</span>
-            <span>{error}</span>
-            <button
-              type="button"
-              onClick={() => setError(null)}
-              title="Dismiss"
-            >
-              Close
-            </button>
-          </div>
-        )}
-          <ChatView
+        ) : (
+        <ChatView
             model={currentModelId}
             models={config?.models ?? []}
             reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
@@ -624,8 +587,8 @@ function ChatApp() {
             onPlanChange={setPlan}
             onModeChange={handleModeChange}
           />
-        </WorkbenchShell>
-      )}
+        )}
+      </WorkbenchShell>
       <NewProjectDialog
         open={creatingProject}
         defaultFolder={workspace ?? undefined}
