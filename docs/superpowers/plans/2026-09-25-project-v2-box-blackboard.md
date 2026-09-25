@@ -1,9 +1,10 @@
 # Project v2：Box、Blackboard 与 Project Loop 实施计划
 
-> 状态：已编写，执行中
+> 状态：M1–M9 已按模块落地，每个模块一个提交（`a31e1c7` … `283b8ef`）
 > 取代关系：取代 [旧版实施计划](./2026-09-25-project-collaboration-implementation.md)（v1 任务运行时，作废）
 > 当前设计：[Project v2 设计框架](../specs/2026-09-25-project-box-blackboard-design.md)
 > 决策记录：[ADR 0008](../../adr/0008-project-box-blackboard.md)
+> 已交付的包与 HTTP 面见 [docs/project/README.md](../../project/README.md)
 
 **Goal:** 在 `main` 上按插件分模块交付 Project v2：用户与协调 Agent 的持续主对话、可独立干预的 Thread、共享的 Blackboard 记忆与产物、以及驱动父子协作的 Project Loop。
 
