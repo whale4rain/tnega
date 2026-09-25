@@ -310,19 +310,25 @@ export const projectLoop: Plugin
 
 职责边界：Project Loop 只做「谁收到消息、何时唤醒、父子回报、崩溃补齐」。它不调用模型、不改 Session 内容、不复制对话。
 
-投递算法（对每个 `pending`/`delivered` 未 `acked` 的信封 × 收件 Agent）：
+投递算法（对每个未 `acked` 的信封 × 收件 Agent）：
 
-1. 读该 Agent 的 Session，若任一 `agent/inbox/spliced` 的 `inserted[].payload.box.messageId` 已等于该信封，直接 `ack`（崩溃前已准入）。
-2. 否则 `agent.followup({ text, context: { box: envelope } })`，`await agent.session.flush()` 后 `ack`。
-3. `status: 'working'` 的 Agent 用 `steer`（下个安全 step 边界进入），否则 `followup` 触发新 turn。
+1. 读该 Agent 的 Session，若已有 `user/message` 事件的 `name` 等于 `box:<messageId>`，
+   直接 `ack`（崩溃前已准入）。
+2. 否则以 `messages: [{ role: 'user', name: 'box:<messageId>', content: text }]` 准入，
+   `await agent.session.flush()` 后 `ack`。信封身份放在消息的 `name` 上：durable inbox 的
+   `content` 只接受模型消息数组，放不下信封对象，而 `name` 恰好是 Session 会记下来的字段。
+3. 状态先落定再唤醒：`status: 'working'` 的 Agent 用 `steer`（下个安全 step 边界进入），
+   否则用 `followup` 起一轮；反过来的话收件方可能在唤醒后立刻跑完，随后到达的「开始工作」
+   会把「空闲」覆盖掉。
 
-自动发布：订阅 `session/event`，对 `assistant/message` 计算稳定 id
-`boxId = sha256(projectId + agentId + sessionEventId)` 的十六进制前 32 位，`placement` 取
-主对话（根 Thread）或该 Thread 面板（子 Thread），`causationId` 取触发该 turn 的信封 id。
-重复发布因 id 相同而被 Box 的 `expectedVersion: null` 拒绝，属正常幂等路径。
+自动发布：订阅每个已激活 Agent 的 `session/event`，对不带工具调用的 `assistant/message`
+计算稳定 id `sha256(projectId, agentId, sessionEventId)` 取前 32 位十六进制，`placement`
+取主对话（根 Thread）或该 Thread 面板（子 Thread），`causationId` 取该 Session 里最后一条
+入站信封 id。重复发布因 id 相同而被 Box 的幂等路径吸收，属正常路径。
 
-父子回报：`complete` / `blocked` / `failed` 信封到达父 Agent 的同时更新该 Thread 的
-`state`；父 Agent 不轮询子 Session。
+父子回报：`complete` / `blocked` / `failed` / `request` 信封到达时更新发送方 Thread 的
+`state`；子 Thread 没有自己回报过时，Project Loop 用这一轮的最后一条回复补发 `complete`
+给直接父 Agent（补发消息 id 由该回复事件派生，因此同一轮重复触发只命中同一个信封）。
 
 ## 每个模块的验收
 

@@ -14,7 +14,10 @@ import { boxBlackboard } from '../src/index.js'
 
 const directories: string[] = []
 afterEach(async () => {
-  await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true })))
+  // Windows 上文件可能还被后台写入占着，重试比让清理失败更诚实。
+  await Promise.all(directories.splice(0).map(path => rm(path, {
+    recursive: true, force: true, maxRetries: 10, retryDelay: 50,
+  })))
 })
 
 const coordinator = agentAddress('11111111-1111-4111-8111-111111111111')

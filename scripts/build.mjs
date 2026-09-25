@@ -53,6 +53,7 @@ const packageDirs = {
   'box-blackboard': 'packages/project/box-blackboard',
   thread: 'packages/project/thread',
   'thread-local': 'packages/project/thread-local',
+  'project-loop': 'packages/loop/project-loop',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -77,6 +78,7 @@ const libraryEntries = {
   'box-blackboard': `${packageDir('box-blackboard')}/src/index.ts`,
   thread: `${packageDir('thread')}/src/index.ts`,
   'thread-local': `${packageDir('thread-local')}/src/index.ts`,
+  'project-loop': `${packageDir('project-loop')}/src/index.ts`,
   subagent: `${packageDir('subagent')}/src/index.ts`,
   'subagent-local': `${packageDir('subagent-local')}/src/index.ts`,
   search: `${packageDir('search')}/src/index.ts`,

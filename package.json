@@ -84,6 +84,10 @@
       "types": "./dist/types/packages/project/project-local/src/index.d.ts",
       "import": "./dist/project-local.js"
     },
+    "./project-loop": {
+      "types": "./dist/types/packages/loop/project-loop/src/index.d.ts",
+      "import": "./dist/project-loop.js"
+    },
     "./memory": {
       "types": "./dist/types/packages/memory/memory/src/index.d.ts",
       "import": "./dist/memory.js"
