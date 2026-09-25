@@ -196,3 +196,28 @@ it('follows the project again after the stream drops', async () => {
   })
   expect(await screen.findByText('still following')).toBeTruthy()
 })
+
+it('shows the reply while it is still being written', async () => {
+  await openProject()
+  await waitFor(() => expect(connections).toHaveLength(1))
+
+  await act(async () => {
+    const connection = connections[0]!
+    connection.push({ type: 'agent-status', agentId: coordinatorId, status: 'running' })
+    connection.push({ type: 'chunk', agentId: coordinatorId, text: 'notes ' })
+    connection.push({ type: 'chunk', agentId: coordinatorId, text: 'look good' })
+  })
+
+  // 整轮还没结束、回复还没发布，正文就已经在屏幕上。
+  expect(await screen.findByText(/notes look good/)).toBeTruthy()
+
+  // 回复发布之后由那一条取代，不会两份都在。
+  await act(async () => {
+    connections[0]!.push({
+      type: 'message',
+      seq: 9,
+      envelope: envelope('notes look good', 'agent-reply', { kind: 'agent', id: coordinatorId }),
+    })
+  })
+  await waitFor(() => expect(screen.getAllByText(/notes look good/)).toHaveLength(1))
+})

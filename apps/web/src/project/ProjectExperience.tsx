@@ -56,6 +56,22 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   const [live, setLive] = useState<'connecting' | 'live' | 'retrying'>('connecting')
   const scrollRef = useRef<HTMLDivElement>(null)
   const selection = useRef<string | null>(null)
+  // 正在生成的正文：按 Agent 攒起来，等整轮的回复发布出来就丢掉。逐块重渲染太碎，
+  // 攒到下一帧再画。
+  const drafts = useRef(new Map<string, string>())
+  const [rendered, setRendered] = useState<ReadonlyMap<string, string>>(new Map())
+  const flush = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleFlush = useCallback(() => {
+    if (flush.current) return
+    flush.current = setTimeout(() => {
+      flush.current = null
+      setRendered(new Map(drafts.current))
+    }, 16)
+  }, [])
+  const clearDraft = useCallback((agentId: string) => {
+    if (!drafts.current.delete(agentId)) return
+    scheduleFlush()
+  }, [scheduleFlush])
 
   useEffect(() => {
     selection.current = projectId
@@ -66,6 +82,8 @@ export function ProjectExperience(props: ProjectExperienceProps) {
     setPanel(null)
     setError(null)
     setLive('connecting')
+    drafts.current.clear()
+    scheduleFlush()
     void api
       .getProject(workspace, projectId)
       .then(snapshot => {
@@ -97,8 +115,29 @@ export function ProjectExperience(props: ProjectExperienceProps) {
         onOpen: () => setLive('live'),
         onEvent: event => {
           attempt = 0
+          if (event.type === 'chunk') {
+            drafts.current.set(event.agentId, (drafts.current.get(event.agentId) ?? '') + event.text)
+            scheduleFlush()
+            return
+          }
+          if (event.type === 'agent-status') {
+            // 开始跑就先占一个位置（还没有正文时也看得见「它在工作」），跑完就交还给
+            // 那条已经发布的回复。
+            if (event.status === 'running') {
+              if (!drafts.current.has(event.agentId)) {
+                drafts.current.set(event.agentId, '')
+                scheduleFlush()
+              }
+            } else if (!drafts.current.get(event.agentId)) {
+              clearDraft(event.agentId)
+            }
+            return
+          }
           if (event.type === 'message') {
             cursorRef.current = Math.max(cursorRef.current, event.seq)
+            if (event.envelope.sender.kind === 'agent') {
+              clearDraft(event.envelope.sender.id)
+            }
           }
           setView(current => (current ? applyStreamEvent(current, event) : current))
         },
@@ -118,7 +157,11 @@ export function ProjectExperience(props: ProjectExperienceProps) {
       if (timer) clearTimeout(timer)
       stop?.()
     }
-  }, [workspace, connection])
+  }, [workspace, connection, scheduleFlush, clearDraft])
+
+  useEffect(() => () => {
+    if (flush.current) clearTimeout(flush.current)
+  }, [])
 
   const loadThread = useCallback(
     async (id: string, quiet: boolean): Promise<void> => {
@@ -297,6 +340,16 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                   />
                 )
               })}
+              {view && rendered.has(view.coordinatorId) && (
+                <MessageBlock
+                  message={{
+                    id: 'draft',
+                    role: 'assistant',
+                    content: rendered.get(view.coordinatorId) ?? '',
+                    pending: true,
+                  }}
+                />
+              )}
               {view && !view.messages.length && (
                 <div className="conversation-welcome">
                   <ListTodo size={28} strokeWidth={1.4} />
@@ -353,6 +406,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
           {...(thread ? { thread } : {})}
           events={details.get(threadId) ?? []}
           loading={loadingThread === threadId}
+          {...(rendered.has(threadId) ? { draft: rendered.get(threadId) ?? '' } : {})}
           onClose={() => setThreadId(null)}
           composer={
             <div className="composer-surface">

@@ -247,3 +247,73 @@ it('redelivers unacked messages after a restart without re-entering the model', 
     await again.fiber.dispose()
   }
 })
+
+it('keeps answering the user while a child thread is still running', async () => {
+  const root = await workspace()
+  // 子 Thread 的模型调用卡在这里，直到测试放行；协调者不受影响。
+  let releaseChild: (() => void) | undefined
+  const blocking = {
+    complete: async (messages: readonly { content?: unknown }[]) => {
+      const text = JSON.stringify(messages)
+      if (text.includes('Slow child work')) {
+        await new Promise<void>(resolve => { releaseChild = resolve })
+      }
+      return { finishReason: 'stop' as const, content: 'ok' }
+    },
+  }
+  const ctx = new Context()
+  await ctx.plugin(tools)
+  await ctx.plugin(blackboardLocal, { root: join(root, 'blackboard') })
+  await ctx.plugin(boxBlackboard, { projectId: project.id })
+  await ctx.plugin(agents)
+  await ctx.plugin(threadLocal, { projectId: project.id, root, llm: blocking, permission: 'read-only' })
+  await ctx.plugin(projectLoop, { projectId: project.id, sweepIntervalMs: 0 })
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Slow child work' })
+
+    const ask = async (text: string): Promise<void> => {
+      await ctx.box.send({
+        sender: USER_ADDRESS,
+        recipients: [agentAddress(coordinator.id)],
+        placement: { kind: 'main' },
+        kind: 'user-message',
+        text,
+      })
+    }
+    const replies = async (): Promise<number> =>
+      (await ctx.box.timeline()).filter(entry =>
+        entry.kind === 'agent-reply' && entry.placement.kind === 'main').length
+
+    await ask('first question')
+    await waitFor(async () => (await replies()) >= 1 ? true : undefined, 'the first reply')
+
+    // 派一个会卡住的子 Thread：它开始跑之后，主对话必须还能继续。
+    await ctx.box.send({
+      sender: agentAddress(coordinator.id),
+      recipients: [agentAddress(child.id)],
+      placement: { kind: 'main' },
+      kind: 'dispatch',
+      text: 'Slow child work',
+      threadId: child.id,
+    })
+    await waitFor(
+      async () => (await ctx.threads.get(child.id))?.state === 'working' ? true : undefined,
+      'the child to start',
+    )
+
+    await ask('second question')
+    await waitFor(async () => (await replies()) >= 2 ? true : undefined, 'the second reply')
+
+    // 子 Thread 放行之后，它的回报照样进协调者的 inbox。
+    releaseChild?.()
+    const report = await waitFor(
+      async () => (await ctx.box.timeline())
+        .find(entry => entry.kind === 'complete' && entry.sender.id === child.id),
+      'the child report',
+    )
+    expect(report.recipients).toEqual([agentAddress(coordinator.id)])
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})

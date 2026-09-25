@@ -314,4 +314,12 @@ it('pushes messages that arrive after connecting onto the stream', async () => {
   const kinds = frames.filter(entry => entry.type === 'message')
     .map(entry => (entry.envelope as { kind: string }).kind)
   expect(kinds).toEqual(['user-message', 'agent-reply'])
+
+  // 活的输出：正文按块推、状态跟着变，而不是等整轮结束才知道发生了什么。
+  const firstChunk = frames.findIndex(entry => entry.type === 'chunk')
+  const reply = frames.findIndex(entry =>
+    entry.type === 'message' && (entry.envelope as { kind?: string }).kind === 'agent-reply')
+  expect(firstChunk).toBeGreaterThanOrEqual(0)
+  expect(firstChunk).toBeLessThan(reply)
+  expect(frames.some(entry => entry.type === 'agent-status')).toBe(true)
 })

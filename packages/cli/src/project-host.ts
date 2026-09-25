@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { agents, type AgentRegistry, type LLMAdapter } from '@tnega/agent'
+import { agents, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import { artifactLocal } from '@tnega/artifact-local'
 import type { ArtifactStore } from '@tnega/artifact-store'
 import { blackboardLocal } from '@tnega/blackboard-local'
@@ -215,6 +215,26 @@ export class ProjectHost {
         send({ type: 'message', seq: fact.seq, envelope: fact.data })
       }
     }
+    // 活的输出：Agent 正在生成的正文按块推下去，状态变化也推 —— 否则界面只能在整轮结束、
+    // 回复发布之后才知道发生了什么，看起来就是「没有响应」。
+    const attached = new Set<string>()
+    const attach = (agentId: string, agent: LiveAgent): void => {
+      if (attached.has(agentId)) return
+      attached.add(agentId)
+      agent.ctx.on('session/event', (event: SessionEvent) => {
+        if (event.type !== 'assistant/chunk') return
+        const payload = event.payload
+        if (typeof payload.content !== 'string' || !payload.content) return
+        send({ type: 'chunk', agentId, text: payload.content })
+      })
+    }
+    for (const agent of project.registry.list()) attach(agent.id, agent)
+    disposers.push(project.ctx.on('agent/created', (event: { id: string; agent: LiveAgent }) => {
+      attach(event.id, event.agent)
+    }))
+    disposers.push(project.ctx.on('agent/status', (event: { id: string; status: string }) => {
+      send({ type: 'agent-status', agentId: event.id, status: event.status })
+    }))
     disposers.push(project.ctx.on('blackboard/commit', (event: { records: readonly FactRecord[] }) => {
       for (const record of event.records) {
         // 消息用和补齐时一样的帧推下去：订阅方只认一种消息形状，不会「补齐有、实时没有」。

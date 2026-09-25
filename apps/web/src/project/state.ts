@@ -77,6 +77,8 @@ export function mergeMessage(view: ProjectView, envelope: BootEnvelope): Project
 /** 应用一个流事件。同一个事件重复到达是幂等的：消息按 `messageId` 去重，事实按版本覆盖。 */
 export function applyStreamEvent(view: ProjectView, event: ProjectStreamEvent): ProjectView {
   if (event.type === 'heartbeat') return view
+  // 正在生成的正文与运行状态是过程，不是持久事实：进不了这份投影，界面自己处理。
+  if (event.type === 'chunk' || event.type === 'agent-status') return view
   if (event.type === 'approval/request') {
     if (view.approvals.some(entry => entry.id === event.id)) return view
     return { ...view, approvals: [...view.approvals, { id: event.id, tool: event.tool, input: event.input }] }

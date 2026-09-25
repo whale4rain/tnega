@@ -8,6 +8,8 @@ export interface ThreadPanelProps {
   thread?: ThreadRecord
   events: readonly SessionEvent[]
   loading: boolean
+  /** 这个 Thread 正在生成的正文；整轮结束后由它自己的回复取代。 */
+  draft?: string
   onClose: () => void
   /** 输入区由调用方给：它用的是会话屏的 ComposerFrame。 */
   composer: ReactNode
@@ -71,6 +73,12 @@ export function ThreadPanel(props: ThreadPanelProps) {
           {transcript.map(message => (
             <TranscriptRow key={message.id} message={message} label={thread?.label} />
           ))}
+          {props.draft !== undefined && (
+            <MessageBlock
+              message={{ id: 'draft', role: 'assistant', content: props.draft, pending: true }}
+              assistantLabel={thread?.label ?? 'Tnega'}
+            />
+          )}
         </section>
 
         {props.composer}

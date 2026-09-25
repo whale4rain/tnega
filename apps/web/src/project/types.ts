@@ -101,5 +101,8 @@ export type ProjectStreamEvent =
     deleted: boolean
     data: Record<string, unknown>
   }
+  /** Agent 正在生成的正文，按块推；整轮结束后由 message 帧取代。 */
+  | { type: 'chunk'; agentId: string; text: string }
+  | { type: 'agent-status'; agentId: string; status: 'idle' | 'running' }
   | { type: 'approval/request'; id: string; tool: string; input: string }
   | { type: 'heartbeat'; at: number }
