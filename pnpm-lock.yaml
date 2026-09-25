@@ -131,9 +131,27 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/artifact-local':
+        specifier: workspace:*
+        version: link:../project/artifact-local
+      '@tnega/artifact-store':
+        specifier: workspace:*
+        version: link:../project/artifact-store
       '@tnega/benchmark':
         specifier: workspace:*
         version: link:../benchmark
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../project/blackboard
+      '@tnega/blackboard-local':
+        specifier: workspace:*
+        version: link:../project/blackboard-local
+      '@tnega/box':
+        specifier: workspace:*
+        version: link:../project/box
+      '@tnega/box-blackboard':
+        specifier: workspace:*
+        version: link:../project/box-blackboard
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
@@ -155,6 +173,15 @@ importers:
       '@tnega/memory-local':
         specifier: workspace:*
         version: link:../memory/memory-local
+      '@tnega/project':
+        specifier: workspace:*
+        version: link:../project/project
+      '@tnega/project-local':
+        specifier: workspace:*
+        version: link:../project/project-local
+      '@tnega/project-loop':
+        specifier: workspace:*
+        version: link:../loop/project-loop
       '@tnega/search-ripgrep':
         specifier: workspace:*
         version: link:../search/search-ripgrep
@@ -170,6 +197,18 @@ importers:
       '@tnega/subagent-local':
         specifier: workspace:*
         version: link:../subagent/subagent-local
+      '@tnega/thread':
+        specifier: workspace:*
+        version: link:../project/thread
+      '@tnega/thread-local':
+        specifier: workspace:*
+        version: link:../project/thread-local
+      '@tnega/tool-blackboard':
+        specifier: workspace:*
+        version: link:../project/tool-blackboard
+      '@tnega/tool-box':
+        specifier: workspace:*
+        version: link:../project/tool-box
       '@tnega/tool-memory':
         specifier: workspace:*
         version: link:../memory/tool-memory
@@ -182,6 +221,9 @@ importers:
       '@tnega/tool-subagent':
         specifier: workspace:*
         version: link:../subagent/tool-subagent
+      '@tnega/tool-thread':
+        specifier: workspace:*
+        version: link:../project/tool-thread
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools

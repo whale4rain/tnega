@@ -42,6 +42,8 @@ import { toolSubagent } from '@tnega/tool-subagent'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
+import { ProjectHost } from './project-host.js'
+import { handleProjectApi } from './project-routes.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
 import {
@@ -174,6 +176,11 @@ export interface WebServerOptions {
   configFile?: string
   /** Run auto sessions through resident durable-inbox agents. Defaults to true. */
   resident?: boolean
+  /**
+   * Project 作用域的授权上限。Project 里的每个 Thread 只能比它更窄；默认
+   * `workspace-write`：仓库内的读写直接放行，shell 与越界访问逐个请求用户批准。
+   */
+  projectPermission?: PermissionMode
 }
 
 export interface WebServer {
@@ -190,6 +197,11 @@ interface ResidentAgentEntry {
   signature: string
 }
 
+interface ProjectHostEntry {
+  host: ProjectHost
+  signature: string
+}
+
 export async function startWebServer(
   options: WebServerOptions = {},
 ): Promise<WebServer> {
@@ -200,6 +212,7 @@ export async function startWebServer(
   const activeRuns = new Map<string, AbortController>()
   const approvals = new ApprovalBroker()
   const residentAgents = new Map<string, ResidentAgentEntry>()
+  const projectHosts = new Map<string, ProjectHostEntry>()
   let actualPort = port
   const context: ServerContext = {
     webRoot,
@@ -207,6 +220,8 @@ export async function startWebServer(
     approvals,
     resident: options.resident !== false,
     residentAgents,
+    projectHosts,
+    projectPermission: options.projectPermission ?? 'workspace-write',
     ...(configFile ? { configFile } : {}),
   }
 
@@ -234,6 +249,9 @@ export async function startWebServer(
       const entries = [...residentAgents.values()]
       residentAgents.clear()
       await Promise.all(entries.map(entry => entry.dispose()))
+      const hosts = [...projectHosts.values()]
+      projectHosts.clear()
+      await Promise.all(hosts.map(entry => entry.host.dispose()))
     },
   }
 }
@@ -245,6 +263,8 @@ interface ServerContext {
   approvals: ApprovalBroker
   resident?: boolean
   residentAgents?: Map<string, ResidentAgentEntry>
+  projectHosts?: Map<string, ProjectHostEntry>
+  projectPermission: PermissionMode
 }
 
 async function handleRequest(
@@ -297,6 +317,18 @@ async function handleApi(
 
   if (url.pathname === '/api/health') {
     sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')) {
+    await handleProjectApi(req, res, url, {
+      host: workspace => projectHostFor(context, workspace),
+      sendJson,
+      sendError,
+      readJsonBody,
+      writeSse,
+      workspaceParam,
+    })
     return
   }
 
@@ -1108,6 +1140,50 @@ async function ensureResidentAgent(
 
 function isAgentMetaMissing(error: unknown): boolean {
   return error instanceof Error && error.message.includes('no agent session meta found')
+}
+
+/**
+ * 每个 workspace 一个 Project Host。模型、密钥或 Project 授权变了就换一个：运行中的
+ * Thread 用的是装配时的配置，换配置等于换一个作用域，而不是让半个 Project 用旧模型。
+ */
+async function projectHostFor(
+  context: ServerContext,
+  workspace: string,
+): Promise<ProjectHost> {
+  const path = await ensureWorkspace(workspace)
+  const config = await readSystemConfig(context.configFile)
+  const effective = effectiveLlmConfig(config, process.env)
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId) ?? ''
+  const signature = [
+    path,
+    effective.baseUrl,
+    effective.model,
+    apiKey,
+    effective.reasoningEffort ?? '',
+    context.projectPermission,
+  ].join('|')
+  const existing = context.projectHosts?.get(path)
+  if (existing?.signature === signature) return existing.host
+  if (existing) {
+    context.projectHosts?.delete(path)
+    await existing.host.dispose()
+  }
+  const host = new ProjectHost({
+    workspace: path,
+    llm: adapterFromConfig(effective, apiKey),
+    ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
+    permission: context.projectPermission,
+    approvals: context.approvals,
+    builtinTools: {
+      cwd: path,
+      allowNetwork: true,
+      allowShell: true,
+      allowOutsideWorkspace: context.projectPermission === 'bypass',
+      allowPrivateNetwork: context.projectPermission === 'bypass',
+    },
+  })
+  context.projectHosts?.set(path, { host, signature })
+  return host
 }
 
 async function runResidentTurn(

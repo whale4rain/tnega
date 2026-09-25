@@ -1,9 +1,20 @@
 import { createHash } from 'node:crypto'
+import { stat } from 'node:fs/promises'
 import type { AgentRegistry, LiveAgent } from '@tnega/agent'
 import { USER_ADDRESS, type BoxEnvelope, type BoxService } from '@tnega/box'
 import type { Context, Plugin } from '@tnega/core'
 import { SessionLog, type SessionEvent } from '@tnega/session'
 import type { ThreadRecord, ThreadService } from '@tnega/thread'
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+}
 
 export interface ProjectLoopConfig {
   projectId: string
@@ -415,12 +426,20 @@ export class ProjectLoopRuntime {
     return 0
   }
 
+  /**
+   * 读某个 Thread 的 Session。
+   *
+   * 先确认文件存在再打开：`SessionLog` 第一次读不存在的文件时会把它建出来，于是「读过
+   * 一次」会在磁盘上留下一个没有 Agent 身份的假 Session。
+   */
   private async readSession(threadId: string): Promise<readonly SessionEvent[]> {
     const live = this.registry.get(threadId)
     if (live) return await live.session.read()
+    const file = this.threads.sessionFile(threadId)
+    if (!await fileExists(file)) return []
     let log: SessionLog | undefined
     try {
-      log = new SessionLog(this.threads.sessionFile(threadId))
+      log = new SessionLog(file)
       await log.init()
       return await log.read()
     } catch {

@@ -47,6 +47,13 @@ export {
 export { parseYaml } from './yaml.js'
 export { effectiveApiKey } from './config.js'
 export { startWebServer } from './server.js'
+export { ProjectHost } from './project-host.js'
+export type {
+  OpenProject,
+  ProjectHostOptions,
+  ProjectSnapshot,
+  ProjectThreadDetail,
+} from './project-host.js'
 export type { WebServer, WebServerOptions } from './server.js'
 export type { CompareResult, EvalRun }
 

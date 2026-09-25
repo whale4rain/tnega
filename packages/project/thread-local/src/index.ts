@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { AgentHandle, AgentRegistry, LiveAgent, LLMAdapter } from '@tnega/agent'
 import { BlackboardError, type BlackboardService, type FactRecord } from '@tnega/blackboard'
@@ -98,14 +98,34 @@ function toData(record: ThreadRecord): Record<string, unknown> {
   }
 }
 
-async function exists(path: string): Promise<boolean> {
+/**
+ * 这个 Session 是否已经有 Agent 身份。
+ *
+ * 不能用「文件在不在」来判断：`SessionLog` 第一次读一个不存在的文件时会把它连同格式
+ * 版本一起创建出来，于是「读过一次」和「建过 Agent」看起来一模一样。身份的唯一凭据是
+ * 那条 `kind: 'agent'` 的 meta 事件。
+ */
+async function hasAgentMeta(file: string): Promise<boolean> {
+  let text: string
   try {
-    await stat(path)
-    return true
+    text = await readFile(file, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
     throw error
   }
+  for (const line of text.split('\n')) {
+    if (!line.includes('"kind":"agent"')) continue
+    try {
+      const event = JSON.parse(line) as { type?: unknown; payload?: unknown }
+      const payload = isRecord(event.payload) ? event.payload : undefined
+      if (event.type === 'meta' && payload?.kind === 'agent' && typeof payload.agentId === 'string') {
+        return true
+      }
+    } catch {
+      // 半截行：跳过，继续找。
+    }
+  }
+  return false
 }
 
 /**
@@ -396,7 +416,7 @@ export class LocalThreadService extends ThreadService {
       // 协调者 Thread 没有父：它是这个 Project 的根 Agent。
       ...(parentId === undefined ? {} : { owner: parentId, parentSessionId: parentId }),
     }
-    const handle = await (await exists(file)
+    const handle = await (await hasAgentMeta(file)
       ? this.registry.resume(options)
       : this.registry.create(options))
     this.handles.set(record.id, handle)

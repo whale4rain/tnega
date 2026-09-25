@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -122,6 +122,31 @@ it('refuses a fourth running child and ids that would escape the project folder'
     await expect(ctx.threads.activate('00000000-0000-4000-8000-000000000000'))
       .rejects.toBeInstanceOf(ThreadError)
     expect(() => ctx.threads.sessionFile('../escape')).toThrow(ThreadError)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it('starts a thread whose session file exists but has no agent identity yet', async () => {
+  const root = await workspace()
+  const ctx = await mount(root)
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Read-only glimpse' })
+    // 读取一个还没跑过的 Session 会在磁盘上留下一个只有格式版本的 meta：`SessionLog`
+    // 第一次读不存在的文件时会把它建出来。这样的文件不是 Agent 身份。
+    await writeFile(ctx.threads.sessionFile(child.id), `${JSON.stringify({
+      id: 'e6f0a3a2-3f4b-4e2c-9d5b-2f4b1c8a7d90',
+      seq: 1,
+      ts: Date.now(),
+      type: 'meta',
+      payload: { formatVersion: 10 },
+    })}\n`, 'utf8')
+
+    const live = await ctx.threads.activate(child.id)
+    expect(live.meta.agentId).toBe(child.id)
+    const types = (await live.session.read()).map(event => event.type)
+    expect(types.filter(type => type === 'meta')).toHaveLength(2)
   } finally {
     await ctx.fiber.dispose()
   }
