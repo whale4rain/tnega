@@ -1722,41 +1722,6 @@ button.send-button:hover:not(:disabled) {
   padding: 0;
 }
 
-/* 步骤：✓ 已完成、● 正在做、○ 还没开始、✗ 失败。 */
-.steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.steps > li {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 12px;
-}
-.step-mark {
-  width: 12px;
-  flex-shrink: 0;
-  text-align: center;
-  color: var(--mute);
-}
-.steps > li[data-mark='done'] .step-mark {
-  color: var(--success);
-}
-.steps > li[data-mark='running'] .step-mark {
-  color: var(--accent);
-}
-.steps > li[data-mark='failed'] .step-mark {
-  color: var(--danger);
-}
-.steps > li[data-mark='done'] .step-title,
-.steps > li[data-mark='pending'] .step-title {
-  color: var(--mute);
-}
-
 /* Thread 侧栏：和 SubagentSidebar 同一套度量。 */
 .thread-panel {
   position: relative;
@@ -1830,7 +1795,9 @@ button.send-button:hover:not(:disabled) {
   overflow-wrap: anywhere;
 }
 .thread-transcript {
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .panel-empty {
   margin: 0;
@@ -1870,19 +1837,9 @@ button.send-button:hover:not(:disabled) {
 .project-panel {
   animation: panel-appear 160ms ease-out;
 }
-.composer-select {
-  background: transparent;
-  border: 0;
-  border-radius: 7px;
-  color: var(--mute);
-  font: inherit;
-  font-size: 11px;
-  padding: 3px 4px;
-  cursor: pointer;
-}
-.composer-select:hover {
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  color: var(--ink);
+.thread-panel .composer-surface,
+.thread-panel .composer-dock {
+  width: 100%;
 }
 .error-toast {
   position: fixed;
@@ -1902,4 +1859,27 @@ button.send-button:hover:not(:disabled) {
   background: none;
   color: var(--ink);
   cursor: pointer;
+}
+
+/* 流的状态：正在跟随 / 正在重连。断线自己接回来，用户看得到。 */
+.stream-state {
+  font-size: 11px;
+  color: var(--mute);
+}
+.stream-state::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--mute);
+  vertical-align: middle;
+}
+.stream-state[data-state='live']::before {
+  background: var(--success);
+}
+.stream-state[data-state='connecting']::before,
+.stream-state[data-state='retrying']::before {
+  background: var(--warning);
 }

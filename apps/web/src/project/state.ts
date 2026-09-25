@@ -154,6 +154,17 @@ export function childrenOf(view: ProjectView, threadId: string): ThreadRecord[] 
   return view.threads.filter(thread => thread.parentId === threadId)
 }
 
+/** 这个 Thread 自己的回复（主对话里不重复显示子 Thread 的每句话）。 */
+export function threadReplies(
+  messages: readonly BootEnvelope[],
+  threadId: string,
+): BootEnvelope[] {
+  return messages.filter(envelope =>
+    envelope.placement.kind === 'thread'
+    && envelope.placement.threadId === threadId
+    && envelope.kind === 'agent-reply')
+}
+
 export function pendingCount(view: ProjectView): number {
   const buckets = threadBuckets(view.threads)
   return buckets.waiting.length + view.approvals.length

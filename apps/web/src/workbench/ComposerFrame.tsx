@@ -15,10 +15,12 @@ interface Props {
   apiKeySet: boolean
   onSettings: () => void
   permission: 'read-only' | 'workspace-write' | 'bypass'
-  onPermission: (value: 'read-only' | 'workspace-write' | 'bypass') => void
+  /** 不给就是这一层改不了权限：只显示提示，不摆一个点不动的选择器。 */
+  onPermission?: (value: 'read-only' | 'workspace-write' | 'bypass') => void
   disabled: boolean
+  /** 不给就是这一层没有模式可切：不摆模式选择器。 */
   mode?: 'auto' | 'plan' | 'goal'
-  onMode: (value: 'auto' | 'plan' | 'goal') => Promise<void>
+  onMode?: (value: 'auto' | 'plan' | 'goal') => Promise<void>
 }
 export function ComposerFrame(props: Props) {
   const selectedModel = props.models.find(item => item.id === props.model)
@@ -69,21 +71,23 @@ export function ComposerFrame(props: Props) {
       <div className="composer">{props.children}</div>
       <div className="composer-toolbar flex items-center gap-3">
         <Shield size={14} />
-        <Select.Root
-          value={props.permission}
-          disabled={props.disabled}
-          onValueChange={value => {
-            if (value === 'read-only' || value === 'workspace-write' || value === 'bypass')
-              props.onPermission(value)
-          }}
-        >
-          <Select.Trigger variant="ghost" aria-label="Tool permissions" title={permissionHint} />
-          <Select.Content>
-            <Select.Item value="read-only">Read only</Select.Item>
-            <Select.Item value="workspace-write">Workspace write</Select.Item>
-            <Select.Item value="bypass">Bypass</Select.Item>
-          </Select.Content>
-        </Select.Root>
+        {props.onPermission && (
+          <Select.Root
+            value={props.permission}
+            disabled={props.disabled}
+            onValueChange={value => {
+              if (value === 'read-only' || value === 'workspace-write' || value === 'bypass')
+                props.onPermission?.(value)
+            }}
+          >
+            <Select.Trigger variant="ghost" aria-label="Tool permissions" title={permissionHint} />
+            <Select.Content>
+              <Select.Item value="read-only">Read only</Select.Item>
+              <Select.Item value="workspace-write">Workspace write</Select.Item>
+              <Select.Item value="bypass">Bypass</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        )}
         <span className="permission-hint" title={permissionHint}>{permissionHint}</span>
         <span className="composer-shortcut">
           Enter to send · Shift + Enter for newline
@@ -136,7 +140,7 @@ export function ComposerFrame(props: Props) {
             disabled={props.disabled}
             onValueChange={(value) => {
               if (value === 'auto' || value === 'plan' || value === 'goal')
-                void props.onMode(value)
+                void props.onMode?.(value)
             }}
           >
             <Select.Trigger variant="ghost" aria-label="Session mode" />

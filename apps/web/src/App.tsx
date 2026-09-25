@@ -562,6 +562,8 @@ function ChatApp() {
             reasoningEffort={config?.effective.reasoningEffort ?? 'default'}
             onModel={handleConfigModel}
             onReasoningEffort={handleConfigReasoningEffort}
+            apiKeySet={modelApiKeySet}
+            onSettings={() => setSettingsOpen(true)}
           />
         ) : (
         <ChatView

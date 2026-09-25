@@ -125,6 +125,7 @@ export function streamProject(
     onEvent: (event: ProjectStreamEvent) => void
     onError?: (error: unknown) => void
     onClose?: () => void
+    onOpen?: () => void
   },
 ): () => void {
   const controller = new AbortController()
@@ -138,6 +139,7 @@ export function streamProject(
       if (!response.ok || !response.body) {
         throw new Error(`${response.status} ${response.statusText}`.trim())
       }
+      options.onOpen?.()
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''

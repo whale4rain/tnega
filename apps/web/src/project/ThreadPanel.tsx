@@ -1,25 +1,23 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { ChevronRight, Loader2, X } from 'lucide-react'
-import { Composer, type ComposerProps } from './Composer'
-import { projectEvents, type DisplayMessage } from './reuse'
+import { MessageBlock, projectEvents, type DisplayMessage } from './reuse'
 import { threadStateLabel } from './state'
-import { markOf, type PlanStep } from './steps'
 import type { SessionEvent, ThreadRecord } from './types'
 
 export interface ThreadPanelProps {
   thread?: ThreadRecord
-  steps: readonly PlanStep[]
   events: readonly SessionEvent[]
   loading: boolean
   onClose: () => void
-  composer: ComposerProps
+  /** 输入区由调用方给：它用的是会话屏的 ComposerFrame。 */
+  composer: ReactNode
 }
 
 /**
- * Thread 面板：一个 Thread 自己的执行视图。
+ * 右侧的 Thread 栏，形状与 `SubagentSidebar` 一致（同样的宽度、分割线与出现动画）。
  *
- * 面包屑说明「你在哪」，上下文块说明「它被交代了什么」，计划卡片说明「它做到哪一步」，
- * 下面才是对话本身。计划与工具状态都是结构化对象，不是从回复正文里读出来的。
+ * 内容是投影出来的：上下文读 Thread 记录，正文读该 Agent 自己的 Session —— 主对话只由
+ * 协调者发言，子 Thread 的详细输出留在它这里。
  */
 export function ThreadPanel(props: ThreadPanelProps) {
   const transcript = useMemo(() => projectEvents([...props.events]), [props.events])
@@ -57,10 +55,6 @@ export function ThreadPanel(props: ThreadPanelProps) {
               <span className="context-value">{thread.expect}</span>
             </div>
           )}
-          <div className="context-row">
-            <span className="context-label">Permission</span>
-            <span className="context-value">{thread?.permission ?? 'read-only'}</span>
-          </div>
           {thread?.detail && (
             <div className="context-row">
               <span className="context-label">Latest</span>
@@ -69,37 +63,24 @@ export function ThreadPanel(props: ThreadPanelProps) {
           )}
         </section>
 
-        {!!props.steps.length && (
-          <section className="panel-card">
-            <h3 className="panel-card-title">Execution plan</h3>
-            <ol className="steps">
-              {props.steps.map(step => (
-                <li key={step.id} data-mark={step.mark} title={step.detail}>
-                  <span className="step-mark" aria-hidden="true">{markOf(step.mark)}</span>
-                  <span className="step-title">{step.title}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        )}
-
-        <section className="panel-card thread-transcript">
+        <section className="thread-transcript">
           {props.loading && !transcript.length && <p className="panel-empty">Loading…</p>}
           {!props.loading && !transcript.length && (
             <p className="panel-empty">Nothing yet — this thread has not run.</p>
           )}
           {transcript.map(message => (
-            <TranscriptRow key={message.id} message={message} />
+            <TranscriptRow key={message.id} message={message} label={thread?.label} />
           ))}
         </section>
-      </div>
 
-      <Composer {...props.composer} />
+        {props.composer}
+      </div>
     </aside>
   )
 }
 
-function TranscriptRow({ message }: { message: DisplayMessage }) {
+/** 正文与会话屏同源（`MessageBlock`）；工具调用在窄栏里收成一行，展开才看输出。 */
+function TranscriptRow({ message, label }: { message: DisplayMessage; label?: string | undefined }) {
   if (message.role === 'tool') {
     const tool = message.tool
     return (
@@ -115,9 +96,5 @@ function TranscriptRow({ message }: { message: DisplayMessage }) {
     )
   }
   if (message.role === 'system' || message.role === 'file-edits') return null
-  return (
-    <article className="bubble" data-role={message.role === 'user' ? 'user' : 'agent'}>
-      <p>{message.content}</p>
-    </article>
-  )
+  return <MessageBlock message={message} assistantLabel={label ?? 'Tnega'} />
 }

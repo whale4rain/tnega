@@ -1,39 +1,45 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge } from '@radix-ui/themes'
+import { Badge, TextArea } from '@radix-ui/themes'
 import { ListTodo } from 'lucide-react'
 import * as api from './api'
-import { Composer } from './Composer'
 import { LibraryPanel, MemoryPanel, OverviewPanel } from './SidePanels'
 import { ThreadPanel } from './ThreadPanel'
-import { MessageBlock, latestPlanFromEvents } from './reuse'
+import { ComposerFrame } from '../workbench/ComposerFrame'
+import { MessageBlock, PlanPanel, latestPlanFromEvents, type DisplayPlan } from './reuse'
 import {
   applyStreamEvent,
   fromSnapshot,
   mergeMessage,
+  threadReplies,
   threadStateLabel,
   type ProjectView,
 } from './state'
-import { markOf, planSteps, threadReplies, type PlanStep } from './steps'
-import type { BootEnvelope, SessionEvent, ThreadRecord } from './types'
-import { folderName } from '../projectSelection'
+import type { BootEnvelope, SessionEvent, ThreadState } from './types'
 
 const POLL_MS = 2_000
 
 export interface ProjectExperienceProps {
   workspace: string
   projectId: string
-  models: ReadonlyArray<{ id: string; name: string }>
+  models: ReadonlyArray<{
+    id: string
+    name: string
+    reasoningEfforts: Array<'low' | 'medium' | 'high'>
+  }>
   model?: string | undefined
   reasoningEffort: 'default' | 'low' | 'medium' | 'high'
   onModel: (model: string) => Promise<void> | void
   onReasoningEffort: (effort: 'default' | 'low' | 'medium' | 'high') => Promise<void> | void
+  apiKeySet: boolean
+  onSettings: () => void
 }
 
 /**
- * Project 屏：和会话屏用同一套骨架 —— `.chat` 里一份内容加一个可选侧栏。
+ * Project 屏：用的就是会话屏那套组件 —— `ComposerFrame` 输入区、`MessageBlock` 消息、
+ * `PlanPanel` 计划卡，布局也是 `.chat` / `.chat-content` / `.messages-viewport` /
+ * `.conversation-scroll` / `.composer-surface`。它自己只加了「线程卡片」与右侧执行栏。
  *
- * 差别只在内容：消息来自 Box（主对话），右侧栏是某个 Thread 的执行视图。两者都是投影：
- * 消息读 Box，Thread 读 Blackboard 的记录，执行细节读那个 Agent 自己的 Session。
+ * 两种投影：主对话的消息来自 Box，Thread 的执行细节来自那个 Agent 自己的 Session。
  */
 export function ProjectExperience(props: ProjectExperienceProps) {
   const { workspace, projectId } = props
@@ -47,6 +53,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   const [threadDraft, setThreadDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [live, setLive] = useState<'connecting' | 'live' | 'retrying'>('connecting')
   const scrollRef = useRef<HTMLDivElement>(null)
   const selection = useRef<string | null>(null)
 
@@ -58,6 +65,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
     setDetails(new Map())
     setPanel(null)
     setError(null)
+    setLive('connecting')
     void api
       .getProject(workspace, projectId)
       .then(snapshot => {
@@ -71,14 +79,45 @@ export function ProjectExperience(props: ProjectExperienceProps) {
       })
   }, [workspace, projectId])
 
-  // 一条 SSE 连接：只在「打开的 Project 变了」时重连，不会因为新消息而抖。
+  // 一条 SSE 连接：只在「打开的 Project 变了」时重连；断了自己按游标接回来（服务重启、
+  // 网络抖动、后台标签页被节流都会断，断了不接就只能靠刷新）。
+  const cursorRef = useRef(0)
+  useEffect(() => {
+    if (connection) cursorRef.current = connection.cursor
+  }, [connection])
   useEffect(() => {
     if (!connection) return
-    return api.streamProject(workspace, connection.projectId, {
-      after: connection.cursor,
-      onEvent: event => setView(current => (current ? applyStreamEvent(current, event) : current)),
-      onError: reason => setError(messageOf(reason)),
-    })
+    let stopped = false
+    let attempt = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let stop: (() => void) | undefined
+    const connect = (): void => {
+      stop = api.streamProject(workspace, connection.projectId, {
+        after: cursorRef.current,
+        onOpen: () => setLive('live'),
+        onEvent: event => {
+          attempt = 0
+          if (event.type === 'message') {
+            cursorRef.current = Math.max(cursorRef.current, event.seq)
+          }
+          setView(current => (current ? applyStreamEvent(current, event) : current))
+        },
+        onError: reason => setError(messageOf(reason)),
+        onClose: () => {
+          if (stopped) return
+          setLive('retrying')
+          const delay = Math.min(1_000 * 2 ** attempt, 10_000)
+          attempt += 1
+          timer = setTimeout(connect, delay)
+        },
+      })
+    }
+    connect()
+    return () => {
+      stopped = true
+      if (timer) clearTimeout(timer)
+      stop?.()
+    }
   }, [workspace, connection])
 
   const loadThread = useCallback(
@@ -120,10 +159,10 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   }, [threadId, loadThread])
 
   const plans = useMemo(() => {
-    const map = new Map<string, PlanStep[]>()
+    const map = new Map<string, DisplayPlan>()
     for (const [id, events] of details) {
-      const steps = planSteps(latestPlanFromEvents(events))
-      if (steps.length) map.set(id, steps)
+      const plan = latestPlanFromEvents(events)
+      if (plan) map.set(id, plan)
     }
     return map
   }, [details])
@@ -184,15 +223,20 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   }, [workspace, projectId])
 
   const thread = threadId ? view?.threads.find(entry => entry.id === threadId) : undefined
+  const coordinator = view?.threads.find(entry => entry.id === view.coordinatorId)
   const tasks = (view?.threads ?? []).filter(entry => entry.depth > 0)
   const waiting = tasks.filter(entry => entry.state === 'waiting' || entry.state === 'blocked')
-  const context = thread ? `${thread.permission} · ${folderName(workspace)}` : folderName(workspace)
-  const config = {
-    models: props.models,
+  const composer = {
+    workspace,
+    models: [...props.models],
     ...(props.model !== undefined ? { model: props.model } : {}),
-    onModel: props.onModel,
     reasoningEffort: props.reasoningEffort,
-    onReasoningEffort: props.onReasoningEffort,
+    onModel: async (model: string) => { await props.onModel(model) },
+    onReasoningEffort: async (effort: 'default' | 'low' | 'medium' | 'high') => {
+      await props.onReasoningEffort(effort)
+    },
+    apiKeySet: props.apiKeySet,
+    onSettings: props.onSettings,
   }
 
   return (
@@ -208,6 +252,11 @@ export function ProjectExperience(props: ProjectExperienceProps) {
           <div className="chat-meta">
             <span className="ellipsis" title={workspace}>{workspace}</span>
             {view?.project.goal && <span className="ellipsis">{view.project.goal}</span>}
+            <span className="stream-state" data-state={live} title={
+              live === 'live' ? 'Following this project live' : 'Reconnecting to this project'
+            }>
+              {live === 'live' ? 'live' : 'reconnecting…'}
+            </span>
           </div>
           <div className="chat-header-actions">
             {!!waiting.length && <Badge color="amber">{waiting.length} waiting on you</Badge>}
@@ -230,20 +279,24 @@ export function ProjectExperience(props: ProjectExperienceProps) {
         <div className="messages-viewport">
           <div className="conversation-scroll" ref={scrollRef}>
             <div className="messages">
-              {view?.messages.map(envelope => (
-                <ProjectMessage
-                  key={envelope.messageId}
-                  envelope={envelope}
-                  thread={envelope.threadId
-                    ? view.threads.find(entry => entry.id === envelope.threadId)
-                    : undefined}
-                  steps={envelope.threadId ? plans.get(envelope.threadId) ?? [] : []}
-                  replies={envelope.threadId
-                    ? threadReplies(view.messages, envelope.threadId).length
-                    : 0}
-                  onOpenThread={id => setThreadId(id)}
-                />
-              ))}
+              {view?.messages.map(envelope => {
+                const target = envelope.threadId
+                  ? view.threads.find(entry => entry.id === envelope.threadId)
+                  : undefined
+                return (
+                  <ProjectMessage
+                    key={envelope.messageId}
+                    envelope={envelope}
+                    label={target?.label}
+                    state={target?.state}
+                    plan={envelope.threadId ? plans.get(envelope.threadId) : undefined}
+                    replies={envelope.threadId
+                      ? threadReplies(view.messages, envelope.threadId).length
+                      : 0}
+                    onOpenThread={id => setThreadId(id)}
+                  />
+                )
+              })}
               {view && !view.messages.length && (
                 <div className="conversation-welcome">
                   <ListTodo size={28} strokeWidth={1.4} />
@@ -258,51 +311,71 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                 </div>
               )}
             </div>
+
+            <div className="composer-surface">
+              <ComposerFrame
+                {...composer}
+                permission={coordinator?.permission ?? 'read-only'}
+                disabled={!view || busy}
+              >
+                <TextArea
+                  value={draft}
+                  placeholder="Ask for something, or add to the work in flight."
+                  onChange={event => setDraft(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      void sendMain()
+                    }
+                  }}
+                />
+              </ComposerFrame>
+              <div className="conversation-footer">
+                <button
+                  type="button"
+                  className={`subagent-toggle${threadId ? ' active' : ''}`}
+                  aria-expanded={threadId !== null}
+                  disabled={!tasks.length}
+                  onClick={() => setThreadId(current => (current ? null : tasks[0]?.id ?? null))}
+                >
+                  <ListTodo size={14} aria-hidden="true" />
+                  {tasks.filter(entry => entry.state === 'working').length} active task
+                  {tasks.length > 0 && <span className="subagent-total">· {tasks.length} total</span>}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-
-        <Composer
-          value={draft}
-          onChange={setDraft}
-          onSubmit={() => void sendMain()}
-          placeholder="Ask for something, or add to the work in flight."
-          disabled={!view}
-          busy={busy}
-          context={context}
-          {...config}
-        />
-
-        <div className="conversation-footer">
-          <button
-            type="button"
-            className={`subagent-toggle${threadId ? ' active' : ''}`}
-            aria-expanded={threadId !== null}
-            disabled={!tasks.length}
-            onClick={() => setThreadId(current => (current ? null : tasks[0]?.id ?? null))}
-          >
-            <ListTodo size={14} aria-hidden="true" />
-            {tasks.filter(entry => entry.state === 'working').length} active task
-            {tasks.length > 0 && <span className="subagent-total">· {tasks.length} total</span>}
-          </button>
         </div>
       </div>
 
       {threadId ? (
         <ThreadPanel
           {...(thread ? { thread } : {})}
-          steps={plans.get(threadId) ?? []}
           events={details.get(threadId) ?? []}
           loading={loadingThread === threadId}
           onClose={() => setThreadId(null)}
-          composer={{
-            value: threadDraft,
-            onChange: setThreadDraft,
-            onSubmit: () => void sendThread(),
-            placeholder: 'Tell this thread something, or ask where it is.',
-            busy,
-            context,
-            ...config,
-          }}
+          composer={
+            <div className="composer-surface">
+              <ComposerFrame
+                {...composer}
+                permission={thread?.permission ?? 'read-only'}
+                disabled={busy}
+                accessory={<PlanPanel plan={plans.get(threadId)} />}
+              >
+                <TextArea
+                  value={threadDraft}
+                  placeholder="Tell this thread something, or ask where it is."
+                  onChange={event => setThreadDraft(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      void sendThread()
+                    }
+                  }}
+                />
+              </ComposerFrame>
+            </div>
+          }
         />
       ) : (
         view && panel && (
@@ -326,41 +399,33 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   )
 }
 
-/** 主对话里的一条：普通发言用会话屏的消息渲染，派工是一张线程卡片。 */
+/** 主对话里的一条：普通发言走会话屏的 MessageBlock，派工是一张线程卡片。 */
 function ProjectMessage({
   envelope,
-  thread,
-  steps,
+  label,
+  state,
+  plan,
   replies,
   onOpenThread,
 }: {
   envelope: BootEnvelope
-  thread?: ThreadRecord
-  steps: readonly PlanStep[]
+  label?: string | undefined
+  state?: ThreadState | undefined
+  plan?: DisplayPlan | undefined
   replies: number
   onOpenThread: (id: string) => void
 }) {
   if (envelope.kind === 'dispatch') {
-    const target = thread?.id ?? envelope.threadId ?? ''
+    const target = envelope.threadId ?? ''
     return (
-      <div className="thread-card" data-state={thread?.state ?? 'idle'}>
+      <div className="thread-card" data-state={state ?? 'idle'}>
         <div className="thread-card-head">
-          <span className="thread-card-title">{thread?.label ?? 'Thread'}</span>
+          <span className="thread-card-title">{label ?? 'Thread'}</span>
           <span className="thread-card-state">
-            {thread ? threadStateLabel(thread.state) : 'starting'}
+            {state ? threadStateLabel(state) : 'starting'}
           </span>
         </div>
-        <p className="thread-card-goal">{thread?.goal ?? envelope.text}</p>
-        {!!steps.length && (
-          <ol className="steps">
-            {steps.slice(0, 6).map(step => (
-              <li key={step.id} data-mark={step.mark} title={step.detail}>
-                <span className="step-mark" aria-hidden="true">{markOf(step.mark)}</span>
-                <span className="step-title">{step.title}</span>
-              </li>
-            ))}
-          </ol>
-        )}
+        <PlanPanel plan={plan} />
         <button
           type="button"
           className="thread-card-open"
@@ -388,7 +453,7 @@ function ProjectMessage({
         role: envelope.sender.kind === 'user' ? 'user' : 'assistant',
         content: envelope.text,
       }}
-      assistantLabel={thread?.label ?? 'Tnega'}
+      assistantLabel={label ?? 'Tnega'}
     />
   )
 }

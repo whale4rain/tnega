@@ -52,9 +52,9 @@ Project 屏与会话屏共用同一套骨架：`WorkbenchShell` 里一块主内�
 | --- | --- |
 | 左栏 Projects | 最近打开的 Project（名称 + 它所在的文件夹）；`+` 新建。点一行就进 Project 屏，点会话就回会话屏 |
 | 顶部 | Project 名称、文件夹、目标，以及 Overview / Library / Memory 三个面板入口 |
-| 主对话 | 用户发言与协调者回复用会话屏的消息渲染；派工是一条线程卡片，直接显示该 Thread 的状态、步骤进度与回复数 |
+| 主对话 | 用户发言与协调者回复走会话屏的 `MessageBlock`；派工是一条线程卡片，直接显示该 Thread 的状态、计划与回复数 |
 | 右下角 | `N active tasks · M total` 开关，打开右侧 Thread 栏 |
-| Thread 栏 | `Threads > 线程名` 面包屑、线程上下文、结构化执行计划（✓ / ● / ○）、该 Agent 的回复与工具行，底部是它自己的输入区 |
+| Thread 栏 | 形状与 `SubagentSidebar` 一致：`Threads > 线程名` 面包屑、线程上下文、该 Agent 的正文与工具行，底部是它自己的 `ComposerFrame`（`PlanPanel` 作为 accessory 挂在输入框上方） |
 
 信息按 Application → Project/Agent → Conversation → Thread → Task Execution 组织：
 
@@ -64,8 +64,11 @@ Project 屏与会话屏共用同一套骨架：`WorkbenchShell` 里一块主内�
   点开右侧栏看完整执行记录，并在那里直接留言。
 - **Task / Plan / Tool 是结构化对象**。步骤从 Session 的 `plan` 事件投影成 ✓ / ● / ○，
   工具调用是独立的行（可展开看输出），产物进 Library —— 都不从回复正文里猜。
-- **输入区**。主对话与 Thread 各有一份，沿用会话屏的 `.composer-*` 度量；模型与思考强度
-  写的是这台机器的默认配置（和设置里是同一份），上下文一栏显示这轮会看到的文件夹与权限。
+- **输入区**。主对话与 Thread 各有一份，用的就是会话屏的 `ComposerFrame`；模型与思考强度
+  写的是这台机器的默认配置（和设置里是同一份）。Project 这一层改不了工具权限、也没有
+  plan/goal 模式，所以 `ComposerFrame` 的这两个控件在不给回调时不渲染（只留提示文字），
+  而不是摆一个点不动的选择器。
+- **流的状态可见**。顶部有 live / reconnecting 指示；断线后客户端按游标自己接回来，不靠刷新。
 
 创建只要名称与文件夹；目标可以后补，创建时不拉起任何 Agent。发完就显示（判据是信封落盘，
 不是模型回复；本地先画出来，流里那条按 `messageId` 去重）。断线按游标补齐：连接从快照的

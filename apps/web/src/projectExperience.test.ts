@@ -3,11 +3,20 @@ import { createElement } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
+import type { BootEnvelope, ProjectStreamEvent } from './project/types'
 
 const workspace = '/alpha'
 const projectId = '22222222-2222-4222-8222-222222222222'
 const coordinatorId = '11111111-1111-4111-8111-111111111111'
 const sessionId = 'session-1'
+
+/** 每条连接都能单独推帧、单独断开，用来验证「不刷新也能看到新消息」和断线重连。 */
+interface Connection {
+  push: (event: ProjectStreamEvent) => void
+  drop: () => void
+}
+let connections: Connection[] = []
+let push: ((event: ProjectStreamEvent) => void) | undefined
 
 beforeEach(() => {
   localStorage.clear()
@@ -27,29 +36,10 @@ beforeEach(() => {
       return json({ apiKeySet: false, models: [], effective: { model: 'm' }, config: {}, env: {} })
     }
     if (url.pathname === '/api/workspaces') return json({ workspaces: [workspace] })
-    if (url.pathname === '/api/sessions') {
-      return json({
-        workspace,
-        sessions: [{
-          workspace,
-          id: sessionId,
-          title: 'Alpha session',
-          createdAt: 1,
-          updatedAt: 1,
-          eventCount: 1,
-        }],
-      })
-    }
+    if (url.pathname === '/api/sessions') return json({ workspace, sessions: [session()] })
     if (url.pathname === `/api/sessions/${sessionId}`) {
       return json({
-        summary: {
-          workspace,
-          id: sessionId,
-          title: 'Alpha session',
-          createdAt: 1,
-          updatedAt: 1,
-          eventCount: 1,
-        },
+        summary: session(),
         events: [],
         surface: [],
         context: { tokens: 0, limit: 1, ratio: 0 },
@@ -57,46 +47,71 @@ beforeEach(() => {
         running: false,
       })
     }
-    if (url.pathname === `/api/projects/${projectId}`) {
-      return json({
-        project: { id: projectId, name: 'Notes', coordinatorId, createdAt: 1, updatedAt: 1 },
-        coordinatorId,
-        cursor: 3,
-        threads: [{
-          id: coordinatorId,
-          projectId,
-          label: 'Notes',
-          goal: 'Track findings',
-          state: 'idle',
-          depth: 0,
-          permission: 'workspace-write',
-          createdAt: 1,
-          updatedAt: 1,
-        }],
-        messages: [{
-          messageId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          projectId,
-          sender: { kind: 'user', id: 'user' },
-          recipients: [{ kind: 'agent', id: coordinatorId }],
-          placement: { kind: 'main' },
-          kind: 'user-message',
-          text: 'Summarise the release notes',
-          refs: [],
-          createdAt: 5,
-        }],
-        memory: [],
-        library: { artifacts: [], resources: [] },
-      })
-    }
-    if (url.pathname === `/api/projects/${projectId}/stream`) return openStream()
+    if (url.pathname === `/api/projects/${projectId}`) return json(snapshot())
+    if (url.pathname === `/api/projects/${projectId}/stream`) return stream()
     throw new Error(`unexpected request: ${url.pathname}`)
   }))
 })
 
 afterEach(() => {
   cleanup()
+  connections = []
+  push = undefined
   vi.unstubAllGlobals()
 })
+
+function session() {
+  return {
+    workspace,
+    id: sessionId,
+    title: 'Alpha session',
+    createdAt: 1,
+    updatedAt: 1,
+    eventCount: 1,
+  }
+}
+
+function envelope(
+  text: string,
+  kind: BootEnvelope['kind'],
+  sender: BootEnvelope['sender'],
+  overrides: Partial<BootEnvelope> = {},
+): BootEnvelope {
+  return {
+    messageId: `m-${text.length}-${kind}`,
+    projectId,
+    sender,
+    recipients: [{ kind: 'agent', id: coordinatorId }],
+    placement: { kind: 'main' },
+    kind,
+    text,
+    refs: [],
+    createdAt: 5,
+    ...overrides,
+  }
+}
+
+function snapshot() {
+  return {
+    project: { id: projectId, name: 'Notes', coordinatorId, createdAt: 1, updatedAt: 1 },
+    coordinatorId,
+    cursor: 3,
+    threads: [{
+      id: coordinatorId,
+      projectId,
+      label: 'Notes',
+      goal: 'Track findings',
+      state: 'idle',
+      depth: 0,
+      permission: 'workspace-write',
+      createdAt: 1,
+      updatedAt: 1,
+    }],
+    messages: [envelope('Summarise the release notes', 'user-message', { kind: 'user', id: 'user' })],
+    memory: [],
+    library: { artifacts: [], resources: [] },
+  }
+}
 
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -105,28 +120,37 @@ function json(body: unknown): Response {
   })
 }
 
-/** 一条一直开着的 SSE 连接：测试只关心界面，不关心推送。 */
-function openStream(): Response {
+/** 一条开着的 SSE 连接：测试可以随时往里推一帧。 */
+function stream(): Response {
+  const encoder = new TextEncoder()
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(': connected\n\n'))
+      controller.enqueue(encoder.encode(': connected\n\n'))
+      const send = (event: ProjectStreamEvent): void => {
+        controller.enqueue(
+          encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`),
+        )
+      }
+      push = send
+      connections.push({ push: send, drop: () => controller.close() })
     },
   })
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
-it('keeps showing the project after the session list arrives', async () => {
+async function openProject(): Promise<void> {
   render(createElement(App))
-
   await waitFor(() => expect(screen.getByText('Alpha session')).toBeTruthy())
   const row = await waitFor(() => screen.getByRole('button', { name: /Notes/ }))
   await act(async () => {
     fireEvent.click(row)
   })
-
-  // Project 屏在主区里：它自己的输入框就是标志。
   await waitFor(() =>
     expect(screen.getByPlaceholderText('Ask for something, or add to the work in flight.')).toBeTruthy())
+}
+
+it('keeps showing the project after the session list arrives', async () => {
+  await openProject()
   // 顶部这三个面板入口是 Project 屏独有的：出现就说明换屏成功了。
   expect(screen.getByRole('button', { name: 'overview' })).toBeTruthy()
 
@@ -136,4 +160,39 @@ it('keeps showing the project after the session list arrives', async () => {
   })
   expect(screen.getByPlaceholderText('Ask for something, or add to the work in flight.')).toBeTruthy()
   expect(screen.getByText('Summarise the release notes')).toBeTruthy()
+})
+
+it('renders a message pushed over the stream without a refresh', async () => {
+  await openProject()
+  expect(push).toBeTypeOf('function')
+
+  await act(async () => {
+    push?.({
+      type: 'message',
+      seq: 9,
+      envelope: envelope('notes look good', 'agent-reply', { kind: 'agent', id: coordinatorId }),
+    })
+  })
+
+  expect(await screen.findByText('notes look good')).toBeTruthy()
+})
+
+it('follows the project again after the stream drops', async () => {
+  await openProject()
+  await waitFor(() => expect(connections).toHaveLength(1), { timeout: 3_000 })
+
+  // 服务重启、网络抖动、后台标签页被节流都会把流掐断：客户端自己按游标接回来。
+  await act(async () => {
+    connections[0]!.drop()
+  })
+  await waitFor(() => expect(connections.length).toBeGreaterThan(1), { timeout: 4_000 })
+
+  await act(async () => {
+    connections.at(-1)!.push({
+      type: 'message',
+      seq: 12,
+      envelope: envelope('still following', 'agent-reply', { kind: 'agent', id: coordinatorId }),
+    })
+  })
+  expect(await screen.findByText('still following')).toBeTruthy()
 })
