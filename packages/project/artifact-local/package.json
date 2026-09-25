@@ -1,0 +1,13 @@
+{
+  "name": "@tnega/artifact-local",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/artifact-store": "workspace:*",
+    "@tnega/core": "workspace:*"
+  }
+}

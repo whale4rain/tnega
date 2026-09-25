@@ -81,6 +81,8 @@ describe('packed artifact', () => {
     const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
     const subpaths = [
       'agent',
+      'artifact-local',
+      'artifact-store',
       'blackboard',
       'blackboard-local',
       'cli/runtime',
@@ -114,6 +116,8 @@ describe('packed artifact', () => {
   it('emits a runtime js file for every subpath entry', () => {
     const names = [
       'agent',
+      'artifact-local',
+      'artifact-store',
       'blackboard',
       'blackboard-local',
       'cli-runtime',

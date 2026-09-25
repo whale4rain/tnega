@@ -20,6 +20,14 @@
       "types": "./dist/types/packages/agent/src/index.d.ts",
       "import": "./dist/agent.js"
     },
+    "./artifact-store": {
+      "types": "./dist/types/packages/project/artifact-store/src/index.d.ts",
+      "import": "./dist/artifact-store.js"
+    },
+    "./artifact-local": {
+      "types": "./dist/types/packages/project/artifact-local/src/index.d.ts",
+      "import": "./dist/artifact-local.js"
+    },
     "./cli/runtime": {
       "types": "./dist/types/packages/cli/src/index.d.ts",
       "import": "./dist/cli-runtime.js"

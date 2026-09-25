@@ -315,6 +315,21 @@ importers:
         specifier: workspace:*
         version: link:../memory-local
 
+  packages/project/artifact-local:
+    dependencies:
+      '@tnega/artifact-store':
+        specifier: workspace:*
+        version: link:../artifact-store
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/project/artifact-store:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
   packages/project/blackboard:
     dependencies:
       '@tnega/core':
