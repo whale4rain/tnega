@@ -68,6 +68,14 @@
       "types": "./dist/types/packages/llm/src/index.d.ts",
       "import": "./dist/llm.js"
     },
+    "./project": {
+      "types": "./dist/types/packages/project/project/src/index.d.ts",
+      "import": "./dist/project.js"
+    },
+    "./project-local": {
+      "types": "./dist/types/packages/project/project-local/src/index.d.ts",
+      "import": "./dist/project-local.js"
+    },
     "./memory": {
       "types": "./dist/types/packages/memory/memory/src/index.d.ts",
       "import": "./dist/memory.js"

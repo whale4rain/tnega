@@ -153,30 +153,38 @@ export interface ProjectRecord {
   id: string
   name: string
   goal?: string
+  /** 主对话那个 Thread 的稳定 ID，创建时铸定。 */
   coordinatorId: string
   repo?: { path: string; branch?: string }
   createdAt: number
   updatedAt: number
 }
-export interface ProjectSummary extends ProjectRecord { threadCount: number }
 
-export abstract class ProjectService extends Service {
-  constructor(ctx: Context) { super(ctx, 'project') }
-  /** 当前 scope 绑定的 Project。 */
-  abstract current(): Promise<ProjectRecord>
-  abstract update(patch: Partial<Pick<ProjectRecord, 'name' | 'goal' | 'repo'>>, author: string): Promise<ProjectRecord>
+export interface ProjectPatch {
+  name?: string
+  goal?: string | null
+  repo?: { path: string; branch?: string } | null
 }
 
 export abstract class ProjectsService extends Service {
   constructor(ctx: Context) { super(ctx, 'projects') }
   abstract create(input: { name: string; goal?: string }): Promise<ProjectRecord>
-  abstract list(): Promise<ProjectSummary[]>
-  abstract open(id: string): Promise<ProjectRecord>
-  abstract remove(id: string): Promise<void>
+  abstract list(): Promise<ProjectRecord[]>
+  abstract get(id: string): Promise<ProjectRecord | undefined>
+  abstract update(id: string, patch: ProjectPatch, author: string): Promise<ProjectRecord>
+  abstract directory(id: string): string
 }
 ```
 
-`project-local` 提供 `ctx.projects`（目录）与 `projectScope(projectId, config)`（把一个 Project 绑进 scope，提供 `ctx.project`）。Project 目录是 `.tnega/projects/<projectId>/`。
+只做身份与目录：没有 `remove`（删用户数据不可逆，产品也没有这个需求），也不在作用域里
+预装运行时 —— Project 作用域里挂哪些 Provider 属于组合层。原稿的 `ctx.project`（绑定到
+某个 Project 的服务）在实现时被去掉：真正需要 Project 身份的是 Project Loop（拿 config）、
+模型可见工具（拿参数）与 Web 路由，没有任何一处需要「从 ctx 里取出当前 Project」，
+留下它只会多出一个必须与 `ctx.projects` 保持同步的副本。
+
+`project-local` 提供 `ctx.projects`：身份存在**同一作用域**的 Blackboard 的 `project`
+记录里，磁盘目录是 `<root>/<projectId>/`。它 `inject: ['blackboard']`，Provider 由组合层
+挑选，因此目录索引覆盖哪些 Project 由挂载位置决定。
 
 ### Box（`packages/project/box`）
 

@@ -345,6 +345,24 @@ importers:
         specifier: workspace:*
         version: link:../../core
 
+  packages/project/project:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/project/project-local:
+    dependencies:
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/project':
+        specifier: workspace:*
+        version: link:../project
+
   packages/search/search-definition:
     dependencies:
       '@tnega/core':

@@ -47,6 +47,8 @@ const packageDirs = {
   'blackboard-local': 'packages/project/blackboard-local',
   'artifact-store': 'packages/project/artifact-store',
   'artifact-local': 'packages/project/artifact-local',
+  project: 'packages/project/project',
+  'project-local': 'packages/project/project-local',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -65,6 +67,8 @@ const libraryEntries = {
   'blackboard-local': `${packageDir('blackboard-local')}/src/index.ts`,
   'artifact-store': `${packageDir('artifact-store')}/src/index.ts`,
   'artifact-local': `${packageDir('artifact-local')}/src/index.ts`,
+  project: `${packageDir('project')}/src/index.ts`,
+  'project-local': `${packageDir('project-local')}/src/index.ts`,
   subagent: `${packageDir('subagent')}/src/index.ts`,
   'subagent-local': `${packageDir('subagent-local')}/src/index.ts`,
   search: `${packageDir('search')}/src/index.ts`,
