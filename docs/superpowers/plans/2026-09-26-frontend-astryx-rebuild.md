@@ -59,12 +59,22 @@
 - Modify: `apps/web/src/workbench/ComposerFrame.tsx`, `SettingsView.tsx`, `apps/web/src/PlanPanel.tsx`, and their corresponding styles as needed
 - Remove only obsolete presentation tests among `App.test.ts`, `conversation/*.test.ts`, and `projectExperience.test.ts`
 
-- [ ] Query Astryx docs for Chat Layout, Chat Message, Chat Composer, Chat Tool Calls, Markdown/Code, Tabs, forms, dialogs, and status components before migrating each matching surface.
-- [ ] Replace matching local visual controls with Astryx components while preserving streaming, durable session event projection, run controls, tool detail disclosure, project/thread workflows, settings saves, and plan/goal semantics.
-- [ ] Leave a surface in its current form and record the missing Astryx capability if no suitable library component exists; do not create a custom substitute solely for visual uniformity.
-- [ ] Remove tests tied only to replaced presentation; retain pure display projection, state, API, and interaction behavior tests with reusable assertions.
-- [ ] Run focused typecheck and relevant retained frontend behavior tests after each surface group.
-- [ ] Commit conversation/project migration in separate commits if each is independently reviewable.
+- [x] Query Astryx docs for Chat Layout, Chat Message, Chat Composer, Chat Tool Calls, Markdown/Code, Tabs, forms, dialogs, and status components before migrating each matching surface.
+- [x] Replace matching local visual controls with Astryx components while preserving streaming, durable session event projection, run controls, tool detail disclosure, project/thread workflows, settings saves, and plan/goal semantics.
+- [x] Leave a surface in its current form and record the missing Astryx capability if no suitable library component exists; do not create a custom substitute solely for visual uniformity.
+- [x] Remove tests tied only to replaced presentation; retain pure display projection, state, API, and interaction behavior tests with reusable assertions.
+- [x] Run focused typecheck and relevant retained frontend behavior tests after each surface group.
+- [x] Commit conversation/project migration in separate commits if each is independently reviewable.
+
+## Recorded exceptions
+
+Surfaces deliberately left on Tnega components, and why no Astryx component fits:
+
+- **Slash-command menu** (`ChatView.tsx`). `ChatComposerInput`'s `triggers` is a flat, locally-searched typeahead; Tnega's menu is server-loaded and two-level (a command opens a submenu of argument candidates). It rides the composer's `drawer` slot instead.
+- **Subagent card** (`Transcript.tsx`). Pairs a disclosure with a separate "open in sidebar" action; `Collapsible`'s trigger owns a single activation.
+- **Conversation turn rail** (`ConversationNav.tsx`). A roving-focus marker rail with its own arrow/Home/End handling and a scroll-following effect.
+- **Project rows** (`WorkspaceTree.tsx`, from Phase 2). A primary navigation action plus a separate overflow menu, which `ListItem`'s interaction model does not fit.
+
 
 ### Phase 4: Global integration and cleanup
 

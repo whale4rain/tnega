@@ -19,7 +19,19 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 - 灰色窗口外壳与圆角深色会话区；用户消息使用右对齐、最多 70% 正文宽度的蓝色气泡，编辑和分支操作位于气泡下方。
 - 会话左侧刻度导航支持直接跳转、悬浮内容预览，以及方向键 / Home / End 键导航；侧栏使用紧凑会话行，操作菜单在悬浮或聚焦时显示。
 - 右侧 Files / Changes / Terminal 图标可打开占位面板；尚未连接工具，不执行文件或终端操作。
-- Radix Themes 提供菜单、对话框、按钮、选择器和提示，Tailwind 提供布局工具类；统一深浅主题、无衬线正文和等宽代码字体。
+- Astryx（`@astryxdesign/core` + `@astryxdesign/theme-neutral`）提供外壳、导航、表单、对话框、聊天和折叠等全部界面组件；Tailwind 只提供布局工具类。
+
+## Astryx
+
+- 组件从 `@astryxdesign/core/<Component>` 逐组件引入，样式由 StyleX 在构建期生成。
+- `main.tsx` 只加载 `styles.css`；`styles.css` 以显式 cascade layer 顺序（`reset, theme, base, components, legacy, astryx-base, utilities`）引入 Astryx reset 与主题，再引入 Tailwind 的 theme/utilities 层。
+- `App.tsx` 用 `@astryxdesign/core/theme` 的 `Theme` 包住整棵树，深浅模式跟随本机偏好并在 `localStorage` 中记忆。
+- 需要查组件 API 时用仓库内的 CLI，而不是猜：
+  ```bash
+  pnpm --filter @tnega/web astryx component ChatComposer
+  pnpm --filter @tnega/web astryx search "popover"
+  ```
+- 少数界面刻意保留 Tnega 自己的实现（斜杠命令菜单、子代理卡片、会话刻度导航、项目行）；理由记在 `docs/superpowers/plans/2026-09-26-frontend-astryx-rebuild.md` 的 “Recorded exceptions”。
 
 ## 结构
 
@@ -29,12 +41,12 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 | `workbench/WorkbenchShell.tsx` | 窗口布局、折叠侧栏、工具面板插槽 |
 | `workbench/WorkspaceSidebar.tsx` | 工作区、会话搜索、操作菜单和对话框 |
 | `workbench/WorkspaceTree.tsx` | 按工作区分组的会话树、独立折叠和工作区范围的操作入口 |
-| `workbench/ComposerFrame.tsx` | 输入区容器、权限、模型设置入口和模式 |
+| `workbench/ComposerFrame.tsx` | 输入区容器、权限、模型设置入口和模式；输入与发送由 `ChatComposer` 提供 |
 | `workbench/SettingsView.tsx` | 模型配置表单 |
 | `conversation/ChatView.tsx` | 会话运行、流式消费和输入行为 |
 | `conversation/SubagentSidebar.tsx` | 子代理任务列表与会话活动侧栏 |
 | `conversation/Transcript.tsx` | Markdown 消息、工具组、压缩和命令结果 |
-| `conversation/ToolActivity.tsx` / `Disclosure.tsx` | 工具活动摘要与共用可访问折叠组件 |
+| `conversation/ToolActivity.tsx` | 工具调用交给 `ChatToolCalls` 呈现，输出截断与 spill 提示留在本地 |
 | `ConversationNav.tsx` / `sessionSelection.ts` | 会话列表与选择 |
 | `PlanPanel.tsx` / `planDisplay.ts` | plan 面板与 slash 消息显示 |
 | `projectEvents.ts` | 把 session 事件流投影成 transcript（人类视图；system 提示与 compaction 进程不污染） |
@@ -54,11 +66,18 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 ```bash
 pnpm --filter @tnega/web dev      # Vite dev server
 pnpm build                        # 构建生产 dist
-pnpm --filter @tnega/desktop exec electron scripts/verify-workbench.cjs
-# 隐藏窗口 + fixture API 验证布局并输出 release/workbench-preview.png，不读取用户数据
 ```
+
+`apps/desktop/scripts/verify-workbench.cjs`（隐藏窗口 + fixture API，输出
+`release/workbench-preview.png`）目前跑不通：它断言的 `.session-link` /
+`.window-bar` / `.workbench-body` / `.rt-*` 和 `.composer` 都是迁移前的标记，
+Astryx 重建后已不存在。重建它还意味着重新确定它顺带断言的那些视觉契约
+（气泡宽度比例、圆角、配色），那是设计决定而不是机械替换，所以留待单独处理。
 
 ## 测试
 
-`apps/web/src/*.test.ts`：`projectEvents`（事件→transcript 投影，含 compaction /
-中断/重试）与 `planDisplay`。端到端见 `packages/cli/test/web.test.ts`。
+`apps/web/src/**/*.test.ts`（jsdom）覆盖事件投影（`projectEvents` / `planDisplay`）、
+工具分组与输出截断（`toolGroups` / `toolOutput`）、会话选择与项目状态
+（`projectSelection` / `projectExperience`）、输入区行为（`composer`）、侧栏与外壳
+（`App` / `workbench`）以及桌面桥。`vitest.setup.ts` 给 jsdom 补上 Astryx 需要的
+`matchMedia`。端到端见 `packages/cli/test/web.test.ts`。

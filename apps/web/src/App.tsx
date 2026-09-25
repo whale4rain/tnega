@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Dialog, Theme as RadixTheme } from '@radix-ui/themes'
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
 import { Theme as AstryxTheme } from '@astryxdesign/core/theme'
 import { neutralTheme } from '@astryxdesign/theme-neutral/built'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
@@ -517,13 +517,7 @@ function ChatApp() {
     ?? config?.apiKeySet ?? false
 
   return (
-    <RadixTheme
-      appearance={appearance}
-      accentColor="gray"
-      grayColor="gray"
-      radius="large"
-      scaling="100%"
-    >
+    <>
       <AstryxTheme theme={neutralTheme} mode={appearance}>
         <WorkbenchShell
           sidebar={
@@ -609,16 +603,20 @@ function ChatApp() {
         onOpenChange={setCreatingProject}
         onCreate={handleCreateProject}
       />
-      <Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <Dialog.Content className="settings-dialog" maxWidth="680px" aria-describedby={undefined}>
-          <Dialog.Title>Settings</Dialog.Title>
+      <Dialog
+        isOpen={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        width={680}
+      >
+        <DialogHeader title="Settings" onOpenChange={() => setSettingsOpen(false)} />
+        <div className="settings-dialog">
           <SettingsView config={config} onReload={setConfig} onSaved={next => {
             setConfig(next)
             setSettingsOpen(false)
           }} />
-        </Dialog.Content>
-      </Dialog.Root>
-    </RadixTheme>
+        </div>
+      </Dialog>
+    </>
   )
 }
 

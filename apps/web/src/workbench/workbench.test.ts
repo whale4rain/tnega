@@ -2,7 +2,6 @@
 import { createElement } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Theme } from '@radix-ui/themes'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 
 beforeEach(() => {
@@ -28,10 +27,7 @@ describe('workbench navigation', () => {
       onNew = vi.fn().mockResolvedValue(undefined)
     const action = vi.fn().mockResolvedValue(undefined)
     render(
-      createElement(
-        Theme,
-        {},
-        createElement(WorkspaceSidebar, {
+      createElement(WorkspaceSidebar, {
           workspaces: ['/project', '/other'],
           workspace: '/project',
           selectedId: 'one',
@@ -60,7 +56,6 @@ describe('workbench navigation', () => {
           onSettings: vi.fn(),
           onTheme: vi.fn(),
         }),
-      ),
     )
     fireEvent.change(screen.getByRole('textbox', { name: 'Search sessions' }), {
       target: { value: 'parser' },
@@ -75,10 +70,7 @@ describe('workbench navigation', () => {
     const action = vi.fn().mockResolvedValue(undefined)
     const onNew = vi.fn().mockResolvedValue(undefined)
     render(
-      createElement(
-        Theme,
-        {},
-        createElement(WorkspaceSidebar, {
+      createElement(WorkspaceSidebar, {
           workspaces: ['/project', '/other'],
           workspace: '/project',
           selectedId: 'same',
@@ -107,7 +99,6 @@ describe('workbench navigation', () => {
           onSettings: vi.fn(),
           onTheme: vi.fn(),
         }),
-      ),
     )
     expect(
       screen

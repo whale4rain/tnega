@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { Theme } from '@radix-ui/themes'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ConversationNav } from './ConversationNav'
 
@@ -19,7 +18,7 @@ const turns = [
 ]
 it('selects any turn directly and identifies the current turn', () => {
   const onSelect = vi.fn()
-  render(createElement(Theme, {}, createElement(ConversationNav, { turns, index: 0, onSelect })))
+  render(createElement(ConversationNav, { turns, index: 0, onSelect }))
   expect(screen.getByRole('button', { name: 'Turn 1: Fix the parser' }).getAttribute('aria-current')).toBe('step')
   fireEvent.click(screen.getByRole('button', { name: 'Turn 2: Add recovery tests' }))
   expect(onSelect).toHaveBeenCalledWith(1)
@@ -27,7 +26,7 @@ it('selects any turn directly and identifies the current turn', () => {
 })
 it('supports keyboard navigation and clamps at the boundaries', () => {
   const onSelect = vi.fn()
-  render(createElement(Theme, {}, createElement(ConversationNav, { turns, index: 1, onSelect })))
+  render(createElement(ConversationNav, { turns, index: 1, onSelect }))
   const marker = screen.getByRole('button', { name: 'Turn 2: Add recovery tests' })
   fireEvent.keyDown(marker, { key: 'ArrowUp' })
   expect(onSelect).toHaveBeenLastCalledWith(0)

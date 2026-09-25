@@ -71,19 +71,19 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
-button:not(.rt-reset),
-input:not(.rt-reset),
+button,
+input,
 textarea,
-select:not(.rt-reset) {
+select {
   color: inherit;
 }
-button:not(.rt-reset) {
+button {
   border: 1px solid var(--hairline);
   background: transparent;
   border-radius: 6px;
   padding: 5px 9px;
 }
-button:not(.rt-reset):hover:not(:disabled) {
+button:hover:not(:disabled) {
   background: var(--surface-card);
 }
 button:focus-visible,
@@ -92,23 +92,13 @@ input:focus-visible {
   outline: 1px solid var(--mute);
   outline-offset: 2px;
 }
-.rt-TextFieldRoot:focus-within { outline: none; box-shadow: inset 0 0 0 1px var(--mute); }
-.rt-TextFieldInput:focus-visible { outline: none; }
-input:not(.rt-reset),
+input,
 textarea,
-select:not(.rt-reset) {
+select {
   background: var(--surface-card);
   border: 1px solid var(--hairline);
   border-radius: 8px;
   padding: 9px 12px;
-}
-.radix-themes {
-  --default-font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  --cursor-button: pointer;
-}
-.radix-themes[data-is-root-theme='true'] {
-  background: var(--canvas);
-  color: var(--ink);
 }
 * {
   scrollbar-width: thin;
@@ -118,14 +108,14 @@ select:not(.rt-reset) {
   padding: 8px 12px 12px;
   gap: 8px;
 }
-.sidebar-top .rt-Button {
+.sidebar-top .astryx-button {
   justify-content: flex-start;
   margin: 0;
   height: 30px;
   padding: 0 8px;
   font-size: 13px;
 }
-.sidebar-top .rt-TextFieldRoot {
+.sidebar-top .astryx-text-input {
   background: transparent;
   box-shadow: none;
   height: 28px;
@@ -221,17 +211,6 @@ button.workspace-toggle:hover:not(:disabled) { background: transparent; }
 }
 .session-dot {
   display: none;
-}
-.session-item > .rt-IconButton {
-  opacity: 0;
-}
-.session-item:hover > .rt-IconButton,
-.session-item:focus-within > .rt-IconButton,
-.session-item > .rt-IconButton[data-state='open'] {
-  opacity: 1;
-}
-@media (hover: none) {
-  .session-item > .rt-IconButton { opacity: 1; }
 }
 .sidebar-hint {
   padding: 6px 12px;
@@ -717,13 +696,6 @@ pre {
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.turn-tooltip {
-  background: var(--sidebar);
-  color: var(--ink);
-  border: 1px solid var(--hairline);
-  box-shadow: 0 8px 24px #0003;
-}
-.turn-tooltip .rt-TooltipArrow { fill: var(--sidebar); }
 .turn-preview > span {
   display: -webkit-box;
   -webkit-line-clamp: 3;
