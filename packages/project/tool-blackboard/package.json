@@ -1,0 +1,15 @@
+{
+  "name": "@tnega/tool-blackboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/artifact-store": "workspace:*",
+    "@tnega/blackboard": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}

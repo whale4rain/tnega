@@ -54,6 +54,9 @@ const packageDirs = {
   thread: 'packages/project/thread',
   'thread-local': 'packages/project/thread-local',
   'project-loop': 'packages/loop/project-loop',
+  'tool-box': 'packages/project/tool-box',
+  'tool-thread': 'packages/project/tool-thread',
+  'tool-blackboard': 'packages/project/tool-blackboard',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -79,6 +82,9 @@ const libraryEntries = {
   thread: `${packageDir('thread')}/src/index.ts`,
   'thread-local': `${packageDir('thread-local')}/src/index.ts`,
   'project-loop': `${packageDir('project-loop')}/src/index.ts`,
+  'tool-box': `${packageDir('tool-box')}/src/index.ts`,
+  'tool-thread': `${packageDir('tool-thread')}/src/index.ts`,
+  'tool-blackboard': `${packageDir('tool-blackboard')}/src/index.ts`,
   subagent: `${packageDir('subagent')}/src/index.ts`,
   'subagent-local': `${packageDir('subagent-local')}/src/index.ts`,
   search: `${packageDir('search')}/src/index.ts`,

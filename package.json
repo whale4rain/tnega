@@ -140,6 +140,18 @@
       "types": "./dist/types/packages/search/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"
     },
+    "./tool-box": {
+      "types": "./dist/types/packages/project/tool-box/src/index.d.ts",
+      "import": "./dist/tool-box.js"
+    },
+    "./tool-thread": {
+      "types": "./dist/types/packages/project/tool-thread/src/index.d.ts",
+      "import": "./dist/tool-thread.js"
+    },
+    "./tool-blackboard": {
+      "types": "./dist/types/packages/project/tool-blackboard/src/index.d.ts",
+      "import": "./dist/tool-blackboard.js"
+    },
     "./thread": {
       "types": "./dist/types/packages/project/thread/src/index.d.ts",
       "import": "./dist/thread.js"

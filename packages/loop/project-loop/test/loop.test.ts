@@ -85,8 +85,12 @@ it('delivers a user message into the coordinator Session and publishes its reply
     // 回复挂在触发它的用户消息上：主对话按因果关系就能还原成一条时间线。
     const userMessage = (await timeline(ctx)).find(entry => entry.kind === 'user-message')!
     expect(reply.causationId).toBe(userMessage.messageId)
-    expect(await ctx.box.delivery(userMessage.messageId, agentAddress(coordinator.id)))
-      .toMatchObject({ status: 'acked' })
+    // 发布回复与确认投递是两条路径（前者看 Session，后者看 Box），分别等它们落定。
+    await waitFor(
+      async () => (await ctx.box.delivery(userMessage.messageId, agentAddress(coordinator.id)))
+        ?.status === 'acked' ? true : undefined,
+      'the delivery to be acked',
+    )
 
     const session = await ctx.threads.activate(coordinator.id)
     const events = await session.session.read()
@@ -116,12 +120,17 @@ it('accepts two user messages while the coordinator has not replied yet', async 
       'the coordinator reply',
     )
     const agent = await ctx.threads.activate(coordinator.id)
-    const events = await agent.session.read()
-    const texts = events
-      .filter(event => event.type === 'user/message')
-      .map(event => event.payload.content)
-    // 两条都进了模型可见历史，一条都没丢。
-    expect(texts).toEqual(['first thing', 'and also this'])
+    // 两条都在协调者的模型可见历史里，一条都没丢。它们可能落在同一轮（第二条以 steer
+    // 进入），也可能各起一轮 —— 顺序不变，缺席才是问题。
+    await waitFor(
+      async () => {
+        const texts = (await agent.session.read())
+          .filter(event => event.type === 'user/message')
+          .map(event => event.payload.content)
+        return texts.length === 2 ? texts : undefined
+      },
+      'both user messages to be admitted',
+    ).then(texts => expect(texts).toEqual(['first thing', 'and also this']))
   } finally {
     await ctx.fiber.dispose()
   }
@@ -136,7 +145,8 @@ it('continues the parent automatically when a child thread finishes', async () =
     await ctx.box.send({
       sender: agentAddress(coordinator.id),
       recipients: [agentAddress(child.id)],
-      placement: { kind: 'thread', threadId: child.id },
+      // 派工在时间线上的位置就是卡片的位置：它出现在协调者这轮发言之后。
+      placement: { kind: 'main' },
       kind: 'dispatch',
       text: 'Summarise section 2 and report back.',
       threadId: child.id,
@@ -153,10 +163,22 @@ it('continues the parent automatically when a child thread finishes', async () =
       'the child thread to settle',
     )
 
-    // 子 Thread 的详细输出留在自己的面板，主对话只出现协调者的回复。
-    const threadReplies = (await timeline(ctx))
-      .filter(entry => entry.placement.kind === 'thread')
-    expect(threadReplies.map(entry => entry.kind)).toEqual(['dispatch', 'agent-reply', 'complete'])
+    // 子 Thread 的详细输出留在自己的面板：主对话里只有派工卡片和协调者自己的发言。
+    await waitFor(
+      async () => (await timeline(ctx))
+        .some(entry => entry.placement.kind === 'main'
+          && entry.kind === 'agent-reply'
+          && entry.sender.id === coordinator.id)
+        ? true
+        : undefined,
+      'the coordinator to report back in the main conversation',
+    )
+    const main = await timeline(ctx)
+    expect(main.filter(entry => entry.placement.kind === 'main').map(entry => entry.kind))
+      .toEqual(['dispatch', 'agent-reply'])
+    expect(main.filter(entry => entry.placement.kind === 'main')
+      .some(entry => entry.sender.kind === 'agent' && entry.sender.id === child.id)).toBe(false)
+    expect(main.find(entry => entry.kind === 'dispatch')).toMatchObject({ threadId: child.id })
 
     const parent = await ctx.threads.activate(coordinator.id)
     await waitFor(
