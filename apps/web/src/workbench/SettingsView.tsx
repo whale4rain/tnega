@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Button, Select, TextField } from '@radix-ui/themes'
+import { Button } from '@astryxdesign/core/Button'
+import { NumberInput } from '@astryxdesign/core/NumberInput'
+import { Selector } from '@astryxdesign/core/Selector'
+import { TextInput } from '@astryxdesign/core/TextInput'
 import * as api from '../api'
 import type { ConfigSnapshot } from '../types'
 
@@ -13,7 +16,7 @@ export function SettingsView({ config, onSaved, onReload }: SettingsViewProps) {
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
-  const [temperature, setTemperature] = useState('')
+  const [temperature, setTemperature] = useState<number | null>(null)
   const [protocol, setProtocol] = useState<'auto' | 'openai' | 'anthropic'>('auto')
   const [reasoningEffort, setReasoningEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default')
   const [saved, setSaved] = useState(false)
@@ -29,11 +32,7 @@ export function SettingsView({ config, onSaved, onReload }: SettingsViewProps) {
     setModel(config.config.model ?? config.effective.modelId)
     setProtocol(config.config.protocol ?? 'auto')
     setReasoningEffort(config.config.reasoningEffort ?? 'default')
-    setTemperature(
-      config.config.temperature === undefined
-        ? ''
-        : String(config.config.temperature),
-    )
+    setTemperature(config.config.temperature ?? null)
   }, [config])
 
   async function submit() {
@@ -48,10 +47,8 @@ export function SettingsView({ config, onSaved, onReload }: SettingsViewProps) {
     else patch.model = ''
     patch.protocol = protocol === 'auto' ? '' : protocol
     patch.reasoningEffort = selectedEffort === 'default' ? '' : selectedEffort
-    if (temperature.trim()) {
-      const value = Number(temperature)
-      if (Number.isFinite(value)) patch.temperature = value
-    }
+    // An empty field means "leave it to the provider", so nothing is sent for it.
+    if (temperature !== null) patch.temperature = temperature
     try {
       const next = await api.saveConfig(patch)
       onSaved(next)
@@ -82,98 +79,71 @@ export function SettingsView({ config, onSaved, onReload }: SettingsViewProps) {
         </span>
       </div>
       <div className="settings-grid">
-        <label className="field">
-          <span>API key</span>
-          <TextField.Root
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder={config?.apiKeySet ? '********' : 'not set'}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <span className="field-note">
-            {config?.apiKeySet ? '[set]' : '[not set]'}
-          </span>
-        </label>
-        <label className="field">
-          <span>Base URL</span>
-          <TextField.Root
-            type="text"
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-            spellCheck={false}
-          />
-          <span className="field-note">
-            env: {config?.env.baseUrl ?? 'none'}
-          </span>
-        </label>
-        <label className="field">
-          <span>Model</span>
-          <TextField.Root
-            type="text"
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-            list="model-options"
-            spellCheck={false}
-          />
-          <datalist id="model-options">
-            {config?.models.map((option) => (
-              <option key={option.id} value={option.id} />
-            ))}
-          </datalist>
-          <span className="field-note">env: {config?.env.model ?? 'none'}</span>
-        </label>
-        <label className="field">
-          <span>Protocol</span>
-          <Select.Root value={protocol} onValueChange={value => {
+        <TextInput
+          label="API key"
+          type="password"
+          value={apiKey}
+          onChange={setApiKey}
+          placeholder={config?.apiKeySet ? '********' : 'not set'}
+          autoComplete="off"
+          description={config?.apiKeySet ? '[set]' : '[not set]'}
+        />
+        <TextInput
+          label="Base URL"
+          value={baseUrl}
+          onChange={setBaseUrl}
+          description={`env: ${config?.env.baseUrl ?? 'none'}`}
+        />
+        <TextInput
+          label="Model"
+          value={model}
+          onChange={setModel}
+          description={`env: ${config?.env.model ?? 'none'}`}
+        />
+        <Selector
+          label="Protocol"
+          value={protocol}
+          options={[
+            { value: 'auto', label: 'Auto' },
+            { value: 'openai', label: 'OpenAI compatible' },
+            { value: 'anthropic', label: 'Anthropic compatible' },
+          ]}
+          onChange={value => {
             if (value === 'auto' || value === 'openai' || value === 'anthropic') setProtocol(value)
-          }}>
-            <Select.Trigger aria-label="Model protocol" />
-            <Select.Content>
-              <Select.Item value="auto">Auto</Select.Item>
-              <Select.Item value="openai">OpenAI compatible</Select.Item>
-              <Select.Item value="anthropic">Anthropic compatible</Select.Item>
-            </Select.Content>
-          </Select.Root>
-        </label>
-        <label className="field">
-          <span>Default thinking</span>
-          <Select.Root value={selectedEffort} onValueChange={value => {
+          }}
+        />
+        <Selector
+          label="Default thinking"
+          value={selectedEffort}
+          isDisabled={supportedEfforts.length === 0}
+          options={[
+            { value: 'default', label: 'Model default' },
+            ...supportedEfforts.map(effort => ({ value: effort, label: effort })),
+          ]}
+          onChange={value => {
             if (value === 'default' || value === 'low' || value === 'medium' || value === 'high') setReasoningEffort(value)
-          }} disabled={supportedEfforts.length === 0}>
-            <Select.Trigger aria-label="Default thinking effort" />
-            <Select.Content>
-              <Select.Item value="default">Model default</Select.Item>
-              {supportedEfforts.map(effort => <Select.Item key={effort} value={effort}>{effort}</Select.Item>)}
-            </Select.Content>
-          </Select.Root>
-          <span className="field-note">Applied only when the model supports effort.</span>
-        </label>
-        <label className="field">
-          <span>Temperature</span>
-          <TextField.Root
-            type="number"
-            step="0.1"
-            min="0"
-            max="2"
-            value={temperature}
-            onChange={(event) => setTemperature(event.target.value)}
-            placeholder={
-              config?.effective.temperature === undefined
-                ? 'default'
-                : String(config.effective.temperature)
-            }
-          />
-          <span className="field-note">
-            effective: {config?.effective.model ?? '-'}
-          </span>
-        </label>
+          }}
+          description="Applied only when the model supports effort."
+        />
+        <NumberInput
+          label="Temperature"
+          value={temperature}
+          onChange={setTemperature}
+          min={0}
+          max={2}
+          step={0.1}
+          placeholder={
+            config?.effective.temperature === undefined
+              ? 'default'
+              : String(config.effective.temperature)
+          }
+          description={`effective: ${config?.effective.model ?? '-'}`}
+        />
       </div>
       <div className="settings-profiles">
         <div className="settings-profiles-heading">
           <strong>Selectable models</strong>
-          <Button size="1" variant="ghost" color="gray" onClick={() => void reload()}>Reload file</Button>
+          <Button label="Reload file" variant="ghost" size="sm" onClick={() => void reload()} />
         </div>
         <p>Configure multiple model routes in the <code>models</code> array of:</p>
         <code className="settings-config-path">{config?.config.path ?? 'Loading…'}</code>
@@ -190,20 +160,16 @@ export function SettingsView({ config, onSaved, onReload }: SettingsViewProps) {
         <div className="error-banner" role="alert">
           <span className="marker">[!]</span>
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} title="dismiss">
-            [x]
-          </button>
+          <Button label="Dismiss" variant="ghost" size="sm" onClick={() => setError(null)} />
         </div>
       )}
       <div className="settings-actions">
         <Button
-          type="button"
           className="button-primary"
+          label={busy ? 'Saving…' : 'Save settings'}
           onClick={() => void submit()}
-          disabled={busy || !config}
-        >
-          {busy ? 'Saving…' : 'Save settings'}
-        </Button>
+          isDisabled={busy || !config}
+        />
         {saved && <span className="saved-note">saved</span>}
       </div>
     </div>
