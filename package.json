@@ -40,6 +40,14 @@
       "types": "./dist/types/packages/project/blackboard-local/src/index.d.ts",
       "import": "./dist/blackboard-local.js"
     },
+    "./box": {
+      "types": "./dist/types/packages/project/box/src/index.d.ts",
+      "import": "./dist/box.js"
+    },
+    "./box-blackboard": {
+      "types": "./dist/types/packages/project/box-blackboard/src/index.d.ts",
+      "import": "./dist/box-blackboard.js"
+    },
     "./coding-agent": {
       "types": "./dist/types/packages/coding-agent/src/index.d.ts",
       "import": "./dist/coding-agent.js"

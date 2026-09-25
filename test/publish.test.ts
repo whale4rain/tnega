@@ -85,6 +85,8 @@ describe('packed artifact', () => {
       'artifact-store',
       'blackboard',
       'blackboard-local',
+      'box',
+      'box-blackboard',
       'cli/runtime',
       'coding-agent',
       'core',

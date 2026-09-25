@@ -345,6 +345,27 @@ importers:
         specifier: workspace:*
         version: link:../../core
 
+  packages/project/box:
+    dependencies:
+      '@tnega/artifact-store':
+        specifier: workspace:*
+        version: link:../artifact-store
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/project/box-blackboard:
+    dependencies:
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/box':
+        specifier: workspace:*
+        version: link:../box
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
   packages/project/project:
     dependencies:
       '@tnega/core':
