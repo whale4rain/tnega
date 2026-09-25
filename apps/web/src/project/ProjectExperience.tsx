@@ -80,20 +80,41 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   const activityItems = useMemo(() => {
     const lastTurnStart = [...coordinatorEvents].reverse().find(event => event.type === 'turn/start')?.seq ?? 0
     const turnEvents = coordinatorEvents.filter(event => event.seq >= lastTurnStart)
-    const received = new Map<string, string>()
-    for (const event of turnEvents) {
-      if (event.type !== 'user/message' || !event.payload.name?.startsWith('box:')) continue
-      const messageId = event.payload.name.slice(4)
-      if (view?.messages.some(message => message.messageId === messageId)) continue
-      received.set(event.id, `Message received from a thread:\n${event.payload.content}`)
-    }
-    const visible: DisplayMessage[] = projectEvents(turnEvents).flatMap(message => {
-      if (message.role === 'tool' || message.role === 'subagent') return [message]
-      const content = received.get(message.id)
-      return content ? [{ id: message.id, role: 'system' as const, content }] : []
-    })
+    const visible: DisplayMessage[] = projectEvents(turnEvents)
+      .filter(message => message.role === 'tool' || message.role === 'subagent')
     return groupToolMessages(visible)
-  }, [coordinatorEvents, view])
+  }, [coordinatorEvents])
+  const inboxCards = useMemo(() => {
+    const cards = new Map<string, DisplayMessage>()
+    for (const envelope of view?.inboxMessages ?? []) {
+      if (envelope.sender.kind !== 'agent' || envelope.sender.id === view?.coordinatorId) continue
+      const thread = view?.threads.find(item => item.id === envelope.sender.id)
+      let card = cards.get(envelope.sender.id)
+      if (!card) {
+        card = {
+          id: `inbox-${envelope.sender.id}`,
+          role: 'subagent',
+          content: '',
+          subagent: {
+            id: envelope.sender.id,
+            label: thread?.label ?? 'Subagent',
+            task: thread?.goal ?? '',
+            mode: 'spawn',
+            status: 'running',
+            replies: [],
+          },
+        }
+        cards.set(envelope.sender.id, card)
+      }
+      card.subagent?.replies.push(envelope.text)
+      if (card.subagent) {
+        card.subagent.status = envelope.kind === 'complete' ? 'ready'
+          : envelope.kind === 'failed' ? 'failed'
+            : envelope.kind === 'blocked' || envelope.kind === 'request' ? 'idle' : 'running'
+      }
+    }
+    return [...cards.values()]
+  }, [view])
   const flush = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scheduleFlush = useCallback(() => {
     if (flush.current) return
@@ -410,6 +431,13 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                   ? <MessageBlock key={item.message.id} message={item.message} />
                   : <MessageBlock key={item.message.id} message={item.message} assistantLabel="Inbox" />
               )}
+              {inboxCards.map(message => (
+                <MessageBlock
+                  key={message.id}
+                  message={message}
+                  onOpenSubagent={id => setThreadId(id)}
+                />
+              ))}
               {view && !view.messages.length && (
                 <div className="conversation-welcome">
                   <ListTodo size={28} strokeWidth={1.4} />

@@ -65,6 +65,8 @@ export interface ProjectSnapshot {
   threads: ThreadRecord[]
   /** 主对话时间线：用户发言、协调者发言与 Thread 卡片。 */
   messages: BoxEnvelope[]
+  /** 发给 coordinator 的子 Agent inbox 信封；前端将其归入对应的 Subagent 卡片。 */
+  inboxMessages: BoxEnvelope[]
   memory: FactRecord[]
   library: { artifacts: FactRecord[]; resources: FactRecord[] }
 }
@@ -144,15 +146,19 @@ export class ProjectHost {
   async snapshot(projectId: string): Promise<ProjectSnapshot> {
     const project = await this.mount(projectId)
     const facts = await project.blackboard.list('message')
-    const messages = facts
-      .map(fact => fact.data as BoxEnvelope)
-      .filter(envelope => envelope.placement.kind === 'main')
+    const envelopes = facts.map(fact => fact.data as BoxEnvelope)
+    const messages = envelopes.filter(envelope => envelope.placement.kind === 'main')
+    const inboxMessages = envelopes.filter(envelope => envelope.sender.kind === 'agent'
+      && envelope.sender.id !== project.record.coordinatorId
+      && envelope.recipients.some(recipient => recipient.kind === 'agent'
+        && recipient.id === project.record.coordinatorId))
     return {
       project: project.record,
       coordinatorId: project.record.coordinatorId,
       cursor: facts.reduce((max, fact) => Math.max(max, fact.seq), 0),
       threads: await project.threads.list(),
       messages,
+      inboxMessages,
       memory: await project.blackboard.list('memory'),
       library: {
         artifacts: await project.blackboard.list('artifact'),

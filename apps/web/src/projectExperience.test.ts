@@ -18,6 +18,7 @@ interface Connection {
 let connections: Connection[] = []
 let push: ((event: ProjectStreamEvent) => void) | undefined
 let coordinatorEvents: SessionEvent[] = []
+let childInboxMessages: BootEnvelope[] = []
 
 beforeEach(() => {
   localStorage.clear()
@@ -61,6 +62,7 @@ afterEach(() => {
   cleanup()
   connections = []
   coordinatorEvents = []
+  childInboxMessages = []
   push = undefined
   vi.unstubAllGlobals()
 })
@@ -113,6 +115,7 @@ function snapshot() {
       updatedAt: 1,
     }],
     messages: [envelope('Summarise the release notes', 'user-message', { kind: 'user', id: 'user' })],
+    inboxMessages: childInboxMessages,
     memory: [],
     library: { artifacts: [], resources: [] },
   }
@@ -246,12 +249,17 @@ it('shows coordinator tool calls from its existing Session log', async () => {
   expect((await screen.findAllByText('list_threads')).length).toBeGreaterThan(0)
 })
 
-it('shows child inbox messages from the coordinator Session log', async () => {
-  coordinatorEvents = [
-    sessionEvent('turn/start', { turn: 1 }, 1),
-    sessionEvent('user/message', { name: 'box:child-message', content: 'Child is still working.' }, 2),
-  ]
+it('renders child inbox messages as a Subagent card', async () => {
+  childInboxMessages = [envelope(
+    'Child is still working.',
+    'progress',
+    { kind: 'agent', id: '33333333-3333-4333-8333-333333333333' },
+    { placement: { kind: 'thread', threadId: '33333333-3333-4333-8333-333333333333' } },
+  )]
   await openProject()
-  expect(await screen.findByText(/Message received from a thread:/)).toBeTruthy()
-  expect(screen.getByText(/Child is still working\./)).toBeTruthy()
+  const card = screen.getByRole('button', { name: /Subagent.*Child is still working\./ })
+  expect(card.closest('.subagent-card')).toBeTruthy()
+  expect(screen.queryByText(/Message received from a thread:/)).toBeNull()
+  fireEvent.click(card)
+  expect(screen.getAllByText(/Child is still working\./).length).toBeGreaterThan(0)
 })

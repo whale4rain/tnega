@@ -19,6 +19,7 @@ export interface ProjectView {
   cursor: number
   threads: ThreadRecord[]
   messages: BootEnvelope[]
+  inboxMessages: BootEnvelope[]
   memory: Array<FactRecord>
   artifacts: Array<FactRecord>
   resources: Array<FactRecord>
@@ -60,6 +61,7 @@ export function fromSnapshot(snapshot: ProjectSnapshot): ProjectView {
     cursor: snapshot.cursor,
     threads: [...snapshot.threads].sort((a, b) => a.createdAt - b.createdAt),
     messages: [...snapshot.messages].sort((a, b) => a.createdAt - b.createdAt),
+    inboxMessages: [...snapshot.inboxMessages].sort((a, b) => a.createdAt - b.createdAt),
     memory: snapshot.memory,
     artifacts: snapshot.library.artifacts,
     resources: snapshot.library.resources,
@@ -84,8 +86,19 @@ export function applyStreamEvent(view: ProjectView, event: ProjectStreamEvent): 
     return { ...view, approvals: [...view.approvals, { id: event.id, tool: event.tool, input: event.input }] }
   }
   if (event.type === 'message') {
-    const merged = mergeMessage(view, event.envelope)
     const cursor = Math.max(view.cursor, event.seq)
+    const envelope = event.envelope
+    const isMain = envelope.placement.kind === 'main'
+    const isCoordinatorInbox = envelope.sender.kind === 'agent'
+      && envelope.sender.id !== view.coordinatorId
+      && envelope.recipients.some(recipient => recipient.kind === 'agent'
+        && recipient.id === view.coordinatorId)
+    const merged = isMain
+      ? mergeMessage(view, envelope)
+      : isCoordinatorInbox && !view.inboxMessages.some(message => message.messageId === envelope.messageId)
+        ? { ...view, inboxMessages: [...view.inboxMessages, envelope]
+          .sort((a, b) => a.createdAt - b.createdAt) }
+        : view
     // 重复的一帧（重连补投）原样返回同一个对象，避免无意义的重渲染。
     if (merged === view && cursor === view.cursor) return view
     return { ...merged, cursor }

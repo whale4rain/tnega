@@ -57,6 +57,7 @@ function snapshot(): ProjectSnapshot {
     cursor: 4,
     threads: [thread(coordinatorId)],
     messages: [envelope()],
+    inboxMessages: [],
     memory: [],
     library: { artifacts: [], resources: [] },
   }
@@ -85,6 +86,24 @@ describe('project view', () => {
       .toEqual(['Summarise the release notes', 'notes look good'])
     // 同一帧重放是空操作 —— 重连补投不该画出两条。
     expect(applyStreamEvent(next, { type: 'message', seq: 9, envelope: reply })).toBe(next)
+  })
+
+  it('keeps child inbox messages out of the main conversation', () => {
+    const view = fromSnapshot(snapshot())
+    const reply = envelope({
+      messageId: 'cccccccccccccccccccccccccccccccc',
+      sender: { kind: 'agent', id: childId },
+      recipients: [{ kind: 'agent', id: coordinatorId }],
+      placement: { kind: 'thread', threadId: childId },
+      kind: 'complete',
+      text: 'Child result',
+      createdAt: 20,
+    })
+
+    const next = applyStreamEvent(view, { type: 'message', seq: 9, envelope: reply })
+
+    expect(next.messages.map(entry => entry.text)).toEqual(['Summarise the release notes'])
+    expect(next.inboxMessages).toEqual([reply])
   })
 
   it('moves a thread card with the thread record, not with model text', () => {

@@ -80,6 +80,8 @@ export interface ProjectSnapshot {
   cursor: number
   threads: ThreadRecord[]
   messages: BootEnvelope[]
+  /** 子 Agent 发给 coordinator 的 Box inbox 消息；主时间线中显示为 Subagent 卡片。 */
+  inboxMessages: BootEnvelope[]
   memory: Array<FactRecord>
   library: { artifacts: Array<FactRecord>; resources: Array<FactRecord> }
 }
