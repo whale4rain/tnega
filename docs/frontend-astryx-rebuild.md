@@ -20,6 +20,10 @@ Rebuild the existing Tnega frontend progressively with Astryx as the primary com
 - `apps/web/src/conversation/ChatView.tsx` and `apps/web/src/project/ProjectExperience.tsx` own conversation and project experiences.
 - `apps/web/src/styles.css` contains the current global tokens and layout/component styling.
 
+## Current component exception
+
+- Project rows inside `WorkspaceSidebar` remain Tnega-specific. Astryx `ListItem` supports either a row action or content, and its guidance warns against nesting the row's project-navigation action with the separate overflow menu. The surrounding project lists keep their semantic list and row layout; their icon controls, action menus, and dialogs use Astryx.
+
 ## Astryx guidance
 
 The app uses React 19, which meets Astryx's React 19+ requirement. Astryx documents matching primitives for this product, including App Shell, Side Nav, Chat Layout, Chat Composer, Chat Message, Chat Tool Calls, Dialog, Tab List, Text Input, Text Area, Button, and Icon Button. Verify exact exports and props through the installed Astryx CLI/docs before using them. Retain application-specific React components only where they own Tnega state or behavior that Astryx does not provide.

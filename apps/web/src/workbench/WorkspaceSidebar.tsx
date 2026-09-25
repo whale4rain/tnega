@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import {
-  Button,
-  Dialog,
-  DropdownMenu,
-  IconButton,
-  SegmentedControl,
-  TextField,
-  Tooltip,
-} from '@radix-ui/themes'
+import { Button } from '@astryxdesign/core/Button'
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
+import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@astryxdesign/core/DropdownMenu'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { HStack, Layout, LayoutContent, LayoutFooter, VStack } from '@astryxdesign/core/Layout'
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import { Text } from '@astryxdesign/core/Text'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { Tooltip } from '@astryxdesign/core/Tooltip'
 import {
   Code2,
   Archive,
@@ -84,55 +84,43 @@ export function WorkspaceSidebar(props: Props) {
   return (
     <>
       <div className="sidebar-top flex flex-col">
-        <SegmentedControl.Root
-          size="1"
+        <SegmentedControl
+          size="sm"
           value={agent}
-          onValueChange={(value) => {
+          onChange={(value) => {
             if (value === 'coding' || value === 'general') setAgent(value)
           }}
-          aria-label="New session type"
+          label="New session type"
         >
-          <SegmentedControl.Item value="general">
-            <span className="flex items-center gap-2">
-              <MessageSquare size={15} /> Chat
-            </span>
-          </SegmentedControl.Item>
-          <SegmentedControl.Item value="coding">
-            <span className="flex items-center gap-2">
-              <Code2 size={15} /> Code
-            </span>
-          </SegmentedControl.Item>
-        </SegmentedControl.Root>
+          <SegmentedControlItem value="general" label="Chat" icon={<MessageSquare size={15} />} />
+          <SegmentedControlItem value="coding" label="Code" icon={<Code2 size={15} />} />
+        </SegmentedControl>
         <Button
-          color="gray"
           variant="ghost"
+          label="New session"
+          icon={<Plus size={16} />}
+          size="md"
           onClick={() => void perform(() => props.onNew({ agentType: agent }))}
-          disabled={!props.workspace || busy}
-        >
-          <Plus size={16} /> New session
-        </Button>
-        <TextField.Root
-          aria-label="Search sessions"
+          isDisabled={!props.workspace || busy}
+        />
+        <TextInput
+          label="Search sessions"
+          isLabelHidden
+          startIcon={<Search size={15} />}
           placeholder="Search sessions…"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        >
-          <TextField.Slot>
-            <Search size={15} />
-          </TextField.Slot>
-        </TextField.Root>
+          onChange={setSearch}
+        />
       </div>
       <div className="sidebar-section-label flex items-center justify-between">
         <span>Projects</span>
         <Tooltip content="New project">
           <IconButton
             variant="ghost"
-            color="gray"
-            aria-label="New project"
+            label="New project"
+            icon={<FolderPlus size={16} />}
             onClick={props.onNewProject}
-          >
-            <FolderPlus size={16} />
-          </IconButton>
+          />
         </Tooltip>
       </div>
       {props.projects.some(project => !project.archived) ? (
@@ -153,22 +141,16 @@ export function WorkspaceSidebar(props: Props) {
                     <span className="project-row-folder">{folderName(project.workspace)}</span>
                   </span>
                 </button>
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger>
-                    <IconButton variant="ghost" color="gray" size="1" aria-label={`Project actions: ${project.name}`}>
-                      <MoreHorizontal size={15} />
-                    </IconButton>
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content align="end">
-                    <DropdownMenu.Item onSelect={() => void perform(() => props.onArchiveProject(project, true))}>
-                      <Archive size={14} /> Archive project
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Separator />
-                    <DropdownMenu.Item color="red" onSelect={() => setProjectDeleteTarget(project)}>
-                      <Trash2 size={14} /> Delete project…
-                    </DropdownMenu.Item>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
+                <DropdownMenu
+                  button={{ label: `Project actions: ${project.name}`, icon: <MoreHorizontal size={15} />, variant: 'ghost', isIconOnly: true, size: 'sm' }}
+                  hasChevron={false}
+                  alignment="end"
+                  items={[
+                    { label: 'Archive project', icon: <Archive size={14} />, onClick: () => void perform(() => props.onArchiveProject(project, true)) },
+                    { type: 'divider' },
+                    { label: 'Delete project…', icon: <Trash2 size={14} />, variant: 'destructive', onClick: () => setProjectDeleteTarget(project) },
+                  ]}
+                />
               </div>
             </li>
           ))}
@@ -193,22 +175,16 @@ export function WorkspaceSidebar(props: Props) {
                         <span className="project-row-folder">{folderName(project.workspace)}</span>
                       </span>
                     </button>
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger>
-                        <IconButton variant="ghost" color="gray" size="1" aria-label={`Project actions: ${project.name}`}>
-                          <MoreHorizontal size={15} />
-                        </IconButton>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Content align="end">
-                        <DropdownMenu.Item onSelect={() => void perform(() => props.onArchiveProject(project, false))}>
-                          <ArchiveRestore size={14} /> Restore project
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Separator />
-                        <DropdownMenu.Item color="red" onSelect={() => setProjectDeleteTarget(project)}>
-                          <Trash2 size={14} /> Delete project…
-                        </DropdownMenu.Item>
-                      </DropdownMenu.Content>
-                    </DropdownMenu.Root>
+                    <DropdownMenu
+                      button={{ label: `Project actions: ${project.name}`, icon: <MoreHorizontal size={15} />, variant: 'ghost', isIconOnly: true, size: 'sm' }}
+                      hasChevron={false}
+                      alignment="end"
+                      items={[
+                        { label: 'Restore project', icon: <ArchiveRestore size={14} />, onClick: () => void perform(() => props.onArchiveProject(project, false)) },
+                        { type: 'divider' },
+                        { label: 'Delete project…', icon: <Trash2 size={14} />, variant: 'destructive', onClick: () => setProjectDeleteTarget(project) },
+                      ]}
+                    />
                   </div>
                 </li>
               ))}
@@ -221,12 +197,10 @@ export function WorkspaceSidebar(props: Props) {
         <Tooltip content="Add workspace">
           <IconButton
             variant="ghost"
-            color="gray"
-            aria-label="Add workspace"
+            label="Add workspace"
+            icon={<Plus size={16} />}
             onClick={() => setAdding(true)}
-          >
-            <Plus size={16} />
-          </IconButton>
+          />
         </Tooltip>
       </div>
       <WorkspaceTree
@@ -258,181 +232,120 @@ export function WorkspaceSidebar(props: Props) {
           {error}
         </p>
       )}
-      <footer className="sidebar-footer flex items-center justify-between">
-        <Button variant="ghost" color="gray" onClick={props.onSettings}>
-          <Settings size={16} /> Settings
-        </Button>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            <IconButton aria-label="Appearance" variant="ghost" color="gray">
-              <SunMoon size={16} />
-            </IconButton>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content>
-            <DropdownMenu.RadioGroup
-              value={props.theme}
-              onValueChange={(value) => {
-                if (value === 'light' || value === 'dark' || value === 'system')
-                  props.onTheme(value)
-              }}
-            >
-              {(['light', 'dark', 'system'] as const).map((value) => (
-                <DropdownMenu.RadioItem key={value} value={value}>
-                  {value}
-                </DropdownMenu.RadioItem>
-              ))}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+      <footer className="sidebar-footer">
+        <Button label="Settings" icon={<Settings size={16} />} variant="ghost" onClick={props.onSettings} />
+        <DropdownMenu
+          button={{ label: 'Appearance', icon: <SunMoon size={16} />, variant: 'ghost', isIconOnly: true }}
+          hasChevron={false}
+        >
+          <DropdownMenuRadioGroup value={props.theme} label="Appearance" onChange={value => {
+            if (value === 'light' || value === 'dark' || value === 'system') props.onTheme(value)
+          }}>
+            {(['light', 'dark', 'system'] as const).map(value => (
+              <DropdownMenuRadioItem key={value} value={value} label={value} />
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenu>
       </footer>
-      <Dialog.Root
-        open={adding}
-        onOpenChange={(open) => {
-          setAdding(open)
-          setError('')
-        }}
-      >
-        <Dialog.Content maxWidth="440px">
-          <Dialog.Title>Add workspace</Dialog.Title>
-          <Dialog.Description size="2" mb="4">
-            Choose the local project you want to work on.
-          </Dialog.Description>
-          {error && (
-            <p role="alert" className="danger">
-              {error}
-            </p>
-          )}
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (path.trim())
-                void perform(async () => {
+      <Dialog isOpen={adding} onOpenChange={open => { setAdding(open); setError('') }} purpose="form" width={440}>
+        <Layout
+          height="auto"
+          header={<DialogHeader title="Add workspace" subtitle="Choose the local project you want to work on." onOpenChange={() => setAdding(false)} />}
+          content={
+            <LayoutContent>
+              <form onSubmit={event => {
+                event.preventDefault()
+                if (path.trim()) void perform(async () => {
                   await props.onAdd(path.trim())
                   setAdding(false)
                   setPath('')
                 })
-            }}
-          >
-            <TextField.Root
-              aria-label="Workspace path"
-              placeholder="Absolute project path"
-              value={path}
-              onChange={(event) => setPath(event.target.value)}
-            />
-            <div className="flex justify-end gap-3 mt-4">
-              <Dialog.Close>
-                <Button variant="soft" color="gray">
-                  Cancel
-                </Button>
-              </Dialog.Close>
-              {hasDesktopWorkspacePicker() && (
-                <Button
-                  type="button"
-                  variant="soft"
-                  disabled={busy}
-                  onClick={() =>
-                    void perform(async () => {
-                      const selected = await pickDesktopWorkspace()
-                      if (selected) setPath(selected)
-                    })
-                  }
-                >
-                  Browse…
-                </Button>
-              )}
-              <Button type="submit" disabled={busy || !path.trim()}>
-                Add workspace
-              </Button>
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Root>
-      <Dialog.Root open={deleteTarget !== null} onOpenChange={open => { if (!open && !busy) setDeleteTarget(null) }}>
-        <Dialog.Content maxWidth="420px">
-          <Dialog.Title>Delete session?</Dialog.Title>
-          <Dialog.Description size="2" mb="4">
-            Delete “{deleteTarget?.title || 'Untitled session'}” and its conversation history?
-          </Dialog.Description>
-          {error && <p role="alert" className="danger">{error}</p>}
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="soft" color="gray" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button color="red" disabled={busy} onClick={() => {
+              }}>
+                <VStack gap={3}>
+                  <TextInput label="Workspace path" placeholder="Absolute project path" value={path} onChange={setPath} />
+                  {error && <Text role="alert" className="danger" type="body">{error}</Text>}
+                  <LayoutFooter>
+                    <HStack gap={2} hAlign="end">
+                      <Button label="Cancel" variant="secondary" onClick={() => setAdding(false)} />
+                      {hasDesktopWorkspacePicker() && <Button label="Browse…" variant="secondary" isDisabled={busy} onClick={() => void perform(async () => {
+                        const selected = await pickDesktopWorkspace()
+                        if (selected) setPath(selected)
+                      })} />}
+                      <Button label="Add workspace" type="submit" isDisabled={busy || !path.trim()} />
+                    </HStack>
+                  </LayoutFooter>
+                </VStack>
+              </form>
+            </LayoutContent>
+          }
+        />
+      </Dialog>
+      <Dialog isOpen={deleteTarget !== null} onOpenChange={open => { if (!open && !busy) setDeleteTarget(null) }} purpose="form" width={420}>
+        <Layout
+          height="auto"
+          header={<DialogHeader title="Delete session?" onOpenChange={() => !busy && setDeleteTarget(null)} />}
+          content={<LayoutContent><VStack gap={3}>
+            <Text type="body">Delete “{deleteTarget?.title || 'Untitled session'}” and its conversation history?</Text>
+            {error && <Text role="alert" className="danger" type="body">{error}</Text>}
+          </VStack></LayoutContent>}
+          footer={<LayoutFooter><HStack gap={2} hAlign="end">
+            <Button label="Cancel" variant="secondary" isDisabled={busy} onClick={() => setDeleteTarget(null)} />
+            <Button label="Delete session" variant="destructive" isDisabled={busy} onClick={() => {
               if (!deleteTarget) return
               void perform(async () => {
                 await props.onDelete(deleteTarget.workspace, deleteTarget.id)
                 setDeleteTarget(null)
               })
-            }}>Delete session</Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Root>
-      <Dialog.Root open={projectDeleteTarget !== null} onOpenChange={open => { if (!open && !busy) setProjectDeleteTarget(null) }}>
-        <Dialog.Content maxWidth="440px">
-          <Dialog.Title>Delete project permanently?</Dialog.Title>
-          <Dialog.Description size="2" mb="4">
-            Delete “{projectDeleteTarget?.name}” and all its project data? This cannot be undone.
-          </Dialog.Description>
-          {error && <p role="alert" className="danger">{error}</p>}
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="soft" color="gray" disabled={busy} onClick={() => setProjectDeleteTarget(null)}>Cancel</Button>
-            <Button color="red" disabled={busy} onClick={() => {
+            }} />
+          </HStack></LayoutFooter>}
+        />
+      </Dialog>
+      <Dialog isOpen={projectDeleteTarget !== null} onOpenChange={open => { if (!open && !busy) setProjectDeleteTarget(null) }} purpose="form" width={440}>
+        <Layout
+          height="auto"
+          header={<DialogHeader title="Delete project permanently?" onOpenChange={() => !busy && setProjectDeleteTarget(null)} />}
+          content={<LayoutContent><VStack gap={3}>
+            <Text type="body">Delete “{projectDeleteTarget?.name}” and all its project data? This cannot be undone.</Text>
+            {error && <Text role="alert" className="danger" type="body">{error}</Text>}
+          </VStack></LayoutContent>}
+          footer={<LayoutFooter><HStack gap={2} hAlign="end">
+            <Button label="Cancel" variant="secondary" isDisabled={busy} onClick={() => setProjectDeleteTarget(null)} />
+            <Button label="Delete project" variant="destructive" isDisabled={busy} onClick={() => {
               if (!projectDeleteTarget) return
               void perform(async () => {
                 await props.onDeleteProject(projectDeleteTarget)
                 setProjectDeleteTarget(null)
               })
-            }}>Delete project</Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Root>
-      <Dialog.Root
-        open={rename !== null}
-        onOpenChange={(open) => {
-          if (!open) setRename(null)
-        }}
-      >
-        <Dialog.Content maxWidth="420px">
-          <Dialog.Title>Rename session</Dialog.Title>
-          <Dialog.Description size="2" mb="4">
-            Give this conversation a recognizable name.
-          </Dialog.Description>
-          {error && (
-            <p role="alert" className="danger">
-              {error}
-            </p>
-          )}
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (rename && title.trim())
-                void perform(async () => {
-                  await props.onRename(
-                    rename.workspace,
-                    rename.id,
-                    title.trim(),
-                  )
+            }} />
+          </HStack></LayoutFooter>}
+        />
+      </Dialog>
+      <Dialog isOpen={rename !== null} onOpenChange={open => { if (!open) setRename(null) }} purpose="form" width={420}>
+        <Layout
+          height="auto"
+          header={<DialogHeader title="Rename session" subtitle="Give this conversation a recognizable name." onOpenChange={() => setRename(null)} />}
+          content={
+            <LayoutContent>
+              <form onSubmit={event => {
+                event.preventDefault()
+                if (rename && title.trim()) void perform(async () => {
+                  await props.onRename(rename.workspace, rename.id, title.trim())
                   setRename(null)
                 })
-            }}
-          >
-            <TextField.Root
-              aria-label="Session name"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-            <div className="flex justify-end gap-3 mt-4">
-              <Dialog.Close>
-                <Button variant="soft" color="gray">
-                  Cancel
-                </Button>
-              </Dialog.Close>
-              <Button type="submit" disabled={busy || !title.trim()}>
-                Save
-              </Button>
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Root>
+              }}>
+                <VStack gap={3}>
+                  <TextInput label="Session name" value={title} onChange={setTitle} />
+                  {error && <Text role="alert" className="danger" type="body">{error}</Text>}
+                  <LayoutFooter><HStack gap={2} hAlign="end">
+                    <Button label="Cancel" variant="secondary" onClick={() => setRename(null)} />
+                    <Button label="Save" type="submit" isDisabled={busy || !title.trim()} />
+                  </HStack></LayoutFooter>
+                </VStack>
+              </form>
+            </LayoutContent>
+          }
+        />
+      </Dialog>
     </>
   )
 }

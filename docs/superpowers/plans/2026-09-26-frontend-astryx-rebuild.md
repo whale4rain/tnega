@@ -45,11 +45,11 @@
 - Modify: relevant workspace navigation styles in `apps/web/src/styles.css`
 - Remove or retain: relevant cases from `apps/web/src/workbench/workbench.test.ts` based on whether they exercise retained behavior rather than old markup
 
-- [ ] Use Astryx navigation, tree/list, menu, button, text input, and dialog components where their documented APIs cover current workspace, project, and session interactions.
-- [ ] Keep Tnega-specific grouping, selection, project/session callbacks, and local-storage behavior in the existing application boundary.
-- [ ] Delete obsolete presentation-only tests for replaced navigation markup; retain reusable behavior cases that still describe the user workflow.
-- [ ] Run the web typecheck and the one focused retained navigation test file if its cases still apply.
-- [ ] Commit only navigation implementation and the associated obsolete-test removals.
+- [x] Use Astryx navigation, tree, menu, button, text input, and dialog components where their documented APIs cover current workspace, project, and session interactions. Keep the Tnega project rows because `ListItem`'s documented interaction model does not fit a primary navigation action plus a separate overflow menu; record this exception in the rebuild spec.
+- [x] Keep Tnega-specific grouping, selection, project/session callbacks, and local-storage behavior in the existing application boundary.
+- [x] Delete obsolete presentation-only tests for replaced shell markup; retain reusable workspace/session behavior cases and their updated tree interactions.
+- [x] Run the web typecheck, focused retained navigation tests, and a web build at this substantial local-component milestone.
+- [x] Commit navigation work and obsolete-test removal in independently reviewable commits.
 
 ### Phase 3: Migrate the conversation and project surfaces
 
