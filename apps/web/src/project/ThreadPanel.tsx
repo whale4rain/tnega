@@ -1,140 +1,124 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, TextArea } from '@radix-ui/themes'
-import { Loader2, Send, X } from 'lucide-react'
-import * as api from './api'
-import { MessageBlock, PlanPanel, latestPlanFromEvents, projectEvents } from './reuse'
+import { useMemo } from 'react'
+import { ChevronRight, Loader2, X } from 'lucide-react'
+import { Composer, type ComposerProps } from './Composer'
+import { projectEvents, type DisplayMessage } from './reuse'
 import { threadStateLabel } from './state'
-import type { ThreadDetail, ThreadRecord, ThreadState } from './types'
+import { markOf } from './MainWorkspace'
+import type { PlanStep } from './steps'
+import type { SessionEvent, ThreadRecord } from './types'
 
-const POLL_MS = 1_500
+export interface ThreadPanelProps {
+  thread?: ThreadRecord
+  steps: readonly PlanStep[]
+  events: readonly SessionEvent[]
+  loading: boolean
+  onClose: () => void
+  composer: ComposerProps
+}
 
 /**
- * 侧边的 Thread 面板：这个 Agent 自己的 Session、步骤、输入与产物。
+ * Thread 面板：一个 Thread 自己的执行视图。
  *
- * 它读的是**该 Agent 的 Session 事件**，不是主对话：主对话只由协调者发言，子 Thread 的
- * 详细输出留在它自己这里。用户在这里的留言进它的 inbox，回复也留在它的面板上。
+ * 面包屑说明「你在哪」，上下文块说明「它被交代了什么」，计划卡片说明「它做到哪一步」，
+ * 下面才是对话本身。计划与工具状态都是结构化对象，不是从回复正文里读出来的。
  */
-export function ThreadPanel({
-  workspace,
-  projectId,
-  threadId,
-  state,
-  onClose,
-  onThread,
-}: {
-  workspace: string
-  projectId: string
-  threadId: string
-  /** 该 Thread 的当前状态，来自主对话那条流；卡片与这里始终是同一个事实。 */
-  state: ThreadState
-  onClose: () => void
-  onThread: (thread: ThreadRecord) => void
-}) {
-  const [detail, setDetail] = useState<ThreadDetail | null>(null)
-  const [draft, setDraft] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const scroller = useRef<HTMLDivElement>(null)
-  const wanted = useRef(threadId)
-  wanted.current = threadId
+export function ThreadPanel(props: ThreadPanelProps) {
+  const transcript = useMemo(() => projectEvents([...props.events]), [props.events])
+  const { thread } = props
 
-  const refresh = useCallback(async () => {
-    const next = await api.getThread(workspace, projectId, threadId)
-    if (wanted.current !== threadId) return next
-    setDetail(next)
-    onThread(next.thread)
-    return next
-  }, [workspace, projectId, threadId, onThread])
-
-  useEffect(() => {
-    setDetail(null)
-    void refresh().catch((reason: unknown) => {
-      if (wanted.current === threadId) setError(messageOf(reason))
-    })
-  }, [refresh, threadId])
-
-  // 正在跑的 Thread 自己会写 Session；在它停下来之前按固定间隔补齐。
-  useEffect(() => {
-    if (state !== 'working') return
-    const timer = setInterval(() => {
-      void refresh().catch(() => undefined)
-    }, POLL_MS)
-    return () => clearInterval(timer)
-  }, [state, refresh])
-
-  const messages = useMemo(() => projectEvents(detail?.events ?? []), [detail])
-  const plan = useMemo(() => latestPlanFromEvents(detail?.events ?? []), [detail])
-
-  useEffect(() => {
-    const node = scroller.current
-    if (node) node.scrollTop = node.scrollHeight
-  }, [messages.length])
-
-  async function send() {
-    const text = draft.trim()
-    if (!text) return
-    setBusy(true)
-    setError(null)
-    try {
-      await api.sendThreadMessage(workspace, projectId, threadId, text)
-      setDraft('')
-      await refresh()
-    } catch (reason) {
-      setError(messageOf(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const thread = detail?.thread
   return (
     <aside className="thread-panel" aria-label="Thread">
-      <header className="thread-panel-header">
-        <div className="thread-panel-title">
-          <span className="thread-panel-name">{thread?.label ?? 'Thread'}</span>
-          <span className="thread-panel-state" data-state={state}>
-            {threadStateLabel(state)}
-            {state === 'working' && <Loader2 size={12} className="spin" aria-hidden="true" />}
-          </span>
-        </div>
-        <button type="button" className="icon-button" onClick={onClose} aria-label="Close thread">
-          <X size={16} aria-hidden="true" />
+      <header className="thread-panel-head">
+        <nav className="breadcrumb" aria-label="Breadcrumb">
+          <span>Threads</span>
+          <ChevronRight size={12} aria-hidden="true" />
+          <span className="breadcrumb-current">{thread?.label ?? 'Thread'}</span>
+        </nav>
+        <button type="button" className="icon-button" onClick={props.onClose} aria-label="Close thread">
+          <X size={15} aria-hidden="true" />
         </button>
       </header>
-      <p className="thread-panel-goal">{thread?.goal}</p>
-      <p className="thread-panel-meta">
-        {thread?.permission ?? 'read-only'} · depth {thread?.depth ?? 0} · {threadId}
-      </p>
-      {thread?.detail && <p className="thread-panel-detail">{thread.detail}</p>}
-      {error && <div className="thread-panel-error" role="alert">{error}</div>}
-      <div className="thread-panel-scroll" ref={scroller}>
-        <PlanPanel plan={plan} />
-        {messages.map(message => (
-          <MessageBlock key={message.id} message={message} assistantLabel={thread?.label ?? 'Thread'} />
-        ))}
-        {!messages.length && <p className="thread-panel-empty">Nothing yet — this thread has not run.</p>}
+
+      <div className="thread-panel-scroll">
+        <section className="panel-card context-card">
+          <div className="context-row">
+            <span className="context-label">State</span>
+            <span className="context-value">
+              {thread ? threadStateLabel(thread.state) : 'loading'}
+              {thread?.state === 'working' && <Loader2 size={11} className="spin" aria-hidden="true" />}
+            </span>
+          </div>
+          <div className="context-row">
+            <span className="context-label">Goal</span>
+            <span className="context-value">{thread?.goal ?? '—'}</span>
+          </div>
+          {thread?.expect && (
+            <div className="context-row">
+              <span className="context-label">Expects</span>
+              <span className="context-value">{thread.expect}</span>
+            </div>
+          )}
+          <div className="context-row">
+            <span className="context-label">Permission</span>
+            <span className="context-value">{thread?.permission ?? 'read-only'}</span>
+          </div>
+          {thread?.detail && (
+            <div className="context-row">
+              <span className="context-label">Latest</span>
+              <span className="context-value">{thread.detail}</span>
+            </div>
+          )}
+        </section>
+
+        {!!props.steps.length && (
+          <section className="panel-card">
+            <h3 className="panel-card-title">Execution plan</h3>
+            <ol className="steps">
+              {props.steps.map(step => (
+                <li key={step.id} data-mark={step.mark} title={step.detail}>
+                  <span className="step-mark" aria-hidden="true">{markOf(step.mark)}</span>
+                  <span className="step-title">{step.title}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        <section className="panel-card thread-transcript">
+          {props.loading && !transcript.length && <p className="panel-empty">Loading…</p>}
+          {!props.loading && !transcript.length && (
+            <p className="panel-empty">Nothing yet — this thread has not run.</p>
+          )}
+          {transcript.map(message => (
+            <TranscriptRow key={message.id} message={message} />
+          ))}
+        </section>
       </div>
-      <div className="thread-panel-composer">
-        <TextArea
-          value={draft}
-          placeholder="Tell this thread something, or ask where it is."
-          onChange={event => setDraft(event.target.value)}
-          onKeyDown={event => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              void send()
-            }
-          }}
-        />
-        <Button onClick={() => void send()} disabled={busy || !draft.trim()}>
-          <Send size={14} aria-hidden="true" />
-          Send
-        </Button>
-      </div>
+
+      <Composer {...props.composer} />
     </aside>
   )
 }
 
-function messageOf(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason)
+function TranscriptRow({ message }: { message: DisplayMessage }) {
+  if (message.role === 'tool') {
+    const tool = message.tool
+    return (
+      <details className="tool-row" data-ok={tool?.ok}>
+        <summary>
+          <span className="tool-name">{tool?.name ?? 'tool'}</span>
+          <span className="tool-state">
+            {tool?.status === 'pending' ? 'running' : tool?.ok === false ? 'failed' : 'done'}
+          </span>
+        </summary>
+        <pre className="tool-detail">{tool?.outputText || tool?.errorText || tool?.argumentsText}</pre>
+      </details>
+    )
+  }
+  if (message.role === 'system' || message.role === 'file-edits') return null
+  return (
+    <article className="bubble" data-role={message.role === 'user' ? 'user' : 'agent'}>
+      <p>{message.content}</p>
+    </article>
+  )
 }

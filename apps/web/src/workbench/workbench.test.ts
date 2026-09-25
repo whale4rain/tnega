@@ -70,7 +70,7 @@ describe('workbench navigation', () => {
         projects: [],
         selectedProjectId: null,
         onOpenProject: () => {},
-        onCreateProject: async () => {},
+        onNewProject: () => {},
         onForgetProject: () => {},
           sessions: ['Fix parser', 'Add tests'].map((title, index) => ({
             id: String(index),
@@ -116,7 +116,7 @@ describe('workbench navigation', () => {
         projects: [],
         selectedProjectId: null,
         onOpenProject: () => {},
-        onCreateProject: async () => {},
+        onNewProject: () => {},
         onForgetProject: () => {},
           sessions: ['/project', '/other'].map((workspace) => ({
             id: 'same',

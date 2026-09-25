@@ -1,43 +1,56 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Badge, Button, TextArea } from '@radix-ui/themes'
-import { BookOpen, FileText, LayoutList, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as api from './api'
-import { LibraryPanel, MemoryPanel, OverviewPanel } from './SidePanels'
+import { GlobalSidebar } from './GlobalSidebar'
+import { MainWorkspace, type SidePanel } from './MainWorkspace'
 import { ThreadPanel } from './ThreadPanel'
-import { Timeline } from './Timeline'
-import {
-  applyStreamEvent,
-  fromSnapshot,
-  mergeMessage,
-  pendingCount,
-  type ProjectView,
-} from './state'
-import type { BoxPlacement, ThreadRecord } from './types'
+import { latestPlanFromEvents } from './reuse'
+import { LibraryPanel, MemoryPanel, OverviewPanel } from './SidePanels'
+import { applyStreamEvent, fromSnapshot, mergeMessage, type ProjectView } from './state'
+import { planSteps, type PlanStep } from './steps'
+import type { SessionEvent } from './types'
+import type { RecentProject } from '../projectSelection'
+import type { SessionSummary } from '../types'
 
-type SidePanel = 'overview' | 'library' | 'memory'
+const POLL_MS = 2_000
 
-/**
- * Project 屏：中央是持续主对话，右侧默认是 Overview，打开某个 Thread 时换成它的面板。
- *
- * 它只读三种投影：消息读 Box（主对话）、Thread 读 Blackboard 的记录、Thread 详情读那个
- * Agent 的 Session。UI 不从模型文本里猜卡片是否存在、工作是否结束 —— 因此刷新页面之后，
- * 主对话里的卡片与 Thread 详情仍然一致。
- */
-export function ProjectExperience({
-  workspace,
-  projectId,
-}: {
+export interface ProjectExperienceProps {
   workspace: string
   projectId: string
-}) {
-  const [connection, setConnection] = useState<{ projectId: string; cursor: number } | null>(null)
+  projects: readonly RecentProject[]
+  pinned: readonly string[]
+  onTogglePin: (id: string) => void
+  onOpenProject: (project: RecentProject) => void
+  onNewProject: () => void
+  sessions: readonly SessionSummary[]
+  selectedSessionId: string | null
+  onOpenSession: (workspace: string, id: string) => void
+  onSettings: () => void
+  models: ReadonlyArray<{ id: string; name: string }>
+  model?: string | undefined
+  reasoningEffort: 'default' | 'low' | 'medium' | 'high'
+  onModel: (model: string) => Promise<void> | void
+  onReasoningEffort: (effort: 'default' | 'low' | 'medium' | 'high') => Promise<void> | void
+}
+
+/**
+ * Project 屏：三栏。左栏是应用级的侧边栏，中间是这个 Project 的持续对话，右侧是按需打开
+ * 的 Thread 面板。
+ *
+ * 数据只来自三种投影：消息读 Box，Thread 读 Blackboard 的记录，Thread 的执行细节读那个
+ * Agent 自己的 Session。界面上的步骤、状态、回复数都是这些投影算出来的，不从模型文本里猜。
+ */
+export function ProjectExperience(props: ProjectExperienceProps) {
+  const { workspace, projectId } = props
   const [view, setView] = useState<ProjectView | null>(null)
+  const [connection, setConnection] = useState<{ projectId: string; cursor: number } | null>(null)
   const [panel, setPanel] = useState<SidePanel>('overview')
   const [threadId, setThreadId] = useState<string | null>(null)
+  const [details, setDetails] = useState<ReadonlyMap<string, SessionEvent[]>>(new Map())
+  const [loadingThread, setLoadingThread] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [threadDraft, setThreadDraft] = useState('')
   const [busy, setBusy] = useState(false)
-  const scroller = useRef<HTMLDivElement>(null)
+  const [error, setError] = useState<string | null>(null)
   const selection = useRef<string | null>(null)
 
   useEffect(() => {
@@ -45,6 +58,7 @@ export function ProjectExperience({
     setView(null)
     setConnection(null)
     setThreadId(null)
+    setDetails(new Map())
     setPanel('overview')
     setError(null)
     void api
@@ -71,17 +85,63 @@ export function ProjectExperience({
     return stop
   }, [workspace, connection])
 
+  const loadThread = useCallback(
+    async (id: string, quiet: boolean): Promise<void> => {
+      if (!quiet) setLoadingThread(id)
+      try {
+        const detail = await api.getThread(workspace, projectId, id)
+        setDetails(current => new Map(current).set(id, detail.events))
+      } catch (reason) {
+        if (!quiet) setError(messageOf(reason))
+      } finally {
+        if (!quiet) setLoadingThread(null)
+      }
+    },
+    [workspace, projectId],
+  )
+
+  // 还没结束的 Thread 才需要跟着看：它们的步骤会变。结束的留在最后一次读到的地方。
+  const liveIds = useMemo(
+    () => (view?.threads ?? [])
+      .filter(thread => thread.depth > 0 && thread.state !== 'done' && thread.state !== 'failed')
+      .map(thread => thread.id)
+      .sort(),
+    [view?.threads],
+  )
+  const liveKey = liveIds.join(' ')
+
   useEffect(() => {
-    const node = scroller.current
-    if (node) node.scrollTop = node.scrollHeight
-  }, [view?.messages.length])
+    for (const id of liveKey ? liveKey.split(' ') : []) {
+      void loadThread(id, true)
+    }
+  }, [liveKey, loadThread])
 
-  const openThread = useCallback((id: string) => {
-    setThreadId(id)
-    setPanel('overview')
-  }, [])
+  useEffect(() => {
+    if (!liveKey) return
+    const timer = setInterval(() => {
+      for (const id of liveKey.split(' ')) void loadThread(id, true)
+    }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [liveKey, loadThread])
 
-  async function submitDraft(): Promise<void> {
+  useEffect(() => {
+    if (!threadId) return
+    void loadThread(threadId, false)
+  }, [threadId, loadThread])
+
+  const plans = useMemo(() => {
+    const map = new Map<string, PlanStep[]>()
+    for (const [id, events] of details) {
+      const steps = planSteps(latestPlanFromEvents(events))
+      if (steps.length) map.set(id, steps)
+    }
+    return map
+  }, [details])
+
+  const artifacts = view ? view.artifacts.length + view.resources.length : 0
+  const thread = threadId ? view?.threads.find(entry => entry.id === threadId) : undefined
+
+  const sendMain = useCallback(async (): Promise<void> => {
     const text = draft.trim()
     if (!text) return
     setBusy(true)
@@ -95,7 +155,7 @@ export function ProjectExperience({
           projectId,
           sender: { kind: 'user', id: 'user' },
           recipients: [{ kind: 'agent', id: current.coordinatorId }],
-          placement: { kind: 'main' } satisfies BoxPlacement,
+          placement: { kind: 'main' },
           kind: 'user-message',
           text,
           refs: [],
@@ -108,128 +168,128 @@ export function ProjectExperience({
     } finally {
       setBusy(false)
     }
-  }
+  }, [draft, workspace, projectId])
 
-  async function refresh(): Promise<void> {
+  const sendThread = useCallback(async (): Promise<void> => {
+    const text = threadDraft.trim()
+    if (!text || !threadId) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.sendThreadMessage(workspace, projectId, threadId, text)
+      setThreadDraft('')
+      await loadThread(threadId, true)
+    } catch (reason) {
+      setError(messageOf(reason))
+    } finally {
+      setBusy(false)
+    }
+  }, [threadDraft, threadId, workspace, projectId, loadThread])
+
+  const refreshSnapshot = useCallback(async (): Promise<void> => {
     const snapshot = await api.getProject(workspace, projectId)
-    if (selection.current !== projectId) return
-    setView(fromSnapshot(snapshot))
-  }
+    if (selection.current === projectId) setView(fromSnapshot(snapshot))
+  }, [workspace, projectId])
 
-  function onThread(thread: ThreadRecord): void {
-    setView(current => (current
-      ? { ...current, threads: current.threads.map(entry => (entry.id === thread.id ? thread : entry)) }
-      : current))
+  const context = `${workspace}${thread ? ` · ${thread.permission}` : ''}`
+  const config = {
+    models: props.models,
+    ...(props.model !== undefined ? { model: props.model } : {}),
+    onModel: props.onModel,
+    reasoningEffort: props.reasoningEffort,
+    onReasoningEffort: props.onReasoningEffort,
   }
-
-  const project = view?.project
-  const pending = view ? pendingCount(view) : 0
-  const open = threadId && view ? view.threads.find(thread => thread.id === threadId) : undefined
-  const panels: Array<{ id: SidePanel; label: string; icon?: typeof FileText }> = [
-    { id: 'overview', label: 'Overview', icon: LayoutList },
-    { id: 'library', label: 'Library', icon: FileText },
-    { id: 'memory', label: 'Memory', icon: BookOpen },
-  ]
 
   return (
-    <div className="project-experience">
-      <header className="project-header">
-        <div className="project-header-main">
-          <span className="project-name">{project?.name ?? 'Project'}</span>
-          <span className="project-folder" title={workspace}>{workspace}</span>
-          {project?.goal && <span className="project-goal">{project.goal}</span>}
-          {pending > 0 && <Badge color="amber">{pending} waiting on you</Badge>}
-        </div>
-        <div className="project-header-actions">
-          {panels.map(entry => (
-            <Button
-              key={entry.id}
-              size="1"
-              variant={!threadId && panel === entry.id ? 'solid' : 'soft'}
-              onClick={() => { setThreadId(null); setPanel(entry.id) }}
-            >
-              {entry.icon && <entry.icon size={14} aria-hidden="true" />}
-              {entry.label}
-            </Button>
-          ))}
-        </div>
-      </header>
+    <div className="project-shell">
+      <GlobalSidebar
+        projects={[...props.projects]}
+        pinned={props.pinned}
+        selectedProjectId={projectId}
+        onOpenProject={props.onOpenProject}
+        onTogglePin={props.onTogglePin}
+        onNewProject={props.onNewProject}
+        artifactCount={artifacts}
+        onOpenArtifacts={() => { setThreadId(null); setPanel('library') }}
+        threads={view?.threads ?? []}
+        activeThreadId={threadId}
+        onOpenThread={id => setThreadId(id)}
+        chats={[...props.sessions]}
+        selectedChatId={props.selectedSessionId}
+        onOpenChat={props.onOpenSession}
+        onSettings={props.onSettings}
+      />
 
-      {error && (
-        <div className="error-banner" role="alert">
-          <span className="marker">Error</span>
-          <span>{error}</span>
-          <button type="button" onClick={() => setError(null)}>Close</button>
-        </div>
+      {view ? (
+        <MainWorkspace
+          view={view}
+          workspace={workspace}
+          plans={plans}
+          panel={panel}
+          onPanel={entry => { setThreadId(null); setPanel(entry) }}
+          onOpenThread={id => setThreadId(id)}
+          composer={{
+            value: draft,
+            onChange: setDraft,
+            onSubmit: () => void sendMain(),
+            placeholder: 'Ask for something, or add to the work in flight.',
+            busy,
+            context,
+            ...config,
+          }}
+        />
+      ) : (
+        <section className="main-workspace">
+          <div className="workspace-scroll">
+            <p className="stream-empty">
+              {error ? `Could not open this project. ${error}` : 'Loading…'}
+            </p>
+          </div>
+        </section>
       )}
 
-      <div className="project-body">
-        <div className="project-conversation">
-          <div className="messages-viewport" ref={scroller}>
-            {view ? (
-              <Timeline
-                envelopes={view.messages}
-                threads={view.threads}
-                onOpenThread={openThread}
-              />
-            ) : (
-              <div className="project-empty">
-                <p>{error ? 'Could not open this project.' : 'Loading…'}</p>
-                {error && <p className="project-empty-hint">{error}</p>}
-              </div>
-            )}
-          </div>
-          <div className="project-composer">
-            <TextArea
-              value={draft}
-              placeholder="Ask for something, or add to the work in flight."
-              disabled={!view || busy}
-              onChange={event => setDraft(event.target.value)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault()
-                  void submitDraft()
-                }
-              }}
-            />
-            <Button onClick={() => void submitDraft()} disabled={!view || busy || !draft.trim()}>
-              Send
-            </Button>
-          </div>
-        </div>
-
-        {threadId && view ? (
-          <ThreadPanel
-            workspace={workspace}
-            projectId={projectId}
-            threadId={threadId}
-            state={open?.state ?? 'idle'}
-            onClose={() => setThreadId(null)}
-            onThread={onThread}
-          />
-        ) : (
+      {threadId ? (
+        <ThreadPanel
+          {...(thread ? { thread } : {})}
+          steps={plans.get(threadId) ?? []}
+          events={details.get(threadId) ?? []}
+          loading={loadingThread === threadId}
+          onClose={() => setThreadId(null)}
+          composer={{
+            value: threadDraft,
+            onChange: setThreadDraft,
+            onSubmit: () => void sendThread(),
+            placeholder: 'Tell this thread something, or ask where it is.',
+            busy,
+            context,
+            ...config,
+          }}
+        />
+      ) : (
+        view && (
           <aside className="project-panel" aria-label={panel}>
-            <div className="project-panel-head">
-              <span>{panels.find(entry => entry.id === panel)?.label}</span>
-              <button type="button" className="icon-button" onClick={() => setPanel('overview')} hidden={panel === 'overview'}>
-                <X size={14} aria-hidden="true" />
-              </button>
-            </div>
-            {view && panel === 'overview' && (
-              <OverviewPanel view={view} onOpenThread={openThread} />
+            {panel === 'overview' && (
+              <OverviewPanel view={view} onOpenThread={id => setThreadId(id)} />
             )}
-            {view && panel === 'library' && <LibraryPanel view={view} />}
-            {view && panel === 'memory' && (
+            {panel === 'library' && <LibraryPanel view={view} />}
+            {panel === 'memory' && (
               <MemoryPanel
                 workspace={workspace}
                 projectId={projectId}
                 view={view}
-                onChanged={() => void refresh()}
+                onChanged={() => void refreshSnapshot()}
               />
             )}
           </aside>
-        )}
-      </div>
+        )
+      )}
+
+      {error && view && (
+        <div className="error-toast" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)}>Dismiss</button>
+        </div>
+      )}
     </div>
   )
 }

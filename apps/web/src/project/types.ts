@@ -2,6 +2,8 @@
 
 import type { SessionEvent } from '../types'
 
+export type { SessionEvent }
+
 export interface ProjectRecord {
   id: string
   name: string

@@ -49,7 +49,7 @@ interface Props {
   projects: RecentProject[]
   selectedProjectId: string | null
   onOpenProject: (project: RecentProject) => void
-  onCreateProject: (input: { name: string; folder: string; goal?: string }) => Promise<void>
+  onNewProject: () => void
   onForgetProject: (id: string) => void
 }
 
@@ -63,10 +63,6 @@ export function WorkspaceSidebar(props: Props) {
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [creatingProject, setCreatingProject] = useState(false)
-  const [projectName, setProjectName] = useState('')
-  const [projectFolder, setProjectFolder] = useState('')
-  const [projectGoal, setProjectGoal] = useState('')
   async function perform(action: () => Promise<void>) {
     setBusy(true)
     setError('')
@@ -126,13 +122,7 @@ export function WorkspaceSidebar(props: Props) {
             variant="ghost"
             color="gray"
             aria-label="New project"
-            onClick={() => {
-              setProjectName('')
-              setProjectFolder(props.workspace ?? '')
-              setProjectGoal('')
-              setError('')
-              setCreatingProject(true)
-            }}
+            onClick={props.onNewProject}
           >
             <FolderPlus size={16} />
           </IconButton>
@@ -287,88 +277,6 @@ export function WorkspaceSidebar(props: Props) {
               )}
               <Button type="submit" disabled={busy || !path.trim()}>
                 Add workspace
-              </Button>
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Root>
-      <Dialog.Root
-        open={creatingProject}
-        onOpenChange={(open) => {
-          setCreatingProject(open)
-          setError('')
-        }}
-      >
-        <Dialog.Content maxWidth="480px">
-          <Dialog.Title>New project</Dialog.Title>
-          <Dialog.Description size="2" mb="4">
-            Pick the folder this project works in. Everything the project keeps — memory,
-            threads, artifacts — lives in that folder, and its agents run there.
-          </Dialog.Description>
-          {error && (
-            <p role="alert" className="danger">
-              {error}
-            </p>
-          )}
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (!projectName.trim() || !projectFolder.trim()) return
-              void perform(async () => {
-                await props.onCreateProject({
-                  name: projectName.trim(),
-                  folder: projectFolder.trim(),
-                  ...(projectGoal.trim() ? { goal: projectGoal.trim() } : {}),
-                })
-                setCreatingProject(false)
-              })
-            }}
-          >
-            <div className="flex flex-col gap-3">
-              <TextField.Root
-                aria-label="Project name"
-                placeholder="Project name"
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-              />
-              <div className="flex gap-2">
-                <TextField.Root
-                  aria-label="Project folder"
-                  placeholder="Folder to work in"
-                  value={projectFolder}
-                  onChange={(event) => setProjectFolder(event.target.value)}
-                />
-                {hasDesktopWorkspacePicker() && (
-                  <Button
-                    type="button"
-                    variant="soft"
-                    disabled={busy}
-                    onClick={() =>
-                      void perform(async () => {
-                        const selected = await pickDesktopWorkspace()
-                        if (selected) setProjectFolder(selected)
-                      })
-                    }
-                  >
-                    Browse…
-                  </Button>
-                )}
-              </div>
-              <TextField.Root
-                aria-label="Project goal"
-                placeholder="What is it for? (optional)"
-                value={projectGoal}
-                onChange={(event) => setProjectGoal(event.target.value)}
-              />
-            </div>
-            <div className="flex justify-end gap-3 mt-4">
-              <Dialog.Close>
-                <Button variant="soft" color="gray">
-                  Cancel
-                </Button>
-              </Dialog.Close>
-              <Button type="submit" disabled={busy || !projectName.trim() || !projectFolder.trim()}>
-                Create project
               </Button>
             </div>
           </form>
