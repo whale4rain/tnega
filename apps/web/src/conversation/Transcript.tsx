@@ -1,4 +1,8 @@
 import { memo, useState, type Ref } from 'react'
+import { ChatMessage, ChatMessageBubble, ChatSystemMessage } from '@astryxdesign/core/Chat'
+import { Button } from '@astryxdesign/core/Button'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { TextArea } from '@astryxdesign/core/TextArea'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Pencil, GitFork, Bot, ChevronRight, PanelRight, FilePenLine } from 'lucide-react'
@@ -50,11 +54,10 @@ export const MessageBlock = memo(function MessageBlock({
   }
   if (message.role === 'system') {
     return (
-      <div className="message system">
-        <div className="message-label">[!]</div>
-        <div className="message-body">{message.content}</div>
+      <ChatSystemMessage>
+        {message.content}
         <MessageStatus message={message} />
-      </div>
+      </ChatSystemMessage>
     )
   }
   if (message.role === 'subagent' && message.subagent) {
@@ -67,7 +70,7 @@ export const MessageBlock = memo(function MessageBlock({
   const isUser = message.role === 'user'
   const finishReason = message.finishReason ?? message.endState?.finishReason
   return (
-    <div className={className} ref={userRef}>
+    <ChatMessage sender={isUser ? 'user' : 'assistant'} density="compact" className={className} ref={userRef}>
       <div className="message-label">
         <span>
           {message.role === 'assistant' ? assistantLabel : 'You'}
@@ -81,33 +84,21 @@ export const MessageBlock = memo(function MessageBlock({
         {isUser && !editing && (onBeginEdit || onForkAt) && (
           <span className="message-menu">
             {onBeginEdit && (
-              <button
-                type="button"
-                className="icon-button"
-                onClick={onBeginEdit}
-                title="edit"
-              >
-                <Pencil size={14} />
-              </button>
+              <IconButton label="Edit message" tooltip="Edit message" icon={<Pencil size={14} />} variant="ghost" size="sm" onClick={onBeginEdit} />
             )}
             {onForkAt && (
-              <button
-                type="button"
-                className="icon-button"
-                onClick={onForkAt}
-                title="fork here"
-              >
-                <GitFork size={14} />
-              </button>
+              <IconButton label="Fork here" tooltip="Fork here" icon={<GitFork size={14} />} variant="ghost" size="sm" onClick={onForkAt} />
             )}
           </span>
         )}
       </div>
       {editing ? (
         <div className="message-edit">
-          <textarea
+          <TextArea
+            label="Edit message"
+            isLabelHidden
             value={editDraft}
-            onChange={(event) => onEditDraftChange?.(event.target.value)}
+            onChange={value => onEditDraftChange?.(value)}
             onKeyDown={(event) => {
               if (
                 event.key === 'Enter' &&
@@ -119,33 +110,26 @@ export const MessageBlock = memo(function MessageBlock({
               }
               if (event.key === 'Escape') onCancelEdit?.()
             }}
-            autoFocus
-            spellCheck={false}
+            hasAutoFocus
+            hasSpellCheck={false}
             rows={4}
           />
           <div className="message-edit-actions">
-            <button
-              type="button"
-              className="button-primary"
-              onClick={onSubmitEdit}
-              disabled={!editDraft.trim()}
-            >
-              [send]
-            </button>
-            <button type="button" onClick={onCancelEdit} title="cancel">
-              [x]
-            </button>
+            <Button label="Send edited message" variant="primary" size="sm" onClick={onSubmitEdit} isDisabled={!editDraft.trim()} />
+            <Button label="Cancel editing" variant="ghost" size="sm" onClick={onCancelEdit} />
           </div>
         </div>
       ) : (
+        <ChatMessageBubble variant={isUser ? 'filled' : 'ghost'}>
         <div className="message-body md">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {message.content}
           </ReactMarkdown>
         </div>
+        </ChatMessageBubble>
       )}
       <MessageStatus message={message} />
-    </div>
+    </ChatMessage>
   )
 })
 

@@ -1,28 +1,18 @@
 import { memo, useState } from 'react'
-import {
-  Check,
-  CircleAlert,
-  FilePenLine,
-  FileText,
-  FolderSearch,
-  LoaderCircle,
-  Terminal,
-  Wrench,
-} from 'lucide-react'
+import { ChatMessage, ChatToolCalls } from '@astryxdesign/core/Chat'
+import { Button } from '@astryxdesign/core/Button'
 import { boundedText, readSpillNotice } from '../toolOutput'
-import { summarizeToolGroup } from '../toolGroups'
 import type { DisplayMessage, DisplayTool } from '../types'
-import { Disclosure } from './Disclosure'
 
 function toolPresentation(name: string) {
   if (/write|edit|patch/i.test(name))
-    return { icon: FilePenLine, label: 'Edit file' }
-  if (/read.*file/i.test(name)) return { icon: FileText, label: 'Read file' }
+    return 'Edit file'
+  if (/read.*file/i.test(name)) return 'Read file'
   if (/shell|exec|command/i.test(name))
-    return { icon: Terminal, label: 'Run command' }
+    return 'Run command'
   if (/grep|glob|list_dir|search/i.test(name))
-    return { icon: FolderSearch, label: 'Search workspace' }
-  return { icon: Wrench, label: name }
+    return 'Search workspace'
+  return name
 }
 
 function argumentPreview(tool: DisplayTool): string {
@@ -43,68 +33,17 @@ function argumentPreview(tool: DisplayTool): string {
 }
 
 export function ToolBlock({ message }: { message: DisplayMessage }) {
-  const tool = message.tool
-  if (!tool) return null
-  const { icon: Icon, label } = toolPresentation(tool.name)
+  return <ToolGroupBlock tools={[message]} />
+}
+
+function ToolDetail({ tool }: { tool: DisplayTool }) {
   const pending = tool.status === 'pending'
   const failed = !pending && tool.ok === false
-  const status = pending ? 'Running' : failed ? 'Failed' : 'Completed'
-  const StatusIcon = pending ? LoaderCircle : failed ? CircleAlert : Check
-  const preview = argumentPreview(tool)
-  return (
-    <Disclosure
-      className={`tool-activity ${failed ? 'failed' : ''}`}
-      icon={<Icon size={14} aria-hidden="true" />}
-      title={
-        <>
-          <span>{label}</span>
-          {preview && (
-            <code className="tool-preview" title={preview}>
-              {preview}
-            </code>
-          )}
-        </>
-      }
-      status={
-        <span className={`activity-status ${pending ? 'running' : ''}`}>
-          <StatusIcon
-            size={12}
-            className={pending ? 'activity-spinner' : undefined}
-            aria-hidden="true"
-          />
-          {status}
-        </span>
-      }
-    >
-      <div className="tool-detail">
-        <div className="tool-detail-meta">
-          <code>{tool.name}</code>
-          <span title={tool.callId}>{tool.callId.slice(0, 8)}</span>
-        </div>
-        {tool.argumentsText && (
-          <>
-            <h4>Input</h4>
-            <pre>{tool.argumentsText}</pre>
-          </>
-        )}
-        {pending ? (
-          <p className="run-note" role="status">
-            Waiting for tool output…
-          </p>
-        ) : (
-          <>
-            <h4>{failed ? 'Error' : 'Output'}</h4>
-            <ToolOutput
-              failed={failed}
-              text={failed
-                ? (tool.errorText ?? 'Tool failed')
-                : (tool.outputText ?? 'Completed without text output.')}
-            />
-          </>
-        )}
-      </div>
-    </Disclosure>
-  )
+  return <section className="tool-detail" aria-label={`${tool.name} details`}>
+    <code title={tool.callId}>{tool.name} · {tool.callId.slice(0, 8)}</code>
+    {tool.argumentsText && <><h4>Input</h4><pre>{tool.argumentsText}</pre></>}
+    {pending ? <p className="run-note" role="status">Waiting for tool output…</p> : <><h4>{failed ? 'Error' : 'Output'}</h4><ToolOutput failed={failed} text={failed ? (tool.errorText ?? 'Tool failed') : (tool.outputText ?? 'Completed without text output.')} /></>}
+  </section>
 }
 
 /**
@@ -131,15 +70,7 @@ function ToolOutput({ text, failed }: { text: string; failed: boolean }) {
         {clipped.truncated && !expanded ? '\n…' : ''}
       </pre>
       {clipped.truncated && (
-        <button
-          type="button"
-          className="tool-more"
-          onClick={() => setExpanded((open) => !open)}
-        >
-          {expanded
-            ? '[show less]'
-            : `[show all ${clipped.totalChars.toLocaleString()} characters]`}
-        </button>
+        <Button label={expanded ? 'Show less' : `Show all ${clipped.totalChars.toLocaleString()} characters`} variant="ghost" size="sm" onClick={() => setExpanded((open) => !open)} />
       )}
       {notice && (
         <p className="tool-spill" role="note">
@@ -153,41 +84,19 @@ function ToolOutput({ text, failed }: { text: string; failed: boolean }) {
 }
 
 export const ToolGroupBlock = memo(function ToolGroupBlock({ tools }: { tools: DisplayMessage[] }) {
-  if (tools.length === 1) return <ToolBlock message={tools[0]!} />
-  const summary = summarizeToolGroup(tools)
-  const labels = [
-    ...new Set(summary.names.map(({ name }) => toolPresentation(name).label)),
-  ]
-  const status = [
-    summary.running ? `${summary.running} running` : '',
-    summary.failed ? `${summary.failed} failed` : '',
-    !summary.running && !summary.failed ? 'Completed' : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
-  return (
-    <Disclosure
-      className={`tool-activity tool-group ${summary.failed ? 'failed' : ''}`}
-      icon={
-        summary.running ? (
-          <LoaderCircle size={14} className="activity-spinner" />
-        ) : (
-          <Wrench size={14} />
-        )
-      }
-      title={
-        <>
-          <span>{labels.join(' · ')}</span>
-          <span className="activity-count">{summary.count}</span>
-        </>
-      }
-      status={status}
-    >
-      <div className="tool-group-items">
-        {tools.map((message) => (
-          <ToolBlock key={message.id} message={message} />
-        ))}
-      </div>
-    </Disclosure>
-  )
+  const calls = tools.flatMap(message => {
+    const tool = message.tool
+    if (!tool) return []
+    const pending = tool.status === 'pending'
+    const failed = !pending && tool.ok === false
+    return [{
+      key: message.id,
+      name: toolPresentation(tool.name),
+      status: pending ? 'running' as const : failed ? 'error' as const : 'complete' as const,
+      target: argumentPreview(tool),
+      errorMessage: failed ? tool.errorText : undefined,
+      resultDetail: <ToolDetail tool={tool} />,
+    }]
+  })
+  return <ChatMessage sender="assistant" density="compact"><ChatToolCalls calls={calls} defaultIsExpanded={false} /></ChatMessage>
 })

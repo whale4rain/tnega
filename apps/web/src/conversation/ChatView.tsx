@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, IconButton } from '@radix-ui/themes'
-import { ArrowUp, Square, ChevronDown, Code2, ListTodo } from 'lucide-react'
+import { Button } from '@astryxdesign/core/Button'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { ChatMessageList, type ChatComposerInputHandle } from '@astryxdesign/core/Chat'
+import { ChevronDown, Code2, ListTodo } from 'lucide-react'
 import { ConversationNav } from '../ConversationNav'
 import { groupToolMessages } from '../toolGroups'
 import { PlanPanel } from '../PlanPanel'
@@ -112,7 +114,7 @@ export function ChatView({
   const runStateRef = useRef<RunState>('idle')
   const planRef = useRef<DisplayPlan | undefined>(undefined)
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerRef = useRef<ChatComposerInputHandle | null>(null)
   const composerSurfaceRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -868,9 +870,7 @@ export function ChatView({
         <Code2 size={36} strokeWidth={1.2} />
         <h1>What are we building?</h1>
         <p>Explore a codebase, work through a bug, or build something new.</p>
-        <Button onClick={() => void onNewSession({ agentType: 'coding' })}>
-          Start coding
-        </Button>
+        <Button label="Start coding" onClick={() => void onNewSession({ agentType: 'coding' })} />
       </div>
     )
   }
@@ -884,8 +884,8 @@ export function ChatView({
             <p>{approvals[0].tool} requests access beyond {permission} permissions.</p>
             <pre>{approvals[0].input}</pre>
             <div className="approval-actions">
-              <Button variant="soft" color="gray" onClick={() => void answerPendingApproval(false)}>Deny</Button>
-              <Button onClick={() => void answerPendingApproval(true)}>Allow once</Button>
+              <Button label="Deny" variant="secondary" onClick={() => void answerPendingApproval(false)} />
+              <Button label="Allow once" variant="primary" onClick={() => void answerPendingApproval(true)} />
             </div>
           </div>
         </div>
@@ -948,7 +948,7 @@ export function ChatView({
           ref={scrollRef}
           onScroll={handleMessagesScroll}
         >
-          <div className="messages">
+          <ChatMessageList className="messages" density="compact" align="top" isStreaming={running}>
             {messages.length === 0 && (
               <div className="conversation-welcome">
                 <Code2 size={28} strokeWidth={1.4} />
@@ -1018,7 +1018,7 @@ export function ChatView({
             {compacting && (
               <div className="run-note">compacting context...</div>
             )}
-          </div>
+          </ChatMessageList>
           <div className="composer-surface" ref={composerSurfaceRef}>
             {runError && (
               <div className="error-banner" role="alert">
@@ -1048,8 +1048,14 @@ export function ChatView({
               disabled={running || compacting}
               mode={isCoding ? mode : undefined}
               onMode={onModeChange}
-            >
-              {isCoding && slashMenuVisible && (
+              value={prompt}
+              onChange={value => { setPrompt(value); setSlashSubmenu(null) }}
+              onSubmit={startRun}
+              onStop={() => void cancelRun()}
+              running={running}
+              canSend={!!prompt.trim() && apiKeySet && !running && !compacting && !slashBusy}
+              compacting={compacting}
+              drawer={isCoding && slashMenuVisible && (
                 <div
                   className="slash-menu"
                   role="listbox"
@@ -1158,75 +1164,24 @@ export function ChatView({
                   )}
                 </div>
               )}
-              <textarea
-                ref={composerRef}
-                value={prompt}
-                onChange={(event) => {
-                  setPrompt(event.target.value)
-                  setSlashSubmenu(null)
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === 'Enter' &&
-                    !event.shiftKey &&
-                    !event.nativeEvent.isComposing
-                  ) {
-                    event.preventDefault()
-                    void startRun()
-                  }
-                }}
-                aria-label="Message Tnega"
-                placeholder="Ask Tnega to build, fix, or explore…"
-                rows={2}
-                // Kept typable during a run: `startRun` already refuses to send
-                // while running, so the draft survives instead of the box going
-                // dead on the user.
-                disabled={compacting}
-                spellCheck={false}
-              />
-              <div className="composer-actions">
-                {running ? (
-                  <IconButton
-                    type="button"
-                    className="button-danger send-button"
-                    aria-label="Stop response"
-                    title="Stop response"
-                    onClick={cancelRun}
-                    disabled={runState !== 'running'}
-                  >
-                    <Square size={15} fill="currentColor" />
-                  </IconButton>
-                ) : (
-                  <IconButton
-                    type="button"
-                    className="button-primary send-button"
-                    aria-label="Send message"
-                    title="Send message (Enter)"
-                    onClick={() => void startRun()}
-                    disabled={
-                      !prompt.trim() || !apiKeySet || compacting || slashBusy
-                    }
-                  >
-                    <ArrowUp size={18} />
-                  </IconButton>
-                )}
-              </div>
-            </ComposerFrame>
+              inputHandleRef={composerRef}
+            />
             <div className="conversation-footer">
               <UsageMetrics context={context} metrics={metrics} />
-              <button
-                type="button"
+              <Button
                 className={`subagent-toggle${showSubagents && subagents.length > 0 ? ' active' : ''}`}
-                aria-label={`Show tasks: ${activeSubagents} active, ${subagents.length} total`}
+                label={`Show tasks: ${activeSubagents} active, ${subagents.length} total`}
+                variant="ghost"
+                size="sm"
+                icon={<ListTodo size={14} aria-hidden="true" />}
                 aria-expanded={showSubagents && subagents.length > 0}
                 aria-controls="subagent-sidebar"
-                disabled={subagents.length === 0}
+                isDisabled={subagents.length === 0}
                 onClick={() => setShowSubagents(open => !open)}
               >
-                <ListTodo size={14} aria-hidden="true" />
                 {activeSubagents} active task{activeSubagents === 1 ? '' : 's'}
                 {subagents.length > 0 && <span className="subagent-total">· {subagents.length} total</span>}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1239,15 +1194,14 @@ export function ChatView({
           }}
         />
         {showJump && (
-          <button
-            type="button"
+          <IconButton
             className="jump-bottom"
+            label="Back to latest message"
+            tooltip="Back to latest message"
+            icon={<ChevronDown size={16} />}
+            variant="ghost"
             onClick={jumpToBottom}
-            title="back to bottom"
-            aria-label="Back to latest message"
-          >
-            <ChevronDown size={16} />
-          </button>
+          />
         )}
       </div>
       </div>

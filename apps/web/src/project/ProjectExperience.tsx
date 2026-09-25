@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
-import { Badge, TextArea } from '@radix-ui/themes'
+import { Badge } from '@radix-ui/themes'
 import { ListTodo } from 'lucide-react'
 import * as api from './api'
 import { LibraryPanel, MemoryPanel, OverviewPanel } from './SidePanels'
@@ -458,19 +458,12 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                 {...composer}
                 permission={coordinator?.permission ?? 'read-only'}
                 disabled={!view || busy}
-              >
-                <TextArea
-                  value={draft}
-                  placeholder="Ask for something, or add to the work in flight."
-                  onChange={event => setDraft(event.target.value)}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault()
-                      void sendMain()
-                    }
-                  }}
-                />
-              </ComposerFrame>
+                value={draft}
+                onChange={setDraft}
+                onSubmit={() => void sendMain()}
+                canSend={!!draft.trim() && !busy}
+                placeholder="Ask for something, or add to the work in flight."
+              />
               <div className="conversation-footer">
                 <button
                   type="button"
@@ -503,19 +496,12 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                 permission={thread?.permission ?? 'read-only'}
                 disabled={busy}
                 accessory={<PlanPanel plan={plans.get(threadId)} />}
-              >
-                <TextArea
-                  value={threadDraft}
-                  placeholder="Tell this thread something, or ask where it is."
-                  onChange={event => setThreadDraft(event.target.value)}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault()
-                      void sendThread()
-                    }
-                  }}
-                />
-              </ComposerFrame>
+                value={threadDraft}
+                onChange={setThreadDraft}
+                onSubmit={() => void sendThread()}
+                canSend={!!threadDraft.trim() && !busy}
+                placeholder="Tell this thread something, or ask where it is."
+              />
             </div>
           }
         />
