@@ -88,6 +88,13 @@ describe('project view', () => {
     expect(applyStreamEvent(next, { type: 'message', seq: 9, envelope: reply })).toBe(next)
   })
 
+  it('opens snapshots from servers that do not include inbox messages yet', () => {
+    const legacySnapshot = snapshot()
+    Reflect.deleteProperty(legacySnapshot, 'inboxMessages')
+
+    expect(fromSnapshot(legacySnapshot).inboxMessages).toEqual([])
+  })
+
   it('keeps child inbox messages out of the main conversation', () => {
     const view = fromSnapshot(snapshot())
     const reply = envelope({

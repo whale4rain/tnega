@@ -61,7 +61,8 @@ export function fromSnapshot(snapshot: ProjectSnapshot): ProjectView {
     cursor: snapshot.cursor,
     threads: [...snapshot.threads].sort((a, b) => a.createdAt - b.createdAt),
     messages: [...snapshot.messages].sort((a, b) => a.createdAt - b.createdAt),
-    inboxMessages: [...snapshot.inboxMessages].sort((a, b) => a.createdAt - b.createdAt),
+    // Older web servers may not return this field yet; keep the project screen usable across versions.
+    inboxMessages: [...(snapshot.inboxMessages ?? [])].sort((a, b) => a.createdAt - b.createdAt),
     memory: snapshot.memory,
     artifacts: snapshot.library.artifacts,
     resources: snapshot.library.resources,
