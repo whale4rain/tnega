@@ -33,8 +33,6 @@ export interface ProjectRecord {
   name: string
   goal?: string
   coordinatorId: string
-  /** 后续加入的代码仓库；没有仓库的 Project 同样合法。 */
-  repo?: { path: string; branch?: string }
   createdAt: number
   updatedAt: number
 }
@@ -42,7 +40,6 @@ export interface ProjectRecord {
 export interface ProjectPatch {
   name?: string
   goal?: string | null
-  repo?: { path: string; branch?: string } | null
 }
 
 export const MAX_PROJECT_NAME_CHARS = 200
@@ -83,7 +80,7 @@ export abstract class ProjectsService extends Service {
     super(ctx, 'projects')
   }
 
-  /** 建立 Project 身份与磁盘目录；同名 Project 允许存在。 */
+  /** 在某个文件夹里建立 Project 身份与数据目录；同名 Project 允许存在。 */
   abstract create(input: { name: string; goal?: string }): Promise<ProjectRecord>
 
   /** 目录里的 Project，按创建时间升序。 */

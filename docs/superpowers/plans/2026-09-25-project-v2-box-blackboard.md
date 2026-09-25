@@ -156,7 +156,6 @@ export interface ProjectRecord {
   goal?: string
   /** 主对话那个 Thread 的稳定 ID，创建时铸定。 */
   coordinatorId: string
-  repo?: { path: string; branch?: string }
   createdAt: number
   updatedAt: number
 }
@@ -164,7 +163,6 @@ export interface ProjectRecord {
 export interface ProjectPatch {
   name?: string
   goal?: string | null
-  repo?: { path: string; branch?: string } | null
 }
 
 export abstract class ProjectsService extends Service {
@@ -178,10 +176,15 @@ export abstract class ProjectsService extends Service {
 ```
 
 只做身份与目录：没有 `remove`（删用户数据不可逆，产品也没有这个需求），也不在作用域里
-预装运行时 —— Project 作用域里挂哪些 Provider 属于组合层。原稿的 `ctx.project`（绑定到
-某个 Project 的服务）在实现时被去掉：真正需要 Project 身份的是 Project Loop（拿 config）、
-模型可见工具（拿参数）与 Web 路由，没有任何一处需要「从 ctx 里取出当前 Project」，
-留下它只会多出一个必须与 `ctx.projects` 保持同步的副本。
+预装运行时 —— Project 作用域里挂哪些 Provider 属于组合层。
+
+**一个 Project 就是一个文件夹**：它建在哪个目录里，工作位置就是哪里，数据放在该目录的
+`.tnega/projects/<id>/` 下。
+
+实现时去掉的两处原稿内容：`repo` 字段（它从来没有被任何创建路径写过，「工作目录」这件事
+由 Project 所在的位置表达），以及 `ctx.project`（绑定到某个 Project 的服务 —— 真正需要
+Project 身份的只有 Project Loop 的 config、模型可见工具的参数与 Web 路由，没有一处需要
+「从 ctx 里取出当前 Project」，留着只会多一个要与 `ctx.projects` 同步的副本）。
 
 `project-local` 提供 `ctx.projects`：身份存在**同一作用域**的 Blackboard 的 `project`
 记录里，磁盘目录是 `<root>/<projectId>/`。它 `inject: ['blackboard']`，Provider 由组合层

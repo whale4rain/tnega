@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1150,7 +1150,9 @@ async function projectHostFor(
   context: ServerContext,
   workspace: string,
 ): Promise<ProjectHost> {
-  const path = await ensureWorkspace(workspace)
+  // Project 的文件夹就是它的工作位置，可能是刚为它新建的，所以这里建而不是要求已存在。
+  const path = resolve(workspace)
+  await mkdir(path, { recursive: true })
   const config = await readSystemConfig(context.configFile)
   const effective = effectiveLlmConfig(config, process.env)
   const apiKey = effectiveApiKey(config, process.env, effective.modelId) ?? ''

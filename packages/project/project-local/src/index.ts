@@ -43,12 +43,6 @@ function toRecord(fact: FactRecord): ProjectRecord {
     updatedAt: fact.updatedAt,
   }
   if (typeof data.goal === 'string') record.goal = data.goal
-  if (isRecord(data.repo) && typeof data.repo.path === 'string') {
-    record.repo = {
-      path: data.repo.path,
-      ...(typeof data.repo.branch === 'string' ? { branch: data.repo.branch } : {}),
-    }
-  }
   return record
 }
 
@@ -57,7 +51,6 @@ function toData(record: ProjectRecord): Record<string, unknown> {
     name: record.name,
     coordinatorId: record.coordinatorId,
     ...(record.goal !== undefined ? { goal: record.goal } : {}),
-    ...(record.repo !== undefined ? { repo: record.repo } : {}),
   }
 }
 
@@ -148,17 +141,6 @@ export class LocalProjectsService extends ProjectsService {
         const goal = patch.goal.trim()
         if (goal) next.goal = goal
         else delete next.goal
-      }
-    }
-    if (patch.repo !== undefined) {
-      if (patch.repo === null) delete next.repo
-      else if (!patch.repo.path?.trim()) {
-        throw new ProjectError('repo.path must be a non-empty string', 'PROJECT_INVALID')
-      } else {
-        next.repo = {
-          path: patch.repo.path.trim(),
-          ...(patch.repo.branch?.trim() ? { branch: patch.repo.branch.trim() } : {}),
-        }
       }
     }
     try {

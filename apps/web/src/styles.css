@@ -1869,3 +1869,78 @@ button.send-button:hover:not(:disabled) {
 @keyframes tnega-spin {
   to { transform: rotate(360deg); }
 }
+
+/* 左栏的 Project 列表：一行一个 Project，像文件夹一样从它所在的位置认出来。 */
+.project-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.project-row:hover {
+  background: var(--surface-card);
+}
+.project-row[aria-current='true'] {
+  background: var(--surface-card);
+  border-color: var(--hairline);
+}
+.project-row-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.project-row-name {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-row-folder {
+  color: var(--mute);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-folder {
+  color: var(--mute);
+  font-size: 0.78rem;
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+.thread-panel-name {
+  font-weight: 600;
+}
+.thread-panel-meta,
+.thread-panel-detail {
+  margin: 0;
+  color: var(--mute);
+  font-size: 0.78rem;
+  word-break: break-all;
+}

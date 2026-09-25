@@ -48,7 +48,9 @@ Thread 记录；Library 与 Memory 读 Blackboard。不从模型文本里猜任�
 `apps/web/src/project/` 是 Project 屏：左边栏在 Sessions 与 Project 之间切换，Project 屏中央
 是持续主对话，右侧按需打开 Thread、Overview、Library 或 Memory。
 
-- **创建只要一个名称**。名称之外都可以后补；创建时不拉起任何 Agent。
+- **一个 Project 就是一个文件夹**。创建时选（或新建）一个目录，它的工作位置就是那里，
+  共享事实也放在该目录的 `.tnega/projects/<id>/` 下；左栏按文件夹列出 Project。
+- **创建只要名称与文件夹**。目标可以后补；创建时不拉起任何 Agent。
 - **发完就显示**。发送成功的判据是信封落盘，不是模型回复；本地先画出这条消息，流里那条
   按 `messageId` 去重。
 - **卡片跟着记录走**。派工信封的位置就是卡片的位置，卡片的状态读 Thread 记录 —— 刷新页面

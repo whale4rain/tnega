@@ -4,7 +4,7 @@ import { Loader2, Send, X } from 'lucide-react'
 import * as api from './api'
 import { MessageBlock, PlanPanel, latestPlanFromEvents, projectEvents } from './reuse'
 import { threadStateLabel } from './state'
-import type { ThreadDetail, ThreadRecord } from './types'
+import type { ThreadDetail, ThreadRecord, ThreadState } from './types'
 
 const POLL_MS = 1_500
 
@@ -18,12 +18,15 @@ export function ThreadPanel({
   workspace,
   projectId,
   threadId,
+  state,
   onClose,
   onThread,
 }: {
   workspace: string
   projectId: string
   threadId: string
+  /** 该 Thread 的当前状态，来自主对话那条流；卡片与这里始终是同一个事实。 */
+  state: ThreadState
   onClose: () => void
   onThread: (thread: ThreadRecord) => void
 }) {
@@ -52,12 +55,12 @@ export function ThreadPanel({
 
   // 正在跑的 Thread 自己会写 Session；在它停下来之前按固定间隔补齐。
   useEffect(() => {
-    if (detail?.thread.state !== 'working') return
+    if (state !== 'working') return
     const timer = setInterval(() => {
       void refresh().catch(() => undefined)
     }, POLL_MS)
     return () => clearInterval(timer)
-  }, [detail?.thread.state, refresh])
+  }, [state, refresh])
 
   const messages = useMemo(() => projectEvents(detail?.events ?? []), [detail])
   const plan = useMemo(() => latestPlanFromEvents(detail?.events ?? []), [detail])
@@ -88,10 +91,10 @@ export function ThreadPanel({
     <aside className="thread-panel" aria-label="Thread">
       <header className="thread-panel-header">
         <div className="thread-panel-title">
-          <span>{thread?.label ?? 'Thread'}</span>
-          <span className="thread-panel-state" data-state={thread?.state ?? 'idle'}>
-            {thread ? threadStateLabel(thread.state) : 'loading'}
-            {thread?.state === 'working' && <Loader2 size={12} className="spin" aria-hidden="true" />}
+          <span className="thread-panel-name">{thread?.label ?? 'Thread'}</span>
+          <span className="thread-panel-state" data-state={state}>
+            {threadStateLabel(state)}
+            {state === 'working' && <Loader2 size={12} className="spin" aria-hidden="true" />}
           </span>
         </div>
         <button type="button" className="icon-button" onClick={onClose} aria-label="Close thread">
@@ -99,6 +102,10 @@ export function ThreadPanel({
         </button>
       </header>
       <p className="thread-panel-goal">{thread?.goal}</p>
+      <p className="thread-panel-meta">
+        {thread?.permission ?? 'read-only'} · depth {thread?.depth ?? 0} · {threadId}
+      </p>
+      {thread?.detail && <p className="thread-panel-detail">{thread.detail}</p>}
       {error && <div className="thread-panel-error" role="alert">{error}</div>}
       <div className="thread-panel-scroll" ref={scroller}>
         <PlanPanel plan={plan} />

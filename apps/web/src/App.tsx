@@ -15,8 +15,15 @@ import {
   writeWorkspaceSelection,
 } from './sessionSelection'
 import { latestPlanFromEvents, type DisplayPlan } from './planDisplay'
+import {
+  readRecentProjects,
+  rememberProject,
+  forgetProject,
+  type RecentProject,
+} from './projectSelection'
 import { projectEvents } from './projectEvents'
 import * as api from './api'
+import * as projectApi from './project/api'
 import type {
   ConfigSnapshot,
   ContextUsage,
@@ -26,6 +33,7 @@ import type {
 } from './types'
 
 const THEME_STORAGE_KEY = 'tnega-theme'
+const LAST_VIEW_KEY = 'tnega-last-view'
 
 function initialThemePreference(): ThemePreference {
   const stored = localStorage.getItem(THEME_STORAGE_KEY)
@@ -73,7 +81,10 @@ function ChatApp() {
   const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [view, setView] = useState<'sessions' | 'projects'>('sessions')
+  // Project 与 Session 是同一块主区的两种内容：选中谁就显示谁。
+  const [project, setProject] = useState<{ workspace: string; id: string } | null>(null)
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() =>
+    readRecentProjects(localStorage))
   const projected = useRef<{ id: string; seq: number } | null>(null)
   const restoredSelection = useRef(false)
 
@@ -142,6 +153,8 @@ function ChatApp() {
 
   const selectSession = useCallback((path: string, id: string) => {
     const target = { workspace: path, id }
+    setProject(null)
+    localStorage.setItem(LAST_VIEW_KEY, 'sessions')
     selection.current = target
     currentWorkspace.current = path
     setWorkspace(path)
@@ -173,6 +186,35 @@ function ChatApp() {
       })
   }, [])
 
+  const openProject = useCallback((next: RecentProject) => {
+    setProject({ workspace: next.workspace, id: next.id })
+    setRecentProjects(rememberProject(localStorage, next))
+    localStorage.setItem(LAST_VIEW_KEY, 'projects')
+  }, [])
+
+  async function handleCreateProject(input: { name: string; folder: string; goal?: string }) {
+    try {
+      const { project: created } = await projectApi.createProject(input.folder, {
+        name: input.name,
+        ...(input.goal ? { goal: input.goal } : {}),
+      })
+      openProject({
+        workspace: input.folder,
+        id: created.id,
+        name: created.name,
+        openedAt: Date.now(),
+      })
+    } catch (reason) {
+      setError(messageOf(reason))
+      throw reason
+    }
+  }
+
+  function handleForgetProject(id: string) {
+    setRecentProjects(forgetProject(localStorage, id))
+    setProject(current => (current?.id === id ? null : current))
+  }
+
   useEffect(() => {
     const refreshConfig = () => { void api.getConfig().then(setConfig).catch(reason => setError(messageOf(reason))) }
     const onStorage = (event: StorageEvent) => {
@@ -189,9 +231,16 @@ function ChatApp() {
   useEffect(() => {
     if (restoredSelection.current) return
     restoredSelection.current = true
+    if (localStorage.getItem(LAST_VIEW_KEY) === 'projects') {
+      const [last] = readRecentProjects(localStorage)
+      if (last) {
+        openProject(last)
+        return
+      }
+    }
     if (!workspace || !sessionId) return
     selectSession(workspace, sessionId)
-  }, [workspace, sessionId, selectSession])
+  }, [workspace, sessionId, selectSession, openProject])
 
   useEffect(() => {
     if (workspace) writeWorkspaceSelection(localStorage, workspace)
@@ -215,6 +264,7 @@ function ChatApp() {
   const selectWorkspace = useCallback(
     (next: string) => {
       if (next === workspace) return
+      setProject(null)
       selection.current = null
       currentWorkspace.current = next
       setWorkspace(next)
@@ -451,8 +501,11 @@ function ChatApp() {
             workspace={workspace}
             sessions={sessions}
             selectedId={sessionId}
-            view={view}
-            onView={setView}
+            projects={recentProjects}
+            selectedProjectId={project?.id ?? null}
+            onOpenProject={openProject}
+            onCreateProject={handleCreateProject}
+            onForgetProject={handleForgetProject}
             onAdd={handleAddWorkspace}
             onRemove={handleRemoveWorkspace}
             onSelect={(path, id) => {
@@ -483,8 +536,8 @@ function ChatApp() {
             </button>
           </div>
         )}
-        {view === 'projects' && workspace ? (
-          <ProjectExperience workspace={workspace} />
+        {project ? (
+          <ProjectExperience workspace={project.workspace} projectId={project.id} />
         ) : (
           <ChatView
             model={currentModelId}

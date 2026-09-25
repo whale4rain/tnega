@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -210,4 +211,34 @@ it('rejects malformed project requests without touching the store', async () => 
     { method: 'POST', body: JSON.stringify({ text: '' }) },
   )
   expect(noText.status).toBe(400)
+})
+
+it('creates the folder a project asks for and keeps its data inside', async () => {
+  const dir = await tempDir('tnega-web-project-folder-')
+  const configFile = join(dir, 'config.json')
+  await writeFile(configFile, JSON.stringify({
+    apiKey: 'test-key',
+    baseUrl: await startMockLlm('noted'),
+    model: 'mock-model',
+    temperature: 0,
+  }), 'utf8')
+  const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+  servers.push(server)
+
+  // 这个文件夹还不存在：Project 的工作位置是刚为它新建的目录，服务端负责建出来。
+  const folder = join(dir, 'release-notes')
+  const created = await apiFetch(
+    server.url,
+    `/api/projects?workspace=${encodeURIComponent(folder)}`,
+    { method: 'POST', body: JSON.stringify({ name: 'Release notes' }) },
+  )
+  expect(created.status).toBe(200)
+  const { project } = await created.json() as { project: { id: string } }
+  expect(existsSync(join(folder, '.tnega', 'projects', project.id))).toBe(true)
+
+  const listed = await apiFetch(
+    server.url,
+    `/api/projects?workspace=${encodeURIComponent(folder)}`,
+  ).then(response => response.json()) as { projects: Array<{ id: string }> }
+  expect(listed.projects.map(entry => entry.id)).toEqual([project.id])
 })

@@ -10,6 +10,7 @@ import {
 } from '@radix-ui/themes'
 import {
   Code2,
+  FolderPlus,
   LayoutList,
   MessageSquare,
   Plus,
@@ -18,6 +19,7 @@ import {
   SunMoon,
 } from 'lucide-react'
 import type { SessionSummary } from '../types'
+import { folderName, type RecentProject } from '../projectSelection'
 import type { ThemePreference } from '../ThemeToggle'
 import { WorkspaceTree } from './WorkspaceTree'
 import {
@@ -43,9 +45,12 @@ interface Props {
   onSettings: () => void
   theme: ThemePreference
   onTheme: (theme: ThemePreference) => void
-  /** 主区显示会话流还是 Project 屏。 */
-  view: 'sessions' | 'projects'
-  onView: (view: 'sessions' | 'projects') => void
+  /** 最近打开的 Project；选中它就进入 Project 屏，选中会话则回到会话屏。 */
+  projects: RecentProject[]
+  selectedProjectId: string | null
+  onOpenProject: (project: RecentProject) => void
+  onCreateProject: (input: { name: string; folder: string; goal?: string }) => Promise<void>
+  onForgetProject: (id: string) => void
 }
 
 export function WorkspaceSidebar(props: Props) {
@@ -58,6 +63,10 @@ export function WorkspaceSidebar(props: Props) {
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [projectName, setProjectName] = useState('')
+  const [projectFolder, setProjectFolder] = useState('')
+  const [projectGoal, setProjectGoal] = useState('')
   async function perform(action: () => Promise<void>) {
     setBusy(true)
     setError('')
@@ -72,25 +81,6 @@ export function WorkspaceSidebar(props: Props) {
   return (
     <>
       <div className="sidebar-top flex flex-col">
-        <SegmentedControl.Root
-          size="1"
-          value={props.view}
-          onValueChange={(value) => {
-            if (value === 'sessions' || value === 'projects') props.onView(value)
-          }}
-          aria-label="Workspace view"
-        >
-          <SegmentedControl.Item value="sessions">
-            <span className="flex items-center gap-2">
-              <MessageSquare size={15} /> Sessions
-            </span>
-          </SegmentedControl.Item>
-          <SegmentedControl.Item value="projects">
-            <span className="flex items-center gap-2">
-              <LayoutList size={15} /> Project
-            </span>
-          </SegmentedControl.Item>
-        </SegmentedControl.Root>
         <SegmentedControl.Root
           size="1"
           value={agent}
@@ -131,6 +121,48 @@ export function WorkspaceSidebar(props: Props) {
       </div>
       <div className="sidebar-section-label flex items-center justify-between">
         <span>Projects</span>
+        <Tooltip content="New project">
+          <IconButton
+            variant="ghost"
+            color="gray"
+            aria-label="New project"
+            onClick={() => {
+              setProjectName('')
+              setProjectFolder(props.workspace ?? '')
+              setProjectGoal('')
+              setError('')
+              setCreatingProject(true)
+            }}
+          >
+            <FolderPlus size={16} />
+          </IconButton>
+        </Tooltip>
+      </div>
+      {props.projects.length ? (
+        <ul className="project-list" aria-label="Projects">
+          {props.projects.map(project => (
+            <li key={project.id}>
+              <button
+                type="button"
+                className="project-row"
+                aria-current={project.id === props.selectedProjectId ? 'true' : undefined}
+                onClick={() => props.onOpenProject(project)}
+                title={project.workspace}
+              >
+                <LayoutList size={15} aria-hidden="true" />
+                <span className="project-row-body">
+                  <span className="project-row-name">{project.name}</span>
+                  <span className="project-row-folder">{folderName(project.workspace)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="sidebar-hint">No projects yet. A project is a folder you keep working in.</p>
+      )}
+      <div className="sidebar-section-label flex items-center justify-between">
+        <span>Workspaces</span>
         <Tooltip content="Add workspace">
           <IconButton
             variant="ghost"
@@ -255,6 +287,88 @@ export function WorkspaceSidebar(props: Props) {
               )}
               <Button type="submit" disabled={busy || !path.trim()}>
                 Add workspace
+              </Button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Root>
+      <Dialog.Root
+        open={creatingProject}
+        onOpenChange={(open) => {
+          setCreatingProject(open)
+          setError('')
+        }}
+      >
+        <Dialog.Content maxWidth="480px">
+          <Dialog.Title>New project</Dialog.Title>
+          <Dialog.Description size="2" mb="4">
+            Pick the folder this project works in. Everything the project keeps — memory,
+            threads, artifacts — lives in that folder, and its agents run there.
+          </Dialog.Description>
+          {error && (
+            <p role="alert" className="danger">
+              {error}
+            </p>
+          )}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!projectName.trim() || !projectFolder.trim()) return
+              void perform(async () => {
+                await props.onCreateProject({
+                  name: projectName.trim(),
+                  folder: projectFolder.trim(),
+                  ...(projectGoal.trim() ? { goal: projectGoal.trim() } : {}),
+                })
+                setCreatingProject(false)
+              })
+            }}
+          >
+            <div className="flex flex-col gap-3">
+              <TextField.Root
+                aria-label="Project name"
+                placeholder="Project name"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+              />
+              <div className="flex gap-2">
+                <TextField.Root
+                  aria-label="Project folder"
+                  placeholder="Folder to work in"
+                  value={projectFolder}
+                  onChange={(event) => setProjectFolder(event.target.value)}
+                />
+                {hasDesktopWorkspacePicker() && (
+                  <Button
+                    type="button"
+                    variant="soft"
+                    disabled={busy}
+                    onClick={() =>
+                      void perform(async () => {
+                        const selected = await pickDesktopWorkspace()
+                        if (selected) setProjectFolder(selected)
+                      })
+                    }
+                  >
+                    Browse…
+                  </Button>
+                )}
+              </div>
+              <TextField.Root
+                aria-label="Project goal"
+                placeholder="What is it for? (optional)"
+                value={projectGoal}
+                onChange={(event) => setProjectGoal(event.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-3 mt-4">
+              <Dialog.Close>
+                <Button variant="soft" color="gray">
+                  Cancel
+                </Button>
+              </Dialog.Close>
+              <Button type="submit" disabled={busy || !projectName.trim() || !projectFolder.trim()}>
+                Create project
               </Button>
             </div>
           </form>

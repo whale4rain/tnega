@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Badge, Button, TextArea, TextField } from '@radix-ui/themes'
-import { BookOpen, FileText, LayoutList, Plus } from 'lucide-react'
+import { Badge, Button, TextArea } from '@radix-ui/themes'
+import { BookOpen, FileText, LayoutList, X } from 'lucide-react'
 import * as api from './api'
 import { LibraryPanel, MemoryPanel, OverviewPanel } from './SidePanels'
 import { ThreadPanel } from './ThreadPanel'
@@ -12,88 +12,55 @@ import {
   pendingCount,
   type ProjectView,
 } from './state'
-import type { BoxPlacement, ProjectRecord, ThreadRecord } from './types'
+import type { BoxPlacement, ThreadRecord } from './types'
 
 type SidePanel = 'overview' | 'library' | 'memory'
 
-const LAST_PROJECT_KEY = 'tnega-project'
-
-function placementKey(projectId: string): string {
-  return `${LAST_PROJECT_KEY}:${projectId}`
-}
-
 /**
- * Project 屏：中央是持续主对话，右侧按需打开 Thread 或状态面板。
+ * Project 屏：中央是持续主对话，右侧默认是 Overview，打开某个 Thread 时换成它的面板。
  *
  * 它只读三种投影：消息读 Box（主对话）、Thread 读 Blackboard 的记录、Thread 详情读那个
  * Agent 的 Session。UI 不从模型文本里猜卡片是否存在、工作是否结束 —— 因此刷新页面之后，
  * 主对话里的卡片与 Thread 详情仍然一致。
  */
-export function ProjectExperience({ workspace }: { workspace: string }) {
-  const [projects, setProjects] = useState<ProjectRecord[]>([])
-  const [projectId, setProjectId] = useState<string | null>(null)
-  /** 当前跟随的连接：打开的 Project 与它快照里的游标。 */
+export function ProjectExperience({
+  workspace,
+  projectId,
+}: {
+  workspace: string
+  projectId: string
+}) {
   const [connection, setConnection] = useState<{ projectId: string; cursor: number } | null>(null)
   const [view, setView] = useState<ProjectView | null>(null)
-  const [panel, setPanel] = useState<SidePanel | null>(null)
+  const [panel, setPanel] = useState<SidePanel>('overview')
   const [threadId, setThreadId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
-  const [goal, setGoal] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
   const selection = useRef<string | null>(null)
 
-  const open = useCallback(
-    async (id: string) => {
-      selection.current = id
-      setProjectId(id)
-      setView(null)
-      setConnection(null)
-      setThreadId(null)
-      setPanel(null)
-      try {
-        const snapshot = await api.getProject(workspace, id)
-        if (selection.current !== id) return
+  useEffect(() => {
+    selection.current = projectId
+    setView(null)
+    setConnection(null)
+    setThreadId(null)
+    setPanel('overview')
+    setError(null)
+    void api
+      .getProject(workspace, projectId)
+      .then(snapshot => {
+        if (selection.current !== projectId) return
         setView(fromSnapshot(snapshot))
         // 连接从这份快照的游标开始：之后的每一条都是新消息，之前的一条都不重放。
-        setConnection({ projectId: id, cursor: snapshot.cursor })
-        localStorage.setItem(placementKey(workspace), id)
-      } catch (reason) {
-        if (selection.current === id) setError(messageOf(reason))
-      }
-    },
-    [workspace],
-  )
-
-  useEffect(() => {
-    let cancelled = false
-    selection.current = null
-    setView(null)
-    setProjectId(null)
-    setProjects([])
-    void api
-      .listProjects(workspace)
-      .then(({ projects: next }) => {
-        if (cancelled) return
-        setProjects(next)
-        const remembered = localStorage.getItem(placementKey(workspace))
-        const target = next.find(entry => entry.id === remembered) ?? next.at(-1)
-        if (target) void open(target.id)
-        else setCreating(true)
+        setConnection({ projectId, cursor: snapshot.cursor })
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(messageOf(reason))
+        if (selection.current === projectId) setError(messageOf(reason))
       })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace, open])
+  }, [workspace, projectId])
 
-  // 一条 SSE 连接：从打开这份快照时的游标开始跟随。切换 Project 会换一个连接描述，
-  // 因此这里只在「打开的 Project 变了」时重连，不会因为新消息而抖。
+  // 一条 SSE 连接：只在「打开的 Project 变了」时重连，不会因为新消息而抖。
   useEffect(() => {
     if (!connection) return
     const stop = api.streamProject(workspace, connection.projectId, {
@@ -109,16 +76,14 @@ export function ProjectExperience({ workspace }: { workspace: string }) {
     if (node) node.scrollTop = node.scrollHeight
   }, [view?.messages.length])
 
-  const refresh = useCallback(async () => {
-    if (!projectId) return
-    const snapshot = await api.getProject(workspace, projectId)
-    if (selection.current !== projectId) return
-    setView(fromSnapshot(snapshot))
-  }, [workspace, projectId])
+  const openThread = useCallback((id: string) => {
+    setThreadId(id)
+    setPanel('overview')
+  }, [])
 
   async function submitDraft(): Promise<void> {
     const text = draft.trim()
-    if (!text || !projectId) return
+    if (!text) return
     setBusy(true)
     setError(null)
     try {
@@ -145,25 +110,10 @@ export function ProjectExperience({ workspace }: { workspace: string }) {
     }
   }
 
-  async function create(): Promise<void> {
-    if (!name.trim()) return
-    setBusy(true)
-    setError(null)
-    try {
-      const { project } = await api.createProject(workspace, {
-        name: name.trim(),
-        ...(goal.trim() ? { goal: goal.trim() } : {}),
-      })
-      setProjects(current => [...current, project])
-      setName('')
-      setGoal('')
-      setCreating(false)
-      await open(project.id)
-    } catch (reason) {
-      setError(messageOf(reason))
-    } finally {
-      setBusy(false)
-    }
+  async function refresh(): Promise<void> {
+    const snapshot = await api.getProject(workspace, projectId)
+    if (selection.current !== projectId) return
+    setView(fromSnapshot(snapshot))
   }
 
   function onThread(thread: ThreadRecord): void {
@@ -174,57 +124,34 @@ export function ProjectExperience({ workspace }: { workspace: string }) {
 
   const project = view?.project
   const pending = view ? pendingCount(view) : 0
+  const open = threadId && view ? view.threads.find(thread => thread.id === threadId) : undefined
+  const panels: Array<{ id: SidePanel; label: string; icon?: typeof FileText }> = [
+    { id: 'overview', label: 'Overview', icon: LayoutList },
+    { id: 'library', label: 'Library', icon: FileText },
+    { id: 'memory', label: 'Memory', icon: BookOpen },
+  ]
 
   return (
     <div className="project-experience">
       <header className="project-header">
         <div className="project-header-main">
-          <LayoutList size={16} aria-hidden="true" />
-          {projects.length > 1 ? (
-            <select
-              className="project-picker"
-              value={projectId ?? ''}
-              onChange={event => void open(event.target.value)}
-              aria-label="Project"
-            >
-              {projects.map(entry => (
-                <option key={entry.id} value={entry.id}>{entry.name}</option>
-              ))}
-            </select>
-          ) : (
-            <span className="project-name">{project?.name ?? 'Project'}</span>
-          )}
+          <span className="project-name">{project?.name ?? 'Project'}</span>
+          <span className="project-folder" title={workspace}>{workspace}</span>
           {project?.goal && <span className="project-goal">{project.goal}</span>}
           {pending > 0 && <Badge color="amber">{pending} waiting on you</Badge>}
         </div>
         <div className="project-header-actions">
-          <Button
-            size="1"
-            variant={panel === 'overview' ? 'solid' : 'soft'}
-            onClick={() => { setPanel(panel === 'overview' ? null : 'overview'); setThreadId(null) }}
-          >
-            Overview
-          </Button>
-          <Button
-            size="1"
-            variant={panel === 'library' ? 'solid' : 'soft'}
-            onClick={() => { setPanel(panel === 'library' ? null : 'library'); setThreadId(null) }}
-          >
-            <FileText size={14} aria-hidden="true" />
-            Library
-          </Button>
-          <Button
-            size="1"
-            variant={panel === 'memory' ? 'solid' : 'soft'}
-            onClick={() => { setPanel(panel === 'memory' ? null : 'memory'); setThreadId(null) }}
-          >
-            <BookOpen size={14} aria-hidden="true" />
-            Memory
-          </Button>
-          <Button size="1" variant="soft" onClick={() => setCreating(true)}>
-            <Plus size={14} aria-hidden="true" />
-            New
-          </Button>
+          {panels.map(entry => (
+            <Button
+              key={entry.id}
+              size="1"
+              variant={!threadId && panel === entry.id ? 'solid' : 'soft'}
+              onClick={() => { setThreadId(null); setPanel(entry.id) }}
+            >
+              {entry.icon && <entry.icon size={14} aria-hidden="true" />}
+              {entry.label}
+            </Button>
+          ))}
         </div>
       </header>
 
@@ -236,30 +163,6 @@ export function ProjectExperience({ workspace }: { workspace: string }) {
         </div>
       )}
 
-      {creating && (
-        <div className="project-create">
-          <TextField.Root
-            size="2"
-            placeholder="Project name"
-            value={name}
-            onChange={event => setName(event.target.value)}
-            autoFocus
-          />
-          <TextField.Root
-            size="2"
-            placeholder="What is it for? (optional)"
-            value={goal}
-            onChange={event => setGoal(event.target.value)}
-          />
-          <div className="project-create-actions">
-            <Button size="2" onClick={() => void create()} disabled={busy || !name.trim()}>Create</Button>
-            {!!projects.length && (
-              <Button size="2" variant="soft" onClick={() => setCreating(false)}>Cancel</Button>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="project-body">
         <div className="project-conversation">
           <div className="messages-viewport" ref={scroller}>
@@ -267,7 +170,7 @@ export function ProjectExperience({ workspace }: { workspace: string }) {
               <Timeline
                 envelopes={view.messages}
                 threads={view.threads}
-                onOpenThread={id => { setPanel(null); setThreadId(id) }}
+                onOpenThread={openThread}
               />
             ) : (
               <div className="project-empty"><p>Loading…</p></div>
@@ -277,7 +180,7 @@ export function ProjectExperience({ workspace }: { workspace: string }) {
             <TextArea
               value={draft}
               placeholder="Ask for something, or add to the work in flight."
-              disabled={!projectId || busy}
+              disabled={!view || busy}
               onChange={event => setDraft(event.target.value)}
               onKeyDown={event => {
                 if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -286,34 +189,37 @@ export function ProjectExperience({ workspace }: { workspace: string }) {
                 }
               }}
             />
-            <Button onClick={() => void submitDraft()} disabled={!projectId || busy || !draft.trim()}>
+            <Button onClick={() => void submitDraft()} disabled={!view || busy || !draft.trim()}>
               Send
             </Button>
           </div>
         </div>
 
-        {threadId && (
+        {threadId && view ? (
           <ThreadPanel
             workspace={workspace}
-            projectId={projectId!}
+            projectId={projectId}
             threadId={threadId}
+            state={open?.state ?? 'idle'}
             onClose={() => setThreadId(null)}
             onThread={onThread}
           />
-        )}
-        {!threadId && panel && view && (
+        ) : (
           <aside className="project-panel" aria-label={panel}>
-            {panel === 'overview' && (
-              <OverviewPanel
-                view={view}
-                onOpenThread={id => { setPanel(null); setThreadId(id) }}
-              />
+            <div className="project-panel-head">
+              <span>{panels.find(entry => entry.id === panel)?.label}</span>
+              <button type="button" className="icon-button" onClick={() => setPanel('overview')} hidden={panel === 'overview'}>
+                <X size={14} aria-hidden="true" />
+              </button>
+            </div>
+            {view && panel === 'overview' && (
+              <OverviewPanel view={view} onOpenThread={openThread} />
             )}
-            {panel === 'library' && <LibraryPanel view={view} />}
-            {panel === 'memory' && (
+            {view && panel === 'library' && <LibraryPanel view={view} />}
+            {view && panel === 'memory' && (
               <MemoryPanel
                 workspace={workspace}
-                projectId={projectId!}
+                projectId={projectId}
                 view={view}
                 onChanged={() => void refresh()}
               />
