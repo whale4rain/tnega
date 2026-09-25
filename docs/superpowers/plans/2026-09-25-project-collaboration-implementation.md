@@ -1,5 +1,7 @@
 # Project 协作运行时与 UI Implementation Plan
 
+> **旧版实施计划，已作废，不得继续执行。** 新设计见 [Project v2：Box、Blackboard 与 Project Loop](../specs/2026-09-25-project-box-blackboard-design.md)。本文件保留供历史对照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 状态：计划已编写，尚未执行

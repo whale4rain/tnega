@@ -91,3 +91,27 @@ _Avoid_: settings file, preferences
 **Recent Workspace**:
 由 Web UI 维护的系统级工作区访问历史，不是某个 Session 的属性。
 _Avoid_: workspace list（那是当前可用工作区）
+
+## Project v2 目标术语
+
+以下词汇定义 [Project v2](./docs/superpowers/specs/2026-09-25-project-box-blackboard-design.md) 的设计目标；当前运行时代码尚未采用它们。
+
+**Project**:
+可持续使用的协作容器，包含用户与协调 Agent 的主对话、可独立工作的 Thread，以及共享资料和产物。
+它能承接有限目标和后来追加的工作，既可使用代码仓库，也可使用其他资料。
+_Avoid_: 把 Project 当 Workspace 的别名
+
+**Thread**:
+Project 中一个可持续交互的 Agent 身份，拥有自己的 Session，可由父 Agent 创建，也可被用户直接干预。
+它可以跨多个 Agent Run 工作；线程内步骤属于该 Thread。
+
+**Box**:
+Project 内用户与 Agent 共用的消息通道，以带来源和收件人的信封将消息送入对应 inbox。
+它负责路由与投递，消息的持久事实属于 Blackboard。
+
+**Blackboard**:
+Project 的共享持久事实，包含消息信封、Agent 关系、共享记忆、资料与产物引用。
+它不包含任何 Agent 的完整对话历史；模型实际看到的历史仍以该 Agent 的 Session 为准。
+
+**Project Loop**:
+Project 级的协作循环，依据 Box 和 Blackboard 唤醒 Agent、协调父子工作，并驱动各自的 Agent Loop。

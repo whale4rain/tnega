@@ -1,6 +1,6 @@
 # Project 协作运行时设计草案
 
-> 状态：进行中
+> 状态：旧版设计，已由 [Project v2：Box、Blackboard 与 Project Loop](./2026-09-25-project-box-blackboard-design.md) 取代；保留以解释选型演变。
 > 取代关系：无；承接 [多智能体方向调研](../../research/2026-09-24-multi-agent-products.md)
 > 当前实现：代码基线 `786850e`；本稿为提案，新增类型与插件尚未实现。当前事实见 [Agent](../../../packages/agent/README.md)、[Subagent](../../../packages/subagent/README.md) 和 [Session](../../../packages/session/README.md)。
 
