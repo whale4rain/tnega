@@ -907,15 +907,14 @@ export function ChatView({
 
           <div className="chat-header-actions">
             {context && <ContextRing context={context} />}
-            <button
-              type="button"
+            <Button
               className="icon-button"
+              label={compacting ? 'Compacting…' : 'Compact context'}
+              variant="ghost"
+              size="sm"
+              isDisabled={running || compacting}
               onClick={() => void handleCompact()}
-              disabled={running || compacting}
-              title="compact context"
-            >
-              {compacting ? 'Compacting…' : 'Compact context'}
-            </button>
+            />
           </div>
         </div>
       </div>
@@ -926,14 +925,14 @@ export function ChatView({
             <span className="goal-objective">{goal.objective}</span>
             <span>{goal.rounds}/{goal.maxRounds} rounds</span>
             {(goal.status === 'active' || goal.status === 'paused' || goal.status === 'blocked') && (
-              <button
-                type="button"
+              <Button
                 className="goal-action"
-                disabled={running || slashBusy}
+                label={goal.status === 'active' ? 'Pause' : 'Resume'}
+                variant="secondary"
+                size="sm"
+                isDisabled={running || slashBusy}
                 onClick={() => void runSlash('/goal', [goal.status === 'active' ? 'pause' : 'resume'])}
-              >
-                {goal.status === 'active' ? 'Pause' : 'Resume'}
-              </button>
+              />
             )}
           </div>
           <div className="goal-progress" role="progressbar" aria-label="Goal rounds" aria-valuenow={goal.rounds} aria-valuemin={0} aria-valuemax={goal.maxRounds}>

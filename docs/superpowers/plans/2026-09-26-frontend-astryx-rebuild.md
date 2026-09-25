@@ -74,6 +74,9 @@ Surfaces deliberately left on Tnega components, and why no Astryx component fits
 - **Subagent card** (`Transcript.tsx`). Pairs a disclosure with a separate "open in sidebar" action; `Collapsible`'s trigger owns a single activation.
 - **Conversation turn rail** (`ConversationNav.tsx`). A roving-focus marker rail with its own arrow/Home/End handling and a scroll-following effect.
 - **Project rows** (`WorkspaceTree.tsx`, from Phase 2). A primary navigation action plus a separate overflow menu, which `ListItem`'s interaction model does not fit.
+- **Selection rows with their own grid** (`SidePanels.tsx` overview rows, `ThemeToggle.tsx`). Row-shaped controls carrying their own layout (`data-state` grids, a three-way theme segmented control) rather than a library control shape.
+
+Left in place as Tnega components because they are content, not controls: the file-edit card, the subagent card body, the compaction/slash result bodies, and the context ring.
 
 
 ### Phase 4: Global integration and cleanup

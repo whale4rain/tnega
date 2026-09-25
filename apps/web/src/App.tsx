@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@astryxdesign/core/Button'
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
 import { Theme as AstryxTheme } from '@astryxdesign/core/theme'
 import { neutralTheme } from '@astryxdesign/theme-neutral/built'
@@ -553,9 +554,7 @@ function ChatApp() {
             <div className="error-banner" role="alert">
               <span className="marker">Error</span>
               <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} title="Dismiss">
-                Close
-              </button>
+              <Button label="Close" variant="ghost" size="sm" onClick={() => setError(null)} />
             </div>
           )}
           {project ? (
