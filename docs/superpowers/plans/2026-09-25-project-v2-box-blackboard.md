@@ -246,6 +246,7 @@ export abstract class BoxService extends Service {
 
 ```ts
 export type ThreadState = 'working' | 'waiting' | 'blocked' | 'idle' | 'done' | 'failed'
+export type ThreadPermission = 'read-only' | 'workspace-write' | 'bypass'
 
 export interface ThreadRecord {
   id: string              // 等于该 Agent 的 agentId，也是文件夹名
@@ -257,10 +258,9 @@ export interface ThreadRecord {
   state: ThreadState
   detail?: string
   depth: number
+  permission: ThreadPermission
   createdAt: number
   updatedAt: number
-  branch?: string
-  worktree?: string
 }
 
 export interface ThreadSpawnRequest {
@@ -268,25 +268,32 @@ export interface ThreadSpawnRequest {
   goal: string
   label?: string
   expect?: string
-  refs?: ArtifactRef[]
-  permission?: 'read-only' | 'workspace-write' | 'bypass'
+  permission?: ThreadPermission   // 只能比父 Thread 更窄
 }
 
 export abstract class ThreadService extends Service {
   constructor(ctx: Context) { super(ctx, 'threads') }
   abstract spawn(request: ThreadSpawnRequest): Promise<ThreadRecord>
-  /** 协调者 Thread：Project 创建时建立，parentId 为空。 */
-  abstract ensureRoot(project: ProjectRecord): Promise<ThreadRecord>
+  /** 协调者 Thread：Project 创建时建立，parentId 为空，depth 为 0。 */
+  abstract ensureRoot(project: { id: string; name: string; coordinatorId: string; goal?: string }): Promise<ThreadRecord>
   abstract get(threadId: string): Promise<ThreadRecord | undefined>
   abstract list(options?: { parentId?: string; descendants?: boolean }): Promise<ThreadRecord[]>
   abstract setState(threadId: string, state: ThreadState, detail?: string): Promise<ThreadRecord>
   /** 激活或恢复该 Thread 的 LiveAgent；同一 id 在进程内只有一个实例。 */
   abstract activate(threadId: string): Promise<LiveAgent>
   abstract idle(threadId: string): Promise<void>
+  abstract sessionFile(threadId: string): string
 }
 ```
 
-Thread 文件夹是 `.tnega/projects/<projectId>/agents/<threadId>/`，含 `session.jsonl`；身份与可恢复配置写入 Session 的 `meta` 事件（沿用 `AgentRegistry.resume` 的既有机制），Blackboard 的 `agent` 记录保存父子与状态。`depth` 上限由配置决定，默认 2；同一父 Agent 的并行子 Thread 上限默认 3。
+Thread 文件夹是 `.tnega/projects/<projectId>/agents/<threadId>/`，含 `session.jsonl`；
+可恢复配置（label / goal / state / depth / permission / 父子）是 Blackboard 的 `agent`
+记录，身份本身写进 Session 的 `meta` 事件（沿用 `AgentRegistry.resume` 的既有机制）。
+`depth` 上限由配置决定，默认 2；同一父 Agent 的并行子 Thread 上限默认 3。
+
+首封工作消息**不**由 `spawn` 投递：那属于 Box 的职责，由 `tool-thread` 在 `spawn` 之后
+发送，崩溃时靠 Project Loop 的重投补齐。`spawn` 只管身份、文件夹、Session 与父子关系。
+代码 Thread 需要的分支与工作树字段在真正实现代码协作时再加，不预留空字段。
 
 ### Project Loop（`packages/loop/project-loop`）
 

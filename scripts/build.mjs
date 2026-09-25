@@ -51,6 +51,8 @@ const packageDirs = {
   'project-local': 'packages/project/project-local',
   box: 'packages/project/box',
   'box-blackboard': 'packages/project/box-blackboard',
+  thread: 'packages/project/thread',
+  'thread-local': 'packages/project/thread-local',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -73,6 +75,8 @@ const libraryEntries = {
   'project-local': `${packageDir('project-local')}/src/index.ts`,
   box: `${packageDir('box')}/src/index.ts`,
   'box-blackboard': `${packageDir('box-blackboard')}/src/index.ts`,
+  thread: `${packageDir('thread')}/src/index.ts`,
+  'thread-local': `${packageDir('thread-local')}/src/index.ts`,
   subagent: `${packageDir('subagent')}/src/index.ts`,
   'subagent-local': `${packageDir('subagent-local')}/src/index.ts`,
   search: `${packageDir('search')}/src/index.ts`,

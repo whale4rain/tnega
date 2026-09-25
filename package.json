@@ -136,6 +136,14 @@
       "types": "./dist/types/packages/search/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"
     },
+    "./thread": {
+      "types": "./dist/types/packages/project/thread/src/index.d.ts",
+      "import": "./dist/thread.js"
+    },
+    "./thread-local": {
+      "types": "./dist/types/packages/project/thread-local/src/index.d.ts",
+      "import": "./dist/thread-local.js"
+    },
     "./tool-memory": {
       "types": "./dist/types/packages/memory/tool-memory/src/index.d.ts",
       "import": "./dist/tool-memory.js"
