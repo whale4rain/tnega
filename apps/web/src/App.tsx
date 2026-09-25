@@ -247,7 +247,9 @@ function ChatApp() {
   }, [workspace])
 
   useEffect(() => {
-    if (!workspace || sessionId) return
+    // 只在会话屏里自动回到上次的会话。打开着 Project 时这条不参与 —— 否则会话列表一刷新
+    // 就会把刚打开的 Project 挤掉，退回上一次的会话。
+    if (project || !workspace || sessionId) return
     const available = sessions.filter(
       (session) => session.workspace === workspace,
     )
@@ -259,7 +261,7 @@ function ChatApp() {
       return
     }
     selectSession(workspace, preferred)
-  }, [sessions, workspace, sessionId, selectSession])
+  }, [project, sessions, workspace, sessionId, selectSession])
 
   const selectWorkspace = useCallback(
     (next: string) => {

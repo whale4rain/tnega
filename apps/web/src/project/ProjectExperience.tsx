@@ -173,7 +173,10 @@ export function ProjectExperience({
                 onOpenThread={openThread}
               />
             ) : (
-              <div className="project-empty"><p>Loading…</p></div>
+              <div className="project-empty">
+                <p>{error ? 'Could not open this project.' : 'Loading…'}</p>
+                {error && <p className="project-empty-hint">{error}</p>}
+              </div>
             )}
           </div>
           <div className="project-composer">

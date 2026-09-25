@@ -242,3 +242,76 @@ it('creates the folder a project asks for and keeps its data inside', async () =
   ).then(response => response.json()) as { projects: Array<{ id: string }> }
   expect(listed.projects.map(entry => entry.id)).toEqual([project.id])
 })
+
+const FRAME_BREAK = /\r?\n\r?\n/
+const LINE_BREAK = /\r?\n/
+
+it('pushes messages that arrive after connecting onto the stream', async () => {
+  const dir = await tempDir('tnega-web-project-stream-')
+  const workspace = join(dir, 'workspace')
+  await mkdir(workspace, { recursive: true })
+  const configFile = join(dir, 'config.json')
+  await writeFile(configFile, JSON.stringify({
+    apiKey: 'test-key',
+    baseUrl: await startMockLlm('streamed reply'),
+    model: 'mock-model',
+    temperature: 0,
+  }), 'utf8')
+  const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+  servers.push(server)
+  const query = `?workspace=${encodeURIComponent(workspace)}`
+
+  const { project } = await apiFetch(server.url, `/api/projects${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Streaming' }),
+  }).then(response => response.json()) as { project: { id: string } }
+
+  // 先连上，再发言：实时那一条必须和补齐的那一条是同一种帧，否则界面只有刷新才更新。
+  const controller = new AbortController()
+  const response = await fetch(
+    `${server.url}/api/projects/${project.id}/stream${query}&after=0`,
+    { headers: { 'x-tnega-client': '1' }, signal: controller.signal },
+  )
+  expect(response.status).toBe(200)
+  const reader = response.body!.getReader()
+  const frames: Array<Record<string, unknown>> = []
+  const pump = (async () => {
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split(FRAME_BREAK)
+        buffer = parts.pop() ?? ''
+        for (const part of parts) {
+          const data = part.split(LINE_BREAK)
+            .filter(entry => entry.startsWith('data:'))
+            .map(entry => entry.slice(5).trim())
+            .join('')
+          if (data) frames.push(JSON.parse(data) as Record<string, unknown>)
+        }
+      }
+    } catch {
+      // 中止读取是预期的结束方式。
+    }
+  })()
+
+  await apiFetch(server.url, `/api/projects/${project.id}/messages${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ text: 'Summarise the release notes' }),
+  })
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline
+    && !frames.some(entry => entry.type === 'message'
+      && (entry.envelope as { kind?: string }).kind === 'agent-reply')) {
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  controller.abort()
+  await pump
+
+  const kinds = frames.filter(entry => entry.type === 'message')
+    .map(entry => (entry.envelope as { kind: string }).kind)
+  expect(kinds).toEqual(['user-message', 'agent-reply'])
+})

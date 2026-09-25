@@ -217,6 +217,11 @@ export class ProjectHost {
     }
     disposers.push(project.ctx.on('blackboard/commit', (event: { records: readonly FactRecord[] }) => {
       for (const record of event.records) {
+        // 消息用和补齐时一样的帧推下去：订阅方只认一种消息形状，不会「补齐有、实时没有」。
+        if (record.kind === 'message') {
+          send({ type: 'message', seq: record.seq, envelope: record.data })
+          continue
+        }
         send({
           type: 'commit',
           kind: record.kind,
