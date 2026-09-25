@@ -71,7 +71,8 @@ describe('workbench navigation', () => {
         selectedProjectId: null,
         onOpenProject: () => {},
         onNewProject: () => {},
-        onForgetProject: () => {},
+        onArchiveProject: async () => {},
+        onDeleteProject: async () => {},
           sessions: ['Fix parser', 'Add tests'].map((title, index) => ({
             id: String(index),
             title,
@@ -117,7 +118,8 @@ describe('workbench navigation', () => {
         selectedProjectId: null,
         onOpenProject: () => {},
         onNewProject: () => {},
-        onForgetProject: () => {},
+        onArchiveProject: async () => {},
+        onDeleteProject: async () => {},
           sessions: ['/project', '/other'].map((workspace) => ({
             id: 'same',
             title: `Session in ${workspace}`,
