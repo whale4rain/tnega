@@ -1472,8 +1472,12 @@ pre {
     background: var(--surface-card);
   }
 
-  /* 工具行被超长命令撑宽时会顶出消息列。行内自己收住：min-width 归零让它能缩，
+  /* 工具行被超长命令撑宽时会顶出消息列。组和行各自收住：min-width 归零让它们能缩，
      max-width 兜住上界，命令末尾用省略号收尾，而不是硬裁或把行撑开。 */
+  .astryx-chat-tool-calls {
+    min-width: 0;
+    max-width: 100%;
+  }
   .astryx-chat-tool-calls [role='button'] {
     overflow: hidden;
     min-width: 0;
