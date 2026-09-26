@@ -73,6 +73,7 @@ export function WorkbenchShell({
       height="fill"
       topNav={
         <TopNav
+          className="tnega-top-nav"
           label="Application navigation"
           heading={
             <TopNavHeading

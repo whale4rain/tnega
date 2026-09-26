@@ -985,6 +985,10 @@ pre {
   font-size: 11px;
   line-height: 1.5;
   white-space: pre-wrap;
+  /* 钉死满宽：内容只有 {} 或 (no goal) 时也不许缩成内容宽度。 */
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   overflow-wrap: anywhere;
 }
 /* Where the rest of a capped tool result went. */
@@ -1493,6 +1497,23 @@ pre {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* 无边框窗口（Electron 里 titleBarStyle: 'hidden'）靠顶部这条做拖动区。
+     迁移前的 .window-bar 带着 -webkit-app-region: drag，换成 Astryx 的 TopNav
+     之后这条丢了，于是窗口拖不动、拖动会变成选中文字。
+     必须放这一层：Astryx 在 astryx-base 层给 TopNav 设了 no-drag，会压过 legacy。
+     右侧留 140px 给系统的最小化/最大化/关闭按钮（titleBarOverlay 高 32px）。 */
+  .tnega-top-nav {
+    -webkit-app-region: drag;
+    user-select: none;
+    padding-right: 140px;
+  }
+  .tnega-top-nav button,
+  .tnega-top-nav a,
+  .tnega-top-nav input,
+  .tnega-top-nav [role='button'] {
+    -webkit-app-region: no-drag;
   }
 
   /* 会话行收成一行：标题换行会把行撑到 60px，看起来像一个多余的框。 */
