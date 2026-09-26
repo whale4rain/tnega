@@ -598,15 +598,6 @@ pre {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.jump-bottom {
-  position: absolute;
-  bottom: 18px;
-  right: 12px;
-  border-radius: 50% !important;
-  background: var(--surface-card) !important;
-  display: flex;
-  padding: 8px !important;
-}
 .composer-dock {
   width: min(820px, calc(100% - 32px));
   margin: 0 auto;
@@ -1451,6 +1442,19 @@ pre {
   }
   .tnega-side-nav .sidebar-footer {
     margin-top: auto;
+  }
+
+  /* 「回到最新消息」浮在消息区右下角。Astryx 给按钮设了 position: relative，
+     在 astryx-base 层压过 legacy 里的 absolute——按钮于是掉回文档流、落到
+     .messages-viewport 外面，把外层容器撑出 32px 溢出，右侧就多出一个滚动框。 */
+  .jump-bottom {
+    position: absolute;
+    bottom: 18px;
+    right: 12px;
+    display: flex;
+    padding: 8px;
+    border-radius: 50%;
+    background: var(--surface-card);
   }
 
   /* 会话行收成一行：标题换行会把行撑到 60px，看起来像一个多余的框。 */
