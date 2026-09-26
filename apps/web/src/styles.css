@@ -1424,6 +1424,27 @@ pre {
     color: var(--mute);
   }
 
+  /* 文件列表底部的展开/收起：箭头跟着状态转，收起时指向下、展开时指向上。 */
+  .file-edits-more svg {
+    transition: transform 150ms ease;
+  }
+  .file-edits-more svg.expanded {
+    transform: rotate(-90deg);
+  }
+
+  /* 侧栏内容比视口短时，底部的 Settings 会跟着内容停在半空。
+     把滚动容器变成纵向 flex，让 footer 用 margin-top: auto 沉到底。 */
+  .tnega-side-nav > div {
+    display: flex;
+    flex-direction: column;
+  }
+  .tnega-side-nav > div > * {
+    flex-shrink: 0;
+  }
+  .tnega-side-nav .sidebar-footer {
+    margin-top: auto;
+  }
+
   /* 会话行收成一行：标题换行会把行撑到 60px，看起来像一个多余的框。 */
   .tnega-side-nav [role='treeitem'][aria-level='2'] .astryx-tree-list-item {
     margin-inline-start: 20px;

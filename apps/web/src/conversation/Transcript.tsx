@@ -158,7 +158,8 @@ function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
       ))}
     </ul>
   )
-  // 展开后不再显示这一行：它只是“还有几个没列出来”的入口，全部列出来之后就没有意义了。
+  // 收起时只列前三个，并留一个入口展开；按钮排在列表末尾，展开后原地变成“收起”，
+  // 这样既不会把列表截成两段，也随时收得回去。
   const collapsed = !expanded && remaining > 0
   return (
     <div className="message file-edits-card">
@@ -170,14 +171,14 @@ function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
         </div>
       </div>
       {rows(collapsed ? ordered.slice(0, 3) : ordered)}
-      {collapsed && (
+      {remaining > 0 && (
         <Button
           className="file-edits-more"
-          label={`再显示 ${remaining} 个文件`}
+          label={expanded ? '收起' : `再显示 ${remaining} 个文件`}
           variant="ghost"
           size="sm"
-          icon={<ChevronRight size={14} aria-hidden="true" />}
-          onClick={() => setExpanded(true)}
+          icon={<ChevronRight size={14} className={expanded ? 'expanded' : undefined} aria-hidden="true" />}
+          onClick={() => setExpanded(current => !current)}
         />
       )}
     </div>
