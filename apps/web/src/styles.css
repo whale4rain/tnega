@@ -692,7 +692,6 @@ pre {
   width: auto;
 }
 .tool,
-.compaction,
 .slash {
   font-size: 12px;
   margin-bottom: 12px;
@@ -927,7 +926,6 @@ pre {
   color: var(--danger);
 }
 @media (max-width: 1100px) {
-  .permission-hint { display: none; }
   .chat-meta > span {
     display: none;
   }
