@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { List, ListItem } from '@astryxdesign/core/List'
 import { X } from 'lucide-react'
 import * as api from '../api'
 import type { SessionEvent, SubagentEntry } from '../types'
@@ -131,28 +133,30 @@ export function SubagentSidebar({ workspace, subagents, selectedId, onSelect, on
           <strong>Tasks</strong>
           <span>{activeCount} active · {subagents.length} total</span>
         </div>
-        <button type="button" className="icon-button" aria-label="Close tasks sidebar" onClick={onClose}>
-          <X size={16} />
-        </button>
+        <IconButton
+          label="Close tasks sidebar"
+          icon={<X size={16} />}
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+        />
       </div>
-      <div className="subagent-list" aria-label="Subagent task list">
-        {subagents.map(child => (
-          <button
-            key={child.id}
-            type="button"
-            className={`subagent-list-item${selected?.id === child.id ? ' selected' : ''}`}
-            aria-current={selected?.id === child.id ? 'true' : undefined}
-            onClick={() => onSelect(child.id)}
-            style={{ paddingLeft: `${12 + Math.min(child.depth, 4) * 12}px` }}
-          >
-            <span className={`subagent-status-dot ${child.status}`} aria-hidden="true" />
-            <span className="subagent-list-copy">
-              <span className="subagent-list-label">{child.label}</span>
-              <span className="subagent-list-meta">{child.mode} · {child.status}</span>
-            </span>
-          </button>
-        ))}
-      </div>
+      {/* 缩进表示派工层级：ListItem 没有 depth，用一层 padding 包出层级感。 */}
+      <section className="subagent-list" aria-label="Subagent task list">
+        <List density="compact">
+          {subagents.map(child => (
+            <div key={child.id} style={{ paddingInlineStart: `${Math.min(child.depth, 4) * 12}px` }}>
+              <ListItem
+                label={child.label}
+                description={`${child.mode} · ${child.status}`}
+                startContent={<span className={`subagent-status-dot ${child.status}`} aria-hidden="true" />}
+                isSelected={selected?.id === child.id}
+                onClick={() => onSelect(child.id)}
+              />
+            </div>
+          ))}
+        </List>
+      </section>
       {selected && (
         <section className="subagent-inspector" aria-label={`${selected.label} activity`}>
           <div className="subagent-inspector-heading">

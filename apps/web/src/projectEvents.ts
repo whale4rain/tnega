@@ -20,8 +20,6 @@ type EndPayload = {
 export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
   const messages: DisplayMessage[] = []
   const toolIndex = new Map<string, number>()
-  const checkpoints = new Map<string, { summary?: string; tokensBefore?: number }>()
-  const announcedCheckpoints = new Set<string>()
   let turnStart = 0
   let turnOpen = false
   for (const event of events) {
@@ -60,22 +58,8 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       case 'assistant/chunk':
       case 'compaction/start':
+      case 'compaction/end':
         break
-      case 'compaction/end': {
-        const checkpointId = event.payload.checkpointId
-        const checkpoint = checkpointId ? checkpoints.get(checkpointId) : undefined
-        if (checkpointId) announcedCheckpoints.add(checkpointId)
-        messages.push({
-          id: event.id,
-          role: 'system',
-          content: checkpoint?.summary ?? '',
-          compacted: true,
-          ...(checkpoint?.tokensBefore !== undefined
-            ? { tokensBefore: checkpoint.tokensBefore }
-            : {}),
-        })
-        break
-      }
       case 'system/message':
         // System prompts are raw model context, not part of the transcript.
         break
@@ -161,8 +145,13 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
       case 'checkpoint': {
-        checkpoints.set(event.id, {
-          ...(event.payload.summary !== undefined ? { summary: event.payload.summary } : {}),
+        // 压缩只为模型折叠历史，对人类读者只加一个原位标记，绝不截断上面的历史。
+        // `compaction/end` 只是压缩完成的记账，不重复渲染；marker 就随 checkpoint 就位。
+        messages.push({
+          id: event.id,
+          role: 'system',
+          content: event.payload.summary ?? '',
+          compacted: true,
           ...(event.payload.tokensBefore !== undefined
             ? { tokensBefore: event.payload.tokensBefore }
             : {}),
@@ -256,18 +245,6 @@ export function projectEvents(events: SessionEvent[]): DisplayMessage[] {
         break
       }
     }
-  }
-  for (const [checkpointId, checkpoint] of checkpoints) {
-    if (announcedCheckpoints.has(checkpointId)) continue
-    messages.push({
-      id: checkpointId,
-      role: 'system',
-      content: checkpoint.summary ?? '',
-      compacted: true,
-      ...(checkpoint.tokensBefore !== undefined
-        ? { tokensBefore: checkpoint.tokensBefore }
-        : {}),
-    })
   }
   mergeAgentReplies(messages)
   return messages

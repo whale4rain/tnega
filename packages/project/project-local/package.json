@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/project-local",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/blackboard": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/project": "workspace:*"
+  }
+}

@@ -20,9 +20,33 @@
       "types": "./dist/types/packages/agent/src/index.d.ts",
       "import": "./dist/agent.js"
     },
+    "./artifact-store": {
+      "types": "./dist/types/packages/project/artifact-store/src/index.d.ts",
+      "import": "./dist/artifact-store.js"
+    },
+    "./artifact-local": {
+      "types": "./dist/types/packages/project/artifact-local/src/index.d.ts",
+      "import": "./dist/artifact-local.js"
+    },
     "./cli/runtime": {
       "types": "./dist/types/packages/cli/src/index.d.ts",
       "import": "./dist/cli-runtime.js"
+    },
+    "./blackboard": {
+      "types": "./dist/types/packages/project/blackboard/src/index.d.ts",
+      "import": "./dist/blackboard.js"
+    },
+    "./blackboard-local": {
+      "types": "./dist/types/packages/project/blackboard-local/src/index.d.ts",
+      "import": "./dist/blackboard-local.js"
+    },
+    "./box": {
+      "types": "./dist/types/packages/project/box/src/index.d.ts",
+      "import": "./dist/box.js"
+    },
+    "./box-blackboard": {
+      "types": "./dist/types/packages/project/box-blackboard/src/index.d.ts",
+      "import": "./dist/box-blackboard.js"
     },
     "./coding-agent": {
       "types": "./dist/types/packages/coding-agent/src/index.d.ts",
@@ -51,6 +75,18 @@
     "./llm": {
       "types": "./dist/types/packages/llm/src/index.d.ts",
       "import": "./dist/llm.js"
+    },
+    "./project": {
+      "types": "./dist/types/packages/project/project/src/index.d.ts",
+      "import": "./dist/project.js"
+    },
+    "./project-local": {
+      "types": "./dist/types/packages/project/project-local/src/index.d.ts",
+      "import": "./dist/project-local.js"
+    },
+    "./project-loop": {
+      "types": "./dist/types/packages/loop/project-loop/src/index.d.ts",
+      "import": "./dist/project-loop.js"
     },
     "./memory": {
       "types": "./dist/types/packages/memory/memory/src/index.d.ts",
@@ -103,6 +139,26 @@
     "./tool-search": {
       "types": "./dist/types/packages/search/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"
+    },
+    "./tool-box": {
+      "types": "./dist/types/packages/project/tool-box/src/index.d.ts",
+      "import": "./dist/tool-box.js"
+    },
+    "./tool-thread": {
+      "types": "./dist/types/packages/project/tool-thread/src/index.d.ts",
+      "import": "./dist/tool-thread.js"
+    },
+    "./tool-blackboard": {
+      "types": "./dist/types/packages/project/tool-blackboard/src/index.d.ts",
+      "import": "./dist/tool-blackboard.js"
+    },
+    "./thread": {
+      "types": "./dist/types/packages/project/thread/src/index.d.ts",
+      "import": "./dist/thread.js"
+    },
+    "./thread-local": {
+      "types": "./dist/types/packages/project/thread-local/src/index.d.ts",
+      "import": "./dist/thread-local.js"
     },
     "./tool-memory": {
       "types": "./dist/types/packages/memory/tool-memory/src/index.d.ts",

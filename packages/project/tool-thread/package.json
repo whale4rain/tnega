@@ -1,0 +1,15 @@
+{
+  "name": "@tnega/tool-thread",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/box": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/thread": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}

@@ -92,9 +92,20 @@ _Avoid_: settings file, preferences
 由 Web UI 维护的系统级工作区访问历史，不是某个 Session 的属性。
 _Avoid_: workspace list（那是当前可用工作区）
 
-## Project v2 目标术语
+## Project 术语
 
-以下词汇定义 [Project v2](./docs/superpowers/specs/2026-09-25-project-box-blackboard-design.md) 的设计目标；当前运行时代码尚未采用它们。
+以下词汇来自 [Project v2 设计](docs/superpowers/specs/2026-09-25-project-box-blackboard-design.md)，
+已在 `packages/project/*`、`packages/loop/project-loop` 与 CLI 的 Project Host 中实现。
+
+**Fact（事实）**:
+Blackboard 里一条有类型、带版本、带来源的记录。写入是条件提交：改动已存在的记录必须带上
+读到的版本号，版本不符就带着当前记录失败，由写入者重新读取后处理。
+_Avoid_: row、entry、kv
+
+**Envelope（信封）**:
+Box 里一条消息的完整形状：可信发送者、收件地址、显示位置、消息类型、内容或引用、
+`causationId` 与投递状态。用户也是收件地址之一。
+_Avoid_: message（那是 Session 里的东西）
 
 **Project**:
 可持续使用的协作容器，包含用户与协调 Agent 的主对话、可独立工作的 Thread，以及共享资料和产物。

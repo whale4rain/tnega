@@ -4,11 +4,15 @@ packages:
   - packages/spill/*
   - packages/memory/*
   - packages/subagent/*
+  - packages/project/*
+  - packages/loop/*
   - apps/*
 
 onlyBuiltDependencies:
   - esbuild
 allowBuilds:
+  '@astryxdesign/cli': false
+  '@astryxdesign/core': false
   electron-winstaller: false
   esbuild: true
 minimumReleaseAgeExclude:

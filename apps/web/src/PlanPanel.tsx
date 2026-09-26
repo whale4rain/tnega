@@ -1,28 +1,26 @@
 import { Check, Circle, CircleAlert, ListTodo } from 'lucide-react'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
 import type { DisplayPlan } from './planDisplay'
 import { planStatusText } from './planDisplay'
-import { Disclosure } from './conversation/Disclosure'
 
 export function PlanPanel({ plan }: { plan?: DisplayPlan }) {
   if (!plan) return null
   const done = plan.items.filter((item) => item.status === 'done').length
   return (
     <section className="plan-panel" aria-label="Execution plan">
-      <Disclosure
-        defaultOpen
-        title={
+      <Collapsible
+        defaultIsOpen
+        trigger={
           <>
+            <ListTodo size={14} aria-hidden="true" />
             <span>Plan</span>
             <span className="plan-progress">
               {done}/{plan.items.length}
             </span>
+            <span className={plan.status === 'failed' ? 'danger' : undefined}>
+              {planStatusText(plan)}
+            </span>
           </>
-        }
-        icon={<ListTodo size={14} aria-hidden="true" />}
-        status={
-          <span className={plan.status === 'failed' ? 'danger' : undefined}>
-            {planStatusText(plan)}
-          </span>
         }
       >
         <div className="plan-body">
@@ -49,7 +47,7 @@ export function PlanPanel({ plan }: { plan?: DisplayPlan }) {
             })}
           </ol>
         </div>
-      </Disclosure>
+      </Collapsible>
     </section>
   )
 }

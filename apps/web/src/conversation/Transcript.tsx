@@ -1,4 +1,9 @@
 import { memo, useState, type Ref } from 'react'
+import { ChatMessage, ChatMessageBubble, ChatSystemMessage } from '@astryxdesign/core/Chat'
+import { Button } from '@astryxdesign/core/Button'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { TextArea } from '@astryxdesign/core/TextArea'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Pencil, GitFork, Bot, ChevronRight, PanelRight, FilePenLine } from 'lucide-react'
@@ -50,11 +55,10 @@ export const MessageBlock = memo(function MessageBlock({
   }
   if (message.role === 'system') {
     return (
-      <div className="message system">
-        <div className="message-label">[!]</div>
-        <div className="message-body">{message.content}</div>
+      <ChatSystemMessage>
+        {message.content}
         <MessageStatus message={message} />
-      </div>
+      </ChatSystemMessage>
     )
   }
   if (message.role === 'subagent' && message.subagent) {
@@ -66,48 +70,39 @@ export const MessageBlock = memo(function MessageBlock({
   const className = `message ${message.role}${active ? ' active-user' : ''}${editing ? ' editing' : ''}`
   const isUser = message.role === 'user'
   const finishReason = message.finishReason ?? message.endState?.finishReason
+  const status = [
+    message.pending ? '...' : '',
+    message.interrupted ? 'interrupted' : '',
+    message.retry ? `retry ${message.retry.retry}${message.retry.started ? ' ...' : ''}` : '',
+    finishReason ?? '',
+  ].filter(Boolean).join(' / ')
+  // 助手名字默认是固定的“Tnega”，每轮都重复一遍没有信息量，不显示；
+  // 子代理侧栏会传自己的名字进来，那种是有用的，保留。
+  const name = isUser ? 'You' : (assistantLabel === 'Tnega' ? '' : assistantLabel)
   return (
-    <div className={className} ref={userRef}>
-      <div className="message-label">
-        <span>
-          {message.role === 'assistant' ? assistantLabel : 'You'}
-          {message.pending ? ' ...' : ''}
-          {message.interrupted ? ' / interrupted' : ''}
-          {message.retry
-            ? ` / retry ${message.retry.retry}${message.retry.started ? ' ...' : ''}`
-            : ''}
-          {finishReason ? ` / ${finishReason}` : ''}
-        </span>
-        {isUser && !editing && (onBeginEdit || onForkAt) && (
-          <span className="message-menu">
-            {onBeginEdit && (
-              <button
-                type="button"
-                className="icon-button"
-                onClick={onBeginEdit}
-                title="edit"
-              >
-                <Pencil size={14} />
-              </button>
-            )}
-            {onForkAt && (
-              <button
-                type="button"
-                className="icon-button"
-                onClick={onForkAt}
-                title="fork here"
-              >
-                <GitFork size={14} />
-              </button>
-            )}
-          </span>
-        )}
-      </div>
+    <ChatMessage sender={isUser ? 'user' : 'assistant'} density="compact" className={className} ref={userRef}>
+      {(name || status) && (
+        <div className="message-label">
+          <span>{[name, status].filter(Boolean).join(' / ')}</span>
+          {isUser && !editing && (onBeginEdit || onForkAt) && (
+            <span className="message-menu">
+              {onBeginEdit && (
+                <IconButton label="Edit message" tooltip="Edit message" icon={<Pencil size={14} />} variant="ghost" size="sm" onClick={onBeginEdit} />
+              )}
+              {onForkAt && (
+                <IconButton label="Fork here" tooltip="Fork here" icon={<GitFork size={14} />} variant="ghost" size="sm" onClick={onForkAt} />
+              )}
+            </span>
+          )}
+        </div>
+      )}
       {editing ? (
         <div className="message-edit">
-          <textarea
+          <TextArea
+            label="Edit message"
+            isLabelHidden
             value={editDraft}
-            onChange={(event) => onEditDraftChange?.(event.target.value)}
+            onChange={value => onEditDraftChange?.(value)}
             onKeyDown={(event) => {
               if (
                 event.key === 'Enter' &&
@@ -119,33 +114,26 @@ export const MessageBlock = memo(function MessageBlock({
               }
               if (event.key === 'Escape') onCancelEdit?.()
             }}
-            autoFocus
-            spellCheck={false}
+            hasAutoFocus
+            hasSpellCheck={false}
             rows={4}
           />
           <div className="message-edit-actions">
-            <button
-              type="button"
-              className="button-primary"
-              onClick={onSubmitEdit}
-              disabled={!editDraft.trim()}
-            >
-              [send]
-            </button>
-            <button type="button" onClick={onCancelEdit} title="cancel">
-              [x]
-            </button>
+            <Button label="Send edited message" variant="primary" size="sm" onClick={onSubmitEdit} isDisabled={!editDraft.trim()} />
+            <Button label="Cancel editing" variant="ghost" size="sm" onClick={onCancelEdit} />
           </div>
         </div>
       ) : (
+        <ChatMessageBubble variant={isUser ? 'filled' : 'ghost'}>
         <div className="message-body md">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {message.content}
           </ReactMarkdown>
         </div>
+        </ChatMessageBubble>
       )}
       <MessageStatus message={message} />
-    </div>
+    </ChatMessage>
   )
 })
 
@@ -154,11 +142,28 @@ function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
   const ordered = [...files].sort((a, b) =>
     (b.additions ?? 0) + (b.deletions ?? 0) - (a.additions ?? 0) - (a.deletions ?? 0)
     || a.path.localeCompare(b.path))
-  const shown = expanded ? ordered : ordered.slice(0, 3)
   const remaining = files.length - 3
   const hasStats = files.every(file => file.additions !== undefined && file.deletions !== undefined)
   const additions = files.reduce((total, file) => total + (file.additions ?? 0), 0)
   const deletions = files.reduce((total, file) => total + (file.deletions ?? 0), 0)
+  const rows = (list: EditedFileSummary[]) => (
+    <ul className="file-edits-list">
+      {list.map(file => (
+        <li key={file.path} title={file.path}>
+          <span className="file-edits-path">
+            <span>{file.path.slice(0, file.path.lastIndexOf('/') + 1)}</span>
+            <strong>{file.path.slice(file.path.lastIndexOf('/') + 1)}</strong>
+          </span>
+          {(file.additions !== undefined || file.deletions !== undefined) && (
+            <span className="file-edits-stats"><span>+{file.additions ?? 0}</span> <span>-{file.deletions ?? 0}</span></span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+  // 收起时只列前三个，并留一个入口展开；按钮排在列表末尾，展开后原地变成“收起”，
+  // 这样既不会把列表截成两段，也随时收得回去。
+  const collapsed = !expanded && remaining > 0
   return (
     <div className="message file-edits-card">
       <div className="file-edits-heading">
@@ -168,25 +173,16 @@ function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
           {hasStats && <span className="file-edits-stats"><span>+{additions}</span> <span>-{deletions}</span></span>}
         </div>
       </div>
-      <ul className="file-edits-list">
-        {shown.map(file => (
-          <li key={file.path} title={file.path}>
-            <span className="file-edits-path">
-              <span>{file.path.slice(0, file.path.lastIndexOf('/') + 1)}</span>
-              <strong>{file.path.slice(file.path.lastIndexOf('/') + 1)}</strong>
-            </span>
-            {(file.additions !== undefined || file.deletions !== undefined) && (
-              <span className="file-edits-stats"><span>+{file.additions ?? 0}</span> <span>-{file.deletions ?? 0}</span></span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {rows(collapsed ? ordered.slice(0, 3) : ordered)}
       {remaining > 0 && (
-        <button type="button" className="file-edits-more" aria-expanded={expanded}
-          onClick={() => setExpanded(value => !value)}>
-          {expanded ? '收起' : `再显示 ${remaining} 个文件`}
-          <ChevronRight size={14} className={expanded ? 'expanded' : ''} aria-hidden="true" />
-        </button>
+        <Button
+          className="file-edits-more"
+          label={expanded ? '收起' : `再显示 ${remaining} 个文件`}
+          variant="ghost"
+          size="sm"
+          icon={<ChevronRight size={14} className={expanded ? 'expanded' : undefined} aria-hidden="true" />}
+          onClick={() => setExpanded(current => !current)}
+        />
       )}
     </div>
   )
@@ -318,7 +314,7 @@ function CompactionBlock({ message }: { message: DisplayMessage }) {
         onClick={() => setOpen((open) => !open)}
       >
         <span className="marker">{open ? '[-]' : '[+]'}</span>
-        <span className="compaction-status">[context compacted]</span>
+        <span className="compaction-status">[compaction]</span>
         <span className="compaction-meta">
           {open
             ? `compacted from ${tokenText}`
@@ -337,24 +333,18 @@ function CompactionBlock({ message }: { message: DisplayMessage }) {
 }
 
 function SlashBlock({ message }: { message: DisplayMessage }) {
-  const [open, setOpen] = useState(true)
   const slash = message.slash!
   const line = [slash.command, ...slash.args].join(' ')
   return (
     <div className="message slash">
-      <button
-        type="button"
-        className="slash-toggle"
-        onClick={() => setOpen((open) => !open)}
-        aria-expanded={open}
+      <Collapsible
+        trigger={
+          <>
+            <span className="slash-status">slash</span>
+            <span className="slash-block-command">{line}</span>
+          </>
+        }
       >
-        <span className="marker">{open ? '[-]' : '[+]'}</span>
-        <span className="slash-status">slash</span>
-        <span className="slash-block-command" title={line}>
-          {line}
-        </span>
-      </button>
-      {open && (
         <div className="slash-result">
           {slash.result.kind === 'text' ? (
             <div className="slash-text md">
@@ -366,7 +356,7 @@ function SlashBlock({ message }: { message: DisplayMessage }) {
             <pre className="slash-json">{prettyJson(slash.result.value)}</pre>
           )}
         </div>
-      )}
+      </Collapsible>
     </div>
   )
 }

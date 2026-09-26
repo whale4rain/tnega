@@ -1,0 +1,15 @@
+{
+  "name": "@tnega/thread-local",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/blackboard": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/thread": "workspace:*"
+  }
+}

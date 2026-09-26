@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/box-blackboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/blackboard": "workspace:*",
+    "@tnega/box": "workspace:*",
+    "@tnega/core": "workspace:*"
+  }
+}

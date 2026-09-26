@@ -46,7 +46,8 @@ beforeEach(() => {
       if (url.pathname === '/api/config')
         body = {
           apiKeySet: false,
-          effective: { model: 'preview' },
+          effective: { modelId: 'preview' },
+          models: [],
           config: {},
           env: {},
         }
@@ -91,13 +92,35 @@ beforeEach(() => {
   )
 })
 
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
+
+/**
+ * Session rows are TreeList items now: the row activates through the button it
+ * renders, while the selected state moved from `aria-current` on that button to
+ * `aria-selected` on the surrounding `treeitem` row.
+ */
+function sessionRow(name: 'Alpha session' | 'Beta session') {
+  return screen.getByRole('button', { name })
+}
+function findSessionRow(name: 'Alpha session' | 'Beta session') {
+  // The first render in this file also pays the Astryx/StyleX style resolution
+  // for the whole tree, which overruns the default one-second query timeout.
+  return screen.findByRole('button', { name }, { timeout: 10_000 })
+}
+function isSelected(row: HTMLElement) {
+  return row.closest('[role="treeitem"]')?.getAttribute('aria-selected')
+}
+
 it('ignores an old workspace operation that requests a refresh after selection changes', async () => {
   render(createElement(App))
-  fireEvent.click(await screen.findByRole('button', { name: 'Alpha session' }))
+  fireEvent.click(await findSessionRow('Alpha session'))
   await screen.findByText('Content for /alpha')
   fireEvent.click(screen.getByRole('button', { name: 'Compact context' }))
   await waitFor(() => expect(releaseOperation).toBeTypeOf('function'))
-  fireEvent.click(screen.getByRole('button', { name: 'Beta session' }))
+  fireEvent.click(sessionRow('Beta session'))
   await screen.findByText('Content for /beta')
   await act(async () => {
     releaseOperation?.()
@@ -108,7 +131,7 @@ it('ignores an old workspace operation that requests a refresh after selection c
 
 it('preserves the new selection when a previous workspace removal finishes', async () => {
   render(createElement(App))
-  fireEvent.click(await screen.findByRole('button', { name: 'Alpha session' }))
+  fireEvent.click(await findSessionRow('Alpha session'))
   await screen.findByText('Content for /alpha')
   fireEvent.keyDown(
     screen.getByRole('button', { name: 'Actions for workspace alpha' }),
@@ -118,7 +141,7 @@ it('preserves the new selection when a previous workspace removal finishes', asy
     await screen.findByRole('menuitem', { name: 'Remove from list' }),
   )
   await waitFor(() => expect(releaseOperation).toBeTypeOf('function'))
-  fireEvent.click(screen.getByRole('button', { name: 'Beta session' }))
+  fireEvent.click(sessionRow('Beta session'))
   await screen.findByText('Content for /beta')
   await act(async () => {
     releaseOperation?.()
@@ -126,40 +149,32 @@ it('preserves the new selection when a previous workspace removal finishes', asy
   expect(screen.getByText('Content for /beta')).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Alpha session' })).toBeNull()
 })
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-})
 
 it('loads every workspace and scopes the selected highlight by workspace and session', async () => {
   render(createElement(App))
-  const beta = await screen.findByRole('button', { name: 'Beta session' })
-  const alpha = screen.getByRole('button', { name: 'Alpha session' })
+  const beta = await findSessionRow('Beta session')
+  const alpha = sessionRow('Alpha session')
   fireEvent.click(beta)
   await screen.findByText('Content for /beta')
-  expect(beta.getAttribute('aria-current')).toBe('page')
-  expect(alpha.getAttribute('aria-current')).toBeNull()
+  expect(isSelected(beta)).toBe('true')
+  expect(isSelected(alpha)).toBeNull()
   fireEvent.click(alpha)
   await screen.findByText('Content for /alpha')
-  expect(alpha.getAttribute('aria-current')).toBe('page')
-  expect(beta.getAttribute('aria-current')).toBeNull()
+  expect(isSelected(alpha)).toBe('true')
+  expect(isSelected(beta)).toBeNull()
 })
 
 it('does not let a slow previous workspace replace the active conversation', async () => {
   delayAlpha = true
   render(createElement(App))
-  await screen.findByRole('button', { name: 'Beta session' })
-  fireEvent.click(screen.getByRole('button', { name: 'Alpha session' }))
+  await findSessionRow('Beta session')
+  fireEvent.click(sessionRow('Alpha session'))
   await waitFor(() => expect(releaseAlpha).toBeTypeOf('function'))
-  fireEvent.click(screen.getByRole('button', { name: 'Beta session' }))
+  fireEvent.click(sessionRow('Beta session'))
   await screen.findByText('Content for /beta')
   await act(async () => {
     releaseAlpha?.()
   })
   expect(screen.queryByText('Content for /alpha')).toBeNull()
-  expect(
-    screen
-      .getByRole('button', { name: 'Beta session' })
-      .getAttribute('aria-current'),
-  ).toBe('page')
+  expect(isSelected(sessionRow('Beta session'))).toBe('true')
 })

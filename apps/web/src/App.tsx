@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Dialog, Theme } from '@radix-ui/themes'
+import { Button } from '@astryxdesign/core/Button'
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
+import { Theme as AstryxTheme } from '@astryxdesign/core/theme'
+import { neutralTheme } from '@astryxdesign/theme-neutral/built'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
 import { ChatView } from './conversation/ChatView'
+import { ProjectExperience } from './project/ProjectExperience'
 import { SettingsView } from './workbench/SettingsView'
 import type { ThemePreference } from './ThemeToggle'
 import {
@@ -14,8 +18,17 @@ import {
   writeWorkspaceSelection,
 } from './sessionSelection'
 import { latestPlanFromEvents, type DisplayPlan } from './planDisplay'
+import {
+  readRecentProjects,
+  rememberProject,
+  forgetProject,
+  setRecentProjectArchived,
+  type RecentProject,
+} from './projectSelection'
+import { NewProjectDialog } from './project/NewProjectDialog'
 import { projectEvents } from './projectEvents'
 import * as api from './api'
+import * as projectApi from './project/api'
 import type {
   ConfigSnapshot,
   ContextUsage,
@@ -25,6 +38,7 @@ import type {
 } from './types'
 
 const THEME_STORAGE_KEY = 'tnega-theme'
+const LAST_VIEW_KEY = 'tnega-last-view'
 
 function initialThemePreference(): ThemePreference {
   const stored = localStorage.getItem(THEME_STORAGE_KEY)
@@ -72,6 +86,11 @@ function ChatApp() {
   const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Project 与 Session 是同一块主区的两种内容：选中谁就显示谁。
+  const [project, setProject] = useState<{ workspace: string; id: string } | null>(null)
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() =>
+    readRecentProjects(localStorage))
+  const [creatingProject, setCreatingProject] = useState(false)
   const projected = useRef<{ id: string; seq: number } | null>(null)
   const restoredSelection = useRef(false)
 
@@ -140,6 +159,8 @@ function ChatApp() {
 
   const selectSession = useCallback((path: string, id: string) => {
     const target = { workspace: path, id }
+    setProject(null)
+    localStorage.setItem(LAST_VIEW_KEY, 'sessions')
     selection.current = target
     currentWorkspace.current = path
     setWorkspace(path)
@@ -171,6 +192,58 @@ function ChatApp() {
       })
   }, [])
 
+  const openProject = useCallback((next: RecentProject) => {
+    setProject({ workspace: next.workspace, id: next.id })
+    setRecentProjects(rememberProject(localStorage, next))
+    localStorage.setItem(LAST_VIEW_KEY, 'projects')
+  }, [])
+
+  async function handleCreateProject(input: { name: string; folder: string; goal?: string }) {
+    try {
+      const { project: created } = await projectApi.createProject(input.folder, {
+        name: input.name,
+        ...(input.goal ? { goal: input.goal } : {}),
+      })
+      openProject({
+        workspace: input.folder,
+        id: created.id,
+        name: created.name,
+        openedAt: Date.now(),
+      })
+    } catch (reason) {
+      setError(messageOf(reason))
+      throw reason
+    }
+  }
+
+  /** 项目里跑的模型与思考强度就是这台机器的默认配置；这里改的就是设置里那一份。 */
+  async function handleConfigModel(model: string) {
+    try {
+      setConfig(await api.saveConfig({ model }))
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleConfigReasoningEffort(effort: 'default' | 'low' | 'medium' | 'high') {
+    try {
+      setConfig(await api.saveConfig({ reasoningEffort: effort === 'default' ? '' : effort }))
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }
+
+  async function handleArchiveProject(target: RecentProject, archived: boolean) {
+    await projectApi.archiveProject(target.workspace, target.id, archived)
+    setRecentProjects(setRecentProjectArchived(localStorage, target.id, archived))
+  }
+
+  async function handleDeleteProject(target: RecentProject) {
+    await projectApi.deleteProject(target.workspace, target.id)
+    setRecentProjects(forgetProject(localStorage, target.id))
+    setProject(current => current?.id === target.id ? null : current)
+  }
+
   useEffect(() => {
     const refreshConfig = () => { void api.getConfig().then(setConfig).catch(reason => setError(messageOf(reason))) }
     const onStorage = (event: StorageEvent) => {
@@ -187,16 +260,25 @@ function ChatApp() {
   useEffect(() => {
     if (restoredSelection.current) return
     restoredSelection.current = true
+    if (localStorage.getItem(LAST_VIEW_KEY) === 'projects') {
+      const [last] = readRecentProjects(localStorage)
+      if (last) {
+        openProject(last)
+        return
+      }
+    }
     if (!workspace || !sessionId) return
     selectSession(workspace, sessionId)
-  }, [workspace, sessionId, selectSession])
+  }, [workspace, sessionId, selectSession, openProject])
 
   useEffect(() => {
     if (workspace) writeWorkspaceSelection(localStorage, workspace)
   }, [workspace])
 
   useEffect(() => {
-    if (!workspace || sessionId) return
+    // 只在会话屏里自动回到上次的会话。打开着 Project 时这条不参与 —— 否则会话列表一刷新
+    // 就会把刚打开的 Project 挤掉，退回上一次的会话。
+    if (project || !workspace || sessionId) return
     const available = sessions.filter(
       (session) => session.workspace === workspace,
     )
@@ -208,11 +290,12 @@ function ChatApp() {
       return
     }
     selectSession(workspace, preferred)
-  }, [sessions, workspace, sessionId, selectSession])
+  }, [project, sessions, workspace, sessionId, selectSession])
 
   const selectWorkspace = useCallback(
     (next: string) => {
       if (next === workspace) return
+      setProject(null)
       selection.current = null
       currentWorkspace.current = next
       setWorkspace(next)
@@ -435,84 +518,104 @@ function ChatApp() {
     ?? config?.apiKeySet ?? false
 
   return (
-    <Theme
-      appearance={appearance}
-      accentColor="gray"
-      grayColor="gray"
-      radius="large"
-      scaling="100%"
-    >
-      <WorkbenchShell
-        sidebar={
-          <WorkspaceSidebar
-            workspaces={workspaces}
-            workspace={workspace}
-            sessions={sessions}
-            selectedId={sessionId}
-            onAdd={handleAddWorkspace}
-            onRemove={handleRemoveWorkspace}
-            onSelect={(path, id) => {
-              selectSession(path, id)
-            }}
-            onNew={async (options, path) => {
-              await handleNewSession(options, path)
-            }}
-            onRename={handleRename}
-            onFork={handleFork}
-            onDelete={handleDelete}
-            onSettings={() => setSettingsOpen(true)}
-            theme={themePreference}
-            onTheme={setThemePreference}
-          />
-        }
+    <>
+      <AstryxTheme theme={neutralTheme} mode={appearance}>
+        <WorkbenchShell
+          sidebar={
+            <WorkspaceSidebar
+              workspaces={workspaces}
+              workspace={workspace}
+              sessions={sessions}
+              selectedId={sessionId}
+              projects={recentProjects}
+              selectedProjectId={project?.id ?? null}
+              onOpenProject={openProject}
+              onArchiveProject={handleArchiveProject}
+              onDeleteProject={handleDeleteProject}
+              onNewProject={() => setCreatingProject(true)}
+              onAdd={handleAddWorkspace}
+              onRemove={handleRemoveWorkspace}
+              onSelect={(path, id) => {
+                selectSession(path, id)
+              }}
+              onNew={async (options, path) => {
+                await handleNewSession(options, path)
+              }}
+              onRename={handleRename}
+              onFork={handleFork}
+              onDelete={handleDelete}
+              onSettings={() => setSettingsOpen(true)}
+              theme={themePreference}
+              onTheme={setThemePreference}
+            />
+          }
+        >
+          {error && (
+            <div className="error-banner" role="alert">
+              <span className="marker">Error</span>
+              <span>{error}</span>
+              <Button label="Close" variant="ghost" size="sm" onClick={() => setError(null)} />
+            </div>
+          )}
+          {project ? (
+            <ProjectExperience
+              workspace={project.workspace}
+              projectId={project.id}
+              models={config?.models ?? []}
+              model={config?.effective.modelId}
+              reasoningEffort={config?.effective.reasoningEffort ?? 'default'}
+              onModel={handleConfigModel}
+              onReasoningEffort={handleConfigReasoningEffort}
+              apiKeySet={modelApiKeySet}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          ) : (
+            <ChatView
+              model={currentModelId}
+              models={config?.models ?? []}
+              reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
+              onModelChange={handleModelChange}
+              onReasoningEffortChange={handleReasoningEffortChange}
+              onSettings={() => setSettingsOpen(true)}
+              workspace={workspace}
+              sessionId={sessionId}
+              summary={summary}
+              context={context}
+              metrics={metrics}
+              sessionRunning={sessionRunning}
+              messages={messages}
+              apiKeySet={modelApiKeySet}
+              onNewSession={handleNewSession}
+              onRefresh={refreshSession}
+              onForkAt={handleForkAt}
+              onMessagesChange={setMessages}
+              plan={plan}
+              onPlanChange={setPlan}
+              onModeChange={handleModeChange}
+            />
+          )}
+        </WorkbenchShell>
+      </AstryxTheme>
+      <NewProjectDialog
+        open={creatingProject}
+        defaultFolder={workspace ?? undefined}
+        onOpenChange={setCreatingProject}
+        onCreate={handleCreateProject}
+      />
+      <Dialog
+        isOpen={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        width={680}
       >
-        {error && (
-          <div className="error-banner" role="alert">
-            <span className="marker">Error</span>
-            <span>{error}</span>
-            <button
-              type="button"
-              onClick={() => setError(null)}
-              title="Dismiss"
-            >
-              Close
-            </button>
-          </div>
-        )}
-          <ChatView
-            model={currentModelId}
-            models={config?.models ?? []}
-            reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
-            onModelChange={handleModelChange}
-            onReasoningEffortChange={handleReasoningEffortChange}
-            onSettings={() => setSettingsOpen(true)}
-            workspace={workspace}
-            sessionId={sessionId}
-            summary={summary}
-            context={context}
-            metrics={metrics}
-            sessionRunning={sessionRunning}
-            messages={messages}
-            apiKeySet={modelApiKeySet}
-            onNewSession={handleNewSession}
-            onRefresh={refreshSession}
-            onForkAt={handleForkAt}
-            onMessagesChange={setMessages}
-            plan={plan}
-            onPlanChange={setPlan}
-            onModeChange={handleModeChange}
-          />
-      </WorkbenchShell>
-      <Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <Dialog.Content className="settings-dialog" maxWidth="680px" aria-describedby={undefined}>
-          <Dialog.Title>Settings</Dialog.Title>
+        <DialogHeader title="Settings" onOpenChange={() => setSettingsOpen(false)} />
+        <div className="settings-dialog">
           <SettingsView config={config} onReload={setConfig} onSaved={next => {
             setConfig(next)
             setSettingsOpen(false)
           }} />
-        </Dialog.Content>
-      </Dialog.Root>
-    </Theme>
+        </div>
+      </Dialog>
+    </>
   )
 }
 

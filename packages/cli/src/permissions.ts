@@ -3,10 +3,22 @@ import { resolveInside, type ToolGuard, type ToolRequest } from '@tnega/tools'
 
 export type PermissionMode = 'read-only' | 'workspace-write' | 'bypass'
 
-const READ_TOOLS = new Set([
+/**
+ * 不需要逐次批准的调用：只读的工具，以及**只在 Project 内部发生**的动作。
+ *
+ * 后半类不碰这台机器：派工、线程间留言、给用户发言、写项目记忆与产物，都只改 Project
+ * 自己的共享事实。它们造出来的 Agent 自己还要过同一道守卫，因此放行的半径由权限模型
+ * 本身界定。真正需要用户点头的是越界与对外的动作 —— shell、工作区外的路径、网络。
+ */
+const ALWAYS_ALLOWED = new Set([
+  // 只读
   'echo', 'now', 'calculator', 'json', 'read_file', 'list_dir',
   'glob', 'grep', 'http_get', 'web_search', 'skills_list', 'skill_read',
   'get_goal', 'update_goal', 'list_subagent', 'send_agent_message',
+  'read_project', 'list_threads', 'read_artifact',
+  // Project 内部
+  'spawn_thread', 'send_thread_message', 'send_project_message',
+  'write_memory', 'publish_artifact', 'index_resource',
 ])
 
 interface PendingApproval {
@@ -95,7 +107,7 @@ export function permissionGuard(
     if (unrestricted && ['read_file', 'write_file', 'list_dir', 'shell'].includes(request.name)) {
       try { await resolveInside(options.workspace, rawPath) } catch { scoped = false }
     }
-    if (READ_TOOLS.has(request.name) && scoped
+    if (ALWAYS_ALLOWED.has(request.name) && scoped
       && !(request.name === 'http_get' && unrestricted)) return undefined
     if (effective === 'workspace-write' && request.name === 'write_file' && scoped) return undefined
     const allowed = await approvals.request(key, request)

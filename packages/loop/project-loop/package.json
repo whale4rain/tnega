@@ -1,0 +1,16 @@
+{
+  "name": "@tnega/project-loop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/box": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/thread": "workspace:*"
+  }
+}

@@ -1,5 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Badge, IconButton, Tooltip } from '@radix-ui/themes'
+import { Badge } from '@astryxdesign/core/Badge'
+import { AppShell } from '@astryxdesign/core/AppShell'
+import { Heading } from '@astryxdesign/core/Heading'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { Layout, LayoutContent, LayoutPanel } from '@astryxdesign/core/Layout'
+import {
+  SideNav,
+  SideNavCollapseButton,
+} from '@astryxdesign/core/SideNav'
+import { Text } from '@astryxdesign/core/Text'
+import { TopNav, TopNavHeading } from '@astryxdesign/core/TopNav'
+import { Tooltip } from '@astryxdesign/core/Tooltip'
 import { Code2, Files, GitBranch, PanelLeft, Terminal, X } from 'lucide-react'
 
 const tools = [
@@ -36,9 +47,16 @@ export function WorkbenchShell({
   })
   const [activeTool, setActiveTool] = useState<string | null>(null)
   const tool = tools.find((item) => item.id === activeTool)
+  const collapsible = {
+    isCollapsed: !open,
+    onCollapsedChange: (isCollapsed: boolean) => setOpen(!isCollapsed),
+    hasButton: false,
+  }
+
   useEffect(() => {
     localStorage.setItem('tnega-sidebar', open ? 'open' : 'closed')
   }, [open])
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') setActiveTool(null)
@@ -46,92 +64,102 @@ export function WorkbenchShell({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
   return (
-    <div className="workbench">
-      <header className="window-bar flex items-center gap-3">
-        <Tooltip content={open ? 'Collapse sidebar' : 'Expand sidebar'}>
-          <IconButton
-            variant="ghost"
-            color="gray"
-            aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
-            aria-expanded={open}
-            aria-controls="workspace-navigation"
-            onClick={() => setOpen(!open)}
-          >
-            <PanelLeft size={15} />
-          </IconButton>
-        </Tooltip>
-        <span className="brand">Tnega</span>
-        <span className="window-divider" />
-        <span className="window-caption">
-          <Code2 size={12} /> Code
-        </span>
-      </header>
-      <div className="workbench-body flex min-h-0 flex-1">
-        {open && (
-          <button
-            className="sidebar-backdrop"
-            aria-label="Close navigation"
-            onClick={() => setOpen(false)}
-          />
-        )}
-        <aside
+    <AppShell
+      className="tnega-app-shell"
+      variant="surface"
+      contentPadding={0}
+      height="fill"
+      topNav={
+        <TopNav
+          className="tnega-top-nav"
+          label="Application navigation"
+          heading={
+            <TopNavHeading
+              heading="Tnega"
+              logo={<Code2 size={18} aria-hidden="true" />}
+            />
+          }
+          endContent={
+            <>
+              <Text color="secondary" size="sm">Code</Text>
+              <Tooltip content={open ? 'Collapse sidebar' : 'Expand sidebar'}>
+                <SideNavCollapseButton
+                  collapsible={collapsible}
+                  aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
+                  aria-expanded={open}
+                  aria-controls="workspace-navigation"
+                >
+                  <PanelLeft size={16} aria-hidden="true" />
+                </SideNavCollapseButton>
+              </Tooltip>
+            </>
+          }
+        />
+      }
+      sideNav={
+        <SideNav
+          className={`tnega-side-nav${open ? '' : ' is-collapsed'}`}
           id="workspace-navigation"
-          className={`workspace-sidebar${open ? '' : ' collapsed'}`}
           aria-label="Workspace navigation"
-          aria-hidden={!open}
-          inert={!open}
+          collapsible={collapsible}
         >
-          <div className="sidebar-content">{sidebar}</div>
-        </aside>
-        <main className="main min-w-0 flex-1">{children}</main>
-        {tool && (
-          <aside className="tools-panel" aria-label={`${tool.title} panel`}>
-            <div className="flex items-center justify-between gap-2 tool-panel-heading">
-              <strong>{tool.title}</strong>
-              <IconButton
-                variant="ghost"
-                color="gray"
-                aria-label="Close tools panel"
-                onClick={() => setActiveTool(null)}
-              >
-                <X size={12} />
-              </IconButton>
-            </div>
-            <div className="tool-placeholder">
-              <tool.icon size={32} strokeWidth={1.2} />
-              <h2>{tool.title}</h2>
-              <p>{tool.description}</p>
-              <Badge color="gray" variant="soft">
-                Coming soon
-              </Badge>
-              <p className="text-xs">
-                This panel is a placeholder. No tools are connected yet.
-              </p>
-            </div>
-          </aside>
-        )}
-        <nav
-          className="tools-rail flex flex-col items-center gap-3"
-          aria-label="Workspace tools"
-        >
-          {tools.map((item) => (
-            <Tooltip content={item.title} key={item.id}>
-              <IconButton
-                variant={activeTool === item.id ? 'soft' : 'ghost'}
-                color="gray"
-                aria-label={`Toggle ${item.title}`}
-                aria-pressed={activeTool === item.id}
-                onClick={() =>
-                  setActiveTool(activeTool === item.id ? null : item.id)
-                }
-              >
-                <item.icon size={18} />
-              </IconButton>
-            </Tooltip>
-          ))}
-        </nav>
-      </div>
-    </div>
+          {sidebar}
+        </SideNav>
+      }
+    >
+      <Layout
+        className="tnega-workbench-layout"
+        content={<LayoutContent padding={0}>{children}</LayoutContent>}
+        end={
+          <LayoutPanel
+            className="tnega-tools-panel"
+            width={tool ? 320 : 56}
+            padding={1}
+            role="complementary"
+            label="Workspace tools"
+          >
+            <nav className="tnega-tools-rail" aria-label="Workspace tools">
+              {tools.map((item) => (
+                <Tooltip content={item.title} key={item.id}>
+                  <IconButton
+                    variant={activeTool === item.id ? 'primary' : 'ghost'}
+                    label={`Toggle ${item.title}`}
+                    aria-pressed={activeTool === item.id}
+                    icon={<item.icon size={18} aria-hidden="true" />}
+                    onClick={() =>
+                      setActiveTool(activeTool === item.id ? null : item.id)
+                    }
+                  />
+                </Tooltip>
+              ))}
+            </nav>
+            {tool && (
+              <section className="tnega-tool-content" aria-label={`${tool.title} panel`}>
+                <header className="tnega-tool-heading">
+                  <Heading level={2}>{tool.title}</Heading>
+                  <IconButton
+                    variant="ghost"
+                    label="Close tools panel"
+                    icon={<X size={14} aria-hidden="true" />}
+                    onClick={() => setActiveTool(null)}
+                  />
+                </header>
+                <section className="tnega-tool-placeholder">
+                  <tool.icon size={32} strokeWidth={1.2} aria-hidden="true" />
+                  <Heading level={3}>{tool.title}</Heading>
+                  <Text color="secondary">{tool.description}</Text>
+                  <Badge label="Coming soon" />
+                  <Text color="secondary" size="sm">
+                    This panel is a placeholder. No tools are connected yet.
+                  </Text>
+                </section>
+              </section>
+            )}
+          </LayoutPanel>
+        }
+      />
+    </AppShell>
   )
 }
