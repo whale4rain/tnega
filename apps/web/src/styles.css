@@ -1369,10 +1369,10 @@ pre {
   }
 
   /* 输入卡片：黑底 + 更宽的内边距。底色默认用 --color-background-popover（弹层色），
-     在灰色对话区上不够沉；内边距默认 8px，图标贴边太紧。 */
+     在灰色对话区上不够沉；内缩要跟 28px 圆角匹配，否则图标会贴进弧线里。 */
   .composer-dock .astryx-chat-composer > div:last-child {
     background: var(--canvas);
-    padding: 14px;
+    padding: 16px;
   }
 
   /* 折叠触发器自带 large 字号（17px），比 Tnega 的正文还大。
@@ -1394,12 +1394,18 @@ pre {
   }
 
   /* 计划卡片与输入卡片是参考图里那样上下两个圆角容器：各自四面圆角、中间留一道缝。
-     计划卡片用与输入卡片同色的底，才像同一种材料。 */
+     计划卡片用与输入卡片同色的底，才像同一种材料。
+     内缩必须跟着圆角走：28px 的弧线会切进贴着边缘的文字和折叠箭头，所以给面板留出
+     内边距，并把正文原本的左右内边距归零，避免叠加成两倍。 */
   .composer-dock.has-plan .plan-panel {
     margin-bottom: 6px;
     border: 0;
     border-radius: 28px;
     background: var(--canvas);
+    padding: 10px 16px 14px;
+  }
+  .composer-dock.has-plan .plan-panel .plan-body {
+    padding: 0;
   }
 
   /* Chat / Code 两个段按内容宽度排（59 + 62），控件剩下的 73px 是空的。
