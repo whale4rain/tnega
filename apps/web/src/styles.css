@@ -1,4 +1,4 @@
-@layer reset, theme, base, components, legacy, astryx-base, utilities;
+@layer reset, theme, base, components, legacy, astryx-base, utilities, tnega-overrides;
 @import '@astryxdesign/core/reset.css';
 @import '@astryxdesign/core/astryx.css';
 @import '@astryxdesign/theme-neutral/theme.css';
@@ -173,6 +173,9 @@ select {
 .chat {
   display: flex;
   flex: 1;
+  /* Astryx 的 LayoutContent 是 block，`flex: 1` 在块级父元素里不起作用：
+     没有确定高度时 .chat 会随内容长高，把输入区顶出视口。 */
+  height: 100%;
   min-height: 0;
   min-width: 0;
   position: relative;
@@ -1378,4 +1381,14 @@ pre {
 .stream-state[data-state='retrying']::before {
   background: var(--warning);
 }
+}
+
+@layer tnega-overrides {
+  /* Astryx 的 ChatMessageList 自带 `flex: 1 1 0%`（它默认自己当滚动容器）。
+     这里滚动容器是外面的 .conversation-scroll：列表必须按内容撑开、不许被压扁，
+     否则内容会从列表框里溢出来盖住输入区；短对话仍靠 flex-grow 把输入区顶到底部。
+     这条要压过 astryx-base 层，所以放在最后声明、且在 legacy 块之外。 */
+  .conversation-scroll > .messages {
+    flex: 1 0 auto;
+  }
 }

@@ -30,7 +30,9 @@ function ActionsMenu({
 }) {
   return (
     <DropdownMenu
-      button={{ label, icon: <MoreHorizontal size={15} />, variant: 'ghost', size: 'sm' }}
+      // 行尾的溢出菜单只该是一个图标：不给 isIconOnly 就会把整个
+      // “Actions for …” 标签渲染成可见文字，把树的行撑得很宽。
+      button={{ label, icon: <MoreHorizontal size={15} />, variant: 'ghost', size: 'sm', isIconOnly: true }}
       hasChevron={false}
       items={items}
     />

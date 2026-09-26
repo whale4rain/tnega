@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
 import type { BootEnvelope, ProjectStreamEvent, SessionEvent } from './project/types'
@@ -270,4 +270,19 @@ it('renders child inbox messages as a Subagent card', async () => {
   expect(screen.queryByText(/Message received from a thread:/)).toBeNull()
   fireEvent.click(card)
   expect(screen.getAllByText(/Child is still working\./).length).toBeGreaterThan(0)
+})
+
+it('opens a side panel from the header switcher and closes it on a second click', async () => {
+  await openProject()
+  const switcher = screen.getByRole('group', { name: 'Project panels' })
+  const memory = within(switcher).getByRole('button', { name: 'memory' })
+
+  fireEvent.click(memory)
+  expect(await screen.findByText(/Nothing remembered yet/)).toBeTruthy()
+  expect(memory.getAttribute('aria-pressed')).toBe('true')
+
+  // 单选组的语义：再点当前项就是收起。
+  fireEvent.click(memory)
+  expect(screen.queryByText(/Nothing remembered yet/)).toBeNull()
+  expect(within(switcher).getByRole('button', { name: 'memory' }).getAttribute('aria-pressed')).toBe('false')
 })
