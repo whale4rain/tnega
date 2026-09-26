@@ -48,8 +48,7 @@ export const MessageBlock = memo(function MessageBlock({
     return <ToolBlock message={message} />
   }
   if (message.role === 'system' && message.compacted) {
-    // 压缩只在模型侧折叠历史，转录里不显示标记。
-    return null
+    return <CompactionBlock message={message} />
   }
   if (message.role === 'system' && message.slash) {
     return <SlashBlock message={message} />
@@ -295,6 +294,33 @@ export function ContextRing({ context }: { context: ContextUsage }) {
         />
       </svg>
       <span className="context-ring-label">{percent}%</span>
+    </div>
+  )
+}
+
+function CompactionBlock({ message }: { message: DisplayMessage }) {
+  const tokens = message.tokensBefore
+  const tokenText =
+    tokens !== undefined ? `${tokens.toLocaleString()} tokens` : 'context'
+  return (
+    <div className="message compaction">
+      <Collapsible
+        defaultIsOpen={false}
+        trigger={
+          <>
+            <span className="compaction-status">[context compacted]</span>
+            <span className="compaction-meta">compacted from {tokenText}</span>
+          </>
+        }
+      >
+        {message.content && (
+          <div className="compaction-summary md">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
+      </Collapsible>
     </div>
   )
 }
