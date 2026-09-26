@@ -179,6 +179,11 @@ select {
   min-height: 0;
   min-width: 0;
   position: relative;
+  /* 会话区自己画 --canvas。外壳（Astryx AppShell）是浅一档的灰，而这层原本由
+     迁移前的 .main 负责，迁移后没人画，于是外壳的灰透出来，只剩 .composer-surface
+     还是 --canvas，看起来就是一个突兀的黑块。 */
+  background: var(--canvas);
+  border-radius: 14px 14px 0 0;
 }
 .chat-content {
   display: flex;
