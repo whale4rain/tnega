@@ -688,6 +688,14 @@ pre {
   margin-bottom: 12px;
   color: var(--mute);
 }
+.compaction-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: 0;
+}
 .tool-detail {
   margin: 8px 0;
 }
@@ -1365,12 +1373,14 @@ pre {
     padding: 16px;
   }
 
-  /* 折叠触发器自带 large 字号（17px），比 Tnega 的正文还大。
-     它只是这一节的小标题，字号跟着容器走。 */
+  /* 折叠触发器自带 large 字号（17px）和 600 字重，比 Tnega 的正文（13px）还大。
+     这三处它都只是小节标题，字号、字重和颜色都跟着容器走。 */
   .plan-panel .astryx-collapsible-trigger,
-  .file-edits-card .astryx-collapsible-trigger {
+  .file-edits-card .astryx-collapsible-trigger,
+  .slash .astryx-collapsible-trigger {
     font: inherit;
     font-weight: inherit;
+    color: inherit;
   }
 
   /* 文件卡的“再显示 N 个文件”原本是列表底部一条朴素的行，不是标题。 */

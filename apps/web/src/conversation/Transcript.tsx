@@ -302,28 +302,32 @@ export function ContextRing({ context }: { context: ContextUsage }) {
 }
 
 function CompactionBlock({ message }: { message: DisplayMessage }) {
+  const [open, setOpen] = useState(false)
   const tokens = message.tokensBefore
   const tokenText =
     tokens !== undefined ? `${tokens.toLocaleString()} tokens` : 'context'
   return (
     <div className="message compaction">
-      <Collapsible
-        defaultIsOpen={false}
-        trigger={
-          <>
-            <span className="compaction-status">[context compacted]</span>
-            <span className="compaction-meta">compacted from {tokenText}</span>
-          </>
-        }
+      <button
+        type="button"
+        className="compaction-toggle"
+        onClick={() => setOpen((open) => !open)}
       >
-        {message.content && (
-          <div className="compaction-summary md">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {message.content}
-            </ReactMarkdown>
-          </div>
-        )}
-      </Collapsible>
+        <span className="marker">{open ? '[-]' : '[+]'}</span>
+        <span className="compaction-status">[compaction]</span>
+        <span className="compaction-meta">
+          {open
+            ? `compacted from ${tokenText}`
+            : `compacted from ${tokenText} (expand)`}
+        </span>
+      </button>
+      {open && message.content && (
+        <div className="compaction-summary md">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {message.content}
+          </ReactMarkdown>
+        </div>
+      )}
     </div>
   )
 }
