@@ -179,11 +179,8 @@ select {
   min-height: 0;
   min-width: 0;
   position: relative;
-  /* 会话区自己画 --canvas。外壳（Astryx AppShell）是浅一档的灰，而这层原本由
-     迁移前的 .main 负责，迁移后没人画，于是外壳的灰透出来，只剩 .composer-surface
-     还是 --canvas，看起来就是一个突兀的黑块。 */
-  background: var(--canvas);
-  border-radius: 14px 14px 0 0;
+  /* 对话区与外壳同色，让输入卡片成为对比出来的那一块黑。 */
+  background: var(--color-background-surface);
 }
 .chat-content {
   display: flex;
@@ -300,7 +297,7 @@ select {
 .file-edits-path > span { color: var(--mute); }
 .file-edits-path > strong { color: var(--ink); font-weight: 500; }
 .conversation-footer {
-  width: min(820px, calc(100% - 64px));
+  width: min(820px, calc(100% - 32px));
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -412,7 +409,7 @@ select {
   flex-direction: column;
 }
 .messages {
-  width: min(820px, calc(100% - 64px));
+  width: min(820px, calc(100% - 32px));
   margin: 0 auto;
   padding: 18px 0 24px;
   flex: 1 0 auto;
@@ -630,7 +627,7 @@ pre {
   padding: 8px !important;
 }
 .composer-dock {
-  width: min(820px, calc(100% - 64px));
+  width: min(820px, calc(100% - 32px));
   margin: 0 auto;
   flex-shrink: 0;
 }
@@ -640,7 +637,7 @@ pre {
   z-index: 2;
   flex: 0 0 auto;
   padding: 10px 0 12px;
-  background: var(--canvas);
+  background: var(--color-background-surface);
 }
 .composer-surface::before {
   content: '';
@@ -649,7 +646,7 @@ pre {
   left: 0;
   right: 0;
   height: 20px;
-  background: linear-gradient(transparent, var(--canvas));
+  background: linear-gradient(transparent, var(--color-background-surface));
   pointer-events: none;
 }
 .composer-toolbar {
@@ -969,11 +966,11 @@ pre {
   .subagent-total { display: none; }
   .conversation-footer { width: calc(100% - 64px); }
   .messages {
-    width: calc(100% - 64px);
+    width: calc(100% - 32px);
     padding: 16px 0 20px;
   }
   .composer-dock {
-    width: calc(100% - 64px);
+    width: calc(100% - 32px);
   }
   .chat-header {
     padding: 10px 16px;
@@ -1389,5 +1386,25 @@ pre {
      这条要压过 astryx-base 层，所以放在最后声明、且在 legacy 块之外。 */
   .conversation-scroll > .messages {
     flex: 1 0 auto;
+  }
+
+  /* 输入卡片：黑底。它默认用 --color-background-popover（弹层色），
+     在灰色对话区上不够沉。 */
+  .composer-dock .astryx-chat-composer > div:last-child {
+    background: var(--canvas);
+  }
+
+  /* 会话行收成一行：标题换行会把行撑到 60px，看起来像一个多余的框。 */
+  .tnega-side-nav [role='treeitem'][aria-level='2'] .astryx-tree-list-item {
+    margin-inline-start: 20px;
+  }
+  .tnega-side-nav .astryx-tree-list-item > button {
+    min-width: 0;
+  }
+  .tnega-side-nav .astryx-tree-list-item-label {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }

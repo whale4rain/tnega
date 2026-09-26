@@ -14,7 +14,7 @@ import { Slider } from '@astryxdesign/core/Slider'
 import { Stack } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
-import { ChevronLeft, ChevronRight, FolderOpen, Paperclip, Shield, SlidersHorizontal } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Paperclip, Shield, SlidersHorizontal } from 'lucide-react'
 import { workspaceName } from './workspace'
 
 interface Props {
@@ -123,7 +123,6 @@ export function ComposerFrame(props: Props) {
       isStopShown={!!props.running}
       isDisabled={!!props.compacting}
       density="compact"
-      elevation="none"
       placeholder={props.placeholder ?? 'Ask Tnega to build, fix, or explore…'}
       drawer={attachments.length > 0 || props.drawer ? <>
         {attachments.length > 0 && <ChatComposerDrawer count={attachments.length} label="Attachments">
@@ -166,7 +165,6 @@ export function ComposerFrame(props: Props) {
       />}
       footerActions={<Stack direction="horizontal" align="center" gap={2} className="composer-toolbar" wrap="nowrap">
         <Stack direction="horizontal" align="center" gap={1} className="composer-workspace">
-          <FolderOpen size={14} aria-hidden="true" />
           <Text type="supporting" maxLines={1}>{workspaceName(props.workspace)}</Text>
         </Stack>
         {props.onPermission && <Selector
