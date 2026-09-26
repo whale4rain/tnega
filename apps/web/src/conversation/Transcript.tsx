@@ -135,6 +135,7 @@ export const MessageBlock = memo(function MessageBlock({
 })
 
 function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
+  const [expanded, setExpanded] = useState(false)
   const ordered = [...files].sort((a, b) =>
     (b.additions ?? 0) + (b.deletions ?? 0) - (a.additions ?? 0) - (a.deletions ?? 0)
     || a.path.localeCompare(b.path))
@@ -157,6 +158,8 @@ function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
       ))}
     </ul>
   )
+  // 展开后不再显示这一行：它只是“还有几个没列出来”的入口，全部列出来之后就没有意义了。
+  const collapsed = !expanded && remaining > 0
   return (
     <div className="message file-edits-card">
       <div className="file-edits-heading">
@@ -166,13 +169,16 @@ function FileEditsBlock({ files }: { files: EditedFileSummary[] }) {
           {hasStats && <span className="file-edits-stats"><span>+{additions}</span> <span>-{deletions}</span></span>}
         </div>
       </div>
-      {rows(ordered.slice(0, 3))}
-      {remaining > 0 && (
-        // Collapsible 的 defaultIsOpen 默认是 true；这里的文案是“再显示 N 个文件”，
-        // 所以必须从收起状态开始，否则标签说还有没显示的、内容却已经列出来了。
-        <Collapsible defaultIsOpen={false} trigger={`再显示 ${remaining} 个文件`}>
-          {rows(ordered.slice(3))}
-        </Collapsible>
+      {rows(collapsed ? ordered.slice(0, 3) : ordered)}
+      {collapsed && (
+        <Button
+          className="file-edits-more"
+          label={`再显示 ${remaining} 个文件`}
+          variant="ghost"
+          size="sm"
+          icon={<ChevronRight size={14} aria-hidden="true" />}
+          onClick={() => setExpanded(true)}
+        />
       )}
     </div>
   )

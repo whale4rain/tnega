@@ -744,6 +744,9 @@ pre {
   margin: 0 0 6px;
   color: var(--mute);
   line-height: 1.5;
+  /* Astryx 的 reset 给 :where(p) 设了 --text-body-size（14px），
+     不显式声明的话摘要会比卡片标题还大。 */
+  font-size: inherit;
 }
 .plan-item-detail {
   color: var(--mute);
@@ -1388,6 +1391,37 @@ pre {
     padding: 9px 14px;
     border-top: 1px solid var(--hairline);
     border-radius: 0;
+  }
+
+  /* 计划卡片与输入卡片连成一块：圆角只留在两端——计划卡片管顶部，输入卡片管底部，
+     中间不画线和间隔。两者同色，接缝才看不出来。 */
+  .composer-dock.has-plan .plan-panel {
+    margin-bottom: 0;
+    border: 0;
+    border-radius: 28px 28px 0 0;
+    background: var(--canvas);
+  }
+  .composer-dock.has-plan .astryx-chat-composer > div:last-child {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  /* 计划正文原本是 14px，比卡片的标题还大。 */
+  .plan-panel .astryx-collapsible-content {
+    font-size: inherit;
+  }
+
+  /* “再显示 N 个文件”是文件列表底部的一条朴素行，不是标题：
+     靠左、跟着列表的缩进，顶部一条细线把它和前三个文件分开。 */
+  .file-edits-more {
+    display: flex;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 14px;
+    border-top: 1px solid var(--hairline);
+    border-radius: 0;
+    color: var(--mute);
   }
 
   /* 会话行收成一行：标题换行会把行撑到 60px，看起来像一个多余的框。 */

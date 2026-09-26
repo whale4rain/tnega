@@ -94,7 +94,7 @@ export function ComposerFrame(props: Props) {
     setAttachments(current => current.filter((_, at) => at !== index))
   }
 
-  return <section className="composer-dock" aria-label="Message composer">
+  return <section className={`composer-dock${props.accessory ? ' has-plan' : ''}`} aria-label="Message composer">
     {props.accessory}
     {!props.apiKeySet && <Stack direction="horizontal" align="center" gap={2} className="config-notice">
       <Text type="body">Connect a model to start a conversation.</Text>
