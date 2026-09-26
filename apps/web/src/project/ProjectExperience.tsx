@@ -347,7 +347,6 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   const tasks = (view?.threads ?? []).filter(entry => entry.depth > 0)
   const waiting = tasks.filter(entry => entry.state === 'waiting' || entry.state === 'blocked')
   const composer = {
-    workspace,
     models: [...props.models],
     ...(props.model !== undefined ? { model: props.model } : {}),
     reasoningEffort: props.reasoningEffort,

@@ -15,13 +15,11 @@ import { Stack } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
 import { ChevronLeft, ChevronRight, Paperclip, Shield, SlidersHorizontal } from 'lucide-react'
-import { workspaceName } from './workspace'
 
 interface Props {
   /** 斜杠菜单这类浮在输入框上方的 Tnega 内容，和附件行共用 ChatComposer 的 drawer 槽。 */
   drawer?: ReactNode
   accessory?: ReactNode
-  workspace: string
   model?: string
   models: Array<{ id: string; name: string; reasoningEfforts: Array<'low' | 'medium' | 'high'> }>
   reasoningEffort: 'default' | 'low' | 'medium' | 'high'
@@ -164,9 +162,6 @@ export function ComposerFrame(props: Props) {
         }}
       />}
       footerActions={<Stack direction="horizontal" align="center" gap={2} className="composer-toolbar" wrap="nowrap">
-        <Stack direction="horizontal" align="center" gap={1} className="composer-workspace">
-          <Text type="supporting" maxLines={1}>{workspaceName(props.workspace)}</Text>
-        </Stack>
         {props.onPermission && <Selector
           label="Tool permissions"
           isLabelHidden

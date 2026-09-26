@@ -60,16 +60,14 @@ textarea,
 select {
   font: inherit;
 }
+/*
+ * 这几条是迁移前给 Tnega 自己的原生控件打的基础样式。控件换成 Astryx 之后，
+ * 全局选中 button/input 会把 `--hairline` 描边和 `--surface-card` 底色刷到库组件上
+ * ——折叠触发器本身就是个 <button>，会平白多出一个框，字号也被压掉。
+ * 外观交回给各组件，这里只留与它们不冲突的几条。
+ */
 button {
   cursor: pointer;
-  transition:
-    background-color 140ms ease,
-    color 140ms ease,
-    border-color 140ms ease;
-}
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 button,
 input,
@@ -77,28 +75,11 @@ textarea,
 select {
   color: inherit;
 }
-button {
-  border: 1px solid var(--hairline);
-  background: transparent;
-  border-radius: 6px;
-  padding: 5px 9px;
-}
-button:hover:not(:disabled) {
-  background: var(--surface-card);
-}
 button:focus-visible,
 textarea:focus-visible,
 input:focus-visible {
   outline: 1px solid var(--mute);
   outline-offset: 2px;
-}
-input,
-textarea,
-select {
-  background: var(--surface-card);
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  padding: 9px 12px;
 }
 * {
   scrollbar-width: thin;
@@ -653,13 +634,9 @@ pre {
   padding: 8px 2px 0;
   color: var(--mute);
   font-size: 11px;
-  /* 控制行排成一行：太宽就压缩工作区标签，不要换行把输入区顶高。 */
+  /* 控制行排成一行：太宽就压缩，不要换行把输入区顶高。 */
   flex-wrap: nowrap;
   min-width: 0;
-}
-.composer-workspace {
-  min-width: 0;
-  flex-shrink: 1;
 }
 .model-slider-panel {
   width: min(340px, calc(100vw - 32px));
@@ -1388,10 +1365,29 @@ pre {
     flex: 1 0 auto;
   }
 
-  /* 输入卡片：黑底。它默认用 --color-background-popover（弹层色），
-     在灰色对话区上不够沉。 */
+  /* 输入卡片：黑底 + 更宽的内边距。底色默认用 --color-background-popover（弹层色），
+     在灰色对话区上不够沉；内边距默认 8px，图标贴边太紧。 */
   .composer-dock .astryx-chat-composer > div:last-child {
     background: var(--canvas);
+    padding: 14px;
+  }
+
+  /* 折叠触发器自带 large 字号（17px），比 Tnega 的正文还大。
+     它只是这一节的小标题，字号跟着容器走。 */
+  .plan-panel .astryx-collapsible-trigger,
+  .file-edits-card .astryx-collapsible-trigger {
+    font: inherit;
+    font-weight: inherit;
+  }
+
+  /* 文件卡的“再显示 N 个文件”原本是列表底部一条朴素的行，不是标题。 */
+  .file-edits-card .astryx-collapsible-trigger {
+    justify-content: flex-start;
+    gap: 8px;
+    color: var(--mute);
+    padding: 9px 14px;
+    border-top: 1px solid var(--hairline);
+    border-radius: 0;
   }
 
   /* 会话行收成一行：标题换行会把行撑到 60px，看起来像一个多余的框。 */

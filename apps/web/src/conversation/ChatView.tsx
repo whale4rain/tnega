@@ -1039,7 +1039,6 @@ export function ChatView({
               reasoningEffort={reasoningEffort}
               onModel={onModelChange}
               onReasoningEffort={onReasoningEffortChange}
-              workspace={workspace}
               apiKeySet={apiKeySet}
               onSettings={onSettings}
               permission={permission}
