@@ -652,23 +652,17 @@ pre {
   background: linear-gradient(transparent, var(--canvas));
   pointer-events: none;
 }
-.composer-context {
-  color: var(--mute);
-  font-size: 12px;
-  padding: 6px 2px;
-}
-.permission-hint {
-  color: var(--mute);
-  font-size: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .composer-toolbar {
   padding: 8px 2px 0;
   color: var(--mute);
   font-size: 11px;
-  flex-wrap: wrap;
+  /* 控制行排成一行：太宽就压缩工作区标签，不要换行把输入区顶高。 */
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.composer-workspace {
+  min-width: 0;
+  flex-shrink: 1;
 }
 .model-slider-panel {
   width: min(340px, calc(100vw - 32px));

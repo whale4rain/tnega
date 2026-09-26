@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode, type Ref } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import {
   ChatComposer,
+  ChatComposerDrawer,
   ChatComposerInput,
   ChatSendButton,
   type ChatComposerInputHandle,
@@ -12,11 +13,12 @@ import { Selector } from '@astryxdesign/core/Selector'
 import { Slider } from '@astryxdesign/core/Slider'
 import { Stack } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
-import { ChevronLeft, ChevronRight, FolderOpen, Shield, SlidersHorizontal } from 'lucide-react'
+import { Token } from '@astryxdesign/core/Token'
+import { ChevronLeft, ChevronRight, FolderOpen, Paperclip, Shield, SlidersHorizontal } from 'lucide-react'
 import { workspaceName } from './workspace'
 
 interface Props {
-  /** 斜杠菜单这类浮在输入框上方的 Tnega 内容，交给 ChatComposer 的 drawer 槽。 */
+  /** 斜杠菜单这类浮在输入框上方的 Tnega 内容，和附件行共用 ChatComposer 的 drawer 槽。 */
   drawer?: ReactNode
   accessory?: ReactNode
   workspace: string
@@ -49,6 +51,19 @@ interface Props {
   inputHandleRef?: Ref<ChatComposerInputHandle>
 }
 
+/** 权限各档的说明。放进下拉项里，控制行就不用再排一长串提示文字。 */
+const PERMISSION_OPTIONS = [
+  { value: 'read-only', label: 'Read only', description: 'Read workspace · public web search' },
+  { value: 'workspace-write', label: 'Workspace write', description: 'Write workspace · shell access' },
+  { value: 'bypass', label: 'Bypass', description: 'Full access · no approval prompts' },
+] as const
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function ComposerFrame(props: Props) {
   const selectedModel = props.models.find(item => item.id === props.model)
   const models = props.models
@@ -69,11 +84,17 @@ export function ComposerFrame(props: Props) {
     setPreviewIndex(index)
     if (next.id !== props.model) void props.onModel(next.id)
   }
-  const permissionHint = {
-    'read-only': 'Read workspace · public web search',
-    'workspace-write': 'Write workspace · shell access',
-    bypass: 'Full access · no approval prompts',
-  }[props.permission]
+  // 附件目前只是输入区的摆设：能挑、能移除、能被粘贴或拖进来，但 run 请求里不带它们，
+  // 发送后即清空。等后端接住附件再把这层状态提上去。
+  const [attachments, setAttachments] = useState<File[]>([])
+  const filePicker = useRef<HTMLInputElement | null>(null)
+  const addAttachments = (files: File[]) => {
+    if (!files.length) return
+    setAttachments(current => [...current, ...files])
+  }
+  const removeAttachment = (index: number) => {
+    setAttachments(current => current.filter((_, at) => at !== index))
+  }
 
   return <section className="composer-dock" aria-label="Message composer">
     {props.accessory}
@@ -81,20 +102,59 @@ export function ComposerFrame(props: Props) {
       <Text type="body">Connect a model to start a conversation.</Text>
       <Button label="Open settings" variant="ghost" size="sm" onClick={props.onSettings} />
     </Stack>}
+    <input
+      ref={filePicker}
+      type="file"
+      multiple
+      hidden
+      onChange={event => {
+        addAttachments([...(event.target.files ?? [])])
+        event.target.value = ''
+      }}
+    />
     <ChatComposer
       value={props.value}
       onChange={props.onChange}
-      onSubmit={() => props.onSubmit()}
+      onSubmit={() => {
+        setAttachments([])
+        props.onSubmit()
+      }}
       onStop={props.onStop}
       isStopShown={!!props.running}
       isDisabled={!!props.compacting}
       density="compact"
       elevation="none"
       placeholder={props.placeholder ?? 'Ask Tnega to build, fix, or explore…'}
-      drawer={props.drawer}
+      drawer={attachments.length > 0 || props.drawer ? <>
+        {attachments.length > 0 && <ChatComposerDrawer count={attachments.length} label="Attachments">
+          <Stack direction="horizontal" gap={1} wrap="wrap">
+            {attachments.map((file, index) => (
+              <Token
+                key={`${file.name}-${file.lastModified}-${index}`}
+                label={file.name}
+                size="sm"
+                icon={<Paperclip size={12} aria-hidden="true" />}
+                description={`${file.name}, ${formatSize(file.size)}`}
+                onRemove={() => removeAttachment(index)}
+              />
+            ))}
+          </Stack>
+        </ChatComposerDrawer>}
+        {props.drawer}
+      </> : undefined}
+      headerActions={<IconButton
+        label="Attach files"
+        tooltip="Attach files"
+        icon={<Paperclip size={16} aria-hidden="true" />}
+        variant="ghost"
+        size="sm"
+        isDisabled={props.disabled}
+        onClick={() => filePicker.current?.click()}
+      />}
       input={<ChatComposerInput
         label="Message Tnega"
         handleRef={props.inputHandleRef}
+        onFiles={addAttachments}
         // The input clears its own draft the moment Enter reaches it, whether
         // or not the send is accepted. Swallow Enter while a send would be
         // refused so a draft survives an unconfigured model or a run in
@@ -104,16 +164,25 @@ export function ComposerFrame(props: Props) {
             event.preventDefault()
         }}
       />}
-      headerContext={<Stack direction="horizontal" align="center" gap={2} className="composer-context">
-        <FolderOpen size={14} />
-        <Text type="body" maxLines={1}>{workspaceName(props.workspace)}</Text>
-        <Text type="body">Local workspace</Text>
-      </Stack>}
-      footerActions={<Stack direction="horizontal" align="center" gap={2} className="composer-toolbar">
-        <Shield size={14} />
-        {props.onPermission && <Selector label="Tool permissions" isLabelHidden variant="ghost" size="sm" value={props.permission} isDisabled={props.disabled} options={[{ value: 'read-only', label: 'Read only' }, { value: 'workspace-write', label: 'Workspace write' }, { value: 'bypass', label: 'Bypass' }]} onChange={value => { if (value === 'read-only' || value === 'workspace-write' || value === 'bypass') props.onPermission?.(value) }} />}
-        <Text type="body" className="permission-hint">{permissionHint}</Text>
-        <Popover placement="above" alignment="end" label="Model and thinking settings" isEnabled={!props.disabled && !!props.model} content={<Stack direction="vertical" gap={3} className="model-slider-panel">
+      footerActions={<Stack direction="horizontal" align="center" gap={2} className="composer-toolbar" wrap="nowrap">
+        <Stack direction="horizontal" align="center" gap={1} className="composer-workspace">
+          <FolderOpen size={14} aria-hidden="true" />
+          <Text type="supporting" maxLines={1}>{workspaceName(props.workspace)}</Text>
+        </Stack>
+        {props.onPermission && <Selector
+          label="Tool permissions"
+          isLabelHidden
+          variant="ghost"
+          size="sm"
+          startIcon={<Shield size={14} />}
+          value={props.permission}
+          isDisabled={props.disabled}
+          options={[...PERMISSION_OPTIONS]}
+          onChange={value => {
+            if (value === 'read-only' || value === 'workspace-write' || value === 'bypass') props.onPermission?.(value)
+          }}
+        />}
+        <Popover placement="above" alignment="start" label="Model and thinking settings" isEnabled={!props.disabled && !!props.model} content={<Stack direction="vertical" gap={3} className="model-slider-panel">
           <Text type="body">Model · {models.length ? `${previewIndex + 1} / ${models.length}` : '—'}</Text>
           <Stack direction="horizontal" align="center" gap={2}>
             <IconButton label="Previous model" tooltip="Previous model" icon={<ChevronLeft size={18} />} variant="ghost" size="sm" isDisabled={props.disabled || previewIndex <= 0} onClick={() => selectModel(previewIndex - 1)} />
