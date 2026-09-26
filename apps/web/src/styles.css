@@ -396,7 +396,6 @@ input:focus-visible {
   flex: 1 0 auto;
 }
 .message {
-  margin: 0 0 20px;
   font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -1455,6 +1454,25 @@ pre {
     padding: 8px;
     border-radius: 50%;
     background: var(--surface-card);
+  }
+
+  /* 工具行被超长命令撑宽时会顶出消息列。行内自己收住：min-width 归零让它能缩，
+     max-width 兜住上界，命令末尾用省略号收尾，而不是硬裁或把行撑开。 */
+  .astryx-chat-tool-calls [role='button'] {
+    overflow: hidden;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .astryx-chat-tool-calls [role='button'] > span {
+    text-overflow: ellipsis;
+  }
+
+  /* 工作区行的名字已经单行省略了，下面的路径还没有：像 D:\task\deepseek-harness
+     这种长路径会折成两行，把行撑高。名字后面那个 span 就是路径。 */
+  .tnega-side-nav .astryx-tree-list-item-label + span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* 会话行收成一行：标题换行会把行撑到 60px，看起来像一个多余的框。 */

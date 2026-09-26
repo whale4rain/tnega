@@ -70,29 +70,32 @@ export const MessageBlock = memo(function MessageBlock({
   const className = `message ${message.role}${active ? ' active-user' : ''}${editing ? ' editing' : ''}`
   const isUser = message.role === 'user'
   const finishReason = message.finishReason ?? message.endState?.finishReason
+  const status = [
+    message.pending ? '...' : '',
+    message.interrupted ? 'interrupted' : '',
+    message.retry ? `retry ${message.retry.retry}${message.retry.started ? ' ...' : ''}` : '',
+    finishReason ?? '',
+  ].filter(Boolean).join(' / ')
+  // 助手名字默认是固定的“Tnega”，每轮都重复一遍没有信息量，不显示；
+  // 子代理侧栏会传自己的名字进来，那种是有用的，保留。
+  const name = isUser ? 'You' : (assistantLabel === 'Tnega' ? '' : assistantLabel)
   return (
     <ChatMessage sender={isUser ? 'user' : 'assistant'} density="compact" className={className} ref={userRef}>
-      <div className="message-label">
-        <span>
-          {message.role === 'assistant' ? assistantLabel : 'You'}
-          {message.pending ? ' ...' : ''}
-          {message.interrupted ? ' / interrupted' : ''}
-          {message.retry
-            ? ` / retry ${message.retry.retry}${message.retry.started ? ' ...' : ''}`
-            : ''}
-          {finishReason ? ` / ${finishReason}` : ''}
-        </span>
-        {isUser && !editing && (onBeginEdit || onForkAt) && (
-          <span className="message-menu">
-            {onBeginEdit && (
-              <IconButton label="Edit message" tooltip="Edit message" icon={<Pencil size={14} />} variant="ghost" size="sm" onClick={onBeginEdit} />
-            )}
-            {onForkAt && (
-              <IconButton label="Fork here" tooltip="Fork here" icon={<GitFork size={14} />} variant="ghost" size="sm" onClick={onForkAt} />
-            )}
-          </span>
-        )}
-      </div>
+      {(name || status) && (
+        <div className="message-label">
+          <span>{[name, status].filter(Boolean).join(' / ')}</span>
+          {isUser && !editing && (onBeginEdit || onForkAt) && (
+            <span className="message-menu">
+              {onBeginEdit && (
+                <IconButton label="Edit message" tooltip="Edit message" icon={<Pencil size={14} />} variant="ghost" size="sm" onClick={onBeginEdit} />
+              )}
+              {onForkAt && (
+                <IconButton label="Fork here" tooltip="Fork here" icon={<GitFork size={14} />} variant="ghost" size="sm" onClick={onForkAt} />
+              )}
+            </span>
+          )}
+        </div>
+      )}
       {editing ? (
         <div className="message-edit">
           <TextArea
