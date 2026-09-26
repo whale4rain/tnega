@@ -1393,17 +1393,19 @@ pre {
     border-radius: 0;
   }
 
-  /* 计划卡片与输入卡片连成一块：圆角只留在两端——计划卡片管顶部，输入卡片管底部，
-     中间不画线和间隔。两者同色，接缝才看不出来。 */
+  /* 计划卡片与输入卡片是参考图里那样上下两个圆角容器：各自四面圆角、中间留一道缝。
+     计划卡片用与输入卡片同色的底，才像同一种材料。 */
   .composer-dock.has-plan .plan-panel {
-    margin-bottom: 0;
+    margin-bottom: 6px;
     border: 0;
-    border-radius: 28px 28px 0 0;
+    border-radius: 28px;
     background: var(--canvas);
   }
-  .composer-dock.has-plan .astryx-chat-composer > div:last-child {
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
+
+  /* Chat / Code 两个段按内容宽度排（59 + 62），控件剩下的 73px 是空的。
+     段应当平分控件宽度。 */
+  .astryx-segmented-control > [role='radio'] {
+    flex: 1 1 0;
   }
 
   /* 计划正文原本是 14px，比卡片的标题还大。 */
