@@ -40,7 +40,10 @@ function ToolDetail({ tool }: { tool: DisplayTool }) {
   const pending = tool.status === 'pending'
   const failed = !pending && tool.ok === false
   return <section className="tool-detail" aria-label={`${tool.name} details`}>
-    <code title={tool.callId}>{tool.name} · {tool.callId.slice(0, 8)}</code>
+    <div className="tool-detail-meta">
+      <code>{tool.name}</code>
+      <span title={tool.callId}>{tool.callId.slice(0, 8)}</span>
+    </div>
     {tool.argumentsText && <><h4>Input</h4><pre>{tool.argumentsText}</pre></>}
     {pending ? <p className="run-note" role="status">Waiting for tool output…</p> : <><h4>{failed ? 'Error' : 'Output'}</h4><ToolOutput failed={failed} text={failed ? (tool.errorText ?? 'Tool failed') : (tool.outputText ?? 'Completed without text output.')} /></>}
   </section>

@@ -147,7 +147,7 @@ function TranscriptRow({ message, label }: { message: DisplayMessage; label?: st
             {tool?.status === 'pending' ? 'running' : tool?.ok === false ? 'failed' : 'done'}
           </span>
         </summary>
-        <pre className="tool-detail">{tool?.outputText || tool?.errorText || tool?.argumentsText}</pre>
+        <pre className="tool-row-output">{tool?.outputText || tool?.errorText || tool?.argumentsText}</pre>
       </details>
     )
   }

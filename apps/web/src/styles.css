@@ -696,9 +696,6 @@ pre {
   text-align: left;
   border: 0;
 }
-.tool-detail {
-  margin: 8px 0;
-}
 .plan-panel {
   margin: 0 0 6px;
   border: 1px solid var(--hairline);
@@ -969,6 +966,12 @@ pre {
 
 .tool-detail {
   margin: 4px 10px 12px 24px;
+}
+.tool-detail-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
 }
 .tool-detail h4 {
   font-size: 11px;
@@ -1294,7 +1297,10 @@ pre {
 .tool-row[data-ok='false'] .tool-state {
   color: var(--danger);
 }
-.tool-detail {
+/* Thread 侧栏里工具行展开后的输出。这里曾经叫 .tool-detail，
+   和转录里 ToolActivity 的 .tool-detail 同名——那条规则排在后面，
+   把转录那个容器的 margin/padding 压掉、还给它套了个 220px 滚动盒。 */
+.tool-row-output {
   margin: 0;
   padding: 6px 8px;
   max-height: 220px;
