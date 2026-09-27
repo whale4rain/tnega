@@ -143,6 +143,7 @@ export function patchSessionMeta(
     mode?: 'auto' | 'plan' | 'goal'
     model?: string
     reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
+    permission?: 'read-only' | 'workspace-write' | 'bypass'
   },
 ): Promise<{ summary: SessionSummary }> {
   const query = new URLSearchParams({ workspace })
@@ -249,7 +250,6 @@ export function deleteSession(workspace: string, id: string): Promise<void> {
 
 export interface RunBody {
   prompt: string
-  permission: 'read-only' | 'workspace-write' | 'bypass'
 }
 
 export function answerApproval(

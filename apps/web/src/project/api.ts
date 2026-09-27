@@ -60,16 +60,8 @@ export function sendProjectMessage(
   })
 }
 
-export function sendThreadMessage(
-  workspace: string,
-  id: string,
-  threadId: string,
-  text: string,
-): Promise<{ messageId: string; createdAt: number }> {
-  return request(`/api/projects/${id}/threads/${threadId}/messages?${query(workspace)}`, {
-    method: 'POST',
-    body: JSON.stringify({ text }),
-  })
+export function sendThreadMessage(workspace: string, id: string, threadId: string, text: string): Promise<{ messageId: string; createdAt: number }> {
+  return request(`/api/projects/${id}/threads/${threadId}/messages?${query(workspace)}`, { method: 'POST', body: JSON.stringify({ text }) })
 }
 
 export function decideApproval(

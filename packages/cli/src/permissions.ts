@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { resolveInside, type ToolGuard, type ToolRequest } from '@tnega/tools'
 
 export type PermissionMode = 'read-only' | 'workspace-write' | 'bypass'
+export type PermissionModeSource = PermissionMode | (() => PermissionMode | Promise<PermissionMode>)
 
 /**
  * 不需要逐次批准的调用：只读的工具，以及**只在 Project 内部发生**的动作。
@@ -85,7 +86,7 @@ export class ApprovalBroker {
 }
 
 export function permissionGuard(
-  mode: PermissionMode,
+  mode: PermissionModeSource,
   key: string,
   approvals: ApprovalBroker,
   options: {
@@ -94,11 +95,12 @@ export function permissionGuard(
   },
 ): ToolGuard {
   return async request => {
+    const parentMode = typeof mode === 'function' ? await mode() : mode
     const childMode = request.options.agentId ? options.agentMode?.(request.options.agentId) : undefined
     const rank = { 'read-only': 0, 'workspace-write': 1, bypass: 2 }
-    const effective = childMode && rank[childMode] < rank[mode] ? childMode : mode
+    const effective = childMode && rank[childMode] < rank[parentMode] ? childMode : parentMode
     if (effective === 'bypass') return undefined
-    const unrestricted = mode === 'bypass'
+    const unrestricted = parentMode === 'bypass'
     const pathKey = request.name === 'shell' ? 'cwd' : 'path'
     const input = request.input && typeof request.input === 'object' && !Array.isArray(request.input)
       ? request.input as Record<string, unknown> : {}

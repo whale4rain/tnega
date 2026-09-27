@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Stack } from '@astryxdesign/core/Stack'
+import { Text } from '@astryxdesign/core/Text'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { ChatMessageList, type ChatComposerInputHandle } from '@astryxdesign/core/Chat'
 import { ChevronDown, Code2, ListTodo } from 'lucide-react'
@@ -110,6 +113,17 @@ export function ChatView({
     busy: boolean
     error: string | null
   } | null>(null)
+
+  useEffect(() => {
+    setPermission(summary?.permission ?? 'read-only')
+  }, [summary?.permission, sessionId])
+
+  const changePermission = useCallback((next: 'read-only' | 'workspace-write' | 'bypass') => {
+    if (!workspace || !sessionId) return
+    void api.patchSessionMeta(workspace, sessionId, { permission: next })
+      .then(() => onRefresh(sessionId, true))
+      .catch(reason => setRunError(reason instanceof Error ? reason.message : String(reason)))
+  }, [onRefresh, sessionId, workspace])
   const abortRef = useRef<AbortController | null>(null)
   const runStateRef = useRef<RunState>('idle')
   const planRef = useRef<DisplayPlan | undefined>(undefined)
@@ -400,7 +414,6 @@ export function ChatView({
             sessionId,
             {
               prompt: sent,
-              permission,
             },
             (event) => handleStreamEvent(event),
             controller.signal,
@@ -856,22 +869,24 @@ export function ChatView({
 
   if (!workspace) {
     return (
-      <div className="empty-state">
+      <Stack className="empty-state" gap={4} align="center" justify="center">
         <Code2 size={36} strokeWidth={1.2} />
-        <h1>Make room for your next idea.</h1>
-        <p>Add a workspace from the sidebar to start coding with Tnega.</p>
-      </div>
+        <Text color="accent" type="supporting">YOUR AGENT WORKSPACE</Text>
+        <Heading level={1} textWrap="balance">Make room for your next idea.</Heading>
+        <Text color="secondary">Add a workspace from the sidebar to start coding with Tnega.</Text>
+      </Stack>
     )
   }
 
   if (!sessionId) {
     return (
-      <div className="empty-state">
+      <Stack className="empty-state" gap={4} align="center" justify="center">
         <Code2 size={36} strokeWidth={1.2} />
-        <h1>What are we building?</h1>
-        <p>Explore a codebase, work through a bug, or build something new.</p>
+        <Text color="accent" type="supporting">IDEA → PLAN → BUILD</Text>
+        <Heading level={1} textWrap="balance">What are we building?</Heading>
+        <Text color="secondary">Explore a codebase, work through a bug, or build something new.</Text>
         <Button label="Start coding" onClick={() => void onNewSession({ agentType: 'coding' })} />
-      </div>
+      </Stack>
     )
   }
 
@@ -1042,7 +1057,7 @@ export function ChatView({
               apiKeySet={apiKeySet}
               onSettings={onSettings}
               permission={permission}
-              onPermission={setPermission}
+              onPermission={changePermission}
               disabled={running || compacting}
               mode={isCoding ? mode : undefined}
               onMode={onModeChange}

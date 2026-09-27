@@ -51,7 +51,7 @@
 ### 模式词汇沿用 CONTEXT，不引入第二套
 
 `SandboxMode = 'read-only' | 'workspace-write' | 'bypass'`，与 `CONTEXT.md` 的 Tool
-Permission 完全同名，所以 CLI / Web API / Session 元数据不需要任何映射。`bypass` 在
+Permission 完全同名；Session 的 `permission/mode` 事件直接提供模式。`bypass` 在
 Definition 里不是「更宽的策略」而是「不要沙箱」：`confine` 直接以
 `SANDBOX_INVALID_POLICY` 拒绝它，调用方必须显式绕开沙箱，而不是让一次「受限执行」悄悄
 不受限。

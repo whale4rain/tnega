@@ -23,12 +23,11 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { SessionSummary } from '../types'
-import { folderName, type RecentProject } from '../projectSelection'
+import { type RecentProject } from '../projectSelection'
 import type { ThemePreference } from '../ThemeToggle'
 import { WorkspaceTree } from './WorkspaceTree'
 import {
-  hasDesktopWorkspacePicker,
-  pickDesktopWorkspace,
+  pickFolder,
 } from '../desktopBridge'
 
 interface Props {
@@ -83,7 +82,7 @@ export function WorkspaceSidebar(props: Props) {
   }
   return (
     <>
-      <div className="sidebar-top flex flex-col">
+      <VStack className="sidebar-top" gap={3} padding={4}>
         <SegmentedControl
           size="sm"
           value={agent}
@@ -111,7 +110,7 @@ export function WorkspaceSidebar(props: Props) {
           value={search}
           onChange={setSearch}
         />
-      </div>
+      </VStack>
       <div className="sidebar-section-label flex items-center justify-between">
         <span>Projects</span>
         <Tooltip content="New project">
@@ -138,7 +137,6 @@ export function WorkspaceSidebar(props: Props) {
                   <LayoutList size={15} aria-hidden="true" />
                   <span className="project-row-body">
                     <span className="project-row-name">{project.name}</span>
-                    <span className="project-row-folder">{folderName(project.workspace)}</span>
                   </span>
                 </button>
                 <DropdownMenu
@@ -172,7 +170,6 @@ export function WorkspaceSidebar(props: Props) {
                       <LayoutList size={15} aria-hidden="true" />
                       <span className="project-row-body">
                         <span className="project-row-name">{project.name}</span>
-                        <span className="project-row-folder">{folderName(project.workspace)}</span>
                       </span>
                     </button>
                     <DropdownMenu
@@ -262,15 +259,15 @@ export function WorkspaceSidebar(props: Props) {
                 })
               }}>
                 <VStack gap={3}>
+                  <Button label="Choose folder…" variant="secondary" isDisabled={busy} onClick={() => void perform(async () => {
+                    const selected = await pickFolder()
+                    if (selected) setPath(selected)
+                  })} />
                   <TextInput label="Workspace path" placeholder="Absolute project path" value={path} onChange={setPath} />
                   {error && <Text role="alert" className="danger" type="body">{error}</Text>}
                   <LayoutFooter>
                     <HStack gap={2} hAlign="end">
                       <Button label="Cancel" variant="secondary" onClick={() => setAdding(false)} />
-                      {hasDesktopWorkspacePicker() && <Button label="Browse…" variant="secondary" isDisabled={busy} onClick={() => void perform(async () => {
-                        const selected = await pickDesktopWorkspace()
-                        if (selected) setPath(selected)
-                      })} />}
                       <Button label="Add workspace" type="submit" isDisabled={busy || !path.trim()} />
                     </HStack>
                   </LayoutFooter>

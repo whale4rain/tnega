@@ -16,6 +16,7 @@ import {
   estimateMessageTokens,
   foldUsage,
   foldSessionMeta,
+  foldSessionPermission,
   projectEvents,
   suffixStartIndexForTokens,
   type ContextUsage,
@@ -25,6 +26,7 @@ import {
   type ModelMessage,
   type SessionEvent,
   type SessionMode,
+  type SessionPermission,
 } from '@tnega/session'
 
 export interface SessionMetaPayload {
@@ -37,6 +39,7 @@ export interface SessionMetaPayload {
   mode?: SessionMode
   model?: string
   reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
+  permission?: SessionPermission
 }
 
 export interface SessionSummary extends SessionMetaPayload {
@@ -203,6 +206,7 @@ export async function readSessionSummary(
   if (folded.mode) summary.mode = folded.mode
   if (folded.model) summary.model = folded.model
   if (folded.reasoningEffort) summary.reasoningEffort = folded.reasoningEffort
+  summary.permission = foldSessionPermission(events)
   if (headPayload && typeof headPayload.parentSessionId === 'string') {
     summary.parentSessionId = headPayload.parentSessionId
   }
@@ -218,6 +222,22 @@ export async function setSessionTitle(
   title: string,
 ): Promise<SessionSummary> {
   return patchSessionMeta(workspace, id, { title })
+}
+
+/** Persist a Session-level permission choice; no event is needed for a no-op. */
+export async function setSessionPermission(
+  workspace: string,
+  id: string,
+  permission: SessionPermission,
+): Promise<SessionSummary> {
+  const file = sessionFile(workspace, id)
+  await withSessionLog(file, async log => {
+    if (foldSessionPermission(await log.read()) !== permission) {
+      await log.append('permission/mode', { mode: permission })
+      await log.flush()
+    }
+  })
+  return readSessionSummary(workspace, id)
 }
 
 export async function patchSessionMeta(

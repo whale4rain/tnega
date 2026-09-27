@@ -1,5 +1,5 @@
 /**
- * 最近打开的 Project。
+ * Project navigation entries. Opening an existing Project preserves its list position.
  *
  * 和 Recent Workspace 一样由 Web UI 维护：Project 的文件夹可以是任意目录，不要求先被登记
  * 成 workspace，所以「这个浏览器之前打开过哪些 Project」这件事只有 UI 自己知道。
@@ -35,10 +35,15 @@ export function readRecentProjects(storage: Storage): RecentProject[] {
 }
 
 export function rememberProject(storage: Storage, project: Omit<RecentProject, 'openedAt'>): RecentProject[] {
-  const next = [
-    { ...project, openedAt: Date.now() },
-    ...readRecentProjects(storage).filter(entry => !(entry.workspace === project.workspace && entry.id === project.id)),
-  ].slice(0, LIMIT)
+  const current = readRecentProjects(storage)
+  const index = current.findIndex(entry => entry.workspace === project.workspace && entry.id === project.id)
+  const timestamp = Date.now()
+  const next = index < 0
+    ? [...current, { ...project, openedAt: timestamp }]
+    : current.map((entry, position) => position === index
+      ? { ...entry, ...project, openedAt: timestamp }
+      : entry)
+  if (next.length > LIMIT) next.splice(0, next.length - LIMIT)
   storage.setItem(KEY, JSON.stringify(next))
   return next
 }

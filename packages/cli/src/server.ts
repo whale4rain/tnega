@@ -47,6 +47,7 @@ import { builtinTools, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { ProjectHost } from './project-host.js'
 import { handleProjectApi } from './project-routes.js'
+import { pickSystemFolder } from './folder-picker.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
 import {
@@ -79,6 +80,7 @@ import {
   readSessionMessages,
   readSessionMetrics,
   readSessionSummary,
+  setSessionPermission,
   type SessionSummary,
   setSessionTitle,
   truncateSessionAt,
@@ -320,6 +322,16 @@ async function handleApi(
 
   if (url.pathname === '/api/health') {
     sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/api/folder-picker' && req.method === 'POST') {
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      sendError(res, 403, 'folder picker is only available to local clients')
+      return
+    }
+    const path = await pickSystemFolder()
+    sendJson(res, 200, path ? { path } : {})
     return
   }
 
@@ -566,6 +578,8 @@ async function handleApi(
       }
       const body = await readJsonBody(req)
       const patch: Parameters<typeof patchSessionMeta>[2] = {}
+      const permission = body.permission === 'workspace-write' || body.permission === 'bypass'
+        ? body.permission : body.permission === 'read-only' ? 'read-only' : undefined
       if (typeof body.title === 'string') patch.title = body.title
       if (body.agentType === 'general' || body.agentType === 'coding') {
         patch.agentType = body.agentType
@@ -578,12 +592,15 @@ async function handleApi(
         || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high') {
         patch.reasoningEffort = body.reasoningEffort
       }
-      if (!Object.keys(patch).length) {
+      if (!Object.keys(patch).length && permission === undefined) {
         sendError(res, 400, 'session metadata is required')
         return
       }
-      await evictResident(context, workspace, id)
-      const summary = await patchSessionMeta(workspace, id, patch)
+      if (Object.keys(patch).length) await evictResident(context, workspace, id)
+      if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
+      const summary = permission === undefined
+        ? await readSessionSummary(workspace, id)
+        : await setSessionPermission(workspace, id, permission)
       sendJson(res, 200, { summary })
       return
     }
@@ -650,6 +667,12 @@ async function handleApi(
   }
 
   sendError(res, 404, 'not found')
+}
+
+function isLoopbackAddress(address: string | undefined): boolean {
+  return address === '::1' || address === '::ffff:127.0.0.1'
+    || address?.startsWith('127.') === true
+    || address?.startsWith('::ffff:127.') === true
 }
 
 async function compactContext(
@@ -802,9 +825,8 @@ async function handleRun(
     return
   }
   const prompt = body.prompt.trim()
-  const permission: PermissionMode = body.permission === 'workspace-write' || body.permission === 'bypass'
-    ? body.permission : body.allowShell === true ? 'workspace-write' : 'read-only'
   const summary = await readSessionSummary(workspace, id)
+  const permission: PermissionMode = summary.permission ?? 'read-only'
   const coding = summary.agentType === 'coding'
   const mode = summary.mode ?? 'auto'
 
@@ -904,7 +926,6 @@ async function handleRun(
 
   try {
     const sessionLog = runtime.root.get('session') as SessionLog
-    await sessionLog.append('meta', { kind: 'permission/run', mode: permission })
     editTracking = {
       session: sessionLog,
       startSeq: (await sessionLog.read()).at(-1)?.seq ?? 0,
@@ -1026,15 +1047,23 @@ async function createResidentRuntime(
   // 沙箱缝：Provider 由 composition 挑，Consumer（`sandboxedExecution`）只认识
   // Service Definition。宿主上没有任何可用后端时 shell 会 fail closed。
   fibers.push(await root.plugin(sandboxLocal, { workspaceRoot: canonicalPath(workspace) }))
+  const currentPermission = async (): Promise<PermissionMode> => {
+    return (await readSessionSummary(workspace, req.sessionId)).permission ?? 'read-only'
+  }
   fibers.push(await root.plugin(builtinTools, {
     cwd: workspace,
     allowNetwork: true,
     allowShell: true,
-    allowOutsideWorkspace: req.permission === 'bypass',
-    allowPrivateNetwork: req.permission === 'bypass',
+    allowOutsideWorkspace: async () => (await currentPermission()) === 'bypass',
+    allowPrivateNetwork: async () => (await currentPermission()) === 'bypass',
     execution: sandboxedExecution(root, {
       policy: resolveSandboxPolicy({
         mode: req.permission,
+        workspaceRoot: canonicalPath(workspace),
+        sessionId: req.sessionId,
+      }),
+      resolvePolicy: async () => resolveSandboxPolicy({
+        mode: await currentPermission(),
         workspaceRoot: canonicalPath(workspace),
         sessionId: req.sessionId,
       }),
@@ -1057,7 +1086,7 @@ async function createResidentRuntime(
   const toolService = root.get('tools') as ToolsService
   const registry = root.get('agents') as AgentRegistry
   toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
-  toolService.guard(permissionGuard(req.permission, runKey(workspace, req.sessionId), req.approvals, {
+  toolService.guard(permissionGuard(currentPermission, runKey(workspace, req.sessionId), req.approvals, {
     workspace,
     agentMode: agentId => {
       const meta = registry.get(agentId)?.meta
@@ -1098,7 +1127,6 @@ async function ensureResidentAgent(
     req.effective.contextWindow ?? '',
     req.effective.protocol ?? '',
     req.effective.temperature ?? '',
-    req.permission,
     req.coding ? 'coding' : 'general',
     'auto',
   ].join('|')
@@ -1233,7 +1261,6 @@ async function runResidentTurn(
   try {
     const entry = await ensureResidentAgent(context, workspace, id, req)
     const agent = entry.agent
-    await agent.session.append('meta', { kind: 'permission/run', mode: req.permission })
     editTracking = {
       session: agent.session,
       startSeq: (await agent.session.read()).at(-1)?.seq ?? 0,

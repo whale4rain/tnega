@@ -1,5 +1,7 @@
+import { request } from './api'
+
 export interface DesktopApi {
-  pickWorkspace(): Promise<string | undefined>
+  pickFolder(): Promise<string | undefined>
   revealWorkspace(path: string): Promise<void>
   version(): string
 }
@@ -12,16 +14,20 @@ function desktopGlobal(): DesktopGlobal {
   return globalThis as DesktopGlobal
 }
 
-export function hasDesktopWorkspacePicker(
+export function hasDesktopFolderPicker(
   target: DesktopGlobal = desktopGlobal(),
 ): boolean {
-  return typeof target.tnegaDesktop?.pickWorkspace === 'function'
+  return typeof target.tnegaDesktop?.pickFolder === 'function'
 }
 
-export async function pickDesktopWorkspace(
+export async function pickFolder(
   target: DesktopGlobal = desktopGlobal(),
 ): Promise<string | undefined> {
-  const picker = target.tnegaDesktop?.pickWorkspace
-  if (!picker) return undefined
-  return picker()
+  const picker = target.tnegaDesktop?.pickFolder
+  if (picker) return picker()
+  const result = await request<{ path?: string }>('/api/folder-picker', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+  return result.path
 }

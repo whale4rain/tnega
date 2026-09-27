@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,12 +30,16 @@ function isTrustedSender(senderUrl: string): boolean {
 }
 
 function installDesktopHandlers(): void {
-  ipcMain.handle('tnega:pick-workspace', async event => {
+  ipcMain.handle('tnega:pick-folder', async event => {
     if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined
-    const result = await dialog.showOpenDialog({
-      title: 'Choose a workspace',
+    const options: OpenDialogOptions = {
+      title: 'Choose a folder',
       properties: ['openDirectory', 'createDirectory'],
-    })
+    }
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options)
     return result.canceled ? undefined : result.filePaths[0]
   })
   ipcMain.handle('tnega:reveal-workspace', async (event, path: unknown) => {

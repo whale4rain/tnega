@@ -11,6 +11,7 @@ export interface SessionSummary {
   mode?: 'auto' | 'plan' | 'goal'
   model?: string
   reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
+  permission?: 'read-only' | 'workspace-write' | 'bypass'
 }
 
 export interface SessionEventBase<T extends string, P> {

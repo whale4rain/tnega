@@ -161,7 +161,7 @@ export function ComposerFrame(props: Props) {
             event.preventDefault()
         }}
       />}
-      footerActions={<Stack direction="horizontal" align="center" gap={2} className="composer-toolbar" wrap="nowrap">
+      footerActions={<Stack direction="horizontal" align="center" gap={2} className="composer-toolbar" wrap="wrap">
         {props.onPermission && <Selector
           label="Tool permissions"
           isLabelHidden

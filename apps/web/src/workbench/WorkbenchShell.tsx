@@ -11,7 +11,8 @@ import {
 import { Text } from '@astryxdesign/core/Text'
 import { TopNav, TopNavHeading } from '@astryxdesign/core/TopNav'
 import { Tooltip } from '@astryxdesign/core/Tooltip'
-import { Code2, Files, GitBranch, PanelLeft, Terminal, X } from 'lucide-react'
+import { Orbit, Files, GitBranch, PanelLeft, Terminal, X } from 'lucide-react'
+import { hasDesktopFolderPicker } from '../desktopBridge'
 
 const tools = [
   {
@@ -73,17 +74,10 @@ export function WorkbenchShell({
       height="fill"
       topNav={
         <TopNav
-          className="tnega-top-nav"
+          className={`tnega-top-nav${hasDesktopFolderPicker() ? ' is-desktop' : ''}`}
           label="Application navigation"
           heading={
-            <TopNavHeading
-              heading="Tnega"
-              logo={<Code2 size={18} aria-hidden="true" />}
-            />
-          }
-          endContent={
-            <>
-              <Text color="secondary" size="sm">Code</Text>
+            <div className="tnega-top-nav-leading">
               <Tooltip content={open ? 'Collapse sidebar' : 'Expand sidebar'}>
                 <SideNavCollapseButton
                   collapsible={collapsible}
@@ -94,7 +88,11 @@ export function WorkbenchShell({
                   <PanelLeft size={16} aria-hidden="true" />
                 </SideNavCollapseButton>
               </Tooltip>
-            </>
+              <TopNavHeading
+                heading="Tnega"
+                logo={<Orbit size={20} aria-hidden="true" />}
+              />
+            </div>
           }
         />
       }

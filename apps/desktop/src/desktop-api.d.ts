@@ -1,5 +1,5 @@
 export interface TnegaDesktopApi {
-  pickWorkspace(): Promise<string | undefined>
+  pickFolder(): Promise<string | undefined>
   revealWorkspace(path: string): Promise<void>
   version(): string
 }

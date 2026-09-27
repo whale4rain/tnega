@@ -17,7 +17,7 @@ describe('desktop preload bridge', () => {
     const preload = await readPreload()
 
     expect(preload).toContain("contextBridge.exposeInMainWorld('tnegaDesktop'")
-    expect(preload).toContain('pickWorkspace')
+    expect(preload).toContain('pickFolder')
     expect(preload).toContain('revealWorkspace')
     expect(preload).toContain('version')
     expect(preload).not.toContain('nodeIntegration')

@@ -38,7 +38,8 @@ Web 与 Agent 之间传输的归一化流式事件，只承载增量；最终状
 _Avoid_: delta message, wire frame
 
 **Tool Permission**:
-每次 Agent Run 开始时选择的 `read-only`、`workspace-write` 或 `bypass` 权限预设。
+Session 持久化的 `read-only`、`workspace-write` 或 `bypass` 权限预设。切换写入
+`permission/mode`，后续 Agent Run 与工具调用读取该 Session 的最新值。
 越权工具调用需要一次性人工批准；`read-only` 允许公开网络搜索与抓取，`bypass` 允许工作区外
 文件和私有网络访问。Shell 的执行边界由沙箱缝负责，两者不是同一个开关。
 _Avoid_: capability flag
