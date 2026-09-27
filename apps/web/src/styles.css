@@ -1429,6 +1429,7 @@ pre {
   .tnega-side-nav > div {
     display: flex;
     flex-direction: column;
+    padding-bottom: 0;
   }
   .tnega-side-nav > div > * {
     flex-shrink: 0;
@@ -1439,6 +1440,7 @@ pre {
     bottom: 0;
     z-index: 3;
     background: var(--color-background-body);
+    padding-bottom: var(--spacing-2);
   }
 
   /* 「回到最新消息」浮在消息区右下角。Astryx 给按钮设了 position: relative，
