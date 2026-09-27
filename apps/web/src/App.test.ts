@@ -20,6 +20,16 @@ const summaries = workspaces.map((workspace, index) => ({
   updatedAt: 1,
   eventCount: 1,
 }))
+const projects = {
+  '/alpha': [{
+    id: 'project-id',
+    name: 'Persisted project',
+    coordinatorId: 'coordinator-id',
+    createdAt: 1,
+    updatedAt: 2,
+  }],
+  '/beta': [],
+}
 let releaseAlpha: (() => void) | undefined
 let delayAlpha = false
 let releaseOperation: (() => void) | undefined
@@ -65,6 +75,8 @@ beforeEach(() => {
         body = {}
       } else if (url.pathname === '/api/sessions')
         body = { workspace, sessions: [summary] }
+      else if (url.pathname === '/api/projects')
+        body = { workspace, projects: projects[workspace as keyof typeof projects] ?? [] }
       else if (url.pathname === '/api/sessions/shared-id') {
         if (workspace === '/alpha' && delayAlpha)
           await new Promise<void>((resolve) => {
@@ -162,6 +174,16 @@ it('loads every workspace and scopes the selected highlight by workspace and ses
   await screen.findByText('Content for /alpha')
   expect(isSelected(alpha)).toBe('true')
   expect(isSelected(beta)).toBeNull()
+})
+
+it('shows projects persisted in configured workspaces', async () => {
+  render(createElement(App))
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining('/api/projects?workspace=%2Falpha'),
+    expect.anything(),
+  ))
+  expect(await screen.findByRole('button', { name: 'Persisted project' })).toBeTruthy()
 })
 
 it('does not let a slow previous workspace replace the active conversation', async () => {

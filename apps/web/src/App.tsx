@@ -89,8 +89,7 @@ function ChatApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // Project 与 Session 是同一块主区的两种内容：选中谁就显示谁。
   const [project, setProject] = useState<{ workspace: string; id: string } | null>(null)
-  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() =>
-    readRecentProjects(localStorage))
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
   const [creatingProject, setCreatingProject] = useState(false)
   const projected = useRef<{ id: string; seq: number } | null>(null)
   const restoredSelection = useRef(false)
@@ -158,6 +157,29 @@ function ChatApp() {
     }
   }, [workspaces])
 
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all(workspaces.map(async workspace => {
+      const { projects } = await projectApi.listProjects(workspace)
+      return projects.map(project => ({
+        workspace,
+        id: project.id,
+        name: project.name,
+        openedAt: project.updatedAt,
+        ...(project.archived ? { archived: true } : {}),
+      }))
+    }))
+      .then(entries => {
+        if (!cancelled) setRecentProjects(entries.flat())
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(messageOf(reason))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspaces])
+
   const selectSession = useCallback((path: string, id: string) => {
     const target = { workspace: path, id }
     setProject(null)
@@ -202,6 +224,8 @@ function ChatApp() {
 
   async function handleCreateProject(input: { name: string; folder: string; goal?: string }) {
     try {
+      const { workspaces: nextWorkspaces } = await api.addWorkspace(input.folder)
+      setWorkspaces(nextWorkspaces)
       const { project: created } = await projectApi.createProject(input.folder, {
         name: input.name,
         ...(input.goal ? { goal: input.goal } : {}),

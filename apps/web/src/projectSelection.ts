@@ -1,9 +1,4 @@
-/**
- * Project navigation entries. Opening an existing Project preserves its list position.
- *
- * 和 Recent Workspace 一样由 Web UI 维护：Project 的文件夹可以是任意目录，不要求先被登记
- * 成 workspace，所以「这个浏览器之前打开过哪些 Project」这件事只有 UI 自己知道。
- */
+/** Project navigation entry. The sidebar rebuilds these from persisted Workspace Projects. */
 export interface RecentProject {
   /** Project 所在的文件夹，也就是它的工作位置。 */
   workspace: string
