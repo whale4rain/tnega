@@ -53,4 +53,21 @@ describe('permissionGuard', () => {
       detach()
     }
   })
+
+  it('routes a child elevation request to its Project coordinator', async () => {
+    const guard = permissionGuard(
+      'workspace-write',
+      'project',
+      new ApprovalBroker(),
+      {
+        workspace: process.cwd(),
+        coordinatorId: 'coordinator',
+        agentMode: agentId => agentId === 'child' ? 'read-only' : 'workspace-write',
+      },
+    )
+    const elevation = request('shell', { command: 'pytest -q' })
+    elevation.options.agentId = 'child'
+
+    expect(await guard(elevation)).toMatch(/Project coordinator/)
+  })
 })

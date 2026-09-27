@@ -409,6 +409,7 @@ export class ProjectHost {
     ctx.on('thread/spawned', (event: { thread: ThreadRecord }) => track(event.thread))
     toolService.guard(permissionGuard(permission, record.id, this.options.approvals, {
       workspace: this.workspace,
+      coordinatorId: record.coordinatorId,
       // 没有记录的 Agent（例如 Thread 内部再起的普通 Subagent）按最窄处理。
       agentMode: agentId => this.permissions.get(agentId) as ThreadPermission | undefined,
     }))

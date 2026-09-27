@@ -91,6 +91,8 @@ export function permissionGuard(
   approvals: ApprovalBroker,
   options: {
     workspace: string
+    /** Project 根 Thread；其余 Thread 的提权先由协调者处理。 */
+    coordinatorId?: string
     agentMode?: (agentId: string) => PermissionMode | undefined
   },
 ): ToolGuard {
@@ -112,6 +114,10 @@ export function permissionGuard(
     if (ALWAYS_ALLOWED.has(request.name) && scoped
       && !(request.name === 'http_get' && unrestricted)) return undefined
     if (effective === 'workspace-write' && request.name === 'write_file' && scoped) return undefined
+    if (options.coordinatorId && request.options.agentId
+      && request.options.agentId !== options.coordinatorId) {
+      return `${request.name} needs permission from the Project coordinator; send it a request with the command and required permission`
+    }
     const allowed = await approvals.request(key, request)
     if (allowed) request.options.approvedElevation = true
     return allowed ? undefined : `${request.name} requires human approval in ${effective} mode`

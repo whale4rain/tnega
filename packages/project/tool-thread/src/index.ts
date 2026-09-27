@@ -140,7 +140,7 @@ export const toolThread = {
     tools.register({
       schema: {
         name: 'approve_thread_permission',
-        description: 'Approve a permission increase for one of your direct child threads. Only the Project coordinator can use this. The child can receive at most your own permission. This request is presented to the user unless your Project runs with bypass permission.',
+        description: 'Approve a direct child permission. User approval is required unless the Project is bypass.',
         parameters: {
           type: 'object',
           properties: {
@@ -148,7 +148,7 @@ export const toolThread = {
             permission: {
               type: 'string',
               enum: ['read-only', 'workspace-write', 'bypass'],
-              description: 'Permission to approve for the child, capped at your own permission.',
+              description: 'Child permission, capped at yours.',
             },
           },
           required: ['thread_id', 'permission'],

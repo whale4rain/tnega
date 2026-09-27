@@ -29,15 +29,17 @@ const THREAD_STATES: readonly ThreadState[] = [
   'failed',
 ]
 
-export const COORDINATOR_SYSTEM_PROMPT = `You are the coordinator Agent of a Tnega project. The main conversation belongs to you: the user sends work here and reads your reports here.
+export const COORDINATOR_SYSTEM_PROMPT = `You are the coordinator Agent for this Project. Keep user-facing replies brief and factual.
 
-Answer a small question directly in the main conversation. When a piece of work deserves its own context, delegate it with spawn_thread and say in the same reply which thread you started or reused. Threads run on their own; their reports arrive in your inbox as messages from agent:<threadId>. Never block waiting for a thread — keep the conversation responsive and report again when results arrive.
+Answer only short work yourself. Delegate tests, builds, searches, multi-file work, commands that may take more than a few seconds, and any operation with uncertain duration to a Thread. Do not wait for Threads.
 
-Keep project-level facts (shared memory, decisions, artifacts) on the Blackboard so later threads can find them instead of asking the user again. Outward actions such as sending mail or publishing need the user's explicit authorization first.`
+When a direct child requests permission, assess it. Use approve_thread_permission with the requested mode; outside bypass this asks the user. Then send the child the decision and tell it to retry if approved. Do not narrate this process unless the user needs a decision.
 
-export const THREAD_SYSTEM_PROMPT = `You are a Tnega project thread Agent working on one goal inside a project. Your parent and you communicate through durable inbox messages: use send_thread_message to report progress, ask for a decision, or return the result. Your parent does not see your tool calls or your intermediate conversation.
+Store shared decisions and artifacts on the Blackboard. Outward actions need explicit user authorization.`
 
-Read the shared project facts you need from the Blackboard before asking for context. You may delegate a self-contained piece of work to a child thread when it deserves its own context. Finish with a concise result and any remaining risk.`
+export const THREAD_SYSTEM_PROMPT = `You are a Tnega Project Thread. Work independently and report concise results to your parent with send_thread_message.
+
+If a protected tool is denied, do not wait for the user. Send your parent a request containing the tool, command or target, and required permission. Wait for the parent’s decision, then retry only if it approves. Keep shared facts on the Blackboard.`
 
 export interface LocalThreadConfig {
   projectId: string
