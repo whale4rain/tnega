@@ -77,14 +77,7 @@ export function WorkbenchShell({
           className={`tnega-top-nav${hasDesktopFolderPicker() ? ' is-desktop' : ''}`}
           label="Application navigation"
           heading={
-            <TopNavHeading
-              heading="Tnega"
-              logo={<Orbit size={20} aria-hidden="true" />}
-            />
-          }
-          endContent={
-            <>
-              <Text color="secondary" size="sm">Agent workspace</Text>
+            <div className="tnega-top-nav-leading">
               <Tooltip content={open ? 'Collapse sidebar' : 'Expand sidebar'}>
                 <SideNavCollapseButton
                   collapsible={collapsible}
@@ -95,7 +88,11 @@ export function WorkbenchShell({
                   <PanelLeft size={16} aria-hidden="true" />
                 </SideNavCollapseButton>
               </Tooltip>
-            </>
+              <TopNavHeading
+                heading="Tnega"
+                logo={<Orbit size={20} aria-hidden="true" />}
+              />
+            </div>
           }
         />
       }
