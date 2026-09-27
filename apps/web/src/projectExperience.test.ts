@@ -54,6 +54,7 @@ beforeEach(() => {
       return json({ thread: snapshot().threads[0], events: coordinatorEvents })
     }
     if (url.pathname === `/api/projects/${projectId}/stream`) return stream()
+    if (url.pathname === `/api/projects/${projectId}/approvals/approval-1`) return json({ accepted: true })
     throw new Error(`unexpected request: ${url.pathname}`)
   }))
 })
@@ -298,4 +299,29 @@ it('marks a user message replied only after a causally linked agent reply arrive
     push?.({ type: 'message', seq: 22, envelope: envelope('Here is the summary', 'agent-reply', { kind: 'agent', id: coordinatorId }, { causationId: snapshot().messages[0]!.messageId }) })
   })
   expect(await screen.findByText('↩ 1 reply')).toBeTruthy()
+})
+
+it('shows project permission approvals and sends the decision', async () => {
+  await openProject()
+  await act(async () => {
+    push?.({
+      type: 'approval/request',
+      id: 'approval-1',
+      tool: 'approve_thread_permission',
+      input: '{"thread_id":"child-1","permission":"workspace-write"}',
+    })
+  })
+
+  const dialog = await screen.findByRole('dialog', { name: 'Tool approval' })
+  expect(within(dialog).getByText('Approve tool call?')).toBeTruthy()
+  expect(within(dialog).getByText(/approve_thread_permission requests access beyond workspace-write permissions/)).toBeTruthy()
+
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Allow once' }))
+  })
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining(`/api/projects/${projectId}/approvals/approval-1?workspace=%2Falpha`),
+    expect.objectContaining({ method: 'POST', body: JSON.stringify({ allow: true }) }),
+  ))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Tool approval' })).toBeNull())
 })

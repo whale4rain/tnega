@@ -325,6 +325,19 @@ export function ProjectExperience(props: ProjectExperienceProps) {
     if (selection.current === projectId) setView(fromSnapshot(snapshot))
   }, [workspace, projectId])
 
+  const answerPendingApproval = useCallback(async (allow: boolean): Promise<void> => {
+    const approval = view?.approvals[0]
+    if (!approval) return
+    try {
+      await api.decideApproval(workspace, projectId, approval.id, allow)
+      setView(current => (current
+        ? { ...current, approvals: current.approvals.filter(item => item.id !== approval.id) }
+        : current))
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }, [view?.approvals, workspace, projectId])
+
   const thread = threadId ? view?.threads.find(entry => entry.id === threadId) : undefined
   const coordinator = view?.threads.find(entry => entry.id === view.coordinatorId)
   const composer = {
@@ -341,6 +354,19 @@ export function ProjectExperience(props: ProjectExperienceProps) {
 
   return (
     <div className="chat project-workspace">
+      {view?.approvals[0] && (
+        <div className="approval-backdrop" role="dialog" aria-modal="true" aria-label="Tool approval">
+          <div className="approval-card">
+            <h3>Approve tool call?</h3>
+            <p>{view.approvals[0].tool} requests access beyond {coordinator?.permission ?? 'read-only'} permissions.</p>
+            <pre>{view.approvals[0].input}</pre>
+            <div className="approval-actions">
+              <Button label="Deny" variant="secondary" onClick={() => void answerPendingApproval(false)} />
+              <Button label="Allow once" variant="primary" onClick={() => void answerPendingApproval(true)} />
+            </div>
+          </div>
+        </div>
+      )}
       <div className="chat-content">
         <Stack className="project-toolbar" direction="horizontal" paddingInline={4} paddingBlock={2} gap={3} align="center" justify="between">
           <Text weight="medium" maxLines={1}>{view?.project.name ?? 'Project'}</Text>
