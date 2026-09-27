@@ -47,6 +47,7 @@ import { builtinTools, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { ProjectHost } from './project-host.js'
 import { handleProjectApi } from './project-routes.js'
+import { pickSystemFolder } from './folder-picker.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
 import {
@@ -320,6 +321,16 @@ async function handleApi(
 
   if (url.pathname === '/api/health') {
     sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/api/folder-picker' && req.method === 'POST') {
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      sendError(res, 403, 'folder picker is only available to local clients')
+      return
+    }
+    const path = await pickSystemFolder()
+    sendJson(res, 200, path ? { path } : {})
     return
   }
 
@@ -650,6 +661,12 @@ async function handleApi(
   }
 
   sendError(res, 404, 'not found')
+}
+
+function isLoopbackAddress(address: string | undefined): boolean {
+  return address === '::1' || address === '::ffff:127.0.0.1'
+    || address?.startsWith('127.') === true
+    || address?.startsWith('::ffff:127.') === true
 }
 
 async function compactContext(
