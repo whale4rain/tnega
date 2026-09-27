@@ -20,9 +20,6 @@ import {
 import { latestPlanFromEvents, type DisplayPlan } from './planDisplay'
 import {
   readRecentProjects,
-  rememberProject,
-  forgetProject,
-  setRecentProjectArchived,
   type RecentProject,
 } from './projectSelection'
 import { NewProjectDialog } from './project/NewProjectDialog'
@@ -54,6 +51,16 @@ function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
     ? 'dark'
     : 'light'
+}
+
+function rememberLoadedProject(
+  projects: readonly RecentProject[],
+  project: RecentProject,
+): RecentProject[] {
+  const index = projects.findIndex(entry => entry.workspace === project.workspace && entry.id === project.id)
+  return index < 0
+    ? [...projects, project]
+    : projects.map((entry, position) => position === index ? { ...entry, ...project } : entry)
 }
 
 export default function App() {
@@ -217,7 +224,7 @@ function ChatApp() {
 
   const openProject = useCallback((next: RecentProject) => {
     setProject({ workspace: next.workspace, id: next.id })
-    setRecentProjects(rememberProject(localStorage, next))
+    setRecentProjects(current => rememberLoadedProject(current, next))
     localStorage.setItem(LAST_PROJECT_KEY, `${next.workspace}\n${next.id}`)
     localStorage.setItem(LAST_VIEW_KEY, 'projects')
   }, [])
@@ -261,13 +268,15 @@ function ChatApp() {
 
   async function handleArchiveProject(target: RecentProject, archived: boolean) {
     await projectApi.archiveProject(target.workspace, target.id, archived)
-    setRecentProjects(setRecentProjectArchived(localStorage, target.id, archived))
+    setRecentProjects(current => current.map(entry => entry.workspace === target.workspace && entry.id === target.id
+      ? { ...entry, archived }
+      : entry))
   }
 
   async function handleDeleteProject(target: RecentProject) {
     await projectApi.deleteProject(target.workspace, target.id)
-    setRecentProjects(forgetProject(localStorage, target.id))
-    setProject(current => current?.id === target.id ? null : current)
+    setRecentProjects(current => current.filter(entry => entry.workspace !== target.workspace || entry.id !== target.id))
+    setProject(current => current?.workspace === target.workspace && current.id === target.id ? null : current)
   }
 
   useEffect(() => {

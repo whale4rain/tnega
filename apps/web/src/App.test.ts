@@ -27,6 +27,12 @@ const projects = {
     coordinatorId: 'coordinator-id',
     createdAt: 1,
     updatedAt: 2,
+  }, {
+    id: 'other-project-id',
+    name: 'Other project',
+    coordinatorId: 'other-coordinator-id',
+    createdAt: 1,
+    updatedAt: 3,
   }],
   '/beta': [],
 }
@@ -184,6 +190,13 @@ it('shows projects persisted in configured workspaces', async () => {
     expect.anything(),
   ))
   expect(await screen.findByRole('button', { name: 'Persisted project' })).toBeTruthy()
+})
+
+it('keeps other persisted projects visible after opening one', async () => {
+  render(createElement(App))
+  fireEvent.click(await screen.findByRole('button', { name: 'Persisted project' }))
+
+  expect(screen.getByRole('button', { name: 'Other project' })).toBeTruthy()
 })
 
 it('does not let a slow previous workspace replace the active conversation', async () => {
