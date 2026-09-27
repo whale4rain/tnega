@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
-import { Heading } from '@astryxdesign/core/Heading'
+import { StatusDot } from '@astryxdesign/core/StatusDot'
 import { Stack } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
 import { Button } from '@astryxdesign/core/Button'
@@ -330,7 +330,6 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   const thread = threadId ? view?.threads.find(entry => entry.id === threadId) : undefined
   const coordinator = view?.threads.find(entry => entry.id === view.coordinatorId)
   const tasks = (view?.threads ?? []).filter(entry => entry.depth > 0)
-  const waiting = tasks.filter(entry => entry.state === 'waiting' || entry.state === 'blocked')
   const composer = {
     models: [...props.models],
     ...(props.model !== undefined ? { model: props.model } : {}),
@@ -346,20 +345,12 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   return (
     <div className="chat project-workspace">
       <div className="chat-content">
-        <Stack className="project-masthead" padding={6} gap={4}>
-          <Stack direction="horizontal" align="center" justify="between" gap={3} wrap="wrap">
-            <Text color="secondary" type="supporting">PROJECT / WORKSPACE</Text>
-            <Text color="secondary" type="supporting">{live === 'live' ? 'Connected' : 'Reconnecting…'}</Text>
-          </Stack>
-          <Heading level={1}>{view?.project.name ?? 'Project'}</Heading>
-          <Text color="secondary">{view?.project.goal || 'A shared space for ideas, knowledge, and coordinated work.'}</Text>
-          <Stack direction="horizontal" align="center" justify="between" gap={3} wrap="wrap">
-            <Text type="supporting" color="secondary">Main agent · {tasks.length} delegated threads{waiting.length ? ` · ${waiting.length} need attention` : ''}</Text>
+        <Stack className="project-toolbar" direction="horizontal" paddingInline={4} paddingBlock={2} gap={3} align="center" justify="between">
+          <Text weight="medium" maxLines={1}>{view?.project.name ?? 'Project'}</Text>
+          <Stack direction="horizontal" gap={2} align="center">
+            <StatusDot variant={live === 'live' ? 'success' : 'warning'} label={live === 'live' ? 'Connected' : 'Reconnecting'} />
             <ToggleButtonGroup label="Project panels" value={threadId ? null : panel} size="sm" onChange={value => {
-              if (value === null || value === 'overview' || value === 'library' || value === 'memory') {
-                setThreadId(null)
-                setPanel(value)
-              }
+              if (value === null || value === 'overview' || value === 'library' || value === 'memory') { setThreadId(null); setPanel(value) }
             }}>
               <ToggleButton value="overview" label="Overview" />
               <ToggleButton value="library" label="Library" />
@@ -379,6 +370,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                   <ProjectMessage
                     key={envelope.messageId}
                     envelope={envelope}
+                    responseCount={view.messages.filter(reply => reply.kind === 'agent-reply' && reply.causationId === envelope.messageId).length}
                     label={target?.label}
                     state={target?.state}
                     plan={envelope.threadId ? plans.get(envelope.threadId) : undefined}
@@ -460,12 +452,17 @@ export function ProjectExperience(props: ProjectExperienceProps) {
 
       {threadId ? (
         <ThreadPanel
+          key={threadId}
           {...(thread ? { thread } : {})}
           events={details.get(threadId) ?? []}
           loading={loadingThread === threadId}
           {...(rendered.has(threadId) ? { draft: rendered.get(threadId) ?? '' } : {})}
           onClose={() => setThreadId(null)}
           plan={plans.get(threadId)}
+          onSend={async text => {
+            await api.sendThreadMessage(workspace, projectId, threadId, text)
+            await loadThread(threadId, true)
+          }}
         />
       ) : (
         view && panel && (
@@ -509,6 +506,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
 /** 主对话里的一条：普通发言走会话屏的 MessageBlock，派工是一张线程卡片。 */
 function ProjectMessage({
   envelope,
+  responseCount,
   label,
   state,
   plan,
@@ -516,6 +514,7 @@ function ProjectMessage({
   onOpenThread,
 }: {
   envelope: BootEnvelope
+  responseCount: number
   label?: string | undefined
   state?: ThreadState | undefined
   plan?: DisplayPlan | undefined
@@ -556,6 +555,7 @@ function ProjectMessage({
   }
 
   return (
+    <Stack gap={1}>
     <MessageBlock
       message={{
         id: envelope.messageId,
@@ -564,6 +564,8 @@ function ProjectMessage({
       }}
       assistantLabel={label ?? 'Tnega'}
     />
+    {envelope.sender.kind === 'user' && responseCount > 0 && <Text className="project-reply-receipt" color="secondary" type="supporting">↩ {responseCount} {responseCount === 1 ? 'reply' : 'replies'}</Text>}
+    </Stack>
   )
 }
 

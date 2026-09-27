@@ -1266,15 +1266,24 @@ pre {
 }
 
 @layer tnega-overrides {
-  .project-masthead { border-bottom: 1px solid var(--hairline); }
-  .project-masthead h1 { font-size: var(--font-size-3xl); letter-spacing: -0.025em; }
-  .project-knowledge { flex-shrink: 0; }
-  .project-brief { background: var(--surface-card); border-radius: var(--radius-container); }
+  .project-toolbar { flex-shrink: 0; min-height: 48px; border-bottom: 1px solid var(--hairline); }
+  .project-knowledge { flex-shrink: 0; min-width: 0; width: 100%; overflow-wrap: anywhere; }
   .project-library-row { border-bottom: 1px solid var(--hairline); }
-  .project-library-row > svg { flex-shrink: 0; color: var(--accent); }
-  .project-thread-row { width: 100%; justify-content: space-between; text-align: left; padding: var(--spacing-3); height: auto; white-space: normal; }
-  .project-thread-row > svg { flex-shrink: 0; }
-  .thread-routing-note { border-top: 1px solid var(--hairline); background: var(--sidebar); }
+  .project-library-row > svg { flex-shrink: 0; color: var(--mute); }
+  .project-thread-row { width: 100%; justify-content: flex-start; text-align: left; padding: var(--spacing-2); height: auto; min-width: 0; }
+  .project-thread-row > span { min-width: 0; flex: 1; }
+  .thread-overview .astryx-collapsible-trigger { padding: var(--spacing-2); background: var(--surface-soft); border-radius: var(--radius-inner); }
+  .memory-row .astryx-collapsible-trigger { font-size: var(--font-size-base); min-width: 0; gap: var(--spacing-2); }
+  .memory-row .astryx-collapsible-trigger > span { min-width: 0; }
+  .memory-row .astryx-collapsible-content { overflow-wrap: anywhere; }
+  .memory-text { overflow-wrap: anywhere; }
+  .project-reply-receipt { align-self: flex-end; padding-inline: var(--spacing-2); }
+  .thread-input { flex-shrink: 0; border-top: 1px solid var(--hairline); }
+  .project-row { min-height: 32px; padding: var(--spacing-1) var(--spacing-2); font-size: var(--font-size-base); margin: 0; }
+  .project-row-body { display: block; }
+  .project-row > svg { flex-shrink: 0; }
+  .project-workspace { background: var(--canvas); }
+  .project-workspace > .project-panel, .project-workspace > .thread-panel { background: var(--canvas); }
   @media (max-width: 1000px) {
     .project-workspace { flex-direction: column; overflow: auto; }
     .project-workspace > .chat-content { flex: 0 0 80%; min-height: 480px; }

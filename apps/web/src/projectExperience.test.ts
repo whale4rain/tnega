@@ -286,3 +286,16 @@ it('opens a side panel from the header switcher and closes it on a second click'
   expect(screen.queryByText(/Nothing remembered yet/)).toBeNull()
   expect(within(switcher).getByRole('button', { name: 'Memory' }).getAttribute('aria-pressed')).toBe('false')
 })
+
+it('marks a user message replied only after a causally linked agent reply arrives', async () => {
+  await openProject()
+  expect(screen.queryByText('↩ 1 reply')).toBeNull()
+  await act(async () => {
+    push?.({ type: 'message', seq: 21, envelope: envelope('Unrelated update', 'agent-reply', { kind: 'agent', id: coordinatorId }) })
+  })
+  expect(screen.queryByText('↩ 1 reply')).toBeNull()
+  await act(async () => {
+    push?.({ type: 'message', seq: 22, envelope: envelope('Here is the summary', 'agent-reply', { kind: 'agent', id: coordinatorId }, { causationId: snapshot().messages[0]!.messageId }) })
+  })
+  expect(await screen.findByText('↩ 1 reply')).toBeTruthy()
+})

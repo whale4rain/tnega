@@ -86,4 +86,4 @@ Astryx 重建后已不存在。重建它还意味着重新确定它顺带断言�
 
 规范见 `docs/frontend-visual-design.md`。开发服务的 `/design.html` 使用生产组件展示本地样例，可切换深浅主题、输入草稿和检查导航；不会请求模型或后端。主题颜色由 `src/workbench/theme.ts` 集中维护。
 
-Project 使用主 Agent 作为唯一用户消息入口；子 Thread 展示执行记录和计划，由主 Agent 分发消息。Overview 默认打开，Library 支持搜索并区分产物和参考资料，Memory 保留版本化编辑。`/design.html?project` 提供生产 Project 组件的本地模拟预览，修改不会写入真实项目。
+Project 使用紧凑顶栏与线程列表；子 Thread 展示执行记录、计划，并提供独立的简洁消息输入。Overview 默认打开，Library 支持搜索并区分产物和参考资料，Memory 默认摘要、展开后查看与版本化编辑。用户消息收到关联回复后显示回复计数。`/design.html?project` 提供生产 Project 组件的本地模拟预览，修改不会写入真实项目。

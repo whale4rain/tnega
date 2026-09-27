@@ -23,7 +23,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { SessionSummary } from '../types'
-import { folderName, type RecentProject } from '../projectSelection'
+import { type RecentProject } from '../projectSelection'
 import type { ThemePreference } from '../ThemeToggle'
 import { WorkspaceTree } from './WorkspaceTree'
 import {
@@ -138,7 +138,6 @@ export function WorkspaceSidebar(props: Props) {
                   <LayoutList size={15} aria-hidden="true" />
                   <span className="project-row-body">
                     <span className="project-row-name">{project.name}</span>
-                    <span className="project-row-folder">{folderName(project.workspace)}</span>
                   </span>
                 </button>
                 <DropdownMenu
@@ -172,7 +171,6 @@ export function WorkspaceSidebar(props: Props) {
                       <LayoutList size={15} aria-hidden="true" />
                       <span className="project-row-body">
                         <span className="project-row-name">{project.name}</span>
-                        <span className="project-row-folder">{folderName(project.workspace)}</span>
                       </span>
                     </button>
                     <DropdownMenu

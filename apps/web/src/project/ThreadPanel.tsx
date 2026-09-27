@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Stack } from '@astryxdesign/core/Stack'
+import { Button } from '@astryxdesign/core/Button'
+import { TextArea } from '@astryxdesign/core/TextArea'
 import { Text } from '@astryxdesign/core/Text'
 import { PlanPanel } from '../PlanPanel'
 import type { DisplayPlan } from '../planDisplay'
@@ -18,7 +20,8 @@ export interface ThreadPanelProps {
   /** 这个 Thread 正在生成的正文；整轮结束后由它自己的回复取代。 */
   draft?: string
   onClose: () => void
-  /** Read-only execution plan; all user messages go to the main agent. */
+  onSend: (text: string) => Promise<void>
+  /** Execution plan for this thread. */
   plan?: DisplayPlan | undefined
 }
 
@@ -32,6 +35,18 @@ export function ThreadPanel(props: ThreadPanelProps) {
   const transcript = useMemo(() => projectEvents([...props.events]), [props.events])
   const items = useMemo(() => groupToolMessages(transcript), [transcript])
   const { thread } = props
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
+  async function send() {
+    const text = message.trim()
+    if (!text || sending) return
+    setSending(true)
+    setSendError('')
+    try { await props.onSend(text); setMessage('') }
+    catch (error) { setSendError(error instanceof Error ? error.message : String(error)) }
+    finally { setSending(false) }
+  }
   const [width, setWidth] = useState(() => {
     const stored = Number(localStorage.getItem('tnega-thread-sidebar-width'))
     const max = Math.max(260, Math.min(720, window.innerWidth - 380))
@@ -135,9 +150,10 @@ export function ThreadPanel(props: ThreadPanelProps) {
         </section>
 
       </div>
-      <Stack padding={4} gap={1} className="thread-routing-note">
-        <Text weight="medium">Managed by the main agent</Text>
-        <Text color="secondary" type="supporting">Send requests in the main conversation. This thread shows delegated work and results.</Text>
+      <Stack as="form" padding={3} gap={2} className="thread-input" onSubmit={event => { event.preventDefault(); void send() }}>
+        <TextArea label="Message thread" isLabelHidden placeholder="Reply to this thread…" value={message} onChange={setMessage} isDisabled={sending} />
+        <Stack direction="horizontal" justify="end"><Button label="Send to thread" size="sm" type="submit" isDisabled={sending || !message.trim()} /></Stack>
+        {sendError && <Text role="alert" color="secondary">{sendError}</Text>}
       </Stack>
     </aside>
   )

@@ -2,21 +2,15 @@ import { useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { TextInput } from '@astryxdesign/core/TextInput'
+import { StatusDot } from '@astryxdesign/core/StatusDot'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
 import { Heading } from '@astryxdesign/core/Heading'
 import { Stack } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
-import { BookOpen, FileText, Link2, Search, ArrowUpRight } from 'lucide-react'
+import { BookOpen, FileText, Link2, Search } from 'lucide-react'
 import * as api from './api'
 import { threadBuckets, threadStateLabel, type ProjectView } from './state'
 import type { FactRecord, ThreadRecord } from './types'
-
-function PanelIntro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
-  return <Stack gap={2}>
-    <Text color="accent" type="supporting">{eyebrow}</Text>
-    <Heading level={2}>{title}</Heading>
-    <Text color="secondary">{description}</Text>
-  </Stack>
-}
 
 export function OverviewPanel({ view, onOpenThread }: { view: ProjectView; onOpenThread: (id: string) => void }) {
   const tasks = view.threads.filter(thread => thread.depth > 0)
@@ -27,28 +21,21 @@ export function OverviewPanel({ view, onOpenThread }: { view: ProjectView; onOpe
     { title: 'Ready to continue', threads: buckets.idle },
     { title: 'Completed', threads: buckets.finished },
   ]
-  return <Stack className="project-knowledge" gap={6} padding={6}>
-    <PanelIntro eyebrow="PROJECT AT A GLANCE" title="Overview" description="One goal. A coordinated team of agents." />
-    <Stack className="project-brief" padding={4} gap={2}>
-      <Text weight="semibold">North star</Text>
-      <Text color="secondary">{view.project.goal || 'Describe your goal in the main conversation to give this project direction.'}</Text>
+  return <Stack className="project-knowledge thread-overview" gap={3} padding={3}>
+    <Stack direction="horizontal" align="center" gap={2} paddingBlock={2}>
+      <Text weight="semibold">Threads</Text><Text color="secondary" type="supporting">{tasks.length}</Text>
     </Stack>
-    <Stack direction="horizontal" gap={6}>
-      <Stack gap={1}><Heading level={2}>{tasks.length}</Heading><Text color="secondary" type="supporting">Threads</Text></Stack>
-      <Stack gap={1}><Heading level={2}>{view.artifacts.length + view.resources.length}</Heading><Text color="secondary" type="supporting">Library items</Text></Stack>
-      <Stack gap={1}><Heading level={2}>{view.memory.length}</Heading><Text color="secondary" type="supporting">Memories</Text></Stack>
-    </Stack>
-    {!tasks.length && <Text color="secondary">Delegated work will appear here when the main agent opens a thread.</Text>}
-    {groups.filter(group => group.threads.length).map(group => <Stack as="section" gap={3} key={group.title}>
-      <Stack direction="horizontal" justify="between"><Text weight="semibold">{group.title}</Text><Text color="secondary">{group.threads.length}</Text></Stack>
-      {group.threads.map(thread => <Button key={thread.id} className="project-thread-row" variant="ghost" label={`Open thread: ${thread.label}`} endContent={<ArrowUpRight size={16} aria-hidden="true" />} onClick={() => onOpenThread(thread.id)}>
-        <Stack gap={1}>
-          <Text weight="medium">{thread.label}</Text>
-          <Text color="secondary" type="supporting" maxLines={2}>{thread.goal}</Text>
-          <Text color="accent" type="supporting">{threadStateLabel(thread.state)}</Text>
-        </Stack>
-      </Button>)}
-    </Stack>)}
+    {!tasks.length && <Text color="secondary">No threads yet.</Text>}
+    {groups.filter(group => group.threads.length).map(group => <Collapsible key={group.title} defaultIsOpen trigger={<Text type="supporting" color="secondary">{group.title} · {group.threads.length}</Text>} chevronPosition="start">
+      <Stack gap={0}>
+        {group.threads.map(thread => <Button key={thread.id} className="project-thread-row" variant="ghost" label={`Open thread: ${thread.label}`} icon={<StatusDot variant={thread.state === 'working' ? 'accent' : thread.state === 'done' ? 'success' : thread.state === 'failed' ? 'error' : thread.state === 'blocked' || thread.state === 'waiting' ? 'warning' : 'neutral'} isPulsing={thread.state === 'working'} label={threadStateLabel(thread.state)} tooltip={threadStateLabel(thread.state)} />} onClick={() => onOpenThread(thread.id)}>
+          <Stack gap={0} className="min-w-0">
+            <Text maxLines={1}>{thread.label}</Text>
+            <Text color="secondary" type="supporting" maxLines={1}>{thread.detail || thread.goal}</Text>
+          </Stack>
+        </Button>)}
+      </Stack>
+    </Collapsible>)}
   </Stack>
 }
 
@@ -59,8 +46,8 @@ export function LibraryPanel({ view }: { view: ProjectView }) {
     { title: 'Created by agents', description: 'Outputs from the work in this project', facts: view.artifacts.filter(matches), icon: FileText },
     { title: 'Reference material', description: 'Sources available to the project', facts: view.resources.filter(matches), icon: Link2 },
   ]
-  return <Stack className="project-knowledge" padding={6} gap={6}>
-    <PanelIntro eyebrow="SHARED KNOWLEDGE" title="Library" description="Everything the project draws from, and everything it creates." />
+  return <Stack className="project-knowledge" padding={3} gap={3}>
+    <Text weight="semibold">Library</Text>
     <TextInput label="Search library" isLabelHidden placeholder="Find a file or resource…" startIcon={<Search size={16} />} value={query} onChange={setQuery} />
     {groups.map(group => <Stack as="section" key={group.title} gap={3}>
       <Stack gap={1}><Heading level={3}>{group.title}</Heading><Text type="supporting" color="secondary">{group.description}</Text></Stack>
@@ -156,8 +143,8 @@ export function MemoryPanel({
   }
 
   return (
-    <Stack className="project-knowledge" gap={6} padding={6}>
-      <PanelIntro eyebrow="PROJECT CONTEXT" title="Memory" description="The decisions and facts that keep every thread aligned." />
+    <Stack className="project-knowledge" gap={3} padding={3}>
+      <Text weight="semibold">Memory</Text>
       {error && <div className="project-panel-error" role="alert">{error}</div>}
       {adding ? (
         <Stack gap={3}>
@@ -183,7 +170,8 @@ export function MemoryPanel({
         </p>
       )}
       {view.memory.map(fact => (
-        <article key={fact.id} className="memory-row" data-editing={editing === fact.id}>
+        <Collapsible key={fact.id} className="memory-row" defaultIsOpen={false} trigger={<Text maxLines={1} wordBreak="break-all">{String(fact.data.text ?? '').slice(0, 90)}{String(fact.data.text ?? '').length > 90 ? '…' : ''}</Text>}>
+
           {editing === fact.id ? (
             <Stack gap={3}>
               <TextArea label="Memory entry" isLabelHidden value={draft} onChange={setDraft} />
@@ -215,7 +203,7 @@ export function MemoryPanel({
               )}
             </>
           )}
-        </article>
+        </Collapsible>
       ))}
     </Stack>
   )

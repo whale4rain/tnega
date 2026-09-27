@@ -34,9 +34,9 @@ function DesignReview() {
   const [messages, setMessages] = useState(initialMessages)
   return <Theme theme={studioTheme} mode={mode}>
     <WorkbenchShell sidebar={<WorkspaceSidebar
-      workspace={workspace} workspaces={[workspace]} selectedId={selected}
+      workspace={workspace} workspaces={[workspace]} selectedId={projectReview ? null : selected}
       sessions={titles.map((title, index) => ({ id: String(index), title, workspace, createdAt: 0, updatedAt: 0, eventCount: 4 }))}
-      projects={projectReview ? [{ workspace, id: 'studio', name: 'The next workspace', openedAt: 1 }] : []} selectedProjectId={projectReview ? 'studio' : null} theme={mode}
+      projects={projectReview ? [{ workspace, id: 'studio', name: 'Product research', openedAt: 1 }] : []} selectedProjectId={projectReview ? 'studio' : null} theme={mode}
       onTheme={value => setMode(value === 'light' ? 'light' : 'dark')}
       onSelect={(_, id) => setSelected(id)} onNew={async () => setMessages([])}
       onAdd={noop} onRemove={noop} onRename={noop} onFork={noop} onDelete={noop}
