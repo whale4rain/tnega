@@ -4,7 +4,7 @@ import { Button } from '@astryxdesign/core/Button'
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
 import { Stack } from '@astryxdesign/core/Stack'
 import { TextInput } from '@astryxdesign/core/TextInput'
-import { hasDesktopWorkspacePicker, pickDesktopWorkspace } from '../desktopBridge'
+import { hasDesktopFolderPicker, pickDesktopFolder } from '../desktopBridge'
 
 export interface NewProjectInput {
   name: string
@@ -98,15 +98,20 @@ export function NewProjectDialog({
                 onChange={setFolder}
                 width="100%"
               />
-              {hasDesktopWorkspacePicker() && (
+              {hasDesktopFolderPicker() && (
                 <Button
-                  label="Browse…"
+                  label="Choose folder…"
                   variant="secondary"
                   isDisabled={busy}
                   onClick={() => {
-                    void pickDesktopWorkspace().then(selected => {
-                      if (selected) setFolder(selected)
-                    })
+                    void (async () => {
+                      try {
+                        const selected = await pickDesktopFolder()
+                        if (selected) setFolder(selected)
+                      } catch (reason) {
+                        setError(reason instanceof Error ? reason.message : String(reason))
+                      }
+                    })()
                   }}
                 />
               )}

@@ -12,7 +12,7 @@ import { Text } from '@astryxdesign/core/Text'
 import { TopNav, TopNavHeading } from '@astryxdesign/core/TopNav'
 import { Tooltip } from '@astryxdesign/core/Tooltip'
 import { Orbit, Files, GitBranch, PanelLeft, Terminal, X } from 'lucide-react'
-import { hasDesktopWorkspacePicker } from '../desktopBridge'
+import { hasDesktopFolderPicker } from '../desktopBridge'
 
 const tools = [
   {
@@ -74,7 +74,7 @@ export function WorkbenchShell({
       height="fill"
       topNav={
         <TopNav
-          className={`tnega-top-nav${hasDesktopWorkspacePicker() ? ' is-desktop' : ''}`}
+          className={`tnega-top-nav${hasDesktopFolderPicker() ? ' is-desktop' : ''}`}
           label="Application navigation"
           heading={
             <TopNavHeading

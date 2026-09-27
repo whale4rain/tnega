@@ -30,10 +30,10 @@ function isTrustedSender(senderUrl: string): boolean {
 }
 
 function installDesktopHandlers(): void {
-  ipcMain.handle('tnega:pick-workspace', async event => {
+  ipcMain.handle('tnega:pick-folder', async event => {
     if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined
     const result = await dialog.showOpenDialog({
-      title: 'Choose a workspace',
+      title: 'Choose a folder',
       properties: ['openDirectory', 'createDirectory'],
     })
     return result.canceled ? undefined : result.filePaths[0]

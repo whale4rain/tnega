@@ -27,8 +27,8 @@ import { type RecentProject } from '../projectSelection'
 import type { ThemePreference } from '../ThemeToggle'
 import { WorkspaceTree } from './WorkspaceTree'
 import {
-  hasDesktopWorkspacePicker,
-  pickDesktopWorkspace,
+  hasDesktopFolderPicker,
+  pickDesktopFolder,
 } from '../desktopBridge'
 
 interface Props {
@@ -265,8 +265,8 @@ export function WorkspaceSidebar(props: Props) {
                   <LayoutFooter>
                     <HStack gap={2} hAlign="end">
                       <Button label="Cancel" variant="secondary" onClick={() => setAdding(false)} />
-                      {hasDesktopWorkspacePicker() && <Button label="Browse…" variant="secondary" isDisabled={busy} onClick={() => void perform(async () => {
-                        const selected = await pickDesktopWorkspace()
+                      {hasDesktopFolderPicker() && <Button label="Choose folder…" variant="secondary" isDisabled={busy} onClick={() => void perform(async () => {
+                        const selected = await pickDesktopFolder()
                         if (selected) setPath(selected)
                       })} />}
                       <Button label="Add workspace" type="submit" isDisabled={busy || !path.trim()} />
