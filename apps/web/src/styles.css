@@ -1268,11 +1268,18 @@ pre {
 @layer tnega-overrides {
   .project-toolbar { flex-shrink: 0; min-height: 48px; border-bottom: 1px solid var(--hairline); }
   .project-knowledge { flex-shrink: 0; min-width: 0; width: 100%; overflow-wrap: anywhere; }
-  .project-library-row { border-bottom: 1px solid var(--hairline); }
-  .project-library-row > svg { flex-shrink: 0; color: var(--mute); }
-  .project-thread-row { width: 100%; justify-content: flex-start; text-align: left; padding: var(--spacing-2); height: auto; min-width: 0; }
+  .project-library-heading { min-height: 28px; }
+  .project-library-heading h3 { margin: 0; font-size: 12px; font-weight: 550; }
+  .project-library-row { min-width: 0; border-bottom: 1px solid var(--hairline); }
+  .project-library-row > svg { flex-shrink: 0; margin-top: 1px; color: var(--mute); }
+  .project-library-location { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread-overview { gap: var(--spacing-4); }
+  .thread-overview > .astryx-stack:first-child { min-height: 34px; padding-block: 0; border-bottom: 1px solid var(--hairline); }
+  .thread-overview .astryx-collapsible-trigger { padding: 5px 2px; background: transparent; border-radius: 0; }
+  .thread-overview .astryx-collapsible-trigger:hover { color: var(--ink); background: transparent; }
+  .project-thread-row { width: 100%; justify-content: flex-start; text-align: left; padding: 6px 8px; height: auto; min-height: 36px; min-width: 0; border-radius: 7px; }
+  .project-thread-row:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
   .project-thread-row > span { min-width: 0; flex: 1; }
-  .thread-overview .astryx-collapsible-trigger { padding: var(--spacing-2); background: var(--surface-soft); border-radius: var(--radius-inner); }
   .memory-row .astryx-collapsible-trigger { font-size: var(--font-size-base); min-width: 0; gap: var(--spacing-2); }
   .memory-row .astryx-collapsible-trigger > span { min-width: 0; }
   .memory-row .astryx-collapsible-content { overflow-wrap: anywhere; }

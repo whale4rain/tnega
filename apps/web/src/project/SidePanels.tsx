@@ -16,23 +16,20 @@ export function OverviewPanel({ view, onOpenThread }: { view: ProjectView; onOpe
   const tasks = view.threads.filter(thread => thread.depth > 0)
   const buckets = threadBuckets(tasks)
   const groups: Array<{ title: string; threads: ThreadRecord[] }> = [
-    { title: 'Needs attention', threads: buckets.waiting },
-    { title: 'In progress', threads: buckets.working },
-    { title: 'Ready to continue', threads: buckets.idle },
-    { title: 'Completed', threads: buckets.finished },
+    { title: 'Waiting on you', threads: buckets.waiting },
+    { title: 'Working', threads: buckets.working },
+    { title: 'Idle', threads: buckets.idle },
+    { title: 'Resolved', threads: buckets.finished },
   ]
   return <Stack className="project-knowledge thread-overview" gap={3} padding={3}>
     <Stack direction="horizontal" align="center" gap={2} paddingBlock={2}>
       <Text weight="semibold">Threads</Text><Text color="secondary" type="supporting">{tasks.length}</Text>
     </Stack>
     {!tasks.length && <Text color="secondary">No threads yet.</Text>}
-    {groups.filter(group => group.threads.length).map(group => <Collapsible key={group.title} defaultIsOpen trigger={<Text type="supporting" color="secondary">{group.title} · {group.threads.length}</Text>} chevronPosition="start">
+    {groups.filter(group => group.threads.length).map(group => <Collapsible key={group.title} defaultIsOpen={group.title !== 'Resolved'} trigger={<Text type="supporting" color="secondary">{group.title} · {group.threads.length}</Text>} chevronPosition="start">
       <Stack gap={0}>
         {group.threads.map(thread => <Button key={thread.id} className="project-thread-row" variant="ghost" label={`Open thread: ${thread.label}`} icon={<StatusDot variant={thread.state === 'working' ? 'accent' : thread.state === 'done' ? 'success' : thread.state === 'failed' ? 'error' : thread.state === 'blocked' || thread.state === 'waiting' ? 'warning' : 'neutral'} isPulsing={thread.state === 'working'} label={threadStateLabel(thread.state)} tooltip={threadStateLabel(thread.state)} />} onClick={() => onOpenThread(thread.id)}>
-          <Stack gap={0} className="min-w-0">
-            <Text maxLines={1}>{thread.label}</Text>
-            <Text color="secondary" type="supporting" maxLines={1}>{thread.detail || thread.goal}</Text>
-          </Stack>
+          <Text maxLines={1}>{thread.label}</Text>
         </Button>)}
       </Stack>
     </Collapsible>)}
@@ -43,21 +40,26 @@ export function LibraryPanel({ view }: { view: ProjectView }) {
   const [query, setQuery] = useState('')
   const matches = (fact: FactRecord) => `${fact.data.title ?? ''} ${fact.data.uri ?? ''} ${fact.id}`.toLowerCase().includes(query.toLowerCase())
   const groups = [
-    { title: 'Created by agents', description: 'Outputs from the work in this project', facts: view.artifacts.filter(matches), icon: FileText },
-    { title: 'Reference material', description: 'Sources available to the project', facts: view.resources.filter(matches), icon: Link2 },
+    { title: 'Created by agents', facts: view.artifacts.filter(matches), icon: FileText },
+    { title: 'Reference material', facts: view.resources.filter(matches), icon: Link2 },
   ]
   return <Stack className="project-knowledge" padding={3} gap={3}>
     <Text weight="semibold">Library</Text>
     <TextInput label="Search library" isLabelHidden placeholder="Find a file or resource…" startIcon={<Search size={16} />} value={query} onChange={setQuery} />
     {groups.map(group => <Stack as="section" key={group.title} gap={3}>
-      <Stack gap={1}><Heading level={3}>{group.title}</Heading><Text type="supporting" color="secondary">{group.description}</Text></Stack>
+      <Stack direction="horizontal" align="center" justify="between" className="project-library-heading">
+        <Heading level={3}>{group.title}</Heading>
+        <Text type="supporting" color="secondary">{group.facts.length}</Text>
+      </Stack>
       {!group.facts.length && <Text color="secondary">{query ? 'No matching items.' : 'No items yet.'}</Text>}
-      {group.facts.map(fact => <Stack as="article" key={fact.id} className="project-library-row" direction="horizontal" gap={3} paddingBlock={4}>
-        <group.icon size={20} aria-hidden="true" />
+      {group.facts.map(fact => <Stack as="article" key={fact.id} className="project-library-row" direction="horizontal" gap={3} paddingBlock={3}>
+        <group.icon size={17} aria-hidden="true" />
         <Stack gap={1} className="min-w-0">
-          <Text weight="medium" maxLines={2}>{String(fact.data.title ?? fact.id)}</Text>
-          <Text type="supporting" color="secondary">{group.title === 'Created by agents' ? `${String(fact.data.mediaType ?? 'File')} · ${formatBytes(Number(fact.data.size ?? 0))}` : 'Reference source'}</Text>
-          <Text type="supporting" color="secondary" wordBreak="break-all">{String(fact.data.uri ?? fact.id)}</Text>
+          <Text weight="medium" maxLines={1}>{String(fact.data.title ?? fact.id)}</Text>
+          <Text className="project-library-location" type="supporting" color="secondary" maxLines={1}>
+            {group.title === 'Created by agents' ? `${String(fact.data.mediaType ?? 'File')} · ${formatBytes(Number(fact.data.size ?? 0))} · ` : ''}
+            {String(fact.data.uri ?? fact.id)}
+          </Text>
         </Stack>
       </Stack>)}
     </Stack>)}
@@ -170,7 +172,7 @@ export function MemoryPanel({
         </p>
       )}
       {view.memory.map(fact => (
-        <Collapsible key={fact.id} className="memory-row" defaultIsOpen={false} trigger={<Text maxLines={1} wordBreak="break-all">{String(fact.data.text ?? '').slice(0, 90)}{String(fact.data.text ?? '').length > 90 ? '…' : ''}</Text>}>
+        <Collapsible key={fact.id} className="memory-row" defaultIsOpen={false} trigger={<Text maxLines={1}>{memorySummary(String(fact.data.text ?? ''))}</Text>}>
 
           {editing === fact.id ? (
             <Stack gap={3}>
@@ -213,6 +215,11 @@ function formatBytes(size: number): string {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function memorySummary(value: string): string {
+  const summary = value.replace(/\s+/g, ' ').trim()
+  return summary.length > 76 ? `${summary.slice(0, 76).trimEnd()}…` : summary
 }
 
 function messageOf(reason: unknown): string {

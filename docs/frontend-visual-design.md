@@ -42,13 +42,15 @@
 
 ## Project 工作区（按用户提供的 Claude 截图校准）
 
+- 正式入口是 `App.tsx` 中的 `ProjectExperience`，它读取真实 Project API；`/design.html?project` 只用于用本地 fixture 校准同一个组件，不代表产品路由或真实数据。
 - 顶部只保留单行项目名、连接灯与视图切换；移除项目大标题、口号、目标摘要与统计卡。
-- 对话与右侧内容共用工作面底色。主区优先显示消息，右侧按需显示 Threads、Library、Memory 或具体 Thread。
-- Threads 使用紧凑的可折叠状态组；每行仅包含状态灯、名称和一行最新摘要。工作中的灯轻微呼吸，提供可访问标签和提示，遵循 reduced-motion。
+- 对话与右侧内容共用工作面底色。主区优先显示持续对话；右侧 Overview 默认显示 Threads，点击行后在同一栏查看具体 Thread。Library 与 Memory 在同一右侧栏按需切换。
+- Threads 使用 `Waiting on you`、`Working`、`Idle`、`Resolved` 可折叠状态组；没有线程的组隐藏，Resolved 默认收起。Overview 行只显示状态灯与单行名称，不重复展示目标、详情或执行步骤。工作中的灯轻微呼吸，提供可访问标签和提示，遵循 reduced-motion。
 - 左侧 Project 与 Session 同一密度，小图标加单行名称，路径放在悬停提示中。
-- Memory 默认显示单行摘要；点击展开全文、版本与编辑操作。无空格长文本必须折行，不能撑宽面板。
+- Library 使用紧凑分类、数量与列表；每项显示单行名称和截断的位置/类型信息，不让长路径撑宽面板。
+- Memory 默认显示归一化的一行摘要；点击展开全文、版本与编辑操作。无空格长文本必须折行，不能撑宽面板。
 - 子 Thread 支持直接发消息。底部只有文本框与发送按钮，没有模型、权限或附件设置；失败保留草稿。
 - 主对话用户消息下方显示 `↩ N replies`：仅统计 `causationId` 对应这条消息的真实 `agent-reply`。发送成功、其他消息的回复与运行状态均不作为已处理的证据。
-- Library 保持搜索、产物与参考资料分类，但采用紧凑标题和列表。
+- Library 保持搜索、产物与参考资料分类。
 
-项目视觉稿：开发服务 `/design.html?project`。使用生产 ProjectExperience 和本地模拟接口，Memory 修改刷新后复原，不写入真实项目。
+视觉校准时可打开开发服务 `/design.html?project`。它复用生产 `ProjectExperience`，但装载的是隔离的本地模拟接口；Memory 修改刷新后复原，不写入真实项目。验收正式实现时同时确认 `App.tsx` 的项目选择路径、Project API 接线与主应用实际路由，不把该 fixture 页当作真实项目实例。
