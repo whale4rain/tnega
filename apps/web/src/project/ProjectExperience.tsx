@@ -11,7 +11,6 @@ import { ThreadPanel } from './ThreadPanel'
 import { ComposerFrame } from '../workbench/ComposerFrame'
 import {
   MessageBlock,
-  PlanPanel,
   latestPlanFromEvents,
   projectEvents,
   type DisplayMessage,
@@ -24,7 +23,6 @@ import {
   fromSnapshot,
   mergeMessage,
   threadReplies,
-  threadStateLabel,
   type ProjectView,
 } from './state'
 import type { BootEnvelope, SessionEvent, ThreadState } from './types'
@@ -329,7 +327,6 @@ export function ProjectExperience(props: ProjectExperienceProps) {
 
   const thread = threadId ? view?.threads.find(entry => entry.id === threadId) : undefined
   const coordinator = view?.threads.find(entry => entry.id === view.coordinatorId)
-  const tasks = (view?.threads ?? []).filter(entry => entry.depth > 0)
   const composer = {
     models: [...props.models],
     ...(props.model !== undefined ? { model: props.model } : {}),
@@ -373,7 +370,6 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                     responseCount={view.messages.filter(reply => reply.kind === 'agent-reply' && reply.causationId === envelope.messageId).length}
                     label={target?.label}
                     state={target?.state}
-                    plan={envelope.threadId ? plans.get(envelope.threadId) : undefined}
                     replies={envelope.threadId
                       ? threadReplies(view.messages, envelope.threadId).length
                       : 0}
@@ -430,21 +426,6 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                 canSend={!!view && !!draft.trim() && !busy}
                 placeholder="Tell the main agent what you want to accomplish…"
               />
-              <div className="conversation-footer">
-                <Button
-                  className={`subagent-toggle${threadId ? ' active' : ''}`}
-                  label={`${tasks.filter(entry => entry.state === 'working').length} active tasks`}
-                  variant="ghost"
-                  size="sm"
-                  icon={<ListTodo size={14} aria-hidden="true" />}
-                  aria-expanded={threadId !== null}
-                  isDisabled={!tasks.length}
-                  onClick={() => setThreadId(current => (current ? null : tasks[0]?.id ?? null))}
-                >
-                  {tasks.filter(entry => entry.state === 'working').length} active task
-                  {tasks.length > 0 && <span className="subagent-total">· {tasks.length} total</span>}
-                </Button>
-              </div>
             </div>
           </div>
         </div>
@@ -503,13 +484,12 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   )
 }
 
-/** 主对话里的一条：普通发言走会话屏的 MessageBlock，派工是一张线程卡片。 */
+/** 主对话里的一条：普通发言走会话屏的 MessageBlock，派工显示为轻量 Thread 引用。 */
 function ProjectMessage({
   envelope,
   responseCount,
   label,
   state,
-  plan,
   replies,
   onOpenThread,
 }: {
@@ -517,32 +497,24 @@ function ProjectMessage({
   responseCount: number
   label?: string | undefined
   state?: ThreadState | undefined
-  plan?: DisplayPlan | undefined
   replies: number
   onOpenThread: (id: string) => void
 }) {
   if (envelope.kind === 'dispatch') {
     const target = envelope.threadId ?? ''
     return (
-      <div className="thread-card" data-state={state ?? 'idle'}>
-        <div className="thread-card-head">
-          <span className="thread-card-title">{label ?? 'Thread'}</span>
-          <span className="thread-card-state">
-            {state ? threadStateLabel(state) : 'starting'}
-          </span>
-        </div>
-        <PlanPanel plan={plan} />
-        <Button
-          className="thread-card-open"
-          label={replies === 1 ? 'Open thread: 1 reply' : `Open thread: ${replies} replies`}
-          variant="secondary"
-          size="sm"
-          isDisabled={!target}
-          onClick={() => onOpenThread(target)}
-        >
-          {replies === 1 ? '1 reply' : `${replies} replies`}
-        </Button>
-      </div>
+      <Button
+        className="thread-card-link"
+        label={`Open thread: ${label ?? 'Thread'}${replies ? `, ${replies} replies` : ''}`}
+        variant="ghost"
+        size="sm"
+        icon={<StatusDot variant={state === 'working' ? 'accent' : state === 'done' ? 'success' : state === 'failed' ? 'error' : state === 'blocked' || state === 'waiting' ? 'warning' : 'neutral'} isPulsing={state === 'working'} label={state ?? 'starting'} />}
+        isDisabled={!target}
+        onClick={() => onOpenThread(target)}
+      >
+        <span className="thread-card-title">{label ?? 'Thread'}</span>
+        {replies > 0 && <span className="thread-card-replies">↩ {replies}</span>}
+      </Button>
     )
   }
 

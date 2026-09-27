@@ -13,6 +13,10 @@
 | 次级文字 | `#627069` | `#a6b3ab` | 路径、说明、元数据 |
 | 品牌强调 | `#267466` | `#91c7b8` | 主动作、选中、焦点 |
 | 分隔线 | `#dce2db` | `#36403a` | 面板边界、表格 |
+| 用户消息 | `#e5eee7` | `#303e36` | Project 与会话中的用户消息底色 |
+| 完成状态 | `#367857` | `#9ccbaf` | 成功、已完成状态灯 |
+| 等待状态 | `#946722` | `#dfbd80` | 等待用户或阻塞状态灯 |
+| 失败状态 | `#b44140` | `#f0a4a0` | 失败状态灯与错误文字 |
 
 颜色只在 `apps/web/src/workbench/theme.ts` 定义。Astryx 原生组件与保留的 Tnega 专用视图共用这一套语义 token。深浅主题必须同步，不能只校准黑色截图。警告使用琥珀色，失败使用珊瑚红，颜色同时配合文字状态。
 
@@ -41,6 +45,25 @@
 检查深浅主题、欢迎页、长文本和输入区。执行 Web typecheck/build，以及已有导航、输入、项目行为测试；不为颜色、圆角等实现细节增加测试。外壳工具页仍为原有占位功能，视觉稿不会把它们描述成已接入能力。
 
 ## Project 工作区（按用户提供的 Claude 截图校准）
+
+### 逐组件校准表
+
+每项以附件截图为参照。组件位置按生产代码定位，`/design.html?project` 仅复用这些组件显示本地样例。
+
+| 截图区域 | 正式组件 | 截图中的职责与尺度 | 当前逐项判断 |
+| --- | --- | --- | --- |
+| 全局左栏与右侧工具轨 | `WorkbenchShell` | 左栏约占视口 18%；Project、Workspace 和 Session 保持紧凑；右侧工具不侵入对话。 | 信息架构已吻合；逐屏核对边界和暗色对比。 |
+| Project 列表行 | `WorkspaceSidebar` `.project-row` | 一个小图标加单行名称，与 Session 行同一密度。 | 已是 32px 紧凑行，只做视觉复核。 |
+| Project 标题行 | `ProjectExperience` `.project-toolbar` | 项目名与 Overview 控制同一行；不能出现大标题、宣传语、重复统计。 | 1306 × 804 桌面视口中为 48px 单行工具栏；左项目名、右连接状态和视图切换。 |
+| 主对话消息 | `ProjectMessage` → Astryx `MessageBlock` | 用户输入靠右，Agent 回复留白直接阅读；消息之间有清楚但克制的节奏。 | 用户消息底色与气泡圆角收敛，颜色固定引用上表用户消息 token；回复回执位置保留。 |
+| Thread 派工结果 | `ProjectMessage` 的 `dispatch` 分支 | 消息下方是轻量可点击的 Thread 引用，名称与状态一眼可见；执行步骤留给 Thread 详情。 | 已改成单行状态灯 + Thread 名称；回复数仅在有回复时出现，计划留在 Thread 详情。 |
+| 用户回复回执 | `ProjectMessage` | 在对应用户消息下显示 `↩ N replies`，只表示 `causationId` 匹配到的 Agent 回复。 | 因果计数与位置已经吻合；保留现有行为。 |
+| 主对话输入区 | `ComposerFrame` | 固定于阅读区底部；输入占主视觉，模型等主 Agent 操作放在输入区次级行。 | 保留主 Agent 控件；重复的 Active/total footer 已移除。 |
+| Overview / Threads | `OverviewPanel` | 右栏先给出待处理/运行/空闲/已解决分组；线程状态用点表达，每行短而可点击。 | 桌面视口核对为状态分组 + 状态灯 + 单行名称；完成、等待、失败和运行状态映射到主题色。 |
+| 选中 Thread | `ThreadPanel` | 右栏保留独立 Thread 标题、过程/计划和底部留言框；细节按需查看。 | 标题显示状态灯和名称；Goal、Expects、Latest 已收进默认折叠的 `Thread context`。 |
+| Library | `LibraryPanel` | 项目产物和参考资料按来源分区，可搜索；名称优先，路径等次级信息截断。 | 1306 × 804 预览显示分类、数量、名称和单行位置；位置字段使用省略号且列表容器允许长标识折行。 |
+| Memory | `MemoryPanel` | 记忆列表显示摘要，点开后编辑或看版本，不把长正文铺满右栏。 | 预览显示单行摘要；展开后呈现全文、版本和编辑入口；正文以 `overflow-wrap: anywhere` 防止撑宽。 |
+| 色彩和分隔 | `studioTheme` + Project 样式 | 使用本规范上方“色彩与材料”表中的语义颜色与 HEX 值。 | 浅色/深色映射逐 token 与表格一致；Project 对话、Overview、Library、Memory 和 Thread 共用工作面，抬升控件使用抬升面，边界使用分隔线。 |
 
 - 正式入口是 `App.tsx` 中的 `ProjectExperience`，它读取真实 Project API；`/design.html?project` 只用于用本地 fixture 校准同一个组件，不代表产品路由或真实数据。
 - 顶部只保留单行项目名、连接灯与视图切换；移除项目大标题、口号、目标摘要与统计卡。

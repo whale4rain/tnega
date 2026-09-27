@@ -971,7 +971,7 @@ pre {
   gap: var(--spacing-4);
   padding: 0;
   border-left: 1px solid var(--hairline);
-  background: var(--sidebar);
+  background: var(--canvas);
   overflow-y: auto;
 }
 .project-panel-resize-handle {
@@ -1060,37 +1060,29 @@ pre {
    `.messages` / `.message`，输入区走 `.composer-*`。这里只补它自己的东西：
    线程卡片、结构化步骤、Thread 侧栏、以及右侧的 Overview / Library / Memory。 */
 
-/* 派工在主对话里是一条卡片，不是一句聊天文本。 */
-.thread-card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin: 0 0 20px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--surface-soft);
-  font-size: 13px;
-}
-.thread-card-head {
-  display: flex;
+/* 派工在主对话里是一条可点击的 Thread 引用，不展开执行详情。 */
+.thread-card-link {
+  display: inline-flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
+  max-width: 100%;
+  margin: 0 0 18px 8px;
+  padding: 5px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--canvas) 58%, var(--surface-card));
+  font-size: 12px;
 }
 .thread-card-title {
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.thread-card-state {
+.thread-card-replies {
   color: var(--mute);
-  font-size: 12px;
-}
-.thread-card-open {
-  align-self: flex-start;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-size: 12px;
-  padding: 0;
+  flex: none;
 }
 
 /* Thread 侧栏：和 SubagentSidebar 同一套度量。 */
@@ -1101,7 +1093,7 @@ pre {
   flex: 0 0 340px;
   min-width: 0;
   border-left: 1px solid var(--hairline);
-  background: var(--sidebar);
+  background: var(--canvas);
   font-size: 12px;
   animation: panel-appear 160ms ease-out;
 }
@@ -1112,6 +1104,12 @@ pre {
   gap: 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
+}
+.thread-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
 }
 .breadcrumb {
   display: inline-flex;
@@ -1155,6 +1153,11 @@ pre {
   flex-direction: column;
   gap: 5px;
 }
+.context-card {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
 .context-row {
   display: grid;
   grid-template-columns: 76px 1fr;
@@ -1169,6 +1172,16 @@ pre {
   gap: 4px;
   overflow-wrap: anywhere;
 }
+.context-card .astryx-collapsible-trigger {
+  min-height: 30px;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 550;
+}
+.context-card .astryx-collapsible-content { padding-top: 8px; }
 .thread-transcript {
   display: flex;
   flex: 1 0 auto;
@@ -1291,6 +1304,12 @@ pre {
   .project-row > svg { flex-shrink: 0; }
   .project-workspace { background: var(--canvas); }
   .project-workspace > .project-panel, .project-workspace > .thread-panel { background: var(--canvas); }
+  .project-workspace .message.user .astryx-chat-message-bubble {
+    background: var(--user-bubble);
+    border-radius: 10px;
+    box-shadow: none;
+    color: var(--user-ink);
+  }
   @media (max-width: 1000px) {
     .project-workspace { flex-direction: column; overflow: auto; }
     .project-workspace > .chat-content { flex: 0 0 80%; min-height: 480px; }

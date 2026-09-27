@@ -3,10 +3,12 @@ import { Stack } from '@astryxdesign/core/Stack'
 import { Button } from '@astryxdesign/core/Button'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { Text } from '@astryxdesign/core/Text'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
+import { StatusDot } from '@astryxdesign/core/StatusDot'
 import { PlanPanel } from '../PlanPanel'
 import type { DisplayPlan } from '../planDisplay'
 import { IconButton } from '@astryxdesign/core/IconButton'
-import { ChevronRight, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { MessageBlock, projectEvents, type DisplayMessage } from './reuse'
 import { groupToolMessages } from '../toolGroups'
 import { ToolGroupBlock } from '../conversation/Transcript'
@@ -91,11 +93,10 @@ export function ThreadPanel(props: ThreadPanelProps) {
           localStorage.setItem('tnega-thread-sidebar-width', String(next))
         }} />
       <header className="thread-panel-head">
-        <nav className="breadcrumb" aria-label="Breadcrumb">
-          <span>Threads</span>
-          <ChevronRight size={12} aria-hidden="true" />
+        <div className="thread-panel-title">
+          <StatusDot variant={thread?.state === 'working' ? 'accent' : thread?.state === 'done' ? 'success' : thread?.state === 'failed' ? 'error' : thread?.state === 'blocked' || thread?.state === 'waiting' ? 'warning' : 'neutral'} isPulsing={thread?.state === 'working'} label={thread ? threadStateLabel(thread.state) : 'Loading'} />
           <span className="breadcrumb-current">{thread?.label ?? 'Thread'}</span>
-        </nav>
+        </div>
         <IconButton
           label="Close thread"
           icon={<X size={15} aria-hidden="true" />}
@@ -106,7 +107,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
       </header>
 
       <div className="thread-panel-scroll" ref={transcriptRef}>
-        <section className="panel-card context-card">
+        <Collapsible className="panel-card context-card" defaultIsOpen={false} trigger={<Text type="supporting" weight="medium">Thread context</Text>}>
           <div className="context-row">
             <span className="context-label">State</span>
             <span className="context-value">
@@ -129,7 +130,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
               <span className="context-value">{thread.detail}</span>
             </div>
           )}
-        </section>
+        </Collapsible>
 
         <PlanPanel plan={props.plan} />
         <section className="thread-transcript">
