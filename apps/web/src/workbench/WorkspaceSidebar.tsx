@@ -259,15 +259,15 @@ export function WorkspaceSidebar(props: Props) {
                 })
               }}>
                 <VStack gap={3}>
+                  <Button label="Choose folder…" variant="secondary" isDisabled={busy} onClick={() => void perform(async () => {
+                    const selected = await pickFolder()
+                    if (selected) setPath(selected)
+                  })} />
                   <TextInput label="Workspace path" placeholder="Absolute project path" value={path} onChange={setPath} />
                   {error && <Text role="alert" className="danger" type="body">{error}</Text>}
                   <LayoutFooter>
                     <HStack gap={2} hAlign="end">
                       <Button label="Cancel" variant="secondary" onClick={() => setAdding(false)} />
-                      <Button label="Choose folder…" variant="secondary" isDisabled={busy} onClick={() => void perform(async () => {
-                        const selected = await pickFolder()
-                        if (selected) setPath(selected)
-                      })} />
                       <Button label="Add workspace" type="submit" isDisabled={busy || !path.trim()} />
                     </HStack>
                   </LayoutFooter>

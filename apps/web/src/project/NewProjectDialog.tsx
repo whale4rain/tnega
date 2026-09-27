@@ -73,6 +73,21 @@ export function NewProjectDialog({
         onOpenChange={() => onOpenChange(false)}
       />
       <Stack direction="vertical" gap={3} padding={3}>
+        <Button
+          label="Choose folder…"
+          variant="secondary"
+          isDisabled={busy}
+          onClick={() => {
+            void (async () => {
+              try {
+                const selected = await pickFolder()
+                if (selected) setFolder(selected)
+              } catch (reason) {
+                setError(reason instanceof Error ? reason.message : String(reason))
+              }
+            })()
+          }}
+        />
         {error && <Banner status="error" title={error} collapsible={false} />}
         <form
           onSubmit={event => {
@@ -89,31 +104,13 @@ export function NewProjectDialog({
               onChange={setName}
               hasAutoFocus
             />
-            <Stack direction="horizontal" gap={2} align="end">
-              <TextInput
-                label="Project folder"
-                isLabelHidden
-                placeholder="Folder to work in"
-                value={folder}
-                onChange={setFolder}
-                width="100%"
-              />
-              <Button
-                label="Choose folder…"
-                variant="secondary"
-                isDisabled={busy}
-                onClick={() => {
-                  void (async () => {
-                    try {
-                      const selected = await pickFolder()
-                      if (selected) setFolder(selected)
-                    } catch (reason) {
-                      setError(reason instanceof Error ? reason.message : String(reason))
-                    }
-                  })()
-                }}
-              />
-            </Stack>
+            <TextInput
+              label="Project folder"
+              isLabelHidden
+              placeholder="Folder to work in"
+              value={folder}
+              onChange={setFolder}
+            />
             <TextInput
               label="Project goal"
               isLabelHidden
