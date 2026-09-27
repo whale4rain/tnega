@@ -371,6 +371,13 @@ export type AgentType = 'general' | 'coding'
 /** `execute` remains readable for pre-goal Sessions and is not offered for new selections. */
 export type SessionMode = 'auto' | 'plan' | 'goal' | 'execute'
 
+/** The persisted tool-permission setting for one Session. */
+export type SessionPermission = 'read-only' | 'workspace-write' | 'bypass'
+
+export interface PermissionModePayload {
+  mode: SessionPermission
+}
+
 export type SessionEventType =
   | MessageEventType
   | 'assistant/chunk'
@@ -386,6 +393,7 @@ export type SessionEventType =
   | 'compaction/end'
   | 'meta'
   | 'meta/patch'
+  | 'permission/mode'
   | 'llm/retry'
   | 'llm/retry-started'
   | 'turn/start'
@@ -437,6 +445,7 @@ export type SessionEvent =
   | SessionEventBase<'compaction/end', CompactionEndPayload>
   | SessionEventBase<'meta', Record<string, unknown>>
   | SessionEventBase<'meta/patch', MetaPatchPayload>
+  | SessionEventBase<'permission/mode', PermissionModePayload>
   | SessionEventBase<'llm/retry', LLMRetryPayload>
   | SessionEventBase<'llm/retry-started', LLMRetryStartedPayload>
   | SessionEventBase<'turn/start', TurnStartPayload>
@@ -847,6 +856,18 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
 }
 
 /**
+ * The latest durable permission choice. Sessions created before this event
+ * existed intentionally retain the fail-safe read-only default.
+ */
+export function foldSessionPermission(events: readonly SessionEvent[]): SessionPermission {
+  let mode: SessionPermission = 'read-only'
+  for (const event of events) {
+    if (event.type === 'permission/mode') mode = event.payload.mode
+  }
+  return mode
+}
+
+/**
  * What a session cost, folded from the usage its responses reported.
  *
  * Two silences are preserved rather than filled in. A response with no usage
@@ -983,6 +1004,7 @@ export function estimateEventTokens(event: SessionEvent): number {
     case 'compaction/end':
     case 'meta':
     case 'meta/patch':
+    case 'permission/mode':
       return 0
     case 'llm/retry':
     case 'llm/retry-started':
@@ -1223,6 +1245,7 @@ export class SessionLog {
   append(type: 'compaction/end', payload: CompactionEndPayload): Promise<SessionEvent>
   append(type: 'meta', payload: Record<string, unknown>): Promise<SessionEvent>
   append(type: 'meta/patch', payload: MetaPatchPayload): Promise<SessionEvent>
+  append(type: 'permission/mode', payload: PermissionModePayload): Promise<SessionEvent>
   append(type: 'llm/retry', payload: LLMRetryPayload): Promise<SessionEvent>
   append(type: 'llm/retry-started', payload: LLMRetryStartedPayload): Promise<SessionEvent>
   append(type: 'turn/start', payload: TurnStartPayload): Promise<SessionEvent>

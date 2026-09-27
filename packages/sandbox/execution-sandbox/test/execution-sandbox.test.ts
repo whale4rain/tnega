@@ -126,6 +126,23 @@ describe('sandboxed execution', () => {
     expect(inner.shells).toHaveLength(1)
   })
 
+  it('resolves the policy for each execution instead of keeping the startup mode', async () => {
+    const { ctx, sandbox, inner } = mount()
+    let mode: 'read-only' | 'workspace-write' | 'bypass' = 'read-only'
+    const provider = sandboxedExecution(ctx, {
+      inner,
+      policy: resolveSandboxPolicy({ mode, workspaceRoot: WORKSPACE }),
+      resolvePolicy: () => resolveSandboxPolicy({ mode, workspaceRoot: WORKSPACE }),
+    })
+
+    await provider.runShell({ command: 'echo confined', cwd: WORKSPACE })
+    mode = 'bypass'
+    await provider.runShell({ command: 'echo direct', cwd: WORKSPACE })
+
+    expect(sandbox.requests).toHaveLength(1)
+    expect(inner.shells).toEqual([{ command: 'echo direct', cwd: WORKSPACE }])
+  })
+
   it('never falls back to an unconfined run when no backend is usable', async () => {
     const { ctx, sandbox, inner } = mount()
     sandbox.unavailable = true

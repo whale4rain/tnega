@@ -12,6 +12,7 @@ import {
   patchSessionMeta,
   readSessionSummary,
   sessionFile,
+  setSessionPermission,
   setSessionTitle,
   truncateSessionAt,
 } from '../src/store.js'
@@ -35,6 +36,22 @@ async function readHeadLine(workspace: string, id: string): Promise<SessionEvent
 }
 
 describe('session metadata', () => {
+  it('persists the current permission as an append-only session event', async () => {
+    const workspace = await tempDir('tnega-store-permission-')
+    const created = await createSession(workspace, { title: 'permission' })
+
+    const changed = await setSessionPermission(workspace, created.id, 'workspace-write')
+    expect(changed.permission).toBe('workspace-write')
+
+    const reloaded = await readSessionSummary(workspace, created.id)
+    expect(reloaded.permission).toBe('workspace-write')
+    const events = await new SessionLog(sessionFile(workspace, created.id)).read()
+    expect(events.at(-1)).toMatchObject({
+      type: 'permission/mode',
+      payload: { mode: 'workspace-write' },
+    })
+  })
+
   it('persists agentType and mode on create and returns them in summaries', async () => {
     const workspace = await tempDir('tnega-store-meta-')
     const summary = await createSession(workspace, {

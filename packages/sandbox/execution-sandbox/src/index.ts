@@ -28,6 +28,11 @@ export interface SandboxedExecutionConfig {
   inner?: ExecutionProvider
   /** 本次 Agent Run 的权限预设。`bypass` 表示不沙箱，直接透传。 */
   policy: SandboxExecutionPolicy
+  /**
+   * Optional Session-backed policy resolver. It is read immediately before an
+   * execution so a resident Agent Runtime follows durable permission changes.
+   */
+  resolvePolicy?: () => SandboxExecutionPolicy | Promise<SandboxExecutionPolicy>
   /** POSIX shell；默认 `/bin/sh`（`shell: true` 在 POSIX 上的等价物）。 */
   shellPath?: string
   /** Windows 上承载命令的解释器；默认取 `%ComSpec%`。 */
@@ -74,6 +79,10 @@ export function sandboxedExecution(
   const inner = config.inner ?? localExecutionProvider
   const confineProcess = config.confineProcess ?? true
 
+  async function policy(): Promise<SandboxExecutionPolicy> {
+    return config.resolvePolicy?.() ?? config.policy
+  }
+
   function requireSandbox(): SandboxService {
     const service = ctx.get('sandbox')
     if (!(service instanceof SandboxService)) {
@@ -89,11 +98,12 @@ export function sandboxedExecution(
     op: SandboxOp,
     argv: readonly string[],
     request: { signal?: AbortSignal },
+    activePolicy: SandboxExecutionPolicy,
   ): Promise<string[]> {
     const confined = await requireSandbox().confine({
       op,
       argv,
-      policy: config.policy,
+      policy: activePolicy,
       ...(request.signal ? { signal: request.signal } : {}),
     })
     return confined.argv
@@ -101,8 +111,9 @@ export function sandboxedExecution(
 
   return {
     async runShell(request: ShellRequest) {
-      if (config.policy.mode === 'bypass') return inner.runShell(request)
-      const argv = await confine('shell', shellArgv(request, config), request)
+      const activePolicy = await policy()
+      if (activePolicy.mode === 'bypass') return inner.runShell(request)
+      const argv = await confine('shell', shellArgv(request, config), request, activePolicy)
       const result = await inner.runProcess({
         argv,
         cwd: request.cwd,
@@ -114,8 +125,9 @@ export function sandboxedExecution(
     },
 
     async runProcess(request: ProcessRequest) {
-      if (config.policy.mode === 'bypass' || !confineProcess) return inner.runProcess(request)
-      const argv = await confine('process', request.argv, request)
+      const activePolicy = await policy()
+      if (activePolicy.mode === 'bypass' || !confineProcess) return inner.runProcess(request)
+      const argv = await confine('process', request.argv, request, activePolicy)
       return inner.runProcess({ ...request, argv })
     },
 

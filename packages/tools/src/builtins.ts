@@ -29,8 +29,8 @@ export interface BuiltinToolsConfig {
   cwd?: string
   allowNetwork?: boolean
   allowShell?: boolean
-  allowOutsideWorkspace?: boolean
-  allowPrivateNetwork?: boolean
+  allowOutsideWorkspace?: boolean | (() => boolean | Promise<boolean>)
+  allowPrivateNetwork?: boolean | (() => boolean | Promise<boolean>)
   disabled?: readonly string[]
   maxReadBytes?: number
   maxWriteBytes?: number
@@ -45,8 +45,8 @@ interface NormalizedBuiltinToolsConfig {
   cwd: string
   allowNetwork: boolean
   allowShell: boolean
-  allowOutsideWorkspace: boolean
-  allowPrivateNetwork: boolean
+  allowOutsideWorkspace: boolean | (() => boolean | Promise<boolean>)
+  allowPrivateNetwork: boolean | (() => boolean | Promise<boolean>)
   disabled: readonly string[]
   maxReadBytes: number
   maxWriteBytes: number
@@ -87,8 +87,12 @@ function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinTool
   }
 }
 
-function resolveToolPath(config: NormalizedBuiltinToolsConfig, path: string): Promise<string> {
-  return config.allowOutsideWorkspace
+async function enabled(value: boolean | (() => boolean | Promise<boolean>)): Promise<boolean> {
+  return typeof value === 'function' ? value() : value
+}
+
+async function resolveToolPath(config: NormalizedBuiltinToolsConfig, path: string): Promise<string> {
+  return await enabled(config.allowOutsideWorkspace)
     ? Promise.resolve(resolve(config.cwd, path))
     : resolveInside(config.cwd, path)
 }
@@ -534,7 +538,7 @@ function httpGetTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
         ...(Object.keys(headers).length ? { headers } : {}),
         ...(maxBytes !== config.maxReadBytes ? { maxBytes } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
-        ...(config.allowPrivateNetwork ? { allowPrivate: true } : {}),
+        ...(await enabled(config.allowPrivateNetwork) ? { allowPrivate: true } : {}),
       })
     },
     {

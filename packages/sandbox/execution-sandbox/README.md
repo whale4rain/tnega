@@ -17,7 +17,7 @@ const execution = sandboxedExecution(ctx, {
   inner: localExecutionProvider,   // 可替换，默认就是它
   shellPath: '/bin/sh',            // POSIX
   shell: { command: 'cmd.exe', args: ['/d', '/s', '/c'] },  // Windows
-  confineProcess: false,           // 默认不包无 shell 的 argv 进程
+  confineProcess: true,            // 默认也包无 shell 的 argv 进程
 })
 ```
 
@@ -27,9 +27,8 @@ const execution = sandboxedExecution(ctx, {
 
   包装发生在 argv 层而不是重写命令字符串，所以 shell 内建命令、管道、重定向、`cd`、
   `export` 都仍然在**同一个受限进程内**执行，中间也没有第二层引号。
-- `runProcess`：默认透传（`confineProcess: false`）。当前唯一的消费者是我们自己构造
-  argv 的搜索 Provider（ripgrep），把它也包进沙箱会给每次搜索加一层进程，而它本来只读；
-  需要更严的部署可以打开这个开关。参考实现同样只沙箱 shell。
+- `runProcess`：默认受限（`confineProcess: true`）；部署方可用 `false` 让无 shell 的 argv
+  进程透传。
 - `fetchHttp`：透传。当前没有任何后端限制网络，所以词汇里也没有这一维。
 - `bypass`：整条链透传 —— 那是调用方显式选择的「不沙箱」。
 

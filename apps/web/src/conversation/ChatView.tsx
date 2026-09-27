@@ -113,6 +113,17 @@ export function ChatView({
     busy: boolean
     error: string | null
   } | null>(null)
+
+  useEffect(() => {
+    setPermission(summary?.permission ?? 'read-only')
+  }, [summary?.permission, sessionId])
+
+  const changePermission = useCallback((next: 'read-only' | 'workspace-write' | 'bypass') => {
+    if (!workspace || !sessionId) return
+    void api.patchSessionMeta(workspace, sessionId, { permission: next })
+      .then(() => onRefresh(sessionId, true))
+      .catch(reason => setRunError(reason instanceof Error ? reason.message : String(reason)))
+  }, [onRefresh, sessionId, workspace])
   const abortRef = useRef<AbortController | null>(null)
   const runStateRef = useRef<RunState>('idle')
   const planRef = useRef<DisplayPlan | undefined>(undefined)
@@ -403,7 +414,6 @@ export function ChatView({
             sessionId,
             {
               prompt: sent,
-              permission,
             },
             (event) => handleStreamEvent(event),
             controller.signal,
@@ -1047,7 +1057,7 @@ export function ChatView({
               apiKeySet={apiKeySet}
               onSettings={onSettings}
               permission={permission}
-              onPermission={setPermission}
+              onPermission={changePermission}
               disabled={running || compacting}
               mode={isCoding ? mode : undefined}
               onMode={onModeChange}

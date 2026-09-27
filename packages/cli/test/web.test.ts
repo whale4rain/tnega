@@ -253,6 +253,16 @@ describe('web server', () => {
     ).then(r => r.json()) as { summary: { title: string } }
     expect(renamed.summary.title).toBe('renamed')
 
+    const permission = await apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ permission: 'workspace-write' }),
+      },
+    ).then(r => r.json()) as { summary: { permission?: string } }
+    expect(permission.summary.permission).toBe('workspace-write')
+
     const fork = await apiFetch(
       server.url,
       `/api/sessions/${id}/fork?workspace=${encodeURIComponent(workspace)}`,
