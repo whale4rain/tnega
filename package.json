@@ -116,6 +116,30 @@
       "types": "./dist/types/packages/search/search-ripgrep/src/index.d.ts",
       "import": "./dist/search-ripgrep.js"
     },
+    "./sandbox": {
+      "types": "./dist/types/packages/sandbox/sandbox/src/index.d.ts",
+      "import": "./dist/sandbox.js"
+    },
+    "./sandbox-local": {
+      "types": "./dist/types/packages/sandbox/sandbox-local/src/index.d.ts",
+      "import": "./dist/sandbox-local.js"
+    },
+    "./sandbox-windows-acl": {
+      "types": "./dist/types/packages/sandbox/sandbox-windows-acl/src/index.d.ts",
+      "import": "./dist/sandbox-windows-acl.js"
+    },
+    "./sandbox-windows-acl/runner": {
+      "types": "./dist/types/packages/sandbox/sandbox-windows-acl/src/runner.d.ts",
+      "import": "./dist/sandbox-windows-acl-runner.js"
+    },
+    "./fs-sandbox": {
+      "types": "./dist/types/packages/sandbox/fs-sandbox/src/index.d.ts",
+      "import": "./dist/fs-sandbox.js"
+    },
+    "./execution-sandbox": {
+      "types": "./dist/types/packages/sandbox/execution-sandbox/src/index.d.ts",
+      "import": "./dist/execution-sandbox.js"
+    },
     "./services": {
       "types": "./dist/types/src/services.d.ts",
       "import": "./dist/services.js"
@@ -197,5 +221,8 @@
   },
   "dependencies": {
     "tnega": "^0.1.1"
+  },
+  "optionalDependencies": {
+    "koffi": "^3.1.0"
   }
 }

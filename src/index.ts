@@ -191,6 +191,82 @@ export {
 } from '../packages/search/tool-search/src/index.js'
 
 export {
+  DEFAULT_SANDBOX_MODE,
+  SANDBOX_MODES,
+  SANDBOX_UNAVAILABLE,
+  SandboxError,
+  SandboxService,
+  SandboxUnavailableError,
+  canonicalPath,
+  isAbsolutePath,
+  isConfinedMode,
+  isConfinedArgv,
+  isSandboxMode,
+  isSandboxPolicy,
+  resolveSandboxPolicy,
+  sandboxErrorCode,
+  writableRoots,
+  type ConfinedArgv,
+  type ConfinedSandboxMode,
+  type RunnerFailureRule,
+  type SandboxBackendStatus,
+  type SandboxConfineRequest,
+  type SandboxConfinedEvent,
+  type SandboxEnforcement,
+  type SandboxErrorCode,
+  type SandboxErrorEvent,
+  type SandboxExecutionPolicy,
+  type SandboxMechanismRequest,
+  type SandboxMode,
+  type SandboxOp,
+  type SandboxPolicy,
+  type SandboxPolicyRequest,
+  type SandboxPreConfineEvent,
+} from '../packages/sandbox/sandbox/src/index.js'
+
+export {
+  LocalSandboxService,
+  sandboxLocal,
+  type Config as SandboxLocalConfig,
+  type SandboxInternals,
+  type SandboxRunnerName,
+} from '../packages/sandbox/sandbox-local/src/index.js'
+
+export {
+  bwrapProfileArgs,
+  landlockProfileArgs,
+  seatbeltProfileArgs,
+} from '../packages/sandbox/sandbox-local/src/profiles.js'
+
+export {
+  assertWritablePath,
+  containsDirectory,
+  isLexicallyUnder,
+  isPathUnder,
+  isWritablePath,
+  resolveInside,
+  type PathSandboxErrorCode,
+} from '../packages/sandbox/fs-sandbox/src/index.js'
+
+export {
+  sandboxedExecution,
+  type SandboxedExecutionConfig,
+  type SandboxedShell,
+} from '../packages/sandbox/execution-sandbox/src/index.js'
+
+export {
+  AclWriteGrant,
+  RUNNER_FAILURE_EXIT_CODE,
+  RUNNER_FAILURE_PREFIX,
+  assertPrivateTempDisjoint,
+  assertTempRootOutsideWorkspace,
+  isWindowsAclAvailable,
+  resolveRunnerCommand,
+  tempWriteSid,
+  workspaceWriteSid,
+} from '../packages/sandbox/sandbox-windows-acl/src/index.js'
+
+export {
   SpillError,
   SpillStore,
   type SaveTextSpill,

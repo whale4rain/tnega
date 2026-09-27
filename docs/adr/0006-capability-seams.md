@@ -2,7 +2,8 @@
 
 > 状态：当前
 > 取代关系：无
-> 当前实现：`packages/search/search-definition/README.md`、`packages/search/search-ripgrep/README.md`、`packages/search/tool-search/README.md`、`packages/execution/README.md`
+> 当前实现：`packages/search/search-definition/README.md`、`packages/search/search-ripgrep/README.md`、`packages/search/tool-search/README.md`、`packages/sandbox/sandbox/README.md`、`packages/sandbox/sandbox-local/README.md`、`packages/sandbox/execution-sandbox/README.md`、`packages/execution/README.md`
+> 后续实例：沙箱缝（`ctx.sandbox`）见 `docs/adr/0008-sandbox-seam.md`
 
 ## 背景
 

@@ -39,9 +39,16 @@ _Avoid_: delta message, wire frame
 
 **Tool Permission**:
 每次 Agent Run 开始时选择的 `read-only`、`workspace-write` 或 `bypass` 权限预设。
-越权工具调用需要一次性人工批准；`workspace-write` 下的 Shell 因无系统沙箱也逐次批准。
-`read-only` 允许公开网络搜索与抓取，`bypass` 允许工作区外文件和私有网络访问。
+越权工具调用需要一次性人工批准；`read-only` 允许公开网络搜索与抓取，`bypass` 允许工作区外
+文件和私有网络访问。Shell 的执行边界由沙箱缝负责，两者不是同一个开关。
 _Avoid_: capability flag
+
+**沙箱 (Sandbox)**:
+把一次执行包进本机机制（bwrap / landlock / seatbelt / Windows ACL）的能力缝，拥有
+`ctx.sandbox`。它只声明**文件写**的效果：`read-only` 不允许任何写，`workspace-write` 只允许
+工作区与临时区。宿主上没有任何可用机制时 fail closed（`SANDBOX_UNAVAILABLE`），绝不回退到
+非受限执行；`bypass` 的含义是「不要沙箱」，不是更宽的策略。
+_Avoid_: jail、container、isolation
 
 **能力缝 (Seam)**:
 一个可替换能力的完整三角色：Service Definition、Service Provider、Consumer。单指其中任一

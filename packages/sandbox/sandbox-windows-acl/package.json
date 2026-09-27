@@ -1,0 +1,13 @@
+{
+  "name": "@tnega/sandbox-windows-acl",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runner": "./src/runner.ts"
+  },
+  "dependencies": {
+    "koffi": "^3.1.0"
+  }
+}

@@ -153,6 +153,15 @@ read_file, write_file, list_dir, glob, grep
 
 文件工具使用路径沙箱：`read_file / write_file / list_dir / glob / grep / shell` 均被限制在 `--cwd` 内，拒绝绝对路径越界、`..` 越界与 symlink 越界。`read_file` 读取默认上限 256 KiB，超出时返回前缀并把 `truncated` 置为 `true`（不会报错），`maxBytes` 可按文件调整；写入默认上限 1 MiB，搜索结果默认 200 条，shell 默认 15 秒超时。
 
+`shell` 的实际执行边界由「沙箱」能力缝负责：`@tnega/sandbox` 拥有 `ctx.sandbox` 契约
+（Service Definition），`@tnega/sandbox-local` 提供本机实现（Service Provider），
+`@tnega/execution-sandbox` 是消费执行边界的 Consumer。Provider 按平台链做**功能性探测**
+（Linux `bwrap` → `landlock`，macOS `sandbox-exec`，Windows 受限令牌 + ACL），链耗尽时抛
+`SANDBOX_UNAVAILABLE` 并**拒绝执行**，不会退回无沙箱运行。它只限制文件写：`read-only` 不允许
+任何写，`workspace-write` 只允许工作区与临时区；`bypass` 表示「不要沙箱」。路径围栏
+（`@tnega/fs-sandbox`）是 `read_file / write_file / list_dir / glob / grep` 与 shell 共用的
+同一份实现。详见 `docs/adr/0008-sandbox-seam.md`。
+
 `glob` 与 `grep` 是「工作区搜索」能力缝的 Consumer：`@tnega/search` 拥有 `ctx.search`
 契约（Service Definition），`@tnega/search-ripgrep` 提供实现（Service Provider），
 `@tnega/tool-search` 贡献模型可见的工具。工具只认识 `ctx.search`，换 Provider 属于

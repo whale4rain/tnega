@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - packages/search/*
+  - packages/sandbox/*
   - packages/spill/*
   - packages/memory/*
   - packages/subagent/*
@@ -10,10 +11,12 @@ packages:
 
 onlyBuiltDependencies:
   - esbuild
+  - koffi
 allowBuilds:
   '@astryxdesign/cli': false
   '@astryxdesign/core': false
   electron-winstaller: false
   esbuild: true
+  koffi: true
 minimumReleaseAgeExclude:
   - tnega@0.1.1

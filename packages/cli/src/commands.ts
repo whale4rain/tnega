@@ -20,6 +20,9 @@ import {
 import { createLlmAdapter } from '@tnega/llm'
 import { memoryLocal } from '@tnega/memory-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { canonicalPath, isSandboxMode, resolveSandboxPolicy, type SandboxMode } from '@tnega/sandbox'
+import { sandboxLocal } from '@tnega/sandbox-local'
+import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
@@ -125,6 +128,11 @@ export interface RunAgentCommandOptions {
   maxSteps?: number
   allowNetwork?: boolean
   allowShell?: boolean
+  /**
+   * 本机沙箱模式；缺省按 `allowShell` 推导（`workspace-write` / `read-only`）。
+   * `bypass` 是显式选择「不要沙箱」，不是失败后的降级。
+   */
+  sandboxMode?: SandboxMode
   timeoutMs?: number
   maxRetries?: number
   retryDelayMs?: number
@@ -192,6 +200,12 @@ export interface AgentRuntimeOptions {
   inbox?: AgentInbox
   allowNetwork?: boolean
   allowShell?: boolean
+  /**
+   * 本机沙箱的模式。缺省按「有 shell 就至少要能写工作区」推导：`allowShell` 时是
+   * `workspace-write`，否则 `read-only`。宿主上没有任何可用后端时 shell 会 fail
+   * closed（拒绝执行），而不是悄悄退回非受限执行。
+   */
+  sandboxMode?: SandboxMode
   maxTurns?: number
   maxSteps?: number
   contextBudget?: AgentContextBudget
@@ -627,6 +641,7 @@ export async function runAgentCommand(
       ? { allowNetwork: options.allowNetwork }
       : {}),
     ...(options.allowShell !== undefined ? { allowShell: options.allowShell } : {}),
+    ...(options.sandboxMode !== undefined ? { sandboxMode: options.sandboxMode } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
   })
@@ -654,7 +669,7 @@ function runtimeOptionsFromProfile(
   options: Record<string, unknown>,
 ): Pick<
   AgentRuntimeOptions,
-  'allowNetwork' | 'allowShell' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+  'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools'
 > {
   const builtinTools = options.builtinTools === false
     || (options.builtinTools && typeof options.builtinTools === 'object')
@@ -662,10 +677,13 @@ function runtimeOptionsFromProfile(
     : undefined
   const result: Partial<Pick<
     AgentRuntimeOptions,
-    'allowNetwork' | 'allowShell' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+    'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools'
   >> = {}
   if (options.allowNetwork === true) result.allowNetwork = true
   if (options.allowShell === true) result.allowShell = true
+  // profile 可以显式选 `bypass`，这是宿主缺后端时唯一的逃生口 —— 它是显式选择，
+  // 不是失败后的静默降级（那仍然禁止）。
+  if (isSandboxMode(options.sandboxMode)) result.sandboxMode = options.sandboxMode
   if (typeof options.maxTurns === 'number' && Number.isFinite(options.maxTurns)) {
     result.maxTurns = options.maxTurns
   }
@@ -695,7 +713,21 @@ export async function createAgentRuntime(
   fibers.push(await root.plugin(memoryLocal, { cwd: merged.cwd }))
   fibers.push(await root.plugin(toolMemory, { writeTool: merged.builtinTools !== false }))
   if (merged.builtinTools !== false) {
-    const builtinConfig: BuiltinToolsConfig = { cwd: merged.cwd }
+    // 沙箱缝：composition 层挑 Provider（`sandbox-local`），模型可见的 `shell` 只
+    // 认识它脚下的执行边界 —— `sandboxedExecution` 是这条缝的 Consumer，只 import
+    // Service Definition。
+    fibers.push(await root.plugin(sandboxLocal, { workspaceRoot: canonicalPath(resolve(merged.cwd)) }))
+    const sandboxMode: SandboxMode = merged.sandboxMode ?? (merged.allowShell ? 'workspace-write' : 'read-only')
+    const builtinConfig: BuiltinToolsConfig = {
+      cwd: merged.cwd,
+      execution: sandboxedExecution(root, {
+        policy: resolveSandboxPolicy({
+          mode: sandboxMode,
+          workspaceRoot: canonicalPath(resolve(merged.cwd)),
+          sessionId: merged.sessionFile,
+        }),
+      }),
+    }
     if (merged.allowNetwork) builtinConfig.allowNetwork = true
     if (merged.allowShell) builtinConfig.allowShell = true
     if (merged.builtinTools && typeof merged.builtinTools === 'object') {

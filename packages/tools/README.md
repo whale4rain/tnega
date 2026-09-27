@@ -45,7 +45,8 @@ Consumer 互不依赖；Provider 的挑选属于 composition 层。
 `glob` / `grep` 由 `@tnega/tool-search` 注册，见上面的能力缝一节。
 
 文件工具拒绝二进制、限制写入字节；`read_file` 超过 `maxBytes`（默认 256 KiB）时返回前缀并把 `truncated` 置为 `true`，而不是报错 —— 调用方显式要的东西不该被拒绝。`calculator` 拒绝非法算术输入。
-`path.ts` 的 `resolveInside` 把一切路径限制在 cwd 内；`list_dir --recursive`
+`path.ts` 只是 `@tnega/fs-sandbox` 的转发：路径围栏（词法 + 身份包含判定、
+`..` / 绝对路径 / symlink 逃逸）在整个仓库只有那一份实现；`list_dir --recursive`
 会剪掉 `DEFAULT_SEARCH_EXCLUDES` 里的噪声目录。
 
 `shell` / `http_get` 的进程与网络执行走 `@tnega/execution` 的 `runShell` /

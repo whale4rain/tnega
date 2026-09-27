@@ -33,6 +33,9 @@ import {
   type PlanPayload,
 } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
+import { sandboxLocal } from '@tnega/sandbox-local'
+import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { spillLocal } from '@tnega/spill-local'
 import { listStoredSubagents, readSubagentEvents, subagentLocal } from '@tnega/subagent-local'
 import { SubagentError } from '@tnega/subagent'
@@ -853,6 +856,7 @@ async function handleRun(
       ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
       allowNetwork: true,
       allowShell: true,
+      sandboxMode: permission,
       builtinTools: {
         cwd: workspace,
         allowNetwork: true,
@@ -1019,12 +1023,22 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(tools))
   fibers.push(await root.plugin(memoryLocal, { cwd: workspace }))
   fibers.push(await root.plugin(toolMemory))
+  // 沙箱缝：Provider 由 composition 挑，Consumer（`sandboxedExecution`）只认识
+  // Service Definition。宿主上没有任何可用后端时 shell 会 fail closed。
+  fibers.push(await root.plugin(sandboxLocal, { workspaceRoot: canonicalPath(workspace) }))
   fibers.push(await root.plugin(builtinTools, {
     cwd: workspace,
     allowNetwork: true,
     allowShell: true,
     allowOutsideWorkspace: req.permission === 'bypass',
     allowPrivateNetwork: req.permission === 'bypass',
+    execution: sandboxedExecution(root, {
+      policy: resolveSandboxPolicy({
+        mode: req.permission,
+        workspaceRoot: canonicalPath(workspace),
+        sessionId: req.sessionId,
+      }),
+    }),
   }))
   // 搜索与溢出是两条能力缝：composition 层挑 Provider，模型可见的工具只认识
   // ctx.search，工具结果的上限只认识 ctx.spillStore。

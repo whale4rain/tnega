@@ -1,52 +1,10 @@
-import { realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
-
-export class PathSandboxError extends Error {
-  override name = 'PathSandboxError'
-}
-
-function inside(root: string, target: string): boolean {
-  const rel = relative(root, target)
-  return rel === ''
-    || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-}
-
-function isMissing(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException | null)?.code
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
-
-export async function resolveInside(cwd: string, input: string): Promise<string> {
-  if (typeof input !== 'string' || !input.trim()) {
-    throw new PathSandboxError('path must be a non-empty string')
-  }
-  let root: string
-  try {
-    root = await realpath(cwd)
-  } catch {
-    throw new PathSandboxError(`workspace directory is not accessible: ${cwd}`)
-  }
-  const target = resolve(cwd, input)
-  if (!inside(root, target)) {
-    throw new PathSandboxError(`path escapes the workspace: ${input}`)
-  }
-
-  // Follow the deepest existing ancestor so a symlinked parent cannot escape.
-  let current = target
-  for (;;) {
-    try {
-      const real = await realpath(current)
-      if (!inside(root, real)) {
-        throw new PathSandboxError(`path escapes the workspace through a symlink: ${input}`)
-      }
-      return target
-    } catch (error) {
-      if (!isMissing(error)) throw error
-      const parent = dirname(current)
-      if (parent === current) {
-        throw new PathSandboxError(`path escapes the workspace: ${input}`)
-      }
-      current = parent
-    }
-  }
-}
+/**
+ * 路径围栏的唯一实现在 `@tnega/fs-sandbox`。这个文件只做转发，保留既有导入路径：
+ * 文件工具、搜索 Consumer、eval fixture 与被测试钉死的错误文案都不需要改。
+ *
+ * 之所以不让 `@tnega/tools` 自己留一份：`resolveInside` 是「什么算工作区之内」的
+ * 唯一定义，两份实现会漂移，最终表现为 `write_file` 与 shell 对同一个路径给出不同
+ * 结论。
+ */
+export { PathSandboxError, resolveInside } from '@tnega/fs-sandbox'
+export type { PathSandboxErrorCode } from '@tnega/fs-sandbox'

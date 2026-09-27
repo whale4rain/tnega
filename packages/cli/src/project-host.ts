@@ -18,6 +18,9 @@ import { projectLoop } from '@tnega/project-loop'
 import { projectLocal } from '@tnega/project-local'
 import type { ProjectRecord, ProjectsService } from '@tnega/project'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
+import { sandboxLocal } from '@tnega/sandbox-local'
+import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { SessionLog, type SessionEvent } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { threadLocal } from '@tnega/thread-local'
@@ -368,7 +371,20 @@ export class ProjectHost {
     const config = this.options.builtinTools
     if (config !== false) {
       const cwd = this.workspace
-      await ctx.plugin(builtinTools, { cwd, ...(config ?? {}) })
+      // 沙箱缝：Project 的授权是它的所有 Thread 的上限，所以策略取 Project 的
+      // permission；宿主上没有可用后端时 shell 会 fail closed。
+      await ctx.plugin(sandboxLocal, { workspaceRoot: canonicalPath(cwd) })
+      await ctx.plugin(builtinTools, {
+        cwd,
+        ...(config ?? {}),
+        execution: sandboxedExecution(ctx, {
+          policy: resolveSandboxPolicy({
+            mode: this.options.permission,
+            workspaceRoot: canonicalPath(cwd),
+            sessionId: record.id,
+          }),
+        }),
+      })
       // 搜索与溢出是两条能力缝：组合层挑 Provider，模型可见的工具只认识 ctx.search
       // 与 ctx.spillStore。
       await ctx.plugin(searchRipgrep, { cwd })

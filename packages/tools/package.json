@@ -9,6 +9,7 @@
   "dependencies": {
     "@tnega/core": "workspace:*",
     "@tnega/execution": "workspace:*",
+    "@tnega/fs-sandbox": "workspace:*",
     "@tnega/search": "workspace:*"
   }
 }

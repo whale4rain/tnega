@@ -1,9 +1,13 @@
 import { defineAgent, type AgentLoop, type LLMAdapter } from '@tnega/agent'
 import { CODING_SYSTEM_PROMPT, createCodingAgentPlugin } from '@tnega/coding-agent'
 import { Context } from '@tnega/core'
+import type { ExecutionProvider } from '@tnega/execution'
 import { memoryLocal } from '@tnega/memory-local'
 import { session } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
+import { sandboxLocal } from '@tnega/sandbox-local'
+import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
@@ -19,6 +23,8 @@ export interface CodingEvalRuntimeOptions {
   toolPolicy: ToolPolicy
   allowShell?: boolean
   allowNetwork?: boolean
+  /** 真正落进程的实现；测试与宿主可替换。沙箱包装仍然生效。 */
+  execution?: ExecutionProvider
 }
 
 export interface CodingEvalRuntime {
@@ -35,11 +41,23 @@ export async function createCodingEvalRuntime(
   await root.plugin(tools, options.toolPolicy)
   await root.plugin(memoryLocal, { cwd: options.cwd })
   await root.plugin(toolMemory)
+  // 沙箱缝：Provider 由 composition 挑，Consumer 只认识 Service Definition。
+  await root.plugin(sandboxLocal, { workspaceRoot: canonicalPath(options.cwd) })
   await root.plugin(builtinTools, {
     cwd: options.cwd,
     allowNetwork: options.allowNetwork ?? false,
     allowShell: options.allowShell ?? false,
     disabled: [],
+    // 评测同样跑在沙箱里：`TaskPermissions.shell.enabled` 决定的是能不能用 shell，
+    // 不是能不能无限制地用。没有可用后端时 shell 会 fail closed。
+    execution: sandboxedExecution(root, {
+      ...(options.execution !== undefined ? { inner: options.execution } : {}),
+      policy: resolveSandboxPolicy({
+        mode: options.allowShell === true ? 'workspace-write' : 'read-only',
+        workspaceRoot: canonicalPath(options.cwd),
+        sessionId: options.sessionFile,
+      }),
+    }),
   })
   // 搜索缝：composition 层挑 Provider。
   await root.plugin(searchRipgrep, { cwd: options.cwd })
