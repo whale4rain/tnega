@@ -12,6 +12,7 @@ import {
   narrowPermission,
   normalizeGoal,
   type ThreadListOptions,
+  type ThreadPermissionGrantRequest,
   type ThreadPermission,
   type ThreadRecord,
   type ThreadSpawnRequest,
@@ -354,6 +355,40 @@ export class LocalThreadService extends ThreadService {
       if (error instanceof BlackboardError && error.code === 'BLACKBOARD_CONFLICT') {
         throw new ThreadError(
           `thread ${threadId} changed while it was being updated; reload and retry`,
+          'THREAD_FAILED',
+          { cause: error },
+        )
+      }
+      throw error
+    }
+  }
+
+  override async setPermission(request: ThreadPermissionGrantRequest): Promise<ThreadRecord> {
+    const parent = await this.requireThread(request.parentId)
+    const child = await this.requireThread(request.threadId)
+    if (child.parentId !== parent.id) {
+      throw new ThreadError('thread permission changes require a direct parent-child relationship', 'THREAD_INVALID')
+    }
+    if (narrowPermission(request.permission, parent.permission) !== request.permission) {
+      throw new ThreadError('thread permission cannot exceed the parent permission', 'THREAD_INVALID')
+    }
+    const fact = await this.board.read('agent', child.id)
+    if (!fact || fact.deleted) throw new ThreadError(`thread not found: ${child.id}`, 'THREAD_NOT_FOUND')
+    const next: ThreadRecord = { ...child, permission: request.permission, updatedAt: Date.now() }
+    try {
+      const committed = await this.board.commit({
+        kind: 'agent',
+        id: child.id,
+        data: toData(next),
+        author: parent.id,
+        source: { agentId: parent.id },
+        expectedVersion: fact.version,
+      })
+      return toThread(committed)
+    } catch (error) {
+      if (error instanceof BlackboardError && error.code === 'BLACKBOARD_CONFLICT') {
+        throw new ThreadError(
+          `thread ${child.id} changed while its permission was being updated; reload and retry`,
           'THREAD_FAILED',
           { cause: error },
         )

@@ -1,7 +1,7 @@
 # `@tnega/tool-thread`
 
 Thread 相关能力的 **Consumer**：模型可见的 `spawn_thread`、`list_threads`、
-`send_thread_message`。只依赖 `@tnega/thread` 与 `@tnega/box` 两份 Service Definition，
+`send_thread_message`、`approve_thread_permission`。只依赖 `@tnega/thread` 与 `@tnega/box` 两份 Service Definition，
 不 import 任何 Provider。
 
 ```
@@ -30,3 +30,6 @@ Thread 相关能力的 **Consumer**：模型可见的 `spawn_thread`、`list_thr
 - **只走相邻**。父子之间才能互发；兄弟默认不互通 —— 共享结果先写 Blackboard，再由共同
   父 Agent 转发引用或启动下游 Thread。
 - **不搬历史**。派工只带目标与期望回报，不携带父 Agent 的 Session 历史。
+- **提权要批准**。只有 Project 协调者可用 `approve_thread_permission` 提升直属子 Thread，
+  且不会超过协调者自身权限。该工具不在自动放行列表：Project 不是 `bypass` 时，必须由
+  用户在 ApprovalBroker 中同意；`bypass` 时直接生效。

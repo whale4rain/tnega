@@ -81,6 +81,13 @@ export interface ThreadSpawnRequest {
   permission?: ThreadPermission
 }
 
+/** A parent grants one direct child a new permission within the parent's ceiling. */
+export interface ThreadPermissionGrantRequest {
+  parentId: string
+  threadId: string
+  permission: ThreadPermission
+}
+
 export interface ThreadListOptions {
   parentId?: string
   /** 连同所有后代一起返回，而不是只返回直接子级。 */
@@ -171,6 +178,9 @@ export abstract class ThreadService extends Service {
   abstract list(options?: ThreadListOptions): Promise<ThreadRecord[]>
 
   abstract setState(threadId: string, state: ThreadState, detail?: string): Promise<ThreadRecord>
+
+  /** Update a direct child's permission without allowing it to exceed its parent. */
+  abstract setPermission(request: ThreadPermissionGrantRequest): Promise<ThreadRecord>
 
   /** 激活或恢复该 Thread 的 Agent；同一 ID 在进程内只有一个实例。 */
   abstract activate(threadId: string): Promise<LiveAgent>

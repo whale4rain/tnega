@@ -151,3 +151,31 @@ it('starts a thread whose session file exists but has no agent identity yet', as
     await ctx.fiber.dispose()
   }
 })
+
+it('lets a parent grant a direct child up to its own permission', async () => {
+  const root = await workspace()
+  const ctx = await mount(root)
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({
+      parentId: coordinator.id,
+      goal: 'Review the release',
+      permission: 'read-only',
+    })
+
+    const granted = await ctx.threads.setPermission({
+      parentId: coordinator.id,
+      threadId: child.id,
+      permission: 'workspace-write',
+    })
+    expect(granted.permission).toBe('workspace-write')
+
+    await expect(ctx.threads.setPermission({
+      parentId: coordinator.id,
+      threadId: child.id,
+      permission: 'bypass',
+    })).rejects.toMatchObject({ code: 'THREAD_INVALID' })
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})

@@ -1,6 +1,6 @@
 import { agentAddress, type BoxMessageKind, type BoxService } from '@tnega/box'
 import type { Context } from '@tnega/core'
-import type { ThreadService, ThreadState } from '@tnega/thread'
+import { isThreadPermission, type ThreadService, type ThreadState } from '@tnega/thread'
 import type { ToolsService } from '@tnega/tools'
 
 /** `send_thread_message` 允许的消息类型：回报结论，或给子 Thread 新的方向。 */
@@ -134,6 +134,43 @@ export const toolThread = {
         return entries.length
           ? entries.map(entry => `${entry.id} [${statusOf(entry.state)}] ${entry.label} (parent=${entry.parentId ?? '—'}, depth=${entry.depth})${entry.detail ? ` — ${entry.detail.slice(0, 200)}` : ''}`).join('\n')
           : '(no threads)'
+      },
+    })
+
+    tools.register({
+      schema: {
+        name: 'approve_thread_permission',
+        description: 'Approve a permission increase for one of your direct child threads. Only the Project coordinator can use this. The child can receive at most your own permission. This request is presented to the user unless your Project runs with bypass permission.',
+        parameters: {
+          type: 'object',
+          properties: {
+            thread_id: { type: 'string', description: 'Direct child thread ID.' },
+            permission: {
+              type: 'string',
+              enum: ['read-only', 'workspace-write', 'bypass'],
+              description: 'Permission to approve for the child, capped at your own permission.',
+            },
+          },
+          required: ['thread_id', 'permission'],
+        },
+      },
+      async execute(input, options) {
+        const value = fields(input)
+        if (typeof value.thread_id !== 'string') throw new TypeError('thread_id must be a string')
+        if (!isThreadPermission(value.permission)) {
+          throw new TypeError('permission must be read-only, workspace-write or bypass')
+        }
+        const parentId = caller(options.agentId)
+        const parent = await threads.get(parentId)
+        if (!parent || parent.parentId !== undefined) {
+          throw new Error('only the Project coordinator can approve thread permissions')
+        }
+        const thread = await threads.setPermission({
+          parentId,
+          threadId: value.thread_id,
+          permission: value.permission,
+        })
+        return `Approved ${thread.permission} permission for ${thread.id}.`
       },
     })
 
