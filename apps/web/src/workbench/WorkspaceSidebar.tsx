@@ -83,7 +83,7 @@ export function WorkspaceSidebar(props: Props) {
   }
   return (
     <>
-      <div className="sidebar-top flex flex-col">
+      <VStack className="sidebar-top" gap={3} padding={4}>
         <SegmentedControl
           size="sm"
           value={agent}
@@ -111,7 +111,7 @@ export function WorkspaceSidebar(props: Props) {
           value={search}
           onChange={setSearch}
         />
-      </div>
+      </VStack>
       <div className="sidebar-section-label flex items-center justify-between">
         <span>Projects</span>
         <Tooltip content="New project">

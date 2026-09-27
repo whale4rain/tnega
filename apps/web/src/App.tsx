@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
 import { Theme as AstryxTheme } from '@astryxdesign/core/theme'
-import { neutralTheme } from '@astryxdesign/theme-neutral/built'
+import { studioTheme } from './workbench/theme'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
 import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
 import { ChatView } from './conversation/ChatView'
@@ -519,7 +519,7 @@ function ChatApp() {
 
   return (
     <>
-      <AstryxTheme theme={neutralTheme} mode={appearance}>
+      <AstryxTheme theme={studioTheme} mode={appearance}>
         <WorkbenchShell
           sidebar={
             <WorkspaceSidebar

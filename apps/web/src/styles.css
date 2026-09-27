@@ -1,46 +1,10 @@
 @layer reset, theme, base, components, legacy, astryx-base, utilities, tnega-overrides;
 @import '@astryxdesign/core/reset.css';
 @import '@astryxdesign/core/astryx.css';
-@import '@astryxdesign/theme-neutral/theme.css';
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
 
 @layer legacy {
-:root {
-  font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  --canvas: #faf9f6;
-  --sidebar: #f3f2ef;
-  --surface-card: #eeedea;
-  --user-bubble: #dce7ff;
-  --user-ink: #18305b;
-  --ink: #262624;
-  --mute: #797973;
-  --hairline: #deddd7;
-  --accent: #427ba9;
-  --danger: #c44d49;
-  --warning: #bb882d;
-  --success: #639778;
-  --body: var(--ink);
-  --surface-soft: var(--sidebar);
-  --stone: var(--mute);
-}
-:root[data-theme='dark'] {
-  color-scheme: dark;
-  /* 近黑的分层：靠背景层级而不是边框划分区域，分割线弱到几乎看不见。 */
-  --canvas: #111111;
-  --sidebar: #0a0a0a;
-  --surface-card: #1b1b1b;
-  --surface-soft: #161616;
-  --user-bubble: #242424;
-  --user-ink: #ededed;
-  --ink: #ececec;
-  --mute: #8f8f8f;
-  --hairline: #212121;
-  --accent: #9dbede;
-  --danger: #e08b86;
-  --warning: #d8ad5f;
-  --success: #8fb896;
-}
 * {
   box-sizing: border-box;
 }
@@ -85,25 +49,8 @@ input:focus-visible {
   scrollbar-width: thin;
   scrollbar-color: var(--hairline) transparent;
 }
-.sidebar-top {
-  padding: 8px 12px 12px;
-  gap: 8px;
-}
-.sidebar-top .astryx-button {
-  justify-content: flex-start;
-  margin: 0;
-  height: 30px;
-  padding: 0 8px;
-  font-size: 13px;
-}
-.sidebar-top .astryx-text-input {
-  background: transparent;
-  box-shadow: none;
-  height: 28px;
-  font-size: 12px;
-}
 .sidebar-section-label {
-  padding: 8px 20px 4px;
+  padding: var(--spacing-5) var(--spacing-4) var(--spacing-2);
   font-size: 11px;
   font-weight: 500;
   color: var(--mute);
@@ -130,7 +77,10 @@ input:focus-visible {
   line-height: 1.7;
 }
 .sidebar-footer {
-  padding: 12px 20px;
+  padding: var(--spacing-4);
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--hairline);
 }
 .tnega-workbench-layout { min-height: 0; }
 .tnega-side-nav.is-collapsed > * { visibility: hidden; }
@@ -160,7 +110,7 @@ input:focus-visible {
   min-height: 0;
   min-width: 0;
   position: relative;
-  /* 对话区与外壳同色，让输入卡片成为对比出来的那一块黑。 */
+  /* 工作面与导航形成轻微层次，输入区使用抬升面。 */
   background: var(--color-background-surface);
 }
 .chat-content {
@@ -174,8 +124,8 @@ input:focus-visible {
   display: flex;
   align-items: center;
   gap: 16px;
-  min-height: 44px;
-  padding: 5px 20px;
+  min-height: 60px;
+  padding: var(--spacing-3) var(--spacing-6);
   font-size: 12px;
   flex-wrap: wrap;
   border-bottom: 0;
@@ -278,7 +228,7 @@ input:focus-visible {
 .file-edits-path > span { color: var(--mute); }
 .file-edits-path > strong { color: var(--ink); font-weight: 500; }
 .conversation-footer {
-  width: min(820px, calc(100% - 32px));
+  width: min(800px, calc(100% - var(--spacing-12)));
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -390,14 +340,14 @@ input:focus-visible {
   flex-direction: column;
 }
 .messages {
-  width: min(820px, calc(100% - 32px));
+  width: min(800px, calc(100% - var(--spacing-12)));
   margin: 0 auto;
-  padding: 18px 0 24px;
+  padding: var(--spacing-8) 0 var(--spacing-10);
   flex: 1 0 auto;
 }
 .message {
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--font-size-base);
+  line-height: 1.75;
   overflow-wrap: anywhere;
 }
 .message.user {
@@ -598,7 +548,7 @@ pre {
   overflow: hidden;
 }
 .composer-dock {
-  width: min(820px, calc(100% - 32px));
+  width: min(800px, calc(100% - var(--spacing-12)));
   margin: 0 auto;
   flex-shrink: 0;
 }
@@ -607,7 +557,7 @@ pre {
   bottom: 0;
   z-index: 2;
   flex: 0 0 auto;
-  padding: 10px 0 12px;
+  padding: var(--spacing-4) 0 var(--spacing-4);
   background: var(--color-background-surface);
 }
 .composer-surface::before {
@@ -624,8 +574,8 @@ pre {
   padding: 8px 2px 0;
   color: var(--mute);
   font-size: 11px;
-  /* 控制行排成一行：太宽就压缩，不要换行把输入区顶高。 */
-  flex-wrap: nowrap;
+  /* 控制区在窄视口换行，保留可读字号和操作目标。 */
+  flex-wrap: wrap;
   min-width: 0;
 }
 .model-slider-panel {
@@ -758,11 +708,12 @@ pre {
 }
 .empty-state {
   flex: 1;
-  padding: 36px;
+  padding: var(--spacing-10);
+  height: 100%;
 }
 .empty-state h1 {
   color: var(--ink);
-  font-size: 28px;
+  font-size: var(--font-size-3xl);
   font-weight: 500;
   letter-spacing: -0.7px;
   margin: 8px 0 0;
@@ -960,7 +911,7 @@ pre {
     display: none;
   }
   .message {
-    font-size: 13px;
+    font-size: var(--font-size-base);
   }
 }
 
@@ -1376,11 +1327,12 @@ pre {
     flex: 1 0 auto;
   }
 
-  /* 输入卡片：黑底 + 更宽的内边距。底色默认用 --color-background-popover（弹层色），
-     在灰色对话区上不够沉；内缩要跟 28px 圆角匹配，否则图标会贴进弧线里。 */
+  /* 输入区与计划面板共用主题中的抬升面和容器圆角。 */
   .composer-dock .astryx-chat-composer > div:last-child {
-    background: var(--canvas);
-    padding: 16px;
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-container);
+    padding: var(--spacing-4);
   }
 
   /* 折叠触发器自带 large 字号（17px）和 600 字重，比 Tnega 的正文（13px）还大。
@@ -1403,16 +1355,12 @@ pre {
     border-radius: 0;
   }
 
-  /* 计划卡片与输入卡片是参考图里那样上下两个圆角容器：各自四面圆角、中间留一道缝。
-     计划卡片用与输入卡片同色的底，才像同一种材料。
-     内缩必须跟着圆角走：28px 的弧线会切进贴着边缘的文字和折叠箭头，所以给面板留出
-     内边距，并把正文原本的左右内边距归零，避免叠加成两倍。 */
   .composer-dock.has-plan .plan-panel {
     margin-bottom: 6px;
     border: 0;
-    border-radius: 28px;
-    background: var(--canvas);
-    padding: 10px 16px 14px;
+    border-radius: var(--radius-container);
+    background: var(--surface-card);
+    padding: var(--spacing-3) var(--spacing-4);
   }
   .composer-dock.has-plan .plan-panel .plan-body {
     padding: 0;
@@ -1507,8 +1455,9 @@ pre {
   .tnega-top-nav {
     -webkit-app-region: drag;
     user-select: none;
-    padding-right: 140px;
+    padding-right: var(--spacing-5);
   }
+  .tnega-top-nav.is-desktop { padding-right: 140px; }
   .tnega-top-nav button,
   .tnega-top-nav a,
   .tnega-top-nav input,

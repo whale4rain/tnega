@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Stack } from '@astryxdesign/core/Stack'
+import { Text } from '@astryxdesign/core/Text'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { ChatMessageList, type ChatComposerInputHandle } from '@astryxdesign/core/Chat'
 import { ChevronDown, Code2, ListTodo } from 'lucide-react'
@@ -856,22 +859,24 @@ export function ChatView({
 
   if (!workspace) {
     return (
-      <div className="empty-state">
+      <Stack className="empty-state" gap={4} align="center" justify="center">
         <Code2 size={36} strokeWidth={1.2} />
-        <h1>Make room for your next idea.</h1>
-        <p>Add a workspace from the sidebar to start coding with Tnega.</p>
-      </div>
+        <Text color="accent" type="supporting">YOUR AGENT WORKSPACE</Text>
+        <Heading level={1} textWrap="balance">Make room for your next idea.</Heading>
+        <Text color="secondary">Add a workspace from the sidebar to start coding with Tnega.</Text>
+      </Stack>
     )
   }
 
   if (!sessionId) {
     return (
-      <div className="empty-state">
+      <Stack className="empty-state" gap={4} align="center" justify="center">
         <Code2 size={36} strokeWidth={1.2} />
-        <h1>What are we building?</h1>
-        <p>Explore a codebase, work through a bug, or build something new.</p>
+        <Text color="accent" type="supporting">IDEA → PLAN → BUILD</Text>
+        <Heading level={1} textWrap="balance">What are we building?</Heading>
+        <Text color="secondary">Explore a codebase, work through a bug, or build something new.</Text>
         <Button label="Start coding" onClick={() => void onNewSession({ agentType: 'coding' })} />
-      </div>
+      </Stack>
     )
   }
 

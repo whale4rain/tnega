@@ -13,7 +13,7 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 - 恢复上次会话时先显示可编辑输入框，再加载历史；删除会话使用应用内确认对话框。
 - 斜杠命令菜单（coding 会话）；fork；自动标题。
 - Coding 工作台：可折叠并记忆状态的侧栏、会话搜索、居中正文和底部输入区。
-- 对话使用紧凑的 13px 正文与 1.6 行高；消息和吸附输入区共用全高滚动容器。Plan 显示在输入框上方，可折叠。
+- 对话使用 14px 正文与 1.75 行高；消息和吸附输入区共用全高滚动容器。Plan 显示在输入框上方，可折叠。
 - 工具调用默认显示操作、路径／命令预览与执行状态，展开后查看输入输出；多次连续调用折叠成活动组。
 - 每次 Agent Run 结束后显示“已编辑 X 个文件”卡片与行数变化，默认列出 3 个文件，可展开剩余路径；Git 工作区比较运行前后状态，非 Git 工作区的 `write_file` 使用写入前快照，摘要保存在 Session 中。
 - 灰色窗口外壳与圆角深色会话区；用户消息使用右对齐、最多 70% 正文宽度的蓝色气泡，编辑和分支操作位于气泡下方。
@@ -25,7 +25,7 @@ Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包�
 
 - 组件从 `@astryxdesign/core/<Component>` 逐组件引入，样式由 StyleX 在构建期生成。
 - `main.tsx` 只加载 `styles.css`；`styles.css` 以显式 cascade layer 顺序（`reset, theme, base, components, legacy, astryx-base, utilities`）引入 Astryx reset 与主题，再引入 Tailwind 的 theme/utilities 层。
-- `App.tsx` 用 `@astryxdesign/core/theme` 的 `Theme` 包住整棵树，深浅模式跟随本机偏好并在 `localStorage` 中记忆。
+- `App.tsx` 用 `@astryxdesign/core/theme` 的 `Theme` 和 `workbench/theme.ts` 的 Studio 主题包住整棵树，深浅模式跟随本机偏好并在 `localStorage` 中记忆。
 - 需要查组件 API 时用仓库内的 CLI，而不是猜：
   ```bash
   pnpm --filter @tnega/web astryx component ChatComposer
@@ -81,3 +81,7 @@ Astryx 重建后已不存在。重建它还意味着重新确定它顺带断言�
 （`projectSelection` / `projectExperience`）、输入区行为（`composer`）、侧栏与外壳
 （`App` / `workbench`）以及桌面桥。`vitest.setup.ts` 给 jsdom 补上 Astryx 需要的
 `matchMedia`。端到端见 `packages/cli/test/web.test.ts`。
+
+## 视觉设计
+
+规范见 `docs/frontend-visual-design.md`。开发服务的 `/design.html` 使用生产组件展示本地样例，可切换深浅主题、输入草稿和检查导航；不会请求模型或后端。主题颜色由 `src/workbench/theme.ts` 集中维护。
