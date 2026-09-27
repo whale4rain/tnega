@@ -193,6 +193,7 @@ input:focus-visible {
   background: var(--surface-card);
   color: var(--ink);
   overflow: hidden;
+  margin-block: 8px;
 }
 .subagent-card-line { display: flex; align-items: stretch; min-width: 0; }
 .subagent-card-toggle {
@@ -200,15 +201,27 @@ input:focus-visible {
   align-items: center;
   gap: 9px;
   min-width: 0;
+  min-height: 54px;
   flex: 1;
-  padding: 8px 11px;
+  padding: 10px 14px;
   text-align: left;
 }
-.subagent-card-toggle strong { min-width: 0; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-card-toggle strong { min-width: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subagent-card-toggle > svg { flex-shrink: 0; color: var(--mute); }
 .subagent-card-toggle > svg:last-child { margin-left: auto; transition: transform 150ms ease; }
 .subagent-card-toggle > svg.expanded { transform: rotate(90deg); }
-.subagent-card-preview { flex: 1; min-width: 0; color: var(--mute); font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.subagent-card-preview {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  color: var(--mute);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .subagent-card-open { display: grid; place-items: center; width: 34px; flex-shrink: 0; border-left: 1px solid var(--hairline); color: var(--mute); }
 .subagent-card-open:hover { color: var(--ink); }
 .subagent-card-detail { padding: 11px 14px; border-top: 1px solid var(--hairline); }
@@ -813,12 +826,19 @@ pre {
 }
 .message-edit textarea {
   width: 100%;
+  min-height: 150px;
+  padding: 12px 14px;
+  line-height: 1.6;
+  resize: vertical;
 }
+.message-edit { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 .message-edit-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 12px;
+  margin-top: 2px;
 }
+.message-pending-indicator { padding: 4px 0; color: var(--mute); font-size: 12px; }
 /* Session measurements under the composer: quiet, numeric, and never padded
    with a placeholder for a value the provider did not report. */
 .usage-metrics {
@@ -1409,6 +1429,10 @@ pre {
   }
   .tnega-side-nav .sidebar-footer {
     margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background: var(--color-background-body);
   }
 
   /* 「回到最新消息」浮在消息区右下角。Astryx 给按钮设了 position: relative，

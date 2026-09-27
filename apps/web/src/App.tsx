@@ -39,6 +39,7 @@ import type {
 
 const THEME_STORAGE_KEY = 'tnega-theme'
 const LAST_VIEW_KEY = 'tnega-last-view'
+const LAST_PROJECT_KEY = 'tnega-last-project'
 
 function initialThemePreference(): ThemePreference {
   const stored = localStorage.getItem(THEME_STORAGE_KEY)
@@ -195,6 +196,7 @@ function ChatApp() {
   const openProject = useCallback((next: RecentProject) => {
     setProject({ workspace: next.workspace, id: next.id })
     setRecentProjects(rememberProject(localStorage, next))
+    localStorage.setItem(LAST_PROJECT_KEY, `${next.workspace}\n${next.id}`)
     localStorage.setItem(LAST_VIEW_KEY, 'projects')
   }, [])
 
@@ -261,7 +263,9 @@ function ChatApp() {
     if (restoredSelection.current) return
     restoredSelection.current = true
     if (localStorage.getItem(LAST_VIEW_KEY) === 'projects') {
-      const [last] = readRecentProjects(localStorage)
+      const projects = readRecentProjects(localStorage)
+      const lastKey = localStorage.getItem(LAST_PROJECT_KEY)
+      const last = projects.find(entry => `${entry.workspace}\n${entry.id}` === lastKey) ?? projects[0]
       if (last) {
         openProject(last)
         return

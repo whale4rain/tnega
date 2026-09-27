@@ -76,6 +76,7 @@ export const MessageBlock = memo(function MessageBlock({
     message.retry ? `retry ${message.retry.retry}${message.retry.started ? ' ...' : ''}` : '',
     finishReason ?? '',
   ].filter(Boolean).join(' / ')
+  const hasContent = message.content.trim().length > 0
   // 助手名字默认是固定的“Tnega”，每轮都重复一遍没有信息量，不显示；
   // 子代理侧栏会传自己的名字进来，那种是有用的，保留。
   const name = isUser ? 'You' : (assistantLabel === 'Tnega' ? '' : assistantLabel)
@@ -116,14 +117,14 @@ export const MessageBlock = memo(function MessageBlock({
             }}
             hasAutoFocus
             hasSpellCheck={false}
-            rows={4}
+            rows={6}
           />
           <div className="message-edit-actions">
             <Button label="Send edited message" variant="primary" size="sm" onClick={onSubmitEdit} isDisabled={!editDraft.trim()} />
             <Button label="Cancel editing" variant="ghost" size="sm" onClick={onCancelEdit} />
           </div>
         </div>
-      ) : (
+      ) : hasContent ? (
         <ChatMessageBubble variant={isUser ? 'filled' : 'ghost'}>
         <div className="message-body md">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -131,7 +132,9 @@ export const MessageBlock = memo(function MessageBlock({
           </ReactMarkdown>
         </div>
         </ChatMessageBubble>
-      )}
+      ) : message.pending ? (
+        <div className="message-pending-indicator" role="status">Thinking…</div>
+      ) : null}
       <MessageStatus message={message} />
     </ChatMessage>
   )
@@ -216,7 +219,7 @@ function SubagentBlock({
           <span className={`subagent-status ${status ?? subagent.status}`}>
             {status ?? subagent.status}
           </span>
-          {latest && <span className="subagent-card-preview">{latest}</span>}
+          {latest?.trim() && <span className="subagent-card-preview" title={latest}>{latest}</span>}
           <ChevronRight size={14} className={expanded ? 'expanded' : ''} aria-hidden="true" />
         </button>
         {agentId && onOpen && (
@@ -233,8 +236,8 @@ function SubagentBlock({
       </div>
       {expanded && (
         <div className="subagent-card-detail">
-          {subagent.task && <p className="subagent-card-task">{subagent.task}</p>}
-          {subagent.error && <p className="danger">{subagent.error}</p>}
+          {subagent.task?.trim() && <p className="subagent-card-task">{subagent.task}</p>}
+          {subagent.error?.trim() && <p className="danger">{subagent.error}</p>}
           {subagent.replies.map((reply, index) => (
             <div className="md" key={`${message.id}-reply-${index}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{reply}</ReactMarkdown>
