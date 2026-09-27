@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
-import { Badge } from '@astryxdesign/core/Badge'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Stack } from '@astryxdesign/core/Stack'
+import { Text } from '@astryxdesign/core/Text'
 import { Button } from '@astryxdesign/core/Button'
 import { ToggleButton, ToggleButtonGroup } from '@astryxdesign/core/ToggleButton'
 import { ListTodo } from 'lucide-react'
@@ -56,12 +58,11 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   const { workspace, projectId } = props
   const [view, setView] = useState<ProjectView | null>(null)
   const [connection, setConnection] = useState<{ projectId: string; cursor: number } | null>(null)
-  const [panel, setPanel] = useState<'overview' | 'library' | 'memory' | null>(null)
+  const [panel, setPanel] = useState<'overview' | 'library' | 'memory' | null>('overview')
   const [threadId, setThreadId] = useState<string | null>(null)
   const [details, setDetails] = useState<ReadonlyMap<string, SessionEvent[]>>(new Map())
   const [loadingThread, setLoadingThread] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [threadDraft, setThreadDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [live, setLive] = useState<'connecting' | 'live' | 'retrying'>('connecting')
@@ -150,7 +151,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
     setConnection(null)
     setThreadId(null)
     setDetails(new Map())
-    setPanel(null)
+    setPanel('overview')
     setError(null)
     setLive('connecting')
     drafts.current.clear()
@@ -321,22 +322,6 @@ export function ProjectExperience(props: ProjectExperienceProps) {
     }
   }, [draft, workspace, projectId])
 
-  const sendThread = useCallback(async (): Promise<void> => {
-    const text = threadDraft.trim()
-    if (!text || !threadId) return
-    setBusy(true)
-    setError(null)
-    try {
-      await api.sendThreadMessage(workspace, projectId, threadId, text)
-      setThreadDraft('')
-      await loadThread(threadId, true)
-    } catch (reason) {
-      setError(messageOf(reason))
-    } finally {
-      setBusy(false)
-    }
-  }, [threadDraft, threadId, workspace, projectId, loadThread])
-
   const refreshSnapshot = useCallback(async (): Promise<void> => {
     const snapshot = await api.getProject(workspace, projectId)
     if (selection.current === projectId) setView(fromSnapshot(snapshot))
@@ -359,42 +344,29 @@ export function ProjectExperience(props: ProjectExperienceProps) {
   }
 
   return (
-    <div className="chat">
+    <div className="chat project-workspace">
       <div className="chat-content">
-        <div className="chat-header">
-          <div className="chat-title-line">
-            <div className="chat-title ellipsis" title={workspace}>
-              {view?.project.name ?? 'Project'}
-            </div>
-            <span className="agent-badge general">project</span>
-          </div>
-          <div className="chat-meta">
-            <span className="ellipsis" title={workspace}>{workspace}</span>
-            {view?.project.goal && <span className="ellipsis">{view.project.goal}</span>}
-            <span className="stream-state" data-state={live} title={
-              live === 'live' ? 'Following this project live' : 'Reconnecting to this project'
-            }>
-              {live === 'live' ? 'live' : 'reconnecting…'}
-            </span>
-          </div>
-          <div className="chat-header-actions">
-            {!!waiting.length && <Badge variant="warning" label={`${waiting.length} waiting on you`} />}
-            {/* 单选、点当前项就是收起面板 —— 正好是 ToggleButtonGroup 的 single 语义。 */}
-            <ToggleButtonGroup
-              label="Project panels"
-              value={threadId ? null : panel}
-              size="sm"
-              onChange={value => {
+        <Stack className="project-masthead" padding={6} gap={4}>
+          <Stack direction="horizontal" align="center" justify="between" gap={3} wrap="wrap">
+            <Text color="secondary" type="supporting">PROJECT / WORKSPACE</Text>
+            <Text color="secondary" type="supporting">{live === 'live' ? 'Connected' : 'Reconnecting…'}</Text>
+          </Stack>
+          <Heading level={1}>{view?.project.name ?? 'Project'}</Heading>
+          <Text color="secondary">{view?.project.goal || 'A shared space for ideas, knowledge, and coordinated work.'}</Text>
+          <Stack direction="horizontal" align="center" justify="between" gap={3} wrap="wrap">
+            <Text type="supporting" color="secondary">Main agent · {tasks.length} delegated threads{waiting.length ? ` · ${waiting.length} need attention` : ''}</Text>
+            <ToggleButtonGroup label="Project panels" value={threadId ? null : panel} size="sm" onChange={value => {
+              if (value === null || value === 'overview' || value === 'library' || value === 'memory') {
                 setThreadId(null)
-                setPanel(value as 'overview' | 'library' | 'memory' | null)
-              }}
-            >
-              {(['overview', 'library', 'memory'] as const).map(entry => (
-                <ToggleButton key={entry} value={entry} label={entry} />
-              ))}
+                setPanel(value)
+              }
+            }}>
+              <ToggleButton value="overview" label="Overview" />
+              <ToggleButton value="library" label="Library" />
+              <ToggleButton value="memory" label="Memory" />
             </ToggleButtonGroup>
-          </div>
-        </div>
+          </Stack>
+        </Stack>
 
         <div className="messages-viewport">
           <div className="conversation-scroll" ref={scrollRef}>
@@ -444,7 +416,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                 <div className="conversation-welcome">
                   <ListTodo size={28} strokeWidth={1.4} />
                   <h2>What should this project work on?</h2>
-                  <p>Ask something small, or describe work worth its own thread.</p>
+                  <p>Share your goal. The main agent will plan the work and delegate threads.</p>
                 </div>
               )}
               {!view && (
@@ -463,8 +435,8 @@ export function ProjectExperience(props: ProjectExperienceProps) {
                 value={draft}
                 onChange={setDraft}
                 onSubmit={() => void sendMain()}
-                canSend={!!draft.trim() && !busy}
-                placeholder="Ask for something, or add to the work in flight."
+                canSend={!!view && !!draft.trim() && !busy}
+                placeholder="Tell the main agent what you want to accomplish…"
               />
               <div className="conversation-footer">
                 <Button
@@ -493,21 +465,7 @@ export function ProjectExperience(props: ProjectExperienceProps) {
           loading={loadingThread === threadId}
           {...(rendered.has(threadId) ? { draft: rendered.get(threadId) ?? '' } : {})}
           onClose={() => setThreadId(null)}
-          composer={
-            <div className="composer-surface">
-              <ComposerFrame
-                {...composer}
-                permission={thread?.permission ?? 'read-only'}
-                disabled={busy}
-                accessory={<PlanPanel plan={plans.get(threadId)} />}
-                value={threadDraft}
-                onChange={setThreadDraft}
-                onSubmit={() => void sendThread()}
-                canSend={!!threadDraft.trim() && !busy}
-                placeholder="Tell this thread something, or ask where it is."
-              />
-            </div>
-          }
+          plan={plans.get(threadId)}
         />
       ) : (
         view && panel && (

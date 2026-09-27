@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { Stack } from '@astryxdesign/core/Stack'
+import { Text } from '@astryxdesign/core/Text'
+import { PlanPanel } from '../PlanPanel'
+import type { DisplayPlan } from '../planDisplay'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { ChevronRight, X } from 'lucide-react'
 import { MessageBlock, projectEvents, type DisplayMessage } from './reuse'
@@ -14,8 +18,8 @@ export interface ThreadPanelProps {
   /** 这个 Thread 正在生成的正文；整轮结束后由它自己的回复取代。 */
   draft?: string
   onClose: () => void
-  /** 输入区由调用方给：它用的是会话屏的 ComposerFrame。 */
-  composer: ReactNode
+  /** Read-only execution plan; all user messages go to the main agent. */
+  plan?: DisplayPlan | undefined
 }
 
 /**
@@ -112,6 +116,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
           )}
         </section>
 
+        <PlanPanel plan={props.plan} />
         <section className="thread-transcript">
           {props.loading && !transcript.length && <p className="panel-empty">Loading…</p>}
           {!props.loading && !transcript.length && (
@@ -130,7 +135,10 @@ export function ThreadPanel(props: ThreadPanelProps) {
         </section>
 
       </div>
-      <div className="thread-composer">{props.composer}</div>
+      <Stack padding={4} gap={1} className="thread-routing-note">
+        <Text weight="medium">Managed by the main agent</Text>
+        <Text color="secondary" type="supporting">Send requests in the main conversation. This thread shows delegated work and results.</Text>
+      </Stack>
     </aside>
   )
 }

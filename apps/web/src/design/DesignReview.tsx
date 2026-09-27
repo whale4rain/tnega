@@ -11,7 +11,12 @@ import { WorkspaceSidebar } from '../workbench/WorkspaceSidebar'
 import { ComposerFrame } from '../workbench/ComposerFrame'
 import { MessageBlock } from '../conversation/Transcript'
 import type { DisplayMessage } from '../types'
+import { ProjectExperience } from '../project/ProjectExperience'
+import { installProjectFixture } from './projectFixture'
 import '../styles.css'
+
+const projectReview = new URLSearchParams(location.search).has('project')
+if (projectReview) installProjectFixture()
 
 const noop = async () => {}
 const workspace = '/studio/tnega'
@@ -31,14 +36,14 @@ function DesignReview() {
     <WorkbenchShell sidebar={<WorkspaceSidebar
       workspace={workspace} workspaces={[workspace]} selectedId={selected}
       sessions={titles.map((title, index) => ({ id: String(index), title, workspace, createdAt: 0, updatedAt: 0, eventCount: 4 }))}
-      projects={[]} selectedProjectId={null} theme={mode}
+      projects={projectReview ? [{ workspace, id: 'studio', name: 'The next workspace', openedAt: 1 }] : []} selectedProjectId={projectReview ? 'studio' : null} theme={mode}
       onTheme={value => setMode(value === 'light' ? 'light' : 'dark')}
       onSelect={(_, id) => setSelected(id)} onNew={async () => setMessages([])}
       onAdd={noop} onRemove={noop} onRename={noop} onFork={noop} onDelete={noop}
       onSettings={() => setMode(value => value === 'dark' ? 'light' : 'dark')}
       onOpenProject={() => {}} onNewProject={() => {}} onArchiveProject={noop} onDeleteProject={noop}
     />}>
-      <Stack className="chat" direction="vertical" gap={0}>
+      {projectReview ? <ProjectExperience workspace={workspace} projectId="studio" models={[{ id: 'studio', name: 'Studio model', reasoningEfforts: [] }]} model="studio" reasoningEffort="default" apiKeySet onModel={noop} onReasoningEffort={noop} onSettings={() => setMode(value => value === 'dark' ? 'light' : 'dark')} /> : <Stack className="chat" direction="vertical" gap={0}>
         <Stack direction="horizontal" className="chat-header" justify="between" align="center">
           <Stack gap={1}>
             <Heading level={3}>{titles[Number(selected)]}</Heading>
@@ -68,7 +73,7 @@ function DesignReview() {
             </Stack>
           </Stack>
         </Stack>
-      </Stack>
+      </Stack>}
     </WorkbenchShell>
   </Theme>
 }

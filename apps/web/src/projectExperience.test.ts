@@ -159,7 +159,7 @@ function stream(): Response {
  * renders it as an element rather than an input `placeholder` attribute, so it
  * is read as text.
  */
-const COMPOSER_PLACEHOLDER = 'Ask for something, or add to the work in flight.'
+const COMPOSER_PLACEHOLDER = 'Tell the main agent what you want to accomplish…'
 
 async function openProject(): Promise<void> {
   render(createElement(App))
@@ -176,7 +176,7 @@ async function openProject(): Promise<void> {
 it('keeps showing the project after the session list arrives', async () => {
   await openProject()
   // 顶部这三个面板入口是 Project 屏独有的：出现就说明换屏成功了。
-  expect(screen.getByRole('button', { name: 'overview' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Overview' })).toBeTruthy()
 
   // 会话列表是异步到的；它不该把刚打开的 Project 挤回会话屏。
   await act(async () => {
@@ -275,7 +275,7 @@ it('renders child inbox messages as a Subagent card', async () => {
 it('opens a side panel from the header switcher and closes it on a second click', async () => {
   await openProject()
   const switcher = screen.getByRole('group', { name: 'Project panels' })
-  const memory = within(switcher).getByRole('button', { name: 'memory' })
+  const memory = within(switcher).getByRole('button', { name: 'Memory' })
 
   fireEvent.click(memory)
   expect(await screen.findByText(/Nothing remembered yet/)).toBeTruthy()
@@ -284,5 +284,5 @@ it('opens a side panel from the header switcher and closes it on a second click'
   // 单选组的语义：再点当前项就是收起。
   fireEvent.click(memory)
   expect(screen.queryByText(/Nothing remembered yet/)).toBeNull()
-  expect(within(switcher).getByRole('button', { name: 'memory' }).getAttribute('aria-pressed')).toBe('false')
+  expect(within(switcher).getByRole('button', { name: 'Memory' }).getAttribute('aria-pressed')).toBe('false')
 })

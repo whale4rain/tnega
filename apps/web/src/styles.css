@@ -968,10 +968,10 @@ pre {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: var(--spacing-4);
+  padding: 0;
   border-left: 1px solid var(--hairline);
-  background: var(--surface-soft);
+  background: var(--sidebar);
   overflow-y: auto;
 }
 .project-panel-resize-handle {
@@ -994,61 +994,9 @@ pre {
   color: var(--danger);
   font-size: 12px;
 }
-.overview section h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 0 4px;
-  font-size: 12px;
-  color: var(--mute);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.overview-count {
-  color: var(--mute);
-  font-weight: 400;
-}
-.overview-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 8px;
-  width: 100%;
-  text-align: left;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--surface-card);
-  color: var(--ink);
-  cursor: pointer;
-  margin-bottom: 6px;
-  font: inherit;
-}
-.overview-row:hover {
-  background: color-mix(in srgb, var(--ink) 8%, var(--surface-card));
-}
-.library-row {
-  display: flex;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--surface-card);
-}
-.library-title {
-  margin: 0;
-  font-weight: 500;
-}
-.library-meta,
-.library-ref {
-  margin: 2px 0 0;
-  color: var(--mute);
-  font-size: 11px;
-  word-break: break-all;
-}
 .memory-row {
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--surface-card);
+  padding: var(--spacing-4) 0;
+  border-top: 1px solid var(--hairline);
 }
 .memory-text {
   margin: 0;
@@ -1197,7 +1145,6 @@ pre {
 }
 .thread-resize-handle:hover,
 .thread-resize-handle:focus-visible { background: color-mix(in srgb, var(--accent), transparent 75%); }
-.thread-composer { flex: 0 0 auto; }
 .thread-panel .composer-surface { padding: 8px 10px 10px; }
 .thread-panel .composer-surface::before { display: none; }
 .panel-card {
@@ -1319,6 +1266,24 @@ pre {
 }
 
 @layer tnega-overrides {
+  .project-masthead { border-bottom: 1px solid var(--hairline); }
+  .project-masthead h1 { font-size: var(--font-size-3xl); letter-spacing: -0.025em; }
+  .project-knowledge { flex-shrink: 0; }
+  .project-brief { background: var(--surface-card); border-radius: var(--radius-container); }
+  .project-library-row { border-bottom: 1px solid var(--hairline); }
+  .project-library-row > svg { flex-shrink: 0; color: var(--accent); }
+  .project-thread-row { width: 100%; justify-content: space-between; text-align: left; padding: var(--spacing-3); height: auto; white-space: normal; }
+  .project-thread-row > svg { flex-shrink: 0; }
+  .thread-routing-note { border-top: 1px solid var(--hairline); background: var(--sidebar); }
+  @media (max-width: 1000px) {
+    .project-workspace { flex-direction: column; overflow: auto; }
+    .project-workspace > .chat-content { flex: 0 0 80%; min-height: 480px; }
+    .project-workspace > .project-panel,
+    .project-workspace > .thread-panel { flex: 0 0 auto !important; width: 100%; min-height: 320px; border-left: 0; border-top: 1px solid var(--hairline); }
+    .project-workspace .project-panel-resize-handle,
+    .project-workspace .thread-resize-handle { display: none; }
+  }
+
   /* Astryx 的 ChatMessageList 自带 `flex: 1 1 0%`（它默认自己当滚动容器）。
      这里滚动容器是外面的 .conversation-scroll：列表必须按内容撑开、不许被压扁，
      否则内容会从列表框里溢出来盖住输入区；短对话仍靠 flex-grow 把输入区顶到底部。
