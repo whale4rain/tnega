@@ -3,9 +3,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     setupFiles: ['./vitest.setup.ts'],
-    // Rendering the Astryx shell and chat components under jsdom costs a few
-    // seconds on the first test of a file, which the 5s default does not
-    // reliably cover.
+    // Some end-to-end server tests spawn processes and exceed the 5s default.
     testTimeout: 20_000,
     include: [
       'test/**/*.test.ts',

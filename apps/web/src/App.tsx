@@ -1,632 +1,373 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button } from '@astryxdesign/core/Button'
-import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
-import { Theme as AstryxTheme } from '@astryxdesign/core/theme'
-import { studioTheme } from './workbench/theme'
-import { WorkbenchShell } from './workbench/WorkbenchShell'
-import { WorkspaceSidebar } from './workbench/WorkspaceSidebar'
-import { ChatView } from './conversation/ChatView'
-import { ProjectExperience } from './project/ProjectExperience'
-import { SettingsView } from './workbench/SettingsView'
-import type { ThemePreference } from './ThemeToggle'
-import {
-  clearSessionSelection,
-  readSessionSelection,
-  readWorkspaceSelection,
-  resolveWorkspaceSelection,
-  writeSessionSelection,
-  writeWorkspaceSelection,
-} from './sessionSelection'
-import { latestPlanFromEvents, type DisplayPlan } from './planDisplay'
-import {
-  readRecentProjects,
-  rememberProject,
-  forgetProject,
-  setRecentProjectArchived,
-  type RecentProject,
-} from './projectSelection'
-import { NewProjectDialog } from './project/NewProjectDialog'
-import { projectEvents } from './projectEvents'
-import * as api from './api'
-import * as projectApi from './project/api'
-import type {
-  ConfigSnapshot,
-  ContextUsage,
-  SessionMetrics,
-  DisplayMessage,
-  SessionSummary,
-} from './types'
+import { FolderKanban, FolderPlus } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Conversation } from './components/Conversation'
+import type { RunSettings } from './components/Composer'
+import { NewProjectDialog } from './components/project/NewProjectDialog'
+import { ProjectView } from './components/project/ProjectView'
+import { SettingsDialog } from './components/SettingsDialog'
+import { Sidebar } from './components/Sidebar'
+import { SubagentDrawer } from './components/SubagentDrawer'
+import { WorkspaceDialog } from './components/WorkspaceDialog'
+import { api } from './lib/api'
+import { errorText, useStoredState, useTheme } from './lib/hooks'
+import { projectApi } from './lib/project-api'
+import type { ProjectRecord } from './lib/project-types'
+import type { AgentType, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
 
-const THEME_STORAGE_KEY = 'tnega-theme'
-const LAST_VIEW_KEY = 'tnega-last-view'
-const LAST_PROJECT_KEY = 'tnega-last-project'
+type Mode = 'sessions' | 'projects'
 
-function initialThemePreference(): ThemePreference {
-  const stored = localStorage.getItem(THEME_STORAGE_KEY)
-  if (stored === 'light' || stored === 'dark' || stored === 'system') {
-    return stored
+interface ProjectRoute {
+  id?: string
+  threadId?: string
+}
+
+function sessionFromHash(): string | undefined {
+  const id = location.hash.replace(/^#\/?/, '')
+  return /^[\w-]{6,}$/.test(id) ? id : undefined
+}
+
+/** `#p/<project>` or `#p/<project>/<thread>`. */
+function projectFromHash(): ProjectRoute | undefined {
+  const match = location.hash.match(/^#\/?p\/([\w-]+)(?:\/([\w-]+))?$/)
+  if (!match) return undefined
+  return { id: match[1]!, ...(match[2] ? { threadId: match[2] } : {}) }
+}
+
+function setHash(hash: string): void {
+  if (location.hash !== hash && !(hash === '' && location.hash === '')) {
+    history.replaceState(null, '', `${location.pathname}${location.search}${hash}`)
   }
-  return 'dark'
 }
 
-function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
-  if (preference === 'light' || preference === 'dark') return preference
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
-}
-
-export default function App() {
-  return <ChatApp />
-}
-
-function ChatApp() {
-  const [themePreference, setThemePreference] = useState<ThemePreference>(
-    initialThemePreference,
-  )
-  const [appearance, setAppearance] = useState(() =>
-    resolveTheme(themePreference),
-  )
-  const [config, setConfig] = useState<ConfigSnapshot | null>(null)
-  const [workspaces, setWorkspaces] = useState<string[]>([])
-  const [workspace, setWorkspace] = useState<string | null>(() =>
-    readWorkspaceSelection(localStorage),
-  )
-  const currentWorkspace = useRef(workspace)
+export function App() {
+  const [theme, setTheme] = useTheme()
+  const [config, setConfig] = useState<ConfigSnapshot | undefined>()
+  const [workspaces, setWorkspaces] = useState<string[] | undefined>()
+  const [workspace, setWorkspace] = useStoredState<string>('tnega.workspace', '')
   const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [sessionId, setSessionId] = useState<string | null>(() => {
-    const selectedWorkspace = readWorkspaceSelection(localStorage)
-    return selectedWorkspace ? readSessionSelection(localStorage, selectedWorkspace) : null
-  })
-  const selection = useRef<{ workspace: string; id: string } | null>(null)
-  const [summary, setSummary] = useState<SessionSummary | null>(null)
-  const [context, setContext] = useState<ContextUsage | null>(null)
-  const [metrics, setMetrics] = useState<SessionMetrics | null>(null)
-  const [sessionRunning, setSessionRunning] = useState(false)
-  const [messages, setMessages] = useState<DisplayMessage[]>([])
-  const [plan, setPlan] = useState<DisplayPlan | undefined>(undefined)
-  const [error, setError] = useState<string | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  // Project 与 Session 是同一块主区的两种内容：选中谁就显示谁。
-  const [project, setProject] = useState<{ workspace: string; id: string } | null>(null)
-  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() =>
-    readRecentProjects(localStorage))
-  const [creatingProject, setCreatingProject] = useState(false)
-  const projected = useRef<{ id: string; seq: number } | null>(null)
-  const restoredSelection = useRef(false)
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | undefined>(sessionFromHash)
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 860)
+  const [dialog, setDialog] = useState<'settings' | 'workspace' | undefined>()
+  const [subagent, setSubagent] = useState<{ id: string; label: string } | undefined>()
+  const [fatal, setFatal] = useState<string | undefined>()
+  const [mode, setMode] = useStoredState<Mode>('tnega.mode', projectFromHash() ? 'projects' : 'sessions', ['sessions', 'projects'])
+  const [projectRoute, setProjectRoute] = useState<ProjectRoute>(() => projectFromHash() ?? {})
+  const [projects, setProjects] = useState<ProjectRecord[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [newProject, setNewProject] = useState(false)
+
+  const [agentType, setAgentType] = useStoredState<AgentType>('tnega.agentType', 'coding', ['coding', 'general'])
+  const [permission, setPermission] = useStoredState<Permission>('tnega.permission', 'read-only', ['read-only', 'workspace-write', 'bypass'])
+  const [draftExtras, setDraftExtras] = useState<Pick<RunSettings, 'mode' | 'model' | 'reasoningEffort'>>({ mode: 'auto', reasoningEffort: 'default' })
+  const draftSettings: RunSettings = { agentType, permission, ...draftExtras }
+  const updateDraft = (patch: Partial<RunSettings>) => {
+    if (patch.agentType) setAgentType(patch.agentType)
+    if (patch.permission) setPermission(patch.permission)
+    const extras: Partial<RunSettings> = {}
+    if (patch.mode) extras.mode = patch.mode
+    if (patch.reasoningEffort) extras.reasoningEffort = patch.reasoningEffort
+    if ('model' in patch) extras.model = patch.model
+    if (Object.keys(extras).length) setDraftExtras(current => ({ ...current, ...extras }))
+  }
+
+  // --- bootstrapping -------------------------------------------------------
 
   useEffect(() => {
-    const root = document.documentElement
-    root.dataset.theme = resolveTheme(themePreference)
-    setAppearance(resolveTheme(themePreference))
-    localStorage.setItem(THEME_STORAGE_KEY, themePreference)
-    if (themePreference !== 'system') return
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const listener = () => {
-      root.dataset.theme = resolveTheme('system')
-      setAppearance(resolveTheme('system'))
-    }
-    media.addEventListener('change', listener)
-    return () => media.removeEventListener('change', listener)
-  }, [themePreference])
-
-  useEffect(() => {
-    let cancelled = false
-    void Promise.all([api.getConfig(), api.listWorkspaces()])
-      .then(([nextConfig, nextWorkspaces]) => {
-        if (cancelled) return
-        setConfig(nextConfig)
-        const stored = nextWorkspaces.workspaces
-        setWorkspaces(stored)
-        const nextWorkspace = resolveWorkspaceSelection(localStorage, stored)
-        if (nextWorkspace !== currentWorkspace.current) {
-          selection.current = null
-          setSessionId(null)
-          setSummary(null)
-          setMessages([])
-          projected.current = null
-        }
-        currentWorkspace.current = nextWorkspace
-        setWorkspace(nextWorkspace)
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setError(messageOf(reason))
-      })
-    return () => {
-      cancelled = true
-    }
+    api.config().then(setConfig, reason => setFatal(errorText(reason)))
+    api.workspaces().then(result => {
+      setWorkspaces(result.workspaces)
+      if (!result.workspaces.includes(workspace)) setWorkspace(result.workspaces[0] ?? '')
+    }, reason => setFatal(errorText(reason)))
+    // `workspace` is only consulted once, to validate the stored choice.
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    for (const path of workspaces) {
-      void api
-        .listSessions(path)
-        .then(({ sessions: next }) => {
-          if (!cancelled)
-            setSessions((current) => [
-              ...current.filter((item) => item.workspace !== path),
-              ...next,
-            ])
-        })
-        .catch((reason: unknown) => {
-          if (!cancelled) setError(`${path}: ${messageOf(reason)}`)
-        })
-    }
-    return () => {
-      cancelled = true
-    }
-  }, [workspaces])
-
-  const selectSession = useCallback((path: string, id: string) => {
-    const target = { workspace: path, id }
-    setProject(null)
-    localStorage.setItem(LAST_VIEW_KEY, 'sessions')
-    selection.current = target
-    currentWorkspace.current = path
-    setWorkspace(path)
-    setSessionId(id)
-    writeWorkspaceSelection(localStorage, path)
-    writeSessionSelection(localStorage, path, id)
-    setError(null)
-    setMessages([])
-    projected.current = null
-    setSummary(null)
-    setContext(null)
-    setMetrics(null)
-    setSessionRunning(false)
-    setPlan(undefined)
-    api
-      .getSession(path, id)
-      .then((detail) => {
-        if (selection.current !== target) return
-        setSummary(detail.summary)
-        setContext(detail.context)
-        setMetrics(detail.metrics)
-        setSessionRunning(detail.running)
-        projected.current = { id, seq: detail.events.at(-1)?.seq ?? 0 }
-        setMessages(projectEvents(detail.events))
-        setPlan(latestPlanFromEvents(detail.events))
-      })
-      .catch((reason: unknown) => {
-        if (selection.current === target) setError(messageOf(reason))
-      })
-  }, [])
-
-  const openProject = useCallback((next: RecentProject) => {
-    setProject({ workspace: next.workspace, id: next.id })
-    setRecentProjects(rememberProject(localStorage, next))
-    localStorage.setItem(LAST_PROJECT_KEY, `${next.workspace}\n${next.id}`)
-    localStorage.setItem(LAST_VIEW_KEY, 'projects')
-  }, [])
-
-  async function handleCreateProject(input: { name: string; folder: string; goal?: string }) {
-    try {
-      const { project: created } = await projectApi.createProject(input.folder, {
-        name: input.name,
-        ...(input.goal ? { goal: input.goal } : {}),
-      })
-      openProject({
-        workspace: input.folder,
-        id: created.id,
-        name: created.name,
-        openedAt: Date.now(),
-      })
-    } catch (reason) {
-      setError(messageOf(reason))
-      throw reason
-    }
-  }
-
-  /** 项目里跑的模型与思考强度就是这台机器的默认配置；这里改的就是设置里那一份。 */
-  async function handleConfigModel(model: string) {
-    try {
-      setConfig(await api.saveConfig({ model }))
-    } catch (reason) {
-      setError(messageOf(reason))
-    }
-  }
-
-  async function handleConfigReasoningEffort(effort: 'default' | 'low' | 'medium' | 'high') {
-    try {
-      setConfig(await api.saveConfig({ reasoningEffort: effort === 'default' ? '' : effort }))
-    } catch (reason) {
-      setError(messageOf(reason))
-    }
-  }
-
-  async function handleArchiveProject(target: RecentProject, archived: boolean) {
-    await projectApi.archiveProject(target.workspace, target.id, archived)
-    setRecentProjects(setRecentProjectArchived(localStorage, target.id, archived))
-  }
-
-  async function handleDeleteProject(target: RecentProject) {
-    await projectApi.deleteProject(target.workspace, target.id)
-    setRecentProjects(forgetProject(localStorage, target.id))
-    setProject(current => current?.id === target.id ? null : current)
-  }
-
-  useEffect(() => {
-    const refreshConfig = () => { void api.getConfig().then(setConfig).catch(reason => setError(messageOf(reason))) }
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === 'tnega-config-revision') refreshConfig()
-    }
-    window.addEventListener('storage', onStorage)
-    window.addEventListener('focus', refreshConfig)
-    return () => {
-      window.removeEventListener('storage', onStorage)
-      window.removeEventListener('focus', refreshConfig)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (restoredSelection.current) return
-    restoredSelection.current = true
-    if (localStorage.getItem(LAST_VIEW_KEY) === 'projects') {
-      const projects = readRecentProjects(localStorage)
-      const lastKey = localStorage.getItem(LAST_PROJECT_KEY)
-      const last = projects.find(entry => `${entry.workspace}\n${entry.id}` === lastKey) ?? projects[0]
-      if (last) {
-        openProject(last)
-        return
-      }
-    }
-    if (!workspace || !sessionId) return
-    selectSession(workspace, sessionId)
-  }, [workspace, sessionId, selectSession, openProject])
-
-  useEffect(() => {
-    if (workspace) writeWorkspaceSelection(localStorage, workspace)
+  const refreshSessions = useCallback(() => {
+    if (!workspace) return
+    api.sessions(workspace).then(result => setSessions(result.sessions), () => {})
   }, [workspace])
 
   useEffect(() => {
-    // 只在会话屏里自动回到上次的会话。打开着 Project 时这条不参与 —— 否则会话列表一刷新
-    // 就会把刚打开的 Project 挤掉，退回上一次的会话。
-    if (project || !workspace || sessionId) return
-    const available = sessions.filter(
-      (session) => session.workspace === workspace,
-    )
-    if (!available.length) return
-    const preferred = readSessionSelection(localStorage, workspace)
-    if (!preferred || sessionId === preferred) return
-    if (!available.some((session) => session.id === preferred)) {
-      clearSessionSelection(localStorage, workspace)
-      return
+    setSessions([])
+    if (!workspace) return
+    setSessionsLoading(true)
+    let cancelled = false
+    api.sessions(workspace)
+      .then(result => {
+        if (cancelled) return
+        setSessions(result.sessions)
+        // A linked session from another workspace can't be opened here.
+        const linked = sessionFromHash()
+        if (linked && !result.sessions.some(s => s.id === linked)) {
+          setSelectedId(undefined)
+          history.replaceState(null, '', `${location.pathname}${location.search}`)
+        }
+      }, reason => !cancelled && setFatal(errorText(reason)))
+      .finally(() => !cancelled && setSessionsLoading(false))
+    return () => {
+      cancelled = true
     }
-    selectSession(workspace, preferred)
-  }, [project, sessions, workspace, sessionId, selectSession])
+  }, [workspace])
 
-  const selectWorkspace = useCallback(
-    (next: string) => {
-      if (next === workspace) return
-      setProject(null)
-      selection.current = null
-      currentWorkspace.current = next
-      setWorkspace(next)
-      setSessionId(null)
-      setSummary(null)
-      setContext(null)
-      setMetrics(null)
-      setSessionRunning(false)
-      setMessages([])
-      projected.current = null
-      setPlan(undefined)
-    },
-    [workspace],
-  )
+  const refreshProjects = useCallback(() => {
+    if (!workspace) return
+    projectApi.list(workspace).then(result => setProjects(result.projects), () => {})
+  }, [workspace])
 
-  const refreshSession = useCallback(
-    async (id: string, refreshList = true) => {
-      if (!workspace) return
-      const target = selection.current
-      if (target?.workspace !== workspace || target.id !== id) return
-      const detail = await api.getSession(workspace, id)
-      if (selection.current !== target) return detail
-      setSummary(current => sameValue(current, detail.summary) ? current : detail.summary)
-      setContext(current => sameValue(current, detail.context) ? current : detail.context)
-      setMetrics(current => sameValue(current, detail.metrics) ? current : detail.metrics)
-      setSessionRunning(detail.running)
-      const seq = detail.events.at(-1)?.seq ?? 0
-      if (projected.current?.id !== id || projected.current.seq !== seq) {
-        projected.current = { id, seq }
-        setMessages(projectEvents(detail.events))
-        setPlan(latestPlanFromEvents(detail.events))
-      }
-      if (refreshList) {
-        const next = await api.listSessions(workspace)
-        setSessions((current) => [
-          ...current.filter((item) => item.workspace !== workspace),
-          ...next.sessions,
-        ])
-      }
-      return detail
-    },
-    [workspace],
-  )
-
-  async function handleAddWorkspace(path: string) {
-    if (!path.trim()) return
-    try {
-      const result = await api.addWorkspace(path.trim())
-      setWorkspaces(result.workspaces)
-      selectWorkspace(result.path)
-    } catch (reason) {
-      setError(messageOf(reason))
-      throw reason
+  useEffect(() => {
+    setProjects([])
+    if (!workspace || mode !== 'projects') return
+    setProjectsLoading(true)
+    let cancelled = false
+    projectApi.list(workspace)
+      .then(result => !cancelled && setProjects(result.projects), () => {})
+      .finally(() => !cancelled && setProjectsLoading(false))
+    return () => {
+      cancelled = true
     }
+  }, [workspace, mode])
+
+  // --- selection mirrors the URL hash so sessions and projects are linkable --
+
+  const select = useCallback((id: string | undefined) => {
+    setMode('sessions')
+    setSelectedId(id)
+    setSubagent(undefined)
+    setHash(id ? `#${id}` : '')
+    if (window.innerWidth <= 860) setSidebarOpen(false)
+  }, [setMode])
+
+  const openProject = useCallback((id: string | undefined, threadId?: string) => {
+    setMode('projects')
+    setSubagent(undefined)
+    setProjectRoute({ ...(id ? { id } : {}), ...(threadId ? { threadId } : {}) })
+    setHash(id ? `#p/${id}${threadId ? `/${threadId}` : ''}` : '')
+    if (window.innerWidth <= 860) setSidebarOpen(false)
+  }, [setMode])
+
+  const changeMode = (next: Mode) => {
+    if (next === mode) return
+    if (next === 'projects') openProject(projectRoute.id)
+    else select(selectedId)
   }
 
-  async function handleRemoveWorkspace(path: string) {
+  useEffect(() => {
+    const onHash = () => {
+      const project = projectFromHash()
+      if (project) {
+        setMode('projects')
+        setProjectRoute(project)
+      } else {
+        setSelectedId(sessionFromHash())
+      }
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [setMode])
+
+  // --- keyboard -------------------------------------------------------------
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const mod = event.ctrlKey || event.metaKey
+      if (mod && event.shiftKey && event.key.toLowerCase() === 'o') {
+        event.preventDefault()
+        if (mode === 'projects') setNewProject(true)
+        else select(undefined)
+      } else if (mod && !event.shiftKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        setSidebarOpen(open => !open)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [select, mode])
+
+  // --- actions ---------------------------------------------------------------
+
+  const chooseWorkspace = (path: string) => {
+    if (path === workspace) return
+    setWorkspace(path)
+    if (mode === 'projects') openProject(undefined)
+    else select(undefined)
+  }
+
+  const removeWorkspace = async (path: string) => {
     try {
       const result = await api.removeWorkspace(path)
       setWorkspaces(result.workspaces)
-      setSessions((current) =>
-        current.filter((session) => session.workspace !== path),
-      )
-      clearSessionSelection(localStorage, path)
-      if (currentWorkspace.current === path) {
-        selection.current = null
-        currentWorkspace.current = null
-        setWorkspace(null)
-        setSessionId(null)
-        setSummary(null)
-        setContext(null)
-        setSessionRunning(false)
-        setMessages([])
-        projected.current = null
-        setPlan(undefined)
+      if (path === workspace) {
+        setWorkspace(result.workspaces[0] ?? '')
+        select(undefined)
       }
     } catch (reason) {
-      setError(messageOf(reason))
+      alert(errorText(reason))
     }
   }
 
-  async function handleNewSession(
-    options: {
-      agentType?: 'general' | 'coding'
-      mode?: 'auto' | 'plan' | 'goal'
-    } = {},
-    targetWorkspace = workspace,
-  ) {
-    if (!targetWorkspace) return
+  const forkSession = async (id: string) => {
     try {
-      const { session } = await api.createSession(targetWorkspace, options)
-      setSessions((current) => [session, ...current])
-      selectSession(targetWorkspace, session.id)
+      const { session } = await api.forkSession(workspace, id)
+      setSessions(list => [session, ...list])
+      select(session.id)
     } catch (reason) {
-      setError(messageOf(reason))
+      alert(errorText(reason))
     }
   }
 
-  async function handleRename(path: string, id: string, title: string) {
-    if (!title.trim()) return
+  const deleteSession = async (session: SessionSummary) => {
+    if (!confirm(`Delete “${session.title || 'Untitled session'}”? This can't be undone.`)) return
     try {
-      const { summary: next } = await api.renameSession(path, id, title.trim())
-      setSessions((current) =>
-        current.map((session) =>
-          session.workspace === path && session.id === id ? next : session,
-        ),
-      )
-      if (selection.current?.workspace === path && selection.current.id === id)
-        setSummary(next)
+      await api.deleteSession(workspace, session.id)
+      setSessions(list => list.filter(s => s.id !== session.id))
+      if (session.id === selectedId) select(undefined)
     } catch (reason) {
-      setError(messageOf(reason))
-      throw reason
+      alert(errorText(reason))
     }
   }
 
-  async function handleFork(path: string, id: string) {
-    try {
-      const { session } = await api.forkSession(path, id)
-      setSessions((current) => [session, ...current])
-      selectSession(path, session.id)
-    } catch (reason) {
-      setError(messageOf(reason))
-    }
+  // --- render -----------------------------------------------------------------
+
+  if (fatal && !workspaces) {
+    return (
+      <div className="splash">
+        <span className="brand-mark large" aria-hidden />
+        <h1>Can't reach the tnega server</h1>
+        <p className="muted">{fatal}</p>
+        <p className="muted small">Start it with <code>pnpm tnega web</code>, then reload this page.</p>
+        <button type="button" className="button primary" onClick={() => location.reload()}>Reload</button>
+      </div>
+    )
   }
 
-  async function handleForkAt(id: string, messageId: string) {
-    if (!workspace) return
-    try {
-      const { session } = await api.forkSession(workspace, id, { messageId })
-      setSessions((current) => [session, ...current])
-      selectSession(workspace, session.id)
-    } catch (reason) {
-      setError(messageOf(reason))
-    }
+  if (!workspaces) {
+    return <div className="splash"><span className="brand-mark large pulse" aria-hidden /></div>
   }
-
-  async function handleDelete(path: string, id: string) {
-    try {
-      await api.deleteSession(path, id)
-      setSessions((current) =>
-        current.filter(
-          (session) => session.workspace !== path || session.id !== id,
-        ),
-      )
-      if (readSessionSelection(localStorage, path) === id)
-        clearSessionSelection(localStorage, path)
-      if (
-        selection.current?.workspace === path &&
-        selection.current.id === id
-      ) {
-        selection.current = null
-        setSessionId(null)
-        setSummary(null)
-        setContext(null)
-        setSessionRunning(false)
-        setMessages([])
-        projected.current = null
-        setPlan(undefined)
-      }
-    } catch (reason) {
-      setError(messageOf(reason))
-      throw reason
-    }
-  }
-
-  async function handleModeChange(nextMode: 'auto' | 'plan' | 'goal') {
-    if (!workspace || !sessionId) return
-    try {
-      const { summary: next } = await api.patchSessionMeta(
-        workspace,
-        sessionId,
-        {
-          mode: nextMode,
-        },
-      )
-      if (
-        selection.current?.workspace === workspace &&
-        selection.current.id === sessionId
-      )
-        setSummary(next)
-      setSessions((current) =>
-        current.map((session) =>
-          session.workspace === workspace && session.id === sessionId
-            ? next
-            : session,
-        ),
-      )
-    } catch (reason) {
-      setError(messageOf(reason))
-    }
-  }
-
-  async function handleModelChange(model: string) {
-    if (!workspace || !sessionId) return
-    try {
-      const { summary: next } = await api.patchSessionMeta(workspace, sessionId, {
-        model,
-        reasoningEffort: 'default',
-      })
-      if (selection.current?.workspace === workspace && selection.current.id === sessionId) setSummary(next)
-      setSessions(current => current.map(item => item.workspace === workspace && item.id === sessionId ? next : item))
-    } catch (reason) {
-      setError(messageOf(reason))
-    }
-  }
-
-  async function handleReasoningEffortChange(reasoningEffort: 'default' | 'low' | 'medium' | 'high') {
-    if (!workspace || !sessionId) return
-    try {
-      const { summary: next } = await api.patchSessionMeta(workspace, sessionId, { reasoningEffort })
-      if (selection.current?.workspace === workspace && selection.current.id === sessionId) setSummary(next)
-      setSessions(current => current.map(item => item.workspace === workspace && item.id === sessionId ? next : item))
-    } catch (reason) {
-      setError(messageOf(reason))
-    }
-  }
-
-  const currentModelId = summary?.model ?? config?.effective.modelId
-  const modelApiKeySet = config?.models.find(item => item.id === currentModelId)?.apiKeySet
-    ?? config?.apiKeySet ?? false
 
   return (
-    <>
-      <AstryxTheme theme={studioTheme} mode={appearance}>
-        <WorkbenchShell
-          sidebar={
-            <WorkspaceSidebar
-              workspaces={workspaces}
-              workspace={workspace}
-              sessions={sessions}
-              selectedId={sessionId}
-              projects={recentProjects}
-              selectedProjectId={project?.id ?? null}
-              onOpenProject={openProject}
-              onArchiveProject={handleArchiveProject}
-              onDeleteProject={handleDeleteProject}
-              onNewProject={() => setCreatingProject(true)}
-              onAdd={handleAddWorkspace}
-              onRemove={handleRemoveWorkspace}
-              onSelect={(path, id) => {
-                selectSession(path, id)
-              }}
-              onNew={async (options, path) => {
-                await handleNewSession(options, path)
-              }}
-              onRename={handleRename}
-              onFork={handleFork}
-              onDelete={handleDelete}
-              onSettings={() => setSettingsOpen(true)}
-              theme={themePreference}
-              onTheme={setThemePreference}
-            />
-          }
-        >
-          {error && (
-            <div className="error-banner" role="alert">
-              <span className="marker">Error</span>
-              <span>{error}</span>
-              <Button label="Close" variant="ghost" size="sm" onClick={() => setError(null)} />
-            </div>
-          )}
-          {project ? (
-            <ProjectExperience
-              workspace={project.workspace}
-              projectId={project.id}
-              models={config?.models ?? []}
-              model={config?.effective.modelId}
-              reasoningEffort={config?.effective.reasoningEffort ?? 'default'}
-              onModel={handleConfigModel}
-              onReasoningEffort={handleConfigReasoningEffort}
-              apiKeySet={modelApiKeySet}
-              onSettings={() => setSettingsOpen(true)}
-            />
-          ) : (
-            <ChatView
-              model={currentModelId}
-              models={config?.models ?? []}
-              reasoningEffort={summary?.reasoningEffort ?? config?.effective.reasoningEffort ?? 'default'}
-              onModelChange={handleModelChange}
-              onReasoningEffortChange={handleReasoningEffortChange}
-              onSettings={() => setSettingsOpen(true)}
-              workspace={workspace}
-              sessionId={sessionId}
-              summary={summary}
-              context={context}
-              metrics={metrics}
-              sessionRunning={sessionRunning}
-              messages={messages}
-              apiKeySet={modelApiKeySet}
-              onNewSession={handleNewSession}
-              onRefresh={refreshSession}
-              onForkAt={handleForkAt}
-              onMessagesChange={setMessages}
-              plan={plan}
-              onPlanChange={setPlan}
-              onModeChange={handleModeChange}
-            />
-          )}
-        </WorkbenchShell>
-      </AstryxTheme>
-      <NewProjectDialog
-        open={creatingProject}
-        defaultFolder={workspace ?? undefined}
-        onOpenChange={setCreatingProject}
-        onCreate={handleCreateProject}
-      />
-      <Dialog
-        isOpen={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        width={680}
-      >
-        <DialogHeader title="Settings" onOpenChange={() => setSettingsOpen(false)} />
-        <div className="settings-dialog">
-          <SettingsView config={config} onReload={setConfig} onSaved={next => {
-            setConfig(next)
-            setSettingsOpen(false)
-          }} />
-        </div>
-      </Dialog>
-    </>
+    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${subagent ? ' drawer-open' : ''}`}>
+      {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && (
+        <Sidebar
+          workspaces={workspaces}
+          workspace={workspace || undefined}
+          onSelectWorkspace={chooseWorkspace}
+          onAddWorkspace={() => setDialog('workspace')}
+          onRemoveWorkspace={path => void removeWorkspace(path)}
+          sessions={sessions}
+          sessionsLoading={sessionsLoading}
+          selectedId={selectedId}
+          onSelectSession={select}
+          onNewSession={() => select(undefined)}
+          onForkSession={id => void forkSession(id)}
+          onDeleteSession={session => void deleteSession(session)}
+          onOpenSettings={() => setDialog('settings')}
+          theme={theme}
+          onThemeChange={setTheme}
+          onCollapse={() => setSidebarOpen(false)}
+          mode={mode}
+          onModeChange={changeMode}
+          projects={projects}
+          projectsLoading={projectsLoading}
+          selectedProjectId={projectRoute.id}
+          onSelectProject={id => openProject(id)}
+          onNewProject={() => setNewProject(true)}
+        />
+      )}
+
+      {workspace && mode === 'projects' && (projectRoute.id
+        ? (
+          <ProjectView
+            key={projectRoute.id}
+            workspace={workspace}
+            projectId={projectRoute.id}
+            threadId={projectRoute.threadId}
+            config={config}
+            onOpenThread={threadId => openProject(projectRoute.id, threadId)}
+            onDeleted={() => {
+              setProjects(list => list.filter(p => p.id !== projectRoute.id))
+              openProject(undefined)
+            }}
+            onChanged={refreshProjects}
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={() => setSidebarOpen(open => !open)}
+          />
+        )
+        : (
+          <main className="welcome">
+            <span className="welcome-icon"><FolderKanban size={26} /></span>
+            <h1>Projects</h1>
+            <p>Describe an outcome once. A coordinator splits it into parallel threads that share memory and a library, and reports back in one conversation.</p>
+            <button type="button" className="button primary large" onClick={() => setNewProject(true)}>
+              <FolderPlus size={17} /> New project
+            </button>
+          </main>
+        ))}
+
+      {mode === 'projects' && workspace ? null : workspace
+        ? (
+          <Conversation
+            workspace={workspace}
+            sessionId={selectedId}
+            config={config}
+            draftSettings={draftSettings}
+            onDraftSettingsChange={updateDraft}
+            onSessionCreated={session => {
+              setSessions(list => [session, ...list.filter(s => s.id !== session.id)])
+              select(session.id)
+            }}
+            onSessionsChanged={refreshSessions}
+            onSessionDeleted={id => {
+              setSessions(list => list.filter(s => s.id !== id))
+              select(undefined)
+            }}
+            onOpenSettings={() => setDialog('settings')}
+            onOpenSubagent={(id, label) => setSubagent({ id, label })}
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={() => setSidebarOpen(open => !open)}
+          />
+        )
+        : (
+          <main className="welcome">
+            <span className="brand-mark large" aria-hidden />
+            <h1>Welcome to tnega</h1>
+            <p>Pick a folder for the agent to work in. You can switch between workspaces at any time.</p>
+            <button type="button" className="button primary large" onClick={() => setDialog('workspace')}>
+              <FolderPlus size={17} /> Open a folder
+            </button>
+          </main>
+        )}
+
+      {subagent && workspace && (
+        <SubagentDrawer
+          workspace={workspace}
+          id={subagent.id}
+          label={subagent.label}
+          onClose={() => setSubagent(undefined)}
+          onOpenSubagent={(id, label) => setSubagent({ id, label })}
+        />
+      )}
+
+      {newProject && workspace && (
+        <NewProjectDialog
+          workspace={workspace}
+          onClose={() => setNewProject(false)}
+          onCreated={project => {
+            setProjects(list => [project, ...list])
+            openProject(project.id)
+          }}
+        />
+      )}
+      {dialog === 'settings' &&<SettingsDialog config={config} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
+      {dialog === 'workspace' && (
+        <WorkspaceDialog
+          onClose={() => setDialog(undefined)}
+          onAdded={(path, all) => {
+            setWorkspaces(all)
+            chooseWorkspace(path)
+          }}
+        />
+      )}
+    </div>
   )
-}
-
-function messageOf(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason)
-}
-
-function sameValue(left: object | null, right: object): boolean {
-  return left !== null && JSON.stringify(left) === JSON.stringify(right)
 }

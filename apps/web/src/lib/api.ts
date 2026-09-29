@@ -1,0 +1,187 @@
+import type {
+  AgentType,
+  ConfigSnapshot,
+  GoalState,
+  Permission,
+  SessionDetail,
+  SessionEffort,
+  SessionEvent,
+  SessionMode,
+  SessionSummary,
+  SlashCommand,
+  SlashResult,
+  StreamEvent,
+  SubagentEntry,
+} from './types'
+
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+  }
+}
+
+async function errorFrom(response: Response): Promise<ApiError> {
+  let message = `${response.status} ${response.statusText}`.trim()
+  try {
+    const body = await response.json() as { error?: unknown }
+    if (typeof body.error === 'string' && body.error) message = body.error
+  } catch {
+    // Non-JSON error bodies keep the status line.
+  }
+  return new ApiError(response.status, message)
+}
+
+async function call<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  const headers: Record<string, string> = { 'x-tnega-client': '1' }
+  if (init.body !== undefined) headers['content-type'] = 'application/json'
+  const response = await fetch(path, {
+    method: init.method ?? 'GET',
+    headers,
+    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+  })
+  if (!response.ok) throw await errorFrom(response)
+  if (response.status === 204) return undefined as T
+  return response.json() as Promise<T>
+}
+
+function scoped(path: string, workspace: string, extra?: Record<string, string>): string {
+  const query = new URLSearchParams({ workspace, ...extra })
+  return `${path}?${query.toString()}`
+}
+
+export interface SessionPatch {
+  title?: string
+  agentType?: AgentType
+  mode?: SessionMode
+  model?: string
+  reasoningEffort?: SessionEffort
+  permission?: Permission
+}
+
+export interface ConfigPatch {
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+  protocol?: '' | 'anthropic' | 'openai'
+  reasoningEffort?: '' | 'low' | 'medium' | 'high'
+  temperature?: number
+}
+
+export const api = {
+  config: () => call<ConfigSnapshot>('/api/config'),
+  saveConfig: (patch: ConfigPatch) => call<ConfigSnapshot>('/api/config', { method: 'PUT', body: patch }),
+
+  workspaces: () => call<{ workspaces: string[] }>('/api/workspaces'),
+  addWorkspace: (path: string) =>
+    call<{ path: string; workspaces: string[] }>('/api/workspaces', { method: 'POST', body: { path } }),
+  removeWorkspace: (path: string) =>
+    call<{ workspaces: string[] }>('/api/workspaces', { method: 'DELETE', body: { path } }),
+  pickFolder: async (): Promise<string | undefined> => {
+    const desktop = (globalThis as { tnegaDesktop?: { pickFolder?: () => Promise<string | undefined> } }).tnegaDesktop
+    if (desktop?.pickFolder) return desktop.pickFolder()
+    const result = await call<{ path?: string }>('/api/folder-picker', { method: 'POST', body: {} })
+    return result.path
+  },
+
+  sessions: (workspace: string) =>
+    call<{ sessions: SessionSummary[] }>(scoped('/api/sessions', workspace)),
+  createSession: (workspace: string, init: { title?: string; agentType?: AgentType; mode?: SessionMode } = {}) =>
+    call<{ session: SessionSummary }>(scoped('/api/sessions', workspace), { method: 'POST', body: init }),
+  session: (workspace: string, id: string) =>
+    call<SessionDetail>(scoped(`/api/sessions/${id}`, workspace)),
+  patchSession: (workspace: string, id: string, patch: SessionPatch) =>
+    call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}`, workspace), { method: 'PATCH', body: patch }),
+  deleteSession: (workspace: string, id: string) =>
+    call<void>(scoped(`/api/sessions/${id}`, workspace), { method: 'DELETE' }),
+  forkSession: (workspace: string, id: string, messageId?: string) =>
+    call<{ session: SessionSummary }>(scoped(`/api/sessions/${id}/fork`, workspace), {
+      method: 'POST',
+      body: messageId ? { messageId } : {},
+    }),
+  truncate: (workspace: string, id: string, messageId: string) =>
+    call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}/truncate`, workspace), {
+      method: 'POST',
+      body: { messageId },
+    }),
+  compact: (workspace: string, id: string) =>
+    call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}/compact`, workspace), { method: 'POST', body: {} }),
+  stop: (workspace: string, id: string) =>
+    call<{ stopped: boolean }>(scoped(`/api/sessions/${id}/stop`, workspace), { method: 'POST', body: {} }),
+  approve: (workspace: string, id: string, approvalId: string, allow: boolean) =>
+    call<{ accepted: boolean }>(scoped(`/api/sessions/${id}/approvals/${approvalId}`, workspace), {
+      method: 'POST',
+      body: { allow },
+    }),
+  goal: (workspace: string, id: string) =>
+    call<{ goal: GoalState | null }>(scoped(`/api/sessions/${id}/goal`, workspace)),
+  subagents: (workspace: string, id: string) =>
+    call<{ subagents: SubagentEntry[] }>(scoped(`/api/sessions/${id}/subagents`, workspace, { scope: 'descendants' })),
+  subagent: (workspace: string, id: string) =>
+    call<{ id: string; events: SessionEvent[] }>(scoped(`/api/subagents/${id}`, workspace)),
+
+  slashCommands: (workspace: string, id: string) =>
+    call<{ commands: SlashCommand[] }>(scoped(`/api/sessions/${id}/coding/commands`, workspace)),
+  runSlash: (workspace: string, id: string, name: string, args: string[]) =>
+    call<{ result: SlashResult; mode: SessionMode }>(scoped(`/api/sessions/${id}/coding/slash`, workspace), {
+      method: 'POST',
+      body: { name, args },
+    }),
+}
+
+/**
+ * Start an Agent Run and feed each SSE frame to `onEvent` until the server
+ * closes the stream. Aborting `signal` disconnects, which the server treats
+ * as a user cancel.
+ */
+export async function streamRun(
+  workspace: string,
+  id: string,
+  prompt: string,
+  onEvent: (event: StreamEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(scoped(`/api/sessions/${id}/runs`, workspace), {
+    method: 'POST',
+    headers: {
+      'x-tnega-client': '1',
+      'content-type': 'application/json',
+      accept: 'text/event-stream',
+    },
+    body: JSON.stringify({ prompt }),
+    signal,
+  })
+  if (!response.ok) throw await errorFrom(response)
+  if (!response.body) throw new ApiError(0, 'stream response has no body')
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += value
+    const frames = buffer.split(/\r?\n\r?\n/)
+    buffer = frames.pop() ?? ''
+    for (const frame of frames) {
+      const event = parseSseFrame(frame)
+      if (event) onEvent(event)
+    }
+  }
+  const tail = parseSseFrame(buffer)
+  if (tail) onEvent(tail)
+}
+
+export function parseSseFrame(frame: string): StreamEvent | undefined {
+  let type: string | undefined
+  let data = ''
+  for (const line of frame.split(/\r?\n/)) {
+    if (line.startsWith('event:')) type = line.slice(6).trim()
+    else if (line.startsWith('data:')) data += line.slice(5).trimStart()
+  }
+  if (!data) return undefined
+  try {
+    const parsed: unknown = JSON.parse(data)
+    if (!parsed || typeof parsed !== 'object') return undefined
+    return (type ? { ...parsed, type } : parsed) as StreamEvent
+  } catch {
+    return undefined
+  }
+}

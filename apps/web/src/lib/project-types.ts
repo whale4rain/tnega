@@ -1,0 +1,170 @@
+/**
+ * Wire contract for Projects (`packages/cli/src/project-routes.ts`).
+ *
+ * Mirrors Claude Projects (2026-09-17): a coordinator conversation that
+ * dispatches work to parallel Threads, which draw on a shared Memory and a
+ * Library of files and artifacts.
+ *
+ * Fields marked "proposed" are not served by the backend yet; the UI treats
+ * them as optional and degrades when they are missing. See
+ * `docs/project/web-contract.md`.
+ */
+import type { Effort, Permission, SessionEvent } from './types'
+
+export interface ProjectRecord {
+  id: string
+  name: string
+  goal?: string
+  archived?: boolean
+  coordinatorId: string
+  createdAt: number
+  updatedAt: number
+  /** Proposed: settings the coordinator and threads run with. */
+  settings?: ProjectSettings
+}
+
+export type CheckIns = 'often' | 'milestones' | 'end'
+export type ThreadSpawning = 'ask-first' | 'balanced' | 'proactive'
+export type UpdateDetail = 'brief' | 'standard' | 'detailed'
+
+export interface RoleModel {
+  /** Model route id from System Config; absent means the default model. */
+  model?: string
+  reasoningEffort?: Effort
+}
+
+/** Proposed. Matches Claude's per-project preferences and model choices. */
+export interface ProjectSettings {
+  instructions?: string
+  coordinator?: RoleModel
+  threads?: RoleModel
+  preferences?: {
+    checkIns?: CheckIns
+    threadSpawning?: ThreadSpawning
+    updateDetail?: UpdateDetail
+  }
+  /** Upper bound for every thread; threads can only narrow it. */
+  permission?: Permission
+  /** Maximum threads working at the same time. */
+  maxParallelThreads?: number
+}
+
+export type ThreadState = 'working' | 'waiting' | 'blocked' | 'idle' | 'done' | 'failed'
+
+export interface ThreadRecord {
+  id: string
+  projectId: string
+  parentId?: string
+  label: string
+  goal: string
+  expect?: string
+  state: ThreadState
+  detail?: string
+  depth: number
+  permission: Permission
+  createdAt: number
+  updatedAt: number
+}
+
+export type BoxAddress = { kind: 'user'; id: 'user' } | { kind: 'agent'; id: string }
+
+export type BoxMessageKind =
+  | 'user-message'
+  | 'user-thread'
+  | 'agent-reply'
+  | 'dispatch'
+  | 'progress'
+  | 'request'
+  | 'complete'
+  | 'blocked'
+  | 'failed'
+  | 'notice'
+
+export interface ArtifactRef {
+  hash: string
+  size: number
+  mediaType: string
+}
+
+export interface BoxEnvelope {
+  messageId: string
+  projectId: string
+  sender: BoxAddress
+  recipients: BoxAddress[]
+  placement: { kind: 'main' } | { kind: 'thread'; threadId: string }
+  kind: BoxMessageKind
+  text: string
+  refs: ArtifactRef[]
+  threadId?: string
+  causationId?: string
+  /** Proposed: every message this one answers, when an agent replies to several at once. */
+  replyTo?: string[]
+  createdAt: number
+}
+
+export interface FactRecord<T = Record<string, unknown>> {
+  kind: string
+  id: string
+  seq: number
+  version: number
+  data: T
+  author: string
+  source: { messageId?: string; sessionEventId?: string; agentId?: string }
+  createdAt: number
+  updatedAt: number
+  deleted: boolean
+}
+
+export type MemoryFact = FactRecord<{ text: string; tags?: string[] }>
+export type ArtifactFact = FactRecord<{ title: string; hash: string; size: number; mediaType: string }>
+export type ResourceFact = FactRecord<{ title: string; uri: string; note?: string }>
+
+export interface ProjectSnapshot {
+  project: ProjectRecord
+  coordinatorId: string
+  cursor: number
+  threads: ThreadRecord[]
+  messages: BoxEnvelope[]
+  inboxMessages: BoxEnvelope[]
+  memory: MemoryFact[]
+  library: { artifacts: ArtifactFact[]; resources: ResourceFact[] }
+}
+
+export interface ThreadDetail {
+  thread: ThreadRecord
+  events: SessionEvent[]
+}
+
+/** Proposed: `GET /api/projects/:id/usage`. */
+export interface ProjectUsage {
+  total: UsageTotals
+  byThread: Array<UsageTotals & { threadId: string }>
+}
+
+export interface UsageTotals {
+  responses: number
+  promptTokens: number
+  completionTokens: number
+  cachedTokens: number
+}
+
+/** Frames of `GET /api/projects/:id/stream`. */
+export type ProjectStreamEvent =
+  | { type: 'message'; seq: number; envelope: BoxEnvelope }
+  | {
+      type: 'commit'
+      kind: string
+      id: string
+      seq: number
+      deleted: boolean
+      data: unknown
+      /** Proposed: record metadata, so live updates show who wrote what. */
+      author?: string
+      version?: number
+      updatedAt?: number
+      source?: { messageId?: string; sessionEventId?: string; agentId?: string }
+    }
+  | { type: 'chunk'; agentId: string; text: string }
+  | { type: 'agent-status'; agentId: string; status: 'idle' | 'running' }
+  | { type: 'approval/request'; id: string; tool: string; input: string }
+  | { type: 'heartbeat'; at: number }

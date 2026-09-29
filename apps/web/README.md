@@ -1,89 +1,64 @@
 # `apps/web`
 
-Tnega 本地 Web UI（React + Vite + TypeScript）。生产 dist 打进 npm 包，由
-`tnega web` 托管静态资源与 API。
+Tnega 本地 Web UI（React 19 + Vite + TypeScript）。生产产物由 `pnpm build` 打进 `dist/web`，
+由 `tnega web` 托管静态资源与 `/api`。
+
+## 开发
+
+```bash
+pnpm tnega web --port 3080          # 后端（API 与 Agent Run）
+pnpm --filter @tnega/web dev        # 前端，Vite 把 /api 代理到 127.0.0.1:3080
+```
+
+`TNEGA_API=http://host:port` 可改代理目标。
 
 ## 功能
 
-- 侧栏同时显示全部已添加工作区，每个工作区独立展开其会话；可按工作区新建、重命名、分支和删除会话，搜索覆盖所有工作区。
-- 多轮聊天；工具权限可选只读、工作区可写、Bypass，运行期间不可改，越权请求显示单次审批。
-- 输入框下方的模型与思考强度滑块读取 System Config 的模型列表；Settings 在当前界面的弹窗中打开。
-- 会话粒度 mode 切换 `auto / plan / goal`；plan 面板显示 todo 状态，goal 面板显示目标、轮次和暂停／继续操作。
-- 对话底部显示活动子代理数量；主对话以任务卡片归并子代理回信，右侧可调整宽度的任务栏使用同一消息渲染器查看子代理 Session。
-- 恢复上次会话时先显示可编辑输入框，再加载历史；删除会话使用应用内确认对话框。
-- 斜杠命令菜单（coding 会话）；fork；自动标题。
-- Coding 工作台：可折叠并记忆状态的侧栏、会话搜索、居中正文和底部输入区。
-- 对话使用 14px 正文与 1.75 行高；消息和吸附输入区共用全高滚动容器。Plan 显示在输入框上方，可折叠。
-- 工具调用默认显示操作、路径／命令预览与执行状态，展开后查看输入输出；多次连续调用折叠成活动组。
-- 每次 Agent Run 结束后显示“已编辑 X 个文件”卡片与行数变化，默认列出 3 个文件，可展开剩余路径；Git 工作区比较运行前后状态，非 Git 工作区的 `write_file` 使用写入前快照，摘要保存在 Session 中。
-- 灰色窗口外壳与圆角深色会话区；用户消息使用右对齐、最多 70% 正文宽度的蓝色气泡，编辑和分支操作位于气泡下方。
-- 会话左侧刻度导航支持直接跳转、悬浮内容预览，以及方向键 / Home / End 键导航；侧栏使用紧凑会话行，操作菜单在悬浮或聚焦时显示。
-- 右侧 Files / Changes / Terminal 图标可打开占位面板；尚未连接工具，不执行文件或终端操作。
-- Astryx（`@astryxdesign/core` + `@astryxdesign/theme-neutral`）提供外壳、导航、表单、对话框、聊天和折叠等全部界面组件；Tailwind 只提供布局工具类。
+- **工作区**：侧栏顶部切换 / 打开 / 移除工作区；浏览按钮优先用桌面端 `tnegaDesktop.pickFolder`，否则调用 `/api/folder-picker`。
+- **会话**：按「今天 / 昨天 / 7 天内 / 30 天内 / 更早」分组，可搜索、分支、删除；标题在顶栏点击即可重命名。当前会话写入 URL hash，可直接链接。
+- **惰性创建**：「新会话」只是草稿，第一次发送时才 `POST /api/sessions`，并把草稿里的权限、模型、思考强度一并写入，不会留下空会话。
+- **Timeline**：两条用户消息之间的全部 Agent 活动折叠为一个回合——Markdown 正文、工具调用、子代理卡片、编辑文件摘要与中断 / 错误提示按发生顺序排列。
+  - 连续工具调用合并为「Used N steps」活动组；每一行显示动词 + 目标（`Read src/a.ts`、`Ran pnpm test`），展开看输入与可读化输出（stdout/stderr、文件内容、目录列表）。
+  - 子代理卡片汇总状态与最新回信，「Open transcript」在右侧抽屉里用同一个 Timeline 渲染其 Session。
+  - 用户消息可复制、编辑重发（`truncate` 后重新运行）、重试；回合可复制或从此处 fork。
+- **流式运行**：`POST /runs` 的 SSE 帧按动画帧批量合并进 Timeline；运行结束后重新读取 Session，最终内容以持久化事件为准。别处（另一个标签页、CLI）正在运行的会话会自动轮询刷新。
+- **审批**：越权工具调用在输入框上方显示审批卡片（Allow once / Deny）。
+- **Plan / Goal**：plan 模式的计划显示为输入框上方的可折叠清单；goal 模式在顶栏显示目标状态与轮次。
+- **输入框**：自动增高；`Enter` 发送、`Shift+Enter` 换行、运行中 `Esc` 停止；coding 会话输入 `/` 弹出斜杠命令补全。工具栏芯片切换 Agent 类型、模式、权限、模型与思考强度（运行中锁定）。
+- **上下文**：顶栏圆环显示上下文占用，悬浮查看 token、缓存命中率与速度；菜单里可 Compact / Fork / 删除。
+- **设置**：弹窗编辑 System Config（协议、模型、Base URL、API Key、思考强度、温度）；API Key 只写不读。
+- **主题**：浅色 / 深色 / 跟随系统，首帧前解析，避免闪烁；窄屏下侧栏变为抽屉。
 
-## Astryx
+## Project（对齐 Claude Projects）
 
-- 组件从 `@astryxdesign/core/<Component>` 逐组件引入，样式由 StyleX 在构建期生成。
-- `main.tsx` 只加载 `styles.css`；`styles.css` 以显式 cascade layer 顺序（`reset, theme, base, components, legacy, astryx-base, utilities`）引入 Astryx reset 与主题，再引入 Tailwind 的 theme/utilities 层。
-- `App.tsx` 用 `@astryxdesign/core/theme` 的 `Theme` 和 `workbench/theme.ts` 的 Studio 主题包住整棵树，深浅模式跟随本机偏好并在 `localStorage` 中记忆。
-- 需要查组件 API 时用仓库内的 CLI，而不是猜：
-  ```bash
-  pnpm --filter @tnega/web astryx component ChatComposer
-  pnpm --filter @tnega/web astryx search "popover"
-  ```
-- 少数界面刻意保留 Tnega 自己的实现（斜杠命令菜单、子代理卡片、会话刻度导航、项目行）；理由记在 `docs/superpowers/plans/2026-09-26-frontend-astryx-rebuild.md` 的 “Recorded exceptions”。
+- 侧栏在 **Sessions / Projects** 间切换；新建项目只需名称，目标可选。路由：`#p/<project>`、`#p/<project>/<thread>`。
+- 中间是与协调者的持续对话：协调者派出的 Thread 以卡片嵌在对应位置，实时显示状态与最新回报；协调者的正文流式显示。Thread 工作时也可继续发言。
+- 右侧面板：**Overview**（按需要关注 / 工作中 / 已回报 / 已结束分组）、**Memory**（共享记忆：新增、编辑、删除、版本历史）、**Library**（产物与来源）、**Settings**（指令，check-in / 开 Thread / 详略偏好，协调者与 Thread 的模型和思考强度，并行上限，用量，归档与删除）。
+- 打开 Thread 后，右侧显示它的目标、Session Timeline 与直接留言框。
+- **回复关系**：消息上方的「↩」标签显示它在回应谁（你、协调者或某个 Thread 的回报），点击跳转或打开 Thread；协调者消息与 Thread 卡片可「Reply」，输入框上方显示回复对象，请求携带 `replyTo`。
+- **Agent 形象**：简洁可爱的抽象形象——一块软圆的纯色形体（圆、圆角方、倾斜方、软三角、云朵、水滴）加两只白色眼睛（胶囊或圆点），靠眼睛的位置与角度表现性格；无渐变、无高光、无多余细节。`lib/avatar.ts` 按 Agent ID 确定形体、颜色、眼型与视线；协调者为强调色圆形；同一项目内兄弟 Agent 优先使用不同颜色；运行中眨眼、张望、轻微呼吸；点击 Thread 面板或空状态里的形象可重新生成（保存在 `localStorage`）。品牌标志与 favicon 使用同一语言。
+- 后端尚未提供的能力（设置、用量、产物内容、添加到 Library、停止）按 [`docs/project/web-contract.md`](../../docs/project/web-contract.md) 的提议接口调用，未实现时降级提示。
 
 ## 结构
 
 | 文件 | 角色 |
 |---|---|
-| `App.tsx` | API 状态、会话选择、主题和视图组装 |
-| `workbench/WorkbenchShell.tsx` | 窗口布局、折叠侧栏、工具面板插槽 |
-| `workbench/WorkspaceSidebar.tsx` | 工作区、会话搜索、操作菜单和对话框 |
-| `workbench/WorkspaceTree.tsx` | 按工作区分组的会话树、独立折叠和工作区范围的操作入口 |
-| `workbench/ComposerFrame.tsx` | 输入区容器、权限、模型设置入口和模式；输入与发送由 `ChatComposer` 提供 |
-| `workbench/SettingsView.tsx` | 模型配置表单 |
-| `conversation/ChatView.tsx` | 会话运行、流式消费和输入行为 |
-| `conversation/SubagentSidebar.tsx` | 子代理任务列表与会话活动侧栏 |
-| `conversation/Transcript.tsx` | Markdown 消息、工具组、压缩和命令结果 |
-| `conversation/ToolActivity.tsx` | 工具调用交给 `ChatToolCalls` 呈现，输出截断与 spill 提示留在本地 |
-| `ConversationNav.tsx` / `sessionSelection.ts` | 会话列表与选择 |
-| `PlanPanel.tsx` / `planDisplay.ts` | plan 面板与 slash 消息显示 |
-| `projectEvents.ts` | 把 session 事件流投影成 transcript（人类视图；system 提示与 compaction 进程不污染） |
-| `toolGroups.ts` | 工具权限分组 |
-| `api.ts` | 后端调用 |
-| `types.ts` | 与后端对齐的 session 事件类型 |
+| `src/lib/types.ts` | 与 `packages/cli/src/server.ts` 的线上契约类型 |
+| `src/lib/api.ts` | REST 客户端与 SSE 解析（`streamRun`） |
+| `src/lib/timeline.ts` | 纯函数：`fromEvents`（持久事件 → Timeline）与 `applyStream`（Stream Event → Timeline） |
+| `src/lib/tools.ts` | 工具调用的动词 / 目标摘要与输出可读化 |
+| `src/App.tsx` | 工作区、会话列表、选择、对话框与快捷键 |
+| `src/components/Conversation.tsx` | 单个会话：加载、运行、停止、审批、plan、goal、滚动 |
+| `src/components/Timeline.tsx` | 回合、工具组、子代理、文件、压缩标记的渲染 |
+| `src/components/Composer.tsx` | 输入框、斜杠补全与运行设置芯片 |
+| `src/styles/tokens.css` | 设计 token（颜色、圆角、阴影、字体），浅 / 深两套 |
+| `src/styles/app.css` | 全部组件样式，只引用 token |
+| `src/lib/project-*.ts` | Project 契约类型、API 与 SSE 客户端、纯函数状态归约与投影 |
+| `src/components/project/` | Project 视图、Thread 卡片与面板、Overview / Memory / Library / Settings |
+| `src/styles/project.css` | Project 界面样式 |
 
-## 数据流
+## 约定
 
-- 会话事件经 SSE 流式到达，UI 按 `session/event` 增量更新；最终状态以刷新后
-  `GET /api/sessions/:id` 的 events/surface 为准。
-- transcript 与模型上下文不同源：`projectEvents.ts` 从事件投影人类可读视图，
-  system prompt、`request/*`、turn/step 等不显示为气泡。
-
-## 开发
-
-```bash
-pnpm --filter @tnega/web dev      # Vite dev server
-pnpm build                        # 构建生产 dist
-```
-
-`apps/desktop/scripts/verify-workbench.cjs`（隐藏窗口 + fixture API，输出
-`release/workbench-preview.png`）目前跑不通：它断言的 `.session-link` /
-`.window-bar` / `.workbench-body` / `.rt-*` 和 `.composer` 都是迁移前的标记，
-Astryx 重建后已不存在。重建它还意味着重新确定它顺带断言的那些视觉契约
-（气泡宽度比例、圆角、配色），那是设计决定而不是机械替换，所以留待单独处理。
-
-## 测试
-
-`apps/web/src/**/*.test.ts`（jsdom）覆盖事件投影（`projectEvents` / `planDisplay`）、
-工具分组与输出截断（`toolGroups` / `toolOutput`）、会话选择与项目状态
-（`projectSelection` / `projectExperience`）、输入区行为（`composer`）、侧栏与外壳
-（`App` / `workbench`）以及桌面桥。`vitest.setup.ts` 给 jsdom 补上 Astryx 需要的
-`matchMedia`。端到端见 `packages/cli/test/web.test.ts`。
-
-## 视觉设计
-
-规范见 `docs/frontend-visual-design.md`。开发服务的 `/design.html` 使用生产组件展示本地样例，可切换深浅主题、输入草稿和检查导航；不会请求模型或后端。主题颜色由 `src/workbench/theme.ts` 集中维护。
-
-Project 使用紧凑顶栏与线程列表；子 Thread 展示执行记录、计划，并提供独立的简洁消息输入。Overview 默认打开，Library 支持搜索并区分产物和参考资料，Memory 默认摘要、展开后查看与版本化编辑。用户消息收到关联回复后显示回复计数。`/design.html?project` 提供生产 Project 组件的本地模拟预览，修改不会写入真实项目。
+- 不引入 UI 组件库；样式只用 `tokens.css` 里的变量，新增颜色先加 token。
+- Timeline 的推导逻辑保持为纯函数并在 `timeline.test.ts` 覆盖；组件只负责渲染。
+- 服务端事件与字段名沿用 `CONTEXT.md` 术语（Agent Run、Session、Workspace、Stream Event）。

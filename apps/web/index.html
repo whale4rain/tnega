@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>tnega web</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>Tnega</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2317656c' fill-rule='evenodd' d='M32 4C55 4 60 9 60 32S55 60 32 60 4 55 4 32 9 4 32 4ZM24.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5ZM39.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5Z'/%3E%3C/svg%3E" />
+    <script>
+      // Resolve the theme before first paint so the page never flashes.
+      try {
+        var pref = localStorage.getItem('tnega.theme') || 'system'
+        var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

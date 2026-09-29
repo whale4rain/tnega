@@ -1,0 +1,125 @@
+/*
+ * Design tokens. Every colour, radius, shadow and font in the app resolves
+ * through these variables; components never use raw values.
+ *
+ * Palette idea: warm paper neutrals, ink text, and a single deep-sea teal
+ * accent. Status colours are muted so they inform without shouting.
+ */
+:root {
+  --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, "Microsoft YaHei Mono", monospace;
+
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 14px;
+  --text-lg: 15.5px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+
+  --radius-xs: 5px;
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --sidebar-width: 276px;
+  --reading-width: 780px;
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-med: 200ms;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f5f1;
+  --bg-sidebar: #efede7;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f0eee9;
+  --surface-hover: rgba(40, 36, 28, 0.05);
+  --surface-active: rgba(40, 36, 28, 0.085);
+  --border: #e3e0d8;
+  --border-strong: #d2cec3;
+  --border-focus: #2c7a80;
+
+  --text: #1f1e1b;
+  --text-2: #57544d;
+  --text-3: #8b877d;
+  --text-inverse: #fbfaf7;
+
+  --accent: #17656c;
+  --accent-hover: #115259;
+  --accent-soft: #e2eeec;
+  --accent-text: #0f5359;
+
+  --success: #2e7b4c;
+  --success-soft: #e3f1e7;
+  --warn: #9a620f;
+  --warn-soft: #f8eedb;
+  --danger: #b0392f;
+  --danger-soft: #f8e5e2;
+
+  --code-bg: #f3f1ec;
+  --code-border: #e6e2da;
+  --selection: rgba(23, 101, 108, 0.18);
+
+  --shadow-sm: 0 1px 2px rgba(31, 28, 20, 0.06);
+  --shadow-md: 0 1px 2px rgba(31, 28, 20, 0.05), 0 6px 18px -6px rgba(31, 28, 20, 0.12);
+  --shadow-lg: 0 2px 6px rgba(31, 28, 20, 0.06), 0 24px 48px -12px rgba(31, 28, 20, 0.22);
+  --scrim: rgba(28, 26, 22, 0.28);
+  --avatar-ink: #1d1d1f;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141615;
+  --bg-sidebar: #101211;
+  --surface: #1b1e1d;
+  --surface-raised: #212524;
+  --surface-sunken: #171a19;
+  --surface-hover: rgba(236, 240, 236, 0.05);
+  --surface-active: rgba(236, 240, 236, 0.09);
+  --border: #2a2f2d;
+  --border-strong: #38403d;
+  --border-focus: #5db3ae;
+
+  --text: #e8e7e2;
+  --text-2: #aaa79f;
+  --text-3: #75736c;
+  --text-inverse: #121413;
+
+  --accent: #5db3ae;
+  --accent-hover: #74c4bf;
+  --accent-soft: rgba(93, 179, 174, 0.13);
+  --accent-text: #86cdc8;
+
+  --success: #6cbf8a;
+  --success-soft: rgba(108, 191, 138, 0.12);
+  --warn: #dba450;
+  --warn-soft: rgba(219, 164, 80, 0.12);
+  --danger: #e57e72;
+  --danger-soft: rgba(229, 126, 114, 0.12);
+
+  --code-bg: #171a19;
+  --code-border: #2a2f2d;
+  --selection: rgba(93, 179, 174, 0.26);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 20px -6px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.35), 0 28px 56px -12px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --avatar-ink: #4b4c55;
+}
