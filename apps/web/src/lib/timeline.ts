@@ -148,7 +148,7 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
           agent(event.id).blocks.push({
             kind: 'notice', id: event.id, process: event.payload.decision === 'allow',
             tone: event.payload.decision === 'deny' ? 'error' : event.payload.decision === 'ask' ? 'warn' : 'info',
-            text: `Automatic review ${event.payload.decision}: ${event.payload.tool} — ${event.payload.reason}`,
+            text: approvalReviewNotice(event.payload),
           })
           break
         }
@@ -261,6 +261,30 @@ function settleTool(
     ...(error ? { error: error.message } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
   }
+}
+
+function approvalReviewNotice(payload: Record<string, unknown>): string {
+  const heading = payload.decision === 'allow' ? '自动审批已通过'
+    : payload.decision === 'deny' ? '自动审批已拒绝' : '需要你确认'
+  const reason = typeof payload.reason === 'string' ? payload.reason : ''
+  let explanation = reason
+  if (/conflict probability .* exceeds/i.test(reason)) {
+    explanation = '操作可能与你的要求或约束冲突，需要你确认。'
+  } else if (/risk confidence .* below/i.test(reason)) {
+    const risk = payload.risk === 'low' ? '低风险' : payload.risk === 'medium' ? '中等风险' : payload.risk === 'high' ? '高风险' : undefined
+    explanation = risk ? `初步判断为${risk}，但还不够确定，需要你确认。` : '风险判断还不够确定，需要你确认。'
+  } else if (/cancelled|timed out/i.test(reason)) {
+    explanation = /approval mode changed/i.test(reason) ? '自动审批已取消或模式已改变，需要你确认。' : '自动审批已取消或超时，需要你确认。'
+  } else if (/unavailable|invalid decision/i.test(reason)) {
+    explanation = '自动审批暂不可用，需要你确认。'
+  } else if (/no human task is available/i.test(reason)) {
+    explanation = '缺少你的任务指示，需要你确认。'
+  } else if (reason === 'Jev confidently classified the action as high risk.') {
+    explanation = '操作被判定为高风险，已拒绝执行。'
+  } else if (reason === 'Action meets risk confidence and conflict thresholds.') {
+    explanation = '操作符合当前要求与审批条件。'
+  }
+  return `${heading}：${payload.tool} — ${explanation}`
 }
 
 function addPtcDispatch(entries: Entry[], payload: Record<string, unknown>): void {

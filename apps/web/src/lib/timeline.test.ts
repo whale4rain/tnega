@@ -37,8 +37,25 @@ describe('fromEvents', () => {
     const entry = entries.find(item => item.kind === 'agent')
     if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
     const view = presentRun(entry)
-    expect(view.process).toContainEqual(expect.objectContaining({ text: 'Automatic review allow: shell — Tests requested' }))
-    expect(view.visible).toContainEqual(expect.objectContaining({ text: 'Automatic review ask: http_get — Destination uncertain' }))
+    expect(view.process).toContainEqual(expect.objectContaining({ text: '自动审批已通过：shell — Tests requested' }))
+    expect(view.visible).toContainEqual(expect.objectContaining({ text: '需要你确认：http_get — Destination uncertain' }))
+  })
+  it.each([
+    ['low', 'Risk confidence 0.4 is below 0.9', '初步判断为低风险，但还不够确定，需要你确认。'],
+    ['medium', 'Conflict probability 0.1 exceeds 0.05', '操作可能与你的要求或约束冲突，需要你确认。'],
+    ['high', 'Risk confidence 0.4 is below 0.9', '初步判断为高风险，但还不够确定，需要你确认。'],
+    ['low', 'Risk confidence 0.4 is below 0.9; Conflict probability 0.3 exceeds 0.2', '操作可能与你的要求或约束冲突，需要你确认。'],
+    ['low', 'No human task is available', '缺少你的任务指示，需要你确认。'],
+    [undefined, 'Automatic reviewer is unavailable; human review is required.', '自动审批暂不可用，需要你确认。'],
+    [undefined, 'Automatic review was cancelled or timed out.', '自动审批已取消或超时，需要你确认。'],
+  ])('explains automatic approval fallback without audit numbers (%s, %s)', (risk, reason, explanation) => {
+    const payload = { kind: 'approval/review', decision: 'ask', tool: 'shell', risk, reason, scores: { riskConfidence: 0.4, conflict: 0.1 } }
+    const entries = fromEvents([ev('meta', payload)])
+    const entry = entries.find(item => item.kind === 'agent')
+    if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
+    expect(entry.blocks).toContainEqual(expect.objectContaining({ text: `需要你确认：shell — ${explanation}` }))
+    expect(payload.reason).toBe(reason)
+    expect(payload.scores).toEqual({ riskConfidence: 0.4, conflict: 0.1 })
   })
   it('keeps activity visible when a checkpoint separates it from the final reply', () => {
     const entries = fromEvents([
