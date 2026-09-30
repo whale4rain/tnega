@@ -1,0 +1,5 @@
+{
+  "name": "@tnega/auto-approval", "version": "0.0.0", "private": true,
+  "type": "module", "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@tnega/core": "workspace:*", "@tnega/session": "workspace:*", "@tnega/tools": "workspace:*", "@tnega/approval-review": "workspace:*" }
+}

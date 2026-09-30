@@ -12,6 +12,8 @@ import {
   type LiveAgent,
 } from '@tnega/agent'
 import { Context } from '@tnega/core'
+import { runSummary } from '@tnega/run-summary'
+import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
 import {
   CODING_SYSTEM_PROMPT,
   createCodingAgentPlugin,
@@ -62,6 +64,7 @@ import {
   readSystemConfig,
   systemConfigPath,
   updateSystemConfig,
+  normalizeApprovalReviewer,
   type EffectiveLlmConfig,
   type SystemConfig,
   type SystemConfigPatch,
@@ -81,6 +84,7 @@ import {
   readSessionMetrics,
   readSessionSummary,
   setSessionPermission,
+  setSessionApprovalMode,
   type SessionSummary,
   setSessionTitle,
   truncateSessionAt,
@@ -388,6 +392,12 @@ async function handleApi(
     if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
       patch.temperature = body.temperature
     }
+    if (body.approvalReview !== undefined) {
+      const review = normalizeApprovalReviewer(body.approvalReview)
+      if (!review) { sendError(res, 400, 'invalid approval reviewer'); return }
+      const previous = (await readSystemConfig(context.configFile)).approvalReview
+      patch.approvalReview = { ...(previous?.provider === review.provider ? previous : {}), ...review }
+    }
     const config = await updateSystemConfig(patch, context.configFile)
     sendJson(res, 200, configSnapshot(config, context.configFile))
     return
@@ -580,6 +590,7 @@ async function handleApi(
       const patch: Parameters<typeof patchSessionMeta>[2] = {}
       const permission = body.permission === 'workspace-write' || body.permission === 'bypass'
         ? body.permission : body.permission === 'read-only' ? 'read-only' : undefined
+      const approvalMode = body.approvalMode === 'auto' || body.approvalMode === 'manual' ? body.approvalMode : undefined
       if (typeof body.title === 'string') patch.title = body.title
       if (body.agentType === 'general' || body.agentType === 'coding') {
         patch.agentType = body.agentType
@@ -592,12 +603,13 @@ async function handleApi(
         || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high') {
         patch.reasoningEffort = body.reasoningEffort
       }
-      if (!Object.keys(patch).length && permission === undefined) {
+      if (!Object.keys(patch).length && permission === undefined && approvalMode === undefined) {
         sendError(res, 400, 'session metadata is required')
         return
       }
       if (Object.keys(patch).length) await evictResident(context, workspace, id)
       if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
+      if (approvalMode) await setSessionApprovalMode(workspace, id, approvalMode)
       const summary = permission === undefined
         ? await readSessionSummary(workspace, id)
         : await setSessionPermission(workspace, id, permission)
@@ -861,6 +873,7 @@ async function handleRun(
       goalMode: mode === 'goal',
       effective,
       apiKey,
+      config,
     })
     return
   }
@@ -870,6 +883,7 @@ async function handleRun(
   const controller = new AbortController()
   const adapter = adapterFromConfig(effective, apiKey)
   let runtime: AgentRuntime | undefined
+  let approvalFiber: { dispose(): Promise<void> } | undefined
   try {
     runtime = await createAgentRuntime({
       cwd: workspace,
@@ -898,8 +912,17 @@ async function handleRun(
     })
     const toolService = runtime.root.get('tools') as ToolsService
     toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
-    toolService.guard(permissionGuard(permission, runKey(workspace, id), context.approvals, { workspace }))
+    approvalFiber = await mountApprovalReview(runtime.root, {
+      config, workspace, adapter, model: effective.model,
+      session: () => runtime?.root.get('session'),
+      mode: async () => (await readSessionSummary(workspace, id)).approvalMode ?? config.approvalReview?.defaultMode ?? 'manual',
+    })
+    const root = runtime.root
+    toolService.guard(permissionGuard(permission, runKey(workspace, id), context.approvals, {
+      workspace, review: request => reviewAutomaticApproval(root, request),
+    }))
   } catch (error) {
+    await approvalFiber?.dispose()
     await runtime?.dispose()
     sendError(res, 500, `failed to start agent: ${errorMessage(error)}`)
     return
@@ -1010,12 +1033,14 @@ async function handleRun(
     }
     detachApproval()
     context.activeRuns.delete(key)
+    await approvalFiber?.dispose()
     if (runtime) await runtime.dispose()
     if (!res.destroyed && !res.writableEnded) res.end()
   }
 }
 
 interface ResidentRunRequest {
+  config: SystemConfig
   prompt: string
   permission: PermissionMode
   sessionId: string
@@ -1083,11 +1108,19 @@ async function createResidentRuntime(
     })))
   }
   fibers.push(await root.plugin(agents))
+  fibers.push(await root.plugin(runSummary))
   const toolService = root.get('tools') as ToolsService
   const registry = root.get('agents') as AgentRegistry
+  fibers.push(await mountApprovalReview(root, {
+    config: req.config, workspace,
+    adapter: adapterFromConfig(req.effective, req.apiKey), model: req.effective.model,
+    session: agentId => registry.get(agentId ?? req.sessionId)?.session,
+    mode: async () => (await readSessionSummary(workspace, req.sessionId)).approvalMode ?? req.config.approvalReview?.defaultMode ?? 'manual',
+  }))
   toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
   toolService.guard(permissionGuard(currentPermission, runKey(workspace, req.sessionId), req.approvals, {
     workspace,
+    review: request => reviewAutomaticApproval(root, request),
     agentMode: agentId => {
       const meta = registry.get(agentId)?.meta
       if (!meta?.subagentMode) return undefined
@@ -1127,6 +1160,7 @@ async function ensureResidentAgent(
     req.effective.contextWindow ?? '',
     req.effective.protocol ?? '',
     req.effective.temperature ?? '',
+    JSON.stringify(req.config.approvalReview ?? {}),
     req.coding ? 'coding' : 'general',
     'auto',
   ].join('|')
@@ -1205,6 +1239,7 @@ async function projectHostFor(
     apiKey,
     effective.reasoningEffort ?? '',
     context.projectPermission,
+    JSON.stringify(config.approvalReview ?? {}),
   ].join('|')
   const existing = context.projectHosts?.get(path)
   if (existing?.signature === signature) return existing.host
@@ -1218,6 +1253,7 @@ async function projectHostFor(
     ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
     permission: context.projectPermission,
     approvals: context.approvals,
+    systemConfig: config,
     builtinTools: {
       cwd: path,
       allowNetwork: true,
@@ -1626,6 +1662,15 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
     config: {
       apiKeySet: Boolean(config.apiKey),
       path,
+      approvalReview: {
+        provider: config.approvalReview?.provider ?? 'conversation',
+        defaultMode: config.approvalReview?.defaultMode ?? 'manual',
+        modelId: config.approvalReview?.modelId ?? '',
+        model: config.approvalReview?.model ?? '',
+        baseUrl: config.approvalReview?.baseUrl ?? '',
+        apiKeyEnv: config.approvalReview?.apiKeyEnv ?? '',
+        apiKeySet: Boolean(config.approvalReview?.apiKey || process.env[config.approvalReview?.apiKeyEnv || (config.approvalReview?.provider === 'jev' ? 'TYPESAFE_API_KEY' : 'OPENAI_API_KEY')]),
+      },
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       ...(config.model ? { model: config.model } : {}),
       ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),

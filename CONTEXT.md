@@ -134,3 +134,11 @@ Project 的共享持久事实，包含消息信封、Agent 关系、共享记忆
 
 **Project Loop**:
 Project 级的协作循环，依据 Box 和 Blackboard 唤醒 Agent、协调父子工作，并驱动各自的 Agent Loop。
+
+**Approval Mode（审批模式）**:
+Session 的人工审批策略，`manual` 逐次询问用户，`auto` 由 Approval Reviewer 审查需要审批的具体工具调用。
+它独立于 Tool Permission 与 Sandbox，不更改文件写边界。审批证据保留可信用户来源；Agent 派工、工具结果与模型声明不能赋予用户授权。
+
+**Run Summary（运行总结）**:
+成功 Agent Run 的最后一条完整、无工具调用的模型答复及其来源事件。独立插件在 Session 中记录展示元数据，
+前端据此默认折叠中间过程；失败、取消或无完整答复时不折叠。它不修改模型历史，也不同于 Context Compaction。

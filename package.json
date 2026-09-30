@@ -193,7 +193,31 @@
       "import": "./dist/tools.js"
     },
     "./cli": "./dist/bin.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./approval-review": {
+      "types": "./dist/types/packages/approval-review/src/index.d.ts",
+      "import": "./dist/approval-review.js"
+    },
+    "./approval-llm": {
+      "types": "./dist/types/packages/approval-llm/src/index.d.ts",
+      "import": "./dist/approval-llm.js"
+    },
+    "./approval-jev": {
+      "types": "./dist/types/packages/approval-jev/src/index.d.ts",
+      "import": "./dist/approval-jev.js"
+    },
+    "./approval-openai": {
+      "types": "./dist/types/packages/approval-openai/src/index.d.ts",
+      "import": "./dist/approval-openai.js"
+    },
+    "./auto-approval": {
+      "types": "./dist/types/packages/auto-approval/src/index.d.ts",
+      "import": "./dist/auto-approval.js"
+    },
+    "./run-summary": {
+      "types": "./dist/types/packages/run-summary/src/index.d.ts",
+      "import": "./dist/run-summary.js"
+    }
   },
   "packageManager": "pnpm@11.19.0",
   "engines": {

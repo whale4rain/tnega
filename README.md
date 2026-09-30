@@ -17,6 +17,8 @@
 - **Memory:** `~/.tnega/MEMORY.md` stores explicitly requested preferences; each workspace's `.tnega/MEMORY.md` records durable project conventions during compaction.
 - **Model selection:** configure multiple model routes, credentials, protocols, and supported thinking levels in System Config. The composer offers model and thinking sliders for each session.
 - **Tool permissions:** choose read-only, workspace-write, or bypass per run. Higher-permission actions request approval when required; workspace search uses ripgrep and public web search is available in read-only mode.
+- **Automatic approval:** independently choose Ask me or Auto review. A scoped plugin reviews each gated action with the conversation model, a configured model route, TypeSafe Jev, or OpenAI Responses. Missing credentials, uncertainty, cancellation and oversized evidence fall back to human approval; sandbox policy still applies. See [configuration](packages/auto-approval/README.md).
+- **Run summaries:** an independent plugin persists the final successful reply; completed runs show that reply and collapse intermediate work into an expandable process. Failed or cancelled runs remain visible. This does not call another model or compact model history.
 - **Sandbox:** shell execution is wrapped by a local sandbox backend (bubblewrap or Landlock on Linux, Seatbelt on macOS, a restricted-token ACL runner on Windows). It is a capability seam with a functional probe and fail-closed semantics: when no backend is usable the command is refused rather than run unconfined.
 - **Local Web and desktop UI:** the Electron app hosts the same loopback-backed interface, with an in-app Settings dialog. Eval and Evolve remain available from the CLI and library.
 

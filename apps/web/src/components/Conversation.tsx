@@ -99,7 +99,7 @@ export function Conversation({
 
   const applyDetail = useCallback((detail: SessionDetail) => {
     setSummary(detail.summary)
-    setEntries(fromEvents(detail.surface.length ? detail.surface : detail.events))
+    setEntries(fromEvents(detail.events))
     setContext(detail.context)
     setMetrics(detail.metrics)
     setPlan(latestPlan(detail.events))
@@ -179,6 +179,7 @@ export function Conversation({
         agentType: summary.agentType ?? 'general',
         mode: summary.mode ?? 'auto',
         permission: summary.permission ?? 'read-only',
+        approvalMode: summary.approvalMode ?? config?.config.approvalReview?.defaultMode ?? 'manual',
         model: summary.model,
         reasoningEffort: summary.reasoningEffort ?? 'default',
       }
@@ -193,6 +194,7 @@ export function Conversation({
     onDraftSettingsChange({
       ...(patch.agentType ? { agentType: patch.agentType } : {}),
       ...(patch.permission ? { permission: patch.permission } : {}),
+      ...(patch.approvalMode ? { approvalMode: patch.approvalMode } : {}),
     })
     try {
       const { model, ...rest } = patch
@@ -291,6 +293,7 @@ export function Conversation({
         setBusy('Starting session…')
         const created = (await api.createSession(workspace, { agentType: settings.agentType, mode: settings.mode })).session
         const patch = {
+          approvalMode: settings.approvalMode ?? 'manual',
           ...(settings.permission !== 'read-only' ? { permission: settings.permission } : {}),
           ...(settings.model ? { model: settings.model } : {}),
           ...(settings.reasoningEffort !== 'default' ? { reasoningEffort: settings.reasoningEffort } : {}),
@@ -340,7 +343,7 @@ export function Conversation({
       await api.truncate(workspace, sessionId, entryId)
       const detail = await reload(sessionId)
       setBusy(undefined)
-      void run(sessionId, text, fromEvents(detail.surface.length ? detail.surface : detail.events))
+      void run(sessionId, text, fromEvents(detail.events))
     } catch (reason) {
       setBusy(undefined)
       setError(errorText(reason))

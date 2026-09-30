@@ -70,6 +70,12 @@ const packageDirs = {
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
 
 const libraryEntries = {
+  'approval-review': 'packages/approval-review/src/index.ts',
+  'approval-llm': 'packages/approval-llm/src/index.ts',
+  'approval-jev': 'packages/approval-jev/src/index.ts',
+  'approval-openai': 'packages/approval-openai/src/index.ts',
+  'auto-approval': 'packages/auto-approval/src/index.ts',
+  'run-summary': 'packages/run-summary/src/index.ts',
   agent: 'packages/agent/src/index.ts',
   'coding-agent': 'packages/coding-agent/src/index.ts',
   core: 'packages/core/src/index.ts',

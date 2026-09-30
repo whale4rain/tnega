@@ -1,5 +1,7 @@
 import type {
   AgentType,
+  ApprovalMode,
+  ApprovalReviewerSettings,
   ConfigSnapshot,
   GoalState,
   Permission,
@@ -50,6 +52,7 @@ function scoped(path: string, workspace: string, extra?: Record<string, string>)
 }
 
 export interface SessionPatch {
+  approvalMode?: ApprovalMode
   title?: string
   agentType?: AgentType
   mode?: SessionMode
@@ -59,6 +62,7 @@ export interface SessionPatch {
 }
 
 export interface ConfigPatch {
+  approvalReview?: ApprovalReviewerSettings & { apiKey?: string }
   apiKey?: string
   baseUrl?: string
   model?: string

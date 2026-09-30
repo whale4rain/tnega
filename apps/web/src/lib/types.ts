@@ -6,6 +6,16 @@
 export type AgentType = 'general' | 'coding'
 export type SessionMode = 'auto' | 'plan' | 'goal'
 export type Permission = 'read-only' | 'workspace-write' | 'bypass'
+export type ApprovalMode = 'manual' | 'auto'
+export interface ApprovalReviewerSettings {
+  provider: 'conversation' | 'model' | 'jev' | 'openai'
+  defaultMode: ApprovalMode
+  modelId?: string
+  model?: string
+  baseUrl?: string
+  apiKeyEnv?: string
+  apiKeySet?: boolean
+}
 export type Effort = 'low' | 'medium' | 'high'
 export type SessionEffort = 'default' | Effort
 export type Protocol = 'anthropic' | 'openai'
@@ -24,6 +34,7 @@ export interface SessionSummary {
   model?: string
   reasoningEffort?: SessionEffort
   permission?: Permission
+  approvalMode?: ApprovalMode
 }
 
 export interface ErrorInfo {
@@ -93,6 +104,7 @@ export type SessionEvent =
   | EventBase<'turn/end', {
       turn: number
       finishReason?: string
+      reason?: { kind: string }
       interrupted?: boolean
       cancelCause?: CancelCause
       error?: ErrorInfo
@@ -174,6 +186,7 @@ export interface ConfigSnapshot {
     contextWindow?: number
   }
   config: {
+    approvalReview?: ApprovalReviewerSettings
     apiKeySet: boolean
     path: string
     baseUrl?: string

@@ -820,6 +820,9 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
   for (const event of events) {
     if (event.type === 'meta') {
       const payload = event.payload as Record<string, unknown>
+      // Approval metadata owns its reviewer model and approval mode, not the
+      // conversation's model route or Agent Run mode. Includes existing logs.
+      if (typeof payload.kind === 'string' && payload.kind.startsWith('approval/')) continue
       if (typeof payload.title === 'string') meta.title = payload.title
       if (payload.agentType === 'general' || payload.agentType === 'coding') {
         meta.agentType = payload.agentType

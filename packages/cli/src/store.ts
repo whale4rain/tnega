@@ -9,6 +9,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { foldApprovalMode, type ApprovalMode } from '@tnega/approval-review'
 import {
   SESSION_FORMAT_VERSION,
   SessionLog,
@@ -30,6 +31,7 @@ import {
 } from '@tnega/session'
 
 export interface SessionMetaPayload {
+  approvalMode?: ApprovalMode
   title: string
   workspace: string
   createdAt: number
@@ -207,6 +209,8 @@ export async function readSessionSummary(
   if (folded.model) summary.model = folded.model
   if (folded.reasoningEffort) summary.reasoningEffort = folded.reasoningEffort
   summary.permission = foldSessionPermission(events)
+  const approvalMode = foldApprovalMode(events)
+  if (approvalMode) summary.approvalMode = approvalMode
   if (headPayload && typeof headPayload.parentSessionId === 'string') {
     summary.parentSessionId = headPayload.parentSessionId
   }
@@ -234,6 +238,18 @@ export async function setSessionPermission(
   await withSessionLog(file, async log => {
     if (foldSessionPermission(await log.read()) !== permission) {
       await log.append('permission/mode', { mode: permission })
+      await log.flush()
+    }
+  })
+  return readSessionSummary(workspace, id)
+}
+
+export async function setSessionApprovalMode(
+  workspace: string, id: string, mode: ApprovalMode,
+): Promise<SessionSummary> {
+  await withSessionLog(sessionFile(workspace, id), async log => {
+    if (foldApprovalMode(await log.read()) !== mode) {
+      await log.append('meta', { kind: 'approval/mode', mode })
       await log.flush()
     }
   })
@@ -293,7 +309,12 @@ export async function forkSession(
   // metadata (title/agentType/mode folded over the source's meta patches), so
   // the source's meta/patch events need no replay here.
   const folded = foldSessionMeta(events)
-  const body = events.filter(event => event.type !== 'meta' && event.type !== 'meta/patch')
+  const body = events.filter(event => {
+    if (event.type === 'meta/patch') return false
+    if (event.type !== 'meta') return true
+    const kind: unknown = Reflect.get(event.payload, 'kind')
+    return kind === 'approval/mode' || kind === 'approval/review' || kind === 'run/summary'
+  })
   const fork = await createSession(workspace, {
     title: options.title?.trim() || `${folded.title ?? 'New session'} fork`,
     ...(typeof createdAt === 'number' ? { createdAt } : {}),

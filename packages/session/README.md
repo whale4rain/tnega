@@ -3,6 +3,10 @@
 Session 是 Tnega 的**消息历史真源**：一个工作区内以 JSONL 追加写入的
 事件日志。任何进入模型请求的内容都必须能从日志重建，这是本包的设计不变量。
 
+`approval/*` 元数据属于审批插件：其中的 `model` 是审查模型，`mode` 是审批模式。
+`foldSessionMeta` 不将这些字段折叠为会话的模型路由或 Agent Run mode。
+该边界也适用于已有审批记录，无需重写 Session 历史。
+
 ## Surface：唯一派生源
 
 模型历史由**折叠后的 surface** 派生，而不是 raw 文件序：

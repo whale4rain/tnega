@@ -80,6 +80,12 @@ describe('packed artifact', () => {
   it('resolves every documented subpath as a consumer via package exports', async () => {
     const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
     const subpaths = [
+      'approval-review',
+      'approval-llm',
+      'approval-jev',
+      'approval-openai',
+      'auto-approval',
+      'run-summary',
       'agent',
       'artifact-local',
       'artifact-store',
@@ -130,6 +136,12 @@ describe('packed artifact', () => {
 
   it('emits a runtime js file for every subpath entry', () => {
     const names = [
+      'approval-review',
+      'approval-llm',
+      'approval-jev',
+      'approval-openai',
+      'auto-approval',
+      'run-summary',
       'agent',
       'artifact-local',
       'artifact-store',

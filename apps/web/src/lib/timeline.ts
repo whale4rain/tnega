@@ -1,8 +1,8 @@
 /**
  * The Timeline is the view model of a Session: an ordered list of entries a
- * human reads. Everything the agent does between two user messages is folded
- * into one `agent` entry, so a turn reads as one continuous response with its
- * tool activity inline.
+ * human reads. Durable Agent Run boundaries separate responses even when no
+ * new user message arrives. Older logs without boundaries continue grouping
+ * agent activity between user messages.
  *
  * Two sources feed it: `fromEvents` rebuilds it from durable Session events,
  * and `applyStream` advances it with live Stream Events during a run. Once a
@@ -42,7 +42,7 @@ export type Block =
   | { kind: 'tool'; id: string; tool: ToolView }
   | { kind: 'subagent'; id: string; agent: SubagentView }
   | { kind: 'files'; id: string; files: EditedFile[] }
-  | { kind: 'notice'; id: string; tone: 'info' | 'warn' | 'error'; text: string }
+  | { kind: 'notice'; id: string; tone: 'info' | 'warn' | 'error'; text: string; process?: boolean }
 
 export type Entry =
   | { kind: 'user'; id: string; text: string; local?: boolean }
@@ -53,6 +53,9 @@ export type Entry =
       status: 'running' | 'done' | 'stopped' | 'error'
       /** Last durable assistant message id, usable as a fork point. */
       forkId?: string
+      turn?: number
+      /** Final answer from a successfully closed durable Agent Run. */
+      summary?: { text: string; sourceMessageId: string }
     }
   | { kind: 'compaction'; id: string; summary: string; tokensBefore?: number }
   | { kind: 'slash'; id: string; command: string; args: string[]; result: SlashResult }
@@ -70,16 +73,28 @@ const SPAWN_TOOL = 'spawn_subagent'
 
 export function fromEvents(events: readonly SessionEvent[]): Entry[] {
   const entries: Entry[] = []
+  let turn: number | undefined
+  const closed = new Set<number>()
+  const completed = new Set<number>()
+  const finalAnswers = new Map<number, { text: string; sourceMessageId: string }>()
+  const byTurn = new Map<number, AgentEntry>()
   const agent = (id: string): AgentEntry => {
     const last = entries.at(-1)
-    if (last?.kind === 'agent') return last
-    const created: AgentEntry = { kind: 'agent', id: `agent-${id}`, blocks: [], status: 'done' }
+    if (last?.kind === 'agent' && last.turn === turn) return last
+    const created: AgentEntry = {
+      kind: 'agent', id: `agent-${id}`, blocks: [], status: 'done',
+      ...(turn !== undefined ? { turn } : {}),
+    }
     entries.push(created)
+    if (turn !== undefined) byTurn.set(turn, created)
     return created
   }
 
   for (const event of events) {
     switch (event.type) {
+      case 'turn/start':
+        turn = event.payload.turn
+        break
       case 'user/message': {
         const { content, name } = event.payload
         if (!content) break
@@ -95,6 +110,12 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         target.forkId = event.id
         for (const call of toolCalls ?? []) addToolCall(target, call.id, call.name, call.arguments)
         if (interrupted) target.status = 'stopped'
+        if (turn !== undefined && !closed.has(turn)) {
+          finalAnswers.delete(turn)
+          if (content.trim() && !interrupted && !toolCalls?.length) {
+            finalAnswers.set(turn, { text: content, sourceMessageId: event.id })
+          }
+        }
         break
       }
       case 'tool/call':
@@ -116,6 +137,26 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         })
         break
       case 'meta': {
+        if (event.payload.kind === 'approval/review' && typeof event.payload.tool === 'string'
+          && typeof event.payload.reason === 'string'
+          && ['allow', 'deny', 'ask'].includes(String(event.payload.decision))) {
+          agent(event.id).blocks.push({
+            kind: 'notice', id: event.id, process: event.payload.decision === 'allow',
+            tone: event.payload.decision === 'deny' ? 'error' : event.payload.decision === 'ask' ? 'warn' : 'info',
+            text: `Automatic review ${event.payload.decision}: ${event.payload.tool} — ${event.payload.reason}`,
+          })
+          break
+        }
+        const { kind, turn: summaryTurn, summary, sourceMessageId } = event.payload
+        if (kind === 'run/summary' && typeof summaryTurn === 'number' && completed.has(summaryTurn)
+          && typeof summary === 'string' && summary.trim() && typeof sourceMessageId === 'string') {
+          const target = byTurn.get(summaryTurn)
+          const source = finalAnswers.get(summaryTurn)
+          if (target && source?.sourceMessageId === sourceMessageId) {
+            target.summary = { text: summary, sourceMessageId }
+          }
+          break
+        }
         const files = editedFiles(event.payload)
         if (files) {
           agent(event.id).blocks.push({ kind: 'files', id: event.id, files })
@@ -136,9 +177,17 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         break
       }
       case 'turn/end': {
-        const { interrupted, cancelCause, error } = event.payload
+        const { interrupted, cancelCause, error, finishReason, reason } = event.payload
+        closed.add(event.payload.turn)
+        const target = byTurn.get(event.payload.turn) ?? agent(event.id)
+        const successful = !interrupted && !cancelCause && !error && target.status === 'done'
+          && (reason ? reason.kind === 'completed' : finishReason === 'stop')
+        if (successful) {
+          completed.add(event.payload.turn)
+          const summary = finalAnswers.get(event.payload.turn)
+          if (summary) target.summary = summary
+        }
         if (!interrupted && !cancelCause && !error) break
-        const target = agent(event.id)
         target.status = error ? 'error' : 'stopped'
         target.blocks.push({ kind: 'notice', id: event.id, tone: error ? 'error' : 'info', text: endText(cancelCause, error) })
         break
@@ -148,6 +197,29 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
     }
   }
   return entries
+}
+
+/** Keeps final answer, file summaries and failures outside the process disclosure. */
+export function presentRun(entry: AgentEntry): { process: Block[]; visible: Block[] } {
+  const summary = entry.summary
+  if (!summary || entry.status !== 'done'
+    || !entry.blocks.some(block => block.kind === 'text' && block.id === summary.sourceMessageId)) {
+    return { process: [], visible: entry.blocks }
+  }
+  const process: Block[] = []
+  const visible: Block[] = []
+  for (const block of entry.blocks) {
+    if (block.kind === 'text' && block.id === summary.sourceMessageId) {
+      visible.push({ ...block, text: summary.text })
+    } else if (block.kind === 'files' || (block.kind === 'notice' && !block.process)
+      || (block.kind === 'tool' && block.tool.status !== 'ok')
+      || (block.kind === 'subagent' && block.agent.status !== 'ready')) {
+      visible.push(block)
+    } else {
+      process.push(block)
+    }
+  }
+  return { process, visible }
 }
 
 function addToolCall(target: AgentEntry, callId: string, name: string, args: unknown): void {

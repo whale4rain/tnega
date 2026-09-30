@@ -254,7 +254,7 @@ export class LocalSubagentService extends SubagentService {
       }
       this.handles.set(id, handle)
       await handle.agent.followup({
-        text: `Parent Agent: ${parent.id}\n\nTask: ${task}`,
+        messages: [{ role: 'user', name: `agent:${parent.id}`, content: `Parent Agent: ${parent.id}\n\nTask: ${task}` }],
       })
       await handle.agent.session.flush()
       void this.settle(id, parent.id)

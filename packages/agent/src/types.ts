@@ -4,6 +4,7 @@ import type {
   ContextUsage,
   ModelMessage,
   ModelUsage,
+  SessionLog,
 } from '@tnega/session'
 import type { ToolDefinition, ToolResult } from '@tnega/tools'
 
@@ -131,6 +132,14 @@ export interface AgentRunResult {
   turn?: number
   steps: readonly AgentStep[]
   messages: readonly ModelMessage[]
+}
+
+/** Awaited after durable turn/end, before the final Stream Event. */
+export interface AgentRunCompletedEvent {
+  agentId?: string
+  session: SessionLog
+  result: AgentRunResult
+  signal?: AbortSignal
 }
 
 export interface AgentRunOptions {

@@ -1,0 +1,13 @@
+# @tnega/approval-jev
+
+Independent `ApprovalReviewer` Provider for TypeSafe Jev. Depends only on Core and the approval-review Service Definition.
+
+Mount `approvalJev` with `{ apiKey }`; optional `model` defaults to `jev-latest`, `baseUrl` to `https://api.typesafe.ai/v1`, and `timeoutMs` to 30000. `fetch` supports local test transport injection. Keys are supplied explicitly; this package does not read credentials or invoke agent tools.
+
+Sends the bounded action/evidence state as two named System One questions: risk and conflict. The risk choice includes its confidence, so the review uses risk, risk confidence and conflict probability without separate task-alignment or exact-authorization questions. Risk confidence must reach 0.9; the selected probability is recorded for diagnostics without a separate threshold. Confident high risk denies; uncertain high risk asks. Low risk allows with conflict at most 0.2; medium risk allows with conflict at most 0.05. Auto review covers all tools and shell actions, including installs and Git commits. Conflict asks whether the action violates human instructions, constraints, workspace boundaries or safety policy; it does not instruct Jev to treat ambiguity as conflict. All allows require human evidence. Omitted older history (`contextTruncated`) is recorded but does not force ask. Missing, malformed, failed or cancelled reviews ask. Dispose aborts in-flight requests.
+
+Decisions include structured `scores` (risk confidence, selected probability, conflict and context truncation). Auto Approval persists these in `approval/review` audit metadata. Local rules generate reasons naming the failed condition, observed score and threshold; HTTP failures retain their status without recording credentials or raw response bodies. Jev supplies probabilities, not generated explanations or JSON decisions. Existing audit events remain readable, including historical authorization and task-alignment scores; no migration is required.
+
+The configured endpoint receives action input, schema and supplied evidence. `baseUrl` accepts an API prefix or the complete `/systemone` endpoint. Review does not override tools policy or sandbox enforcement.
+
+Protocol references: [official OpenAPI](https://api.typesafe.ai/openapi.json), [model catalog](https://docs.typesafe.ai/models). This adapter follows the repository MIT license; remote API access follows TypeSafe service terms. No provider SDK is bundled.

@@ -342,6 +342,7 @@ export {
   type AgentLoop,
   type AgentRunOptions,
   type AgentRunResult,
+  type AgentRunCompletedEvent,
   type AgentStartEvent,
   type AgentStep,
   type AgentStepEvent,
@@ -539,3 +540,10 @@ export type {
   SearchTextPreEvent,
   SearchTextResultEvent,
 } from '../packages/search/search-definition/src/index.js'
+
+export * as approvalReviewApi from '../packages/approval-review/src/index.js'
+export * as approvalLlmApi from '../packages/approval-llm/src/index.js'
+export * as approvalJevApi from '../packages/approval-jev/src/index.js'
+export * as approvalOpenaiApi from '../packages/approval-openai/src/index.js'
+export * as autoApprovalApi from '../packages/auto-approval/src/index.js'
+export * as runSummaryApi from '../packages/run-summary/src/index.js'

@@ -21,7 +21,7 @@ import {
 import { memo, useState, type ReactNode } from 'react'
 import { useCopy } from '../lib/hooks'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
-import { formatDuration, formatTokens, stringify } from '../lib/timeline'
+import { formatDuration, formatTokens, presentRun, stringify } from '../lib/timeline'
 import { presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
 import { CodeBlock, Markdown } from './Markdown'
@@ -196,12 +196,33 @@ const AgentTurn = memo(function AgentTurn({
   actions: TimelineActions
   agent?: TimelineAgent | undefined
 }) {
-  const segments = segment(entry.blocks)
+  const presentation = live ? { process: [], visible: entry.blocks } : presentRun(entry)
+  const segments = segment(presentation.visible)
+  const [processOpen, setProcessOpen] = useState(false)
   const [copied, copy] = useCopy()
   const text = entry.blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n\n')
   const last = entry.blocks.at(-1)
   const busyTool = entry.blocks.some(b => b.kind === 'tool' && b.tool.status === 'running')
   const thinking = live && !busyTool && !(last?.kind === 'text' && last.streaming)
+
+  const renderSegment = (seg: Segment) => {
+    switch (seg.kind) {
+      case 'text':
+        return (
+          <div key={seg.id} className={seg.streaming ? 'streaming' : undefined}>
+            <Markdown text={seg.text} />
+          </div>
+        )
+      case 'tools':
+        return <ToolGroup key={seg.id} tools={seg.tools} live={live} />
+      case 'subagent':
+        return <SubagentCard key={seg.id} agent={seg.agent} onOpen={actions.onOpenSubagent} />
+      case 'files':
+        return <EditedFiles key={seg.id} files={seg.files} />
+      case 'notice':
+        return <Notice key={seg.id} tone={seg.tone} text={seg.text} />
+    }
+  }
 
   return (
     <div className={`agent-turn${live ? ' is-live' : ''}`}>
@@ -209,24 +230,18 @@ const AgentTurn = memo(function AgentTurn({
         {agent ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={26} live={live} /> : <span className="brand-mark small" />}
       </div>
       <div className="agent-body">
-        {segments.map(seg => {
-          switch (seg.kind) {
-            case 'text':
-              return (
-                <div key={seg.id} className={seg.streaming ? 'streaming' : undefined}>
-                  <Markdown text={seg.text} />
-                </div>
-              )
-            case 'tools':
-              return <ToolGroup key={seg.id} tools={seg.tools} live={live} />
-            case 'subagent':
-              return <SubagentCard key={seg.id} agent={seg.agent} onOpen={actions.onOpenSubagent} />
-            case 'files':
-              return <EditedFiles key={seg.id} files={seg.files} />
-            case 'notice':
-              return <Notice key={seg.id} tone={seg.tone} text={seg.text} />
-          }
-        })}
+        {presentation.process.length > 0 && (
+          <div className={`tool-group${processOpen ? ' open' : ''}`}>
+            <button type="button" className="tool-group-head" onClick={() => setProcessOpen(value => !value)} aria-expanded={processOpen}>
+              <span className="tool-icon"><Layers size={14} /></span>
+              <span className="tool-group-title">Completed process</span>
+              <span className="tool-group-summary" />
+              <ChevronRight size={14} className="chevron" />
+            </button>
+            {processOpen && <div className="tool-group-list run-process-list">{segment(presentation.process).map(renderSegment)}</div>}
+          </div>
+        )}
+        {segments.map(renderSegment)}
         {thinking && <ThinkingLine hasContent={entry.blocks.length > 0} />}
         {!live && (text || entry.forkId) && (
           <div className="turn-actions">

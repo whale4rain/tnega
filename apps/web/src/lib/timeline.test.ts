@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSseFrame } from './api'
-import { applyStream, beginRun, fromEvents, type Entry } from './timeline'
+import { applyStream, beginRun, fromEvents, presentRun, type Entry } from './timeline'
 import { presentTool, readableOutput } from './tools'
 import type { SessionEvent, StreamEvent } from './types'
 
@@ -12,6 +12,102 @@ function ev<T extends SessionEvent['type']>(type: T, payload: Extract<SessionEve
 const SUB = '0f8f6c1e-3b0a-4a39-9d7e-7f1d2a3b4c5d'
 
 describe('fromEvents', () => {
+  it('keeps automatic approval evidence in the completed process and fallback reasons visible', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('meta', { kind: 'approval/review', decision: 'allow', tool: 'shell', reason: 'Tests requested' }),
+      ev('meta', { kind: 'approval/review', decision: 'ask', tool: 'http_get', reason: 'Destination uncertain' }),
+      ev('assistant/message', { content: 'Done' }, 'answer'),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+    ])
+    const entry = entries.find(item => item.kind === 'agent')
+    if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
+    const view = presentRun(entry)
+    expect(view.process).toContainEqual(expect.objectContaining({ text: 'Automatic review allow: shell — Tests requested' }))
+    expect(view.visible).toContainEqual(expect.objectContaining({ text: 'Automatic review ask: http_get — Destination uncertain' }))
+  })
+  it('keeps activity visible when a checkpoint separates it from the final reply', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('assistant/message', { content: 'Final reply' }, 'answer'),
+      ev('checkpoint', { summary: 'Compacted context' }),
+      ev('tool/call', { id: 'late', name: 'read_file', arguments: {} }),
+      ev('tool/result', { id: 'result', toolCallId: 'late', name: 'read_file', ok: true }),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+    ])
+    const latest = [...entries].reverse().find(entry => entry.kind === 'agent')
+    if (!latest || latest.kind !== 'agent') throw new Error('Missing agent')
+    expect(presentRun(latest).process).toEqual([])
+    expect(presentRun(latest).visible).toHaveLength(1)
+  })
+
+  it('keeps final reply, failed tools, notices and edited files outside the collapsed process', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('assistant/message', { content: 'Working', toolCalls: [{ id: 'c', name: 'read_file', arguments: {} }] }),
+      ev('tool/result', { id: 'r', toolCallId: 'c', name: 'read_file', ok: false, error: { message: 'Missing file', name: 'Error' } }),
+      ev('llm/retry', { retryId: 'retry', retry: 1, delayMs: 0 }),
+      ev('assistant/message', { content: 'Done' }, 'answer'),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+      ev('meta', { kind: 'files/edited', files: ['a.ts'] }),
+    ])
+    const entry = entries.find(entry => entry.kind === 'agent')
+    if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
+    expect(presentRun(entry).process.map(block => block.kind)).toEqual(['text'])
+    expect(presentRun(entry).visible.map(block => block.kind)).toEqual(['tool', 'notice', 'text', 'files'])
+    expect(presentRun({ ...entry, status: 'running' }).process).toEqual([])
+  })
+
+  it('does not infer a final answer from a tool call or interrupted final assistant message', () => {
+    for (const payload of [
+      { content: 'Need tool', toolCalls: [{ id: 'c', name: 'read_file', arguments: {} }] },
+      { content: 'Partial', interrupted: true },
+    ]) {
+      const entry = fromEvents([
+        ev('turn/start', { turn: 1 }),
+        ev('assistant/message', { content: 'Earlier answer' }),
+        ev('assistant/message', payload),
+        ev('turn/end', { turn: 1, finishReason: 'stop' }),
+      ]).find(entry => entry.kind === 'agent')
+      expect(entry).not.toHaveProperty('summary')
+    }
+  })
+
+  it('separates completed Agent Runs without new user input and derives legacy final replies', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('user/message', { content: 'Continue the goal' }),
+      ev('assistant/message', { content: 'Checking', toolCalls: [{ id: 'c', name: 'read_file', arguments: {} }] }, 'a1'),
+      ev('tool/result', { id: 'r', toolCallId: 'c', name: 'read_file', ok: true }),
+      ev('assistant/message', { content: 'First result' }, 'a2'),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+      ev('meta', { kind: 'run/summary', turn: 1, summary: 'First result', sourceMessageId: 'a2' }),
+      ev('turn/start', { turn: 2 }),
+      ev('assistant/message', { content: 'Second result' }, 'a3'),
+      ev('turn/end', { turn: 2, finishReason: 'stop' }),
+    ])
+    const agents = entries.filter(entry => entry.kind === 'agent')
+    expect(agents).toHaveLength(2)
+    expect(agents[0]).toMatchObject({ turn: 1, summary: { text: 'First result', sourceMessageId: 'a2' } })
+    expect(agents[1]).toMatchObject({ turn: 2, summary: { text: 'Second result', sourceMessageId: 'a3' } })
+  })
+
+  it('never collapses open, cancelled, failed or capped runs, even with stale metadata', () => {
+    for (const finishReason of ['cancelled', 'error', 'max_steps', 'length']) {
+      const entries = fromEvents([
+        ev('turn/start', { turn: 1 }),
+        ev('assistant/message', { content: 'Partial' }, 'partial'),
+        ev('turn/end', { turn: 1, finishReason }),
+        ev('meta', { kind: 'run/summary', turn: 1, summary: 'Partial', sourceMessageId: 'partial' }),
+      ])
+      expect(entries.find(entry => entry.kind === 'agent')).not.toHaveProperty('summary')
+    }
+    expect(fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('assistant/message', { content: 'Streaming' }),
+    ]).find(entry => entry.kind === 'agent')).not.toHaveProperty('summary')
+  })
+
   it('folds everything between user messages into one agent turn', () => {
     const entries = fromEvents([
       ev('user/message', { content: 'fix the bug' }, 'u1'),

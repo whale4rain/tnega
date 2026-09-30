@@ -1,12 +1,13 @@
 import { ArrowUp, Code2, Gauge, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Square, Target, ListChecks, Zap, Cpu } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AgentType, Effort, ModelOption, Permission, SessionEffort, SessionMode, SlashCommand } from '../lib/types'
+import type { AgentType, ApprovalMode, Effort, ModelOption, Permission, SessionEffort, SessionMode, SlashCommand } from '../lib/types'
 import { Choice, type ChoiceOption } from './Menu'
 
 export interface RunSettings {
   agentType: AgentType
   mode: SessionMode
   permission: Permission
+  approvalMode?: ApprovalMode
   model?: string | undefined
   reasoningEffort: SessionEffort
 }
@@ -26,6 +27,11 @@ export const PERMISSION_OPTIONS: ReadonlyArray<ChoiceOption<Permission>> = [
   { value: 'read-only', label: 'Read only', description: 'Ask before any write, shell or private network access', icon: <ShieldCheck size={14} /> },
   { value: 'workspace-write', label: 'Workspace write', description: 'Edit files inside this workspace without asking', icon: <ShieldHalf size={14} /> },
   { value: 'bypass', label: 'Full access', description: 'No sandbox; can touch files outside the workspace', icon: <ShieldAlert size={14} />, tone: 'danger' },
+]
+
+export const APPROVAL_OPTIONS: ReadonlyArray<ChoiceOption<ApprovalMode>> = [
+  { value: 'manual', label: 'Ask me', description: 'Review permission requests yourself', icon: <ShieldCheck size={14} /> },
+  { value: 'auto', label: 'Auto review', description: 'Let the reviewer approve permitted actions; ask when uncertain', icon: <Sparkles size={14} /> },
 ]
 
 export const EFFORT_LABEL: Record<SessionEffort, string> = { default: 'Default effort', low: 'Low effort', medium: 'Medium effort', high: 'High effort' }
@@ -257,6 +263,7 @@ export function Composer({
           <Choice label="Agent" value={settings.agentType} options={AGENT_OPTIONS} onChange={agentType => onSettingsChange({ agentType })} disabled={locked} />
           <Choice label="Mode" value={settings.mode} options={MODE_OPTIONS} onChange={mode => onSettingsChange({ mode })} disabled={locked} />
           <Choice label="Permissions" value={settings.permission} options={PERMISSION_OPTIONS} onChange={permission => onSettingsChange({ permission })} disabled={locked} />
+          <Choice label="Approvals" value={settings.approvalMode ?? 'manual'} options={APPROVAL_OPTIONS} onChange={approvalMode => onSettingsChange({ approvalMode })} disabled={locked} />
           <Choice label="Model" value={settings.model ?? ''} options={modelOptions(models, defaultModelId)} onChange={model => onSettingsChange({ model: model || undefined })} disabled={locked || models.length === 0} />
           {efforts.length > 0 && (
             <Choice
