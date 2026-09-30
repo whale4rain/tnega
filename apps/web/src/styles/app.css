@@ -2798,3 +2798,24 @@ kbd {
     transition-duration: 1ms !important;
   }
 }
+.question-panel { display: grid; gap: 10px; max-height: min(48vh, 420px); overflow-y: auto; }
+.question-card { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
+.question-head { display: flex; align-items: center; gap: 8px; font-size: var(--text-md); flex-wrap: wrap; }
+.question-head svg { color: var(--accent); }
+.question-mode { margin-left: auto; color: var(--text-3); font-size: var(--text-xs); }
+.question-body { display: grid; gap: 14px; margin-top: 12px; }
+.question-item { border: 0; padding: 0; margin: 0; min-width: 0; }
+.question-item legend { margin-bottom: 8px; font-size: var(--text-md); line-height: 1.5; }
+.question-options { display: grid; gap: 6px; margin-bottom: 8px; }
+.question-option { display: flex; gap: 9px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-sm); }
+.question-option:hover { background: var(--surface-hover); }
+.question-option.selected { border-color: var(--accent); background: var(--accent-soft); }
+.question-option input { accent-color: var(--accent); margin-top: 3px; }
+.question-description { display: block; margin-top: 3px; color: var(--text-2); line-height: 1.5; }
+.question-clear { margin-bottom: 8px; }
+.question-text { display: block; width: 100%; resize: vertical; min-height: 56px; max-height: 180px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--text); font: inherit; font-size: var(--text-sm); }
+.question-text:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+.question-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.question-actions .muted { flex: 1; }
+.question-error { margin-top: 8px; color: var(--danger); font-size: var(--text-sm); }
+.ptc-tool-children { margin-top: 12px; padding-left: 8px; border-left: 2px solid var(--border); }

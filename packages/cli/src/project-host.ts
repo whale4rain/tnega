@@ -15,6 +15,8 @@ import {
 import { boxBlackboard } from '@tnega/box-blackboard'
 import { Context } from '@tnega/core'
 import { runSummary } from '@tnega/run-summary'
+import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
+import { toolPtc } from '@tnega/tool-ptc'
 import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
 import type { SystemConfig } from './config.js'
 import { projectLoop } from '@tnega/project-loop'
@@ -432,6 +434,10 @@ export class ProjectHost {
     }))
 
     await ctx.plugin(projectLoop, { projectId: record.id })
+    await ctx.plugin(ptcRuntimeQuickjs)
+    await ctx.plugin(toolPtc, {
+      resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session,
+    })
 
     return {
       record,

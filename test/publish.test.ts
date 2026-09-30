@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { join } from 'node:path'
+import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '..')
@@ -28,7 +30,7 @@ describe('publish metadata', () => {
     expect(pkg.license).toBe('MIT')
     expect(pkg.bin?.tnega).toBe('./dist/bin.js')
     expect(pkg.files).toContain('dist')
-    expect(pkg.engines.node).toBe('>=22')
+    expect(pkg.engines.node).toBe('>=22.19.0')
   })
 
   it('keeps the bin entry in source so a fresh build can emit it', () => {
@@ -39,6 +41,31 @@ describe('publish metadata', () => {
 })
 
 describe('packed artifact', () => {
+  it('runs QuickJS from copied runtime resources without installed dependencies', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'tnega-packed-ptc-'))
+    try {
+      await cp(resolve(root, 'dist'), join(directory, 'dist'), { recursive: true })
+      const code = `
+        import { Context, toolsApi, ptcRuntimeQuickjsApi, toolPtcApi } from './dist/index.js';
+        const ctx = new Context();
+        await ctx.plugin(toolsApi.tools);
+        const registry = ctx.get('tools');
+        registry.register({schema:{name:'echo_test',description:'echo'},execute:input=>input});
+        await ctx.plugin(ptcRuntimeQuickjsApi.ptcRuntimeQuickjs);
+        await ctx.plugin(toolPtcApi.toolPtc);
+        const result = await registry.execute('run_code',{code:'return await tools.echo_test({value:42})'});
+        if (!result.ok || !result.output.ok || result.output.value.value !== 42) throw new Error(JSON.stringify(result));
+        await ctx.fiber.dispose();
+        console.log('packed QuickJS ok');
+      `
+      await writeFile(join(directory, 'verify.mjs'), code)
+      await writeFile(join(directory, 'package.json'), JSON.stringify({ type: 'module' }))
+      expect(execFileSync(process.execPath, ['verify.mjs'], {
+        cwd: directory, encoding: 'utf8', timeout: 15_000,
+      })).toContain('packed QuickJS ok')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   it('builds a runnable self-contained bin', () => {
     const bin = resolve(root, 'dist/bin.js')
     expect(existsSync(bin)).toBe(true)
@@ -86,6 +113,11 @@ describe('packed artifact', () => {
       'approval-openai',
       'auto-approval',
       'run-summary',
+      'ptc-runtime',
+      'ptc-runtime-quickjs',
+      'tool-ptc',
+      'user-questions',
+      'tool-question',
       'agent',
       'artifact-local',
       'artifact-store',

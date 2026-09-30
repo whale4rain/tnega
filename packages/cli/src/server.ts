@@ -5,6 +5,7 @@ import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   agents,
+  type DurableInbox,
   type AgentCreationOptions,
   type AgentHandle,
   type AgentRegistry,
@@ -13,6 +14,10 @@ import {
 } from '@tnega/agent'
 import { Context } from '@tnega/core'
 import { runSummary } from '@tnega/run-summary'
+import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
+import { toolPtc } from '@tnega/tool-ptc'
+import { userQuestions, pendingQuestionsFromEvents, formatQuestionAnswer, UserQuestionError, type PendingQuestionRequest, type QuestionAnswers } from '@tnega/user-questions'
+import { toolQuestion } from '@tnega/tool-question'
 import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
 import {
   CODING_SYSTEM_PROMPT,
@@ -199,6 +204,7 @@ export interface WebServer {
 }
 
 interface ResidentAgentEntry {
+  root: Context
   agent: LiveAgent
   registry: AgentRegistry
   tools: ToolsService
@@ -230,6 +236,9 @@ export async function startWebServer(
     resident: options.resident !== false,
     residentAgents,
     projectHosts,
+    questionRoots: new Map(),
+    questionInboxes: new Map(),
+    residentCreation: new Map(),
     projectPermission: options.projectPermission ?? 'workspace-write',
     ...(configFile ? { configFile } : {}),
   }
@@ -272,6 +281,9 @@ interface ServerContext {
   approvals: ApprovalBroker
   resident?: boolean
   residentAgents?: Map<string, ResidentAgentEntry>
+  questionRoots?: Map<string, Context>
+  questionInboxes?: Map<string, DurableInbox>
+  residentCreation?: Map<string, Promise<ResidentAgentEntry>>
   projectHosts?: Map<string, ProjectHostEntry>
   projectPermission: PermissionMode
 }
@@ -529,6 +541,55 @@ async function handleApi(
     }
     sendJson(res, 200, { id, events })
     return
+  }
+
+  const questionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/questions(?:\/([^/]+))?$/)
+  if (questionMatch) {
+    const id = questionMatch[1]!
+    const workspace = workspaceParam(url)
+    if (!workspace || !isSessionId(id)) {
+      sendError(res, 400, 'workspace and valid session id are required')
+      return
+    }
+    await readSessionSummary(workspace, id)
+    const key = runKey(workspace, id)
+    if (req.method === 'GET' && !questionMatch[2]) {
+      const log = new SessionLog(sessionFilePath(workspace, id))
+      try {
+        await log.init()
+        const questions = pendingQuestionsFromEvents(await log.read())
+          .filter(question => question.agentId === id && (question.mode === 'nonblocking' || isActive(context.activeRuns, workspace, id)))
+        sendJson(res, 200, { questions })
+      } finally { await log.close() }
+      return
+    }
+    if (req.method === 'POST' && questionMatch[2]) {
+      const body = await readJsonBody(req)
+      let entry = context.residentAgents?.get(key)
+      let root = entry?.root ?? context.questionRoots?.get(key)
+      if (!root) {
+        const request = await residentQuestionRequest(context, workspace, id)
+        entry = await ensureResidentAgent(context, workspace, id, request)
+        root = entry.root
+      }
+      try {
+        const answer = await root.userQuestions.answer(questionMatch[2], body.answers, { agentId: id })
+        let resumeQueued = false
+        if (answer.mode === 'nonblocking') {
+          if (entry) {
+            // A manual-streaming Agent needs the existing SSE/approval channel to drain idle work.
+            resumeQueued = entry.agent.status === 'idle' || !isActive(context.activeRuns, workspace, id)
+          } else {
+            resumeQueued = true
+          }
+        }
+        sendJson(res, 200, { accepted: true, resumeQueued })
+      } catch (error) {
+        if (!(error instanceof UserQuestionError)) throw error
+        sendError(res, error.code === 'QUESTION_ALREADY_SETTLED' ? 409 : 400, error.message)
+      }
+      return
+    }
   }
 
   const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
@@ -832,11 +893,12 @@ async function handleRun(
     return
   }
   const body = await readJsonBody(req)
-  if (typeof body.prompt !== 'string' || !body.prompt.trim()) {
+  const resumeQueued = body.resumeQueued === true
+  if (!resumeQueued && (typeof body.prompt !== 'string' || !body.prompt.trim())) {
     sendError(res, 400, 'prompt is required')
     return
   }
-  const prompt = body.prompt.trim()
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   const summary = await readSessionSummary(workspace, id)
   const permission: PermissionMode = summary.permission ?? 'read-only'
   const coding = summary.agentType === 'coding'
@@ -863,7 +925,7 @@ async function handleRun(
     return
   }
 
-  if (context.resident && (mode === 'auto' || mode === 'goal')) {
+  if (resumeQueued || context.resident && (mode === 'auto' || mode === 'goal')) {
     await runResidentTurn(context, res, workspace, id, {
       prompt,
       permission,
@@ -874,6 +936,7 @@ async function handleRun(
       effective,
       apiKey,
       config,
+      resumeQueued,
     })
     return
   }
@@ -888,6 +951,7 @@ async function handleRun(
     runtime = await createAgentRuntime({
       cwd: workspace,
       sessionFile: sessionFilePath(workspace, id),
+      durableInbox: true,
       llm: adapter,
       ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
       allowNetwork: true,
@@ -918,6 +982,17 @@ async function handleRun(
       mode: async () => (await readSessionSummary(workspace, id)).approvalMode ?? config.approvalReview?.defaultMode ?? 'manual',
     })
     const root = runtime.root
+    const questionInbox = runtime.inbox
+    if (!questionInbox) throw new Error('Durable question inbox is unavailable')
+    await root.plugin(userQuestions, {
+      resolveSession: () => root.get('session'),
+      deliverNonblocking: (request: PendingQuestionRequest, answers: QuestionAnswers) => deliverQuestionSteer(
+        root.get('session'), input => questionInbox.steer(input), request, answers,
+      ),
+    })
+    await root.plugin(toolQuestion, { agentId: id })
+    context.questionRoots?.set(runKey(workspace, id), root)
+    context.questionInboxes?.set(runKey(workspace, id), questionInbox)
     toolService.guard(permissionGuard(permission, runKey(workspace, id), context.approvals, {
       workspace, review: request => reviewAutomaticApproval(root, request),
     }))
@@ -1033,6 +1108,8 @@ async function handleRun(
     }
     detachApproval()
     context.activeRuns.delete(key)
+    context.questionRoots?.delete(key)
+    context.questionInboxes?.delete(key)
     await approvalFiber?.dispose()
     if (runtime) await runtime.dispose()
     if (!res.destroyed && !res.writableEnded) res.end()
@@ -1040,6 +1117,7 @@ async function handleRun(
 }
 
 interface ResidentRunRequest {
+  resumeQueued?: boolean
   config: SystemConfig
   prompt: string
   permission: PermissionMode
@@ -1111,6 +1189,19 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(runSummary))
   const toolService = root.get('tools') as ToolsService
   const registry = root.get('agents') as AgentRegistry
+  fibers.push(await root.plugin(userQuestions, {
+    resolveSession: (agentId: string) => agentId === req.sessionId ? registry.get(agentId)?.session : undefined,
+    deliverNonblocking: async (request: PendingQuestionRequest, answers: QuestionAnswers) => {
+      const agent = registry.get(request.agentId)
+      if (!agent) throw new Error('Question Agent is unavailable')
+      await deliverQuestionSteer(agent.session, input => agent.steer(input), request, answers)
+    },
+  }))
+  fibers.push(await root.plugin(toolQuestion))
+  fibers.push(await root.plugin(ptcRuntimeQuickjs))
+  fibers.push(await root.plugin(toolPtc, {
+    resolveSession: (agentId?: string) => registry.get(agentId ?? req.sessionId)?.session,
+  }))
   fibers.push(await mountApprovalReview(root, {
     config: req.config, workspace,
     adapter: adapterFromConfig(req.effective, req.apiKey), model: req.effective.model,
@@ -1146,6 +1237,21 @@ async function createResidentRuntime(
 }
 
 async function ensureResidentAgent(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+  req: ResidentRunRequest,
+): Promise<ResidentAgentEntry> {
+  const key = runKey(workspace, id)
+  const pending = context.residentCreation?.get(key)
+  if (pending) return pending
+  const creation = createResidentAgent(context, workspace, id, req)
+  context.residentCreation?.set(key, creation)
+  try { return await creation }
+  finally { if (context.residentCreation?.get(key) === creation) context.residentCreation.delete(key) }
+}
+
+async function createResidentAgent(
   context: ServerContext,
   workspace: string,
   id: string,
@@ -1201,6 +1307,7 @@ async function ensureResidentAgent(
   }
 
   const entry: ResidentAgentEntry = {
+    root: runtime.root,
     agent,
     registry: (runtime.root as unknown as { agents: AgentRegistry }).agents,
     tools: runtime.root.get('tools') as ToolsService,
@@ -1216,6 +1323,37 @@ async function ensureResidentAgent(
 
 function isAgentMetaMissing(error: unknown): boolean {
   return error instanceof Error && error.message.includes('no agent session meta found')
+}
+
+async function deliverQuestionSteer(
+  session: SessionLog,
+  steer: (input: { text: string }) => Promise<unknown>,
+  request: PendingQuestionRequest,
+  answers: QuestionAnswers,
+): Promise<void> {
+  const text = formatQuestionAnswer(request, answers)
+  const delivered = (await session.read()).some(event => event.type === 'agent/inbox/spliced'
+    && event.payload.target !== 'all' && event.payload.inserted?.some(message => message.content === text))
+  if (!delivered) await steer({ text })
+  await session.flush()
+}
+
+async function residentQuestionRequest(context: ServerContext, workspace: string, id: string): Promise<ResidentRunRequest> {
+  const summary = await readSessionSummary(workspace, id)
+  const config = await readSystemConfig(context.configFile)
+  const effective = effectiveLlmConfig(config, process.env, summary.model)
+  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
+    ?? modelCapabilities(effective.model, effective.protocol)
+  const effort = summary.reasoningEffort === 'default' ? effective.reasoningEffort : summary.reasoningEffort ?? effective.reasoningEffort
+  if (effort && capabilities.reasoningEfforts.includes(effort)) effective.reasoningEffort = effort
+  else delete effective.reasoningEffort
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
+  if (!apiKey) throw new HttpError(400, 'API key is not configured')
+  return {
+    prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
+    approvals: context.approvals, coding: summary.agentType === 'coding', goalMode: false,
+    effective, apiKey, config, resumeQueued: true,
+  }
 }
 
 /**
@@ -1317,7 +1455,7 @@ async function runResidentTurn(
     }
     let goal = req.goalMode ? await readGoal(agent.session) : undefined
     if (req.goalMode && !goal) goal = await createGoal(agent.session, req.prompt)
-    await agent.followup({ text: req.prompt })
+    if (!req.resumeQueued) await agent.followup({ text: req.prompt })
     while (true) {
       for await (const event of agent.runTurns(controller.signal)) {
         if (!res.destroyed && !res.writableEnded) writeSse(res, event)
@@ -1344,7 +1482,7 @@ async function runResidentTurn(
       await agent.followup({ text: `<goal_round>\nObjective: ${JSON.stringify(goal.objective)}\nRound ${rounds + 1}/${goal.maxRounds}. Continue toward the objective using the current Session and Workspace. Call update_goal when complete, paused, or blocked.\n</goal_round>` })
     }
     await agent.session.flush()
-    await autoTitle(workspace, id, req.prompt, agent.session)
+    if (req.prompt) await autoTitle(workspace, id, req.prompt, agent.session)
     if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
   } catch (error) {
     if (!res.destroyed && !res.writableEnded) {

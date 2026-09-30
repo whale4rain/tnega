@@ -41,6 +41,7 @@ import type {
 import { Composer, type RunSettings } from './Composer'
 import { Menu } from './Menu'
 import { Timeline } from './Timeline'
+import { QuestionPanel } from './QuestionPanel'
 
 export interface Approval {
   id: string
@@ -88,6 +89,8 @@ export function Conversation({
   const [busy, setBusy] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [approvals, setApprovals] = useState<Approval[]>([])
+  const [resumeVersion, setResumeVersion] = useState(0)
+  const pendingResume = useRef<string | undefined>(undefined)
 
   /** Session id that a local stream is currently writing into. */
   const streamingFor = useRef<string | undefined>(undefined)
@@ -120,6 +123,7 @@ export function Conversation({
   useEffect(() => {
     setError(undefined)
     setApprovals([])
+    if (pendingResume.current !== sessionId) pendingResume.current = undefined
     if (!sessionId) {
       setSummary(undefined)
       setEntries([])
@@ -249,17 +253,17 @@ export function Conversation({
     abort.current?.abort()
   }, [])
 
-  const run = async (id: string, prompt: string, base: readonly Entry[]) => {
+  const run = useCallback(async (id: string, prompt: string, base: readonly Entry[], resumeQueued = false) => {
     const controller = new AbortController()
     abort.current = controller
     streamingFor.current = id
     setRunning(true)
     setError(undefined)
-    setEntries(beginRun(base, prompt))
+    setEntries(resumeQueued ? base : beginRun(base, prompt))
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
-          await streamRun(workspace, id, prompt, onStreamEvent, controller.signal)
+          await streamRun(workspace, id, prompt, onStreamEvent, controller.signal, resumeQueued)
           break
         } catch (reason) {
           // A previous run can take a moment to release the session.
@@ -278,11 +282,17 @@ export function Conversation({
       streamingFor.current = undefined
       abort.current = undefined
       setApprovals([])
-      setRunning(false)
       await reload(id).catch(() => {})
+      setRunning(false)
       onSessionsChanged()
     }
-  }
+  }, [workspace, onStreamEvent, flush, reload, onSessionsChanged])
+
+  useEffect(() => {
+    if (running || remoteRunning || streamingFor.current || pendingResume.current !== sessionId || !sessionId) return
+    pendingResume.current = undefined
+    void run(sessionId, '', entries, true)
+  }, [running, remoteRunning, sessionId, resumeVersion, entries, run])
 
   const send = async (text: string): Promise<boolean> => {
     if (running) return false
@@ -525,6 +535,7 @@ export function Conversation({
           {approvals.map(approval => (
             <ApprovalCard key={approval.id} approval={approval} onAnswer={allow => void answer(approval, allow)} />
           ))}
+          {sessionId && <QuestionPanel key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} running={live} onResumeQueued={() => { pendingResume.current = sessionId; setResumeVersion(version => version + 1) }} />}
           {plan && (plan.items.length > 0 || plan.status === 'pending') && <PlanPanel plan={plan} />}
           <Composer
             settings={settings}

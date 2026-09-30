@@ -84,6 +84,18 @@ function pingTool(): ToolDefinition {
   }
 }
 
+it('disposes answerer plugins mounted after runtime construction', async () => {
+  const dir = await tempDir('tnega-runtime-late-plugin-')
+  const runtime = await createAgentRuntime(runtimeOptions(dir, { builtinTools: false, ptc: { mode: 'native' } }))
+  let disposed = false
+  await runtime.root.plugin({
+    name: 'late-answerer',
+    apply(ctx: Context) { ctx.effect(() => () => { disposed = true }) },
+  })
+  await runtime.dispose()
+  expect(disposed).toBe(true)
+})
+
 describe('createAgentRuntime composition', () => {
   it('spills an oversized tool result and keeps the whole record on disk', async () => {
     const dir = await tempDir('tnega-runtime-spill-')

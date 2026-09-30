@@ -5,6 +5,8 @@ import type {
   ConfigSnapshot,
   GoalState,
   Permission,
+  PendingQuestionRequest,
+  QuestionAnswerItem,
   SessionDetail,
   SessionEffort,
   SessionEvent,
@@ -33,12 +35,13 @@ async function errorFrom(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message)
 }
 
-async function call<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+async function call<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const headers: Record<string, string> = { 'x-tnega-client': '1' }
   if (init.body !== undefined) headers['content-type'] = 'application/json'
   const response = await fetch(path, {
     method: init.method ?? 'GET',
     headers,
+    signal: init.signal,
     ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   })
   if (!response.ok) throw await errorFrom(response)
@@ -93,6 +96,10 @@ export const api = {
     call<{ session: SessionSummary }>(scoped('/api/sessions', workspace), { method: 'POST', body: init }),
   session: (workspace: string, id: string) =>
     call<SessionDetail>(scoped(`/api/sessions/${id}`, workspace)),
+  questions: (workspace: string, id: string, signal?: AbortSignal) =>
+    call<{ questions: PendingQuestionRequest[] }>(scoped(`/api/sessions/${id}/questions`, workspace), { signal }),
+  answerQuestions: (workspace: string, id: string, requestId: string, answers: QuestionAnswerItem[], signal?: AbortSignal) =>
+    call<{ accepted: boolean; resumeQueued?: boolean }>(scoped(`/api/sessions/${id}/questions/${requestId}`, workspace), { method: 'POST', body: { answers }, signal }),
   patchSession: (workspace: string, id: string, patch: SessionPatch) =>
     call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}`, workspace), { method: 'PATCH', body: patch }),
   deleteSession: (workspace: string, id: string) =>
@@ -143,6 +150,7 @@ export async function streamRun(
   prompt: string,
   onEvent: (event: StreamEvent) => void,
   signal: AbortSignal,
+  resumeQueued = false,
 ): Promise<void> {
   const response = await fetch(scoped(`/api/sessions/${id}/runs`, workspace), {
     method: 'POST',
@@ -151,7 +159,7 @@ export async function streamRun(
       'content-type': 'application/json',
       accept: 'text/event-stream',
     },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(resumeQueued ? { resumeQueued: true } : { prompt }),
     signal,
   })
   if (!response.ok) throw await errorFrom(response)

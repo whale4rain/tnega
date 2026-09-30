@@ -348,6 +348,7 @@ function ToolRow({ tool }: { tool: ToolView }) {
         <span className="tool-icon"><Icon size={14} /></span>
         <span className="tool-verb">{verb}</span>
         {target && <span className="tool-target">{target}</span>}
+        {tool.children?.length ? <span className="tool-group-summary">{tool.children.length} tool {tool.children.length === 1 ? 'call' : 'calls'}</span> : null}
         <span className="tool-meta">
           {tool.status === 'running' && <span className="spinner" aria-label="Running" />}
           {tool.status === 'error' && <X size={13} className="tool-status-error" aria-label="Failed" />}
@@ -385,6 +386,12 @@ function ToolDetail({ tool }: { tool: ToolView }) {
         </>
       )}
       {tool.status === 'running' && <div className="muted small">Waiting for result…</div>}
+      {tool.children?.length ? (
+        <div className="ptc-tool-children">
+          <div className="tool-detail-label">Tool calls</div>
+          {tool.children.map(child => <ToolRow key={child.callId} tool={child} />)}
+        </div>
+      ) : null}
     </div>
   )
 }

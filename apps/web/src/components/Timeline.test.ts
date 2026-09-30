@@ -36,3 +36,19 @@ it('keeps process fully visible while streaming', () => {
   expect(view.getByText('Investigating the problem.')).toBeTruthy()
   expect(view.queryByRole('button', { name: 'Completed process' })).toBeNull()
 })
+
+it('reveals PTC child tools and their errors inside the outer tool details', () => {
+  const entry: Entry = { kind: 'agent', id: 'ptc', status: 'done', blocks: [{
+    kind: 'tool', id: 'outer', tool: {
+      callId: 'outer', name: 'run_code', args: { code: 'await tools.shell({command:"cargo test"})' }, status: 'error',
+      children: [{ callId: 'child', name: 'shell', args: { command: 'cargo test' }, status: 'error', error: 'Tests failed' }],
+    },
+  }] }
+  const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
+  expect(view.getByText('1 tool call')).toBeTruthy()
+  expect(view.queryByText('Tests failed')).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: /Run code/ }))
+  fireEvent.click(view.getByRole('button', { name: /Ran.*cargo test/ }))
+  expect(view.getByText('Tests failed')).toBeTruthy()
+  expect(view.container.querySelectorAll('.ptc-tool-children .tool-row')).toHaveLength(1)
+})

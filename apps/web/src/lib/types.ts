@@ -236,3 +236,31 @@ export type StreamEvent =
   | { type: 'assistant/stream' }
   | { type: 'done' }
   | { type: 'error'; message: string }
+export interface UserQuestionOption {
+  label: string
+  description?: string
+}
+
+export interface UserQuestion {
+  id: string
+  question?: string
+  options?: UserQuestionOption[]
+  multiple?: boolean
+  optional?: boolean
+}
+
+export interface PendingQuestionRequest {
+  requestId: string
+  agentId: string
+  callId?: string
+  mode: 'blocking' | 'nonblocking'
+  questions: UserQuestion[]
+  createdAt: number
+  status: 'pending'
+}
+
+export interface QuestionAnswerItem {
+  questionId: string
+  selected?: string[]
+  text?: string
+}

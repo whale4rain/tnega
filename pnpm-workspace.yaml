@@ -20,3 +20,4 @@ allowBuilds:
   koffi: true
 minimumReleaseAgeExclude:
   - tnega@0.1.1
+  - '@earendil-works/pi-codemode@0.99.1'

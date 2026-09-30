@@ -27,6 +27,10 @@ it('loads the human transcript and collapses completed runs even when model surf
     running: false,
   }
   vi.spyOn(api, 'session').mockResolvedValue(detail)
+  vi.spyOn(api, 'questions').mockResolvedValue({ questions: [{
+    requestId: 'question', agentId: 'session', createdAt: 5, status: 'pending', mode: 'nonblocking',
+    questions: [{ id: 'opinion', question: '你更喜欢哪个方向？' }],
+  }] })
   const view = render(createElement(Conversation, {
     workspace: '/work', sessionId: 'session', config: undefined,
     draftSettings: { agentType: 'general', mode: 'auto', permission: 'read-only', approvalMode: 'manual', reasoningEffort: 'default' },
@@ -36,6 +40,7 @@ it('loads the human transcript and collapses completed runs even when model surf
   }))
   expect(await view.findByText('All checks passed.')).toBeTruthy()
   expect(view.queryByText('Inspecting the project.')).toBeNull()
+  expect(await view.findByRole('textbox', { name: '你更喜欢哪个方向？：补充或自定义回答' })).toBeTruthy()
   const toggle = view.getByRole('button', { name: 'Completed process' })
   expect(toggle.getAttribute('aria-expanded')).toBe('false')
   fireEvent.click(toggle)

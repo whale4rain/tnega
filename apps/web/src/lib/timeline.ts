@@ -18,6 +18,7 @@ export interface ToolView {
   output?: unknown
   error?: string
   durationMs?: number
+  children?: ToolView[]
 }
 
 export interface SubagentView {
@@ -137,6 +138,10 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         })
         break
       case 'meta': {
+        if (event.payload.kind === 'ptc/dispatch-start' || event.payload.kind === 'ptc/dispatch') {
+          addPtcDispatch(entries, event.payload)
+          break
+        }
         if (event.payload.kind === 'approval/review' && typeof event.payload.tool === 'string'
           && typeof event.payload.reason === 'string'
           && ['allow', 'deny', 'ask'].includes(String(event.payload.decision))) {
@@ -255,6 +260,34 @@ function settleTool(
     ...(output !== undefined ? { output } : {}),
     ...(error ? { error: error.message } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
+  }
+}
+
+function addPtcDispatch(entries: Entry[], payload: Record<string, unknown>): void {
+  const { parentCallId, callId, name, kind } = payload
+  if (typeof parentCallId !== 'string' || typeof callId !== 'string' || typeof name !== 'string') return
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]
+    if (entry?.kind !== 'agent') continue
+    const parent = findToolBlock(entry, parentCallId)
+    if (!parent) continue
+    const children = parent.tool.children ??= []
+    let child = children.find(tool => tool.callId === callId)
+    if (!child) {
+      child = { callId, name, args: payload.input, status: 'running' }
+      children.push(child)
+    }
+    if (kind === 'ptc/dispatch') {
+      child.status = payload.ok === true ? 'ok' : 'error'
+      const result = payload.result
+      if (result && typeof result === 'object') {
+        if ('output' in result) child.output = result.output
+        if ('durationMs' in result && typeof result.durationMs === 'number') child.durationMs = result.durationMs
+        if ('error' in result && result.error && typeof result.error === 'object'
+          && 'message' in result.error && typeof result.error.message === 'string') child.error = result.error.message
+      } else if (result !== undefined) child.output = result
+    }
+    return
   }
 }
 

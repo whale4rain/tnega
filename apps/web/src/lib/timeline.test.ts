@@ -12,6 +12,20 @@ function ev<T extends SessionEvent['type']>(type: T, payload: Extract<SessionEve
 const SUB = '0f8f6c1e-3b0a-4a39-9d7e-7f1d2a3b4c5d'
 
 describe('fromEvents', () => {
+  it('nests PTC dispatches below their outer tool without creating top-level tool messages', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('tool/call', { id: 'outer', name: 'run_code', arguments: { code: 'await tools.shell({command:"cargo test"})' } }),
+      ev('meta', { kind: 'ptc/dispatch-start', parentCallId: 'outer', callId: 'child', name: 'shell', input: { command: 'cargo test' } }),
+      ev('meta', { kind: 'ptc/dispatch', parentCallId: 'outer', callId: 'child', name: 'shell', ok: false, result: { error: { message: 'Tests failed' }, durationMs: 42 } }),
+      ev('tool/result', { id: 'outer-result', toolCallId: 'outer', name: 'run_code', ok: false }),
+      ev('meta', { kind: 'ptc/dispatch-start', parentCallId: 'missing', callId: 'orphan', name: 'read_file', input: {} }),
+    ])
+    const entry = entries.find(item => item.kind === 'agent')
+    if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
+    expect(entry.blocks).toHaveLength(1)
+    expect(entry.blocks[0]).toMatchObject({ kind: 'tool', tool: { callId: 'outer', children: [{ callId: 'child', name: 'shell', args: { command: 'cargo test' }, status: 'error', error: 'Tests failed', durationMs: 42 }] } })
+  })
   it('keeps automatic approval evidence in the completed process and fallback reasons visible', () => {
     const entries = fromEvents([
       ev('turn/start', { turn: 1 }),

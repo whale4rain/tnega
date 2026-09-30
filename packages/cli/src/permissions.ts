@@ -21,6 +21,8 @@ const ALWAYS_ALLOWED = new Set([
   // Project 内部
   'spawn_thread', 'send_thread_message', 'send_project_message',
   'write_memory', 'publish_artifact', 'index_resource',
+  // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。
+  'run_code', 'ask_user_question',
 ])
 
 interface PendingApproval {

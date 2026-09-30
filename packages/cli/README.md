@@ -47,6 +47,29 @@ profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
   `GET /api/subagents/:id` 读取独立 Session。状态面板每 2 秒刷新。
 - 跨站防护：JSON content-type + `x-tnega-client: 1`。
 
+## PTC 与提问
+
+默认 runtime 提供 `run_code`，由独立 QuickJS Worker 执行 JavaScript。使用
+`await tools.read_file({path: 'README.md'})` 调用已有工具，`ALL_TOOLS` 查看名称和参数 schema，
+`text(value)` 输出结果。程序没有直接文件、网络或子进程能力；子调用沿用原审批与沙箱。
+第一版子调用串行执行，`Promise.all` 也不并行；失败脚本不会自动重试。期限默认 5 分钟，
+包括工具审批与阻塞提问的等待；工具、输出和 VM 内存有独立上限。每次调用创建新 VM。
+程序化组合可通过 `createAgentRuntime({..., ptc: {mode: 'native' | 'both' | 'ptc'}})`
+选择工具面，默认 `both`。PTC 使用 Pi 的独立 CodeMode 库，不依赖 Pi Agent。
+显式传入自定义 `AgentDefinition` 时保留其工具面，默认 `native`；设置 `ptc.mode` 后才加入编排入口。
+
+Web 会话另外挂载独立 `ask_user_question` 插件。`mode: 'blocking'` 等待用户提交，
+答案作为原工具结果返回；`nonblocking` 立即返回 pending，用户提交时进入 steer 队列。
+Run 已结束时，前端接续现有 SSE 通道处理已持久化队列，仍可显示后续工具审批。
+请求格式为 `{mode, questions: [{id, question?, options?: [{label, description?}], multiple?, optional?}]}`；
+答案为 `{answers: [{questionId, selected?: string[], text?: string}]}`。问题文字和选项可空，
+每题始终保留自由文本框；`optional:true` 允许跳过，默认选择不构成回答。
+`GET /api/sessions/:id/questions` 查询，`POST /api/sessions/:id/questions/:requestId` 提交。
+仅当前主会话可向该界面提问，子代理不会创建用户看不到的阻塞等待。
+
+问题与 PTC 审计使用独立 meta，不参与模型/权限配置解析。重启可以恢复非阻塞问题；
+没有等待执行者的阻塞问题不会重新恢复旧工具调用。停止 Run 可取消阻塞等待。
+
 ## 会话存储（store.ts）
 
 工作区 `.tnega/sessions/<id>.jsonl`。**head `meta` 事件 + `meta/patch` 事件**都是

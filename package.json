@@ -217,11 +217,31 @@
     "./run-summary": {
       "types": "./dist/types/packages/run-summary/src/index.d.ts",
       "import": "./dist/run-summary.js"
+    },
+    "./ptc-runtime": {
+      "types": "./dist/types/packages/ptc-runtime/src/index.d.ts",
+      "import": "./dist/ptc-runtime.js"
+    },
+    "./ptc-runtime-quickjs": {
+      "types": "./dist/types/packages/ptc-runtime-quickjs/src/index.d.ts",
+      "import": "./dist/ptc-runtime-quickjs.js"
+    },
+    "./tool-ptc": {
+      "types": "./dist/types/packages/tool-ptc/src/index.d.ts",
+      "import": "./dist/tool-ptc.js"
+    },
+    "./user-questions": {
+      "types": "./dist/types/packages/user-questions/src/index.d.ts",
+      "import": "./dist/user-questions.js"
+    },
+    "./tool-question": {
+      "types": "./dist/types/packages/tool-question/src/index.d.ts",
+      "import": "./dist/tool-question.js"
     }
   },
   "packageManager": "pnpm@11.19.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

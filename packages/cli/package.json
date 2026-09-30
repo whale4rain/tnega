@@ -48,6 +48,11 @@
     "@tnega/thread-local": "workspace:*",
     "@tnega/tool-memory": "workspace:*",
     "@tnega/tool-spill": "workspace:*",
-    "@tnega/tools": "workspace:*"
+    "@tnega/tools": "workspace:*",
+    "@tnega/ptc-runtime": "workspace:*",
+    "@tnega/ptc-runtime-quickjs": "workspace:*",
+    "@tnega/tool-ptc": "workspace:*",
+    "@tnega/user-questions": "workspace:*",
+    "@tnega/tool-question": "workspace:*"
   }
 }

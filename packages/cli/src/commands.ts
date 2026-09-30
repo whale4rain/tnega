@@ -6,6 +6,7 @@ import { Context, type Plugin } from '@tnega/core'
 import type { AgentProfile } from './profile.js'
 import {
   agent,
+  DurableInbox,
   defineAgent,
   systemPrompt,
   type AgentContextBudget,
@@ -29,6 +30,8 @@ import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
 import { toolMemory } from '@tnega/tool-memory'
 import { runSummary } from '@tnega/run-summary'
+import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
+import { toolPtc } from '@tnega/tool-ptc'
 import {
   builtinTools,
   tools,
@@ -214,10 +217,14 @@ export interface AgentRuntimeOptions {
   toolPolicy?: ToolPolicy
   builtinTools?: false | BuiltinToolsConfig
   plugins?: readonly Plugin[]
+  /** Web per-run agents consume durable steering at model step boundaries. */
+  durableInbox?: boolean
+  ptc?: { mode?: 'native' | 'both' | 'ptc'; timeoutMs?: number; memoryLimitBytes?: number }
 }
 
 export interface AgentRuntime {
   root: Context
+  inbox?: DurableInbox
   dispose: () => Promise<void>
 }
 
@@ -709,6 +716,7 @@ export async function createAgentRuntime(
     file: merged.sessionFile,
   })
   fibers.push(sessionFiber)
+  const durableInbox = merged.durableInbox ? await DurableInbox.restore(root.get('session')) : undefined
   const toolsFiber = await root.plugin(tools, merged.toolPolicy ?? {})
   const summaryFiber = await root.plugin(runSummary)
   fibers.push(toolsFiber)
@@ -794,6 +802,7 @@ export async function createAgentRuntime(
       maxSteps?: number
       inbox?: AgentInbox
       contextBudget?: AgentContextBudget
+      claimNextStep?: () => Promise<readonly AgentInput[]>
     } = {}
     if (merged.llm) agentConfig.llm = merged.llm
     if (merged.contextWindow !== undefined) agentConfig.contextWindow = merged.contextWindow
@@ -801,6 +810,7 @@ export async function createAgentRuntime(
     if (merged.maxSteps !== undefined) agentConfig.maxSteps = merged.maxSteps
     if (merged.inbox) agentConfig.inbox = merged.inbox
     if (merged.contextBudget) agentConfig.contextBudget = merged.contextBudget
+    if (durableInbox) agentConfig.claimNextStep = () => durableInbox.claimNextStep()
     const agentFiber = await root.plugin(agent, agentConfig)
     fibers.push(agentFiber)
   }
@@ -808,11 +818,21 @@ export async function createAgentRuntime(
     const fiber = await root.plugin(plugin)
     fibers.push(fiber)
   }
+  fibers.push(await root.plugin(ptcRuntimeQuickjs, {
+    ...(merged.ptc?.timeoutMs !== undefined ? { timeoutMs: merged.ptc.timeoutMs } : {}),
+    ...(merged.ptc?.memoryLimitBytes !== undefined ? { memoryLimitBytes: merged.ptc.memoryLimitBytes } : {}),
+  }))
+  fibers.push(await root.plugin(toolPtc, {
+    mode: merged.ptc?.mode ?? (merged.agent ? 'native' : 'both'),
+    resolveSession: () => root.get('session'),
+  }))
   return {
     root,
+    ...(durableInbox ? { inbox: durableInbox } : {}),
     dispose: async () => {
       disposePromptTools?.()
-      for (const fiber of [...fibers].reverse()) await fiber.dispose()
+      // The composition may mount more plugins after construction (for example Web answerers).
+      await root.fiber.dispose()
     },
   }
 }
