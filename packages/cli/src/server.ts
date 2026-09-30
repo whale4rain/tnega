@@ -393,6 +393,10 @@ async function handleApi(
   if (url.pathname === '/api/config' && req.method === 'PUT') {
     const body = await readJsonBody(req)
     const patch: SystemConfigPatch = {}
+    if (body.codeMode !== undefined) {
+      if (typeof body.codeMode !== 'boolean') { sendError(res, 400, 'codeMode must be a boolean'); return }
+      patch.codeMode = body.codeMode
+    }
     if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
     if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
     if (typeof body.model === 'string') patch.model = body.model
@@ -952,6 +956,7 @@ async function handleRun(
       cwd: workspace,
       sessionFile: sessionFilePath(workspace, id),
       durableInbox: true,
+      ptc: { mode: config.codeMode ? 'ptc' : 'native' },
       llm: adapter,
       ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
       allowNetwork: true,
@@ -1200,6 +1205,7 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(toolQuestion))
   fibers.push(await root.plugin(ptcRuntimeQuickjs))
   fibers.push(await root.plugin(toolPtc, {
+    mode: req.config.codeMode ? 'ptc' : 'native',
     resolveSession: (agentId?: string) => registry.get(agentId ?? req.sessionId)?.session,
   }))
   fibers.push(await mountApprovalReview(root, {
@@ -1267,6 +1273,7 @@ async function createResidentAgent(
     req.effective.protocol ?? '',
     req.effective.temperature ?? '',
     JSON.stringify(req.config.approvalReview ?? {}),
+    req.config.codeMode ? 'ptc' : 'native',
     req.coding ? 'coding' : 'general',
     'auto',
   ].join('|')
@@ -1378,6 +1385,7 @@ async function projectHostFor(
     effective.reasoningEffort ?? '',
     context.projectPermission,
     JSON.stringify(config.approvalReview ?? {}),
+    config.codeMode ? 'ptc' : 'native',
   ].join('|')
   const existing = context.projectHosts?.get(path)
   if (existing?.signature === signature) return existing.host
@@ -1799,6 +1807,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
     },
     config: {
       apiKeySet: Boolean(config.apiKey),
+      codeMode: config.codeMode ?? false,
       path,
       approvalReview: {
         provider: config.approvalReview?.provider ?? 'conversation',

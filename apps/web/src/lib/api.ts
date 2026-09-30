@@ -65,6 +65,7 @@ export interface SessionPatch {
 }
 
 export interface ConfigPatch {
+  codeMode?: boolean
   approvalReview?: ApprovalReviewerSettings & { apiKey?: string }
   apiKey?: string
   baseUrl?: string

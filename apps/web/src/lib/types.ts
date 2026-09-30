@@ -186,6 +186,7 @@ export interface ConfigSnapshot {
     contextWindow?: number
   }
   config: {
+    codeMode?: boolean
     approvalReview?: ApprovalReviewerSettings
     apiKeySet: boolean
     path: string

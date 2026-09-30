@@ -645,6 +645,7 @@ export async function runAgentCommand(
     llm: adapter,
     ...(profile ? { profile } : {}),
     ...profileRuntimeOptions,
+    ptc: { mode: systemConfig.codeMode ? 'ptc' : 'native' },
     ...(options.allowNetwork !== undefined
       ? { allowNetwork: options.allowNetwork }
       : {}),
@@ -823,7 +824,7 @@ export async function createAgentRuntime(
     ...(merged.ptc?.memoryLimitBytes !== undefined ? { memoryLimitBytes: merged.ptc.memoryLimitBytes } : {}),
   }))
   fibers.push(await root.plugin(toolPtc, {
-    mode: merged.ptc?.mode ?? (merged.agent ? 'native' : 'both'),
+    mode: merged.ptc?.mode ?? 'native',
     resolveSession: () => root.get('session'),
   }))
   return {

@@ -15,6 +15,7 @@ export function SettingsDialog({
   onSaved: (config: ConfigSnapshot) => void
 }) {
   const stored = config?.config
+  const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
   const [protocol, setProtocol] = useState<'' | Protocol>(stored?.protocol ?? '')
   const [baseUrl, setBaseUrl] = useState(stored?.baseUrl ?? '')
   const [model, setModel] = useState(stored?.model ?? '')
@@ -35,7 +36,7 @@ export function SettingsDialog({
   const save = async () => {
     setSaving(true)
     setError(undefined)
-    const patch: ConfigPatch = { protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
+    const patch: ConfigPatch = { codeMode, protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
     patch.approvalReview = {
       provider: reviewProvider, defaultMode: reviewDefault,
       modelId: reviewModelId.trim(), model: reviewModel.trim(), baseUrl: reviewBaseUrl.trim(), apiKeyEnv: reviewKeyEnv.trim(),
@@ -92,6 +93,14 @@ export function SettingsDialog({
       )}
 
       <div className="form-grid">
+        <label className="field span-2">
+          <span className="field-label">CodeMode</span>
+          <select aria-label="CodeMode" value={codeMode ? 'enabled' : 'disabled'} onChange={event => setCodeMode(event.target.value === 'enabled')}>
+            <option value="disabled">关闭 · 原生工具</option>
+            <option value="enabled">开启 · 仅 run_code</option>
+          </select>
+          <span className="muted small">开启后模型只看到 run_code，通过代码调用原有工具。关闭后仅使用原生工具。保存后于下一次运行生效。</span>
+        </label>
         <label className="field">
           <span className="field-label">Protocol</span>
           <select value={protocol} onChange={event => setProtocol(event.target.value as '' | Protocol)}>

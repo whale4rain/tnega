@@ -436,6 +436,7 @@ export class ProjectHost {
     await ctx.plugin(projectLoop, { projectId: record.id })
     await ctx.plugin(ptcRuntimeQuickjs)
     await ctx.plugin(toolPtc, {
+      mode: this.options.systemConfig?.codeMode ? 'ptc' : 'native',
       resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session,
     })
 

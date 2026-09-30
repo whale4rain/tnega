@@ -53,6 +53,7 @@ export interface LlmEnvConfig {
 }
 
 export interface SystemConfig {
+  codeMode?: boolean
   approvalReview?: ApprovalReviewerConfig
   apiKey?: string
   baseUrl?: string
@@ -246,6 +247,7 @@ function normalizeConfig(value: unknown): SystemConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   const record = value as Record<string, unknown>
   const config: SystemConfig = {}
+  if (typeof record.codeMode === 'boolean') config.codeMode = record.codeMode
   const review = normalizeApprovalReviewer(record.approvalReview)
   if (review) config.approvalReview = review
   if (typeof record.apiKey === 'string' && record.apiKey) config.apiKey = record.apiKey

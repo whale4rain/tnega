@@ -36,3 +36,15 @@ it('requires an explicit configured route before saving a model reviewer', async
   expect(view.getByText('Select a configured model route for automatic review')).toBeTruthy()
   expect(save).not.toHaveBeenCalled()
 })
+
+it('offers exactly two CodeMode choices and saves the enabled state', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  const view = render(createElement(SettingsDialog, { config: snapshot, onClose: vi.fn(), onSaved: vi.fn() }))
+  const mode = view.getByLabelText('CodeMode')
+  expect(mode).toHaveProperty('value', 'disabled')
+  expect(mode.querySelectorAll('option')).toHaveLength(2)
+  fireEvent.change(mode, { target: { value: 'enabled' } })
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].codeMode).toBe(true)
+})

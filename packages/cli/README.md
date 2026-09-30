@@ -49,13 +49,15 @@ profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
 
 ## PTC 与提问
 
-默认 runtime 提供 `run_code`，由独立 QuickJS Worker 执行 JavaScript。使用
+设置中的 CodeMode 默认关闭，此时模型只看到原生工具，且没有 `run_code`。
+开启后模型只看到 `run_code`，由独立 QuickJS Worker 执行 JavaScript。使用
 `await tools.read_file({path: 'README.md'})` 调用已有工具，`ALL_TOOLS` 查看名称和参数 schema，
 `text(value)` 输出结果。程序没有直接文件、网络或子进程能力；子调用沿用原审批与沙箱。
 第一版子调用串行执行，`Promise.all` 也不并行；失败脚本不会自动重试。期限默认 5 分钟，
 包括工具审批与阻塞提问的等待；工具、输出和 VM 内存有独立上限。每次调用创建新 VM。
 程序化组合可通过 `createAgentRuntime({..., ptc: {mode: 'native' | 'both' | 'ptc'}})`
-选择工具面，默认 `both`。PTC 使用 Pi 的独立 CodeMode 库，不依赖 Pi Agent。
+选择工具面，默认 `native`；`both` 仅保留给程序化组合，产品设置不提供。
+设置以 `codeMode` 布尔值保存，应用于下一次运行及 Project/Thread。PTC 使用 Pi 的独立 CodeMode 库，不依赖 Pi Agent。
 显式传入自定义 `AgentDefinition` 时保留其工具面，默认 `native`；设置 `ptc.mode` 后才加入编排入口。
 
 Web 会话另外挂载独立 `ask_user_question` 插件。`mode: 'blocking'` 等待用户提交，
