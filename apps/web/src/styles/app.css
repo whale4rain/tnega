@@ -2980,3 +2980,15 @@ kbd {
   color: inherit;
   font-weight: 600;
 }
+
+/* docx-preview draws white pages; give them a neutral backdrop in both themes. */
+.docx-preview .docx-wrapper {
+  background: var(--surface-sunken);
+  padding: 16px;
+  border-radius: var(--radius-sm);
+}
+
+.docx-preview .docx-wrapper > section.docx {
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.18);
+  margin-bottom: 16px;
+}

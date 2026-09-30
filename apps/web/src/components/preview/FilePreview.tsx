@@ -12,6 +12,7 @@ export interface PreviewProps {
 /** Each viewer is its own chunk: the heavy parsers load only when a file of that kind is opened. */
 const VIEWERS: Partial<Record<OfficeKind, ComponentType<PreviewProps>>> = {
   xlsx: lazy(() => import('./XlsxPreview')),
+  docx: lazy(() => import('./DocxPreview')),
 }
 
 const LABEL: Record<OfficeKind, string> = {
