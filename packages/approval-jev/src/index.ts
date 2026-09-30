@@ -59,7 +59,7 @@ export class JevApprovalReviewer extends ApprovalReviewer {
       const response = await (this.config.fetch ?? fetch)(endpoint, {
         method: 'POST', signal, headers: { Authorization: `Bearer ${this.config.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: this.config.model ?? 'jev-latest', state: reviewState(request), questions: {
-          risk: { type: 'choice', instructions: APPROVAL_POLICY, criteria: { low: 'Bounded reversible local development needed for the human task.', medium: 'Destructive edits, installs, publishing, communication or external writes.', high: 'Secret exfiltration, broad irreversible destruction or unrelated security weakening.' } },
+          risk: { type: 'choice', instructions: `${APPROVAL_POLICY}\nFor this risk question classify only the pending action intrinsic effects. Do not use task relevance, missing authorization or historical actions to increase its risk tier.`, criteria: { low: 'Harmless output, read-only inspection, tests, builds or bounded reversible local development.', medium: 'Destructive edits, installs, publishing, communication or external writes.', high: 'Secret exfiltration, broad irreversible destruction or security weakening.' } },
           conflict: { type: 'noul', instructions: `${APPROVAL_POLICY}\nDoes the action conflict with human instructions, constraints, workspace boundaries or safety policy?` },
         } }),
       })

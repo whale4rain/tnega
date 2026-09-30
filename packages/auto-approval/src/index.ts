@@ -32,7 +32,7 @@ export const autoApproval = {
       } else {
         const derived = await session.deriveMessages()
         const messages = config.evidenceMessages ? await config.evidenceMessages(derived) : derived
-        const context = buildReviewContext(messages)
+        const context = buildReviewContext(messages, await session.read())
         const latestHuman = [...messages].reverse().find(message => message.role === 'user' && !message.name)
         const constraints = await config.constraints?.() ?? ''
         if ((latestHuman && !context.evidence.some(item => item.source === 'human' && item.content === latestHuman.content)) || constraints.length > 8_000) {

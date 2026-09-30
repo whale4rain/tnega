@@ -28,7 +28,12 @@ Jev 地址也接受完整的 `https://api.typesafe.ai/v1/systemone`，不会重�
 Web 配置响应只返回 `apiKeySet`。切换 Provider 会清除上一家的配置，需重新配置密钥。
 
 参考 [DSH auto-review](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/experimental/auto-review)：
-只保留用户请求、带来源的 Agent 请求和已有工具调用事实，不传系统消息、assistant 推理或工具返回文本。
+保留用户请求、带来源的 Agent 请求和当前任务的工具调用事实，不传系统消息、assistant 推理或工具返回正文。
+用户证据优先占用预算；历史任务的工具调用和整个 `run_code` 脚本不进入审查。
+PTC 使用当前用户请求之后持久化的 `ptc/dispatch-start` 与 `ptc/dispatch` 配对记录，
+提供准确工具输入、成功/失败状态及 shell 退出码；未完成的脚本步骤不作为已执行事实。
+历史 `write_file` 正文仅保留字符数、路径及追加标记，避免正文污染审批上下文；当前待审批 action 始终使用原始完整输入。
+这些事实不能授予用户授权。风险分类只看当前操作本身的影响，任务与约束匹配由冲突判断处理。
 Project 中的 `box:` 消息依据可信 Box Envelope 的 sender 分类；其他有名消息保守视为 Agent。
 上下文最多 24,000 字符，原始 action 最多 16,000 字符，项目约束最多 8,000 字符。
 每条证据完整保留，不截断命令。省略旧历史时记录 `contextTruncated`，该标记不会强制回退人工审批。

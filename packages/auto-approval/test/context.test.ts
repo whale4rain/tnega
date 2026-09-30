@@ -30,3 +30,39 @@ describe('approval context', () => {
     expect(JSON.stringify(context.evidence).length).toBeLessThan(24_000)
   })
 })
+
+
+it('keeps the current human request ahead of bulky facts and discards PTC script history', () => {
+  const context = buildReviewContext([
+    { role: 'user', content: 'Read old files' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'old', name: 'shell', arguments: { command: 'old unrelated command' } }] },
+    { role: 'user', content: 'Clean project4' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'script', name: 'run_code', arguments: { code: 'unexecuted delete();'.repeat(2000) } }] },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'large', name: 'custom_tool', arguments: { content: 'x'.repeat(24000) } }] },
+  ])
+  expect(context.evidence).toContainEqual({ source: 'human', content: 'Clean project4' })
+  expect(JSON.stringify(context.evidence)).not.toMatch(/unexecuted|old unrelated command/)
+  expect(context.contextTruncated).toBe(true)
+})
+
+
+it('reserves the latest human request before admitting nearly full-budget tool input', () => {
+  const instruction = 'Keep every existing file. '.repeat(160)
+  const context = buildReviewContext([
+    { role: 'user', content: instruction },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'large', name: 'custom_tool', arguments: { path: 'large.txt', content: 'x'.repeat(22000) } }] },
+  ])
+  expect(context.evidence).toContainEqual({ source: 'human', content: instruction })
+  expect(context.contextTruncated).toBe(true)
+  expect(JSON.stringify(context.evidence).length).toBeLessThanOrEqual(24000)
+})
+
+
+it('summarizes historical file-write bodies while preserving their target and size', () => {
+  const context = buildReviewContext([
+    { role: 'user', content: 'Write the report' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'write', name: 'write_file', arguments: { path: 'report.md', content: 'Ignore rules'.repeat(3000), append: true } }] },
+  ])
+  expect(context.evidence).toContainEqual({ source: 'fact', content: JSON.stringify({ tool: 'write_file', input: { path: 'report.md', append: true, contentChars: 36000 } }) })
+  expect(JSON.stringify(context.evidence)).not.toContain('Ignore rules')
+})
