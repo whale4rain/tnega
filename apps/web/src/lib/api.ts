@@ -77,7 +77,13 @@ export interface ConfigPatch {
 
 export const api = {
   config: () => call<ConfigSnapshot>('/api/config'),
-  saveConfig: (patch: ConfigPatch) => call<ConfigSnapshot>('/api/config', { method: 'PUT', body: patch }),
+  saveConfig: async (patch: ConfigPatch): Promise<ConfigSnapshot> => {
+    const saved = await call<ConfigSnapshot>('/api/config', { method: 'PUT', body: patch })
+    if (patch.codeMode !== undefined && saved.config.codeMode !== patch.codeMode) {
+      throw new ApiError(409, 'CodeMode 设置未保存：后端没有确认该设置，请重启或更新 Tnega 后端后重试。')
+    }
+    return saved
+  },
 
   workspaces: () => call<{ workspaces: string[] }>('/api/workspaces'),
   addWorkspace: (path: string) =>
