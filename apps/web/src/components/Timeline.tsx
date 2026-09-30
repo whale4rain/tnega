@@ -22,15 +22,18 @@ import { memo, useState, type ReactNode } from 'react'
 import { useCopy } from '../lib/hooks'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentRun, stringify } from '../lib/timeline'
+import { officeFiles } from '../lib/office'
 import { codeModeOutput, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
 import { CodeBlock, Markdown } from './Markdown'
+import { OfficeFiles } from './OfficeFiles'
 
 export interface TimelineActions {
   onEdit?: (entryId: string, text: string) => void
   onRetry?: (entryId: string, text: string) => void
   onFork?: (messageId: string) => void
   onOpenSubagent?: (id: string, label: string) => void
+  onOpenFile?: (path: string) => void
 }
 
 /** Whose avatar the agent turns in this timeline wear. */
@@ -204,6 +207,8 @@ const AgentTurn = memo(function AgentTurn({
   const last = entry.blocks.at(-1)
   const busyTool = entry.blocks.some(b => b.kind === 'tool' && b.tool.status === 'running')
   const thinking = live && !busyTool && !(last?.kind === 'text' && last.streaming)
+  // Produced files stay visible even when the tools that wrote them fold into the process.
+  const files = live ? [] : officeFiles(entry.blocks)
 
   const renderSegment = (seg: Segment) => {
     switch (seg.kind) {
@@ -242,6 +247,7 @@ const AgentTurn = memo(function AgentTurn({
           </div>
         )}
         {segments.map(renderSegment)}
+        {files.length > 0 && <OfficeFiles files={files} onOpen={actions.onOpenFile} />}
         {thinking && <ThinkingLine hasContent={entry.blocks.length > 0} />}
         {!live && (text || entry.forkId) && (
           <div className="turn-actions">

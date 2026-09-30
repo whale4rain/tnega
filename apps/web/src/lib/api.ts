@@ -146,6 +146,26 @@ export const api = {
     }),
 }
 
+/** Raw bytes of a workspace file the agent produced (office documents, PDFs, images). */
+export async function fetchWorkspaceFile(workspace: string, path: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch(scoped('/api/files', workspace, { path }), {
+    headers: { 'x-tnega-client': '1' },
+    ...(signal ? { signal } : {}),
+  })
+  if (!response.ok) throw await errorFrom(response)
+  return response.blob()
+}
+
+/** Save a fetched file through the browser's download flow. */
+export function saveBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
 /**
  * Start an Agent Run and feed each SSE frame to `onEvent` until the server
  * closes the stream. Aborting `signal` disconnects, which the server treats

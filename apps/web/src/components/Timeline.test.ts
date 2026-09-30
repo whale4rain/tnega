@@ -88,3 +88,22 @@ it('renders text emissions as separate readable blocks and a returned value sepa
   expect(view.getByText('42', { selector: 'pre.tool-output' })).toBeTruthy()
   expect(view.container.querySelector('script')).toBeNull()
 })
+
+it('shows office files a finished turn produced and opens them on click', () => {
+  const entry: Entry = {
+    kind: 'agent', id: 'agent-office', turn: 1, status: 'done',
+    summary: { text: 'Saved the workbook.', sourceMessageId: 'answer' },
+    blocks: [
+      { kind: 'tool', id: 't1', tool: { callId: 't1', name: 'office_create', args: { path: 'out/sales.xlsx' }, status: 'ok', output: { path: 'out/sales.xlsx', kind: 'xlsx' } } },
+      { kind: 'text', id: 'answer', text: 'Saved the workbook.' },
+    ],
+  }
+  const opened: string[] = []
+  const view = render(createElement(Timeline, { entries: [entry], running: false, actions: { onOpenFile: path => opened.push(path) } }))
+  fireEvent.click(view.getByRole('button', { name: /sales\.xlsx/ }))
+  expect(opened).toEqual(['out/sales.xlsx'])
+
+  cleanup()
+  const live = render(createElement(Timeline, { entries: [entry], running: true, actions: {} }))
+  expect(live.queryByTitle('Preview out/sales.xlsx')).toBeNull()
+})

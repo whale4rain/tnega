@@ -2824,3 +2824,85 @@ kbd {
 .code-token-comment { color: var(--text-3); font-style: italic; }
 .code-token-number { color: var(--warn); }
 .ptc-output-block + .ptc-output-block { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
+
+/* Office files produced by a turn, and their preview dialog. */
+.office-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.office-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.office-file:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.office-file-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  flex-shrink: 0;
+}
+
+.office-file.kind-xlsx .office-file-icon { color: #1d7044; }
+.office-file.kind-docx .office-file-icon { color: #2b579a; }
+.office-file.kind-pptx .office-file-icon { color: #c43e1c; }
+
+.office-file-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.office-file-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-file-meta {
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-file-chevron {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.file-preview {
+  min-height: 240px;
+  max-height: min(72vh, 820px);
+  overflow: auto;
+}
+
+.file-preview-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 240px;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
