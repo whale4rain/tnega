@@ -48,6 +48,7 @@ import { spillLocal } from '@tnega/spill-local'
 import { listStoredSubagents, readSubagentEvents, subagentLocal } from '@tnega/subagent-local'
 import { SubagentError } from '@tnega/subagent'
 import { toolSpill } from '@tnega/tool-spill'
+import { toolOffice } from '@tnega/tool-office'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSubagent } from '@tnega/tool-subagent'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
@@ -1189,6 +1190,7 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(toolSearch, { cwd: workspace }))
   fibers.push(await root.plugin(spillLocal, { cwd: workspace }))
   fibers.push(await root.plugin(toolSpill))
+  fibers.push(await root.plugin(toolOffice, { cwd: workspace }))
   if (req.coding) {
     fibers.push(await root.plugin(createCodingAgentPlugin({
       cwd: workspace,

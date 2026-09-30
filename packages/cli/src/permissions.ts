@@ -12,12 +12,15 @@ export type PermissionModeSource = PermissionMode | (() => PermissionMode | Prom
  * 自己的共享事实。它们造出来的 Agent 自己还要过同一道守卫，因此放行的半径由权限模型
  * 本身界定。真正需要用户点头的是越界与对外的动作 —— shell、工作区外的路径、网络。
  */
+/** 与 `write_file` 同级：workspace-write 下在工作区内直接放行。 */
+const WORKSPACE_WRITES = new Set(['write_file', 'office_create', 'office_edit'])
+
 const ALWAYS_ALLOWED = new Set([
   // 只读
   'echo', 'now', 'calculator', 'json', 'read_file', 'list_dir',
   'glob', 'grep', 'http_get', 'web_search', 'skills_list', 'skill_read',
   'get_goal', 'update_goal', 'list_subagent', 'send_agent_message',
-  'read_project', 'list_threads', 'read_artifact',
+  'read_project', 'list_threads', 'read_artifact', 'office_inspect', 'office_read',
   // Project 内部
   'spawn_thread', 'send_thread_message', 'send_project_message',
   'write_memory', 'publish_artifact', 'index_resource',
@@ -115,7 +118,7 @@ export function permissionGuard(
     }
     if (ALWAYS_ALLOWED.has(request.name) && scoped
       && !(request.name === 'http_get' && unrestricted)) return undefined
-    if (effective === 'workspace-write' && request.name === 'write_file' && scoped) return undefined
+    if (effective === 'workspace-write' && WORKSPACE_WRITES.has(request.name) && scoped) return undefined
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
     let reviewed: ApprovalDecision | undefined
     // A narrower child cannot use the parent's automatic elevation policy.

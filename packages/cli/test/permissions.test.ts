@@ -56,4 +56,17 @@ describe('permissionGuard', () => {
     mode = 'workspace-write'
     expect(await guard(request('write_file', { path: 'notes.txt', content: 'x' }))).toBeUndefined()
   })
+
+  it('treats office reads as read-only and office writes like write_file', async () => {
+    let mode: 'read-only' | 'workspace-write' = 'read-only'
+    const guard = permissionGuard(() => mode, 'session', new ApprovalBroker(), { workspace: process.cwd() })
+
+    expect(await guard(request('office_inspect', { path: 'report.xlsx' }))).toBeUndefined()
+    expect(await guard(request('office_read', { path: 'report.xlsx' }))).toBeUndefined()
+    expect(await guard(request('office_create', { path: 'report.xlsx', spec: {} }))).toMatch(/approval/)
+    expect(await guard(request('office_edit', { path: 'report.xlsx', ops: [] }))).toMatch(/approval/)
+    mode = 'workspace-write'
+    expect(await guard(request('office_create', { path: 'report.xlsx', spec: {} }))).toBeUndefined()
+    expect(await guard(request('office_edit', { path: 'report.xlsx', ops: [] }))).toBeUndefined()
+  })
 })

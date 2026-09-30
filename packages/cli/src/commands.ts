@@ -27,6 +27,7 @@ import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
+import { toolOffice } from '@tnega/tool-office'
 import { toolSearch } from '@tnega/tool-search'
 import { toolMemory } from '@tnega/tool-memory'
 import { runSummary } from '@tnega/run-summary'
@@ -754,6 +755,7 @@ export async function createAgentRuntime(
     fibers.push(await root.plugin(toolSearch, { cwd: merged.cwd }))
     fibers.push(await root.plugin(spillLocal, { cwd: merged.cwd }))
     fibers.push(await root.plugin(toolSpill))
+    fibers.push(await root.plugin(toolOffice, { cwd: merged.cwd }))
   }
   // Wire the prompt-assembly seam into the default composition: the system
   // prompt is assembled from registered sections and every executable tool is

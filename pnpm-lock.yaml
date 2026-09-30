@@ -291,6 +291,9 @@ importers:
       '@tnega/tool-memory':
         specifier: workspace:*
         version: link:../memory/tool-memory
+      '@tnega/tool-office':
+        specifier: workspace:*
+        version: link:../tool-office
       '@tnega/tool-ptc':
         specifier: workspace:*
         version: link:../tool-ptc

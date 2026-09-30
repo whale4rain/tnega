@@ -40,6 +40,7 @@
     "@tnega/subagent": "workspace:*",
     "@tnega/subagent-local": "workspace:*",
     "@tnega/tool-subagent": "workspace:*",
+    "@tnega/tool-office": "workspace:*",
     "@tnega/tool-search": "workspace:*",
     "@tnega/tool-thread": "workspace:*",
     "@tnega/tool-blackboard": "workspace:*",

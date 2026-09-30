@@ -33,6 +33,7 @@ import type { ThreadRecord, ThreadService } from '@tnega/thread'
 import { toolBlackboard } from '@tnega/tool-blackboard'
 import { toolBox } from '@tnega/tool-box'
 import { toolSpill } from '@tnega/tool-spill'
+import { toolOffice } from '@tnega/tool-office'
 import { toolSearch } from '@tnega/tool-search'
 import { toolThread } from '@tnega/tool-thread'
 import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '@tnega/tools'
@@ -398,6 +399,7 @@ export class ProjectHost {
       await ctx.plugin(toolSearch, { cwd })
       await ctx.plugin(spillLocal, { cwd })
       await ctx.plugin(toolSpill)
+      await ctx.plugin(toolOffice, { cwd })
     }
 
     await ctx.plugin(toolBlackboard)
