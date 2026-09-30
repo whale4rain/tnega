@@ -26,7 +26,7 @@ describe('fromEvents', () => {
     expect(entry.blocks).toHaveLength(1)
     expect(entry.blocks[0]).toMatchObject({ kind: 'tool', tool: { callId: 'outer', children: [{ callId: 'child', name: 'shell', args: { command: 'cargo test' }, status: 'error', error: 'Tests failed', durationMs: 42 }] } })
   })
-  it('keeps automatic approval evidence in the completed process and fallback reasons visible', () => {
+  it('hides successful automatic approval notices while preserving fallback reasons', () => {
     const entries = fromEvents([
       ev('turn/start', { turn: 1 }),
       ev('meta', { kind: 'approval/review', decision: 'allow', tool: 'shell', reason: 'Tests requested' }),
@@ -37,7 +37,7 @@ describe('fromEvents', () => {
     const entry = entries.find(item => item.kind === 'agent')
     if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
     const view = presentRun(entry)
-    expect(view.process).toContainEqual(expect.objectContaining({ text: '自动审批已通过：shell — Tests requested' }))
+    expect(entry.blocks).not.toContainEqual(expect.objectContaining({ text: expect.stringContaining('自动审批已通过') }))
     expect(view.visible).toContainEqual(expect.objectContaining({ text: '需要你确认：http_get — Destination uncertain' }))
   })
   it.each([

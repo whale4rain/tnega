@@ -138,6 +138,7 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         })
         break
       case 'meta': {
+        if (event.payload.kind === 'approval/review' && event.payload.decision === 'allow') break
         if (event.payload.kind === 'ptc/dispatch-start' || event.payload.kind === 'ptc/dispatch') {
           addPtcDispatch(entries, event.payload)
           break
