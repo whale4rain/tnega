@@ -8,6 +8,9 @@
   },
   "dependencies": {
     "@formulajs/formulajs": "^4.6.1",
-    "exceljs": "^4.4.0"
+    "@xmldom/xmldom": "^0.9.12",
+    "docx": "^9.8.1",
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.2"
   }
 }

@@ -22,3 +22,7 @@ Univer 等后端，再在本包之上加 Service Definition。
 | 类型 | 生成 | 检查 / 读取 | 编辑 |
 | --- | --- | --- | --- |
 | xlsx | ✓ | ✓ | 单元格、公式、样式、列宽、sheet 增删改 |
+| docx | 标题、段落、列表、表格、分页 | 大纲；段落与表格按块分页读取 | — |
+
+docx 由 `docx` 生成；读取直接解析 OOXML（jszip + xmldom），标题级别按样式名（`heading N` / `Title`）识别，
+因此非英文 Word 的自定义 styleId 也能识别。
