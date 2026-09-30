@@ -366,7 +366,12 @@ export interface MetaPatchPayload {
   reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
 }
 
-export type AgentType = 'general' | 'coding'
+/** `work` 面向文档、表格与演示文稿产物；旧读者不认识它时按未分类会话处理。 */
+export type AgentType = 'general' | 'coding' | 'work'
+
+export function isAgentType(value: unknown): value is AgentType {
+  return value === 'general' || value === 'coding' || value === 'work'
+}
 
 /** `execute` remains readable for pre-goal Sessions and is not offered for new selections. */
 export type SessionMode = 'auto' | 'plan' | 'goal' | 'execute'
@@ -824,9 +829,7 @@ export function foldSessionMeta(events: readonly SessionEvent[]): {
       // conversation's model route or Agent Run mode. Includes existing logs.
       if (typeof payload.kind === 'string' && payload.kind.startsWith('approval/')) continue
       if (typeof payload.title === 'string') meta.title = payload.title
-      if (payload.agentType === 'general' || payload.agentType === 'coding') {
-        meta.agentType = payload.agentType
-      }
+      if (isAgentType(payload.agentType)) meta.agentType = payload.agentType
       if (payload.mode === 'execute') meta.mode = 'auto'
       else if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'goal') {
         meta.mode = payload.mode

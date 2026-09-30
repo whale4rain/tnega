@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Context, symbols, type Plugin } from '@tnega/core'
-import { SessionLog, type SessionEvent } from '@tnega/session'
+import { SessionLog, isAgentType, type AgentType, type SessionEvent } from '@tnega/session'
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
@@ -28,7 +28,7 @@ export interface AgentSessionMeta {
   subagentAllowShell?: boolean
   subagentAllowNetwork?: boolean
   subagentPermission?: 'read-only' | 'workspace-write' | 'bypass'
-  agentType?: 'general' | 'coding'
+  agentType?: AgentType
   mode?: 'auto' | 'plan' | 'goal' | 'execute'
   title?: string
   owner?: string
@@ -79,7 +79,7 @@ export interface AgentInboxInsertedEvent {
 export interface LiveAgent {
   readonly id: string
   readonly meta: AgentSessionMeta
-  readonly agentType: 'general' | 'coding' | undefined
+  readonly agentType: AgentType | undefined
   readonly mode: 'auto' | 'plan' | 'goal' | 'execute' | undefined
   readonly owner: string | undefined
   readonly parentSessionId: string | undefined
@@ -118,7 +118,7 @@ export interface AgentCreationOptions {
   file: string
   /** Stable identity shared by this process and future resumes. */
   sessionId?: string
-  agentType?: 'general' | 'coding'
+  agentType?: AgentType
   mode?: 'auto' | 'plan' | 'goal' | 'execute'
   title?: string
   owner?: string
@@ -213,7 +213,7 @@ class LiveAgentImpl implements LiveAgent {
     this._wakeReserved = wakeReserved
   }
 
-  get agentType(): 'general' | 'coding' | undefined {
+  get agentType(): AgentType | undefined {
     return this.meta.agentType
   }
 
@@ -1003,9 +1003,7 @@ function readDurableAgentMeta(events: readonly SessionEvent[]): AgentSessionMeta
     const meta: AgentSessionMeta = {
       agentId: typeof payload.agentId === 'string' ? payload.agentId : '',
     }
-    if (payload.agentType === 'general' || payload.agentType === 'coding') {
-      meta.agentType = payload.agentType
-    }
+    if (isAgentType(payload.agentType)) meta.agentType = payload.agentType
     if (payload.mode === 'execute') meta.mode = 'auto'
     else if (payload.mode === 'auto' || payload.mode === 'plan' || payload.mode === 'goal') {
       meta.mode = payload.mode
