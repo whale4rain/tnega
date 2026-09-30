@@ -220,6 +220,7 @@ export interface ToolResultWire {
 
 /** Frames written to the `POST /runs` SSE stream. */
 export type StreamEvent =
+  | { type: 'ptc/dispatch'; payload: Record<string, unknown> }
   | { type: 'message_start'; id: string; model?: string }
   | { type: 'message_delta'; id: string; delta: string }
   | { type: 'message_stop'; id: string; finishReason: string }

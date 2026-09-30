@@ -12,7 +12,8 @@ import {
   type AgentStreamEvent,
   type LiveAgent,
 } from '@tnega/agent'
-import { Context } from '@tnega/core'
+import { Context, type Fiber } from '@tnega/core'
+import { observePtc } from './ptc-observation.js'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
@@ -1025,9 +1026,13 @@ async function handleRun(
     controller.abort({ type: 'user' })
   })
 
+  let ptcObservation: Fiber | undefined
   let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
 
   try {
+    ptcObservation = await observePtc(runtime.root, id, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
     const sessionLog = runtime.root.get('session') as SessionLog
     editTracking = {
       session: sessionLog,
@@ -1101,6 +1106,7 @@ async function handleRun(
       writeSse(res, { type: 'error', message: errorMessage(error) })
     }
   } finally {
+    await ptcObservation?.dispose()
     if (runtime && editTracking) {
       try {
         const edited = await editedFiles(workspace, editTracking.baseline,
@@ -1437,11 +1443,15 @@ async function runResidentTurn(
     controller.abort({ type: 'user' })
   })
 
+  let ptcObservation: Fiber | undefined
   let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
   let releaseWriteCapture: ReturnType<ToolsService['guard']> | undefined
 
   try {
     const entry = await ensureResidentAgent(context, workspace, id, req)
+    ptcObservation = await observePtc(entry.root, id, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
     const agent = entry.agent
     editTracking = {
       session: agent.session,
@@ -1497,6 +1507,7 @@ async function runResidentTurn(
       writeSse(res, { type: 'error', message: errorMessage(error) })
     }
   } finally {
+    await ptcObservation?.dispose()
     await releaseWriteCapture?.()
     if (editTracking) {
       try {

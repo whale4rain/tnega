@@ -405,6 +405,12 @@ export function applyStream(entries: readonly Entry[], event: StreamEvent): read
 function applyToAgent(entry: AgentEntry, event: StreamEvent): AgentEntry {
   const blocks = entry.blocks
   switch (event.type) {
+    case 'ptc/dispatch': {
+      const next: AgentEntry = { ...entry, blocks: blocks.map(block => block.kind === 'tool'
+        ? { ...block, tool: { ...block.tool, children: block.tool.children?.map(child => ({ ...child })) } } : block) }
+      addPtcDispatch([next], event.payload)
+      return next
+    }
     case 'message_start':
       return { ...entry, blocks: [...blocks, { kind: 'text', id: `live-${event.id}`, text: '', streaming: true }] }
     case 'message_delta': {

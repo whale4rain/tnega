@@ -266,3 +266,15 @@ describe('tool presentation', () => {
       .toBe('▸ src/\n  src/a.ts')
   })
 })
+
+
+it('renders nested PTC stream calls immediately and preserves prior immutable snapshots', () => {
+  const initial = applyStream(beginRun([], 'Run tests'), { type: 'tool/start', index: 0, call: { id: 'outer', name: 'run_code', arguments: { code: 'await tools.shell({})' } } })
+  const started = applyStream(initial, { type: 'ptc/dispatch', payload: { kind: 'ptc/dispatch-start', parentCallId: 'outer', callId: 'child', name: 'shell', input: { command: 'cargo test' } } })
+  const finished = applyStream(started, { type: 'ptc/dispatch', payload: { kind: 'ptc/dispatch', parentCallId: 'outer', callId: 'child', name: 'shell', ok: true, result: { output: 'passed', durationMs: 12 } } })
+  const original = initial.at(-1)
+  if (original?.kind !== 'agent' || original.blocks[0]?.kind !== 'tool') throw new Error('Missing outer call')
+  expect(original.blocks[0].tool.children).toBeUndefined()
+  expect(started.at(-1)).toMatchObject({ blocks: [{ tool: { children: [{ name: 'shell', status: 'running' }] } }] })
+  expect(finished.at(-1)).toMatchObject({ blocks: [{ tool: { children: [{ name: 'shell', status: 'ok', output: 'passed', durationMs: 12 }] } }] })
+})
