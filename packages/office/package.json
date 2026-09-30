@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@formulajs/formulajs": "^4.6.1",
     "exceljs": "^4.4.0"
   }
 }

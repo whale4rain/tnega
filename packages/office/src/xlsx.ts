@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import { formatRange, parseAddress, parseRange, type CellRange } from './address.js'
 import { OfficeError } from './errors.js'
+import { FormulaError, WorkbookEvaluator, displayValue } from './formula.js'
 
 /** 写入单元格的值：公式以 `=` 之外的对象形式给出，避免与以 `=` 开头的文本混淆。 */
 export type CellInput = string | number | boolean | null | { formula: string }
@@ -92,7 +93,8 @@ async function load(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
 }
 
 async function save(workbook: ExcelJS.Workbook): Promise<Uint8Array> {
-  // 没有缓存结果的公式由 Excel 在打开时重算，否则会显示为空。
+  refreshResults(workbook)
+  // 我们的求值是近似的；让 Excel 打开时重算，以它的结果为准。
   workbook.calcProperties.fullCalcOnLoad = true
   return new Uint8Array(await workbook.xlsx.writeBuffer())
 }
@@ -138,14 +140,40 @@ function scalar(value: unknown): string | number | boolean | null {
   return String(value)
 }
 
-function readCell(cell: ExcelJS.Cell): CellOutput {
+function cachedResult(cell: ExcelJS.Cell): unknown {
+  const value = cell.value
+  return value && typeof value === 'object' && 'result' in value ? value.result : undefined
+}
+
+/** 公式格优先用文件里缓存的结果（Excel 算的更可信），没有缓存时由求值器补上。 */
+function readCell(cell: ExcelJS.Cell, evaluator: WorkbookEvaluator): CellOutput {
   const formula = cell.formula
   if (formula) {
-    const value = cell.value
-    const result = value && typeof value === 'object' && 'result' in value ? value.result : undefined
-    return { formula, value: scalar(result) }
+    const result = cachedResult(cell)
+    const value = result === undefined
+      ? displayValue(evaluator.cell(cell.worksheet.name, Number(cell.row), Number(cell.col)))
+      : scalar(result)
+    return { formula, value }
   }
   return scalar(cell.value)
+}
+
+/**
+ * 重算所有公式并把结果写回缓存，使不做计算的读者（预览器、其它库）也能看到数值。
+ * 求值失败的格清掉缓存结果，留给 Excel 打开时重算，而不是保留可能过期的旧值。
+ */
+function refreshResults(workbook: ExcelJS.Workbook): void {
+  const evaluator = new WorkbookEvaluator(workbook)
+  for (const sheet of workbook.worksheets) {
+    sheet.eachRow(row => row.eachCell(cell => {
+      const value = cell.value
+      if (!cell.formula || !value || typeof value !== 'object') return
+      const result = evaluator.cell(sheet.name, Number(cell.row), Number(cell.col))
+      const cached = result instanceof FormulaError ? {} : { result: result ?? 0 }
+      if ('sharedFormula' in value) cell.value = { sharedFormula: value.sharedFormula, ...cached }
+      else if ('formula' in value) cell.value = { formula: value.formula, ...cached }
+    }))
+  }
 }
 
 function usedRange(sheet: ExcelJS.Worksheet): CellRange | undefined {
@@ -212,6 +240,7 @@ export async function createWorkbook(spec: WorkbookSpec): Promise<Uint8Array> {
 
 export async function inspectWorkbook(bytes: Uint8Array): Promise<WorkbookOutline> {
   const workbook = await load(bytes)
+  const evaluator = new WorkbookEvaluator(workbook)
   return {
     sheets: workbook.worksheets.map(sheet => {
       const range = usedRange(sheet)
@@ -219,7 +248,7 @@ export async function inspectWorkbook(bytes: Uint8Array): Promise<WorkbookOutlin
       sheet.eachRow(row => row.eachCell(cell => { if (cell.formula) formulas++ }))
       const header: CellOutput[] = []
       if (range) {
-        for (let column = 1; column <= range.end.column; column++) header.push(readCell(sheet.getCell(1, column)))
+        for (let column = 1; column <= range.end.column; column++) header.push(readCell(sheet.getCell(1, column), evaluator))
       }
       return {
         name: sheet.name,
@@ -235,6 +264,7 @@ export async function inspectWorkbook(bytes: Uint8Array): Promise<WorkbookOutlin
 
 export async function readRange(bytes: Uint8Array, request: ReadRangeRequest = {}): Promise<RangeRead> {
   const workbook = await load(bytes)
+  const evaluator = new WorkbookEvaluator(workbook)
   const sheet = request.sheet === undefined ? workbook.worksheets[0] : sheetNamed(workbook, request.sheet)
   if (!sheet) throw new OfficeError('workbook has no sheets', 'OFFICE_INVALID')
   const range = request.range === undefined ? usedRange(sheet) : parseRange(request.range)
@@ -248,7 +278,7 @@ export async function readRange(bytes: Uint8Array, request: ReadRangeRequest = {
   for (let row = range.start.row; row <= lastRow; row++) {
     const values: CellOutput[] = []
     for (let column = range.start.column; column <= range.end.column; column++) {
-      values.push(readCell(sheet.getCell(row, column)))
+      values.push(readCell(sheet.getCell(row, column), evaluator))
     }
     rows.push(values)
   }

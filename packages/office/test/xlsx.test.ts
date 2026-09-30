@@ -70,7 +70,7 @@ describe('xlsx', () => {
     const partial = await readRange(bytes, { maxCells: 8 })
     expect(partial.range).toBe('A1:D2')
     expect(partial.truncated).toBe(true)
-    expect(partial.rows[1]?.[3]).toEqual({ formula: 'SUM(B2:C2)', value: null })
+    expect(partial.rows[1]?.[3]).toEqual({ formula: 'SUM(B2:C2)', value: 200 })
   })
 
   it('applies a batch of edits in order', async () => {
@@ -85,7 +85,7 @@ describe('xlsx', () => {
     const outline = await inspectWorkbook(edited)
     expect(outline.sheets.map(sheet => sheet.name)).toEqual(['Revenue', 'Notes'])
     const read = await readRange(edited, { sheet: 'Revenue', range: 'A3:C4' })
-    expect(read.rows).toEqual([['South', 90, null], ['Total', { formula: 'SUM(B2:B3)', value: null }, null]])
+    expect(read.rows).toEqual([['South', 90, null], ['Total', { formula: 'SUM(B2:B3)', value: 210 }, null]])
     const workbook = await reopen(edited)
     expect(workbook.getWorksheet('Revenue')?.getCell('B4').numFmt).toBe('#,##0')
   })
