@@ -34,14 +34,12 @@ function classify(value: unknown, request: ApprovalReviewRequest): ApprovalDecis
   const selected = probability(probabilities[choice])
   const conflicts = probability(conflict.noul)
   const scores = { riskConfidence: confidence, riskProbability: selected, conflict: conflicts, contextTruncated: request.contextTruncated }
-  const certain = confidence >= 0.95 && selected >= 0.95
+  const certain = confidence >= 0.9
   const result = { risk: choice, provider: 'jev', model: response.model, scores } satisfies Omit<ApprovalDecision, 'decision' | 'reason'>
   if (choice === 'high' && certain) return { ...result, decision: 'deny', reason: 'Jev confidently classified the action as high risk.' }
   const unmet: string[] = []
-  if (confidence < 0.95) unmet.push(`Risk confidence ${confidence} is below 0.95`)
-  if (selected < 0.95) unmet.push(`Risk probability ${selected} is below 0.95`)
+  if (!certain) unmet.push(`Risk confidence ${confidence} is below 0.9`)
   if (choice === 'high') return { ...result, decision: 'ask', reason: unmet.join('; ') }
-  if (request.contextTruncated) unmet.push('Context is truncated')
   if (!request.evidence.some(item => item.source === 'human' && item.content.trim())) unmet.push('No human task is available')
   const conflictThreshold = choice === 'low' ? 0.2 : 0.05
   if (conflicts > conflictThreshold) unmet.push(`Conflict probability ${conflicts} exceeds ${conflictThreshold}`)

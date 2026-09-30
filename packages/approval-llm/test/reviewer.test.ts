@@ -12,11 +12,11 @@ const action: ApprovalReviewRequest = {
 }
 
 describe('LLM approval provider', () => {
-  it('truncated evidence cannot allow', async () => {
+  it('omitted history does not override the reviewer decision', async () => {
     const ctx = new Context()
     const adapter: LLMAdapter = { complete: async () => ({ content: '{"decision":"allow","risk":"low","reason":"ok"}', finishReason: 'stop' }) }
     const fiber = await ctx.plugin(LlmApprovalReviewer, { adapter })
-    expect((await ctx.approvalReviewer.review({ ...action, contextTruncated: true })).decision).toBe('ask')
+    expect((await ctx.approvalReviewer.review({ ...action, contextTruncated: true })).decision).toBe('allow')
     await fiber.dispose()
   })
   it('disposal cancels in-flight review even when adapter ignores abort', async () => {

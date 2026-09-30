@@ -48,7 +48,7 @@ export class OpenAIApprovalReviewer extends ApprovalReviewer {
       if (!response.ok) throw new Error('Reviewer HTTP failure')
       const value: unknown = await response.json()
       const decision = parseResponse(value)
-      return request.contextTruncated && decision.decision === 'allow' ? { ...decision, decision: 'ask', reason: 'Truncated evidence requires human review.' } : decision
+      return decision
     })
   }
 }

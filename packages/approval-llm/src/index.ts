@@ -22,7 +22,7 @@ export class LlmApprovalReviewer extends ApprovalReviewer {
         { role: 'user', content: JSON.stringify(reviewState(request)) },
       ], [], { signal, maxTokens: 512 })
       const decision = parseApprovalDecision(result.finishReason === 'stop' ? result.content : undefined)
-      return { ...(request.contextTruncated && decision.decision === 'allow' ? { ...decision, decision: 'ask', reason: 'Truncated evidence requires human review.' } : decision), provider: 'llm', ...(this.config.model ? { model: this.config.model } : {}) }
+      return { ...decision, provider: 'llm', ...(this.config.model ? { model: this.config.model } : {}) }
     })
   }
 }

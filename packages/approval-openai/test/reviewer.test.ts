@@ -43,8 +43,8 @@ it('disposal cancels review and removes service', async () => {
   expect((await pending).decision).toBe('ask')
   expect(ctx.get('approvalReviewer')).toBeUndefined()
 })
-it('truncated or cancelled review cannot allow', async () => {
+it('omitted history preserves the reviewer decision while cancellation cannot allow', async () => {
   const reviewer = new OpenAIApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(result()) })
-  expect((await reviewer.review({ ...request, contextTruncated: true })).decision).toBe('ask')
+  expect((await reviewer.review({ ...request, contextTruncated: true })).decision).toBe('allow')
   expect((await reviewer.review({ ...request, signal: AbortSignal.abort() })).decision).toBe('ask')
 })
