@@ -21,7 +21,6 @@ import { userQuestions, pendingQuestionsFromEvents, formatQuestionAnswer, UserQu
 import { toolQuestion } from '@tnega/tool-question'
 import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
 import {
-  CODING_SYSTEM_PROMPT,
   createCodingAgentPlugin,
   createSlashRegistry,
   generatePlan,
@@ -31,12 +30,15 @@ import {
 } from '@tnega/coding-agent'
 import { createLlmAdapter, modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
 import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from './goal.js'
+import { personaFor } from './work.js'
 import { memoryLocal } from '@tnega/memory-local'
 import type { MemoryService } from '@tnega/memory'
 import {
+  isAgentType,
   session,
   SessionLog,
   transcriptEvents,
+  type AgentType,
   type ModelMessage,
   type PlanPayload,
 } from '@tnega/session'
@@ -476,9 +478,7 @@ async function handleApi(
     }
     const body = await readJsonBody(req)
     const title = typeof body.title === 'string' ? body.title : undefined
-    const agentType = body.agentType === 'general' || body.agentType === 'coding'
-      ? body.agentType
-      : undefined
+    const agentType = isAgentType(body.agentType) ? body.agentType : undefined
     const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal'
       ? body.mode
       : undefined
@@ -659,9 +659,7 @@ async function handleApi(
         ? body.permission : body.permission === 'read-only' ? 'read-only' : undefined
       const approvalMode = body.approvalMode === 'auto' || body.approvalMode === 'manual' ? body.approvalMode : undefined
       if (typeof body.title === 'string') patch.title = body.title
-      if (body.agentType === 'general' || body.agentType === 'coding') {
-        patch.agentType = body.agentType
-      }
+      if (isAgentType(body.agentType)) patch.agentType = body.agentType
       if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal') {
         patch.mode = body.mode
       }
@@ -907,7 +905,9 @@ async function handleRun(
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   const summary = await readSessionSummary(workspace, id)
   const permission: PermissionMode = summary.permission ?? 'read-only'
-  const coding = summary.agentType === 'coding'
+  const agentType = summary.agentType ?? 'general'
+  const coding = agentType === 'coding'
+  const persona = personaFor(agentType)
   const mode = summary.mode ?? 'auto'
 
   const config = await readSystemConfig(context.configFile)
@@ -937,7 +937,7 @@ async function handleRun(
       permission,
       sessionId: id,
       approvals: context.approvals,
-      coding,
+      agentType,
       goalMode: mode === 'goal',
       effective,
       apiKey,
@@ -1070,13 +1070,13 @@ async function handleRun(
       if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
       return
     }
-    // A coding session's first run persists its system prompt as a durable
+    // A coding or work session's first run persists its persona as a durable
     // system/message, so a resumed run's derived history already leads with it;
-    // prepending it again would duplicate the coding system in the model input
+    // prepending it again would duplicate the persona in the model input
     // (and in the top-level system once Anthropic folds the messages).
     const messages: ModelMessage[] = [
-      ...(coding && history[0]?.role !== 'system'
-        ? [{ role: 'system' as const, content: CODING_SYSTEM_PROMPT }]
+      ...(persona && history[0]?.role !== 'system'
+        ? [{ role: 'system' as const, content: persona }]
         : []),
       ...history,
       { role: 'user' as const, content: prompt },
@@ -1135,7 +1135,7 @@ interface ResidentRunRequest {
   permission: PermissionMode
   sessionId: string
   approvals: ApprovalBroker
-  coding: boolean
+  agentType: AgentType
   goalMode: boolean
   effective: EffectiveLlmConfig
   apiKey: string
@@ -1191,7 +1191,7 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(spillLocal, { cwd: workspace }))
   fibers.push(await root.plugin(toolSpill))
   fibers.push(await root.plugin(toolOffice, { cwd: workspace }))
-  if (req.coding) {
+  if (req.agentType === 'coding') {
     fibers.push(await root.plugin(createCodingAgentPlugin({
       cwd: workspace,
       mode: 'auto',
@@ -1282,7 +1282,7 @@ async function createResidentAgent(
     req.effective.temperature ?? '',
     JSON.stringify(req.config.approvalReview ?? {}),
     req.config.codeMode ? 'ptc' : 'native',
-    req.coding ? 'coding' : 'general',
+    req.agentType,
     'auto',
   ].join('|')
   const existing = context.residentAgents?.get(key)
@@ -1306,7 +1306,8 @@ async function createResidentAgent(
       ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
       manualStreaming: true,
     }
-    if (req.coding) options.agentType = 'coding'
+    // General sessions stay untyped, as they always have been.
+    if (req.agentType !== 'general') options.agentType = req.agentType
     let handle: AgentHandle
     try {
       handle = await registry.resume(options)
@@ -1366,7 +1367,7 @@ async function residentQuestionRequest(context: ServerContext, workspace: string
   if (!apiKey) throw new HttpError(400, 'API key is not configured')
   return {
     prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
-    approvals: context.approvals, coding: summary.agentType === 'coding', goalMode: false,
+    approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
     effective, apiKey, config, resumeQueued: true,
   }
 }
@@ -1465,12 +1466,13 @@ async function runResidentTurn(
       if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
       return undefined
     })
-    // A coding session keeps its persona as the durable leading system message,
-    // seeded once so every derived request begins with it.
-    if (req.coding) {
+    // A coding or work session keeps its persona as the durable leading system
+    // message, seeded once so every derived request begins with it.
+    const persona = personaFor(req.agentType)
+    if (persona) {
       const history = await agent.session.deriveMessages()
       if (!history.some(message => message.role === 'system')) {
-        await agent.session.append('system/message', { content: CODING_SYSTEM_PROMPT })
+        await agent.session.append('system/message', { content: persona })
       }
     }
     let goal = req.goalMode ? await readGoal(agent.session) : undefined

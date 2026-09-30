@@ -1363,6 +1363,45 @@ describe('web server', () => {
     expect(detail.events.filter(event => event.type === 'plan')).toHaveLength(0)
   })
 
+  it('runs a work session with the work persona and office tools', async () => {
+    const dir = await tempDir('tnega-web-work-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('work reply')
+    await writeFile(configFile, JSON.stringify({
+      apiKey: 'test-key',
+      baseUrl: mock.url,
+      model: 'mock-model',
+      temperature: 0,
+    }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: JSON.stringify({ agentType: 'work', mode: 'auto' }) },
+    ).then(r => r.json()) as { session: { id: string, agentType?: string } }
+    expect(created.session.agentType).toBe('work')
+    const id = created.session.id
+
+    const response = await apiFetch(
+      server.url,
+      `/api/sessions/${id}/runs?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: JSON.stringify({ prompt: 'summarize sales.csv into a workbook' }) },
+    )
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('work reply')
+
+    const [request] = mock.bodies()
+    const personas = request?.messages?.filter(message => message.role === 'system' && message.content?.includes('work assistant'))
+    expect(personas).toHaveLength(1)
+    expect(JSON.stringify(request)).toContain('office_create')
+
+    const detail = await waitForSession(server.url, workspace, id, state => !state.running)
+    expect(detail.events.filter(event => event.type === 'system/message')).toHaveLength(1)
+  })
+
   it('lists and runs coding slash commands through frontend endpoints', async () => {
     const dir = await tempDir('tnega-web-coding-slash-')
     const workspace = await mkdir(dir, 'workspace')
