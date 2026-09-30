@@ -1,4 +1,5 @@
 import {
+  Briefcase,
   Check,
   ChevronsUpDown,
   Code2,
@@ -183,6 +184,7 @@ export function Sidebar({
                   <span className="session-title">
                     {session.parentSessionId && <GitBranch size={12} className="session-glyph" />}
                     {session.agentType === 'coding' && !session.parentSessionId && <Code2 size={12} className="session-glyph" />}
+                    {session.agentType === 'work' && !session.parentSessionId && <Briefcase size={12} className="session-glyph" />}
                     <span>{session.title || 'Untitled session'}</span>
                   </span>
                   <span className="session-time">{relativeTime(session.updatedAt)}</span>

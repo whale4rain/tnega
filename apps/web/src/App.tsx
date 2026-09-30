@@ -57,7 +57,7 @@ export function App() {
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [newProject, setNewProject] = useState(false)
 
-  const [agentType, setAgentType] = useStoredState<AgentType>('tnega.agentType', 'coding', ['coding', 'general'])
+  const [agentType, setAgentType] = useStoredState<AgentType>('tnega.agentType', 'coding', ['coding', 'work', 'general'])
   const [permission, setPermission] = useStoredState<Permission>('tnega.permission', 'read-only', ['read-only', 'workspace-write', 'bypass'])
   const [approvalPreference, setApprovalMode] = useStoredState<ApprovalMode | 'default'>('tnega.approvalMode', 'default', ['manual', 'auto', 'default'])
   const approvalMode = approvalPreference === 'default' ? config?.config.approvalReview?.defaultMode ?? 'manual' : approvalPreference

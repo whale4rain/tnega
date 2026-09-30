@@ -20,12 +20,17 @@ import {
   Lightbulb,
   PenLine,
   Languages,
+  FileSpreadsheet,
+  FileText,
+  Presentation,
+  Table2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
 import { errorText, folderName } from '../lib/hooks'
 import { applyStream, beginRun, formatTokens, fromEvents, type Entry } from '../lib/timeline'
 import type {
+  AgentType,
   ConfigSnapshot,
   ContextUsage,
   GoalState,
@@ -494,7 +499,7 @@ export function Conversation({
           {empty && (
             <EmptyState
               workspace={workspace}
-              coding={settings.agentType === 'coding'}
+              agentType={settings.agentType}
               onPick={prompt => void send(prompt)}
               disabled={Boolean(disabledReason)}
             />
@@ -548,7 +553,7 @@ export function Conversation({
             disabledReason={disabledReason}
             onSubmit={send}
             onStop={() => void stop()}
-            placeholder={sessionId ? 'Reply…' : settings.agentType === 'coding' ? 'Describe a change, a bug, or a question about the code…' : 'Ask anything…'}
+            placeholder={sessionId ? 'Reply…' : PLACEHOLDERS[settings.agentType]}
             autoFocusKey={sessionId ?? 'draft'}
           />
         </div>
@@ -717,6 +722,13 @@ const CODING_STARTERS = [
   { icon: Code2, title: 'Review recent work', prompt: 'Review the most recent changes in this workspace and point out anything risky or unclear.' },
 ]
 
+const WORK_STARTERS = [
+  { icon: FileSpreadsheet, title: 'Summarize data', prompt: 'Find the CSV or Excel files in this workspace and build a summary workbook with totals by category, using formulas.' },
+  { icon: FileText, title: 'Write a report', prompt: 'Read the documents in this workspace and write a concise report as a Word document.' },
+  { icon: Presentation, title: 'Build a deck', prompt: 'Turn the main findings in this workspace into a short slide deck of five to seven slides.' },
+  { icon: Table2, title: 'Tidy a table', prompt: 'Find messy tabular data in this workspace, clean it up, and save a tidy Excel workbook next to it.' },
+]
+
 const GENERAL_STARTERS = [
   { icon: Telescope, title: 'Explore this folder', prompt: 'Look around this workspace and summarize what is in it.' },
   { icon: PenLine, title: 'Draft a README', prompt: 'Draft a friendly README for this folder based on what it contains.' },
@@ -724,8 +736,16 @@ const GENERAL_STARTERS = [
   { icon: Languages, title: 'Explain a concept', prompt: 'Explain how an AI agent uses tools, step by step, with a small concrete example.' },
 ]
 
-function EmptyState({ workspace, coding, onPick, disabled }: { workspace: string; coding: boolean; onPick: (prompt: string) => void; disabled: boolean }) {
-  const starters = useMemo(() => coding ? CODING_STARTERS : GENERAL_STARTERS, [coding])
+const STARTERS: Record<AgentType, typeof GENERAL_STARTERS> = { coding: CODING_STARTERS, work: WORK_STARTERS, general: GENERAL_STARTERS }
+const ROLE: Record<AgentType, string> = { coding: 'a coding agent', work: 'a work assistant', general: 'a general assistant' }
+const PLACEHOLDERS: Record<AgentType, string> = {
+  coding: 'Describe a change, a bug, or a question about the code…',
+  work: 'Describe the spreadsheet, document or deck you need…',
+  general: 'Ask anything…',
+}
+
+function EmptyState({ workspace, agentType, onPick, disabled }: { workspace: string; agentType: AgentType; onPick: (prompt: string) => void; disabled: boolean }) {
+  const starters = STARTERS[agentType]
   const hour = new Date().getHours()
   const greeting = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   return (
@@ -734,7 +754,7 @@ function EmptyState({ workspace, coding, onPick, disabled }: { workspace: string
       <h2>{greeting}. What are we building?</h2>
       <p>
         Working in <span className="mono-chip">{folderName(workspace)}</span>
-        {coding ? ' as a coding agent.' : ' as a general assistant.'}
+        {` as ${ROLE[agentType]}.`}
       </p>
       <div className="starter-grid">
         {starters.map(starter => (

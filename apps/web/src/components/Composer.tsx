@@ -1,4 +1,4 @@
-import { ArrowUp, Code2, Gauge, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Square, Target, ListChecks, Zap, Cpu } from 'lucide-react'
+import { ArrowUp, Briefcase, Code2, Gauge, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Square, Target, ListChecks, Zap, Cpu } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AgentType, ApprovalMode, Effort, ModelOption, Permission, SessionEffort, SessionMode, SlashCommand } from '../lib/types'
 import { Choice, type ChoiceOption } from './Menu'
@@ -14,6 +14,7 @@ export interface RunSettings {
 
 export const AGENT_OPTIONS: ReadonlyArray<ChoiceOption<AgentType>> = [
   { value: 'coding', label: 'Coding', description: 'Workspace-aware engineer with skills, plans and slash commands', icon: <Code2 size={14} /> },
+  { value: 'work', label: 'Work', description: 'Turns your files into spreadsheets, documents and slide decks', icon: <Briefcase size={14} /> },
   { value: 'general', label: 'General', description: 'A plain assistant with the standard tool set', icon: <MessageSquare size={14} /> },
 ]
 

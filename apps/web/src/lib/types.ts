@@ -3,7 +3,7 @@
  * Only the shapes this UI reads are modelled; unknown fields pass through.
  */
 
-export type AgentType = 'general' | 'coding'
+export type AgentType = 'general' | 'coding' | 'work'
 export type SessionMode = 'auto' | 'plan' | 'goal'
 export type Permission = 'read-only' | 'workspace-write' | 'bypass'
 export type ApprovalMode = 'manual' | 'auto'
