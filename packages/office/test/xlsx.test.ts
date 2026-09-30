@@ -101,3 +101,10 @@ describe('xlsx', () => {
     await expect(readRange(new TextEncoder().encode('not a zip'))).rejects.toMatchObject({ code: 'OFFICE_INVALID' })
   })
 })
+
+describe('xlsx deleteSheet', () => {
+  it('reports a missing sheet before the only-sheet rule', async () => {
+    await expect(editWorkbook(await createWorkbook(sales), [{ op: 'deleteSheet', sheet: 'Missing' }]))
+      .rejects.toThrow('no sheet named "Missing"')
+  })
+})

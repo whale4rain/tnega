@@ -321,10 +321,12 @@ export async function editWorkbook(bytes: Uint8Array, ops: readonly WorkbookOp[]
         sheet.name = op.name
         break
       }
-      case 'deleteSheet':
+      case 'deleteSheet': {
+        const sheet = sheetNamed(workbook, op.sheet)
         if (workbook.worksheets.length === 1) throw new OfficeError('cannot delete the only sheet', 'OFFICE_INVALID')
-        workbook.removeWorksheet(sheetNamed(workbook, op.sheet).id)
+        workbook.removeWorksheet(sheet.id)
         break
+      }
       default: {
         const unknown: never = op
         throw new OfficeError(`unknown workbook op: ${JSON.stringify(unknown)}`, 'OFFICE_INVALID')
