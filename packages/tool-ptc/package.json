@@ -1,0 +1,16 @@
+{
+  "name": "@tnega/tool-ptc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/ptc-runtime": "workspace:*",
+    "@tnega/tools": "workspace:*",
+    "@tnega/agent": "workspace:*",
+    "@tnega/session": "workspace:*"
+  }
+}

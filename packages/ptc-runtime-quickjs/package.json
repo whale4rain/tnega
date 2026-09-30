@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/ptc-runtime-quickjs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/ptc-runtime": "workspace:*",
+    "@earendil-works/pi-codemode": "0.99.1"
+  }
+}
