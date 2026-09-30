@@ -16,12 +16,21 @@ export function foldApprovalMode(events: readonly { type: string; payload: unkno
   return mode
 }
 export type ApprovalRisk = 'low' | 'medium' | 'high'
+export interface ApprovalReviewScores {
+  riskConfidence: number
+  riskProbability: number
+  authorization: number
+  conflict: number
+  taskAlignment: number
+  contextTruncated: boolean
+}
 export interface ApprovalDecision {
   decision: 'allow' | 'deny' | 'ask'
   risk?: ApprovalRisk
   reason: string
   provider?: string
   model?: string
+  scores?: ApprovalReviewScores
 }
 export interface ApprovalEvidence { source: 'human' | 'agent' | 'fact' | 'constraint'; content: string }
 export interface ApprovalReviewRequest {
