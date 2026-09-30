@@ -1,5 +1,5 @@
 import { Download } from 'lucide-react'
-import { Suspense, useEffect, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react'
 import { fetchWorkspaceFile, saveBlob } from '../../lib/api'
 import { errorText } from '../../lib/hooks'
 import { fileName, officeKind, type OfficeKind } from '../../lib/office'
@@ -10,7 +10,9 @@ export interface PreviewProps {
 }
 
 /** Each viewer is its own chunk: the heavy parsers load only when a file of that kind is opened. */
-const VIEWERS: Partial<Record<OfficeKind, ComponentType<PreviewProps>>> = {}
+const VIEWERS: Partial<Record<OfficeKind, ComponentType<PreviewProps>>> = {
+  xlsx: lazy(() => import('./XlsxPreview')),
+}
 
 const LABEL: Record<OfficeKind, string> = {
   xlsx: 'Excel workbook',
