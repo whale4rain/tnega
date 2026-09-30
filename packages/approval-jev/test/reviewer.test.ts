@@ -7,6 +7,15 @@ function answer(risk = 'low', confidence = 0.99, authorized = 0.99, conflict = 0
   return { model: 'jev-1.13.0', answers: { risk: { type: 'choice', choice: risk, confidence, probabilities: { low: risk === 'low' ? confidence : 0.005, medium: risk === 'medium' ? confidence : 0.005, high: risk === 'high' ? confidence : 0.005 } }, authorized: { type: 'noul', noul: authorized }, conflict: { type: 'noul', noul: conflict } } }
 }
 describe('Jev approval reviewer', () => {
+  it.each(['https://api.typesafe.ai/v1', 'https://api.typesafe.ai/v1/systemone', 'https://api.typesafe.ai/v1/systemone/'])('accepts a base or complete endpoint: %s', async baseUrl => {
+    let calledUrl: unknown
+    const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', baseUrl, fetch: async url => {
+      calledUrl = url
+      return Response.json(answer())
+    } })
+    expect((await reviewer.review(request)).decision).toBe('allow')
+    expect(calledUrl).toBe('https://api.typesafe.ai/v1/systemone')
+  })
   it('missing or whitespace credentials never send a request', async () => {
     let calls = 0
     for (const apiKey of ['', '  ']) {

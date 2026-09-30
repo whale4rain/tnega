@@ -48,7 +48,9 @@ export class JevApprovalReviewer extends ApprovalReviewer {
   override review(request: ApprovalReviewRequest): Promise<ApprovalDecision> {
     if (!this.config.apiKey?.trim()) return Promise.resolve({ decision: 'ask', provider: 'jev', reason: 'Automatic reviewer credentials are unavailable; human review is required.' })
     return boundedReview(request.signal, this.lifetime.signal, this.config.timeoutMs ?? 30_000, async signal => {
-      const response = await (this.config.fetch ?? fetch)(`${(this.config.baseUrl ?? 'https://api.typesafe.ai/v1').replace(/\/$/, '')}/systemone`, {
+      const baseUrl = (this.config.baseUrl ?? 'https://api.typesafe.ai/v1').trim().replace(/\/+$/, '')
+      const endpoint = baseUrl.endsWith('/systemone') ? baseUrl : `${baseUrl}/systemone`
+      const response = await (this.config.fetch ?? fetch)(endpoint, {
         method: 'POST', signal, headers: { Authorization: `Bearer ${this.config.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: this.config.model ?? 'jev-latest', state: reviewState(request), questions: {
           risk: { type: 'choice', instructions: APPROVAL_POLICY, criteria: { low: 'Bounded reversible local development needed for the human task.', medium: 'Destructive edits, installs, publishing, communication or external writes requiring exact human authorization.', high: 'Secret exfiltration, broad irreversible destruction or unrelated security weakening.' } },

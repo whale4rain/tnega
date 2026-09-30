@@ -24,6 +24,7 @@ CLI 的 System Config 也可声明：
 `provider` 支持 `conversation`（默认）、`model`（使用 `modelId` 指向已有模型路由）、
 `jev` 与 `openai`。OpenAI 默认模型为可配置的 `gpt-6.1-sol`，默认端点
 `https://api.openai.com/v1`，使用 `OPENAI_API_KEY`。专用 Provider 的密钥与对话模型独立，
+Jev 地址也接受完整的 `https://api.typesafe.ai/v1/systemone`，不会重复追加路径。
 Web 配置响应只返回 `apiKeySet`。切换 Provider 会清除上一家的配置，需重新配置密钥。
 
 参考 [DSH auto-review](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/experimental/auto-review)：
