@@ -45,10 +45,46 @@ it('reveals PTC child tools and their errors inside the outer tool details', () 
     },
   }] }
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
-  expect(view.getByText('1 tool call')).toBeTruthy()
+  expect(view.getByText('1 tool call · 0 done · 1 failed')).toBeTruthy()
   expect(view.queryByText('Tests failed')).toBeNull()
-  fireEvent.click(view.getByRole('button', { name: /Run code/ }))
+  fireEvent.click(view.getByRole('button', { name: /CodeMode/ }))
   fireEvent.click(view.getByRole('button', { name: /Ran.*cargo test/ }))
   expect(view.getByText('Tests failed')).toBeTruthy()
   expect(view.container.querySelectorAll('.ptc-tool-children .tool-row')).toHaveLength(1)
+})
+
+it('opens running CodeMode scripts and child tool progress without showing escaped JSON', () => {
+  const code = 'const result = await tools.read_file({path: "README.md"});\ntext(result);'
+  const entry: Entry = { kind: 'agent', id: 'ptc-live', status: 'running', blocks: [{
+    kind: 'tool', id: 'outer', tool: {
+      callId: 'outer', name: 'run_code', args: { code }, status: 'running',
+      children: [
+        { callId: 'read', name: 'read_file', args: { path: 'README.md' }, status: 'ok' },
+        { callId: 'search', name: 'grep', args: { pattern: 'TODO' }, status: 'running' },
+      ],
+    },
+  }] }
+  const view = render(createElement(Timeline, { entries: [entry], running: true, actions: {} }))
+  expect(view.getByRole('button', { name: /CodeMode/ }).getAttribute('aria-expanded')).toBe('true')
+  expect(view.container.querySelector('.code-block pre code')?.textContent).toBe(code)
+  expect(view.getByText('javascript')).toBeTruthy()
+  expect(view.container.querySelector('.code-token-keyword')?.textContent).toBe('const')
+  expect(view.getByText('2 tool calls · 1 done · 1 running')).toBeTruthy()
+  expect(view.getByRole('button', { name: /Read README.md/ })).toBeTruthy()
+  expect(view.getByRole('button', { name: /Searching TODO/ })).toBeTruthy()
+})
+
+it('renders text emissions as separate readable blocks and a returned value separately', () => {
+  const entry: Entry = { kind: 'agent', id: 'ptc-output', status: 'done', blocks: [{
+    kind: 'tool', id: 'outer', tool: {
+      callId: 'outer', name: 'run_code', args: { code: 'text("one");\nreturn 42;' }, status: 'ok',
+      output: { ok: true, output: ['first line\nsecond line', '<script>literal text</script>'], value: 42 },
+    },
+  }] }
+  const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
+  fireEvent.click(view.getByRole('button', { name: /CodeMode/ }))
+  expect([...view.container.querySelectorAll('.ptc-output-block')].map(block => block.textContent)).toEqual(['first line\nsecond line', '<script>literal text</script>'])
+  expect(view.getByText('Return value')).toBeTruthy()
+  expect(view.getByText('42', { selector: 'pre.tool-output' })).toBeTruthy()
+  expect(view.container.querySelector('script')).toBeNull()
 })

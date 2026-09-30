@@ -56,6 +56,10 @@ const VERB: Record<string, [running: string, done: string]> = {
 const TARGET_KEYS = ['command', 'path', 'pattern', 'query', 'url', 'name', 'expression', 'objective', 'label']
 
 export function presentTool(tool: ToolView): ToolPresentation {
+  if (tool.name === 'run_code') {
+    const names = [...new Set(tool.children?.map(child => child.name) ?? [])]
+    return { family: 'other', verb: 'CodeMode', target: names.length ? names.join(' · ') : 'JavaScript' }
+  }
   const family = FAMILY[tool.name] ?? 'other'
   const verbs = VERB[tool.name]
   const verb = verbs
@@ -126,4 +130,14 @@ export function readableOutput(output: unknown): { text: string; language?: stri
     return { text: output.map(entry => `${entry.type === 'directory' ? '▸ ' : '  '}${entry.path}${entry.type === 'directory' ? '/' : ''}`).join('\n') }
   }
   return { text: JSON.stringify(output, null, 2), language: 'json' }
+}
+
+/** Keep each text() emission separate and display a returned value on its own. */
+export function codeModeOutput(output: unknown): { blocks: string[]; value?: unknown } {
+  if (output && typeof output === 'object' && 'output' in output && Array.isArray(output.output)
+    && output.output.every((item: unknown): item is string => typeof item === 'string')) {
+    return { blocks: output.output, ...('value' in output ? { value: output.value } : {}) }
+  }
+  const readable = readableOutput(output)
+  return { blocks: readable.text ? [readable.text] : [] }
 }

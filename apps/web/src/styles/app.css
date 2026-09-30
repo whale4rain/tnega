@@ -2819,3 +2819,8 @@ kbd {
 .question-actions .muted { flex: 1; }
 .question-error { margin-top: 8px; color: var(--danger); font-size: var(--text-sm); }
 .ptc-tool-children { margin-top: 12px; padding-left: 8px; border-left: 2px solid var(--border); }
+.code-token-keyword { color: var(--accent); font-weight: 600; }
+.code-token-string { color: var(--success); }
+.code-token-comment { color: var(--text-3); font-style: italic; }
+.code-token-number { color: var(--warn); }
+.ptc-output-block + .ptc-output-block { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 8px; }

@@ -22,7 +22,7 @@ import { memo, useState, type ReactNode } from 'react'
 import { useCopy } from '../lib/hooks'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentRun, stringify } from '../lib/timeline'
-import { presentTool, readableOutput, type ToolFamily } from '../lib/tools'
+import { codeModeOutput, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
 import { CodeBlock, Markdown } from './Markdown'
 
@@ -339,16 +339,21 @@ function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
 }
 
 function ToolRow({ tool }: { tool: ToolView }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState<boolean | undefined>(undefined)
+  const expanded = open ?? (tool.name === 'run_code' && tool.status === 'running')
   const { family, verb, target } = presentTool(tool)
+  const children = tool.children ?? []
+  const running = children.filter(child => child.status === 'running').length
+  const failed = children.filter(child => child.status === 'error').length
+  const completed = children.filter(child => child.status === 'ok').length
   const Icon = FAMILY_ICON[family]
   return (
-    <div className={`tool-row status-${tool.status}${open ? ' open' : ''}`}>
-      <button type="button" className="tool-row-head" onClick={() => setOpen(v => !v)} aria-expanded={open}>
+    <div className={`tool-row status-${tool.status}${expanded ? ' open' : ''}`}>
+      <button type="button" className="tool-row-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : tool.status === 'error' ? ', Failed' : ''}`}>
         <span className="tool-icon"><Icon size={14} /></span>
         <span className="tool-verb">{verb}</span>
         {target && <span className="tool-target">{target}</span>}
-        {tool.children?.length ? <span className="tool-group-summary">{tool.children.length} tool {tool.children.length === 1 ? 'call' : 'calls'}</span> : null}
+        {children.length ? <span className="tool-group-summary">{children.length} tool {children.length === 1 ? 'call' : 'calls'} · {completed} done{running ? ` · ${running} running` : ''}{failed ? ` · ${failed} failed` : ''}</span> : null}
         <span className="tool-meta">
           {tool.status === 'running' && <span className="spinner" aria-label="Running" />}
           {tool.status === 'error' && <X size={13} className="tool-status-error" aria-label="Failed" />}
@@ -356,21 +361,26 @@ function ToolRow({ tool }: { tool: ToolView }) {
         </span>
         <ChevronRight size={14} className="chevron" />
       </button>
-      {open && <ToolDetail tool={tool} />}
+      {expanded && <ToolDetail tool={tool} />}
     </div>
   )
 }
 
 function ToolDetail({ tool }: { tool: ToolView }) {
   const args = tool.args
+  const code = tool.name === 'run_code' && args && typeof args === 'object' && 'code' in args && typeof args.code === 'string'
+    ? args.code : undefined
   const command = args && typeof args === 'object' && typeof (args as Record<string, unknown>).command === 'string'
     ? (args as Record<string, string>).command
     : undefined
   const output = readableOutput(tool.output)
+  const codeOutput = tool.name === 'run_code' ? codeModeOutput(tool.output) : undefined
   return (
     <div className="tool-detail">
       <div className="tool-detail-label">{tool.name}</div>
-      {command !== undefined
+      {code !== undefined
+        ? <CodeBlock code={code} language="javascript" />
+        : command !== undefined
         ? <CodeBlock code={command} language="shell" />
         : args !== undefined && <CodeBlock code={stringify(args)} language="json" />}
       {tool.error && (
@@ -379,7 +389,19 @@ function ToolDetail({ tool }: { tool: ToolView }) {
           <pre className="tool-output error">{tool.error}</pre>
         </>
       )}
-      {output.text && (
+      {codeOutput && codeOutput.blocks.length > 0 && (
+        <>
+          <div className="tool-detail-label">Output</div>
+          {codeOutput.blocks.map((text, index) => <pre key={index} className="tool-output ptc-output-block">{text}</pre>)}
+        </>
+      )}
+      {codeOutput?.value !== undefined && (
+        <>
+          <div className="tool-detail-label">Return value</div>
+          <pre className="tool-output">{readableOutput(codeOutput.value).text}</pre>
+        </>
+      )}
+      {!codeOutput && output.text && (
         <>
           <div className="tool-detail-label">Output</div>
           <pre className="tool-output">{output.text}</pre>
