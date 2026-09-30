@@ -38,7 +38,7 @@ export const toolPtc = {
     registry.register({
       schema: {
         name: 'run_code',
-        description: 'Run JavaScript orchestration in an isolated QuickJS VM. Await tools[name](input) to call registered tools with their usual permissions. ALL_TOOLS lists names, descriptions and JSON schemas. text(value) emits output; return a value. No filesystem, process, fetch, require, imports or timers. Calls are serialized, including Promise.all. Do not retry an entire script after partial side effects; inspect results and retry only the failed operation. A fresh VM is used on every call; store/load do not persist between calls.',
+        description: 'Run JavaScript orchestration in an isolated QuickJS VM. Call tools through the tools object only, e.g. await tools.read_file({path: "README.md"}); read_file() is not a global function. Before using an unfamiliar tool, inspect text(ALL_TOOLS.filter(t => t.name === "tool_name")); each entry has name and description, with its JSON input schema embedded in description. Tool promises resolve directly to the tool output, without an added {ok, output, value} wrapper: strings stay strings, arrays stay arrays. Do not guess return fields; inspect a small result first. Errors reject the promise; use try/catch for independent operations. Registered tools keep their usual permissions. text(value) emits output; return a value. No filesystem, process, fetch, require, imports or timers. Calls are serialized, including Promise.all. Do not retry an entire script after partial side effects; inspect results and retry only the failed operation. A fresh VM is used on every call; store/load do not persist between calls.',
         parameters: {
           type: 'object', properties: { code: { type: 'string', maxLength: maxCodeChars } },
           required: ['code'], additionalProperties: false,
@@ -117,7 +117,7 @@ export const toolPtc = {
             ...tool,
             schema: {
               ...tool.schema,
-              description: tool.schema.description + ` Available tools: ${JSON.stringify(names)}. Inspect a tool's description and input schema with text(ALL_TOOLS.filter(t => t.name === 'tool_name')).`,
+              description: tool.schema.description + ` Available tools: ${JSON.stringify(names)}. First inspect the description and input schema of every unfamiliar tool with text(ALL_TOOLS.filter(t => t.name === 'tool_name')). ALL_TOOLS is a discovery list, not executable functions; schemas are in description, not a parameters property.`,
             },
           }),
       }

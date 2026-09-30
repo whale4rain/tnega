@@ -214,7 +214,7 @@ function calculatorTool(): ToolDefinition {
 function jsonTool(): ToolDefinition {
   return definition(
     'json',
-    'Parse a JSON string, stringify a value, or get a value by path. Operations: parse (value is a JSON string), stringify (value is any JSON value), get (value is a JSON value, path uses dot and bracket notation like a.b[0].c).',
+    'Parse a JSON string, stringify a value, or get a value by path. Operations: parse (value is a JSON string), stringify (value is any JSON value), get (value is a JSON value, path uses dot and bracket notation like a.b[0].c). Returns directly: stringify returns a string, parse returns the parsed value, get returns the selected value; none adds a { value } wrapper.',
     (input) => {
       const args = record(input)
       const operation = optionalString(args.operation, 'operation') ?? 'parse'
@@ -486,7 +486,7 @@ async function collectEntries(
 function listDirTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   return definition(
     'list_dir',
-    'List directory entries inside the workspace. Returns [{ name, path, type }].',
+    'List directory entries inside the workspace. Returns [{ name, path, type }], where type is "directory" or "file"; directories use "directory", not "dir".',
     async (input, options: ToolExecuteOptions) => {
       const args = record(input)
       const base = await resolveToolPath(config, optionalString(args.path, 'path') ?? '.')

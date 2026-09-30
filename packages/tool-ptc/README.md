@@ -6,8 +6,13 @@ Independent `run_code` Consumer. Mount after `tools` and a `ptcRuntime` Provider
 - `mode: 'ptc'` exposes `run_code` only and denies direct native dispatch.
 - `mode: 'native'` registers no PTC tool.
 
-Scripts call `await tools[name](input)`. `ALL_TOOLS` descriptions include JSON
-input schemas. Child dispatch always passes through the original
+Scripts call `await tools[name](input)`; tools are not global functions.
+`ALL_TOOLS` entries contain `name` and `description`, with JSON input schemas
+embedded in the description. Inspect unfamiliar tools before calling them.
+The promise resolves directly to the tool output, without an extra result
+wrapper: JSON stringify and now return strings, list_dir returns an array whose
+directory entries have `type: "directory"`. Inspect small results before guessing
+fields. Child failures reject and can be handled with try/catch. Child dispatch always passes through the original
 `ctx.tools.execute` permission, validation, timeout and postprocessing pipeline.
 Agent identity and cancellation propagate. `run_code` itself has no direct
 external effects; composition can approve the orchestration boundary while
