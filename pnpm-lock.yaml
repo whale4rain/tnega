@@ -819,6 +819,18 @@ importers:
         specifier: workspace:*
         version: link:../../tools
 
+  packages/tool-office:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/office':
+        specifier: workspace:*
+        version: link:../office
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
+
   packages/tool-ptc:
     dependencies:
       '@tnega/agent':
@@ -7557,7 +7569,7 @@ snapshots:
 
   rimraf@2.6.3:
     dependencies:
-      glob: 7.2.0
+      glob: 7.2.3
 
   roarr@2.15.4:
     dependencies:
