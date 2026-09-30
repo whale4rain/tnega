@@ -951,6 +951,13 @@ export class AgentService {
     })
     await this.config.hooks?.afterRun?.(runResult, options)
 
+    await this.ctx.parallel('agent/run-completed', {
+      session,
+      result: runResult,
+      ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+
     yield { type: 'run/end', run: runResult }
     return runResult
   }
