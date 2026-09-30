@@ -2,7 +2,7 @@
 
 Independent `run_code` Consumer. Mount after `tools` and a `ptcRuntime` Provider.
 
-- `mode: 'both'` (default) exposes native tools and `run_code`.
+- Library `mode: 'both'` (default) exposes native tools and `run_code` for compatibility. CLI/Web composition defaults to `native` and exposes only the `codeMode` boolean setting; the product offers no `both` choice.
 - `mode: 'ptc'` exposes `run_code` only and denies direct native dispatch.
 - `mode: 'native'` registers no PTC tool.
 

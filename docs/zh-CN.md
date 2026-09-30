@@ -292,3 +292,12 @@ pnpm build
 ## License
 
 MIT
+
+
+## CodeMode 与自动审批
+
+Settings 中的 CodeMode 默认为关闭：关闭仅提供原生工具，开启仅提供 run_code，由模型编写 JavaScript 组合原有工具。保存后下一次运行生效；更新源码或构建产物后需重启正在运行的后端，仅刷新界面不足以加载新功能。保存结果未被后端确认时会明确报错。
+
+Auto review 与工具权限/沙箱独立，每个需审批的实际子调用仍单独审查。Jev 当前风险置信度门槛为 0.85，低/中风险冲突门槛分别为 0.2/0.05；通过时不显示额外消息，需人工确认或拒绝时显示简短理由。
+
+设计取舍见 [审批 ADR](adr/0009-automatic-approval.md)、[PTC ADR](adr/0010-ptc-tool-orchestration.md)；问题原因、修复和评估限制见 [修复记录](fix/2026-09-30-review-ptc.md)。
