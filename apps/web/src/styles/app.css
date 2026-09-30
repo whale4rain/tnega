@@ -2992,3 +2992,24 @@ kbd {
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.18);
   margin-bottom: 16px;
 }
+
+.pptx-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.pptx-canvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.pptx-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}

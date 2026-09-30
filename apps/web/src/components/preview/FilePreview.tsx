@@ -13,6 +13,7 @@ export interface PreviewProps {
 const VIEWERS: Partial<Record<OfficeKind, ComponentType<PreviewProps>>> = {
   xlsx: lazy(() => import('./XlsxPreview')),
   docx: lazy(() => import('./DocxPreview')),
+  pptx: lazy(() => import('./PptxPreview')),
 }
 
 const LABEL: Record<OfficeKind, string> = {

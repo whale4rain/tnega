@@ -10,9 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "docx-preview": "^0.4.1",
     "exceljs": "^4.4.0",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.47.0",
+    "pptxviewjs": "^1.1.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
