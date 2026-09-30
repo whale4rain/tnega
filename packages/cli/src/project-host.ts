@@ -14,6 +14,9 @@ import {
 } from '@tnega/box'
 import { boxBlackboard } from '@tnega/box-blackboard'
 import { Context } from '@tnega/core'
+import { runSummary } from '@tnega/run-summary'
+import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
+import type { SystemConfig } from './config.js'
 import { projectLoop } from '@tnega/project-loop'
 import { projectLocal } from '@tnega/project-local'
 import type { ProjectRecord, ProjectsService } from '@tnega/project'
@@ -24,7 +27,7 @@ import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { SessionLog, type SessionEvent } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { threadLocal } from '@tnega/thread-local'
-import type { ThreadPermission, ThreadRecord, ThreadService } from '@tnega/thread'
+import type { ThreadRecord, ThreadService } from '@tnega/thread'
 import { toolBlackboard } from '@tnega/tool-blackboard'
 import { toolBox } from '@tnega/tool-box'
 import { toolSpill } from '@tnega/tool-spill'
@@ -34,6 +37,7 @@ import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from 
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 
 export interface ProjectHostOptions {
+  systemConfig?: SystemConfig
   /** Project 目录集合与工具工作目录的基准：`<workspace>/.tnega/projects/<id>`。 */
   workspace: string
   llm: LLMAdapter
@@ -356,6 +360,7 @@ export class ProjectHost {
     await ctx.plugin(artifactLocal, { root: join(directory, 'artifacts') })
     await ctx.plugin(boxBlackboard, { projectId: record.id })
     await ctx.plugin(agents)
+    await ctx.plugin(runSummary)
     await ctx.plugin(threadLocal, {
       projectId: record.id,
       root: directory,
@@ -400,6 +405,18 @@ export class ProjectHost {
     const registry = ctx.get('agents') as AgentRegistry
     const threads = ctx.get('threads') as ThreadService
     const toolService = ctx.get('tools') as ToolsService
+    await mountApprovalReview(ctx, {
+      config: this.options.systemConfig ?? {}, workspace: this.workspace, adapter: this.options.llm,
+      session: agentId => agentId ? registry.get(agentId)?.session : registry.get(record.coordinatorId)?.session,
+      evidenceMessages: async messages => {
+        const envelopes = await ctx.box.timeline()
+        const humanIds = new Set(envelopes.filter(envelope => envelope.sender.kind === 'user').map(envelope => `box:${envelope.messageId}`))
+        return messages.map(message => {
+          if (message.role !== 'user' || !message.name || !humanIds.has(message.name)) return message
+          return { role: message.role, content: message.content }
+        })
+      },
+    })
     const permission: PermissionMode = this.options.permission
     const track = (entry: ThreadRecord): void => {
       this.permissions.set(entry.id, entry.permission)
@@ -409,8 +426,9 @@ export class ProjectHost {
     ctx.on('thread/spawned', (event: { thread: ThreadRecord }) => track(event.thread))
     toolService.guard(permissionGuard(permission, record.id, this.options.approvals, {
       workspace: this.workspace,
+      review: request => reviewAutomaticApproval(ctx, request),
       // 没有记录的 Agent（例如 Thread 内部再起的普通 Subagent）按最窄处理。
-      agentMode: agentId => this.permissions.get(agentId) as ThreadPermission | undefined,
+      agentMode: agentId => this.permissions.get(agentId) ?? 'read-only',
     }))
 
     await ctx.plugin(projectLoop, { projectId: record.id })

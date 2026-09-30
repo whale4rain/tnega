@@ -112,6 +112,57 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/approval-jev:
+    dependencies:
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/approval-llm:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/approval-openai:
+    dependencies:
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/approval-review:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/auto-approval:
+    dependencies:
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
+
   packages/benchmark:
     dependencies:
       '@tnega/eval':
@@ -126,12 +177,27 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/approval-jev':
+        specifier: workspace:*
+        version: link:../approval-jev
+      '@tnega/approval-llm':
+        specifier: workspace:*
+        version: link:../approval-llm
+      '@tnega/approval-openai':
+        specifier: workspace:*
+        version: link:../approval-openai
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
       '@tnega/artifact-local':
         specifier: workspace:*
         version: link:../project/artifact-local
       '@tnega/artifact-store':
         specifier: workspace:*
         version: link:../project/artifact-store
+      '@tnega/auto-approval':
+        specifier: workspace:*
+        version: link:../auto-approval
       '@tnega/benchmark':
         specifier: workspace:*
         version: link:../benchmark
@@ -180,6 +246,9 @@ importers:
       '@tnega/project-loop':
         specifier: workspace:*
         version: link:../loop/project-loop
+      '@tnega/run-summary':
+        specifier: workspace:*
+        version: link:../run-summary
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox/sandbox
@@ -528,6 +597,22 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+
+  packages/run-summary:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+    devDependencies:
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/sandbox/execution-sandbox:
     dependencies:

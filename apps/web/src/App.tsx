@@ -12,7 +12,7 @@ import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
 import { projectApi } from './lib/project-api'
 import type { ProjectRecord } from './lib/project-types'
-import type { AgentType, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
+import type { AgentType, ApprovalMode, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
 
 type Mode = 'sessions' | 'projects'
 
@@ -59,11 +59,14 @@ export function App() {
 
   const [agentType, setAgentType] = useStoredState<AgentType>('tnega.agentType', 'coding', ['coding', 'general'])
   const [permission, setPermission] = useStoredState<Permission>('tnega.permission', 'read-only', ['read-only', 'workspace-write', 'bypass'])
+  const [approvalPreference, setApprovalMode] = useStoredState<ApprovalMode | 'default'>('tnega.approvalMode', 'default', ['manual', 'auto', 'default'])
+  const approvalMode = approvalPreference === 'default' ? config?.config.approvalReview?.defaultMode ?? 'manual' : approvalPreference
   const [draftExtras, setDraftExtras] = useState<Pick<RunSettings, 'mode' | 'model' | 'reasoningEffort'>>({ mode: 'auto', reasoningEffort: 'default' })
-  const draftSettings: RunSettings = { agentType, permission, ...draftExtras }
+  const draftSettings: RunSettings = { agentType, permission, approvalMode, ...draftExtras }
   const updateDraft = (patch: Partial<RunSettings>) => {
     if (patch.agentType) setAgentType(patch.agentType)
     if (patch.permission) setPermission(patch.permission)
+    if (patch.approvalMode) setApprovalMode(patch.approvalMode)
     const extras: Partial<RunSettings> = {}
     if (patch.mode) extras.mode = patch.mode
     if (patch.reasoningEffort) extras.reasoningEffort = patch.reasoningEffort

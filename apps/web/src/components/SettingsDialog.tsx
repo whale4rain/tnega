@@ -2,7 +2,7 @@ import { Eye, EyeOff, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText } from '../lib/hooks'
-import type { ConfigSnapshot, Effort, Protocol } from '../lib/types'
+import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, Protocol } from '../lib/types'
 import { Dialog } from './Dialog'
 
 export function SettingsDialog({
@@ -22,6 +22,13 @@ export function SettingsDialog({
   const [showKey, setShowKey] = useState(false)
   const [effort, setEffort] = useState<'' | Effort>(stored?.reasoningEffort ?? '')
   const [temperature, setTemperature] = useState(stored?.temperature !== undefined ? String(stored.temperature) : '')
+  const [reviewProvider, setReviewProvider] = useState<ApprovalReviewerSettings['provider']>(stored?.approvalReview?.provider ?? 'conversation')
+  const [reviewDefault, setReviewDefault] = useState<ApprovalMode>(stored?.approvalReview?.defaultMode ?? 'manual')
+  const [reviewModelId, setReviewModelId] = useState(stored?.approvalReview?.modelId ?? '')
+  const [reviewModel, setReviewModel] = useState(stored?.approvalReview?.model ?? '')
+  const [reviewBaseUrl, setReviewBaseUrl] = useState(stored?.approvalReview?.baseUrl ?? '')
+  const [reviewKey, setReviewKey] = useState('')
+  const [reviewKeyEnv, setReviewKeyEnv] = useState(stored?.approvalReview?.apiKeyEnv ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
 
@@ -29,6 +36,11 @@ export function SettingsDialog({
     setSaving(true)
     setError(undefined)
     const patch: ConfigPatch = { protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
+    patch.approvalReview = {
+      provider: reviewProvider, defaultMode: reviewDefault,
+      modelId: reviewModelId.trim(), model: reviewModel.trim(), baseUrl: reviewBaseUrl.trim(), apiKeyEnv: reviewKeyEnv.trim(),
+      ...(reviewKey.trim() ? { apiKey: reviewKey.trim() } : {}),
+    }
     if (apiKey.trim()) patch.apiKey = apiKey.trim()
     if (temperature.trim()) {
       const value = Number(temperature)
@@ -38,6 +50,11 @@ export function SettingsDialog({
         return
       }
       patch.temperature = value
+    }
+    if (reviewProvider === 'model' && !reviewModelId) {
+      setError('Select a configured model route for automatic review')
+      setSaving(false)
+      return
     }
     try {
       onSaved(await api.saveConfig(patch))
@@ -127,6 +144,47 @@ export function SettingsDialog({
           {config.models.length} model routes are configured in the config file; pick one per session from the composer.
         </p>
       )}
+      <div className="form-grid">
+        <label className="field">
+          <span className="field-label">Approval reviewer</span>
+          <select value={reviewProvider} onChange={event => {
+            const value = event.target.value
+            if (value === 'conversation' || value === 'model' || value === 'jev' || value === 'openai') {
+              setReviewProvider(value)
+              setReviewModel('')
+              setReviewBaseUrl('')
+              setReviewKey('')
+              setReviewKeyEnv('')
+            }
+          }}>
+            <option value="conversation">Conversation model</option>
+            <option value="model">Configured model route</option>
+            <option value="jev">TypeSafe Jev</option>
+            <option value="openai">OpenAI Responses</option>
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Default approvals</span>
+          <select value={reviewDefault} onChange={event => { if (event.target.value === 'manual' || event.target.value === 'auto') setReviewDefault(event.target.value) }}>
+            <option value="manual">Ask me</option>
+            <option value="auto">Auto review</option>
+          </select>
+        </label>
+        {reviewProvider === 'model' && <label className="field span-2">
+          <span className="field-label">Reviewer model route</span>
+          <select value={reviewModelId} onChange={event => setReviewModelId(event.target.value)}>
+            <option value="">Choose a route</option>
+            {config?.models.map(route => <option key={route.id} value={route.id}>{route.name}</option>)}
+          </select>
+        </label>}
+        {(reviewProvider === 'jev' || reviewProvider === 'openai') && <>
+          <label className="field"><span className="field-label">Reviewer model</span><input value={reviewModel} onChange={event => setReviewModel(event.target.value)} placeholder={reviewProvider === 'jev' ? 'jev-latest' : 'gpt-6.1-sol'} spellCheck={false} /></label>
+          <label className="field"><span className="field-label">API key environment variable</span><input value={reviewKeyEnv} onChange={event => setReviewKeyEnv(event.target.value)} placeholder={reviewProvider === 'jev' ? 'TYPESAFE_API_KEY' : 'OPENAI_API_KEY'} spellCheck={false} /></label>
+          <label className="field span-2"><span className="field-label">Reviewer endpoint</span><input value={reviewBaseUrl} onChange={event => setReviewBaseUrl(event.target.value)} placeholder={reviewProvider === 'jev' ? 'https://api.typesafe.ai/v1' : 'https://api.openai.com/v1'} spellCheck={false} /></label>
+          <label className="field span-2"><span className="field-label">Reviewer API key</span><input type="password" value={reviewKey} onChange={event => setReviewKey(event.target.value)} placeholder={stored?.approvalReview?.apiKeySet ? 'Saved — leave empty to keep it' : 'Separate credential or environment variable'} autoComplete="off" /></label>
+        </>}
+        <p className="muted small span-2">Auto review keeps your selected permissions. Uncertain or unavailable reviews return to you. Applies to Project threads by default; sessions can choose their own approval mode.</p>
+      </div>
     </Dialog>
   )
 }

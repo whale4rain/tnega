@@ -7,6 +7,12 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@tnega/approval-review": "workspace:*",
+    "@tnega/approval-llm": "workspace:*",
+    "@tnega/approval-jev": "workspace:*",
+    "@tnega/approval-openai": "workspace:*",
+    "@tnega/auto-approval": "workspace:*",
+    "@tnega/run-summary": "workspace:*",
     "@tnega/agent": "workspace:*",
     "@tnega/artifact-local": "workspace:*",
     "@tnega/artifact-store": "workspace:*",

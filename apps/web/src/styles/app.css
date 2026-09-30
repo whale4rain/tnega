@@ -1650,6 +1650,13 @@ kbd {
   padding: 4px;
 }
 
+.run-process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
 .tool-group-list .tool-row-head {
   border-radius: var(--radius-sm);
 }

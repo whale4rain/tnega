@@ -2,6 +2,34 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, lookupModel, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
+import type { ApprovalMode } from '@tnega/approval-review'
+
+export interface ApprovalReviewerConfig {
+  provider: 'conversation' | 'model' | 'jev' | 'openai'
+  defaultMode?: ApprovalMode
+  modelId?: string
+  model?: string
+  baseUrl?: string
+  apiKey?: string
+  apiKeyEnv?: string
+  timeoutMs?: number
+}
+
+export function normalizeApprovalReviewer(value: unknown): ApprovalReviewerConfig | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const provider: unknown = Reflect.get(value, 'provider')
+  if (provider !== 'conversation' && provider !== 'model' && provider !== 'jev' && provider !== 'openai') return undefined
+  const result: ApprovalReviewerConfig = { provider }
+  const mode: unknown = Reflect.get(value, 'defaultMode')
+  if (mode === 'manual' || mode === 'auto') result.defaultMode = mode
+  for (const key of ['modelId', 'model', 'baseUrl', 'apiKey', 'apiKeyEnv'] as const) {
+    const field: unknown = Reflect.get(value, key)
+    if (typeof field === 'string') result[key] = field.trim()
+  }
+  const timeout: unknown = Reflect.get(value, 'timeoutMs')
+  if (typeof timeout === 'number' && Number.isSafeInteger(timeout) && timeout >= 1_000 && timeout <= 120_000) result.timeoutMs = timeout
+  return result
+}
 
 export interface ConfiguredModel {
   /** Unique selector id. Defaults to the wire model id when model is omitted. */
@@ -25,6 +53,7 @@ export interface LlmEnvConfig {
 }
 
 export interface SystemConfig {
+  approvalReview?: ApprovalReviewerConfig
   apiKey?: string
   baseUrl?: string
   model?: string
@@ -217,6 +246,8 @@ function normalizeConfig(value: unknown): SystemConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   const record = value as Record<string, unknown>
   const config: SystemConfig = {}
+  const review = normalizeApprovalReviewer(record.approvalReview)
+  if (review) config.approvalReview = review
   if (typeof record.apiKey === 'string' && record.apiKey) config.apiKey = record.apiKey
   if (typeof record.baseUrl === 'string' && record.baseUrl) config.baseUrl = record.baseUrl
   if (typeof record.model === 'string' && record.model) config.model = record.model

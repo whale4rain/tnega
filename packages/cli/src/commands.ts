@@ -28,6 +28,7 @@ import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
 import { toolSearch } from '@tnega/tool-search'
 import { toolMemory } from '@tnega/tool-memory'
+import { runSummary } from '@tnega/run-summary'
 import {
   builtinTools,
   tools,
@@ -709,7 +710,9 @@ export async function createAgentRuntime(
   })
   fibers.push(sessionFiber)
   const toolsFiber = await root.plugin(tools, merged.toolPolicy ?? {})
+  const summaryFiber = await root.plugin(runSummary)
   fibers.push(toolsFiber)
+  fibers.push(summaryFiber)
   fibers.push(await root.plugin(memoryLocal, { cwd: merged.cwd }))
   fibers.push(await root.plugin(toolMemory, { writeTool: merged.builtinTools !== false }))
   if (merged.builtinTools !== false) {

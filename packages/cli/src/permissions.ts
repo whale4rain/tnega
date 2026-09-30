@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolveInside, type ToolGuard, type ToolRequest } from '@tnega/tools'
+import type { ApprovalDecision } from '@tnega/approval-review'
 
 export type PermissionMode = 'read-only' | 'workspace-write' | 'bypass'
 export type PermissionModeSource = PermissionMode | (() => PermissionMode | Promise<PermissionMode>)
@@ -92,6 +93,7 @@ export function permissionGuard(
   options: {
     workspace: string
     agentMode?: (agentId: string) => PermissionMode | undefined
+    review?: (request: ToolRequest) => Promise<ApprovalDecision | undefined>
   },
 ): ToolGuard {
   return async request => {
@@ -112,7 +114,18 @@ export function permissionGuard(
     if (ALWAYS_ALLOWED.has(request.name) && scoped
       && !(request.name === 'http_get' && unrestricted)) return undefined
     if (effective === 'workspace-write' && request.name === 'write_file' && scoped) return undefined
-    const allowed = await approvals.request(key, request)
+    if (request.options.signal?.aborted) return 'Tool approval cancelled'
+    let reviewed: ApprovalDecision | undefined
+    // A narrower child cannot use the parent's automatic elevation policy.
+    if (!(childMode && rank[childMode] < rank[parentMode])) {
+      try { reviewed = await options.review?.(request) } catch { /* Fall back to human approval. */ }
+    }
+    if (request.options.signal?.aborted) return 'Tool approval cancelled'
+    if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during review'
+    if (reviewed?.decision === 'deny') return `Automatic review denied ${request.name}: ${reviewed.reason}`
+    const allowed = reviewed?.decision === 'allow' || await approvals.request(key, request)
+    if (request.options.signal?.aborted) return 'Tool approval cancelled'
+    if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during approval'
     if (allowed) request.options.approvedElevation = true
     return allowed ? undefined : `${request.name} requires human approval in ${effective} mode`
   }
