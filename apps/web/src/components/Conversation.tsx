@@ -99,7 +99,7 @@ export function Conversation({
 
   const applyDetail = useCallback((detail: SessionDetail) => {
     setSummary(detail.summary)
-    setEntries(fromEvents(detail.surface.length ? detail.surface : detail.events))
+    setEntries(fromEvents(detail.events))
     setContext(detail.context)
     setMetrics(detail.metrics)
     setPlan(latestPlan(detail.events))
@@ -343,7 +343,7 @@ export function Conversation({
       await api.truncate(workspace, sessionId, entryId)
       const detail = await reload(sessionId)
       setBusy(undefined)
-      void run(sessionId, text, fromEvents(detail.surface.length ? detail.surface : detail.events))
+      void run(sessionId, text, fromEvents(detail.events))
     } catch (reason) {
       setBusy(undefined)
       setError(errorText(reason))
