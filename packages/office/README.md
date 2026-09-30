@@ -23,6 +23,8 @@ Univer 等后端，再在本包之上加 Service Definition。
 | --- | --- | --- | --- |
 | xlsx | ✓ | ✓ | 单元格、公式、样式、列宽、sheet 增删改 |
 | docx | 标题、段落、列表、表格、分页 | 大纲；段落与表格按块分页读取 | — |
+| pptx | 封面、标题 + 正文/要点/表格、备注 | 大纲；按页读取形状文本、表格与备注 | — |
 
 docx 由 `docx` 生成；读取直接解析 OOXML（jszip + xmldom），标题级别按样式名（`heading N` / `Title`）识别，
-因此非英文 Word 的自定义 styleId 也能识别。
+因此非英文 Word 的自定义 styleId 也能识别。pptx 由 `pptxgenjs` 生成，形状以 `Title` / `Body` / `Bullets` / `Table`
+命名；读取时标题优先取 title 占位符，其次取名为 `Title` 的形状。

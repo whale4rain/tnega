@@ -57,6 +57,13 @@ export function attribute(element: Element | undefined, localName: string): stri
   return undefined
 }
 
+const RELATIONSHIP_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+/** 引用关系的 `r:id` 属性；同一元素上常有同名的数字 `id`，所以必须按命名空间取。 */
+export function relationshipId(element: Element | undefined): string | undefined {
+  return element?.getAttributeNS(RELATIONSHIP_NS, 'id') || undefined
+}
+
 /** 关系文件：`rId` → 目标路径（相对 `base` 目录解析）。 */
 export async function relationships(zip: JSZip, relsPath: string, base: string): Promise<Map<string, string>> {
   const document = await readXml(zip, relsPath)
