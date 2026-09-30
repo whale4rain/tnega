@@ -74,7 +74,7 @@ describe('Jev approval reviewer', () => {
     expect((await pending).decision).toBe('ask')
     expect(ctx.get('approvalReviewer')).toBeUndefined()
   })
-  it.each([0.9, 0.93, 0.94])('allows low-risk review with confidence %s despite omitted history', async confidence => {
+  it.each([0.85, 0.86, 0.9])('allows low-risk review with confidence %s despite omitted history', async confidence => {
     const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer('low', confidence, 0.14)) })
     expect(await reviewer.review({ ...request, contextTruncated: true })).toMatchObject({ decision: 'allow', scores: { riskConfidence: confidence, contextTruncated: true } })
   })
@@ -84,10 +84,10 @@ describe('Jev approval reviewer', () => {
     const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(value) })
     expect(await reviewer.review(request)).toMatchObject({ decision: 'allow', scores: { riskProbability: 0.8 } })
   })
-  it.each([['low', 'allow'], ['medium', 'allow'], ['high', 'deny']])('uses the 0.9 confidence boundary for %s risk', async (risk, decision) => {
-    const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer(risk, 0.9)) })
+  it.each([['low', 'allow'], ['medium', 'allow'], ['high', 'deny']])('uses the 0.85 confidence boundary for %s risk', async (risk, decision) => {
+    const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer(risk, 0.85)) })
     expect((await reviewer.review(request)).decision).toBe(decision)
-    const uncertain = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer(risk, 0.899)) })
-    expect(await uncertain.review(request)).toMatchObject({ decision: 'ask', reason: 'Risk confidence 0.899 is below 0.9' })
+    const uncertain = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer(risk, 0.849)) })
+    expect(await uncertain.review(request)).toMatchObject({ decision: 'ask', reason: 'Risk confidence 0.849 is below 0.85' })
   })
 })
