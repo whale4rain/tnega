@@ -31,6 +31,7 @@ import {
 import { createLlmAdapter, modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
 import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from './goal.js'
 import { personaFor } from './work.js'
+import { FileServeError, readWorkspaceFile, sendFile } from './files.js'
 import { memoryLocal } from '@tnega/memory-local'
 import type { MemoryService } from '@tnega/memory'
 import {
@@ -456,6 +457,22 @@ async function handleApi(
     )
     await updateSystemConfig({ workspaces }, context.configFile)
     sendJson(res, 200, { workspaces })
+    return
+  }
+
+  if (url.pathname === '/api/files' && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    const path = url.searchParams.get('path')
+    if (!workspace || !path) {
+      sendError(res, 400, 'workspace and path query parameters are required')
+      return
+    }
+    try {
+      sendFile(res, await readWorkspaceFile(workspace, path))
+    } catch (error) {
+      if (!(error instanceof FileServeError)) throw error
+      sendError(res, error.status, error.message)
+    }
     return
   }
 

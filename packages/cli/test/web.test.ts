@@ -1363,6 +1363,27 @@ describe('web server', () => {
     expect(detail.events.filter(event => event.type === 'plan')).toHaveLength(0)
   })
 
+  it('serves workspace office files for preview and refuses anything else', async () => {
+    const dir = await tempDir('tnega-web-files-')
+    const workspace = await mkdir(dir, 'workspace')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile: join(dir, 'config.json') })
+    servers.push(server)
+    await writeFile(join(workspace, 'report.xlsx'), Buffer.from([0x50, 0x4b, 3, 4]))
+    await writeFile(join(workspace, 'secret.env'), 'TOKEN=x')
+    const query = (path: string): string => `/api/files?workspace=${encodeURIComponent(workspace)}&path=${encodeURIComponent(path)}`
+    const file = (path: string): Promise<Response> => apiFetch(server.url, query(path))
+
+    const ok = await file('report.xlsx')
+    expect(ok.status).toBe(200)
+    expect(ok.headers.get('content-type')).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect([...new Uint8Array(await ok.arrayBuffer())]).toEqual([0x50, 0x4b, 3, 4])
+    expect((await file('secret.env')).status).toBe(415)
+    expect((await file('../outside.xlsx')).status).toBe(400)
+    expect((await file('missing.xlsx')).status).toBe(404)
+    // Without the client header a cross-site page cannot read workspace files.
+    expect((await fetch(`${server.url}${query('report.xlsx')}`)).status).toBe(403)
+  })
+
   it('runs a work session with the work persona and office tools', async () => {
     const dir = await tempDir('tnega-web-work-')
     const workspace = await mkdir(dir, 'workspace')
