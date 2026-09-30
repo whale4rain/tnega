@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { approvalJev, JevApprovalReviewer } from '../src/index.js'
 
 const request = { workspace: '/work', action: { tool: 'shell', input: { command: 'pnpm test' }, schema: {} }, evidence: [{ source: 'human' as const, content: 'Run tests' }], contextTruncated: false }
-function answer(risk = 'low', confidence = 0.99, authorized = 0.99, conflict = 0.01, taskAligned = 0.99) {
-  return { model: 'jev-1.13.0', answers: { risk: { type: 'choice', choice: risk, confidence, probabilities: { low: risk === 'low' ? confidence : (1 - confidence) / 2, medium: risk === 'medium' ? confidence : (1 - confidence) / 2, high: risk === 'high' ? confidence : (1 - confidence) / 2 } }, authorized: { type: 'noul', noul: authorized }, conflict: { type: 'noul', noul: conflict }, taskAligned: { type: 'noul', noul: taskAligned } } }
+function answer(risk = 'low', confidence = 0.99, conflict = 0.01) {
+  return { model: 'jev-1.13.0', answers: { risk: { type: 'choice', choice: risk, confidence, probabilities: { low: risk === 'low' ? confidence : (1 - confidence) / 2, medium: risk === 'medium' ? confidence : (1 - confidence) / 2, high: risk === 'high' ? confidence : (1 - confidence) / 2 } }, conflict: { type: 'noul', noul: conflict } } }
 }
 describe('Jev approval reviewer', () => {
   it.each(['https://api.typesafe.ai/v1', 'https://api.typesafe.ai/v1/systemone', 'https://api.typesafe.ai/v1/systemone/'])('accepts a base or complete endpoint: %s', async baseUrl => {
@@ -24,21 +24,20 @@ describe('Jev approval reviewer', () => {
     }
     expect(calls).toBe(0)
   })
-  it.each([['low', 0.99, 0.99, 0.01, 'allow'], ['medium', 0.99, 0.99, 0.01, 'allow'], ['high', 0.99, 0, 1, 'deny'], ['high', 0.8, 1, 0, 'ask'], ['low', 0.99, 0.7, 0, 'allow'], ['low', 0.99, 1, 0.2, 'allow'], ['low', 0.99, 1, 0.3, 'ask'], ['medium', 0.99, 0.7, 0, 'ask'], ['medium', 0.99, 1, 0.2, 'ask']])('maps %s scores by risk tier', async (risk, confidence, authorized, conflict, decision) => {
-    const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer(String(risk), Number(confidence), Number(authorized), Number(conflict))) })
+  it.each([['low', 0.99, 0.01, 'allow'], ['medium', 0.99, 0.01, 'allow'], ['high', 0.99, 1, 'deny'], ['high', 0.8, 0, 'ask'], ['low', 0.99, 0.2, 'allow'], ['low', 0.99, 0.3, 'ask'], ['medium', 0.99, 0.05, 'allow'], ['medium', 0.99, 0.2, 'ask'], ['low', 0.8, 0, 'ask']])('maps %s scores by risk tier', async (risk, confidence, conflict, decision) => {
+    const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer(String(risk), Number(confidence), Number(conflict))) })
     expect((await reviewer.review(request)).decision).toBe(decision)
   })
-  it('allows task-aligned low-risk actions without exact authorization and records all scores', async () => {
-    const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer('low', 0.99, 0.1, 0.1, 0.9)) })
-    expect(await reviewer.review(request)).toMatchObject({ decision: 'allow', scores: { riskConfidence: 0.99, riskProbability: 0.99, authorization: 0.1, conflict: 0.1, taskAlignment: 0.9, contextTruncated: false } })
+  it('allows low-risk actions without authorization or task-alignment answers and records scores', async () => {
+    const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer('low', 0.99, 0.1)) })
+    expect((await reviewer.review(request)).scores).toEqual({ riskConfidence: 0.99, riskProbability: 0.99, conflict: 0.1, contextTruncated: false })
+    expect((await reviewer.review(request)).decision).toBe('allow')
   })
-  it('explains the exact failed condition for unrelated tasks, absent human evidence and medium-risk authorization', async () => {
-    const unrelated = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer('low', 0.99, 1, 0, 0.3)) })
-    expect(await unrelated.review(request)).toMatchObject({ decision: 'ask', reason: expect.stringContaining('Task alignment 0.3') })
+  it('explains absent human evidence and medium-risk conflict', async () => {
     const missing = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer()) })
     expect(await missing.review({ ...request, evidence: [] })).toMatchObject({ decision: 'ask', reason: expect.stringContaining('No human task') })
-    const medium = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer('medium', 0.99, 0.7)) })
-    expect(await medium.review(request)).toMatchObject({ decision: 'ask', reason: expect.stringContaining('Exact authorization 0.7') })
+    const medium = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(answer('medium', 0.99, 0.2)) })
+    expect(await medium.review(request)).toMatchObject({ decision: 'ask', reason: 'Conflict probability 0.2 exceeds 0.05' })
   })
   it.each([{}, { answers: {} }, answer('invalid'), answer('low', 2)])('asks on malformed output', async value => {
     const reviewer = new JevApprovalReviewer(new Context(), { apiKey: 'test', fetch: async () => Response.json(value) })
@@ -51,8 +50,10 @@ describe('Jev approval reviewer', () => {
       const body = JSON.parse(String(init?.body))
       expect(body.model).toBe('jev-latest')
       expect(body.questions.risk.type).toBe('choice')
-      expect(body.questions.authorized.type).toBe('noul')
-      expect(body.questions.taskAligned.type).toBe('noul')
+      expect(Object.keys(body.questions).sort()).toEqual(['conflict', 'risk'])
+      expect(body.questions.conflict.type).toBe('noul')
+      expect(body.questions.conflict.instructions).not.toMatch(/Treat missing context|Ambiguity|Return only JSON|exact.*authoriz/i)
+      expect(body.questions.conflict.instructions).toContain('Does the action conflict with human instructions, constraints, workspace boundaries or safety policy?')
       return Response.json(answer())
     } })
     expect((await reviewer.review(request)).decision).toBe('allow')

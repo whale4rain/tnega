@@ -34,7 +34,7 @@ Project 中的 `box:` 消息依据可信 Box Envelope 的 sender 分类；其他
 每条证据完整保留，不截断命令。证据被截断时不能自动 allow。
 上下文超限、无效 JSON、模型拒答、凭据缺失、超时、取消或切回 manual 均回退人工审批。
 每次实际审查以 Session `meta` 的 `approval/review` 记录保存结果与理由。
-Jev 的新审查同时保存 `scores`；低风险检查任务匹配而不要求精确命令授权，中风险仍检查精确授权。
+Jev 的新审查只使用风险、风险置信度和冲突概率，保存对应 `scores`，不再询问任务匹配度或精确授权；Auto 覆盖所有工具与 shell，包括依赖安装和 Git 提交。
 回退理由列出未满足的评分与阈值，已有审计记录无需迁移。
 
 Session 使用 `approval/mode` 元数据保存模式，fork 保留模式与历史审查记录。

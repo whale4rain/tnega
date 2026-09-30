@@ -18,7 +18,7 @@ export class LlmApprovalReviewer extends ApprovalReviewer {
     return boundedReview(request.signal, this.lifetime.signal, this.config.timeoutMs ?? 20_000, async signal => {
       const adapter = typeof this.config.adapter === 'function' ? await this.config.adapter(request) : this.config.adapter
       const result = await adapter.complete([
-        { role: 'system', content: APPROVAL_POLICY },
+        { role: 'system', content: `${APPROVAL_POLICY}\nReturn only JSON: {"decision":"allow|deny|ask","risk":"low|medium|high","reason":"brief explanation"}.` },
         { role: 'user', content: JSON.stringify(reviewState(request)) },
       ], [], { signal, maxTokens: 512 })
       const decision = parseApprovalDecision(result.finishReason === 'stop' ? result.content : undefined)

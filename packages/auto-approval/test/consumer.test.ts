@@ -35,7 +35,7 @@ it('manual mode does not invoke reviewer or append audit', async () => {
   expect(await readFile(state.session.file, 'utf8')).not.toContain('approval/review')
 })
 it('auto approval flushes exact action audit to durable session before returning', async () => {
-  const scores = { riskConfidence: 0.99, riskProbability: 0.99, authorization: 0.1, conflict: 0.1, taskAlignment: 0.9, contextTruncated: false }
+  const scores = { riskConfidence: 0.99, riskProbability: 0.99, conflict: 0.1, contextTruncated: false }
   const state = await setup(async request => {
     expect(request.action.input).toEqual({ command: 'pnpm test' })
     return { decision: 'allow', risk: 'low', reason: 'Tests match the task', provider: 'local-test', scores }
