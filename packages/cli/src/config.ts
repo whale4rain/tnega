@@ -44,6 +44,8 @@ export interface ConfiguredModel {
   reasoningEfforts?: ReasoningEffort[]
   reasoningEffort?: ReasoningEffort
   contextWindow?: number
+  /** Override the model-id heuristic for image input. */
+  vision?: boolean
 }
 
 export interface LlmEnvConfig {
@@ -77,6 +79,7 @@ export interface EffectiveLlmConfig {
   temperature?: number
   reasoningEffort?: ReasoningEffort
   contextWindow?: number
+  vision: boolean
 }
 
 export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort'> & {
@@ -173,6 +176,7 @@ export function effectiveLlmConfig(
     baseUrl,
     model,
     modelId,
+    vision: false,
   }
   const protocol = profile?.protocol ?? (profile ? undefined : config.protocol)
   if (protocol) result.protocol = protocol
@@ -181,7 +185,9 @@ export function effectiveLlmConfig(
   if (config.temperature !== undefined) result.temperature = config.temperature
   const contextWindow = profile?.contextWindow ?? config.contextWindow ?? lookupModel(model)?.contextWindow
   if (contextWindow !== undefined) result.contextWindow = contextWindow
-  const supported = modelCapabilities(model, protocol, profile ? profile.reasoningEfforts ?? [] : undefined).reasoningEfforts
+  const capabilities = modelCapabilities(model, protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile?.vision)
+  result.vision = capabilities.vision
+  const supported = capabilities.reasoningEfforts
   const defaultEffort = profile?.reasoningEffort ?? config.reasoningEffort
   if (defaultEffort && supported.includes(defaultEffort)) result.reasoningEffort = defaultEffort
   return result
@@ -192,6 +198,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
   name: string
   protocol: LlmProtocol
   reasoningEfforts: readonly ReasoningEffort[]
+  vision: boolean
   apiKeySet: boolean
   contextWindow?: number
 }> {
@@ -203,7 +210,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
     return {
       id,
       name: profile?.name ?? id,
-      ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined),
+      ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile?.vision),
       apiKeySet: route.apiKeySet,
       ...(route.contextWindow !== undefined ? { contextWindow: route.contextWindow } : {}),
     }
@@ -285,6 +292,8 @@ function normalizeConfig(value: unknown): SystemConfig {
       if (effort === 'low' || effort === 'medium' || effort === 'high') model.reasoningEffort = effort
       const contextWindow = fieldOf(entry, 'contextWindow')
       if (isContextWindow(contextWindow)) model.contextWindow = contextWindow
+      const vision = fieldOf(entry, 'vision')
+      if (typeof vision === 'boolean') model.vision = vision
       const efforts = fieldOf(entry, 'reasoningEfforts')
       if (Array.isArray(efforts)) {
         model.reasoningEfforts = [...new Set(efforts.filter(isReasoningEffort))]

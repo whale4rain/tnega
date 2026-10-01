@@ -37,10 +37,12 @@ import { memoryLocal } from '@tnega/memory-local'
 import type { MemoryService } from '@tnega/memory'
 import {
   isAgentType,
+  isModelAttachment,
   session,
   SessionLog,
   transcriptEvents,
   type AgentType,
+  type ModelAttachment,
   type ModelMessage,
   type PlanPayload,
 } from '@tnega/session'
@@ -104,6 +106,9 @@ import {
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
 const MAX_BODY_BYTES = 1024 * 1024
+/** A run may carry a few downscaled images inline. */
+const MAX_RUN_BODY_BYTES = 24 * 1024 * 1024
+const MAX_RUN_ATTACHMENTS = 8
 // Independent of the automatic budget's retain ratio on purpose: a manual
 // compaction whose surface fits entirely under this budget falls back to
 // shadowing the whole surface (`keep` defaults to 0), so raising this value
@@ -926,9 +931,14 @@ async function handleRun(
     sendError(res, 409, 'session already has an active run')
     return
   }
-  const body = await readJsonBody(req)
+  const body = await readJsonBody(req, MAX_RUN_BODY_BYTES)
   const resumeQueued = body.resumeQueued === true
-  if (!resumeQueued && (typeof body.prompt !== 'string' || !body.prompt.trim())) {
+  const attachments = parseRunAttachments(body.attachments)
+  if (typeof attachments === 'string') {
+    sendError(res, 400, attachments)
+    return
+  }
+  if (!resumeQueued && !attachments.length && (typeof body.prompt !== 'string' || !body.prompt.trim())) {
     sendError(res, 400, 'prompt is required')
     return
   }
@@ -973,6 +983,7 @@ async function handleRun(
       apiKey,
       config,
       resumeQueued,
+      attachments,
     })
     return
   }
@@ -1085,11 +1096,14 @@ async function handleRun(
       plan = await ensurePlanForRun({
         adapter,
         session: sessionLog,
-        messages: [...history, { role: 'user' as const, content: prompt }],
+        messages: [...history, userMessage(prompt, attachments)],
         signal: controller.signal,
         emit: emitSse,
       })
-      await sessionLog.append('user/message', { content: prompt })
+      await sessionLog.append('user/message', {
+        content: prompt,
+        ...(attachments.length ? { attachments } : {}),
+      })
       await sessionLog.append('assistant/message', {
         content: [plan.summary ?? 'Plan', ...plan.items.map((item, index) => `${index + 1}. ${item.title}`)].join('\n'),
       })
@@ -1109,7 +1123,7 @@ async function handleRun(
         ? [{ role: 'system' as const, content: persona }]
         : []),
       ...history,
-      { role: 'user' as const, content: prompt },
+      userMessage(prompt, attachments),
     ]
     const agent = runtime.root.get('agent') as {
       runStream(
@@ -1160,6 +1174,7 @@ async function handleRun(
 
 interface ResidentRunRequest {
   resumeQueued?: boolean
+  attachments?: ModelAttachment[]
   config: SystemConfig
   prompt: string
   permission: PermissionMode
@@ -1507,7 +1522,12 @@ async function runResidentTurn(
     }
     let goal = req.goalMode ? await readGoal(agent.session) : undefined
     if (req.goalMode && !goal) goal = await createGoal(agent.session, req.prompt)
-    if (!req.resumeQueued) await agent.followup({ text: req.prompt })
+    if (!req.resumeQueued) {
+      await agent.followup({
+        text: req.prompt,
+        ...(req.attachments?.length ? { attachments: req.attachments } : {}),
+      })
+    }
     while (true) {
       for await (const event of agent.runTurns(controller.signal)) {
         if (!res.destroyed && !res.writableEnded) writeSse(res, event)
@@ -1798,10 +1818,12 @@ function adapterFromConfig(
     apiKeyHeader?: 'x-api-key' | 'api-key'
     temperature?: number
     reasoningEffort?: 'low' | 'medium' | 'high'
+    vision?: boolean
   } = {
     apiKey,
     baseUrl: effective.baseUrl,
     model: effective.model,
+    vision: effective.vision,
   }
   if (effective.protocol) options.protocol = effective.protocol
   if (effective.apiKeyHeader) options.apiKeyHeader = effective.apiKeyHeader
@@ -1919,13 +1941,40 @@ function sessionFilePath(workspace: string, id: string): string {
   return join(resolve(workspace), '.tnega', 'sessions', `${id}.jsonl`)
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+function userMessage(prompt: string, attachments: readonly ModelAttachment[]): ModelMessage {
+  return {
+    role: 'user',
+    content: prompt,
+    ...(attachments.length ? { attachments: [...attachments] } : {}),
+  }
+}
+
+/** Validated run attachments, or an error message for a malformed field. */
+function parseRunAttachments(value: unknown): ModelAttachment[] | string {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return 'attachments must be an array'
+  if (value.length > MAX_RUN_ATTACHMENTS) return `at most ${MAX_RUN_ATTACHMENTS} attachments per message`
+  const result: ModelAttachment[] = []
+  for (const entry of value) {
+    if (!isModelAttachment(entry)) return 'attachments must be base64 png, jpeg, webp or gif images'
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(entry.data)) return 'attachment data must be base64 without a data: prefix'
+    result.push({
+      type: 'image',
+      mediaType: entry.mediaType,
+      data: entry.data,
+      ...(typeof entry.name === 'string' && entry.name ? { name: entry.name.slice(0, 200) } : {}),
+    })
+  }
+  return result
+}
+
+async function readJsonBody(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     size += buffer.byteLength
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'request body too large')
+    if (size > maxBytes) throw new HttpError(413, 'request body too large')
     chunks.push(buffer)
   }
   const text = Buffer.concat(chunks).toString('utf8')
