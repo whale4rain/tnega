@@ -605,7 +605,11 @@ export function Conversation({
               onOpenSubagent,
               onOpenFile,
             }}
-            agent={{ id: summary?.id ?? streamingFor.current ?? 'draft' }}
+            agent={{ id: summary?.id ?? streamingFor.current ?? 'draft', role: 'coordinator' }}
+            sky={{
+              waiting: approvals.length > 0,
+              ...(context && context.limit > 0 ? { contextRatio: context.ratio } : {}),
+            }}
           />
           {remoteRunning && !running && (
             <div className="notice notice-info remote-run">

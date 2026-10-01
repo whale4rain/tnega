@@ -1,12 +1,16 @@
 import { createContext, memo, useContext, useMemo, useSyncExternalStore } from 'react'
 import { ACCENT, avatarSalt, avatarSpec, effectiveSeed, rerollAvatar, subscribeAvatars, type AvatarSpec, type Shape } from '../lib/avatar'
+import { WEATHER_LABEL, type Weather } from '../lib/weather'
+import { WeatherBack, WeatherFront } from './WeatherLayer'
 
 /** Seed overrides for a group of sibling agents (see `distinctSeeds`). */
 export const AvatarSeeds = createContext<Record<string, string>>({})
 
 /**
  * A cute abstract avatar: a soft shape with two white eyes. `id` is the stable
- * agent id; the same id always draws the same avatar until rerolled.
+ * agent id; the same id always draws the same avatar until rerolled. `weather`
+ * draws the agent's state around it (see lib/weather.ts); a live avatar
+ * without one is `cloudy`, i.e. thinking.
  */
 export const AgentAvatar = memo(function AgentAvatar({
   id,
@@ -15,6 +19,7 @@ export const AgentAvatar = memo(function AgentAvatar({
   live = false,
   title,
   rerollable = false,
+  weather,
 }: {
   id: string
   role?: 'coordinator' | 'agent'
@@ -22,12 +27,15 @@ export const AgentAvatar = memo(function AgentAvatar({
   live?: boolean
   title?: string
   rerollable?: boolean
+  weather?: Weather | undefined
 }) {
   const salt = useSyncExternalStore(subscribeAvatars, () => avatarSalt(id), () => 0)
   const overrides = useContext(AvatarSeeds)
   const seed = overrides[id] ?? effectiveSeed(id)
   const spec = useMemo(() => avatarSpec(seed, role), [seed, role, salt])
-  const svg = <AvatarSvg spec={spec} size={size} live={live} title={title} />
+  const sky = weather ?? (live ? 'cloudy' : undefined)
+  const label = title && sky ? `${title} · ${WEATHER_LABEL[sky]}` : title
+  const svg = <AvatarSvg spec={spec} size={size} live={live} title={label} weather={sky} />
   if (!rerollable) return svg
   return (
     <button type="button" className="avatar-button" onClick={() => rerollAvatar(id)} title="New look (click to reroll)" aria-label="Reroll avatar">
@@ -46,14 +54,45 @@ const EYE_Y: Record<Shape, number> = {
   drop: 40,
 }
 
-function AvatarSvg({ spec, size, live, title }: { spec: AvatarSpec; size: number; live: boolean; title?: string | undefined }) {
+/** Small shifts of expression that go with the weather. */
+function expression(weather: Weather | undefined): { lookUp: boolean; squint: boolean; happy: boolean } {
+  return { lookUp: weather === 'snow', squint: weather === 'storm', happy: weather === 'rainbow' }
+}
+
+function AvatarSvg({ spec, size, live, title, weather }: { spec: AvatarSpec; size: number; live: boolean; title?: string | undefined; weather?: Weather | undefined }) {
   const fill = spec.color === ACCENT ? 'var(--accent)' : spec.color === 'ink' ? 'var(--avatar-ink)' : spec.color
+  const mood = expression(weather)
   const cx = 32 + spec.gazeX
-  const cy = EYE_Y[spec.shape] + spec.gazeY
+  const cy = EYE_Y[spec.shape] + (mood.lookUp ? -4 : spec.gazeY)
   const gap = spec.eyes === 'pill' ? 7 : 7.5
+  const pill = mood.squint ? { h: 8, r: 3.6 } : { h: 17, r: 4.2 }
+  const character = (
+    <>
+      <g className="av-body" style={{ fill }}>
+        <Body shape={spec.shape} rotate={spec.rotate} />
+      </g>
+      {mood.happy
+        ? (
+          <g className="av-eyes av-eyes-happy" fill="none" stroke="#fff" strokeWidth="4.2" strokeLinecap="round">
+            {[-1, 1].map(side => <path key={side} d={`M${cx + side * gap - 4.5} ${cy + 2} q4.5 -6.5 9 0`} />)}
+          </g>
+        )
+        : (
+          <g className="av-eyes" fill="#fff">
+            {[-1, 1].map(side => (
+              <g key={side} className="av-eye">
+                {spec.eyes === 'pill'
+                  ? <rect x={cx + side * gap - 4.2} y={cy - pill.h / 2} width="8.4" height={pill.h} rx={pill.r} transform={`rotate(${spec.eyeTilt} ${cx + side * gap} ${cy})`} />
+                  : <circle cx={cx + side * gap} cy={cy} r={mood.squint ? 4.2 : 6} />}
+              </g>
+            ))}
+          </g>
+        )}
+    </>
+  )
   return (
     <svg
-      className={`agent-avatar-svg${live ? ' is-live' : ''}`}
+      className={`agent-avatar-svg${live ? ' is-live' : ''}${weather ? ` has-weather wx-is-${weather}` : ''}`}
       width={size}
       height={size}
       viewBox="0 0 64 64"
@@ -62,18 +101,16 @@ function AvatarSvg({ spec, size, live, title }: { spec: AvatarSpec; size: number
       aria-label={title}
     >
       {title && <title>{title}</title>}
-      <g className="av-body" style={{ fill }}>
-        <Body shape={spec.shape} rotate={spec.rotate} />
-      </g>
-      <g className="av-eyes" fill="#fff">
-        {[-1, 1].map(side => (
-          <g key={side} className="av-eye">
-            {spec.eyes === 'pill'
-              ? <rect x={cx + side * gap - 4.2} y={cy - 8.5} width="8.4" height="17" rx="4.2" transform={`rotate(${spec.eyeTilt} ${cx + side * gap} ${cy})`} />
-              : <circle cx={cx + side * gap} cy={cy} r="6" />}
-          </g>
-        ))}
-      </g>
+      {weather
+        ? (
+          <>
+            <WeatherBack weather={weather} />
+            {/* The character keeps its shape; it only makes room for the sky. */}
+            <g className="av-character" transform="translate(32 27) scale(0.76) translate(-32 -32)">{character}</g>
+            <WeatherFront weather={weather} />
+          </>
+        )
+        : character}
     </svg>
   )
 }

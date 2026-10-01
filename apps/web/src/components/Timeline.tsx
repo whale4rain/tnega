@@ -18,7 +18,8 @@ import {
   X,
   Network,
 } from 'lucide-react'
-import { memo, useState, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import { turnWeather } from '../lib/weather'
 import { useCopy } from '../lib/hooks'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentRun, stringify } from '../lib/timeline'
@@ -43,7 +44,18 @@ export interface TimelineAgent {
   role?: 'coordinator' | 'agent'
 }
 
-export function Timeline({ entries, running, actions, agent }: { entries: readonly Entry[]; running: boolean; actions: TimelineActions; agent?: TimelineAgent | undefined }) {
+/** Signals beyond the entries that shape the latest turn's weather. */
+export interface TimelineSky {
+  /** An approval or question is waiting on the user. */
+  waiting?: boolean
+  /** Share of the context window in use, 0–1. */
+  contextRatio?: number
+}
+
+export function Timeline({ entries, running, actions, agent, sky }: { entries: readonly Entry[]; running: boolean; actions: TimelineActions; agent?: TimelineAgent | undefined; sky?: TimelineSky | undefined }) {
+  const lastAgent = findLastAgent(entries)
+  // Tracked here, not per turn: the finished turn is re-keyed when durable events reload.
+  const justFinished = useJustFinished(running)
   const lastUser = findLastUser(entries)
   return (
     <div className="timeline">
@@ -60,7 +72,7 @@ export function Timeline({ entries, running, actions, agent }: { entries: readon
               />
             )
           case 'agent':
-            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} />
+            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} justFinished={entry.id === lastAgent && justFinished} />
           case 'compaction':
             return <CompactionMarker key={entry.id} summary={entry.summary} tokensBefore={entry.tokensBefore} />
           case 'slash':
@@ -190,17 +202,47 @@ function segment(blocks: readonly Block[]): Segment[] {
   return out
 }
 
+function findLastAgent(entries: readonly Entry[]): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]
+    if (entry?.kind === 'agent') return entry.id
+  }
+  return undefined
+}
+
+/** True for a few seconds after a run stops. */
+function useJustFinished(running: boolean): boolean {
+  const wasRunning = useRef(running)
+  const [fresh, setFresh] = useState(false)
+  useEffect(() => {
+    const finished = wasRunning.current && !running
+    wasRunning.current = running
+    if (!finished) return
+    setFresh(true)
+    const timer = setTimeout(() => setFresh(false), 3_200)
+    return () => clearTimeout(timer)
+  }, [running])
+  return fresh
+}
+
 const AgentTurn = memo(function AgentTurn({
   entry,
   live,
   actions,
   agent,
+  sky,
+  justFinished = false,
 }: {
   entry: Extract<Entry, { kind: 'agent' }>
   live: boolean
   actions: TimelineActions
   agent?: TimelineAgent | undefined
+  sky?: TimelineSky | undefined
+  justFinished?: boolean
 }) {
+  const weather = sky || live || justFinished || entry.status === 'error'
+    ? turnWeather(entry, { live, justFinished, ...(sky?.waiting ? { waiting: true } : {}), ...(sky?.contextRatio !== undefined ? { contextRatio: sky.contextRatio } : {}) })
+    : undefined
   const presentation = live ? { process: [], visible: entry.blocks } : presentRun(entry)
   const segments = segment(presentation.visible)
   const [processOpen, setProcessOpen] = useState(false)
@@ -234,7 +276,9 @@ const AgentTurn = memo(function AgentTurn({
   return (
     <div className={`agent-turn${live ? ' is-live' : ''}`}>
       <div className="agent-avatar" aria-hidden>
-        {agent ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={26} live={live} /> : <span className="brand-mark small" />}
+        {agent
+          ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={26} live={live} weather={weather === 'clear' && !live ? undefined : weather} title={agent.role === 'coordinator' ? 'Agent' : undefined} />
+          : <span className="brand-mark small" />}
       </div>
       <div className="agent-body">
         {presentation.process.length > 0 && (
@@ -447,7 +491,12 @@ function SubagentCard({ agent, onOpen }: { agent: SubagentView; onOpen?: ((id: s
   return (
     <div className="subagent-card">
       <div className="subagent-head">
-        <AgentAvatar id={agent.id ?? agent.callId ?? agent.label} size={32} live={agent.status === 'running' || agent.status === 'starting'} />
+        <AgentAvatar
+          id={agent.id ?? agent.callId ?? agent.label}
+          size={32}
+          live={agent.status === 'running' || agent.status === 'starting'}
+          weather={agent.status === 'starting' ? 'sprite' : agent.status === 'running' ? 'drizzle' : agent.status === 'failed' ? 'storm' : undefined}
+        />
         <div className="subagent-titles">
           <div className="subagent-label">{agent.label}</div>
           <div className="subagent-sub">{agent.mode === 'fork' ? 'Forked subagent' : 'Subagent'}</div>

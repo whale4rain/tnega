@@ -13,9 +13,9 @@ describe('avatarSpec', () => {
     }
   })
 
-  it('draws the coordinator as an accent circle', () => {
+  it('draws the main agent as an accent cloud', () => {
     for (let i = 0; i < 20; i += 1) {
-      expect(avatarSpec(`project-${i}`, 'coordinator')).toMatchObject({ shape: 'circle', color: ACCENT })
+      expect(avatarSpec(`project-${i}`, 'coordinator')).toMatchObject({ shape: 'cloud', color: ACCENT })
     }
   })
 

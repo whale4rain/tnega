@@ -3,8 +3,9 @@
  * with two white eyes. Character comes from the shape, the eye style and
  * where the eyes look. Nothing else.
  *
- * Every agent id maps to a stable avatar; the coordinator is an accent
- * circle. Users can reroll an avatar; the choice is a salt in localStorage.
+ * Every agent id maps to a stable avatar; the main agent (a session's own
+ * agent, or a Project coordinator) is an accent cloud — Tnega's weather
+ * language starts from it. Users can reroll an avatar; the choice is a salt in localStorage.
  */
 
 export type Shape = 'circle' | 'rounded' | 'tilted' | 'gumdrop' | 'cloud' | 'drop'
@@ -73,7 +74,7 @@ function between(next: () => number, min: number, max: number): number {
 export function avatarSpec(seed: string, role: 'coordinator' | 'agent' = 'agent'): AvatarSpec {
   const next = random(hash(`${role}:${seed}`))
   const coordinator = role === 'coordinator'
-  const shape: Shape = coordinator ? 'circle' : pick(next, SHAPES)
+  const shape: Shape = coordinator ? 'cloud' : pick(next, SHAPES)
   return {
     shape,
     color: coordinator ? ACCENT : pick(next, COLORS),

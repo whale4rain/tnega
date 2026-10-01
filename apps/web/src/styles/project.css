@@ -1092,3 +1092,137 @@
   color: var(--accent-text);
   border-color: var(--accent);
 }
+
+/* ==========================================================================
+   Weather — the agent's state drawn around its avatar (lib/weather.ts).
+   Flat shapes in the weather tokens; motion is a gentle loop and stops
+   entirely for reduced motion.
+   ========================================================================== */
+
+.agent-avatar-svg .wx {
+  transform-box: fill-box;
+}
+
+.wx-sun { fill: var(--wx-sun); }
+.wx-sun .wx-rays {
+  transform-origin: 51.5px 13px;
+  transform-box: view-box;
+  animation: wx-spin 18s linear infinite;
+}
+
+.wx-puff {
+  fill: var(--wx-cloud);
+  animation: wx-drift 5s ease-in-out infinite;
+}
+
+.wx-rain .drop,
+.wx-sleet .drop {
+  fill: var(--wx-rain);
+  animation: wx-fall 0.9s cubic-bezier(0.5, 0, 1, 1) infinite;
+}
+
+.wx-rain.wx-rain .drop {
+  animation-duration: 0.7s;
+}
+
+.wx-snow .flake,
+.wx-sleet .flake {
+  fill: var(--wx-snow);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wx-flutter 2.6s ease-in-out infinite;
+}
+
+.wx-storm .bolt {
+  fill: var(--wx-bolt);
+  animation: wx-flash 2.4s steps(1, end) infinite;
+}
+
+.agent-avatar-svg.wx-is-storm .av-body {
+  filter: saturate(0.7) brightness(0.82);
+}
+
+.wx-fog .band {
+  fill: var(--wx-fog);
+  opacity: 0.85;
+  animation: wx-mist 6s ease-in-out infinite;
+}
+
+.wx-fog .band-2 { animation-delay: -2s; }
+.wx-fog .band-3 { animation-delay: -4s; }
+
+.wx-rainbow .band {
+  stroke-dasharray: 90;
+  animation: wx-arc 1.1s var(--ease-out) both;
+}
+
+.wx-rainbow .band-1 { stroke: var(--wx-rainbow-1); }
+.wx-rainbow .band-2 { stroke: var(--wx-rainbow-2); animation-delay: 0.08s; }
+.wx-rainbow .band-3 { stroke: var(--wx-rainbow-3); animation-delay: 0.16s; }
+
+.wx-sprite .tendril {
+  stroke: var(--wx-sprite);
+  animation: wx-rise 1.2s ease-out infinite;
+}
+
+.wx-sprite .t-2 { animation-delay: 0.25s; }
+.wx-sprite .t-3 { animation-delay: 0.5s; }
+
+/* A thinking cloud bobs; a waiting one holds still and looks at you. */
+.agent-avatar-svg.wx-is-cloudy .av-character,
+.agent-avatar-svg.wx-is-drizzle .av-character,
+.agent-avatar-svg.wx-is-rain .av-character {
+  animation: wx-bob 2.8s ease-in-out infinite;
+}
+
+@keyframes wx-spin { to { transform: rotate(360deg); } }
+
+@keyframes wx-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-3px); }
+}
+
+@keyframes wx-fall {
+  0% { transform: translateY(-4px); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateY(6px); opacity: 0; }
+}
+
+@keyframes wx-flutter {
+  0%, 100% { transform: translate(0, -2px) rotate(0deg); }
+  50% { transform: translate(1.5px, 2px) rotate(30deg); }
+}
+
+@keyframes wx-flash {
+  0%, 62%, 72%, 100% { opacity: 1; }
+  66%, 76% { opacity: 0.15; }
+}
+
+@keyframes wx-mist {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+
+@keyframes wx-arc {
+  from { stroke-dashoffset: 90; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes wx-rise {
+  0% { transform: translateY(4px); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateY(-4px); opacity: 0; }
+}
+
+@keyframes wx-bob {
+  0%, 100% { transform: translate(32px, 27px) scale(0.76) translate(-32px, -32px); }
+  50% { transform: translate(32px, 25.5px) scale(0.76) translate(-32px, -32px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-avatar-svg .wx,
+  .agent-avatar-svg .wx *,
+  .agent-avatar-svg .av-character {
+    animation: none !important;
+  }
+}
