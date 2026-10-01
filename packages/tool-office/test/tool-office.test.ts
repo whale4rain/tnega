@@ -76,6 +76,40 @@ describe('office tools', () => {
     expect(await ok(service, 'office_read', { path: 'deck.pptx' })).toMatchObject({ total: 1, slides: [{ title: 'Hello' }] })
   })
 
+  it('passes themes, rich styles and charts through to the files', async () => {
+    const { service } = await mount()
+    const created = await ok(service, 'office_create', {
+      path: 'sales.xlsx',
+      spec: {
+        theme: { font: 'Arial', accent: '1F4E79' },
+        sheets: [{
+          ...workbook.sheets[0],
+          merges: ['A4:D4'],
+          styles: [{ range: 'A1:D1', style: { bold: true, color: 'FFFFFF', fill: '1F4E79', border: 'thin', wrap: true } }],
+          charts: [{ type: 'column', categories: 'A2:A2', series: [{ values: 'B2:B2' }], at: 'F2', title: 'Q1' }],
+        }],
+      },
+    })
+    expect(created).toMatchObject({ outline: { sheets: [{ charts: [{ type: 'column', title: 'Q1', series: [{ name: 'Q1' }] }] }] } })
+    await ok(service, 'office_edit', { path: 'sales.xlsx', ops: [{ op: 'addChart', sheet: 'Sales', chart: { type: 'pie', categories: 'A2:A2', series: [{ values: 'D2:D2' }], at: 'F20' } }, { op: 'autoFilter', sheet: 'Sales', range: null }] })
+    expect(await ok(service, 'office_inspect', { path: 'sales.xlsx' })).toMatchObject({ outline: { sheets: [{ charts: [{ type: 'column' }, { type: 'pie' }] }] } })
+
+    const chart = { type: 'line', title: 'Trend', categories: ['Jan', 'Feb'], series: [{ name: 'Visits', values: [3, null] }] }
+    await ok(service, 'office_create', { path: 'report.docx', spec: { theme: { accent: '1F4E79' }, page: { orientation: 'landscape' }, pageNumbers: true, blocks: [{ type: 'chart', chart }] } })
+    expect(await ok(service, 'office_inspect', { path: 'report.docx' })).toMatchObject({ outline: { charts: 1 } })
+    await ok(service, 'office_create', { path: 'deck.pptx', spec: { theme: { font: 'Arial' }, slideNumbers: true, slides: [{ title: 'Trend', chart }] } })
+    expect(await ok(service, 'office_read', { path: 'deck.pptx' })).toMatchObject({ slides: [{ charts: [{ type: 'line', title: 'Trend' }] }] })
+  })
+
+  it('reports invalid chart and style fields with their path', async () => {
+    const { service } = await mount()
+    expect(await fails(service, 'office_create', { path: 'a.pptx', spec: { slides: [{ chart: { type: 'radar', categories: [], series: [] } }] } }))
+      .toContain('spec.slides[0].chart.type must be one of')
+    expect(await fails(service, 'office_create', { path: 'a.xlsx', spec: { sheets: [{ name: 'S', styles: [{ range: 'A1', style: { border: 'dotted' } }] }] } }))
+      .toContain('spec.sheets[0].styles[0].style.border')
+    expect(await fails(service, 'office_create', { path: 'a.docx', spec: { page: { size: 'A3' }, blocks: [] } })).toContain('spec.page.size')
+  })
+
   it('refuses to overwrite unless asked', async () => {
     const { service } = await mount()
     await ok(service, 'office_create', { path: 'a.xlsx', spec: workbook })

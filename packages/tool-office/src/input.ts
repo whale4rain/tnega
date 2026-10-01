@@ -1,5 +1,10 @@
 import type {
   CellInput,
+  ChartSpec,
+  ChartType,
+  PageSetup,
+  SheetChartSpec,
+  Theme,
   CellStyle,
   DocBlock,
   DocumentSpec,
@@ -50,7 +55,7 @@ function array(value: unknown, label: string): unknown[] {
   throw new ToolInputError(`${label} must be an array`)
 }
 
-function oneOf<T extends string>(value: unknown, options: readonly T[], label: string): T {
+function oneOf<const T extends string>(value: unknown, options: readonly T[], label: string): T {
   const found = options.find(option => option === value)
   if (found === undefined) throw new ToolInputError(`${label} must be one of: ${options.join(', ')}`)
   return found
@@ -61,6 +66,75 @@ function optional<K extends string, T>(key: K, value: T | undefined): { [P in K]
   const result: { [P in K]?: T } = {}
   if (value !== undefined) result[key] = value
   return result
+}
+
+function strings(value: unknown, label: string): string[] {
+  return array(value, label).map((each, index) => stringField(each, `${label}[${index}]`))
+}
+
+// shared
+
+export function theme(value: unknown, label = 'spec.theme'): Theme | undefined {
+  if (value === undefined) return undefined
+  const input = record(value, label)
+  return {
+    ...optional('font', optionalString(input.font, `${label}.font`)),
+    ...optional('headingFont', optionalString(input.headingFont, `${label}.headingFont`)),
+    ...optional('accent', optionalString(input.accent, `${label}.accent`)),
+  }
+}
+
+const CHART_TYPES: readonly ChartType[] = ['column', 'bar', 'line', 'area', 'pie', 'doughnut']
+
+function chartOptions(input: Record<string, unknown>, label: string) {
+  return {
+    type: oneOf(input.type, CHART_TYPES, `${label}.type`),
+    ...optional('title', optionalString(input.title, `${label}.title`)),
+    ...optional('stacked', optionalBoolean(input.stacked, `${label}.stacked`)),
+    ...optional('legend', optionalBoolean(input.legend, `${label}.legend`)),
+    ...optional('dataLabels', optionalBoolean(input.dataLabels, `${label}.dataLabels`)),
+  }
+}
+
+/** docx / pptx 图表：数据直接写在规格里。 */
+export function chartSpec(value: unknown, label: string): ChartSpec {
+  const input = record(value, label)
+  return {
+    ...chartOptions(input, label),
+    categories: array(input.categories, `${label}.categories`).map(each => String(each)),
+    series: array(input.series, `${label}.series`).map((each, index) => {
+      const series = record(each, `${label}.series[${index}]`)
+      return {
+        name: stringField(series.name, `${label}.series[${index}].name`),
+        values: array(series.values, `${label}.series[${index}].values`).map((point, p) => {
+          if (point === null) return null
+          const number = optionalNumber(point, `${label}.series[${index}].values[${p}]`)
+          return number ?? null
+        }),
+        ...optional('color', optionalString(series.color, `${label}.series[${index}].color`)),
+      }
+    }),
+  }
+}
+
+/** xlsx 图表：类别与系列引用单元格区域。 */
+function sheetChart(value: unknown, label: string): SheetChartSpec {
+  const input = record(value, label)
+  return {
+    ...chartOptions(input, label),
+    categories: stringField(input.categories, `${label}.categories`),
+    series: array(input.series, `${label}.series`).map((each, index) => {
+      const series = record(each, `${label}.series[${index}]`)
+      return {
+        values: stringField(series.values, `${label}.series[${index}].values`),
+        ...optional('name', optionalString(series.name, `${label}.series[${index}].name`)),
+        ...optional('color', optionalString(series.color, `${label}.series[${index}].color`)),
+      }
+    }),
+    at: stringField(input.at, `${label}.at`),
+    ...optional('width', optionalNumber(input.width, `${label}.width`)),
+    ...optional('height', optionalNumber(input.height, `${label}.height`)),
+  }
 }
 
 // xlsx
@@ -80,13 +154,22 @@ function rows(value: unknown, label: string): CellInput[][] {
 
 function cellStyle(value: unknown, label: string): CellStyle {
   const input = record(value, label)
-  const align = input.align === undefined ? undefined : oneOf(input.align, ['left', 'center', 'right'], `${label}.align`)
+  const pick = <const T extends string>(key: string, options: readonly T[]): T | undefined =>
+    input[key] === undefined ? undefined : oneOf(input[key], options, `${label}.${key}`)
   return {
     ...optional('bold', optionalBoolean(input.bold, `${label}.bold`)),
     ...optional('italic', optionalBoolean(input.italic, `${label}.italic`)),
+    ...optional('underline', optionalBoolean(input.underline, `${label}.underline`)),
+    ...optional('font', optionalString(input.font, `${label}.font`)),
+    ...optional('size', optionalNumber(input.size, `${label}.size`)),
+    ...optional('color', optionalString(input.color, `${label}.color`)),
     ...optional('numFmt', optionalString(input.numFmt, `${label}.numFmt`)),
     ...optional('fill', optionalString(input.fill, `${label}.fill`)),
-    ...(align ? { align } : {}),
+    ...optional('align', pick('align', ['left', 'center', 'right'])),
+    ...optional('valign', pick('valign', ['top', 'middle', 'bottom'])),
+    ...optional('wrap', optionalBoolean(input.wrap, `${label}.wrap`)),
+    ...optional('border', pick('border', ['thin', 'medium', 'thick', 'none'])),
+    ...optional('borderColor', optionalString(input.borderColor, `${label}.borderColor`)),
   }
 }
 
@@ -118,15 +201,27 @@ function sheet(value: unknown, label: string): SheetSpec {
       },
     } : {}),
     ...(styles ? { styles } : {}),
+    ...(input.merges !== undefined ? { merges: strings(input.merges, `${label}.merges`) } : {}),
+    ...(input.rowHeights !== undefined ? { rowHeights: numbers(input.rowHeights, `${label}.rowHeights`) } : {}),
+    ...optional('autoFilter', optionalString(input.autoFilter, `${label}.autoFilter`)),
+    ...(input.charts !== undefined
+      ? { charts: array(input.charts, `${label}.charts`).map((each, index) => sheetChart(each, `${label}.charts[${index}]`)) }
+      : {}),
   }
 }
 
 export function workbookSpec(value: unknown): WorkbookSpec {
   const input = record(value, 'spec')
-  return { sheets: array(input.sheets, 'spec.sheets').map((each, index) => sheet(each, `spec.sheets[${index}]`)) }
+  return {
+    ...optional('theme', theme(input.theme)),
+    sheets: array(input.sheets, 'spec.sheets').map((each, index) => sheet(each, `spec.sheets[${index}]`)),
+  }
 }
 
-const WORKBOOK_OPS = ['setCells', 'clear', 'style', 'setColumnWidths', 'addSheet', 'renameSheet', 'deleteSheet'] as const
+const WORKBOOK_OPS = [
+  'setCells', 'clear', 'style', 'setColumnWidths', 'setRowHeights', 'merge', 'unmerge', 'autoFilter',
+  'addChart', 'removeChart', 'addSheet', 'renameSheet', 'deleteSheet',
+] as const
 
 function workbookOp(value: unknown, label: string): WorkbookOp {
   const input = record(value, label)
@@ -140,6 +235,21 @@ function workbookOp(value: unknown, label: string): WorkbookOp {
       sheet: field('sheet'),
       ...optional('start', optionalString(input.start, `${label}.start`)),
       widths: numbers(input.widths, `${label}.widths`),
+    }
+    case 'setRowHeights': return {
+      op: 'setRowHeights',
+      sheet: field('sheet'),
+      ...optional('start', optionalNumber(input.start, `${label}.start`)),
+      heights: numbers(input.heights, `${label}.heights`),
+    }
+    case 'merge': return { op: 'merge', sheet: field('sheet'), range: field('range') }
+    case 'unmerge': return { op: 'unmerge', sheet: field('sheet'), range: field('range') }
+    case 'autoFilter': return { op: 'autoFilter', sheet: field('sheet'), range: input.range === null ? null : field('range') }
+    case 'addChart': return { op: 'addChart', sheet: field('sheet'), chart: sheetChart(input.chart, `${label}.chart`) }
+    case 'removeChart': {
+      const index = optionalNumber(input.index, `${label}.index`)
+      if (index === undefined) throw new ToolInputError(`${label}.index must be a number`)
+      return { op: 'removeChart', sheet: field('sheet'), index }
     }
     case 'addSheet': return { op: 'addSheet', name: field('name') }
     case 'renameSheet': return { op: 'renameSheet', sheet: field('sheet'), name: field('name') }
@@ -179,7 +289,7 @@ const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const
 
 function docBlock(value: unknown, label: string): DocBlock {
   const input = record(value, label)
-  switch (oneOf(input.type, ['heading', 'paragraph', 'list', 'table', 'pageBreak'], `${label}.type`)) {
+  switch (oneOf(input.type, ['heading', 'paragraph', 'list', 'table', 'pageBreak', 'chart'], `${label}.type`)) {
     case 'heading': {
       const level = HEADING_LEVELS.find(each => each === input.level)
       if (level === undefined) throw new ToolInputError(`${label}.level must be an integer from 1 to 6`)
@@ -200,6 +310,22 @@ function docBlock(value: unknown, label: string): DocBlock {
       ...optional('header', optionalBoolean(input.header, `${label}.header`)),
     }
     case 'pageBreak': return { type: 'pageBreak' }
+    case 'chart': return {
+      type: 'chart',
+      chart: chartSpec(input.chart, `${label}.chart`),
+      ...optional('width', optionalNumber(input.width, `${label}.width`)),
+      ...optional('height', optionalNumber(input.height, `${label}.height`)),
+    }
+  }
+}
+
+function pageSetup(value: unknown): PageSetup | undefined {
+  if (value === undefined) return undefined
+  const input = record(value, 'spec.page')
+  return {
+    ...optional('size', input.size === undefined ? undefined : oneOf(input.size, ['A4', 'Letter'], 'spec.page.size')),
+    ...optional('orientation', input.orientation === undefined ? undefined : oneOf(input.orientation, ['portrait', 'landscape'], 'spec.page.orientation')),
+    ...optional('margin', optionalNumber(input.margin, 'spec.page.margin')),
   }
 }
 
@@ -207,6 +333,11 @@ export function documentSpec(value: unknown): DocumentSpec {
   const input = record(value, 'spec')
   return {
     ...optional('title', optionalString(input.title, 'spec.title')),
+    ...optional('theme', theme(input.theme)),
+    ...optional('page', pageSetup(input.page)),
+    ...optional('header', optionalString(input.header, 'spec.header')),
+    ...optional('footer', optionalString(input.footer, 'spec.footer')),
+    ...optional('pageNumbers', optionalBoolean(input.pageNumbers, 'spec.pageNumbers')),
     blocks: array(input.blocks, 'spec.blocks').map((each, index) => docBlock(each, `spec.blocks[${index}]`)),
   }
 }
@@ -229,6 +360,7 @@ function slide(value: unknown, label: string): SlideSpec {
         ...optional('header', optionalBoolean(table.header, `${label}.table.header`)),
       },
     } : {}),
+    ...(input.chart !== undefined ? { chart: chartSpec(input.chart, `${label}.chart`) } : {}),
     ...optional('notes', optionalString(input.notes, `${label}.notes`)),
   }
 }
@@ -239,6 +371,9 @@ export function presentationSpec(value: unknown): PresentationSpec {
   return {
     ...optional('title', optionalString(input.title, 'spec.title')),
     ...(layout ? { layout } : {}),
+    ...optional('theme', theme(input.theme)),
+    ...optional('background', optionalString(input.background, 'spec.background')),
+    ...optional('slideNumbers', optionalBoolean(input.slideNumbers, 'spec.slideNumbers')),
     slides: array(input.slides, 'spec.slides').map((each, index) => slide(each, `spec.slides[${index}]`)),
   }
 }

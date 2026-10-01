@@ -162,12 +162,20 @@ function readTool(config: ResolvedConfig): ToolDefinition {
 }
 
 const CREATE_SPEC_DESCRIPTION = [
-  'Structured content; its shape depends on the file extension.',
-  'xlsx: { sheets: [{ name, rows?: Cell[][] (written from A1), columnWidths?: number[], freeze?: { rows?, columns? }, styles?: [{ range: "A1:D1", style: Style }] }] }.',
-  'Cell = string | number | boolean | null | { formula: "SUM(B2:B9)" }. Style = { bold?, italic?, numFmt? (e.g. "#,##0.00", "0%"), fill? (hex "FFF2CC"), align? ("left"|"center"|"right") }.',
-  'docx: { title?, blocks: Block[] } with Block = { type: "heading", level: 1-6, text } | { type: "paragraph", text: Inline, align? } | { type: "list", items: Inline[], ordered? } | { type: "table", rows: string[][], header? } | { type: "pageBreak" };',
-  'Inline = string | [{ text, bold?, italic?, underline? }].',
-  'pptx: { title?, layout?: "16x9"|"4x3", slides: [{ title?, subtitle? (title + subtitle only = cover slide), text?, bullets?: string[], table?: { rows: string[][], header? }, notes? }] }.',
+  'Structured content; its shape depends on the file extension. Colors are 6-digit hex like "1F4E79".',
+  'All formats accept theme?: { font?, headingFont?, accent? } (accent colors headings, table headers and charts).',
+  'xlsx: { theme?, sheets: [{ name, rows?: Cell[][] (written from A1), columnWidths?: number[], rowHeights?: number[], freeze?: { rows?, columns? },',
+  'styles?: [{ range: "A1:D1", style: Style }], merges?: ["A1:D1"], autoFilter?: "A1:D1", charts?: SheetChart[] }] }.',
+  'Cell = string | number | boolean | null | { formula: "SUM(B2:B9)" }.',
+  'Style = { bold?, italic?, underline?, font?, size?, color?, fill?, numFmt? (e.g. "#,##0.00", "0%"), align?: left|center|right, valign?: top|middle|bottom, wrap?, border?: thin|medium|thick|none, borderColor? }.',
+  'SheetChart = { type: column|bar|line|area|pie|doughnut, title?, categories: "A2:A9", series: [{ values: "B2:B9", name? (default: header cell above), color? }],',
+  'at: "F2" (top-left cell), width?: columns (8), height?: rows (16), stacked?, legend?, dataLabels? } - a native Excel chart linked to the cells; ranges may name another sheet like "\'Data\'!B2:B9".',
+  'docx: { title?, theme?, page?: { size?: A4|Letter, orientation?: portrait|landscape, margin?: cm }, header?, footer?, pageNumbers?, blocks: Block[] }.',
+  'Block = { type: "heading", level: 1-6, text } | { type: "paragraph", text: Inline, align?: left|center|right|justify } | { type: "list", items: Inline[], ordered? }',
+  '| { type: "table", rows: string[][], header? } | { type: "pageBreak" } | { type: "chart", chart: Chart, width?: px, height?: px }. Inline = string | [{ text, bold?, italic?, underline? }].',
+  'Chart = { type: column|bar|line|area|pie|doughnut, title?, categories: string[], series: [{ name, values: (number|null)[], color? }], stacked?, legend?, dataLabels? } - native and editable in Word/PowerPoint; pie takes one series.',
+  'pptx: { title?, layout?: "16x9"|"4x3", theme?, background?, slideNumbers?, slides: [{ title?, subtitle? (title + subtitle only = cover slide), text?, bullets?: string[],',
+  'table?: { rows: string[][], header? }, chart?: Chart, notes? }] }. Body parts on one slide stack top to bottom.',
 ].join(' ')
 
 function createTool(config: ResolvedConfig): ToolDefinition {
@@ -213,8 +221,10 @@ function editTool(config: ResolvedConfig): ToolDefinition {
         'Apply a batch of edits to an existing .xlsx workbook in the workspace. Edits run in order; if any fails, the file is left unchanged.',
         'Formulas are recomputed on save, so office_read afterwards shows the new values.',
         'Ops: { op: "setCells", sheet, start: "A1", rows: Cell[][] } | { op: "clear", sheet, range } | { op: "style", sheet, range, style: Style }',
-        '| { op: "setColumnWidths", sheet, start?: "A", widths: number[] } | { op: "addSheet", name } | { op: "renameSheet", sheet, name } | { op: "deleteSheet", sheet }.',
-        'Cell and Style are as in office_create. To change a .docx or .pptx, read it and recreate it with office_create (overwrite: true).',
+        '| { op: "setColumnWidths", sheet, start?: "A", widths: number[] } | { op: "setRowHeights", sheet, start?: 1, heights: number[] } | { op: "merge" | "unmerge", sheet, range }',
+        '| { op: "autoFilter", sheet, range: "A1:D1" | null } | { op: "addChart", sheet, chart: SheetChart } | { op: "removeChart", sheet, index }',
+        '| { op: "addSheet", name } | { op: "renameSheet", sheet, name } | { op: "deleteSheet", sheet }.',
+        'Cell, Style and SheetChart are as in office_create; office_inspect lists existing charts with their index. Charts are kept through edits and renames.',
       ].join(' '),
       parameters: {
         type: 'object',
