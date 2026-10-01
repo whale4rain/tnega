@@ -24,3 +24,18 @@ describe('desktop preload bridge', () => {
     expect(preload).not.toContain('nodeIntegration')
   })
 })
+
+describe('desktop browser bridge', () => {
+  test('only places, navigates and observes the agent browser view', async () => {
+    const preload = await readPreload()
+
+    for (const channel of ['tnega:browser-bounds', 'tnega:browser-navigate', 'tnega:browser-command']) {
+      expect(preload).toContain(`ipcRenderer.send('${channel}'`)
+    }
+    expect(preload).toContain("ipcRenderer.on('tnega:browser-state'")
+    expect(preload).toContain("ipcRenderer.on('tnega:browser-reveal'")
+    // Listeners are removable, and the renderer never sees the raw IPC event.
+    expect(preload).toContain("ipcRenderer.removeListener('tnega:browser-state'")
+    expect(preload).toMatch(/\(_event: unknown, state: unknown\) => listener\(state\)/)
+  })
+})

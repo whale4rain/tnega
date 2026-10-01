@@ -11,6 +11,8 @@
     "package": "pnpm --workspace-root build && pnpm build && electron-builder"
   },
   "dependencies": {
+    "@tnega/browser": "workspace:*",
+    "@tnega/browser-playwright": "workspace:*",
     "@tnega/cli": "workspace:*",
     "playwright-core": "1.63.0"
   },

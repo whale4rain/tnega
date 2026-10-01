@@ -43,6 +43,12 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../../packages/browser/browser
+      '@tnega/browser-playwright':
+        specifier: workspace:*
+        version: link:../../packages/browser/browser-playwright
       '@tnega/cli':
         specifier: workspace:*
         version: link:../../packages/cli
