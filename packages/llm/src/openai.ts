@@ -6,11 +6,13 @@ import type {
   LLMStreamEvent,
   LLMToolCall,
 } from '@tnega/agent'
-import type { ModelMessage, ModelUsage } from '@tnega/session'
+import type { ModelAttachment, ModelMessage, ModelUsage } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
 import { OpenAICompatibleError } from './errors.js'
 import { DEFAULT_DEEPSEEK_MODEL } from './models.js'
 import {
+  imageDataUrl,
+  prepareImages,
   assertOk,
   combineSignal,
   DEFAULT_LLM_MAX_RETRIES,
@@ -230,7 +232,7 @@ function buildRequest(
 ): RequestPayload {
   const body: Record<string, unknown> = {
     model: config.model ?? DEFAULT_DEEPSEEK_MODEL,
-    messages: messages.map(toOpenAIMessage),
+    messages: toOpenAIMessages(prepareImages(messages, config)),
   }
   if (stream) {
     body.stream = true
@@ -264,10 +266,48 @@ function authHeaders(apiKey: string | undefined): Record<string, string> {
   return apiKey ? { authorization: `Bearer ${apiKey}` } : {}
 }
 
+/**
+ * Chat Completions only accepts images in user messages, so images a tool
+ * returned follow its run of tool messages as one synthetic user message.
+ */
+function toOpenAIMessages(messages: readonly ModelMessage[]): Record<string, unknown>[] {
+  const result: Record<string, unknown>[] = []
+  let pendingToolImages: ModelAttachment[] = []
+  const flushToolImages = (): void => {
+    if (!pendingToolImages.length) return
+    result.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Images returned by the tool calls above:' },
+        ...pendingToolImages.map(toOpenAIImage),
+      ],
+    })
+    pendingToolImages = []
+  }
+  for (const message of messages) {
+    if (message.role !== 'tool') flushToolImages()
+    result.push(toOpenAIMessage(message))
+    if (message.role === 'tool' && message.attachments?.length) {
+      pendingToolImages.push(...message.attachments)
+    }
+  }
+  flushToolImages()
+  return result
+}
+
+function toOpenAIImage(attachment: ModelAttachment): Record<string, unknown> {
+  return { type: 'image_url', image_url: { url: imageDataUrl(attachment) } }
+}
+
 function toOpenAIMessage(message: ModelMessage): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     role: message.role,
-    content: message.content,
+    content: message.role === 'user' && message.attachments?.length
+      ? [
+        ...(message.content ? [{ type: 'text', text: message.content }] : []),
+        ...message.attachments.map(toOpenAIImage),
+      ]
+      : message.content,
   }
   if (message.role === 'tool' && message.name) payload.name = message.name
   if (message.tool_call_id) payload.tool_call_id = message.tool_call_id

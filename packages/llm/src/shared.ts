@@ -1,4 +1,6 @@
+import type { ModelAttachment, ModelMessage } from '@tnega/session'
 import { OpenAICompatibleError } from './errors.js'
+import { supportsVision } from './models.js'
 
 export const DEFAULT_OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 export const DEFAULT_LLM_TIMEOUT_MS = 120_000
@@ -109,4 +111,43 @@ export async function parseJson(response: Response): Promise<unknown> {
       'LLM response was not valid JSON',
     )
   }
+}
+
+/** Default number of most recent images a request carries. */
+export const DEFAULT_MAX_IMAGES = 8
+
+export function imageDataUrl(attachment: ModelAttachment): string {
+  return `data:${attachment.mediaType};base64,${attachment.data}`
+}
+
+/**
+ * Wire policy for images: keep the newest `maxImages` (none for a text-only
+ * model) and replace the rest with a short note in the message text. This
+ * shapes the request only; the Session keeps every attachment.
+ */
+export function prepareImages(
+  messages: readonly ModelMessage[],
+  config: { model?: string; vision?: boolean; maxImages?: number },
+): ModelMessage[] {
+  if (!messages.some(message => message.attachments?.length)) return [...messages]
+  const vision = config.vision ?? supportsVision(config.model ?? '')
+  let budget = vision ? Math.max(0, config.maxImages ?? DEFAULT_MAX_IMAGES) : 0
+  const result = [...messages]
+  for (let index = result.length - 1; index >= 0; index -= 1) {
+    const message = result[index]!
+    const attachments = message.attachments
+    if (!attachments?.length) continue
+    const kept = budget > 0 ? attachments.slice(-budget) : []
+    budget -= kept.length
+    const omitted = attachments.length - kept.length
+    if (!omitted) continue
+    const reason = vision ? 'older images are dropped to bound context' : 'this model does not accept images'
+    const note = `[${omitted} image${omitted === 1 ? '' : 's'} omitted: ${reason}]`
+    const next: ModelMessage = { ...message, content: message.content ? `${message.content}
+${note}` : note }
+    if (kept.length) next.attachments = kept
+    else delete next.attachments
+    result[index] = next
+  }
+  return result
 }

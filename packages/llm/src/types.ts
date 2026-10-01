@@ -10,6 +10,10 @@ export interface LlmConfig {
   protocol?: 'anthropic' | 'openai'
   temperature?: number
   reasoningEffort?: ReasoningEffort
+  /** Whether the model accepts images; defaults to the model-id heuristic. */
+  vision?: boolean
+  /** Most recent images sent per request; older ones become a text note. */
+  maxImages?: number
   maxTokens?: number
   timeoutMs?: number
   maxRetries?: number

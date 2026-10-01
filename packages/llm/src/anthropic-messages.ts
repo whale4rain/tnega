@@ -6,11 +6,12 @@ import type {
   LLMStreamEvent,
   LLMToolCall,
 } from '@tnega/agent'
-import type { ModelMessage, ModelUsage } from '@tnega/session'
+import type { ModelAttachment, ModelMessage, ModelUsage } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
 import { OpenAICompatibleError } from './errors.js'
 import { DEFAULT_MODEL } from './models.js'
 import {
+  prepareImages,
   assertOk,
   combineSignal,
   DEFAULT_LLM_MAX_RETRIES,
@@ -194,7 +195,7 @@ function buildRequest(
   const body: Record<string, unknown> = {
     model: config.model ?? DEFAULT_MODEL,
     max_tokens: config.maxTokens ?? 4096,
-    messages: toAnthropicMessages(messages),
+    messages: toAnthropicMessages(prepareImages(messages, config)),
   }
   if (stream) body.stream = true
   const system = systemPrompt(messages)
@@ -240,10 +241,13 @@ function toAnthropicMessages(messages: readonly ModelMessage[]): unknown[] {
   for (const message of messages) {
     if (message.role === 'system') continue
     if (message.role === 'tool') {
+      const text = String(message.content ?? '')
       const toolResult: Record<string, unknown> = {
         type: 'tool_result',
         tool_use_id: message.tool_call_id ?? '',
-        content: String(message.content ?? ''),
+        content: message.attachments?.length
+          ? [{ type: 'text', text }, ...message.attachments.map(toAnthropicImage)]
+          : text,
       }
       if (message.toolError) toolResult.is_error = true
       result.push({
@@ -269,12 +273,30 @@ function toAnthropicMessages(messages: readonly ModelMessage[]): unknown[] {
       })
       continue
     }
+    if (message.role === 'user' && message.attachments?.length) {
+      const text = String(message.content ?? '')
+      result.push({
+        role: 'user',
+        content: [
+          ...message.attachments.map(toAnthropicImage),
+          ...(text ? [{ type: 'text', text }] : []),
+        ],
+      })
+      continue
+    }
     result.push({
       role: message.role,
       content: String(message.content ?? ''),
     })
   }
   return result
+}
+
+function toAnthropicImage(attachment: ModelAttachment): Record<string, unknown> {
+  return {
+    type: 'image',
+    source: { type: 'base64', media_type: attachment.mediaType, data: attachment.data },
+  }
 }
 
 function toAnthropicTool(tool: ToolDefinition): Record<string, unknown> {

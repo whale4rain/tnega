@@ -29,10 +29,26 @@ export interface ModelDefinition {
 
 export type ReasoningEffort = 'low' | 'medium' | 'high'
 
+/**
+ * Model families known to accept image input. Unknown models are treated as
+ * text-only; a configured route can override with `vision: true`.
+ */
+const VISION_MODEL = /(?:^|[/-])(?:claude-|gpt-4o|gpt-4.1|gpt-5|o[34](?:[.-]|$)|gemini-|grok-4|llama-4|pixtral|kimi-k2.5|glm-4.dv)|(?:^|[-_.])vl(?:[-_.]|$)|vision/iu
+
+export function supportsVision(model: string): boolean {
+  return VISION_MODEL.test(model)
+}
+
 /** Request features are resolved by the LLM seam, not inferred by the UI. */
-export function modelCapabilities(model: string, protocol?: LlmProtocol, configuredEfforts?: readonly ReasoningEffort[]): {
+export function modelCapabilities(
+  model: string,
+  protocol?: LlmProtocol,
+  configuredEfforts?: readonly ReasoningEffort[],
+  configuredVision?: boolean,
+): {
   protocol: LlmProtocol
   reasoningEfforts: readonly ReasoningEffort[]
+  vision: boolean
 } {
   const route = protocol ?? lookupModel(model)?.protocol ?? 'openai'
   const supportsOpenAiEffort = route === 'openai'
@@ -44,6 +60,7 @@ export function modelCapabilities(model: string, protocol?: LlmProtocol, configu
     reasoningEfforts: configuredEfforts ?? (supportsOpenAiEffort || supportsAnthropicEffort
       ? ['low', 'medium', 'high']
       : []),
+    vision: configuredVision ?? supportsVision(model),
   }
 }
 
