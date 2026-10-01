@@ -3109,30 +3109,25 @@ kbd {
 
 /* ==========================================================================
    Desktop window controls
-   The native minimise / maximise / close buttons float over the top-right
-   corner; whichever bar sits there keeps its actions clear of them.
+   Reserve a strip above every view for native minimise / maximise / close
+   buttons, including layouts with drawers and project panels.
    ========================================================================== */
 
 .desktop-chrome {
-  --window-controls: max(138px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+  --desktop-titlebar-height: max(32px, env(titlebar-area-height, 32px));
 }
 
-.desktop-chrome .conv-header,
-.desktop-chrome .drawer-header,
-.desktop-chrome .project-side .side-tabs,
-.desktop-chrome .project-side .side-header {
-  padding-right: calc(var(--window-controls) + 8px);
+.desktop-chrome #root {
+  padding-top: var(--desktop-titlebar-height);
 }
 
-/* Something else is further right: back to the normal padding. */
-.desktop-chrome .app.drawer-open .conv-header,
-.desktop-chrome .project-view.with-panel .conv-header {
-  padding-right: 16px;
-}
-
-.desktop-chrome .app.drawer-open .project-side .side-tabs,
-.desktop-chrome .app.drawer-open .project-side .side-header {
-  padding-right: 12px;
+.desktop-chrome body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--desktop-titlebar-height);
+  background: var(--bg);
+  -webkit-app-region: drag;
 }
 
 .zoom-controls {
