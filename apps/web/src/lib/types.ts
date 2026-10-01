@@ -69,6 +69,14 @@ export interface PlanPayload {
   summary?: string
 }
 
+/** An image carried by a message or a tool result; base64 without a `data:` prefix. */
+export interface ImageAttachment {
+  type: 'image'
+  mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  data: string
+  name?: string
+}
+
 interface EventBase<T extends string, P> {
   id: string
   seq: number
@@ -78,7 +86,7 @@ interface EventBase<T extends string, P> {
 }
 
 export type SessionEvent =
-  | EventBase<'user/message', { content: string; name?: string }>
+  | EventBase<'user/message', { content: string; name?: string; attachments?: ImageAttachment[] }>
   | EventBase<'assistant/message', {
       content: string
       name?: string
@@ -94,6 +102,7 @@ export type SessionEvent =
       ok: boolean
       durationMs?: number
       output?: unknown
+      attachments?: ImageAttachment[]
       error?: ErrorInfo
     }>
   | EventBase<'plan', PlanPayload>
@@ -170,6 +179,8 @@ export interface ModelOption {
   name: string
   protocol: Protocol
   reasoningEfforts: Effort[]
+  /** Whether the model accepts images. */
+  vision?: boolean
   apiKeySet: boolean
   contextWindow?: number
 }
@@ -214,6 +225,7 @@ export interface ToolResultWire {
   name: string
   ok: boolean
   output?: unknown
+  attachments?: ImageAttachment[]
   error?: ErrorInfo
   durationMs?: number
 }

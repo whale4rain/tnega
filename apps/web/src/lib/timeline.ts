@@ -8,7 +8,7 @@
  * and `applyStream` advances it with live Stream Events during a run. Once a
  * run ends the UI reloads, so durable events always have the final word.
  */
-import type { CancelCause, ErrorInfo, SessionEvent, SlashResult, StreamEvent } from './types'
+import type { CancelCause, ErrorInfo, ImageAttachment, SessionEvent, SlashResult, StreamEvent } from './types'
 
 export interface ToolView {
   callId: string
@@ -16,6 +16,7 @@ export interface ToolView {
   args: unknown
   status: 'running' | 'ok' | 'error'
   output?: unknown
+  images?: ImageAttachment[]
   error?: string
   durationMs?: number
   children?: ToolView[]
@@ -46,7 +47,7 @@ export type Block =
   | { kind: 'notice'; id: string; tone: 'info' | 'warn' | 'error'; text: string; process?: boolean }
 
 export type Entry =
-  | { kind: 'user'; id: string; text: string; local?: boolean }
+  | { kind: 'user'; id: string; text: string; images?: ImageAttachment[]; local?: boolean }
   | {
       kind: 'agent'
       id: string
@@ -97,11 +98,11 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         turn = event.payload.turn
         break
       case 'user/message': {
-        const { content, name } = event.payload
-        if (!content) break
+        const { content, name, attachments } = event.payload
+        if (!content && !attachments?.length) break
         const agentId = name?.match(AGENT_NAME)?.[1] ?? content.match(TERMINAL_REPLY)?.[1]
         if (agentId && addSubagentReply(entries, agentId, content)) break
-        entries.push({ kind: 'user', id: event.id, text: content })
+        entries.push({ kind: 'user', id: event.id, text: content, ...(attachments?.length ? { images: attachments } : {}) })
         break
       }
       case 'assistant/message': {
@@ -123,10 +124,10 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         addToolCall(agent(event.id), event.payload.id, event.payload.name, event.payload.arguments)
         break
       case 'tool/result': {
-        const { toolCallId, name, ok, output, error, durationMs } = event.payload
+        const { toolCallId, name, ok, output, error, durationMs, attachments } = event.payload
         const target = agent(event.id)
         if (!findToolBlock(target, toolCallId)) addToolCall(target, toolCallId, name, undefined)
-        settleTool(target, toolCallId, ok, output, error, durationMs)
+        settleTool(target, toolCallId, ok, output, error, durationMs, attachments)
         break
       }
       case 'checkpoint':
@@ -244,6 +245,7 @@ function settleTool(
   output: unknown,
   error: ErrorInfo | undefined,
   durationMs: number | undefined,
+  images?: ImageAttachment[],
 ): void {
   const sub = findSubagentBlock(target, callId)
   if (sub) {
@@ -259,6 +261,7 @@ function settleTool(
     ...block.tool,
     status: ok ? 'ok' : 'error',
     ...(output !== undefined ? { output } : {}),
+    ...(images?.length ? { images } : {}),
     ...(error ? { error: error.message } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
   }
@@ -387,10 +390,10 @@ function endText(cause: CancelCause | undefined, error: ErrorInfo | undefined): 
 // ---------------------------------------------------------------------------
 
 /** Append the optimistic user message and an empty running agent turn. */
-export function beginRun(entries: readonly Entry[], prompt: string, now = Date.now()): Entry[] {
+export function beginRun(entries: readonly Entry[], prompt: string, now = Date.now(), images: readonly ImageAttachment[] = []): Entry[] {
   return [
     ...entries,
-    { kind: 'user', id: `local-user-${now}`, text: prompt, local: true },
+    { kind: 'user', id: `local-user-${now}`, text: prompt, ...(images.length ? { images: [...images] } : {}), local: true },
     { kind: 'agent', id: `local-agent-${now}`, blocks: [], status: 'running' },
   ]
 }
@@ -464,6 +467,7 @@ function applyToAgent(entry: AgentEntry, event: StreamEvent): AgentEntry {
               ...b.tool,
               status: result.ok ? 'ok' : 'error',
               ...(result.output !== undefined ? { output: result.output } : {}),
+              ...(result.attachments?.length ? { images: result.attachments } : {}),
               ...(result.error ? { error: result.error.message } : {}),
               ...(result.durationMs !== undefined ? { durationMs: result.durationMs } : {}),
             },

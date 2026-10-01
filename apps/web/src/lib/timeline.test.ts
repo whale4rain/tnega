@@ -278,3 +278,33 @@ it('renders nested PTC stream calls immediately and preserves prior immutable sn
   expect(started.at(-1)).toMatchObject({ blocks: [{ tool: { children: [{ name: 'shell', status: 'running' }] } }] })
   expect(finished.at(-1)).toMatchObject({ blocks: [{ tool: { children: [{ name: 'shell', status: 'ok', output: 'passed', durationMs: 12 }] } }] })
 })
+
+describe('image attachments', () => {
+  const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'aW1n' }
+
+  it('shows user images, including an image-only message, and tool screenshots', () => {
+    const entries = fromEvents([
+      ev('user/message', { content: '', attachments: [image] }),
+      ev('turn/start', { turn: 1 }),
+      ev('tool/call', { id: 'shot', name: 'browser_screenshot', arguments: {} }),
+      ev('tool/result', { id: 'shot-result', toolCallId: 'shot', name: 'browser_screenshot', ok: true, output: 'captured', attachments: [image] }),
+    ])
+    expect(entries[0]).toMatchObject({ kind: 'user', text: '', images: [image] })
+    const agent = entries.find(item => item.kind === 'agent')
+    if (!agent || agent.kind !== 'agent') throw new Error('Missing agent')
+    expect(agent.blocks[0]).toMatchObject({ kind: 'tool', tool: { images: [image], status: 'ok' } })
+  })
+
+  it('keeps images on the optimistic user entry and live tool results', () => {
+    const started = beginRun([], 'look', 1, [image])
+    expect(started[0]).toMatchObject({ kind: 'user', text: 'look', images: [image] })
+    const running = applyStream(started, { type: 'tool/start', index: 0, call: { id: 'c', name: 'browser_screenshot', arguments: {} } } as StreamEvent)
+    const settled = applyStream(running, {
+      type: 'tool/end', index: 0, call: { id: 'c', name: 'browser_screenshot', arguments: {} },
+      result: { callId: 'c', name: 'browser_screenshot', ok: true, output: 'ok', attachments: [image] },
+    })
+    const agent = settled.at(-1)
+    if (!agent || agent.kind !== 'agent') throw new Error('Missing agent')
+    expect(agent.blocks[0]).toMatchObject({ kind: 'tool', tool: { images: [image] } })
+  })
+})

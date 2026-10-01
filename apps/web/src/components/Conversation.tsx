@@ -42,6 +42,7 @@ import type {
   SessionSummary,
   SlashCommand,
   StreamEvent,
+  ImageAttachment,
 } from '../lib/types'
 import { CLIENT_COMMANDS, mergeCommands, parseCommand } from '../lib/completion'
 import { Composer, SessionControls, type RunSettings } from './Composer'
@@ -280,17 +281,17 @@ export function Conversation({
     abort.current?.abort()
   }, [])
 
-  const run = useCallback(async (id: string, prompt: string, base: readonly Entry[], resumeQueued = false) => {
+  const run = useCallback(async (id: string, prompt: string, base: readonly Entry[], resumeQueued = false, images: readonly ImageAttachment[] = []) => {
     const controller = new AbortController()
     abort.current = controller
     streamingFor.current = id
     setRunning(true)
     setError(undefined)
-    setEntries(resumeQueued ? base : beginRun(base, prompt))
+    setEntries(resumeQueued ? base : beginRun(base, prompt, Date.now(), images))
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
-          await streamRun(workspace, id, prompt, onStreamEvent, controller.signal, resumeQueued)
+          await streamRun(workspace, id, prompt, onStreamEvent, controller.signal, resumeQueued, images)
           break
         } catch (reason) {
           // A previous run can take a moment to release the session.
@@ -362,15 +363,17 @@ export function Conversation({
     return undefined
   }
 
-  const send = async (text: string): Promise<boolean> => {
+  const send = async (text: string, images: ImageAttachment[] = []): Promise<boolean> => {
     if (running) return false
     setError(undefined)
-    const handled = await runClientCommand(text)
-    if (handled !== undefined) return handled
-    return sendPrompt(text, settings)
+    if (!images.length) {
+      const handled = await runClientCommand(text)
+      if (handled !== undefined) return handled
+    }
+    return sendPrompt(text, settings, images)
   }
 
-  const sendPrompt = async (text: string, settings: RunSettings): Promise<boolean> => {
+  const sendPrompt = async (text: string, settings: RunSettings, images: ImageAttachment[] = []): Promise<boolean> => {
     let id = sessionId
     try {
       if (!id) {
@@ -389,7 +392,7 @@ export function Conversation({
         onSessionCreated(session)
       }
       const slash = parseCommand(text)
-      if (slash && settings.agentType === 'coding' && allCommands.some(command => command.source === 'server' && command.name === slash.name)) {
+      if (slash && !images.length && settings.agentType === 'coding' && allCommands.some(command => command.source === 'server' && command.name === slash.name)) {
         setBusy(`Running ${slash.name}…`)
         await api.runSlash(workspace, id, slash.name, slash.rest ? slash.rest.split(/\s+/) : [])
         await reload(id)
@@ -403,7 +406,7 @@ export function Conversation({
     } finally {
       setBusy(undefined)
     }
-    void run(id, text, sessionId ? entries : [])
+    void run(id, text, sessionId ? entries : [], false, images)
     return true
   }
 

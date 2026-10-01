@@ -1,6 +1,8 @@
-import { ArrowUp, AtSign, FileText, Slash, Sparkles, Square } from 'lucide-react'
+import { ArrowUp, AtSign, FileText, ImagePlus, Slash, Sparkles, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { imageFiles, imageFromFile, imageSrc, MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
 import { applyCompletion, detectTrigger, rankCommands, type CommandSpec, type Trigger } from '../lib/completion'
+import type { ImageAttachment } from '../lib/types'
 
 /** One argument suggestion for a command, e.g. a model id or a skill name. */
 export interface ArgumentSuggestion {
@@ -48,6 +50,8 @@ export function PromptBox({
   footer,
   autoFocusKey,
   compact,
+  acceptImages = false,
+  imageNotice,
 }: {
   commands?: readonly CommandSpec[]
   /** Suggestions for the first argument of `command` (with its slash). */
@@ -56,7 +60,7 @@ export function PromptBox({
   searchFiles?: ((query: string) => Promise<string[]>) | undefined
   running?: boolean
   disabledReason?: ReactNode
-  onSubmit: (text: string) => Promise<boolean> | boolean
+  onSubmit: (text: string, images: ImageAttachment[]) => Promise<boolean> | boolean
   /** When given, the send button becomes a stop button while `running`. */
   onStop?: (() => void) | undefined
   placeholder: string
@@ -64,8 +68,16 @@ export function PromptBox({
   footer?: ReactNode
   autoFocusKey?: string | undefined
   compact?: boolean
+  /** Allow pasting, dropping or picking images to send with the message. */
+  acceptImages?: boolean
+  /** Shown under attached images, e.g. when the model cannot see them. */
+  imageNotice?: ReactNode
 }) {
   const [text, setText] = useState('')
+  const [images, setImages] = useState<ImageAttachment[]>([])
+  const [reading, setReading] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
   const [caret, setCaret] = useState(0)
   const [active, setActive] = useState(0)
   const [dismissed, setDismissed] = useState('')
@@ -192,12 +204,27 @@ export function PromptBox({
     return true
   }
 
+  const addImages = async (files: readonly File[]) => {
+    if (!acceptImages || !files.length) return
+    setReading(count => count + 1)
+    try {
+      const read = (await Promise.all(files.map(file => imageFromFile(file).catch(() => undefined))))
+        .filter((image): image is ImageAttachment => Boolean(image))
+      setImages(current => [...current, ...read].slice(0, MAX_IMAGES_PER_MESSAGE))
+    } finally {
+      setReading(count => count - 1)
+    }
+  }
+
+  const canSend = (Boolean(text.trim()) || images.length > 0) && reading === 0
+
   const submit = async () => {
     const value = text.trim()
-    if (!value || showStop || disabledReason) return
-    const accepted = await onSubmit(value)
+    if (!canSend || showStop || disabledReason) return
+    const accepted = await onSubmit(value, images)
     if (accepted) {
       setText('')
+      setImages([])
       setCaret(0)
       setDismissed('')
     }
@@ -236,7 +263,43 @@ export function PromptBox({
           )}
         </div>
       )}
-      <div className="composer-box" onClick={() => input.current?.focus()}>
+      <div
+        className={`composer-box${dragging ? ' is-dropping' : ''}`}
+        onClick={() => input.current?.focus()}
+        onDragOver={event => {
+          if (!acceptImages || !Array.from(event.dataTransfer.types).includes('Files')) return
+          event.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={event => {
+          if (!acceptImages) return
+          const files = imageFiles(event.dataTransfer)
+          setDragging(false)
+          if (!files.length) return
+          event.preventDefault()
+          void addImages(files)
+        }}
+      >
+        {(images.length > 0 || reading > 0) && (
+          <div className="composer-attachments" onClick={event => event.stopPropagation()}>
+            {images.map((image, index) => (
+              <div className="composer-thumb" key={`${index}-${image.data.length}`}>
+                <img src={imageSrc(image)} alt={image.name ?? `Image ${index + 1}`} />
+                <button
+                  type="button"
+                  className="composer-thumb-remove"
+                  aria-label={`Remove ${image.name ?? `image ${index + 1}`}`}
+                  onClick={() => setImages(current => current.filter((_, at) => at !== index))}
+                >
+                  <X size={11} strokeWidth={2.6} />
+                </button>
+              </div>
+            ))}
+            {reading > 0 && <div className="composer-thumb is-loading" aria-label="Reading image" />}
+            {imageNotice && images.length > 0 && <span className="composer-attachment-note">{imageNotice}</span>}
+          </div>
+        )}
         <textarea
           ref={input}
           value={text}
@@ -250,6 +313,13 @@ export function PromptBox({
             setCaret(event.target.selectionStart)
           }}
           onSelect={event => setCaret(event.currentTarget.selectionStart)}
+          onPaste={event => {
+            if (!acceptImages) return
+            const files = imageFiles(event.clipboardData)
+            if (!files.length) return
+            event.preventDefault()
+            void addImages(files)
+          }}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing) return
             if (open) {
@@ -285,7 +355,35 @@ export function PromptBox({
           }}
         />
         <div className="composer-toolbar" onClick={event => event.stopPropagation()}>
-          <div className="composer-controls">{toolbar}</div>
+          <div className="composer-controls">
+            {acceptImages && (
+              <>
+                <button
+                  type="button"
+                  className="composer-attach"
+                  aria-label="Attach images"
+                  title="Attach images (or paste / drop them)"
+                  disabled={images.length >= MAX_IMAGES_PER_MESSAGE}
+                  onClick={() => picker.current?.click()}
+                >
+                  <ImagePlus size={15} />
+                </button>
+                <input
+                  ref={picker}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  hidden
+                  onChange={event => {
+                    const files = Array.from(event.target.files ?? [])
+                    event.target.value = ''
+                    void addImages(files)
+                  }}
+                />
+              </>
+            )}
+            {toolbar}
+          </div>
           {showStop
             ? (
               <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
@@ -297,7 +395,7 @@ export function PromptBox({
                 type="button"
                 className="send-button"
                 onClick={() => void submit()}
-                disabled={!text.trim() || Boolean(disabledReason)}
+                disabled={!canSend || Boolean(disabledReason)}
                 aria-label="Send"
                 title="Send (Enter)"
               >

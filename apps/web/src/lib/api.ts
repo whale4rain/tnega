@@ -16,6 +16,7 @@ import type {
   SlashResult,
   StreamEvent,
   SubagentEntry,
+  ImageAttachment,
 } from './types'
 
 export class ApiError extends Error {
@@ -185,6 +186,7 @@ export async function streamRun(
   onEvent: (event: StreamEvent) => void,
   signal: AbortSignal,
   resumeQueued = false,
+  attachments: readonly ImageAttachment[] = [],
 ): Promise<void> {
   const response = await fetch(scoped(`/api/sessions/${id}/runs`, workspace), {
     method: 'POST',
@@ -193,7 +195,9 @@ export async function streamRun(
       'content-type': 'application/json',
       accept: 'text/event-stream',
     },
-    body: JSON.stringify(resumeQueued ? { resumeQueued: true } : { prompt }),
+    body: JSON.stringify(resumeQueued
+      ? { resumeQueued: true }
+      : { prompt, ...(attachments.length ? { attachments } : {}) }),
     signal,
   })
   if (!response.ok) throw await errorFrom(response)

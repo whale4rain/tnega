@@ -1410,6 +1410,65 @@ kbd {
   line-height: 1.55;
 }
 
+.image-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.user-images {
+  justify-content: flex-end;
+  max-width: min(84%, 620px);
+  margin-bottom: 4px;
+}
+
+.image-thumb {
+  width: 120px;
+  height: 84px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-active);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--duration-fast), border-color var(--duration-fast);
+}
+
+.image-thumb:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+}
+
+.image-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 48px;
+  background: color-mix(in srgb, #000 72%, transparent);
+  animation: fade-up 180ms var(--ease-out);
+}
+
+.image-viewer img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.image-viewer-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  color: #fff;
+}
+
 .row-actions {
   display: flex;
   gap: 2px;
@@ -2196,6 +2255,88 @@ kbd {
 .composer-box:focus-within {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md), 0 0 0 4px var(--accent-soft);
+}
+
+.composer-box.is-dropping {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md), 0 0 0 4px var(--accent-soft);
+}
+
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  cursor: default;
+}
+
+.composer-thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-active);
+  overflow: hidden;
+}
+
+.composer-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-thumb.is-loading {
+  animation: thumb-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes thumb-pulse {
+  50% { opacity: 0.45; }
+}
+
+.composer-thumb-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 72%, transparent);
+  color: var(--text-inverse);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.composer-thumb:hover .composer-thumb-remove,
+.composer-thumb-remove:focus-visible {
+  opacity: 1;
+}
+
+.composer-attachment-note {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.composer-attach {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.composer-attach:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.composer-attach:disabled {
+  opacity: 0.4;
 }
 
 .composer textarea {

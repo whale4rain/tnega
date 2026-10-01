@@ -1,7 +1,7 @@
 import { Briefcase, Code2, Gauge, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Target, ListChecks, Zap, Cpu } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { CommandSpec } from '../lib/completion'
-import type { AgentType, ApprovalMode, ModelOption, Permission, SessionEffort, SessionMode } from '../lib/types'
+import type { AgentType, ApprovalMode, ImageAttachment, ModelOption, Permission, SessionEffort, SessionMode } from '../lib/types'
 import { Choice, SectionChoice, choiceSection, type ChoiceOption } from './Menu'
 import { PromptBox, type ArgumentSuggestion } from './PromptBox'
 
@@ -81,13 +81,18 @@ export function Composer({
   /** Settings can't change while a run is active. */
   locked: boolean
   disabledReason?: ReactNode
-  onSubmit: (text: string) => Promise<boolean> | boolean
+  onSubmit: (text: string, images: ImageAttachment[]) => Promise<boolean> | boolean
   onStop: () => void
   placeholder: string
   autoFocusKey?: string | undefined
 }) {
+  const active = models.find(model => model.id === (settings.model || defaultModelId))
   return (
     <PromptBox
+      acceptImages
+      imageNotice={active && !active.vision
+        ? `${active.name || active.id} can't see images; they will be described as omitted.`
+        : undefined}
       commands={commands}
       completeArgument={completeArgument}
       searchFiles={searchFiles}

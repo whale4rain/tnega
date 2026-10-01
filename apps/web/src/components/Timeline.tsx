@@ -25,6 +25,7 @@ import { formatDuration, formatTokens, presentRun, stringify } from '../lib/time
 import { officeFiles } from '../lib/office'
 import { codeModeOutput, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
+import { ImageStrip } from './ImageStrip'
 import { CodeBlock, Markdown } from './Markdown'
 import { OfficeFiles } from './OfficeFiles'
 
@@ -140,7 +141,8 @@ const UserMessage = memo(function UserMessage({
 
   return (
     <div className="user-row">
-      <div className="user-bubble">{entry.text}</div>
+      {entry.images?.length ? <ImageStrip images={entry.images} className="user-images" /> : null}
+      {entry.text && <div className="user-bubble">{entry.text}</div>}
       <div className="row-actions">
         <IconAction label={copied ? 'Copied' : 'Copy'} onClick={() => copy(entry.text)}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -413,6 +415,12 @@ function ToolDetail({ tool }: { tool: ToolView }) {
           <pre className="tool-output">{output.text}</pre>
         </>
       )}
+      {tool.images?.length ? (
+        <>
+          <div className="tool-detail-label">Images</div>
+          <ImageStrip images={tool.images} />
+        </>
+      ) : null}
       {tool.status === 'running' && <div className="muted small">Waiting for result…</div>}
       {tool.children?.length ? (
         <div className="ptc-tool-children">
