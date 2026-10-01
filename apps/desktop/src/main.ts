@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startWebServer, type WebServer } from '@tnega/cli'
 import { closeDesktopRuntime } from './shutdown.js'
+import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from './titlebar.js'
 
 let server: WebServer | undefined
 let allowedOrigin = ''
@@ -46,6 +47,16 @@ function installDesktopHandlers(): void {
     if (!isTrustedSender(event.senderFrame?.url ?? '') || typeof path !== 'string') return
     await shell.openPath(path)
   })
+  ipcMain.on('tnega:title-bar-colors', (event, value: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return
+    const colors = parseTitleBarColors(value)
+    if (!colors) return
+    BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay({
+      color: colors.background,
+      symbolColor: colors.foreground,
+      height: TITLE_BAR_HEIGHT,
+    })
+  })
   ipcMain.on('tnega:version', event => {
     if (isTrustedSender(event.senderFrame?.url ?? '')) event.returnValue = app.getVersion()
   })
@@ -54,17 +65,19 @@ function installDesktopHandlers(): void {
 async function createWindow(): Promise<void> {
   server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot() })
   allowedOrigin = new URL(server.url).origin
+  // The renderer recolours the overlay once its theme is known; start from the OS theme.
+  const initial = DEFAULT_TITLE_BAR_COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light']
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 960,
     minHeight: 640,
-    backgroundColor: '#faf9f6',
+    backgroundColor: initial.background,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#222222',
-      symbolColor: '#c7c7c7',
-      height: 32,
+      color: initial.background,
+      symbolColor: initial.foreground,
+      height: TITLE_BAR_HEIGHT,
     },
     webPreferences: {
       contextIsolation: true,

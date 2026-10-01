@@ -20,6 +20,7 @@ describe('desktop preload bridge', () => {
     expect(preload).toContain('pickFolder')
     expect(preload).toContain('revealWorkspace')
     expect(preload).toContain('version')
+    expect(preload).toContain("ipcRenderer.send('tnega:title-bar-colors'")
     expect(preload).not.toContain('nodeIntegration')
   })
 })
