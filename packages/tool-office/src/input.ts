@@ -1,4 +1,6 @@
 import type {
+  DocumentOp,
+  PresentationOp,
   CellInput,
   ChartSpec,
   ChartType,
@@ -376,4 +378,85 @@ export function presentationSpec(value: unknown): PresentationSpec {
     ...optional('slideNumbers', optionalBoolean(input.slideNumbers, 'spec.slideNumbers')),
     slides: array(input.slides, 'spec.slides').map((each, index) => slide(each, `spec.slides[${index}]`)),
   }
+}
+
+// in-place edits of docx / pptx
+
+function requiredNumber(value: unknown, label: string): number {
+  const number = optionalNumber(value, label)
+  if (number === undefined) throw new ToolInputError(`${label} must be a number`)
+  return number
+}
+
+const DOCUMENT_OPS = ['replaceText', 'setParagraph', 'setCell', 'insert', 'delete'] as const
+
+function documentOp(value: unknown, label: string): DocumentOp {
+  const input = record(value, label)
+  switch (oneOf(input.op, DOCUMENT_OPS, `${label}.op`)) {
+    case 'replaceText': return {
+      op: 'replaceText',
+      find: stringField(input.find, `${label}.find`),
+      replace: stringField(input.replace, `${label}.replace`),
+      ...optional('matchCase', optionalBoolean(input.matchCase, `${label}.matchCase`)),
+    }
+    case 'setParagraph': return { op: 'setParagraph', index: requiredNumber(input.index, `${label}.index`), text: inline(input.text, `${label}.text`) }
+    case 'setCell': return {
+      op: 'setCell',
+      index: requiredNumber(input.index, `${label}.index`),
+      row: requiredNumber(input.row, `${label}.row`),
+      column: requiredNumber(input.column, `${label}.column`),
+      text: inline(input.text, `${label}.text`),
+    }
+    case 'insert': return {
+      op: 'insert',
+      ...optional('at', optionalNumber(input.at, `${label}.at`)),
+      blocks: array(input.blocks, `${label}.blocks`).map((each, index) => docBlock(each, `${label}.blocks[${index}]`)),
+    }
+    case 'delete': return {
+      op: 'delete',
+      index: requiredNumber(input.index, `${label}.index`),
+      ...optional('count', optionalNumber(input.count, `${label}.count`)),
+    }
+  }
+}
+
+export function documentOps(value: unknown): DocumentOp[] {
+  const ops = array(value, 'ops')
+  if (ops.length === 0) throw new ToolInputError('ops must not be empty')
+  return ops.map((each, index) => documentOp(each, `ops[${index}]`))
+}
+
+const PRESENTATION_OPS = ['replaceText', 'setText', 'addSlides', 'deleteSlide', 'moveSlide'] as const
+
+function presentationOp(value: unknown, label: string): PresentationOp {
+  const input = record(value, label)
+  switch (oneOf(input.op, PRESENTATION_OPS, `${label}.op`)) {
+    case 'replaceText': return {
+      op: 'replaceText',
+      find: stringField(input.find, `${label}.find`),
+      replace: stringField(input.replace, `${label}.replace`),
+      ...optional('slide', optionalNumber(input.slide, `${label}.slide`)),
+      ...optional('matchCase', optionalBoolean(input.matchCase, `${label}.matchCase`)),
+    }
+    case 'setText': return {
+      op: 'setText',
+      slide: requiredNumber(input.slide, `${label}.slide`),
+      shape: stringField(input.shape, `${label}.shape`),
+      text: typeof input.text === 'string' ? input.text : strings(input.text, `${label}.text`),
+    }
+    case 'addSlides': return {
+      op: 'addSlides',
+      ...optional('at', optionalNumber(input.at, `${label}.at`)),
+      slides: array(input.slides, `${label}.slides`).map((each, index) => slide(each, `${label}.slides[${index}]`)),
+      ...optional('theme', theme(input.theme, `${label}.theme`)),
+    }
+    case 'deleteSlide': return { op: 'deleteSlide', slide: requiredNumber(input.slide, `${label}.slide`) }
+    case 'moveSlide': return { op: 'moveSlide', slide: requiredNumber(input.slide, `${label}.slide`), to: requiredNumber(input.to, `${label}.to`) }
+  }
+}
+
+export function presentationOps(value: unknown): PresentationOp[] {
+  const ops = array(value, 'ops')
+  if (ops.length === 0) throw new ToolInputError('ops must not be empty')
+  return ops.map((each, index) => presentationOp(each, `ops[${index}]`))
 }

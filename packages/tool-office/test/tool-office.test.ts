@@ -110,6 +110,32 @@ describe('office tools', () => {
     expect(await fails(service, 'office_create', { path: 'a.docx', spec: { page: { size: 'A3' }, blocks: [] } })).toContain('spec.page.size')
   })
 
+  it('edits docx and pptx files in place', async () => {
+    const { service } = await mount()
+    await ok(service, 'office_create', { path: 'report.docx', spec: { blocks: [{ type: 'heading', level: 1, text: 'Draft report' }, { type: 'paragraph', text: 'Body' }] } })
+    expect(await ok(service, 'office_edit', {
+      path: 'report.docx',
+      ops: [
+        { op: 'replaceText', find: 'Draft', replace: 'Final' },
+        { op: 'insert', at: 1, blocks: [{ type: 'list', items: ['Point'] }] },
+        { op: 'setParagraph', index: 2, text: [{ text: 'New body', bold: true }] },
+      ],
+    })).toMatchObject({ kind: 'docx', outline: { paragraphs: 3, headings: [{ text: 'Final report' }] } })
+    expect(await ok(service, 'office_read', { path: 'report.docx' })).toMatchObject({ blocks: [{ text: 'Final report' }, { text: 'Point' }, { text: 'New body' }] })
+
+    await ok(service, 'office_create', { path: 'deck.pptx', spec: { slides: [{ title: 'One' }, { title: 'Two' }] } })
+    expect(await ok(service, 'office_edit', {
+      path: 'deck.pptx',
+      ops: [
+        { op: 'setText', slide: 1, shape: 'title', text: 'First' },
+        { op: 'addSlides', at: 2, slides: [{ title: 'Inserted', bullets: ['a'] }] },
+        { op: 'moveSlide', slide: 3, to: 1 },
+      ],
+    })).toMatchObject({ kind: 'pptx', outline: { titles: [{ title: 'Two' }, { title: 'First' }, { title: 'Inserted' }] } })
+    expect(await fails(service, 'office_edit', { path: 'deck.pptx', ops: [{ op: 'setText', slide: 1 }] })).toContain('ops[0].shape must be a string')
+    expect(await fails(service, 'office_edit', { path: 'deck.pptx', ops: [{ op: 'setText', slide: 1, shape: 'title', text: 'x' }], output: 'deck.docx' })).toContain('output must also be a .pptx path')
+  })
+
   it('refuses to overwrite unless asked', async () => {
     const { service } = await mount()
     await ok(service, 'office_create', { path: 'a.xlsx', spec: workbook })
@@ -144,6 +170,5 @@ describe('office tools', () => {
     expect(await fails(service, 'office_create', { path: '../escape.xlsx', spec: workbook })).toContain('escapes the workspace')
     await writeFile(join(cwd, 'fake.xlsx'), 'not a zip')
     expect(await fails(service, 'office_read', { path: 'fake.xlsx' })).toContain('not a readable xlsx workbook')
-    expect(await fails(service, 'office_edit', { path: 'deck.pptx', ops: [] })).toContain('supports .xlsx only')
   })
 })

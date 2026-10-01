@@ -6,6 +6,8 @@ import {
   createDocument,
   createPresentation,
   createWorkbook,
+  editDocument,
+  editPresentation,
   editWorkbook,
   inspectDocument,
   inspectPresentation,
@@ -16,10 +18,12 @@ import {
 } from '@tnega/office'
 import { ToolInputError, resolveInside, type ToolDefinition, type ToolsService } from '@tnega/tools'
 import {
+  documentOps,
   documentSpec,
   optionalBoolean,
   optionalNumber,
   optionalString,
+  presentationOps,
   presentationSpec,
   record,
   stringField,
@@ -213,24 +217,49 @@ function createTool(config: ResolvedConfig): ToolDefinition {
   }
 }
 
+/** 校验 ops 并返回对应格式的编辑函数。 */
+function editorFor(kind: OfficeKind, rawOps: unknown): (bytes: Uint8Array) => Promise<Uint8Array> {
+  switch (kind) {
+    case 'xlsx': {
+      const ops = workbookOps(rawOps)
+      return bytes => editWorkbook(bytes, ops)
+    }
+    case 'docx': {
+      const ops = documentOps(rawOps)
+      return bytes => editDocument(bytes, ops)
+    }
+    case 'pptx': {
+      const ops = presentationOps(rawOps)
+      return bytes => editPresentation(bytes, ops)
+    }
+  }
+}
+
 function editTool(config: ResolvedConfig): ToolDefinition {
   return {
     schema: {
       name: 'office_edit',
       description: [
-        'Apply a batch of edits to an existing .xlsx workbook in the workspace. Edits run in order; if any fails, the file is left unchanged.',
-        'Formulas are recomputed on save, so office_read afterwards shows the new values.',
-        'Ops: { op: "setCells", sheet, start: "A1", rows: Cell[][] } | { op: "clear", sheet, range } | { op: "style", sheet, range, style: Style }',
+        'Apply a batch of edits to an existing .xlsx, .docx or .pptx file in the workspace, in place: everything the ops do not touch',
+        '(styles, layouts, images, other content) is kept. Ops run in order, each on the result of the previous one; if any fails, the file is left unchanged.',
+        'Read the file first (office_inspect / office_read) to get block indexes, slide numbers and shape names.',
+        'xlsx ops (formulas are recomputed on save): { op: "setCells", sheet, start: "A1", rows: Cell[][] } | { op: "clear", sheet, range } | { op: "style", sheet, range, style: Style }',
         '| { op: "setColumnWidths", sheet, start?: "A", widths: number[] } | { op: "setRowHeights", sheet, start?: 1, heights: number[] } | { op: "merge" | "unmerge", sheet, range }',
         '| { op: "autoFilter", sheet, range: "A1:D1" | null } | { op: "addChart", sheet, chart: SheetChart } | { op: "removeChart", sheet, index }',
         '| { op: "addSheet", name } | { op: "renameSheet", sheet, name } | { op: "deleteSheet", sheet }.',
         'Cell, Style and SheetChart are as in office_create; office_inspect lists existing charts with their index. Charts are kept through edits and renames.',
+        'docx ops (block indexes as in office_read, from 0): { op: "replaceText", find, replace, matchCase? (default true) } (body, headers and footers)',
+        '| { op: "setParagraph", index, text: Inline } | { op: "setCell", index (table block), row, column, text: Inline }',
+        '| { op: "insert", at? (block index to insert before; default end), blocks: Block[] } | { op: "delete", index, count? }.',
+        'pptx ops (slides from 1): { op: "replaceText", find, replace, slide?, matchCase? } | { op: "setText", slide, shape ("title" or a shape name), text: string | string[] (paragraphs) }',
+        '| { op: "addSlides", at? (position, default end), slides: Slide[], theme? } | { op: "deleteSlide", slide } | { op: "moveSlide", slide, to }.',
+        'Inline, Block and Slide are as in office_create. Rewritten text keeps the formatting of the first run it replaces.',
       ].join(' '),
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: '.xlsx path relative to the workspace' },
-          ops: { type: 'array', items: { type: 'object' }, description: 'edits to apply in order' },
+          path: { type: 'string', description: '.xlsx, .docx or .pptx path relative to the workspace' },
+          ops: { type: 'array', items: { type: 'object' }, description: 'edits to apply in order; the shape depends on the file type' },
           output: { type: 'string', description: 'write the result to this path instead of replacing the input' },
         },
         required: ['path', 'ops'],
@@ -240,15 +269,15 @@ function editTool(config: ResolvedConfig): ToolDefinition {
     async execute(input) {
       const args = record(input)
       const source = await resolveInside(config.cwd, stringField(args.path, 'path'))
-      if (kindOf(source) !== 'xlsx') throw new ToolInputError('office_edit supports .xlsx only; recreate .docx/.pptx with office_create')
+      const kind = kindOf(source)
       const outputPath = optionalString(args.output, 'output')
       const target = outputPath === undefined ? source : await resolveInside(config.cwd, outputPath)
-      if (kindOf(target) !== 'xlsx') throw new ToolInputError('output must be an .xlsx path')
+      if (kindOf(target) !== kind) throw new ToolInputError(`output must also be a .${kind} path`)
       // 先校验 ops，再碰文件：输入错误不应被文件错误掩盖。
-      const ops = workbookOps(args.ops)
-      const bytes = await editWorkbook(await readBytes(config, source), ops)
+      const edit = editorFor(kind, args.ops)
+      const bytes = await edit(await readBytes(config, source))
       await writeAtomic(target, bytes)
-      return { path: displayPath(config.cwd, target), kind: 'xlsx', bytes: bytes.byteLength, outline: await inspectWorkbook(bytes) }
+      return { path: displayPath(config.cwd, target), kind, bytes: bytes.byteLength, outline: await outline(kind, bytes) }
     },
   }
 }
