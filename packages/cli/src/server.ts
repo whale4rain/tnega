@@ -32,6 +32,7 @@ import { createLlmAdapter, modelCapabilities, openaiCompatAdapter } from '@tnega
 import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from './goal.js'
 import { personaFor } from './work.js'
 import { FileServeError, readWorkspaceFile, sendFile } from './files.js'
+import { searchWorkspaceFiles } from './file-search.js'
 import { memoryLocal } from '@tnega/memory-local'
 import type { MemoryService } from '@tnega/memory'
 import {
@@ -457,6 +458,18 @@ async function handleApi(
     )
     await updateSystemConfig({ workspaces }, context.configFile)
     sendJson(res, 200, { workspaces })
+    return
+  }
+
+  if (url.pathname === '/api/files/search' && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    const limit = Number(url.searchParams.get('limit') ?? 30)
+    const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
+    sendJson(res, 200, { files })
     return
   }
 

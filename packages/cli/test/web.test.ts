@@ -1363,6 +1363,18 @@ describe('web server', () => {
     expect(detail.events.filter(event => event.type === 'plan')).toHaveLength(0)
   })
 
+  it('searches workspace files for @ mentions', async () => {
+    const dir = await tempDir('tnega-web-file-search-')
+    const workspace = await mkdir(dir, 'workspace')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile: join(dir, 'config.json') })
+    servers.push(server)
+    await writeFile(join(workspace, 'q2-report.docx'), 'x')
+    await writeFile(join(workspace, 'notes.md'), 'x')
+    const found = await apiFetch(server.url, `/api/files/search?workspace=${encodeURIComponent(workspace)}&q=report`).then(r => r.json()) as { files: string[] }
+    expect(found.files).toEqual(['q2-report.docx'])
+    expect((await apiFetch(server.url, '/api/files/search?q=x')).status).toBe(400)
+  })
+
   it('serves workspace office files for preview and refuses anything else', async () => {
     const dir = await tempDir('tnega-web-files-')
     const workspace = await mkdir(dir, 'workspace')

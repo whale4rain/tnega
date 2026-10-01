@@ -240,6 +240,9 @@ importers:
       '@tnega/evolve':
         specifier: workspace:*
         version: link:../evolve
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
@@ -276,6 +279,9 @@ importers:
       '@tnega/sandbox-local':
         specifier: workspace:*
         version: link:../sandbox/sandbox-local
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search/search-definition
       '@tnega/search-ripgrep':
         specifier: workspace:*
         version: link:../search/search-ripgrep
