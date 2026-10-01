@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolveInside, type ToolGuard, type ToolRequest } from '@tnega/tools'
+import { isLocalUrl, normalizeBrowserUrl } from '@tnega/browser'
+import { BROWSER_OBSERVE_TOOLS } from '@tnega/tool-browser'
 import type { ApprovalDecision } from '@tnega/approval-review'
 
 export type PermissionMode = 'read-only' | 'workspace-write' | 'bypass'
@@ -26,7 +28,29 @@ const ALWAYS_ALLOWED = new Set([
   'write_memory', 'publish_artifact', 'index_resource',
   // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。
   'run_code', 'ask_user_question',
+  // 只读或只作用于 Agent 自己启动的后台进程；启动本身（process_start）与 shell 同级。
+  'process_output', 'process_list', 'process_stop',
 ])
+
+/**
+ * Browser tools that only move around or look: navigation is a GET like
+ * `http_get`, and these never submit anything on their own.
+ */
+const BROWSER_PASSIVE = new Set([
+  ...BROWSER_OBSERVE_TOOLS,
+  'browser_navigate', 'browser_navigate_back', 'browser_reload',
+  'browser_scroll', 'browser_hover', 'browser_wait_for', 'browser_resize',
+])
+
+/**
+ * Clicking, typing and running code on a local development page is ordinary
+ * frontend work, at the same tier as editing workspace files. The same
+ * interactions on any other site can submit forms or spend money, so they ask.
+ */
+function browserInteractionIsLocal(request: ToolRequest, pageUrl: string | undefined): boolean {
+  if (!request.name.startsWith('browser_')) return false
+  return pageUrl !== undefined && isLocalUrl(normalizeBrowserUrl(pageUrl))
+}
 
 interface PendingApproval {
   key: string
@@ -99,6 +123,8 @@ export function permissionGuard(
     workspace: string
     agentMode?: (agentId: string) => PermissionMode | undefined
     review?: (request: ToolRequest) => Promise<ApprovalDecision | undefined>
+    /** URL of the agent browser's current page, for the browser tool rules. */
+    browserUrl?: () => string | undefined
   },
 ): ToolGuard {
   return async request => {
@@ -108,17 +134,19 @@ export function permissionGuard(
     const effective = childMode && rank[childMode] < rank[parentMode] ? childMode : parentMode
     if (effective === 'bypass') return undefined
     const unrestricted = parentMode === 'bypass'
-    const pathKey = request.name === 'shell' ? 'cwd' : 'path'
+    const pathKey = request.name === 'shell' || request.name === 'process_start' ? 'cwd' : 'path'
     const input = request.input && typeof request.input === 'object' && !Array.isArray(request.input)
       ? request.input as Record<string, unknown> : {}
     const rawPath = typeof input[pathKey] === 'string' ? input[pathKey] : '.'
     let scoped = true
-    if (unrestricted && ['read_file', 'write_file', 'list_dir', 'shell'].includes(request.name)) {
+    if (unrestricted && ['read_file', 'write_file', 'list_dir', 'shell', 'process_start'].includes(request.name)) {
       try { await resolveInside(options.workspace, rawPath) } catch { scoped = false }
     }
     if (ALWAYS_ALLOWED.has(request.name) && scoped
       && !(request.name === 'http_get' && unrestricted)) return undefined
     if (effective === 'workspace-write' && WORKSPACE_WRITES.has(request.name) && scoped) return undefined
+    if (BROWSER_PASSIVE.has(request.name)) return undefined
+    if (effective === 'workspace-write' && browserInteractionIsLocal(request, options.browserUrl?.())) return undefined
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
     let reviewed: ApprovalDecision | undefined
     // A narrower child cannot use the parent's automatic elevation policy.

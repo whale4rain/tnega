@@ -47,6 +47,8 @@ import {
   type PlanPayload,
 } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { browserPlaywright, launchPageSource, PlaywrightBrowserHost } from '@tnega/browser-playwright'
+import { toolBrowser } from '@tnega/tool-browser'
 import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
@@ -206,6 +208,12 @@ export interface WebServerOptions {
    * `workspace-write`：仓库内的读写直接放行，shell 与越界访问逐个请求用户批准。
    */
   projectPermission?: PermissionMode
+  /**
+   * The page the agent's `browser_*` tools drive. The desktop app passes its
+   * embedded view; by default the server launches the system Edge / Chrome on
+   * first use (see `browser` in System Config). `false` disables the tools.
+   */
+  browser?: PlaywrightBrowserHost | false
 }
 
 export interface WebServer {
@@ -240,6 +248,11 @@ export async function startWebServer(
   const residentAgents = new Map<string, ResidentAgentEntry>()
   const projectHosts = new Map<string, ProjectHostEntry>()
   let actualPort = port
+  // Nothing starts until the agent first uses the browser.
+  const ownedBrowser = options.browser === undefined
+    ? new PlaywrightBrowserHost(launchPageSource((await readSystemConfig(configFile)).browser ?? {}))
+    : undefined
+  const browser = options.browser === false ? undefined : options.browser ?? ownedBrowser
   const context: ServerContext = {
     webRoot,
     activeRuns,
@@ -252,6 +265,7 @@ export async function startWebServer(
     residentCreation: new Map(),
     projectPermission: options.projectPermission ?? 'workspace-write',
     ...(configFile ? { configFile } : {}),
+    ...(browser ? { browser } : {}),
   }
 
   const server = createServer((req, res) => {
@@ -281,6 +295,7 @@ export async function startWebServer(
       const hosts = [...projectHosts.values()]
       projectHosts.clear()
       await Promise.all(hosts.map(entry => entry.host.dispose()))
+      await ownedBrowser?.close()
     },
   }
 }
@@ -297,6 +312,13 @@ interface ServerContext {
   residentCreation?: Map<string, Promise<ResidentAgentEntry>>
   projectHosts?: Map<string, ProjectHostEntry>
   projectPermission: PermissionMode
+  browser?: PlaywrightBrowserHost
+}
+
+/** Mount the browser Provider over the shared host and the model-visible tools. */
+async function mountBrowser(root: Context, host: PlaywrightBrowserHost | undefined): Promise<Array<{ dispose: () => Promise<void> }>> {
+  if (!host) return []
+  return [await root.plugin(browserPlaywright, { host }), await root.plugin(toolBrowser)]
 }
 
 async function handleRequest(
@@ -984,6 +1006,7 @@ async function handleRun(
       config,
       resumeQueued,
       attachments,
+      ...(context.browser ? { browser: context.browser } : {}),
     })
     return
   }
@@ -1024,6 +1047,7 @@ async function handleRun(
     })
     const toolService = runtime.root.get('tools') as ToolsService
     toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
+    await mountBrowser(runtime.root, context.browser)
     approvalFiber = await mountApprovalReview(runtime.root, {
       config, workspace, adapter, model: effective.model,
       session: () => runtime?.root.get('session'),
@@ -1042,7 +1066,9 @@ async function handleRun(
     context.questionRoots?.set(runKey(workspace, id), root)
     context.questionInboxes?.set(runKey(workspace, id), questionInbox)
     toolService.guard(permissionGuard(permission, runKey(workspace, id), context.approvals, {
-      workspace, review: request => reviewAutomaticApproval(root, request),
+      workspace,
+      review: request => reviewAutomaticApproval(root, request),
+      browserUrl: () => context.browser?.state().url,
     }))
   } catch (error) {
     await approvalFiber?.dispose()
@@ -1175,6 +1201,7 @@ async function handleRun(
 interface ResidentRunRequest {
   resumeQueued?: boolean
   attachments?: ModelAttachment[]
+  browser?: PlaywrightBrowserHost
   config: SystemConfig
   prompt: string
   permission: PermissionMode
@@ -1268,9 +1295,11 @@ async function createResidentRuntime(
     mode: async () => (await readSessionSummary(workspace, req.sessionId)).approvalMode ?? req.config.approvalReview?.defaultMode ?? 'manual',
   }))
   toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
+  fibers.push(...await mountBrowser(root, req.browser))
   toolService.guard(permissionGuard(currentPermission, runKey(workspace, req.sessionId), req.approvals, {
     workspace,
     review: request => reviewAutomaticApproval(root, request),
+    browserUrl: () => req.browser?.state().url,
     agentMode: agentId => {
       const meta = registry.get(agentId)?.meta
       if (!meta?.subagentMode) return undefined

@@ -45,6 +45,11 @@ You work iteratively in the user's repository:
 - Report exact file paths and command output in your final answer.
 - Keep the user's existing code conventions and do not rewrite unrelated code.
 
+For web frontends, check your changes in the browser when browser_* tools are available:
+- Start the dev server with process_start (not shell, which waits for exit) and open the URL it prints with browser_navigate.
+- Read the page with browser_snapshot, interact by ref, and use browser_take_screenshot to judge layout and styling.
+- Check browser_console_messages and browser_network_requests for errors before calling the work done.
+
 In plan mode, produce a plan only. Do not edit files or execute the plan.`
 
 export function createCodingAgentPlugin(

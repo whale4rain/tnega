@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
       tnega:
         specifier: ^0.1.1
         version: 0.1.1
@@ -43,6 +46,9 @@ importers:
       '@tnega/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
     devDependencies:
       electron:
         specifier: ^44.4.3
@@ -253,6 +259,12 @@ importers:
       '@tnega/box-blackboard':
         specifier: workspace:*
         version: link:../project/box-blackboard
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../browser/browser
+      '@tnega/browser-playwright':
+        specifier: workspace:*
+        version: link:../browser/browser-playwright
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
@@ -328,6 +340,9 @@ importers:
       '@tnega/tool-box':
         specifier: workspace:*
         version: link:../project/tool-box
+      '@tnega/tool-browser':
+        specifier: workspace:*
+        version: link:../browser/tool-browser
       '@tnega/tool-memory':
         specifier: workspace:*
         version: link:../memory/tool-memory

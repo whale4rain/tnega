@@ -70,3 +70,31 @@ describe('permissionGuard', () => {
     expect(await guard(request('office_edit', { path: 'report.xlsx', ops: [] }))).toBeUndefined()
   })
 })
+
+describe('browser and process permissions', () => {
+  const guardAt = (mode: 'read-only' | 'workspace-write' | 'bypass', url: string | undefined) => permissionGuard(
+    mode, 'session', new ApprovalBroker(), { workspace: process.cwd(), browserUrl: () => url },
+  )
+
+  it('lets the agent look at and move around any page', async () => {
+    const guard = guardAt('read-only', 'https://example.com/')
+    for (const name of ['browser_snapshot', 'browser_take_screenshot', 'browser_console_messages', 'browser_navigate', 'browser_reload', 'browser_resize']) {
+      expect(await guard(request(name, { url: 'https://example.com' }))).toBeUndefined()
+    }
+  })
+
+  it('allows interacting with a local dev page in workspace-write but asks elsewhere', async () => {
+    expect(await guardAt('workspace-write', 'http://localhost:5173/login')(request('browser_click', { ref: 'e3' }))).toBeUndefined()
+    expect(await guardAt('workspace-write', 'http://127.0.0.1:3000')(request('browser_type', { ref: 'e3', text: 'x' }))).toBeUndefined()
+    expect(await guardAt('workspace-write', 'https://shop.example.com/cart')(request('browser_click', { ref: 'e3' }))).toMatch(/approval/)
+    expect(await guardAt('read-only', 'http://localhost:5173')(request('browser_evaluate', { function: '1' }))).toMatch(/approval/)
+    expect(await guardAt('bypass', 'https://shop.example.com')(request('browser_click', { ref: 'e3' }))).toBeUndefined()
+  })
+
+  it('gates starting a background process like shell but not reading or stopping it', async () => {
+    const guard = guardAt('workspace-write', undefined)
+    expect(await guard(request('process_start', { command: 'npm run dev' }))).toMatch(/approval/)
+    expect(await guard(request('process_output', { id: 'p1' }))).toBeUndefined()
+    expect(await guard(request('process_stop', { id: 'p1' }))).toBeUndefined()
+  })
+})

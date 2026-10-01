@@ -67,6 +67,15 @@ export interface SystemConfig {
   contextWindow?: number
   models?: ConfiguredModel[]
   workspaces?: string[]
+  /** Browser launched for the agent's `browser_*` tools outside the desktop app. */
+  browser?: BrowserLaunchConfig
+}
+
+export interface BrowserLaunchConfig {
+  /** Chromium-based browser channel, e.g. `msedge`, `chrome`. */
+  channel?: string
+  executablePath?: string
+  headless?: boolean
 }
 
 export interface EffectiveLlmConfig {
@@ -300,6 +309,17 @@ function normalizeConfig(value: unknown): SystemConfig {
       }
       return [model]
     })
+  }
+  const browser = fieldOf(record, 'browser')
+  if (browser && typeof browser === 'object' && !Array.isArray(browser)) {
+    const launch: BrowserLaunchConfig = {}
+    const channel = stringField(browser, 'channel')?.trim()
+    if (channel) launch.channel = channel
+    const executablePath = stringField(browser, 'executablePath')?.trim()
+    if (executablePath) launch.executablePath = executablePath
+    const headless = fieldOf(browser, 'headless')
+    if (typeof headless === 'boolean') launch.headless = headless
+    config.browser = launch
   }
   if (Array.isArray(record.workspaces)) {
     config.workspaces = record.workspaces

@@ -11,7 +11,8 @@ const shared = {
   platform: 'node',
   sourcemap: true,
   target: 'node22',
-  external: ['electron'],
+  // playwright-core loads its own files at runtime, so it ships as a dependency.
+  external: ['electron', 'playwright-core'],
 }
 
 await Promise.all([
