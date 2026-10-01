@@ -1303,6 +1303,9 @@ export class SessionLog {
   }
 
   private _commitEvent(event: SessionEvent): void {
+    // init() may have found a short-lived reader as the owner. The object
+    // committing events must own the live log before readers can close it.
+    liveSessions.set(sessionFileKey(this.file), this)
     this._events.push(event)
     this._refreshSurface()
     if (event.type === 'request/header') this._requestHeader = clone(event.payload)

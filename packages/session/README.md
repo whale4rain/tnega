@@ -109,6 +109,10 @@ provider/model/contextWindow。它们都是 log-only 事件（不产生 LLM 消�
 一个崩溃后的日志仍能重建出一个关闭的 turn。`runInvariants()` 断言已加载
 日志的 turn/step/tool-call 成对闭合且 seq 单调。
 
+同进程内，提交事件的 `SessionLog` 接管该文件的 live owner 登记；临时读取对象
+即使先初始化，其关闭也不会移除正在写入的对象。后续读取从 live owner 取得
+快照，不对运行中的 call、step 或 turn 补写中断事件。该登记不提供跨进程文件锁。
+
 `forkAt()` / `lineage()` 基于事件 id 与 `parentId` 构造可复用的 fork 前缀，
 不依赖全量 raw 顺序。
 

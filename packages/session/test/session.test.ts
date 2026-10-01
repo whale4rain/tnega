@@ -751,6 +751,40 @@ describe('SessionLog lifecycle and repair', () => {
     await reopened.close()
   })
 
+  it.each(['before', 'after'])('keeps an active writer protected when the initial reader closes %s the call', async (closeAt) => {
+    const file = await tempFile(`reader-first-${closeAt}.jsonl`)
+    const initialReader = new SessionLog(file)
+    const writer = new SessionLog(file)
+    const reader = new SessionLog(file)
+    try {
+      await initialReader.init()
+      await writer.init()
+      if (closeAt === 'before') await initialReader.close()
+      await writer.append('turn/start', { turn: 1 })
+      await writer.append('step/start', { turn: 1, step: 0 })
+      await writer.append('tool/call', { id: 'call', name: 'probe', arguments: {} })
+      await writer.flush()
+      if (closeAt === 'after') await initialReader.close()
+      const before = await readFile(file, 'utf8')
+      await reader.init()
+      expect(await reader.read()).toEqual(await writer.read())
+      expect(await readFile(file, 'utf8')).toBe(before)
+      await reader.close()
+      await writer.append('tool/result', { id: 'call', toolCallId: 'call', name: 'probe', ok: true })
+      await writer.append('step/end', { turn: 1, step: 0 })
+      await writer.append('turn/end', { turn: 1, finishReason: 'stop' })
+      await writer.flush()
+      const events = await writer.read()
+      expect((await readFile(file, 'utf8')).trim().split('\n')).toEqual(events.map(event => JSON.stringify(event)))
+      expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7])
+      expect(events.filter(event => event.type === 'tool/result')).toHaveLength(1)
+    } finally {
+      await reader.close()
+      await initialReader.close()
+      await writer.close()
+    }
+  })
+
   it('lets a second reader see unflushed events from a live owner', async () => {
     const file = await tempFile('live-pending.jsonl')
     const writer = new SessionLog(file)
