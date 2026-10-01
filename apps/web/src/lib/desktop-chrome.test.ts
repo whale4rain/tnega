@@ -1,6 +1,24 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { backgroundBehind, cssColorToHex } from './desktop-chrome'
+import { backgroundBehind, cssColorToHex, markWindowControls } from './desktop-chrome'
+
+it('reserves native controls only in the header at the top-right edge', () => {
+  const root = document.createElement('div')
+  root.innerHTML = '<header class="conv-header"></header><header class="drawer-header"></header>'
+  const conversation = root.children[0]
+  const drawer = root.children[1]
+  if (!conversation || !drawer) throw new Error('missing headers')
+  conversation.getBoundingClientRect = () => new DOMRect(0, 0, 700, 58)
+  drawer.getBoundingClientRect = () => new DOMRect(700, 0, 580, 58)
+  markWindowControls(root, 1280)
+  expect(conversation.classList.contains('window-controls-header')).toBe(false)
+  expect(drawer.classList.contains('window-controls-header')).toBe(true)
+  conversation.getBoundingClientRect = () => new DOMRect(0, 0, 1280, 58)
+  drawer.getBoundingClientRect = () => new DOMRect(700, 58, 580, 58)
+  markWindowControls(root, 1280)
+  expect(conversation.classList.contains('window-controls-header')).toBe(true)
+  expect(drawer.classList.contains('window-controls-header')).toBe(false)
+})
 
 describe('cssColorToHex', () => {
   it('converts computed colours and skips transparent ones', () => {

@@ -3109,25 +3109,36 @@ kbd {
 
 /* ==========================================================================
    Desktop window controls
-   Reserve a strip above every view for native minimise / maximise / close
-   buttons, including layouts with drawers and project panels.
+   Integrate native controls into existing headers, without an extra row.
    ========================================================================== */
 
 .desktop-chrome {
-  --desktop-titlebar-height: max(32px, env(titlebar-area-height, 32px));
+  --window-controls-width: max(138px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
 }
 
-.desktop-chrome #root {
-  padding-top: var(--desktop-titlebar-height);
+.desktop-chrome .window-controls-header {
+  padding-right: calc(var(--window-controls-width) + 16px);
 }
 
-.desktop-chrome body::before {
-  content: '';
-  position: fixed;
-  inset: 0 0 auto;
-  height: var(--desktop-titlebar-height);
-  background: var(--bg);
+.desktop-chrome .sidebar-top,
+.desktop-chrome .conv-header,
+.desktop-chrome .drawer-header,
+.desktop-chrome .project-side .side-tabs,
+.desktop-chrome .project-side .side-header {
   -webkit-app-region: drag;
+}
+
+.desktop-chrome .sidebar-top button,
+.desktop-chrome .conv-header-actions,
+.desktop-chrome .conv-title,
+.desktop-chrome .conv-subtitle,
+.desktop-chrome .drawer-titles,
+.desktop-chrome .drawer-header button,
+.desktop-chrome .zoom-controls,
+.desktop-chrome .project-side button,
+.desktop-chrome .side-title,
+.desktop-chrome .conv-header > button {
+  -webkit-app-region: no-drag;
 }
 
 .zoom-controls {

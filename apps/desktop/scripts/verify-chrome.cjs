@@ -43,19 +43,22 @@ async function run() {
   const bridge = await window.webContents.executeJavaScript(`typeof globalThis.tnegaDesktop?.setTitleBarColors`)
   assert.equal(bridge, 'function', 'sandboxed preload must expose the desktop bridge')
   for (let index = 0; index < 100; index += 1) {
-    if (await window.webContents.executeJavaScript(`document.documentElement.classList.contains('desktop-chrome') && !!document.querySelector('.conv-header')`)) break
+    if (await window.webContents.executeJavaScript(`!!document.querySelector('.conv-header.window-controls-header')`)) break
     await new Promise(resolve => setTimeout(resolve, 50))
   }
   const layout = await window.webContents.executeJavaScript(`({
     padding: parseFloat(getComputedStyle(document.querySelector('#root')).paddingTop),
     headerTop: document.querySelector('.conv-header').getBoundingClientRect().top,
-    drag: getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region'),
-    height: parseFloat(getComputedStyle(document.body, '::before').height),
+    actionsRight: document.querySelector('.conv-header-actions').getBoundingClientRect().right,
+    width: innerWidth,
+    drag: getComputedStyle(document.querySelector('.conv-header')).getPropertyValue('-webkit-app-region'),
+    actionsDrag: getComputedStyle(document.querySelector('.conv-header-actions')).getPropertyValue('-webkit-app-region'),
   })`)
-  assert.ok(layout.padding >= 32, JSON.stringify(layout))
-  assert.ok(layout.headerTop >= 32, 'session controls must sit below native window buttons')
+  assert.equal(layout.padding, 0, 'no extra title bar row')
+  assert.equal(layout.headerTop, 0, 'keep original header position')
+  assert.ok(layout.actionsRight <= layout.width - 138, `session controls must clear native window buttons: ${JSON.stringify(layout)}`)
   assert.equal(layout.drag.trim(), 'drag', 'title bar must be draggable')
-  assert.ok(layout.height >= 32)
+  assert.equal(layout.actionsDrag.trim(), 'no-drag', 'controls must remain clickable')
   console.log('Sandboxed preload, title bar clearance and drag region passed:', layout)
   window.destroy()
   server.close()
