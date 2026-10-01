@@ -8,6 +8,8 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
 import { SubagentDrawer } from './components/SubagentDrawer'
 import { FilePreviewDrawer } from './components/preview/FilePreview'
+import { BrowserDrawer } from './components/BrowserDrawer'
+import { desktopBrowser } from './lib/desktop-browser'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
@@ -52,7 +54,9 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 860)
   const [dialog, setDialog] = useState<'settings' | 'workspace' | undefined>()
   // The right-hand drawer shows either a subagent transcript or a produced file.
-  const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | undefined>()
+  const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | { kind: 'browser' } | undefined>()
+  // The desktop app asks for the browser panel whenever the agent is about to use it.
+  useEffect(() => desktopBrowser()?.onReveal(() => setDrawer(current => current?.kind === 'browser' ? current : { kind: 'browser' })), [])
   const [fatal, setFatal] = useState<string | undefined>()
   const [mode, setMode] = useStoredState<Mode>('tnega.mode', projectFromHash() ? 'projects' : 'sessions', ['sessions', 'projects'])
   useDesktopChrome(`${mode}:${drawer?.kind ?? 'none'}:${theme}`)
@@ -252,7 +256,7 @@ export function App() {
   }
 
   return (
-    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' ? ' drawer-wide' : ''}`}>
+    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' || drawer?.kind === 'browser' ? ' drawer-wide' : ''}`}>
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
       {sidebarOpen && (
         <Sidebar
@@ -331,6 +335,8 @@ export function App() {
             onOpenSettings={() => setDialog('settings')}
             onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
             onOpenFile={path => setDrawer({ kind: 'file', path })}
+            {...(desktopBrowser() ? { onToggleBrowser: () => setDrawer(current => current?.kind === 'browser' ? undefined : { kind: 'browser' }) } : {})}
+            browserOpen={drawer?.kind === 'browser'}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
           />
@@ -355,6 +361,7 @@ export function App() {
           onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
         />
       )}
+      {drawer?.kind === 'browser' && workspace && <BrowserDrawer onClose={() => setDrawer(undefined)} />}
       {drawer?.kind === 'file' && workspace && (
         <FilePreviewDrawer key={drawer.path} workspace={workspace} path={drawer.path} onClose={() => setDrawer(undefined)} />
       )}

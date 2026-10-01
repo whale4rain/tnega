@@ -24,6 +24,7 @@ import {
   FileText,
   Presentation,
   Table2,
+  Globe,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
@@ -69,6 +70,8 @@ export function Conversation({
   onOpenSettings,
   onOpenSubagent,
   onOpenFile,
+  onToggleBrowser,
+  browserOpen = false,
   sidebarOpen,
   onToggleSidebar,
 }: {
@@ -83,6 +86,9 @@ export function Conversation({
   onOpenSettings: () => void
   onOpenSubagent: (id: string, label: string) => void
   onOpenFile: (path: string) => void
+  /** Present in the desktop app, which hosts the agent browser in a panel. */
+  onToggleBrowser?: () => void
+  browserOpen?: boolean
   sidebarOpen: boolean
   onToggleSidebar: () => void
 }) {
@@ -550,6 +556,18 @@ export function Conversation({
         <div className="conv-header-actions">
           <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} />
           {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} />}
+          {onToggleBrowser && (
+            <button
+              type="button"
+              className={`icon-button${browserOpen ? ' active' : ''}`}
+              onClick={onToggleBrowser}
+              aria-label={browserOpen ? 'Hide browser' : 'Show browser'}
+              aria-pressed={browserOpen}
+              title="Browser"
+            >
+              <Globe size={17} />
+            </button>
+          )}
           {summary && (
             <Menu
               label="Session actions"
