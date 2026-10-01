@@ -1697,3 +1697,24 @@ describe('live agent resume', () => {
     })).rejects.toThrow(/stable session id/)
   })
 })
+
+describe('live agent attachments', () => {
+  it('keeps followup images through the durable inbox into the request and Session', async () => {
+    const root = await mountRoot()
+    const seen: ModelMessage[] = []
+    const llm: LLMAdapter = {
+      async complete(messages) {
+        seen.push(structuredClone(messages.at(-1)!))
+        return { content: 'looks right', finishReason: 'stop' }
+      },
+    }
+    const handle = await createHandle(root, await tempFile('attachments.jsonl'), llm)
+    const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'aW1n' }
+    handle.agent.followup({ text: 'check this', attachments: [image] })
+
+    await handle.agent.whenIdle()
+    expect(seen).toEqual([{ role: 'user', content: 'check this', attachments: [image] }])
+    const events = await handle.agent.session.read()
+    expect(events.find(event => event.type === 'user/message')?.payload).toMatchObject({ attachments: [image] })
+  })
+})

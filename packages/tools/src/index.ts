@@ -69,12 +69,57 @@ export interface ToolError {
   stack?: string
 }
 
+/**
+ * An image a tool hands back to the model. Structurally identical to the
+ * Session's `ImageAttachment`; tools does not depend on session.
+ */
+export interface ToolAttachment {
+  type: 'image'
+  mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  /** Base64 without a `data:` prefix. */
+  data: string
+  name?: string
+}
+
+const TOOL_OUTPUT_WITH_ATTACHMENTS = Symbol.for('tnega.tools.outputWithAttachments')
+
+interface ToolOutputWithAttachments {
+  readonly [TOOL_OUTPUT_WITH_ATTACHMENTS]: true
+  output: unknown
+  attachments: ToolAttachment[]
+}
+
+/**
+ * Return value for a tool that produces images: `output` stays the text the
+ * model reads through `renderToolResult`, `attachments` travel beside it.
+ */
+export function withAttachments(output: unknown, attachments: readonly ToolAttachment[]): unknown {
+  const wrapped: ToolOutputWithAttachments = {
+    [TOOL_OUTPUT_WITH_ATTACHMENTS]: true,
+    output,
+    attachments: [...attachments],
+  }
+  return wrapped
+}
+
+function unwrapAttachments(value: unknown): { output: unknown; attachments?: ToolAttachment[] } {
+  if (value && typeof value === 'object' && TOOL_OUTPUT_WITH_ATTACHMENTS in value) {
+    const wrapped = value as ToolOutputWithAttachments
+    return wrapped.attachments.length
+      ? { output: wrapped.output, attachments: wrapped.attachments }
+      : { output: wrapped.output }
+  }
+  return { output: value }
+}
+
 export interface ToolResult {
   ok: boolean
   name: string
   callId?: string
   input: unknown
   output?: unknown
+  /** Images produced by the tool (see {@link withAttachments}). */
+  attachments?: ToolAttachment[]
   error?: ToolError
   /** When true, the agent turn should stop after this tool result. */
   concludesTurn?: boolean
@@ -354,7 +399,8 @@ export class ToolsService extends Service<never> {
     }
   }
 
-  private _success(request: ToolRequest, output: unknown): ToolResult {
+  private _success(request: ToolRequest, value: unknown): ToolResult {
+    const { output, attachments } = unwrapAttachments(value)
     const result: ToolResult = {
       ok: true,
       name: request.name,
@@ -363,6 +409,7 @@ export class ToolsService extends Service<never> {
       startedAt: request.startedAt,
       durationMs: Date.now() - request.startedAt,
     }
+    if (attachments) result.attachments = attachments
     if (request.options.callId) result.callId = request.options.callId
     this._applyConcludesTurn(request, result)
     return result

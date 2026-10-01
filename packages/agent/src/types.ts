@@ -2,6 +2,7 @@ import type {
   AssistantStreamChunk,
   CancelCause,
   ContextUsage,
+  ModelAttachment,
   ModelMessage,
   ModelUsage,
   SessionLog,
@@ -113,6 +114,8 @@ export interface LLMAdapter {
 
 export interface AgentInput {
   text?: string
+  /** Images sent with `text` as one user message. */
+  attachments?: ModelAttachment[]
   messages?: ModelMessage[]
   context?: unknown
 }

@@ -65,9 +65,43 @@ export interface ModelToolCall {
   arguments: unknown
 }
 
+/** Image formats every supported provider accepts inline. */
+export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+
+/**
+ * An image that travels with a message. Bytes are inline base64 so a Session
+ * stays a self-contained replayable log; producers should downscale before
+ * attaching (the web composer and browser screenshots both do).
+ */
+export interface ImageAttachment {
+  type: 'image'
+  mediaType: ImageMediaType
+  /** Base64 without a `data:` prefix. */
+  data: string
+  name?: string
+}
+
+/** Non-text content carried alongside a message's text `content`. */
+export type ModelAttachment = ImageAttachment
+
+export const IMAGE_MEDIA_TYPES: readonly ImageMediaType[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+
+/** Flat token estimate per image; providers bill roughly 1–2k for a screen-sized image. */
+export const IMAGE_TOKEN_ESTIMATE = 1600
+
+export function isModelAttachment(value: unknown): value is ModelAttachment {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return record.type === 'image'
+    && typeof record.data === 'string'
+    && IMAGE_MEDIA_TYPES.includes(record.mediaType as ImageMediaType)
+}
+
 export interface ModelMessage {
   role: ModelRole
   content: string
+  /** Images for user and tool messages; adapters render them as native image parts. */
+  attachments?: ModelAttachment[]
   name?: string
   tool_call_id?: string
   tool_calls?: ModelToolCall[]
@@ -77,6 +111,7 @@ export interface ModelMessage {
 
 export interface UserMessagePayload {
   content: string
+  attachments?: ModelAttachment[]
   name?: string
   parentId?: string
 }
@@ -206,6 +241,8 @@ export interface ToolResultPayload {
   ok: boolean
   durationMs?: number
   output?: unknown
+  /** Images the tool produced, e.g. a browser screenshot; kept out of `output` so rendering stays text. */
+  attachments?: ModelAttachment[]
   error?: ToolResultErrorPayload
   argRaw?: string
   turn?: number
@@ -661,6 +698,7 @@ export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
     case 'user/message': {
       const message: ModelMessage = { role: 'user', content: event.payload.content }
       if (event.payload.name) message.name = event.payload.name
+      if (event.payload.attachments?.length) message.attachments = clone(event.payload.attachments)
       return message
     }
     case 'system/message': {
@@ -684,6 +722,7 @@ export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
         tool_call_id: event.payload.toolCallId,
       }
       message.name = event.payload.name
+      if (event.payload.attachments?.length) message.attachments = clone(event.payload.attachments)
       if (failed) {
         message.toolOk = false
         if (event.payload.error) message.toolError = event.payload.error
@@ -972,6 +1011,7 @@ export function estimateMessageTokens(messages: readonly ModelMessage[]): number
   let tokens = 0
   for (const message of messages) {
     tokens += Math.ceil(message.content.length / 4)
+    tokens += (message.attachments?.length ?? 0) * IMAGE_TOKEN_ESTIMATE
     for (const call of message.tool_calls ?? []) {
       const raw = JSON.stringify(call.arguments ?? {}) ?? ''
       tokens += Math.ceil(raw.length / 4)
@@ -983,6 +1023,8 @@ export function estimateMessageTokens(messages: readonly ModelMessage[]): number
 export function estimateEventTokens(event: SessionEvent): number {
   switch (event.type) {
     case 'user/message':
+      return Math.ceil(event.payload.content.length / 4)
+        + (event.payload.attachments?.length ?? 0) * IMAGE_TOKEN_ESTIMATE
     case 'system/message':
       return Math.ceil(event.payload.content.length / 4)
     case 'assistant/message': {
@@ -1001,6 +1043,7 @@ export function estimateEventTokens(event: SessionEvent): number {
     }
     case 'tool/result':
       return Math.ceil(renderToolResult(event.payload).length / 4)
+        + (event.payload.attachments?.length ?? 0) * IMAGE_TOKEN_ESTIMATE
     case 'plan':
     case 'assistant/attempt':
       return 0

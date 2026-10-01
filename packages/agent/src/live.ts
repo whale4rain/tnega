@@ -300,9 +300,7 @@ class LiveAgentImpl implements LiveAgent {
       if (!previous || !target) return
       const replacement = await this._durable.replace(messageId, {
         text: input.text ?? '',
-        ...(input.messages !== undefined || input.context !== undefined
-          ? { content: input.messages ?? input.context }
-          : {}),
+        ...(inboxContent(input) !== undefined ? { content: inboxContent(input) } : {}),
       })
       if (!replacement) return
       this._ctx.emit('agent/inbox/discarded', {
@@ -351,7 +349,7 @@ class LiveAgentImpl implements LiveAgent {
     target: AgentInboxInsertionIntent,
   ): Promise<void> {
     const text = input.text ?? ''
-    const content = input.messages ?? input.context
+    const content = inboxContent(input)
     const steeredAfterAbort = target === 'steer' && this._controller?.signal.aborted === true
     return this._mutatePending(async () => {
       const message = target === 'followup'
@@ -1048,3 +1046,16 @@ export const agents = {
     }
   },
 } satisfies Plugin
+
+/**
+ * Durable inbox payload for an input. Text with images becomes one user
+ * message so the attachments survive the inbox round trip.
+ */
+function inboxContent(input: AgentInput): unknown {
+  if (input.messages !== undefined) return input.messages
+  if (input.attachments?.length) {
+    const message: ModelMessage = { role: 'user', content: input.text ?? '', attachments: input.attachments }
+    return [message]
+  }
+  return input.context
+}

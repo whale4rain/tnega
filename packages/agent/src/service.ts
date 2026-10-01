@@ -130,6 +130,7 @@ function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
     if (message.tool_call_id) copy.tool_call_id = message.tool_call_id
     if (message.toolOk !== undefined) copy.toolOk = message.toolOk
     if (message.toolError) copy.toolError = { ...message.toolError }
+    if (message.attachments?.length) copy.attachments = message.attachments.map(item => ({ ...item }))
     if (message.tool_calls) {
       copy.tool_calls = message.tool_calls.map(call => ({
         id: call.id,
@@ -179,6 +180,10 @@ function canonicalMessages(messages: readonly ModelMessage[]): string {
     ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
     ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
     ...(message.toolOk !== undefined ? { toolOk: message.toolOk } : {}),
+    // Fingerprint rather than the full base64 so the per-step replay check stays cheap.
+    ...(message.attachments?.length ? {
+      attachments: message.attachments.map(item => `${item.mediaType}:${item.data.length}:${item.data.slice(-32)}`),
+    } : {}),
     ...(message.toolError ? {
       toolError: { name: message.toolError.name, message: message.toolError.message },
     } : {}),
@@ -809,6 +814,7 @@ export class AgentService {
           durationMs: result.durationMs,
         }
         if (result.output !== undefined) toolResultPayload.output = result.output
+        if (result.attachments?.length) toolResultPayload.attachments = result.attachments.map(item => ({ ...item }))
         if (result.error) {
           toolResultPayload.error = {
             name: result.error.name,
@@ -1109,6 +1115,7 @@ export class AgentService {
           await session.append('user/message', {
             content: message.content,
             ...(message.name ? { name: message.name } : {}),
+            ...(message.attachments?.length ? { attachments: message.attachments } : {}),
           })
         } else {
           await session.append('system/message', {
@@ -1159,8 +1166,12 @@ export class AgentService {
     const inputs = await this.config.claimNextStep?.() ?? []
     return inputs.flatMap(input => input.messages?.length
       ? copyMessages(input.messages)
-      : input.text
-        ? [{ role: 'user' as const, content: input.text }]
+      : input.text || input.attachments?.length
+        ? [{
+          role: 'user' as const,
+          content: input.text ?? '',
+          ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+        }]
         : input.context !== undefined
           ? [{ role: 'user' as const, content: stringify(input.context) }]
           : [])
@@ -1182,7 +1193,13 @@ export class AgentService {
       if (first?.role === 'system') return copyMessages(input.messages)
       return [...systemMessage, ...copyMessages(input.messages)]
     }
-    if (input.text) return [...systemMessage, { role: 'user', content: input.text }]
+    if (input.text || input.attachments?.length) {
+      return [...systemMessage, {
+        role: 'user',
+        content: input.text ?? '',
+        ...(input.attachments?.length ? { attachments: input.attachments.map(item => ({ ...item })) } : {}),
+      }]
+    }
     return systemMessage
   }
 
@@ -1217,6 +1234,7 @@ export class AgentService {
         tool_call_id: call.id,
       }
       message.name = result?.name ?? call.name
+      if (result?.attachments?.length) message.attachments = result.attachments.map(item => ({ ...item }))
       if (result && !result.ok) {
         message.toolOk = false
         if (result.error) {
