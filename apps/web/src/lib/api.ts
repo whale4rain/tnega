@@ -139,6 +139,13 @@ export const api = {
 
   slashCommands: (workspace: string, id: string) =>
     call<{ commands: SlashCommand[] }>(scoped(`/api/sessions/${id}/coding/commands`, workspace)),
+  slashCandidates: (workspace: string, id: string, name: string) =>
+    call<{ candidates: Array<{ command: string; args: string[]; label: string; detail?: string }> }>(scoped(`/api/sessions/${id}/coding/slash-candidates`, workspace), {
+      method: 'POST',
+      body: { name },
+    }),
+  searchFiles: (workspace: string, query: string, signal?: AbortSignal) =>
+    call<{ files: string[] }>(scoped('/api/files/search', workspace, { q: query, limit: '30' }), signal ? { signal } : {}),
   runSlash: (workspace: string, id: string, name: string, args: string[]) =>
     call<{ result: SlashResult; mode: SessionMode }>(scoped(`/api/sessions/${id}/coding/slash`, workspace), {
       method: 'POST',

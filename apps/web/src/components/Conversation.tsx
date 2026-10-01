@@ -25,7 +25,7 @@ import {
   Presentation,
   Table2,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
 import { errorText, folderName } from '../lib/hooks'
 import { applyStream, beginRun, formatTokens, fromEvents, type Entry } from '../lib/timeline'
@@ -43,7 +43,9 @@ import type {
   SlashCommand,
   StreamEvent,
 } from '../lib/types'
+import { CLIENT_COMMANDS, mergeCommands, parseCommand } from '../lib/completion'
 import { Composer, SessionControls, type RunSettings } from './Composer'
+import type { ArgumentSuggestion } from './PromptBox'
 import { Menu } from './Menu'
 import { Timeline } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
@@ -196,6 +198,24 @@ export function Conversation({
       }
     : draftSettings
 
+  // Client commands work everywhere; coding sessions add the agent's own (skills, MCP).
+  const allCommands = useMemo(() => mergeCommands(commands), [commands])
+  const models = config?.models
+  const completeArgument = useCallback(async (name: string, query: string): Promise<ArgumentSuggestion[]> => {
+    const needle = query.toLowerCase()
+    if (name === '/model') {
+      return (models ?? [])
+        .filter(model => !needle || model.id.toLowerCase().includes(needle) || (model.name ?? '').toLowerCase().includes(needle))
+        .map(model => ({ value: model.id, label: model.name || model.id, detail: model.id }))
+    }
+    if (!sessionId) return []
+    const { candidates } = await api.slashCandidates(workspace, sessionId, name)
+    return candidates
+      .filter(candidate => !needle || candidate.label.toLowerCase().includes(needle))
+      .map(candidate => ({ value: candidate.args.join(' '), label: candidate.label, ...(candidate.detail ? { detail: candidate.detail } : {}) }))
+  }, [models, sessionId, workspace])
+  const searchFiles = useCallback(async (query: string) => (await api.searchFiles(workspace, query)).files, [workspace])
+
   const changeSettings = async (patch: Partial<RunSettings>) => {
     if (!summary) {
       onDraftSettingsChange(patch)
@@ -301,9 +321,56 @@ export function Conversation({
     void run(sessionId, '', entries, true)
   }, [running, remoteRunning, sessionId, resumeVersion, entries, run])
 
+  /** Runs a command the UI handles itself; returns undefined when `text` is not one. */
+  const runClientCommand = async (text: string): Promise<boolean | undefined> => {
+    const parsed = parseCommand(text)
+    const spec = parsed && CLIENT_COMMANDS.find(command => command.name === parsed.name)
+    if (!parsed || !spec) return undefined
+    const { name, rest } = parsed
+    if (name === '/plan' || name === '/goal' || name === '/auto') {
+      const mode = name === '/plan' ? 'plan' : name === '/goal' ? 'goal' : 'auto'
+      await changeSettings({ mode })
+      // "/plan add a chart" switches mode and sends the request in one go.
+      return rest && mode !== 'auto' ? sendPrompt(rest, { ...settings, mode }) : true
+    }
+    if (name === '/model') {
+      const needle = rest.toLowerCase()
+      const model = (models ?? []).find(each => each.id.toLowerCase() === needle || (each.name ?? '').toLowerCase() === needle)
+      if (!model) {
+        setError(rest ? `No model called "${rest}". Type /model and a space to pick one.` : 'Type /model and a space to pick a model.')
+        return false
+      }
+      await changeSettings({ model: model.id })
+      return true
+    }
+    if (name === '/compact') {
+      if (!sessionId) {
+        setError('There is nothing to compact yet.')
+        return false
+      }
+      await compact()
+      return true
+    }
+    if (name === '/rename') {
+      if (!sessionId || !rest) {
+        setError(sessionId ? 'Give the new title after /rename.' : 'Start the conversation before renaming it.')
+        return false
+      }
+      await rename(rest)
+      return true
+    }
+    return undefined
+  }
+
   const send = async (text: string): Promise<boolean> => {
     if (running) return false
     setError(undefined)
+    const handled = await runClientCommand(text)
+    if (handled !== undefined) return handled
+    return sendPrompt(text, settings)
+  }
+
+  const sendPrompt = async (text: string, settings: RunSettings): Promise<boolean> => {
     let id = sessionId
     try {
       if (!id) {
@@ -321,10 +388,10 @@ export function Conversation({
         setSummary(session)
         onSessionCreated(session)
       }
-      const slash = text.match(/^(\/\S+)(?:\s+([\s\S]*))?$/)
-      if (slash && settings.agentType === 'coding' && commands.some(c => (c.name.startsWith('/') ? c.name : `/${c.name}`) === slash[1])) {
-        setBusy(`Running ${slash[1]}…`)
-        await api.runSlash(workspace, id, slash[1]!, slash[2]?.trim() ? slash[2].trim().split(/\s+/) : [])
+      const slash = parseCommand(text)
+      if (slash && settings.agentType === 'coding' && allCommands.some(command => command.source === 'server' && command.name === slash.name)) {
+        setBusy(`Running ${slash.name}…`)
+        await api.runSlash(workspace, id, slash.name, slash.rest ? slash.rest.split(/\s+/) : [])
         await reload(id)
         onSessionsChanged()
         return true
@@ -551,13 +618,15 @@ export function Conversation({
             onSettingsChange={patch => void changeSettings(patch)}
             models={config?.models ?? []}
             defaultModelId={config?.effective.modelId}
-            commands={commands}
+            commands={allCommands}
+            completeArgument={completeArgument}
+            searchFiles={searchFiles}
             running={live}
             locked={live || Boolean(busy)}
             disabledReason={disabledReason}
             onSubmit={send}
             onStop={() => void stop()}
-            placeholder={sessionId ? 'Reply…' : PLACEHOLDERS[settings.agentType]}
+            placeholder={sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
             autoFocusKey={sessionId ?? 'draft'}
           />
         </div>

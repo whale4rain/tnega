@@ -2301,10 +2301,49 @@ kbd {
   animation: pop-in var(--duration-med) var(--ease-out);
 }
 
+.slash-menu {
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+}
+
+.slash-menu-title {
+  position: sticky;
+  top: -5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -5px -5px 4px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.slash-menu-keys {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.slash-icon {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  color: var(--text-3);
+}
+
+.slash-empty {
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
 .slash-item {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   padding: 7px 10px;
   border-radius: var(--radius-sm);
@@ -2317,6 +2356,10 @@ kbd {
 
 .slash-name {
   flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 600;

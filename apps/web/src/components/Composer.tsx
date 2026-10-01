@@ -1,7 +1,11 @@
-import { ArrowUp, Briefcase, Code2, Gauge, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Square, Target, ListChecks, Zap, Cpu } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AgentType, ApprovalMode, ModelOption, Permission, SessionEffort, SessionMode, SlashCommand } from '../lib/types'
+import { Briefcase, Code2, Gauge, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Target, ListChecks, Zap, Cpu } from 'lucide-react'
+import type { ReactNode } from 'react'
+import type { CommandSpec } from '../lib/completion'
+import type { AgentType, ApprovalMode, ModelOption, Permission, SessionEffort, SessionMode } from '../lib/types'
 import { Choice, SectionChoice, choiceSection, type ChoiceOption } from './Menu'
+import { PromptBox, type ArgumentSuggestion } from './PromptBox'
+
+export { PromptBox }
 
 export interface RunSettings {
   agentType: AgentType
@@ -49,174 +53,6 @@ export function modelOptions(models: ModelOption[], defaultModelId: string | und
   ]
 }
 
-/**
- * The message box itself: auto-growing input, optional slash-command
- * completion, a toolbar slot and a send / stop button.
- */
-export function PromptBox({
-  commands = [],
-  running = false,
-  disabledReason,
-  onSubmit,
-  onStop,
-  placeholder,
-  toolbar,
-  footer,
-  autoFocusKey,
-  compact,
-}: {
-  commands?: SlashCommand[]
-  running?: boolean
-  disabledReason?: ReactNode
-  onSubmit: (text: string) => Promise<boolean> | boolean
-  /** When given, the send button becomes a stop button while `running`. */
-  onStop?: (() => void) | undefined
-  placeholder: string
-  toolbar?: ReactNode
-  footer?: ReactNode
-  autoFocusKey?: string | undefined
-  compact?: boolean
-}) {
-  const [text, setText] = useState('')
-  const [slashIndex, setSlashIndex] = useState(0)
-  const input = useRef<HTMLTextAreaElement>(null)
-  const showStop = running && Boolean(onStop)
-
-  const maxHeight = compact ? 180 : 280
-  const fit = useCallback(() => {
-    const el = input.current
-    // Without a width (hidden or not laid out yet) the text would wrap per character.
-    if (!el || el.clientWidth === 0) return
-    el.style.height = '0px'
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
-  }, [maxHeight])
-
-  useLayoutEffect(fit, [text, fit])
-
-  // The height depends on width too (wrapping), so refit when the box resizes.
-  useEffect(() => {
-    const el = input.current
-    if (!el) return
-    const frame = requestAnimationFrame(fit)
-    void document.fonts?.ready.then(fit)
-    const parent = el.parentElement
-    const observer = typeof ResizeObserver === 'undefined' || !parent ? undefined : new ResizeObserver(fit)
-    if (parent) observer?.observe(parent)
-    return () => {
-      cancelAnimationFrame(frame)
-      observer?.disconnect()
-    }
-  }, [fit])
-
-  useEffect(() => {
-    input.current?.focus()
-  }, [autoFocusKey])
-
-  const slashQuery = /^\/\S*$/.test(text) ? text.slice(1).toLowerCase() : undefined
-  const suggestions = useMemo(() => {
-    if (slashQuery === undefined || !commands.length) return []
-    return commands.filter(command => command.name.replace(/^\//, '').toLowerCase().startsWith(slashQuery)).slice(0, 8)
-  }, [commands, slashQuery])
-  useEffect(() => setSlashIndex(0), [slashQuery])
-
-  const submit = async () => {
-    const value = text.trim()
-    if (!value || showStop || disabledReason) return
-    const accepted = await onSubmit(value)
-    if (accepted) setText('')
-  }
-
-  return (
-    <div className={`composer${running ? ' is-running' : ''}${compact ? ' compact' : ''}`}>
-      {suggestions.length > 0 && (
-        <div className="slash-menu" role="listbox" aria-label="Slash commands">
-          {suggestions.map((command, index) => (
-            <button
-              key={command.name}
-              type="button"
-              role="option"
-              aria-selected={index === slashIndex}
-              className={`slash-item${index === slashIndex ? ' active' : ''}`}
-              onMouseEnter={() => setSlashIndex(index)}
-              onClick={() => {
-                setText(`${command.name.startsWith('/') ? command.name : `/${command.name}`} `)
-                input.current?.focus()
-              }}
-            >
-              <span className="slash-name">{command.name.startsWith('/') ? command.name : `/${command.name}`}</span>
-              <span className="slash-desc">{command.description}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="composer-box" onClick={() => input.current?.focus()}>
-        <textarea
-          ref={input}
-          value={text}
-          rows={1}
-          placeholder={placeholder}
-          aria-label="Message"
-          onChange={event => setText(event.target.value)}
-          onKeyDown={event => {
-            if (event.nativeEvent.isComposing) return
-            if (suggestions.length) {
-              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                event.preventDefault()
-                const delta = event.key === 'ArrowDown' ? 1 : -1
-                setSlashIndex(index => (index + delta + suggestions.length) % suggestions.length)
-                return
-              }
-              if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey)) {
-                const pick = suggestions[slashIndex]
-                const name = pick ? (pick.name.startsWith('/') ? pick.name : `/${pick.name}`) : undefined
-                if (name && name !== text.trim()) {
-                  event.preventDefault()
-                  setText(`${name} `)
-                  return
-                }
-              }
-            }
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              void submit()
-            }
-            if (event.key === 'Escape' && showStop) {
-              event.preventDefault()
-              onStop?.()
-            }
-          }}
-        />
-        <div className="composer-toolbar" onClick={event => event.stopPropagation()}>
-          <div className="composer-controls">{toolbar}</div>
-          {showStop
-            ? (
-              <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
-                <Square size={13} fill="currentColor" />
-              </button>
-            )
-            : (
-              <button
-                type="button"
-                className="send-button"
-                onClick={() => void submit()}
-                disabled={!text.trim() || Boolean(disabledReason)}
-                aria-label="Send"
-                title="Send (Enter)"
-              >
-                <ArrowUp size={17} strokeWidth={2.4} />
-              </button>
-            )}
-        </div>
-      </div>
-      {!compact && (disabledReason || footer) && (
-        <div className="composer-footer">
-          {disabledReason ? <span className="composer-warning"><Sparkles size={13} />{disabledReason}</span> : footer}
-        </div>
-      )}
-    </div>
-  )
-}
-
 /** Session composer: the prompt box plus the per-session run settings. */
 export function Composer({
   settings,
@@ -224,6 +60,8 @@ export function Composer({
   models,
   defaultModelId,
   commands,
+  completeArgument,
+  searchFiles,
   running,
   locked,
   disabledReason,
@@ -236,7 +74,9 @@ export function Composer({
   onSettingsChange: (patch: Partial<RunSettings>) => void
   models: ModelOption[]
   defaultModelId?: string | undefined
-  commands: SlashCommand[]
+  commands: readonly CommandSpec[]
+  completeArgument?: (command: string, query: string) => Promise<ArgumentSuggestion[]>
+  searchFiles?: (query: string) => Promise<string[]>
   running: boolean
   /** Settings can't change while a run is active. */
   locked: boolean
@@ -249,6 +89,8 @@ export function Composer({
   return (
     <PromptBox
       commands={commands}
+      completeArgument={completeArgument}
+      searchFiles={searchFiles}
       running={running}
       disabledReason={disabledReason}
       onSubmit={onSubmit}
