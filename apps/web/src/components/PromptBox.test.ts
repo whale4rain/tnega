@@ -36,7 +36,7 @@ it('completes commands, closes on Escape, reopens on typing and runs a typed-out
   expect(box.value).toBe('/plan ')
   expect(onSubmit).not.toHaveBeenCalled()
   fireEvent.keyDown(box, { key: 'Enter' })
-  expect(onSubmit).toHaveBeenCalledWith('/plan')
+  expect(onSubmit).toHaveBeenCalledWith('/plan', [])
 })
 
 it('inserts @ file mentions from the workspace search', async () => {
