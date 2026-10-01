@@ -59,8 +59,9 @@ export class OoxmlPackage {
     }
   }
 
+  /** 新建的 XML 部件在 `save` 前只在缓存里，也算已存在，免得分到重复的部件名。 */
   has(path: string): boolean {
-    return this.zip.file(path) !== null
+    return this.zip.file(path) !== null || this.cache.has(path)
   }
 
   async xml(path: string): Promise<Document | undefined> {

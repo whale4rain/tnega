@@ -67,6 +67,14 @@ describe('editDocument', () => {
     expect(await part(edited, /word\/styles\.xml$/)).toContain('w:styleId="Heading2"')
   })
 
+  it('gives each inserted chart its own part', async () => {
+    const chart = { type: 'column' as const, categories: ['A'], series: [{ name: 'S', values: [1] }] }
+    const edited = await editDocument(await createDocument(base), [{ op: 'insert', blocks: [{ type: 'chart', chart }, { type: 'chart', chart: { ...chart, type: 'line' } }] }])
+    const files = Object.keys((await JSZip.loadAsync(edited)).files).filter(path => /^word\/charts\/chart\d+\.xml$/.test(path))
+    expect(files).toHaveLength(2)
+    expect((await texts(edited)).slice(-2)).toEqual(['chart:column', 'chart:line'])
+  })
+
   it('creates the numbering part when the document has none', async () => {
     const zip = await JSZip.loadAsync(await createDocument(base))
     zip.remove('word/numbering.xml')
