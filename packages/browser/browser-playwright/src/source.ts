@@ -1,5 +1,17 @@
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
+import type { Browser, BrowserContext, BrowserType, Page } from 'playwright-core'
 import { BrowserError } from '@tnega/browser'
+
+/**
+ * Playwright loads only when a browser is first needed, so a runtime without
+ * the dependency installed (or that never browses) still starts.
+ */
+async function chromiumType(): Promise<BrowserType> {
+  try {
+    return (await import('playwright-core')).chromium
+  } catch (error) {
+    throw new BrowserError('BROWSER_UNAVAILABLE', 'playwright-core is not installed', { cause: error })
+  }
+}
 
 /**
  * Where the driven page comes from. The host acquires lazily on first use and
@@ -46,6 +58,7 @@ export function launchPageSource(options: LaunchSourceOptions = {}): PageSource 
 
   const launch = async (): Promise<Browser> => {
     const headless = options.headless ?? defaultHeadless()
+    const chromium = await chromiumType()
     if (options.executablePath) return chromium.launch({ executablePath: options.executablePath, headless })
     const channels = options.channel ? [options.channel] : defaultChannels()
     const failures: string[] = []
@@ -115,7 +128,7 @@ export function cdpPageSource(options: CdpSourceOptions): PageSource {
       if (page && !page.isClosed() && browser?.isConnected()) return page
       if (!browser?.isConnected()) {
         try {
-          browser = await chromium.connectOverCDP(await options.endpoint())
+          browser = await (await chromiumType()).connectOverCDP(await options.endpoint())
         } catch (error) {
           throw new BrowserError('BROWSER_UNAVAILABLE', `could not attach to the in-app browser: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
         }
