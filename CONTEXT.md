@@ -83,6 +83,14 @@ Workspace `.tnega/MEMORY.md` 在压缩时整理长期有效的项目约定。每
 一个 Session 中持久的完成目标及其状态。Goal 模式可在同一 Agent Run 内自动推进有界轮次；
 `/goal` 控制目标，模型通过 `get_goal`、`update_goal` 报告完成或阻塞。
 
+**Agent 浏览器 (Agent Browser)**:
+Agent 通过 `browser_*` 工具驱动的那一个页面。桌面端是内嵌在 Browser 面板里的视图，其它环境是一个独立的 Edge / Chrome 窗口；用户可以同时浏览。元素用最近一次快照里的 ref 定位。
+_Avoid_: computer use（那指整个桌面）、headless browser（它通常是可见的）
+
+**附件 (Attachment)**:
+随用户消息或工具结果一起进入模型上下文的图片。以 base64 内联在 Session 事件里，文本仍是 `content`；不支持图片的模型收到一行说明而不是图片。
+_Avoid_: file（工作区文件）、artifact（Project 产物）
+
 **Timeline**:
 一个 Agent Run 的可视化事件序列，展示消息、工具调用与工具结果。
 _Avoid_: log view
