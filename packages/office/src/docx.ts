@@ -18,9 +18,11 @@ import {
   TextRun,
   WidthType,
 } from 'docx'
+import { ChartRun } from 'docx/charts'
 import { OfficeError } from './errors.js'
-import { assertTheme, tint, type Theme } from './theme.js'
-import { attribute, child, children, descendants, openPackage, readXml, requireXml } from './ooxml.js'
+import { assertTheme, palette, tint, type Theme } from './theme.js'
+import { attribute, child, children, descendants, openPackage, readXml, relationshipId, relationships, requireXml } from './ooxml.js'
+import { assertChart, parseChartXml, type ChartRead, type ChartSpec } from './chart.js'
 
 export interface TextSpan {
   text: string
@@ -38,6 +40,8 @@ export type DocBlock =
   | { type: 'list', items: Inline[], ordered?: boolean }
   | { type: 'table', rows: string[][], header?: boolean }
   | { type: 'pageBreak' }
+  /** 原生 Word 图表，数据内嵌，可在 Word 中“编辑数据”。尺寸以像素计，缺省 600×360。 */
+  | { type: 'chart', chart: ChartSpec, width?: number, height?: number }
 
 export interface PageSetup {
   size?: 'A4' | 'Letter'
@@ -63,6 +67,7 @@ export interface DocumentSpec {
 export type DocBlockOutput =
   | { index: number, type: 'paragraph', style?: string, text: string }
   | { index: number, type: 'table', rows: string[][] }
+  | { index: number, type: 'chart', chart: ChartRead }
 
 export interface DocumentRead {
   blocks: DocBlockOutput[]
@@ -73,6 +78,7 @@ export interface DocumentRead {
 export interface DocumentOutline {
   paragraphs: number
   tables: number
+  charts: number
   words: number
   headings: { index: number, level: number, text: string }[]
 }
@@ -144,11 +150,49 @@ function blockChildren(block: DocBlock, theme: Theme | undefined): (Paragraph | 
     }
     case 'pageBreak':
       return [new Paragraph({ children: [new PageBreak()] })]
+    case 'chart':
+      return [new Paragraph({ alignment: AlignmentType.CENTER, children: [chartRun(block, theme)] })]
     default: {
       const unknown: never = block
       throw new OfficeError(`unknown document block: ${JSON.stringify(unknown)}`, 'OFFICE_INVALID')
     }
   }
+}
+
+function chartRun(block: Extract<DocBlock, { type: 'chart' }>, theme: Theme | undefined): ChartRun {
+  const spec = block.chart
+  assertChart(spec)
+  const colors = palette(theme)
+  const common = {
+    ...(spec.title ? { title: spec.title } : {}),
+    ...(spec.legend === false ? { legend: false as const } : {}),
+    transformation: { width: block.width ?? 600, height: block.height ?? 360 },
+  }
+  if (spec.type === 'pie' || spec.type === 'doughnut') {
+    return new ChartRun({
+      ...common,
+      type: spec.type,
+      categories: spec.categories,
+      series: spec.series.map(series => ({
+        name: series.name,
+        values: series.values,
+        colors: spec.categories.map((_, index) => colors[index % colors.length]),
+      })),
+      ...(spec.dataLabels ? { dataLabels: { percentage: true } } : {}),
+    })
+  }
+  return new ChartRun({
+    ...common,
+    type: spec.type,
+    categories: spec.categories,
+    series: spec.series.map((series, index) => ({
+      name: series.name,
+      values: series.values,
+      color: series.color ?? colors[index % colors.length] ?? '4472C4',
+    })),
+    ...(spec.stacked && spec.type !== 'line' ? { stacking: 'stacked' as const } : {}),
+    ...(spec.dataLabels ? { dataLabels: { value: true } } : {}),
+  })
 }
 
 /** twips：Word 的长度单位，1 厘米约 567。 */
@@ -261,9 +305,15 @@ async function parseDocument(bytes: Uint8Array): Promise<ParsedDocument> {
     if (id && name) styleNames.set(id, name)
   }
 
+  const rels = await relationships(zip, 'word/_rels/document.xml.rels', 'word')
   const blocks: DocBlockOutput[] = []
   for (const element of children(body)) {
-    if (element.localName === 'p') {
+    const chartRef = element.localName === 'p' ? descendants(element, 'chart').find(node => relationshipId(node)) : undefined
+    const chartPath = chartRef ? rels.get(relationshipId(chartRef) ?? '') : undefined
+    const chartXml = chartPath ? await readXml(zip, chartPath) : undefined
+    if (chartXml) {
+      blocks.push({ index: blocks.length, type: 'chart', chart: parseChartXml(chartXml) })
+    } else if (element.localName === 'p') {
       const style = attribute(child(child(element, 'pPr') ?? element, 'pStyle'), 'val')
       blocks.push({ index: blocks.length, type: 'paragraph', ...(style ? { style } : {}), text: paragraphText(element) })
     } else if (element.localName === 'tbl') {
@@ -287,9 +337,13 @@ function headingLevel(style: string | undefined, styleNames: Map<string, string>
 
 export async function inspectDocument(bytes: Uint8Array): Promise<DocumentOutline> {
   const { blocks, styleNames } = await parseDocument(bytes)
-  const outline: DocumentOutline = { paragraphs: 0, tables: 0, words: 0, headings: [] }
+  const outline: DocumentOutline = { paragraphs: 0, tables: 0, charts: 0, words: 0, headings: [] }
   const countWords = (text: string): number => text.split(/\s+/).filter(Boolean).length
   for (const block of blocks) {
+    if (block.type === 'chart') {
+      outline.charts++
+      continue
+    }
     if (block.type === 'table') {
       outline.tables++
       outline.words += block.rows.flat().reduce((sum, cell) => sum + countWords(cell), 0)

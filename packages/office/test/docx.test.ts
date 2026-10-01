@@ -21,7 +21,7 @@ describe('docx', () => {
     const read = await readDocument(bytes)
     expect(read.total).toBe(8)
     expect(read.truncated).toBe(false)
-    expect(read.blocks.map(block => (block.type === 'table' ? block.rows : block.text))).toEqual([
+    expect(read.blocks.map(block => (block.type === 'table' ? block.rows : block.type === 'paragraph' ? block.text : block.chart))).toEqual([
       'Q2 Sales Report',
       'Revenue grew 12% quarter over quarter.',
       'By region',
@@ -41,6 +41,7 @@ describe('docx', () => {
     expect(outline).toEqual({
       paragraphs: 7,
       tables: 1,
+      charts: 0,
       words: 22,
       headings: [{ index: 0, level: 1, text: 'Q2 Sales Report' }, { index: 2, level: 2, text: 'By region' }],
     })

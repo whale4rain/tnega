@@ -1,7 +1,8 @@
 import type { Element } from '@xmldom/xmldom'
 import pptxgen from 'pptxgenjs'
 import { OfficeError } from './errors.js'
-import { assertColor, assertTheme, tint, type Theme } from './theme.js'
+import { assertColor, assertTheme, palette, tint, type Theme } from './theme.js'
+import { assertChart, isRound, parseChartXml, type ChartRead, type ChartSpec, type ChartType } from './chart.js'
 import { attribute, child, children, descendants, openPackage, readXml, relationshipId, relationships, requireXml } from './ooxml.js'
 
 // pptxgenjs 的类型按 ESM 写成，包本身却是 CommonJS：NodeNext 下 TS 认为类在 `.default` 上，
@@ -16,6 +17,8 @@ export interface SlideSpec {
   text?: string
   bullets?: string[]
   table?: { rows: string[][], header?: boolean }
+  /** 原生 PowerPoint 图表，数据内嵌。 */
+  chart?: ChartSpec
   notes?: string
 }
 
@@ -44,6 +47,7 @@ export interface SlideOutput {
   title?: string
   shapes: SlideShape[]
   tables: string[][][]
+  charts: ChartRead[]
   notes?: string
 }
 
@@ -113,8 +117,41 @@ function addBody(slide: Slide, spec: SlideSpec, look: DeckLook, top: number, bot
     })))
     parts.push((y, h) => slide.addTable(tableRows, { objectName: 'Table', x: MARGIN, y, w: width, h, fontSize: 14, border: { type: 'solid', pt: 0.5, color: 'BFBFBF' }, ...body }))
   }
+  if (spec.chart) {
+    const chart = spec.chart
+    assertChart(chart)
+    parts.push((y, h) => addChart(slide, chart, look, { x: MARGIN, y, w: width, h }))
+  }
   const height = (bottom - top) / Math.max(1, parts.length)
   parts.forEach((place, index) => place(top + index * height, height))
+}
+
+const PPTX_CHART: Record<ChartType, 'bar' | 'line' | 'area' | 'pie' | 'doughnut'> = {
+  column: 'bar', bar: 'bar', line: 'line', area: 'area', pie: 'pie', doughnut: 'doughnut',
+}
+
+function addChart(slide: Slide, chart: ChartSpec, look: DeckLook, box: { x: number, y: number, w: number, h: number }): void {
+  const round = isRound(chart.type)
+  const scheme = palette(look.theme)
+  const colors = round ? scheme : chart.series.map((series, index) => series.color ?? scheme[index % scheme.length] ?? '4472C4')
+  slide.addChart(PPTX_CHART[chart.type], chart.series.map(series => ({
+    name: series.name,
+    labels: chart.categories,
+    // pptxgenjs 不接受 null；留空的点按 0 画出。
+    values: chart.categories.map((_, index) => series.values[index] ?? 0),
+  })), {
+    ...box,
+    objectName: 'Chart',
+    chartColors: colors,
+    showLegend: chart.legend !== false,
+    legendPos: 'b',
+    ...(chart.title ? { showTitle: true, title: chart.title } : {}),
+    ...(chart.type === 'bar' ? { barDir: 'bar' } : chart.type === 'column' ? { barDir: 'col' } : {}),
+    ...(chart.stacked && chart.type !== 'line' && !round ? { barGrouping: 'stacked' } : {}),
+    ...(chart.dataLabels ? (round ? { showPercent: true } : { showValue: true }) : {}),
+    ...(chart.type === 'doughnut' ? { holeSize: 50 } : {}),
+    ...(look.theme?.font ? { titleFontFace: look.theme.headingFont ?? look.theme.font, legendFontFace: look.theme.font, catAxisLabelFontFace: look.theme.font, valAxisLabelFontFace: look.theme.font } : {}),
+  })
 }
 
 function addSlide(pptx: InstanceType<typeof PptxGenJS>, spec: SlideSpec, look: DeckLook): void {
@@ -123,7 +160,7 @@ function addSlide(pptx: InstanceType<typeof PptxGenJS>, spec: SlideSpec, look: D
   const titleColor = look.theme?.accent ? { color: look.theme.accent } : {}
   if (look.background) slide.background = { color: look.background }
   if (look.slideNumbers) slide.slideNumber = { x: look.width - 0.9, y: look.height - 0.45, w: 0.6, h: 0.3, fontSize: 10, color: '8C8C8C', align: 'right' }
-  const cover = spec.subtitle !== undefined && !spec.text && !spec.bullets?.length && !spec.table
+  const cover = spec.subtitle !== undefined && !spec.text && !spec.bullets?.length && !spec.table && !spec.chart
   if (cover) {
     const middle = look.height / 2
     slide.addText(spec.title ?? '', { objectName: 'Title', x: MARGIN, y: middle - 1.1, w: width, h: 1.2, fontSize: 36, bold: true, align: 'center', ...titleColor, ...textFace(look, true) })
@@ -233,6 +270,12 @@ async function readSlide(parsed: ParsedPresentation, index: number): Promise<Sli
   const directory = path.slice(0, path.lastIndexOf('/'))
   const file = path.slice(path.lastIndexOf('/') + 1)
   const slideRels = await relationships(parsed.zip, `${directory}/_rels/${file}.rels`, directory)
+  const charts: ChartRead[] = []
+  for (const reference of descendants(document, 'chart')) {
+    const chartPath = slideRels.get(relationshipId(reference) ?? '')
+    const chartXml = chartPath ? await readXml(parsed.zip, chartPath) : undefined
+    if (chartXml) charts.push(parseChartXml(chartXml))
+  }
   const notesPath = [...slideRels.values()].find(target => /notesSlide\d*\.xml$/.test(target))
   const notesDocument = notesPath ? await readXml(parsed.zip, notesPath) : undefined
   const notes = notesDocument
@@ -247,6 +290,7 @@ async function readSlide(parsed: ParsedPresentation, index: number): Promise<Sli
     ...(title?.text ? { title: title.text } : {}),
     shapes: shapes.filter(shape => shape.text !== ''),
     tables,
+    charts,
     ...(notes ? { notes } : {}),
   }
 }

@@ -1,4 +1,5 @@
 export * from './address.js'
+export * from './chart.js'
 export * from './docx.js'
 export * from './errors.js'
 export * from './formula.js'
