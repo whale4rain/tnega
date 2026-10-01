@@ -85,8 +85,6 @@ const libraryEntries = {
   agent: 'packages/agent/src/index.ts',
   'coding-agent': 'packages/coding-agent/src/index.ts',
   core: 'packages/core/src/index.ts',
-  eval: 'packages/eval/src/index.ts',
-  evolve: 'packages/evolve/src/index.ts',
   execution: 'packages/execution/src/index.ts',
   llm: 'packages/llm/src/index.ts',
   memory: `${packageDir('memory')}/src/index.ts`,

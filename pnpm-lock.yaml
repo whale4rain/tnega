@@ -178,15 +178,6 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
-  packages/benchmark:
-    dependencies:
-      '@tnega/eval':
-        specifier: workspace:*
-        version: link:../eval
-      hyparquet:
-        specifier: ^1.29.2
-        version: 1.29.2
-
   packages/cli:
     dependencies:
       '@tnega/agent':
@@ -213,9 +204,6 @@ importers:
       '@tnega/auto-approval':
         specifier: workspace:*
         version: link:../auto-approval
-      '@tnega/benchmark':
-        specifier: workspace:*
-        version: link:../benchmark
       '@tnega/blackboard':
         specifier: workspace:*
         version: link:../project/blackboard
@@ -234,12 +222,6 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/eval':
-        specifier: workspace:*
-        version: link:../eval
-      '@tnega/evolve':
-        specifier: workspace:*
-        version: link:../evolve
       '@tnega/execution':
         specifier: workspace:*
         version: link:../execution
@@ -362,73 +344,6 @@ importers:
         version: link:../tools
 
   packages/core: {}
-
-  packages/eval:
-    dependencies:
-      '@tnega/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@tnega/coding-agent':
-        specifier: workspace:*
-        version: link:../coding-agent
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../execution
-      '@tnega/execution-sandbox':
-        specifier: workspace:*
-        version: link:../sandbox/execution-sandbox
-      '@tnega/memory-local':
-        specifier: workspace:*
-        version: link:../memory/memory-local
-      '@tnega/sandbox':
-        specifier: workspace:*
-        version: link:../sandbox/sandbox
-      '@tnega/sandbox-local':
-        specifier: workspace:*
-        version: link:../sandbox/sandbox-local
-      '@tnega/search-ripgrep':
-        specifier: workspace:*
-        version: link:../search/search-ripgrep
-      '@tnega/session':
-        specifier: workspace:*
-        version: link:../session
-      '@tnega/spill-local':
-        specifier: workspace:*
-        version: link:../spill/spill-local
-      '@tnega/tool-memory':
-        specifier: workspace:*
-        version: link:../memory/tool-memory
-      '@tnega/tool-search':
-        specifier: workspace:*
-        version: link:../search/tool-search
-      '@tnega/tool-spill':
-        specifier: workspace:*
-        version: link:../spill/tool-spill
-      '@tnega/tools':
-        specifier: workspace:*
-        version: link:../tools
-
-  packages/evolve:
-    dependencies:
-      '@tnega/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
-      '@tnega/eval':
-        specifier: workspace:*
-        version: link:../eval
-    devDependencies:
-      '@tnega/session':
-        specifier: workspace:*
-        version: link:../session
-      '@tnega/tools':
-        specifier: workspace:*
-        version: link:../tools
 
   packages/execution: {}
 
@@ -2867,9 +2782,6 @@ packages:
 
   https@1.0.0:
     resolution: {integrity: sha512-4EC57ddXrkaF0x83Oj8sM6SLQHAWXw90Skqu2M4AEWENZ3F02dFJE/GARA8igO79tcgYqGrD7ae4f5L3um2lgg==}
-
-  hyparquet@1.29.2:
-    resolution: {integrity: sha512-2LxinZ8X0JqToST+9OXcy9t3t5Q7ZneMTkSqUx/36Hv18pCTk/N71IWZc7APTSNG1Me39l/jjEvzZSZ0R+Knbw==}
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -6535,8 +6447,6 @@ snapshots:
       - supports-color
 
   https@1.0.0: {}
-
-  hyparquet@1.29.2: {}
 
   iconv-lite@0.6.3:
     dependencies:

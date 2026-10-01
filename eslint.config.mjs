@@ -8,7 +8,6 @@ export default tseslint.config(
       'apps/web/dist/**',
       'node_modules/**',
       'coverage/**',
-      'data/benchmarks/**',
       // Build and packaging output that .gitignore already excludes; without
       // these, linting fails on any checkout that has packaged the desktop app.
       '.worktrees/**',
@@ -18,18 +17,6 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  {
-    files: ['packages/benchmark/scripts/**/*.mjs'],
-    languageOptions: {
-      globals: {
-        URL: 'readonly',
-        clearTimeout: 'readonly',
-        console: 'readonly',
-        process: 'readonly',
-        setTimeout: 'readonly',
-      },
-    },
-  },
   {
     files: ['apps/desktop/scripts/build.mjs', 'scripts/package-desktop.mjs'],
     languageOptions: {
