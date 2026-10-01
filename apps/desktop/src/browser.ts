@@ -96,7 +96,10 @@ export class DesktopBrowser {
       endpoint: debuggingEndpoint,
       targetId: () => this._target(),
       prepare: () => this.reveal(),
-    }))
+    }), {
+      // Unpackaged Electron prints these into every page; they are not the page's problems.
+      ignoreConsole: text => text.includes('Electron Security Warning'),
+    })
 
     const on = (channel: string, listener: (event: IpcMainEvent, ...args: unknown[]) => void) => {
       const guarded = (event: IpcMainEvent, ...args: unknown[]) => {

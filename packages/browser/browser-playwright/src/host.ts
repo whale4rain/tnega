@@ -23,6 +23,8 @@ export interface BrowserHostOptions {
   logLimit?: number
   /** JPEG quality for screenshots, 1–100. */
   screenshotQuality?: number
+  /** Console messages to drop, e.g. warnings the embedding host prints into every page. */
+  ignoreConsole?: (text: string) => boolean
 }
 
 const WAIT_MS_CAP = 10_000
@@ -71,12 +73,14 @@ export class PlaywrightBrowserHost {
   private readonly _actionTimeoutMs: number
   private readonly _logLimit: number
   private readonly _quality: number
+  private readonly _ignoreConsole: ((text: string) => boolean) | undefined
 
   constructor(private readonly _source: PageSource, options: BrowserHostOptions = {}) {
     this._snapshotMaxChars = options.snapshotMaxChars ?? DEFAULT_BROWSER_SNAPSHOT_MAX_CHARS
     this._actionTimeoutMs = options.actionTimeoutMs ?? DEFAULT_BROWSER_ACTION_TIMEOUT_MS
     this._logLimit = options.logLimit ?? DEFAULT_BROWSER_LOG_LIMIT
     this._quality = options.screenshotQuality ?? 70
+    this._ignoreConsole = options.ignoreConsole
   }
 
   state(): BrowserPageState {
@@ -239,6 +243,7 @@ export class PlaywrightBrowserHost {
       if (list.length > this._logLimit) list.splice(0, list.length - this._logLimit)
     }
     page.on('console', (entry: ConsoleMessage) => {
+      if (this._ignoreConsole?.(entry.text())) return
       const { url, lineNumber, columnNumber } = entry.location()
       push(this._console, {
         type: entry.type(),
