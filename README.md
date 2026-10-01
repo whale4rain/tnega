@@ -6,7 +6,7 @@
 
 [中文](docs/zh-CN.md)
 
-**Tnega** is "agent" spelled backwards. It is an eval-first agent harness with spacetime-composable plugin lifecycles: components can be hot-swapped and rolled back safely, and Eval is a first-class citizen on par with the agent loop and tools.
+**Tnega** is "agent" spelled backwards. It is an agent harness with spacetime-composable plugin lifecycles: components can be hot-swapped and rolled back safely.
 
 Use it for coding, document work, or ongoing projects with a coordinator and parallel agents—all in a local Web or desktop interface.
 
@@ -19,7 +19,7 @@ Use it for coding, document work, or ongoing projects with a coordinator and par
 - **Projects:** keep an ongoing conversation with a coordinator that delegates work to parallel Threads. Follow their progress, reply directly, and bring shared Memory and a Library of files and artifacts into the same project. [Project guide](docs/project/README.md).
 - **Work agent:** create, inspect and edit Word documents, Excel workbooks and PowerPoint presentations with built-in Office tools, alongside General and Coding agents.
 - **Automatic artifact discovery and previews:** successful Office create/edit calls produce file cards in the conversation, including calls inside CodeMode. Click a card to preview DOCX pages, XLSX sheets and charts, or PPTX slides beside the conversation, with zoom and download controls.
-- **Composable agent runtime:** scoped services, reversible plugin lifecycles, tools, LLM adapters, and evaluation share the same core.
+- **Composable agent runtime:** scoped services, reversible plugin lifecycles, tools, and LLM adapters share the same core.
 - **Durable conversations:** General, Coding and Work sessions use JSONL event logs; the UI supports session forks, context compaction, provider usage and cache metrics, and a readable activity timeline.
 - **Coding workflows:** Auto runs tools, Plan produces a plan, and Goal advances a persistent objective. Coding sessions also support slash commands, workspace skills, and configured MCP servers.
 - **Subagents:** agents can spawn or fork child sessions, communicate through durable inboxes, and inspect child progress. The UI shows child tasks and renders their conversations.
@@ -30,7 +30,7 @@ Use it for coding, document work, or ongoing projects with a coordinator and par
 - **Automatic approval:** independently choose Ask me or Auto review. A scoped plugin reviews each gated action with the conversation model, a configured model route, TypeSafe Jev, or OpenAI Responses. Missing credentials, uncertainty, cancellation and oversized evidence fall back to human approval; sandbox policy still applies. See [configuration](packages/auto-approval/README.md).
 - **Run summaries:** an independent plugin persists the final successful reply; completed runs show that reply and collapse intermediate work into an expandable process. Failed or cancelled runs remain visible. This does not call another model or compact model history.
 - **Sandbox:** shell execution is wrapped by a local sandbox backend (bubblewrap or Landlock on Linux, Seatbelt on macOS, a restricted-token ACL runner on Windows). It is a capability seam with a functional probe and fail-closed semantics: when no backend is usable the command is refused rather than run unconfined.
-- **Local Web and desktop UI:** the Electron app hosts the same loopback-backed interface, with an in-app Settings dialog. Eval and Evolve remain available from the CLI and library.
+- **Local Web and desktop UI:** the Electron app hosts the same loopback-backed interface, with an in-app Settings dialog.
 
 ## Install
 
@@ -50,12 +50,6 @@ tnega run "Reply with: hello"
 ```
 
 `tnega run` uses OpenCode Go's `deepseek-v4-flash` model through the OpenAI compatible endpoint by default. `minimax-m3` is also available through the Anthropic Messages endpoint. Set `TNEGA_API_KEY` for the API key; `OPENCODE_GO_API_KEY`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY` remain compatible fallbacks. System Config lives at `%USERPROFILE%\.tnega\config.json` on Windows or `~/.config/tnega/config.json` on Linux/macOS. It accepts the original `apiKey`, `model`, `baseUrl`, `protocol`, and `temperature` fields, plus a `models` array with per-model routes and `reasoningEfforts`. See the [multi-model configuration example](packages/cli/README.md#系统配置configts). CLI flags and environment variables override the legacy defaults; a selected model's explicit route and credential are used for that session.
-
-Run a deterministic eval without an API key:
-
-```bash
-tnega eval run examples/tasks.yml
-```
 
 Start the local web UI:
 
@@ -83,9 +77,6 @@ click a card to preview or download it.
 tnega run "prompt"                       # one agent session
 tnega run --allow-shell "list files"     # enable high-permission tools
 tnega web                                # local web UI
-tnega eval run tasks.yml                 # run evals
-tnega eval compare <base> <head>         # compare two eval runs
-tnega evolve run tasks.yml               # run a self-evolution loop
 ```
 
 Options include `--model`, `--base-url`, `--max-tokens`, `--temperature`, `--cwd`, `--session`, `--timeout-ms`, `--max-retries`, and `--retry-delay-ms`. Sessions are recorded as JSONL under `.tnega/`.
@@ -130,7 +121,7 @@ client.
 
 ## Library
 
-Tnega is published as a library as well as a CLI. Use the root package or domain subpaths (`tnega/core`, `tnega/agent`, `tnega/coding-agent`, `tnega/eval`, `tnega/evolve`, `tnega/session`, `tnega/tools`, `tnega/llm`, ...):
+Tnega is published as a library as well as a CLI. Use the root package or domain subpaths (`tnega/core`, `tnega/agent`, `tnega/coding-agent`, `tnega/session`, `tnega/tools`, `tnega/llm`, ...):
 
 ```ts
 import { Context, defineAgent, openaiCompatAdapter } from 'tnega'
@@ -155,8 +146,6 @@ await fiber.dispose()
 ## Concepts
 
 - **Spacetime composability**: components can be inserted, replaced, and removed at runtime; effects are reversed in order on teardown, so hot-swaps leave no residue.
-- **Eval as infrastructure**: strategies, tasks, evidence, verdicts, and runs are pluggable primitives, and evaluation is also the fitness function for self-evolution.
-- **Self-evolution**: `evolve` proposes candidates, evaluates them in isolated scopes, and accepts or rejects them through deterministic gates.
 
 See the [Chinese guide](docs/zh-CN.md) for the detailed design, model pricing table, library contracts, and roadmap.
 

@@ -14,7 +14,7 @@ landlock、Seatbelt、Windows ACL 都属于 Provider。
 
 Consumer 只 import 本包，从不 import 具体 Provider，也不枚举后端。Provider 的挑选属于
 composition 层（`packages/cli/src/commands.ts`、`packages/cli/src/server.ts`、
-`packages/cli/src/project-host.ts`、`packages/eval/src/codingRuntime.ts`）。
+`packages/cli/src/project-host.ts`）。
 
 ## 契约
 

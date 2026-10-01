@@ -54,7 +54,7 @@
 ## 后果
 
 - 换 Provider = 改 composition 层的挂载行（`packages/cli/src/commands.ts`、
-  `packages/cli/src/server.ts`、`packages/eval/src/codingRuntime.ts`），
+  `packages/cli/src/server.ts`），
   `@tnega/tool-search` 与模型看到的工具零改动。
 - `builtinTools` 不再注册 `glob` / `grep`；`DEFAULT_BUILTIN_TOOL_NAMES` 与
   `BuiltinToolsConfig` 相应收窄（`ripgrepPath` / `respectGitignore` /

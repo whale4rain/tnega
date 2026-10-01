@@ -10,16 +10,16 @@
   <img src="assets/tnega-icon.png" alt="Tnega 图标" width="160" />
 </p>
 
-Tnega 是 "agent" 的逆写，也是本项目想做的事：把 Agent 本身当作可以被观察、修改、回滚和进化的对象。
+Tnega 是 "agent" 的逆写，也是本项目想做的事：把 Agent 本身当作可以被观察、修改和回滚的对象。
 
-Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空可组合思想，同时把简洁性作为硬约束，并把 Eval 提升为与 Agent Loop、Tools 平级的一等公民。
+Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空可组合思想，同时把简洁性作为硬约束。
 
 ## 支持的功能
 
 - **Project 协作**：与协调者保持持续对话，由它委派并行 Thread；查看进度、直接留言，并共享 Memory 与文件、产物 Library。[Project 指南](project/README.md)。
 - **Work Agent**：与 General、Coding 并列，通过内置 Office 工具创建、读取和编辑 Word 文档、Excel 工作簿与 PowerPoint 演示文稿。
 - **产物自动识别与预览**：成功创建或编辑 Office 文件后，会话自动显示文件卡片，也支持 CodeMode 内的工具调用。点击卡片即可在侧栏预览 DOCX 页面、XLSX 表格与图表、PPTX 幻灯片，并缩放或下载。
-- 可组合的 Agent runtime：作用域服务、可逆插件生命周期、工具、模型适配器和评测。
+- 可组合的 Agent runtime：作用域服务、可逆插件生命周期、工具和模型适配器。
 - 持久会话：JSONL 事件日志、会话分支、上下文压缩、模型用量与缓存命中统计、工具活动时间线。
 - Coding 会话：Auto、Plan、Goal 模式，斜杠命令、工作区技能和配置的 MCP 服务。
 - 子代理：独立 Session 与 durable inbox，支持 spawn / fork、父子消息和任务状态面板。
@@ -29,7 +29,7 @@ Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空
 - **自动审批**：可选择人工批准或 Auto review，由独立审查器评估越权操作；无法判断时回到人工审批，沙箱限制仍然生效。[配置说明](../packages/auto-approval/README.md)。
 - **CodeMode**：在设置中启用后，用 `run_code` 内的 JavaScript 编排现有工具，保留原有权限检查。[设计与取舍](adr/0010-ptc-tool-orchestration.md)。
 - **运行摘要**：成功运行突出展示最终回复，中间过程可折叠展开；失败和取消的过程保留可见。
-- 本地 Web 与 Electron 桌面界面；CLI 和库同时提供 Eval 与 Evolve。
+- 本地 Web 与 Electron 桌面界面。
 
 ![Tnega 工作台：Coding 会话、计划和运行设置](assets/workbench.png)
 
@@ -47,7 +47,7 @@ Office 文件生成后会出现在会话中，点击文件卡片即可预览和�
 ## 为什么做 Tnega
 
 - Agent = Model + Harness。模型负责思考，Harness 负责模型之外的一切：记忆、工具、权限、执行、评估。
-- 大多数 Harness 是固定系统。Tnega 的目标是让 Harness 本身可以被安全地热插拔和回滚，从而为 Agent 自进化提供基础。
+- 大多数 Harness 是固定系统。Tnega 的目标是让 Harness 本身可以被安全地热插拔和回滚，让能力可以在运行中安全地组合与替换。
 - dsh 证明了 "一切皆插件" 可以做到，但整个工程很大。Tnega 自研一个语义完整、体积可控的核心，再叠加薄业务层。
 
 ## 安装
@@ -69,12 +69,6 @@ tnega run "Reply with: hello"
 
 `tnega run` 默认通过 OpenAI 兼容协议调用 OpenCode Go 的 `deepseek-v4-flash`；`minimax-m3` 走 Anthropic Messages 协议，同样内置在能力表中。首选环境变量为 `TNEGA_API_KEY`；`OPENCODE_GO_API_KEY`、`OPENAI_API_KEY` 和 `DEEPSEEK_API_KEY` 仍兼容。key 也可以放在系统配置文件中：Windows 为 `%USERPROFILE%\.tnega\config.json`，Linux / macOS 为 `~/.config/tnega/config.json`，文件内可写 `apiKey`、`model`、`baseUrl`、`protocol`、`temperature`。优先级为命令行参数 > 环境变量 > 配置文件 > 默认值。旧版 Windows `%APPDATA%\tnega\config.json` 仅作为迁移来源。
 
-不需要 API key 的确定性评测：
-
-```bash
-tnega eval run examples/tasks.yml
-```
-
 启动本地 Web UI：
 
 ```bash
@@ -92,9 +86,6 @@ Web UI 支持按会话选择 `general` / `coding` 两种 agent。coding 会话�
 tnega run "prompt"                       # 运行一次 agent 会话
 tnega run --allow-shell "list files"     # 开启高权限工具
 tnega web                                # 本地 Web UI
-tnega eval run tasks.yml                 # 运行评测
-tnega eval compare <base> <head>         # 比较两次评测
-tnega evolve run tasks.yml               # 运行自进化闭环
 ```
 
 常用参数：`--model`、`--base-url`、`--max-tokens`、`--temperature`、`--cwd`、`--session`、`--timeout-ms`、`--max-retries`、`--retry-delay-ms`。会话默认写入 `.tnega/run.jsonl`，可使用 `--session <file>` 指定位置。
@@ -110,39 +101,6 @@ tnega evolve run tasks.yml               # 运行自进化闭环
 
 - 时间可组合：组件可以热插入、热拔出、热替换，失败可回滚。
 - 空间可组合：依赖齐备才激活，provider 消失时依赖方先停；不同 scope 拥有不同组合。
-
-## Eval 是一等公民
-
-Eval 不是测试工具，而是 runtime 的裁判，也是进化的 fitness function。它与 Agent Loop、Tools 平级，共享同一套 Fiber / Effect / Event 机制。
-
-核心对象：
-
-- EvalStrategy：评测策略，以插件形式注册和卸载。
-- Task：任务定义，包含输入、setup、超时与预算。
-- Evidence：不可变证据，由 session log 与 artifacts 组成，可 keyless replay。
-- Verdict：单个策略对单个任务给出的判分结果。
-- EvalRun：一次完整评测，包含候选组件、baseline、verdicts 与 summary。
-
-原则：
-
-- Evidence 是不可变证据：session log + artifacts，重放不需要重新调用模型。
-- Strategy 是插件：可注册、可卸载、可热替换。
-- Run 是隔离实验：候选组件在独立 scope 中加载，跑完自动卸载。
-- Gate 是确定性的：接受或拒绝由阈值、regression、safety 规则决定，而非模型自我评价。
-
-## 自进化
-
-Tnega 把自进化拆成三个可独立验证的阶段：
-
-1. 安全变异：core 的时空语义保证组件可以安全地插入、替换、回滚。
-2. 可靠评估：eval 对候选组件运行同一套任务与策略，产生可比较的分数。
-3. 选择与持久化：通过 gate 的候选成为新 baseline，失败的进入 experiment log。
-
-Experiment log 是一棵树，每个节点包含 candidate、verdicts 与 parent baseline，可回放、可 fork。
-
-evolve 是进化循环本身：`propose` 根据当前 baseline 的诊断结果生成候选，`evaluate` 在 eval 的隔离 scope 中运行候选，`decide` 用可插拔的 gate 比较 baseline 与 candidate，接受后持久化为新 baseline，拒绝后保留旧 baseline。人工审批通过 `evolve/approval-request` 事件暂停，调用方可以异步 approve / reject。
-
-`tnega evolve run tasks.yml` 把自进化闭环接到真实 LLM：baseline 和候选都由 LLM 驱动，提案规则要求 LLM 返回 JSON 形态的系统提示词候选，评测后由确定性 gate 决定接受或拒绝。实验树默认写入 `.tnega/experiments/log.json`，候选 run 写入 `.tnega/experiments/runs/`，文件中不含 key。
 
 ## 模型与价格
 
@@ -262,7 +220,7 @@ M13 为外部 agent 补齐的三个主要契约：
 - `SessionLog.deriveMessages()` 由折叠后的 surface 派生（模型视图是 surface 的纯函数，与 raw 文件序无关）；`estimateContext()` 与 `compact({ keepTokens, messages })` 共用同一 surface。默认 loop 内置 context budget：传入 `contextBudget: { limit, compactRatio, keepTokens, summarize }` 后，每个 step 前会按 token 估算检查用量，超过 `compactRatio` 时先调用 `summarize`，再执行 `session.compact` 保留最近 `keepTokens`，并派发 `agent/context-compact` 事件。默认 `compactRatio` 为 0.8、`keepTokens` 为预算的 16% —— 到八成时压缩，最近一段对话逐字保留，更早的部分由摘要接替。
 - `ToolPolicy`：`validator`、`authorizer`、`truncator` 可配置在 `tools` 全局层，也可覆盖在单个 `ToolDefinition.policy`。执行顺序为 `pre-execute → authorizer → validator → execute → truncator → post-execute / result`；策略拒绝会返回 `ToolResult.ok === false` 而不是把异常抛给 agent loop。
 
-另外 `createAgentRuntime` 支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、自定义 `inbox`、`toolPolicy`、`contextBudget`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期，并直接嵌入评测与进化闭环。默认组合会挂载 prompt 组装 seam（`systemPrompt`）并把全部可执行工具注册为 schema 提供者，使系统提示与工具从同一装配路径产出。
+另外 `createAgentRuntime` 支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、自定义 `inbox`、`toolPolicy`、`contextBudget`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期。默认组合会挂载 prompt 组装 seam（`systemPrompt`）并把全部可执行工具注册为 schema 提供者，使系统提示与工具从同一装配路径产出。
 
 除根入口外，发布包还提供按域拆分的子路径导出：
 
@@ -271,8 +229,6 @@ tnega/agent         # AgentLoop / AgentDefinition / AgentService / inbox / conte
 tnega/core          # Context / Fiber / Effect / Event / Registry / Reflect
 tnega/session       # SessionLog / surface 折叠 / compact / token 估算
 tnega/tools         # ToolsService / ToolDefinition / ToolPolicy
-tnega/eval          # EvalStrategy / Task / Verdict / EvalRun
-tnega/evolve        # Candidate / ExperimentLog / propose / gate
 tnega/llm           # openaiCompatAdapter / anthropicMessagesAdapter / 重试配置
 tnega/cli/runtime   # createAgentRuntime 组合运行时
 tnega/events        # EventsService / DispatchMode / Hook
@@ -289,8 +245,6 @@ tnega/services      # service / registry / reflect / logger
 | agent | 最小 Agent Loop，作为可替换 service |
 | tools | 工具注册与执行管线 |
 | session | JSONL 事件日志，支持 replay / fork / compact |
-| eval | 评测运行时：策略注册、任务执行、证据收集、判分、持久化 |
-| evolve | 进化循环：生成候选、评估、比较、接受或拒绝 |
 | llm | OpenAI 兼容 / Anthropic Messages 适配器，默认对接 OpenCode Go |
 | cli | headless 命令行入口与 web 服务 |
 

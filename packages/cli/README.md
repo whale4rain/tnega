@@ -7,10 +7,6 @@ CLI 命令、agent runtime 组合层、web server 与会话存储。
 ```
 tnega run "prompt"                       # 一次 agent 会话
 tnega web                                # 本地 web UI（HTTP + SSE，127.0.0.1:3080）
-tnega eval run tasks.yml                 # 跑评测
-tnega eval compare <base> <head>         # 比较两次评测
-tnega eval import-benchmark --...        # 导入真实 benchmark（见 packages/benchmark）
-tnega evolve run tasks.yml               # 自进化循环
 ```
 
 `run` 选项含 `--model / --base-url / --max-tokens / --temperature / --cwd / --session /
@@ -25,8 +21,7 @@ tnega evolve run tasks.yml               # 自进化循环
 - `bootAgentRuntime` / `bootAgentRuntimeFromFile`：profile + overlay → runtime options。
 - `createAgentRuntime` 接受 `AgentDefinition` / `ToolPolicy` /
   `builtinTools: false` / 自定义 `inbox` / `plugins`；`llm` 可选。默认组合会挂载
-  prompt 组装 seam（`systemPrompt`）并把可执行工具注册为 schema 提供者。web / headless /
-  eval 三种产品形态复用同一工厂，差异全在组合与薄消费者代码。
+  prompt 组装 seam（`systemPrompt`）并把可执行工具注册为 schema 提供者。web / headless 两种产品形态复用同一工厂，差异全在组合与薄消费者代码。
 
 profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
 `$XDG_CONFIG_HOME/tnega/profiles/<name>.json`，可引用内置 bundle 名或内联插件。

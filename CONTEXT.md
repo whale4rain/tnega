@@ -1,6 +1,6 @@
 # Tnega
 
-Tnega 是一个自研核心的 Agent Harness：Agent = Model + Harness，Harness 负责模型之外的一切，并把 Eval 提升为一等公民。
+Tnega 是一个自研核心的 Agent Harness：Agent = Model + Harness，Harness 负责模型之外的一切。
 
 ## Language
 
@@ -12,16 +12,12 @@ _Avoid_: bot, assistant
 一次由用户消息触发的 Agent 执行，属于且仅属于一个 Session，通过流式事件实时上报。
 _Avoid_: turn（turn 在代码中指 Agent Loop 内部的迭代）
 
-**Eval Run**:
-一次评测运行，持久化为工作区 `.tnega/runs/*.json`。
-_Avoid_: eval（动词保留为动作）
-
 **Session**:
 一个工作区内以 JSONL 持久化的对话事件日志，是消息历史的真源。
 _Avoid_: conversation file, chat log
 
 **Workspace**:
-一个绝对路径目录；会话、工具沙箱与 eval/evolve 产物都归属其下。
+一个绝对路径目录；会话与工具沙箱产物都归属其下。
 _Avoid_: project, repo
 
 **Fork**:
