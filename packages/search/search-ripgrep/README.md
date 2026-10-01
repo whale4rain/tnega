@@ -32,6 +32,10 @@ Definition），构造时由基类完成 `ctx.search` 注册；它只依赖 `@tn
   「尊重 .gitignore」在非 git 工作区也成立（实测确认过）。
 - 每个排除目录一条取反 `--glob=!**/<name>`：遍历时剪掉该目录，但把该目录显式作为
   搜索根时仍然可用。
+- 尊重 `.gitignore` 时，**不**把用户的 pattern 作为正向 `--glob` 交给 ripgrep：正向
+  `--glob` 是覆盖规则，匹配的文件即使被忽略也会被列出。改为 `rg --files` 列出会被搜索的
+  文件，再由 `glob.ts` 按同样的锚定语义过滤；带 glob 的内容检索则只搜过滤后的文件
+  （分批传入，避开 Windows 命令行长度上限）。关闭 `respectGitignore` 时仍用 `--glob`。
 - 搜索进程的 stdin 由 `@tnega/execution` 指向 `/dev/null`：没有显式路径时 ripgrep 会把
   非 TTY 的 stdin 当作输入源，一个打开的 stdin 管道会让它永远等下去。
 - 退出码 1（无匹配）是正常结果；其它非零退出按 stderr 分类成

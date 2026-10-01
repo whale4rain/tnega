@@ -20,7 +20,8 @@ import {
   type SearchTextResult,
   type SearchTextSpec,
 } from '@tnega/search'
-import { buildGlobArgv, buildGrepArgv } from './argv.js'
+import { buildGlobArgv, buildGrepArgv, buildGrepFilesArgv, buildListArgv } from './argv.js'
+import { globMatcher, matchesRootOnly, relativeToRoot } from './glob.js'
 import { resolveRipgrepPath } from './binary.js'
 import { assertSearchSucceeded, parseGlobPaths, parseGrepMatches } from './parse.js'
 
@@ -123,12 +124,9 @@ export class RipgrepSearch extends SearchService {
   }
 
   protected override async runFindFiles(spec: FindFilesSpec): Promise<FindFilesResult> {
-    const stdout = await this._run(
-      'findFiles',
-      buildGlobArgv(spec.pattern, commandOptions(spec)),
-      spec,
-    )
-    const paths = parseGlobPaths('findFiles', stdout)
+    const paths = spec.respectGitignore
+      ? await this._listMatching('findFiles', spec, spec.pattern)
+      : parseGlobPaths('findFiles', await this._run('findFiles', buildGlobArgv(spec.pattern, commandOptions(spec)), spec))
     return {
       paths: paths.slice(0, spec.maxResults),
       truncated: paths.length > spec.maxResults,
@@ -136,16 +134,37 @@ export class RipgrepSearch extends SearchService {
   }
 
   protected override async runSearchText(spec: SearchTextSpec): Promise<SearchTextResult> {
-    const stdout = await this._run(
-      'searchText',
-      buildGrepArgv(spec.pattern, commandOptions(spec)),
-      spec,
-    )
-    const matches = parseGrepMatches('searchText', stdout)
+    const matches = spec.glob !== undefined && spec.respectGitignore
+      ? await this._searchMatchingFiles(spec, spec.glob)
+      : parseGrepMatches('searchText', await this._run('searchText', buildGrepArgv(spec.pattern, commandOptions(spec)), spec))
     return {
       matches: matches.slice(0, spec.maxResults),
       truncated: matches.length > spec.maxResults,
     }
+  }
+
+  /**
+   * 列出 ripgrep 在搜索根下会搜索的文件（遵守忽略规则），再按 glob 在本进程里过滤。
+   * ripgrep 的正向 `--glob` 是覆盖规则，会让 .gitignore 失效，所以不交给它匹配。
+   */
+  private async _listMatching(label: string, spec: SearchSpecBase, pattern: string): Promise<string[]> {
+    const options = commandOptions(spec)
+    const stdout = await this._run(label, buildListArgv({ ...options, rootOnly: matchesRootOnly(pattern) }), spec)
+    const matches = globMatcher(pattern)
+    return parseGlobPaths(label, stdout).filter(path => matches(relativeToRoot(path, spec.root)))
+  }
+
+  /** 带 glob 的内容检索：先挑出匹配且未被忽略的文件，再分批只搜这些文件。 */
+  private async _searchMatchingFiles(spec: SearchTextSpec, glob: string): Promise<SearchTextResult['matches']> {
+    const files = await this._listMatching('searchText', spec, glob)
+    const matches: SearchTextResult['matches'] = []
+    for (const batch of fileBatches(files)) {
+      const stdout = await this._run('searchText', buildGrepFilesArgv(spec.pattern, batch, commandOptions(spec)), spec)
+      matches.push(...parseGrepMatches('searchText', stdout))
+      // One past the cap is enough to report truncation.
+      if (matches.length > spec.maxResults) break
+    }
+    return matches
   }
 
   /** 默认值与上限唯一的落点：run 方法里不再出现 `?? 默认值`。 */
@@ -191,6 +210,28 @@ export class RipgrepSearch extends SearchService {
     assertSearchSucceeded(label, result, spec.maxOutputBytes)
     return result.stdout
   }
+}
+
+/**
+ * 把文件列表切成若干批，使每次命令行都远低于 Windows 约 32K 字符的上限。
+ */
+const BATCH_CHARS = 24_000
+
+function fileBatches(files: readonly string[]): string[][] {
+  const batches: string[][] = []
+  let current: string[] = []
+  let size = 0
+  for (const file of files) {
+    if (current.length > 0 && size + file.length + 1 > BATCH_CHARS) {
+      batches.push(current)
+      current = []
+      size = 0
+    }
+    current.push(file)
+    size += file.length + 1
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
 }
 
 function commandOptions(spec: SearchSpecBase): {

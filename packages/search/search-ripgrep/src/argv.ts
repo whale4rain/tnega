@@ -1,3 +1,5 @@
+import { matchesRootOnly } from './glob.js'
+
 export interface SearchCommandOptions {
   /** Search root as a workspace-relative path; defaults to the workspace itself. */
   path?: string
@@ -42,17 +44,6 @@ export function anchorPattern(pattern: string): string {
   return pattern.includes('/') ? pattern : `/${pattern}`
 }
 
-/**
- * Whether a pattern can only ever match entries directly inside the search
- * root. Such a pattern needs no descent, and saying so is not just an
- * optimisation: without `--max-depth`, the root's own directories satisfy the
- * pattern, so ripgrep keeps walking the whole tree looking for more matches —
- * `*` on a large workspace takes seconds to minutes and returns the same
- * handful of paths.
- */
-function matchesRootOnly(pattern: string): boolean {
-  return !pattern.includes('/') && !pattern.includes('**')
-}
 
 /** Build the `rg --files` argument vector for one file-discovery search. */
 export function buildGlobArgv(pattern: string, options: SearchCommandOptions): string[] {
@@ -74,4 +65,24 @@ export function buildGrepArgv(pattern: string, options: GrepCommandOptions): str
     if (matchesRootOnly(options.glob)) args.push('--max-depth', '1')
   }
   return [...args, ...commonArgs(options)]
+}
+
+/**
+ * Build the `rg --files` argument vector that lists every file ripgrep would
+ * search under the root, honouring ignore files. Used when `.gitignore` must
+ * stay authoritative: the provider filters the list by pattern itself (see
+ * `glob.ts`), because a positive `--glob` would override the ignore rules.
+ */
+export function buildListArgv(options: SearchCommandOptions & { rootOnly: boolean }): string[] {
+  const args = ['--files', '--sort=modified']
+  if (options.rootOnly) args.push('--max-depth', '1')
+  return [...args, ...commonArgs(options)]
+}
+
+/**
+ * Build the `rg --json` argument vector that searches an explicit list of
+ * files, already filtered by the provider. No positive `--glob` is involved.
+ */
+export function buildGrepFilesArgv(pattern: string, files: readonly string[], options: SearchCommandOptions): string[] {
+  return ['--json', `--regexp=${pattern}`, ...commonArgs({ respectGitignore: options.respectGitignore, excludes: options.excludes }), '--', ...files]
 }
