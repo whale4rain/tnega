@@ -175,13 +175,20 @@ function addSlide(pptx: InstanceType<typeof PptxGenJS>, spec: SlideSpec, look: D
   if (spec.notes) slide.addNotes(spec.notes)
 }
 
+export interface DeckOptions extends Omit<PresentationSpec, 'slides'> {
+  /** 自定义幻灯片尺寸（英寸），优先于 `layout`；向已有文稿追加页时用它对齐原尺寸。 */
+  size?: { width: number, height: number }
+}
+
 /** 用 pptxgenjs 按规格生成一份完整的演示文稿。 */
-async function buildDeck(slides: readonly SlideSpec[], options: Omit<PresentationSpec, 'slides'>): Promise<Uint8Array> {
-  const layout = LAYOUTS[options.layout ?? '16x9']
-  if (!layout) throw new OfficeError(`unknown layout: ${options.layout}`, 'OFFICE_INVALID')
+export async function buildDeck(slides: readonly SlideSpec[], options: DeckOptions): Promise<Uint8Array> {
+  const preset = LAYOUTS[options.layout ?? '16x9']
+  if (!preset) throw new OfficeError(`unknown layout: ${options.layout}`, 'OFFICE_INVALID')
   assertTheme(options.theme)
   assertColor(options.background, 'background')
   const pptx = new PptxGenJS()
+  const layout = options.size ? { name: 'TNEGA_CUSTOM', ...options.size } : preset
+  if (options.size) pptx.defineLayout({ name: layout.name, width: layout.width, height: layout.height })
   pptx.layout = layout.name
   if (options.title) pptx.title = options.title
   const look: DeckLook = {
