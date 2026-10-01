@@ -59,6 +59,7 @@ describe('xlsx', () => {
       columns: 4,
       formulas: 2,
       header: ['Region', 'Q1', 'Q2', 'Total'],
+      charts: [],
     }])
   })
 

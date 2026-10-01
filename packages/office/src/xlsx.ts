@@ -3,6 +3,18 @@ import { formatRange, parseAddress, parseRange, type CellRange } from './address
 import { OfficeError } from './errors.js'
 import { FormulaError, WorkbookEvaluator, displayValue } from './formula.js'
 import { assertColor, assertTheme, type Theme } from './theme.js'
+import { openPackage } from './ooxml.js'
+import {
+  assertSheetChart,
+  chartReferences,
+  outlineCharts,
+  readCharts,
+  renameInCharts,
+  writeCharts,
+  type CellReader,
+  type SheetChartOutline,
+  type SheetChartSpec,
+} from './xlsx-chart.js'
 
 /** 写入单元格的值：公式以 `=` 之外的对象形式给出，避免与以 `=` 开头的文本混淆。 */
 export type CellInput = string | number | boolean | null | { formula: string }
@@ -53,6 +65,8 @@ export interface SheetSpec {
   rowHeights?: number[]
   /** 给表头加筛选按钮的区域，例如 `A1:E1`。 */
   autoFilter?: string
+  /** 原生 Excel 图表，系列引用本表（或其它表）的单元格区域。 */
+  charts?: SheetChartSpec[]
 }
 
 export interface WorkbookSpec {
@@ -70,6 +84,8 @@ export type WorkbookOp =
   | { op: 'merge', sheet: string, range: string }
   | { op: 'unmerge', sheet: string, range: string }
   | { op: 'autoFilter', sheet: string, range: string | null }
+  | { op: 'addChart', sheet: string, chart: SheetChartSpec }
+  | { op: 'removeChart', sheet: string, index: number }
   | { op: 'addSheet', name: string }
   | { op: 'renameSheet', sheet: string, name: string }
   | { op: 'deleteSheet', sheet: string }
@@ -83,6 +99,7 @@ export interface SheetOutline {
   formulas: number
   /** 首行，通常是表头。 */
   header: CellOutput[]
+  charts: SheetChartOutline[]
 }
 
 export interface WorkbookOutline {
@@ -118,7 +135,29 @@ async function load(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
   return workbook
 }
 
-async function save(workbook: ExcelJS.Workbook): Promise<Uint8Array> {
+/** 读取已求值工作簿的单元格，供图表缓存与大纲使用。 */
+function cellReader(workbook: ExcelJS.Workbook): CellReader {
+  const evaluator = new WorkbookEvaluator(workbook)
+  return (sheetName, row, column) => {
+    const sheet = workbook.getWorksheet(sheetName)
+    if (!sheet) return null
+    const value = readCell(sheet.getCell(row, column), evaluator)
+    return value !== null && typeof value === 'object' ? value.value : value
+  }
+}
+
+type ChartMap = Map<string, SheetChartSpec[]>
+
+async function save(workbook: ExcelJS.Workbook, charts: ChartMap = new Map(), theme?: Theme): Promise<Uint8Array> {
+  const bytes = await saveCells(workbook)
+  if (![...charts.values()].some(list => list.length > 0)) return bytes
+  // exceljs 写不了图表：在它保存好的包里补上图表部件。
+  const zip = await openPackage(bytes, 'xlsx')
+  await writeCharts(zip, charts, cellReader(workbook), theme)
+  return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' })
+}
+
+async function saveCells(workbook: ExcelJS.Workbook): Promise<Uint8Array> {
   refreshResults(workbook)
   // 我们的求值是近似的；让 Excel 打开时重算，以它的结果为准。
   workbook.calcProperties.fullCalcOnLoad = true
@@ -293,6 +332,11 @@ function setColumnWidths(sheet: ExcelJS.Worksheet, start: string, widths: number
 export async function createWorkbook(spec: WorkbookSpec): Promise<Uint8Array> {
   if (!spec.sheets?.length) throw new OfficeError('a workbook needs at least one sheet', 'OFFICE_INVALID')
   assertTheme(spec.theme)
+  const charts: ChartMap = new Map()
+  for (const sheetSpec of spec.sheets) {
+    sheetSpec.charts?.forEach((chart, index) => assertSheetChart(chart, sheetSpec.name, `sheets[${sheetSpec.name}].charts[${index}]`))
+    if (sheetSpec.charts?.length) charts.set(sheetSpec.name, [...sheetSpec.charts])
+  }
   const workbook = new ExcelJS.Workbook()
   for (const sheetSpec of spec.sheets) {
     const sheet = addSheet(workbook, sheetSpec.name)
@@ -308,12 +352,26 @@ export async function createWorkbook(spec: WorkbookSpec): Promise<Uint8Array> {
       sheet.views = [{ state: 'frozen', xSplit: freeze.columns ?? 0, ySplit: freeze.rows ?? 0 }]
     }
   }
-  return save(workbook)
+  return save(workbook, charts, spec.theme)
+}
+
+/** 读出文件里的图表；遇到无法如实重建的图表时拒绝，避免编辑时把它悄悄丢掉。 */
+async function existingCharts(bytes: Uint8Array): Promise<ChartMap> {
+  const charts: ChartMap = new Map()
+  for (const found of await readCharts(await openPackage(bytes, 'xlsx'))) {
+    if (!found.supported || !found.spec) {
+      throw new OfficeError(`sheet "${found.sheet}" has ${found.reason ?? 'a chart this tool cannot rebuild'}; editing would drop it`, 'OFFICE_UNSUPPORTED')
+    }
+    charts.set(found.sheet, [...(charts.get(found.sheet) ?? []), found.spec])
+  }
+  return charts
 }
 
 export async function inspectWorkbook(bytes: Uint8Array): Promise<WorkbookOutline> {
   const workbook = await load(bytes)
   const evaluator = new WorkbookEvaluator(workbook)
+  const read = cellReader(workbook)
+  const found = await readCharts(await openPackage(bytes, 'xlsx'))
   return {
     sheets: workbook.worksheets.map(sheet => {
       const range = usedRange(sheet)
@@ -330,6 +388,7 @@ export async function inspectWorkbook(bytes: Uint8Array): Promise<WorkbookOutlin
         columns: range?.end.column ?? 0,
         formulas,
         header,
+        charts: outlineCharts(sheet.name, found.flatMap(chart => (chart.sheet === sheet.name && chart.spec ? [chart.spec] : [])), read),
       }
     }),
   }
@@ -365,6 +424,7 @@ export async function readRange(bytes: Uint8Array, request: ReadRangeRequest = {
 
 /** 按顺序应用一批修改；任何一步失败都不产出文件，调用方的原文件保持不变。 */
 export async function editWorkbook(bytes: Uint8Array, ops: readonly WorkbookOp[]): Promise<Uint8Array> {
+  const charts = await existingCharts(bytes)
   const workbook = await load(bytes)
   for (const op of ops) {
     switch (op.op) {
@@ -407,12 +467,37 @@ export async function editWorkbook(bytes: Uint8Array, ops: readonly WorkbookOp[]
         const sheet = sheetNamed(workbook, op.sheet)
         if (workbook.getWorksheet(op.name)) throw new OfficeError(`sheet already exists: ${op.name}`, 'OFFICE_INVALID')
         sheet.name = op.name
+        for (const [chartSheet, specs] of [...charts]) {
+          charts.delete(chartSheet)
+          charts.set(chartSheet === op.sheet ? op.name : chartSheet, renameInCharts(specs, chartSheet, op.sheet, op.name))
+        }
         break
       }
       case 'deleteSheet': {
         const sheet = sheetNamed(workbook, op.sheet)
         if (workbook.worksheets.length === 1) throw new OfficeError('cannot delete the only sheet', 'OFFICE_INVALID')
+        charts.delete(op.sheet)
+        for (const [chartSheet, specs] of charts) {
+          if (specs.some(spec => chartReferences(spec, chartSheet, op.sheet))) {
+            throw new OfficeError(`a chart on "${chartSheet}" uses data from "${op.sheet}"; remove it first`, 'OFFICE_INVALID')
+          }
+        }
         workbook.removeWorksheet(sheet.id)
+        break
+      }
+      case 'addChart': {
+        sheetNamed(workbook, op.sheet)
+        const list = charts.get(op.sheet) ?? []
+        assertSheetChart(op.chart, op.sheet, `charts[${list.length}]`)
+        charts.set(op.sheet, [...list, op.chart])
+        break
+      }
+      case 'removeChart': {
+        const list = charts.get(op.sheet) ?? []
+        if (!Number.isInteger(op.index) || op.index < 0 || op.index >= list.length) {
+          throw new OfficeError(`sheet "${op.sheet}" has no chart #${op.index} (charts: ${list.length})`, 'OFFICE_INVALID')
+        }
+        charts.set(op.sheet, list.filter((_, index) => index !== op.index))
         break
       }
       default: {
@@ -421,5 +506,5 @@ export async function editWorkbook(bytes: Uint8Array, ops: readonly WorkbookOp[]
       }
     }
   }
-  return save(workbook)
+  return save(workbook, charts)
 }
