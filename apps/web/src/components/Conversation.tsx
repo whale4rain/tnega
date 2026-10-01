@@ -43,7 +43,7 @@ import type {
   SlashCommand,
   StreamEvent,
 } from '../lib/types'
-import { Composer, type RunSettings } from './Composer'
+import { Composer, SessionControls, type RunSettings } from './Composer'
 import { Menu } from './Menu'
 import { Timeline } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
@@ -478,6 +478,7 @@ export function Conversation({
           </div>
         </div>
         <div className="conv-header-actions">
+          <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} />
           {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} />}
           {summary && (
             <Menu

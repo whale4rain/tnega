@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import type { SessionDetail, SessionEvent } from '../lib/types'
 import { Conversation } from './Conversation'
 
-vi.mock('./Composer', () => ({ Composer: () => null }))
+vi.mock('./Composer', () => ({ Composer: () => null, SessionControls: () => null }))
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 it('loads the human transcript and collapses completed runs even when model surface is populated', async () => {

@@ -1,7 +1,7 @@
 import { ArrowUp, Briefcase, Code2, Gauge, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Square, Target, ListChecks, Zap, Cpu } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AgentType, ApprovalMode, Effort, ModelOption, Permission, SessionEffort, SessionMode, SlashCommand } from '../lib/types'
-import { Choice, type ChoiceOption } from './Menu'
+import type { AgentType, ApprovalMode, ModelOption, Permission, SessionEffort, SessionMode, SlashCommand } from '../lib/types'
+import { Choice, SectionChoice, choiceSection, type ChoiceOption } from './Menu'
 
 export interface RunSettings {
   agentType: AgentType
@@ -208,11 +208,9 @@ export function PromptBox({
             )}
         </div>
       </div>
-      {!compact && (
+      {!compact && (disabledReason || footer) && (
         <div className="composer-footer">
-          {disabledReason
-            ? <span className="composer-warning"><Sparkles size={13} />{disabledReason}</span>
-            : footer ?? <span><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line{commands.length ? <> · <kbd>/</kbd> for commands</> : null}</span>}
+          {disabledReason ? <span className="composer-warning"><Sparkles size={13} />{disabledReason}</span> : footer}
         </div>
       )}
     </div>
@@ -248,8 +246,6 @@ export function Composer({
   placeholder: string
   autoFocusKey?: string | undefined
 }) {
-  const activeModel = models.find(model => model.id === (settings.model || defaultModelId))
-  const efforts: Effort[] = activeModel?.reasoningEfforts ?? []
   return (
     <PromptBox
       commands={commands}
@@ -261,23 +257,97 @@ export function Composer({
       autoFocusKey={autoFocusKey}
       toolbar={
         <>
-          <Choice label="Agent" value={settings.agentType} options={AGENT_OPTIONS} onChange={agentType => onSettingsChange({ agentType })} disabled={locked} />
           <Choice label="Mode" value={settings.mode} options={MODE_OPTIONS} onChange={mode => onSettingsChange({ mode })} disabled={locked} />
-          <Choice label="Permissions" value={settings.permission} options={PERMISSION_OPTIONS} onChange={permission => onSettingsChange({ permission })} disabled={locked} />
-          <Choice label="Approvals" value={settings.approvalMode ?? 'manual'} options={APPROVAL_OPTIONS} onChange={approvalMode => onSettingsChange({ approvalMode })} disabled={locked} />
-          <Choice label="Model" value={settings.model ?? ''} options={modelOptions(models, defaultModelId)} onChange={model => onSettingsChange({ model: model || undefined })} disabled={locked || models.length === 0} />
-          {efforts.length > 0 && (
-            <Choice
-              label="Reasoning effort"
-              value={settings.reasoningEffort}
-              icon={<Gauge size={14} />}
-              options={(['default', ...efforts] as SessionEffort[]).map(value => ({ value, label: EFFORT_LABEL[value], icon: <Gauge size={14} /> }))}
-              onChange={reasoningEffort => onSettingsChange({ reasoningEffort })}
-              disabled={locked}
-            />
-          )}
+          <ModelChoice settings={settings} onSettingsChange={onSettingsChange} models={models} defaultModelId={defaultModelId} disabled={locked} />
         </>
       }
     />
+  )
+}
+
+const EFFORT_SHORT: Record<SessionEffort, string> = { default: '', low: 'Low', medium: 'Medium', high: 'High' }
+
+/** Model and reasoning effort in one chip: the effort only applies to the chosen model. */
+function ModelChoice({
+  settings,
+  onSettingsChange,
+  models,
+  defaultModelId,
+  disabled,
+}: {
+  settings: RunSettings
+  onSettingsChange: (patch: Partial<RunSettings>) => void
+  models: ModelOption[]
+  defaultModelId?: string | undefined
+  disabled: boolean
+}) {
+  const options = modelOptions(models, defaultModelId)
+  const active = models.find(model => model.id === (settings.model || defaultModelId))
+  const efforts: SessionEffort[] = active?.reasoningEfforts.length ? ['default', ...active.reasoningEfforts] : []
+  const current = options.find(option => option.value === (settings.model ?? '')) ?? options[0]
+  const effort = efforts.length && settings.reasoningEffort !== 'default' ? ` · ${EFFORT_SHORT[settings.reasoningEffort]}` : ''
+  const sections = [
+    choiceSection('model', 'Model', options, settings.model ?? '', model => onSettingsChange({ model: model || undefined })),
+    ...(efforts.length
+      ? [choiceSection(
+        'effort',
+        'Reasoning effort',
+        efforts.map(value => ({ value, label: EFFORT_LABEL[value], icon: <Gauge size={14} /> })),
+        settings.reasoningEffort,
+        reasoningEffort => onSettingsChange({ reasoningEffort }),
+      )]
+      : []),
+  ]
+  return (
+    <SectionChoice
+      label="Model"
+      summary={`${current?.label ?? 'Default model'}${effort}`}
+      icon={<Cpu size={14} />}
+      sections={sections}
+      disabled={disabled || models.length === 0}
+    />
+  )
+}
+
+/**
+ * Session-level settings that rarely change during a conversation: who the agent is and
+ * what it may do. They live in the conversation header, out of the composer's way.
+ */
+export function SessionControls({
+  settings,
+  onSettingsChange,
+  locked,
+}: {
+  settings: RunSettings
+  onSettingsChange: (patch: Partial<RunSettings>) => void
+  locked: boolean
+}) {
+  const permission = PERMISSION_OPTIONS.find(option => option.value === settings.permission) ?? PERMISSION_OPTIONS[0]
+  const approval = settings.approvalMode ?? 'manual'
+  return (
+    <div className="session-controls">
+      <Choice
+        label="Agent"
+        value={settings.agentType}
+        options={AGENT_OPTIONS}
+        onChange={agentType => onSettingsChange({ agentType })}
+        disabled={locked}
+        side="bottom"
+        align="end"
+      />
+      <SectionChoice
+        label="Access"
+        summary={`${permission?.label ?? ''}${approval === 'auto' ? ' · Auto review' : ''}`}
+        icon={permission?.icon}
+        {...(permission?.tone ? { tone: permission.tone } : {})}
+        sections={[
+          choiceSection('permission', 'Permissions', PERMISSION_OPTIONS, settings.permission, value => onSettingsChange({ permission: value })),
+          choiceSection('approval', 'Approvals', APPROVAL_OPTIONS, approval, value => onSettingsChange({ approvalMode: value })),
+        ]}
+        disabled={locked}
+        side="bottom"
+        align="end"
+      />
+    </div>
   )
 }

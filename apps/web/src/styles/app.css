@@ -958,6 +958,7 @@ kbd {
   min-width: 0;
   min-height: 0;
   background: var(--bg);
+  container: conversation / inline-size;
 }
 
 .conv-header {
@@ -973,7 +974,7 @@ kbd {
 .conv-title-wrap {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: 96px;
   flex: 1;
 }
 
@@ -1072,6 +1073,15 @@ kbd {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex: none;
+}
+
+/* A narrow conversation (a preview open beside it) keeps the header to icons. */
+@container conversation (max-width: 620px) {
+  .session-controls .chip > span,
+  .session-controls .chip-caret {
+    display: none;
+  }
 }
 
 .context-meter {
@@ -3111,4 +3121,15 @@ kbd {
 .zoom-level:hover {
   background: var(--surface-hover, var(--surface-sunken));
   color: var(--text);
+}
+
+.session-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.menu-section + .menu-section .menu-separator {
+  margin-top: 4px;
 }
