@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - packages/search/*
+  - packages/browser/*
   - packages/sandbox/*
   - packages/spill/*
   - packages/memory/*

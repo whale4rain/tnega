@@ -1,0 +1,18 @@
+{
+  "name": "@tnega/browser-playwright",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/browser": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "playwright-core": "1.63.0"
+  },
+  "devDependencies": {
+    "@tnega/tool-browser": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}

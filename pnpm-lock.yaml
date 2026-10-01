@@ -178,6 +178,43 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/browser/browser:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/browser/browser-playwright:
+    dependencies:
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../browser
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
+    devDependencies:
+      '@tnega/tool-browser':
+        specifier: workspace:*
+        version: link:../tool-browser
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
+  packages/browser/tool-browser:
+    dependencies:
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../browser
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
   packages/cli:
     dependencies:
       '@tnega/agent':
@@ -3501,6 +3538,11 @@ packages:
   pkijs@3.4.0:
     resolution: {integrity: sha512-emEcLuomt2j03vxD54giVB4SxTjnsqkU692xZOZXHDVoYyypEm+b3jpiTcc+Cf+myooc+/Ly0z01jqeNHVgJGw==}
     engines: {node: '>=16.0.0'}
+
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   plist@3.1.0:
     resolution: {integrity: sha512-uysumyrvkUX0rX/dEVqt8gC3sTBzd4zoWfLeS29nb53imdaXVvLINYXTI2GNqzaMuvacNx4uJQ8+b3zXR0pkgQ==}
@@ -7317,6 +7359,8 @@ snapshots:
       pvtsutils: 1.3.6
       pvutils: 1.2.0
       tslib: 2.8.1
+
+  playwright-core@1.63.0: {}
 
   plist@3.1.0:
     dependencies:
