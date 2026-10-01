@@ -13,8 +13,8 @@ export interface TitleBarColors {
 export const TITLE_BAR_HEIGHT = 32
 
 export const DEFAULT_TITLE_BAR_COLORS: Readonly<Record<'light' | 'dark', TitleBarColors>> = {
-  light: { background: '#f6f5f1', foreground: '#57544d' },
-  dark: { background: '#141615', foreground: '#aaa79f' },
+  light: { background: '#f4f6f8', foreground: '#4f5a68' },
+  dark: { background: '#10141d', foreground: '#a3adbd' },
 }
 
 const HEX = /^#[0-9a-f]{6}$/i

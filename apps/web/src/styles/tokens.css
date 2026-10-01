@@ -2,8 +2,13 @@
  * Design tokens. Every colour, radius, shadow and font in the app resolves
  * through these variables; components never use raw values.
  *
- * Palette idea: warm paper neutrals, ink text, and a single deep-sea teal
- * accent. Status colours are muted so they inform without shouting.
+ * Palette idea: sky. Light mode is a bright daylight sky — cool, airy
+ * neutrals with a little blue in them, slate ink and a clear-sky blue accent.
+ * Dark mode is the same sky at night: deep navy surfaces and a moonlit blue.
+ * Weather tokens (`--wx-*`) colour the state language drawn around the
+ * agent (see lib/weather.ts); status colours stay muted so they inform
+ * without shouting, and each matches its weather: success is clear, warning
+ * is the sun, danger is the storm.
  */
 :root {
   --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
@@ -44,82 +49,106 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #f6f5f1;
-  --bg-sidebar: #efede7;
+  --bg: #f4f6f8;
+  --bg-sidebar: #eceff3;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f0eee9;
-  --surface-hover: rgba(40, 36, 28, 0.05);
-  --surface-active: rgba(40, 36, 28, 0.085);
-  --border: #e3e0d8;
-  --border-strong: #d2cec3;
-  --border-focus: #2c7a80;
+  --surface-sunken: #eef1f5;
+  --surface-hover: rgba(28, 44, 70, 0.05);
+  --surface-active: rgba(28, 44, 70, 0.085);
+  --border: #dfe4ea;
+  --border-strong: #cdd4de;
+  --border-focus: #2f6fd0;
 
-  --text: #1f1e1b;
-  --text-2: #57544d;
-  --text-3: #8b877d;
-  --text-inverse: #fbfaf7;
+  --text: #1b2330;
+  --text-2: #4f5a68;
+  --text-3: #858f9c;
+  --text-inverse: #f8fafc;
 
-  --accent: #17656c;
-  --accent-hover: #115259;
-  --accent-soft: #e2eeec;
-  --accent-text: #0f5359;
+  --accent: #2f6fd0;
+  --accent-hover: #255cb0;
+  --accent-soft: #e5eefb;
+  --accent-text: #2259ad;
 
-  --success: #2e7b4c;
-  --success-soft: #e3f1e7;
-  --warn: #9a620f;
-  --warn-soft: #f8eedb;
-  --danger: #b0392f;
-  --danger-soft: #f8e5e2;
+  --success: #2c7a55;
+  --success-soft: #e2f1ea;
+  --warn: #a2650d;
+  --warn-soft: #f9eedb;
+  --danger: #bd3f3a;
+  --danger-soft: #f9e5e4;
 
-  --code-bg: #f3f1ec;
-  --code-border: #e6e2da;
-  --selection: rgba(23, 101, 108, 0.18);
+  --code-bg: #f1f4f7;
+  --code-border: #e0e5eb;
+  --selection: rgba(47, 111, 208, 0.18);
 
-  --shadow-sm: 0 1px 2px rgba(31, 28, 20, 0.06);
-  --shadow-md: 0 1px 2px rgba(31, 28, 20, 0.05), 0 6px 18px -6px rgba(31, 28, 20, 0.12);
-  --shadow-lg: 0 2px 6px rgba(31, 28, 20, 0.06), 0 24px 48px -12px rgba(31, 28, 20, 0.22);
-  --scrim: rgba(28, 26, 22, 0.28);
-  --avatar-ink: #1d1d1f;
+  --shadow-sm: 0 1px 2px rgba(20, 32, 52, 0.06);
+  --shadow-md: 0 1px 2px rgba(20, 32, 52, 0.05), 0 6px 18px -6px rgba(20, 32, 52, 0.13);
+  --shadow-lg: 0 2px 6px rgba(20, 32, 52, 0.06), 0 24px 48px -12px rgba(20, 32, 52, 0.24);
+  --scrim: rgba(18, 26, 40, 0.3);
+  --avatar-ink: #1d2230;
+
+  --wx-sun: #f6b23a;
+  --wx-cloud: #c9d4e2;
+  --wx-rain: #3d8be8;
+  --wx-snow: #9ec3ec;
+  --wx-storm: #5b4fc8;
+  --wx-bolt: #ffc62e;
+  --wx-fog: #aab5c3;
+  --wx-sprite: #ff4f8b;
+  --wx-rainbow-1: #ff6f91;
+  --wx-rainbow-2: #ffc145;
+  --wx-rainbow-3: #4fb5ff;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #141615;
-  --bg-sidebar: #101211;
-  --surface: #1b1e1d;
-  --surface-raised: #212524;
-  --surface-sunken: #171a19;
-  --surface-hover: rgba(236, 240, 236, 0.05);
-  --surface-active: rgba(236, 240, 236, 0.09);
-  --border: #2a2f2d;
-  --border-strong: #38403d;
-  --border-focus: #5db3ae;
+  --bg: #10141d;
+  --bg-sidebar: #0c1018;
+  --surface: #171c27;
+  --surface-raised: #1c2230;
+  --surface-sunken: #131823;
+  --surface-hover: rgba(226, 234, 248, 0.05);
+  --surface-active: rgba(226, 234, 248, 0.09);
+  --border: #252d3c;
+  --border-strong: #333e52;
+  --border-focus: #7fb0f5;
 
-  --text: #e8e7e2;
-  --text-2: #aaa79f;
-  --text-3: #75736c;
-  --text-inverse: #121413;
+  --text: #e5e9f1;
+  --text-2: #a3adbd;
+  --text-3: #6f7a8c;
+  --text-inverse: #0f131b;
 
-  --accent: #5db3ae;
-  --accent-hover: #74c4bf;
-  --accent-soft: rgba(93, 179, 174, 0.13);
-  --accent-text: #86cdc8;
+  --accent: #7fb0f5;
+  --accent-hover: #99c1f8;
+  --accent-soft: rgba(127, 176, 245, 0.14);
+  --accent-text: #a2c6fa;
 
-  --success: #6cbf8a;
-  --success-soft: rgba(108, 191, 138, 0.12);
-  --warn: #dba450;
-  --warn-soft: rgba(219, 164, 80, 0.12);
-  --danger: #e57e72;
-  --danger-soft: rgba(229, 126, 114, 0.12);
+  --success: #6ec497;
+  --success-soft: rgba(110, 196, 151, 0.12);
+  --warn: #e0ad58;
+  --warn-soft: rgba(224, 173, 88, 0.12);
+  --danger: #ec847b;
+  --danger-soft: rgba(236, 132, 123, 0.12);
 
-  --code-bg: #171a19;
-  --code-border: #2a2f2d;
-  --selection: rgba(93, 179, 174, 0.26);
+  --code-bg: #131823;
+  --code-border: #252d3c;
+  --selection: rgba(127, 176, 245, 0.26);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 20px -6px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.35), 0 28px 56px -12px rgba(0, 0, 0, 0.6);
-  --scrim: rgba(0, 0, 0, 0.5);
-  --avatar-ink: #4b4c55;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.32), 0 8px 20px -6px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.36), 0 28px 56px -12px rgba(0, 0, 0, 0.62);
+  --scrim: rgba(0, 0, 0, 0.52);
+  --avatar-ink: #4a5266;
+
+  --wx-sun: #f2b84b;
+  --wx-cloud: #3b465c;
+  --wx-rain: #6fa9f2;
+  --wx-snow: #c4dcf7;
+  --wx-storm: #8b80ec;
+  --wx-bolt: #ffd257;
+  --wx-fog: #5d6a80;
+  --wx-sprite: #ff6aa1;
+  --wx-rainbow-1: #ff86a4;
+  --wx-rainbow-2: #ffcd66;
+  --wx-rainbow-3: #6cc2ff;
 }

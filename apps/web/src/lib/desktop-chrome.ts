@@ -55,7 +55,7 @@ export function useDesktopChrome(layoutKey: string): void {
       timer = setTimeout(() => {
         markWindowControls(document, innerWidth)
         const styles = getComputedStyle(root)
-        const fallback = cssColorToHex(styles.getPropertyValue('--bg')) ?? '#f6f5f1'
+        const fallback = cssColorToHex(styles.getPropertyValue('--bg')) ?? '#f4f6f8'
         const background = backgroundBehind(document.elementFromPoint(innerWidth - 4, 4), fallback)
         const foreground = cssColorToHex(styles.getPropertyValue('--text-2')) ?? '#57544d'
         const key = `${background}/${foreground}`

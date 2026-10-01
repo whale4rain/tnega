@@ -104,7 +104,8 @@ kbd {
 }
 
 /* ==========================================================================
-   Brand mark — a flat accent squircle with two cut-out eyes
+   Brand mark — the flat squircle "cube" with two cut-out eyes, and a little
+   cloud resting on it: weather is the language layered on top of the cube.
    ========================================================================== */
 
 .brand-mark {
@@ -113,13 +114,16 @@ kbd {
   flex: none;
   width: var(--size);
   height: var(--size);
-  background: var(--accent);
-  -webkit-mask: var(--brand-shape) center / contain no-repeat;
-  mask: var(--brand-shape) center / contain no-repeat;
+  background: var(--brand-image) center / contain no-repeat;
 }
 
-:root {
-  --brand-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill-rule='evenodd' d='M32 4C55 4 60 9 60 32S55 60 32 60 4 55 4 32 9 4 32 4ZM24.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5ZM39.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5Z'/%3E%3C/svg%3E");
+:root,
+[data-theme="light"] {
+  --brand-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg transform='translate(1 9) scale(.84)'%3E%3Cpath fill='%232f6fd0' fill-rule='evenodd' d='M32 4C55 4 60 9 60 32S55 60 32 60 4 55 4 32 9 4 32 4ZM24.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5ZM39.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5Z'/%3E%3C/g%3E%3Cg fill='%239cc6f6'%3E%3Ccircle cx='45' cy='13' r='9'/%3E%3Ccircle cx='54.5' cy='17' r='6.5'/%3E%3Ccircle cx='36.5' cy='18' r='6'/%3E%3Crect x='36.5' y='15' width='18' height='9' rx='4.5'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+[data-theme="dark"] {
+  --brand-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg transform='translate(1 9) scale(.84)'%3E%3Cpath fill='%237fb0f5' fill-rule='evenodd' d='M32 4C55 4 60 9 60 32S55 60 32 60 4 55 4 32 9 4 32 4ZM24.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5ZM39.5 22a3.5 3.5 0 0 0-3.5 3.5v9a3.5 3.5 0 0 0 7 0v-9a3.5 3.5 0 0 0-3.5-3.5Z'/%3E%3C/g%3E%3Cg fill='%23d7e7fc'%3E%3Ccircle cx='45' cy='13' r='9'/%3E%3Ccircle cx='54.5' cy='17' r='6.5'/%3E%3Ccircle cx='36.5' cy='18' r='6'/%3E%3Crect x='36.5' y='15' width='18' height='9' rx='4.5'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .brand-mark.small {
