@@ -3023,3 +3023,33 @@ kbd {
   align-items: center;
   gap: 12px;
 }
+
+/* Charts read out of Office files and drawn with chart.js. */
+.chart-list {
+  display: grid;
+  gap: 12px;
+}
+
+.chart-figure {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: #1f1f1f;
+}
+
+.chart-canvas {
+  position: relative;
+  height: 300px;
+}
+
+.chart-figure figcaption {
+  margin-top: 6px;
+}
+
+.chart-fill {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}

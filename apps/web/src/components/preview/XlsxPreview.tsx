@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import { sheetView, type SheetView, MAX_PREVIEW_COLUMNS, MAX_PREVIEW_ROWS } from '../../lib/xlsx-view'
+import type { ChartView } from '../../lib/ooxml-chart'
+import { ChartCanvas } from './ChartCanvas'
 import type { PreviewProps } from './FilePreview'
 
 function columnName(index: number): string {
@@ -11,6 +13,7 @@ function columnName(index: number): string {
 
 export default function XlsxPreview({ blob }: PreviewProps) {
   const [sheets, setSheets] = useState<SheetView[] | undefined>()
+  const [charts, setCharts] = useState<Map<string, ChartView[]>>(new Map())
   const [active, setActive] = useState(0)
   const [error, setError] = useState<string | undefined>()
 
@@ -18,10 +21,17 @@ export default function XlsxPreview({ blob }: PreviewProps) {
     let cancelled = false
     void (async () => {
       try {
-        const { Workbook } = await import('exceljs')
+        const [{ Workbook }, { default: JSZip }, { workbookCharts }] = await Promise.all([
+          import('exceljs'), import('jszip'), import('../../lib/ooxml-chart'),
+        ])
+        const buffer = await blob.arrayBuffer()
         const workbook = new Workbook()
-        await workbook.xlsx.load(await blob.arrayBuffer())
-        if (!cancelled) setSheets(workbook.worksheets.map(sheetView))
+        await workbook.xlsx.load(buffer)
+        // exceljs ignores charts; read them straight from the package.
+        const found = await workbookCharts(await JSZip.loadAsync(buffer))
+        if (cancelled) return
+        setSheets(workbook.worksheets.map(sheetView))
+        setCharts(found)
       } catch (reason) {
         if (!cancelled) setError(errorText(reason))
       }
@@ -71,6 +81,11 @@ export default function XlsxPreview({ blob }: PreviewProps) {
           </table>
         ) : <div className="file-preview-status">This sheet is empty.</div>}
       </div>
+      {sheet && (charts.get(sheet.name) ?? []).length > 0 && (
+        <div className="chart-list">
+          {(charts.get(sheet.name) ?? []).map((chart, index) => <ChartCanvas key={`${sheet.name}:${index}`} chart={chart} />)}
+        </div>
+      )}
       {sheet?.truncated && (
         <p className="muted small">Showing the first {MAX_PREVIEW_ROWS} rows and {MAX_PREVIEW_COLUMNS} columns. Download the file to see everything.</p>
       )}
