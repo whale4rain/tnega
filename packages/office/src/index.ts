@@ -1,6 +1,7 @@
 export * from './address.js'
 export * from './chart.js'
 export * from './docx.js'
+export * from './docx-edit.js'
 export * from './errors.js'
 export * from './formula.js'
 export * from './pptx.js'
