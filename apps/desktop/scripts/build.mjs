@@ -12,19 +12,22 @@ const shared = {
   sourcemap: true,
   target: 'node22',
   external: ['electron'],
-  banner: {
-    js: "import { createRequire as __tnegaCreateRequire } from 'node:module'; const require = __tnegaCreateRequire(import.meta.url);",
-  },
 }
 
 await Promise.all([
   build({
     ...shared,
+    banner: {
+      js: "import { createRequire as __tnegaCreateRequire } from 'node:module'; const require = __tnegaCreateRequire(import.meta.url);",
+    },
     entryPoints: [fileURLToPath(new URL('../src/main.ts', import.meta.url))],
     outfile: fileURLToPath(new URL('../out/main.js', import.meta.url)),
   }),
   build({
     ...shared,
+    // Sandboxed Electron preloads run as CommonJS with a restricted require.
+    // The main-process ESM/createRequire banner cannot run in this context.
+    format: 'cjs',
     entryPoints: [fileURLToPath(new URL('../src/preload.ts', import.meta.url))],
     outfile: fileURLToPath(new URL('../out/preload.js', import.meta.url)),
   }),

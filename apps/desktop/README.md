@@ -11,6 +11,16 @@ pnpm --filter @tnega/desktop dev
 
 The command first builds the CLI runtime and Web UI, then launches Electron.
 
+After building, verify the sandboxed preload, window button clearance and drag
+region with a hidden window and isolated fixture data:
+
+```bash
+pnpm --filter @tnega/desktop exec electron scripts/verify-chrome.cjs
+```
+
+The main process is bundled as ESM; the sandboxed preload is bundled as CommonJS
+without the main process's `node:module` compatibility banner.
+
 ## Packaging
 
 ```bash
