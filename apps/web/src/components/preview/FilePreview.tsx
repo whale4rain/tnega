@@ -1,9 +1,8 @@
-import { Download } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, Presentation, X } from 'lucide-react'
 import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react'
 import { fetchWorkspaceFile, saveBlob } from '../../lib/api'
 import { errorText } from '../../lib/hooks'
 import { fileName, officeKind, type OfficeKind } from '../../lib/office'
-import { Dialog } from '../Dialog'
 
 export interface PreviewProps {
   blob: Blob
@@ -16,17 +15,19 @@ const VIEWERS: Partial<Record<OfficeKind, ComponentType<PreviewProps>>> = {
   pptx: lazy(() => import('./PptxPreview')),
 }
 
-const LABEL: Record<OfficeKind, string> = {
-  xlsx: 'Excel workbook',
-  docx: 'Word document',
-  pptx: 'PowerPoint presentation',
+const ICON: Record<OfficeKind, typeof FileText> = {
+  xlsx: FileSpreadsheet,
+  docx: FileText,
+  pptx: Presentation,
 }
 
-export function FilePreviewDialog({ workspace, path, onClose }: { workspace: string; path: string; onClose: () => void }) {
+/** Right-hand drawer that previews a file the agent produced, next to the conversation. */
+export function FilePreviewDrawer({ workspace, path, onClose }: { workspace: string; path: string; onClose: () => void }) {
   const [blob, setBlob] = useState<Blob | undefined>()
   const [error, setError] = useState<string | undefined>()
   const kind = officeKind(path)
   const Viewer = kind ? VIEWERS[kind] : undefined
+  const Icon = kind ? ICON[kind] : FileText
 
   useEffect(() => {
     const controller = new AbortController()
@@ -38,19 +39,26 @@ export function FilePreviewDialog({ workspace, path, onClose }: { workspace: str
     return () => controller.abort()
   }, [workspace, path])
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
-    <Dialog
-      title={fileName(path)}
-      description={<>{kind ? LABEL[kind] : 'File'} · <span className="mono">{path}</span></>}
-      onClose={onClose}
-      width={1040}
-      footer={(
-        <button type="button" className="button secondary small" disabled={!blob} onClick={() => blob && saveBlob(blob, fileName(path))}>
-          <Download size={14} /> Download
+    <aside className="drawer file-drawer" aria-label={`Preview ${fileName(path)}`}>
+      <header className="drawer-header">
+        <span className={`office-file-icon kind-${kind ?? 'other'}`}><Icon size={18} /></span>
+        <div className="drawer-titles">
+          <div className="drawer-title">{fileName(path)}</div>
+          <div className="drawer-sub mono">{path}</div>
+        </div>
+        <button type="button" className="icon-button" aria-label="Download" title="Download" disabled={!blob} onClick={() => blob && saveBlob(blob, fileName(path))}>
+          <Download size={15} />
         </button>
-      )}
-    >
-      <div className="file-preview">
+        <button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={16} /></button>
+      </header>
+      <div className="drawer-body file-preview">
         {error && <div className="notice notice-error"><span>{error}</span></div>}
         {!error && !blob && <div className="file-preview-status"><span className="spinner" /> Loading…</div>}
         {blob && Viewer && (
@@ -60,6 +68,6 @@ export function FilePreviewDialog({ workspace, path, onClose }: { workspace: str
         )}
         {blob && !Viewer && <div className="file-preview-status">No preview for this file type yet. Download it to open it.</div>}
       </div>
-    </Dialog>
+    </aside>
   )
 }

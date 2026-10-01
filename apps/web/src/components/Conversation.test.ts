@@ -35,7 +35,7 @@ it('loads the human transcript and collapses completed runs even when model surf
     workspace: '/work', sessionId: 'session', config: undefined,
     draftSettings: { agentType: 'general', mode: 'auto', permission: 'read-only', approvalMode: 'manual', reasoningEffort: 'default' },
     onDraftSettingsChange: vi.fn(), onSessionCreated: vi.fn(), onSessionsChanged: vi.fn(),
-    onSessionDeleted: vi.fn(), onOpenSettings: vi.fn(), onOpenSubagent: vi.fn(),
+    onSessionDeleted: vi.fn(), onOpenSettings: vi.fn(), onOpenSubagent: vi.fn(), onOpenFile: vi.fn(),
     sidebarOpen: true, onToggleSidebar: vi.fn(),
   }))
   expect(await view.findByText('All checks passed.')).toBeTruthy()

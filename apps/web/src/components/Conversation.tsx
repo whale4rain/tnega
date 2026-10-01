@@ -45,7 +45,6 @@ import type {
 } from '../lib/types'
 import { Composer, type RunSettings } from './Composer'
 import { Menu } from './Menu'
-import { FilePreviewDialog } from './preview/FilePreview'
 import { Timeline } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
 
@@ -66,6 +65,7 @@ export function Conversation({
   onSessionDeleted,
   onOpenSettings,
   onOpenSubagent,
+  onOpenFile,
   sidebarOpen,
   onToggleSidebar,
 }: {
@@ -79,6 +79,7 @@ export function Conversation({
   onSessionDeleted: (id: string) => void
   onOpenSettings: () => void
   onOpenSubagent: (id: string, label: string) => void
+  onOpenFile: (path: string) => void
   sidebarOpen: boolean
   onToggleSidebar: () => void
 }) {
@@ -94,7 +95,6 @@ export function Conversation({
   const [remoteRunning, setRemoteRunning] = useState(false)
   const [busy, setBusy] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
-  const [previewPath, setPreviewPath] = useState<string | undefined>()
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [resumeVersion, setResumeVersion] = useState(0)
   const pendingResume = useRef<string | undefined>(undefined)
@@ -514,7 +514,7 @@ export function Conversation({
               onRetry: resend,
               onFork: messageId => void fork(messageId),
               onOpenSubagent,
-              onOpenFile: setPreviewPath,
+              onOpenFile,
             }}
             agent={{ id: summary?.id ?? streamingFor.current ?? 'draft' }}
           />
@@ -561,7 +561,6 @@ export function Conversation({
           />
         </div>
       </div>
-      {previewPath && <FilePreviewDialog workspace={workspace} path={previewPath} onClose={() => setPreviewPath(undefined)} />}
     </main>
   )
 }

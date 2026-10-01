@@ -7,6 +7,7 @@ import { ProjectView } from './components/project/ProjectView'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
 import { SubagentDrawer } from './components/SubagentDrawer'
+import { FilePreviewDrawer } from './components/preview/FilePreview'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
@@ -49,7 +50,8 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | undefined>(sessionFromHash)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 860)
   const [dialog, setDialog] = useState<'settings' | 'workspace' | undefined>()
-  const [subagent, setSubagent] = useState<{ id: string; label: string } | undefined>()
+  // The right-hand drawer shows either a subagent transcript or a produced file.
+  const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | undefined>()
   const [fatal, setFatal] = useState<string | undefined>()
   const [mode, setMode] = useStoredState<Mode>('tnega.mode', projectFromHash() ? 'projects' : 'sessions', ['sessions', 'projects'])
   const [projectRoute, setProjectRoute] = useState<ProjectRoute>(() => projectFromHash() ?? {})
@@ -135,14 +137,14 @@ export function App() {
   const select = useCallback((id: string | undefined) => {
     setMode('sessions')
     setSelectedId(id)
-    setSubagent(undefined)
+    setDrawer(undefined)
     setHash(id ? `#${id}` : '')
     if (window.innerWidth <= 860) setSidebarOpen(false)
   }, [setMode])
 
   const openProject = useCallback((id: string | undefined, threadId?: string) => {
     setMode('projects')
-    setSubagent(undefined)
+    setDrawer(undefined)
     setProjectRoute({ ...(id ? { id } : {}), ...(threadId ? { threadId } : {}) })
     setHash(id ? `#p/${id}${threadId ? `/${threadId}` : ''}` : '')
     if (window.innerWidth <= 860) setSidebarOpen(false)
@@ -248,7 +250,7 @@ export function App() {
   }
 
   return (
-    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${subagent ? ' drawer-open' : ''}`}>
+    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' ? ' drawer-wide' : ''}`}>
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
       {sidebarOpen && (
         <Sidebar
@@ -325,7 +327,8 @@ export function App() {
               select(undefined)
             }}
             onOpenSettings={() => setDialog('settings')}
-            onOpenSubagent={(id, label) => setSubagent({ id, label })}
+            onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
+            onOpenFile={path => setDrawer({ kind: 'file', path })}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
           />
@@ -341,14 +344,17 @@ export function App() {
           </main>
         )}
 
-      {subagent && workspace && (
+      {drawer?.kind === 'subagent' && workspace && (
         <SubagentDrawer
           workspace={workspace}
-          id={subagent.id}
-          label={subagent.label}
-          onClose={() => setSubagent(undefined)}
-          onOpenSubagent={(id, label) => setSubagent({ id, label })}
+          id={drawer.id}
+          label={drawer.label}
+          onClose={() => setDrawer(undefined)}
+          onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
         />
+      )}
+      {drawer?.kind === 'file' && workspace && (
+        <FilePreviewDrawer key={drawer.path} workspace={workspace} path={drawer.path} onClose={() => setDrawer(undefined)} />
       )}
 
       {newProject && workspace && (
