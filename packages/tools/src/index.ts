@@ -9,6 +9,7 @@ import type {
 } from './policy.js'
 
 export * from './builtins.js'
+export * from './processes.js'
 export * from './calc.js'
 export * from './path.js'
 export * from '@tnega/execution'

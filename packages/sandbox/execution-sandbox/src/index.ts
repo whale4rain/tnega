@@ -1,6 +1,8 @@
 import type { Context } from '@tnega/core'
 import {
   localExecutionProvider,
+  type BackgroundProcessRequest,
+  type BackgroundShellRequest,
   type ExecutionProvider,
   type ProcessRequest,
   type ShellRequest,
@@ -134,6 +136,26 @@ export function sandboxedExecution(
     fetchHttp(request) {
       return inner.fetchHttp(request)
     },
+
+    // A background process is confined exactly like a foreground one; with no
+    // usable mechanism `confine` throws and nothing is started.
+    ...(inner.startProcess
+      ? {
+          async startShell(request: BackgroundShellRequest) {
+            const activePolicy = await policy()
+            if (activePolicy.mode === 'bypass' && inner.startShell) return inner.startShell(request)
+            const argv = activePolicy.mode === 'bypass'
+              ? shellArgv({ command: request.command, cwd: request.cwd }, config)
+              : await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy)
+            return inner.startProcess!({ argv, cwd: request.cwd })
+          },
+          async startProcess(request: BackgroundProcessRequest) {
+            const activePolicy = await policy()
+            if (activePolicy.mode === 'bypass' || !confineProcess) return inner.startProcess!(request)
+            return inner.startProcess!({ ...request, argv: await confine('process', request.argv, {}, activePolicy) })
+          },
+        }
+      : {}),
   }
 }
 

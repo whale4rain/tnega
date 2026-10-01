@@ -166,3 +166,43 @@ describe('sandboxed execution', () => {
     expect(response.body).toBe('ok')
   })
 })
+
+describe('sandboxed background processes', () => {
+  class BackgroundExecution extends RecordingExecution {
+    readonly started: Array<{ argv: readonly string[]; cwd: string }> = []
+
+    async startProcess(request: { argv: readonly string[]; cwd: string }) {
+      this.started.push(request)
+      return {
+        pid: 1,
+        output: () => '',
+        exitCode: () => undefined,
+        exited: new Promise<number | null>(() => {}),
+        kill: async () => {},
+      }
+    }
+  }
+
+  it('confines a background shell command like a foreground one', async () => {
+    const { ctx, sandbox } = mount()
+    const inner = new BackgroundExecution()
+    await execution(ctx, inner).startShell!({ command: 'npm run dev', cwd: WORKSPACE })
+    expect(sandbox.requests[0]?.op).toBe('shell')
+    expect(inner.started[0]?.argv[0]).toBe('RUNNER')
+    expect(inner.started[0]?.argv.at(-1)).toBe('npm run dev')
+  })
+
+  it('starts nothing when no backend is usable', async () => {
+    const { ctx, sandbox } = mount()
+    sandbox.unavailable = true
+    const inner = new BackgroundExecution()
+    await expect(execution(ctx, inner).startShell!({ command: 'npm run dev', cwd: WORKSPACE }))
+      .rejects.toMatchObject({ code: 'SANDBOX_UNAVAILABLE' })
+    expect(inner.started).toHaveLength(0)
+  })
+
+  it('offers no background start when the inner boundary cannot', () => {
+    const { ctx, inner } = mount()
+    expect(execution(ctx, inner).startShell).toBeUndefined()
+  })
+})

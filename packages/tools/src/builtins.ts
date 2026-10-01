@@ -19,6 +19,7 @@ import type {
 } from './index.js'
 import { evaluateExpression } from './calc.js'
 import { resolveInside } from './path.js'
+import { createProcessTools } from './processes.js'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import {
   localExecutionProvider,
@@ -619,6 +620,15 @@ export const builtinTools = {
     const service = ctx.get('tools') as ToolsService
     for (const definition of createBuiltinToolDefinitions(config)) {
       service.register(definition)
+    }
+    const normalized = normalizeConfig(config)
+    if (normalized.allowShell && !normalized.disabled.includes('process_start')) {
+      const processes = createProcessTools({
+        execution: normalized.execution,
+        resolveCwd: path => resolveToolPath(normalized, path),
+      })
+      for (const definition of processes.tools) service.register(definition)
+      ctx.fiber.effect(() => () => { void processes.dispose() }, 'builtinTools/processes')
     }
   },
 }

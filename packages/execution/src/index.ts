@@ -55,11 +55,42 @@ export interface HttpResponse {
 }
 
 /** Replaceable execution boundary used by builtin network/shell/search tools. */
+/** A long-running command, e.g. a dev server, started without waiting for it to exit. */
+export interface BackgroundShellRequest {
+  command: string
+  cwd: string
+}
+
+export interface BackgroundProcessRequest {
+  argv: readonly string[]
+  cwd: string
+}
+
+/** Handle to a running child. Output is the combined stdout/stderr tail. */
+export interface BackgroundProcess {
+  readonly pid: number | undefined
+  /** Combined stdout and stderr, most recent `maxOutput` characters. */
+  output(): string
+  /** Exit code once exited, `null` when killed by a signal, `undefined` while running. */
+  exitCode(): number | null | undefined
+  /** Settles when the process exits. */
+  readonly exited: Promise<number | null>
+  /** Kill the whole process tree. */
+  kill(): Promise<void>
+}
+
 export interface ExecutionProvider {
   runShell(request: ShellRequest): Promise<ShellResult>
   runProcess(request: ProcessRequest): Promise<ProcessResult>
   fetchHttp(request: HttpRequest): Promise<HttpResponse>
+  /** Start a shell command in the background; absent when the boundary cannot. */
+  startShell?(request: BackgroundShellRequest): Promise<BackgroundProcess>
+  /** Start an argv process in the background; absent when the boundary cannot. */
+  startProcess?(request: BackgroundProcessRequest): Promise<BackgroundProcess>
 }
+
+/** Characters of output a background process keeps. */
+export const BACKGROUND_OUTPUT_LIMIT = 64 * 1024
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -219,9 +250,55 @@ function runLocalProcess(request: ProcessRequest): Promise<ProcessResult> {
   )
 }
 
+function background(child: ChildProcess): BackgroundProcess {
+  let output = ''
+  let code: number | null | undefined
+  const append = (chunk: Buffer): void => {
+    output += chunk.toString('utf8')
+    if (output.length > BACKGROUND_OUTPUT_LIMIT) output = output.slice(-BACKGROUND_OUTPUT_LIMIT)
+  }
+  child.stdout?.on('data', append)
+  child.stderr?.on('data', append)
+  const exited = new Promise<number | null>(resolve => {
+    child.on('error', error => {
+      output += `
+${errorMessage(error)}`
+      code = 1
+      resolve(1)
+    })
+    child.on('close', exitCode => {
+      code = exitCode
+      resolve(exitCode)
+    })
+  })
+  return {
+    pid: child.pid,
+    output: () => output,
+    exitCode: () => code,
+    exited,
+    async kill() {
+      if (code !== undefined) return
+      await killProcessTree(child)
+      await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 2_000))])
+    },
+  }
+}
+
+async function startLocalShell(request: BackgroundShellRequest): Promise<BackgroundProcess> {
+  return background(spawn(request.command, { ...spawnOptions(request.cwd, 'ignore'), shell: true }))
+}
+
+async function startLocalProcess(request: BackgroundProcessRequest): Promise<BackgroundProcess> {
+  const [command, ...args] = request.argv
+  if (!command) throw new Error('process argv must name an executable')
+  return background(spawn(command, args, { ...spawnOptions(request.cwd, 'ignore'), shell: false }))
+}
+
 export const localExecutionProvider: ExecutionProvider = {
   runShell: runLocalShell,
   runProcess: runLocalProcess,
+  startShell: startLocalShell,
+  startProcess: startLocalProcess,
   async fetchHttp(request) {
     const init: RequestInit = { redirect: 'manual' }
     if (request.headers) init.headers = request.headers
