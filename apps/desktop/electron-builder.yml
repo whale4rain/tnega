@@ -4,6 +4,7 @@ directories:
   output: release
 files:
   - out/**
+  - build/icon.png
   - package.json
 extraResources:
   - from: ../../dist

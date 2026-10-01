@@ -4,11 +4,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startWebServer, type WebServer } from '@tnega/cli'
 import { closeDesktopRuntime } from './shutdown.js'
+import { installTray } from './tray.js'
 import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from './titlebar.js'
 
 let server: WebServer | undefined
 let allowedOrigin = ''
 let quitting = false
+let tray: ReturnType<typeof installTray> | undefined
 
 function appRoot(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'tnega-runtime')
@@ -90,6 +92,11 @@ async function createWindow(): Promise<void> {
     if (/^https?:/u.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  tray = installTray(window, join(dirname(fileURLToPath(import.meta.url)), '../build/icon.png'), () => { void closeAndExit() })
+  window.on('closed', () => {
+    tray?.dispose()
+    tray = undefined
+  })
   window.maximize()
   await window.loadURL(server.url)
 }
@@ -97,6 +104,8 @@ async function createWindow(): Promise<void> {
 async function closeAndExit(): Promise<void> {
   if (quitting) return
   quitting = true
+  tray?.dispose()
+  tray = undefined
   await closeDesktopRuntime(server)
   server = undefined
   app.exit(0)
