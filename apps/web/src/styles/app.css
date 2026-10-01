@@ -3053,3 +3053,31 @@ kbd {
   width: 100%;
   height: 100%;
 }
+
+/* ==========================================================================
+   Desktop window controls
+   The native minimise / maximise / close buttons float over the top-right
+   corner; whichever bar sits there keeps its actions clear of them.
+   ========================================================================== */
+
+.desktop-chrome {
+  --window-controls: max(138px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+}
+
+.desktop-chrome .conv-header,
+.desktop-chrome .drawer-header,
+.desktop-chrome .project-side .side-tabs,
+.desktop-chrome .project-side .side-header {
+  padding-right: calc(var(--window-controls) + 8px);
+}
+
+/* Something else is further right: back to the normal padding. */
+.desktop-chrome .app.drawer-open .conv-header,
+.desktop-chrome .project-view.with-panel .conv-header {
+  padding-right: 16px;
+}
+
+.desktop-chrome .app.drawer-open .project-side .side-tabs,
+.desktop-chrome .app.drawer-open .project-side .side-header {
+  padding-right: 12px;
+}

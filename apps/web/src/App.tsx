@@ -11,6 +11,7 @@ import { FilePreviewDrawer } from './components/preview/FilePreview'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
+import { useDesktopChrome } from './lib/desktop-chrome'
 import { projectApi } from './lib/project-api'
 import type { ProjectRecord } from './lib/project-types'
 import type { AgentType, ApprovalMode, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
@@ -54,6 +55,7 @@ export function App() {
   const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | undefined>()
   const [fatal, setFatal] = useState<string | undefined>()
   const [mode, setMode] = useStoredState<Mode>('tnega.mode', projectFromHash() ? 'projects' : 'sessions', ['sessions', 'projects'])
+  useDesktopChrome(`${mode}:${drawer?.kind ?? 'none'}:${theme}`)
   const [projectRoute, setProjectRoute] = useState<ProjectRoute>(() => projectFromHash() ?? {})
   const [projects, setProjects] = useState<ProjectRecord[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
