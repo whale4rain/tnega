@@ -8,10 +8,19 @@
 
 **Tnega** is "agent" spelled backwards. It is an eval-first agent harness with spacetime-composable plugin lifecycles: components can be hot-swapped and rolled back safely, and Eval is a first-class citizen on par with the agent loop and tools.
 
+Use it for coding, document work, or ongoing projects with a coordinator and parallel agents—all in a local Web or desktop interface.
+
+![Tnega workbench with a coding conversation, plan and session controls](docs/assets/workbench.png)
+
+*Current Web interface, shown with isolated demo data.*
+
 ## Features
 
+- **Projects:** keep an ongoing conversation with a coordinator that delegates work to parallel Threads. Follow their progress, reply directly, and bring shared Memory and a Library of files and artifacts into the same project. [Project guide](docs/project/README.md).
+- **Work agent:** create, inspect and edit Word documents, Excel workbooks and PowerPoint presentations with built-in Office tools, alongside General and Coding agents.
+- **Automatic artifact discovery and previews:** successful Office create/edit calls produce file cards in the conversation, including calls inside CodeMode. Click a card to preview DOCX pages, XLSX sheets and charts, or PPTX slides beside the conversation, with zoom and download controls.
 - **Composable agent runtime:** scoped services, reversible plugin lifecycles, tools, LLM adapters, and evaluation share the same core.
-- **Durable conversations:** general and coding sessions use JSONL event logs; the UI supports session forks, context compaction, provider usage and cache metrics, and a readable activity timeline.
+- **Durable conversations:** General, Coding and Work sessions use JSONL event logs; the UI supports session forks, context compaction, provider usage and cache metrics, and a readable activity timeline.
 - **Coding workflows:** Auto runs tools, Plan produces a plan, and Goal advances a persistent objective. Coding sessions also support slash commands, workspace skills, and configured MCP servers.
 - **Subagents:** agents can spawn or fork child sessions, communicate through durable inboxes, and inspect child progress. The UI shows child tasks and renders their conversations.
 - **Memory:** `~/.tnega/MEMORY.md` stores explicitly requested preferences; each workspace's `.tnega/MEMORY.md` records durable project conventions during compaction.
@@ -55,10 +64,18 @@ tnega web
 # http://127.0.0.1:3080
 ```
 
-The web UI creates `general` or `coding` sessions. Coding sessions offer Auto,
+The web UI creates `general`, `coding`, or `work` sessions. Coding sessions offer Auto,
 Plan, and Goal modes: Plan produces a plan without executing it, and Goal tracks
 a persistent objective. `/` slash commands such as `/mode`, `/skills`, and
 `/mcp` are available in coding sessions.
+
+Switch the sidebar to **Projects** to create a named project and start a conversation
+with its coordinator. Open a Thread to inspect its conversation or leave a direct
+message; use the project panel for Overview, Memory, Library and Settings.
+
+For document work, choose **Work** and describe the document, spreadsheet or slide
+deck you need. Generated Office files appear as cards below the agent's activity;
+click a card to preview or download it.
 
 ## CLI
 

@@ -6,12 +6,19 @@
 
 [English](../README.md)
 
+<p align="center">
+  <img src="assets/tnega-icon.png" alt="Tnega 图标" width="160" />
+</p>
+
 Tnega 是 "agent" 的逆写，也是本项目想做的事：把 Agent 本身当作可以被观察、修改、回滚和进化的对象。
 
 Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空可组合思想，同时把简洁性作为硬约束，并把 Eval 提升为与 Agent Loop、Tools 平级的一等公民。
 
 ## 支持的功能
 
+- **Project 协作**：与协调者保持持续对话，由它委派并行 Thread；查看进度、直接留言，并共享 Memory 与文件、产物 Library。[Project 指南](project/README.md)。
+- **Work Agent**：与 General、Coding 并列，通过内置 Office 工具创建、读取和编辑 Word 文档、Excel 工作簿与 PowerPoint 演示文稿。
+- **产物自动识别与预览**：成功创建或编辑 Office 文件后，会话自动显示文件卡片，也支持 CodeMode 内的工具调用。点击卡片即可在侧栏预览 DOCX 页面、XLSX 表格与图表、PPTX 幻灯片，并缩放或下载。
 - 可组合的 Agent runtime：作用域服务、可逆插件生命周期、工具、模型适配器和评测。
 - 持久会话：JSONL 事件日志、会话分支、上下文压缩、模型用量与缓存命中统计、工具活动时间线。
 - Coding 会话：Auto、Plan、Goal 模式，斜杠命令、工作区技能和配置的 MCP 服务。
@@ -19,7 +26,23 @@ Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空
 - 记忆：用户明确要求记住的偏好写入全局 `MEMORY.md`；压缩时整理长期有效的工作区约定。
 - 多模型：系统配置文件可列出多个模型路由、凭据和思考档位；会话输入框下方可用滑块切换。
 - 工具权限：每次运行选择只读、工作区可写或 bypass；越权操作按需申请批准。
+- **自动审批**：可选择人工批准或 Auto review，由独立审查器评估越权操作；无法判断时回到人工审批，沙箱限制仍然生效。[配置说明](../packages/auto-approval/README.md)。
+- **CodeMode**：在设置中启用后，用 `run_code` 内的 JavaScript 编排现有工具，保留原有权限检查。[设计与取舍](adr/0010-ptc-tool-orchestration.md)。
+- **运行摘要**：成功运行突出展示最终回复，中间过程可折叠展开；失败和取消的过程保留可见。
 - 本地 Web 与 Electron 桌面界面；CLI 和库同时提供 Eval 与 Evolve。
+
+![Tnega 工作台：Coding 会话、计划和运行设置](assets/workbench.png)
+
+当前 Web 界面截图，使用隔离演示数据。
+
+### 开始一个 Project 或文档任务
+
+在侧栏切换到 **Projects**，输入名称即可新建 Project，目标可以稍后补充。
+向协调者描述需求；它派出的 Thread 会显示为卡片，可以打开查看对话或直接留言。
+右侧面板集中展示 Overview、Memory、Library 和 Settings。
+
+制作文档时选择 **Work**，描述需要的报告、表格或幻灯片。
+Office 文件生成后会出现在会话中，点击文件卡片即可预览和下载。
 
 ## 为什么做 Tnega
 
