@@ -2,11 +2,16 @@ import type { Element } from '@xmldom/xmldom'
 import {
   AlignmentType,
   Document,
+  Footer,
+  Header,
   HeadingLevel,
   LevelFormat,
   Packer,
   PageBreak,
+  PageNumber,
+  PageOrientation,
   Paragraph,
+  ShadingType,
   Table,
   TableCell,
   TableRow,
@@ -14,6 +19,7 @@ import {
   WidthType,
 } from 'docx'
 import { OfficeError } from './errors.js'
+import { assertTheme, tint, type Theme } from './theme.js'
 import { attribute, child, children, descendants, openPackage, readXml, requireXml } from './ooxml.js'
 
 export interface TextSpan {
@@ -33,8 +39,24 @@ export type DocBlock =
   | { type: 'table', rows: string[][], header?: boolean }
   | { type: 'pageBreak' }
 
+export interface PageSetup {
+  size?: 'A4' | 'Letter'
+  orientation?: 'portrait' | 'landscape'
+  /** 四边页边距（厘米）。 */
+  margin?: number
+}
+
 export interface DocumentSpec {
   title?: string
+  /** 正文与标题字体；强调色用于标题与表头。 */
+  theme?: Theme
+  page?: PageSetup
+  /** 每页页眉文字。 */
+  header?: string
+  /** 每页页脚文字。 */
+  footer?: string
+  /** 在页脚显示“第 X 页 / 共 Y 页”。 */
+  pageNumbers?: boolean
   blocks: DocBlock[]
 }
 
@@ -87,7 +109,7 @@ function runs(inline: Inline): TextRun[] {
   }))
 }
 
-function blockChildren(block: DocBlock): (Paragraph | Table)[] {
+function blockChildren(block: DocBlock, theme: Theme | undefined): (Paragraph | Table)[] {
   switch (block.type) {
     case 'heading': {
       const heading = HEADINGS[block.level - 1]
@@ -113,6 +135,9 @@ function blockChildren(block: DocBlock): (Paragraph | Table)[] {
           tableHeader: Boolean(block.header) && r === 0,
           children: Array.from({ length: width }, (_, c) => new TableCell({
             children: [new Paragraph({ children: [new TextRun({ text: row[c] ?? '', bold: Boolean(block.header) && r === 0 })] })],
+            ...(block.header && r === 0 && theme?.accent
+              ? { shading: { fill: tint(theme.accent), type: ShadingType.CLEAR, color: 'auto' } }
+              : {}),
           })),
         })),
       })]
@@ -126,17 +151,76 @@ function blockChildren(block: DocBlock): (Paragraph | Table)[] {
   }
 }
 
+/** twips：Word 的长度单位，1 厘米约 567。 */
+const TWIPS_PER_CM = 567
+const PAGE_SIZES = { A4: { width: 11906, height: 16838 }, Letter: { width: 12240, height: 15840 } } as const
+
+function headingStyles(theme: Theme | undefined) {
+  const font = theme?.headingFont ?? theme?.font
+  if (!font && !theme?.accent) return {}
+  const run = { ...(font ? { font } : {}), ...(theme?.accent ? { color: theme.accent } : {}) }
+  return {
+    title: { run }, heading1: { run }, heading2: { run }, heading3: { run },
+    heading4: { run }, heading5: { run }, heading6: { run },
+  }
+}
+
+function sectionProperties(page: PageSetup | undefined) {
+  if (!page) return {}
+  const size = PAGE_SIZES[page.size ?? 'A4']
+  if (!size) throw new OfficeError(`page.size must be A4 or Letter: ${page.size}`, 'OFFICE_INVALID')
+  if (page.margin !== undefined && !(page.margin >= 0 && page.margin <= 10)) {
+    throw new OfficeError(`page.margin must be between 0 and 10 cm: ${page.margin}`, 'OFFICE_INVALID')
+  }
+  const margin = page.margin === undefined ? undefined : Math.round(page.margin * TWIPS_PER_CM)
+  return {
+    properties: {
+      page: {
+        size: {
+          ...size,
+          orientation: page.orientation === 'landscape' ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT,
+        },
+        ...(margin !== undefined ? { margin: { top: margin, right: margin, bottom: margin, left: margin } } : {}),
+      },
+    },
+  }
+}
+
+function headerFooter(spec: DocumentSpec) {
+  const footerRuns: TextRun[] = []
+  if (spec.footer) footerRuns.push(new TextRun(spec.footer))
+  if (spec.pageNumbers) {
+    if (spec.footer) footerRuns.push(new TextRun('   ·   '))
+    footerRuns.push(new TextRun({ children: ['Page ', PageNumber.CURRENT, ' of ', PageNumber.TOTAL_PAGES] }))
+  }
+  return {
+    ...(spec.header ? { headers: { default: new Header({ children: [new Paragraph({ children: [new TextRun(spec.header)], alignment: AlignmentType.RIGHT })] }) } } : {}),
+    ...(footerRuns.length ? { footers: { default: new Footer({ children: [new Paragraph({ children: footerRuns, alignment: AlignmentType.CENTER })] }) } } : {}),
+  }
+}
+
 export async function createDocument(spec: DocumentSpec): Promise<Uint8Array> {
   if (!Array.isArray(spec.blocks)) throw new OfficeError('a document needs a blocks array', 'OFFICE_INVALID')
+  assertTheme(spec.theme)
   const document = new Document({
     ...(spec.title ? { title: spec.title } : {}),
+    styles: {
+      default: {
+        ...(spec.theme?.font ? { document: { run: { font: spec.theme.font } } } : {}),
+        ...headingStyles(spec.theme),
+      },
+    },
     numbering: {
       config: [{
         reference: ORDERED,
         levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.START }],
       }],
     },
-    sections: [{ children: spec.blocks.flatMap(blockChildren) }],
+    sections: [{
+      ...sectionProperties(spec.page),
+      ...headerFooter(spec),
+      children: spec.blocks.flatMap(block => blockChildren(block, spec.theme)),
+    }],
   })
   return new Uint8Array(await Packer.toBuffer(document))
 }

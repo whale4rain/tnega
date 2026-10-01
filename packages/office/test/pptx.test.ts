@@ -54,3 +54,27 @@ describe('pptx', () => {
     await expect(readPresentation(await zip.generateAsync({ type: 'uint8array' }))).rejects.toThrow('missing ppt/presentation.xml')
   })
 })
+
+describe('pptx theme', () => {
+  it('applies fonts, accent titles, header fill, background and slide numbers', async () => {
+    const bytes = await createPresentation({
+      theme: { font: 'Arial', headingFont: 'Georgia', accent: '1F4E79' },
+      background: 'FAFAF7',
+      slideNumbers: true,
+      slides: [{ title: 'Regions', table: { header: true, rows: [['Region', 'Total'], ['North', '200']] } }],
+    })
+    const zip = await JSZip.loadAsync(bytes)
+    const slide = (await zip.file('ppt/slides/slide1.xml')?.async('string')) ?? ''
+    expect(slide).toContain('typeface="Georgia"')
+    expect(slide).toContain('typeface="Arial"')
+    expect(slide).toContain('<a:srgbClr val="1F4E79"/>')
+    expect(slide).toContain('<a:srgbClr val="D2DCE4"/>')
+    expect(slide).toContain('<a:srgbClr val="FAFAF7"/>')
+    expect(slide).toContain('type="slidenum"')
+    expect((await readPresentation(bytes)).slides[0]?.title).toBe('Regions')
+  })
+
+  it('rejects invalid colors', async () => {
+    await expect(createPresentation({ background: 'white', slides: [{ title: 'x' }] })).rejects.toThrow('background')
+  })
+})

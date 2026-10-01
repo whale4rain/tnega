@@ -59,3 +59,41 @@ describe('docx', () => {
     await expect(inspectDocument(await zip.generateAsync({ type: 'uint8array' }))).rejects.toThrow('missing word/document.xml')
   })
 })
+
+describe('docx theme and page setup', () => {
+  it('applies fonts, accent headings, header shading, page size, header, footer and page numbers', async () => {
+    const bytes = await createDocument({
+      theme: { font: 'Arial', headingFont: 'Georgia', accent: '1F4E79' },
+      page: { size: 'Letter', orientation: 'landscape', margin: 2 },
+      header: 'Acme Corp · Confidential',
+      footer: 'Q2 Sales',
+      pageNumbers: true,
+      blocks: [
+        { type: 'heading', level: 1, text: 'Report' },
+        { type: 'table', header: true, rows: [['A', 'B'], ['1', '2']] },
+      ],
+    })
+    const zip = await JSZip.loadAsync(bytes)
+    const read = async (path: string) => (await zip.file(path)?.async('string')) ?? ''
+    const styles = await read('word/styles.xml')
+    expect(styles).toContain('w:ascii="Arial"')
+    expect(styles).toContain('w:ascii="Georgia"')
+    expect(styles).toContain('w:val="1F4E79"')
+    const body = await read('word/document.xml')
+    expect(body).toMatch(/<w:pgSz[^>]*w:w="15840"[^>]*w:h="12240"[^>]*w:orient="landscape"/)
+    expect(body).toMatch(/<w:pgMar[^>]*w:top="1134"/)
+    expect(body).toContain('w:fill="D2DCE4"')
+    const parts = Object.keys(zip.files)
+    const header = await read(parts.find(path => /word\/header\d*\.xml$/.test(path)) ?? '')
+    const footer = await read(parts.find(path => /word\/footer\d*\.xml$/.test(path)) ?? '')
+    expect(header).toContain('Acme Corp · Confidential')
+    expect(footer).toContain('Q2 Sales')
+    expect(footer).toContain('PAGE')
+    expect(footer).toContain('NUMPAGES')
+  })
+
+  it('rejects invalid page setup and accent colors', async () => {
+    await expect(createDocument({ theme: { accent: 'navy' }, blocks: [] })).rejects.toThrow('theme.accent')
+    await expect(createDocument({ page: { margin: 30 }, blocks: [] })).rejects.toThrow('page.margin')
+  })
+})

@@ -1,6 +1,7 @@
 import type { Element } from '@xmldom/xmldom'
 import pptxgen from 'pptxgenjs'
 import { OfficeError } from './errors.js'
+import { assertColor, assertTheme, tint, type Theme } from './theme.js'
 import { attribute, child, children, descendants, openPackage, readXml, relationshipId, relationships, requireXml } from './ooxml.js'
 
 // pptxgenjs 的类型按 ESM 写成，包本身却是 CommonJS：NodeNext 下 TS 认为类在 `.default` 上，
@@ -21,6 +22,12 @@ export interface SlideSpec {
 export interface PresentationSpec {
   title?: string
   layout?: '16x9' | '4x3'
+  /** 字体用于所有文字（标题可单独指定）；强调色用于标题、表头与图表。 */
+  theme?: Theme
+  /** 每页背景色，6 位十六进制 RGB。 */
+  background?: string
+  /** 在右下角显示页码。 */
+  slideNumbers?: boolean
   slides: SlideSpec[]
 }
 
@@ -69,58 +76,94 @@ const LAYOUTS = {
 const MARGIN = 0.5
 const TITLE_HEIGHT = 0.9
 
-function addBody(slide: Slide, spec: SlideSpec, width: number, top: number, bottom: number): void {
+/** 一份演示文稿内所有幻灯片共享的外观与尺寸。 */
+interface DeckLook {
+  width: number
+  height: number
+  theme: Theme | undefined
+  background: string | undefined
+  slideNumbers: boolean
+}
+
+function textFace(look: DeckLook, heading = false): { fontFace?: string } {
+  const face = heading ? look.theme?.headingFont ?? look.theme?.font : look.theme?.font
+  return face ? { fontFace: face } : {}
+}
+
+function addBody(slide: Slide, spec: SlideSpec, look: DeckLook, top: number, bottom: number): void {
+  const width = look.width - 2 * MARGIN
+  const body = textFace(look)
   const parts: ((y: number, h: number) => void)[] = []
   if (spec.text) {
     const text = spec.text
-    parts.push((y, h) => slide.addText(text, { objectName: 'Body', x: MARGIN, y, w: width, h, fontSize: 18, valign: 'top' }))
+    parts.push((y, h) => slide.addText(text, { objectName: 'Body', x: MARGIN, y, w: width, h, fontSize: 18, valign: 'top', ...body }))
   }
   if (spec.bullets?.length) {
     const items = spec.bullets.map(item => ({ text: item, options: { bullet: true, breakLine: true } }))
-    parts.push((y, h) => slide.addText(items, { objectName: 'Bullets', x: MARGIN, y, w: width, h, fontSize: 18, valign: 'top' }))
+    parts.push((y, h) => slide.addText(items, { objectName: 'Bullets', x: MARGIN, y, w: width, h, fontSize: 18, valign: 'top', ...body }))
   }
   if (spec.table) {
     const { rows, header } = spec.table
     const columns = Math.max(0, ...rows.map(row => row.length))
     if (columns === 0) throw new OfficeError('a slide table needs at least one cell', 'OFFICE_INVALID')
+    const headerFill = look.theme?.accent ? tint(look.theme.accent) : 'F2F2F2'
     const tableRows = rows.map((row, r) => Array.from({ length: columns }, (_, c) => ({
       text: row[c] ?? '',
-      options: header && r === 0 ? { bold: true, fill: { color: 'F2F2F2' } } : {},
+      options: header && r === 0 ? { bold: true, fill: { color: headerFill } } : {},
     })))
-    parts.push((y, h) => slide.addTable(tableRows, { objectName: 'Table', x: MARGIN, y, w: width, h, fontSize: 14, border: { type: 'solid', pt: 0.5, color: 'BFBFBF' } }))
+    parts.push((y, h) => slide.addTable(tableRows, { objectName: 'Table', x: MARGIN, y, w: width, h, fontSize: 14, border: { type: 'solid', pt: 0.5, color: 'BFBFBF' }, ...body }))
   }
   const height = (bottom - top) / Math.max(1, parts.length)
   parts.forEach((place, index) => place(top + index * height, height))
 }
 
-export async function createPresentation(spec: PresentationSpec): Promise<Uint8Array> {
-  if (!spec.slides?.length) throw new OfficeError('a presentation needs at least one slide', 'OFFICE_INVALID')
-  const layout = LAYOUTS[spec.layout ?? '16x9']
-  if (!layout) throw new OfficeError(`unknown layout: ${spec.layout}`, 'OFFICE_INVALID')
+function addSlide(pptx: InstanceType<typeof PptxGenJS>, spec: SlideSpec, look: DeckLook): void {
+  const slide = pptx.addSlide()
+  const width = look.width - 2 * MARGIN
+  const titleColor = look.theme?.accent ? { color: look.theme.accent } : {}
+  if (look.background) slide.background = { color: look.background }
+  if (look.slideNumbers) slide.slideNumber = { x: look.width - 0.9, y: look.height - 0.45, w: 0.6, h: 0.3, fontSize: 10, color: '8C8C8C', align: 'right' }
+  const cover = spec.subtitle !== undefined && !spec.text && !spec.bullets?.length && !spec.table
+  if (cover) {
+    const middle = look.height / 2
+    slide.addText(spec.title ?? '', { objectName: 'Title', x: MARGIN, y: middle - 1.1, w: width, h: 1.2, fontSize: 36, bold: true, align: 'center', ...titleColor, ...textFace(look, true) })
+    slide.addText(spec.subtitle ?? '', { objectName: 'Subtitle', x: MARGIN, y: middle + 0.2, w: width, h: 0.8, fontSize: 20, align: 'center', color: '595959', ...textFace(look) })
+  } else {
+    if (spec.title) {
+      slide.addText(spec.title, { objectName: 'Title', x: MARGIN, y: 0.3, w: width, h: TITLE_HEIGHT, fontSize: 28, bold: true, ...titleColor, ...textFace(look, true) })
+    }
+    const top = spec.title ? 0.3 + TITLE_HEIGHT + 0.1 : MARGIN
+    addBody(slide, spec, look, top, look.height - MARGIN)
+  }
+  if (spec.notes) slide.addNotes(spec.notes)
+}
+
+/** 用 pptxgenjs 按规格生成一份完整的演示文稿。 */
+async function buildDeck(slides: readonly SlideSpec[], options: Omit<PresentationSpec, 'slides'>): Promise<Uint8Array> {
+  const layout = LAYOUTS[options.layout ?? '16x9']
+  if (!layout) throw new OfficeError(`unknown layout: ${options.layout}`, 'OFFICE_INVALID')
+  assertTheme(options.theme)
+  assertColor(options.background, 'background')
   const pptx = new PptxGenJS()
   pptx.layout = layout.name
-  if (spec.title) pptx.title = spec.title
-  const width = layout.width - 2 * MARGIN
-
-  for (const slideSpec of spec.slides) {
-    const slide = pptx.addSlide()
-    const cover = slideSpec.subtitle !== undefined && !slideSpec.text && !slideSpec.bullets?.length && !slideSpec.table
-    if (cover) {
-      const middle = layout.height / 2
-      slide.addText(slideSpec.title ?? '', { objectName: 'Title', x: MARGIN, y: middle - 1.1, w: width, h: 1.2, fontSize: 36, bold: true, align: 'center' })
-      slide.addText(slideSpec.subtitle ?? '', { objectName: 'Subtitle', x: MARGIN, y: middle + 0.2, w: width, h: 0.8, fontSize: 20, align: 'center', color: '595959' })
-    } else {
-      if (slideSpec.title) {
-        slide.addText(slideSpec.title, { objectName: 'Title', x: MARGIN, y: 0.3, w: width, h: TITLE_HEIGHT, fontSize: 28, bold: true })
-      }
-      const top = slideSpec.title ? 0.3 + TITLE_HEIGHT + 0.1 : MARGIN
-      addBody(slide, slideSpec, width, top, layout.height - MARGIN)
-    }
-    if (slideSpec.notes) slide.addNotes(slideSpec.notes)
+  if (options.title) pptx.title = options.title
+  const look: DeckLook = {
+    width: layout.width,
+    height: layout.height,
+    theme: options.theme,
+    background: options.background,
+    slideNumbers: Boolean(options.slideNumbers),
   }
+  for (const slideSpec of slides) addSlide(pptx, slideSpec, look)
   const output = await pptx.write({ outputType: 'uint8array' })
   if (!(output instanceof Uint8Array)) throw new OfficeError('pptxgenjs did not produce bytes', 'OFFICE_UNSUPPORTED')
   return output
+}
+
+export async function createPresentation(spec: PresentationSpec): Promise<Uint8Array> {
+  if (!spec.slides?.length) throw new OfficeError('a presentation needs at least one slide', 'OFFICE_INVALID')
+  const { slides, ...options } = spec
+  return buildDeck(slides, options)
 }
 
 /** DrawingML 段落文本：`a:t` 拼接，`a:br` 为换行；段落之间用换行分隔。 */
