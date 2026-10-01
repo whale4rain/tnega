@@ -108,3 +108,60 @@ describe('xlsx deleteSheet', () => {
       .rejects.toThrow('no sheet named "Missing"')
   })
 })
+
+describe('xlsx styling', () => {
+  it('applies fonts, colors, borders, wrapping, merges, row heights, filters and a theme font', async () => {
+    const bytes = await createWorkbook({
+      theme: { font: 'Arial', accent: '1F4E79' },
+      sheets: [{
+        name: 'Report',
+        rows: [['Q2 Report', null, null], ['Region', 'Total', 'Note'], ['North', 200, 'long text that wraps']],
+        merges: ['A1:C1'],
+        rowHeights: [28],
+        autoFilter: 'A2:C2',
+        styles: [
+          { range: 'A1', style: { size: 16, bold: true, color: '1F4E79', align: 'center', valign: 'middle' } },
+          { range: 'A2:C3', style: { border: 'thin', borderColor: '999999' } },
+          { range: 'C3', style: { wrap: true, font: 'Georgia', underline: true } },
+        ],
+      }],
+    })
+    const workbook = await reopen(bytes)
+    const sheet = workbook.getWorksheet('Report')
+    expect(sheet?.getCell('A1').font).toMatchObject({ size: 16, bold: true, name: 'Arial', color: { argb: 'FF1F4E79' } })
+    expect(sheet?.getCell('A1').alignment).toMatchObject({ horizontal: 'center', vertical: 'middle' })
+    expect(sheet?.getCell('C1').isMerged).toBe(true)
+    expect(sheet?.getRow(1).height).toBe(28)
+    expect(sheet?.autoFilter).toBe('A2:C2')
+    expect(sheet?.getCell('B3').border.bottom).toMatchObject({ style: 'thin', color: { argb: 'FF999999' } })
+    expect(sheet?.getCell('C3').font).toMatchObject({ name: 'Georgia', underline: true })
+    expect(sheet?.getCell('C3').alignment.wrapText).toBe(true)
+    expect(sheet?.getCell('B2').font.name).toBe('Arial')
+  })
+
+  it('edits merges, row heights, filters and borders', async () => {
+    const edited = await editWorkbook(await createWorkbook(sales), [
+      { op: 'merge', sheet: 'Sales', range: 'A5:D5' },
+      { op: 'setRowHeights', sheet: 'Sales', start: 2, heights: [20, 22] },
+      { op: 'autoFilter', sheet: 'Sales', range: 'A1:D1' },
+      { op: 'style', sheet: 'Sales', range: 'A1:D3', style: { border: 'medium' } },
+      { op: 'style', sheet: 'Sales', range: 'A1', style: { border: 'none' } },
+    ])
+    const sheet = (await reopen(edited)).getWorksheet('Sales')
+    expect(sheet?.getCell('B5').isMerged).toBe(true)
+    expect(sheet?.getRow(3).height).toBe(22)
+    expect(sheet?.autoFilter).toBe('A1:D1')
+    expect(sheet?.getCell('D3').border.top?.style).toBe('medium')
+    expect(sheet?.getCell('A1').border.top).toBeUndefined()
+    const cleared = await editWorkbook(edited, [{ op: 'autoFilter', sheet: 'Sales', range: null }, { op: 'unmerge', sheet: 'Sales', range: 'A5:D5' }])
+    const after = (await reopen(cleared)).getWorksheet('Sales')
+    expect(after?.autoFilter).toBeUndefined()
+    expect(after?.getCell('B5').isMerged).toBe(false)
+  })
+
+  it('rejects bad colors and font sizes', async () => {
+    await expect(createWorkbook({ theme: { accent: 'blue' }, sheets: [{ name: 'S' }] })).rejects.toThrow('theme.accent')
+    await expect(editWorkbook(await createWorkbook(sales), [{ op: 'style', sheet: 'Sales', range: 'A1', style: { size: 0 } }]))
+      .rejects.toThrow('font size')
+  })
+})

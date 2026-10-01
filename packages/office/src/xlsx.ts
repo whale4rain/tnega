@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs'
 import { formatRange, parseAddress, parseRange, type CellRange } from './address.js'
 import { OfficeError } from './errors.js'
 import { FormulaError, WorkbookEvaluator, displayValue } from './formula.js'
+import { assertColor, assertTheme, type Theme } from './theme.js'
 
 /** 写入单元格的值：公式以 `=` 之外的对象形式给出，避免与以 `=` 开头的文本混淆。 */
 export type CellInput = string | number | boolean | null | { formula: string }
@@ -12,11 +13,24 @@ export type CellOutput = string | number | boolean | null | { formula: string, v
 export interface CellStyle {
   bold?: boolean
   italic?: boolean
+  underline?: boolean
+  /** 字体名，例如 `Arial`。 */
+  font?: string
+  /** 字号（磅）。 */
+  size?: number
+  /** 文字颜色，6 位十六进制 RGB。 */
+  color?: string
   /** Excel 数字格式，例如 `0.00%`、`#,##0`、`yyyy-mm-dd`。 */
   numFmt?: string
   /** 背景色，6 位十六进制 RGB，例如 `FFF2CC`。 */
   fill?: string
   align?: 'left' | 'center' | 'right'
+  valign?: 'top' | 'middle' | 'bottom'
+  wrap?: boolean
+  /** 区域内每个单元格四边的边框；`none` 清除边框。 */
+  border?: 'thin' | 'medium' | 'thick' | 'none'
+  /** 边框颜色，缺省为浅灰。 */
+  borderColor?: string
 }
 
 export interface RangeStyle {
@@ -33,9 +47,17 @@ export interface SheetSpec {
   /** 冻结首若干行/列，常用于表头。 */
   freeze?: { rows?: number, columns?: number }
   styles?: RangeStyle[]
+  /** 合并的区域，例如 `A1:E1`。 */
+  merges?: string[]
+  /** 从第 1 行开始的行高（磅）。 */
+  rowHeights?: number[]
+  /** 给表头加筛选按钮的区域，例如 `A1:E1`。 */
+  autoFilter?: string
 }
 
 export interface WorkbookSpec {
+  /** 字体用于所有写入的单元格；强调色用于图表。 */
+  theme?: Theme
   sheets: SheetSpec[]
 }
 
@@ -44,6 +66,10 @@ export type WorkbookOp =
   | { op: 'clear', sheet: string, range: string }
   | { op: 'style', sheet: string, range: string, style: CellStyle }
   | { op: 'setColumnWidths', sheet: string, start?: string, widths: number[] }
+  | { op: 'setRowHeights', sheet: string, start?: number, heights: number[] }
+  | { op: 'merge', sheet: string, range: string }
+  | { op: 'unmerge', sheet: string, range: string }
+  | { op: 'autoFilter', sheet: string, range: string | null }
   | { op: 'addSheet', name: string }
   | { op: 'renameSheet', sheet: string, name: string }
   | { op: 'deleteSheet', sheet: string }
@@ -190,28 +216,70 @@ function writeRows(sheet: ExcelJS.Worksheet, start: string, rows: CellInput[][])
   })
 }
 
+function argb(color: string): string {
+  return `FF${color.toUpperCase()}`
+}
+
 function applyStyle(sheet: ExcelJS.Worksheet, range: string, style: CellStyle): void {
   const { start, end } = parseRange(range)
-  if (style.fill !== undefined && !/^[0-9A-Fa-f]{6}$/.test(style.fill)) {
-    throw new OfficeError(`fill must be a 6-digit hex color: ${style.fill}`, 'OFFICE_INVALID')
+  assertColor(style.fill, 'fill')
+  assertColor(style.color, 'color')
+  assertColor(style.borderColor, 'borderColor')
+  if (style.size !== undefined && !(style.size > 0 && style.size <= 409)) {
+    throw new OfficeError(`font size must be between 1 and 409: ${style.size}`, 'OFFICE_INVALID')
   }
+  const font: Partial<ExcelJS.Font> = {
+    ...(style.bold !== undefined ? { bold: style.bold } : {}),
+    ...(style.italic !== undefined ? { italic: style.italic } : {}),
+    ...(style.underline !== undefined ? { underline: style.underline } : {}),
+    ...(style.font !== undefined ? { name: style.font } : {}),
+    ...(style.size !== undefined ? { size: style.size } : {}),
+    ...(style.color !== undefined ? { color: { argb: argb(style.color) } } : {}),
+  }
+  const alignment: Partial<ExcelJS.Alignment> = {
+    ...(style.align !== undefined ? { horizontal: style.align } : {}),
+    ...(style.valign !== undefined ? { vertical: style.valign } : {}),
+    ...(style.wrap !== undefined ? { wrapText: style.wrap } : {}),
+  }
+  const edge: Partial<ExcelJS.Border> | undefined = style.border === undefined || style.border === 'none'
+    ? undefined
+    : { style: style.border, color: { argb: argb(style.borderColor ?? 'BFBFBF') } }
   for (let row = start.row; row <= end.row; row++) {
     for (let column = start.column; column <= end.column; column++) {
       const cell = sheet.getCell(row, column)
-      if (style.bold !== undefined || style.italic !== undefined) {
-        cell.font = {
-          ...cell.font,
-          ...(style.bold !== undefined ? { bold: style.bold } : {}),
-          ...(style.italic !== undefined ? { italic: style.italic } : {}),
-        }
-      }
+      if (Object.keys(font).length > 0) cell.font = { ...cell.font, ...font }
+      if (Object.keys(alignment).length > 0) cell.alignment = { ...cell.alignment, ...alignment }
       if (style.numFmt !== undefined) cell.numFmt = style.numFmt
-      if (style.fill !== undefined) {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.fill.toUpperCase()}` } }
-      }
-      if (style.align !== undefined) cell.alignment = { ...cell.alignment, horizontal: style.align }
+      if (style.fill !== undefined) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(style.fill) } }
+      if (style.border === 'none') cell.border = {}
+      else if (edge) cell.border = { top: edge, left: edge, bottom: edge, right: edge }
     }
   }
+}
+
+function setRowHeights(sheet: ExcelJS.Worksheet, start: number, heights: number[]): void {
+  if (!Number.isInteger(start) || start < 1) throw new OfficeError(`invalid start row: ${start}`, 'OFFICE_INVALID')
+  heights.forEach((height, index) => {
+    if (!Number.isFinite(height) || height <= 0) throw new OfficeError(`invalid row height: ${height}`, 'OFFICE_INVALID')
+    sheet.getRow(start + index).height = height
+  })
+}
+
+function merge(sheet: ExcelJS.Worksheet, range: string): void {
+  const normalized = formatRange(parseRange(range))
+  try {
+    sheet.mergeCells(normalized)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    throw new OfficeError(`cannot merge ${range}: ${reason}`, 'OFFICE_INVALID', { cause: error })
+  }
+}
+
+/** 主题字体落到所有已写入的单元格上；显式设置过字体的单元格保持不变。 */
+function applyThemeFont(sheet: ExcelJS.Worksheet, font: string): void {
+  sheet.eachRow(row => row.eachCell(cell => {
+    if (!cell.font?.name) cell.font = { ...cell.font, name: font }
+  }))
 }
 
 function setColumnWidths(sheet: ExcelJS.Worksheet, start: string, widths: number[]): void {
@@ -224,12 +292,17 @@ function setColumnWidths(sheet: ExcelJS.Worksheet, start: string, widths: number
 
 export async function createWorkbook(spec: WorkbookSpec): Promise<Uint8Array> {
   if (!spec.sheets?.length) throw new OfficeError('a workbook needs at least one sheet', 'OFFICE_INVALID')
+  assertTheme(spec.theme)
   const workbook = new ExcelJS.Workbook()
   for (const sheetSpec of spec.sheets) {
     const sheet = addSheet(workbook, sheetSpec.name)
     if (sheetSpec.rows) writeRows(sheet, 'A1', sheetSpec.rows)
     if (sheetSpec.columnWidths) setColumnWidths(sheet, 'A', sheetSpec.columnWidths)
     for (const { range, style } of sheetSpec.styles ?? []) applyStyle(sheet, range, style)
+    for (const range of sheetSpec.merges ?? []) merge(sheet, range)
+    if (sheetSpec.rowHeights) setRowHeights(sheet, 1, sheetSpec.rowHeights)
+    if (sheetSpec.autoFilter) sheet.autoFilter = formatRange(parseRange(sheetSpec.autoFilter))
+    if (spec.theme?.font) applyThemeFont(sheet, spec.theme.font)
     const freeze = sheetSpec.freeze
     if (freeze && (freeze.rows || freeze.columns)) {
       sheet.views = [{ state: 'frozen', xSplit: freeze.columns ?? 0, ySplit: freeze.rows ?? 0 }]
@@ -312,6 +385,21 @@ export async function editWorkbook(bytes: Uint8Array, ops: readonly WorkbookOp[]
       case 'setColumnWidths':
         setColumnWidths(sheetNamed(workbook, op.sheet), op.start ?? 'A', op.widths)
         break
+      case 'setRowHeights':
+        setRowHeights(sheetNamed(workbook, op.sheet), op.start ?? 1, op.heights)
+        break
+      case 'merge':
+        merge(sheetNamed(workbook, op.sheet), op.range)
+        break
+      case 'unmerge':
+        sheetNamed(workbook, op.sheet).unMergeCells(formatRange(parseRange(op.range)))
+        break
+      case 'autoFilter': {
+        const sheet = sheetNamed(workbook, op.sheet)
+        if (op.range === null) delete sheet.autoFilter
+        else sheet.autoFilter = formatRange(parseRange(op.range))
+        break
+      }
       case 'addSheet':
         addSheet(workbook, op.name)
         break
