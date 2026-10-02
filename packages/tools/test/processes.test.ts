@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { Context } from '@tnega/core'
 
-import { builtinTools, localUrls, stripAnsi, tools, type ToolsService } from '../src/index.js'
+import { builtinTools, localUrls, ProcessRegistry, stripAnsi, tools, type ToolsService } from '../src/index.js'
 
 const dirs: string[] = []
 
@@ -47,6 +47,28 @@ describe('process tools', () => {
     const stopped = await registry.execute('process_stop', { id: 'p1' }, {})
     expect((stopped.output as { status: string }).status).not.toBe('running')
     await fiber.dispose()
+  }, 30_000)
+
+  it('keep processes in a shared registry alive across runs until the registry is disposed', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'tnega-process-'))
+    dirs.push(cwd)
+    const registry = new ProcessRegistry()
+    const run = async () => {
+      const root = new Context()
+      await root.plugin(tools)
+      const fiber = await root.plugin(builtinTools, { cwd, allowShell: true, processes: registry })
+      return { registry: root.get('tools') as ToolsService, fiber }
+    }
+    const first = await run()
+    await first.registry.execute('process_start', { command: 'node -e "setInterval(() => {}, 1000)"', waitForUrlMs: 0 }, {})
+    await first.fiber.dispose()
+
+    const second = await run()
+    const listed = await second.registry.execute('process_list', {}, {})
+    expect(listed.output).toMatchObject([{ id: 'p1', status: 'running' }])
+    await second.fiber.dispose()
+    await registry.dispose()
+    expect(registry.running()).toHaveLength(0)
   }, 30_000)
 
   it('are absent without shell access', async () => {

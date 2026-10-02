@@ -19,7 +19,7 @@ import type {
 } from './index.js'
 import { evaluateExpression } from './calc.js'
 import { resolveInside } from './path.js'
-import { createProcessTools } from './processes.js'
+import { createProcessTools, type ProcessRegistry } from './processes.js'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import {
   localExecutionProvider,
@@ -40,6 +40,8 @@ export interface BuiltinToolsConfig {
   /** 递归 `list_dir` 剪掉的目录名；默认与搜索能力的能力级默认值一致。 */
   searchExcludes?: readonly string[]
   execution?: ExecutionProvider
+  /** Background processes shared beyond this plugin (see ProcessRegistry). */
+  processes?: ProcessRegistry
 }
 
 interface NormalizedBuiltinToolsConfig {
@@ -626,6 +628,7 @@ export const builtinTools = {
       const processes = createProcessTools({
         execution: normalized.execution,
         resolveCwd: path => resolveToolPath(normalized, path),
+        ...(config.processes ? { registry: config.processes } : {}),
       })
       for (const definition of processes.tools) service.register(definition)
       ctx.fiber.effect(() => () => { void processes.dispose() }, 'builtinTools/processes')

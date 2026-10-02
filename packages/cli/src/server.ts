@@ -60,7 +60,7 @@ import { toolOffice } from '@tnega/tool-office'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSubagent } from '@tnega/tool-subagent'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
-import { builtinTools, tools, type ToolsService } from '@tnega/tools'
+import { builtinTools, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { ProjectHost } from './project-host.js'
 import { handleProjectApi } from './project-routes.js'
@@ -268,6 +268,7 @@ export async function startWebServer(
     projectPermission: options.projectPermission ?? 'workspace-write',
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),
+    processes: new Map(),
   }
 
   const server = createServer((req, res) => {
@@ -298,6 +299,9 @@ export async function startWebServer(
       projectHosts.clear()
       await Promise.all(hosts.map(entry => entry.host.dispose()))
       await ownedBrowser?.close()
+      const registries = [...context.processes.values()]
+      context.processes.clear()
+      await Promise.all(registries.map(registry => registry.dispose()))
     },
   }
 }
@@ -315,6 +319,18 @@ interface ServerContext {
   projectHosts?: Map<string, ProjectHostEntry>
   projectPermission: PermissionMode
   browser?: PlaywrightBrowserHost
+  /** Background processes per workspace; they outlive the runs that start them. */
+  processes: Map<string, ProcessRegistry>
+}
+
+function processesFor(context: ServerContext, workspace: string): ProcessRegistry {
+  const key = resolve(workspace)
+  let registry = context.processes.get(key)
+  if (!registry) {
+    registry = new ProcessRegistry()
+    context.processes.set(key, registry)
+  }
+  return registry
 }
 
 /** Mount the browser Provider over the shared host and the model-visible tools. */
@@ -1014,6 +1030,7 @@ async function handleRun(
       resumeQueued,
       attachments,
       ...(context.browser ? { browser: context.browser } : {}),
+      processes: processesFor(context, workspace),
     })
     return
   }
@@ -1041,6 +1058,7 @@ async function handleRun(
         allowShell: true,
         allowOutsideWorkspace: permission === 'bypass',
         allowPrivateNetwork: permission === 'bypass',
+        processes: processesFor(context, workspace),
       },
       ...(coding
         ? {
@@ -1209,6 +1227,7 @@ interface ResidentRunRequest {
   resumeQueued?: boolean
   attachments?: ModelAttachment[]
   browser?: PlaywrightBrowserHost
+  processes?: ProcessRegistry
   config: SystemConfig
   prompt: string
   permission: PermissionMode
@@ -1250,6 +1269,7 @@ async function createResidentRuntime(
     allowShell: true,
     allowOutsideWorkspace: async () => (await currentPermission()) === 'bypass',
     allowPrivateNetwork: async () => (await currentPermission()) === 'bypass',
+    ...(req.processes ? { processes: req.processes } : {}),
     execution: sandboxedExecution(root, {
       policy: resolveSandboxPolicy({
         mode: req.permission,

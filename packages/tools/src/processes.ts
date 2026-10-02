@@ -22,7 +22,7 @@ export function localUrls(text: string): string[] {
   return [...found]
 }
 
-interface Entry {
+export interface ProcessEntry {
   id: string
   command: string
   cwd: string
@@ -32,8 +32,38 @@ interface Entry {
   read: number
 }
 
+/**
+ * Background processes started by agents in one workspace. The web server
+ * keeps one per workspace so a dev server outlives the run that started it;
+ * without one, the tools own a private registry that dies with them.
+ */
+export class ProcessRegistry {
+  readonly entries = new Map<string, ProcessEntry>()
+  private _next = 1
+
+  constructor(readonly maxProcesses = 4) {}
+
+  running(): ProcessEntry[] {
+    return [...this.entries.values()].filter(entry => entry.process.exitCode() === undefined)
+  }
+
+  add(command: string, cwd: string, process: BackgroundProcess): ProcessEntry {
+    const entry: ProcessEntry = { id: `p${this._next++}`, command, cwd, startedAt: Date.now(), process, read: 0 }
+    this.entries.set(entry.id, entry)
+    return entry
+  }
+
+  async dispose(): Promise<void> {
+    const all = [...this.entries.values()]
+    this.entries.clear()
+    await Promise.all(all.map(entry => entry.process.kill().catch(() => {})))
+  }
+}
+
 export interface ProcessToolsConfig {
   execution: ExecutionProvider
+  /** Shared registry; the tools never dispose a registry they were given. */
+  registry?: ProcessRegistry
   /** Resolve a workspace-relative cwd the same way `shell` does. */
   resolveCwd: (cwd: string) => Promise<string>
   /** Running processes allowed at once. */
@@ -44,7 +74,7 @@ function tail(text: string, chars = 4_000): string {
   return text.length > chars ? `…${text.slice(-chars)}` : text
 }
 
-function status(entry: Entry): string {
+function status(entry: ProcessEntry): string {
   const code = entry.process.exitCode()
   return code === undefined ? 'running' : `exited (${code ?? 'killed'})`
 }
@@ -56,11 +86,11 @@ function status(entry: Entry): string {
  */
 export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDefinition[]; dispose: () => Promise<void> } {
   const start = config.execution.startShell?.bind(config.execution)
-  const entries = new Map<string, Entry>()
-  let next = 1
-  const maxProcesses = config.maxProcesses ?? 4
+  const owned = config.registry ? undefined : new ProcessRegistry(config.maxProcesses)
+  const registry = config.registry ?? owned!
+  const entries = registry.entries
 
-  const find = (input: unknown): Entry => {
+  const find = (input: unknown): ProcessEntry => {
     const id = input && typeof input === 'object' ? (input as Record<string, unknown>).id : undefined
     const entry = typeof id === 'string' ? entries.get(id) : undefined
     if (!entry) throw new Error(`no process ${String(id)}; see process_list`)
@@ -86,13 +116,12 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
       async execute(input: unknown, options: ToolExecuteOptions) {
         const args = input && typeof input === 'object' ? input as Record<string, unknown> : {}
         if (typeof args.command !== 'string' || !args.command.trim()) throw new Error('command must be a non-empty string')
-        const running = [...entries.values()].filter(entry => entry.process.exitCode() === undefined)
-        if (running.length >= maxProcesses) throw new Error(`already running ${running.length} processes; stop one with process_stop first`)
+        const running = registry.running()
+        if (running.length >= registry.maxProcesses) throw new Error(`already running ${running.length} processes; stop one with process_stop first`)
         const cwd = await config.resolveCwd(typeof args.cwd === 'string' ? args.cwd : '.')
         const process = await start!({ command: args.command, cwd })
-        const id = `p${next++}`
-        const entry: Entry = { id, command: args.command, cwd, startedAt: Date.now(), process, read: 0 }
-        entries.set(id, entry)
+        const entry = registry.add(args.command, cwd, process)
+        const id = entry.id
         const waitMs = typeof args.waitForUrlMs === 'number' ? Math.min(Math.max(args.waitForUrlMs, 0), 60_000) : 15_000
         const deadline = Date.now() + waitMs
         while (Date.now() < deadline && !options.signal?.aborted && process.exitCode() === undefined && localUrls(process.output()).length === 0) {
@@ -154,9 +183,7 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
   return {
     tools,
     async dispose() {
-      const running = [...entries.values()]
-      entries.clear()
-      await Promise.all(running.map(entry => entry.process.kill().catch(() => {})))
+      await owned?.dispose()
     },
   }
 }
