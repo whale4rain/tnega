@@ -38,6 +38,8 @@ export interface TimelineActions {
   onFork?: (messageId: string) => void
   onOpenSubagent?: (id: string, label: string) => void
   onOpenFile?: (path: string) => void
+  /** Show a file this turn changed in the Workbench diff. */
+  onOpenChange?: (path: string) => void
 }
 
 /** Whose avatar the agent turns in this timeline wear. */
@@ -280,7 +282,7 @@ const AgentTurn = memo(function AgentTurn({
       case 'subagent':
         return <SubagentCard key={seg.id} agent={seg.agent} onOpen={actions.onOpenSubagent} />
       case 'files':
-        return <EditedFiles key={seg.id} files={seg.files} />
+        return <EditedFiles key={seg.id} files={seg.files} onOpen={actions.onOpenChange} />
       case 'notice':
         return <Notice key={seg.id} tone={seg.tone} text={seg.text} />
     }
@@ -535,7 +537,7 @@ function SubagentCard({ agent, onOpen }: { agent: SubagentView; onOpen?: ((id: s
   )
 }
 
-function EditedFiles({ files }: { files: Array<{ path: string; additions?: number; deletions?: number }> }) {
+function EditedFiles({ files, onOpen }: { files: Array<{ path: string; additions?: number; deletions?: number }>; onOpen?: ((path: string) => void) | undefined }) {
   return (
     <div className="files-card">
       <div className="files-head">
@@ -543,13 +545,22 @@ function EditedFiles({ files }: { files: Array<{ path: string; additions?: numbe
         <span>{files.length === 1 ? '1 file changed' : `${files.length} files changed`}</span>
       </div>
       <ul className="files-list">
-        {files.map(file => (
-          <li key={file.path}>
-            <span className="files-path">{file.path}</span>
-            {file.additions !== undefined && <span className="diff-add">+{file.additions}</span>}
-            {file.deletions !== undefined && <span className="diff-del">−{file.deletions}</span>}
-          </li>
-        ))}
+        {files.map(file => {
+          const body = (
+            <>
+              <span className="files-path">{file.path}</span>
+              {file.additions !== undefined && <span className="diff-add">+{file.additions}</span>}
+              {file.deletions !== undefined && <span className="diff-del">−{file.deletions}</span>}
+            </>
+          )
+          return (
+            <li key={file.path}>
+              {onOpen
+                ? <button type="button" className="files-row" title={`Show the diff of ${file.path}`} onClick={() => onOpen(file.path)}>{body}</button>
+                : body}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

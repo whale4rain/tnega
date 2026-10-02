@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { workbenchApi } from './workbench-api'
 
 export function useStoredState<T extends string>(key: string, fallback: T, allowed?: readonly T[]): [T, (value: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -95,4 +96,34 @@ export function relativeTime(timestamp: number, now = Date.now()): string {
   const days = Math.round(hours / 24)
   if (days < 7) return `${days}d ago`
   return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/**
+ * How many files differ from the last commit in this workspace, for the
+ * Workbench badge. Polls lightly while the page is visible; the Changes view
+ * reports fresher counts through the setter while it is open.
+ */
+export function useChangeCount(workspace: string, intervalMs = 15_000): [number | undefined, (count: number) => void] {
+  const [count, setCount] = useState<number | undefined>()
+  useEffect(() => {
+    setCount(undefined)
+    if (!workspace) return
+    const controller = new AbortController()
+    const poll = () => {
+      if (document.visibilityState !== 'visible') return
+      void workbenchApi.changes(workspace, controller.signal).then(
+        summary => setCount(summary.git ? summary.files.length : undefined),
+        () => undefined,
+      )
+    }
+    poll()
+    const timer = setInterval(poll, intervalMs)
+    window.addEventListener('focus', poll)
+    return () => {
+      controller.abort()
+      clearInterval(timer)
+      window.removeEventListener('focus', poll)
+    }
+  }, [workspace, intervalMs])
+  return [count, setCount]
 }

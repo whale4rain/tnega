@@ -6,10 +6,9 @@ import { NewProjectDialog } from './components/project/NewProjectDialog'
 import { ProjectView } from './components/project/ProjectView'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
-import { SubagentDrawer } from './components/SubagentDrawer'
-import { FilePreviewDrawer } from './components/preview/FilePreview'
-import { BrowserDrawer } from './components/BrowserDrawer'
-import { FilesDrawer } from './components/files/FilesDrawer'
+import { Workbench } from './components/workbench/Workbench'
+import { openDoc, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
+import { useChangeCount } from './lib/hooks'
 import { desktopBrowser } from './lib/desktop-browser'
 import { browserAvailable } from './lib/browser-live'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
@@ -57,24 +56,52 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | undefined>(sessionFromHash)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 860)
   const [dialog, setDialog] = useState<'settings' | 'workspace' | undefined>()
-  // The right-hand drawer shows either a subagent transcript or a produced file.
-  const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | { kind: 'files' } | { kind: 'browser' } | undefined>()
-  // The desktop app asks for the browser panel whenever the agent is about to use it.
-  // The browser panel keeps the width the user dragged it to.
-  const [browserWidth, setBrowserWidth] = useState<number | undefined>(() => {
-    const saved = Number(localStorage.getItem('tnega.browserWidth'))
+  // The Workbench: files, changes, terminal and browser, plus documents opened from the conversation.
+  const [workbench, setWorkbenchState] = useState<WorkbenchState>(() => {
+    try {
+      return restore(JSON.parse(localStorage.getItem('tnega.workbench') ?? 'null'))
+    } catch {
+      return restore(null)
+    }
+  })
+  const setWorkbench = useCallback((update: (state: WorkbenchState) => WorkbenchState) => {
+    setWorkbenchState(current => {
+      const next = update(current)
+      localStorage.setItem('tnega.workbench', JSON.stringify(persisted(next)))
+      return next
+    })
+  }, [])
+  // The panel keeps the width the user dragged it to (the browser's old setting carries over).
+  const [workbenchWidth, setWorkbenchWidth] = useState<number | undefined>(() => {
+    const saved = Number(localStorage.getItem('tnega.workbenchWidth') ?? localStorage.getItem('tnega.browserWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : undefined
   })
   const appRoot = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (browserWidth) appRoot.current?.style.setProperty('--browser-width', `${browserWidth}px`)
-  }, [browserWidth])
-  const resizeBrowser = useCallback((width: number) => {
-    setBrowserWidth(width)
-    localStorage.setItem('tnega.browserWidth', String(width))
+    if (workbenchWidth) appRoot.current?.style.setProperty('--workbench-width', `${workbenchWidth}px`)
+  }, [workbenchWidth])
+  const resizeWorkbench = useCallback((width: number) => {
+    setWorkbenchWidth(width)
+    localStorage.setItem('tnega.workbenchWidth', String(width))
   }, [])
-  const showBrowser = useCallback(() => setDrawer(current => current?.kind === 'browser' ? current : { kind: 'browser' }), [])
+  // The desktop app asks for the browser whenever the agent is about to use it.
+  const showBrowser = useCallback(() => setWorkbench(current => current.open && current.active === 'browser' ? current : openTool(current, 'browser')), [setWorkbench])
   useEffect(() => desktopBrowser()?.onReveal(showBrowser), [showBrowser])
+  // Ctrl+J shows or hides the Workbench; Ctrl+` opens the terminal.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      if (event.key === 'j' || event.key === 'J') {
+        event.preventDefault()
+        setWorkbench(toggle)
+      } else if (event.key === '`') {
+        event.preventDefault()
+        setWorkbench(current => current.open && current.active === 'terminal' ? toggle(current) : openTool(current, 'terminal'))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setWorkbench])
   // Outside the desktop app the server streams its headless browser into the panel.
   const [browserReady, setBrowserReady] = useState(Boolean(desktopBrowser()))
   useEffect(() => {
@@ -82,7 +109,8 @@ export function App() {
   }, [])
   const [fatal, setFatal] = useState<string | undefined>()
   const [mode, setMode] = useStoredState<Mode>('tnega.mode', projectFromHash() ? 'projects' : 'sessions', ['sessions', 'projects'])
-  useDesktopChrome(`${mode}:${drawer?.kind ?? 'none'}:${theme}`)
+  useDesktopChrome(`${mode}:${workbench.open ? workbench.active : 'none'}:${theme}`)
+  const [changeCount, setChangeCount] = useChangeCount(workspace)
   const [projectRoute, setProjectRoute] = useState<ProjectRoute>(() => projectFromHash() ?? {})
   const [projects, setProjects] = useState<ProjectRecord[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -166,14 +194,14 @@ export function App() {
   const select = useCallback((id: string | undefined) => {
     setMode('sessions')
     setSelectedId(id)
-    setDrawer(undefined)
+    // Transcripts belong to the session being left; the workspace tools stay.
+    setWorkbench(current => ({ ...current, docs: current.docs.filter(doc => doc.kind !== 'subagent'), ...(current.active.startsWith('subagent:') ? { active: 'files' } : {}) }))
     setHash(id ? `#${id}` : '')
     if (window.innerWidth <= 860) setSidebarOpen(false)
-  }, [setMode])
+  }, [setMode, setWorkbench])
 
   const openProject = useCallback((id: string | undefined, threadId?: string) => {
     setMode('projects')
-    setDrawer(undefined)
     setProjectRoute({ ...(id ? { id } : {}), ...(threadId ? { threadId } : {}) })
     setHash(id ? `#p/${id}${threadId ? `/${threadId}` : ''}` : '')
     if (window.innerWidth <= 860) setSidebarOpen(false)
@@ -280,7 +308,7 @@ export function App() {
 
   return (
     <div
-      className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' || drawer?.kind === 'files' || drawer?.kind === 'browser' ? ' drawer-wide' : ''}${drawer?.kind === 'browser' ? ' drawer-browser' : ''}`}
+      className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${workbench.open && workspace ? ' workbench-open' : ''}`}
       ref={appRoot}
     >
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
@@ -361,17 +389,13 @@ export function App() {
               select(undefined)
             }}
             onOpenSettings={() => setDialog('settings')}
-            onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
-            onOpenFile={path => setDrawer({ kind: 'file', path })}
-            {...(browserReady
-              ? {
-                  onToggleBrowser: () => setDrawer(current => current?.kind === 'browser' ? undefined : { kind: 'browser' }),
-                  onBrowserActivity: showBrowser,
-                }
-              : {})}
-            browserOpen={drawer?.kind === 'browser'}
-            onToggleFiles={() => setDrawer(current => current?.kind === 'files' ? undefined : { kind: 'files' })}
-            filesOpen={drawer?.kind === 'files'}
+            onOpenSubagent={(id, label) => setWorkbench(current => openDoc(current, { kind: 'subagent', id, label }))}
+            onOpenFile={path => setWorkbench(current => openDoc(current, { kind: 'preview', path }))}
+            onOpenChange={path => setWorkbench(current => openTool(current, 'changes', path))}
+            {...(browserReady ? { onBrowserActivity: showBrowser } : {})}
+            onToggleWorkbench={() => setWorkbench(toggle)}
+            workbenchOpen={workbench.open}
+            changeCount={changeCount}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
           />
@@ -387,21 +411,19 @@ export function App() {
           </main>
         )}
 
-      {drawer?.kind === 'subagent' && workspace && (
-        <SubagentDrawer
+      {workbench.open && workspace && (
+        <Workbench
+          key={workspace}
           workspace={workspace}
-          id={drawer.id}
-          label={drawer.label}
-          onClose={() => setDrawer(undefined)}
-          onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
+          state={workbench}
+          onChange={setWorkbench}
+          onClose={() => setWorkbench(toggle)}
+          width={workbenchWidth}
+          onResize={resizeWorkbench}
+          browser={browserReady}
+          changeCount={changeCount}
+          onChangeCount={setChangeCount}
         />
-      )}
-      {drawer?.kind === 'browser' && workspace && <BrowserDrawer onClose={() => setDrawer(undefined)} onResize={resizeBrowser} width={browserWidth} />}
-      {drawer?.kind === 'files' && workspace && (
-        <FilesDrawer key={workspace} workspace={workspace} onClose={() => setDrawer(undefined)} onPreview={path => setDrawer({ kind: 'file', path })} />
-      )}
-      {drawer?.kind === 'file' && workspace && (
-        <FilePreviewDrawer key={drawer.path} workspace={workspace} path={drawer.path} onClose={() => setDrawer(undefined)} />
       )}
 
       {newProject && workspace && (

@@ -4,7 +4,7 @@ import { backgroundBehind, cssColorToHex, markWindowControls } from './desktop-c
 
 it('reserves native controls only in the header at the top-right edge', () => {
   const root = document.createElement('div')
-  root.innerHTML = '<header class="conv-header"></header><header class="drawer-header"></header>'
+  root.innerHTML = '<header class="conv-header"></header><div class="wb-rail"></div>'
   const conversation = root.children[0]
   const drawer = root.children[1]
   if (!conversation || !drawer) throw new Error('missing headers')

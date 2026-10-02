@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet, FileText, Presentation, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, Presentation, ZoomIn, ZoomOut } from 'lucide-react'
 import { Suspense, lazy, useEffect, useRef, useState, type ComponentType } from 'react'
 import { fetchWorkspaceFile, saveBlob } from '../../lib/api'
 import { errorText } from '../../lib/hooks'
@@ -29,8 +29,8 @@ const FIT: Record<OfficeKind, { measure: string, initial: ZoomSetting }> = {
   xlsx: { measure: '.xlsx-grid', initial: 1 },
 }
 
-/** Right-hand drawer that previews a file the agent produced, next to the conversation. */
-export function FilePreviewDrawer({ workspace, path, onClose }: { workspace: string; path: string; onClose: () => void }) {
+/** A Workbench document tab that previews an office file, PDF or image from the workspace. */
+export function PreviewView({ workspace, path }: { workspace: string; path: string }) {
   const [blob, setBlob] = useState<Blob | undefined>()
   const [error, setError] = useState<string | undefined>()
   const kind = officeKind(path)
@@ -51,20 +51,11 @@ export function FilePreviewDrawer({ workspace, path, onClose }: { workspace: str
     return () => controller.abort()
   }, [workspace, path])
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   return (
-    <aside className="drawer file-drawer" aria-label={`Preview ${fileName(path)}`}>
-      <header className="drawer-header">
-        <span className={`office-file-icon kind-${kind ?? 'other'}`}><Icon size={18} /></span>
-        <div className="drawer-titles">
-          <div className="drawer-title">{fileName(path)}</div>
-          <div className="drawer-sub mono">{path}</div>
-        </div>
+    <div className="wb-view" aria-label={`Preview ${fileName(path)}`}>
+      <div className="wb-toolbar">
+        <span className={`office-file-icon small kind-${kind ?? 'other'}`}><Icon size={14} /></span>
+        <span className="wb-toolbar-title mono" title={path}>{path}</span>
         {Viewer && (
           <div className="zoom-controls" role="group" aria-label="Zoom">
             <button type="button" className="icon-button" aria-label="Zoom out" title="Zoom out (Ctrl+wheel)" disabled={zoom <= ZOOM_STEPS[0]} onClick={() => step(-1)}>
@@ -83,12 +74,11 @@ export function FilePreviewDrawer({ workspace, path, onClose }: { workspace: str
             </button>
           </div>
         )}
-        <button type="button" className="icon-button" aria-label="Download" title="Download" disabled={!blob} onClick={() => blob && saveBlob(blob, fileName(path))}>
+        <button type="button" className="icon-button small" aria-label="Download" title="Download" disabled={!blob} onClick={() => blob && saveBlob(blob, fileName(path))}>
           <Download size={15} />
         </button>
-        <button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={16} /></button>
-      </header>
-      <div className="drawer-body file-preview" ref={body}>
+      </div>
+      <div className="wb-card wb-scroll file-preview" ref={body}>
         {error && <div className="notice notice-error"><span>{error}</span></div>}
         {!error && !blob && <div className="file-preview-status"><span className="spinner" /> Loading…</div>}
         {blob && Viewer && (
@@ -98,8 +88,26 @@ export function FilePreviewDrawer({ workspace, path, onClose }: { workspace: str
             </Suspense>
           </div>
         )}
-        {blob && !Viewer && <div className="file-preview-status">No preview for this file type yet. Download it to open it.</div>}
+        {blob && !Viewer && <NativePreview blob={blob} path={path} />}
       </div>
-    </aside>
+    </div>
   )
+}
+
+/** Images and PDFs need no parser: the page shows them itself. */
+function NativePreview({ blob, path }: { blob: Blob; path: string }) {
+  const [url, setUrl] = useState<string>()
+  useEffect(() => {
+    const next = URL.createObjectURL(blob)
+    setUrl(next)
+    return () => URL.revokeObjectURL(next)
+  }, [blob])
+  if (!url) return null
+  if (/\.(png|jpe?g)$/i.test(path)) {
+    return <div className="image-preview"><img src={url} alt={fileName(path)} /></div>
+  }
+  if (/\.pdf$/i.test(path)) {
+    return <iframe className="pdf-preview" src={url} title={fileName(path)} />
+  }
+  return <div className="file-preview-status">No preview for this file type yet. Download it to open it.</div>
 }

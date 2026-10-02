@@ -34,7 +34,7 @@ export function backgroundBehind(element: Element | null, fallback: string): str
 
 /** Only the bar touching the native controls needs horizontal clearance. */
 export function markWindowControls(root: ParentNode, width: number): void {
-  for (const header of root.querySelectorAll('.conv-header, .drawer-header, .browser-tabs, .project-side .side-tabs, .project-side .side-header')) {
+  for (const header of root.querySelectorAll('.conv-header, .wb-rail, .project-side .side-tabs, .project-side .side-header')) {
     const rect = header.getBoundingClientRect()
     header.classList.toggle('window-controls-header', rect.width > 0 && rect.top < 32 && rect.bottom > 0 && rect.right >= width - 1)
   }

@@ -24,8 +24,7 @@ import {
   FileText,
   Presentation,
   Table2,
-  FolderTree,
-  Globe,
+  PanelRight,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
@@ -73,11 +72,11 @@ export function Conversation({
   onConfigSaved,
   onOpenSubagent,
   onOpenFile,
-  onToggleBrowser,
-  onToggleFiles,
-  filesOpen = false,
+  onOpenChange,
+  onToggleWorkbench,
+  workbenchOpen = false,
+  changeCount,
   onBrowserActivity,
-  browserOpen = false,
   sidebarOpen,
   onToggleSidebar,
 }: {
@@ -93,13 +92,15 @@ export function Conversation({
   onConfigSaved?: (config: ConfigSnapshot) => void
   onOpenSubagent: (id: string, label: string) => void
   onOpenFile: (path: string) => void
-  /** Present in the desktop app, which hosts the agent browser in a panel. */
-  onToggleBrowser?: () => void
-  onToggleFiles?: () => void
-  filesOpen?: boolean
+  /** Show one changed file in the Workbench's Changes view. */
+  onOpenChange?: (path: string) => void
+  /** Show or hide the Workbench (files, changes, terminal, browser). */
+  onToggleWorkbench?: () => void
+  workbenchOpen?: boolean
+  /** Files changed since the last commit, shown on the Workbench button. */
+  changeCount?: number | undefined
   /** The agent started a browser tool: show the browser. */
   onBrowserActivity?: () => void
-  browserOpen?: boolean
   sidebarOpen: boolean
   onToggleSidebar: () => void
 }) {
@@ -601,28 +602,17 @@ export function Conversation({
           <div className="header-group header-tools">
           {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} />}
           {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} />}
-          {onToggleFiles && (
+          {onToggleWorkbench && (
             <button
               type="button"
-              className={`icon-button small header-icon${filesOpen ? ' active' : ''}`}
-              onClick={onToggleFiles}
-              aria-label={filesOpen ? 'Hide files' : 'Show files'}
-              aria-pressed={filesOpen}
-              title="Files"
+              className={`icon-button small header-icon${workbenchOpen ? ' active' : ''}`}
+              onClick={onToggleWorkbench}
+              aria-label={workbenchOpen ? 'Hide workbench' : `Show workbench${changeCount ? ` (${changeCount} changed files)` : ''}`}
+              aria-pressed={workbenchOpen}
+              title={changeCount ? `Workbench · ${changeCount} changed ${changeCount === 1 ? 'file' : 'files'} (Ctrl+J)` : 'Workbench (Ctrl+J)'}
             >
-              <FolderTree size={15} />
-            </button>
-          )}
-          {onToggleBrowser && (
-            <button
-              type="button"
-              className={`icon-button small header-icon${browserOpen ? ' active' : ''}`}
-              onClick={onToggleBrowser}
-              aria-label={browserOpen ? 'Hide browser' : 'Show browser'}
-              aria-pressed={browserOpen}
-              title="Browser"
-            >
-              <Globe size={15} />
+              <PanelRight size={15} />
+              {changeCount !== undefined && changeCount > 0 && <span className="count-badge live" aria-hidden>{changeCount > 99 ? '99+' : changeCount}</span>}
             </button>
           )}
           {summary && (
@@ -664,6 +654,7 @@ export function Conversation({
               onFork: messageId => void fork(messageId),
               onOpenSubagent,
               onOpenFile,
+              ...(onOpenChange ? { onOpenChange } : {}),
             }}
             agent={{ id: summary?.id ?? streamingFor.current ?? 'draft', role: 'coordinator' }}
             sky={{

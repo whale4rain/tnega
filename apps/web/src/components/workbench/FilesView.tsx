@@ -1,12 +1,13 @@
-import { FolderTree, RefreshCw, Save, X } from 'lucide-react'
+import { RefreshCw, Save } from 'lucide-react'
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type TextFile } from '../../lib/api'
 import { errorText, folderName } from '../../lib/hooks'
+import type { Focus } from '../../lib/workbench'
 import { officeKind } from '../../lib/office'
-import { FileTree, type FileTreeHandle } from './FileTree'
+import { FileTree, type FileTreeHandle } from '../files/FileTree'
 
 /** CodeMirror and its grammars load only when a file is first opened. */
-const CodeEditor = lazy(() => import('./CodeEditor'))
+const CodeEditor = lazy(() => import('../files/CodeEditor'))
 
 interface OpenFile {
   file: TextFile
@@ -14,19 +15,21 @@ interface OpenFile {
 }
 
 /**
- * Right-hand Files panel: the workspace tree beside an editor. Text files open
- * in CodeMirror and save with Ctrl+S; a save over a newer change on disk (say,
+ * Workbench Files: the workspace tree beside an editor. Text files open in
+ * CodeMirror and save with Ctrl+S; a save over a newer change on disk (say,
  * the agent edited the file meanwhile) is refused rather than overwriting it.
- * Office documents, PDFs and images hand off to the existing preview drawer.
+ * Office documents, PDFs and images open as preview tabs.
  */
-export function FilesDrawer({
+export function FilesView({
   workspace,
-  onClose,
+  focus,
   onPreview,
+  onDirtyChange,
 }: {
   workspace: string
-  onClose: () => void
+  focus: Focus | undefined
   onPreview: (path: string) => void
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const [open, setOpen] = useState<OpenFile>()
   const [loading, setLoading] = useState<string>()
@@ -83,39 +86,39 @@ export function FilesDrawer({
     tree.current?.refresh()
   }, [workspace, open, confirmDiscard])
 
+  // Another tool asked to show a file here (Changes → "Open in Files").
+  const lastFocus = useRef(0)
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented && confirmDiscard()) onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose, confirmDiscard])
+    if (focus?.tool !== 'files' || focus.nonce === lastFocus.current) return
+    lastFocus.current = focus.nonce
+    void openFile(focus.path)
+  }, [focus, openFile])
+
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
 
   const file = open?.file
   return (
-    <aside className="drawer files-drawer" aria-label="Files">
-      <header className="drawer-header">
-        <span className="files-drawer-icon"><FolderTree size={17} /></span>
-        <div className="drawer-titles">
-          <div className="drawer-title">{file ? file.path.slice(file.path.lastIndexOf('/') + 1) : 'Files'}{dirty && <span className="dirty-dot" aria-label="Unsaved changes" />}</div>
-          <div className="drawer-sub mono">{file ? file.path : folderName(workspace)}</div>
-        </div>
-        <button type="button" className="icon-button" aria-label="Reload from disk" title="Reload from disk" onClick={() => file ? void reload() : tree.current?.refresh()}>
-          <RefreshCw size={15} />
+    <div className="wb-view">
+      <div className="wb-toolbar">
+        <span className="wb-toolbar-title mono" title={file?.path ?? workspace}>
+          {file ? file.path : folderName(workspace)}
+          {dirty && <span className="dirty-dot" aria-label="Unsaved changes" />}
+        </span>
+        <button type="button" className="icon-button small" aria-label="Reload from disk" title="Reload from disk" onClick={() => file ? void reload() : tree.current?.refresh()}>
+          <RefreshCw size={14} />
         </button>
         {file?.content !== undefined && (
           <button type="button" className="button primary small" disabled={!dirty || saving} onClick={() => void save()} title="Save (Ctrl+S)">
             <Save size={13} />{saving ? 'Saving…' : 'Save'}
           </button>
         )}
-        <button type="button" className="icon-button" onClick={() => confirmDiscard() && onClose()} aria-label="Close"><X size={16} /></button>
-      </header>
-      <div className="files-body">
-        <nav className="files-tree-pane" aria-label="Workspace tree">
+      </div>
+      <div className="wb-card wb-split">
+        <nav className="wb-list files-tree-pane" aria-label="Workspace tree">
           <FileTree ref={tree} workspace={workspace} selected={file?.path} onOpen={path => void openFile(path)} />
         </nav>
-        <section className="files-editor-pane">
-          {error && <div className="notice notice-error files-error" role="alert"><span>{error}</span></div>}
+        <section className="wb-detail files-editor-pane">
+          {error && <div className="notice notice-error wb-notice" role="alert"><span>{error}</span></div>}
           {loading && <div className="file-preview-status"><span className="spinner" /> Opening {loading}…</div>}
           {!loading && !file && <div className="file-preview-status">Pick a file to read or edit it.</div>}
           {!loading && file?.reason === 'binary' && <div className="file-preview-status">{file.path} is a binary file.</div>}
@@ -134,6 +137,6 @@ export function FilesDrawer({
           )}
         </section>
       </div>
-    </aside>
+    </div>
   )
 }

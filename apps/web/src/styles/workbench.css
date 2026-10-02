@@ -1,0 +1,579 @@
+/* ==========================================================================
+   Workbench — one panel for files, changes, terminal, browser and documents.
+   Every view has the same shape: tab rail, then a toolbar row, then the
+   content in a rounded card. See docs/design/tnega-design.md §5.4.
+   ========================================================================== */
+
+.app.workbench-open {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--workbench-width, min(640px, 44vw));
+}
+
+.app.workbench-open.sidebar-closed {
+  grid-template-columns: minmax(0, 1fr) var(--workbench-width, min(640px, 44vw));
+}
+
+.workbench {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 8px 8px;
+  background: var(--bg-sidebar);
+  border-left: 1px solid var(--border);
+  animation: slide-in 240ms var(--ease-out);
+  container: workbench / inline-size;
+}
+
+.wb-resize {
+  position: absolute;
+  inset: 0 auto 0 -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.wb-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background var(--duration-fast);
+}
+
+.wb-resize:hover::after,
+.wb-resize.is-dragging::after {
+  background: var(--accent);
+}
+
+/* Tab rail: tools first, then documents opened from the conversation. */
+.wb-rail {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 36px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wb-tab {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.wb-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.wb-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-tab.doc {
+  gap: 0;
+  padding: 0 4px 0 0;
+}
+
+.wb-tab-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+  padding: 0 4px 0 10px;
+  color: inherit;
+}
+
+.wb-tab.doc .wb-tab-label {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-tab-close,
+.wb-subtab-close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--duration-fast), background var(--duration-fast);
+}
+
+.wb-tab:hover .wb-tab-close,
+.wb-tab.active .wb-tab-close,
+.wb-tab-close:focus-visible,
+.wb-subtab:hover .wb-subtab-close,
+.wb-subtab.active .wb-subtab-close,
+.wb-subtab-close:focus-visible {
+  opacity: 1;
+}
+
+.wb-tab-close:hover,
+.wb-subtab-close:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.wb-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-rail-divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border-strong);
+}
+
+.wb-rail-fill {
+  flex: 1;
+}
+
+/* A narrow Workbench keeps tool tabs to their icons. */
+@container workbench (max-width: 520px) {
+  .wb-tab:not(.doc) .wb-tab-label {
+    display: none;
+  }
+}
+
+.wb-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wb-pane {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wb-pane[hidden] {
+  display: none;
+}
+
+.wb-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 2px;
+}
+
+.wb-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-toolbar-title.mono {
+  font-size: var(--text-xs);
+}
+
+.wb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: var(--surface-active);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+/* Sub-tabs inside a tool: browser pages, terminal sessions. */
+.wb-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wb-subtab {
+  display: flex;
+  align-items: center;
+  flex: 0 1 190px;
+  min-width: 90px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.wb-subtab:hover {
+  background: var(--surface-hover);
+}
+
+.wb-subtab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-subtab-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  color: inherit;
+  font-size: var(--text-sm);
+}
+
+.wb-subtab-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-subtab-close {
+  margin-right: 4px;
+}
+
+/* The card every view's content sits in; the browser page uses the same one. */
+.wb-card {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.wb-card.wb-scroll {
+  display: block;
+  padding: 16px;
+  overflow: auto;
+}
+
+.wb-card.wb-split {
+  display: grid;
+  grid-template-columns: minmax(170px, 32%) minmax(0, 1fr);
+}
+
+.wb-split > .wb-empty,
+.wb-split > .file-preview-status,
+.wb-split > .wb-notice {
+  grid-column: 1 / -1;
+}
+
+.wb-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 4px 16px;
+  border-right: 1px solid var(--border);
+}
+
+.wb-list-note {
+  padding: 6px 8px;
+}
+
+.wb-detail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--code-bg);
+}
+
+.wb-notice {
+  margin: 8px;
+}
+
+.wb-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  flex: 1;
+  padding: 24px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.wb-empty p {
+  max-width: 320px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+/* Changes: file rows with a status letter and line counts. */
+.wb-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.wb-row:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.wb-row.selected {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.change-status {
+  flex: none;
+  width: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-align: center;
+}
+
+.change-status.status-modified { color: var(--warn); }
+.change-status.status-added,
+.change-status.status-untracked { color: var(--success); }
+.change-status.status-deleted { color: var(--danger); }
+.change-status.status-renamed { color: var(--accent-text); }
+
+.change-name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.change-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+}
+
+.change-stat {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.segmented.small {
+  padding: 2px;
+}
+
+.segmented.small button {
+  width: 26px;
+  height: 22px;
+}
+
+/* The diff scrolls as one surface; additions and removals use the semantic tints. */
+.diff-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.diff-editor .cm-editor .cm-insertedLine,
+.diff-editor .cm-editor .cm-changedLine,
+.diff-editor .cm-editor.cm-merge-b .cm-changedLine {
+  background: var(--success-soft);
+}
+
+.diff-editor .cm-editor .cm-deletedChunk,
+.diff-editor .cm-editor.cm-merge-a .cm-changedLine {
+  background: var(--danger-soft);
+}
+
+.diff-editor .cm-editor .cm-changedText {
+  background: var(--success-soft);
+  text-decoration: underline 1px var(--success);
+  text-underline-offset: 3px;
+}
+
+.diff-editor .cm-editor .cm-deletedChunk .cm-deletedText,
+.diff-editor .cm-editor.cm-merge-a .cm-changedText {
+  background: var(--danger-soft);
+  text-decoration: line-through 1px var(--danger);
+}
+
+.diff-editor .cm-editor .cm-collapsedLines {
+  background: var(--surface-active);
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.diff-editor .cm-editor .cm-changedLineGutter,
+.diff-editor .cm-editor.cm-merge-b .cm-changedLineGutter {
+  background: var(--success);
+}
+
+.diff-editor .cm-editor .cm-deletedLineGutter,
+.diff-editor .cm-editor.cm-merge-a .cm-changedLineGutter {
+  background: var(--danger);
+}
+
+/* Terminal: the shell draws on the code surface. */
+.terminal-card {
+  background: var(--code-bg);
+}
+
+.xterm-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 0 4px 10px;
+}
+
+.xterm-host .xterm,
+.xterm-host .xterm-viewport {
+  background: transparent !important;
+}
+
+.subagent-card {
+  background: var(--bg);
+}
+
+.office-file-icon.small {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+}
+
+/* Images sit on a neutral checkerboard-free surface; PDFs use the page's own viewer. */
+.image-preview {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+}
+
+.image-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-sm);
+  image-rendering: auto;
+}
+
+.file-preview:has(.pdf-preview) {
+  padding: 0;
+}
+
+.pdf-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Turn cards link each changed file to its diff. */
+.files-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% + 12px);
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font: inherit;
+  text-align: left;
+}
+
+.files-row:hover {
+  background: var(--surface-hover);
+}
+
+.files-row:hover .files-path {
+  color: var(--accent-text);
+}
+
+/* Too narrow to sit beside the conversation: the Workbench floats over it. */
+@media (max-width: 1100px) {
+  .app.workbench-open {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+
+  .app.workbench-open.sidebar-closed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workbench {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(var(--workbench-width, 640px), 100vw);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+@media (max-width: 860px) {
+  .app.workbench-open,
+  .app.workbench-open.sidebar-closed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

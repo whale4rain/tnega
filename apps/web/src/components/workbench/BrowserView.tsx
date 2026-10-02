@@ -16,8 +16,8 @@ import {
   streamBrowserLive,
   type LiveInput,
   type LiveTab,
-} from '../lib/browser-live'
-import { desktopBrowser, displayUrl, OVERLAY_SELECTOR, viewportRect, type DesktopBrowserBridge } from '../lib/desktop-browser'
+} from '../../lib/browser-live'
+import { desktopBrowser, displayUrl, OVERLAY_SELECTOR, viewportRect, type DesktopBrowserBridge } from '../../lib/desktop-browser'
 
 interface PageState {
   url: string
@@ -28,10 +28,6 @@ interface PageState {
 
 const EMPTY: PageState = { url: 'about:blank', title: '', canGoBack: false, canGoForward: false }
 
-/** Narrowest and widest the panel may be dragged, in CSS pixels. */
-export const BROWSER_MIN_WIDTH = 360
-export const BROWSER_MAX_SHARE = 0.72
-
 /**
  * The agent's browser, inside the app, laid out like a browser: tabs, a
  * toolbar with the address and the element picker, and the page in a rounded
@@ -40,7 +36,7 @@ export const BROWSER_MAX_SHARE = 0.72
  * the server's headless browser rendered at the card's size. Either way you
  * browse the same tabs the agent drives.
  */
-export function BrowserDrawer({ onClose, onResize, width }: { onClose: () => void; onResize?: (width: number) => void; width?: number | undefined }) {
+export function BrowserView({ width }: { width?: number | undefined }) {
   const bridge = desktopBrowser()
   const [state, setState] = useState(EMPTY)
   const [tabs, setTabs] = useState<LiveTab[]>([])
@@ -109,14 +105,12 @@ export function BrowserDrawer({ onClose, onResize, width }: { onClose: () => voi
   }
 
   return (
-    <aside className="drawer browser-drawer" aria-label="Browser">
-      {onResize && <ResizeHandle onResize={onResize} />}
+    <div className="wb-view browser-view">
       <TabStrip
         tabs={tabs}
         onSelect={id => void browserTab('select', id).catch(() => {})}
         onClose={id => void browserTab('close', id).catch(() => {})}
         onNew={() => void browserTab('new').catch(() => {})}
-        onClosePanel={onClose}
       />
       <Toolbar state={state} picking={picking} onNavigate={navigate} onCommand={command} onPick={() => void togglePick()} />
       <div className="browser-card">
@@ -125,62 +119,33 @@ export function BrowserDrawer({ onClose, onResize, width }: { onClose: () => voi
           : <LiveViewport frame={frame} error={error} width={width} />}
         {picking && <div className="browser-pick-hint">Click an element to add it to your message · Esc to cancel</div>}
       </div>
-    </aside>
+    </div>
   )
 }
 
-function ResizeHandle({ onResize }: { onResize: (width: number) => void }) {
-  const [dragging, setDragging] = useState(false)
-  return (
-    <div
-      className={`browser-resize${dragging ? ' is-dragging' : ''}`}
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize browser"
-      onPointerDown={event => {
-        event.preventDefault()
-        event.currentTarget.setPointerCapture(event.pointerId)
-        setDragging(true)
-      }}
-      onPointerMove={event => {
-        if (!dragging) return
-        const max = window.innerWidth * BROWSER_MAX_SHARE
-        onResize(Math.round(Math.min(max, Math.max(BROWSER_MIN_WIDTH, window.innerWidth - event.clientX))))
-      }}
-      onPointerUp={event => {
-        event.currentTarget.releasePointerCapture(event.pointerId)
-        setDragging(false)
-      }}
-    />
-  )
-}
-
-function TabStrip({ tabs, onSelect, onClose, onNew, onClosePanel }: {
+function TabStrip({ tabs, onSelect, onClose, onNew }: {
   tabs: LiveTab[]
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onNew: () => void
-  onClosePanel: () => void
 }) {
   return (
-    <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
-      {tabs.map(tab => (
-        <div key={tab.id} className={`browser-tab${tab.active ? ' active' : ''}`} role="tab" aria-selected={tab.active} title={tab.url}>
-          <button type="button" className="browser-tab-main" onClick={() => onSelect(tab.id)}>
-            <Globe size={13} aria-hidden />
-            <span className="browser-tab-title">{tab.title || displayUrl(tab.url) || 'New tab'}</span>
-          </button>
-          <button type="button" className="browser-tab-close" aria-label={`Close ${tab.title || 'tab'}`} onClick={() => onClose(tab.id)}>
-            <X size={12} />
-          </button>
-        </div>
-      ))}
+    <div className="wb-toolbar">
+      <div className="wb-subtabs" role="tablist" aria-label="Browser tabs">
+        {tabs.map(tab => (
+          <div key={tab.id} className={`wb-subtab${tab.active ? ' active' : ''}`} role="tab" aria-selected={tab.active} title={tab.url}>
+            <button type="button" className="wb-subtab-main" onClick={() => onSelect(tab.id)}>
+              <Globe size={13} aria-hidden />
+              <span>{tab.title || displayUrl(tab.url) || 'New tab'}</span>
+            </button>
+            <button type="button" className="wb-subtab-close" aria-label={`Close ${tab.title || 'tab'}`} onClick={() => onClose(tab.id)}>
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+      </div>
       <button type="button" className="icon-button small" aria-label="New tab" title="New tab" onClick={onNew}>
         <Plus size={15} />
-      </button>
-      <span className="browser-tabs-fill" />
-      <button type="button" className="icon-button small" aria-label="Close browser" title="Close browser" onClick={onClosePanel}>
-        <X size={15} />
       </button>
     </div>
   )
