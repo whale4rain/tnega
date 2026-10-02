@@ -24,7 +24,49 @@ tnega web                                # 本地 web UI（HTTP + SSE，127.0.0.
   prompt 组装 seam（`systemPrompt`）并把可执行工具注册为 schema 提供者。web / headless 两种产品形态复用同一工厂，差异全在组合与薄消费者代码。
 
 profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
-`$XDG_CONFIG_HOME/tnega/profiles/<name>.json`，可引用内置 bundle 名或内联插件。
+`$XDG_CONFIG_HOME/tnega/profiles/<name>.json`，可引用内置 bundle 名或外部插件模块。
+
+### 从文件加载外部插件
+
+`tnega run "prompt" --profile ./agent.yaml` 可读取 JSON、YAML 或 YML profile。
+程序化使用 `readAgentProfile` 或 `bootAgentRuntimeFromFile`（发布入口为
+`tnega/cli/runtime`）。例如：
+
+```yaml
+name: custom
+bundles:
+  - general
+  - module: my-tnega-plugin
+    config:
+      greeting: hello
+  - module: ./plugins/custom-tools.mjs
+    export: customTools
+    config:
+      enabled: true
+  - module: ./plugins/optional.mjs
+    disabled: true
+options:
+  builtinTools: false
+```
+
+- `module`：npm 包、本地相对/绝对路径或 `file:` URL。相对路径与 npm
+  包查找均以 profile 文件位置为基准，不以 Tnega 安装目录为基准。
+  在外部应用安装 `tnega` 与自己的插件包，再把 profile 放在该应用内。
+  包入口使用 Node 可解析的 `exports`（推荐 `"exports": "./dist/index.js"`）。
+- `export`：指定命名导出；省略时使用 default，没有 default 时使用模块的
+  `apply`/`inject` 导出。支持函数、Service 类和带 `apply` 的插件对象。
+- `config`：原样传入插件的第二个参数；插件负责校验，沿用核心已有的
+  `Config` 处理机制。必需服务继续由插件自身的 `inject` 声明。
+- `disabled: true`：跳过模块解析、导入与挂载。
+
+外部插件使用 `tnega/core` 等公开入口，建议把 `tnega` 声明为兼容版本的
+peer dependency，并将 TypeScript 编译为 JS 后加载。插件在宿主进程中执行，
+profile 应只引用信任的代码；工具沙箱不会隔离插件本身。
+
+文件读取时先解析全部模块，再由 runtime 挂载插件。配置插件启动失败会释放
+已创建的 runtime；正常 `runtime.dispose()` 会撤销插件注册和 effects。
+修改 profile 后重新启动 runtime 生效；本入口不监听文件或清除 JS 模块缓存。
+原有程序化 `AgentProfile.bundles: Plugin[]` 保持可用。
 
 ## web server（server.ts）
 

@@ -1,6 +1,8 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { registerHooks } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { Plugin } from '@tnega/core'
 import type { AgentRuntimeOptions } from './commands.js'
 import type { AgentProfile } from './profile.js'
@@ -11,7 +13,7 @@ import { parseYaml } from './yaml.js'
 export type ProfileBundleRef =
   | { plugin?: undefined }
   | { plugin: Plugin }
-  | { module: string }
+  | { module: string; export?: string; config?: unknown; disabled?: boolean }
   | { name: string }
 
 export interface LoadableAgentProfile {
@@ -59,8 +61,19 @@ function normalizeBundles(value: unknown, file: string): readonly ProfileBundleR
   const bundles: ProfileBundleRef[] = []
   for (const entry of value) {
     if (typeof entry === 'string' && entry) bundles.push({ name: entry })
-    else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-      bundles.push({ plugin: entry as Plugin })
+    else if (isRecord(entry) && typeof entry.module === 'string' && entry.module.trim()) {
+      if (entry.export !== undefined && (typeof entry.export !== 'string' || !entry.export)) {
+        throw new Error(`invalid profile bundle export in ${file}`)
+      }
+      if (entry.disabled !== undefined && typeof entry.disabled !== 'boolean') {
+        throw new Error(`invalid profile bundle disabled flag in ${file}`)
+      }
+      bundles.push({
+        module: entry.module,
+        ...(typeof entry.export === 'string' ? { export: entry.export } : {}),
+        ...(entry.config !== undefined ? { config: entry.config } : {}),
+        ...(typeof entry.disabled === 'boolean' ? { disabled: entry.disabled } : {}),
+      })
     } else {
       throw new Error(`invalid profile bundle entry in ${file}`)
     }
@@ -83,7 +96,7 @@ export async function readAgentProfile(nameOrFile: string): Promise<AgentProfile
   const name = typeof data.name === 'string' && data.name
     ? data.name
     : dirname(file).split(/[\\/]/).at(-1) ?? 'profile'
-  const bundles = resolveBundles(normalizeBundles(data.bundles, file))
+  const bundles = await resolveBundles(normalizeBundles(data.bundles, file), file)
   const options = data.options && typeof data.options === 'object' && !Array.isArray(data.options)
     ? data.options
     : undefined
@@ -94,7 +107,37 @@ export async function readAgentProfile(nameOrFile: string): Promise<AgentProfile
   }
 }
 
-function resolveBundles(refs: readonly ProfileBundleRef[]): readonly Plugin[] {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isPlugin(value: unknown): value is Plugin {
+  return typeof value === 'function' || (isRecord(value) && typeof value.apply === 'function')
+}
+
+function resolveModule(specifier: string, file: string): string {
+  if (specifier.startsWith('file:')) return specifier
+  if (isAbsolute(specifier) || specifier.startsWith('.')) {
+    return pathToFileURL(resolve(dirname(file), specifier)).href
+  }
+  // Node's parent argument to import.meta.resolve requires an experimental flag.
+  // A synchronous hook supplies the profile parent while preserving ESM exports
+  // conditions. Always remove it before importing or yielding to another task.
+  const hook = registerHooks({
+    resolve(request, context, nextResolve) {
+      return nextResolve(request, request === specifier
+        ? { ...context, parentURL: pathToFileURL(file).href }
+        : context)
+    },
+  })
+  try {
+    return import.meta.resolve(specifier)
+  } finally {
+    hook.deregister()
+  }
+}
+
+async function resolveBundles(refs: readonly ProfileBundleRef[], file: string): Promise<readonly Plugin[]> {
   const plugins: Plugin[] = []
   for (const ref of refs) {
     if ('plugin' in ref && ref.plugin) plugins.push(ref.plugin)
@@ -105,9 +148,28 @@ function resolveBundles(refs: readonly ProfileBundleRef[]): readonly Plugin[] {
     } else if ('name' in ref && ref.name) {
       throw new Error(`unknown built-in profile bundle: ${ref.name}`)
     } else if ('module' in ref && ref.module) {
-      throw new Error(
-        `external bundle module loading is disabled in this build: ${ref.module}`,
-      )
+      if (ref.disabled) continue
+      try {
+        const specifier = resolveModule(ref.module, file)
+        const namespace: unknown = await import(specifier)
+        const plugin = isRecord(namespace)
+          ? ref.export ? namespace[ref.export] : namespace.default ?? namespace
+          : undefined
+        if (!isPlugin(plugin)) throw new Error(`export ${ref.export ?? 'default/apply'} is not a plugin`)
+        // A carrier Fiber owns the configured child plugin and all its effects.
+        plugins.push({
+          name: ref.module,
+          async apply(ctx) {
+            try {
+              await ctx.plugin(plugin, ref.config)
+            } catch (cause) {
+              throw new Error(`failed to mount profile bundle ${ref.module} in ${file}`, { cause })
+            }
+          },
+        })
+      } catch (cause) {
+        throw new Error(`failed to load profile bundle ${ref.module} in ${file}`, { cause })
+      }
     }
   }
   return plugins

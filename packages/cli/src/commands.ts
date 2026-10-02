@@ -366,18 +366,23 @@ export async function createAgentRuntime(
     const agentFiber = await root.plugin(agent, agentConfig)
     fibers.push(agentFiber)
   }
-  for (const plugin of merged.plugins ?? []) {
-    const fiber = await root.plugin(plugin)
-    fibers.push(fiber)
+  try {
+    for (const plugin of merged.plugins ?? []) {
+      const fiber = await root.plugin(plugin)
+      fibers.push(fiber)
+    }
+    fibers.push(await root.plugin(ptcRuntimeQuickjs, {
+      ...(merged.ptc?.timeoutMs !== undefined ? { timeoutMs: merged.ptc.timeoutMs } : {}),
+      ...(merged.ptc?.memoryLimitBytes !== undefined ? { memoryLimitBytes: merged.ptc.memoryLimitBytes } : {}),
+    }))
+    fibers.push(await root.plugin(toolPtc, {
+      mode: merged.ptc?.mode ?? 'native',
+      resolveSession: () => root.get('session'),
+    }))
+  } catch (error) {
+    await root.fiber.dispose()
+    throw error
   }
-  fibers.push(await root.plugin(ptcRuntimeQuickjs, {
-    ...(merged.ptc?.timeoutMs !== undefined ? { timeoutMs: merged.ptc.timeoutMs } : {}),
-    ...(merged.ptc?.memoryLimitBytes !== undefined ? { memoryLimitBytes: merged.ptc.memoryLimitBytes } : {}),
-  }))
-  fibers.push(await root.plugin(toolPtc, {
-    mode: merged.ptc?.mode ?? 'native',
-    resolveSession: () => root.get('session'),
-  }))
   return {
     root,
     ...(durableInbox ? { inbox: durableInbox } : {}),

@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { join } from 'node:path'
 import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '..')
@@ -41,6 +42,39 @@ describe('publish metadata', () => {
 })
 
 describe('packed artifact', () => {
+  it('loads configured ESM package plugins through the built runtime', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'tnega-packed-profile-'))
+    try {
+      const { mkdir } = await import('node:fs/promises')
+      const pkg = join(directory, 'node_modules', 'external-plugin')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(join(pkg, 'package.json'), JSON.stringify({ type: 'module', exports: { import: './index.js' } }))
+      await writeFile(join(pkg, 'index.js'), `
+        import { Service } from ${JSON.stringify(pathToFileURL(join(root, 'dist/core.js')).href)};
+        export default class Greeting extends Service {
+          constructor(ctx, config) { super(ctx, 'externalGreeting'); this.message = config.message; }
+        }
+      `)
+      await writeFile(join(directory, 'profile.json'), JSON.stringify({ bundles: [
+        { module: 'external-plugin', config: { message: 'hello from outside' } },
+      ], options: { builtinTools: false } }))
+      await writeFile(join(directory, 'verify.mjs'), `
+        import { bootAgentRuntimeFromFile, createAgentRuntime } from ${JSON.stringify(pathToFileURL(join(root, 'dist/cli-runtime.js')).href)};
+        const runtime = await createAgentRuntime(await bootAgentRuntimeFromFile(
+          { cwd: ${JSON.stringify(directory)}, sessionFile: ${JSON.stringify(join(directory, 'session.jsonl'))} },
+          ${JSON.stringify(join(directory, 'profile.json'))}
+        ));
+        if (runtime.root.get('externalGreeting').message !== 'hello from outside') throw new Error('config lost');
+        await runtime.dispose();
+        if (runtime.root.get('externalGreeting') !== undefined) throw new Error('service leaked');
+        console.log('external profile ok');
+      `)
+      expect(execFileSync(process.execPath, [join(directory, 'verify.mjs')], {
+        cwd: root, encoding: 'utf8', timeout: 15_000,
+      })).toContain('external profile ok')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   it('runs QuickJS from copied runtime resources without installed dependencies', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'tnega-packed-ptc-'))
     try {
