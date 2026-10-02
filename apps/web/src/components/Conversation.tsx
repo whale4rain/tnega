@@ -620,6 +620,7 @@ export function Conversation({
       <div className="conv-scroll" ref={scroller} onScroll={onScroll}>
         <div className="conv-column">
           {loading && entries.length === 0 && <TimelineSkeleton />}
+          {busy === 'Compacting context…' && <div className="notice notice-info" role="status">Compacting context…</div>}
           {empty && (
             <EmptyState
               workspace={workspace}
