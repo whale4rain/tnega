@@ -72,6 +72,7 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.host ? { host: parsed.host } : {}),
         ...(parsed.port !== undefined ? { port: parsed.port } : {}),
         ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
+        ...(parsed.profile !== false ? { profile: parsed.profile ?? defaultHotProfile() } : {}),
       })
       process.stdout.write(`tnega web listening on ${server.url}\n`)
       return new Promise<number>(() => {})
