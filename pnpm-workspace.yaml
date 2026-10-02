@@ -6,6 +6,7 @@ packages:
   - packages/spill/*
   - packages/memory/*
   - packages/subagent/*
+  - packages/jobs/*
   - packages/project/*
   - packages/loop/*
   - apps/*

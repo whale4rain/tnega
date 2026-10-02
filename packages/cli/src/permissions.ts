@@ -28,6 +28,7 @@ const ALWAYS_ALLOWED = new Set([
   'write_memory', 'publish_artifact', 'index_resource',
   // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。
   'run_code', 'ask_user_question',
+  'job_start', 'job_list', 'job_output', 'job_kill',
   // 只读或只作用于 Agent 自己启动的后台进程；启动本身（process_start）与 shell 同级。
   'process_output', 'process_list', 'process_stop',
 ])

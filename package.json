@@ -12,6 +12,18 @@
     "dist"
   ],
   "exports": {
+    "./jobs": {
+      "types": "./dist/types/packages/jobs/jobs/src/index.d.ts",
+      "import": "./dist/jobs.js"
+    },
+    "./jobs-local": {
+      "types": "./dist/types/packages/jobs/jobs-local/src/index.d.ts",
+      "import": "./dist/jobs-local.js"
+    },
+    "./tool-jobs": {
+      "types": "./dist/types/packages/jobs/tool-jobs/src/index.d.ts",
+      "import": "./dist/tool-jobs.js"
+    },
     ".": {
       "types": "./dist/types/src/index.d.ts",
       "import": "./dist/index.js"

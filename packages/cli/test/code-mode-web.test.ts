@@ -41,6 +41,7 @@ it.each([true, false])('switches the complete model tool surface across runs (re
     const id = created.session.id
     await (await call(`/api/sessions/${id}/runs`, 'POST', { prompt: 'Check native tools' })).text()
     expect(requests.at(-1)?.tools.map(tool => tool.function.name)).toContain('ask_user_question')
+    expect(requests.at(-1)?.tools.map(tool => tool.function.name)).toEqual(expect.arrayContaining(['job_start', 'job_list', 'job_output', 'job_kill']))
     expect(requests.at(-1)?.tools.map(tool => tool.function.name)).not.toContain('run_code')
     expect((await call('/api/config', 'PUT', { codeMode: true })).status).toBe(200)
     expect((await readSystemConfig(configFile)).codeMode).toBe(true)

@@ -14,6 +14,13 @@ function request(name: string, input: unknown): ToolRequest {
 }
 
 describe('permissionGuard', () => {
+  it('allows job controls while child execution retains its own permission check', async () => {
+    const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
+    for (const name of ['job_start', 'job_list', 'job_output', 'job_kill']) {
+      expect(await guard(request(name, {}))).toBeUndefined()
+    }
+    expect(await guard(request('shell', { command: 'echo hello' }))).toMatch(/approval/)
+  })
   it('uses automatic review for an otherwise gated action and still preserves narrower child permissions', async () => {
     let reviews = 0
     const guard = permissionGuard('workspace-write', 'session', new ApprovalBroker(), {

@@ -59,6 +59,8 @@ import { toolSpill } from '@tnega/tool-spill'
 import { toolOffice } from '@tnega/tool-office'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSubagent } from '@tnega/tool-subagent'
+import { jobsLocal } from '@tnega/jobs-local'
+import { toolJobs } from '@tnega/tool-jobs'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
@@ -1306,6 +1308,10 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(runSummary))
   const toolService = root.get('tools') as ToolsService
   const registry = root.get('agents') as AgentRegistry
+  fibers.push(await root.plugin(jobsLocal))
+  fibers.push(await root.plugin(toolJobs, {
+    resolveSession: (agentId?: string) => registry.get(agentId ?? req.sessionId)?.session,
+  }))
   fibers.push(await root.plugin(userQuestions, {
     resolveSession: (agentId: string) => agentId === req.sessionId ? registry.get(agentId)?.session : undefined,
     deliverNonblocking: async (request: PendingQuestionRequest, answers: QuestionAnswers) => {

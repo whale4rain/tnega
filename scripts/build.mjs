@@ -52,6 +52,9 @@ const packageDirs = {
   subagent: 'packages/subagent/subagent',
   'subagent-local': 'packages/subagent/subagent-local',
   'tool-subagent': 'packages/subagent/tool-subagent',
+  jobs: 'packages/jobs/jobs',
+  'jobs-local': 'packages/jobs/jobs-local',
+  'tool-jobs': 'packages/jobs/tool-jobs',
   // Project v2：每条缝的角色同样放在共同容器目录下。
   blackboard: 'packages/project/blackboard',
   'blackboard-local': 'packages/project/blackboard-local',
@@ -72,6 +75,9 @@ const packageDirs = {
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
 
 const libraryEntries = {
+  jobs: `${packageDir('jobs')}/src/index.ts`,
+  'jobs-local': `${packageDir('jobs-local')}/src/index.ts`,
+  'tool-jobs': `${packageDir('tool-jobs')}/src/index.ts`,
   'ptc-runtime': 'packages/ptc-runtime/src/index.ts',
   'ptc-runtime-quickjs': 'packages/ptc-runtime-quickjs/src/index.ts',
   'tool-ptc': 'packages/tool-ptc/src/index.ts',

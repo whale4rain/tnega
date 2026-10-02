@@ -17,6 +17,8 @@ import { Context } from '@tnega/core'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
+import { jobsLocal } from '@tnega/jobs-local'
+import { toolJobs } from '@tnega/tool-jobs'
 import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
 import type { SystemConfig } from './config.js'
 import { projectLoop } from '@tnega/project-loop'
@@ -407,6 +409,8 @@ export class ProjectHost {
     await ctx.plugin(toolBox)
 
     const registry = ctx.get('agents') as AgentRegistry
+    await ctx.plugin(jobsLocal)
+    await ctx.plugin(toolJobs, { resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session })
     const threads = ctx.get('threads') as ThreadService
     const toolService = ctx.get('tools') as ToolsService
     await mountApprovalReview(ctx, {

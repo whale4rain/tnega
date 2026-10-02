@@ -86,6 +86,12 @@ profile 应只引用信任的代码；工具沙箱不会隔离插件本身。
 
 ## PTC 与提问
 
+后台任务默认随内置工具启用，提供 `job_start`、`job_list`、`job_output`、`job_kill`。
+Web resident Agent 和 Project Thread 也可使用。任务跨 Agent Run 保留，权限继续由
+原工具管线检查；runtime 关闭会取消并等待任务。完整用法与配置见
+[Background jobs](../jobs/README.md)。自定义 runtime 的 `builtinTools:false`
+保持原工具面，可显式设置 `jobs:true` 单独启用；`jobs:false` 禁用默认挂载。
+
 设置中的 CodeMode 默认关闭，此时模型只看到原生工具，且没有 `run_code`。
 开启后模型只看到 `run_code`，由独立 QuickJS Worker 执行 JavaScript。使用
 `await tools.read_file({path: 'README.md'})` 调用已有工具，`ALL_TOOLS` 查看名称和参数 schema，

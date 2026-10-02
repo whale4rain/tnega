@@ -5,6 +5,9 @@ export * as agentApi from '../packages/agent/src/index.js'
 export * as llmApi from '../packages/llm/src/index.js'
 export * as memoryApi from '../packages/memory/memory/src/index.js'
 export * as subagentApi from '../packages/subagent/subagent/src/index.js'
+export * as jobsApi from '../packages/jobs/jobs/src/index.js'
+export * as jobsLocalApi from '../packages/jobs/jobs-local/src/index.js'
+export * as toolJobsApi from '../packages/jobs/tool-jobs/src/index.js'
 
 export {
   CordisError,

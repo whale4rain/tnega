@@ -257,7 +257,7 @@ export class LocalSubagentService extends SubagentService {
         messages: [{ role: 'user', name: `agent:${parent.id}`, content: `Parent Agent: ${parent.id}\n\nTask: ${task}` }],
       })
       await handle.agent.session.flush()
-      void this.settle(id, parent.id)
+      void this.settle(id, parent.id, request.reportCompletion !== false)
       return {
         id, parentId: parent.id, label, mode, status: 'running', depth, createdAt, updatedAt: createdAt,
       }
@@ -332,7 +332,7 @@ export class LocalSubagentService extends SubagentService {
     return handle.agent
   }
 
-  private async settle(id: string, parentId: string): Promise<void> {
+  private async settle(id: string, parentId: string, reportCompletion = true): Promise<void> {
     try {
       const child = this.agents.get(id)
       if (!child) return
@@ -344,7 +344,7 @@ export class LocalSubagentService extends SubagentService {
       const output = own?.type === 'assistant/message' ? own.payload.content.trim() : ''
       const reason = end?.type === 'turn/end' ? end.payload.finishReason : 'error'
       const parent = this.agents.get(parentId)
-      if (parent && this.reported.get(id)?.trim() !== output) {
+      if (reportCompletion && parent && this.reported.get(id)?.trim() !== output) {
         const report = reason === 'stop'
           ? `Subagent ${id} completed: ${output || '(no final text)'}`
           : `Subagent ${id} ended (${reason}): ${output || '(no final text)'}`

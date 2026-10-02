@@ -29,6 +29,12 @@ _Avoid_: duplicate, clone
 父子之间通过 inbox 消息通信，父 Agent 使用 `list_subagent` 查询状态。
 `spawn` 从空历史开始，`fork` 只复制父 Session 已完成的 turn。两者共享 Workspace。
 
+**Job（后台任务）**:
+一次后台工具调用或有界 Subagent 工作的进程内生命周期。Job 跨 Agent Run 保留，
+归属于创建它的确切 Agent；状态为 running、stopping、completed、failed 或 killed。
+`ctx.jobs` 管理状态与资源清理，`job_*` 工具控制与收集任务。启动和结果是 Session
+中的审计 meta；完成通知通过 durable inbox 进入模型历史。Job 不会在进程重启后恢复。
+
 **Stream Event**:
 Web 与 Agent 之间传输的归一化流式事件，只承载增量；最终状态以 Session 持久化内容为准。
 _Avoid_: delta message, wire frame

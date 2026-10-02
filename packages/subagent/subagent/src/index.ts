@@ -14,6 +14,8 @@ export interface SubagentStartRequest {
   task: string
   label?: string
   mode?: SubagentMode
+  /** A job controller can deliver completion instead of the default parent report. */
+  reportCompletion?: boolean
 }
 
 export interface SubagentEntry {

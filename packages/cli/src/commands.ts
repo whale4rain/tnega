@@ -30,6 +30,8 @@ import { toolMemory } from '@tnega/tool-memory'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
+import { jobsLocal } from '@tnega/jobs-local'
+import { toolJobs } from '@tnega/tool-jobs'
 import {
   builtinTools,
   tools,
@@ -102,6 +104,8 @@ export interface AgentRuntimeOptions {
   agent?: AgentDefinition
   toolPolicy?: ToolPolicy
   builtinTools?: false | BuiltinToolsConfig
+  /** Defaults to enabled with builtin tools; explicitly enable for custom compositions. */
+  jobs?: boolean
   plugins?: readonly Plugin[]
   /** Web per-run agents consume durable steering at model step boundaries. */
   durableInbox?: boolean
@@ -228,7 +232,7 @@ function runtimeOptionsFromProfile(
   options: Record<string, unknown>,
 ): Pick<
   AgentRuntimeOptions,
-  'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+  'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools' | 'jobs'
 > {
   const builtinTools = options.builtinTools === false
     || (options.builtinTools && typeof options.builtinTools === 'object')
@@ -236,7 +240,7 @@ function runtimeOptionsFromProfile(
     : undefined
   const result: Partial<Pick<
     AgentRuntimeOptions,
-    'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools'
+    'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools' | 'jobs'
   >> = {}
   if (options.allowNetwork === true) result.allowNetwork = true
   if (options.allowShell === true) result.allowShell = true
@@ -250,6 +254,7 @@ function runtimeOptionsFromProfile(
     result.maxSteps = options.maxSteps
   }
   if (builtinTools !== undefined) result.builtinTools = builtinTools
+  if (typeof options.jobs === 'boolean') result.jobs = options.jobs
   return result
 }
 
@@ -367,6 +372,10 @@ export async function createAgentRuntime(
     fibers.push(agentFiber)
   }
   try {
+    if (merged.jobs ?? (merged.builtinTools !== false)) {
+      fibers.push(await root.plugin(jobsLocal))
+      fibers.push(await root.plugin(toolJobs, { resolveSession: () => root.get('session') }))
+    }
     for (const plugin of merged.plugins ?? []) {
       const fiber = await root.plugin(plugin)
       fibers.push(fiber)

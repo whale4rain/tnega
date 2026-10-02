@@ -42,6 +42,34 @@ describe('publish metadata', () => {
 })
 
 describe('packed artifact', () => {
+  it('runs background tools through the built runtime and exposes job plugins', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'tnega-packed-jobs-'))
+    try {
+      await writeFile(join(directory, 'verify.mjs'), `
+        import { createAgentRuntime } from ${JSON.stringify(pathToFileURL(join(root, 'dist/cli-runtime.js')).href)};
+        import { JobRegistry } from ${JSON.stringify(pathToFileURL(join(root, 'dist/jobs.js')).href)};
+        import { jobsLocal } from ${JSON.stringify(pathToFileURL(join(root, 'dist/jobs-local.js')).href)};
+        import { toolJobs } from ${JSON.stringify(pathToFileURL(join(root, 'dist/tool-jobs.js')).href)};
+        if (!JobRegistry || !jobsLocal || !toolJobs) throw new Error('missing job exports');
+        const runtime = await createAgentRuntime({ cwd: ${JSON.stringify(directory)},
+          sessionFile: ${JSON.stringify(join(directory, 'session.jsonl'))}, builtinTools: false, jobs: true });
+        const tools = runtime.root.get('tools');
+        tools.register({ schema: { name: 'long_work', description: 'long work' }, execute: async () => {
+          await new Promise(resolve => setTimeout(resolve, 10)); return 'work finished';
+        } });
+        const started = await tools.execute('job_start', { tool: 'long_work' });
+        if (!started.ok || !started.output.job_id) throw new Error('job failed to launch');
+        const output = await tools.execute('job_output', { job_id: started.output.job_id, wait: true });
+        if (!output.ok || output.output.job.status !== 'completed' || output.output.output !== 'work finished') throw new Error('job result lost');
+        await runtime.dispose();
+        console.log('packed jobs ok');
+      `)
+      expect(execFileSync(process.execPath, [join(directory, 'verify.mjs')], {
+        cwd: root, encoding: 'utf8', timeout: 15_000,
+      })).toContain('packed jobs ok')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   it('loads configured ESM package plugins through the built runtime', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'tnega-packed-profile-'))
     try {

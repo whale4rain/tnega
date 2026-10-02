@@ -1,6 +1,6 @@
 import type { Context } from '@tnega/core'
 import { setTimeout as delay } from 'node:timers/promises'
-import type { SubagentService } from '@tnega/subagent'
+import type { SubagentEntry, SubagentService } from '@tnega/subagent'
 import type { ToolsService } from '@tnega/tools'
 
 function fields(input: unknown): Record<string, unknown> {
@@ -13,6 +13,10 @@ function fields(input: unknown): Record<string, unknown> {
 function caller(agentId: string | undefined): string {
   if (!agentId) throw new Error('subagent tools require a live Agent identity')
   return agentId
+}
+
+function isStartObserver(value: unknown): value is (entry: SubagentEntry) => void {
+  return typeof value === 'function'
 }
 
 export const toolSubagent = {
@@ -47,7 +51,10 @@ export const toolSubagent = {
           task: value.task,
           ...(typeof value.label === 'string' ? { label: value.label } : {}),
           ...(value.mode === 'fork' ? { mode: 'fork' as const } : {}),
+          ...(options.jobStart === true ? { reportCompletion: false } : {}),
         })
+        // Host-only observer runs before output policies can rewrite the result.
+        if (isStartObserver(options.onSubagentStarted)) options.onSubagentStarted(entry)
         return `Started subagent ${entry.id} (${entry.label}). Use list_subagent to check its status.`
       },
     })
