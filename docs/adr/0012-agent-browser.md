@@ -32,6 +32,12 @@
 - 权限规则（`packages/cli/src/permissions.ts`）：观察、导航、滚动、悬停、等待、调整视口总是放行；点击、输入、选择、按键、`browser_evaluate` 在本地开发页（loopback、`*.localhost`、`*.test`）上于 `workspace-write` 放行，其余情况需要批准；`process_start` 与 `shell` 同级。
 - 网页内容是不可信输入。工具结果只是数据，Agent 的指令来源仍然只有用户。
 
+## 修订：标签、面板尺寸与元素选择（2026-10-02）
+
+- 浏览器缝增加标签：`BrowserTab`、`tabs()` 与 `tab_new` / `tab_select` / `tab_close` 动作，模型可见 `browser_tabs`。Host 维护有序标签与唯一的活动标签，动作、观察与 screencast 都跟随活动标签；`target=_blank` 与 `window.open` 打开的页面成为新标签。桌面端每个标签对应一个 `WebContentsView`。
+- Web 端按面板卡片的尺寸设置所有标签的 viewport（`/api/browser/viewport`），画面不再缩放留白。
+- 元素选择器（`/api/browser/pick`）在页面里注入一段脚本：描出指针下的元素，吞掉点击，返回元素描述并裁剪截图。它是用户动作，不经过 `browser/pre-action`。
+
 ## 后果
 
 - `playwright-core` 成为运行期依赖，在两个 bundle 中都是 external。
