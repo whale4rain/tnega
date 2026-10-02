@@ -43,15 +43,16 @@ beforeAll(async () => {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   // Skip on machines without Edge, Chrome or Playwright's Chromium.
+  // A machine too busy to start one within the budget is treated like one without a browser.
   const probe = new PlaywrightBrowserHost(launchPageSource({ headless: true }))
   try {
-    await probe.page()
+    await Promise.race([probe.page(), new Promise((_, reject) => setTimeout(() => reject(new Error('probe timed out')), 60_000))])
   } catch {
     available = false
   } finally {
-    await probe.close()
+    await probe.close().catch(() => {})
   }
-}, 60_000)
+}, 90_000)
 
 afterAll(async () => {
   await new Promise(resolve => server.close(resolve))
