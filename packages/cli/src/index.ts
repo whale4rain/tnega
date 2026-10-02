@@ -4,6 +4,8 @@ import {
   runAgentCommand,
 } from './commands.js'
 import { startWebServer } from './server.js'
+import { defaultHotProfile } from './plugin-hmr.js'
+import { resolveProfileFile } from './profile-file.js'
 export * from './profile.js'
 export * from './profile-file.js'
 
@@ -24,6 +26,8 @@ export {
 export { parseYaml } from './yaml.js'
 export { effectiveApiKey } from './config.js'
 export { startWebServer } from './server.js'
+export { createHotPluginHost, defaultHotProfile } from './plugin-hmr.js'
+export type { HotPluginEvent, HotPluginHost, HotPluginHostOptions, HotPluginStatus } from './plugin-hmr.js'
 export { ProjectHost } from './project-host.js'
 export type {
   OpenProject,
@@ -103,6 +107,8 @@ interface ParsedWebArgs {
   host?: string
   port?: number
   configFile?: string
+  /** Hot-reloaded plugin profile; `false` from `--no-plugins`. */
+  profile?: string | false
 }
 
 function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
@@ -209,9 +215,15 @@ function parseWebArgs(args: readonly string[]): ParsedWebArgs {
   let cursor = 0
   while (cursor < args.length) {
     const arg = args[cursor]!
-    if (arg === '--host' || arg === '--port' || arg === '--config' || arg === '--config-file') {
+    if (arg === '--no-plugins') {
+      parsed.profile = false
+      cursor += 1
+      continue
+    }
+    if (arg === '--host' || arg === '--port' || arg === '--config' || arg === '--config-file' || arg === '--profile') {
       const value = args[cursor + 1]
       if (!value) throw new CliError(`${arg} requires a value`)
+      if (arg === '--profile') parsed.profile = resolveProfileFile(value)
       if (arg === '--host') parsed.host = value
       if (arg === '--port') parsed.port = parseFiniteNumber('--port', value)
       if (arg === '--config' || arg === '--config-file') parsed.configFile = value

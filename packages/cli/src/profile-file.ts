@@ -2,7 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { registerHooks } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { Plugin } from '@tnega/core'
 import type { AgentRuntimeOptions } from './commands.js'
 import type { AgentProfile } from './profile.js'
@@ -81,7 +81,26 @@ function normalizeBundles(value: unknown, file: string): readonly ProfileBundleR
   return bundles
 }
 
-export async function readAgentProfile(nameOrFile: string): Promise<AgentProfile> {
+export interface ProfileLoadOptions {
+  /**
+   * Reload generation. When set, local plugin modules (and the local files they
+   * import) are loaded under a fresh URL, so edits take effect without a restart.
+   */
+  version?: number
+}
+
+export interface LoadedProfile {
+  file: string
+  profile: AgentProfile
+  /** Files of local (non-package) plugin modules the profile references. */
+  localModules: readonly string[]
+}
+
+export async function readAgentProfile(nameOrFile: string, options: ProfileLoadOptions = {}): Promise<AgentProfile> {
+  return (await loadAgentProfile(nameOrFile, options)).profile
+}
+
+export async function loadAgentProfile(nameOrFile: string, options: ProfileLoadOptions = {}): Promise<LoadedProfile> {
   const file = resolveProfileFile(nameOrFile)
   let text: string
   try {
@@ -96,15 +115,59 @@ export async function readAgentProfile(nameOrFile: string): Promise<AgentProfile
   const name = typeof data.name === 'string' && data.name
     ? data.name
     : dirname(file).split(/[\\/]/).at(-1) ?? 'profile'
-  const bundles = await resolveBundles(normalizeBundles(data.bundles, file), file)
-  const options = data.options && typeof data.options === 'object' && !Array.isArray(data.options)
+  const refs = normalizeBundles(data.bundles, file)
+  const bundles = await resolveBundles(refs, file, options.version)
+  const profileOptions = data.options && typeof data.options === 'object' && !Array.isArray(data.options)
     ? data.options
     : undefined
+  const localModules = refs.flatMap(ref => 'module' in ref && !ref.disabled && isLocalSpecifier(ref.module)
+    ? [ref.module.startsWith('file:') ? fileURLToPath(ref.module) : resolve(dirname(file), ref.module)]
+    : [])
   return {
-    name,
-    bundles,
-    ...(options ? { options: options as NonNullable<AgentProfile['options']> } : {}),
+    file,
+    localModules,
+    profile: {
+      name,
+      bundles,
+      ...(profileOptions ? { options: profileOptions as NonNullable<AgentProfile['options']> } : {}),
+    },
   }
+}
+
+function isLocalSpecifier(specifier: string): boolean {
+  return specifier.startsWith('file:') || specifier.startsWith('.') || isAbsolute(specifier)
+}
+
+/** Query parameter that marks a module URL as belonging to one reload generation. */
+export const HMR_QUERY = 'tnega-hmr'
+
+/** Package code is framework-level: only application files are reloaded. */
+export function withReloadVersion(url: string, version: number | undefined): string {
+  if (version === undefined || !url.startsWith('file:') || url.includes('/node_modules/')) return url
+  const parsed = new URL(url)
+  parsed.searchParams.set(HMR_QUERY, String(version))
+  return parsed.href
+}
+
+let versionHook: { deregister(): void } | undefined
+
+/**
+ * Propagate a module's reload generation to the local files it imports, so a
+ * reload re-evaluates the plugin's whole application graph rather than only its
+ * entry. Registered once and kept: it only touches imports from versioned URLs.
+ */
+function ensureVersionHook(): void {
+  if (versionHook) return
+  versionHook = registerHooks({
+    resolve(request, context, nextResolve) {
+      const result = nextResolve(request, context)
+      const parent = context.parentURL
+      if (!parent?.startsWith('file:') || !parent.includes(`${HMR_QUERY}=`)) return result
+      const version = Number(new URL(parent).searchParams.get(HMR_QUERY))
+      if (!Number.isFinite(version) || new URL(result.url).search) return result
+      return { ...result, url: withReloadVersion(result.url, version) }
+    },
+  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,7 +200,8 @@ function resolveModule(specifier: string, file: string): string {
   }
 }
 
-async function resolveBundles(refs: readonly ProfileBundleRef[], file: string): Promise<readonly Plugin[]> {
+async function resolveBundles(refs: readonly ProfileBundleRef[], file: string, version?: number): Promise<readonly Plugin[]> {
+  if (version !== undefined) ensureVersionHook()
   const plugins: Plugin[] = []
   for (const ref of refs) {
     if ('plugin' in ref && ref.plugin) plugins.push(ref.plugin)
@@ -150,7 +214,7 @@ async function resolveBundles(refs: readonly ProfileBundleRef[], file: string): 
     } else if ('module' in ref && ref.module) {
       if (ref.disabled) continue
       try {
-        const specifier = resolveModule(ref.module, file)
+        const specifier = withReloadVersion(resolveModule(ref.module, file), version)
         const namespace: unknown = await import(specifier)
         const plugin = isRecord(namespace)
           ? ref.export ? namespace[ref.export] : namespace.default ?? namespace

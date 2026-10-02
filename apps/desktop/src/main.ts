@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type Ope
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startWebServer, type WebServer } from '@tnega/cli'
+import { defaultHotProfile, startWebServer, type WebServer } from '@tnega/cli'
 import { DesktopBrowser, enableBrowserDebugging } from './browser.js'
 import { closeDesktopRuntime } from './shutdown.js'
 import { installTray } from './tray.js'
@@ -96,7 +96,7 @@ async function createWindow(): Promise<void> {
     return { action: 'deny' }
   })
   browser = new DesktopBrowser(window, event => isTrustedSender(event.senderFrame?.url ?? ''))
-  server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host })
+  server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile() })
   allowedOrigin = new URL(server.url).origin
   tray = installTray(window, join(dirname(fileURLToPath(import.meta.url)), '../build/icon.png'), () => { void closeAndExit() })
   window.on('closed', () => {

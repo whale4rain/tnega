@@ -65,8 +65,26 @@ profile 应只引用信任的代码；工具沙箱不会隔离插件本身。
 
 文件读取时先解析全部模块，再由 runtime 挂载插件。配置插件启动失败会释放
 已创建的 runtime；正常 `runtime.dispose()` 会撤销插件注册和 effects。
-修改 profile 后重新启动 runtime 生效；本入口不监听文件或清除 JS 模块缓存。
+`tnega run` 读取一次 profile；修改后下一次运行生效。常驻宿主（`tnega web` 与桌面端）
+使用下文的热重载。
 原有程序化 `AgentProfile.bundles: Plugin[]` 保持可用。
+
+### 插件热重载（HMR）
+
+`tnega web` 与桌面端在运行中加载 `~/.tnega/profiles/default.{yaml,yml,json}`
+（`tnega web --profile <file>` 可换文件，`--no-plugins` 关闭）。文件不存在时宿主照常启动，
+创建后自动加载。`createHotPluginHost(file)`（`tnega/cli/runtime`）提供同一能力：
+
+- 监听 profile 文件与每个本地插件模块所在目录（忽略 `node_modules`、`.git`），
+  120ms 防抖后重新读取 profile。
+- 本地模块以新的 `?tnega-hmr=<generation>` URL 导入；一个 Node 同步 resolve hook 把这一
+  代号传给它导入的本地文件，所以改辅助文件也会生效。`node_modules` 中的包属于框架层，
+  不重载，改动后重启宿主。
+- `host.plugin` 是一个载体插件：挂到任意 runtime（Web 每次运行的 runtime 与常驻 Agent
+  都挂了），它把当前一代插件挂成子 Fiber；重载时按逆序 dispose 旧一代，再挂新一代。
+  新一代挂载失败时回滚到旧一代；读取或导入失败时旧一代继续运行。
+- `GET /api/plugins` 返回 `{enabled, file, generation, plugins, error?}`，
+  `POST /api/plugins/reload` 立即重载。旧一代模块留在内存中，适合开发期迭代。
 
 ## web server（server.ts）
 

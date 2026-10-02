@@ -12,7 +12,7 @@ import {
   type AgentStreamEvent,
   type LiveAgent,
 } from '@tnega/agent'
-import { Context, type Fiber } from '@tnega/core'
+import { Context, type Fiber, type Plugin } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
 import { observeCompaction } from './compaction-observation.js'
 import { runSummary } from '@tnega/run-summary'
@@ -71,6 +71,7 @@ import { handleProjectApi } from './project-routes.js'
 import { pickSystemFolder } from './folder-picker.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
+import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from './plugin-hmr.js'
 import {
   createAgentRuntime,
   resolveLlmEnv,
@@ -220,6 +221,12 @@ export interface WebServerOptions {
    * first use (see `browser` in System Config). `false` disables the tools.
    */
   browser?: PlaywrightBrowserHost | false
+  /**
+   * Profile file whose plugins are mounted into every agent runtime and reloaded
+   * in place when the profile or a local plugin module changes. Off by default;
+   * `tnega web` and the desktop app pass `defaultHotProfile()`.
+   */
+  profile?: string
 }
 
 export interface WebServer {
@@ -259,6 +266,9 @@ export async function startWebServer(
     ? new PlaywrightBrowserHost(launchPageSource({ headless: true, ...(await readSystemConfig(configFile)).browser }))
     : undefined
   const browser = options.browser === false ? undefined : options.browser ?? ownedBrowser
+  const hotPlugins = options.profile
+    ? await createHotPluginHost(options.profile, { onEvent: logHotPluginEvent })
+    : undefined
   const context: ServerContext = {
     webRoot,
     activeRuns,
@@ -272,6 +282,7 @@ export async function startWebServer(
     projectPermission: options.projectPermission ?? 'workspace-write',
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),
+    ...(hotPlugins ? { hotPlugins } : {}),
     processes: new Map(),
   }
 
@@ -302,6 +313,7 @@ export async function startWebServer(
       const hosts = [...projectHosts.values()]
       projectHosts.clear()
       await Promise.all(hosts.map(entry => entry.host.dispose()))
+      await hotPlugins?.close()
       await ownedBrowser?.close()
       const registries = [...context.processes.values()]
       context.processes.clear()
@@ -325,6 +337,7 @@ interface ServerContext {
   browser?: PlaywrightBrowserHost
   /** Background processes per workspace; they outlive the runs that start them. */
   processes: Map<string, ProcessRegistry>
+  hotPlugins?: HotPluginHost
 }
 
 function processesFor(context: ServerContext, workspace: string): ProcessRegistry {
@@ -397,6 +410,20 @@ async function handleApi(
 
   if (url.pathname === '/api/health') {
     sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/api/plugins' && req.method === 'GET') {
+    sendJson(res, 200, context.hotPlugins ? { enabled: true, ...context.hotPlugins.status() } : { enabled: false })
+    return
+  }
+
+  if (url.pathname === '/api/plugins/reload' && req.method === 'POST') {
+    if (!context.hotPlugins) {
+      sendError(res, 404, 'plugin profile is not enabled')
+      return
+    }
+    sendJson(res, 200, { enabled: true, ...await context.hotPlugins.reload() })
     return
   }
 
@@ -1070,6 +1097,7 @@ async function handleRun(
       attachments,
       ...(context.browser ? { browser: context.browser } : {}),
       processes: processesFor(context, workspace),
+      ...(context.hotPlugins ? { hotPlugins: context.hotPlugins.plugin } : {}),
     })
     return
   }
@@ -1099,15 +1127,10 @@ async function handleRun(
         allowPrivateNetwork: permission === 'bypass',
         processes: processesFor(context, workspace),
       },
-      ...(coding
-        ? {
-            plugins: [createCodingAgentPlugin({
-              cwd: workspace,
-              mode,
-              registerAgent: false,
-            })],
-          }
-        : {}),
+      plugins: [
+        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false })] : []),
+        ...(context.hotPlugins ? [context.hotPlugins.plugin] : []),
+      ],
     })
     const toolService = runtime.root.get('tools') as ToolsService
     toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
@@ -1272,6 +1295,8 @@ interface ResidentRunRequest {
   attachments?: ModelAttachment[]
   browser?: PlaywrightBrowserHost
   processes?: ProcessRegistry
+  /** Carrier for the hot-reloaded profile plugins (see `plugin-hmr.ts`). */
+  hotPlugins?: Plugin
   config: SystemConfig
   prompt: string
   permission: PermissionMode
@@ -1391,6 +1416,7 @@ async function createResidentRuntime(
     permission: req.permission,
   }))
   fibers.push(await root.plugin(toolSubagent))
+  if (req.hotPlugins) fibers.push(await root.plugin(req.hotPlugins))
   return {
     root,
     dispose: async () => {
@@ -2337,5 +2363,15 @@ class HttpError extends Error {
     message: string,
   ) {
     super(message)
+  }
+}
+
+function logHotPluginEvent(event: HotPluginEvent): void {
+  if (event.type === 'loaded') {
+    if (event.generation > 1) process.stderr.write(`[tnega] plugins reloaded (generation ${event.generation}, ${event.plugins} plugin(s))
+`)
+  } else {
+    process.stderr.write(`[tnega] plugin reload failed: ${errorMessage(event.error)}
+`)
   }
 }
