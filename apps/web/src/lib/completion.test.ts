@@ -29,13 +29,13 @@ describe('commands', () => {
   const merged = mergeCommands([{ name: '/plan', description: 'server plan' }, { name: 'skills', description: 'List workspace skills' }, { name: '/mode', description: 'x' }])
 
   it('keeps client commands, adds server ones and drops the ones the client handles', () => {
-    expect(merged.map(command => command.name)).toEqual(['/plan', '/goal', '/auto', '/model', '/compact', '/rename', '/skills'])
+    expect(merged.map(command => command.name)).toEqual(['/plan', '/goal', '/auto', '/model', '/compact', '/codemode', '/rename', '/skills'])
     expect(merged.find(command => command.name === '/plan')?.source).toBe('client')
   })
 
   it('ranks by name prefix, then name, then description', () => {
     // `/model` matches by name; `/plan`, `/goal` and `/auto` only through "mode" in their descriptions.
-    expect(rankCommands(merged, 'mo').map(command => command.name)).toEqual(['/model', '/plan', '/goal', '/auto'])
+    expect(rankCommands(merged, 'mo').map(command => command.name)).toEqual(['/model', '/codemode', '/plan', '/goal', '/auto'])
     expect(rankCommands(merged, 'ill').map(command => command.name)).toEqual(['/skills'])
     expect(rankCommands(merged, 'context').map(command => command.name)).toEqual(['/compact'])
   })

@@ -68,6 +68,7 @@ export function Conversation({
   onSessionsChanged,
   onSessionDeleted,
   onOpenSettings,
+  onConfigSaved,
   onOpenSubagent,
   onOpenFile,
   onToggleBrowser,
@@ -85,6 +86,7 @@ export function Conversation({
   onSessionsChanged: () => void
   onSessionDeleted: (id: string) => void
   onOpenSettings: () => void
+  onConfigSaved?: (config: ConfigSnapshot) => void
   onOpenSubagent: (id: string, label: string) => void
   onOpenFile: (path: string) => void
   /** Present in the desktop app, which hosts the agent browser in a panel. */
@@ -107,6 +109,7 @@ export function Conversation({
   const [remoteRunning, setRemoteRunning] = useState(false)
   const [busy, setBusy] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
+  const [commandNotice, setCommandNotice] = useState<string>()
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [resumeVersion, setResumeVersion] = useState(0)
   const pendingResume = useRef<string | undefined>(undefined)
@@ -141,6 +144,7 @@ export function Conversation({
 
   useEffect(() => {
     setError(undefined)
+    setCommandNotice(undefined)
     setApprovals([])
     if (pendingResume.current !== sessionId) pendingResume.current = undefined
     if (!sessionId) {
@@ -213,6 +217,10 @@ export function Conversation({
   const models = config?.models
   const completeArgument = useCallback(async (name: string, query: string): Promise<ArgumentSuggestion[]> => {
     const needle = query.toLowerCase()
+    if (name === '/codemode') return [
+      { value: 'on', label: 'on', detail: 'Enable CodeMode (PTC)' },
+      { value: 'off', label: 'off', detail: 'Disable CodeMode' },
+    ].filter(item => item.value.startsWith(needle))
     if (name === '/model') {
       return (models ?? [])
         .filter(model => !needle || model.id.toLowerCase().includes(needle) || (model.name ?? '').toLowerCase().includes(needle))
@@ -342,6 +350,23 @@ export function Conversation({
     const spec = parsed && CLIENT_COMMANDS.find(command => command.name === parsed.name)
     if (!parsed || !spec) return undefined
     const { name, rest } = parsed
+    if (name === '/codemode') {
+      const option = rest.trim().toLowerCase()
+      if (option && option !== 'on' && option !== 'off') {
+        setError('Use /codemode on or /codemode off.')
+        return false
+      }
+      try {
+        setBusy('Saving CodeMode…')
+        const saved = await api.saveConfig({ codeMode: option !== 'off' })
+        onConfigSaved?.(saved)
+        setCommandNotice(saved.config.codeMode ? 'CodeMode enabled (PTC).' : 'CodeMode disabled.')
+        return true
+      } catch (reason) {
+        setError(errorText(reason))
+        return false
+      } finally { setBusy(undefined) }
+    }
     if (name === '/plan' || name === '/goal' || name === '/auto') {
       const mode = name === '/plan' ? 'plan' : name === '/goal' ? 'goal' : 'auto'
       await changeSettings({ mode })
@@ -641,6 +666,7 @@ export function Conversation({
               <button type="button" className="icon-button tiny" aria-label="Dismiss" onClick={() => setError(undefined)}><X size={14} /></button>
             </div>
           )}
+          {commandNotice && <div className="notice notice-info" role="status">{commandNotice}</div>}
           {approvals.map(approval => (
             <ApprovalCard key={approval.id} approval={approval} onAnswer={allow => void answer(approval, allow)} />
           ))}

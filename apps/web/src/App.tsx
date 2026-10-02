@@ -341,6 +341,7 @@ export function App() {
       {mode === 'projects' && workspace ? null : workspace
         ? (
           <Conversation
+            onConfigSaved={setConfig}
             workspace={workspace}
             sessionId={selectedId}
             config={config}

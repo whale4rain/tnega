@@ -54,6 +54,7 @@ export const CLIENT_COMMANDS: readonly CommandSpec[] = [
   { name: '/auto', description: 'Switch back to Auto mode: work on requests directly.', source: 'client' },
   { name: '/model', usage: '<model>', description: 'Use another model for this session.', source: 'client', hasArguments: true },
   { name: '/compact', description: 'Summarise the conversation so far to free up context.', source: 'client' },
+  { name: '/codemode', usage: '[on|off]', description: 'Enable or disable CodeMode (PTC) for subsequent runs.', source: 'client', hasArguments: true },
   { name: '/rename', usage: '<title>', description: 'Rename this session.', source: 'client' },
 ]
 
