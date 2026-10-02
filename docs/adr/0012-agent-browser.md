@@ -35,5 +35,5 @@
 ## 后果
 
 - `playwright-core` 成为运行期依赖，在两个 bundle 中都是 external。
-- 非桌面环境下浏览器是一个独立的 Edge / Chrome 窗口；无显示的 Linux 默认 headless。可在 System Config 的 `browser` 中设置 `channel`、`executablePath`、`headless`。
-- 后台进程随运行时一起结束：常驻 Agent 跨轮保留，按次运行的会话在本次运行结束时终止。
+- 非桌面环境下浏览器以 headless 运行，用 CDP `Page.startScreencast` 把画面推到 Web UI 的 Browser 面板，用户的点击、滚轮、键盘回传为输入（`/api/browser/live`、`/api/browser/input` 等），不弹出独立窗口（2026-10-02 修订）。System Config 的 `browser` 可设 `channel`、`executablePath`、`headless`（设为 `false` 恢复独立窗口）。
+- 后台进程由 Web server 按工作区持有（`ProcessRegistry`），跨 Agent Run 保留，随 server 关闭而终止（2026-10-02 修订）。

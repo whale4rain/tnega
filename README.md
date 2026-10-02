@@ -31,7 +31,7 @@ Use it for coding, document work, or ongoing projects with a coordinator and par
 - **Run summaries:** an independent plugin persists the final successful reply; completed runs show that reply and collapse intermediate work into an expandable process. Failed or cancelled runs remain visible. This does not call another model or compact model history.
 - **Sandbox:** shell execution is wrapped by a local sandbox backend (bubblewrap or Landlock on Linux, Seatbelt on macOS, a restricted-token ACL runner on Windows). It is a capability seam with a functional probe and fail-closed semantics: when no backend is usable the command is refused rather than run unconfined.
 - **Images:** paste, drop or attach images in the composer; vision models see them, and tools such as the browser can return screenshots. Text-only models get a note instead.
-- **Agent browser for frontend work:** `browser_*` tools (built on Playwright's AI snapshots) let the agent open your dev server, click and type by element ref, take screenshots and read the console and network. In the desktop app the page appears in a Browser panel next to the conversation; elsewhere the system Edge/Chrome opens. `process_start` runs the dev server in the background, inside the sandbox. See [ADR 0012](docs/adr/0012-agent-browser.md).
+- **Agent browser for frontend work:** `browser_*` tools (built on Playwright's AI snapshots) let the agent open your dev server, click and type by element ref, take screenshots and read the console and network. The page appears in a Browser panel next to the conversation: a native view in the desktop app, a live headless-browser stream you can click and type into in the web UI. `process_start` runs the dev server in the background, inside the sandbox. See [ADR 0012](docs/adr/0012-agent-browser.md).
 - **Local Web and desktop UI:** the Electron app hosts the same loopback-backed interface, with an in-app Settings dialog.
 
 ## Install
@@ -150,6 +150,10 @@ await fiber.dispose()
 - **Spacetime composability**: components can be inserted, replaced, and removed at runtime; effects are reversed in order on teardown, so hot-swaps leave no residue.
 
 See the [Chinese guide](docs/zh-CN.md) for the detailed design, model pricing table, library contracts, and roadmap.
+
+## Design
+
+The visual system (sky palette, the cloud-on-cube identity, weather as the agent's state language, contrast floors) is specified in [docs/design/tnega-design.md](docs/design/tnega-design.md).
 
 ## Development
 

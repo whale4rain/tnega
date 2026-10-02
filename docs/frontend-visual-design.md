@@ -1,5 +1,7 @@
 # Tnega Studio · 视觉设计规范
 
+> **已被取代（2026-10-02）**：当前规范见 [`docs/design/tnega-design.md`](design/tnega-design.md)。本文保留为 Astryx 迁移时期的历史记录，其中的青绿配色与组件说明不再适用。
+
 本轮以已完成 Astryx 迁移的 main 为基础。目标是一个安静、可长时间阅读的 Agent 工作台：导航退后，任务内容居中，执行状态可辨认。
 
 ## 色彩与材料
