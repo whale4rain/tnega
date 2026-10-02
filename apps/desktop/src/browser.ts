@@ -63,38 +63,36 @@ export function parseBrowserRect(value: unknown): BrowserRect | null | undefined
   return { x, y, width, height }
 }
 
+/** Corner radius of the page card, matching the renderer's `.browser-viewport`. */
+const VIEW_RADIUS = 10
+
+interface TabView {
+  view: WebContentsView
+  targetId: string
+}
+
 export class DesktopBrowser {
-  readonly view: WebContentsView
   readonly host: PlaywrightBrowserHost
+  private readonly _views = new Map<string, TabView>()
+  private _active: TabView | undefined
+  private _first: Promise<TabView>
+  private _bounds: BrowserRect | null = null
   private _attached = false
-  private _targetId: string | undefined
   private _waiters: Array<() => void> = []
   private readonly _disposers: Array<() => void> = []
 
   constructor(private readonly _window: BrowserWindow, private readonly _isTrusted: (event: IpcMainEvent) => boolean) {
-    this.view = new WebContentsView({
-      webPreferences: {
-        partition: PARTITION,
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        backgroundThrottling: false,
-      },
+    this._first = this._create().then(tab => {
+      this._active ??= tab
+      return tab
     })
-    const contents = this.view.webContents
-    // Popups open in the same view so the agent never loses track of the page.
-    contents.setWindowOpenHandler(({ url }) => {
-      if (/^(?:https?|file|data|about):/u.test(url)) void contents.loadURL(url)
-      return { action: 'deny' }
-    })
-    for (const event of ['did-navigate', 'did-navigate-in-page', 'page-title-updated', 'did-start-loading', 'did-stop-loading'] as const) {
-      contents.on(event as 'did-navigate', () => this._publish())
-    }
-    void contents.loadURL('about:blank')
 
     this.host = new PlaywrightBrowserHost(cdpPageSource({
       endpoint: debuggingEndpoint,
-      targetId: () => this._target(),
+      targetId: async () => (await this._first).targetId,
+      openTarget: async () => (await this._create()).targetId,
+      activateTarget: async id => this._activate(id),
+      closeTarget: async id => this._close(id),
       prepare: () => this.reveal(),
     }), {
       // Unpackaged Electron prints these into every page; they are not the page's problems.
@@ -113,15 +111,25 @@ export class DesktopBrowser {
       if (rect !== undefined) this._place(rect)
     })
     on('tnega:browser-navigate', (_event, value) => {
-      if (typeof value === 'string' && value.trim()) void contents.loadURL(normalizeBrowserUrl(value)).catch(() => {})
+      const contents = this._active?.view.webContents
+      if (contents && typeof value === 'string' && value.trim()) void contents.loadURL(normalizeBrowserUrl(value)).catch(() => {})
     })
     on('tnega:browser-command', (_event, value) => {
+      const contents = this._active?.view.webContents
+      if (!contents) return
       if (value === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
       if (value === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward()
       if (value === 'reload') contents.reload()
       if (value === 'stop') contents.stop()
       if (value === 'state') this._publish()
     })
+  }
+
+  /** The visible tab's view. */
+  get view(): WebContentsView {
+    const view = this._active?.view
+    if (!view) throw new Error('the in-app browser has not started')
+    return view
   }
 
   /** Ask the renderer to show the panel and wait until the view is on screen. */
@@ -136,42 +144,84 @@ export class DesktopBrowser {
   async dispose(): Promise<void> {
     for (const dispose of this._disposers.splice(0)) dispose()
     await this.host.close()
-    if (!this._window.isDestroyed() && this._attached) this._window.contentView.removeChildView(this.view)
-    this.view.webContents.close()
+    for (const tab of this._views.values()) {
+      if (!this._window.isDestroyed() && this._attached && tab === this._active) this._window.contentView.removeChildView(tab.view)
+      tab.view.webContents.close()
+    }
+    this._views.clear()
+  }
+
+  private async _create(): Promise<TabView> {
+    const view = new WebContentsView({
+      webPreferences: {
+        partition: PARTITION,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        backgroundThrottling: false,
+      },
+    })
+    view.setBorderRadius(VIEW_RADIUS)
+    const contents = view.webContents
+    // Links that open a new window become new tabs the agent can see.
+    contents.setWindowOpenHandler(({ url }) => {
+      if (/^(?:https?|file|data|about):/u.test(url)) void this.host.newTab(url).catch(() => {})
+      return { action: 'deny' }
+    })
+    for (const event of ['did-navigate', 'did-navigate-in-page', 'page-title-updated', 'did-start-loading', 'did-stop-loading'] as const) {
+      contents.on(event as 'did-navigate', () => { if (this._active?.view === view) this._publish() })
+    }
+    await contents.loadURL('about:blank').catch(() => {})
+    const tab = { view, targetId: await targetIdOf(view) }
+    this._views.set(tab.targetId, tab)
+    return tab
+  }
+
+  private _activate(id: string): void {
+    const next = this._views.get(id)
+    if (!next || next === this._active) return
+    const previous = this._active
+    this._active = next
+    if (this._attached && !this._window.isDestroyed()) {
+      if (previous) this._window.contentView.removeChildView(previous.view)
+      this._window.contentView.addChildView(next.view)
+      if (this._bounds) next.view.setBounds(this._bounds)
+    }
+    this._publish()
+  }
+
+  private _close(id: string): void {
+    const tab = this._views.get(id)
+    if (!tab) return
+    this._views.delete(id)
+    if (tab === this._active) {
+      if (this._attached && !this._window.isDestroyed()) this._window.contentView.removeChildView(tab.view)
+      this._active = undefined
+    }
+    tab.view.webContents.close()
   }
 
   private _place(rect: BrowserRect | null): void {
     if (this._window.isDestroyed()) return
+    this._bounds = rect
+    const view = this._active?.view
     if (!rect) {
-      if (this._attached) this._window.contentView.removeChildView(this.view)
+      if (this._attached && view) this._window.contentView.removeChildView(view)
       this._attached = false
       return
     }
+    if (!view) return
     if (!this._attached) {
-      this._window.contentView.addChildView(this.view)
+      this._window.contentView.addChildView(view)
       this._attached = true
     }
-    this.view.setBounds(rect)
+    view.setBounds(rect)
     for (const resolve of this._waiters.splice(0)) resolve()
   }
 
-  private async _target(): Promise<string> {
-    if (this._targetId) return this._targetId
-    const debug = this.view.webContents.debugger
-    const attached = debug.isAttached()
-    if (!attached) debug.attach('1.3')
-    try {
-      const { targetInfo } = await debug.sendCommand('Target.getTargetInfo') as { targetInfo: { targetId: string } }
-      this._targetId = targetInfo.targetId
-      return targetInfo.targetId
-    } finally {
-      if (!attached) debug.detach()
-    }
-  }
-
   private _publish(): void {
-    if (this._window.isDestroyed()) return
-    const contents = this.view.webContents
+    if (this._window.isDestroyed() || !this._active) return
+    const contents = this._active.view.webContents
     const state: BrowserViewState = {
       url: contents.getURL(),
       title: contents.getTitle(),
@@ -183,3 +233,14 @@ export class DesktopBrowser {
   }
 }
 
+async function targetIdOf(view: WebContentsView): Promise<string> {
+  const debug = view.webContents.debugger
+  const attached = debug.isAttached()
+  if (!attached) debug.attach('1.3')
+  try {
+    const { targetInfo } = await debug.sendCommand('Target.getTargetInfo') as { targetInfo: { targetId: string } }
+    return targetInfo.targetId
+  } finally {
+    if (!attached) debug.detach()
+  }
+}
