@@ -2132,7 +2132,7 @@ function contentType(file: string): string {
 async function handleBrowser(req: IncomingMessage, res: ServerResponse, url: URL, context: ServerContext): Promise<void> {
   const browser = context.browser
   if (url.pathname === '/api/browser' && req.method === 'GET') {
-    sendJson(res, 200, { available: Boolean(browser), state: browser?.state() })
+    sendJson(res, 200, { available: Boolean(browser), state: browser?.state(), tabs: browser?.tabs() ?? [] })
     return
   }
   if (!browser) {
@@ -2147,6 +2147,7 @@ async function handleBrowser(req: IncomingMessage, res: ServerResponse, url: URL
       'x-accel-buffering': 'no',
     })
     writeSse(res, { type: 'state', ...browser.state() })
+    writeSse(res, { type: 'tabs', tabs: browser.tabs() })
     let pending = false
     const unsubscribe = browser.live.subscribe(event => {
       if (res.destroyed || res.writableEnded) return
@@ -2156,7 +2157,7 @@ async function handleBrowser(req: IncomingMessage, res: ServerResponse, url: URL
 data: ${JSON.stringify(event)}
 
 `)
-    })
+    }, { frames: url.searchParams.get('frames') !== '0' })
     res.on('drain', () => { pending = false })
     req.on('close', unsubscribe)
     return
@@ -2179,6 +2180,41 @@ data: ${JSON.stringify(event)}
     }
     await browser.userNavigate(body.url)
     sendJson(res, 200, browser.state())
+    return
+  }
+  if (url.pathname === '/api/browser/viewport' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    const width = Number(body.width)
+    const height = Number(body.height)
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1 || width > 8000 || height > 8000) {
+      sendError(res, 400, 'width and height must be positive numbers')
+      return
+    }
+    await browser.setViewport(width, height)
+    sendJson(res, 200, { ok: true })
+    return
+  }
+  if (url.pathname === '/api/browser/tabs' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    const id = typeof body.id === 'string' ? body.id : undefined
+    if (body.action === 'new') await browser.newTab(typeof body.url === 'string' && body.url.trim() ? body.url : undefined)
+    else if (body.action === 'select' && id) await browser.selectTab(id)
+    else if (body.action === 'close') await browser.closeTab(id)
+    else {
+      sendError(res, 400, 'action must be new, select (with id) or close')
+      return
+    }
+    sendJson(res, 200, { tabs: browser.tabs() })
+    return
+  }
+  if (url.pathname === '/api/browser/pick' && req.method === 'POST') {
+    const result = await browser.pick()
+    sendJson(res, 200, result ?? { cancelled: true })
+    return
+  }
+  if (url.pathname === '/api/browser/pick/cancel' && req.method === 'POST') {
+    await browser.cancelPick()
+    sendJson(res, 200, { ok: true })
     return
   }
   if (url.pathname === '/api/browser/command' && req.method === 'POST') {
