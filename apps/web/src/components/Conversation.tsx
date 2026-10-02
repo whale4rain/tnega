@@ -582,7 +582,6 @@ export function Conversation({
         <div className="conv-title-wrap">
           <div className="conv-title-row">
             {summary ? <EditableTitle value={title} onSave={rename} /> : <h1 className="conv-title">{title}</h1>}
-            {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} />}
           </div>
           <div className="conv-subtitle">
             <span className="conv-workspace" title={workspace}>{folderName(workspace)}</span>
@@ -591,25 +590,30 @@ export function Conversation({
           </div>
         </div>
         <div className="conv-header-actions">
-          <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} />
+          <div className="header-group">
+            <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} />
+          </div>
+          <div className="header-group header-tools">
+          {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} />}
           {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} />}
           {onToggleBrowser && (
             <button
               type="button"
-              className={`icon-button${browserOpen ? ' active' : ''}`}
+              className={`icon-button small header-icon${browserOpen ? ' active' : ''}`}
               onClick={onToggleBrowser}
               aria-label={browserOpen ? 'Hide browser' : 'Show browser'}
               aria-pressed={browserOpen}
               title="Browser"
             >
-              <Globe size={17} />
+              <Globe size={15} />
             </button>
           )}
           {summary && (
             <Menu
               label="Session actions"
               align="end"
-              trigger={<MoreHorizontal size={17} />}
+              className="icon-button small header-icon"
+              trigger={<MoreHorizontal size={15} />}
               items={[
                 { key: 'fork', label: 'Fork session', icon: <GitBranch size={14} />, onSelect: () => void fork(), disabled: live },
                 { key: 'compact', label: 'Compact context', icon: <Shrink size={14} />, onSelect: () => void compact(), disabled: live || entries.length === 0 },
@@ -618,6 +622,7 @@ export function Conversation({
               ]}
             />
           )}
+          </div>
         </div>
       </header>
 
@@ -743,17 +748,17 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (value: strin
 function ContextMeter({ context, metrics }: { context: ContextUsage; metrics: SessionMetrics | undefined }) {
   const ratio = Math.min(1, Math.max(0, context.ratio))
   const tone = ratio > 0.85 ? 'danger' : ratio > 0.65 ? 'warn' : 'ok'
-  const r = 7
+  const r = 6
   const c = 2 * Math.PI * r
+  const percent = Math.round(ratio * 100)
   return (
-    <div className="context-meter" tabIndex={0} aria-label={`Context ${Math.round(ratio * 100)}% used`}>
-      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-        <circle cx="9" cy="9" r={r} className="ring-track" />
-        <circle cx="9" cy="9" r={r} className={`ring-fill tone-${tone}`} strokeDasharray={`${c * ratio} ${c}`} transform="rotate(-90 9 9)" />
+    <div className={`context-meter tone-${tone}`} tabIndex={0} aria-label={`Context ${percent}% used`}>
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+        <circle cx="8" cy="8" r={r} className="ring-track" />
+        <circle cx="8" cy="8" r={r} className={`ring-fill tone-${tone}`} strokeDasharray={`${c * ratio} ${c}`} transform="rotate(-90 8 8)" />
       </svg>
-      <span className="context-label">{Math.round(ratio * 100)}%</span>
       <div className="context-pop" role="tooltip">
-        <div className="context-pop-row"><span>Context</span><strong>{formatTokens(context.tokens)} / {formatTokens(context.limit)}</strong></div>
+        <div className="context-pop-row"><span>Context</span><strong>{percent}% · {formatTokens(context.tokens)} / {formatTokens(context.limit)}</strong></div>
         {metrics && metrics.responses > 0 && (
           <>
             <div className="context-pop-row"><span>Input tokens</span><strong>{formatTokens(metrics.promptTokens)}</strong></div>

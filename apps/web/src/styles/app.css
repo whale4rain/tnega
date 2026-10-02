@@ -968,8 +968,8 @@ kbd {
 .conv-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 58px;
+  gap: 12px;
+  height: 52px;
   flex: none;
   padding: 0 16px;
   border-bottom: 1px solid transparent;
@@ -1001,9 +1001,10 @@ kbd {
   padding: 1px 6px;
   margin-left: -6px;
   border-radius: var(--radius-xs);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
+  line-height: 1.35;
   text-align: left;
 }
 
@@ -1036,7 +1037,7 @@ kbd {
   border-radius: var(--radius-xs);
   outline: 0;
   background: var(--surface);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
@@ -1086,8 +1087,77 @@ kbd {
 .conv-header-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   flex: none;
+}
+
+/* Header controls sit in two quiet pills: run settings, then session tools. */
+.header-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+}
+
+.header-group .session-controls { gap: 0; }
+
+.header-group .session-controls > .menu-root + .menu-root {
+  position: relative;
+}
+
+.header-group .session-controls > .menu-root + .menu-root::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 1px;
+  background: var(--border);
+}
+
+.header-group .chip {
+  height: 26px;
+  padding: 0 8px 0 10px;
+  font-size: var(--text-xs);
+}
+
+.header-icon.icon-button.small {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+}
+
+.header-icon.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.count-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: var(--radius-full);
+  background: var(--surface-active);
+  color: var(--text-2);
+  font-size: 9.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.count-badge.live {
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 /* A narrow conversation (a preview open beside it) keeps the header to icons. */
@@ -1100,11 +1170,10 @@ kbd {
 
 .context-meter {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 9px 0 7px;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-full);
   color: var(--text-2);
   font-size: var(--text-xs);

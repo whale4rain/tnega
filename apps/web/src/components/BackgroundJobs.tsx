@@ -1,4 +1,4 @@
-import { ListTodo, Square, ChevronDown } from 'lucide-react'
+import { ListTodo, Square } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, type BackgroundJob } from '../lib/api'
 import { errorText, useDismiss } from '../lib/hooks'
@@ -64,10 +64,18 @@ export function BackgroundJobs({ workspace, sessionId }: { workspace: string; se
   const active = jobs.filter(job => job.status === 'running' || job.status === 'stopping').length
   return (
     <div className="background-jobs menu-root" ref={root}>
-      <button type="button" className="button ghost small" aria-label={`Background tasks (${active} running)`} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        <ListTodo size={14} /><span>Tasks {active || (jobs.length ? `· ${jobs.length}` : '')}</span><ChevronDown size={12} />
+      <button
+        type="button"
+        className="icon-button small header-icon"
+        aria-label={`Background tasks (${active} running)`}
+        aria-expanded={open}
+        title={jobs.length ? `Background tasks · ${active} running of ${jobs.length}` : 'Background tasks'}
+        onClick={() => setOpen(value => !value)}
+      >
+        <ListTodo size={15} />
+        {jobs.length > 0 && <span className={`count-badge${active ? ' live' : ''}`} aria-hidden>{active || jobs.length}</span>}
       </button>
-      {open && <section className="menu-popover side-bottom align-start background-jobs-popover" aria-label="Background tasks">
+      {open && <section className="menu-popover side-bottom align-end background-jobs-popover" aria-label="Background tasks">
         <strong>Background tasks</strong>
         {error && <div role="alert" className="notice notice-error">{error}</div>}
         {!jobs.length && !error && <p className="muted small">No background tasks.</p>}
