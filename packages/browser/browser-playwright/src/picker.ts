@@ -32,6 +32,8 @@ export const PICK_SOURCE = String.raw`new Promise(resolve => {
   label.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;background:' + accent + ';color:#fff;font:600 11px/1.6 system-ui,sans-serif;padding:0 6px;border-radius:4px;display:none;white-space:nowrap'
   document.documentElement.append(box, label)
   let current = null
+  // Parts of an SVG (paths, circles) are rarely what the user means; take the whole drawing.
+  const target = node => (node && node.closest && node.closest('svg')) || node
   const describe = el => {
     const id = el.id ? '#' + el.id : ''
     const cls = [...el.classList].slice(0, 2).map(c => '.' + c).join('')
@@ -67,13 +69,13 @@ export const PICK_SOURCE = String.raw`new Promise(resolve => {
     resolve(value)
   }
   const move = event => {
-    const el = document.elementFromPoint(event.clientX, event.clientY)
+    const el = target(document.elementFromPoint(event.clientX, event.clientY))
     if (el && el !== current && el !== box && el !== label) { current = el; show(el) }
   }
   const swallow = event => { event.preventDefault(); event.stopPropagation() }
   const click = event => {
     swallow(event)
-    const el = document.elementFromPoint(event.clientX, event.clientY) || current
+    const el = target(document.elementFromPoint(event.clientX, event.clientY)) || current
     if (!el) return finish(null)
     const r = el.getBoundingClientRect()
     const role = el.getAttribute('role') || undefined

@@ -61,6 +61,8 @@ export function parseLiveInput(value: unknown): BrowserLiveInput | undefined {
 /** One screencast shared by every subscriber; it runs only while someone watches. */
 export class LiveView {
   private readonly _listeners = new Set<(event: BrowserLiveEvent) => void>()
+  /** Listeners that want screencast frames; the others only follow tabs and state. */
+  private readonly _watchers = new Set<(event: BrowserLiveEvent) => void>()
   private _session: CDPSession | undefined
   private _page: Page | undefined
   private _viewport = { width: 1280, height: 800 }
@@ -68,20 +70,29 @@ export class LiveView {
 
   constructor(private readonly _acquire: () => Promise<Page>, private readonly _options: LiveViewOptions = {}) {}
 
-  subscribe(listener: (event: BrowserLiveEvent) => void): () => void {
+  subscribe(listener: (event: BrowserLiveEvent) => void, options: { frames?: boolean } = {}): () => void {
     this._listeners.add(listener)
-    void this._ensure().catch(() => {})
+    if (options.frames !== false) {
+      this._watchers.add(listener)
+      void this._ensure().catch(() => {})
+    } else {
+      void this._acquire().catch(() => {})
+    }
     return () => {
       this._listeners.delete(listener)
-      if (this._listeners.size === 0) void this._stop()
+      this._watchers.delete(listener)
+      if (this._watchers.size === 0) void this._stop()
     }
   }
 
   /** The driven page changed (closed, relaunched): move the screencast to it. */
   async follow(page: Page): Promise<void> {
     if (this._page === page) return
+    // A screencast that is starting picks up the active page itself; waiting for
+    // it here would deadlock, since starting is what selected this page.
+    if (this._starting) return
     await this._stop()
-    if (this._listeners.size) await this._ensure()
+    if (this._watchers.size) void this._ensure().catch(() => {})
   }
 
   /** Announce the tab list after any change. */
@@ -124,6 +135,7 @@ export class LiveView {
 
   async close(): Promise<void> {
     this._listeners.clear()
+    this._watchers.clear()
     await this._stop()
   }
 
@@ -146,7 +158,8 @@ export class LiveView {
     this._viewport = size
     session.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
       this._viewport = { width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight }
-      this._emit({ type: 'frame', data: frame.data, width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight })
+      const event = { type: 'frame' as const, data: frame.data, width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight }
+      for (const listener of this._watchers) listener(event)
       void session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => {})
     })
     page.once('close', () => { if (this._page === page) void this._stop() })
@@ -157,6 +170,12 @@ export class LiveView {
       maxHeight: this._options.maxHeight ?? 1200,
     })
     this._emit({ type: 'state', url: page.url(), title: await page.title().catch(() => '') })
+    // The active tab may have changed while starting; follow it.
+    const current = await this._acquire().catch(() => page)
+    if (current !== page) {
+      await this._stop()
+      if (this._watchers.size) void this._ensure().catch(() => {})
+    }
   }
 
   private async _stop(): Promise<void> {

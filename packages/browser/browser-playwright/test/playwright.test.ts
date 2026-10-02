@@ -206,3 +206,23 @@ describe('tabs, viewport and element picking', () => {
     }
   }, 60_000)
 })
+
+describe('live view start-up', () => {
+  it('streams frames when the UI subscribes before any page exists, and follows new tabs', async ({ skip }) => {
+    if (!available) skip()
+    const host = new PlaywrightBrowserHost(launchPageSource({ headless: true, viewport: { width: 640, height: 480 } }))
+    try {
+      const frames: number[] = []
+      const off = host.live.subscribe(event => { if (event.type === 'frame') frames.push(event.width) })
+      await expect.poll(() => host.tabs().length, { timeout: 10_000 }).toBe(1)
+      await host.userNavigate(base)
+      await expect.poll(() => frames.length, { timeout: 10_000 }).toBeGreaterThan(0)
+      const before = frames.length
+      await host.newTab(base)
+      await expect.poll(() => frames.length, { timeout: 10_000 }).toBeGreaterThan(before)
+      off()
+    } finally {
+      await host.close()
+    }
+  }, 60_000)
+})
