@@ -7,12 +7,16 @@
 [English](../README.md)
 
 <p align="center">
-  <img src="assets/tnega-icon.png" alt="Tnega 图标" width="160" />
+  <img src="assets/tnega-icon.png" alt="Tnega 方块上的云图标" width="160" />
 </p>
 
 Tnega 是 "agent" 的逆写，也是本项目想做的事：把 Agent 本身当作可以被观察、修改和回滚的对象。
 
 Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空可组合思想，同时把简洁性作为硬约束。
+
+**0.4.5 版本**采用天空配色与「方块上的云」标识，用天气符号表达 Agent 状态。详见[设计规范](design/tnega-design.md)。
+
+桌面客户端的 **−** 按钮最小化到任务栏，**□** 切换最大化与原始窗口大小，**×** 隐藏窗口并从任务栏移除，但 Tnega 继续在系统托盘运行。点击托盘图标或选择 **Show Tnega** 可重新打开窗口；选择托盘菜单的 **Exit Tnega** 才会退出程序并停止本地 runtime。
 
 ## 支持的功能
 

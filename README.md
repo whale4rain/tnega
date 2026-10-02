@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/tnega-icon.png" alt="Tnega icon" width="160" />
+  <img src="docs/assets/tnega-icon.png" alt="Tnega cloud-on-cube icon" width="160" />
 </p>
 
 # Tnega
@@ -9,6 +9,9 @@
 **Tnega** is "agent" spelled backwards. It is an agent harness with spacetime-composable plugin lifecycles: components can be hot-swapped and rolled back safely.
 
 Use it for coding, document work, or ongoing projects with a coordinator and parallel agents—all in a local Web or desktop interface.
+
+Version **0.4.5** introduces the sky palette and cloud-on-cube identity, with weather
+symbols expressing Agent status. See the [visual design guide](docs/design/tnega-design.md).
 
 ![Tnega workbench with a coding conversation, plan and session controls](docs/assets/workbench.png)
 
@@ -114,6 +117,11 @@ pnpm package:desktop                   # produce the Windows installer
 ```
 
 Download the Windows installer from [GitHub Releases](https://github.com/whale4rain/tnega/releases).
+
+Window controls: **−** minimizes to the taskbar, **□** toggles maximized/restored
+size, and **×** hides the window from the taskbar while Tnega keeps running in the
+system tray. Click the tray icon or choose **Show Tnega** to reopen the window;
+choose **Exit Tnega** in the tray menu to stop the app and its local runtime.
 
 The desktop app and `tnega web` share System Config and Workspace/Session data.
 See [`apps/desktop/README.md`](apps/desktop/README.md) for packaging targets and
