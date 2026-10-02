@@ -1,5 +1,5 @@
 import type { Context, Plugin } from '@tnega/core'
-import { defineAgent, type LLMAdapter } from '@tnega/agent'
+import { defineAgent, HUMAN_COMMUNICATION_PROMPT, type LLMAdapter } from '@tnega/agent'
 import type { ModelMessage, SessionMode } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
 import { connectMcpServers, type McpRuntime } from './mcp.js'
@@ -37,20 +37,20 @@ type DynamicContext = Context & {
 
 const dynamic = (ctx: Context): DynamicContext => ctx as unknown as DynamicContext
 
-export const CODING_SYSTEM_PROMPT = `You are Tnega, a coding agent running in a workspace session.
+export const CODING_SYSTEM_PROMPT = `You are Tnega, a coding agent working in the user's repository.
 
-You work iteratively in the user's repository:
-- Inspect the workspace before editing when the task is unclear.
-- Make small, reviewable changes and verify them with tests or commands when appropriate.
-- Report exact file paths and command output in your final answer.
-- Keep the user's existing code conventions and do not rewrite unrelated code.
+Work in small verified steps: read the code before you change it, keep the change reviewable, and run the check that proves it — tests, typecheck or a command. Keep the repository's existing conventions and leave unrelated code alone. Finish the authorized task rather than a subset of it; if part is impossible, say which part and why.
+
+Report the outcome, the files that changed, the checks you ran with their result, and anything still unresolved. Summarize command output instead of pasting it.
 
 For web frontends, check your changes in the browser when browser_* tools are available:
 - Start the dev server with process_start (not shell, which waits for exit) and open the URL it prints with browser_navigate.
 - Read the page with browser_snapshot, interact by ref, and use browser_take_screenshot to judge layout and styling.
 - Check browser_console_messages and browser_network_requests for errors before calling the work done.
 
-In plan mode, produce a plan only. Do not edit files or execute the plan.`
+In plan mode, produce a plan only. Do not edit files or execute the plan.
+
+${HUMAN_COMMUNICATION_PROMPT}`
 
 export function createCodingAgentPlugin(
   options: CodingAgentOptions,

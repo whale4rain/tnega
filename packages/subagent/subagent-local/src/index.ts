@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import type { AgentHandle, AgentRegistry, LiveAgent, LLMAdapter } from '@tnega/agent'
+import { HUMAN_COMMUNICATION_PROMPT, type AgentHandle, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import type { Context } from '@tnega/core'
 import { projectEvents, SessionLog, type SessionEvent } from '@tnega/session'
 import type { ToolsService } from '@tnega/tools'
@@ -9,14 +9,55 @@ import {
   SubagentError,
   SubagentService,
   type SubagentEntry,
+  type SubagentAudience,
+  type SubagentResultRange,
+  type SubagentResultPage,
   type SubagentMode,
   type SubagentScope,
   type SubagentStartRequest,
   type SubagentStatus,
 } from '@tnega/subagent'
 
-const CHILD_SYSTEM_PROMPT = `You are a Tnega subagent. Work on the assigned task within its stated scope. Your parent and you communicate through durable inbox messages. Use send_agent_message when you need to report progress or request information. Give a concise final answer with the result and any remaining issue. Do not assume your parent sees your tool calls or intermediate conversation. Spawn another Agent only for an independent bounded task within the configured depth and concurrency limits.`
+/**
+ * 子代理的 system prompt。读者只有两个：父 Agent，或用户。
+ *
+ * 默认（agent）写给父 Agent：父 Agent 看不到工具调用与中间对话，只读这一段文字；它是
+ * 数据，不是交付物，所以字段化、无客套、不复述任务。
+ *
+ * 显式指定（user）时它才是给人看的成品，沿用同一份 human 沟通规则。
+ */
+function childSystemPrompt(audience: SubagentAudience): string {
+  const deliverable = audience === 'user'
+    ? `Produce a polished deliverable for the user in the requested language and format: the outcome, the evidence behind it, and any unresolved limitation. ${HUMAN_COMMUNICATION_PROMPT}`
+    : 'Report to your parent as data, not prose. Use only the fields that carry content: status, result, evidence (paths, commands, outcomes), blockers, next action. Point at files and artifacts instead of copying their contents. When the task asks for another format, follow the task.'
+  return `You are a Tnega subagent. Complete the assigned bounded task within its scope and acceptance criteria, and verify what you claim. You share the Workspace; respect assigned edit ownership. Your parent cannot see your tool calls or intermediate conversation. Delegate further only when a separate context is genuinely needed, within configured limits.
+
+Your final answer is the only thing your parent receives, once and automatically. Message the parent only for a blocker that needs a decision, a changed constraint, or a discovery that changes its work; never send routine progress, greetings or acknowledgments. The parent can page through a long answer, so do not compress away decisive detail or repeat the task back.
+
+${deliverable}`
+}
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** 送进父 Agent inbox 的结果上限；超出部分靠 read_subagent_result 按页取回。 */
+const REPORT_HEAD_CHARS = 1_200
+
+/**
+ * 在行边界截断：宁可少几行，也不在半句上断开。
+ *
+ * 返回的 head 一定附带上限说明与定位符，父 Agent 因此知道还有多少没看到，而不是收到一段
+ * 无标记的残缺文本。
+ */
+function previewOf(output: string, id: string, limit = REPORT_HEAD_CHARS): { head: string; continuation: string } {
+  const text = output.trim()
+  const chars = Array.from(text)
+  if (chars.length <= limit) return { head: text, continuation: '' }
+  const head = chars.slice(0, limit).join('')
+  const cut = head.lastIndexOf('\n')
+  // 以换行符本身为切点：送出的开头正好结束在一行末尾，续读从下一行第一个字符开始。
+  const cutChars = cut < 0 ? 0 : Array.from(head.slice(0, cut)).length
+  const shown = cutChars >= limit / 2 ? cutChars : limit
+  const continuation = `\n[Result: showing ${shown} of ${chars.length} characters. Read the rest with read_subagent_result({"agent_id":"${id}","offset":${shown}}).]`
+  return { head: chars.slice(0, shown).join(''), continuation }
+}
 
 export interface LocalSubagentConfig {
   cwd: string
@@ -43,6 +84,7 @@ interface StoredChild {
   parentId: string
   label: string
   mode: SubagentMode
+  audience: SubagentAudience
   depth: number
   createdAt: number
   updatedAt: number
@@ -87,7 +129,7 @@ async function readChild(workspace: string, id: string): Promise<StoredChild | u
     if (event.type === 'assistant/message') {
       const payload = recordOf(event.payload)
       if (typeof payload?.content === 'string' && payload.content.trim()) {
-        lastOutput = payload.content.trim().slice(0, 2_000)
+        if (!Array.isArray(payload.toolCalls) || payload.toolCalls.length === 0) lastOutput = payload.content
       }
     }
   }
@@ -99,6 +141,7 @@ async function readChild(workspace: string, id: string): Promise<StoredChild | u
     parentId: meta.parentSessionId,
     label: typeof meta.subagentLabel === 'string' ? meta.subagentLabel : id,
     mode: meta.subagentMode,
+    audience: meta.subagentAudience === 'user' ? 'user' : 'agent',
     depth: typeof meta.subagentDepth === 'number' ? meta.subagentDepth : 1,
     createdAt: typeof meta.createdAt === 'number' ? meta.createdAt : updatedAt,
     updatedAt,
@@ -150,9 +193,13 @@ export async function listStoredSubagents(
         ? 'running'
         : child.failed ? 'failed' : live ? 'idle' : 'ready'
       return { id: child.id, parentId: child.parentId, label: child.label,
-        mode: child.mode, status, depth: child.depth,
+        mode: child.mode, audience: child.audience, status, depth: child.depth,
         createdAt: child.createdAt, updatedAt: child.updatedAt,
-        ...(child.lastOutput ? { lastOutput: child.lastOutput } : {}) }
+        ...(child.lastOutput ? {
+          lastOutput: Array.from(child.lastOutput).slice(0, 2_000).join(''),
+          resultChars: Array.from(child.lastOutput).length,
+          resultTruncated: Array.from(child.lastOutput).length > 2_000,
+        } : {}) }
     })
 }
 
@@ -209,6 +256,9 @@ export class LocalSubagentService extends SubagentService {
   }
 
   override async start(request: SubagentStartRequest): Promise<SubagentEntry> {
+    if (request.audience !== undefined && request.audience !== 'agent' && request.audience !== 'user') {
+      throw new SubagentError('audience must be agent or user')
+    }
     const parent = this.agents.get(request.parentId)
     if (!parent) throw new SubagentError('parent Agent is not active')
     const task = request.task.trim()
@@ -218,6 +268,7 @@ export class LocalSubagentService extends SubagentService {
     if (depth > this.maxDepth) throw new SubagentError('subagent depth limit reached')
     const id = randomUUID()
     const mode = request.mode ?? 'spawn'
+    const audience = request.audience ?? 'agent'
     const label = request.label?.trim() || task.slice(0, 64)
     const permission = parent.meta.subagentPermission === 'read-only'
       ? 'read-only'
@@ -235,10 +286,11 @@ export class LocalSubagentService extends SubagentService {
         sessionId: id,
         llm: this.llm,
         ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),
-        system: CHILD_SYSTEM_PROMPT,
+        system: childSystemPrompt(audience),
         owner: parent.id,
         parentSessionId: parent.id,
         subagentMode: mode,
+        subagentAudience: audience,
         subagentLabel: label,
         subagentDepth: depth,
         subagentAllowShell: this.allowShell && parent.meta.subagentAllowShell !== false,
@@ -259,7 +311,7 @@ export class LocalSubagentService extends SubagentService {
       await handle.agent.session.flush()
       void this.settle(id, parent.id, request.reportCompletion !== false)
       return {
-        id, parentId: parent.id, label, mode, status: 'running', depth, createdAt, updatedAt: createdAt,
+        id, parentId: parent.id, label, mode, audience, status: 'running', depth, createdAt, updatedAt: createdAt,
       }
     } catch (error) {
       this.running.delete(id)
@@ -304,6 +356,21 @@ export class LocalSubagentService extends SubagentService {
     return listStoredSubagents(this.workspace, parentId, scope, this.agents)
   }
 
+  override async readResult(parentId: string, id: string, range: SubagentResultRange = {}): Promise<SubagentResultPage> {
+    const offset = range.offset ?? 0
+    const limit = range.limit ?? 4_000
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new SubagentError('offset must be a nonnegative integer')
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 16_000) throw new SubagentError('limit must be an integer from 1 to 16000')
+    const stored = await readChild(this.workspace, id)
+    if (!stored || stored.parentId !== parentId) throw new SubagentError('result reads require the owning parent')
+    const chars = Array.from(stored.lastOutput ?? '')
+    const end = Math.min(chars.length, offset + limit)
+    const live = this.agents.get(id)
+    return { output: chars.slice(offset, end).join(''), totalChars: chars.length,
+      nextOffset: end < chars.length ? end : null,
+      status: live?.status === 'running' ? 'running' : stored.failed ? 'failed' : live ? 'idle' : 'ready' }
+  }
+
   async dispose(): Promise<void> {
     for (const handle of [...this.handles.values()].reverse()) {
       await handle.dispose().catch(() => undefined)
@@ -326,7 +393,7 @@ export class LocalSubagentService extends SubagentService {
     const handle = await this.agents.resume({
       file: childFile(this.workspace, id), id, sessionId: id, llm: this.llm,
       ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),
-      system: CHILD_SYSTEM_PROMPT,
+      system: childSystemPrompt(stored.audience),
     })
     this.handles.set(id, handle)
     return handle.agent
@@ -340,15 +407,17 @@ export class LocalSubagentService extends SubagentService {
       await child.session.flush()
       const events = await child.session.read()
       const end = [...events].reverse().find(event => event.type === 'turn/end')
-      const own = [...events].reverse().find(event => event.type === 'assistant/message')
-      const output = own?.type === 'assistant/message' ? own.payload.content.trim() : ''
+      const own = [...events].reverse().find(event => event.type === 'assistant/message' && !event.payload.toolCalls?.length)
+      const output = own?.type === 'assistant/message' ? own.payload.content : ''
       const reason = end?.type === 'turn/end' ? end.payload.finishReason : 'error'
       const parent = this.agents.get(parentId)
-      if (reportCompletion && parent && this.reported.get(id)?.trim() !== output) {
+      if (reportCompletion && parent && this.reported.get(id)?.trim() !== output.trim()) {
+        // 长结果只送标记过的开头：父 Agent 读到的是"还有多少没看到"，不是被静默截断的正文。
+        const { head, continuation } = previewOf(output, id)
         const report = reason === 'stop'
-          ? `Subagent ${id} completed: ${output || '(no final text)'}`
-          : `Subagent ${id} ended (${reason}): ${output || '(no final text)'}`
-        await parent.steer({ messages: [{ role: 'user', name: `agent:${id}`, content: report.slice(0, 4_000) }] })
+          ? `Subagent ${id} completed: ${head || '(no final text)'}${continuation}`
+          : `Subagent ${id} ended (${reason}): ${head || '(no final text)'}${continuation}`
+        await parent.steer({ messages: [{ role: 'user', name: `agent:${id}`, content: report }] })
       }
     } catch {
       // The child Session remains available for inspection and later follow-up.

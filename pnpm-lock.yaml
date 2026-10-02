@@ -857,6 +857,9 @@ importers:
 
   packages/subagent/tool-subagent:
     dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../../agent
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core

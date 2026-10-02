@@ -1,4 +1,5 @@
 import type { Context } from '@tnega/core'
+import { DELEGATION_PROMPT } from '@tnega/agent'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { SubagentEntry, SubagentService } from '@tnega/subagent'
 import type { ToolsService } from '@tnega/tools'
@@ -25,6 +26,8 @@ export const toolSubagent = {
   apply(ctx: Context): void {
     const subagents = ctx.get('subagents') as SubagentService
     const tools = ctx.get('tools') as ToolsService
+    const prompts = ctx.get('systemPrompt')
+    if (prompts) ctx.fiber.effect(() => prompts.registerSection({ name: 'tool:subagents', order: 40, content: DELEGATION_PROMPT }))
     tools.register({
       schema: {
         name: 'spawn_subagent',
@@ -32,9 +35,10 @@ export const toolSubagent = {
         parameters: {
           type: 'object',
           properties: {
-            task: { type: 'string', description: 'Specific goal, relevant context, scope, expected result, and verification criteria.' },
+            task: { type: 'string', description: 'Brief for a context that cannot see this conversation: goal, facts it cannot discover, scope and edit ownership, acceptance checks, expected output. Write it as spec, not conversation.' },
             label: { type: 'string', description: 'Short name for the task.' },
             mode: { type: 'string', enum: ['spawn', 'fork'], description: 'spawn starts empty; fork copies only completed parent turns.' },
+            audience: { type: 'string', enum: ['agent', 'user'], description: 'Default agent: the child reports to you as data. user: the child writes the user-facing deliverable — use only when the user must read it.' },
           },
           required: ['task'],
         },
@@ -46,11 +50,15 @@ export const toolSubagent = {
         if (value.mode !== undefined && value.mode !== 'spawn' && value.mode !== 'fork') {
           throw new TypeError('mode must be spawn or fork')
         }
+        if (value.audience !== undefined && value.audience !== 'agent' && value.audience !== 'user') {
+          throw new TypeError('audience must be agent or user')
+        }
         const entry = await subagents.start({
           parentId: caller(options.agentId),
           task: value.task,
           ...(typeof value.label === 'string' ? { label: value.label } : {}),
           ...(value.mode === 'fork' ? { mode: 'fork' as const } : {}),
+          ...(value.audience === 'agent' || value.audience === 'user' ? { audience: value.audience } : {}),
           ...(options.jobStart === true ? { reportCompletion: false } : {}),
         })
         // Host-only observer runs before output policies can rewrite the result.
@@ -90,14 +98,43 @@ export const toolSubagent = {
           if (entries.map(entry => `${entry.id}:${entry.status}`).join('|') !== initial) break
         }
         return entries.length
-          ? entries.map(entry => `${entry.id} [${entry.status}] ${entry.label} (parent=${entry.parentId}, mode=${entry.mode})`).join('\n')
+          ? entries.map(entry => `${entry.id} [${entry.status}] ${entry.label} (parent=${entry.parentId}, mode=${entry.mode}, audience=${entry.audience})${entry.resultChars !== undefined ? `; final result=${entry.resultChars} characters${entry.resultTruncated ? `, only the first 2000 are kept here — read the whole result with read_subagent_result({"agent_id":"${entry.id}"})` : ', delivered in full to your inbox'}` : ''}`).join('\n')
           : '(no subagents)'
       },
     })
     tools.register({
       schema: {
+        name: 'read_subagent_result',
+        description: 'Read a bounded page of a direct child\'s full durable final result. Only its owning parent can read it. Character offsets count Unicode code points. Follow nextOffset until null to recover a long result.',
+        parameters: {
+          type: 'object',
+          properties: {
+            agent_id: { type: 'string', description: 'Direct child Agent ID.' },
+            offset: { type: 'integer', minimum: 0, description: 'Character offset; default 0.' },
+            limit: { type: 'integer', minimum: 1, maximum: 16000, description: 'Page size; default 4000, maximum 16000 characters.' },
+          },
+          required: ['agent_id'],
+        },
+      },
+      async execute(input, options) {
+        const value = fields(input)
+        if (typeof value.agent_id !== 'string') throw new TypeError('agent_id must be a string')
+        if (value.offset !== undefined && (typeof value.offset !== 'number' || !Number.isSafeInteger(value.offset) || value.offset < 0)) {
+          throw new TypeError('offset must be a nonnegative integer')
+        }
+        if (value.limit !== undefined && (typeof value.limit !== 'number' || !Number.isSafeInteger(value.limit) || value.limit < 1 || value.limit > 16000)) {
+          throw new TypeError('limit must be an integer from 1 to 16000')
+        }
+        return subagents.readResult(caller(options.agentId), value.agent_id, {
+          ...(typeof value.offset === 'number' ? { offset: value.offset } : {}),
+          ...(typeof value.limit === 'number' ? { limit: value.limit } : {}),
+        })
+      },
+    })
+    tools.register({
+      schema: {
         name: 'send_agent_message',
-        description: 'Send task direction or findings to your direct parent or child Agent through its durable inbox. Acceptance does not wait for a reply.',
+        description: 'Send task direction, a decision-blocking issue, or a material discovery to your direct parent or child through its durable inbox. Omit routine progress. Final answers are delivered automatically; do not send them separately. Acceptance does not wait for a reply.',
         parameters: {
           type: 'object',
           properties: {

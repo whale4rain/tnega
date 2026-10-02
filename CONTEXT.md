@@ -28,6 +28,8 @@ _Avoid_: duplicate, clone
 由另一个 Agent 委派有界任务的 Agent。每个 Subagent 有独立的 Session 和 durable inbox；
 父子之间通过 inbox 消息通信，父 Agent 使用 `list_subagent` 查询状态。
 `spawn` 从空历史开始，`fork` 只复制父 Session 已完成的 turn。两者共享 Workspace。
+它是父 Agent 的执行细节，用户不直接与之对话，也随时可以随委派一起丢弃。
+_Avoid_: 把它当 Thread 或长期成员；把「子」理解成必定面向用户的交付
 
 **Job（后台任务）**:
 一次后台工具调用或有界 Subagent 工作的进程内生命周期。Job 跨 Agent Run 保留，
@@ -132,7 +134,10 @@ _Avoid_: 把 Project 当 Workspace 的别名
 
 **Thread**:
 Project 中一个可持续交互的 Agent 身份，拥有自己的 Session，可由父 Agent 创建，也可被用户直接干预。
-它可以跨多个 Agent Run 工作；线程内步骤属于该 Thread。
+它可以跨多个 Agent Run 工作；线程内步骤属于该 Thread。它是 Agent，不是 Subagent：同一个
+Thread 可以反复接收新要求，用户能打开它、给它留言与改向，而 Subagent 只由一次委派驱动。
+需要彻底重启上下文或更换不兼容配置时，创建带来源链接的新 Thread，而不是在旧 Thread 下再套一个 Session。
+_Avoid_: 把 Thread 当任务（那是它承担的工作，不是它的身份）；与 Subagent 混用
 
 **Box**:
 Project 内用户与 Agent 共用的消息通道，以带来源和收件人的信封将消息送入对应 inbox。

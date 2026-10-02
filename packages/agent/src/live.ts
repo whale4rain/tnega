@@ -23,6 +23,7 @@ import type {
 export interface AgentSessionMeta {
   agentId: string
   subagentMode?: 'spawn' | 'fork'
+  subagentAudience?: 'agent' | 'user'
   subagentLabel?: string
   subagentDepth?: number
   subagentAllowShell?: boolean
@@ -124,6 +125,7 @@ export interface AgentCreationOptions {
   owner?: string
   parentSessionId?: string
   subagentMode?: 'spawn' | 'fork'
+  subagentAudience?: 'agent' | 'user'
   subagentLabel?: string
   subagentDepth?: number
   subagentAllowShell?: boolean
@@ -820,6 +822,7 @@ async function buildHandle(
       ...(options.owner ? { owner: options.owner } : {}),
       ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
       ...(options.subagentMode ? { subagentMode: options.subagentMode } : {}),
+      ...(options.subagentAudience ? { subagentAudience: options.subagentAudience } : {}),
       ...(options.subagentLabel ? { subagentLabel: options.subagentLabel } : {}),
       ...(options.subagentDepth !== undefined ? { subagentDepth: options.subagentDepth } : {}),
       ...(options.subagentAllowShell !== undefined ? { subagentAllowShell: options.subagentAllowShell } : {}),
@@ -843,6 +846,7 @@ async function buildHandle(
         ...(boundMeta.owner ? { owner: boundMeta.owner } : {}),
         ...(boundMeta.parentSessionId ? { parentSessionId: boundMeta.parentSessionId } : {}),
         ...(boundMeta.subagentMode ? { subagentMode: boundMeta.subagentMode } : {}),
+        ...(boundMeta.subagentAudience ? { subagentAudience: boundMeta.subagentAudience } : {}),
         ...(boundMeta.subagentLabel ? { subagentLabel: boundMeta.subagentLabel } : {}),
         ...(boundMeta.subagentDepth !== undefined ? { subagentDepth: boundMeta.subagentDepth } : {}),
         ...(boundMeta.subagentAllowShell !== undefined ? { subagentAllowShell: boundMeta.subagentAllowShell } : {}),
@@ -1018,6 +1022,7 @@ function readDurableAgentMeta(events: readonly SessionEvent[]): AgentSessionMeta
     if (payload.subagentMode === 'spawn' || payload.subagentMode === 'fork') {
       meta.subagentMode = payload.subagentMode
     }
+    if (payload.subagentAudience === 'agent' || payload.subagentAudience === 'user') meta.subagentAudience = payload.subagentAudience
     if (typeof payload.subagentLabel === 'string') meta.subagentLabel = payload.subagentLabel
     if (typeof payload.subagentDepth === 'number') meta.subagentDepth = payload.subagentDepth
     if (typeof payload.subagentAllowShell === 'boolean') meta.subagentAllowShell = payload.subagentAllowShell

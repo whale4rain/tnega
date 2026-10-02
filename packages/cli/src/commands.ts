@@ -6,6 +6,7 @@ import {
   DurableInbox,
   defineAgent,
   systemPrompt,
+  type SystemPromptService,
   type AgentContextBudget,
   type AgentDefinition,
   type AgentInbox,
@@ -32,6 +33,7 @@ import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
 import { jobsLocal } from '@tnega/jobs-local'
 import { toolJobs } from '@tnega/tool-jobs'
+import { GENERAL_SYSTEM_PROMPT } from './work.js'
 import {
   builtinTools,
   tools,
@@ -379,6 +381,10 @@ export async function createAgentRuntime(
     for (const plugin of merged.plugins ?? []) {
       const fiber = await root.plugin(plugin)
       fibers.push(fiber)
+    }
+    if (!merged.agent && merged.builtinTools !== false && !root.get('agentDefinition')) {
+      const prompts: SystemPromptService = root.get('systemPrompt')
+      root.effect(() => prompts.registerSection({ name: 'default:persona', order: 0, content: GENERAL_SYSTEM_PROMPT }))
     }
     fibers.push(await root.plugin(ptcRuntimeQuickjs, {
       ...(merged.ptc?.timeoutMs !== undefined ? { timeoutMs: merged.ptc.timeoutMs } : {}),
