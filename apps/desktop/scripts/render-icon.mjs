@@ -1,3 +1,4 @@
+/* global URL, Buffer, console, process */
 // Render build/icon.svg to build/icon.png (1024px) and a multi-size build/icon.ico.
 // Run: node apps/desktop/scripts/render-icon.mjs  (uses the system Edge/Chrome via playwright-core)
 import { readFile, writeFile } from 'node:fs/promises'
