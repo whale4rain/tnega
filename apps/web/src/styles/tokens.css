@@ -57,12 +57,12 @@
   --surface-hover: rgba(28, 44, 70, 0.05);
   --surface-active: rgba(28, 44, 70, 0.085);
   --border: #dfe4ea;
-  --border-strong: #cdd4de;
+  --border-strong: #bcc5d1;
   --border-focus: #2f6fd0;
 
   --text: #1b2330;
   --text-2: #4f5a68;
-  --text-3: #858f9c;
+  --text-3: #626d7c;
   --text-inverse: #f8fafc;
 
   --accent: #2f6fd0;
@@ -72,7 +72,7 @@
 
   --success: #2c7a55;
   --success-soft: #e2f1ea;
-  --warn: #a2650d;
+  --warn: #955c0a;
   --warn-soft: #f9eedb;
   --danger: #bd3f3a;
   --danger-soft: #f9e5e4;
