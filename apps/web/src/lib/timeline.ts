@@ -401,6 +401,17 @@ export function beginRun(entries: readonly Entry[], prompt: string, now = Date.n
 /** Advance the running turn with one Stream Event. Returns the same array when nothing changed. */
 export function applyStream(entries: readonly Entry[], event: StreamEvent): readonly Entry[] {
   const last = entries.at(-1)
+  if (event.type === 'session/compaction') {
+    if (entries.some(entry => entry.kind === 'compaction' && entry.id === event.id)) return entries
+    const marker: Entry = {
+      kind: 'compaction', id: event.id, summary: event.summary,
+      ...(event.tokensBefore !== undefined ? { tokensBefore: event.tokensBefore } : {}),
+    }
+    // Keep the current Agent Run last so subsequent stream frames still reach it.
+    return last?.kind === 'agent' && last.status === 'running'
+      ? [...entries.slice(0, -1), marker, last]
+      : [...entries, marker]
+  }
   if (last?.kind !== 'agent') return entries
   const next = applyToAgent(last, event)
   return next === last ? entries : [...entries.slice(0, -1), next]

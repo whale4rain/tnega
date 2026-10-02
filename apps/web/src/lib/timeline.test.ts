@@ -200,6 +200,18 @@ describe('fromEvents', () => {
 describe('applyStream', () => {
   const run = (events: StreamEvent[]) => events.reduce(applyStream, beginRun([], 'hello', 1) as readonly Entry[])
 
+  it('shows automatic compaction immediately and continues streaming without duplicate markers', () => {
+    const frame = parseSseFrame('data: {"type":"session/compaction","id":"checkpoint-1","summary":"Earlier work","tokensBefore":12000}')
+    if (!frame) throw new Error('Missing compaction frame')
+    const initial = beginRun([], 'Continue', 1)
+    const compacted = applyStream(initial, frame)
+    expect(compacted.map(entry => entry.kind)).toEqual(['user', 'compaction', 'agent'])
+    expect(compacted[1]).toEqual({ kind: 'compaction', id: 'checkpoint-1', summary: 'Earlier work', tokensBefore: 12000 })
+    expect(applyStream(compacted, frame)).toBe(compacted)
+    const streamed = applyStream(applyStream(compacted, { type: 'message_start', id: 'after' }), { type: 'message_delta', id: 'after', delta: 'Continuing' })
+    expect(streamed.at(-1)).toMatchObject({ kind: 'agent', status: 'running', blocks: [{ text: 'Continuing' }] })
+  })
+
   it('streams text deltas into a single block and settles it on stop', () => {
     const entries = run([
       { type: 'message_start', id: 'm1' },

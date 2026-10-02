@@ -3,9 +3,22 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it } from 'vitest'
 import type { Entry } from '../lib/timeline'
+import { applyStream, beginRun } from '../lib/timeline'
 import { Timeline } from './Timeline'
 
 afterEach(cleanup)
+
+it('displays a live compaction message with an expandable summary while the Agent Run continues', () => {
+  const entries = applyStream(beginRun([], 'Continue', 1), {
+    type: 'session/compaction', id: 'checkpoint', summary: 'The earlier investigation is complete.', tokensBefore: 12000,
+  })
+  const view = render(createElement(Timeline, { entries, running: true, actions: {} }))
+  const marker = view.getByRole('button', { name: 'Context compacted · 12k tokens summarized' })
+  expect(view.queryByText('The earlier investigation is complete.')).toBeNull()
+  fireEvent.click(marker)
+  expect(view.getByText('The earlier investigation is complete.')).toBeTruthy()
+  expect(view.queryByRole('button', { name: 'Completed process' })).toBeNull()
+})
 
 const completed: Entry = {
   kind: 'agent', id: 'agent-1', turn: 1, status: 'done',
