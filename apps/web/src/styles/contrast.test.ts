@@ -41,6 +41,14 @@ describe.each(Object.entries(THEMES))('%s palette', (name, t) => {
     }
   })
 
+  it('keeps editor syntax colours at AA on code and panel surfaces', () => {
+    for (const surface of ['code-bg', 'surface', 'surface-raised'] as const) {
+      for (const role of ['keyword', 'string', 'number', 'comment', 'function', 'type', 'property'] as const) {
+        expect(contrast(t[`syntax-${role}`]!, t[surface]!), `syntax-${role} on ${surface}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
   it('keeps accent fills readable and borders visible', () => {
     expect(contrast(t['text-inverse']!, t.accent!)).toBeGreaterThanOrEqual(4.5)
     expect(contrast(t.border!, t.surface!)).toBeGreaterThanOrEqual(1.25)

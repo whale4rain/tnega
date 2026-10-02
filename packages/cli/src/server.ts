@@ -71,6 +71,7 @@ import { handleProjectApi } from './project-routes.js'
 import { pickSystemFolder } from './folder-picker.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
+import { listDirectory, MAX_TEXT_FILE_BYTES, readTextFile, writeTextFile } from './workspace-files.js'
 import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from './plugin-hmr.js'
 import {
   createAgentRuntime,
@@ -556,6 +557,36 @@ async function handleApi(
     const limit = Number(url.searchParams.get('limit') ?? 30)
     const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
     sendJson(res, 200, { files })
+    return
+  }
+
+  if (url.pathname === '/api/files/tree' || url.pathname === '/api/files/text') {
+    const workspace = workspaceParam(url)
+    const path = url.searchParams.get('path') ?? ''
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    try {
+      if (url.pathname === '/api/files/tree' && req.method === 'GET') {
+        sendJson(res, 200, { path, entries: await listDirectory(workspace, path) })
+      } else if (url.pathname === '/api/files/text' && req.method === 'GET' && path) {
+        sendJson(res, 200, await readTextFile(workspace, path))
+      } else if (url.pathname === '/api/files/text' && req.method === 'PUT' && path) {
+        const body = await readJsonBody(req, MAX_TEXT_FILE_BYTES * 2)
+        if (typeof body.content !== 'string') {
+          sendError(res, 400, 'content must be a string')
+          return
+        }
+        const expected = typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined
+        sendJson(res, 200, await writeTextFile(workspace, path, body.content, expected))
+      } else {
+        sendError(res, path ? 405 : 400, path ? 'method not allowed' : 'path query parameter is required')
+      }
+    } catch (error) {
+      if (!(error instanceof FileServeError)) throw error
+      sendError(res, error.status, error.message)
+    }
     return
   }
 

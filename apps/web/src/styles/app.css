@@ -3733,3 +3733,129 @@ kbd {
 .update-settings p {
   margin: 2px 0 0;
 }
+
+/* ==========================================================================
+   Files panel — workspace tree beside a CodeMirror editor
+   ========================================================================== */
+
+.files-drawer-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent-text);
+}
+
+.dirty-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  border-radius: var(--radius-full);
+  background: var(--warn);
+  vertical-align: middle;
+}
+
+.files-body {
+  display: grid;
+  grid-template-columns: minmax(170px, 34%) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.files-tree-pane {
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 4px 16px;
+  border-right: 1px solid var(--border);
+}
+
+.files-editor-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--code-bg);
+}
+
+.files-error {
+  margin: 8px;
+}
+
+.file-tree {
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+.file-tree-empty {
+  padding: 8px 10px;
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: 26px;
+  padding-right: 8px;
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.file-tree-row:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.file-tree:focus-within .file-tree-row.focused {
+  box-shadow: inset 0 0 0 1px var(--border-focus);
+}
+
+.file-tree-row.selected {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.file-tree-caret {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--duration-fast);
+}
+
+.file-tree-caret.open {
+  transform: rotate(90deg);
+}
+
+.file-tree-caret.hidden {
+  visibility: hidden;
+}
+
+.file-tree-icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.file-tree-icon.folder {
+  color: var(--accent-text);
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.code-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
+}
+
+.code-editor .cm-editor.cm-focused {
+  outline: none;
+}

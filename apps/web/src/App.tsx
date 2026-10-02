@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar'
 import { SubagentDrawer } from './components/SubagentDrawer'
 import { FilePreviewDrawer } from './components/preview/FilePreview'
 import { BrowserDrawer } from './components/BrowserDrawer'
+import { FilesDrawer } from './components/files/FilesDrawer'
 import { desktopBrowser } from './lib/desktop-browser'
 import { browserAvailable } from './lib/browser-live'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
@@ -57,7 +58,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 860)
   const [dialog, setDialog] = useState<'settings' | 'workspace' | undefined>()
   // The right-hand drawer shows either a subagent transcript or a produced file.
-  const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | { kind: 'browser' } | undefined>()
+  const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | { kind: 'files' } | { kind: 'browser' } | undefined>()
   // The desktop app asks for the browser panel whenever the agent is about to use it.
   // The browser panel keeps the width the user dragged it to.
   const [browserWidth, setBrowserWidth] = useState<number | undefined>(() => {
@@ -279,7 +280,7 @@ export function App() {
 
   return (
     <div
-      className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' || drawer?.kind === 'browser' ? ' drawer-wide' : ''}${drawer?.kind === 'browser' ? ' drawer-browser' : ''}`}
+      className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' || drawer?.kind === 'files' || drawer?.kind === 'browser' ? ' drawer-wide' : ''}${drawer?.kind === 'browser' ? ' drawer-browser' : ''}`}
       ref={appRoot}
     >
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
@@ -369,6 +370,8 @@ export function App() {
                 }
               : {})}
             browserOpen={drawer?.kind === 'browser'}
+            onToggleFiles={() => setDrawer(current => current?.kind === 'files' ? undefined : { kind: 'files' })}
+            filesOpen={drawer?.kind === 'files'}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
           />
@@ -394,6 +397,9 @@ export function App() {
         />
       )}
       {drawer?.kind === 'browser' && workspace && <BrowserDrawer onClose={() => setDrawer(undefined)} onResize={resizeBrowser} width={browserWidth} />}
+      {drawer?.kind === 'files' && workspace && (
+        <FilesDrawer key={workspace} workspace={workspace} onClose={() => setDrawer(undefined)} onPreview={path => setDrawer({ kind: 'file', path })} />
+      )}
       {drawer?.kind === 'file' && workspace && (
         <FilePreviewDrawer key={drawer.path} workspace={workspace} path={drawer.path} onClose={() => setDrawer(undefined)} />
       )}

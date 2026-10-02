@@ -18,7 +18,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['apps/desktop/scripts/build.mjs', 'scripts/package-desktop.mjs'],
+    files: ['apps/desktop/scripts/build.mjs', 'scripts/package-desktop.mjs', 'scripts/release.mjs'],
     languageOptions: {
       globals: {
         URL: 'readonly',

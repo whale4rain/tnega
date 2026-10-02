@@ -81,6 +81,15 @@
   --code-border: #e0e5eb;
   --selection: rgba(47, 111, 208, 0.18);
 
+  /* Code editor syntax (Files panel); held to AA on code and panel surfaces. */
+  --syntax-keyword: #7c3aad;
+  --syntax-string: #2c7a55;
+  --syntax-number: #955c0a;
+  --syntax-comment: #626d7c;
+  --syntax-function: #2259ad;
+  --syntax-type: #9a3a63;
+  --syntax-property: #1b5f75;
+
   --shadow-sm: 0 1px 2px rgba(20, 32, 52, 0.06);
   --shadow-md: 0 1px 2px rgba(20, 32, 52, 0.05), 0 6px 18px -6px rgba(20, 32, 52, 0.13);
   --shadow-lg: 0 2px 6px rgba(20, 32, 52, 0.06), 0 24px 48px -12px rgba(20, 32, 52, 0.24);
@@ -142,6 +151,14 @@
   --code-bg: #12161e;
   --code-border: #2a3240;
   --selection: rgba(138, 180, 248, 0.28);
+
+  --syntax-keyword: #c4a7f5;
+  --syntax-string: #7dcfa0;
+  --syntax-number: #ecbc6b;
+  --syntax-comment: #8d98aa;
+  --syntax-function: #a8c7fa;
+  --syntax-type: #f2a0c0;
+  --syntax-property: #7fd3e6;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.55);

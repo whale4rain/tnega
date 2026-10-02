@@ -87,6 +87,23 @@ export interface BackgroundJob {
   reported: boolean
 }
 
+/** One row of the Files panel tree (`GET /api/files/tree`). */
+export interface DirectoryEntry {
+  name: string
+  path: string
+  type: 'dir' | 'file'
+  size?: number
+}
+
+/** A workspace file opened in the editor; `content` is absent for binary or oversized files. */
+export interface TextFile {
+  path: string
+  content?: string
+  reason?: 'binary' | 'too-large'
+  size: number
+  mtimeMs: number
+}
+
 export const api = {
   config: () => call<ConfigSnapshot>('/api/config'),
   saveConfig: async (patch: ConfigPatch): Promise<ConfigSnapshot> => {
@@ -161,6 +178,16 @@ export const api = {
     call<{ candidates: Array<{ command: string; args: string[]; label: string; detail?: string }> }>(scoped(`/api/sessions/${id}/coding/slash-candidates`, workspace), {
       method: 'POST',
       body: { name },
+    }),
+  fileTree: (workspace: string, path: string, signal?: AbortSignal) =>
+    call<{ path: string; entries: DirectoryEntry[] }>(scoped('/api/files/tree', workspace, { path }), signal ? { signal } : {}),
+  readText: (workspace: string, path: string, signal?: AbortSignal) =>
+    call<TextFile>(scoped('/api/files/text', workspace, { path }), signal ? { signal } : {}),
+  /** `mtimeMs` is the version the editor loaded; a newer change on disk fails with 409. */
+  writeText: (workspace: string, path: string, content: string, mtimeMs?: number) =>
+    call<TextFile>(scoped('/api/files/text', workspace, { path }), {
+      method: 'PUT',
+      body: { content, ...(mtimeMs !== undefined ? { mtimeMs } : {}) },
     }),
   searchFiles: (workspace: string, query: string, signal?: AbortSignal) =>
     call<{ files: string[] }>(scoped('/api/files/search', workspace, { q: query, limit: '30' }), signal ? { signal } : {}),

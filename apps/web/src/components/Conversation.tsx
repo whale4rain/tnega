@@ -24,6 +24,7 @@ import {
   FileText,
   Presentation,
   Table2,
+  FolderTree,
   Globe,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -73,6 +74,8 @@ export function Conversation({
   onOpenSubagent,
   onOpenFile,
   onToggleBrowser,
+  onToggleFiles,
+  filesOpen = false,
   onBrowserActivity,
   browserOpen = false,
   sidebarOpen,
@@ -92,6 +95,8 @@ export function Conversation({
   onOpenFile: (path: string) => void
   /** Present in the desktop app, which hosts the agent browser in a panel. */
   onToggleBrowser?: () => void
+  onToggleFiles?: () => void
+  filesOpen?: boolean
   /** The agent started a browser tool: show the browser. */
   onBrowserActivity?: () => void
   browserOpen?: boolean
@@ -596,6 +601,18 @@ export function Conversation({
           <div className="header-group header-tools">
           {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} />}
           {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} />}
+          {onToggleFiles && (
+            <button
+              type="button"
+              className={`icon-button small header-icon${filesOpen ? ' active' : ''}`}
+              onClick={onToggleFiles}
+              aria-label={filesOpen ? 'Hide files' : 'Show files'}
+              aria-pressed={filesOpen}
+              title="Files"
+            >
+              <FolderTree size={15} />
+            </button>
+          )}
           {onToggleBrowser && (
             <button
               type="button"
