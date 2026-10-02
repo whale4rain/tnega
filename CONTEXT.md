@@ -84,7 +84,7 @@ Workspace `.tnega/MEMORY.md` 在压缩时整理长期有效的项目约定。每
 `/goal` 控制目标，模型通过 `get_goal`、`update_goal` 报告完成或阻塞。
 
 **Agent 浏览器 (Agent Browser)**:
-Agent 通过 `browser_*` 工具驱动的那一个页面。桌面端是内嵌在 Browser 面板里的视图，其它环境是一个独立的 Edge / Chrome 窗口；用户可以同时浏览。元素用最近一次快照里的 ref 定位。
+Agent 通过 `browser_*` 工具驱动的那一个页面。它总显示在应用内的 Browser 面板里：桌面端是原生视图，Web 端是 headless 浏览器的实时画面；用户可以同时浏览。元素用最近一次快照里的 ref 定位。
 _Avoid_: computer use（那指整个桌面）、headless browser（它通常是可见的）
 
 **附件 (Attachment)**:
