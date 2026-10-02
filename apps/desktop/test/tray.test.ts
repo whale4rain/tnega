@@ -25,11 +25,23 @@ class Window extends EventEmitter {
 }
 
 describe('desktop tray', () => {
-  it('hides on minimize and restores on tray click without quitting', () => {
+  it('keeps a minimized window in the taskbar without quitting', () => {
     const window = new Window()
     const quit = vi.fn()
     const tray = installTray(window, 'icon.png', quit)
     window.emit('minimize')
+    expect(window.hide).not.toHaveBeenCalled()
+    expect(quit).not.toHaveBeenCalled()
+    tray.dispose()
+  })
+
+  it('prevents closing and restores from the tray without quitting', () => {
+    const window = new Window()
+    const quit = vi.fn()
+    const tray = installTray(window, 'icon.png', quit)
+    const event = { preventDefault: vi.fn() }
+    window.emit('close', event)
+    expect(event.preventDefault).toHaveBeenCalledOnce()
     expect(window.hide).toHaveBeenCalledOnce()
     expect(quit).not.toHaveBeenCalled()
     tray.tray.emit('click')
@@ -37,7 +49,10 @@ describe('desktop tray', () => {
     expect(window.show).toHaveBeenCalledOnce()
     expect(window.focus).toHaveBeenCalledOnce()
     tray.dispose()
-    expect(window.listenerCount('minimize')).toBe(0)
+    expect(window.listenerCount('close')).toBe(0)
+    const closing = { preventDefault: vi.fn() }
+    window.emit('close', closing)
+    expect(closing.preventDefault).not.toHaveBeenCalled()
   })
 
   it('provides an explicit exit action', () => {

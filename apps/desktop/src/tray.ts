@@ -1,8 +1,8 @@
 import { Menu, Tray } from 'electron'
 
 interface TrayWindow {
-  on(event: 'minimize', listener: () => void): unknown
-  removeListener(event: 'minimize', listener: () => void): unknown
+  on(event: 'close', listener: (event: { preventDefault(): void }) => void): unknown
+  removeListener(event: 'close', listener: (event: { preventDefault(): void }) => void): unknown
   hide(): void
   show(): void
   restore(): void
@@ -12,7 +12,10 @@ interface TrayWindow {
 
 export function installTray(window: TrayWindow, icon: string, quit: () => void) {
   const tray = new Tray(icon)
-  const hide = () => window.hide()
+  const hide = (event: { preventDefault(): void }) => {
+    event.preventDefault()
+    window.hide()
+  }
   const restore = () => {
     if (window.isMinimized()) window.restore()
     window.show()
@@ -25,11 +28,11 @@ export function installTray(window: TrayWindow, icon: string, quit: () => void) 
     { label: 'Exit Tnega', click: quit },
   ]))
   tray.on('click', restore)
-  window.on('minimize', hide)
+  window.on('close', hide)
   return {
     tray,
     dispose: () => {
-      window.removeListener('minimize', hide)
+      window.removeListener('close', hide)
       tray.removeAllListeners()
       tray.destroy()
     },

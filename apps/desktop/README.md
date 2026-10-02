@@ -22,9 +22,11 @@ The main process is bundled as ESM; the sandboxed preload is bundled as CommonJS
 without the main process's `node:module` compatibility banner.
 
 Window controls share the existing header; its empty space can drag the window,
-while buttons remain clickable. On Windows, minimizing hides the window in the
-notification area. Click the tray icon or choose **Show Tnega** to restore it;
-**Exit Tnega** and the window close button shut down the local runtime.
+while buttons remain clickable. Minimizing keeps the window in the taskbar;
+maximizing toggles between maximized and restored sizes. Closing hides the window
+from the taskbar while the local runtime continues running in the notification
+area. Click the tray icon or choose **Show Tnega** to restore it. Choose
+**Exit Tnega** from the tray menu to shut down the local runtime.
 
 ## Packaging
 
