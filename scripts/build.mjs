@@ -22,7 +22,8 @@ const common = {
   // koffi 是带预编译二进制的 FFI 包，只能作为运行期依赖被解析，不能被打进 bundle。
   // 它是可选能力：POSIX 上永不加载（Windows 机制才会动态 import 它）。
   // playwright-core 在运行期按路径加载自己的 driver 与资源文件，打进 bundle 会失效。
-  external: ['koffi', 'playwright-core'],
+  // @lydell/node-pty 是 Workbench 终端的原生 PTY（预编译二进制），同样只能在运行期解析。
+  external: ['koffi', 'playwright-core', '@lydell/node-pty'],
   banner: {
     js: "import { createRequire as __tnegaCreateRequire } from 'node:module'; const require = __tnegaCreateRequire(import.meta.url);",
   },

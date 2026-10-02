@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@lydell/node-pty": "1.1.0",
     "@tnega/agent": "workspace:*",
     "@tnega/approval-jev": "workspace:*",
     "@tnega/approval-llm": "workspace:*",

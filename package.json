@@ -273,6 +273,7 @@
     "tnega": "^0.1.1"
   },
   "optionalDependencies": {
-    "koffi": "^3.1.0"
+    "koffi": "^3.1.0",
+    "@lydell/node-pty": "1.1.0"
   }
 }

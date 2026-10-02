@@ -72,6 +72,8 @@ import { pickSystemFolder } from './folder-picker.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
 import { webSearchTool } from './web-search.js'
 import { listDirectory, MAX_TEXT_FILE_BYTES, readTextFile, writeTextFile } from './workspace-files.js'
+import { fileDiff, listChanges } from './changes.js'
+import { TerminalError, TerminalManager, type TerminalEvent } from './terminals.js'
 import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from './plugin-hmr.js'
 import {
   createAgentRuntime,
@@ -285,6 +287,7 @@ export async function startWebServer(
     ...(browser ? { browser } : {}),
     ...(hotPlugins ? { hotPlugins } : {}),
     processes: new Map(),
+    terminals: new TerminalManager(),
   }
 
   const server = createServer((req, res) => {
@@ -314,6 +317,7 @@ export async function startWebServer(
       const hosts = [...projectHosts.values()]
       projectHosts.clear()
       await Promise.all(hosts.map(entry => entry.host.dispose()))
+      context.terminals.dispose()
       await hotPlugins?.close()
       await ownedBrowser?.close()
       const registries = [...context.processes.values()]
@@ -339,6 +343,7 @@ interface ServerContext {
   /** Background processes per workspace; they outlive the runs that start them. */
   processes: Map<string, ProcessRegistry>
   hotPlugins?: HotPluginHost
+  terminals: TerminalManager
 }
 
 function processesFor(context: ServerContext, workspace: string): ProcessRegistry {
@@ -557,6 +562,41 @@ async function handleApi(
     const limit = Number(url.searchParams.get('limit') ?? 30)
     const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
     sendJson(res, 200, { files })
+    return
+  }
+
+  if (url.pathname === '/api/changes' || url.pathname === '/api/changes/file') {
+    const workspace = workspaceParam(url)
+    if (!workspace || req.method !== 'GET') {
+      sendError(res, workspace ? 405 : 400, workspace ? 'method not allowed' : 'workspace query parameter is required')
+      return
+    }
+    try {
+      if (url.pathname === '/api/changes') {
+        sendJson(res, 200, await listChanges(workspace))
+      } else {
+        const path = url.searchParams.get('path')
+        if (!path) {
+          sendError(res, 400, 'path query parameter is required')
+          return
+        }
+        sendJson(res, 200, await fileDiff(workspace, path))
+      }
+    } catch (error) {
+      if (!(error instanceof FileServeError)) throw error
+      sendError(res, error.status, error.message)
+    }
+    return
+  }
+
+  const terminalMatch = url.pathname.match(/^\/api\/terminals(?:\/([^/]+)(?:\/(stream|input|resize))?)?$/)
+  if (terminalMatch) {
+    try {
+      await handleTerminal(req, res, url, context.terminals, terminalMatch[1], terminalMatch[2])
+    } catch (error) {
+      if (!(error instanceof TerminalError)) throw error
+      if (!res.headersSent) sendError(res, error.status, error.message)
+    }
     return
   }
 
@@ -2404,5 +2444,73 @@ function logHotPluginEvent(event: HotPluginEvent): void {
   } else {
     process.stderr.write(`[tnega] plugin reload failed: ${errorMessage(event.error)}
 `)
+  }
+}
+
+/** The Workbench terminal endpoints; see `terminals.ts`. */
+async function handleTerminal(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  terminals: TerminalManager,
+  id: string | undefined,
+  action: string | undefined,
+): Promise<void> {
+  if (!id) {
+    const workspace = workspaceParam(url)
+    if (req.method === 'GET') {
+      sendJson(res, 200, { terminals: terminals.list(workspace ?? undefined) })
+    } else if (req.method === 'POST') {
+      if (!workspace) {
+        sendError(res, 400, 'workspace query parameter is required')
+        return
+      }
+      const body = await readJsonBody(req)
+      sendJson(res, 200, await terminals.create(workspace, {
+        ...(typeof body.cols === 'number' ? { cols: body.cols } : {}),
+        ...(typeof body.rows === 'number' ? { rows: body.rows } : {}),
+      }))
+    } else {
+      sendError(res, 405, 'method not allowed')
+    }
+    return
+  }
+  if (!action && req.method === 'DELETE') {
+    terminals.close(id)
+    sendJson(res, 200, { ok: true })
+  } else if (action === 'stream' && req.method === 'GET') {
+    const events: TerminalEvent[] = []
+    // Attach first so an unknown id fails before the stream opens.
+    let open = false
+    const send = (event: TerminalEvent) => { if (!res.destroyed && !res.writableEnded) writeSse(res, event) }
+    const detach = terminals.attach(id, event => { if (open) send(event); else events.push(event) })
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    })
+    res.flushHeaders()
+    open = true
+    for (const event of events) send(event)
+    req.on('close', detach)
+  } else if (action === 'input' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (typeof body.data !== 'string') {
+      sendError(res, 400, 'data must be a string')
+      return
+    }
+    terminals.write(id, body.data)
+    sendJson(res, 200, { ok: true })
+  } else if (action === 'resize' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (typeof body.cols !== 'number' || typeof body.rows !== 'number') {
+      sendError(res, 400, 'cols and rows must be numbers')
+      return
+    }
+    terminals.resize(id, body.cols, body.rows)
+    sendJson(res, 200, { ok: true })
+  } else {
+    sendError(res, 405, 'method not allowed')
   }
 }

@@ -11,6 +11,7 @@
     "package": "pnpm --workspace-root build && pnpm build && electron-builder"
   },
   "dependencies": {
+    "@lydell/node-pty": "1.1.0",
     "@tnega/browser": "workspace:*",
     "@tnega/browser-playwright": "workspace:*",
     "@tnega/cli": "workspace:*",
