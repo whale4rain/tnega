@@ -16,6 +16,14 @@ import { launchPageSource, type LaunchSourceOptions } from './source.js'
 
 export { PlaywrightBrowserHost, evaluationSource, type BrowserHostOptions } from './host.js'
 export {
+  LiveView,
+  parseLiveInput,
+  type BrowserLiveCommand,
+  type BrowserLiveEvent,
+  type BrowserLiveInput,
+  type LiveViewOptions,
+} from './live.js'
+export {
   DEFAULT_VIEWPORT,
   cdpPageSource,
   launchPageSource,

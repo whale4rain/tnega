@@ -10,6 +10,7 @@ import { SubagentDrawer } from './components/SubagentDrawer'
 import { FilePreviewDrawer } from './components/preview/FilePreview'
 import { BrowserDrawer } from './components/BrowserDrawer'
 import { desktopBrowser } from './lib/desktop-browser'
+import { browserAvailable } from './lib/browser-live'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
@@ -56,7 +57,13 @@ export function App() {
   // The right-hand drawer shows either a subagent transcript or a produced file.
   const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | { kind: 'browser' } | undefined>()
   // The desktop app asks for the browser panel whenever the agent is about to use it.
-  useEffect(() => desktopBrowser()?.onReveal(() => setDrawer(current => current?.kind === 'browser' ? current : { kind: 'browser' })), [])
+  const showBrowser = useCallback(() => setDrawer(current => current?.kind === 'browser' ? current : { kind: 'browser' }), [])
+  useEffect(() => desktopBrowser()?.onReveal(showBrowser), [showBrowser])
+  // Outside the desktop app the server streams its headless browser into the panel.
+  const [browserReady, setBrowserReady] = useState(Boolean(desktopBrowser()))
+  useEffect(() => {
+    if (!desktopBrowser()) void browserAvailable().then(setBrowserReady)
+  }, [])
   const [fatal, setFatal] = useState<string | undefined>()
   const [mode, setMode] = useStoredState<Mode>('tnega.mode', projectFromHash() ? 'projects' : 'sessions', ['sessions', 'projects'])
   useDesktopChrome(`${mode}:${drawer?.kind ?? 'none'}:${theme}`)
@@ -335,7 +342,12 @@ export function App() {
             onOpenSettings={() => setDialog('settings')}
             onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
             onOpenFile={path => setDrawer({ kind: 'file', path })}
-            {...(desktopBrowser() ? { onToggleBrowser: () => setDrawer(current => current?.kind === 'browser' ? undefined : { kind: 'browser' }) } : {})}
+            {...(browserReady
+              ? {
+                  onToggleBrowser: () => setDrawer(current => current?.kind === 'browser' ? undefined : { kind: 'browser' }),
+                  onBrowserActivity: showBrowser,
+                }
+              : {})}
             browserOpen={drawer?.kind === 'browser'}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}

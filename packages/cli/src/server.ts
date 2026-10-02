@@ -47,7 +47,7 @@ import {
   type PlanPayload,
 } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
-import { browserPlaywright, launchPageSource, PlaywrightBrowserHost } from '@tnega/browser-playwright'
+import { browserPlaywright, launchPageSource, parseLiveInput, PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { toolBrowser } from '@tnega/tool-browser'
 import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
@@ -252,7 +252,7 @@ export async function startWebServer(
   let actualPort = port
   // Nothing starts until the agent first uses the browser.
   const ownedBrowser = options.browser === undefined
-    ? new PlaywrightBrowserHost(launchPageSource((await readSystemConfig(configFile)).browser ?? {}))
+    ? new PlaywrightBrowserHost(launchPageSource({ headless: true, ...(await readSystemConfig(configFile)).browser }))
     : undefined
   const browser = options.browser === false ? undefined : options.browser ?? ownedBrowser
   const context: ServerContext = {
@@ -472,6 +472,11 @@ async function handleApi(
     }
     const config = await updateSystemConfig(patch, context.configFile)
     sendJson(res, 200, configSnapshot(config, context.configFile))
+    return
+  }
+
+  if (url.pathname.startsWith('/api/browser')) {
+    await handleBrowser(req, res, url, context)
     return
   }
 
@@ -2117,6 +2122,76 @@ function contentType(file: string): string {
     default:
       return 'application/octet-stream'
   }
+}
+
+/**
+ * The agent browser as seen by the web UI: a live screencast plus the user's
+ * own input, navigation and history commands. Opening the stream starts the
+ * browser if the agent has not yet.
+ */
+async function handleBrowser(req: IncomingMessage, res: ServerResponse, url: URL, context: ServerContext): Promise<void> {
+  const browser = context.browser
+  if (url.pathname === '/api/browser' && req.method === 'GET') {
+    sendJson(res, 200, { available: Boolean(browser), state: browser?.state() })
+    return
+  }
+  if (!browser) {
+    sendError(res, 404, 'the agent browser is disabled')
+    return
+  }
+  if (url.pathname === '/api/browser/live' && req.method === 'GET') {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    })
+    writeSse(res, { type: 'state', ...browser.state() })
+    let pending = false
+    const unsubscribe = browser.live.subscribe(event => {
+      if (res.destroyed || res.writableEnded) return
+      // Drop frames while the socket is still flushing the previous one.
+      if (event.type === 'frame' && pending) return
+      pending = !res.write(`event: ${event.type}
+data: ${JSON.stringify(event)}
+
+`)
+    })
+    res.on('drain', () => { pending = false })
+    req.on('close', unsubscribe)
+    return
+  }
+  if (url.pathname === '/api/browser/input' && req.method === 'POST') {
+    const input = parseLiveInput(await readJsonBody(req))
+    if (!input) {
+      sendError(res, 400, 'invalid browser input')
+      return
+    }
+    await browser.live.input(input)
+    sendJson(res, 200, { ok: true })
+    return
+  }
+  if (url.pathname === '/api/browser/navigate' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (typeof body.url !== 'string' || !body.url.trim()) {
+      sendError(res, 400, 'url is required')
+      return
+    }
+    await browser.userNavigate(body.url)
+    sendJson(res, 200, browser.state())
+    return
+  }
+  if (url.pathname === '/api/browser/command' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (body.command !== 'back' && body.command !== 'forward' && body.command !== 'reload') {
+      sendError(res, 400, 'command must be back, forward or reload')
+      return
+    }
+    await browser.userCommand(body.command)
+    sendJson(res, 200, browser.state())
+    return
+  }
+  sendError(res, 404, 'not found')
 }
 
 function writeSse(res: ServerResponse, data: unknown): void {

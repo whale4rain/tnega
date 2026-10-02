@@ -111,3 +111,37 @@ describe('browser-playwright with tool-browser', () => {
     }
   }, 90_000)
 })
+
+describe('live view', () => {
+  it('streams frames and takes the user’s clicks, typing and navigation', async ({ skip }) => {
+    if (!available) skip()
+    const host = new PlaywrightBrowserHost(launchPageSource({ headless: true, viewport: { width: 800, height: 600 } }))
+    try {
+      await host.userNavigate(base)
+      const frames: Array<{ width: number }> = []
+      const states: string[] = []
+      const off = host.live.subscribe(event => {
+        if (event.type === 'frame') frames.push(event)
+        else states.push(event.url)
+      })
+      await expect.poll(() => frames.length, { timeout: 10_000 }).toBeGreaterThan(0)
+      expect(frames[0]!.width).toBe(800)
+
+      const page = await host.page()
+      const box = (await page.locator('#todo').boundingBox())!
+      await host.live.input({ kind: 'click', x: (box.x + box.width / 2) / 800, y: (box.y + box.height / 2) / 600 })
+      await host.live.input({ kind: 'text', text: 'typed by hand' })
+      await host.live.input({ kind: 'key', key: 'Tab' })
+      await host.live.input({ kind: 'key', key: 'Enter' })
+      await expect.poll(() => page.locator('li').allTextContents()).toEqual(['typed by hand'])
+
+      await host.userNavigate(`${base}/missing`)
+      await host.userCommand('back')
+      expect(host.state().url).toBe(`${base}/`)
+      expect(states).toContain(`${base}/missing`)
+      off()
+    } finally {
+      await host.close()
+    }
+  }, 60_000)
+})

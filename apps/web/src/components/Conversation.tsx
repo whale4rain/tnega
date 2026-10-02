@@ -71,6 +71,7 @@ export function Conversation({
   onOpenSubagent,
   onOpenFile,
   onToggleBrowser,
+  onBrowserActivity,
   browserOpen = false,
   sidebarOpen,
   onToggleSidebar,
@@ -88,6 +89,8 @@ export function Conversation({
   onOpenFile: (path: string) => void
   /** Present in the desktop app, which hosts the agent browser in a panel. */
   onToggleBrowser?: () => void
+  /** The agent started a browser tool: show the browser. */
+  onBrowserActivity?: () => void
   browserOpen?: boolean
   sidebarOpen: boolean
   onToggleSidebar: () => void
@@ -257,6 +260,8 @@ export function Conversation({
     setEntries(current => events.reduce(applyStream, current))
   }, [])
 
+  const onBrowserActivityRef = useRef(onBrowserActivity)
+  onBrowserActivityRef.current = onBrowserActivity
   const onStreamEvent = useCallback((event: StreamEvent) => {
     switch (event.type) {
       case 'approval/request':
@@ -274,6 +279,9 @@ export function Conversation({
           ...current,
           items: current.items.map(item => item.id === event.item.id ? event.item : item),
         })
+        break
+      case 'tool/start':
+        if (event.call.name.startsWith('browser_')) onBrowserActivityRef.current?.()
         break
       default:
         break

@@ -3401,3 +3401,22 @@ kbd {
   color: var(--accent);
   background: var(--accent-soft);
 }
+
+/* Web app: the agent browser as a live screencast you can use. */
+.browser-live {
+  overflow: hidden;
+  outline: none;
+  background: var(--surface-sunken);
+}
+
+.browser-live:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.browser-live img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}

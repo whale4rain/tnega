@@ -15,6 +15,7 @@ import {
   type BrowserScreenshot,
   type BrowserSnapshot,
 } from '@tnega/browser'
+import { LiveView, type BrowserLiveCommand, type LiveViewOptions } from './live.js'
 import type { PageSource } from './source.js'
 
 export interface BrowserHostOptions {
@@ -25,6 +26,7 @@ export interface BrowserHostOptions {
   screenshotQuality?: number
   /** Console messages to drop, e.g. warnings the embedding host prints into every page. */
   ignoreConsole?: (text: string) => boolean
+  live?: LiveViewOptions
 }
 
 const WAIT_MS_CAP = 10_000
@@ -74,6 +76,8 @@ export class PlaywrightBrowserHost {
   private readonly _logLimit: number
   private readonly _quality: number
   private readonly _ignoreConsole: ((text: string) => boolean) | undefined
+  /** Screencast and user input for UIs that show the page themselves. */
+  readonly live: LiveView
 
   constructor(private readonly _source: PageSource, options: BrowserHostOptions = {}) {
     this._snapshotMaxChars = options.snapshotMaxChars ?? DEFAULT_BROWSER_SNAPSHOT_MAX_CHARS
@@ -81,6 +85,23 @@ export class PlaywrightBrowserHost {
     this._logLimit = options.logLimit ?? DEFAULT_BROWSER_LOG_LIMIT
     this._quality = options.screenshotQuality ?? 70
     this._ignoreConsole = options.ignoreConsole
+    this.live = new LiveView(() => this.page(), options.live)
+  }
+
+  /** The user typed an address or pressed back / forward / reload in the UI. */
+  async userNavigate(url: string): Promise<void> {
+    const page = await this.page()
+    await page.goto(normalizeBrowserUrl(url), { waitUntil: 'domcontentloaded', timeout: this._actionTimeoutMs }).catch(() => {})
+    await this._refreshState(page)
+  }
+
+  async userCommand(command: BrowserLiveCommand): Promise<void> {
+    const page = await this.page()
+    const options = { waitUntil: 'domcontentloaded' as const, timeout: this._actionTimeoutMs }
+    if (command === 'back') await page.goBack(options).catch(() => null)
+    if (command === 'forward') await page.goForward(options).catch(() => null)
+    if (command === 'reload') await page.reload(options).catch(() => null)
+    await this._refreshState(page)
   }
 
   state(): BrowserPageState {
@@ -166,6 +187,7 @@ export class PlaywrightBrowserHost {
   }
 
   async close(): Promise<void> {
+    await this.live.close()
     this._page = undefined
     await this._source.release()
   }
@@ -233,10 +255,13 @@ export class PlaywrightBrowserHost {
 
   private async _refreshState(page: Page): Promise<void> {
     this._state = { url: page.url(), title: await page.title().catch(() => this._state.title) }
+    this.live.emitState(this._state)
   }
 
   private _watch(page: Page): void {
     this._page = page
+    void this.live.follow(page).catch(() => {})
+    page.on('load', () => { void this._refreshState(page) })
     this._state = { url: page.url(), title: '' }
     const push = <T>(list: T[], entry: T) => {
       list.push(entry)
