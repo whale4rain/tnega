@@ -14,6 +14,7 @@ import {
 } from '@tnega/agent'
 import { Context, type Fiber } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
+import { observeCompaction } from './compaction-observation.js'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
@@ -60,6 +61,7 @@ import { toolOffice } from '@tnega/tool-office'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSubagent } from '@tnega/tool-subagent'
 import { jobsLocal } from '@tnega/jobs-local'
+import type { JobRegistry } from '@tnega/jobs'
 import { toolJobs } from '@tnega/tool-jobs'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
@@ -725,6 +727,36 @@ async function handleApi(
       sendJson(res, 200, { subagents: children })
       return
     }
+    if (action === 'jobs' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!existsSync(sessionFilePath(workspace, id))) {
+        sendError(res, 404, 'session not found')
+        return
+      }
+      const entry = context.residentAgents?.get(runKey(workspace, id))
+      const jobs: JobRegistry | undefined = entry?.root.get('jobs')
+      if (req.method === 'GET' && !url.searchParams.has('job_id')) {
+        sendJson(res, 200, { jobs: jobs && entry ? jobs.list(entry.agent) : [] })
+        return
+      }
+      const body = req.method === 'POST' ? await readJsonBody(req) : undefined
+      if (body && (body.action !== 'stop' || typeof body.job_id !== 'string' || !body.job_id.trim())) {
+        sendError(res, 400, 'action=stop and job_id are required')
+        return
+      }
+      const jobId = body?.job_id ?? url.searchParams.get('job_id')
+      if (typeof jobId !== 'string' || !jobId.trim()) {
+        sendError(res, 400, 'job_id is required')
+        return
+      }
+      if (!jobs || !entry || !jobs.list(entry.agent).some(job => job.id === jobId)) {
+        sendError(res, 404, 'background job not found')
+        return
+      }
+      sendJson(res, 200, body
+        ? { job: jobs.kill(jobId, entry.agent, 'Stopped by user') }
+        : jobs.read(jobId, entry.agent))
+      return
+    }
     if (action === 'goal' && req.method === 'GET') {
       const log = new SessionLog(sessionFilePath(workspace, id))
       await log.init()
@@ -1127,6 +1159,7 @@ async function handleRun(
   })
 
   let ptcObservation: Fiber | undefined
+  let compactionObservation: Fiber | undefined
   let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
 
   try {
@@ -1134,6 +1167,9 @@ async function handleRun(
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
     })
     const sessionLog = runtime.root.get('session') as SessionLog
+    compactionObservation = await observeCompaction(runtime.root, sessionLog, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
     editTracking = {
       session: sessionLog,
       startSeq: (await sessionLog.read()).at(-1)?.seq ?? 0,
@@ -1210,6 +1246,7 @@ async function handleRun(
     }
   } finally {
     await ptcObservation?.dispose()
+    await compactionObservation?.dispose()
     if (runtime && editTracking) {
       try {
         const edited = await editedFiles(workspace, editTracking.baseline,
@@ -1559,6 +1596,7 @@ async function runResidentTurn(
   })
 
   let ptcObservation: Fiber | undefined
+  let compactionObservation: Fiber | undefined
   let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
   let releaseWriteCapture: ReturnType<ToolsService['guard']> | undefined
 
@@ -1568,6 +1606,9 @@ async function runResidentTurn(
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
     })
     const agent = entry.agent
+    compactionObservation = await observeCompaction(entry.root, agent.session, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
     editTracking = {
       session: agent.session,
       startSeq: (await agent.session.read()).at(-1)?.seq ?? 0,
@@ -1629,6 +1670,7 @@ async function runResidentTurn(
     }
   } finally {
     await ptcObservation?.dispose()
+    await compactionObservation?.dispose()
     await releaseWriteCapture?.()
     if (editTracking) {
       try {

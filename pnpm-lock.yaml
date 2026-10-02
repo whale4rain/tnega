@@ -283,6 +283,9 @@ importers:
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
+      '@tnega/jobs':
+        specifier: workspace:*
+        version: link:../jobs/jobs
       '@tnega/jobs-local':
         specifier: workspace:*
         version: link:../jobs/jobs-local
