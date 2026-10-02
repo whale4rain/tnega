@@ -26,3 +26,20 @@ describe('browser live view', () => {
     expect(parseLiveFrame('data: not json')).toBeUndefined()
   })
 })
+
+describe('picked elements', () => {
+  const element = { url: 'http://localhost:5173/', tag: 'button', selector: '#add', text: 'Add item', html: '<button id="add">Add item</button>' }
+
+  it('labels, describes and parses back what the user picked', async () => {
+    const { describePicked, pickedLabel, splitPickedContext, parsePickResult } = await import('./browser-live')
+    expect(pickedLabel(element)).toBe('<button> Add item')
+    const block = describePicked(element)
+    expect(block.split('\n')[0]).toBe('[Selected element on http://localhost:5173/]')
+    const { contexts, rest } = splitPickedContext(`${block}\n\nMake it blue`)
+    expect(contexts).toEqual([{ label: '<button> Add item', text: block }])
+    expect(rest).toBe('Make it blue')
+    expect(splitPickedContext('just text')).toEqual({ contexts: [], rest: 'just text' })
+    expect(parsePickResult({ element, image: { data: 'abc' } })).toEqual({ element, image: { mediaType: 'image/jpeg', data: 'abc' } })
+    expect(parsePickResult({ cancelled: true })).toBeUndefined()
+  })
+})

@@ -1,5 +1,5 @@
 import { FolderKanban, FolderPlus } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Conversation } from './components/Conversation'
 import type { RunSettings } from './components/Composer'
 import { NewProjectDialog } from './components/project/NewProjectDialog'
@@ -57,6 +57,19 @@ export function App() {
   // The right-hand drawer shows either a subagent transcript or a produced file.
   const [drawer, setDrawer] = useState<{ kind: 'subagent'; id: string; label: string } | { kind: 'file'; path: string } | { kind: 'browser' } | undefined>()
   // The desktop app asks for the browser panel whenever the agent is about to use it.
+  // The browser panel keeps the width the user dragged it to.
+  const [browserWidth, setBrowserWidth] = useState<number | undefined>(() => {
+    const saved = Number(localStorage.getItem('tnega.browserWidth'))
+    return Number.isFinite(saved) && saved > 0 ? saved : undefined
+  })
+  const appRoot = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (browserWidth) appRoot.current?.style.setProperty('--browser-width', `${browserWidth}px`)
+  }, [browserWidth])
+  const resizeBrowser = useCallback((width: number) => {
+    setBrowserWidth(width)
+    localStorage.setItem('tnega.browserWidth', String(width))
+  }, [])
   const showBrowser = useCallback(() => setDrawer(current => current?.kind === 'browser' ? current : { kind: 'browser' }), [])
   useEffect(() => desktopBrowser()?.onReveal(showBrowser), [showBrowser])
   // Outside the desktop app the server streams its headless browser into the panel.
@@ -263,7 +276,10 @@ export function App() {
   }
 
   return (
-    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' || drawer?.kind === 'browser' ? ' drawer-wide' : ''}`}>
+    <div
+      className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${drawer && workspace ? ' drawer-open' : ''}${drawer?.kind === 'file' || drawer?.kind === 'browser' ? ' drawer-wide' : ''}${drawer?.kind === 'browser' ? ' drawer-browser' : ''}`}
+      ref={appRoot}
+    >
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
       {sidebarOpen && (
         <Sidebar
@@ -373,7 +389,7 @@ export function App() {
           onOpenSubagent={(id, label) => setDrawer({ kind: 'subagent', id, label })}
         />
       )}
-      {drawer?.kind === 'browser' && workspace && <BrowserDrawer onClose={() => setDrawer(undefined)} />}
+      {drawer?.kind === 'browser' && workspace && <BrowserDrawer onClose={() => setDrawer(undefined)} onResize={resizeBrowser} width={browserWidth} />}
       {drawer?.kind === 'file' && workspace && (
         <FilePreviewDrawer key={drawer.path} workspace={workspace} path={drawer.path} onClose={() => setDrawer(undefined)} />
       )}

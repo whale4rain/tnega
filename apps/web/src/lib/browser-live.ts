@@ -4,9 +4,27 @@
  * it. The desktop app shows a native view instead (see desktop-browser.ts).
  */
 
+export interface LiveTab {
+  id: string
+  url: string
+  title: string
+  active: boolean
+}
+
 export type LiveEvent =
   | { type: 'frame'; data: string; width: number; height: number }
   | { type: 'state'; url: string; title: string }
+  | { type: 'tabs'; tabs: LiveTab[] }
+
+export interface PickedElement {
+  url: string
+  tag: string
+  selector: string
+  role?: string
+  name?: string
+  text: string
+  html: string
+}
 
 export type LiveInput =
   | { kind: 'click'; x: number; y: number; button?: 'left' | 'right' | 'middle'; clickCount?: number }
@@ -36,6 +54,77 @@ export async function browserAvailable(): Promise<boolean> {
 export const sendBrowserInput = (input: LiveInput) => post('/api/browser/input', input)
 export const navigateBrowser = (url: string) => post('/api/browser/navigate', { url })
 export const browserCommand = (command: 'back' | 'forward' | 'reload') => post('/api/browser/command', { command })
+export const setBrowserViewport = (width: number, height: number) => post('/api/browser/viewport', { width, height })
+export const browserTab = (action: 'new' | 'select' | 'close', id?: string) => post('/api/browser/tabs', { action, ...(id ? { id } : {}) })
+export const cancelPick = () => post('/api/browser/pick/cancel', {})
+
+/** Wait for the user to click an element in the page; undefined when they cancel. */
+export async function pickElement(): Promise<{ element: PickedElement; image?: { mediaType: 'image/jpeg'; data: string } } | undefined> {
+  const response = await fetch('/api/browser/pick', { method: 'POST', headers: HEADERS, body: '{}' })
+  if (!response.ok) throw new Error(`/api/browser/pick: ${response.status}`)
+  return parsePickResult(await response.json())
+}
+
+const str = (value: unknown): string | undefined => typeof value === 'string' ? value : undefined
+
+export function parsePickResult(body: unknown): { element: PickedElement; image?: { mediaType: 'image/jpeg'; data: string } } | undefined {
+  if (!body || typeof body !== 'object') return undefined
+  const raw: unknown = Reflect.get(body, 'element')
+  if (!raw || typeof raw !== 'object') return undefined
+  const tag = str(Reflect.get(raw, 'tag'))
+  const selector = str(Reflect.get(raw, 'selector'))
+  if (!tag || !selector) return undefined
+  const role = str(Reflect.get(raw, 'role'))
+  const name = str(Reflect.get(raw, 'name'))
+  const element: PickedElement = {
+    url: str(Reflect.get(raw, 'url')) ?? '',
+    tag,
+    selector,
+    text: str(Reflect.get(raw, 'text')) ?? '',
+    html: str(Reflect.get(raw, 'html')) ?? '',
+    ...(role ? { role } : {}),
+    ...(name ? { name } : {}),
+  }
+  const image: unknown = Reflect.get(body, 'image')
+  const data = image && typeof image === 'object' ? str(Reflect.get(image, 'data')) : undefined
+  return { element, ...(data ? { image: { mediaType: 'image/jpeg' as const, data } } : {}) }
+}
+
+/** Short chip label for a picked element, e.g. `<button> "Add"`. */
+export function pickedLabel(element: PickedElement): string {
+  const name = element.name ?? element.text
+  return name ? `<${element.tag}> ${name.length > 32 ? `${name.slice(0, 31)}…` : name}` : `<${element.tag}> ${element.selector.split(' > ').at(-1) ?? ''}`
+}
+
+/** What goes into the message so the model knows which element the user means. */
+export function describePicked(element: PickedElement): string {
+  const label = element.name ?? (element.text ? `"${element.text.slice(0, 80)}"` : '')
+  return [
+    `[Selected element on ${element.url}]`,
+    `<${element.tag}> ${label}`.trim(),
+    `selector: ${element.selector}`,
+    element.html,
+  ].join('\n')
+}
+
+/** Hand text and images to the conversation composer (see PromptBox). */
+export const COMPOSER_INSERT = 'tnega:composer-insert'
+
+/** A piece of context shown as a chip; its text is added to the message when sent. */
+export interface ComposerContext {
+  label: string
+  text: string
+}
+
+export interface ComposerInsert {
+  text?: string
+  context?: ComposerContext
+  images?: Array<{ type: 'image'; mediaType: 'image/jpeg' | 'image/png'; data: string; name?: string }>
+}
+
+export function insertIntoComposer(detail: ComposerInsert): void {
+  window.dispatchEvent(new CustomEvent<ComposerInsert>(COMPOSER_INSERT, { detail }))
+}
 
 export function parseLiveFrame(frame: string): LiveEvent | undefined {
   let data = ''
@@ -50,6 +139,10 @@ export function parseLiveFrame(frame: string): LiveEvent | undefined {
     if (type === 'frame' && typeof Reflect.get(parsed, 'data') === 'string') {
       return { type, data: String(Reflect.get(parsed, 'data')), width: Number(Reflect.get(parsed, 'width')) || 0, height: Number(Reflect.get(parsed, 'height')) || 0 }
     }
+    if (type === 'tabs') {
+      const tabs = Reflect.get(parsed, 'tabs')
+      return { type, tabs: Array.isArray(tabs) ? tabs.map((tab: Record<string, unknown>) => ({ id: String(tab.id), url: String(tab.url ?? ''), title: String(tab.title ?? ''), active: tab.active === true })) : [] }
+    }
     if (type === 'state') {
       return { type, url: String(Reflect.get(parsed, 'url') ?? ''), title: String(Reflect.get(parsed, 'title') ?? '') }
     }
@@ -60,8 +153,8 @@ export function parseLiveFrame(frame: string): LiveEvent | undefined {
 }
 
 /** Follow the live stream until `signal` aborts; reconnects are the caller's job. */
-export async function streamBrowserLive(onEvent: (event: LiveEvent) => void, signal: AbortSignal): Promise<void> {
-  const response = await fetch('/api/browser/live', { headers: { ...HEADERS, accept: 'text/event-stream' }, signal })
+export async function streamBrowserLive(onEvent: (event: LiveEvent) => void, signal: AbortSignal, options: { frames?: boolean } = {}): Promise<void> {
+  const response = await fetch(options.frames === false ? '/api/browser/live?frames=0' : '/api/browser/live', { headers: { ...HEADERS, accept: 'text/event-stream' }, signal })
   if (!response.ok || !response.body) throw new Error(`browser stream: ${response.status}`)
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
@@ -108,4 +201,21 @@ export function keyInput(event: { key: string; ctrlKey: boolean; metaKey: boolea
     event.shiftKey && event.key.length !== 1 ? 'Shift' : '',
   ].filter(Boolean)
   return { kind: 'key', key: [...modifiers, event.key].join('+') }
+}
+
+const PICKED_HEADER = /^\[Selected element on [^\]]*\]$/u
+
+/**
+ * Split a sent message into the picked-element blocks it starts with and the
+ * user's own words, so the timeline can show the blocks as chips again.
+ */
+export function splitPickedContext(message: string): { contexts: ComposerContext[]; rest: string } {
+  const blocks = message.split(/\n{2,}/u)
+  const contexts: ComposerContext[] = []
+  while (blocks.length && PICKED_HEADER.test(blocks[0]!.split('\n')[0] ?? '')) {
+    const block = blocks.shift()!
+    const summary = block.split('\n')[1] ?? 'element'
+    contexts.push({ label: summary.replace(/^(<[^>]+>) "(.*)"$/u, '$1 $2'), text: block })
+  }
+  return { contexts, rest: blocks.join('\n\n') }
 }

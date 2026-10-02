@@ -1,6 +1,7 @@
-import { ArrowUp, AtSign, FileText, ImagePlus, Slash, Sparkles, Square, X } from 'lucide-react'
+import { ArrowUp, AtSign, FileText, ImagePlus, Slash, Sparkles, SquareMousePointer, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { imageFiles, imageFromFile, imageSrc, MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
+import { COMPOSER_INSERT, type ComposerContext, type ComposerInsert } from '../lib/browser-live'
 import { applyCompletion, detectTrigger, rankCommands, type CommandSpec, type Trigger } from '../lib/completion'
 import type { ImageAttachment } from '../lib/types'
 
@@ -75,6 +76,7 @@ export function PromptBox({
 }) {
   const [text, setText] = useState('')
   const [images, setImages] = useState<ImageAttachment[]>([])
+  const [contexts, setContexts] = useState<ComposerContext[]>([])
   const [reading, setReading] = useState(0)
   const [dragging, setDragging] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
@@ -124,6 +126,29 @@ export function PromptBox({
   useEffect(() => {
     input.current?.focus()
   }, [autoFocusKey])
+
+  // Things handed over from elsewhere in the app, e.g. an element picked in the browser.
+  useEffect(() => {
+    if (!acceptImages) return
+    const onInsert = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return
+      const detail: ComposerInsert = event.detail ?? {}
+      if (detail.context) setContexts(current => [...current, detail.context!])
+      if (detail.images?.length) setImages(current => [...current, ...(detail.images ?? [])].slice(0, MAX_IMAGES_PER_MESSAGE))
+      if (detail.text) {
+        const block = detail.text
+        setText(current => current.trim() ? `${current.trimEnd()}\n\n${block}\n\n` : `${block}\n\n`)
+      }
+      requestAnimationFrame(() => {
+        const el = input.current
+        if (!el) return
+        el.focus()
+        el.setSelectionRange(el.value.length, el.value.length)
+      })
+    }
+    window.addEventListener(COMPOSER_INSERT, onInsert)
+    return () => window.removeEventListener(COMPOSER_INSERT, onInsert)
+  }, [acceptImages])
 
   const trigger = useMemo(() => detectTrigger(text, caret), [text, caret])
   const key = triggerKey(trigger)
@@ -216,15 +241,16 @@ export function PromptBox({
     }
   }
 
-  const canSend = (Boolean(text.trim()) || images.length > 0) && reading === 0
+  const canSend = (Boolean(text.trim()) || images.length > 0 || contexts.length > 0) && reading === 0
 
   const submit = async () => {
-    const value = text.trim()
+    const value = [...contexts.map(context => context.text), text.trim()].filter(Boolean).join('\n\n')
     if (!canSend || showStop || disabledReason) return
     const accepted = await onSubmit(value, images)
     if (accepted) {
       setText('')
       setImages([])
+      setContexts([])
       setCaret(0)
       setDismissed('')
     }
@@ -281,8 +307,17 @@ export function PromptBox({
           void addImages(files)
         }}
       >
-        {(images.length > 0 || reading > 0) && (
+        {(images.length > 0 || reading > 0 || contexts.length > 0) && (
           <div className="composer-attachments" onClick={event => event.stopPropagation()}>
+            {contexts.map((context, index) => (
+              <span className="composer-context" key={`${index}-${context.label}`} title={context.text}>
+                <SquareMousePointer size={13} aria-hidden />
+                <span className="composer-context-label">{context.label}</span>
+                <button type="button" aria-label={`Remove ${context.label}`} onClick={() => setContexts(current => current.filter((_, at) => at !== index))}>
+                  <X size={11} strokeWidth={2.6} />
+                </button>
+              </span>
+            ))}
             {images.map((image, index) => (
               <div className="composer-thumb" key={`${index}-${image.data.length}`}>
                 <img src={imageSrc(image)} alt={image.name ?? `Image ${index + 1}`} />

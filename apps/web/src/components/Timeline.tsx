@@ -17,6 +17,7 @@ import {
   Wrench,
   X,
   Network,
+  SquareMousePointer,
 } from 'lucide-react'
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { turnWeather } from '../lib/weather'
@@ -27,6 +28,7 @@ import { officeFiles } from '../lib/office'
 import { codeModeOutput, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
 import { ImageStrip } from './ImageStrip'
+import { splitPickedContext } from '../lib/browser-live'
 import { CodeBlock, Markdown } from './Markdown'
 import { OfficeFiles } from './OfficeFiles'
 
@@ -117,6 +119,7 @@ const UserMessage = memo(function UserMessage({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(entry.text)
   const [copied, copy] = useCopy()
+  const picked = splitPickedContext(entry.text)
 
   if (editing) {
     const submit = () => {
@@ -154,7 +157,17 @@ const UserMessage = memo(function UserMessage({
   return (
     <div className="user-row">
       {entry.images?.length ? <ImageStrip images={entry.images} className="user-images" /> : null}
-      {entry.text && <div className="user-bubble">{entry.text}</div>}
+      {picked.contexts.length > 0 && (
+        <div className="user-contexts">
+          {picked.contexts.map((context, index) => (
+            <span key={index} className="composer-context" title={context.text}>
+              <SquareMousePointer size={13} aria-hidden />
+              <span className="composer-context-label">{context.label}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {picked.rest && <div className="user-bubble">{picked.rest}</div>}
       <div className="row-actions">
         <IconAction label={copied ? 'Copied' : 'Copy'} onClick={() => copy(entry.text)}>
           {copied ? <Check size={14} /> : <Copy size={14} />}

@@ -3268,6 +3268,7 @@ kbd {
 .desktop-chrome .sidebar-top,
 .desktop-chrome .conv-header,
 .desktop-chrome .drawer-header,
+.desktop-chrome .browser-tabs,
 .desktop-chrome .project-side .side-tabs,
 .desktop-chrome .project-side .side-header {
   -webkit-app-region: drag;
@@ -3279,6 +3280,7 @@ kbd {
 .desktop-chrome .conv-subtitle,
 .desktop-chrome .drawer-titles,
 .desktop-chrome .drawer-header button,
+.desktop-chrome .browser-tabs button,
 .desktop-chrome .zoom-controls,
 .desktop-chrome .project-side button,
 .desktop-chrome .side-title,
@@ -3329,54 +3331,180 @@ kbd {
 }
 
 /* ==========================================================================
-   Agent browser (desktop app)
+   Agent browser — tabs, toolbar and the page in a rounded card
    ========================================================================== */
 
-.browser-bar {
+.app.drawer-open.drawer-browser {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--browser-width, min(760px, 50vw));
+}
+
+.app.drawer-open.drawer-browser.sidebar-closed {
+  grid-template-columns: minmax(0, 1fr) var(--browser-width, min(760px, 50vw));
+}
+
+.browser-drawer {
+  position: relative;
+  gap: 6px;
+  padding: 6px 8px 8px;
+  background: var(--bg-sidebar);
+}
+
+.browser-resize {
+  position: absolute;
+  inset: 0 auto 0 -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.browser-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background var(--duration-fast);
+}
+
+.browser-resize:hover::after,
+.browser-resize.is-dragging::after {
+  background: var(--accent);
+}
+
+.browser-tabs {
+  display: flex;
+  align-items: center;
   gap: 4px;
-  padding: 0 8px;
+  min-height: 34px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.browser-bar .icon-button:disabled {
-  opacity: 0.35;
+.browser-tab {
+  display: flex;
+  align-items: center;
+  flex: 0 1 200px;
+  min-width: 96px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 
-.browser-address {
+.browser-tab:hover {
+  background: var(--surface-hover);
+}
+
+.browser-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.browser-tab-main {
   display: flex;
   align-items: center;
   gap: 7px;
   flex: 1;
   min-width: 0;
-  height: 32px;
-  margin: 0 4px;
-  padding: 0 11px;
-  border-radius: var(--radius-pill, 999px);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-3);
-  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  height: 100%;
+  padding: 0 4px 0 10px;
+  font-size: var(--text-sm);
+  text-align: left;
 }
 
-.browser-address:focus-within {
-  border-color: var(--border-strong);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.browser-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-tab-close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 5px;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  opacity: 0;
+}
+
+.browser-tab:hover .browser-tab-close,
+.browser-tab.active .browser-tab-close,
+.browser-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.browser-tab-close:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.browser-tabs-fill {
+  flex: 1;
+}
+
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.icon-button.small {
+  width: 28px;
+  height: 28px;
+}
+
+.icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.browser-address {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  margin: 0 4px;
 }
 
 .browser-address input {
   flex: 1;
   min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: var(--surface);
   color: var(--text);
   font-size: var(--text-sm);
+  text-align: center;
+  outline: 0;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.browser-address input:focus {
+  text-align: left;
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.browser-card {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .browser-viewport {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  background: #ffffff;
 }
 
 .browser-empty {
@@ -3397,12 +3525,28 @@ kbd {
   font-size: var(--text-sm);
 }
 
+.browser-pick-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .icon-button.active {
   color: var(--accent);
   background: var(--accent-soft);
 }
 
-/* Web app: the agent browser as a live screencast you can use. */
+/* Web app: the page is a live screencast rendered at the card's exact size. */
 .browser-live {
   overflow: hidden;
   outline: none;
@@ -3416,7 +3560,50 @@ kbd {
 .browser-live img {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
+  object-position: top left;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.composer-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+}
+
+.composer-context-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.composer-context button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.composer-context button:hover {
+  background: var(--surface-active);
+}
+
+.user-contexts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: min(84%, 620px);
+  margin-bottom: 4px;
 }
