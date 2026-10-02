@@ -22,5 +22,11 @@
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2"
+  },
+  "optionalDependencies": {
+    "@lydell/node-pty-win32-x64": "1.1.0",
+    "@lydell/node-pty-darwin-arm64": "1.1.0",
+    "@lydell/node-pty-darwin-x64": "1.1.0",
+    "@lydell/node-pty-linux-x64": "1.1.0"
   }
 }
