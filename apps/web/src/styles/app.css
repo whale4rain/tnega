@@ -982,6 +982,16 @@ kbd {
   flex: 1;
 }
 
+.conv-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.conv-title-row > .conv-title, .conv-title-row > .conv-title-input { min-width: 0; }
+.background-jobs { flex: none; }
+.background-jobs-popover { width: min(380px, calc(100vw - 32px)); max-height: 60vh; overflow: auto; padding: 12px; }
+.background-job { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.background-job-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.background-job-head strong { overflow-wrap: anywhere; }
+.background-job-head span { white-space: nowrap; }
+.background-job-actions { display: flex; gap: 6px; margin-top: 6px; }
+
 .conv-title {
   display: inline-flex;
   align-items: center;

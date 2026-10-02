@@ -76,6 +76,17 @@ export interface ConfigPatch {
   temperature?: number
 }
 
+export interface BackgroundJob {
+  id: string
+  kind: string
+  label: string
+  status: 'running' | 'stopping' | 'completed' | 'failed' | 'killed'
+  startedAt: number
+  finishedAt?: number
+  detail?: string
+  reported: boolean
+}
+
 export const api = {
   config: () => call<ConfigSnapshot>('/api/config'),
   saveConfig: async (patch: ConfigPatch): Promise<ConfigSnapshot> => {
@@ -104,6 +115,12 @@ export const api = {
     call<{ session: SessionSummary }>(scoped('/api/sessions', workspace), { method: 'POST', body: init }),
   session: (workspace: string, id: string) =>
     call<SessionDetail>(scoped(`/api/sessions/${id}`, workspace)),
+  jobs: (workspace: string, id: string, signal?: AbortSignal) =>
+    call<{ jobs: BackgroundJob[] }>(scoped(`/api/sessions/${id}/jobs`, workspace), { signal }),
+  jobOutput: (workspace: string, id: string, jobId: string, signal?: AbortSignal) =>
+    call<{ job: BackgroundJob; output?: string }>(scoped(`/api/sessions/${id}/jobs`, workspace, { job_id: jobId }), { signal }),
+  stopJob: (workspace: string, id: string, jobId: string, signal?: AbortSignal) =>
+    call<{ job: BackgroundJob }>(scoped(`/api/sessions/${id}/jobs`, workspace), { method: 'POST', body: { job_id: jobId, action: 'stop' }, signal }),
   questions: (workspace: string, id: string, signal?: AbortSignal) =>
     call<{ questions: PendingQuestionRequest[] }>(scoped(`/api/sessions/${id}/questions`, workspace), { signal }),
   answerQuestions: (workspace: string, id: string, requestId: string, answers: QuestionAnswerItem[], signal?: AbortSignal) =>

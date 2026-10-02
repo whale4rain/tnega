@@ -53,4 +53,8 @@ CLI 默认随 builtin tools 启用。自定义 `builtinTools:false` 时可用 `j
 单独启用；`jobs:false` 可禁用。Web resident Agent 与 Project Thread 同样挂载。
 Subagent job 要求 composition 同时加载 agents、subagent Provider 和 tool-subagent。
 
+Web 对话标题右侧的 Tasks 显示后台任务数量，展开后可查看状态和输出，或点击
+Stop 人工停止执行。停止通过取消 signal 实现，状态先显示 Stopping，再保留
+Stopped 记录与已有结果；前台回合结束后面板继续更新。
+
 测试：`packages/jobs/jobs-local/test/`、`packages/jobs/tool-jobs/test/`。

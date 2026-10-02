@@ -51,6 +51,7 @@ import type { ArgumentSuggestion } from './PromptBox'
 import { Menu } from './Menu'
 import { Timeline } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
+import { BackgroundJobs } from './BackgroundJobs'
 
 export interface Approval {
   id: string
@@ -579,7 +580,10 @@ export function Conversation({
           </button>
         )}
         <div className="conv-title-wrap">
-          {summary ? <EditableTitle value={title} onSave={rename} /> : <h1 className="conv-title">{title}</h1>}
+          <div className="conv-title-row">
+            {summary ? <EditableTitle value={title} onSave={rename} /> : <h1 className="conv-title">{title}</h1>}
+            {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} />}
+          </div>
           <div className="conv-subtitle">
             <span className="conv-workspace" title={workspace}>{folderName(workspace)}</span>
             {summary?.parentSessionId && <span className="conv-tag"><GitBranch size={11} /> fork</span>}
