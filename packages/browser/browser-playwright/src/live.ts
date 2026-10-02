@@ -1,4 +1,5 @@
 import type { CDPSession, Page } from 'playwright-core'
+import type { BrowserTab } from '@tnega/browser'
 
 /**
  * A live view of the agent's page for a UI that is not the browser itself
@@ -11,6 +12,7 @@ import type { CDPSession, Page } from 'playwright-core'
 export type BrowserLiveEvent =
   | { type: 'frame'; data: string; width: number; height: number }
   | { type: 'state'; url: string; title: string }
+  | { type: 'tabs'; tabs: BrowserTab[] }
 
 /** Pointer positions are fractions of the frame (0–1), so the UI can scale it freely. */
 export type BrowserLiveInput =
@@ -80,6 +82,11 @@ export class LiveView {
     if (this._page === page) return
     await this._stop()
     if (this._listeners.size) await this._ensure()
+  }
+
+  /** Announce the tab list after any change. */
+  emitTabs(tabs: BrowserTab[]): void {
+    this._emit({ type: 'tabs', tabs })
   }
 
   /** Re-announce the page after navigation. */

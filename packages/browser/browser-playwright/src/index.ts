@@ -10,11 +10,13 @@ import {
   type BrowserPageState,
   type BrowserScreenshot,
   type BrowserSnapshot,
+  type BrowserTab,
 } from '@tnega/browser'
 import { PlaywrightBrowserHost, type BrowserHostOptions } from './host.js'
 import { launchPageSource, type LaunchSourceOptions } from './source.js'
 
-export { PlaywrightBrowserHost, evaluationSource, type BrowserHostOptions } from './host.js'
+export { PlaywrightBrowserHost, evaluationSource, type BrowserHostOptions, type PickResult } from './host.js'
+export { pickClip, type PickedElement } from './picker.js'
 export {
   LiveView,
   parseLiveInput,
@@ -50,6 +52,10 @@ export class PlaywrightBrowser extends BrowserService {
 
   page(): BrowserPageState {
     return this._host.state()
+  }
+
+  tabs(): BrowserTab[] {
+    return this._host.tabs()
   }
 
   protected runAction(action: BrowserAction, options: BrowserCallOptions): Promise<BrowserActionResult> {

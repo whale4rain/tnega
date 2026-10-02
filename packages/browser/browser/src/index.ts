@@ -12,6 +12,7 @@ import {
   type BrowserPreActionEvent,
   type BrowserScreenshot,
   type BrowserSnapshot,
+  type BrowserTab,
 } from './types.js'
 
 export * from './types.js'
@@ -57,6 +58,9 @@ export abstract class BrowserService extends Service {
 
   /** Current page without touching it. */
   abstract page(): BrowserPageState
+
+  /** Open tabs, in order; exactly one is active once the browser has started. */
+  abstract tabs(): BrowserTab[]
 
   /** Perform one action. Only called by {@link BrowserService.act}. */
   protected abstract runAction(action: BrowserAction, options: BrowserCallOptions): Promise<BrowserActionResult>

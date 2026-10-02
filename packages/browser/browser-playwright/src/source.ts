@@ -14,12 +14,21 @@ async function chromiumType(): Promise<BrowserType> {
 }
 
 /**
- * Where the driven page comes from. The host acquires lazily on first use and
- * again whenever the page has closed; `release` frees only what the source
+ * Where the driven pages (tabs) come from. The host acquires the first page
+ * lazily and opens more on demand; `release` frees only what the source
  * itself started.
  */
 export interface PageSource {
+  /** The first page, starting the browser if needed. */
   acquire(): Promise<Page>
+  /** Open another page: a new tab. */
+  open(): Promise<Page>
+  /** Close a page the source opened. */
+  closePage(page: Page): Promise<void>
+  /** Show this page to the user, e.g. swap the visible desktop view. */
+  activate?(page: Page): Promise<void>
+  /** Pages the page opened itself (`target=_blank`, `window.open`). */
+  onPopup?(listener: (page: Page) => void): void
   /** Called before anything that needs the page to paint (actions, screenshots). */
   prepare?(page: Page): Promise<void>
   release(): Promise<void>
@@ -54,7 +63,7 @@ function defaultHeadless(): boolean {
 export function launchPageSource(options: LaunchSourceOptions = {}): PageSource {
   let browser: Browser | undefined
   let context: BrowserContext | undefined
-  let page: Page | undefined
+  const popupListeners: Array<(page: Page) => void> = []
 
   const launch = async (): Promise<Browser> => {
     const headless = options.headless ?? defaultHeadless()
@@ -75,22 +84,42 @@ export function launchPageSource(options: LaunchSourceOptions = {}): PageSource 
     )
   }
 
+  const ensureContext = async (): Promise<BrowserContext> => {
+    if (!browser?.isConnected()) {
+      browser = await launch()
+      context = undefined
+    }
+    if (!context) {
+      const created = await browser.newContext({ viewport: options.viewport ?? DEFAULT_VIEWPORT })
+      created.on('page', page => {
+        // Pages we open ourselves have no opener; popups do.
+        void page.opener().then(opener => {
+          if (opener) for (const listener of popupListeners) listener(page)
+        })
+      })
+      context = created
+    }
+    return context
+  }
+
   return {
     async acquire() {
-      if (page && !page.isClosed()) return page
-      if (!browser?.isConnected()) {
-        browser = await launch()
-        context = undefined
-      }
-      context ??= await browser.newContext({ viewport: options.viewport ?? DEFAULT_VIEWPORT })
-      page = await context.newPage()
-      return page
+      const current = await ensureContext()
+      return current.pages().find(page => !page.isClosed()) ?? current.newPage()
+    },
+    async open() {
+      return (await ensureContext()).newPage()
+    },
+    async closePage(page) {
+      await page.close().catch(() => {})
+    },
+    onPopup(listener) {
+      popupListeners.push(listener)
     },
     async release() {
       const current = browser
       browser = undefined
       context = undefined
-      page = undefined
       await current?.close().catch(() => {})
     },
   }
@@ -99,8 +128,14 @@ export function launchPageSource(options: LaunchSourceOptions = {}): PageSource 
 export interface CdpSourceOptions {
   /** `http://127.0.0.1:<port>` of a Chromium remote-debugging endpoint. */
   endpoint(): Promise<string>
-  /** CDP target id of the one page this source may drive. */
+  /** CDP target id of the first page this source may drive. */
   targetId(): Promise<string>
+  /** Create another page in the host app (a new tab) and return its target id. */
+  openTarget?(): Promise<string>
+  /** Show this target to the user. */
+  activateTarget?(targetId: string): Promise<void>
+  /** Destroy a target the host created. */
+  closeTarget?(targetId: string): Promise<void>
   /** Make the page paint before acting, e.g. show the desktop browser panel. */
   prepare?(): Promise<void>
 }
@@ -116,44 +151,62 @@ async function targetIdOf(page: Page): Promise<string | undefined> {
 }
 
 /**
- * A page that already exists in another Chromium (the Electron app's embedded
- * view), reached over CDP. Only the page with the given target id is ever
- * driven; every other page of that browser — the app's own UI — is ignored.
+ * Pages that live in another Chromium (the Electron app's embedded views),
+ * reached over CDP. Only targets the host app hands out are ever driven; every
+ * other page of that browser — the app's own UI — is ignored.
  */
 export function cdpPageSource(options: CdpSourceOptions): PageSource {
   let browser: Browser | undefined
-  let page: Page | undefined
+  const targets = new WeakMap<Page, string>()
+
+  const connect = async (): Promise<Browser> => {
+    if (browser?.isConnected()) return browser
+    try {
+      browser = await (await chromiumType()).connectOverCDP(await options.endpoint())
+      return browser
+    } catch (error) {
+      throw new BrowserError('BROWSER_UNAVAILABLE', `could not attach to the in-app browser: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+    }
+  }
+
+  const find = async (wanted: string): Promise<Page> => {
+    const current = await connect()
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      for (const candidate of current.contexts().flatMap(context => context.pages())) {
+        if (await targetIdOf(candidate).catch(() => undefined) === wanted) {
+          targets.set(candidate, wanted)
+          return candidate
+        }
+      }
+      // A view created just now can take a moment to surface as a target.
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    throw new BrowserError('BROWSER_UNAVAILABLE', 'the in-app browser page was not found')
+  }
+
   return {
     async acquire() {
-      if (page && !page.isClosed() && browser?.isConnected()) return page
-      if (!browser?.isConnected()) {
-        try {
-          browser = await (await chromiumType()).connectOverCDP(await options.endpoint())
-        } catch (error) {
-          throw new BrowserError('BROWSER_UNAVAILABLE', `could not attach to the in-app browser: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
-        }
-      }
-      const wanted = await options.targetId()
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        for (const candidate of browser.contexts().flatMap(context => context.pages())) {
-          if (await targetIdOf(candidate).catch(() => undefined) === wanted) {
-            page = candidate
-            return page
-          }
-        }
-        // A view created just now can take a moment to surface as a target.
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
-      throw new BrowserError('BROWSER_UNAVAILABLE', 'the in-app browser page was not found')
+      return find(await options.targetId())
+    },
+    async open() {
+      if (!options.openTarget) throw new BrowserError('BROWSER_FAILED', 'this browser cannot open tabs')
+      return find(await options.openTarget())
+    },
+    async closePage(page) {
+      const id = targets.get(page)
+      if (id && options.closeTarget) await options.closeTarget(id)
+    },
+    async activate(page) {
+      const id = targets.get(page)
+      if (id) await options.activateTarget?.(id)
     },
     async prepare() {
       await options.prepare?.()
     },
     async release() {
-      page = undefined
       const current = browser
       browser = undefined
-      // Dropping the connection is enough; the embedded view belongs to the host app.
+      // Dropping the connection is enough; the embedded views belong to the host app.
       await current?.close().catch(() => {})
     },
   }

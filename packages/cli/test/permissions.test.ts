@@ -78,7 +78,7 @@ describe('browser and process permissions', () => {
 
   it('lets the agent look at and move around any page', async () => {
     const guard = guardAt('read-only', 'https://example.com/')
-    for (const name of ['browser_snapshot', 'browser_take_screenshot', 'browser_console_messages', 'browser_navigate', 'browser_reload', 'browser_resize']) {
+    for (const name of ['browser_snapshot', 'browser_take_screenshot', 'browser_console_messages', 'browser_navigate', 'browser_reload', 'browser_resize', 'browser_tabs']) {
       expect(await guard(request(name, { url: 'https://example.com' }))).toBeUndefined()
     }
   })

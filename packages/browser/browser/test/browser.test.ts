@@ -23,6 +23,10 @@ class FakeBrowser extends BrowserService {
     return { url: this._url, title: '' }
   }
 
+  tabs() {
+    return [{ id: 't1', url: this._url, title: '', active: true }]
+  }
+
   protected async runAction(action: BrowserAction): Promise<BrowserActionResult> {
     this.performed.push(action)
     if (action.op === 'click' && action.ref === 'gone') throw new BrowserError('BROWSER_STALE_REF', 'ref gone is not on the page')

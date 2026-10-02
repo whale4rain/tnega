@@ -39,7 +39,7 @@ const ALWAYS_ALLOWED = new Set([
 const BROWSER_PASSIVE = new Set([
   ...BROWSER_OBSERVE_TOOLS,
   'browser_navigate', 'browser_navigate_back', 'browser_reload',
-  'browser_scroll', 'browser_hover', 'browser_wait_for', 'browser_resize',
+  'browser_scroll', 'browser_hover', 'browser_wait_for', 'browser_resize', 'browser_tabs',
 ])
 
 /**

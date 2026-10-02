@@ -28,6 +28,7 @@ export const BROWSER_ACT_TOOLS: readonly string[] = [
   'browser_scroll',
   'browser_wait_for',
   'browser_resize',
+  'browser_tabs',
   'browser_evaluate',
 ]
 
@@ -183,6 +184,25 @@ export function browserTools(browser: BrowserService, config: ToolBrowserConfig 
       width: { type: 'number' },
       height: { type: 'number' },
     }, ['width', 'height'], (input, options) => act({ op: 'resize', width: number(input, 'width'), height: number(input, 'height') }, options)),
+    tool('browser_tabs', 'List, open, switch or close browser tabs. Every other browser tool works on the active tab.', {
+      action: { type: 'string', enum: ['list', 'new', 'select', 'close'] },
+      id: { type: 'string', description: 'Tab id from the list, for select and close (close defaults to the active tab)' },
+      url: { type: 'string', description: 'Address to open in the new tab' },
+    }, ['action'], async (input, options) => {
+      const action = input.action
+      const id = optionalText(input, 'id')
+      if (action === 'new') {
+        const url = optionalText(input, 'url')
+        return act({ op: 'tab_new', ...(url ? { url } : {}) }, options)
+      }
+      if (action === 'select') return act({ op: 'tab_select', id: text(input, 'id') }, options)
+      if (action === 'close') return act({ op: 'tab_close', ...(id ? { id } : {}) }, options)
+      if (action !== 'list') throw new TypeError('action must be list, new, select or close')
+      const tabs = browser.tabs()
+      return tabs.length
+        ? tabs.map(tab => `${tab.active ? '*' : ' '} ${tab.id}  ${tab.title || '(untitled)'}  ${tab.url}`).join('\n')
+        : 'No tabs open yet; browser_navigate opens one.'
+    }),
     tool('browser_take_screenshot', 'Capture what the page looks like, to check layout, styling and visual bugs. The image is attached for you to look at; use browser_snapshot to find elements.', {
       fullPage: { type: 'boolean', description: 'Capture the whole scrollable page' },
       ref: { ...REF, description: 'Capture only this element' },

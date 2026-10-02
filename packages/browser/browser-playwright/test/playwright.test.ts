@@ -122,7 +122,7 @@ describe('live view', () => {
       const states: string[] = []
       const off = host.live.subscribe(event => {
         if (event.type === 'frame') frames.push(event)
-        else states.push(event.url)
+        else if (event.type === 'state') states.push(event.url)
       })
       await expect.poll(() => frames.length, { timeout: 10_000 }).toBeGreaterThan(0)
       expect(frames[0]!.width).toBe(800)
@@ -140,6 +140,67 @@ describe('live view', () => {
       expect(host.state().url).toBe(`${base}/`)
       expect(states).toContain(`${base}/missing`)
       off()
+    } finally {
+      await host.close()
+    }
+  }, 60_000)
+})
+
+describe('tabs, viewport and element picking', () => {
+  it('opens, switches and closes tabs, adopts popups, and keeps every tab at the UI size', async ({ skip }) => {
+    if (!available) skip()
+    const host = new PlaywrightBrowserHost(launchPageSource({ headless: true }))
+    try {
+      await host.userNavigate(base)
+      await host.setViewport(640, 480)
+      expect(host.tabs()).toMatchObject([{ id: 't1', active: true, title: 'Todo' }])
+
+      const second = await host.newTab(`${base}/missing`)
+      expect(second).toMatchObject({ id: 't2', active: true })
+      expect((await host.page()).viewportSize()).toEqual({ width: 640, height: 480 })
+
+      await host.selectTab('t1')
+      expect(host.state().url).toBe(`${base}/`)
+      await host.closeTab('t2')
+      expect(host.tabs().map(tab => tab.id)).toEqual(['t1'])
+
+      // A link that opens a new window becomes the active tab.
+      const page = await host.page()
+      await page.evaluate(`document.body.insertAdjacentHTML('beforeend', '<a id="out" target="_blank" href="${base}/missing">out</a>')`)
+      await page.click('#out')
+      await expect.poll(() => host.tabs().length).toBe(2)
+      await expect.poll(() => host.tabs().find(tab => tab.active)?.url).toBe(`${base}/missing`)
+
+      await host.closeTab()
+      await host.closeTab()
+      expect(host.tabs()).toHaveLength(1)
+      expect(host.tabs()[0]!.url).toBe('about:blank')
+    } finally {
+      await host.close()
+    }
+  }, 60_000)
+
+  it('lets the user point at an element and returns its description and picture', async ({ skip }) => {
+    if (!available) skip()
+    const host = new PlaywrightBrowserHost(launchPageSource({ headless: true }))
+    try {
+      await host.userNavigate(base)
+      const page = await host.page()
+      const picking = host.pick()
+      await page.waitForFunction('typeof window.__tnegaPickCancel === "function"')
+      const box = (await page.locator('#add').boundingBox())!
+      await page.mouse.move(box.x + 4, box.y + 4)
+      await page.mouse.click(box.x + 4, box.y + 4)
+      const result = await picking
+      expect(result?.element).toMatchObject({ tag: 'button', selector: '#add', text: 'Add' })
+      expect(result?.image?.data.length).toBeGreaterThan(200)
+      // Picking swallowed the click: the button did not add an empty todo.
+      expect(await page.locator('li').count()).toBe(0)
+
+      const cancelled = host.pick()
+      await page.waitForFunction('typeof window.__tnegaPickCancel === "function"')
+      await host.cancelPick()
+      expect(await cancelled).toBeUndefined()
     } finally {
       await host.close()
     }

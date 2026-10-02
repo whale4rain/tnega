@@ -20,6 +20,11 @@ export type BrowserAction =
   /** Waits for text to appear, to disappear, or for a fixed time. */
   | { op: 'wait'; text?: string; textGone?: string; ms?: number }
   | { op: 'resize'; width: number; height: number }
+  /** Open a tab (optionally at a URL) and make it active. */
+  | { op: 'tab_new'; url?: string }
+  | { op: 'tab_select'; id: string }
+  /** Close a tab, the active one by default; the last tab is replaced by a blank one. */
+  | { op: 'tab_close'; id?: string }
 
 export type BrowserActionOp = BrowserAction['op']
 
@@ -27,6 +32,12 @@ export type BrowserActionOp = BrowserAction['op']
 export interface BrowserPageState {
   url: string
   title: string
+}
+
+/** One open tab. Actions and observations apply to the active tab. */
+export interface BrowserTab extends BrowserPageState {
+  id: string
+  active: boolean
 }
 
 export interface BrowserActionResult extends BrowserPageState {
