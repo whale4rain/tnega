@@ -18,6 +18,7 @@ export {
 } from './models.js'
 export { openaiCompatAdapter, listModels } from './openai.js'
 export { createLlmAdapter } from './provider.js'
+export { isImageRejection, withImageFallback } from './images.js'
 export {
   DEFAULT_LLM_MAX_RETRIES,
   DEFAULT_MAX_IMAGES,

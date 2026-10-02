@@ -30,13 +30,15 @@ export interface ModelDefinition {
 export type ReasoningEffort = 'low' | 'medium' | 'high'
 
 /**
- * Model families known to accept image input. Unknown models are treated as
- * text-only; a configured route can override with `vision: true`.
+ * Model families known to reject image input. Everything else is assumed to
+ * accept images: a wrong "yes" costs one rejected request (the adapter then
+ * retries without images and remembers), a wrong "no" silently blinds the
+ * model. A configured route can still set `vision` explicitly.
  */
-const VISION_MODEL = /(?:^|[/-])(?:claude-|gpt-4o|gpt-4.1|gpt-5|o[34](?:[.-]|$)|gemini-|grok-4|llama-4|pixtral|kimi-k2.5|glm-4.dv)|(?:^|[-_.])vl(?:[-_.]|$)|vision/iu
+const TEXT_ONLY_MODEL = /^(?:gpt-3.5|o1-mini|o3-mini|deepseek-reasoner|deepseek-coder|text-|.*embedding)/iu
 
 export function supportsVision(model: string): boolean {
-  return VISION_MODEL.test(model)
+  return !TEXT_ONLY_MODEL.test(model.trim())
 }
 
 /** Request features are resolved by the LLM seam, not inferred by the UI. */

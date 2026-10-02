@@ -65,6 +65,8 @@ export interface SystemConfig {
   temperature?: number
   reasoningEffort?: ReasoningEffort
   contextWindow?: number
+  /** Override the image-input heuristic for the default route. */
+  vision?: boolean
   models?: ConfiguredModel[]
   workspaces?: string[]
   /** Browser launched for the agent's `browser_*` tools outside the desktop app. */
@@ -194,7 +196,7 @@ export function effectiveLlmConfig(
   if (config.temperature !== undefined) result.temperature = config.temperature
   const contextWindow = profile?.contextWindow ?? config.contextWindow ?? lookupModel(model)?.contextWindow
   if (contextWindow !== undefined) result.contextWindow = contextWindow
-  const capabilities = modelCapabilities(model, protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile?.vision)
+  const capabilities = modelCapabilities(model, protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile ? profile.vision : config.vision)
   result.vision = capabilities.vision
   const supported = capabilities.reasoningEfforts
   const defaultEffort = profile?.reasoningEffort ?? config.reasoningEffort
@@ -219,7 +221,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
     return {
       id,
       name: profile?.name ?? id,
-      ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile?.vision),
+      ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile ? profile.vision : config.vision),
       apiKeySet: route.apiKeySet,
       ...(route.contextWindow !== undefined ? { contextWindow: route.contextWindow } : {}),
     }
@@ -279,6 +281,7 @@ function normalizeConfig(value: unknown): SystemConfig {
     config.temperature = record.temperature
   }
   if (isContextWindow(record.contextWindow)) config.contextWindow = record.contextWindow
+  if (typeof record.vision === 'boolean') config.vision = record.vision
   if (record.reasoningEffort === 'low' || record.reasoningEffort === 'medium' || record.reasoningEffort === 'high') {
     config.reasoningEffort = record.reasoningEffort
   }

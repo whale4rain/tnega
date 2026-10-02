@@ -5,6 +5,7 @@ import type { ModelAttachment, ModelMessage } from '@tnega/session'
 
 import {
   anthropicMessagesAdapter,
+  createLlmAdapter,
   modelCapabilities,
   openaiCompatAdapter,
   prepareImages,
@@ -42,13 +43,13 @@ afterEach(() => {
 })
 
 describe('image capability', () => {
-  it('recognises vision model families and honours a configured override', () => {
+  it('assumes images work unless the model is known to be text-only, and honours an override', () => {
     expect(supportsVision('claude-sonnet-4-6')).toBe(true)
-    expect(supportsVision('gpt-4o-mini')).toBe(true)
-    expect(supportsVision('qwen2.5-vl-72b')).toBe(true)
-    expect(supportsVision('deepseek-v4-flash')).toBe(false)
-    expect(modelCapabilities('deepseek-v4-flash').vision).toBe(false)
-    expect(modelCapabilities('deepseek-v4-flash', 'openai', undefined, true).vision).toBe(true)
+    expect(supportsVision('deepseek-flash')).toBe(true)
+    expect(supportsVision('some-new-model')).toBe(true)
+    expect(supportsVision('deepseek-reasoner')).toBe(false)
+    expect(supportsVision('gpt-3.5-turbo')).toBe(false)
+    expect(modelCapabilities('deepseek-flash', 'openai', undefined, false).vision).toBe(false)
   })
 })
 
@@ -67,7 +68,7 @@ describe('prepareImages', () => {
   })
 
   it('replaces every image with a note for a text-only model', () => {
-    const prepared = prepareImages([{ role: 'user', content: '', attachments: [PNG] }], { model: 'deepseek-v4-flash' })
+    const prepared = prepareImages([{ role: 'user', content: '', attachments: [PNG] }], { vision: false })
     expect(prepared[0]).toEqual({ role: 'user', content: '[1 image omitted: this model does not accept images]' })
   })
 })
@@ -99,13 +100,13 @@ describe('openaiCompatAdapter images', () => {
     })
   })
 
-  it('sends plain text to a text-only model', async () => {
+  it('sends plain text to a model configured as text-only', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
     })) as FetchMock
     vi.stubGlobal('fetch', fetchMock)
 
-    await openaiCompatAdapter({ apiKey: 'k', model: 'deepseek-v4-flash' }).complete(conversation, [], {})
+    await openaiCompatAdapter({ apiKey: 'k', model: 'deepseek-flash', vision: false }).complete(conversation, [], {})
 
     const { messages } = requestBody(fetchMock)
     expect(messages).toHaveLength(3)
@@ -144,5 +145,34 @@ describe('anthropicMessagesAdapter images', () => {
         ],
       }],
     })
+  })
+})
+
+describe('image fallback', () => {
+  it('retries once without images when the provider rejects them, then stays text-only', async () => {
+    const bodies: Array<{ messages: Array<Record<string, unknown>> }> = []
+    const fetchMock = vi.fn(async (_url: unknown, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { messages: Array<Record<string, unknown>> }
+      bodies.push(body)
+      if (JSON.stringify(body).includes('image_url')) {
+        return new Response(JSON.stringify({ error: { message: 'This model does not support image input' } }), { status: 400 })
+      }
+      return jsonResponse({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] })
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0 })
+
+    expect((await adapter.complete(conversation, [], {})).content).toBe('ok')
+    expect(bodies).toHaveLength(2)
+    expect(String(bodies[1]!.messages[0]!.content)).toContain('image omitted')
+
+    await adapter.complete(conversation, [], {})
+    expect(bodies).toHaveLength(3)
+  })
+
+  it('leaves other failures alone', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 })))
+    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0 })
+    await expect(adapter.complete(conversation, [], {})).rejects.toThrow()
   })
 })
