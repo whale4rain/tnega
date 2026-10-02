@@ -112,6 +112,26 @@ function legacyWindowsConfigPath(): string | undefined {
   return legacy === systemConfigPath() ? undefined : legacy
 }
 
+/** The config file exists but is not valid JSON; writing over it would lose it. */
+export class SystemConfigError extends Error {
+  override name = 'SystemConfigError'
+  constructor(readonly file: string, reason: string) {
+    super(`${file} is not valid JSON (${reason}); fix or remove it before saving settings`)
+  }
+}
+
+/** Why the config file cannot be read, or undefined when it is fine or absent. */
+export async function systemConfigProblem(file = systemConfigPath()): Promise<string | undefined> {
+  const text = await readFile(file, 'utf8').catch(() => undefined)
+  if (text === undefined) return undefined
+  try {
+    JSON.parse(text)
+    return undefined
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
 export async function readSystemConfig(file = systemConfigPath()): Promise<SystemConfig> {
   const config = await readConfigFile(file)
   if (config !== undefined) return config
@@ -158,6 +178,9 @@ export async function updateSystemConfig(
   patch: SystemConfigPatch,
   file = systemConfigPath(),
 ): Promise<SystemConfig> {
+  // Reads fall back to defaults for a broken file; a write must not replace it.
+  const problem = await systemConfigProblem(file)
+  if (problem) throw new SystemConfigError(file, problem)
   const current = await readSystemConfig(file)
   const next: SystemConfig = { ...current }
   for (const [key, value] of Object.entries(patch)) {

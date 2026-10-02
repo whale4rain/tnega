@@ -77,7 +77,9 @@ import {
   effectiveLlmConfig,
   availableModels,
   readSystemConfig,
+  SystemConfigError,
   systemConfigPath,
+  systemConfigProblem,
   updateSystemConfig,
   normalizeApprovalReviewer,
   type EffectiveLlmConfig,
@@ -334,6 +336,10 @@ async function handleRequest(
       await handleStatic(req, res, url.pathname, context.webRoot)
     }
   } catch (error) {
+    if (error instanceof SystemConfigError) {
+      sendError(res, 409, error.message)
+      return
+    }
     if (error instanceof HttpError) {
       sendError(res, error.status, error.message)
       return
@@ -419,7 +425,8 @@ async function handleApi(
 
   if (url.pathname === '/api/config' && req.method === 'GET') {
     const config = await readSystemConfig(context.configFile)
-    sendJson(res, 200, configSnapshot(config, context.configFile))
+    const problem = await systemConfigProblem(context.configFile)
+    sendJson(res, 200, { ...configSnapshot(config, context.configFile), ...(problem ? { problem } : {}) })
     return
   }
 

@@ -81,6 +81,11 @@ export function SettingsDialog({
         </>
       }
     >
+      {config?.problem && (
+        <div className="notice notice-error" role="alert">
+          The config file could not be read, so nothing will be saved over it: {config?.problem}
+        </div>
+      )}
       {effective && (
         <div className="effective-card">
           <div className="effective-row"><span>Active model</span><strong>{effective.modelId || effective.model || '—'}</strong></div>

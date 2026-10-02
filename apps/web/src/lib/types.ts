@@ -187,6 +187,8 @@ export interface ModelOption {
 
 export interface ConfigSnapshot {
   apiKeySet: boolean
+  /** The config file exists but could not be parsed; saving is refused until it is fixed. */
+  problem?: string
   effective: {
     baseUrl: string
     model: string
