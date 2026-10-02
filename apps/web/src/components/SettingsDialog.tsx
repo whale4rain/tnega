@@ -4,13 +4,17 @@ import { api, type ConfigPatch } from '../lib/api'
 import { errorText } from '../lib/hooks'
 import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, Protocol } from '../lib/types'
 import { Dialog } from './Dialog'
+import { UpdateSettings } from './UpdateButton'
+import type { DesktopUpdates } from '../lib/desktop-updates'
 
 export function SettingsDialog({
   config,
+  updates,
   onClose,
   onSaved,
 }: {
   config: ConfigSnapshot | undefined
+  updates?: DesktopUpdates | undefined
   onClose: () => void
   onSaved: (config: ConfigSnapshot) => void
 }) {
@@ -199,6 +203,7 @@ export function SettingsDialog({
         </>}
         <p className="muted small span-2">Auto review keeps your selected permissions. Uncertain or unavailable reviews return to you. Applies to Project threads by default; sessions can choose their own approval mode.</p>
       </div>
+      <UpdateSettings updates={updates} />
     </Dialog>
   )
 }

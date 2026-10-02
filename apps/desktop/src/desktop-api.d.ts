@@ -6,6 +6,24 @@ export interface TnegaDesktopApi {
   setTitleBarColors?(colors: { background: string, foreground: string }): void
   /** The agent's in-app browser, positioned over the renderer's Browser panel. */
   browser?: TnegaDesktopBrowserApi
+  /** Self-update from GitHub releases (installed builds only). */
+  updates?: TnegaDesktopUpdatesApi
+}
+
+export type TnegaDesktopUpdateState =
+  | { status: 'unsupported'; version: string }
+  | { status: 'idle'; version: string; checkedAt?: number }
+  | { status: 'checking'; version: string }
+  | { status: 'downloading'; version: string; next: string; percent: number }
+  | { status: 'ready'; version: string; next: string }
+  | { status: 'error'; version: string; message: string; checkedAt?: number }
+
+export interface TnegaDesktopUpdatesApi {
+  state(): Promise<TnegaDesktopUpdateState | undefined>
+  check(): Promise<TnegaDesktopUpdateState | undefined>
+  /** Shut the runtime down, install the downloaded version and relaunch. */
+  install(): Promise<void>
+  onState(listener: (state: TnegaDesktopUpdateState) => void): () => void
 }
 
 export interface TnegaDesktopBrowserState {

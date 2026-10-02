@@ -250,6 +250,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "package:desktop": "node scripts/package-desktop.mjs",
+    "release": "node scripts/release.mjs",
     "tnega": "node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/ts-import-loader.mjs scripts/tnega.ts",
     "test": "vitest run",
     "test:package": "pnpm build && vitest run test/publish.test.ts",

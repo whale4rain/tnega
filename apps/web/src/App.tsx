@@ -15,6 +15,7 @@ import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
 import { useDesktopChrome } from './lib/desktop-chrome'
+import { useDesktopUpdates } from './lib/desktop-updates'
 import { projectApi } from './lib/project-api'
 import type { ProjectRecord } from './lib/project-types'
 import type { AgentType, ApprovalMode, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
@@ -46,6 +47,7 @@ function setHash(hash: string): void {
 
 export function App() {
   const [theme, setTheme] = useTheme()
+  const updates = useDesktopUpdates()
   const [config, setConfig] = useState<ConfigSnapshot | undefined>()
   const [workspaces, setWorkspaces] = useState<string[] | undefined>()
   const [workspace, setWorkspace] = useStoredState<string>('tnega.workspace', '')
@@ -283,6 +285,7 @@ export function App() {
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
       {sidebarOpen && (
         <Sidebar
+          updates={updates}
           workspaces={workspaces}
           workspace={workspace || undefined}
           onSelectWorkspace={chooseWorkspace}
@@ -405,7 +408,7 @@ export function App() {
           }}
         />
       )}
-      {dialog === 'settings' &&<SettingsDialog config={config} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
+      {dialog === 'settings' &&<SettingsDialog config={config} updates={updates} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
       {dialog === 'workspace' && (
         <WorkspaceDialog
           onClose={() => setDialog(undefined)}

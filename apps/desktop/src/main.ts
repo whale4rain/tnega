@@ -7,12 +7,25 @@ import { DesktopBrowser, enableBrowserDebugging } from './browser.js'
 import { closeDesktopRuntime } from './shutdown.js'
 import { installTray } from './tray.js'
 import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from './titlebar.js'
+import { UpdateController, type UpdaterLike } from './updater.js'
+import electronUpdater from 'electron-updater'
 
 let server: WebServer | undefined
 let browser: DesktopBrowser | undefined
 let allowedOrigin = ''
 let quitting = false
 let tray: ReturnType<typeof installTray> | undefined
+let updates: UpdateController | undefined
+
+/** Only an installed build has a release feed (`app-update.yml`) to follow. */
+function createUpdates(): UpdateController {
+  const updater: UpdaterLike | undefined = app.isPackaged ? electronUpdater.autoUpdater : undefined
+  const controller = new UpdateController({ version: app.getVersion(), updater })
+  controller.subscribe(state => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('tnega:update-state', state)
+  })
+  return controller
+}
 
 function appRoot(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'tnega-runtime')
@@ -67,6 +80,18 @@ function installDesktopHandlers(): void {
   ipcMain.on('tnega:version', event => {
     if (isTrustedSender(event.senderFrame?.url ?? '')) event.returnValue = app.getVersion()
   })
+  ipcMain.handle('tnega:update-state', event => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined
+    return updates?.state()
+  })
+  ipcMain.handle('tnega:update-check', async event => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined
+    return updates?.check()
+  })
+  ipcMain.handle('tnega:update-install', event => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '') || !updates?.ready()) return
+    void closeAndExit({ restartIntoUpdate: true })
+  })
 }
 
 async function createWindow(): Promise<void> {
@@ -107,22 +132,28 @@ async function createWindow(): Promise<void> {
   await window.loadURL(server.url)
 }
 
-async function closeAndExit(): Promise<void> {
+async function closeAndExit(options: { restartIntoUpdate?: boolean } = {}): Promise<void> {
   if (quitting) return
   quitting = true
   tray?.dispose()
   tray = undefined
+  updates?.stop()
   await closeDesktopRuntime(server)
   server = undefined
   await browser?.dispose().catch(() => {})
   browser = undefined
-  app.exit(0)
+  // A downloaded update installs on the way out; the update button also relaunches.
+  if (options.restartIntoUpdate) updates?.install()
+  else if (updates?.installOnExit()) return
+  else app.exit(0)
 }
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   installDesktopHandlers()
+  updates = createUpdates()
   await createWindow()
+  updates.start()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow()
   })

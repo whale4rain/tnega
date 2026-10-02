@@ -25,6 +25,8 @@ import type { ProjectRecord } from '../lib/project-types'
 import type { SessionSummary } from '../lib/types'
 import { AgentAvatar } from './AgentAvatar'
 import { Menu } from './Menu'
+import { UpdateButton } from './UpdateButton'
+import type { DesktopUpdates } from '../lib/desktop-updates'
 
 const DAY = 86_400_000
 
@@ -62,6 +64,7 @@ export function Sidebar({
   theme,
   onThemeChange,
   onCollapse,
+  updates,
   mode,
   onModeChange,
   projects,
@@ -93,6 +96,8 @@ export function Sidebar({
   theme: ThemePreference
   onThemeChange: (theme: ThemePreference) => void
   onCollapse: () => void
+  /** Desktop self-update; absent in the browser. */
+  updates?: DesktopUpdates | undefined
 }) {
   const [query, setQuery] = useState('')
   const filtered = useMemo(() => {
@@ -212,6 +217,7 @@ export function Sidebar({
           <Settings size={16} />
           <span>Settings</span>
         </button>
+        <UpdateButton updates={updates} />
         <ThemeSwitch value={theme} onChange={onThemeChange} />
       </div>
     </aside>

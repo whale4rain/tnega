@@ -2,6 +2,14 @@ appId: dev.tnega.desktop
 productName: Tnega
 directories:
   output: release
+# The update feed: electron-builder writes latest.yml (+ blockmaps) beside the
+# installers, and electron-updater in the installed app reads it from the
+# latest GitHub release. See docs/releases/publishing.md.
+publish:
+  provider: github
+  owner: whale4rain
+  repo: tnega
+  releaseType: release
 files:
   - out/**
   - build/icon.png
