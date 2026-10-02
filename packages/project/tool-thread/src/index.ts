@@ -140,7 +140,7 @@ export const toolThread = {
     tools.register({
       schema: {
         name: 'send_thread_message',
-        description: 'Send a message to your direct parent or a direct child thread through its inbox. Use kind complete/blocked/failed/request to conclude or block the work you are doing — the project updates the thread state from the message kind.',
+        description: 'Send a message to your direct parent or a direct child thread through its inbox. The project sets your thread state from the kind: request (waiting for an answer), blocked, failed, complete (done) or progress. Your final answer at the end of a turn already reaches your parent as complete, so use this for request, blocked or failed before ending the turn, for a material mid-work discovery, or with kind dispatch to give a child new direction.',
         parameters: {
           type: 'object',
           properties: {
