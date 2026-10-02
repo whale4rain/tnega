@@ -100,55 +100,65 @@
   --wx-rainbow-3: #4fb5ff;
 }
 
+/*
+ * Night sky. Elevation is lightness, not shadow: bg < surface < raised, each
+ * a measurable step (≥1.08:1). Neutrals are a desaturated blue-grey rather
+ * than saturated navy, which tires the eye over long reading. Every text
+ * colour meets WCAG AA on every surface (tertiary text ≥4.5:1, body ≥14:1);
+ * the accent is a soft sky blue that reads as text and carries dark text as
+ * a fill. Borders are steps of the same blue-grey so they hold on any
+ * surface. Measured with docs/design/tnega-design.md#contrast.
+ */
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #10141d;
-  --bg-sidebar: #0c1018;
-  --surface: #171c27;
-  --surface-raised: #1c2230;
-  --surface-sunken: #131823;
-  --surface-hover: rgba(226, 234, 248, 0.05);
-  --surface-active: rgba(226, 234, 248, 0.09);
-  --border: #252d3c;
-  --border-strong: #333e52;
-  --border-focus: #7fb0f5;
+  --bg: #0f131a;
+  --bg-sidebar: #0c1016;
+  --surface: #171c26;
+  --surface-raised: #1f2531;
+  --surface-sunken: #12161e;
+  --surface-hover: rgba(200, 214, 238, 0.06);
+  --surface-active: rgba(200, 214, 238, 0.1);
+  --border: #2a3240;
+  --border-strong: #3b4659;
+  --border-focus: #8ab4f8;
 
-  --text: #e5e9f1;
-  --text-2: #a3adbd;
-  --text-3: #6f7a8c;
-  --text-inverse: #0f131b;
+  --text: #e8ebf1;
+  --text-2: #b0b9c7;
+  --text-3: #8d98aa;
+  --text-inverse: #0b0f15;
 
-  --accent: #7fb0f5;
-  --accent-hover: #99c1f8;
-  --accent-soft: rgba(127, 176, 245, 0.14);
-  --accent-text: #a2c6fa;
+  --accent: #8ab4f8;
+  --accent-hover: #a5c6fa;
+  --accent-soft: rgba(138, 180, 248, 0.14);
+  --accent-text: #a8c7fa;
 
-  --success: #6ec497;
-  --success-soft: rgba(110, 196, 151, 0.12);
-  --warn: #e0ad58;
-  --warn-soft: rgba(224, 173, 88, 0.12);
-  --danger: #ec847b;
-  --danger-soft: rgba(236, 132, 123, 0.12);
+  --success: #7dcfa0;
+  --success-soft: rgba(125, 207, 160, 0.13);
+  --warn: #ecbc6b;
+  --warn-soft: rgba(236, 188, 107, 0.13);
+  --danger: #f28b82;
+  --danger-soft: rgba(242, 139, 130, 0.13);
 
-  --code-bg: #131823;
-  --code-border: #252d3c;
-  --selection: rgba(127, 176, 245, 0.26);
+  --code-bg: #12161e;
+  --code-border: #2a3240;
+  --selection: rgba(138, 180, 248, 0.28);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
-  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.32), 0 8px 20px -6px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.36), 0 28px 56px -12px rgba(0, 0, 0, 0.62);
-  --scrim: rgba(0, 0, 0, 0.52);
-  --avatar-ink: #4a5266;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.45), 0 28px 60px -12px rgba(0, 0, 0, 0.7);
+  --scrim: rgba(4, 6, 10, 0.62);
+  --avatar-ink: #4d566a;
 
-  --wx-sun: #f2b84b;
-  --wx-cloud: #3b465c;
-  --wx-rain: #6fa9f2;
-  --wx-snow: #c4dcf7;
-  --wx-storm: #8b80ec;
+  /* Weather at night: brighter precipitation, a dim cloud, a warm moonlit sun. */
+  --wx-sun: #f5c25c;
+  --wx-cloud: #3a4458;
+  --wx-rain: #7ab3f5;
+  --wx-snow: #d2e3f8;
+  --wx-storm: #a59cf5;
   --wx-bolt: #ffd257;
-  --wx-fog: #5d6a80;
-  --wx-sprite: #ff6aa1;
-  --wx-rainbow-1: #ff86a4;
-  --wx-rainbow-2: #ffcd66;
-  --wx-rainbow-3: #6cc2ff;
+  --wx-fog: #6b7891;
+  --wx-sprite: #ff7aab;
+  --wx-rainbow-1: #ff8fab;
+  --wx-rainbow-2: #ffd06e;
+  --wx-rainbow-3: #7cc7ff;
 }
