@@ -15,6 +15,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../lib/api'
 import { errorText, relativeTime } from '../../lib/hooks'
+import { confirmDialog } from '../../lib/dialogs'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import type { ProjectState } from '../../lib/project-model'
 import { activeCount, formatBytes, overview, plainPreview, workerThreads } from '../../lib/project-model'
@@ -177,7 +178,7 @@ function MemoryItem({ workspace, state, record }: { workspace: string; state: Pr
   }
 
   const remove = async () => {
-    if (!confirm('Forget this memory? It stays in the version history.')) return
+    if (!await confirmDialog({ title: 'Forget this memory?', message: 'It stays in the version history.', confirmLabel: 'Forget', danger: true })) return
     try {
       await projectApi.deleteMemory(workspace, projectId, record.id, await currentVersion())
     } catch (reason) {
@@ -502,7 +503,12 @@ export function SettingsPanel({
   }
 
   const remove = async () => {
-    if (!confirm(`Delete “${project.name}” with all of its threads, memory and library? This can't be undone.`)) return
+    if (!await confirmDialog({
+      title: 'Delete project?',
+      message: `“${project.name}” will be deleted with all of its threads, memory and library. This can't be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return
     try {
       await projectApi.remove(workspace, project.id)
       onDeleted()

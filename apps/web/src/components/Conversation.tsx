@@ -30,6 +30,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
 import { errorText, folderName } from '../lib/hooks'
+import { confirmDialog } from '../lib/dialogs'
 import { applyStream, beginRun, formatTokens, fromEvents, type Entry } from '../lib/timeline'
 import type {
   AgentType,
@@ -524,7 +525,12 @@ export function Conversation({
 
   const remove = async () => {
     if (!sessionId) return
-    if (!confirm(`Delete “${summary?.title || 'this session'}”? This can't be undone.`)) return
+    if (!await confirmDialog({
+      title: 'Delete session?',
+      message: `“${summary?.title || 'This session'}” will be deleted. This can't be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return
     try {
       await api.deleteSession(workspace, sessionId)
       onSessionDeleted(sessionId)

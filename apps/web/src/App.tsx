@@ -19,6 +19,7 @@ import { useDesktopUpdates } from './lib/desktop-updates'
 import { projectApi } from './lib/project-api'
 import type { ProjectRecord } from './lib/project-types'
 import type { AgentType, ApprovalMode, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
+import { confirmDialog, noticeDialog } from './lib/dialogs'
 
 type Mode = 'sessions' | 'projects'
 
@@ -263,7 +264,7 @@ export function App() {
         select(undefined)
       }
     } catch (reason) {
-      alert(errorText(reason))
+      void noticeDialog('Something went wrong', errorText(reason))
     }
   }
 
@@ -273,18 +274,23 @@ export function App() {
       setSessions(list => [session, ...list])
       select(session.id)
     } catch (reason) {
-      alert(errorText(reason))
+      void noticeDialog('Something went wrong', errorText(reason))
     }
   }
 
   const deleteSession = async (session: SessionSummary) => {
-    if (!confirm(`Delete “${session.title || 'Untitled session'}”? This can't be undone.`)) return
+    if (!await confirmDialog({
+      title: 'Delete session?',
+      message: `“${session.title || 'Untitled session'}” will be deleted. This can't be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return
     try {
       await api.deleteSession(workspace, session.id)
       setSessions(list => list.filter(s => s.id !== session.id))
       if (session.id === selectedId) select(undefined)
     } catch (reason) {
-      alert(errorText(reason))
+      void noticeDialog('Something went wrong', errorText(reason))
     }
   }
 

@@ -51,6 +51,7 @@ describe.each(Object.entries(THEMES))('%s palette', (name, t) => {
 
   it('keeps accent fills readable and borders visible', () => {
     expect(contrast(t['text-inverse']!, t.accent!)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(t['text-inverse']!, t.danger!), 'danger button').toBeGreaterThanOrEqual(4.5)
     expect(contrast(t.border!, t.surface!)).toBeGreaterThanOrEqual(1.25)
     expect(contrast(t['border-strong']!, t.surface!)).toBeGreaterThanOrEqual(1.6)
   })

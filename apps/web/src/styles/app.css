@@ -227,6 +227,16 @@ kbd {
   color: var(--text);
 }
 
+.button.danger {
+  background: var(--danger);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-sm);
+}
+
+.button.danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
 .button.small {
   height: 28px;
   padding: 0 11px;
@@ -2804,6 +2814,13 @@ kbd {
   gap: 8px;
   padding: 14px 20px 18px;
   border-top: 1px solid var(--border);
+}
+
+.confirm-message {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .form-error {

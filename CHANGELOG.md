@@ -38,6 +38,11 @@ compare links provide a convenient browser view of the boundaries.
   window. Git Bash cannot run inside the Windows sandbox and is rejected with
   a reason. Killing a timed-out command also stops children the shell was
   still starting.
+- Workbench Files can hide its file tree from the toolbar to give the editor
+  the full width; the choice is remembered.
+- Deleting a session or project, forgetting memory, discarding unsaved edits
+  and error notices use the app's own dialog instead of the browser's native
+  boxes.
 
 ## [0.4.9](https://github.com/whale4rain/tnega/releases/tag/v0.4.9) — 2026-10-03
 
