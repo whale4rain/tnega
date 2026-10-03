@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { Block, Entry, ToolView } from '../lib/timeline'
 import { applyStream, beginRun } from '../lib/timeline'
 import { Timeline } from './Timeline'
@@ -153,4 +153,15 @@ it('shows office files a finished turn produced and opens them on click', () => 
   cleanup()
   const live = render(createElement(Timeline, { entries: [entry], running: true, actions: {} }))
   expect(live.queryByTitle('Preview out/sales.xlsx')).toBeNull()
+})
+
+it('offers a visible fork from each finished reply, keyed to its assistant message', () => {
+  const onFork = vi.fn()
+  const reply = (id: string, forkId: string): Entry => ({ kind: 'agent', id, status: 'done', forkId, blocks: [{ kind: 'text', id: forkId, text: `reply ${id}` }] })
+  const view = render(createElement(Timeline, { entries: [reply('one', 'm1'), reply('two', 'm2')], running: false, actions: { onFork } }))
+  const forks = view.getAllByRole('button', { name: 'Fork from here' })
+  expect(forks).toHaveLength(2)
+  expect(view.container.querySelectorAll('.agent-turn.is-latest')).toHaveLength(1)
+  fireEvent.click(forks[0]!)
+  expect(onFork).toHaveBeenCalledWith('m1')
 })

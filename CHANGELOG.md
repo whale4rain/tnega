@@ -38,6 +38,11 @@ compare links provide a convenient browser view of the boundaries.
   window. Git Bash cannot run inside the Windows sandbox and is rejected with
   a reason. Killing a timed-out command also stops children the shell was
   still starting.
+- Every finished reply has a visible **Fork from here** action that starts a
+  new session continuing from that reply; the header menu's whole-session fork
+  is now labelled "Fork entire session". Forking from a reply keeps the
+  session's agent type, mode, model and title instead of falling back to a
+  General session.
 - Workbench Files can hide its file tree from the toolbar to give the editor
   the full width; the choice is remembered.
 - Deleting a session or project, forgetting memory, discarding unsaved edits

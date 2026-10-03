@@ -135,6 +135,22 @@ describe('session metadata', () => {
     })
   })
 
+  it('keeps agentType, mode and title when forking from an assistant message', async () => {
+    const workspace = await tempDir('tnega-store-fork-message-meta-')
+    const parent = await createSession(workspace, { title: 'parent coding', agentType: 'coding', mode: 'plan' })
+    await setSessionTitle(workspace, parent.id, 'renamed')
+    const writer = new SessionLog(sessionFile(workspace, parent.id))
+    await writer.init()
+    await writer.append('user/message', { content: 'q1' })
+    const answer = await writer.append('assistant/message', { content: 'a1' })
+    await writer.append('user/message', { content: 'q2' })
+    await writer.append('assistant/message', { content: 'a2' })
+    await writer.close()
+
+    const fork = await forkSession(workspace, parent.id, { messageId: answer.id })
+    expect(fork).toMatchObject({ parentSessionId: parent.id, agentType: 'coding', mode: 'plan', title: 'renamed fork' })
+  })
+
   it('persists title changes as append-only meta/patch events', async () => {
     const workspace = await tempDir('tnega-store-title-append-')
     const summary = await createSession(workspace, { title: 'before' })

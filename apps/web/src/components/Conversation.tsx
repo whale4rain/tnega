@@ -634,7 +634,7 @@ export function Conversation({
               className="icon-button small header-icon"
               trigger={<MoreHorizontal size={15} />}
               items={[
-                { key: 'fork', label: 'Fork session', icon: <GitBranch size={14} />, onSelect: () => void fork(), disabled: live },
+                { key: 'fork', label: 'Fork entire session', icon: <GitBranch size={14} />, onSelect: () => void fork(), disabled: live },
                 { key: 'compact', label: 'Compact context', icon: <Shrink size={14} />, onSelect: () => void compact(), disabled: live || entries.length === 0 },
                 'separator',
                 { key: 'delete', label: 'Delete session', icon: <Trash2 size={14} />, danger: true, onSelect: () => void remove(), disabled: live },

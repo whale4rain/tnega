@@ -314,17 +314,17 @@ export async function forkSession(
   options: { title?: string; messageId?: string } = {},
 ): Promise<SessionSummary> {
   const source = sessionFile(workspace, id)
-  const events = await withSessionLog(source, async (log) => {
+  const { allEvents, events } = await withSessionLog(source, async (log) => {
     const allEvents = await log.read()
-    if (options.messageId) return log.forkAt(options.messageId)
-    return allEvents
+    return { allEvents, events: options.messageId ? await log.forkAt(options.messageId) : allEvents }
   })
-  const headMeta = events.find(event => event.type === 'meta')
+  const headMeta = allEvents.find(event => event.type === 'meta')
   const createdAt = headMeta && (headMeta.payload as Record<string, unknown>).createdAt
   // A fork is a new session: its head meta carries the source's current
   // metadata (title/agentType/mode folded over the source's meta patches), so
-  // the source's meta/patch events need no replay here.
-  const folded = foldSessionMeta(events)
+  // the source's meta/patch events need no replay here. A message fork drops
+  // the source's meta events, so fold over the whole source log.
+  const folded = foldSessionMeta(allEvents)
   const body = events.filter(event => {
     if (event.type === 'meta/patch') return false
     if (event.type !== 'meta') return true

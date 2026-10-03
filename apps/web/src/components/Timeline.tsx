@@ -76,7 +76,7 @@ export function Timeline({ entries, running, actions, agent, sky }: { entries: r
               />
             )
           case 'agent':
-            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} justFinished={entry.id === lastAgent && justFinished} />
+            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} />
           case 'compaction':
             return <CompactionMarker key={entry.id} summary={entry.summary} tokensBefore={entry.tokensBefore} />
           case 'slash':
@@ -246,6 +246,7 @@ const AgentTurn = memo(function AgentTurn({
   actions,
   agent,
   sky,
+  latest = false,
   justFinished = false,
 }: {
   entry: Extract<Entry, { kind: 'agent' }>
@@ -253,6 +254,8 @@ const AgentTurn = memo(function AgentTurn({
   actions: TimelineActions
   agent?: TimelineAgent | undefined
   sky?: TimelineSky | undefined
+  /** The newest reply keeps its actions in view; older ones show them on hover. */
+  latest?: boolean
   justFinished?: boolean
 }) {
   const weather = sky || live || justFinished || entry.status === 'error'
@@ -289,7 +292,7 @@ const AgentTurn = memo(function AgentTurn({
   }
 
   return (
-    <div className={`agent-turn${live ? ' is-live' : ''}`}>
+    <div className={`agent-turn${live ? ' is-live' : ''}${latest ? ' is-latest' : ''}`}>
       <div className="agent-avatar" aria-hidden>
         {agent
           ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={26} live={live} weather={weather === 'clear' && !live ? undefined : weather} title={agent.role === 'coordinator' ? 'Agent' : undefined} />
@@ -318,9 +321,14 @@ const AgentTurn = memo(function AgentTurn({
               </IconAction>
             )}
             {entry.forkId && actions.onFork && (
-              <IconAction label="Fork conversation from here" onClick={() => actions.onFork?.(entry.forkId!)}>
-                <GitBranch size={14} />
-              </IconAction>
+              <button
+                type="button"
+                className="turn-action-fork"
+                title="Start a new session that continues from this reply"
+                onClick={() => actions.onFork?.(entry.forkId!)}
+              >
+                <GitBranch size={13} />Fork from here
+              </button>
             )}
           </div>
         )}
