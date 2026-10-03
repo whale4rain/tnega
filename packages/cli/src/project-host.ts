@@ -286,6 +286,11 @@ export class ProjectHost {
           seq: record.seq,
           deleted: record.deleted,
           data: record.data,
+          // 谁写的、第几版：产物卡片按作者挂到 Thread 上，编辑记忆要带版本号。
+          author: record.author,
+          version: record.version,
+          updatedAt: record.updatedAt,
+          source: record.source,
         })
       }
     }))

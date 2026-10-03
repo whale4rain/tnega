@@ -137,7 +137,7 @@ export function normalizeChecklist(items: unknown): ThreadChecklistItem[] {
     if (status !== 'pending' && status !== 'active' && status !== 'done') {
       throw new ThreadError('checklist item status must be pending, active or done', 'THREAD_INVALID')
     }
-    const trimmed = title.trim().replace(/s+/g, ' ')
+    const trimmed = title.replace(/\s+/g, ' ').trim()
     if (trimmed) out.push({ title: trimmed.length > 120 ? `${trimmed.slice(0, 119)}…` : trimmed, status })
   }
   return out

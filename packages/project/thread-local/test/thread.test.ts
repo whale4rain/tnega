@@ -179,3 +179,28 @@ it('starts a thread whose session file exists but has no agent identity yet', as
     await ctx.fiber.dispose()
   }
 })
+
+it('keeps a live checklist on the thread record and survives state changes', async () => {
+  const root = await workspace()
+  const ctx = await mount(root)
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Compare options' })
+    await ctx.threads.setChecklist(child.id, [
+      { title: '  Read both   options ', status: 'done' },
+      { title: 'Compare trade-offs', status: 'active' },
+      { title: '   ', status: 'pending' },
+    ])
+    await ctx.threads.setState(child.id, 'working')
+    expect((await ctx.threads.get(child.id))?.checklist).toEqual([
+      { title: 'Read both options', status: 'done' },
+      { title: 'Compare trade-offs', status: 'active' },
+    ])
+    await expect(ctx.threads.setChecklist(child.id, [{ title: 'x', status: 'started' as 'active' }]))
+      .rejects.toMatchObject({ code: 'THREAD_INVALID' })
+    await ctx.threads.setChecklist(child.id, [])
+    expect((await ctx.threads.get(child.id))?.checklist).toBeUndefined()
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
