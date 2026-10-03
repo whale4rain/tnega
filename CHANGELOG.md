@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.10 | [`v0.4.9...v0.4.10`](https://github.com/whale4rain/tnega/compare/v0.4.9...v0.4.10) | 9 |
 | 0.4.9 | [`v0.4.8...v0.4.9`](https://github.com/whale4rain/tnega/compare/v0.4.8...v0.4.9) | 7 |
 | 0.1.1 | Repository start through `v0.1.1` | 93 |
 | 0.3.0 | [`v0.1.1...v0.3.0`](https://github.com/whale4rain/tnega/compare/v0.1.1...v0.3.0) | 159 |
@@ -31,13 +32,18 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.10](https://github.com/whale4rain/tnega/releases/tag/v0.4.10) — 2026-10-03
+
 - The `shell` and `process_start` tools run commands in the system shell
   (PowerShell 7, then Windows PowerShell, Git Bash or cmd on Windows; `$SHELL`
   elsewhere) instead of always going through `cmd.exe`, and tell the model
   which syntax to use. Sandboxed Windows commands no longer open a console
   window. Git Bash cannot run inside the Windows sandbox and is rejected with
-  a reason. Killing a timed-out command also stops children the shell was
-  still starting.
+  a reason. PowerShell output is plain UTF-8 text (no CLIXML or colour codes),
+  and output from programs that cannot switch to UTF-8 — including PowerShell
+  under the read-only sandbox — is decoded with the system code page instead
+  of turning into replacement characters. Killing a timed-out command also
+  stops children the shell was still starting.
 - Every finished reply has a visible **Fork from here** action that starts a
   new session continuing from that reply; the header menu's whole-session fork
   is now labelled "Fork entire session". Forking from a reply keeps the
