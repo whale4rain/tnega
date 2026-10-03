@@ -11,6 +11,7 @@ import {
   SandboxService,
   type SandboxExecutionPolicy,
   type SandboxOp,
+  type ConfinedArgv,
 } from '@tnega/sandbox'
 
 /**
@@ -101,23 +102,23 @@ export function sandboxedExecution(
     argv: readonly string[],
     request: { signal?: AbortSignal },
     activePolicy: SandboxExecutionPolicy,
-  ): Promise<string[]> {
+  ): Promise<Pick<ConfinedArgv, 'argv' | 'env'>> {
     const confined = await requireSandbox().confine({
       op,
       argv,
       policy: activePolicy,
       ...(request.signal ? { signal: request.signal } : {}),
     })
-    return confined.argv
+    return { argv: confined.argv, ...(confined.env ? { env: confined.env } : {}) }
   }
 
   return {
     async runShell(request: ShellRequest) {
       const activePolicy = await policy()
       if (activePolicy.mode === 'bypass') return inner.runShell(request)
-      const argv = await confine('shell', shellArgv(request, config), request, activePolicy)
+      const confined = await confine('shell', shellArgv(request, config), request, activePolicy)
       const result = await inner.runProcess({
-        argv,
+        ...confined,
         cwd: request.cwd,
         ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
         ...(request.maxBuffer !== undefined ? { maxBuffer: request.maxBuffer } : {}),
@@ -129,8 +130,10 @@ export function sandboxedExecution(
     async runProcess(request: ProcessRequest) {
       const activePolicy = await policy()
       if (activePolicy.mode === 'bypass' || !confineProcess) return inner.runProcess(request)
-      const argv = await confine('process', request.argv, request, activePolicy)
-      return inner.runProcess({ ...request, argv })
+      const confined = await confine('process', request.argv, request, activePolicy)
+      return inner.runProcess({ ...request, ...confined,
+        ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
+      })
     },
 
     fetchHttp(request) {
@@ -144,15 +147,18 @@ export function sandboxedExecution(
           async startShell(request: BackgroundShellRequest) {
             const activePolicy = await policy()
             if (activePolicy.mode === 'bypass' && inner.startShell) return inner.startShell(request)
-            const argv = activePolicy.mode === 'bypass'
-              ? shellArgv({ command: request.command, cwd: request.cwd }, config)
+            const confined = activePolicy.mode === 'bypass'
+              ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config) }
               : await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy)
-            return inner.startProcess!({ argv, cwd: request.cwd })
+            return inner.startProcess!({ ...confined, cwd: request.cwd })
           },
           async startProcess(request: BackgroundProcessRequest) {
             const activePolicy = await policy()
             if (activePolicy.mode === 'bypass' || !confineProcess) return inner.startProcess!(request)
-            return inner.startProcess!({ ...request, argv: await confine('process', request.argv, {}, activePolicy) })
+            const confined = await confine('process', request.argv, {}, activePolicy)
+            return inner.startProcess!({ ...request, ...confined,
+              ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
+            })
           },
         }
       : {}),

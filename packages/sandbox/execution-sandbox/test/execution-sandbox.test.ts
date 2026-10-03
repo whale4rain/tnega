@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import type { ExecutionProvider, ProcessRequest, ShellRequest } from '@tnega/execution'
+import type { BackgroundProcessRequest, ExecutionProvider, ProcessRequest, ShellRequest } from '@tnega/execution'
 import {
   SandboxService,
   SandboxUnavailableError,
@@ -18,6 +18,7 @@ const WORKSPACE = process.platform === 'win32' ? 'C:\\work' : '/work'
 class RecordingSandbox extends SandboxService {
   readonly requests: SandboxConfineRequest[] = []
   unavailable = false
+  runnerEnv?: Readonly<Record<string, string>>
 
   protected override runConfine(request: SandboxMechanismRequest): ConfinedArgv {
     this.requests.push({
@@ -28,6 +29,7 @@ class RecordingSandbox extends SandboxService {
     if (this.unavailable) throw new SandboxUnavailableError('workspace-write', 'no backend')
     return {
       argv: ['RUNNER', '--', ...request.argv],
+      ...(this.runnerEnv ? { env: this.runnerEnv } : {}),
       runner: 'recording',
       enforcement: 'full',
       denialSignatures: ['denied'],
@@ -80,6 +82,17 @@ function execution(
 }
 
 describe('sandboxed execution', () => {
+  it('passes runner environment to shell and argv execution with runner precedence', async () => {
+    const { ctx, sandbox, inner } = mount()
+    sandbox.runnerEnv = { ELECTRON_RUN_AS_NODE: '1' }
+    const provider = execution(ctx, inner)
+    await provider.runShell({ command: 'echo hi', cwd: WORKSPACE })
+    await provider.runProcess({ argv: ['node', '-e', '0'], cwd: WORKSPACE,
+      env: { ELECTRON_RUN_AS_NODE: '0', CHILD_VALUE: 'kept' },
+    })
+    expect(inner.processes[0]?.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
+    expect(inner.processes[1]?.env).toEqual({ ELECTRON_RUN_AS_NODE: '1', CHILD_VALUE: 'kept' })
+  })
   it('turns a shell command into an explicit argv before it reaches the provider', async () => {
     const { ctx, sandbox, inner } = mount()
     const result = await execution(ctx, inner).runShell({
@@ -169,9 +182,9 @@ describe('sandboxed execution', () => {
 
 describe('sandboxed background processes', () => {
   class BackgroundExecution extends RecordingExecution {
-    readonly started: Array<{ argv: readonly string[]; cwd: string }> = []
+    readonly started: BackgroundProcessRequest[] = []
 
-    async startProcess(request: { argv: readonly string[]; cwd: string }) {
+    async startProcess(request: BackgroundProcessRequest) {
       this.started.push(request)
       return {
         pid: 1,
@@ -190,6 +203,17 @@ describe('sandboxed background processes', () => {
     expect(sandbox.requests[0]?.op).toBe('shell')
     expect(inner.started[0]?.argv[0]).toBe('RUNNER')
     expect(inner.started[0]?.argv.at(-1)).toBe('npm run dev')
+  })
+
+  it('preserves runner environment for both background execution paths', async () => {
+    const { ctx, sandbox } = mount()
+    sandbox.runnerEnv = { ELECTRON_RUN_AS_NODE: '1' }
+    const inner = new BackgroundExecution()
+    const provider = execution(ctx, inner)
+    await provider.startShell!({ command: 'echo hi', cwd: WORKSPACE })
+    await provider.startProcess!({ argv: ['node'], cwd: WORKSPACE, env: { CHILD_VALUE: 'kept' } })
+    expect(inner.started[0]?.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
+    expect(inner.started[1]?.env).toEqual({ ELECTRON_RUN_AS_NODE: '1', CHILD_VALUE: 'kept' })
   })
 
   it('starts nothing when no backend is usable', async () => {

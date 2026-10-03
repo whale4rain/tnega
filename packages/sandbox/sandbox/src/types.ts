@@ -98,6 +98,8 @@ export interface RunnerFailureRule {
  * 调用方直接 spawn 它即可，不需要知道 runner 是什么。
  */
 export interface ConfinedArgv {
+  /** Child-only runner environment overrides; the host remains unchanged. */
+  env?: Readonly<Record<string, string>>
   argv: string[]
   /** runner 的可读名字，用于审计与诊断（例如 `bwrap` / `windows-acl`）。 */
   runner: string

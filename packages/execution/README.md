@@ -24,6 +24,8 @@ Service Definition，也不构成能力缝。它导出的是词汇（`ShellReque
 
 ## 语义
 
+- `runProcess` / `startProcess` 的 `env` 是仅对子进程生效的环境覆盖，合并宿主环境；
+  不修改宿主进程。沙箱 Consumer 同时传递 Provider 的 runner 环境要求。
 - `runShell` 走 shell（`shell: true`）；`runProcess` 是纯 argv 向量（`shell: false`），
   模型可控的值永远是独立参数，中间没有引号层。
 - 进程的 stdin 一律指向 `/dev/null`：本仓库没有地方会写子进程的 stdin，而一个打开的

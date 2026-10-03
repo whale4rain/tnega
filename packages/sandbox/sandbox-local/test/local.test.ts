@@ -34,6 +34,25 @@ function mount(config: Config = {}): LocalSandboxService {
   })
 }
 
+it('sets Node mode only for the Electron executable running the ACL runner', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.versions, 'electron')
+  Object.defineProperty(process.versions, 'electron', { value: '44.4.3', configurable: true })
+  try {
+    const create = (command: string) => mount({
+      windowsAclRunnerCommand: [command, 'runner.js'],
+      internals: { platform: 'win32', chain: ['windows-acl'], probe: () => 'partial' },
+    })
+    const request = { op: 'shell' as const, argv: SHELL,
+      policy: { ...policy('read-only'), workspaceRoot: process.cwd() },
+    }
+    expect((await create(process.execPath).confine(request)).env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
+    expect((await create('node').confine(request)).env).toBeUndefined()
+  } finally {
+    if (descriptor) Object.defineProperty(process.versions, 'electron', descriptor)
+    else Reflect.deleteProperty(process.versions, 'electron')
+  }
+})
+
 async function confinedArgv(
   service: LocalSandboxService,
   mode: 'read-only' | 'workspace-write' = 'workspace-write',

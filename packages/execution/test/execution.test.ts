@@ -8,6 +8,15 @@ function node(script: string): readonly string[] {
 }
 
 describe('runProcess', () => {
+  it('passes runner environment overrides without changing the host environment', async () => {
+    const result = await localExecutionProvider.runProcess({
+      argv: node('process.stdout.write(process.env.TNEGA_RUNNER_TEST ?? "missing")'),
+      cwd,
+      env: { TNEGA_RUNNER_TEST: 'runner' },
+    })
+    expect(result.stdout).toBe('runner')
+    expect(process.env.TNEGA_RUNNER_TEST).toBeUndefined()
+  })
   it('runs an argv vector and captures both streams', async () => {
     const result = await localExecutionProvider.runProcess({
       argv: node('process.stdout.write("out"); process.stderr.write("err")'),

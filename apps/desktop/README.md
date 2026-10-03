@@ -46,6 +46,9 @@ pnpm --filter @tnega/desktop package
 ```
 
 `electron-builder` is configured for Windows NSIS, macOS DMG, and Linux AppImage.
+The desktop build ships the Windows ACL runner beside `out/main.js`, with
+`koffi` retained as a native runtime dependency. The sandbox launches the runner
+using Electron's Node mode without changing the application's environment.
 For a quick Windows artifact validation without an installer, run:
 
 ```bash

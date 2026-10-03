@@ -87,6 +87,9 @@ importers:
       '@lydell/node-pty-win32-x64':
         specifier: 1.1.0
         version: 1.1.0
+      koffi:
+        specifier: ^3.1.0
+        version: 3.3.1
 
   apps/web:
     dependencies:

@@ -13,10 +13,15 @@ const shared = {
   target: 'node22',
   // playwright-core loads its own files at runtime, and electron-updater reads
   // app-update.yml beside the app, so both ship as dependencies.
-  external: ['electron', 'playwright-core', 'electron-updater', '@lydell/node-pty'],
+  external: ['electron', 'playwright-core', 'electron-updater', '@lydell/node-pty', 'koffi'],
 }
 
 await Promise.all([
+  build({
+    ...shared,
+    entryPoints: [fileURLToPath(new URL('../../../packages/sandbox/sandbox-windows-acl/src/runner.ts', import.meta.url))],
+    outfile: fileURLToPath(new URL('../out/sandbox-windows-acl-runner.js', import.meta.url)),
+  }),
   build({
     ...shared,
     banner: {

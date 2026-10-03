@@ -1185,6 +1185,8 @@ function isDirectRun(): boolean {
 export async function main(rawArgs: readonly string[]): Promise<number> {
   const invocation = parseRunnerArgs(rawArgs)
   validateRunnerInvocation(invocation)
+  // Electron's Node mode belongs to this runner, not the restricted command.
+  if (process.versions.electron) delete process.env.ELECTRON_RUN_AS_NODE
   // 子进程继承的是 runner 的环境块（lpEnvironment = NULL），所以 TMP/TEMP 必须在**这里**改。
   applyPrivateTempEnvironment(invocation.mode, invocation.temp)
 

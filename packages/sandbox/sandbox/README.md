@@ -35,6 +35,9 @@ abstract class SandboxService extends Service {
 - **结果与拒绝分开**：Provider 交出的 `ConfinedArgv` 里带着它自己的 `enforcement`
   （`full` / `partial`）与 `denialSignatures`。后者必须是**本后端**的拒绝方言，不得是跨
   后端并集 —— 混在一起会把「runner 坏了」读成「被策略拒绝」。
+- **runner 环境**：`ConfinedArgv.env` 是可选的子进程环境覆盖；Consumer 与执行边界
+  必须透传，优先于调用方的同名覆盖。它不修改宿主环境，Provider 不得把该字段作为
+  放宽文件权限或绕过沙箱的通道。
 - **runner 失败不能靠退出码断言**：`RunnerFailureRule` 的判定顺序是
   `allowedExitCodes` → 整行剔除 `informationalLines` → 逐行匹配 `fatalSignatures`。
 - **模式只声明文件效果**：网络与进程可见性不在词汇里，因为当前没有后端限制它们。

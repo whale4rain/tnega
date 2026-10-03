@@ -29,6 +29,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Fix packaged Windows desktop sandbox execution: ship the ACL runner beside
+  the main bundle and launch it in Electron's Node mode, with native koffi
+  dependencies retained. Keep sandbox enforcement fail closed.
+
 ## [0.4.7](https://github.com/whale4rain/tnega/releases/tag/v0.4.7) — 2026-10-03
 
 - Store default desktop/Web/CLI Sessions, subagent and Project Thread histories

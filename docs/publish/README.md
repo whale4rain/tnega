@@ -238,6 +238,16 @@ Settings → Update channel persists Stable / Preview per desktop installation.
   installation, inspect its target and the installed executable before treating
   it as this temporary condition; do not delete a working shortcut or change
   installer settings based only on the transient prompt.
+- **Windows ACL runner missing (0.4.7):** bundling the desktop main process
+  moved the mechanism's module-relative lookup into `app.asar/out`, while the
+  runner existed only in the separate runtime `dist`. The desktop build must
+  ship `sandbox-windows-acl-runner.js` beside the main bundle and retain koffi
+  as an external native dependency. Electron must start this runner in Node
+  mode for both capability probes and execution, with that mode removed from
+  the restricted target's environment. Verify the actual packaged executable:
+  runner discovery, a successful read-only command, a rejected write, and
+  unchanged host environment. Source-checkout tests alone do not cover this.
+  Ship the correction in a new patch; do not replace published 0.4.7 assets.
 - **Bad release:** do not delete the tag clients already downloaded. Fix
   forward with a new patch version; the updater only moves forward.
 - **Code signing:** builds are unsigned, so Windows SmartScreen warns on a

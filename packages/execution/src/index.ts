@@ -22,6 +22,8 @@ export interface ShellResult {
  * value can never be re-parsed as shell syntax.
  */
 export interface ProcessRequest {
+  /** Child-only overrides; other host environment variables are inherited. */
+  env?: Readonly<Record<string, string>>
   /** Full argument vector; element 0 is the executable. */
   argv: readonly string[]
   cwd: string
@@ -62,6 +64,7 @@ export interface BackgroundShellRequest {
 }
 
 export interface BackgroundProcessRequest {
+  env?: Readonly<Record<string, string>>
   argv: readonly string[]
   cwd: string
 }
@@ -239,6 +242,7 @@ function runLocalProcess(request: ProcessRequest): Promise<ProcessResult> {
     // instead.
     () => spawn(command, args, {
       ...spawnOptions(request.cwd, 'ignore'),
+      ...(request.env ? { env: { ...process.env, ...request.env } } : {}),
       shell: false,
     }),
     {
@@ -291,7 +295,10 @@ async function startLocalShell(request: BackgroundShellRequest): Promise<Backgro
 async function startLocalProcess(request: BackgroundProcessRequest): Promise<BackgroundProcess> {
   const [command, ...args] = request.argv
   if (!command) throw new Error('process argv must name an executable')
-  return background(spawn(command, args, { ...spawnOptions(request.cwd, 'ignore'), shell: false }))
+  return background(spawn(command, args, {
+    ...spawnOptions(request.cwd, 'ignore'), shell: false,
+    ...(request.env ? { env: { ...process.env, ...request.env } } : {}),
+  }))
 }
 
 export const localExecutionProvider: ExecutionProvider = {

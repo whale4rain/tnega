@@ -3,6 +3,10 @@
 `ctx.sandbox` 的本机 Provider：把调用方的 argv 包成某个真实机制下的受限 argv，或者
 fail closed。
 
+Electron 宿主使用自身可执行文件启动 Windows ACL runner 时，探测和执行都仅给 runner
+设置 `ELECTRON_RUN_AS_NODE=1`；runner 启动受限目标前删除该变量，避免改变目标程序的启动模式。
+`ConfinedArgv.env` 由 Consumer 透传到执行边界，不修改宿主环境。
+
 ## 平台链与功能性探测
 
 | 平台 | 链（按序） | 机制 |

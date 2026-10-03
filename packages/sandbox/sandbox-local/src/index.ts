@@ -190,6 +190,8 @@ export class LocalSandboxService extends SandboxService {
 
     return {
       argv: runnerArgv,
+      ...(selection.runner === 'windows-acl' && process.versions.electron
+        && runnerArgv[0] === process.execPath ? { env: { ELECTRON_RUN_AS_NODE: '1' } } : {}),
       runner: selection.runner,
       enforcement: selection.enforcement,
       denialSignatures: denialSignatures(selection.runner, this.config),
@@ -417,6 +419,8 @@ export class LocalSandboxService extends SandboxService {
       ],
       timeout,
       STATIC_ENFORCEMENT['windows-acl'],
+      process.versions.electron && command === process.execPath
+        ? { ELECTRON_RUN_AS_NODE: '1' } : undefined,
     )
   }
 
@@ -425,8 +429,12 @@ export class LocalSandboxService extends SandboxService {
     args: readonly string[],
     timeout: number,
     enforcement: SandboxEnforcement,
+    env?: Readonly<Record<string, string>>,
   ): SandboxEnforcement | 'unusable' {
-    const result = spawnSync(command, [...args], { timeout, stdio: 'ignore', windowsHide: true })
+    const result = spawnSync(command, [...args], {
+      timeout, stdio: 'ignore', windowsHide: true,
+      ...(env ? { env: { ...process.env, ...env } } : {}),
+    })
     if (result.status === 0) return enforcement
     this.probeFailure = probeDetail(result)
     return 'unusable'
