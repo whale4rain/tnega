@@ -28,6 +28,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Exclude generated Session logs and spill files from turn-level edited files
+  and workbench Changes, while keeping project configuration, memory and skills
+  visible. Correct edit paths for workspaces inside a larger Git repository.
 - Let desktop users choose Stable or Preview (pre) updates in Settings, persist
   the choice across restarts and prevent pending updates from the old channel
   being installed. Switching to Stable does not downgrade an installed preview.

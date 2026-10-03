@@ -142,6 +142,11 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 创建、fork、截断、删除、compact、title 都在此。会话的模型消息由底层 `SessionLog`
 (append-only) 与 `compactSession`（checkpoint 替换）维护。
 
+每轮对话的文件改动统计和工作台 Changes 排除内部运行时文件：`.tnega/sessions/`、
+默认 CLI 的 `.tnega/run-vN.jsonl`、`.tnega/spill/` 和 Project Thread 的
+`.tnega/projects/<projectId>/agents/<threadId>/session.jsonl`。此规则不修改 Git
+忽略配置或存储位置；`.tnega/MEMORY.md`、skills、配置和项目产物的改动仍可见。
+
 ## 系统配置（config.ts）
 
 独立于工作区，位于用户主目录。Windows：`%USERPROFILE%\.tnega\config.json`。

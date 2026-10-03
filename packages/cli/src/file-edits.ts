@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve, relative, isAbsolute, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { SessionEvent } from '@tnega/session'
+import { isRuntimeFile } from './runtime-files.js'
 
 const runFile = promisify(execFile)
 
@@ -27,7 +28,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout
 }
 
-function pathsFromStatus(output: string): string[] {
+function pathsFromStatus(output: string, prefix: string): string[] {
   const entries = output.split('\0')
   const paths: string[] = []
   for (let index = 0; index < entries.length; index += 1) {
@@ -40,14 +41,16 @@ function pathsFromStatus(output: string): string[] {
       if (former) paths.push(former)
     }
   }
-  return paths
+  // Porcelain paths are repository-relative even with status.relativePaths.
+  return paths.filter(path => path.startsWith(prefix)).map(path => path.slice(prefix.length))
 }
 
 function inside(workspace: string, path: string): string | undefined {
   const absolute = resolve(workspace, path)
   const rel = relative(workspace, absolute)
   if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return undefined
-  return rel.split(sep).join('/')
+  const normalized = rel.split(sep).join('/')
+  return isRuntimeFile(normalized) ? undefined : normalized
 }
 
 async function fingerprint(workspace: string, path: string): Promise<string | null> {
@@ -145,7 +148,7 @@ export async function captureFileEditBaseline(workspace: string): Promise<GitBas
       git(workspace, ['-c', 'status.relativePaths=true', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.']),
     ])
     const dirty = new Map<string, { fingerprint: string | null; content: string | undefined }>()
-    await Promise.all(pathsFromStatus(status).map(async path => {
+    await Promise.all(pathsFromStatus(status, prefix.trimEnd()).map(async path => {
       const safe = inside(workspace, path)
       if (safe) dirty.set(safe, {
         fingerprint: await fingerprint(workspace, safe),
@@ -198,7 +201,7 @@ export async function editedFiles(
       git(workspace, ['rev-parse', '--verify', 'HEAD']).catch(() => ''),
       git(workspace, ['-c', 'status.relativePaths=true', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.']),
     ])
-    const changed = new Set(pathsFromStatus(status).map(path => inside(workspace, path)).filter((path): path is string => path !== undefined))
+    const changed = new Set(pathsFromStatus(status, baseline.prefix).map(path => inside(workspace, path)).filter((path): path is string => path !== undefined))
     if (head.trim() !== baseline.head && head.trim()) {
       const committed = baseline.head
         ? await git(workspace, ['diff', '--name-only', '-z', '--relative', baseline.head, head.trim(), '--', '.'])

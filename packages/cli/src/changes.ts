@@ -4,6 +4,7 @@ import { promisify } from 'node:util'
 import { resolveInside } from '@tnega/tools'
 import { FileServeError } from './files.js'
 import { MAX_TEXT_FILE_BYTES } from './workspace-files.js'
+import { isRuntimeFile } from './runtime-files.js'
 
 /**
  * The Workbench Changes view: what differs in the workspace from the last
@@ -109,7 +110,7 @@ export async function listChanges(workspace: string): Promise<ChangeSummary> {
   const files: ChangedFile[] = []
   for (const entry of status) {
     const path = strip(entry.path)
-    if (path === undefined) continue
+    if (path === undefined || isRuntimeFile(path)) continue
     const file: ChangedFile = { path, status: repo.head ? statusOf(entry.code) : 'added' }
     if (entry.previousPath) {
       const previous = strip(entry.previousPath)
