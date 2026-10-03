@@ -23,6 +23,7 @@ export default tseslint.config(
       globals: {
         URL: 'readonly',
         console: 'readonly',
+        fetch: 'readonly',
       },
     },
   },

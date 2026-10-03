@@ -16,7 +16,7 @@ if (packaging.status !== 0) {
 
 const release = resolve(root, 'apps/desktop/release')
 const desktopPackage = JSON.parse(await readFile(resolve(root, 'apps/desktop/package.json'), 'utf8'))
-const expectedName = `Tnega Setup ${desktopPackage.version}.exe`
+const expectedName = `Tnega-Setup-${desktopPackage.version}.exe`
 const installers = (await readdir(release, { withFileTypes: true }))
   .filter((entry) => entry.isFile() && entry.name === expectedName)
   .map((entry) => resolve(release, entry.name))
@@ -26,3 +26,4 @@ if (installers.length !== 1) {
 }
 
 console.log(`Windows installer: ${installers[0]}`)
+console.log('This is a local build: it has no update feed. Publish releases with `pnpm release desktop` (docs/releases/publishing.md).')

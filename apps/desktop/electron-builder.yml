@@ -35,5 +35,7 @@ linux:
       arch:
         - x64
 nsis:
+  # No spaces: the file on disk, on the release and in latest.yml share one name.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true

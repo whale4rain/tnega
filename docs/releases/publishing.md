@@ -9,7 +9,7 @@ GitHub release. Follow it in order; every step names its check.
 | Artifact | Destination | Consumers |
 | --- | --- | --- |
 | `tnega` npm package (`dist/`) | npm registry | `npm install -g tnega` |
-| `Tnega Setup <v>.exe` + `.blockmap` | GitHub release `v<v>` on `whale4rain/tnega` | new installs |
+| `Tnega-Setup-<v>.exe` + `.blockmap` | GitHub release `v<v>` on `whale4rain/tnega` | new installs |
 | `latest.yml` | same GitHub release | installed clients: `electron-updater` reads it to find, download and verify the new installer |
 
 The update feed is configured once in `apps/desktop/electron-builder.yml`
@@ -82,22 +82,38 @@ A client only sees a release that is **published** (not draft) and contains
    ```
 
    This re-runs the readiness check, builds the runtime, web and desktop
-   bundles, and has electron-builder upload `Tnega Setup 0.4.6.exe`, its
+   bundles, and has electron-builder upload `Tnega-Setup-0.4.6.exe`, its
    blockmap and `latest.yml` to the `v0.4.6` release, with the notes file as the
    release body. If packaging fails midway, delete
    `apps/desktop/release/win-unpacked.tmp` and run it again.
 
-7. **Confirm the release.**
+7. **Confirm the release.** `pnpm release desktop` ends with this check; run
+   it again any time:
 
    ```bash
-   gh release view v0.4.6 -R whale4rain/tnega
+   pnpm release verify
    ```
+
+   It fails unless `latest.yml` is on the release, describes this version and
+   points at an installer of the declared size that downloads.
 
    The release must be published (not draft) and list the `.exe`, the
    `.exe.blockmap` and `latest.yml`. An installed older client should show
    **Update** within a few minutes of **Check for updates** in Settings.
 
 ## When something goes wrong
+
+- **Never upload an installer by hand.** electron-builder writes `latest.yml`
+  only while publishing, so a `pnpm package:desktop` build uploaded through the
+  GitHub page gives a release that clients see but cannot install ("Cannot find
+  latest.yml in the latest release artifacts"). If it already happened, write
+  the feed for that exact installer and upload it beside it, then verify:
+
+  ```bash
+  pnpm release feed
+  gh release upload v<v> apps/desktop/release/latest.yml apps/desktop/release/Tnega-Setup-<v>.exe.blockmap -R whale4rain/tnega --clobber
+  pnpm release verify
+  ```
 
 - **Draft release:** electron-builder found an existing draft. Publish it with
   `gh release edit v<v> --draft=false`.

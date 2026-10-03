@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, test, vi } from 'vitest'
-import { UpdateController, type UpdaterLike, type UpdateState } from '../src/updater.js'
+import { summarizeUpdateError, UpdateController, type UpdaterLike, type UpdateState } from '../src/updater.js'
 
 class FakeUpdater extends EventEmitter implements UpdaterLike {
   autoDownload = false
@@ -63,7 +63,7 @@ describe('desktop self-update', () => {
     updater.next = undefined
     updater.checkForUpdates = vi.fn(() => Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED')))
     expect(await controller.check()).toEqual({
-      status: 'error', version: '0.4.5', message: 'net::ERR_INTERNET_DISCONNECTED', checkedAt: 7,
+      status: 'error', version: '0.4.5', message: 'Could not reach GitHub to check for updates.', checkedAt: 7,
     })
     expect(controller.installOnExit()).toBe(false)
   })
@@ -74,5 +74,22 @@ describe('desktop self-update', () => {
     updater.emit('update-downloaded', { version: '0.5.0' })
     expect(controller.installOnExit()).toBe(true)
     expect(updater.installs).toEqual([[true, false]])
+  })
+})
+
+describe('update error messages', () => {
+  test('names a release that has no feed instead of dumping the HTTP error', () => {
+    const raw = new Error([
+      'Cannot find latest.yml in the latest release artifacts (https://github.com/whale4rain/tnega/releases/download/v0.4.6/latest.yml): HttpError: 404 "method: GET"',
+      'Headers: { "cache-control": "no-cache" }',
+      '    at createHttpError (httpExecutor.js:53:12)',
+    ].join('\n'))
+    expect(summarizeUpdateError(raw)).toBe('The latest release (v0.4.6) has no update feed (latest.yml) yet.')
+  })
+
+  test('reports offline checks plainly and keeps other errors to one short line', () => {
+    expect(summarizeUpdateError(new Error('net::ERR_INTERNET_DISCONNECTED'))).toBe('Could not reach GitHub to check for updates.')
+    expect(summarizeUpdateError(new Error(`sha512 checksum mismatch\n${'x'.repeat(500)}`))).toBe('sha512 checksum mismatch')
+    expect(summarizeUpdateError('y'.repeat(300))).toHaveLength(158)
   })
 })

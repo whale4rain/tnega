@@ -73,7 +73,7 @@ export class UpdateController {
     updater.on('error', error => {
       // A failed check must not hide an update that is already downloaded.
       if (this.current.status === 'ready') return
-      this.set({ status: 'error', version: this.version, message: error.message || String(error), checkedAt: this.now() })
+      this.set({ status: 'error', version: this.version, message: summarizeUpdateError(error), checkedAt: this.now() })
     })
   }
 
@@ -106,7 +106,7 @@ export class UpdateController {
       await this.updater.checkForUpdates()
     } catch (error) {
       if (!this.ready()) {
-        this.set({ status: 'error', version: this.version, message: error instanceof Error ? error.message : String(error), checkedAt: this.now() })
+        this.set({ status: 'error', version: this.version, message: summarizeUpdateError(error), checkedAt: this.now() })
       }
     }
     return this.current
@@ -136,4 +136,23 @@ export class UpdateController {
     this.current = state
     for (const listener of this.listeners) listener(state)
   }
+}
+
+/**
+ * electron-updater errors carry response headers and stack traces; Settings has
+ * room for one sentence. A release without its feed is the common case (a
+ * build uploaded by hand), so it gets its own wording.
+ */
+export function summarizeUpdateError(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  const missing = /Cannot find (latest[\w-]*\.yml) in the latest release artifacts \(([^)]*)\)/.exec(text)
+  if (missing) {
+    const tag = /\/download\/(v[^/]+)\//.exec(missing[2] ?? '')?.[1]
+    return `The latest release${tag ? ` (${tag})` : ''} has no update feed (${missing[1]}) yet.`
+  }
+  if (/ENOTFOUND|EAI_AGAIN|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ETIMEDOUT|ECONNRESET/.test(text)) {
+    return 'Could not reach GitHub to check for updates.'
+  }
+  const first = text.split('\n')[0]?.trim() || 'Unknown error'
+  return first.length > 160 ? `${first.slice(0, 157)}…` : first
 }
