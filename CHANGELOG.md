@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.9 | [`v0.4.8...v0.4.9`](https://github.com/whale4rain/tnega/compare/v0.4.8...v0.4.9) | 7 |
 | 0.1.1 | Repository start through `v0.1.1` | 93 |
 | 0.3.0 | [`v0.1.1...v0.3.0`](https://github.com/whale4rain/tnega/compare/v0.1.1...v0.3.0) | 159 |
 | 0.4.0 | [`v0.3.0...v0.4.0`](https://github.com/whale4rain/tnega/compare/v0.3.0...v0.4.0) | 55 |
@@ -29,6 +30,8 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.4.9](https://github.com/whale4rain/tnega/releases/tag/v0.4.9) — 2026-10-03
 
 - Desktop sessions play one system sound when a run finishes. Unfocused Windows
   clients show a rain taskbar badge for a ready reply or lightning for a failed

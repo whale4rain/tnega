@@ -182,6 +182,13 @@ Settings → Update channel persists Stable / Preview per desktop installation.
   needs a recovery step, add its symptom, cause when known, recovery and
   verification here. Do not record credentials. Documentation-only runbook
   changes do not require a version bump or a new release.
+- **Concurrent validation contention (0.4.9):** running the full suite, separate
+  desktop tests and package builds concurrently caused package-build timeouts,
+  browser/Electron frame timeouts and a temporary-directory cleanup error.
+  Wait for builds to finish, then rerun affected tests serially. The standalone
+  package check, Agent retry and all 33 desktop / 6 browser tests passed after
+  isolation. Compare failure names against the prior release baseline; record
+  the original full-suite result rather than calling the full suite green.
 - **npm EOTP / delayed visibility (0.4.7):** npm required the user's dynamic
   code. The user published the checked tarball locally; the official registry
   initially returned 404 and `latest=0.4.6`, then exposed `0.4.7` after several
