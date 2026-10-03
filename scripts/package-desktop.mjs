@@ -26,4 +26,4 @@ if (installers.length !== 1) {
 }
 
 console.log(`Windows installer: ${installers[0]}`)
-console.log('This is a local build: it has no update feed. Publish releases with `pnpm release desktop` (docs/releases/publishing.md).')
+console.log('This is a local build: it has no update feed. Publish releases with `pnpm release desktop` (docs/publish/README.md).')

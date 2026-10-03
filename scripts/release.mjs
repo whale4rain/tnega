@@ -1,4 +1,4 @@
-// Release helper. The full runbook is docs/releases/publishing.md.
+// Release helper. The full runbook is docs/publish/README.md.
 //
 //   node scripts/release.mjs version 0.4.6   bump the root and desktop versions together
 //   node scripts/release.mjs check           verify the tree is ready to publish

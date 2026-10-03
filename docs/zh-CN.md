@@ -1,284 +1,84 @@
 # Tnega
 
-> 状态：当前
-> 取代关系：无
-> 当前实现：根包、各 `packages/*/README.md` 和 CLI/Web 源码；本文是中文用户入口
+[English](../README.md) · [更新记录](../CHANGELOG.md) · [下载](https://github.com/whale4rain/tnega/releases) · [发布指南](publish/README.md)
 
-[English](../README.md)
+Tnega 是一个本地 Agent 工作空间，也是可组合的 Agent Harness。你可以在同一个界面中对话、编写代码、处理 Office 文档、查看改动、使用终端和浏览器。持续项目由协调者与并行 Thread 协作完成，共享记忆和产物。Tnega 是 agent 的倒写。
 
-<p align="center">
-  <img src="assets/tnega-icon.png" alt="Tnega 方块上的云图标" width="160" />
-</p>
+## 项目截图
 
-Tnega 是 "agent" 的逆写，也是本项目想做的事：把 Agent 本身当作可以被观察、修改和回滚的对象。
+![对话、工作区文件树与代码编辑器](assets/workbench.png)
 
-Tnega 是一个自研核心的 Agent Harness，参照 DeepSeek Harness 的时空可组合思想，同时把简洁性作为硬约束。
+![深色主题下的 Git 改动审阅](assets/changes-dark.png)
 
-**0.4.5 版本**采用天空配色与「方块上的云」标识，用天气符号表达 Agent 状态。详见[设计规范](design/tnega-design.md)。
+截图来自当前 Web 界面，使用隔离的演示数据。
 
-桌面客户端的 **−** 按钮最小化到任务栏，**□** 切换最大化与原始窗口大小，**×** 隐藏窗口并从任务栏移除，但 Tnega 继续在系统托盘运行。点击托盘图标或选择 **Show Tnega** 可重新打开窗口；选择托盘菜单的 **Exit Tnega** 才会退出程序并停止本地 runtime。
+## 已具备的功能
 
-## 支持的功能
+| 场景 | 能力 |
+| --- | --- |
+| 编码 | Coding Agent，Auto / Plan / Goal 模式，文件读写、ripgrep 搜索、技能、MCP、斜杠命令与 `@` 文件引用。 |
+| 文档工作 | Work Agent 创建、读取和原地编辑 DOCX / XLSX / PPTX，支持主题、表格与原生图表；生成文件显示为可预览、缩放和下载的卡片。 |
+| 持续项目 | 协调者派发并行 Thread，查看进度、直接留言，使用共享 Memory、Library 和项目指令。 |
+| 工作台 | Files 文件树与代码编辑器（Ctrl+S 保存，检测磁盘并发改动）；Changes 统一或并排 Git diff；多个 PTY Terminal；Browser；可关闭的文档和子代理记录标签。 |
+| 浏览器 | Agent 打开网页、按元素引用点击和输入、截图、读取控制台与网络；应用内显示多标签浏览器，元素选择器将页面元素带入消息。桌面使用原生视图，Web 使用实时画面。 |
+| 后台任务 | 长时间命令、开发服务器与委派任务显示进度并可停止；阻塞或非阻塞问题让 Agent 获取用户决定。后台 Job 不会在进程重启后恢复。 |
 
-- **Project 协作**：与协调者保持持续对话，由它委派并行 Thread；查看进度、直接留言，并共享 Memory 与文件、产物 Library。[Project 指南](project/README.md)。
-- **Work Agent**：与 General、Coding 并列，通过内置 Office 工具创建、读取和编辑 Word 文档、Excel 工作簿与 PowerPoint 演示文稿。
-- **产物自动识别与预览**：成功创建或编辑 Office 文件后，会话自动显示文件卡片，也支持 CodeMode 内的工具调用。点击卡片即可在侧栏预览 DOCX 页面、XLSX 表格与图表、PPTX 幻灯片，并缩放或下载。
-- 可组合的 Agent runtime：作用域服务、可逆插件生命周期、工具和模型适配器。
-- 持久会话：JSONL 事件日志、会话分支、上下文压缩、模型用量与缓存命中统计、工具活动时间线。
-- Coding 会话：Auto、Plan、Goal 模式，斜杠命令、工作区技能和配置的 MCP 服务。
-- 子代理：独立 Session 与 durable inbox，支持 spawn / fork、父子消息和任务状态面板。
-- 记忆：用户明确要求记住的偏好写入全局 `MEMORY.md`；压缩时整理长期有效的工作区约定。
-- 多模型：系统配置文件可列出多个模型路由、凭据和思考档位；会话输入框下方可用滑块切换。
-- 工具权限：每次运行选择只读、工作区可写或 bypass；越权操作按需申请批准。
-- **自动审批**：可选择人工批准或 Auto review，由独立审查器评估越权操作；无法判断时回到人工审批，沙箱限制仍然生效。[配置说明](../packages/auto-approval/README.md)。
-- **CodeMode**：在设置中启用后，用 `run_code` 内的 JavaScript 编排现有工具，保留原有权限检查。[设计与取舍](adr/0010-ptc-tool-orchestration.md)。
-- **运行摘要**：成功运行突出展示最终回复，中间过程可折叠展开；失败和取消的过程保留可见。
-- 本地 Web 与 Electron 桌面界面。
+**会话与记忆**：General、Coding、Work 的 Session 以 JSONL 事件持久化，可分支、编辑重发、压缩上下文，查看 token、缓存与速度。完成的 Agent Run 展示最终回复，过程可展开。支持粘贴、拖放和附加图片；文本模型获得回退说明。用户记忆在 `~/.tnega/MEMORY.md`，工作区记忆在 `.tnega/MEMORY.md`。
 
-![Tnega 工作台：Coding 会话、计划和运行设置](assets/workbench.png)
+**模型与扩展**：Settings 配置多个 OpenAI 兼容或 Anthropic Messages 模型路由，每个 Session 选择模型与思考强度。外部插件通过 profile 文件加载，在 Web / 桌面宿主中热更新。可选 CodeMode 使用 QuickJS 执行 JavaScript，组合已有工具并保留各工具的权限检查。
 
-当前 Web 界面截图，使用隔离演示数据。
+**权限与沙箱**：read-only、workspace-write、bypass 是权限预设；Ask me / Auto review 是独立审批设置，无法自动决定时交给用户。Linux、macOS 和 Windows 的本机沙箱限制文件写入，机制不可用时拒绝受限执行；bypass 明确关闭沙箱。见[审批说明](../packages/auto-approval/README.md)与[沙箱 ADR](adr/0008-sandbox-seam.md)。
 
-### 开始一个 Project 或文档任务
+**界面**：浅色、深色与跟随系统主题，天气符号表达 Agent 状态。`Ctrl+J` 开关工作台，`` Ctrl+` `` 打开终端。桌面端关闭窗口后继续在托盘运行，点击托盘可恢复，Exit Tnega 退出应用与本地运行时。
 
-在侧栏切换到 **Projects**，输入名称即可新建 Project，目标可以稍后补充。
-向协调者描述需求；它派出的 Thread 会显示为卡片，可以打开查看对话或直接留言。
-右侧面板集中展示 Overview、Memory、Library 和 Settings。
+## 安装与更新
 
-制作文档时选择 **Work**，描述需要的报告、表格或幻灯片。
-Office 文件生成后会出现在会话中，点击文件卡片即可预览和下载。
+### Windows 桌面端
 
-## 为什么做 Tnega
+从 [GitHub Releases](https://github.com/whale4rain/tnega/releases/latest) 下载 `Tnega-Setup-<版本>.exe`，安装后在 Settings 配置模型和 API Key。
 
-- Agent = Model + Harness。模型负责思考，Harness 负责模型之外的一切：记忆、工具、权限、执行、评估。
-- 大多数 Harness 是固定系统。Tnega 的目标是让 Harness 本身可以被安全地热插拔和回滚，让能力可以在运行中安全地组合与替换。
-- dsh 证明了 "一切皆插件" 可以做到，但整个工程很大。Tnega 自研一个语义完整、体积可控的核心，再叠加薄业务层。
+**0.4.6 起支持应用内更新**：启动时及每四小时检查新版本，后台下载后在 Settings 旁显示 **Update**，点击安装并重启。也可在 **Settings → Check for updates** 手动检查。用户升级后续版本无需自行打包或反复下载安装包；旧版只需手动安装一次支持更新的版本。维护者仍需为每个新版本构建并发布安装包与更新源，见[发布指南](publish/README.md)。
 
-## 安装
+### CLI 与本地 Web
 
-需要 Node.js >= 22。
+需要 Node.js **≥22.19.0**。
 
 ```bash
 npm install -g tnega
-# 或
-pnpm add -g tnega
-```
-
-## 快速开始
-
-```bash
-export TNEGA_API_KEY=sk-...
-tnega run "Reply with: hello"
-```
-
-`tnega run` 默认通过 OpenAI 兼容协议调用 OpenCode Go 的 `deepseek-v4-flash`；`minimax-m3` 走 Anthropic Messages 协议，同样内置在能力表中。首选环境变量为 `TNEGA_API_KEY`；`OPENCODE_GO_API_KEY`、`OPENAI_API_KEY` 和 `DEEPSEEK_API_KEY` 仍兼容。key 也可以放在系统配置文件中：Windows 为 `%USERPROFILE%\.tnega\config.json`，Linux / macOS 为 `~/.config/tnega/config.json`，文件内可写 `apiKey`、`model`、`baseUrl`、`protocol`、`temperature`。优先级为命令行参数 > 环境变量 > 配置文件 > 默认值。旧版 Windows `%APPDATA%\tnega\config.json` 仅作为迁移来源。
-
-启动本地 Web UI：
-
-```bash
+# 或 pnpm add -g tnega
 tnega web
-# http://127.0.0.1:3080
+# 浏览器打开 http://127.0.0.1:3080，在 Settings 配置模型。
 ```
 
-Web UI 支持按会话选择 `general` / `coding` 两种 agent。coding 会话提供
-`auto` / `plan` / `goal` 模式：plan 模式只生成计划，goal 模式跟踪持久目标；
-`/mode`、`/skills`、`/mcp` 等斜杠命令可直接从前端触发。
+无界面的单次执行：
 
-## CLI
-
-```text
-tnega run "prompt"                       # 运行一次 agent 会话
-tnega run --allow-shell "list files"     # 开启高权限工具
-tnega web                                # 本地 Web UI
+```bash
+export TNEGA_API_KEY=your-api-key
+tnega run "回复：hello"
 ```
 
-常用参数：`--model`、`--base-url`、`--max-tokens`、`--temperature`、`--cwd`、`--session`、`--timeout-ms`、`--max-retries`、`--retry-delay-ms`。会话默认写入 `.tnega/run.jsonl`，可使用 `--session <file>` 指定位置。
+PowerShell 使用 `$env:TNEGA_API_KEY = 'your-api-key'`。默认路由为 OpenCode Go 的 `deepseek-v4-flash`（OpenAI 兼容端点），也支持 `minimax-m3`（Anthropic Messages）；可配置自己的路由。Windows 配置在 `%USERPROFILE%\.tnega\config.json`，Linux/macOS 在 `~/.config/tnega/config.json`。环境变量、参数和多模型配置见 [CLI README](../packages/cli/README.md)。
 
-## 核心语义
+CLI 更新使用 `npm install -g tnega@latest`。桌面自动更新只适用于打包后的应用。当前 Session 格式为 v10，不兼容的旧格式会被拒绝，不会原地迁移。
 
-- Context：运行环境与作用域树。服务查找沿父链向上，子 Context 可覆盖服务，隔离通过 scope 实现。
-- Fiber：插件实例的生命周期。状态为 pending / loading / active / failed / unloading / disposed。
-- Effect：每次修改都携带撤销函数，卸载时逆序执行，保证无残留。
-- Event：emit / serial / bail / waterfall 四种派发模式，所有扩展点都是事件。
-
-时空可组合：
-
-- 时间可组合：组件可以热插入、热拔出、热替换，失败可回滚。
-- 空间可组合：依赖齐备才激活，provider 消失时依赖方先停；不同 scope 拥有不同组合。
-
-## 模型与价格
-
-能力表（`MODEL_CATALOG`）携带价格元数据，单位为每 1M token 的 USD，DeepSeek 模型区分 Peak / Off-Peak 两档；`monthlyUsage` 为 OpenCode Go 订阅每月包含的美元额度。Peak 时段为 UTC 周一至周五 01:00-04:00 与 06:00-10:00，其余时间（含周末）为 Off-Peak。
-
-| 模型 | 档位 | Input | Output | Cached Read | Usage |
-| --- | --- | ---: | ---: | ---: | ---: |
-| MiniMax M3 | 单档 | $0.30 | $1.20 | $0.06 | $60 |
-| DeepSeek V4 Flash | Off-Peak | $0.22 | $0.66 | $0.007 | $30 |
-| DeepSeek V4 Flash | Peak | $0.44 | $1.32 | $0.014 | $30 |
-| DeepSeek V4 Pro | Off-Peak | $0.66 | $1.98 | $0.022 | $15 |
-| DeepSeek V4 Pro | Peak | $1.32 | $3.96 | $0.044 | $15 |
-
-LLM 请求默认 120 秒超时，最多重试 2 次，采用 500ms 起步的指数退避；仅网络错误、408 / 425 / 429 / 5xx 会触发重试，401 / 403 等 4xx 和用户取消不会重试。可通过 `--timeout-ms`、`--max-retries`、`--retry-delay-ms` 覆盖。
-
-## 内置工具
-
-`tnega run` 默认挂载最小内置工具集，每个工具都是普通 `ToolDefinition`，通过 `builtinTools` 插件注册；插件卸载时工具自动注销，符合“工具也是可插拔”的架构。
-
-默认工具：
-
-```text
-echo, now, calculator, json,
-read_file, write_file, list_dir, glob, grep
-```
-
-高权限工具默认不注册：
-
-- `http_get`：需要 `--allow-network`
-- `shell`：需要 `--allow-shell`，工作目录被限制在 `--cwd` 内
-
-文件工具使用路径沙箱：`read_file / write_file / list_dir / glob / grep / shell` 均被限制在 `--cwd` 内，拒绝绝对路径越界、`..` 越界与 symlink 越界。`read_file` 读取默认上限 256 KiB，超出时返回前缀并把 `truncated` 置为 `true`（不会报错），`maxBytes` 可按文件调整；写入默认上限 1 MiB，搜索结果默认 200 条，shell 默认 15 秒超时。
-
-`shell` 的实际执行边界由「沙箱」能力缝负责：`@tnega/sandbox` 拥有 `ctx.sandbox` 契约
-（Service Definition），`@tnega/sandbox-local` 提供本机实现（Service Provider），
-`@tnega/execution-sandbox` 是消费执行边界的 Consumer。Provider 按平台链做**功能性探测**
-（Linux `bwrap` → `landlock`，macOS `sandbox-exec`，Windows 受限令牌 + ACL），链耗尽时抛
-`SANDBOX_UNAVAILABLE` 并**拒绝执行**，不会退回无沙箱运行。它只限制文件写：`read-only` 不允许
-任何写，`workspace-write` 只允许工作区与临时区；`bypass` 表示「不要沙箱」。路径围栏
-（`@tnega/fs-sandbox`）是 `read_file / write_file / list_dir / glob / grep` 与 shell 共用的
-同一份实现。详见 `docs/adr/0008-sandbox-seam.md`。
-
-`glob` 与 `grep` 是「工作区搜索」能力缝的 Consumer：`@tnega/search` 拥有 `ctx.search`
-契约（Service Definition），`@tnega/search-ripgrep` 提供实现（Service Provider），
-`@tnega/tool-search` 贡献模型可见的工具。工具只认识 `ctx.search`，换 Provider 属于
-composition 层的挂载选择，工具的 schema 与结果形状零改动。
-
-遍历交给 ripgrep：Provider 构造固定 argv 向量并 spawn `rg`（无 shell 层），因此
-`.gitignore`、隐藏文件与忽略规则由 ripgrep 原生处理。默认尊重工作区 `.gitignore`
-（用 `--no-require-git` 让它在非 git 仓库中也生效），并始终用取反 `--glob` 剪掉
-`.git`、`node_modules` 等目录；超时 30 秒，超出原始输出上限时明确失败而不是返回被截断的
-半截结果。`rg` 需在 `PATH` 上（或用 Provider 的 `ripgrepPath` 指定）。
-
-过长的工具结果由「工具输出溢出」能力缝处理：`@tnega/spill` 拥有 `ctx.spillStore` 契约
-（Service Definition），`@tnega/spill-local` 提供文件系统实现（Service Provider），
-`@tnega/tool-spill` 贡献 `tools/post-execute` 策略（Consumer）。成功的工具结果超过
-`maxInlineBytes`（默认 50 000 字节）时，整份文本先落到 `<cwd>/.tnega/spill/` 下，模型
-拿到的是头尾预览加一行定位符，可按指引用 `read_file` 或 `grep` 读回；`read_file` 自身不在
-范围内（避免读回自己的溢出）。落盘失败时保留原文并记一条 warning，不会让成功的工具调用
-变成失败。Web 端把溢出说明单独渲染成定位符，并把输出渲染长度封顶（超出部分一次点击展开）。
-
-Web 端输入框下方常驻显示当前上下文用量、上一个响应的输出速度（tok/s）与缓存命中率；指标
-全部来自 provider 上报的 usage，未上报的指标显示为空缺而不是 0。
-
-以插件方式接入时，`builtinTools` 接受 `BuiltinToolsConfig`：`cwd / allowNetwork /
-allowShell / disabled / maxReadBytes / maxWriteBytes / maxResults / timeoutMs /
-searchExcludes / execution`，`disabled` 可进一步关闭任一内置工具。`glob` / `grep` 由
-`@tnega/tool-search` 单独挂载，其配置为 `cwd / disabled / searchTimeoutMs /
-maxResults`。
-
-## 作为库使用
-
-`tnega` 从 0.1.0 起同时发布为库入口。外部 agent（包括独立仓库的 coding agent）可以直接依赖根包，用 `Context` 组装自己的运行时，不需要依赖内部 `@tnega/*` 包。发布包通过 `exports` 暴露 `dist/index.js` 与 `dist/types`，另有 `tnega/coding-agent` 等子路径，所有公共契约都有类型声明。
-
-```ts
-import {
-  Context,
-  session,
-  tools,
-  builtinTools,
-  defineAgent,
-  openaiCompatAdapter,
-  type AgentLoop,
-} from 'tnega'
-
-const root = new Context()
-const sessionFiber = await root.plugin(session, {
-  file: '.tnega/coding-agent.jsonl',
-})
-const toolsFiber = await root.plugin(tools)
-const builtinFiber = await root.plugin(builtinTools, {
-  cwd: process.cwd(),
-})
-
-const agentFiber = await root.plugin(
-  defineAgent({
-    name: 'coding-agent',
-    version: '0.3.0',
-    system: 'You are a coding agent.',
-    tools: [],
-  }),
-  { llm: openaiCompatAdapter({ apiKey: process.env.TNEGA_API_KEY! }) },
-)
-
-const loop = root.get('agentLoop') as AgentLoop
-const result = await loop({ text: 'implement the feature' })
-console.log(result.output)
-
-for (const fiber of [agentFiber, builtinFiber, toolsFiber, sessionFiber].reverse()) {
-  await fiber.dispose()
-}
-```
-
-M13 为外部 agent 补齐的三个主要契约：
-
-- `AgentDefinition`：`defineAgent({ name, version?, system?, tools?, loop?, hooks? })` 返回普通插件。默认 loop 使用 `config.llm` 并注入 `agentSystem`，同时执行 `beforeRun` / `afterRun` hooks；传入自定义 `loop` 时，tnega 同样负责 system 注入与 hooks 包装；`tools` 随插件挂载和卸载自动注册、注销，并派发 `agent/definition` 元数据事件。
-- `SessionLog.deriveMessages()` 由折叠后的 surface 派生（模型视图是 surface 的纯函数，与 raw 文件序无关）；`estimateContext()` 与 `compact({ keepTokens, messages })` 共用同一 surface。默认 loop 内置 context budget：传入 `contextBudget: { limit, compactRatio, keepTokens, summarize }` 后，每个 step 前会按 token 估算检查用量，超过 `compactRatio` 时先调用 `summarize`，再执行 `session.compact` 保留最近 `keepTokens`，并派发 `agent/context-compact` 事件。默认 `compactRatio` 为 0.8、`keepTokens` 为预算的 16% —— 到八成时压缩，最近一段对话逐字保留，更早的部分由摘要接替。
-- `ToolPolicy`：`validator`、`authorizer`、`truncator` 可配置在 `tools` 全局层，也可覆盖在单个 `ToolDefinition.policy`。执行顺序为 `pre-execute → authorizer → validator → execute → truncator → post-execute / result`；策略拒绝会返回 `ToolResult.ok === false` 而不是把异常抛给 agent loop。
-
-另外 `createAgentRuntime` 支持直接注入 `agent`（`AgentDefinition` 或裸 agent 对象）、自定义 `inbox`、`toolPolicy`、`contextBudget`、`builtinTools: false` 与 `plugins`，`llm` 也可由外部 provider 通过 `agentLoop` 提供。外部 agent 既可以只替换 loop 和工具，也可以组合整个 runtime 生命周期。默认组合会挂载 prompt 组装 seam（`systemPrompt`）并把全部可执行工具注册为 schema 提供者，使系统提示与工具从同一装配路径产出。
-
-除根入口外，发布包还提供按域拆分的子路径导出：
-
-```text
-tnega/agent         # AgentLoop / AgentDefinition / AgentService / inbox / context budget
-tnega/core          # Context / Fiber / Effect / Event / Registry / Reflect
-tnega/session       # SessionLog / surface 折叠 / compact / token 估算
-tnega/tools         # ToolsService / ToolDefinition / ToolPolicy
-tnega/llm           # openaiCompatAdapter / anthropicMessagesAdapter / 重试配置
-tnega/cli/runtime   # createAgentRuntime 组合运行时
-tnega/events        # EventsService / DispatchMode / Hook
-tnega/services      # service / registry / reflect / logger
-```
-
-每个子路径都有对应的运行时 bundle 与类型声明，`test/publish.test.ts` 会以消费者身份逐一验证。
-
-## 模块规划
-
-| 包 | 职责 |
-| --- | --- |
-| core | Context / Fiber / Effect / Event / Registry / Reflect |
-| agent | 最小 Agent Loop，作为可替换 service |
-| tools | 工具注册与执行管线 |
-| session | JSONL 事件日志，支持 replay / fork / compact |
-| llm | OpenAI 兼容 / Anthropic Messages 适配器，默认对接 OpenCode Go |
-| cli | headless 命令行入口与 web 服务 |
-
-## 与 dsh 的关系
-
-- 理念参照 DeepSeek Harness 与 Cordis 的时空可组合。
-- 核心语义自研，代码自维护，不依赖 Cordis 运行时。
-- 暂时不做：子代理、插件市场、生产级沙箱、多模态。
-
-## 开发
+## 开发与文档
 
 ```bash
 pnpm install
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm build
+pnpm tnega web --port 3080
+pnpm --filter @tnega/web dev
 ```
 
-阶段计划与进度见 `task.md`，术语表见 `CONTEXT.md`，测试记录见 `docs/test/`，架构决策见 `docs/adr/`。
+按改动范围运行 `pnpm test`、`pnpm typecheck`、`pnpm lint`、`pnpm build`。核心插件随 Fiber 管理作用域与销毁；Service Definition、Provider、Consumer 的依赖方向见 [ADR 0006](adr/0006-capability-seams.md)。npm 包同时提供根入口和按域拆分的 TypeScript 库导出。
+
+- [领域术语](../CONTEXT.md)与[开发指南](../AGENTS.md)
+- [Project 指南](project/README.md)
+- [核心](../packages/core/README.md)、[Agent](../packages/agent/README.md)、[CLI/runtime](../packages/cli/README.md)
+- [Web](../apps/web/README.md)、[桌面端](../apps/desktop/README.md)、[视觉设计](design/tnega-design.md)
+- [更新记录](../CHANGELOG.md)、[版本说明](releases/)、[发布流程](publish/README.md)
+
+旧 eval、evolve 与 benchmark 包已在 0.4.6 移除，取舍见 [ADR 0011](adr/0011-remove-eval-first.md)。
 
 ## License
 
-MIT
-
-
-## CodeMode 与自动审批
-
-Settings 中的 CodeMode 默认为关闭：关闭仅提供原生工具，开启仅提供 run_code，由模型编写 JavaScript 组合原有工具。保存后下一次运行生效；更新源码或构建产物后需重启正在运行的后端，仅刷新界面不足以加载新功能。保存结果未被后端确认时会明确报错。
-
-Auto review 与工具权限/沙箱独立，每个需审批的实际子调用仍单独审查。Jev 当前风险置信度门槛为 0.85，低/中风险冲突门槛分别为 0.2/0.05；通过时不显示额外消息，需人工确认或拒绝时显示简短理由。
-
-设计取舍见 [审批 ADR](adr/0009-automatic-approval.md)、[PTC ADR](adr/0010-ptc-tool-orchestration.md)；问题原因、修复和评估限制见 [修复记录](fix/2026-09-30-review-ptc.md)。
+[MIT](../LICENSE)

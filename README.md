@@ -1,178 +1,148 @@
 <p align="center">
-  <img src="docs/assets/tnega-icon.png" alt="Tnega cloud-on-cube icon" width="160" />
+  <img src="docs/assets/tnega-icon.png" alt="Tnega: a cloud on a cube" width="120" />
 </p>
 
 # Tnega
 
-[中文](docs/zh-CN.md)
+[中文](docs/zh-CN.md) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/whale4rain/tnega/releases) · [Publishing](docs/publish/README.md)
 
-**Tnega** is "agent" spelled backwards. It is an agent harness with spacetime-composable plugin lifecycles: components can be hot-swapped and rolled back safely.
+Tnega is a local agent workspace for coding, document work and ongoing projects.
+Chat with an agent, review its changes, edit files, run a terminal and browse the
+web in the same interface. Underneath is a composable Agent Harness: scoped
+plugins connect the model, tools and durable Sessions, and can be replaced or
+disposed without leaving their effects behind. “Tnega” is “agent” backwards.
 
-Use it for coding, document work, or ongoing projects with a coordinator and parallel agents—all in a local Web or desktop interface.
+## See it in action
 
-Version **0.4.5** introduces the sky palette and cloud-on-cube identity, with weather
-symbols expressing Agent status. See the [visual design guide](docs/design/tnega-design.md).
+![Coding conversation beside the workspace file tree and editor](docs/assets/workbench.png)
 
-![Tnega workbench with a coding conversation, plan and session controls](docs/assets/workbench.png)
+*The current Web interface, with isolated demonstration data.*
 
-*Current Web interface, shown with isolated demo data.*
+![Reviewing Git changes in the dark workbench](docs/assets/changes-dark.png)
 
-## Features
+*The same workspace in dark mode, with the Changes tool open.*
 
-- **Projects:** keep an ongoing conversation with a coordinator that delegates work to parallel Threads. Follow their progress, reply directly, and bring shared Memory and a Library of files and artifacts into the same project. [Project guide](docs/project/README.md).
-- **Work agent:** create, inspect and edit Word documents, Excel workbooks and PowerPoint presentations with built-in Office tools, alongside General and Coding agents.
-- **Automatic artifact discovery and previews:** successful Office create/edit calls produce file cards in the conversation, including calls inside CodeMode. Click a card to preview DOCX pages, XLSX sheets and charts, or PPTX slides beside the conversation, with zoom and download controls.
-- **Composable agent runtime:** scoped services, reversible plugin lifecycles, tools, and LLM adapters share the same core.
-- **Durable conversations:** General, Coding and Work sessions use JSONL event logs; the UI supports session forks, context compaction, provider usage and cache metrics, and a readable activity timeline.
-- **Coding workflows:** Auto runs tools, Plan produces a plan, and Goal advances a persistent objective. Coding sessions also support slash commands, workspace skills, and configured MCP servers.
-- **Subagents:** agents can spawn or fork child sessions, communicate through durable inboxes, and inspect child progress. The UI shows child tasks and renders their conversations.
-- **Memory:** `~/.tnega/MEMORY.md` stores explicitly requested preferences; each workspace's `.tnega/MEMORY.md` records durable project conventions during compaction.
-- **Model selection:** configure multiple model routes, credentials, protocols, and supported thinking levels in System Config. The composer offers model and thinking sliders for each session.
-- **Tool permissions:** choose read-only, workspace-write, or bypass per run. Higher-permission actions request approval when required; workspace search uses ripgrep and public web search is available in read-only mode.
-- **CodeMode / PTC:** opt into CodeMode in Settings to expose only `run_code`; JavaScript orchestrates existing tools in QuickJS with their original permission checks. Disable it to use native tools. See [design and tradeoffs](docs/adr/0010-ptc-tool-orchestration.md).
-- **Automatic approval:** independently choose Ask me or Auto review. A scoped plugin reviews each gated action with the conversation model, a configured model route, TypeSafe Jev, or OpenAI Responses. Missing credentials, uncertainty, cancellation and oversized evidence fall back to human approval; sandbox policy still applies. See [configuration](packages/auto-approval/README.md).
-- **Run summaries:** an independent plugin persists the final successful reply; completed runs show that reply and collapse intermediate work into an expandable process. Failed or cancelled runs remain visible. This does not call another model or compact model history.
-- **Sandbox:** shell execution is wrapped by a local sandbox backend (bubblewrap or Landlock on Linux, Seatbelt on macOS, a restricted-token ACL runner on Windows). It is a capability seam with a functional probe and fail-closed semantics: when no backend is usable the command is refused rather than run unconfined.
-- **Images:** paste, drop or attach images in the composer; vision models see them, and tools such as the browser can return screenshots. Text-only models get a note instead.
-- **Agent browser for frontend work:** `browser_*` tools (built on Playwright's AI snapshots) let the agent open your dev server, click and type by element ref, take screenshots and read the console and network. The page appears in a Browser panel next to the conversation: a native view in the desktop app, a live headless-browser stream you can click and type into in the web UI. `process_start` runs the dev server in the background, inside the sandbox. See [ADR 0012](docs/adr/0012-agent-browser.md).
-- **Local Web and desktop UI:** the Electron app hosts the same loopback-backed interface, with an in-app Settings dialog.
+## What you can do
 
-## Install
+| Workflow | Included capabilities |
+| --- | --- |
+| **Code** | Coding agents with Auto, Plan and persistent Goal modes; workspace search, file tools, slash commands, skills, MCP servers and `@` file mentions. |
+| **Work with documents** | Work agents create, inspect and edit DOCX, XLSX and PPTX, including themes, tables and native charts. Generated files appear as cards with previews, zoom and download. |
+| **Run ongoing projects** | A coordinator delegates to parallel Threads; inspect progress and message a Thread directly. Projects share Memory, instructions and a Library of artifacts. |
+| **Review and edit** | One right-hand Workbench holds Files, Changes, Terminal and Browser, plus closable document and subagent transcript tabs. Files has a workspace tree, syntax highlighting and Ctrl+S; saves detect newer disk changes. Changes offers unified and side-by-side Git diffs. |
+| **Use your terminal and browser** | Multiple PTY terminals stay open across tab switches. The agent browser supports tabs, screenshots, console/network inspection and an element picker. It stays inside the app in both desktop and Web hosts. |
+| **Keep long tasks moving** | Background commands and delegated jobs expose progress and stop controls. Durable questions let the agent ask for a decision; blocking questions wait for an answer. |
 
-Requires Node.js >= 22.
+**Conversation and context.** General, Coding and Work Sessions use JSONL event
+logs. Fork a Session, edit and resend a message, compact context, inspect model
+usage and cache metrics, or expand the process behind a completed run's final
+answer. Attach, paste or drop images for vision models. User preferences live in
+`~/.tnega/MEMORY.md`; workspace conventions live in `.tnega/MEMORY.md`.
+
+**Models and tools.** Configure multiple OpenAI-compatible or Anthropic Messages
+routes in Settings, then select a model and thinking level per Session. External
+plugins load from profile files and hot-reload in the Web and desktop hosts.
+Optional CodeMode lets JavaScript orchestrate the existing tools through QuickJS.
+
+**Permissions.** Choose read-only, workspace-write or bypass. Ask me and Auto
+review control approval separately; automated review falls back to a human when
+it cannot decide. Shell writes are constrained by a local sandbox on Linux,
+macOS and Windows. A missing sandbox mechanism refuses restricted execution.
+Bypass explicitly runs without a sandbox. See the
+[approval guide](packages/auto-approval/README.md) and
+[sandbox design](docs/adr/0008-sandbox-seam.md).
+
+**Interface.** Light, dark and system themes share the sky palette; weather
+symbols communicate agent state. `Ctrl+J` toggles the Workbench and
+`` Ctrl+` `` opens the terminal. The desktop app shares the Web host's config and
+Session data and keeps running in the system tray when its window is closed.
+
+## Install and start
+
+### Windows desktop
+
+Download `Tnega-Setup-<version>.exe` from
+[GitHub Releases](https://github.com/whale4rain/tnega/releases/latest), install it
+and configure your model route and API key in **Settings**.
+
+**Desktop 0.4.6 and later update inside the app.** It checks at startup and every
+four hours, downloads a new release in the background and shows **Update** next
+to Settings when ready. Click it to install and restart, or use **Settings →
+Check for updates**. Users do not need to build or download each later installer.
+Older clients need a one-time installation of an update-capable version.
+
+### CLI and local Web
+
+Requires **Node.js ≥22.19.0**.
 
 ```bash
 npm install -g tnega
-# or
-pnpm add -g tnega
+# or: pnpm add -g tnega
+tnega web
+# Open http://127.0.0.1:3080 and configure your model in Settings.
 ```
 
-## Quick Start
+For a headless Agent Run:
 
 ```bash
-export TNEGA_API_KEY=sk-...
+export TNEGA_API_KEY=your-api-key
 tnega run "Reply with: hello"
 ```
 
-`tnega run` uses OpenCode Go's `deepseek-v4-flash` model through the OpenAI compatible endpoint by default. `minimax-m3` is also available through the Anthropic Messages endpoint. Set `TNEGA_API_KEY` for the API key; `OPENCODE_GO_API_KEY`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY` remain compatible fallbacks. System Config lives at `%USERPROFILE%\.tnega\config.json` on Windows or `~/.config/tnega/config.json` on Linux/macOS. It accepts the original `apiKey`, `model`, `baseUrl`, `protocol`, and `temperature` fields, plus a `models` array with per-model routes and `reasoningEfforts`. See the [multi-model configuration example](packages/cli/README.md#系统配置configts). CLI flags and environment variables override the legacy defaults; a selected model's explicit route and credential are used for that session.
+PowerShell uses `$env:TNEGA_API_KEY = 'your-api-key'`. The default route is
+OpenCode Go's `deepseek-v4-flash` through an OpenAI-compatible endpoint;
+`minimax-m3` is also available through Anthropic Messages. Configure your own
+routes in Settings. Config is stored at `%USERPROFILE%\.tnega\config.json` on
+Windows or `~/.config/tnega/config.json` on Linux/macOS. See the
+[CLI guide](packages/cli/README.md) for model routes, environment variables and
+flags.
 
-Start the local web UI:
-
-```bash
-tnega web
-# http://127.0.0.1:3080
-```
-
-The web UI creates `general`, `coding`, or `work` sessions. Coding sessions offer Auto,
-Plan, and Goal modes: Plan produces a plan without executing it, and Goal tracks
-a persistent objective. `/` slash commands such as `/mode`, `/skills`, and
-`/mcp` are available in coding sessions.
-
-Switch the sidebar to **Projects** to create a named project and start a conversation
-with its coordinator. Open a Thread to inspect its conversation or leave a direct
-message; use the project panel for Overview, Memory, Library and Settings.
-
-For document work, choose **Work** and describe the document, spreadsheet or slide
-deck you need. Generated Office files appear as cards below the agent's activity;
-click a card to preview or download it.
-
-## CLI
+Choose **Coding** for repository work, **Work** for Office files or **General**
+for other tasks. Open **Projects** to start a sustained coordinator conversation
+with shared Memory and a Library. See the [Project guide](docs/project/README.md).
 
 ```text
-tnega run "prompt"                       # one agent session
-tnega run --allow-shell "list files"     # enable high-permission tools
-tnega web                                # local web UI
+tnega run "prompt"                     # one Agent Run
+tnega run --allow-shell "list files"   # opt into shell tools
+tnega web                              # local Web interface
 ```
 
-Options include `--model`, `--base-url`, `--max-tokens`, `--temperature`, `--cwd`, `--session`, `--timeout-ms`, `--max-retries`, and `--retry-delay-ms`. Sessions are recorded as JSONL under `.tnega/`.
+CLI upgrades use `npm install -g tnega@latest`; desktop self-update applies to
+packaged desktop installations. Sessions use format v10; incompatible older
+formats are rejected rather than migrated in place.
 
-## Built-in Tools
+## Build on the harness
 
-The default tool set is `echo`, `now`, `calculator`, `json`, `read_file`, `write_file`, `list_dir`, `glob`, and `grep`. High-permission tools are opt-in: `http_get` requires `--allow-network`, `shell` requires `--allow-shell`. File tools are confined to the working directory, and shell commands are wrapped by the sandbox seam.
+The npm package is also a TypeScript library. The root entry and domain
+subpaths expose Context, Fiber, Agent, Session, Tools, LLM and capability seams.
+Providers and consumers depend on a shared service definition; the composition
+layer chooses the provider. Scoped disposal reverses registrations and effects.
 
-`sandbox`, `sandbox-local`, and `execution-sandbox` form the sandbox capability seam: `@tnega/sandbox` owns the `ctx.sandbox` contract, `@tnega/sandbox-local` provides the local backends, and `@tnega/execution-sandbox` is the model-facing consumer that wraps the execution boundary the `shell` tool uses. Providers are chosen in the composition layer, so swapping a backend is a mounting change. Selection is a **functional probe** per platform chain (`bwrap` → `landlock` on Linux, `sandbox-exec` on macOS, the ACL restricted-token runner on Windows), and an unusable chain fails closed with `SANDBOX_UNAVAILABLE` instead of running the command unconfined. Only file writes are restricted; `read-only` denies every write and `workspace-write` allows the workspace plus a temp root. `@tnega/fs-sandbox` holds the single path-containment implementation behind `read_file` / `write_file` / `list_dir` / `glob` / `grep` / shell. See `docs/adr/0008-sandbox-seam.md`.
+Start with [core](packages/core/README.md), [agent](packages/agent/README.md),
+[CLI/runtime](packages/cli/README.md) and the [domain vocabulary](CONTEXT.md).
+The [ADRs](docs/adr/) describe persistence, sandboxing, approval, CodeMode and
+browser tradeoffs. The former eval, evolve and benchmark packages were removed
+in 0.4.6; see [ADR 0011](docs/adr/0011-remove-eval-first.md).
 
-`glob` and `grep` are the model-facing consumers of the workspace search capability seam: `@tnega/search` owns the `ctx.search` contract, `@tnega/search-ripgrep` provides it, and `@tnega/tool-search` contributes the tools. The tools only ever see `ctx.search`, so swapping the provider is a composition change. Traversal delegates to ripgrep: the provider builds a plain argv vector and spawns `rg` with no shell layer, so `.gitignore` handling, hidden files, and ignore rules are ripgrep's native behavior. It honors the workspace `.gitignore` by default (with `--no-require-git`, so this also applies outside a git repository) and always prunes `.git`, `node_modules`, and similar directories. `rg` must be on `PATH`, or be named by the provider's `ripgrepPath` option. See `docs/adr/0006-capability-seams.md`.
-
-## Coding Agent
-
-`tnega/coding-agent` is a packaged agent plugin for workspace-oriented coding
-sessions. It contributes plan generation, `plan_execute_mark` /
-`plan_execute_result` tools, workspace skills (`skills_list` / `skill_read`),
-stdio MCP servers from `.tnega/mcp.json`, and a slash command registry. The web
-server enables it per session through `agentType: "coding"`, while general
-sessions keep the default loop unchanged.
-
-## Desktop client
-
-The Electron client packages the same local console as a native desktop app. It
-starts the Tnega server on an ephemeral loopback address and never exposes Node,
-Shell, or filesystem access directly to the renderer. Folder selection is a
-small, validated native bridge; every Tool Permission remains an explicit choice
-for each Agent Run.
-
-```bash
-pnpm --filter @tnega/desktop dev       # build and launch locally
-pnpm package:desktop                   # produce the Windows installer
-```
-
-Download the Windows installer from [GitHub Releases](https://github.com/whale4rain/tnega/releases).
-
-Window controls: **−** minimizes to the taskbar, **□** toggles maximized/restored
-size, and **×** hides the window from the taskbar while Tnega keeps running in the
-system tray. Click the tray icon or choose **Show Tnega** to reopen the window;
-choose **Exit Tnega** in the tray menu to stop the app and its local runtime.
-
-The desktop app and `tnega web` share System Config and Workspace/Session data.
-See [`apps/desktop/README.md`](apps/desktop/README.md) for packaging targets and
-the security model. Contributors should read
-[`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md) before changing the desktop
-client.
-
-## Library
-
-Tnega is published as a library as well as a CLI. Use the root package or domain subpaths (`tnega/core`, `tnega/agent`, `tnega/coding-agent`, `tnega/session`, `tnega/tools`, `tnega/llm`, ...):
-
-```ts
-import { Context, defineAgent, openaiCompatAdapter } from 'tnega'
-
-const root = new Context()
-const fiber = await root.plugin(
-  defineAgent({
-    name: 'coding-agent',
-    version: '0.3.0',
-    system: 'You are a coding agent.',
-  }),
-  { llm: openaiCompatAdapter({ apiKey: process.env.TNEGA_API_KEY! }) },
-)
-
-const loop = root.get('agentLoop')
-const result = await loop({ text: 'implement the feature' })
-console.log(result.output)
-
-await fiber.dispose()
-```
-
-## Concepts
-
-- **Spacetime composability**: components can be inserted, replaced, and removed at runtime; effects are reversed in order on teardown, so hot-swaps leave no residue.
-
-See the [Chinese guide](docs/zh-CN.md) for the detailed design, model pricing table, library contracts, and roadmap.
-
-## Design
-
-The visual system (sky palette, the cloud-on-cube identity, weather as the agent's state language, contrast floors) is specified in [docs/design/tnega-design.md](docs/design/tnega-design.md).
-
-## Development
+## Develop and release
 
 ```bash
 pnpm install
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm build
+pnpm tnega web --port 3080
+pnpm --filter @tnega/web dev
 ```
+
+Run the checks appropriate to your change: `pnpm test`, `pnpm typecheck`,
+`pnpm lint` and `pnpm build`. Desktop development is documented in
+[apps/desktop](apps/desktop/README.md); interface conventions are in the
+[design guide](docs/design/tnega-design.md).
+
+Read [docs/publish](docs/publish/README.md) before releasing. Maintainers build
+and publish each new desktop version with its installer, blockmap and
+`latest.yml` feed; installed clients consume that feed automatically. Keep
+[CHANGELOG.md](CHANGELOG.md) and the version's [release notes](docs/releases/)
+current.
 
 ## License
 
-MIT
+[MIT](LICENSE)

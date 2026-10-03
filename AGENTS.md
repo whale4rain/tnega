@@ -65,5 +65,4 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 
 ## 发布
 
-- 用户要求发布时，按 `docs/releases/publishing.md` 逐步执行：`pnpm release version <x.y.z>` 同步根包与桌面端版本并生成发布说明，验证后打 tag 推送，`npm publish` 发布 CLI，`pnpm release desktop` 构建安装包并把 `latest.yml` 更新源上传到 GitHub release。
-- 已安装的桌面端通过 `electron-updater` 从 GitHub release 自动更新；发布必须是正式（非 draft）release 且包含 `latest.yml`。
+- 发布、打包或排查应用内更新时，先阅读 `docs/publish/README.md`，获取版本、验证、npm / GitHub 发布与更新源相关事宜。

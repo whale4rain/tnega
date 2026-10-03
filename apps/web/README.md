@@ -1,64 +1,59 @@
 # `apps/web`
 
-Tnega 本地 Web UI（React 19 + Vite + TypeScript）。生产产物由 `pnpm build` 打进 `dist/web`，
-由 `tnega web` 托管静态资源与 `/api`。
+Tnega 本地 Web UI（React 19 + Vite + TypeScript）。`pnpm build` 将生产产物放入
+`dist/web`，由 `tnega web` 托管静态资源与 `/api`；桌面端复用同一界面。
 
 ## 开发
 
 ```bash
-pnpm tnega web --port 3080          # 后端（API 与 Agent Run）
-pnpm --filter @tnega/web dev        # 前端，Vite 把 /api 代理到 127.0.0.1:3080
+pnpm tnega web --port 3080
+pnpm --filter @tnega/web dev
 ```
 
-`TNEGA_API=http://host:port` 可改代理目标。
+Vite 默认代理 `/api` 到 `127.0.0.1:3080`；`TNEGA_API=http://host:port` 可改目标。
+用户功能与安装见[中文指南](../../docs/zh-CN.md)，发布见
+[docs/publish](../../docs/publish/README.md)。
 
-## 功能
+## 界面能力
 
-- **工作区**：侧栏顶部切换 / 打开 / 移除工作区；浏览按钮优先用桌面端 `tnegaDesktop.pickFolder`，否则调用 `/api/folder-picker`。
-- **会话**：按「今天 / 昨天 / 7 天内 / 30 天内 / 更早」分组，可搜索、分支、删除；标题在顶栏点击即可重命名。当前会话写入 URL hash，可直接链接。
-- **惰性创建**：「新会话」只是草稿，第一次发送时才 `POST /api/sessions`，并把草稿里的权限、模型、思考强度一并写入，不会留下空会话。
-- **Timeline**：两条用户消息之间的全部 Agent 活动折叠为一个回合——Markdown 正文、工具调用、子代理卡片、编辑文件摘要与中断 / 错误提示按发生顺序排列。
-  - 连续工具调用合并为「Used N steps」活动组；每一行显示动词 + 目标（`Read src/a.ts`、`Ran pnpm test`），展开看输入与可读化输出（stdout/stderr、文件内容、目录列表）。
-  - 子代理卡片汇总状态与最新回信，「Open transcript」在右侧抽屉里用同一个 Timeline 渲染其 Session。
-  - 用户消息可复制、编辑重发（`truncate` 后重新运行）、重试；回合可复制或从此处 fork。
-- **流式运行**：`POST /runs` 的 SSE 帧按动画帧批量合并进 Timeline；运行结束后重新读取 Session，最终内容以持久化事件为准。别处（另一个标签页、CLI）正在运行的会话会自动轮询刷新。
-- **审批**：越权工具调用在输入框上方显示审批卡片（Allow once / Deny）。
-- **Plan / Goal**：plan 模式的计划显示为输入框上方的可折叠清单；goal 模式在顶栏显示目标状态与轮次。
-- **输入框**：自动增高；`Enter` 发送、`Shift+Enter` 换行、运行中 `Esc` 停止；coding 会话输入 `/` 弹出斜杠命令补全。工具栏芯片切换 Agent 类型、模式、权限、模型与思考强度（运行中锁定）。
-- **上下文**：顶栏圆环显示上下文占用，悬浮查看 token、缓存命中率与速度；菜单里可 Compact / Fork / 删除。
-- **设置**：弹窗编辑 System Config（协议、模型、Base URL、API Key、思考强度、温度）；API Key 只写不读。
-- **主题**：浅色 / 深色 / 跟随系统，首帧前解析，避免闪烁；窄屏下侧栏变为抽屉。
+- **工作区与 Session**：切换工作区，搜索、重命名、分支、删除会话；首次发送才创建 Session。支持 General、Coding、Work，Coding 提供 Auto / Plan / Goal。
+- **Timeline**：流式回复、工具活动组、子代理、文件改动摘要、压缩与错误信息；完成的 Run 展示最终回复，过程可展开。支持编辑重发、重试与从消息处分支。
+- **工作台**：右侧统一容纳 Files、Changes、Terminal、Browser，以及文档预览和子代理记录标签。Ctrl+J 开关，Ctrl+` 打开终端。
+- **Files / Changes**：文件树、代码编辑器与 Ctrl+S 保存（检测磁盘并发修改）；Git 文件列表与统一 / 并排 diff。
+- **Terminal / Browser**：多个 PTY 终端；应用内多标签浏览器、可调面板和元素选择器。Web 使用实时画面，桌面使用原生视图。
+- **输入与产物**：斜杠补全、`@` 文件引用、图片附加 / 粘贴 / 拖放；Office、图片和 PDF 在工作台预览，支持适用文件的缩放和下载。
+- **运行控制**：权限与模型选择、上下文占用和用量、后台任务停止、持久化问题、人工或自动审批，以及可选 CodeMode。
+- **设置与主题**：编辑 System Config；API Key 只写不读。浅 / 深 / 系统主题，天气表达 Agent 状态。打包后的桌面端显示版本、检查更新和更新重启操作。
 
-## Project（对齐 Claude Projects）
+## Projects
 
-- 侧栏在 **Sessions / Projects** 间切换；新建项目只需名称，目标可选。路由：`#p/<project>`、`#p/<project>/<thread>`。
-- 中间是与协调者的持续对话：协调者派出的 Thread 以卡片嵌在对应位置，实时显示状态与最新回报；协调者的正文流式显示。Thread 工作时也可继续发言。
-- 右侧面板：**Overview**（按需要关注 / 工作中 / 已回报 / 已结束分组）、**Memory**（共享记忆：新增、编辑、删除、版本历史）、**Library**（产物与来源）、**Settings**（指令，check-in / 开 Thread / 详略偏好，协调者与 Thread 的模型和思考强度，并行上限，用量，归档与删除）。
-- 打开 Thread 后，右侧显示它的目标、Session Timeline 与直接留言框。
-- **回复关系**：消息上方的「↩」标签显示它在回应谁（你、协调者或某个 Thread 的回报），点击跳转或打开 Thread；协调者消息与 Thread 卡片可「Reply」，输入框上方显示回复对象，请求携带 `replyTo`。
-- **Agent 形象**：简洁可爱的抽象形象——一块软圆的纯色形体（圆、圆角方、倾斜方、软三角、云朵、水滴）加两只白色眼睛（胶囊或圆点），靠眼睛的位置与角度表现性格；无渐变、无高光、无多余细节。`lib/avatar.ts` 按 Agent ID 确定形体、颜色、眼型与视线；协调者为强调色圆形；同一项目内兄弟 Agent 优先使用不同颜色；运行中眨眼、张望、轻微呼吸；点击 Thread 面板或空状态里的形象可重新生成（保存在 `localStorage`）。品牌标志与 favicon 使用同一语言。
-- 后端尚未提供的能力（设置、用量、产物内容、添加到 Library、停止）按 [`docs/project/web-contract.md`](../../docs/project/web-contract.md) 的提议接口调用，未实现时降级提示。
+侧栏在 Sessions / Projects 间切换，项目与 Thread 路由分别为
+`#p/<project>`、`#p/<project>/<thread>`。项目中与协调者持续对话，Thread 卡片显示状态与回报，
+可直接留言。项目面板提供 Overview、Memory、Library 和 Settings；支持回复关系、归档与删除。
+行为与接口见[Project 指南](../../docs/project/README.md)与
+[Web 契约](../../docs/project/web-contract.md)。
 
 ## 结构
 
-| 文件 | 角色 |
-|---|---|
-| `src/lib/types.ts` | 与 `packages/cli/src/server.ts` 的线上契约类型 |
-| `src/lib/api.ts` | REST 客户端与 SSE 解析（`streamRun`） |
-| `src/lib/timeline.ts` | 纯函数：`fromEvents`（持久事件 → Timeline）与 `applyStream`（Stream Event → Timeline） |
-| `src/lib/tools.ts` | 工具调用的动词 / 目标摘要与输出可读化 |
-| `src/App.tsx` | 工作区、会话列表、选择、对话框与快捷键 |
-| `src/components/Conversation.tsx` | 单个会话：加载、运行、停止、审批、plan、goal、滚动 |
-| `src/components/Timeline.tsx` | 回合、工具组、子代理、文件、压缩标记的渲染 |
-| `src/components/Composer.tsx` | 输入框、斜杠补全与运行设置芯片 |
-| `src/styles/tokens.css` | 设计 token（颜色、圆角、阴影、字体），浅 / 深两套 |
-| `src/styles/app.css` | 全部组件样式，只引用 token |
-| `src/lib/project-*.ts` | Project 契约类型、API 与 SSE 客户端、纯函数状态归约与投影 |
-| `src/components/project/` | Project 视图、Thread 卡片与面板、Overview / Memory / Library / Settings |
-| `src/styles/project.css` | Project 界面样式 |
+| 模块 | 职责 |
+| --- | --- |
+| `src/App.tsx` | 工作区、Session / Project 路由、对话框与工作台状态 |
+| `src/components/Conversation.tsx` | Session 加载、流式运行、审批、Plan、Goal |
+| `src/components/Timeline.tsx` | 持久事件投影的用户界面 |
+| `src/components/Composer.tsx`、`PromptBox.tsx` | 运行设置、输入、补全与附件 |
+| `src/components/workbench/` | 工作台与 Files / Changes / Terminal / Browser / 子代理视图 |
+| `src/components/files/`、`preview/` | 文件树、编辑器与产物预览 |
+| `src/components/project/` | Project、Thread、Memory、Library 和设置 |
+| `src/lib/api.ts`、`workbench-api.ts`、`project-api.ts` | REST / SSE 客户端 |
+| `src/lib/timeline.ts`、`workbench.ts`、`project-model.ts` | 纯函数投影与状态 |
+| `src/styles/tokens.css` | 浅 / 深主题 token |
+| `src/styles/app.css`、`project.css`、`workbench.css` | 各界面样式 |
 
 ## 约定
 
-- 不引入 UI 组件库；样式只用 `tokens.css` 里的变量，新增颜色先加 token。
-- Timeline 的推导逻辑保持为纯函数并在 `timeline.test.ts` 覆盖；组件只负责渲染。
-- 服务端事件与字段名沿用 `CONTEXT.md` 术语（Agent Run、Session、Workspace、Stream Event）。
+改动界面前阅读[设计规范](../../docs/design/tnega-design.md)和
+[天气状态语言](../../docs/design/weather-language.md)。优先复用现有组件；颜色只引用 token，
+深浅主题同步并满足 `contrast.test.ts` 的对比度底线。文件、改动、终端、浏览器和文档统一进入工作台。
+
+Timeline 与状态推导保持纯函数；测试与 Web 源文件同目录，由根 Vitest 发现。
+事件与领域词汇沿用 `CONTEXT.md` 的 Agent Run、Session、Workspace 和 Stream Event。

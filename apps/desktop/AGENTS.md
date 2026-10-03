@@ -21,7 +21,7 @@ server 复用 CLI runtime。改动前阅读同目录 `README.md`，再阅读相�
 - 生成 Windows 安装包：从仓库根运行 `pnpm package:desktop`；安装包输出到
   `apps/desktop/release/`。
 - 发布并上传自动更新源：`pnpm release desktop`（需要 `GH_TOKEN`），完整流程见
-  `docs/releases/publishing.md`。自动更新逻辑在 `src/updater.ts`，只在打包后的应用中启用。
+  `docs/publish/README.md`。自动更新逻辑在 `src/updater.ts`，只在打包后的应用中启用。
 
 打包时 electron-builder 要从 GitHub 拉 electron 主包与 NSIS / winCodeSign 等构建
 工具，这些下载在部分网络下会 `connect ETIMEDOUT`。改用镜像即可：

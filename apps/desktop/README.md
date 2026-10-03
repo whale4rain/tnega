@@ -30,6 +30,12 @@ area. Click the tray icon or choose **Show Tnega** to restore it. Choose
 
 ## Packaging
 
+For a public release, follow [docs/publish](../../docs/publish/README.md) and use
+`pnpm release desktop` to ship the installer with its `latest.yml` update feed.
+Packaged clients from 0.4.6 onward check at startup and every four hours, download
+updates in the background and offer Update / Restart to update in the UI.
+Settings also provides Check for updates. Development builds do not self-update.
+
 ```bash
 pnpm --filter @tnega/desktop package
 ```

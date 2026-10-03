@@ -4,6 +4,13 @@ The runbook for cutting a Tnega release: the npm package (`tnega` CLI) and the
 Windows desktop client, whose installed copies update themselves from the
 GitHub release. Follow it in order; every step names its check.
 
+Desktop 0.4.6 and later already support in-app updates. Users install an
+update-capable client once; later upgrades happen through Settings → Check for
+updates or the sidebar's Update action. Maintainers still build and publish
+each new version with its update feed. Routine documentation and development
+changes do not require packaging a new installer. CLI installations update
+through npm.
+
 ## What ships where
 
 | Artifact | Destination | Consumers |
@@ -36,7 +43,7 @@ A client only sees a release that is **published** (not draft) and contains
 ## Steps
 
 1. **Decide the version.** Patch for fixes, minor for features. Check the last
-   tag: `git tag --sort=-v:refname | head -1`.
+   tag: `git tag --sort=-v:refname` (the first entry is the newest version).
 
 2. **Bump and write notes.**
 
@@ -48,8 +55,11 @@ A client only sees a release that is **published** (not draft) and contains
    and creates `docs/releases/v0.4.6.md` from the template. Fill in the notes in
    the style of earlier files: user-visible changes first, one line each, then
    the Install section. Summarize from `git log v<previous>..HEAD --oneline`.
+   Update the root `CHANGELOG.md`: move shipped entries out of Unreleased into
+   the new version, with its date and release link.
 
-3. **Verify.** Judge against the known pre-existing failures, not zero:
+3. **Verify.** Resolve failures introduced by the release. Record any remaining
+   pre-existing failures explicitly before deciding whether to publish:
 
    ```bash
    pnpm typecheck

@@ -1,6 +1,6 @@
 # Tnega 设计规范
 
-日期：2026-10-02。本文是 Tnega 界面与交互设计的唯一规范，取代 `docs/frontend-visual-design.md`（Astryx 迁移时期的青绿配色，已过时）。天气状态语言的细节与扩展方向见 [`weather-language.md`](weather-language.md)；浏览器能力的工程取舍见 [ADR 0012](../adr/0012-agent-browser.md)。
+日期：2026-10-02。本文是 Tnega 界面与交互设计的唯一规范，取代 Astryx 迁移时期的青绿配色规范（历史正文可从 Git 获取）。天气状态语言的细节与扩展方向见 [`weather-language.md`](weather-language.md)；浏览器能力的工程取舍见 [ADR 0012](../adr/0012-agent-browser.md)。
 
 ## 1. 设计主张
 

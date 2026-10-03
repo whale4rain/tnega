@@ -4,7 +4,7 @@ directories:
   output: release
 # The update feed: electron-builder writes latest.yml (+ blockmaps) beside the
 # installers, and electron-updater in the installed app reads it from the
-# latest GitHub release. See docs/releases/publishing.md.
+# latest GitHub release. See docs/publish/README.md.
 publish:
   provider: github
   owner: whale4rain
