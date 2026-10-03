@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.11 | [`v0.4.10...v0.4.11`](https://github.com/whale4rain/tnega/compare/v0.4.10...v0.4.11) | 5 |
 | 0.4.10 | [`v0.4.9...v0.4.10`](https://github.com/whale4rain/tnega/compare/v0.4.9...v0.4.10) | 9 |
 | 0.4.9 | [`v0.4.8...v0.4.9`](https://github.com/whale4rain/tnega/compare/v0.4.8...v0.4.9) | 7 |
 | 0.1.1 | Repository start through `v0.1.1` | 93 |
@@ -31,6 +32,8 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.4.11](https://github.com/whale4rain/tnega/releases/tag/v0.4.11) — 2026-10-03
 
 - Projects are redesigned as a calm group chat. The main conversation holds
   what you said, what the coordinator said and one card per thread with only
