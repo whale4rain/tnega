@@ -23,17 +23,23 @@ feature or fix lands, and move entries into a version only when it ships.
 | 0.4.5 | [`v0.4.2...v0.4.5`](https://github.com/whale4rain/tnega/compare/v0.4.2...v0.4.5) | 157 |
 | 0.4.6 | [`v0.4.5...v0.4.6`](https://github.com/whale4rain/tnega/compare/v0.4.5...v0.4.6) | 56 |
 | 0.4.7 | [`v0.4.6...v0.4.7`](https://github.com/whale4rain/tnega/compare/v0.4.6...v0.4.7) | 10 |
+| 0.4.8 | [`v0.4.7...v0.4.8`](https://github.com/whale4rain/tnega/compare/v0.4.7...v0.4.8) | 6 |
 
 Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.8](https://github.com/whale4rain/tnega/releases/tag/v0.4.8) — 2026-10-03
+
 - Preserve the desktop's theme when Browser attaches, opens tabs or reconnects;
   CDP connections no longer apply Playwright defaults to the host UI.
 - Fix packaged Windows desktop sandbox execution: ship the ACL runner beside
   the main bundle and launch it in Electron's Node mode, with native koffi
   dependencies retained. Keep sandbox enforcement fail closed.
+
+- Document user-run npm publishing, registry propagation delays, duplicate
+  release recovery and transient Windows shortcut warnings during installation.
 
 ## [0.4.7](https://github.com/whale4rain/tnega/releases/tag/v0.4.7) — 2026-10-03
 

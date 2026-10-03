@@ -199,6 +199,13 @@ Settings → Update channel persists Stable / Preview per desktop installation.
   asset digests, retain the complete release, and delete only the redundant
   record by its release ID through the API, preserving the Git tag. Confirm
   exactly one release remains and the latest stable release has all assets.
+  For subsequent releases, create a single draft before starting the parallel
+  publisher (`gh release create v<v> --draft --verify-tag --notes-file
+  docs/releases/v<v>.md`), or reuse the existing draft. Keep it a draft until
+  all three generated assets are uploaded and verified, then publish with
+  `gh release edit v<v> --draft=false` and re-run release verification. The
+  automatic verification at the end of `pnpm release desktop` can report a
+  draft during this staged workflow; do not publish until asset checks pass.
 - **Node fetch network failure (0.4.7):** `pnpm release verify` encountered
   `ECONNRESET` and `UND_ERR_CONNECT_TIMEOUT` accessing GitHub. This alone does
   not establish a bad release. If a retry still fails, use `curl --fail
