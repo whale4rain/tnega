@@ -1,4 +1,6 @@
 node_modules/
+/.pnpm-store/
+/data/
 .worktrees/
 dist/
 apps/desktop/out/
