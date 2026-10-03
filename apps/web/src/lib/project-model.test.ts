@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fromSnapshot, latestReport, mainTimeline, overview, reduceProject, threadState } from './project-model'
+import { artifactsFor, fromSnapshot, isUnread, latestReport, mainTimeline, overview, reduceProject, threadState, threadStatusLine } from './project-model'
 import type { BoxEnvelope, ProjectSnapshot, ThreadRecord } from './project-types'
 
 const COORD = 'c0000000-0000-4000-8000-000000000000'
@@ -167,5 +167,49 @@ describe('replies', () => {
     const state = fromSnapshot(snapshot({ messages: [answer, other, mine] }), { [mine.messageId]: answer.messageId })
     const item = mainTimeline(state)[2]
     expect(item?.kind === 'user' && item.replyTo.map(r => [r.who, r.excerpt])).toEqual([['coordinator', 'Plan A or B?']])
+  })
+})
+
+describe('a calm main conversation', () => {
+  it('keeps notices about thread messages out of the main conversation', () => {
+    const state = fromSnapshot(snapshot({
+      threads: [thread(COORD, { depth: 0 }), thread(T1)],
+      messages: [
+        envelope({ kind: 'dispatch', sender: { kind: 'agent', id: COORD }, threadId: T1 }),
+        envelope({ kind: 'notice', sender: { kind: 'user', id: 'user' }, threadId: T1, text: 'The user wrote in thread "t1" (x): hi' }),
+      ],
+    }))
+    expect(mainTimeline(state).map(item => item.kind)).toEqual(['threads'])
+  })
+
+  it('attaches published artifacts to the coordinator message that carries them', () => {
+    const hash = 'a'.repeat(64)
+    const artifact = { kind: 'artifact', id: hash, seq: 1, version: 1, data: { title: 'Plan', hash, size: 10, mediaType: 'text/html' }, author: COORD, source: {}, createdAt: 1, updatedAt: 1, deleted: false }
+    const state = fromSnapshot(snapshot({
+      library: { artifacts: [artifact], resources: [] },
+      messages: [envelope({ kind: 'agent-reply', sender: { kind: 'agent', id: COORD }, text: '', refs: [{ hash, size: 10, mediaType: 'text/html' }] })],
+    }))
+    const [item] = mainTimeline(state)
+    expect(item).toMatchObject({ kind: 'coordinator' })
+    expect(item?.kind === 'coordinator' && artifactsFor(state, item.refs).map(a => a.data.title)).toEqual(['Plan'])
+  })
+})
+
+describe('thread status', () => {
+  it('shows the active checklist step while a thread works', () => {
+    const working = thread(T1, { state: 'working', checklist: [{ title: 'Read the spec', status: 'done' }, { title: 'Run the tests', status: 'active' }] })
+    const state = fromSnapshot(snapshot({ threads: [thread(COORD, { depth: 0 }), working] }))
+    expect(threadStatusLine(state, working)).toMatchObject({ label: 'Working', step: 'Run the tests' })
+    const done = { ...working, state: 'done' as const }
+    const settled = fromSnapshot(snapshot({ threads: [thread(COORD, { depth: 0 }), done] }))
+    expect(threadStatusLine(settled, done)).toEqual({ label: 'Done', tone: 'done' })
+  })
+
+  it('marks a settled thread unread until the user opens it', () => {
+    const done = thread(T1, { state: 'done', updatedAt: 50 })
+    const state = fromSnapshot(snapshot({ threads: [thread(COORD, { depth: 0 }), done] }))
+    expect(isUnread(state, done, {})).toBe(true)
+    expect(isUnread(state, done, { [T1]: 50 })).toBe(false)
+    expect(isUnread(state, thread(T2, { state: 'working', updatedAt: 60 }), {})).toBe(false)
   })
 })

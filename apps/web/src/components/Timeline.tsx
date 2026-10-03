@@ -23,7 +23,7 @@ import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { turnWeather } from '../lib/weather'
 import { useCopy } from '../lib/hooks'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
-import { formatDuration, formatTokens, presentRun, stringify } from '../lib/timeline'
+import { formatDuration, formatTokens, presentOutcome, presentRun, stringify } from '../lib/timeline'
 import { officeFiles } from '../lib/office'
 import { codeModeOutput, needsAttention, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
@@ -56,7 +56,15 @@ export interface TimelineSky {
   contextRatio?: number
 }
 
-export function Timeline({ entries, running, actions, agent, sky }: { entries: readonly Entry[]; running: boolean; actions: TimelineActions; agent?: TimelineAgent | undefined; sky?: TimelineSky | undefined }) {
+export function Timeline({ entries, running, actions, agent, sky, outcomeFirst = false }: {
+  entries: readonly Entry[]
+  running: boolean
+  actions: TimelineActions
+  agent?: TimelineAgent | undefined
+  sky?: TimelineSky | undefined
+  /** Show each turn's answer and fold its steps (project threads). */
+  outcomeFirst?: boolean
+}) {
   const lastAgent = findLastAgent(entries)
   // Tracked here, not per turn: the finished turn is re-keyed when durable events reload.
   const justFinished = useJustFinished(running)
@@ -76,7 +84,7 @@ export function Timeline({ entries, running, actions, agent, sky }: { entries: r
               />
             )
           case 'agent':
-            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} />
+            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} />
           case 'compaction':
             return <CompactionMarker key={entry.id} summary={entry.summary} tokensBefore={entry.tokensBefore} />
           case 'slash':
@@ -248,6 +256,7 @@ const AgentTurn = memo(function AgentTurn({
   sky,
   latest = false,
   justFinished = false,
+  outcomeFirst = false,
 }: {
   entry: Extract<Entry, { kind: 'agent' }>
   live: boolean
@@ -257,18 +266,19 @@ const AgentTurn = memo(function AgentTurn({
   /** The newest reply keeps its actions in view; older ones show them on hover. */
   latest?: boolean
   justFinished?: boolean
+  outcomeFirst?: boolean
 }) {
   const weather = sky || live || justFinished || entry.status === 'error'
     ? turnWeather(entry, { live, justFinished, ...(sky?.waiting ? { waiting: true } : {}), ...(sky?.contextRatio !== undefined ? { contextRatio: sky.contextRatio } : {}) })
     : undefined
-  const presentation = live ? { process: [], visible: entry.blocks } : presentRun(entry)
+  const presentation = outcomeFirst ? presentOutcome(entry, live) : live ? { process: [], visible: entry.blocks } : presentRun(entry)
   const segments = segment(presentation.visible)
   const [processOpen, setProcessOpen] = useState(false)
   const [copied, copy] = useCopy()
   const text = entry.blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n\n')
   const last = entry.blocks.at(-1)
   const busyTool = entry.blocks.some(b => b.kind === 'tool' && b.tool.status === 'running')
-  const thinking = live && !busyTool && !(last?.kind === 'text' && last.streaming)
+  const thinking = live && (outcomeFirst || (!busyTool && !(last?.kind === 'text' && last.streaming)))
   // Produced files stay visible even when the tools that wrote them fold into the process.
   const files = live ? [] : officeFiles(entry.blocks)
 
@@ -303,7 +313,7 @@ const AgentTurn = memo(function AgentTurn({
           <div className={`tool-group${processOpen ? ' open' : ''}`}>
             <button type="button" className="tool-group-head" onClick={() => setProcessOpen(value => !value)} aria-expanded={processOpen}>
               <span className="tool-icon"><Layers size={14} /></span>
-              <span className="tool-group-title">Completed process</span>
+              <span className="tool-group-title">{outcomeFirst ? `${live ? 'Working through' : 'Show'} ${presentation.process.length} step${presentation.process.length === 1 ? '' : 's'}` : 'Completed process'}</span>
               <span className="tool-group-summary" />
               <ChevronRight size={14} className="chevron" />
             </button>

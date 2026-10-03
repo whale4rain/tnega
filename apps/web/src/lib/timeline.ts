@@ -232,6 +232,33 @@ export function presentRun(entry: AgentEntry): { process: Block[]; visible: Bloc
   return { process, visible }
 }
 
+/**
+ * Outcome first: a finished turn shows its answer, the files it changed and
+ * anything that went wrong; every other step folds away until asked for.
+ * While the turn runs nothing streams into view — the thread's checklist
+ * says what it is doing.
+ */
+export function presentOutcome(entry: AgentEntry, live: boolean): { process: Block[]; visible: Block[] } {
+  let answer: Block | undefined
+  if (!live) {
+    for (let i = entry.blocks.length - 1; i >= 0 && !answer; i -= 1) {
+      const block = entry.blocks[i]!
+      if (block.kind === 'text' && block.text.trim()) answer = block
+    }
+  }
+  const process: Block[] = []
+  const visible: Block[] = []
+  for (const block of entry.blocks) {
+    const shown = block === answer
+      || block.kind === 'files'
+      || (block.kind === 'notice' && !block.process && block.tone !== 'info')
+      || (!live && block.kind === 'tool' && needsAttention(block.tool))
+    if (shown) visible.push(block)
+    else process.push(block)
+  }
+  return { process, visible }
+}
+
 function addToolCall(target: AgentEntry, callId: string, name: string, args: unknown): void {
   if (findToolBlock(target, callId) || findSubagentBlock(target, callId)) return
   if (name === SPAWN_TOOL) {

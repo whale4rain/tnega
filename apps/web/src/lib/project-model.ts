@@ -5,6 +5,7 @@
  */
 import type {
   ArtifactFact,
+  ArtifactRef,
   BoxEnvelope,
   MemoryFact,
   ProjectRecord,
@@ -246,12 +247,15 @@ export function replyRef(state: ProjectState, id: string): ReplyRef | undefined 
 
 export type MainItem =
   | { kind: 'user'; id: string; text: string; at: number; replyTo: ReplyRef[] }
-  | { kind: 'coordinator'; id: string; text: string; at: number; replyTo: ReplyRef[] }
+  | { kind: 'coordinator'; id: string; text: string; at: number; replyTo: ReplyRef[]; refs: ArtifactRef[] }
   | { kind: 'threads'; id: string; threadIds: string[]; at: number }
-  | { kind: 'notice'; id: string; text: string; threadId?: string; at: number }
   | { kind: 'draft'; id: string; text: string }
 
-/** The main conversation: messages, with consecutive dispatches grouped into one card stack. */
+/**
+ * The main conversation: what the user said, what the coordinator said, and
+ * one card per thread where work was handed off. Thread results, notices and
+ * internal steps stay out of it; they live in their own thread.
+ */
 export function mainTimeline(state: ProjectState): MainItem[] {
   const items: MainItem[] = []
   // A reply to the message right above it needs no link; anything further away does.
@@ -272,8 +276,8 @@ export function mainTimeline(state: ProjectState): MainItem[] {
         items.push({ kind: 'user', id: message.messageId, text: message.text, at: message.createdAt, replyTo: refs(message) })
         break
       case 'agent-reply':
-        if (message.text.trim()) {
-          items.push({ kind: 'coordinator', id: message.messageId, text: message.text, at: message.createdAt, replyTo: refs(message) })
+        if (message.text.trim() || message.refs?.length) {
+          items.push({ kind: 'coordinator', id: message.messageId, text: message.text, at: message.createdAt, replyTo: refs(message), refs: message.refs ?? [] })
         }
         break
       case 'dispatch': {
@@ -286,15 +290,6 @@ export function mainTimeline(state: ProjectState): MainItem[] {
         }
         break
       }
-      case 'notice':
-        items.push({
-          kind: 'notice',
-          id: message.messageId,
-          text: noticeText(message, state),
-          ...(message.threadId ? { threadId: message.threadId } : {}),
-          at: message.createdAt,
-        })
-        break
       default:
         break
     }
@@ -302,14 +297,6 @@ export function mainTimeline(state: ProjectState): MainItem[] {
   const draft = state.live[state.coordinatorId]
   if (draft?.trim()) items.push({ kind: 'draft', id: 'coordinator-draft', text: draft })
   return items
-}
-
-function noticeText(message: BoxEnvelope, state: ProjectState): string {
-  if (message.threadId && message.sender.kind === 'user') {
-    const label = state.threads[message.threadId]?.label ?? 'a thread'
-    return `You messaged ${label}`
-  }
-  return message.text
 }
 
 /** Worker threads, excluding the coordinator itself. */
@@ -331,11 +318,49 @@ export type ThreadTone = 'working' | 'attention' | 'idle' | 'done' | 'failed'
 
 export const THREAD_STATE: Record<ThreadState, { label: string; tone: ThreadTone }> = {
   working: { label: 'Working', tone: 'working' },
-  waiting: { label: 'Waiting for a decision', tone: 'attention' },
+  waiting: { label: 'Waiting on a decision', tone: 'attention' },
   blocked: { label: 'Blocked', tone: 'attention' },
-  idle: { label: 'Reported back', tone: 'idle' },
+  idle: { label: 'Idle', tone: 'idle' },
   done: { label: 'Done', tone: 'done' },
   failed: { label: 'Failed', tone: 'failed' },
+}
+
+/**
+ * The one line a card shows: the state, and while working the step the
+ * thread's live checklist marks active (or how far through it is).
+ */
+export function threadStatusLine(state: ProjectState, thread: ThreadRecord): { label: string; tone: ThreadTone; step?: string } {
+  const current = threadState(state, thread)
+  const { label, tone } = THREAD_STATE[current]
+  const items = thread.checklist ?? []
+  if (current !== 'working' || items.length === 0) return { label, tone }
+  const active = items.find(item => item.status === 'active')
+  const done = items.filter(item => item.status === 'done').length
+  return { label, tone, step: active ? active.title : `${done} of ${items.length} steps` }
+}
+
+/** States a thread reaches that the user should hear about. */
+const SETTLED: ReadonlySet<ThreadState> = new Set(['done', 'failed', 'waiting', 'blocked'])
+
+/**
+ * A thread reported, failed or needs a decision since the user last opened
+ * it. `seen` maps thread id → the `updatedAt` the user last saw.
+ */
+export function isUnread(state: ProjectState, thread: ThreadRecord, seen: Readonly<Record<string, number>>): boolean {
+  if (!SETTLED.has(threadState(state, thread))) return false
+  return (seen[thread.id] ?? 0) < thread.updatedAt
+}
+
+/** Library entries for a message's artifact references, in reference order. */
+export function artifactsFor(state: ProjectState, refs: readonly ArtifactRef[]): ArtifactFact[] {
+  return refs
+    .map(ref => state.artifacts.find(artifact => artifact.id === ref.hash))
+    .filter((artifact): artifact is ArtifactFact => artifact !== undefined)
+}
+
+/** Artifacts a thread published, oldest first. */
+export function threadArtifacts(state: ProjectState, threadId: string): ArtifactFact[] {
+  return state.artifacts.filter(artifact => artifact.author === threadId).sort((a, b) => a.createdAt - b.createdAt)
 }
 
 /** Effective state: the live run flag wins over a stale record. */

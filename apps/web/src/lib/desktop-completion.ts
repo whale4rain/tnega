@@ -32,3 +32,13 @@ function notifyDesktopCompletion(outcome: 'completed' | 'failed' | 'waiting'): v
   if (!desktop || typeof desktop !== 'object' || !('notifyCompletion' in desktop)) return
   if (typeof desktop.notifyCompletion === 'function') desktop.notifyCompletion(outcome)
 }
+
+/**
+ * A project thread reported, failed or needs a decision: notify once per
+ * state change (`key` names the thread and the change), not once per render.
+ */
+export function notifyDesktopThread(key: string, outcome: 'completed' | 'failed' | 'waiting', notify = notifyDesktopCompletion): void {
+  if (announced.has(key)) return
+  announced.add(key)
+  notify(outcome)
+}

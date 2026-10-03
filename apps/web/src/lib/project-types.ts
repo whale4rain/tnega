@@ -51,6 +51,12 @@ export interface ProjectSettings {
 
 export type ThreadState = 'working' | 'waiting' | 'blocked' | 'idle' | 'done' | 'failed'
 
+/** One step of a thread's live checklist (`update_checklist`). */
+export interface ChecklistItem {
+  title: string
+  status: 'pending' | 'active' | 'done'
+}
+
 export interface ThreadRecord {
   id: string
   projectId: string
@@ -62,6 +68,7 @@ export interface ThreadRecord {
   detail?: string
   depth: number
   permission: Permission
+  checklist?: ChecklistItem[]
   createdAt: number
   updatedAt: number
 }

@@ -9,10 +9,6 @@ import {
   Pause,
   Settings2,
   WifiOff,
-  Rocket,
-  Search,
-  FileSearch,
-  Workflow,
   CornerUpLeft,
   X,
 } from 'lucide-react'
@@ -20,7 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { avatarVersion, distinctSeeds, subscribeAvatars } from '../../lib/avatar'
 import { errorText, useStoredState } from '../../lib/hooks'
 import { followProject, isUnsupported, localReplies, projectApi } from '../../lib/project-api'
-import { activeCount, fromSnapshot, mainTimeline, plainPreview, reduceProject, workerThreads, type MainItem, type ProjectState, type ReplyRef } from '../../lib/project-model'
+import { notifyDesktopThread } from '../../lib/desktop-completion'
+import { activeCount, artifactsFor, fromSnapshot, isUnread, mainTimeline, plainPreview, reduceProject, threadState, workerThreads, type MainItem, type ProjectState, type ReplyRef } from '../../lib/project-model'
 import type { ProjectStreamEvent } from '../../lib/project-types'
 import type { ConfigSnapshot } from '../../lib/types'
 import { AgentAvatar, AvatarSeeds } from '../AgentAvatar'
@@ -29,6 +26,7 @@ import { ApprovalCard } from '../Conversation'
 import { Markdown } from '../Markdown'
 import { Menu } from '../Menu'
 import { LibraryPanel, MemoryPanel, OverviewPanel, SettingsPanel } from './ProjectPanels'
+import { ArtifactCards } from './Artifacts'
 import { ThreadCard } from './ThreadCard'
 import { ThreadPanel } from './ThreadPanel'
 
@@ -69,6 +67,7 @@ export function ProjectView({
   const [panelOpen, setPanelOpen] = useStoredState<'open' | 'closed'>('tnega.projectPanel', 'open', ['open', 'closed'])
   const [notice, setNotice] = useState<string | undefined>()
   const [replyTarget, setReplyTarget] = useState<ReplyRef | undefined>()
+  const [seen, markSeen] = useSeenThreads(projectId)
 
   // Snapshot first, then follow the change stream from its cursor.
   useEffect(() => {
@@ -104,6 +103,30 @@ export function ProjectView({
   useEffect(() => {
     if (name !== undefined) onChanged()
   }, [name, archived, onChanged])
+
+  // Opening a thread marks what it reported as read.
+  const openThread = threadId && state ? state.threads[threadId] : undefined
+  useEffect(() => {
+    if (openThread) markSeen(openThread.id, openThread.updatedAt)
+  }, [openThread, markSeen])
+
+  // A thread that finishes, fails or needs a decision notifies the user once.
+  const settled = useRef<Record<string, string> | undefined>(undefined)
+  useEffect(() => {
+    if (!state) return
+    const now: Record<string, string> = {}
+    for (const thread of workerThreads(state)) now[thread.id] = threadState(state, thread)
+    const before = settled.current
+    settled.current = now
+    if (!before) return
+    for (const [id, current] of Object.entries(now)) {
+      if (before[id] === current || id === threadId) continue
+      const key = `${id}:${state.threads[id]?.updatedAt ?? 0}`
+      if (current === 'done') notifyDesktopThread(key, 'completed')
+      else if (current === 'failed') notifyDesktopThread(key, 'failed')
+      else if (current === 'waiting' || current === 'blocked') notifyDesktopThread(key, 'waiting')
+    }
+  }, [state, threadId])
 
   const items = useMemo(() => (state ? mainTimeline(state) : []), [state])
   const coordinatorRunning = state ? Boolean(state.running[state.coordinatorId]) : false
@@ -219,11 +242,9 @@ export function ProjectView({
           <div className="conv-title-wrap">
             <h1 className="conv-title"><span>{state.project.name}</span></h1>
             <div className="conv-subtitle">
-              <span className="conv-tag project-tag">Project</span>
               {state.project.archived && <span className="conv-tag">Archived</span>}
-              {working > 0 && <span className="conv-tag goal-active"><span className="spinner tiny" /> {working} thread{working === 1 ? '' : 's'} working</span>}
-              {!connected && <span className="conv-tag goal-blocked"><WifiOff size={11} /> Reconnecting…</span>}
-              {state.project.goal && <span className="conv-workspace" title={state.project.goal}>{state.project.goal}</span>}
+              {working > 0 && <span className="conv-workspace">{working} thread{working === 1 ? '' : 's'} working</span>}
+              {!connected && <span className="conv-workspace"><WifiOff size={11} /> Reconnecting…</span>}
             </div>
           </div>
           <div className="conv-header-actions">
@@ -260,10 +281,12 @@ export function ProjectView({
           if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
         }}>
           <div className="conv-column">
-            {items.length === 0 && <ProjectEmpty name={state.project.name} coordinatorId={state.coordinatorId} onPick={text => void send(text)} />}
+            {items.length === 0 && <ProjectEmpty name={state.project.name} coordinatorId={state.coordinatorId} />}
             <MainTimeline
+              workspace={workspace}
               items={items}
               state={state}
+              seen={seen}
               activeThread={threadId}
               coordinatorRunning={coordinatorRunning}
               handlers={{
@@ -297,11 +320,10 @@ export function ProjectView({
               </div>
             )}
             <PromptBox
-              placeholder={replyTarget ? `Reply to ${replyTarget.label}…` : items.length ? 'Message the coordinator… you can send while threads are working' : 'Describe what needs to get done…'}
+              placeholder={replyTarget ? `Reply to ${replyTarget.label}…` : items.length ? 'Message the project…' : 'Describe what needs to get done…'}
               onSubmit={send}
               running={coordinatorRunning}
               autoFocusKey={replyTarget?.id ?? projectId}
-              footer={<span>The coordinator decides whether to answer, start a thread, or steer one that is running.</span>}
             />
           </div>
         </div>
@@ -323,7 +345,7 @@ export function ProjectView({
                   ))}
                 </div>
                 <div className="side-scroll">
-                  {tab === 'overview' && <OverviewPanel state={state} onOpenThread={onOpenThread} />}
+                  {tab === 'overview' && <OverviewPanel state={state} onOpenThread={onOpenThread} unread={thread => isUnread(state, thread, seen)} />}
                   {tab === 'memory' && <MemoryPanel workspace={workspace} state={state} />}
                   {tab === 'library' && <LibraryPanel workspace={workspace} state={state} />}
                   {tab === 'settings' && <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onDeleted={onDeleted} />}
@@ -341,14 +363,13 @@ export function ProjectView({
 
 type Group =
   | { kind: 'user'; item: Extract<MainItem, { kind: 'user' }> }
-  | { kind: 'notice'; item: Extract<MainItem, { kind: 'notice' }> }
   | { kind: 'agent'; id: string; items: MainItem[] }
 
 function group(items: readonly MainItem[]): Group[] {
   const out: Group[] = []
   for (const item of items) {
-    if (item.kind === 'user' || item.kind === 'notice') {
-      out.push({ kind: item.kind, item } as Group)
+    if (item.kind === 'user') {
+      out.push({ kind: 'user', item })
       continue
     }
     const last = out.at(-1)
@@ -365,14 +386,18 @@ interface TimelineHandlers {
 }
 
 function MainTimeline({
+  workspace,
   items,
   state,
+  seen,
   activeThread,
   coordinatorRunning,
   handlers,
 }: {
+  workspace: string
   items: readonly MainItem[]
   state: ProjectState
+  seen: Readonly<Record<string, number>>
   activeThread: string | undefined
   coordinatorRunning: boolean
   handlers: TimelineHandlers
@@ -392,15 +417,6 @@ function MainTimeline({
             </div>
           )
         }
-        if (entry.kind === 'notice') {
-          return (
-            <div key={entry.item.id} id={`msg-${entry.item.id}`} className="project-notice">
-              {entry.item.threadId
-                ? <button type="button" className="link-button" onClick={() => handlers.onOpenThread(entry.item.threadId!)}>{entry.item.text}</button>
-                : entry.item.text}
-            </div>
-          )
-        }
         const live = thinking && index === groups.length - 1
         return (
           <AgentGroup key={entry.id} agentId={state.coordinatorId} live={live || (drafting && entry === last)}>
@@ -410,7 +426,8 @@ function MainTimeline({
                   return (
                     <div key={item.id} id={`msg-${item.id}`} className="main-message">
                       {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
-                      <Markdown text={item.text} />
+                      {item.text.trim() && <Markdown text={item.text} />}
+                      <ArtifactCards workspace={workspace} projectId={state.project.id} artifacts={artifactsFor(state, item.refs)} />
                       <div className="turn-actions">
                         <button
                           type="button"
@@ -435,8 +452,8 @@ function MainTimeline({
                           state={state}
                           threadId={id}
                           active={id === activeThread}
+                          unread={Boolean(state.threads[id]) && isUnread(state, state.threads[id]!, seen)}
                           onOpen={handlers.onOpenThread}
-                          onReply={handlers.onReply}
                         />
                       ))}
                     </div>
@@ -493,28 +510,41 @@ function Coordinating() {
   )
 }
 
-const STARTERS = [
-  { icon: Rocket, title: 'Ship a release', prompt: 'Get this project ready for its next release: audit open issues, fix what blocks the release, and draft release notes.' },
-  { icon: FileSearch, title: 'Research in parallel', prompt: 'Compare three approaches to adding authentication here, in parallel, and recommend one with trade-offs.' },
-  { icon: Search, title: 'Audit the codebase', prompt: 'Audit this workspace for bugs, missing tests and outdated dependencies; split the work by area.' },
-  { icon: Workflow, title: 'Plan the work', prompt: 'Break our goal into workstreams, propose which should run in parallel, and ask me before starting.' },
-]
-
-function ProjectEmpty({ name, coordinatorId, onPick }: { name: string; coordinatorId: string; onPick: (text: string) => void }) {
+function ProjectEmpty({ name, coordinatorId }: { name: string; coordinatorId: string }) {
   return (
     <div className="empty-state">
-      <AgentAvatar id={coordinatorId} role="coordinator" size={72} live title="Your coordinator (click to change its look)" rerollable />
+      <AgentAvatar id={coordinatorId} role="coordinator" size={56} title="Your coordinator (click to change its look)" rerollable />
       <h2>What should {name} get done?</h2>
-      <p>Describe the outcome. The coordinator splits it into threads that work in parallel, share memory, and report back here.</p>
-      <div className="starter-grid">
-        {STARTERS.map(starter => (
-          <button key={starter.title} type="button" className="starter" onClick={() => onPick(starter.prompt)}>
-            <starter.icon size={16} />
-            <span className="starter-title">{starter.title}</span>
-            <span className="starter-prompt">{starter.prompt}</span>
-          </button>
-        ))}
-      </div>
+      <p>Describe the outcome. Each focused task gets its own thread; results stay there and you hear when one needs you.</p>
     </div>
   )
+}
+
+/** Per project: thread id → the `updatedAt` the user last saw when they opened it. */
+function useSeenThreads(projectId: string): [Readonly<Record<string, number>>, (threadId: string, updatedAt: number) => void] {
+  const key = `tnega.project.seen.${projectId}`
+  const read = useCallback((): Record<string, number> => {
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem(key) ?? '{}')
+      if (!parsed || typeof parsed !== 'object') return {}
+      return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, number] => typeof entry[1] === 'number'))
+    } catch {
+      return {}
+    }
+  }, [key])
+  const [seen, setSeen] = useState(read)
+  useEffect(() => setSeen(read()), [read])
+  const mark = useCallback((threadId: string, updatedAt: number) => {
+    setSeen(current => {
+      if ((current[threadId] ?? 0) >= updatedAt) return current
+      const next = { ...current, [threadId]: updatedAt }
+      try {
+        localStorage.setItem(key, JSON.stringify(next))
+      } catch {
+        // Storage can be unavailable; unread dots then last for the session.
+      }
+      return next
+    })
+  }, [key])
+  return [seen, mark]
 }

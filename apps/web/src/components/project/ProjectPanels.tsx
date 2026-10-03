@@ -2,7 +2,6 @@ import {
   Archive,
   BookOpen,
   Brain,
-  FileCode2,
   FileText,
   History,
   Link2,
@@ -18,28 +17,28 @@ import { errorText, relativeTime } from '../../lib/hooks'
 import { confirmDialog } from '../../lib/dialogs'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import type { ProjectState } from '../../lib/project-model'
-import { activeCount, formatBytes, overview, plainPreview, workerThreads } from '../../lib/project-model'
+import { formatBytes, overview, threadStatusLine, workerThreads } from '../../lib/project-model'
 import type {
   ArtifactFact,
   CheckIns,
   MemoryFact,
   ProjectSettings,
   ProjectUsage,
+  ThreadRecord,
   ThreadSpawning,
   UpdateDetail,
 } from '../../lib/project-types'
 import { formatTokens } from '../../lib/timeline'
 import type { ConfigSnapshot, Effort, Permission } from '../../lib/types'
-import { AgentAvatar } from '../AgentAvatar'
 import { Dialog } from '../Dialog'
-import { CodeBlock, Markdown } from '../Markdown'
+import { ArtifactIcon, ArtifactViewer } from './Artifacts'
 import { ThreadStatus } from './ThreadCard'
 
 // ---------------------------------------------------------------------------
 // Overview
 // ---------------------------------------------------------------------------
 
-export function OverviewPanel({ state, onOpenThread }: { state: ProjectState; onOpenThread: (id: string) => void }) {
+export function OverviewPanel({ state, onOpenThread, unread }: { state: ProjectState; onOpenThread: (id: string) => void; unread: (thread: ThreadRecord) => boolean }) {
   const groups = overview(state)
   const total = workerThreads(state).length
   if (total === 0) {
@@ -53,27 +52,19 @@ export function OverviewPanel({ state, onOpenThread }: { state: ProjectState; on
   }
   return (
     <div className="panel-stack">
-      <div className="overview-stats">
-        <Stat label="Threads" value={total} />
-        <Stat label="Working" value={activeCount(state)} />
-        <Stat label="Memories" value={state.memory.length} />
-        <Stat label="Library" value={state.artifacts.length + state.resources.length} />
-      </div>
       {groups.map(group => (
         <section key={group.key} className="panel-section">
           <h3 className="panel-heading">{group.label} <span className="count">{group.threads.length}</span></h3>
           <div className="overview-list">
             {group.threads.map(thread => (
               <button key={thread.id} type="button" className="overview-row" onClick={() => onOpenThread(thread.id)}>
-                <AgentAvatar id={thread.id} size={30} />
+                <ThreadStatus state={state} thread={thread} withLabel={false} />
                 <span className="overview-row-main">
                   <span className="overview-row-label">{thread.label}</span>
-                  <span className="overview-row-goal">{plainPreview(thread.detail || thread.goal, 120)}</span>
+                  <span className="overview-row-goal"><ThreadStatusText state={state} thread={thread} /></span>
                 </span>
-                <span className="overview-row-side">
-                  <ThreadStatus state={state} thread={thread} />
-                  <span className="muted small">{relativeTime(thread.updatedAt)}</span>
-                </span>
+                {unread(thread) && <span className="unread-dot" aria-label="New" />}
+                <span className="muted small">{relativeTime(thread.updatedAt)}</span>
               </button>
             ))}
           </div>
@@ -83,13 +74,9 @@ export function OverviewPanel({ state, onOpenThread }: { state: ProjectState; on
   )
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="stat">
-      <span className="stat-value">{value}</span>
-      <span className="stat-label">{label}</span>
-    </div>
-  )
+function ThreadStatusText({ state, thread }: { state: ProjectState; thread: ThreadRecord }) {
+  const line = threadStatusLine(state, thread)
+  return <>{line.step ?? line.label}</>
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +263,7 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
           <div className="library-list">
             {artifacts.map(artifact => (
               <button key={artifact.id} type="button" className="library-row" onClick={() => setViewing(artifact)}>
-                <span className="library-icon">{/(json|javascript|typescript|diff|x-)/.test(artifact.data.mediaType) ? <FileCode2 size={15} /> : <FileText size={15} />}</span>
+                <span className="library-icon"><ArtifactIcon mediaType={artifact.data.mediaType} /></span>
                 <span className="library-main">
                   <span className="library-title">{artifact.data.title}</span>
                   <span className="library-meta">
@@ -311,30 +298,6 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
   )
 }
 
-function ArtifactViewer({ workspace, projectId, artifact, onClose }: { workspace: string; projectId: string; artifact: ArtifactFact; onClose: () => void }) {
-  const [content, setContent] = useState<string | undefined>()
-  const [unavailable, setUnavailable] = useState<string | undefined>()
-  useEffect(() => {
-    projectApi.artifact(workspace, projectId, artifact.data.hash).then(setContent, reason => {
-      setUnavailable(isUnsupported(reason)
-        ? 'This server does not serve artifact content yet (GET /api/projects/:id/artifacts/:hash).'
-        : errorText(reason))
-    })
-  }, [workspace, projectId, artifact.data.hash])
-  const markdown = /markdown/.test(artifact.data.mediaType)
-  const language = artifact.data.mediaType.split('/').pop()?.replace(/^x-/, '')
-  return (
-    <Dialog title={artifact.data.title} description={`${artifact.data.mediaType} · ${formatBytes(artifact.data.size)}`} onClose={onClose} width={760}>
-      {content === undefined && !unavailable && <div className="skeleton"><div className="skeleton-line w90" /><div className="skeleton-line w75" /></div>}
-      {unavailable && (
-        <div className="notice notice-info">
-          <span>{unavailable}<br /><span className="mono small">sha256 {artifact.data.hash}</span></span>
-        </div>
-      )}
-      {content !== undefined && (markdown ? <Markdown text={content} /> : <CodeBlock code={content} language={language} />)}
-    </Dialog>
-  )
-}
 
 function AddToLibraryDialog({ workspace, projectId, onClose }: { workspace: string; projectId: string; onClose: () => void }) {
   const [mode, setMode] = useState<'file' | 'link'>('file')
