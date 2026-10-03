@@ -12,6 +12,7 @@ const cloud = '<path d="M7 18a5 5 0 0 1-1-10 8 8 0 0 1 15-1 6 6 0 0 1 4 11Z"/>'
 const icons = {
   rain: `<g fill="${color('rain')}">${cloud}<path d="m10 21-3 6a2 2 0 0 0 4 1l2-7Zm10 0-3 6a2 2 0 0 0 4 1l2-7Z"/></g>`,
   storm: `<g fill="${color('storm')}">${cloud}</g><path fill="${color('bolt')}" d="m17 16-8 9h6l-3 7 12-13h-7l3-3Z"/>`,
+  snow: `<g fill="${color('snow')}">${cloud}<circle cx="10" cy="24" r="2.4"/><circle cx="16" cy="28" r="2.4"/><circle cx="22" cy="24" r="2.4"/></g>`,
 }
 const browser = await chromium.launch({ channel: process.platform === 'win32' ? 'msedge' : 'chrome', headless: true })
 try {

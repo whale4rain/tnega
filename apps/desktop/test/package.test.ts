@@ -21,7 +21,7 @@ async function readBuilderConfig(): Promise<string> {
 describe('desktop packaging', () => {
   test('ships valid square weather overlays for taskbar completion notices', async () => {
     expect(await readBuilderConfig()).toContain('build/completion-*.png')
-    for (const name of ['rain', 'storm']) {
+    for (const name of ['rain', 'storm', 'snow']) {
       const png = await readFile(resolve(import.meta.dirname, `../build/completion-${name}.png`))
       expect(png.subarray(1, 4).toString()).toBe('PNG')
       expect(png.readUInt32BE(16)).toBe(32)

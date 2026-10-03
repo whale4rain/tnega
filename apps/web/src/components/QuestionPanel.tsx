@@ -1,6 +1,7 @@
 import { MessageCircleQuestion } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import { notifyDesktopWaiting } from '../lib/desktop-completion'
 import { errorText } from '../lib/hooks'
 import type { PendingQuestionRequest, QuestionAnswerItem } from '../lib/types'
 
@@ -25,7 +26,9 @@ export function QuestionPanel({ workspace, sessionId, running, onResumeQueued }:
       try {
         const result = await api.questions(workspace, sessionId, controller.signal)
         if (controller.signal.aborted) return
-        setRequests(result.questions.filter(request => !answered.current.has(request.requestId)))
+        const pending = result.questions.filter(request => !answered.current.has(request.requestId))
+        for (const request of pending) notifyDesktopWaiting(request.requestId)
+        setRequests(pending)
         setError(undefined)
       } catch (cause) {
         if (controller.signal.aborted) return

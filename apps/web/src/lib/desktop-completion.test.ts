@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { completionObserver } from './desktop-completion'
+import { completionObserver, notifyDesktopWaiting } from './desktop-completion'
 
 it('notifies once at stream completion, not on intermediate goal turns', () => {
   const notify = vi.fn()
@@ -27,4 +27,12 @@ it('does not notify for cancellation or an unfinished stream', () => {
   controller.abort()
   observe({ type: 'done' })
   expect(notify).not.toHaveBeenCalled()
+})
+
+it('announces each waiting question or approval once', () => {
+  const notify = vi.fn()
+  notifyDesktopWaiting('question-1', notify)
+  notifyDesktopWaiting('question-1', notify)
+  notifyDesktopWaiting('approval-2', notify)
+  expect(notify.mock.calls).toEqual([['waiting'], ['waiting']])
 })

@@ -1,4 +1,11 @@
-export type CompletionOutcome = 'completed' | 'failed'
+/** `waiting`: a question or approval needs the user before the run can go on. */
+export type CompletionOutcome = 'completed' | 'failed' | 'waiting'
+
+const DESCRIPTION: Record<CompletionOutcome, string> = {
+  completed: 'Reply ready',
+  failed: 'Session failed',
+  waiting: 'Waiting for your answer',
+}
 
 interface CompletionWindow<Icon> {
   isDestroyed(): boolean
@@ -19,10 +26,10 @@ export function installCompletionNotice<Icon>(window: CompletionWindow<Icon>, ic
   window.on('focus', clear)
   return {
     notify(outcome: unknown): void {
-      if ((outcome !== 'completed' && outcome !== 'failed') || window.isDestroyed()) return
+      if ((outcome !== 'completed' && outcome !== 'failed' && outcome !== 'waiting') || window.isDestroyed()) return
       beep()
       if (window.isFocused()) return
-      if (platform === 'win32') window.setOverlayIcon(icons[outcome], outcome === 'failed' ? 'Session failed' : 'Reply ready')
+      if (platform === 'win32') window.setOverlayIcon(icons[outcome], DESCRIPTION[outcome])
       window.flashFrame(true)
     },
     dispose(): void {

@@ -50,6 +50,9 @@ compare links provide a convenient browser view of the boundaries.
   flagged. The model still receives every error unchanged.
 - Tool calls stream as a flat list while a turn runs instead of a folder that
   opens and closes around each call; they fold once when the turn finishes.
+- When the agent asks a question or needs an approval, the desktop client
+  sounds once, flashes the taskbar and shows a snow badge until you return to
+  the window.
 
 ## [0.4.9](https://github.com/whale4rain/tnega/releases/tag/v0.4.9) — 2026-10-03
 

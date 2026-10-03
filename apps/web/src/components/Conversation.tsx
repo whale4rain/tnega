@@ -1,4 +1,4 @@
-import { completionObserver } from '../lib/desktop-completion'
+import { completionObserver, notifyDesktopWaiting } from '../lib/desktop-completion'
 import {
   ArrowDown,
   Check,
@@ -282,6 +282,7 @@ export function Conversation({
   const onStreamEvent = useCallback((event: StreamEvent) => {
     switch (event.type) {
       case 'approval/request':
+        notifyDesktopWaiting(event.id)
         setApprovals(list => [...list, { id: event.id, tool: event.tool, input: event.input }])
         return
       case 'plan/start':

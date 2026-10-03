@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const desktopApi = Object.freeze({
-  notifyCompletion: (outcome: 'completed' | 'failed'): void => ipcRenderer.send('tnega:completion', outcome),
+  notifyCompletion: (outcome: 'completed' | 'failed' | 'waiting'): void => ipcRenderer.send('tnega:completion', outcome),
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke('tnega:pick-folder') as Promise<string | undefined>,
   revealWorkspace: (path: string): Promise<void> => ipcRenderer.invoke('tnega:reveal-workspace', path) as Promise<void>,
   version: (): string => ipcRenderer.sendSync('tnega:version') as string,
