@@ -30,6 +30,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Settings use a wider, responsive two-column layout with separate model and
+  approval sections, keeping save actions visible while the content scrolls.
+
 - Ship twelve offline skills for research, documents, planning, data processing,
   coding, debugging, review, TDD, DDD, Tnega usage and skill management. Install missing files in user home
   on startup, preserve user edits, and honor Workspace overrides. General,

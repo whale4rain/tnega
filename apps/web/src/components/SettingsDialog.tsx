@@ -75,6 +75,7 @@ export function SettingsDialog({
   return (
     <Dialog
       title="Settings"
+      width={960}
       description={<>Model connection used by every session. Saved to <code>{stored?.path ?? '~/.tnega/config.json'}</code>.</>}
       onClose={onClose}
       footer={
@@ -101,6 +102,9 @@ export function SettingsDialog({
         </div>
       )}
 
+      <div className="settings-columns">
+      <section className="settings-section" aria-labelledby="settings-model-heading">
+      <h3 id="settings-model-heading">Model connection</h3>
       <div className="form-grid">
         <label className="field span-2">
           <span className="field-label">CodeMode</span>
@@ -162,6 +166,9 @@ export function SettingsDialog({
           {config.models.length} model routes are configured in the config file; pick one per session from the composer.
         </p>
       )}
+      </section>
+      <section className="settings-section" aria-labelledby="settings-approval-heading">
+      <h3 id="settings-approval-heading">Approvals</h3>
       <div className="form-grid">
         <label className="field">
           <span className="field-label">Approval reviewer</span>
@@ -202,6 +209,8 @@ export function SettingsDialog({
           <label className="field span-2"><span className="field-label">Reviewer API key</span><input type="password" value={reviewKey} onChange={event => setReviewKey(event.target.value)} placeholder={stored?.approvalReview?.apiKeySet ? 'Saved — leave empty to keep it' : 'Separate credential or environment variable'} autoComplete="off" /></label>
         </>}
         <p className="muted small span-2">Auto review keeps your selected permissions. Uncertain or unavailable reviews return to you. Applies to Project threads by default; sessions can choose their own approval mode.</p>
+      </div>
+      </section>
       </div>
       <UpdateSettings updates={updates} />
     </Dialog>

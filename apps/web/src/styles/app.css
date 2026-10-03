@@ -2812,6 +2812,37 @@ kbd {
   font-size: var(--text-sm);
 }
 
+.settings-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.settings-section {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.settings-section h3 {
+  margin: 0 0 18px;
+  font-size: var(--text-md);
+  color: var(--text);
+}
+
+.settings-section .small {
+  line-height: 1.55;
+}
+
+@media (max-width: 720px) {
+  .settings-columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
