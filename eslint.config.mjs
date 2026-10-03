@@ -7,6 +7,9 @@ export default tseslint.config(
       'dist/**',
       'apps/web/dist/**',
       'node_modules/**',
+      '.pnpm-store/**',
+      'data/**',
+      '.tnega/**',
       'coverage/**',
       // Build and packaging output that .gitignore already excludes; without
       // these, linting fails on any checkout that has packaged the desktop app.
