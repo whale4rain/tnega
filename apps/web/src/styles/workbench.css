@@ -309,6 +309,14 @@
   grid-template-columns: minmax(170px, 32%) minmax(0, 1fr);
 }
 
+.wb-card.wb-split.tree-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wb-split > .files-tree-pane[hidden] {
+  display: none;
+}
+
 .wb-split > .wb-empty,
 .wb-split > .file-preview-status,
 .wb-split > .wb-notice {
