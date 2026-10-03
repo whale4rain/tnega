@@ -230,6 +230,14 @@ Settings → Update channel persists Stable / Preview per desktop installation.
 - **Clients see nothing:** the selected channel's feed is missing, the release
   is a draft, its stable/prerelease metadata is wrong, the user chose Stable
   for a preview release, or the desktop version was not bumped.
+- **Temporary broken-shortcut prompt during an update (0.4.7):** clicking a
+  desktop/taskbar shortcut while the installer replaces the application can
+  make Windows report that `Tnega.exe` was moved or changed. Choose **No** to
+  keep the shortcut and wait for installation and automatic restart to finish.
+  The reported shortcut worked again after the update. If it still fails after
+  installation, inspect its target and the installed executable before treating
+  it as this temporary condition; do not delete a working shortcut or change
+  installer settings based only on the transient prompt.
 - **Bad release:** do not delete the tag clients already downloaded. Fix
   forward with a new patch version; the updater only moves forward.
 - **Code signing:** builds are unsigned, so Windows SmartScreen warns on a
