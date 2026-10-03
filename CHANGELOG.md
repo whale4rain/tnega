@@ -30,6 +30,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Session replies retain their weather avatar when agent metadata is absent:
+  running tools show rain and failed runs show lightning.
+
 - Settings use a wider, responsive two-column layout with separate model and
   approval sections, keeping save actions visible while the content scrolls.
 
