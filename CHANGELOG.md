@@ -3,7 +3,28 @@
 User-visible changes reconstructed from Git tags and commit history. Dates are
 the tag commits' recorded dates. Version sections describe what shipped at that
 point; historical capabilities may have since been removed. There are no Git
-tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
+tags for 0.2.0, 0.4.3 or 0.4.4. Their development changes are included in the
+next actual tag's range; missing tags alone do not prove no package was published.
+
+## Audited history boundaries
+
+Each release covers all commits reachable from its tag but not the preceding
+actual tag, including merged branches. Entries summarize user-visible changes
+and compatibility, rather than repeat every commit. Update Unreleased as each
+feature or fix lands, and move entries into a version only when it ships.
+
+| Version | Audited range | Commits |
+| --- | --- | ---: |
+| 0.1.1 | Repository start through `v0.1.1` | 93 |
+| 0.3.0 | [`v0.1.1...v0.3.0`](https://github.com/whale4rain/tnega/compare/v0.1.1...v0.3.0) | 159 |
+| 0.4.0 | [`v0.3.0...v0.4.0`](https://github.com/whale4rain/tnega/compare/v0.3.0...v0.4.0) | 55 |
+| 0.4.1 | [`v0.4.0...v0.4.1`](https://github.com/whale4rain/tnega/compare/v0.4.0...v0.4.1) | 4 |
+| 0.4.2 | [`v0.4.1...v0.4.2`](https://github.com/whale4rain/tnega/compare/v0.4.1...v0.4.2) | 53 |
+| 0.4.5 | [`v0.4.2...v0.4.5`](https://github.com/whale4rain/tnega/compare/v0.4.2...v0.4.5) | 157 |
+| 0.4.6 | [`v0.4.5...v0.4.6`](https://github.com/whale4rain/tnega/compare/v0.4.5...v0.4.6) | 56 |
+
+Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
+compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
@@ -11,14 +32,17 @@ tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
   recovery for an installer built without publishing.
 - Reorganize English and Chinese guides, refresh screenshots, add this changelog
   and consolidate release instructions under `docs/publish/`.
+- Audit all adjacent release tags, record historical Session format changes and
+  define continuous changelog maintenance and stable/preview version policy.
 - Ignore local `.pnpm-store/` and `data/` directories.
 
 ## [0.4.6](https://github.com/whale4rain/tnega/releases/tag/v0.4.6) — 2026-10-03
 
 - Unify Files, Changes, Terminal, Browser, document previews and subagent
-  transcripts in the right-hand Workbench.
+  transcripts in the right-hand Workbench, including image and PDF previews.
 - Add a workspace file tree and syntax-aware editor with Ctrl+S and detection
-  of concurrent disk changes; add Git diffs and multiple PTY terminals.
+  of concurrent disk changes; add unified/side-by-side Git diffs with live refresh
+  and multiple PTY terminals. Ctrl+J toggles the panel; Ctrl+` opens the terminal.
 - Add application-contained agent browsing in desktop and Web, browser tabs,
   a resizable viewport, screenshots and an element picker.
 - Accept image attachments on messages and tool results; route them to vision
@@ -26,6 +50,7 @@ tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
 - Add background commands and jobs with visible progress and stop controls;
   keep background workspace processes alive across Agent Runs.
 - Load external plugins from profile files and hot-reload without restarting.
+- Add a slash command to enable CodeMode.
 - Improve project coordination and Thread reporting, including waiting for
   user decisions; show context compaction progress.
 - Introduce the sky palette, measured dark theme, weather states and
@@ -43,7 +68,8 @@ tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
 - Add Projects with a coordinator, parallel Threads, shared Memory and an
   artifact Library, including project archive and deletion.
 - Add Work Sessions and Office tools to create, inspect and edit DOCX, XLSX
-  and PPTX, including formatting, themes and native charts.
+  and PPTX, including formatting, themes, native charts and cached Excel formula
+  evaluation.
 - Show generated Office files as conversation cards with side-panel previews,
   zoom and downloads; add slash commands across Session types and `@` mentions.
 - Add fail-closed local sandbox providers for Linux, macOS and Windows, and
@@ -51,6 +77,8 @@ tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
 - Add scoped automatic approval plugins, durable user questions and CodeMode
   orchestration with QuickJS; expose nested tool progress.
 - Persist completed-run final answers and collapse intermediate activity.
+- Configure model context windows, list only configured routes, show edited-file
+  line counts after runs (also outside Git), and honor `.gitignore` in glob/grep.
 - Redesign the local UI and desktop window controls; add tray restoration and
   fix CommonJS sandboxed preloads and Session writer ownership.
 - Session format remains v10. See [release notes](docs/releases/v0.4.5.md).
@@ -66,6 +94,9 @@ tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
 - Add multiple model routes, capabilities and thinking levels;
   show provider usage and cache metrics.
 - Improve context compaction rendering.
+- Group Sessions by Workspace, keep Settings inside the app, switch configured
+  models per Session, fix root-level glob matches and truncate oversized reads
+  instead of failing.
 
 ## [0.4.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.1) — 2026-09-14
 
@@ -78,10 +109,13 @@ tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
 - Harden durable inbox claims, live Agent scheduling, cancellation and retry
   settlement; preserve same-turn steering order.
 - Persist assistant attempt ownership, including reconnectable streams and
-  forks; preserve transcript lifecycle ordering.
+  forks.
 - Resolve inherited prompts, tools and events in the Agent's scope; await
   request middleware and expose admitted step batches.
 - Prefer `TNEGA_API_KEY` for the default model credential.
+- Normalize non-streaming JSON responses in native stream adapters.
+- **Breaking:** Session format becomes v10; incompatible older logs are rejected
+  rather than migrated in place.
 
 ## [0.3.0](https://github.com/whale4rain/tnega/releases/tag/v0.3.0) — 2026-09-09
 
@@ -91,10 +125,20 @@ tags for 0.4.3 or 0.4.4, so no releases are inferred for those numbers.
 - Align stream retries, cancellation causes, inbox steering and tool execution
   middleware; persist partial streams and show interrupted-run recovery.
 - Add library subpath exports and isolated evaluation/benchmark workflows.
+- Add resident multi-turn Agents with durable inboxes, profile-based startup,
+  dynamic prompt variables and service seams. Evaluation importers support
+  HumanEval, MBPP, BigCodeBench and SWE-bench.
+- **Breaking:** Session format becomes v7 and the SessionProjector seam is
+  removed. Old logs are not automatically migrated.
 
 ## [0.1.1](https://github.com/whale4rain/tnega/releases/tag/v0.1.1) — 2026-09-01
 
 - Establish the plugin lifecycle core, Agent Loop, JSONL Sessions, tool execution
   pipeline, LLM adapters, CLI and React/Vite local Web interface.
 - Add library/runtime composition and public domain exports.
+- Support OpenAI-compatible and Anthropic providers, streaming replies,
+  cancellation, refresh recovery, forks, edited-message resubmission and context
+  compaction while retaining the human transcript; add dark mode.
+- Expose declarative AgentDefinition and tool validation, authorization and
+  truncation policies. Early eval/evolve tooling was later removed in 0.4.6.
 - Switch the default model route for this release and prepare npm distribution.

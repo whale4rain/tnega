@@ -11,6 +11,28 @@ each new version with its update feed. Routine documentation and development
 changes do not require packaging a new installer. CLI installations update
 through npm.
 
+## Version and changelog policy
+
+- Update root `CHANGELOG.md` / Unreleased with each user-visible feature, fix or
+  compatibility change, in the same commit. Describe behavior and migration,
+  not internal refactors with no user effect.
+- Audit `git log <previous-actual-tag>..<new-tag>` including merged branches.
+  Gaps in version numbers do not create gaps in coverage. A preview's notes
+  describe its changes; final stable notes include the whole batch since the
+  previous stable tag, including all intervening previews.
+- Commit independently verifiable changes promptly using Conventional Commits.
+  Releases combine several stable new features into a tested delivery batch;
+  do not bump or package on every commit.
+- The agent may choose/increment patch `x.y.z` autonomously. Major `x` and minor
+  `y` require the user's decision, including previews targeting those numbers.
+- Preview versions use `x.y.z-beta.N`; increment N within the planned version.
+  Stable promotion uses `x.y.z`, not a second patch increment. Publish previews
+  as GitHub prereleases and npm `--tag preview`; stable npm uses `latest`.
+- Stable clients follow `latest.yml`; preview clients follow `beta.yml` and may
+  also move to a newer stable release. Returning to Stable changes future
+  updates; it does not downgrade an installed preview. Wait for an equal-target
+  stable release or a newer version.
+
 ## What ships where
 
 | Artifact | Destination | Consumers |
@@ -42,7 +64,8 @@ A client only sees a release that is **published** (not draft) and contains
 
 ## Steps
 
-1. **Decide the version.** Patch for fixes, minor for features. Check the last
+1. **Decide the version.** Apply the policy above: patch batches are autonomous,
+   major/minor require the user's decision. Check the last
    tag: `git tag --sort=-v:refname` (the first entry is the newest version).
 
 2. **Bump and write notes.**

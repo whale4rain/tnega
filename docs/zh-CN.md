@@ -79,6 +79,17 @@ pnpm --filter @tnega/web dev
 
 旧 eval、evolve 与 benchmark 包已在 0.4.6 移除，取舍见 [ADR 0011](adr/0011-remove-eval-first.md)。
 
+## 开发与版本规范
+
+每项用户可见功能、修复或兼容性变化，都在同次改动中及时更新 `CHANGELOG.md` 的
+Unreleased；发布时按上一个实际 Git tag 核对完整差集，包含合并分支与跳号期间的更新。
+
+可独立验收的改动用 Conventional Commits 自主提交。版本发布的颗粒度大于 commit：
+多个新功能稳定并通过必要验证后，才形成一个发布批次，不为每个提交涨版本。
+第三位补丁号可由 Agent 自主确定与增长；第一位主版本号、第二位次版本号由用户确定。
+预览版使用 `x.y.z-beta.N`，同一目标版本内增长 N，稳定后发布 `x.y.z`。
+稳定与预览渠道的构建、发布和选择见[发布指南](publish/README.md)。
+
 ## License
 
 [MIT](../LICENSE)

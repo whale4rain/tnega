@@ -143,6 +143,21 @@ and publish each new desktop version with its installer, blockmap and
 [CHANGELOG.md](CHANGELOG.md) and the version's [release notes](docs/releases/)
 current.
 
+### Development and version policy
+
+Update `CHANGELOG.md` under **Unreleased** in the same change as each user-visible
+feature, fix or compatibility change. Audit every release against the previous
+actual Git tag, including merged branches and skipped version numbers.
+
+Commits remain small, independently verifiable Conventional Commits. A release
+is a larger delivery batch: publish after several new features are stable and
+the relevant checks pass, rather than bumping a version for every commit.
+The agent may choose and increment the third (**patch**) number autonomously.
+Changing the first (**major**) or second (**minor**) number requires the user's
+decision. Preview releases use `x.y.z-beta.N`, share the planned stable version
+and increment `N` for each preview; promote to `x.y.z` when ready. See
+[docs/publish](docs/publish/README.md) for channel selection and release checks.
+
 ## License
 
 [MIT](LICENSE)
