@@ -29,7 +29,7 @@ import { toolOffice } from '@tnega/tool-office'
 import { toolSearch } from '@tnega/tool-search'
 import { toolMemory } from '@tnega/tool-memory'
 import { runSummary } from '@tnega/run-summary'
-import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
+import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
 import { jobsLocal } from '@tnega/jobs-local'
 import { toolJobs } from '@tnega/tool-jobs'
@@ -112,6 +112,8 @@ export interface AgentRuntimeOptions {
   /** Web per-run agents consume durable steering at model step boundaries. */
   durableInbox?: boolean
   ptc?: { mode?: 'native' | 'both' | 'ptc'; timeoutMs?: number; memoryLimitBytes?: number }
+  /** Host-provided runtime assets and limits; independent of model-visible PTC mode. */
+  ptcRuntime?: PtcRuntimeQuickjsConfig
 }
 
 export interface AgentRuntime {
@@ -387,6 +389,7 @@ export async function createAgentRuntime(
       root.effect(() => prompts.registerSection({ name: 'default:persona', order: 0, content: GENERAL_SYSTEM_PROMPT }))
     }
     fibers.push(await root.plugin(ptcRuntimeQuickjs, {
+      ...merged.ptcRuntime,
       ...(merged.ptc?.timeoutMs !== undefined ? { timeoutMs: merged.ptc.timeoutMs } : {}),
       ...(merged.ptc?.memoryLimitBytes !== undefined ? { memoryLimitBytes: merged.ptc.memoryLimitBytes } : {}),
     }))

@@ -96,6 +96,20 @@ it('disposes answerer plugins mounted after runtime construction', async () => {
   expect(disposed).toBe(true)
 })
 
+it('honors host PTC runtime limits when composing an agent', async () => {
+  const dir = await tempDir('tnega-runtime-ptc-assets-')
+  const runtime = await createAgentRuntime(runtimeOptions(dir, {
+    builtinTools: false, ptcRuntime: { maxOutputChars: 4 },
+  }))
+  try {
+    const result = await runtime.root.get('ptcRuntime').execute({ code: 'text("too long");', tools: [] })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/output/i)
+  } finally {
+    await runtime.dispose()
+  }
+})
+
 describe('createAgentRuntime composition', () => {
   it('spills an oversized tool result and keeps the whole record on disk', async () => {
     const dir = await tempDir('tnega-runtime-spill-')

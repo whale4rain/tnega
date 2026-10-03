@@ -16,7 +16,7 @@ import { Context, type Fiber, type Plugin } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
 import { observeCompaction } from './compaction-observation.js'
 import { runSummary } from '@tnega/run-summary'
-import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
+import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
 import { userQuestions, pendingQuestionsFromEvents, formatQuestionAnswer, UserQuestionError, type PendingQuestionRequest, type QuestionAnswers } from '@tnega/user-questions'
 import { toolQuestion } from '@tnega/tool-question'
@@ -207,6 +207,8 @@ const UPDATE_SUMMARIZATION_PROMPT = `The messages above are NEW conversation mes
 ${UPDATE_SUMMARIZATION_INSTRUCTIONS}`
 
 export interface WebServerOptions {
+  /** Runtime assets for hosts which bundle the server away from its worker/WASM. */
+  ptcRuntime?: PtcRuntimeQuickjsConfig
   port?: number
   host?: string
   webRoot?: string
@@ -283,6 +285,7 @@ export async function startWebServer(
     questionInboxes: new Map(),
     residentCreation: new Map(),
     projectPermission: options.projectPermission ?? 'workspace-write',
+    ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),
     ...(hotPlugins ? { hotPlugins } : {}),
@@ -328,6 +331,7 @@ export async function startWebServer(
 }
 
 interface ServerContext {
+  ptcRuntime?: PtcRuntimeQuickjsConfig
   webRoot: string
   configFile?: string
   activeRuns: Map<string, AbortController>
@@ -1166,6 +1170,7 @@ async function handleRun(
       config,
       resumeQueued,
       attachments,
+      ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ...(context.browser ? { browser: context.browser } : {}),
       processes: processesFor(context, workspace),
       ...(context.hotPlugins ? { hotPlugins: context.hotPlugins.plugin } : {}),
@@ -1184,6 +1189,7 @@ async function handleRun(
       cwd: workspace,
       sessionFile: sessionFilePath(workspace, id),
       durableInbox: true,
+      ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ptc: { mode: config.codeMode ? 'ptc' : 'native' },
       llm: adapter,
       ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
@@ -1362,6 +1368,7 @@ async function handleRun(
 }
 
 interface ResidentRunRequest {
+  ptcRuntime?: PtcRuntimeQuickjsConfig
   resumeQueued?: boolean
   attachments?: ModelAttachment[]
   browser?: PlaywrightBrowserHost
@@ -1454,7 +1461,7 @@ async function createResidentRuntime(
     },
   }))
   fibers.push(await root.plugin(toolQuestion))
-  fibers.push(await root.plugin(ptcRuntimeQuickjs))
+  fibers.push(await root.plugin(ptcRuntimeQuickjs, req.ptcRuntime))
   fibers.push(await root.plugin(toolPtc, {
     mode: req.config.codeMode ? 'ptc' : 'native',
     resolveSession: (agentId?: string) => registry.get(agentId ?? req.sessionId)?.session,
@@ -1615,6 +1622,7 @@ async function residentQuestionRequest(context: ServerContext, workspace: string
     prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
     approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
     effective, apiKey, config, resumeQueued: true,
+    ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
   }
 }
 
@@ -1649,6 +1657,7 @@ async function projectHostFor(
     await existing.host.dispose()
   }
   const host = new ProjectHost({
+    ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
     workspace: path,
     llm: adapterFromConfig(effective, apiKey),
     ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),

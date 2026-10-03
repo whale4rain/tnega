@@ -9,6 +9,7 @@ import { installTray } from './tray.js'
 import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from './titlebar.js'
 import { UpdateController, type UpdaterLike } from './updater.js'
 import { readUpdateChannel, saveUpdateChannel } from './update-preferences.js'
+import { desktopPtcAssets } from './ptc-assets.js'
 import electronUpdater from 'electron-updater'
 
 let server: WebServer | undefined
@@ -131,7 +132,7 @@ async function createWindow(): Promise<void> {
     return { action: 'deny' }
   })
   browser = new DesktopBrowser(window, event => isTrustedSender(event.senderFrame?.url ?? ''))
-  server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile() })
+  server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile(), ptcRuntime: desktopPtcAssets(appRoot()) })
   allowedOrigin = new URL(server.url).origin
   tray = installTray(window, join(dirname(fileURLToPath(import.meta.url)), '../build/icon.png'), () => { void closeAndExit() })
   window.on('closed', () => {

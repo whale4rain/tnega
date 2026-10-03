@@ -28,6 +28,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Resolve desktop PTC worker and QuickJS WASM from the shipped runtime resources
+  for ordinary sessions, resident Agents and Project Threads, fixing missing
+  `app.asar/out/worker.mjs` execution failures.
 - Exclude generated Session logs and spill files from turn-level edited files
   and workbench Changes, while keeping project configuration, memory and skills
   visible. Correct edit paths for workspaces inside a larger Git repository.

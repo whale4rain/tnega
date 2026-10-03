@@ -15,7 +15,7 @@ import {
 import { boxBlackboard } from '@tnega/box-blackboard'
 import { Context } from '@tnega/core'
 import { runSummary } from '@tnega/run-summary'
-import { ptcRuntimeQuickjs } from '@tnega/ptc-runtime-quickjs'
+import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
 import { jobsLocal } from '@tnega/jobs-local'
 import { toolJobs } from '@tnega/tool-jobs'
@@ -42,6 +42,7 @@ import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from 
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 
 export interface ProjectHostOptions {
+  ptcRuntime?: PtcRuntimeQuickjsConfig
   systemConfig?: SystemConfig
   /** Project 目录集合与工具工作目录的基准：`<workspace>/.tnega/projects/<id>`。 */
   workspace: string
@@ -440,7 +441,7 @@ export class ProjectHost {
     }))
 
     await ctx.plugin(projectLoop, { projectId: record.id })
-    await ctx.plugin(ptcRuntimeQuickjs)
+    await ctx.plugin(ptcRuntimeQuickjs, this.options.ptcRuntime)
     await ctx.plugin(toolPtc, {
       mode: this.options.systemConfig?.codeMode ? 'ptc' : 'native',
       resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session,
