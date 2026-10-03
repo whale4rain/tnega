@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { shellCommandArgv, systemShell } from './shell.js'
@@ -152,6 +152,65 @@ interface CapturedOutput {
   stdoutTruncated: boolean
 }
 
+/** Raw output bytes up to a cap, decoded once so multi-byte characters never split across chunks. */
+class ByteCapture {
+  private readonly chunks: Buffer[] = []
+  private bytes = 0
+  truncated = false
+
+  constructor(private readonly limit: number) {}
+
+  push(chunk: Buffer): void {
+    const room = this.limit - this.bytes
+    if (chunk.length > room) this.truncated = true
+    if (room <= 0) return
+    const kept = chunk.length > room ? chunk.subarray(0, room) : chunk
+    this.chunks.push(kept)
+    this.bytes += kept.length
+  }
+
+  text(): string {
+    return decodeOutput(Buffer.concat(this.chunks))
+  }
+}
+
+let oemEncoding: string | undefined
+
+/** The console code page a Windows program falls back to, as a TextDecoder label. */
+function windowsOemEncoding(): string {
+  if (oemEncoding) return oemEncoding
+  const probe = spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', 'chcp'], { encoding: 'latin1', windowsHide: true, timeout: 5_000 })
+  const page = Number(/(\d{3,5})/.exec(probe.stdout ?? '')?.[1])
+  const labels: Record<number, string> = {
+    936: 'gbk', 54936: 'gb18030', 950: 'big5', 932: 'shift_jis', 949: 'euc-kr', 65001: 'utf-8', 866: 'ibm866',
+  }
+  oemEncoding = labels[page] ?? (page >= 1250 && page <= 1258 ? `windows-${page}` : 'windows-1252')
+  return oemEncoding
+}
+
+/**
+ * Output is UTF-8 almost always. A Windows program that cannot switch its
+ * console to UTF-8 (PowerShell in ConstrainedLanguage under the read-only
+ * sandbox, legacy tools) writes the OEM code page instead.
+ */
+export function decodeOutput(bytes: Buffer, platform = process.platform): string {
+  const strict = new TextDecoder('utf-8', { fatal: true })
+  // A capped capture can end inside a character; that alone is not a different encoding.
+  for (let trim = 0; trim <= Math.min(3, bytes.length); trim += 1) {
+    try {
+      return strict.decode(bytes.subarray(0, bytes.length - trim))
+    } catch {
+      // Try a shorter tail, then another encoding.
+    }
+  }
+  if (platform !== 'win32') return bytes.toString('utf8')
+  try {
+    return new TextDecoder(windowsOemEncoding()).decode(bytes)
+  } catch {
+    return bytes.toString('utf8')
+  }
+}
+
 interface RunOptions {
   timeoutMs: number
   maxBuffer: number
@@ -170,16 +229,11 @@ function runChild(spawnChild: () => ChildProcess, options: RunOptions): Promise<
   const { timeoutMs, maxBuffer, signal, label } = options
   return new Promise((resolve, reject) => {
     const child = spawnChild()
-    let stdout = ''
-    let stderr = ''
-    let stdoutTruncated = false
+    const stdout = new ByteCapture(maxBuffer)
+    const stderr = new ByteCapture(maxBuffer)
     let settled = false
     let timer: NodeJS.Timeout | undefined
     let onAbort: () => void = () => {}
-    const append = (target: string, text: string, limit: number): string => {
-      if (target.length >= limit) return target
-      return target + text.slice(0, limit - target.length)
-    }
     const cleanup = (): void => {
       if (timer) clearTimeout(timer)
       signal?.removeEventListener('abort', onAbort)
@@ -203,28 +257,22 @@ function runChild(spawnChild: () => ChildProcess, options: RunOptions): Promise<
     if (timeoutMs > 0) {
       timer = setTimeout(() => fail(`${label} timed out after ${timeoutMs}ms`), timeoutMs)
     }
-    child.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString('utf8')
-      if (stdout.length + text.length > maxBuffer) stdoutTruncated = true
-      stdout = append(stdout, text, maxBuffer)
-    })
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr = append(stderr, chunk.toString('utf8'), maxBuffer)
-    })
+    child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk))
+    child.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
     child.on('error', (error) => {
       finish(() => resolve({
         exitCode: 1,
-        stdout,
+        stdout: stdout.text(),
         stderr: errorMessage(error),
-        stdoutTruncated,
+        stdoutTruncated: stdout.truncated,
       }))
     })
     child.on('close', (code, closeSignal) => {
       finish(() => resolve({
         exitCode: code ?? 1,
-        stdout,
-        stderr: closeSignal ? `killed by ${closeSignal}` : stderr,
-        stdoutTruncated,
+        stdout: stdout.text(),
+        stderr: closeSignal ? `killed by ${closeSignal}` : stderr.text(),
+        stdoutTruncated: stdout.truncated,
       }))
     })
   })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeShell, localExecutionProvider, resolveSystemShell, shellCommandArgv, systemShell } from '../src/index.js'
+import { decodeOutput, describeShell, localExecutionProvider, resolveSystemShell, shellCommandArgv, systemShell } from '../src/index.js'
 
 const has = (...paths: string[]) => (path: string) => paths.some(p => p.toLowerCase() === path.toLowerCase())
 
@@ -46,6 +46,22 @@ describe('shellCommandArgv', () => {
     const encoded = argv[argv.indexOf('-EncodedCommand') + 1] ?? ''
     expect(Buffer.from(encoded, 'base64').toString('utf16le')).toContain('Write-Output "x"')
     expect(describeShell({ kind: 'pwsh', path: 'pwsh', label: 'PowerShell 7' })).toContain('PowerShell syntax')
+  })
+})
+
+describe('decodeOutput', () => {
+  it('keeps UTF-8 whole even when a capture cuts a character in half', () => {
+    const bytes = Buffer.from('ok 中文', 'utf8')
+    expect(decodeOutput(bytes)).toBe('ok 中文')
+    expect(decodeOutput(bytes.subarray(0, bytes.length - 1), 'linux')).toBe('ok 中')
+  })
+
+  it.runIf(process.platform === 'win32')('falls back to the OEM code page for non-UTF-8 Windows output', () => {
+    const encoding = new TextDecoder('gbk')
+    // GBK bytes for 中文: only meaningful on hosts whose OEM code page is 936.
+    const gbk = Buffer.from([0xd6, 0xd0, 0xce, 0xc4])
+    expect(decodeOutput(gbk)).not.toContain('���')
+    expect(encoding.decode(gbk)).toBe('中文')
   })
 })
 

@@ -135,13 +135,17 @@ export function shellCommandArgv(shell: SystemShell, command: string): string[] 
   switch (shell.kind) {
     case 'pwsh':
     case 'powershell': {
-      // UTF-8 output so captured stdout decodes the same as other shells.
-      // A failing last statement reports a native command's own exit code
-      // rather than PowerShell's generic 1.
-      const script = '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $OutputEncoding=[System.Text.Encoding]::UTF8\n'
-        + `${command}\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }`
+      // UTF-8, ANSI-free output so captured text decodes like other shells
+      // (the prelude stays on line 1 so error positions match the command's
+      // own lines). Both settings fail quietly in ConstrainedLanguage mode,
+      // which PowerShell enters under the read-only sandbox; `decodeOutput`
+      // then reads the OEM code page instead. A failing last statement reports a native command's own
+      // exit code rather than PowerShell's generic 1.
+      const prelude = 'try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}; '
+        + '$OutputEncoding=[System.Text.Encoding]::UTF8; try { $PSStyle.OutputRendering=\'PlainText\' } catch {}; '
+      const script = `${prelude}${command}\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }`
       return [shell.path, '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-        '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]
+        '-OutputFormat', 'Text', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]
     }
     case 'cmd':
       return [shell.path, '/d', '/s', '/c', command]

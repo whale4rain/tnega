@@ -25,6 +25,7 @@ import type { Win32Api } from '../src/ffi.js'
 import { AclWriteGrant, DENIAL_SIGNATURES, RUNNER_FAILURE_EXIT_CODE, resolveRunnerCommand, tempWriteSid, workspaceWriteSid } from '../src/index.js'
 import { writeIsAmbientlyAllowed } from './support/acl-reader.js'
 import { isMsysShell, shellCommandArgv, systemShell } from '../../../execution/src/shell.js'
+import { decodeOutput } from '../../../execution/src/index.js'
 
 const e2eReady = process.platform === 'win32' && await isWindowsAclAvailable()
 
@@ -174,6 +175,18 @@ describe.skipIf(!e2eReady)('runner end-to-end under the real restricted token', 
     expect(result.status, result.output).toBe(3)
   })
 
+  it('reads non-ASCII output of the system shell under read-only, without error noise', (ctx) => {
+    const shell = systemShell()
+    ctx.skip(isMsysShell(shell), 'MSYS bash cannot run under a restricted token; the sandbox rejects it up front')
+    const [program, ...prefix] = resolveRunnerCommand()
+    const result = spawnSync(program ?? process.execPath, [...prefix, ...readOnlyArgs(shellCommandArgv(shell, 'echo 中文-ok'))], { cwd: workspace, timeout: 30_000 })
+    const stdout = decodeOutput(result.stdout)
+    const stderr = decodeOutput(result.stderr)
+    expect(result.status, stderr).toBe(0)
+    expect(stdout.trim()).toBe('中文-ok')
+    expect(stderr).toBe('')
+  })
+
   it('runs the system shell (PowerShell) with quotes, pipes and a workspace write', (ctx) => {
     const shell = systemShell()
     ctx.skip(isMsysShell(shell), 'MSYS bash cannot run under a restricted token; the sandbox rejects it up front')
@@ -186,6 +199,8 @@ describe.skipIf(!e2eReady)('runner end-to-end under the real restricted token', 
     const result = runConfined(workspaceWriteArgs(shellCommandArgv(shell, command)))
     expect(result.status, result.output).toBe(4)
     expect(result.output).toContain('done')
+    // Plain text only: no serialized CLIXML error records, no failed encoding setup.
+    expect(result.output).not.toMatch(/CLIXML|InvalidOperation/)
     expect(readFileSync(target, 'utf8')).toContain('a b')
     rmSync(target, { force: true })
   })
