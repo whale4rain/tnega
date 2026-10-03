@@ -13,11 +13,12 @@ _Avoid_: bot, assistant
 _Avoid_: turn（turn 在代码中指 Agent Loop 内部的迭代）
 
 **Session**:
-一个工作区内以 JSONL 持久化的对话事件日志，是消息历史的真源。
+归属一个 Workspace 的持久化对话事件日志，是消息历史的真源。归属关系不要求日志
+存放在 Workspace 的文件目录内。
 _Avoid_: conversation file, chat log
 
 **Workspace**:
-一个绝对路径目录；会话与工具沙箱产物都归属其下。
+一个绝对路径目录；会话归属于它，工具在它的边界内读写项目文件和产物。
 _Avoid_: project, repo
 
 **Fork**:

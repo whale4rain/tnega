@@ -28,6 +28,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Store default desktop/Web/CLI Sessions, subagent and Project Thread histories
+  in `~/.tnega`, partitioned by Workspace path, with `TNEGA_HOME` overrides.
+  Import legacy project records on first access without overwriting conflicts;
+  retain backups and detect continued writes by old clients. Project configuration,
+  memory, skills and artifacts stay in the Workspace; Session formats are unchanged.
 - Resolve desktop PTC worker and QuickJS WASM from the shipped runtime resources
   for ordinary sessions, resident Agents and Project Threads, fixing missing
   `app.asar/out/worker.mjs` execution failures.

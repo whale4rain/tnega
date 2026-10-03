@@ -60,6 +60,8 @@ export interface LocalThreadConfig {
   projectId: string
   /** Project 目录，约定 `<workspace>/.tnega/projects/<projectId>`。 */
   root: string
+  /** Session directory; defaults to root. History lives at agents/<id>/session.jsonl. */
+  sessionRoot?: string
   llm: LLMAdapter
   contextWindow?: number
   maxDepth?: number
@@ -164,6 +166,7 @@ async function hasAgentMeta(file: string): Promise<boolean> {
 export class LocalThreadService extends ThreadService {
   private readonly projectId: string
   private readonly root: string
+  private readonly sessionRoot: string
   private readonly llm: LLMAdapter
   private readonly contextWindow: number | undefined
   private readonly maxDepth: number
@@ -204,6 +207,7 @@ export class LocalThreadService extends ThreadService {
     }
     this.projectId = config.projectId
     this.root = resolve(config.root)
+    this.sessionRoot = resolve(config.sessionRoot ?? config.root)
     this.llm = config.llm
     this.contextWindow = config.contextWindow
     this.permission = config.permission ?? 'read-only'
@@ -402,7 +406,7 @@ export class LocalThreadService extends ThreadService {
     if (!ID_PATTERN.test(threadId)) {
       throw new ThreadError(`invalid thread id: ${threadId}`, 'THREAD_INVALID')
     }
-    return join(this.root, 'agents', threadId, 'session.jsonl')
+    return join(this.sessionRoot, 'agents', threadId, 'session.jsonl')
   }
 
   async dispose(): Promise<void> {

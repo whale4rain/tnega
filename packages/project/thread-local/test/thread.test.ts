@@ -32,7 +32,7 @@ async function workspace(): Promise<string> {
   return root
 }
 
-async function mount(root: string): Promise<Context> {
+async function mount(root: string, sessionRoot?: string): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(tools)
   await ctx.plugin(blackboardLocal, { root: join(root, 'blackboard') })
@@ -40,6 +40,7 @@ async function mount(root: string): Promise<Context> {
   await ctx.plugin(threadLocal, {
     projectId: project.id,
     root,
+    ...(sessionRoot ? { sessionRoot } : {}),
     llm,
     maxDepth: 2,
     maxChildren: 3,
@@ -47,6 +48,33 @@ async function mount(root: string): Promise<Context> {
   })
   return ctx
 }
+
+it('stores and resumes Session history separately while retaining project identity data', async () => {
+  const root = await workspace()
+  const sessionRoot = await workspace()
+  const ctx = await mount(root, sessionRoot)
+  let childId: string
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Separate storage' })
+    childId = child.id
+    await ctx.threads.activate(child.id)
+    expect(ctx.threads.sessionFile(child.id)).toBe(join(sessionRoot, 'agents', child.id, 'session.jsonl'))
+    expect(existsSync(ctx.threads.sessionFile(child.id))).toBe(true)
+    expect(existsSync(join(root, 'agents', child.id, 'session.jsonl'))).toBe(false)
+    expect(existsSync(join(root, 'blackboard'))).toBe(true)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+  const reopened = await mount(root, sessionRoot)
+  try {
+    expect((await reopened.threads.get(childId))?.goal).toBe('Separate storage')
+    const resumed = await reopened.threads.activate(childId)
+    expect((await resumed.session.read()).filter(event => event.type === 'meta' && event.payload.kind === 'agent')).toHaveLength(1)
+  } finally {
+    await reopened.fiber.dispose()
+  }
+})
 
 it('keeps one identity folder per thread and resumes it after a restart', async () => {
   const root = await workspace()

@@ -29,6 +29,7 @@ import {
   type SessionMode,
   type SessionPermission,
 } from '@tnega/session'
+import { importLegacyFile, workspaceSessionDir } from './home-paths.js'
 
 export interface SessionMetaPayload {
   approvalMode?: ApprovalMode
@@ -80,12 +81,14 @@ interface SessionMetaEvent {
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function sessionDir(workspace: string): string {
-  return join(resolve(workspace), '.tnega', 'sessions')
+  return workspaceSessionDir(workspace)
 }
 
 export function sessionFile(workspace: string, id: string): string {
   if (!isSessionId(id)) throw new TypeError(`invalid session id: ${id}`)
-  return join(sessionDir(workspace), `${id}.jsonl`)
+  const target = join(sessionDir(workspace), `${id}.jsonl`)
+  importLegacyFile(join(resolve(workspace), '.tnega', 'sessions', `${id}.jsonl`), target)
+  return target
 }
 
 export function isSessionId(value: string): boolean {
@@ -108,6 +111,19 @@ async function withSessionLog<T>(
 export async function ensureSessionDir(workspace: string): Promise<string> {
   const dir = sessionDir(workspace)
   await mkdir(dir, { recursive: true })
+  const legacy = join(resolve(workspace), '.tnega', 'sessions')
+  let entries: string[]
+  try {
+    entries = await readdir(legacy)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return dir
+    throw error
+  }
+  for (const entry of entries) {
+    if (entry.endsWith('.jsonl') && isSessionId(entry.slice(0, -6))) {
+      importLegacyFile(join(legacy, entry), join(dir, entry))
+    }
+  }
   return dir
 }
 
@@ -156,7 +172,7 @@ export async function createSession(
 }
 
 export async function listSessions(workspace: string): Promise<SessionSummary[]> {
-  const dir = sessionDir(workspace)
+  const dir = await ensureSessionDir(workspace)
   let entries: string[]
   try {
     entries = await readdir(dir)

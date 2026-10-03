@@ -57,6 +57,17 @@ symbols communicate agent state. `Ctrl+J` toggles the Workbench and
 `` Ctrl+` `` opens the terminal. The desktop app shares the Web host's config and
 Session data and keeps running in the system tray when its window is closed.
 
+**Data storage.** Desktop and Web Sessions, CLI run logs, subagent transcripts
+and Project Thread histories live under `~/.tnega/sessions/<workspace-key>/`.
+Project messages and identities live under `~/.tnega/workspaces/<workspace-key>/`.
+The key is a hash of the absolute Workspace path; `TNEGA_HOME` overrides the
+home directory. Workspace configuration, skills, memory and project artifacts
+stay in the project. Close old clients before upgrading: existing project logs
+are imported on first access, with original files retained as backups. Different
+copies or a legacy writer continuing after import cause an explicit error;
+neither copy is overwritten. This relocates files without changing their Session
+format. An explicit CLI `--session` path is still honored.
+
 ## Install and start
 
 ### Windows desktop

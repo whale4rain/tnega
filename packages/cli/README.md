@@ -135,7 +135,17 @@ Run 已结束时，前端接续现有 SSE 通道处理已持久化队列，仍�
 
 ## 会话存储（store.ts）
 
-工作区 `.tnega/sessions/<id>.jsonl`。**head `meta` 事件 + `meta/patch` 事件**都是
+默认在 `~/.tnega/sessions/<workspace-key>/<id>.jsonl`；key 是规范绝对工作区路径的
+SHA-256（Windows 忽略大小写），可用 `TNEGA_HOME` 改根目录。CLI 默认 `run-vN.jsonl`、
+子代理和 Project Thread 历史也在此工作区目录下；Project 的内部消息、身份数据在
+`~/.tnega/workspaces/<workspace-key>/`。工具工作目录仍是原 Workspace。
+
+首次访问自动导入旧工作区日志，保留原文件与 mtime；迁移标记防止删除后的会话被旧备份
+再次导入。复制前后检查源文件是否变化，同名不同内容或旧进程继续写入时明确拒绝。
+升级前先退出旧客户端和 CLI。显式 `--session` 路径仍生效；项目配置、记忆、skills 和
+Project artifacts 保留在工作区。迁移不转换 Session 格式。
+
+**head `meta` 事件 + `meta/patch` 事件**都是
 不可变事实：标题 / agentType / mode 由事件折叠而来（`foldSessionMeta`），改名走
 append-only `meta/patch`，不整写文件——因此崩溃与并发下标题与模式保持可重建。
 
@@ -145,7 +155,7 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 每轮对话的文件改动统计和工作台 Changes 排除内部运行时文件：`.tnega/sessions/`、
 默认 CLI 的 `.tnega/run-vN.jsonl`、`.tnega/spill/` 和 Project Thread 的
 `.tnega/projects/<projectId>/agents/<threadId>/session.jsonl`。此规则不修改 Git
-忽略配置或存储位置；`.tnega/MEMORY.md`、skills、配置和项目产物的改动仍可见。
+忽略配置；过滤同时兼容遗留目录。`.tnega/MEMORY.md`、skills、配置和项目产物的改动仍可见。
 
 ## 系统配置（config.ts）
 

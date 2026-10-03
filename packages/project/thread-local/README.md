@@ -8,6 +8,10 @@
 <root>/agents/<threadId>/session.jsonl     # root = <workspace>/.tnega/projects/<projectId>
 ```
 
+组合层可传入 `sessionRoot`，把历史放到
+`<sessionRoot>/agents/<threadId>/session.jsonl`。未传时保持上述默认位置；
+`root` 仍负责原有身份目录，其余项目文件与工作目录不受影响。此选项不自动迁移旧历史。
+
 身份的其余部分（label、goal、expect、state、depth、permission、父子）是同一个
 Blackboard 里的 `agent` 记录。`id` 由记录键提供，时间由版本记录提供。
 

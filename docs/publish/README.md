@@ -13,6 +13,12 @@ through npm.
 
 ## Version and changelog policy
 
+When shipping the home-storage change, include its migration note: close older
+desktop/CLI processes before first use. Workspace logs are imported into
+`~/.tnega` (or `TNEGA_HOME`), with legacy backups retained and conflicts reported.
+Location migration does not convert unsupported Session formats. Keep project
+configuration, skills, memory and artifacts in the Workspace.
+
 - Update root `CHANGELOG.md` / Unreleased with each user-visible feature, fix or
   compatibility change, in the same commit. Describe behavior and migration,
   not internal refactors with no user effect.

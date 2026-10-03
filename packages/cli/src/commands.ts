@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { Context, type Plugin } from '@tnega/core'
 import type { AgentProfile } from './profile.js'
 import {
@@ -47,6 +47,7 @@ import {
   systemConfigPath,
 } from './config.js'
 import { readAgentProfile } from './profile-file.js'
+import { defaultRunSessionFile } from './home-paths.js'
 
 export interface RunAgentCommandOptions {
   prompt: string
@@ -131,8 +132,9 @@ export async function runAgentCommand(
   options: RunAgentCommandOptions,
 ): Promise<RunAgentCommandResult> {
   const cwd = options.cwd ?? process.cwd()
-  const sessionFile = resolve(cwd, options.sessionFile
-    ?? join('.tnega', `run-v${SESSION_FORMAT_VERSION}.jsonl`))
+  const sessionFile = options.sessionFile
+    ? resolve(cwd, options.sessionFile)
+    : defaultRunSessionFile(cwd, SESSION_FORMAT_VERSION)
   const configFile = options.configFile ?? systemConfigPath()
   const profile = options.profile
     ? await readAgentProfile(options.profile)

@@ -27,7 +27,7 @@ it('excludes runtime persistence from turn edits and workbench changes while ret
   const repo = await mkdtemp(join(tmpdir(), 'tnega-runtime-edits-'))
   dirs.push(repo)
   const workspace = join(repo, 'app')
-  const runtime = ['.tnega/sessions/existing.jsonl', '.tnega/sessions/new.jsonl', '.tnega/run-v1.jsonl', '.tnega/spill/result.txt', '.tnega/projects/project/agents/thread/session.jsonl']
+  const runtime = ['.tnega/sessions/existing.jsonl', '.tnega/sessions/new.jsonl', '.tnega/run-v1.jsonl', '.tnega/spill/result.txt', '.tnega/projects/project/agents/thread/session.jsonl', '.tnega/subagents/child/session.jsonl', '.tnega/blackboard/events.jsonl', '.tnega/projects/project/blackboard/events.jsonl']
   const visible = ['src/index.ts', '.tnega/MEMORY.md', '.tnega/skills/custom/SKILL.md', '.tnega/config.json', '.tnega/projects/project/artifacts/readme.md']
   const write = async (path: string, text: string) => {
     await mkdir(dirname(join(workspace, path)), { recursive: true })

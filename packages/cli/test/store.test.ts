@@ -94,10 +94,11 @@ describe('session metadata', () => {
     const patched = await patchSessionMeta(workspace, summary.id, {
       mode: 'execute',
     })
+    // The persisted legacy execute mode is normalized to auto by the Session fold.
     expect(patched).toMatchObject({
       title: 'before',
       agentType: 'general',
-      mode: 'execute',
+      mode: 'auto',
     })
 
     const retitled = await patchSessionMeta(workspace, summary.id, {
@@ -107,14 +108,14 @@ describe('session metadata', () => {
     expect(retitled).toMatchObject({
       title: 'after',
       agentType: 'coding',
-      mode: 'execute',
+      mode: 'auto',
     })
 
     const reloaded = await readSessionSummary(workspace, summary.id)
     expect(reloaded).toMatchObject({
       title: 'after',
       agentType: 'coding',
-      mode: 'execute',
+      mode: 'auto',
     })
   })
 

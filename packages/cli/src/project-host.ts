@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { agents, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import { artifactLocal } from '@tnega/artifact-local'
@@ -16,6 +17,7 @@ import { boxBlackboard } from '@tnega/box-blackboard'
 import { Context } from '@tnega/core'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
+import { projectSessionRoot, workspaceProjectStateRoot } from './state-storage.js'
 import { toolPtc } from '@tnega/tool-ptc'
 import { jobsLocal } from '@tnega/jobs-local'
 import { toolJobs } from '@tnega/tool-jobs'
@@ -44,7 +46,7 @@ import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissi
 export interface ProjectHostOptions {
   ptcRuntime?: PtcRuntimeQuickjsConfig
   systemConfig?: SystemConfig
-  /** Project 目录集合与工具工作目录的基准：`<workspace>/.tnega/projects/<id>`。 */
+  /** Tools operate in this workspace; Project runtime state is stored in Tnega home. */
   workspace: string
   llm: LLMAdapter
   contextWindow?: number
@@ -123,7 +125,7 @@ export class ProjectHost {
     }
     this.options = options
     this.workspace = resolve(options.workspace)
-    this.tnegaRoot = join(this.workspace, '.tnega')
+    this.tnegaRoot = workspaceProjectStateRoot(this.workspace)
   }
 
   /** 建 Project：只建身份与目录，不拉起 Agent。 */
@@ -151,6 +153,8 @@ export class ProjectHost {
       await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
     }
     await (await this.projects()).delete(id, author)
+    await rm(projectSessionRoot(this.workspace, id), { recursive: true, force: true })
+    await rm(join(this.workspace, '.tnega', 'projects', id), { recursive: true, force: true })
   }
 
   /** 打开（或复用已打开的）Project 作用域，并保证协调者 Thread 存在。 */
@@ -363,13 +367,14 @@ export class ProjectHost {
     const ctx = new Context()
     await ctx.plugin(tools)
     await ctx.plugin(blackboardLocal, { root: join(directory, 'blackboard') })
-    await ctx.plugin(artifactLocal, { root: join(directory, 'artifacts') })
+    await ctx.plugin(artifactLocal, { root: join(this.workspace, '.tnega', 'projects', record.id, 'artifacts') })
     await ctx.plugin(boxBlackboard, { projectId: record.id })
     await ctx.plugin(agents)
     await ctx.plugin(runSummary)
     await ctx.plugin(threadLocal, {
       projectId: record.id,
       root: directory,
+      sessionRoot: projectSessionRoot(this.workspace, record.id),
       llm: this.options.llm,
       ...(this.options.contextWindow !== undefined
         ? { contextWindow: this.options.contextWindow }

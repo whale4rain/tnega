@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -6,7 +6,7 @@ import { Context } from '@tnega/core'
 import { agents, type AgentRegistry, type LLMAdapter } from '@tnega/agent'
 import type { ModelMessage } from '@tnega/session'
 import { tools } from '@tnega/tools'
-import { LocalSubagentService } from '../src/index.js'
+import { LocalSubagentService, listStoredSubagents, readSubagentEvents } from '../src/index.js'
 
 /** 仓库既有写法：`ctx.agents` 的类型由实时 Agent 注册表提供，测试里显式取用。 */
 const registryOf = (ctx: Context): AgentRegistry => (ctx as unknown as { agents: AgentRegistry }).agents
@@ -16,7 +16,7 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0).reverse()) await dispose()
 })
 
-async function setup(output: string) {
+async function setup(output: string, storageRoot?: string) {
   const cwd = await mkdtemp(join(tmpdir(), 'tnega-subagent-report-'))
   cleanup.push(() => rm(cwd, { recursive: true, force: true }))
   const root = new Context()
@@ -29,7 +29,7 @@ async function setup(output: string) {
   } }
   const parent = await registryOf(root).create({ id: 'parent', file: join(cwd, 'parent.jsonl'), llm, manualStreaming: true })
   cleanup.push(() => parent.dispose())
-  const service = new LocalSubagentService(root, { cwd, llm })
+  const service = new LocalSubagentService(root, { cwd, llm, ...(storageRoot ? { storageRoot } : {}) })
   cleanup.push(() => service.dispose())
   return { root, cwd, llm, parent: parent.agent, service, requests }
 }
@@ -37,6 +37,25 @@ async function setup(output: string) {
 async function settled(service: LocalSubagentService) {
   await expect.poll(async () => (await service.list('parent'))[0]?.status).toBe('idle')
 }
+
+it('stores, lists and restores children from a storage root separate from the workspace', async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), 'tnega-child-storage-'))
+  cleanup.push(() => rm(storageRoot, { recursive: true, force: true }))
+  const { cwd, service } = await setup('durable output', storageRoot)
+  const child = await service.start({ parentId: 'parent', task: 'inspect' })
+  await settled(service)
+  expect(await stat(join(storageRoot, child.id, 'session.jsonl'))).toBeDefined()
+  await expect(stat(join(cwd, '.tnega', 'subagents'))).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(await listStoredSubagents(cwd, 'parent')).toEqual([])
+  expect(await listStoredSubagents(cwd, 'parent', 'children', undefined, storageRoot)).toMatchObject([{ id: child.id, lastOutput: 'durable output' }])
+  expect((await readSubagentEvents(cwd, child.id, storageRoot)).some(event => event.type === 'assistant/message')).toBe(true)
+  await service.dispose()
+  const { service: reopened } = await setup('durable output', storageRoot)
+  expect((await reopened.readResult('parent', child.id)).output).toBe('durable output')
+  await reopened.send('parent', child.id, 'continue')
+  await settled(reopened)
+  expect((await readSubagentEvents(cwd, child.id, storageRoot)).filter(event => event.type === 'assistant/message')).toHaveLength(2)
+})
 
 /**
  * 送进父 Agent inbox 的那份文本，就是父 Agent 唯一看得到的回报。

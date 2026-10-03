@@ -67,6 +67,7 @@ import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
 import { builtinTools, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { ProjectHost } from './project-host.js'
+import { workspaceSubagentRoot } from './state-storage.js'
 import { handleProjectApi } from './project-routes.js'
 import { pickSystemFolder } from './folder-picker.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
@@ -112,6 +113,7 @@ import {
   setSessionApprovalMode,
   type SessionSummary,
   setSessionTitle,
+  sessionFile,
   truncateSessionAt,
 } from './store.js'
 
@@ -728,7 +730,7 @@ async function handleApi(
       sendError(res, 400, 'invalid subagent id')
       return
     }
-    const events = await readSubagentEvents(workspace, id).catch(error => {
+    const events = await readSubagentEvents(workspace, id, workspaceSubagentRoot(workspace)).catch(error => {
       if (error instanceof SubagentError) return undefined
       throw error
     })
@@ -825,7 +827,7 @@ async function handleApi(
     if (action === 'subagents' && req.method === 'GET') {
       const scope = url.searchParams.get('scope') === 'descendants' ? 'descendants' : 'children'
       const registry = context.residentAgents?.get(runKey(workspace, id))?.registry
-      const children = await listStoredSubagents(workspace, id, scope, registry)
+      const children = await listStoredSubagents(workspace, id, scope, registry, workspaceSubagentRoot(workspace))
       sendJson(res, 200, { subagents: children })
       return
     }
@@ -1487,6 +1489,7 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(goalTools))
   fibers.push(await root.plugin(subagentLocal, {
     cwd: workspace,
+    storageRoot: workspaceSubagentRoot(workspace),
     llm: adapterFromConfig(req.effective, req.apiKey),
     ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
     allowShell: req.permission !== 'read-only',
@@ -2153,7 +2156,7 @@ function isActive(
 }
 
 function sessionFilePath(workspace: string, id: string): string {
-  return join(resolve(workspace), '.tnega', 'sessions', `${id}.jsonl`)
+  return sessionFile(workspace, id)
 }
 
 function userMessage(prompt: string, attachments: readonly ModelAttachment[]): ModelMessage {

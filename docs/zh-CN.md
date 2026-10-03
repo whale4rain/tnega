@@ -67,6 +67,17 @@ CLI 更新使用 `npm install -g tnega@latest`。桌面自动更新只适用于�
 
 ## 开发与文档
 
+### 会话数据位置
+
+桌面、Web、默认 CLI 日志、子代理与 Project Thread 的会话保存在
+`~/.tnega/sessions/<workspace-key>/`；Project 消息与身份信息保存在
+`~/.tnega/workspaces/<workspace-key>/`。key 来自 Workspace 绝对路径的哈希，
+可用 `TNEGA_HOME` 改用户数据根目录。项目配置、skills、记忆与产物留在工作区。
+
+升级前退出旧客户端和 CLI；首次访问会自动导入项目目录中的旧记录，保留原文件作备份，
+后续写入新位置。同名内容冲突或旧进程继续写日志时明确报错，不覆盖任一副本。
+迁移只调整存储位置，不转换 Session 格式；显式 CLI `--session` 路径仍生效。
+
 ```bash
 pnpm install
 pnpm tnega web --port 3080

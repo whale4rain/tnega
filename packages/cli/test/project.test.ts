@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { startWebServer, type WebServer } from '../src/server.js'
+import { projectSessionRoot } from '../src/state-storage.js'
+import { workspaceStateDir } from '../src/home-paths.js'
 
 const dirs: string[] = []
 const servers: WebServer[] = []
@@ -150,7 +152,8 @@ it('creates a project, runs the main conversation and takes thread notes', async
   expect(sent.status).toBe(200)
 
   const settled = await waitForSnapshot(server.url, workspace, project.id, snapshot =>
-    snapshot.messages.some(entry => entry.kind === 'agent-reply'))
+    snapshot.messages.some(entry => entry.kind === 'agent-reply')
+      && snapshot.threads.every(thread => thread.state === 'idle'))
   expect(settled.project.name).toBe('Notes')
   expect(settled.messages.map(entry => entry.kind)).toEqual(['user-message', 'agent-reply'])
   expect(settled.messages[1]).toMatchObject({
@@ -159,6 +162,8 @@ it('creates a project, runs the main conversation and takes thread notes', async
   })
   expect(settled.threads).toMatchObject([{ id: settled.coordinatorId, state: 'idle' }])
   expect(settled.cursor).toBeGreaterThan(0)
+  expect(existsSync(join(projectSessionRoot(workspace, project.id), 'agents', settled.coordinatorId, 'session.jsonl'))).toBe(true)
+  expect(existsSync(join(workspace, '.tnega', 'projects', project.id, 'agents', settled.coordinatorId, 'session.jsonl'))).toBe(false)
 
   // 用户直接给协调者 Thread 留言：进入它的 Session，而不是又起一条主对话分支。
   const noted = await apiFetch(
@@ -234,7 +239,8 @@ it('creates the folder a project asks for and keeps its data inside', async () =
   )
   expect(created.status).toBe(200)
   const { project } = await created.json() as { project: { id: string } }
-  expect(existsSync(join(folder, '.tnega', 'projects', project.id))).toBe(true)
+  expect(existsSync(folder)).toBe(true)
+  expect(existsSync(join(workspaceStateDir(folder), 'projects', project.id))).toBe(true)
 
   const listed = await apiFetch(
     server.url,
@@ -260,7 +266,7 @@ it('archives, restores, and permanently deletes a project', async () => {
   const created = await apiFetch(server.url, basePath, {
     method: 'POST', body: JSON.stringify({ name: 'Lifecycle' }),
   }).then(response => response.json()) as { project: { id: string } }
-  const projectPath = join(workspace, '.tnega', 'projects', created.project.id)
+  const projectPath = join(workspaceStateDir(workspace), 'projects', created.project.id)
   expect(existsSync(projectPath)).toBe(true)
 
   const projectUrl = `/api/projects/${created.project.id}?workspace=${encodeURIComponent(workspace)}`

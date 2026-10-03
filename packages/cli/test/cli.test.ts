@@ -11,6 +11,7 @@ import {
   resolveLlmEnv,
   runAgentCommand,
 } from '../src/index.js'
+import { defaultRunSessionFile } from '../src/home-paths.js'
 
 type FetchMock = Mock<(...args: [unknown, RequestInit]) => Promise<Response>>
 
@@ -103,7 +104,7 @@ describe('agent run command', () => {
 
     expect(result.run.output).toBe('agent says hi')
     expect(result.run.finishReason).toBe('stop')
-    expect(result.sessionFile).toBe(join(dir, '.tnega', 'run-v10.jsonl'))
+    expect(result.sessionFile).toBe(defaultRunSessionFile(dir, 10))
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const init = fetchMock.mock.calls[0]![1]!
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer test-key')
@@ -139,7 +140,7 @@ describe('agent run command', () => {
       maxTokens: 16,
     })
 
-    expect(result.sessionFile).toBe(join(sessionDir, 'run-v10.jsonl'))
+    expect(result.sessionFile).toBe(defaultRunSessionFile(dir, 10))
     expect(await readFile(legacyFile, 'utf8')).toBe(`${legacy}\n`)
     expect(await readFile(result.sessionFile, 'utf8')).toContain('"formatVersion":10')
   })

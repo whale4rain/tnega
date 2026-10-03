@@ -61,6 +61,8 @@ function previewOf(output: string, id: string, limit = REPORT_HEAD_CHARS): { hea
 
 export interface LocalSubagentConfig {
   cwd: string
+  /** Child storage directory; defaults to `<cwd>/.tnega/subagents`. */
+  storageRoot?: string
   llm: LLMAdapter
   contextWindow?: number
   maxConcurrent?: number
@@ -70,13 +72,13 @@ export interface LocalSubagentConfig {
   permission?: 'read-only' | 'workspace-write' | 'bypass'
 }
 
-function childRoot(workspace: string): string {
-  return join(workspace, '.tnega', 'subagents')
+function childRoot(workspace: string, storageRoot?: string): string {
+  return storageRoot === undefined ? join(workspace, '.tnega', 'subagents') : resolve(storageRoot)
 }
 
-function childFile(workspace: string, id: string): string {
+function childFile(workspace: string, id: string, storageRoot?: string): string {
   if (!ID_PATTERN.test(id)) throw new SubagentError(`invalid subagent id: ${id}`)
-  return join(childRoot(workspace), id, 'session.jsonl')
+  return join(childRoot(workspace, storageRoot), id, 'session.jsonl')
 }
 
 interface StoredChild {
@@ -100,10 +102,10 @@ function recordOf(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
-async function readChild(workspace: string, id: string): Promise<StoredChild | undefined> {
+async function readChild(workspace: string, id: string, storageRoot?: string): Promise<StoredChild | undefined> {
   let text: string
   try {
-    text = await readFile(childFile(workspace, id), 'utf8')
+    text = await readFile(childFile(workspace, id, storageRoot), 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw error
@@ -166,16 +168,17 @@ export async function listStoredSubagents(
   parentId: string,
   scope: SubagentScope = 'children',
   agents?: AgentRegistry,
+  storageRoot?: string,
 ): Promise<SubagentEntry[]> {
   let names: string[]
   try {
-    names = await readdir(childRoot(resolve(workspace)))
+    names = await readdir(childRoot(resolve(workspace), storageRoot))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw error
   }
   const stored = (await Promise.all(names.filter(name => ID_PATTERN.test(name))
-    .map(name => readChild(resolve(workspace), name))))
+    .map(name => readChild(resolve(workspace), name, storageRoot))))
     .filter((child): child is StoredChild => child !== undefined)
   const parents = new Set([parentId])
   if (scope === 'descendants') {
@@ -203,15 +206,16 @@ export async function listStoredSubagents(
     })
 }
 
-export async function readSubagentEvents(workspace: string, id: string): Promise<SessionEvent[]> {
-  if (!await readChild(resolve(workspace), id)) throw new SubagentError('subagent not found')
-  const log = new SessionLog(childFile(resolve(workspace), id))
+export async function readSubagentEvents(workspace: string, id: string, storageRoot?: string): Promise<SessionEvent[]> {
+  if (!await readChild(resolve(workspace), id, storageRoot)) throw new SubagentError('subagent not found')
+  const log = new SessionLog(childFile(resolve(workspace), id, storageRoot))
   await log.init()
   try { return await log.read() } finally { await log.close() }
 }
 
 export class LocalSubagentService extends SubagentService {
   private readonly workspace: string
+  private readonly storageRoot: string
   private readonly agents: AgentRegistry
   private readonly llm: LLMAdapter
   private readonly contextWindow: number | undefined
@@ -228,6 +232,7 @@ export class LocalSubagentService extends SubagentService {
   constructor(ctx: Context, config: LocalSubagentConfig) {
     super(ctx)
     this.workspace = resolve(config.cwd)
+    this.storageRoot = childRoot(this.workspace, config.storageRoot)
     const agents = ctx.get('agents') as AgentRegistry | undefined
     if (!agents) throw new SubagentError('subagents require the live Agent registry')
     this.agents = agents
@@ -275,11 +280,11 @@ export class LocalSubagentService extends SubagentService {
       : parent.meta.subagentPermission === 'workspace-write' && this.permission === 'bypass'
         ? 'workspace-write' : this.permission
     const createdAt = Date.now()
-    const file = childFile(this.workspace, id)
+    const file = childFile(this.workspace, id, this.storageRoot)
     this.running.add(id)
     let handle: AgentHandle | undefined
     try {
-      await mkdir(join(childRoot(this.workspace), id, 'artifacts'), { recursive: true })
+      await mkdir(join(this.storageRoot, id, 'artifacts'), { recursive: true })
       handle = await this.agents.create({
         file,
         id,
@@ -327,7 +332,7 @@ export class LocalSubagentService extends SubagentService {
     const content = message.trim()
     if (!content) throw new SubagentError('agent message must not be empty')
     const stored = ID_PATTERN.test(recipientId)
-      ? await readChild(this.workspace, recipientId)
+      ? await readChild(this.workspace, recipientId, this.storageRoot)
       : undefined
     const target = this.agents.get(recipientId)
     const parentToChild = stored?.parentId === senderId
@@ -353,7 +358,7 @@ export class LocalSubagentService extends SubagentService {
   }
 
   override async list(parentId: string, scope: SubagentScope = 'children'): Promise<SubagentEntry[]> {
-    return listStoredSubagents(this.workspace, parentId, scope, this.agents)
+    return listStoredSubagents(this.workspace, parentId, scope, this.agents, this.storageRoot)
   }
 
   override async readResult(parentId: string, id: string, range: SubagentResultRange = {}): Promise<SubagentResultPage> {
@@ -361,7 +366,7 @@ export class LocalSubagentService extends SubagentService {
     const limit = range.limit ?? 4_000
     if (!Number.isSafeInteger(offset) || offset < 0) throw new SubagentError('offset must be a nonnegative integer')
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 16_000) throw new SubagentError('limit must be an integer from 1 to 16000')
-    const stored = await readChild(this.workspace, id)
+    const stored = await readChild(this.workspace, id, this.storageRoot)
     if (!stored || stored.parentId !== parentId) throw new SubagentError('result reads require the owning parent')
     const chars = Array.from(stored.lastOutput ?? '')
     const end = Math.min(chars.length, offset + limit)
@@ -388,10 +393,10 @@ export class LocalSubagentService extends SubagentService {
   }
 
   private async resumeChild(id: string): Promise<LiveAgent> {
-    const stored = await readChild(this.workspace, id)
+    const stored = await readChild(this.workspace, id, this.storageRoot)
     if (!stored) throw new SubagentError('subagent not found')
     const handle = await this.agents.resume({
-      file: childFile(this.workspace, id), id, sessionId: id, llm: this.llm,
+      file: childFile(this.workspace, id, this.storageRoot), id, sessionId: id, llm: this.llm,
       ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),
       system: childSystemPrompt(stored.audience),
     })
