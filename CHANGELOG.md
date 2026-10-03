@@ -31,6 +31,14 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- The `shell` and `process_start` tools run commands in the system shell
+  (PowerShell 7, then Windows PowerShell, Git Bash or cmd on Windows; `$SHELL`
+  elsewhere) instead of always going through `cmd.exe`, and tell the model
+  which syntax to use. Sandboxed Windows commands no longer open a console
+  window. Git Bash cannot run inside the Windows sandbox and is rejected with
+  a reason. Killing a timed-out command also stops children the shell was
+  still starting.
+
 ## [0.4.9](https://github.com/whale4rain/tnega/releases/tag/v0.4.9) — 2026-10-03
 
 - Desktop sessions play one system sound when a run finishes. Unfocused Windows

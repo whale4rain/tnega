@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -32,7 +32,9 @@ describe('process tools', () => {
     const fiber = await root.plugin(builtinTools, { cwd, allowShell: true })
     const registry = root.get('tools') as ToolsService
     const script = 'console.log("ready at http://localhost:4321/"); setInterval(() => console.log("tick"), 100)'
-    const started = await registry.execute('process_start', { command: `node -e "${script.replaceAll('"', '\\"')}"` }, {})
+    // A script file keeps the command free of quoting that differs between shells.
+    await writeFile(join(cwd, 'server.cjs'), script)
+    const started = await registry.execute('process_start', { command: 'node server.cjs' }, {})
     expect(started.ok).toBe(true)
     expect(started.output).toMatchObject({ id: 'p1', status: 'running', urls: ['http://localhost:4321/'] })
 

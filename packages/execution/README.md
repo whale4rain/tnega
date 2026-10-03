@@ -26,8 +26,11 @@ Service Definition，也不构成能力缝。它导出的是词汇（`ShellReque
 
 - `runProcess` / `startProcess` 的 `env` 是仅对子进程生效的环境覆盖，合并宿主环境；
   不修改宿主进程。沙箱 Consumer 同时传递 Provider 的 runner 环境要求。
-- `runShell` 走 shell（`shell: true`）；`runProcess` 是纯 argv 向量（`shell: false`），
-  模型可控的值永远是独立参数，中间没有引号层。
+- `runShell` 直接启动系统 shell（`systemShell()`：Windows 上依次是 PowerShell 7、
+  Windows PowerShell、Git Bash、cmd；其他平台是 `$SHELL`；`TNEGA_SHELL` 可覆盖），命令作为
+  单个参数传入（PowerShell 用 `-EncodedCommand`），不经过 `cmd.exe`；`runProcess` 是纯 argv
+  向量（`shell: false`），模型可控的值永远是独立参数，中间没有引号层。
+- Windows 上 `taskkill /t` 之后再按 `ParentProcessId` 清理 shell 当时正在创建的孤儿子进程。
 - 进程的 stdin 一律指向 `/dev/null`：本仓库没有地方会写子进程的 stdin，而一个打开的
   stdin 管道会让读 stdin 的程序（例如没有显式路径的 ripgrep）永远等下去。
 - 超时与调用方中断都会终止整棵进程树，并以 reject 结束；子进程自身的退出码则以结果返回。

@@ -1,6 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { shellCommandArgv, systemShell } from './shell.js'
+
+export * from './shell.js'
 
 export interface ShellRequest {
   command: string
@@ -100,6 +103,26 @@ function errorMessage(error: unknown): string {
   return String(error)
 }
 
+/**
+ * `taskkill /t` walks the tree once, so a child the shell was creating at that
+ * moment survives as an orphan. Windows keeps the dead parent's PID in
+ * `ParentProcessId`, so sweep descendants of the killed root by that link.
+ */
+async function killOrphans(root: number): Promise<void> {
+  const script = `$all = @(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId)
+$queue = [System.Collections.Generic.Queue[uint32]]::new(); $queue.Enqueue(${root})
+while ($queue.Count) { $p = $queue.Dequeue(); foreach ($c in $all) { if ($c.ParentProcessId -eq $p -and $c.ProcessId -ne $p) { $queue.Enqueue($c.ProcessId); Stop-Process -Id $c.ProcessId -Force -ErrorAction SilentlyContinue } } }`
+  const root32 = process.env.SystemRoot ?? 'C:\\Windows'
+  await new Promise<void>((resolve) => {
+    const sweeper = spawn(`${root32}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`, [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64'),
+    ], { stdio: 'ignore', windowsHide: true })
+    const timer = setTimeout(() => { sweeper.kill(); resolve() }, 10_000)
+    sweeper.on('error', () => { clearTimeout(timer); resolve() })
+    sweeper.on('exit', () => { clearTimeout(timer); resolve() })
+  })
+}
+
 async function killProcessTree(child: ChildProcess): Promise<void> {
   if (child.pid === undefined) return
   if (process.platform === 'win32') {
@@ -111,6 +134,7 @@ async function killProcessTree(child: ChildProcess): Promise<void> {
       killer.on('error', () => resolve())
       killer.on('exit', () => resolve())
     })
+    await killOrphans(child.pid)
   } else {
     try {
       process.kill(-child.pid, 'SIGKILL')
@@ -218,12 +242,15 @@ function spawnOptions(
   }
 }
 
+/** Spawn the system shell directly with the command as one argument: no cmd.exe hop, no console window. */
+function spawnShell(command: string, cwd: string): ChildProcess {
+  const [file, ...args] = shellCommandArgv(systemShell(), command)
+  return spawn(file!, args, { ...spawnOptions(cwd, 'ignore'), shell: false })
+}
+
 function runLocalShell(request: ShellRequest): Promise<ShellResult> {
   return runChild(
-    () => spawn(request.command, {
-      ...spawnOptions(request.cwd, 'pipe'),
-      shell: true,
-    }),
+    () => spawnShell(request.command, request.cwd),
     {
       timeoutMs: request.timeoutMs ?? 15_000,
       maxBuffer: request.maxBuffer ?? 1024 * 1024,
@@ -289,7 +316,7 @@ ${errorMessage(error)}`
 }
 
 async function startLocalShell(request: BackgroundShellRequest): Promise<BackgroundProcess> {
-  return background(spawn(request.command, { ...spawnOptions(request.cwd, 'ignore'), shell: true }))
+  return background(spawnShell(request.command, request.cwd))
 }
 
 async function startLocalProcess(request: BackgroundProcessRequest): Promise<BackgroundProcess> {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import type { BackgroundProcessRequest, ExecutionProvider, ProcessRequest, ShellRequest } from '@tnega/execution'
+import { shellCommandArgv, systemShell, type SystemShell } from '@tnega/execution'
 import {
   SandboxService,
   SandboxUnavailableError,
@@ -72,7 +73,7 @@ function execution(
   ctx: Context,
   inner: ExecutionProvider,
   mode: 'read-only' | 'workspace-write' | 'bypass' = 'workspace-write',
-  extra: { confineProcess?: boolean } = {},
+  extra: { confineProcess?: boolean; shell?: SystemShell } = {},
 ) {
   return sandboxedExecution(ctx, {
     inner,
@@ -102,14 +103,20 @@ describe('sandboxed execution', () => {
     })
 
     expect(result).toEqual({ exitCode: 0, stdout: 'wrapped', stderr: '' })
-    const expectedShell = process.platform === 'win32'
-      ? [process.env.ComSpec ?? 'cmd.exe', '/d', '/s', '/c', 'echo hi | wc -l']
-      : ['/bin/sh', '-c', 'echo hi | wc -l']
+    const expectedShell = shellCommandArgv(systemShell(), 'echo hi | wc -l')
     expect(sandbox.requests[0]).toMatchObject({ op: 'shell', argv: expectedShell })
     expect(inner.processes[0]?.argv).toEqual(['RUNNER', '--', ...expectedShell])
     expect(inner.processes[0]?.cwd).toBe(WORKSPACE)
     expect(inner.processes[0]?.timeoutMs).toBe(1_000)
     expect(inner.shells).toHaveLength(0)
+  })
+
+  it.runIf(process.platform === 'win32')('rejects MSYS bash under the Windows sandbox with a reason', async () => {
+    const { ctx, inner } = mount()
+    const shell = { kind: 'bash' as const, path: 'C:\\Program Files\\Git\\bin\\bash.exe', label: 'Git Bash' }
+    await expect(execution(ctx, inner, 'workspace-write', { shell }).runShell({ command: 'ls', cwd: WORKSPACE }))
+      .rejects.toThrow('Git Bash cannot run inside the Windows sandbox')
+    expect(inner.processes).toHaveLength(0)
   })
 
   it('confines shell-free argv processes too', async () => {
@@ -202,7 +209,7 @@ describe('sandboxed background processes', () => {
     await execution(ctx, inner).startShell!({ command: 'npm run dev', cwd: WORKSPACE })
     expect(sandbox.requests[0]?.op).toBe('shell')
     expect(inner.started[0]?.argv[0]).toBe('RUNNER')
-    expect(inner.started[0]?.argv.at(-1)).toBe('npm run dev')
+    expect(inner.started[0]?.argv.slice(2)).toEqual(shellCommandArgv(systemShell(), 'npm run dev'))
   })
 
   it('preserves runner environment for both background execution paths', async () => {

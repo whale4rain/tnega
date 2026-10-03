@@ -81,6 +81,9 @@ const STD_INPUT_HANDLE = -10
 const STD_OUTPUT_HANDLE = -11
 const STD_ERROR_HANDLE = -12
 const CREATE_SUSPENDED = 0x4
+// The runner itself has no visible console (a GUI host or windowsHide), so a
+// console child would otherwise get a fresh, visible console window.
+const CREATE_NO_WINDOW = 0x08000000
 const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 const JOB_OBJECT_EXTENDED_LIMIT_INFO_CLASS = 9
 const JOBOBJECT_EXTENDED_LIMIT_SIZE = 144
@@ -1090,7 +1093,7 @@ export function spawnRestrictedInherited(
       null,
       null,
       1,
-      CREATE_SUSPENDED,
+      CREATE_SUSPENDED | CREATE_NO_WINDOW,
       null,
       options.cwd,
       startupInfo,

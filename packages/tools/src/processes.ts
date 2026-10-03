@@ -1,4 +1,4 @@
-import type { BackgroundProcess, ExecutionProvider } from '@tnega/execution'
+import { describeShell, systemShell, type BackgroundProcess, type ExecutionProvider } from '@tnega/execution'
 import type { ToolDefinition, ToolExecuteOptions } from './index.js'
 
 /** Names of the background-process tools. */
@@ -101,7 +101,7 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
     {
       schema: {
         name: 'process_start',
-        description: 'Start a long-running command in the background, such as a dev server (`npm run dev`) or a watcher, and return its id, first output and any local URLs it printed. Use `shell` for commands that finish on their own.',
+        description: 'Start a long-running command in the background, such as a dev server (`npm run dev`) or a watcher, and return its id, first output and any local URLs it printed. Use `shell` for commands that finish on their own. ' + describeShell(systemShell()),
         parameters: {
           type: 'object',
           properties: {

@@ -1,6 +1,10 @@
 import type { Context } from '@tnega/core'
 import {
+  isMsysShell,
   localExecutionProvider,
+  shellCommandArgv,
+  systemShell,
+  type SystemShell,
   type BackgroundProcessRequest,
   type BackgroundShellRequest,
   type ExecutionProvider,
@@ -14,18 +18,6 @@ import {
   type ConfinedArgv,
 } from '@tnega/sandbox'
 
-/**
- * 把 `shell` 工具的命令装成一个显式 argv 再交给沙箱。
- *
- * 这一点是「内建命令、管道、重定向仍然工作」的原因：包装发生在 **argv 层**，
- * 命令字符串要么作为 `-c` 的单个参数交给 shell，要么由 `cmd /c` 自己解析；中间不
- * 存在第二层引号，也没有把命令拆开重组的步骤。
- */
-export interface SandboxedShell {
-  readonly command: string
-  readonly args: readonly string[]
-}
-
 export interface SandboxedExecutionConfig {
   /** 真正落进程的实现；默认 `localExecutionProvider`。 */
   inner?: ExecutionProvider
@@ -36,10 +28,11 @@ export interface SandboxedExecutionConfig {
    * execution so a resident Agent Runtime follows durable permission changes.
    */
   resolvePolicy?: () => SandboxExecutionPolicy | Promise<SandboxExecutionPolicy>
-  /** POSIX shell；默认 `/bin/sh`（`shell: true` 在 POSIX 上的等价物）。 */
-  shellPath?: string
-  /** Windows 上承载命令的解释器；默认取 `%ComSpec%`。 */
-  shell?: SandboxedShell
+  /**
+   * 承载命令的系统 shell；默认与非沙箱路径相同（`systemShell()`）。命令始终作为单个
+   * argv 元素（PowerShell 为 `-EncodedCommand`）交给 shell，中间不存在第二层引号。
+   */
+  shell?: SystemShell
   /**
    * 是否把无 shell 的 argv 进程也包进沙箱。默认 `true`：搜索 Provider 走的
    * `runProcess` 只读，但一个只读进程同样不该有工作区外的写权限。
@@ -47,20 +40,13 @@ export interface SandboxedExecutionConfig {
   confineProcess?: boolean
 }
 
-/** Windows 上 `shell: true` 真正使用的解释器。 */
-function defaultWindowsShell(): SandboxedShell {
-  return {
-    command: process.env.ComSpec ?? 'cmd.exe',
-    args: ['/d', '/s', '/c'],
+function shellArgv(request: ShellRequest, config: SandboxedExecutionConfig, confined = true): string[] {
+  const shell = config.shell ?? systemShell()
+  // Fail closed with a reason instead of Cygwin's cryptic CreateFileMapping crash.
+  if (confined && process.platform === 'win32' && isMsysShell(shell)) {
+    throw new Error(`${shell.label} cannot run inside the Windows sandbox; choose PowerShell as the shell or run with bypass permissions`)
   }
-}
-
-function shellArgv(request: ShellRequest, config: SandboxedExecutionConfig): string[] {
-  if (process.platform !== 'win32') {
-    return [config.shellPath ?? '/bin/sh', '-c', request.command]
-  }
-  const shell = config.shell ?? defaultWindowsShell()
-  return [shell.command, ...shell.args, request.command]
+  return shellCommandArgv(shell, request.command)
 }
 
 /**
@@ -148,7 +134,7 @@ export function sandboxedExecution(
             const activePolicy = await policy()
             if (activePolicy.mode === 'bypass' && inner.startShell) return inner.startShell(request)
             const confined = activePolicy.mode === 'bypass'
-              ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config) }
+              ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config, false) }
               : await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy)
             return inner.startProcess!({ ...confined, cwd: request.cwd })
           },

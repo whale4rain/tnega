@@ -1,0 +1,62 @@
+import { describe, expect, it } from 'vitest'
+import { describeShell, localExecutionProvider, resolveSystemShell, shellCommandArgv, systemShell } from '../src/index.js'
+
+const has = (...paths: string[]) => (path: string) => paths.some(p => p.toLowerCase() === path.toLowerCase())
+
+describe('resolveSystemShell', () => {
+  it('finds Git Bash next to git on PATH when PowerShell is missing', () => {
+    const shell = resolveSystemShell({
+      platform: 'win32',
+      env: { PATH: 'C:\\Tools\\Git\\cmd;C:\\Windows', SystemRoot: 'C:\\Windows' },
+      exists: has('C:\\Tools\\Git\\cmd\\git.exe', 'C:\\Tools\\Git\\bin\\bash.exe'),
+    })
+    expect(shell).toMatchObject({ kind: 'bash', label: 'Git Bash', path: 'C:\\Tools\\Git\\bin\\bash.exe' })
+  })
+
+  it('prefers PowerShell 7, then Windows PowerShell, then cmd', () => {
+    const env = { PATH: 'C:\\pwsh', SystemRoot: 'C:\\Windows', ComSpec: 'C:\\Windows\\cmd.exe' }
+    const ps = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+    expect(resolveSystemShell({ platform: 'win32', env, exists: has('C:\\pwsh\\pwsh.exe', ps) }).kind).toBe('pwsh')
+    expect(resolveSystemShell({ platform: 'win32', env, exists: has(ps) }).kind).toBe('powershell')
+    expect(resolveSystemShell({ platform: 'win32', env, exists: has() })).toMatchObject({ kind: 'cmd', path: 'C:\\Windows\\cmd.exe' })
+  })
+
+  it('uses $SHELL elsewhere and honours an explicit preference', () => {
+    expect(resolveSystemShell({
+      platform: 'win32',
+      preferred: 'bash',
+      env: { PATH: 'C:\\pwsh;C:\\Git\\cmd' },
+      exists: has('C:\\pwsh\\pwsh.exe', 'C:\\Git\\cmd\\git.exe', 'C:\\Git\\bin\\bash.exe'),
+    }).label).toBe('Git Bash')
+    expect(resolveSystemShell({ platform: 'darwin', env: { SHELL: '/bin/zsh' }, exists: has('/bin/zsh') }).kind).toBe('zsh')
+    expect(resolveSystemShell({ platform: 'linux', env: {}, exists: has() }).path).toBe('/bin/sh')
+    expect(resolveSystemShell({
+      platform: 'win32',
+      preferred: 'pwsh',
+      env: { PATH: 'C:\\pwsh;C:\\Git\\cmd' },
+      exists: has('C:\\pwsh\\pwsh.exe', 'C:\\Git\\cmd\\git.exe', 'C:\\Git\\bin\\bash.exe'),
+    }).kind).toBe('pwsh')
+  })
+})
+
+describe('shellCommandArgv', () => {
+  it('passes the command as one argument, encoded for PowerShell', () => {
+    expect(shellCommandArgv({ kind: 'bash', path: 'bash', label: 'bash' }, 'echo "a b"')).toEqual(['bash', '-c', 'echo "a b"'])
+    const argv = shellCommandArgv({ kind: 'pwsh', path: 'pwsh', label: 'PowerShell 7' }, 'Write-Output "x"')
+    const encoded = argv[argv.indexOf('-EncodedCommand') + 1] ?? ''
+    expect(Buffer.from(encoded, 'base64').toString('utf16le')).toContain('Write-Output "x"')
+    expect(describeShell({ kind: 'pwsh', path: 'pwsh', label: 'PowerShell 7' })).toContain('PowerShell syntax')
+  })
+})
+
+describe('local shell', () => {
+  it('runs quoting, pipes and exit codes through the detected shell', async () => {
+    const kind = systemShell().kind
+    const command = kind === 'pwsh' || kind === 'powershell'
+      ? 'Write-Output "a b" | ForEach-Object { $_.ToUpper() }; exit 3'
+      : kind === 'cmd' ? 'echo A B& exit /b 3' : 'echo "a b" | tr a-z A-Z; exit 3'
+    const result = await localExecutionProvider.runShell({ command, cwd: process.cwd(), timeoutMs: 20_000 })
+    expect(result.stdout.trim()).toBe('A B')
+    expect(result.exitCode).toBe(3)
+  }, 30_000)
+})

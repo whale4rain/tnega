@@ -408,7 +408,7 @@ describe('spawn failure paths', () => {
         processInfo,
       ) => {
         expect(inheritHandles).toBe(1)
-        expect(creationFlags).toBe(abi.CREATE_SUSPENDED)
+        expect(creationFlags).toBe(abi.CREATE_SUSPENDED | abi.CREATE_NO_WINDOW)
         expect(commandLine).toBe('cmd /c "echo ok"')
         expect(currentDirectory).toBe('C:\\cwd')
         startupInfo = startup

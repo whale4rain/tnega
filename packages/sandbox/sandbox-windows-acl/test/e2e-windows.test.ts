@@ -24,6 +24,7 @@ import { isWindowsAclAvailable, win32 } from '../src/ffi.js'
 import type { Win32Api } from '../src/ffi.js'
 import { AclWriteGrant, DENIAL_SIGNATURES, RUNNER_FAILURE_EXIT_CODE, resolveRunnerCommand, tempWriteSid, workspaceWriteSid } from '../src/index.js'
 import { writeIsAmbientlyAllowed } from './support/acl-reader.js'
+import { isMsysShell, shellCommandArgv, systemShell } from '../../../execution/src/shell.js'
 
 const e2eReady = process.platform === 'win32' && await isWindowsAclAvailable()
 
@@ -171,6 +172,22 @@ describe.skipIf(!e2eReady)('runner end-to-end under the real restricted token', 
   it('mirrors a non-zero exit code from the confined child unchanged', () => {
     const result = runConfined(workspaceWriteArgs(['cmd', '/c', 'exit', '3']))
     expect(result.status, result.output).toBe(3)
+  })
+
+  it('runs the system shell (PowerShell) with quotes, pipes and a workspace write', (ctx) => {
+    const shell = systemShell()
+    ctx.skip(isMsysShell(shell), 'MSYS bash cannot run under a restricted token; the sandbox rejects it up front')
+    const target = join(workspace, 'system-shell.txt')
+    rmSync(target, { force: true })
+    const command = shell.kind === 'pwsh' || shell.kind === 'powershell'
+      ? 'Write-Output "a b" | Out-File -Encoding ascii system-shell.txt; Write-Output "done"; exit 4'
+      : shell.kind === 'cmd' ? 'echo a b> system-shell.txt& echo done& exit /b 4'
+      : 'echo "a b" > system-shell.txt; echo done; exit 4'
+    const result = runConfined(workspaceWriteArgs(shellCommandArgv(shell, command)))
+    expect(result.status, result.output).toBe(4)
+    expect(result.output).toContain('done')
+    expect(readFileSync(target, 'utf8')).toContain('a b')
+    rmSync(target, { force: true })
   })
 
   /*

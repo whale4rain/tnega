@@ -152,6 +152,8 @@ export const STD_OUTPUT_HANDLE = -11
 export const STD_ERROR_HANDLE = -12
 /** CreateProcess：先挂起，等 Job 归属确定后再恢复。 */
 export const CREATE_SUSPENDED = 0x4
+/** CreateProcess：控制台子进程不弹出可见的控制台窗口。 */
+export const CREATE_NO_WINDOW = 0x08000000
 /** Job 限制：最后一个 Job 句柄关闭时终止所有成员。 */
 export const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 /** SetInformationJobObject：扩展限制信息。 */

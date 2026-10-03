@@ -22,7 +22,9 @@ import { resolveInside } from './path.js'
 import { createProcessTools, type ProcessRegistry } from './processes.js'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import {
+  describeShell,
   localExecutionProvider,
+  systemShell,
   type ExecutionProvider,
 } from '@tnega/execution'
 
@@ -562,7 +564,7 @@ function httpGetTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
 function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   return definition(
     'shell',
-    'Run a shell command inside the workspace and return { exitCode, stdout, stderr }. Disabled by default; enable with allowShell.',
+    `Run a shell command inside the workspace and return { exitCode, stdout, stderr }. ${describeShell(systemShell())}`,
     async (input, options: ToolExecuteOptions) => {
       const args = record(input)
       const command = stringField(args.command, 'command')

@@ -155,7 +155,12 @@ export {
 
 export {
   localExecutionProvider,
+  resolveSystemShell,
+  shellCommandArgv,
+  systemShell,
   type ExecutionProvider,
+  type SystemShell,
+  type SystemShellKind,
   type HttpRequest,
   type HttpResponse,
   type ProcessRequest,
@@ -255,7 +260,6 @@ export {
 export {
   sandboxedExecution,
   type SandboxedExecutionConfig,
-  type SandboxedShell,
 } from '../packages/sandbox/execution-sandbox/src/index.js'
 
 export {
