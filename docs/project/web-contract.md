@@ -13,13 +13,13 @@ Claude Projects 的能力而**提议**的接口。提议接口尚未实现时，
 | --- | --- | --- |
 | Project（主对话 / chief of staff） | `ProjectRecord` + 根 Thread（`coordinatorId`） | 中间的主对话 |
 | Thread（并行的工作会话） | 子 `ThreadRecord`，各自一个 Session | 主对话里的 Thread 卡片；右侧 Thread 面板 |
-| 在主对话里看进度 / 进入 Thread 细调 | Box 信封（`dispatch` 卡片、`complete` 回报）/ Thread Session | 卡片状态与最新回报；Thread 面板的 Timeline 与输入框 |
+| 在主对话里看进度 / 进入 Thread 细调 | Box 信封（`dispatch` 卡片）/ Thread 记录（状态、实时清单）/ Thread Session | 卡片只有标题与状态；Thread 面板先给清单、产物与回答，步骤折叠 |
 | Shared memory | Blackboard `memory` 事实（有版本） | 右侧 Memory：新增、编辑、删除、版本历史 |
 | Library（你加的文件 + Claude 的产物） | Blackboard `artifact` / `resource` + Artifact Store | 右侧 Library：列表、查看、添加 |
 | 偏好：check-in 频率、开 Thread 的积极度、更新详略 | **提议** `settings.preferences` | 右侧 Settings |
 | 协调者与 Thread 分别选模型和思考强度 | **提议** `settings.coordinator` / `settings.threads` | 右侧 Settings |
 | 按 Project 查看用量 | **提议** `GET …/usage` | Settings → Usage |
-| （Tnega 补充）暂停全部 / 停止单个 Thread | **提议** `POST …/stop`、`POST …/threads/:id/stop` | 顶栏菜单；Thread 面板 Stop |
+| （Tnega 补充）暂停全部 / 停止单个 Thread | `POST …/stop`、`POST …/threads/:id/stop` | 顶栏菜单；Thread 面板 Stop |
 
 Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tnega 仍是本地产品。
 
@@ -36,19 +36,23 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 | DELETE | `/api/projects/:id` | 删除 |
 | POST | `/api/projects/:id/messages` `{ text }` | 主对话发言；回执即成功，协调者运行时也可发送 |
 | GET | `/api/projects/:id/threads/:threadId` | Thread 记录 + Session 事件（面板复用会话 Timeline 渲染） |
-| POST | `/api/projects/:id/threads/:threadId/messages` `{ text }` | 直接给 Thread 留言；主对话出现可点击的通知 |
+| POST | `/api/projects/:id/threads/:threadId/messages` `{ text }` | 直接给 Thread 留言；协调者只收到一条不唤醒它的通知，主对话里不出现 |
+| POST | `/api/projects/:id/threads/:threadId/stop` | 取消该 Thread 当前的 Agent Run 并清空它已收下的待处理输入；Box 里尚未投递的信封保留。返回 `{ stopped: boolean }` |
+| POST | `/api/projects/:id/stop` | 对所有正在跑的 Agent 做同样操作，返回 `{ stopped: number }` |
+| GET | `/api/projects/:id/artifacts/:hash` | 已登记在 Library 里的产物内容。一律按 `text/plain` 返回（`nosniff`、CSP `sandbox`），真实类型在 `x-artifact-media-type` 头里；前端把 HTML 放进 `sandbox="allow-scripts"` 的 iframe，Markdown 渲染，其余按代码块显示 |
 | POST | `/api/projects/:id/approvals/:approvalId` `{ allow }` | 越权工具审批 |
 | POST | `/api/projects/:id/memory` `{ text, tags? }` | 新增记忆（正文中的 `#tag` 会被提取为 tags） |
 | PATCH | `/api/projects/:id/memory/:memoryId` `{ text, expected_version, tags? }` / `{ deleted: true, expected_version }` | 编辑 / 删除；前端写之前先读历史取当前版本，409 时保留草稿并提示 |
 | GET | `/api/projects/:id/memory/:memoryId` | 版本历史 |
 | GET | `/api/projects/:id/stream?after=<cursor>` | SSE 变化流，断线后按游标重连 |
 
-流帧：`message`（信封，含 `seq`）、`commit`（`agent` / `memory` / `artifact` / `resource` / `project`）、
+流帧：`message`（信封，含 `seq`）、`commit`（`agent` / `memory` / `artifact` / `resource` / `project`，带 `author`、`version`、`updatedAt`、`source`）、
 `chunk`（`agentId` 的实时正文增量）、`agent-status`（`running` / `idle`）、`approval/request`、`heartbeat`。
 
-前端的推导规则（见 `project-model.ts`）：主对话只读 `placement.kind === 'main'` 的信封；连续的
-`dispatch` 合成一组卡片；卡片状态读 Thread 记录，并以 `agent-status` 覆盖；卡片上的最新回报取该
-Thread 发给协调者的最后一封信封；协调者的 `chunk` 作为流式草稿显示，收到它的 `agent-reply` 后替换。
+前端的推导规则（见 `project-model.ts`）：主对话只读 `placement.kind === 'main'` 的用户发言、协调者回复与
+`dispatch`（`notice` 不显示）；连续的 `dispatch` 合成一组卡片；卡片状态读 Thread 记录，并以 `agent-status`
+覆盖，工作中显示清单里 `active` 的那一步；回复的 `refs` 按哈希对到 Library 的产物，渲染成卡片；Thread
+面板的产物按 `author` 归属；协调者的 `chunk` 作为流式草稿显示，收到它的 `agent-reply` 后替换。
 
 ## 提议的后端改动
 
@@ -82,17 +86,6 @@ Thread 发给协调者的最后一封信封；协调者的 `chunk` 作为流式�
 前端现状：消息上方的回复标签（点击跳到原消息并高亮；若原消息在 Thread 内则打开该 Thread）、协调者消息和
 Thread 卡片上的「Reply」按钮、输入框上方的「Replying to …」提示条都已实现；紧挨着回复的上一条消息不重复显示标签。
 
-### P0-1 commit 帧带上记录元数据
-
-`ProjectHost.watch` 推 `commit` 时补上 `author`、`version`、`updatedAt`、`source`（记录上本来就有）：
-
-```ts
-send({ type: 'commit', kind, id, seq, deleted, data, author, version, updatedAt, source })
-```
-
-用途：实时到达的记忆 / 产物能显示「谁、何时」写的；编辑时少一次历史读取。
-降级：前端沿用已知记录的作者，新记录不显示作者。
-
 ### P0-2 项目设置：`PATCH /api/projects/:id` 接受 `name`、`goal`、`settings`
 
 ```ts
@@ -117,18 +110,6 @@ interface ProjectSettings {
 - `maxParallelThreads` 对应 `thread-local` 的并发上限；`threadSpawning: 'ask-first'` 时协调者先在主对话提议，
   得到用户同意再 `spawn_thread`。
 - 降级：前端在 PATCH 返回 400（`archived must be a boolean`）/404/405 时提示「服务端尚不支持」。
-
-### P0-3 读取产物内容：`GET /api/projects/:id/artifacts/:hash`
-
-返回原始内容，`content-type` 为产物的 `mediaType`。前端对 Markdown 渲染，其余按代码块显示。
-降级：显示「尚不支持」和 sha256。
-
-### P1-1 停止：`POST /api/projects/:id/threads/:threadId/stop` 与 `POST /api/projects/:id/stop`
-
-- 单个 Thread：取消该 Agent 当前 Agent Run（`registry.get(id)?.cancel()`），状态回到 `idle`，
-  Box 中未投递的消息保留。返回 `{ stopped: boolean }`。
-- 整个项目：对所有 `running` 的 Agent 做同样操作，返回 `{ stopped: number }`。
-- 需要它的理由：调试中出现过协调者反复 `spawn_thread` 的失控循环，用户需要一个「刹车」。
 
 ### P1-2 用量：`GET /api/projects/:id/usage`
 

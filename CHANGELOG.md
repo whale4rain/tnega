@@ -32,6 +32,21 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Projects are redesigned as a calm group chat. The main conversation holds
+  what you said, what the coordinator said and one card per thread with only
+  its title and status. Thread results stay in their thread: you get an
+  unread dot and a desktop notification, and the coordinator no longer
+  restates them. It speaks up only when a thread needs a decision you have to
+  make, or when you ask. Messages you send to a thread no longer add notices
+  to the main conversation.
+- Threads keep a live checklist (`update_checklist`). The card shows the step
+  in progress, and the thread view leads with the checklist, its outputs and
+  its answers; the brief and every internal step fold away.
+- Artifacts appear as cards on the message that produced them and in the
+  Library. They open in place, and HTML artifacts run as interactive pages in
+  a sandboxed frame. The server now serves artifact content and can stop one
+  thread or every running agent in a project.
+
 ## [0.4.10](https://github.com/whale4rain/tnega/releases/tag/v0.4.10) — 2026-10-03
 
 - The `shell` and `process_start` tools run commands in the system shell

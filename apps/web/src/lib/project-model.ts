@@ -381,7 +381,7 @@ export function overview(state: ProjectState): OverviewGroup[] {
   const groups: OverviewGroup[] = [
     { key: 'attention', label: 'Needs attention', threads: [] },
     { key: 'working', label: 'Working', threads: [] },
-    { key: 'reported', label: 'Reported back', threads: [] },
+    { key: 'reported', label: 'Idle', threads: [] },
     { key: 'finished', label: 'Finished', threads: [] },
   ]
   for (const thread of workerThreads(state)) {
