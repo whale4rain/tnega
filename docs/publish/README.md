@@ -193,6 +193,12 @@ Settings → Update channel persists Stable / Preview per desktop installation.
   with `gh release upload`. Do not rebuild or substitute different bytes under
   the existing feed. Verify all three assets and compare the uploaded asset's
   SHA256 digest with the local file.
+- **Duplicate GitHub releases (0.4.7):** concurrent publisher requests created
+  two release records for the same tag; one contained only the installer.
+  List all releases rather than relying only on the tag endpoint. Compare
+  asset digests, retain the complete release, and delete only the redundant
+  record by its release ID through the API, preserving the Git tag. Confirm
+  exactly one release remains and the latest stable release has all assets.
 - **Node fetch network failure (0.4.7):** `pnpm release verify` encountered
   `ECONNRESET` and `UND_ERR_CONNECT_TIMEOUT` accessing GitHub. This alone does
   not establish a bad release. If a retry still fails, use `curl --fail
