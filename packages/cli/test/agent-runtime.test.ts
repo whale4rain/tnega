@@ -445,10 +445,11 @@ it.each(['native', 'ptc'] as const)('discovers skills in an older Session throug
   const runtime = await createAgentRuntime(runtimeOptions(dir, { llm: mock.adapter, ptc: { mode } }))
   try {
     const loop = runtime.root.get('agentLoop') as AgentLoop
-    await loop({ messages: [{ role: 'system', content: 'Legacy persona.' }, { role: 'user', content: 'Help with coding.' }] })
-    expect(mock.calls[0]?.messages[0]?.content).toBe('Legacy persona.')
+    await loop({ messages: [{ role: 'system', content: 'Legacy persona. Available skills (descriptions are metadata): old index' }, { role: 'user', content: 'Help with coding.' }] })
+    expect(mock.calls[0]?.messages[0]?.content).toBe('Legacy persona. Available skills (descriptions are metadata): old index')
     const name = mode === 'native' ? 'skills_list' : 'run_code'
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('using-tnega')
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('implementing-changes')
+    expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('tdd')
   } finally { await runtime.dispose() }
 })

@@ -26,7 +26,7 @@ afterEach(async () => {
 it('installs offline skills concurrently, preserves edits, and leaves workspace empty', async () => {
   await Promise.all([installBuiltinSkills(), installBuiltinSkills()])
   const entries = await listSkills(workspace)
-  expect(entries).toHaveLength(8)
+  expect(entries).toHaveLength(12)
   expect(entries.every(entry => entry.path.startsWith(join(home, 'skills')))).toBe(true)
   const file = join(home, 'skills', 'using-tnega', 'SKILL.md')
   await writeFile(file, '# My custom instructions\n')
@@ -41,7 +41,7 @@ it('discovers global skills and prefers workspace overrides and frontmatter trig
   const content = '---\nname: using-tnega\ndescription: Use when working in this project.\n---\n# Local skill\n'
   await writeFile(join(dir, 'SKILL.md'), content)
   const entries = await listSkills(workspace)
-  expect(entries).toHaveLength(8)
+  expect(entries).toHaveLength(12)
   expect(entries.find(entry => entry.name === 'using-tnega')?.description).toBe('Use when working in this project.')
   expect(await readSkill(workspace, 'using-tnega')).toBe(content)
   expect(await readSkill(workspace, 'processing-data-files')).toContain('description:')
@@ -55,7 +55,7 @@ it('exposes an index to child prompts and disposes tools and prompt hooks', asyn
   await child.plugin(systemPrompt)
   const prompt = child.get('systemPrompt') as SystemPromptService
   const registry = root.get('tools') as ToolsService
-  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skills_list', 'skill_read'])
+  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skills_list', 'skill_read', 'skill_create', 'skill_install'])
   const assembly = await prompt.assemble()
   expect(assembly.text).toContain('processing-data-files')
   expect(assembly.text).toContain('skill_read')
@@ -73,7 +73,7 @@ it('reuses shared skill tools for a coding Session without duplicate registratio
   await root.plugin(skillTools, { cwd: workspace })
   const coding = await root.plugin(createCodingAgentPlugin({ cwd: workspace, mcp: false, registerAgent: false }))
   const registry = root.get('tools') as ToolsService
-  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skills_list', 'skill_read'])
+  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skills_list', 'skill_read', 'skill_create', 'skill_install'])
   await coding.dispose()
   expect(registry.has('skill_read')).toBe(true)
   await root.fiber.dispose()
@@ -84,7 +84,7 @@ it('loads offline skills through the source CLI TypeScript loader', () => {
   const code = `
     import { installBuiltinSkills, listSkills } from ${JSON.stringify(pathToFileURL(join(root, 'packages/coding-agent/src/index.ts')).href)};
     await installBuiltinSkills();
-    if ((await listSkills(${JSON.stringify(workspace)})).length !== 8) throw new Error('source skill content missing');
+    if ((await listSkills(${JSON.stringify(workspace)})).length !== 12) throw new Error('source skill content missing');
     console.log('source skills ok');
   `
   expect(execFileSync(process.execPath, [

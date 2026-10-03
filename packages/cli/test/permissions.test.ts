@@ -105,3 +105,16 @@ describe('browser and process permissions', () => {
     expect(await guard(request('process_stop', { id: 'p1' }))).toBeUndefined()
   })
 })
+
+it('gates fixed-home skill writes, including narrower child permissions', async () => {
+  const approvals = new ApprovalBroker()
+  const readonly = permissionGuard('read-only', 'session', approvals, { workspace: process.cwd() })
+  const writable = permissionGuard('workspace-write', 'session', approvals, { workspace: process.cwd(), agentMode: () => 'read-only' })
+  for (const name of ['skill_create', 'skill_install']) {
+    expect(await readonly(request(name, {}))).toMatch(/approval/)
+    expect(await writable(request(name, {}))).toBeUndefined()
+    const child = request(name, {})
+    child.options.agentId = 'child'
+    expect(await writable(child)).toMatch(/approval/)
+  }
+})

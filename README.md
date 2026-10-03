@@ -68,15 +68,24 @@ copies or a legacy writer continuing after import cause an explicit error;
 neither copy is overwritten. This relocates files without changing their Session
 format. An explicit CLI `--session` path is still honored.
 
-**Built-in skills.** Desktop/Web startup and the default CLI runtime install eight
+**Built-in skills.** Desktop/Web startup and the default CLI runtime install twelve
 bundled skills offline into `~/.tnega/skills/<name>/SKILL.md` (or
 `TNEGA_HOME/skills`). They cover source research, documents, planning, data files,
-implementation, debugging, code review and Tnega usage. General, coding and
+implementation, debugging, code review, TDD, DDD, Tnega usage and skill authoring/installing. General, coding and
 Project agents see a short trigger index and read relevant instructions with
 `skills_list` / `skill_read`; coding Sessions also provide `/skills`.
 Existing user files are never overwritten; upgrades only add missing skills.
 Add your own skills in the same directory, or override a name for one Workspace
 with `.tnega/skills/<name>/SKILL.md`. Skills do not change tool permissions.
+
+Use `/skills read <name>` for an explicit read (including names such as `create`).
+Coding Sessions support `/skills create <name> <description>` to create a starter
+template and `/skills install <workspace-path-or-HTTPS-raw-URL> [name]` to import
+a `SKILL.md`. Agents also have `skill_create` (complete content or a template)
+and `skill_install`. Both write to user home and require write permission; they
+never overwrite existing instructions. Installation copies only `SKILL.md`,
+not referenced assets or scripts. Model HTTPS installs require the runtime's
+`http_get` network tool; a typed slash URL explicitly requests the download.
 
 ## Install and start
 

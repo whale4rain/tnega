@@ -2,10 +2,10 @@ import type { Context, Plugin } from '@tnega/core'
 import { defineAgent, HUMAN_COMMUNICATION_PROMPT, type LLMAdapter } from '@tnega/agent'
 import type { ModelMessage, SessionMode } from '@tnega/session'
 import { resolve } from 'node:path'
-import type { ToolDefinition } from '@tnega/tools'
+import type { ToolDefinition, ToolsService } from '@tnega/tools'
 import { connectMcpServers, type McpRuntime } from './mcp.js'
 import { generatePlan } from './plan.js'
-import { listSkills, skillTools, type SkillsService } from './skills.js'
+import { skillTools, type SkillsService } from './skills.js'
 import { createSlashRegistry, type SlashCommandResult } from './slash.js'
 import type { CodingSurvey, Plan, SlashCommand, SlashSuggestion } from './types.js'
 
@@ -74,13 +74,12 @@ export function createCodingAgentPlugin(
         if (existing && existing.cwd !== resolve(cwd)) throw new Error('skills workspace mismatch')
         if (!existing) await ctx.plugin(skillTools, { cwd })
       }
-      const skillEntries = skillsEnabled ? await listSkills(cwd) : []
       let skillCount = 0
       let mcpServers = 0
       let mcpTools = 0
 
       if (skillsEnabled) {
-        skillCount = 2
+        skillCount = 4
       }
       let mcpRuntime: McpRuntime | undefined
       if (mcpEnabled) {
@@ -105,10 +104,15 @@ export function createCodingAgentPlugin(
       const slash = createSlashRegistry()
       const slashContext = (): Parameters<typeof slash.run>[2] => ({
         cwd,
+        executeTool: async (name, input) => {
+          const registry = ctx.get('tools') as ToolsService
+          const result = await registry.execute(name, input)
+          if (!result.ok) throw new Error(result.error?.message ?? `tool failed: ${name}`)
+          return result.output
+        },
         tools: service.tools.list(),
         ...(mode ? { mode } : {}),
         ...(setMode ? { setMode } : {}),
-        ...(skillEntries.length ? { skills: skillEntries } : {}),
         ...(mcpRuntime ? {
           mcp: {
             surveys: mcpRuntime.surveys,

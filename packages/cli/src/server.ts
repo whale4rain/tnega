@@ -67,7 +67,7 @@ import { jobsLocal } from '@tnega/jobs-local'
 import type { JobRegistry } from '@tnega/jobs'
 import { toolJobs } from '@tnega/tool-jobs'
 import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
-import { builtinTools, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
+import { builtinTools, createBuiltinToolDefinitions, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { ProjectHost } from './project-host.js'
 import { workspaceSubagentRoot } from './state-storage.js'
@@ -1875,6 +1875,11 @@ async function handleCodingSlash(
   const args = Array.isArray(body.args)
     ? body.args.filter((arg): arg is string => typeof arg === 'string')
     : []
+  if (name === '/skills' && (args[0] === 'create' || args[0] === 'install')
+    && (summary.permission ?? 'read-only') === 'read-only') {
+    sendError(res, 403, 'Skill creation and installation require workspace-write permission.')
+    return
+  }
   if (name === '/plan') {
     await patchSessionMeta(workspace, id, { mode: 'plan' })
     const result: SlashCommandResult = { kind: 'text', text: 'Plan mode selected. Send a request to generate a plan.' }
@@ -1959,6 +1964,13 @@ async function withCodingAgent<T>(
   try {
     await root.plugin(session, { file: sessionFilePath(workspace, id) })
     await root.plugin(tools)
+    const registry = root.get('tools') as ToolsService
+    registry.guard(permissionGuard(summary.permission ?? 'read-only', runKey(workspace, id), new ApprovalBroker(), { workspace }))
+    // A typed slash install URL is an explicit user request to read that source.
+    // Model calls only have http_get when their runtime enables network tools.
+    for (const tool of createBuiltinToolDefinitions({ cwd: workspace, allowNetwork: true,
+      disabled: ['echo', 'now', 'calculator', 'json', 'read_file', 'write_file', 'list_dir'],
+    })) registry.register(tool)
     fiber = await root.plugin(createCodingAgentPlugin({
       cwd: workspace,
       skills: true,
@@ -1976,6 +1988,7 @@ async function withCodingAgent<T>(
     return await run(coding, sessionLog)
   } finally {
     await fiber?.dispose()
+    await root.fiber.dispose()
   }
 }
 

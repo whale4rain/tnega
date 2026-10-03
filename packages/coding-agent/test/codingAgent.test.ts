@@ -55,7 +55,7 @@ describe('createCodingAgentPlugin', () => {
       mode: 'plan',
       planTools: 2,
       skillsEnabled: true,
-      skills: 2,
+      skills: 4,
       mcpEnabled: false,
       mcpServers: 0,
       mcpTools: 0,
@@ -95,12 +95,12 @@ describe('createCodingAgentPlugin', () => {
     expect(listed).toMatchObject({
       kind: 'json',
       value: {
-        skills: [
+        skills: expect.arrayContaining([
           {
             name: 'typescript',
             description: 'TypeScript Style',
           },
-        ],
+        ]),
       },
     })
 

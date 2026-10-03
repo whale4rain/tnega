@@ -160,14 +160,17 @@ describe('slash suggestions', () => {
       tools: [],
       skills,
     })
-    expect(suggestions).toEqual([
+    expect(suggestions).toEqual(expect.arrayContaining([
       {
         command: '/skills',
         args: ['typescript'],
         label: 'typescript',
         detail: 'TypeScript Style',
       },
-    ])
+    ]))
+    expect(suggestions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ args: ['create'] }), expect.objectContaining({ args: ['install'] }),
+    ]))
   })
 
   it('suggests mcp servers and tools', async () => {

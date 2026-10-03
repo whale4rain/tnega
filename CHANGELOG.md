@@ -30,11 +30,16 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
-- Ship eight offline skills for research, documents, planning, data processing,
-  coding, debugging, review and Tnega usage. Install missing files in user home
+- Ship twelve offline skills for research, documents, planning, data processing,
+  coding, debugging, review, TDD, DDD, Tnega usage and skill management. Install missing files in user home
   on startup, preserve user edits, and honor Workspace overrides. General,
   coding and Project agents discover short descriptions and load instructions
   on demand; no network download or additional tool permissions are required.
+
+- Add guarded `skill_create` / `skill_install` tools and coding `/skills create`
+  / `/skills install` commands, with live discovery after changes. Install from
+  Workspace files or HTTPS raw Markdown; preserve existing files, enforce write
+  permissions and do not execute downloaded content or copy companion assets.
 
 ## [0.4.8](https://github.com/whale4rain/tnega/releases/tag/v0.4.8) — 2026-10-03
 

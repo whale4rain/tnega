@@ -11,6 +11,7 @@ export interface SlashContext {
   mode?: SessionMode
   setMode?: (mode: SessionMode) => void | Promise<void>
   skills?: SkillEntry[]
+  executeTool?: (name: string, input: Record<string, unknown>) => Promise<unknown>
   mcp?: {
     surveys: McpSurvey[]
     tools: readonly ToolDefinition[]
@@ -128,8 +129,17 @@ export function createSlashRegistry(): SlashRegistry {
   )
   registry.register(
     '/skills',
-    'List workspace skills, or read one with /skills <name>.',
+    'List/read skills; /skills create <name> <description>; /skills install <path-or-HTTPS-url> [name].',
     async (args, context) => {
+      if (args[0] === 'create' || args[0] === 'install') {
+        if (!context.executeTool) return { kind: 'text', text: 'Skill management is not available in this context.' }
+        if (args[0] === 'create') {
+          if (args.length < 3) return { kind: 'text', text: 'Usage: /skills create <name> <description>' }
+          return { kind: 'json', value: await context.executeTool('skill_create', { name: args[1], description: args.slice(2).join(' ') }) }
+        }
+        if (args.length < 2 || args.length > 3) return { kind: 'text', text: 'Usage: /skills install <path-or-HTTPS-url> [name]' }
+        return { kind: 'json', value: await context.executeTool('skill_install', { source: args[1], ...(args[2] ? { name: args[2] } : {}) }) }
+      }
       const skills = context.skills ?? await listSkills(context.cwd)
       if (!args.length) {
         return {
@@ -142,7 +152,7 @@ export function createSlashRegistry(): SlashRegistry {
           },
         }
       }
-      const name = args[0]!
+      const name = args[0] === 'read' && args.length === 2 ? args[1]! : args[0]!
       const known = skills.some(skill => skill.name === name)
       if (!known) {
         return {
@@ -158,12 +168,16 @@ export function createSlashRegistry(): SlashRegistry {
     },
     async (context) => {
       const skills = context.skills ?? await listSkills(context.cwd)
-      return skills.map(skill => ({
-        command: '/skills',
-        args: [skill.name],
-        label: skill.name,
-        detail: skill.description,
-      }))
+      return [
+        { command: '/skills', args: ['create'], label: 'create', detail: 'Create a user skill: create <name> <description>' },
+        { command: '/skills', args: ['install'], label: 'install', detail: 'Install a skill: install <path-or-HTTPS-url> [name]' },
+        ...skills.map(skill => ({
+          command: '/skills',
+          args: ['create', 'install', 'read'].includes(skill.name) ? ['read', skill.name] : [skill.name],
+          label: skill.name,
+          detail: skill.description,
+        })),
+      ]
     },
   )
   registry.register(

@@ -15,6 +15,8 @@ export type PermissionModeSource = PermissionMode | (() => PermissionMode | Prom
  * 本身界定。真正需要用户点头的是越界与对外的动作 —— shell、工作区外的路径、网络。
  */
 /** 与 `write_file` 同级：workspace-write 下在工作区内直接放行。 */
+// Fixed user-home capability; callers cannot choose a destination path.
+const SKILL_WRITES = new Set(['skill_create', 'skill_install'])
 const WORKSPACE_WRITES = new Set(['write_file', 'office_create', 'office_edit'])
 
 const ALWAYS_ALLOWED = new Set([
@@ -145,6 +147,7 @@ export function permissionGuard(
     }
     if (ALWAYS_ALLOWED.has(request.name) && scoped
       && !(request.name === 'http_get' && unrestricted)) return undefined
+    if (effective === 'workspace-write' && SKILL_WRITES.has(request.name)) return undefined
     if (effective === 'workspace-write' && WORKSPACE_WRITES.has(request.name) && scoped) return undefined
     if (BROWSER_PASSIVE.has(request.name)) return undefined
     if (effective === 'workspace-write' && browserInteractionIsLocal(request, options.browserUrl?.())) return undefined

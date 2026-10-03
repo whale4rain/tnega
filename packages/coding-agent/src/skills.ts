@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import type { ToolDefinition, ToolsService } from '@tnega/tools'
 import type { Context } from '@tnega/core'
 import type { AgentRequestEvent, PromptAssembly } from '@tnega/agent'
+import { skillCreateTool, skillInstallTool } from './skill-management.js'
 import { BUILTIN_SKILLS } from './builtin-skills.js'
 import { resolveTnegaHome } from './home.js'
 
@@ -183,6 +184,8 @@ export const skillTools = {
     const registry = ctx.get('tools') as ToolsService
     registry.register(await skillTool(options.cwd))
     registry.register(await skillReadTool(options.cwd))
+    registry.register(skillCreateTool())
+    registry.register(skillInstallTool(options.cwd, registry))
     ctx.provide('skills', { cwd: resolve(options.cwd) } satisfies SkillsService)
     ctx.on('system-prompt/assemble', async (_assembly: PromptAssembly, next: () => Promise<PromptAssembly>) => {
       const result = await next()
@@ -194,11 +197,10 @@ export const skillTools = {
     // visible through tool metadata without rewriting their durable history.
     ctx.on('agent/request', async (_request: AgentRequestEvent, next: () => Promise<AgentRequestEvent>) => {
       const request = await next()
-      if (request.messages.some(message => message.role === 'system'
-        && message.content.includes('Available skills (descriptions are metadata):'))) return request
-      const name = request.tools.some(tool => tool.schema.name === 'skills_list') ? 'skills_list' : 'run_code'
       const instructions = await renderSkillIndex(options.cwd)
-      if (!instructions) return request
+      if (!instructions || request.messages.some(message => message.role === 'system'
+        && message.content.includes(instructions))) return request
+      const name = request.tools.some(tool => tool.schema.name === 'skills_list') ? 'skills_list' : 'run_code'
       return { ...request, tools: request.tools.map(tool => tool.schema.name !== name ? tool : {
         ...tool, schema: { ...tool.schema, description: `${tool.schema.description}\n\n${instructions}` },
       }) }

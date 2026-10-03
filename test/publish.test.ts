@@ -53,7 +53,7 @@ describe('packed artifact', () => {
         process.env.TNEGA_HOME = ${JSON.stringify(join(directory, 'home'))};
         await installBuiltinSkills();
         const skills = await listSkills(${JSON.stringify(directory)});
-        if (skills.length !== 8) throw new Error('missing bundled skills');
+        if (skills.length !== 12) throw new Error('missing bundled skills');
         if (!(await readSkill(${JSON.stringify(directory)}, 'using-tnega')).includes('description:')) throw new Error('content missing');
         await writeFile(join(process.env.TNEGA_HOME, 'skills', 'using-tnega', 'SKILL.md'), '# User override');
         await installBuiltinSkills();

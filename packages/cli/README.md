@@ -209,3 +209,10 @@ Web / 桌面首次启动会离线安装内置 skills 到 `~/.tnega/skills`，遵
 `skillTools`，让 general 和 coding 都能发现与读取。已有文件不覆盖，工作区
 `.tnega/skills` 同名文档优先。自定义 runtime 的 `builtinTools: false` 不默认挂
 skills；可以显式指定 `skills: true`，或用 `skills: false` 禁用默认加载。
+
+Skill 管理工具是 `skill_create` / `skill_install`，固定写 home 的 skills 目录，
+`workspace-write` 可用，窄权限子 Agent 不能借父权限写入。coding Session 的
+`/skills create <name> <description>` 创建模板；`/skills install <工作区路径或HTTPS raw链接> [name]`
+导入主文档；`/skills read <name>` 明确读取。已有文件不覆盖，安装不复制附属脚本或
+资源。Agent 的 HTTPS 安装要求启用 `http_get`；直接输入 slash URL 是用户对该来源
+的读取请求，仍要求写权限。skills 与候选列表实时刷新。
