@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -9,4 +10,13 @@ export async function resolve(specifier, context, nextResolve) {
     }
   }
   return nextResolve(specifier, context)
+}
+
+// Match the Markdown imports embedded by production builds and Vite tests.
+export async function load(url, context, nextLoad) {
+  if (url.startsWith('file:') && url.endsWith('.md?raw')) {
+    const content = await readFile(new URL(url), 'utf8')
+    return { format: 'module', source: `export default ${JSON.stringify(content)};`, shortCircuit: true }
+  }
+  return nextLoad(url, context)
 }

@@ -1,3 +1,4 @@
+import { skillTools } from '@tnega/coding-agent'
 import { resolve } from 'node:path'
 import { Context, type Plugin } from '@tnega/core'
 import type { AgentProfile } from './profile.js'
@@ -109,6 +110,8 @@ export interface AgentRuntimeOptions {
   builtinTools?: false | BuiltinToolsConfig
   /** Defaults to enabled with builtin tools; explicitly enable for custom compositions. */
   jobs?: boolean
+  /** Defaults to enabled with builtin tools; installs offline user skills. */
+  skills?: boolean
   plugins?: readonly Plugin[]
   /** Web per-run agents consume durable steering at model step boundaries. */
   durableInbox?: boolean
@@ -238,7 +241,7 @@ function runtimeOptionsFromProfile(
   options: Record<string, unknown>,
 ): Pick<
   AgentRuntimeOptions,
-  'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools' | 'jobs'
+  'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools' | 'jobs' | 'skills'
 > {
   const builtinTools = options.builtinTools === false
     || (options.builtinTools && typeof options.builtinTools === 'object')
@@ -246,7 +249,7 @@ function runtimeOptionsFromProfile(
     : undefined
   const result: Partial<Pick<
     AgentRuntimeOptions,
-    'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools' | 'jobs'
+    'allowNetwork' | 'allowShell' | 'sandboxMode' | 'maxTurns' | 'maxSteps' | 'builtinTools' | 'jobs' | 'skills'
   >> = {}
   if (options.allowNetwork === true) result.allowNetwork = true
   if (options.allowShell === true) result.allowShell = true
@@ -259,6 +262,7 @@ function runtimeOptionsFromProfile(
   if (typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps)) {
     result.maxSteps = options.maxSteps
   }
+  if (typeof options.skills === 'boolean') result.skills = options.skills
   if (builtinTools !== undefined) result.builtinTools = builtinTools
   if (typeof options.jobs === 'boolean') result.jobs = options.jobs
   return result
@@ -316,6 +320,9 @@ export async function createAgentRuntime(
     fibers.push(await root.plugin(spillLocal, { cwd: merged.cwd }))
     fibers.push(await root.plugin(toolSpill))
     fibers.push(await root.plugin(toolOffice, { cwd: merged.cwd }))
+  }
+  if (merged.skills ?? (merged.builtinTools !== false)) {
+    fibers.push(await root.plugin(skillTools, { cwd: merged.cwd }))
   }
   // Wire the prompt-assembly seam into the default composition: the system
   // prompt is assembled from registered sections and every executable tool is

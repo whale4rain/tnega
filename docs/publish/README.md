@@ -17,7 +17,9 @@ When shipping the home-storage change, include its migration note: close older
 desktop/CLI processes before first use. Workspace logs are imported into
 `~/.tnega` (or `TNEGA_HOME`), with legacy backups retained and conflicts reported.
 Location migration does not convert unsupported Session formats. Keep project
-configuration, skills, memory and artifacts in the Workspace.
+configuration, custom Workspace skills, memory and artifacts in the Workspace.
+Bundled skills install offline into `~/.tnega/skills` on startup; existing user
+files are preserved, so upgrades only add missing instructions.
 
 - Update root `CHANGELOG.md` / Unreleased with each user-visible feature, fix or
   compatibility change, in the same commit. Describe behavior and migration,

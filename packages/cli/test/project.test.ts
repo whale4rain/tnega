@@ -27,12 +27,14 @@ async function tempDir(prefix: string): Promise<string> {
 }
 
 /** 同时应付流式与非流式请求的最小 OpenAI 兼容端点。 */
-async function startMockLlm(content: string): Promise<string> {
+async function startMockLlm(content: string, requests: string[] = []): Promise<string> {
   const server = createServer((req, res) => {
     const chunks: Buffer[] = []
     req.on('data', chunk => chunks.push(chunk as Buffer))
     req.on('end', () => {
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as {
+      const request = Buffer.concat(chunks).toString('utf8') || '{}'
+      requests.push(request)
+      const body = JSON.parse(request) as {
         stream?: boolean
       }
       if (!body.stream) {
@@ -119,13 +121,14 @@ async function waitForSnapshot(
 }
 
 it('creates a project, runs the main conversation and takes thread notes', async () => {
+  const requests: string[] = []
   const dir = await tempDir('tnega-web-project-')
   const workspace = join(dir, 'workspace')
   await mkdir(workspace, { recursive: true })
   const configFile = join(dir, 'config.json')
   await writeFile(configFile, JSON.stringify({
     apiKey: 'test-key',
-    baseUrl: await startMockLlm('notes look good'),
+    baseUrl: await startMockLlm('notes look good', requests),
     model: 'mock-model',
     temperature: 0,
   }), 'utf8')
@@ -154,6 +157,8 @@ it('creates a project, runs the main conversation and takes thread notes', async
   const settled = await waitForSnapshot(server.url, workspace, project.id, snapshot =>
     snapshot.messages.some(entry => entry.kind === 'agent-reply')
       && snapshot.threads.every(thread => thread.state === 'idle'))
+  expect(requests[0]).toContain('skill_read')
+  expect(requests[0]).toContain('using-tnega')
   expect(settled.project.name).toBe('Notes')
   expect(settled.messages.map(entry => entry.kind)).toEqual(['user-message', 'agent-reply'])
   expect(settled.messages[1]).toMatchObject({
@@ -172,7 +177,8 @@ it('creates a project, runs the main conversation and takes thread notes', async
     { method: 'POST', body: JSON.stringify({ text: 'Keep it under 200 words' }) },
   )
   expect(noted.status).toBe(200)
-  const detail = await waitForSnapshot(server.url, workspace, project.id, () => true)
+  const detail = await waitForSnapshot(server.url, workspace, project.id, snapshot =>
+    requests.length >= 2 && snapshot.threads.every(thread => thread.state === 'idle'))
     .then(() => apiFetch(
       server.url,
       `/api/projects/${project.id}/threads/${settled.coordinatorId}${query}`,
@@ -180,6 +186,7 @@ it('creates a project, runs the main conversation and takes thread notes', async
       thread: { id: string }
       events: Array<{ type: string; payload: { content?: string } }>
     }
+  expect(requests[1]?.split('Available skills (descriptions are metadata):')).toHaveLength(2)
   expect(detail.thread.id).toBe(settled.coordinatorId)
   expect(detail.events.some(event => event.type === 'user/message'
     && event.payload.content === 'Keep it under 200 words')).toBe(true)

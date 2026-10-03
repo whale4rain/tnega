@@ -201,3 +201,11 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 
 `packages/cli/test/`：CLI 端到端、runtime 组合、profile 文件、store 元数据、
 web 协议、工具端到端。web 前端单测在 `apps/web/src/*.test.ts`。
+
+## 用户 skills
+
+Web / 桌面首次启动会离线安装内置 skills 到 `~/.tnega/skills`，遵循
+`TNEGA_HOME`；默认 CLI runtime、resident Session 与 Project Thread 共用
+`skillTools`，让 general 和 coding 都能发现与读取。已有文件不覆盖，工作区
+`.tnega/skills` 同名文档优先。自定义 runtime 的 `builtinTools: false` 不默认挂
+skills；可以显式指定 `skills: true`，或用 `skills: false` 禁用默认加载。

@@ -61,12 +61,22 @@ Session data and keeps running in the system tray when its window is closed.
 and Project Thread histories live under `~/.tnega/sessions/<workspace-key>/`.
 Project messages and identities live under `~/.tnega/workspaces/<workspace-key>/`.
 The key is a hash of the absolute Workspace path; `TNEGA_HOME` overrides the
-home directory. Workspace configuration, skills, memory and project artifacts
+home directory. Workspace configuration, custom skills, memory and project artifacts
 stay in the project. Close old clients before upgrading: existing project logs
 are imported on first access, with original files retained as backups. Different
 copies or a legacy writer continuing after import cause an explicit error;
 neither copy is overwritten. This relocates files without changing their Session
 format. An explicit CLI `--session` path is still honored.
+
+**Built-in skills.** Desktop/Web startup and the default CLI runtime install eight
+bundled skills offline into `~/.tnega/skills/<name>/SKILL.md` (or
+`TNEGA_HOME/skills`). They cover source research, documents, planning, data files,
+implementation, debugging, code review and Tnega usage. General, coding and
+Project agents see a short trigger index and read relevant instructions with
+`skills_list` / `skill_read`; coding Sessions also provide `/skills`.
+Existing user files are never overwritten; upgrades only add missing skills.
+Add your own skills in the same directory, or override a name for one Workspace
+with `.tnega/skills/<name>/SKILL.md`. Skills do not change tool permissions.
 
 ## Install and start
 

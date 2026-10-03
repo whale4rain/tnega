@@ -1584,12 +1584,12 @@ describe('web server', () => {
     expect(skillsBody.result).toMatchObject({
       kind: 'json',
       value: {
-        skills: [
+        skills: expect.arrayContaining([
           {
             name: 'fixture',
             description: 'Fixture Skill',
           },
-        ],
+        ]),
       },
     })
 
@@ -1629,14 +1629,14 @@ describe('web server', () => {
     const skillCandidatesBody = await skillCandidates.json() as {
       candidates: Array<{ command: string; args: string[]; label: string; detail?: string }>
     }
-    expect(skillCandidatesBody.candidates).toEqual([
+    expect(skillCandidatesBody.candidates).toEqual(expect.arrayContaining([
       {
         command: '/skills',
         args: ['fixture'],
         label: 'fixture',
         detail: 'Fixture Skill',
       },
-    ])
+    ]))
 
     const mcpCandidates = await apiFetch(
       server.url,

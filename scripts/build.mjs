@@ -14,6 +14,7 @@ await mkdir(new URL('../dist/', import.meta.url), { recursive: true })
 
 const common = {
   bundle: true,
+  loader: { '.md': 'text' },
   platform: 'node',
   format: 'esm',
   target: 'node22',

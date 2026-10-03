@@ -7,6 +7,7 @@ await mkdir(outDir, { recursive: true })
 
 const shared = {
   bundle: true,
+  loader: { '.md': 'text' },
   format: 'esm',
   platform: 'node',
   sourcemap: true,

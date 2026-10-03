@@ -42,6 +42,30 @@ describe('publish metadata', () => {
 })
 
 describe('packed artifact', () => {
+  it('installs bundled skills from a copied artifact without source files or network', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'tnega-packed-skills-'))
+    try {
+      await cp(resolve(root, 'dist/coding-agent.js'), join(directory, 'coding-agent.mjs'))
+      await writeFile(join(directory, 'verify.mjs'), `
+        import { installBuiltinSkills, listSkills, readSkill } from './coding-agent.mjs';
+        import { writeFile } from 'node:fs/promises';
+        import { join } from 'node:path';
+        process.env.TNEGA_HOME = ${JSON.stringify(join(directory, 'home'))};
+        await installBuiltinSkills();
+        const skills = await listSkills(${JSON.stringify(directory)});
+        if (skills.length !== 8) throw new Error('missing bundled skills');
+        if (!(await readSkill(${JSON.stringify(directory)}, 'using-tnega')).includes('description:')) throw new Error('content missing');
+        await writeFile(join(process.env.TNEGA_HOME, 'skills', 'using-tnega', 'SKILL.md'), '# User override');
+        await installBuiltinSkills();
+        if (await readSkill(${JSON.stringify(directory)}, 'using-tnega') !== '# User override') throw new Error('user file overwritten');
+        console.log('packed skills ok');
+      `)
+      expect(execFileSync(process.execPath, [join(directory, 'verify.mjs')], {
+        cwd: directory, encoding: 'utf8', timeout: 15_000,
+      })).toContain('packed skills ok')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   it('runs background tools through the built runtime and exposes job plugins', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'tnega-packed-jobs-'))
     try {

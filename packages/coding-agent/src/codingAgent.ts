@@ -1,10 +1,11 @@
 import type { Context, Plugin } from '@tnega/core'
 import { defineAgent, HUMAN_COMMUNICATION_PROMPT, type LLMAdapter } from '@tnega/agent'
 import type { ModelMessage, SessionMode } from '@tnega/session'
+import { resolve } from 'node:path'
 import type { ToolDefinition } from '@tnega/tools'
 import { connectMcpServers, type McpRuntime } from './mcp.js'
 import { generatePlan } from './plan.js'
-import { listSkills, skillReadTool, skillTool } from './skills.js'
+import { listSkills, skillTools, type SkillsService } from './skills.js'
 import { createSlashRegistry, type SlashCommandResult } from './slash.js'
 import type { CodingSurvey, Plan, SlashCommand, SlashSuggestion } from './types.js'
 
@@ -68,14 +69,17 @@ export function createCodingAgentPlugin(
     apply: async (ctx: Context) => {
       const service = dynamic(ctx)
       const tools: ToolDefinition[] = []
-      const skillEntries = await listSkills(cwd)
+      if (skillsEnabled) {
+        const existing = ctx.get('skills') as SkillsService | undefined
+        if (existing && existing.cwd !== resolve(cwd)) throw new Error('skills workspace mismatch')
+        if (!existing) await ctx.plugin(skillTools, { cwd })
+      }
+      const skillEntries = skillsEnabled ? await listSkills(cwd) : []
       let skillCount = 0
       let mcpServers = 0
       let mcpTools = 0
 
       if (skillsEnabled) {
-        tools.push(await skillTool(cwd))
-        tools.push(await skillReadTool(cwd))
         skillCount = 2
       }
       let mcpRuntime: McpRuntime | undefined

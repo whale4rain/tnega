@@ -30,6 +30,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Ship eight offline skills for research, documents, planning, data processing,
+  coding, debugging, review and Tnega usage. Install missing files in user home
+  on startup, preserve user edits, and honor Workspace overrides. General,
+  coding and Project agents discover short descriptions and load instructions
+  on demand; no network download or additional tool permissions are required.
+
 ## [0.4.8](https://github.com/whale4rain/tnega/releases/tag/v0.4.8) — 2026-10-03
 
 - Preserve the desktop's theme when Browser attaches, opens tabs or reconnects;

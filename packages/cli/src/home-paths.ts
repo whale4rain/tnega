@@ -1,16 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
-/** Per-user runtime state; project configuration and user artifacts stay in the workspace. */
-export function resolveTnegaHome(): string {
-  const configured = process.env.TNEGA_HOME?.trim()
-  if (!configured) return join(homedir(), '.tnega')
-  if (configured === '~') return homedir()
-  if (configured.startsWith('~/') || configured.startsWith('~\\')) return join(homedir(), configured.slice(2))
-  return resolve(configured)
-}
+import { resolveTnegaHome } from '@tnega/coding-agent'
+export { resolveTnegaHome } from '@tnega/coding-agent'
 
 export function workspaceStorageKey(workspace: string): string {
   const absolute = resolve(workspace)

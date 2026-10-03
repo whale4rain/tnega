@@ -1,3 +1,4 @@
+import { installBuiltinSkills, renderSkillIndex, skillTools } from '@tnega/coding-agent'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
@@ -32,7 +33,7 @@ import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { SessionLog, type SessionEvent } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
-import { threadLocal } from '@tnega/thread-local'
+import { COORDINATOR_SYSTEM_PROMPT, THREAD_SYSTEM_PROMPT, threadLocal } from '@tnega/thread-local'
 import type { ThreadRecord, ThreadService } from '@tnega/thread'
 import { toolBlackboard } from '@tnega/tool-blackboard'
 import { toolBox } from '@tnega/tool-box'
@@ -371,7 +372,11 @@ export class ProjectHost {
     await ctx.plugin(boxBlackboard, { projectId: record.id })
     await ctx.plugin(agents)
     await ctx.plugin(runSummary)
+    if (this.options.builtinTools !== false) await installBuiltinSkills()
+    const skillsPrompt = this.options.builtinTools !== false ? await renderSkillIndex(this.workspace) : ''
     await ctx.plugin(threadLocal, {
+      coordinatorPrompt: `${COORDINATOR_SYSTEM_PROMPT}\n\n${skillsPrompt}`,
+      threadPrompt: `${THREAD_SYSTEM_PROMPT}\n\n${skillsPrompt}`,
       projectId: record.id,
       root: directory,
       sessionRoot: projectSessionRoot(this.workspace, record.id),
@@ -408,6 +413,7 @@ export class ProjectHost {
       await ctx.plugin(spillLocal, { cwd })
       await ctx.plugin(toolSpill)
       await ctx.plugin(toolOffice, { cwd })
+      await ctx.plugin(skillTools, { cwd })
     }
 
     await ctx.plugin(toolBlackboard)

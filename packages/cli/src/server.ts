@@ -23,6 +23,9 @@ import { toolQuestion } from '@tnega/tool-question'
 import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
 import {
   createCodingAgentPlugin,
+  installBuiltinSkills,
+  skillTools,
+  renderSkillIndex,
   createSlashRegistry,
   generatePlan,
   type CodingService,
@@ -259,6 +262,7 @@ interface ProjectHostEntry {
 export async function startWebServer(
   options: WebServerOptions = {},
 ): Promise<WebServer> {
+  await installBuiltinSkills()
   const host = options.host ?? DEFAULT_HOST
   const port = options.port ?? DEFAULT_PORT
   const webRoot = options.webRoot ?? defaultWebRoot()
@@ -1135,7 +1139,7 @@ async function handleRun(
   const permission: PermissionMode = summary.permission ?? 'read-only'
   const agentType = summary.agentType ?? 'general'
   const coding = agentType === 'coding'
-  const persona = personaFor(agentType)
+  const persona = `${personaFor(agentType)}\n\n${await renderSkillIndex(workspace)}`
   const mode = summary.mode ?? 'auto'
 
   const config = await readSystemConfig(context.configFile)
@@ -1439,6 +1443,7 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(spillLocal, { cwd: workspace }))
   fibers.push(await root.plugin(toolSpill))
   fibers.push(await root.plugin(toolOffice, { cwd: workspace }))
+  fibers.push(await root.plugin(skillTools, { cwd: workspace }))
   if (req.agentType === 'coding') {
     fibers.push(await root.plugin(createCodingAgentPlugin({
       cwd: workspace,
@@ -1730,7 +1735,7 @@ async function runResidentTurn(
     })
     // A coding or work session keeps its persona as the durable leading system
     // message, seeded once so every derived request begins with it.
-    const persona = personaFor(req.agentType)
+    const persona = `${personaFor(req.agentType)}\n\n${await renderSkillIndex(workspace)}`
     if (persona) {
       const history = await agent.session.deriveMessages()
       if (!history.some(message => message.role === 'system')) {
