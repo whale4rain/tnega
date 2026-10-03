@@ -55,6 +55,11 @@ compare links provide a convenient browser view of the boundaries.
   flagged. The model still receives every error unchanged.
 - Tool calls stream as a flat list while a turn runs instead of a folder that
   opens and closes around each call; they fold once when the turn finishes.
+- Settings is reorganized into sections (Model, Approvals, Tools & shell,
+  Appearance, About & updates) with a side navigation, so new options get a
+  home without crowding one page. A failed save opens the section that needs
+  fixing. Tools & shell adds a **Shell** choice (saved as `shell` in
+  `config.json`); Appearance repeats the theme switch.
 - When the agent asks a question or needs an approval, the desktop client
   sounds once, flashes the taskbar and shows a snow badge until you return to
   the window.

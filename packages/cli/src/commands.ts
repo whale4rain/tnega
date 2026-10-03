@@ -23,6 +23,7 @@ import { searchRipgrep } from '@tnega/search-ripgrep'
 import { canonicalPath, isSandboxMode, resolveSandboxPolicy, type SandboxMode } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
+import { configureSystemShell } from '@tnega/execution'
 import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
@@ -202,6 +203,7 @@ export async function runAgentCommand(
       : {}),
   })
   const profileRuntimeOptions = runtimeOptionsFromProfile(profileOptions)
+  configureSystemShell(systemConfig.shell)
   const context = await createAgentRuntime({
     cwd,
     sessionFile,

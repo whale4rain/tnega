@@ -442,7 +442,7 @@ export function App() {
           }}
         />
       )}
-      {dialog === 'settings' &&<SettingsDialog config={config} updates={updates} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
+      {dialog === 'settings' &&<SettingsDialog config={config} updates={updates} theme={theme} onThemeChange={setTheme} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
       {dialog === 'workspace' && (
         <WorkspaceDialog
           onClose={() => setDialog(undefined)}

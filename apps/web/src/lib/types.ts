@@ -198,8 +198,12 @@ export interface ConfigSnapshot {
     temperature?: number
     contextWindow?: number
   }
+  /** The shell the `shell` tool runs in now, and the ones this machine offers. */
+  shell?: { active: string; available: ShellOption[] }
   config: {
     codeMode?: boolean
+    /** Saved shell preference; empty means detect automatically. */
+    shell?: string
     approvalReview?: ApprovalReviewerSettings
     apiKeySet: boolean
     path: string
@@ -211,6 +215,12 @@ export interface ConfigSnapshot {
   }
   env: { apiKeySet: boolean; baseUrl?: string; model?: string }
   models: ModelOption[]
+}
+
+export interface ShellOption {
+  path: string
+  label: string
+  kind: string
 }
 
 export interface SlashCommand {

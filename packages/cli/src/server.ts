@@ -56,6 +56,7 @@ import { toolBrowser } from '@tnega/tool-browser'
 import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
+import { availableShells, configureSystemShell, systemShell } from '@tnega/execution'
 import { spillLocal } from '@tnega/spill-local'
 import { listStoredSubagents, readSubagentEvents, subagentLocal } from '@tnega/subagent-local'
 import { SubagentError } from '@tnega/subagent'
@@ -267,6 +268,7 @@ export async function startWebServer(
   const port = options.port ?? DEFAULT_PORT
   const webRoot = options.webRoot ?? defaultWebRoot()
   const configFile = options.configFile
+  configureSystemShell((await readSystemConfig(configFile)).shell)
   const activeRuns = new Map<string, AbortController>()
   const approvals = new ApprovalBroker()
   const residentAgents = new Map<string, ResidentAgentEntry>()
@@ -501,6 +503,7 @@ async function handleApi(
       patch.codeMode = body.codeMode
     }
     if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
+    if (typeof body.shell === 'string') patch.shell = body.shell.trim()
     if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
     if (typeof body.model === 'string') patch.model = body.model
     if (body.reasoningEffort === 'low' || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high'
@@ -518,6 +521,7 @@ async function handleApi(
       patch.approvalReview = { ...(previous?.provider === review.provider ? previous : {}), ...review }
     }
     const config = await updateSystemConfig(patch, context.configFile)
+    configureSystemShell(config.shell)
     sendJson(res, 200, configSnapshot(config, context.configFile))
     return
   }
@@ -2108,9 +2112,14 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
         : {}),
       ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
     },
+    shell: {
+      active: systemShell().label,
+      available: availableShells().map(shell => ({ path: shell.path, label: shell.label, kind: shell.kind })),
+    },
     config: {
       apiKeySet: Boolean(config.apiKey),
       codeMode: config.codeMode ?? false,
+      shell: config.shell ?? '',
       path,
       approvalReview: {
         provider: config.approvalReview?.provider ?? 'conversation',

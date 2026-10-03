@@ -197,6 +197,12 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 每次请求读取配置文件，因此修改后无需重启；Settings 小窗里的 Reload file 可刷新选择列表。
 `apiKey` 也可逐模型填写，但 `apiKeyEnv` 可避免将密钥写入文件。
 
+`shell` 选择 `shell` / `process_start` 工具使用的系统 shell：名称（`pwsh`、`powershell`、
+`bash`、`cmd`、`zsh`…）或可执行文件路径；省略时自动检测（Windows 依次为 PowerShell 7、
+Windows PowerShell、Git Bash、cmd；其他平台为 `$SHELL`）。环境变量 `TNEGA_SHELL` 在未配置时
+同样生效。Windows 上 `bash` 指 Git Bash，不会选中 WSL 的 `System32\bash.exe`；Git Bash 无法在
+Windows 沙箱内运行，只适合完全访问权限。Settings → Tools & shell 可直接选择。
+
 ## 测试
 
 `packages/cli/test/`：CLI 端到端、runtime 组合、profile 文件、store 元数据、

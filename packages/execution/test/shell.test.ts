@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeOutput, describeShell, localExecutionProvider, resolveSystemShell, shellCommandArgv, systemShell } from '../src/index.js'
+import { availableShells, configureSystemShell, decodeOutput, describeShell, localExecutionProvider, resolveSystemShell, shellCommandArgv, systemShell } from '../src/index.js'
 
 const has = (...paths: string[]) => (path: string) => paths.some(p => p.toLowerCase() === path.toLowerCase())
 
@@ -36,6 +36,32 @@ describe('resolveSystemShell', () => {
       env: { PATH: 'C:\\pwsh;C:\\Git\\cmd' },
       exists: has('C:\\pwsh\\pwsh.exe', 'C:\\Git\\cmd\\git.exe', 'C:\\Git\\bin\\bash.exe'),
     }).kind).toBe('pwsh')
+  })
+})
+
+describe('availableShells', () => {
+  it('lists only shells present on the machine', () => {
+    const shells = availableShells({
+      platform: 'win32',
+      env: { PATH: 'C:\\pwsh;C:\\Git\\cmd;C:\\Windows\\System32', SystemRoot: 'C:\\Windows' },
+      exists: has('C:\\pwsh\\pwsh.exe', 'C:\\Git\\cmd\\git.exe', 'C:\\Git\\bin\\bash.exe', 'C:\\Windows\\System32\\cmd.exe'),
+    })
+    expect(shells.map(shell => shell.label)).toEqual(['PowerShell 7', 'Git Bash', 'cmd.exe'])
+  })
+
+  it('never offers the WSL bash launcher as a Windows shell', () => {
+    const shells = availableShells({
+      platform: 'win32',
+      env: { PATH: 'C:\\Windows\\System32', SystemRoot: 'C:\\Windows' },
+      exists: has('C:\\Windows\\System32\\bash.exe', 'C:\\Windows\\System32\\cmd.exe'),
+    })
+    expect(shells.map(shell => shell.path)).toEqual(['C:\\Windows\\System32\\cmd.exe'])
+  })
+
+  it('switches the process shell when the preference changes', () => {
+    const detected = configureSystemShell(undefined)
+    expect(configureSystemShell('  ')).toEqual(detected)
+    expect(systemShell()).toEqual(detected)
   })
 })
 

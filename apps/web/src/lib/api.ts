@@ -67,6 +67,8 @@ export interface SessionPatch {
 
 export interface ConfigPatch {
   codeMode?: boolean
+  /** Shell name or path; empty restores automatic detection. */
+  shell?: string
   approvalReview?: ApprovalReviewerSettings & { apiKey?: string }
   apiKey?: string
   baseUrl?: string

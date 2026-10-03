@@ -100,14 +100,17 @@ export function resolveSystemShell(options: ResolveShellOptions = {}): SystemShe
   const preferred = (options.preferred ?? env.TNEGA_SHELL)?.trim()
   if (preferred) {
     if (exists(preferred)) return shellAt(preferred)
-    const named = platform === 'win32' && !/\.exe$/i.test(preferred) ? `${preferred}.exe` : preferred
-    if (!/[\\/]/.test(named)) {
-      const found = onPath(named, env, platform, exists)
-      if (found) return shellAt(found)
-    }
-    if (platform === 'win32' && /^(git-?)?bash$/i.test(preferred)) {
+    // On Windows "bash" means Git Bash; System32\bash.exe is the WSL launcher,
+    // which runs in Linux and sees none of the Windows paths the agent uses.
+    if (platform === 'win32' && /^(git-?)?bash(\.exe)?$/i.test(preferred)) {
       const bash = gitBash(env, exists)
       if (bash) return shellAt(bash)
+    } else {
+      const named = platform === 'win32' && !/\.exe$/i.test(preferred) ? `${preferred}.exe` : preferred
+      if (!/[\\/]/.test(named)) {
+        const found = onPath(named, env, platform, exists)
+        if (found) return shellAt(found)
+      }
     }
   }
   if (platform === 'win32') {
@@ -173,8 +176,33 @@ export function describeShell(shell: SystemShell): string {
 }
 
 let cached: SystemShell | undefined
+let preference: string | undefined
 
-/** The process-wide default shell, resolved once. */
+/** The process-wide default shell, resolved once per preference. */
 export function systemShell(): SystemShell {
-  return cached ??= resolveSystemShell()
+  return cached ??= resolveSystemShell(preference ? { preferred: preference } : {})
+}
+
+/**
+ * Apply the user's shell choice (a name such as `pwsh` / `bash`, or a path);
+ * empty means detect. Later `shell` and `process_start` calls use it.
+ */
+export function configureSystemShell(preferred: string | undefined): SystemShell {
+  const next = preferred?.trim() || undefined
+  if (next !== preference) cached = undefined
+  preference = next
+  return systemShell()
+}
+
+/** The shells a user could pick on this machine, most preferred first. */
+export function availableShells(options: Omit<ResolveShellOptions, 'preferred'> = {}): SystemShell[] {
+  const platform = options.platform ?? process.platform
+  const names = platform === 'win32' ? ['pwsh', 'powershell', 'bash', 'cmd'] : ['bash', 'zsh', 'fish', 'sh']
+  const found = new Map<string, SystemShell>()
+  for (const name of names) {
+    const shell = resolveSystemShell({ ...options, preferred: name })
+    // A preference that cannot be found falls back to detection; only keep real matches.
+    if (shell.kind === shellKind(name)) found.set(shell.path.toLowerCase(), shell)
+  }
+  return [...found.values()]
 }

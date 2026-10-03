@@ -56,6 +56,8 @@ export interface LlmEnvConfig {
 
 export interface SystemConfig {
   codeMode?: boolean
+  /** Shell for the `shell` / `process_start` tools: a name (`pwsh`, `bash`…) or a path; absent detects one. */
+  shell?: string
   approvalReview?: ApprovalReviewerConfig
   apiKey?: string
   baseUrl?: string
@@ -289,6 +291,7 @@ function normalizeConfig(value: unknown): SystemConfig {
   const record = value as Record<string, unknown>
   const config: SystemConfig = {}
   if (typeof record.codeMode === 'boolean') config.codeMode = record.codeMode
+  if (typeof record.shell === 'string' && record.shell.trim()) config.shell = record.shell.trim()
   const review = normalizeApprovalReviewer(record.approvalReview)
   if (review) config.approvalReview = review
   if (typeof record.apiKey === 'string' && record.apiKey) config.apiKey = record.apiKey
