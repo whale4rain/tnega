@@ -9,6 +9,7 @@
  * run ends the UI reloads, so durable events always have the final word.
  */
 import type { CancelCause, ErrorInfo, ImageAttachment, SessionEvent, SlashResult, StreamEvent } from './types'
+import { needsAttention } from './tools'
 
 export interface ToolView {
   callId: string
@@ -18,6 +19,8 @@ export interface ToolView {
   output?: unknown
   images?: ImageAttachment[]
   error?: string
+  /** `Error.name` of a failure, used to tell model-facing errors from ones a person must act on. */
+  errorName?: string
   durationMs?: number
   children?: ToolView[]
 }
@@ -219,7 +222,7 @@ export function presentRun(entry: AgentEntry): { process: Block[]; visible: Bloc
     if (block.kind === 'text' && block.id === summary.sourceMessageId) {
       visible.push({ ...block, text: summary.text })
     } else if (block.kind === 'files' || (block.kind === 'notice' && !block.process)
-      || (block.kind === 'tool' && block.tool.status !== 'ok')
+      || (block.kind === 'tool' && (block.tool.status === 'running' || needsAttention(block.tool)))
       || (block.kind === 'subagent' && block.agent.status !== 'ready')) {
       visible.push(block)
     } else {
@@ -263,6 +266,7 @@ function settleTool(
     ...(output !== undefined ? { output } : {}),
     ...(images?.length ? { images } : {}),
     ...(error ? { error: error.message } : {}),
+    ...(error?.name ? { errorName: error.name } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
   }
 }
@@ -312,7 +316,10 @@ function addPtcDispatch(entries: Entry[], payload: Record<string, unknown>): voi
         if ('output' in result) child.output = result.output
         if ('durationMs' in result && typeof result.durationMs === 'number') child.durationMs = result.durationMs
         if ('error' in result && result.error && typeof result.error === 'object'
-          && 'message' in result.error && typeof result.error.message === 'string') child.error = result.error.message
+          && 'message' in result.error && typeof result.error.message === 'string') {
+          child.error = result.error.message
+          if ('name' in result.error && typeof result.error.name === 'string') child.errorName = result.error.name
+        }
       } else if (result !== undefined) child.output = result
     }
     return
@@ -480,6 +487,7 @@ function applyToAgent(entry: AgentEntry, event: StreamEvent): AgentEntry {
               ...(result.output !== undefined ? { output: result.output } : {}),
               ...(result.attachments?.length ? { images: result.attachments } : {}),
               ...(result.error ? { error: result.error.message } : {}),
+              ...(result.error?.name ? { errorName: result.error.name } : {}),
               ...(result.durationMs !== undefined ? { durationMs: result.durationMs } : {}),
             },
           }

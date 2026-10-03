@@ -25,7 +25,7 @@ import { useCopy } from '../lib/hooks'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentRun, stringify } from '../lib/timeline'
 import { officeFiles } from '../lib/office'
-import { codeModeOutput, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
+import { codeModeOutput, needsAttention, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
 import { ImageStrip } from './ImageStrip'
 import { splitPickedContext } from '../lib/browser-live'
@@ -374,10 +374,14 @@ const FAMILY_NOUN: Record<ToolFamily, [string, string]> = {
 
 function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
   const running = tools.some(t => t.status === 'running')
-  const failed = tools.filter(t => t.status === 'error').length
+  const failed = tools.filter(needsAttention).length
   const [open, setOpen] = useState<boolean | undefined>(undefined)
-  if (tools.length === 1) return <div className="tool-group single"><ToolRow tool={tools[0]!} /></div>
-  const expanded = open ?? (live && running)
+  // While the turn streams, calls are plain rows: a folder that opens for each
+  // running call and shuts between them flickers. It folds once, at the end.
+  if (tools.length === 1 || (live && open === undefined)) {
+    return <div className="tool-group single">{tools.map(tool => <ToolRow key={tool.callId} tool={tool} />)}</div>
+  }
+  const expanded = open ?? false
 
   const counts = new Map<ToolFamily, number>()
   for (const tool of tools) {
@@ -411,20 +415,23 @@ function ToolRow({ tool }: { tool: ToolView }) {
   const { family, verb, target } = presentTool(tool)
   const children = tool.children ?? []
   const running = children.filter(child => child.status === 'running').length
-  const failed = children.filter(child => child.status === 'error').length
-  const completed = children.filter(child => child.status === 'ok').length
+  const failed = children.filter(needsAttention).length
+  const completed = children.filter(child => child.status !== 'running').length
+  const attention = needsAttention(tool)
+  // A model-facing error looks like any finished call; its detail still shows the message.
+  const status = tool.status === 'error' && !attention ? 'note' : tool.status
   const Icon = FAMILY_ICON[family]
   return (
-    <div className={`tool-row status-${tool.status}${expanded ? ' open' : ''}`}>
-      <button type="button" className="tool-row-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : tool.status === 'error' ? ', Failed' : ''}`}>
+    <div className={`tool-row status-${status}${expanded ? ' open' : ''}`}>
+      <button type="button" className="tool-row-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : attention ? ', Failed' : status === 'note' ? ', Returned an error to the agent' : ''}`}>
         <span className="tool-icon"><Icon size={14} /></span>
         <span className="tool-verb">{verb}</span>
         {target && <span className="tool-target">{target}</span>}
         {children.length ? <span className="tool-group-summary">{children.length} tool {children.length === 1 ? 'call' : 'calls'} · {completed} done{running ? ` · ${running} running` : ''}{failed ? ` · ${failed} failed` : ''}</span> : null}
         <span className="tool-meta">
           {tool.status === 'running' && <span className="spinner" aria-label="Running" />}
-          {tool.status === 'error' && <X size={13} className="tool-status-error" aria-label="Failed" />}
-          {tool.status === 'ok' && tool.durationMs !== undefined && <span className="tool-duration">{formatDuration(tool.durationMs)}</span>}
+          {attention && <X size={13} className="tool-status-error" aria-label="Failed" />}
+          {!attention && tool.status !== 'running' && tool.durationMs !== undefined && <span className="tool-duration">{formatDuration(tool.durationMs)}</span>}
         </span>
         <ChevronRight size={14} className="chevron" />
       </button>
@@ -450,12 +457,17 @@ function ToolDetail({ tool }: { tool: ToolView }) {
         : command !== undefined
         ? <CodeBlock code={command} language="shell" />
         : args !== undefined && <CodeBlock code={stringify(args)} language="json" />}
-      {tool.error && (
+      {tool.error && (needsAttention(tool) ? (
         <>
           <div className="tool-detail-label danger">Error</div>
           <pre className="tool-output error">{tool.error}</pre>
         </>
-      )}
+      ) : (
+        <>
+          <div className="tool-detail-label">Returned to the agent</div>
+          <pre className="tool-output">{tool.error}</pre>
+        </>
+      ))}
       {codeOutput && codeOutput.blocks.length > 0 && (
         <>
           <div className="tool-detail-label">Output</div>

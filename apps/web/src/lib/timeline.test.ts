@@ -84,9 +84,22 @@ describe('fromEvents', () => {
     ])
     const entry = entries.find(entry => entry.kind === 'agent')
     if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
-    expect(presentRun(entry).process.map(block => block.kind)).toEqual(['text'])
-    expect(presentRun(entry).visible.map(block => block.kind)).toEqual(['tool', 'notice', 'text', 'files'])
+    // A missing file is feedback for the model, so it folds into the process.
+    expect(presentRun(entry).process.map(block => block.kind)).toEqual(['text', 'tool'])
+    expect(presentRun(entry).visible.map(block => block.kind)).toEqual(['notice', 'text', 'files'])
     expect(presentRun({ ...entry, status: 'running' }).process).toEqual([])
+  })
+
+  it('keeps tool failures a person must act on outside the collapsed process', () => {
+    const entry = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('assistant/message', { content: 'Working', toolCalls: [{ id: 'c', name: 'shell', arguments: {} }] }),
+      ev('tool/result', { id: 'r', toolCallId: 'c', name: 'shell', ok: false, error: { message: 'no sandbox', name: 'SandboxUnavailableError' } }),
+      ev('assistant/message', { content: 'Done' }, 'answer'),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+    ]).find(entry => entry.kind === 'agent')
+    if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
+    expect(presentRun(entry).visible.map(block => block.kind)).toEqual(['tool', 'text'])
   })
 
   it('does not infer a final answer from a tool call or interrupted final assistant message', () => {

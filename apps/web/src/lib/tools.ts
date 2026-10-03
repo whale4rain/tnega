@@ -53,6 +53,22 @@ const VERB: Record<string, [running: string, done: string]> = {
   update_goal: ['Updating goal', 'Updated goal'],
 }
 
+/** Failures a person has to act on: setup, permissions or a missing tool. */
+const ATTENTION_NAMES = new Set(['ToolAuthorizationError', 'ToolNotFoundError', 'SandboxUnavailableError', 'SandboxError'])
+const ATTENTION_MESSAGE = /SANDBOX_UNAVAILABLE|cannot run inside the Windows sandbox|api[ _-]?key|not configured|unauthori[sz]ed|\b401\b|quota/i
+
+/**
+ * Whether a tool failure is shown to the person as a failure. Most errors
+ * (a 404, a missing file, invalid input, a non-matching search) are ordinary
+ * feedback the model reads and works around; those stay quiet in the
+ * timeline. The model's context is unaffected either way.
+ */
+export function needsAttention(tool: ToolView): boolean {
+  if (tool.status !== 'error') return false
+  if (tool.errorName && ATTENTION_NAMES.has(tool.errorName)) return true
+  return ATTENTION_MESSAGE.test(tool.error ?? '')
+}
+
 const TARGET_KEYS = ['command', 'path', 'pattern', 'query', 'url', 'name', 'expression', 'objective', 'label']
 
 export function presentTool(tool: ToolView): ToolPresentation {

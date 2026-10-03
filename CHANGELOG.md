@@ -43,6 +43,13 @@ compare links provide a convenient browser view of the boundaries.
 - Deleting a session or project, forgetting memory, discarding unsaved edits
   and error notices use the app's own dialog instead of the browser's native
   boxes.
+- Ordinary tool errors the agent handles itself (a 404, a missing file,
+  invalid input) no longer show as red failures; they fold into the completed
+  process and their detail reads "Returned to the agent". Only failures a
+  person must act on (sandbox, permissions, missing tool or credentials) stay
+  flagged. The model still receives every error unchanged.
+- Tool calls stream as a flat list while a turn runs instead of a folder that
+  opens and closes around each call; they fold once when the turn finishes.
 
 ## [0.4.9](https://github.com/whale4rain/tnega/releases/tag/v0.4.9) — 2026-10-03
 

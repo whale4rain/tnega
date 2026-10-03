@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it } from 'vitest'
-import type { Entry } from '../lib/timeline'
+import type { Block, Entry, ToolView } from '../lib/timeline'
 import { applyStream, beginRun } from '../lib/timeline'
 import { Timeline } from './Timeline'
 
@@ -58,12 +58,46 @@ it('reveals PTC child tools and their errors inside the outer tool details', () 
     },
   }] }
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
-  expect(view.getByText('1 tool call · 0 done · 1 failed')).toBeTruthy()
+  // An ordinary failure is the agent's to handle: no red counter, but the detail keeps the message.
+  expect(view.getByText('1 tool call · 1 done')).toBeTruthy()
   expect(view.queryByText('Tests failed')).toBeNull()
   fireEvent.click(view.getByRole('button', { name: /CodeMode/ }))
   fireEvent.click(view.getByRole('button', { name: /Ran.*cargo test/ }))
   expect(view.getByText('Tests failed')).toBeTruthy()
+  expect(view.getByText('Returned to the agent')).toBeTruthy()
   expect(view.container.querySelectorAll('.ptc-tool-children .tool-row')).toHaveLength(1)
+})
+
+it('keeps model-facing tool errors quiet and flags only failures a person must act on', () => {
+  const tool = (callId: string, extra: Partial<ToolView>): Block => ({
+    kind: 'tool', id: callId, tool: { callId, name: 'http_get', args: { url: `https://example.com/${callId}` }, status: 'error', ...extra },
+  })
+  const entry: Entry = { kind: 'agent', id: 'errors', status: 'done', blocks: [
+    tool('missing', { error: 'HTTP 404 Not Found', errorName: 'Error' }),
+    tool('denied', { error: 'network access is not allowed', errorName: 'ToolAuthorizationError' }),
+  ] }
+  const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
+  expect(view.getByText('1 failed')).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: /Used 2 steps/ }))
+  expect(view.getByRole('button', { name: /missing, Returned an error to the agent/ })).toBeTruthy()
+  expect(view.getByRole('button', { name: /denied, Failed/ })).toBeTruthy()
+  expect(view.container.querySelectorAll('.tool-row.status-error')).toHaveLength(1)
+  expect(view.container.querySelectorAll('.tool-row.status-note')).toHaveLength(1)
+})
+
+it('lists tool calls flat while a turn streams instead of folding and unfolding them', () => {
+  const block = (callId: string, status: ToolView['status']): Block => ({
+    kind: 'tool', id: callId, tool: { callId, name: 'read_file', args: { path: `${callId}.ts` }, status },
+  })
+  const live: Entry = { kind: 'agent', id: 'live', status: 'running', blocks: [block('a', 'ok'), block('b', 'ok')] }
+  const view = render(createElement(Timeline, { entries: [live], running: true, actions: {} }))
+  expect(view.queryByRole('button', { name: /steps/ })).toBeNull()
+  expect(view.getByRole('button', { name: /Read a.ts/ })).toBeTruthy()
+  view.rerender(createElement(Timeline, { entries: [{ ...live, blocks: [...live.blocks, block('c', 'running')] }], running: true, actions: {} }))
+  expect(view.queryByRole('button', { name: /steps/ })).toBeNull()
+  expect(view.getByRole('button', { name: /Reading c.ts/ })).toBeTruthy()
+  view.rerender(createElement(Timeline, { entries: [{ ...live, status: 'done', blocks: [...live.blocks, block('c', 'ok')] }], running: false, actions: {} }))
+  expect(view.getByRole('button', { name: /Used 3 steps/ }).getAttribute('aria-expanded')).toBe('false')
 })
 
 it('opens running CodeMode scripts and child tool progress without showing escaped JSON', () => {
