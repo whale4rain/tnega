@@ -7,7 +7,9 @@
  * renderer can draw, and keeps the restart behind an explicit user action.
  */
 
-export type UpdateState =
+export type UpdateChannel = 'stable' | 'preview'
+
+export type UpdateState = { channel: UpdateChannel } & (
   /** Not a packaged build (development), so there is no feed to follow. */
   | { status: 'unsupported'; version: string }
   | { status: 'idle'; version: string; checkedAt?: number }
@@ -15,9 +17,13 @@ export type UpdateState =
   | { status: 'downloading'; version: string; next: string; percent: number }
   | { status: 'ready'; version: string; next: string }
   | { status: 'error'; version: string; message: string; checkedAt?: number }
+)
 
 /** The part of electron-updater's `AppUpdater` this module drives. */
 export interface UpdaterLike {
+  channel: string | null
+  allowPrerelease: boolean
+  allowDowngrade: boolean
   autoDownload: boolean
   autoInstallOnAppQuit: boolean
   checkForUpdates(): Promise<unknown>
@@ -32,6 +38,8 @@ export interface UpdaterLike {
 
 export interface UpdateControllerOptions {
   version: string
+  channel?: UpdateChannel
+  saveChannel?: (channel: UpdateChannel) => void
   /** `undefined` when the build cannot update itself (not packaged). */
   updater: UpdaterLike | undefined
   /** How often to look for a new release while the app runs. Defaults to 4 hours. */
@@ -48,37 +56,59 @@ export class UpdateController {
   private readonly updater: UpdaterLike | undefined
   private readonly version: string
   private readonly now: () => number
+  private channel: UpdateChannel
 
   constructor(private readonly options: UpdateControllerOptions) {
     this.version = options.version
+    this.channel = options.channel ?? 'stable'
     this.updater = options.updater
     this.now = options.now ?? Date.now
-    this.current = this.updater ? { status: 'idle', version: this.version } : { status: 'unsupported', version: this.version }
+    this.current = this.updater ? { status: 'idle', version: this.version, channel: this.channel } : { status: 'unsupported', version: this.version, channel: this.channel }
     const updater = this.updater
     if (!updater) return
+    this.configureChannel()
     updater.autoDownload = true
     // The app exits through `app.exit()`, which skips the quit hook this relies
     // on; `installOnExit()` covers that path instead.
     updater.autoInstallOnAppQuit = false
     updater.on('checking-for-update', () => {
-      if (this.current.status !== 'ready' && this.current.status !== 'downloading') this.set({ status: 'checking', version: this.version })
+      if (this.current.status !== 'ready' && this.current.status !== 'downloading') this.set({ status: 'checking', version: this.version, channel: this.channel })
     })
-    updater.on('update-available', info => this.set({ status: 'downloading', version: this.version, next: info.version, percent: 0 }))
-    updater.on('update-not-available', () => this.set({ status: 'idle', version: this.version, checkedAt: this.now() }))
+    updater.on('update-available', info => this.set({ status: 'downloading', version: this.version, channel: this.channel, next: info.version, percent: 0 }))
+    updater.on('update-not-available', () => this.set({ status: 'idle', version: this.version, channel: this.channel, checkedAt: this.now() }))
     updater.on('download-progress', progress => {
       if (this.current.status !== 'downloading') return
       this.set({ ...this.current, percent: Math.max(0, Math.min(100, Math.round(progress.percent))) })
     })
-    updater.on('update-downloaded', info => this.set({ status: 'ready', version: this.version, next: info.version }))
+    updater.on('update-downloaded', info => this.set({ status: 'ready', version: this.version, channel: this.channel, next: info.version }))
     updater.on('error', error => {
       // A failed check must not hide an update that is already downloaded.
       if (this.current.status === 'ready') return
-      this.set({ status: 'error', version: this.version, message: summarizeUpdateError(error), checkedAt: this.now() })
+      this.set({ status: 'error', version: this.version, channel: this.channel, message: summarizeUpdateError(error), checkedAt: this.now() })
     })
   }
 
   state(): UpdateState {
     return this.current
+  }
+
+  setChannel(channel: UpdateChannel): UpdateState {
+    if (channel === this.channel || this.current.status === 'checking' || this.current.status === 'downloading') return this.current
+    // Persist before applying; failed saves leave the selected channel intact.
+    this.options.saveChannel?.(channel)
+    this.channel = channel
+    this.configureChannel()
+    // An update downloaded for the previous channel must no longer be installed.
+    this.set({ status: this.updater ? 'idle' : 'unsupported', version: this.version, channel })
+    return this.current
+  }
+
+  private configureChannel(): void {
+    if (!this.updater) return
+    this.updater.channel = this.channel === 'preview' ? 'beta' : 'latest'
+    this.updater.allowPrerelease = this.channel === 'preview'
+    // electron-updater's channel setter enables downgrades; reset it explicitly.
+    this.updater.allowDowngrade = false
   }
 
   subscribe(listener: (state: UpdateState) => void): () => void {
@@ -106,7 +136,7 @@ export class UpdateController {
       await this.updater.checkForUpdates()
     } catch (error) {
       if (!this.ready()) {
-        this.set({ status: 'error', version: this.version, message: summarizeUpdateError(error), checkedAt: this.now() })
+        this.set({ status: 'error', version: this.version, channel: this.channel, message: summarizeUpdateError(error), checkedAt: this.now() })
       }
     }
     return this.current
@@ -145,7 +175,7 @@ export class UpdateController {
  */
 export function summarizeUpdateError(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error)
-  const missing = /Cannot find (latest[\w-]*\.yml) in the latest release artifacts \(([^)]*)\)/.exec(text)
+  const missing = /Cannot find ((?:latest|beta)[\w-]*\.yml) in the latest release artifacts \(([^)]*)\)/.exec(text)
   if (missing) {
     const tag = /\/download\/(v[^/]+)\//.exec(missing[2] ?? '')?.[1]
     return `The latest release${tag ? ` (${tag})` : ''} has no update feed (${missing[1]}) yet.`

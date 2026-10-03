@@ -10,17 +10,19 @@ export interface TnegaDesktopApi {
   updates?: TnegaDesktopUpdatesApi
 }
 
-export type TnegaDesktopUpdateState =
+export type TnegaDesktopUpdateState = { channel: 'stable' | 'preview' } & (
   | { status: 'unsupported'; version: string }
   | { status: 'idle'; version: string; checkedAt?: number }
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
   | { status: 'ready'; version: string; next: string }
   | { status: 'error'; version: string; message: string; checkedAt?: number }
+)
 
 export interface TnegaDesktopUpdatesApi {
   state(): Promise<TnegaDesktopUpdateState | undefined>
   check(): Promise<TnegaDesktopUpdateState | undefined>
+  setChannel(channel: 'stable' | 'preview'): Promise<TnegaDesktopUpdateState | undefined>
   /** Shut the runtime down, install the downloaded version and relaunch. */
   install(): Promise<void>
   onState(listener: (state: TnegaDesktopUpdateState) => void): () => void

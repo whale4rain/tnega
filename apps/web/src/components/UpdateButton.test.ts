@@ -18,6 +18,7 @@ function stubBridge(initial: UpdateState) {
     state: vi.fn(async () => initial),
     check: vi.fn(async () => ({ status: 'idle', version: initial.version, checkedAt: 1 })),
     install: vi.fn(async () => {}),
+    setChannel: vi.fn(async (channel: string) => ({ status: 'idle', version: initial.version, channel })),
     onState: vi.fn((listener: (state: unknown) => void) => { emit = listener; return () => {} }),
   }
   vi.stubGlobal('tnegaDesktop', { updates: bridge })
@@ -51,4 +52,15 @@ it('ignores malformed states from the bridge', async () => {
   await view.findByText('Tnega 0.4.5')
   emit({ status: 'exploded' })
   expect(view.getByText('Tnega 0.4.5')).toBeTruthy()
+})
+
+it('selects preview updates and disables switching during a download', async () => {
+  const { emit } = stubBridge({ status: 'idle', version: '0.4.6' })
+  const view = render(createElement(Harness))
+  const selector = await view.findByRole('combobox', { name: 'Update channel' })
+  expect(Reflect.get(selector, 'value')).toBe('stable')
+  fireEvent.change(selector, { target: { value: 'preview' } })
+  await vi.waitFor(() => expect(Reflect.get(selector, 'value')).toBe('preview'))
+  emit({ status: 'downloading', version: '0.4.6', next: '0.4.7-beta.1', percent: 5, channel: 'preview' })
+  expect(Reflect.get(selector, 'disabled')).toBe(true)
 })

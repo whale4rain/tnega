@@ -39,6 +39,10 @@ Tnega 是一个本地 Agent 工作空间，也是可组合的 Agent Harness。�
 
 **0.4.6 起支持应用内更新**：启动时及每四小时检查新版本，后台下载后在 Settings 旁显示 **Update**，点击安装并重启。也可在 **Settings → Check for updates** 手动检查。用户升级后续版本无需自行打包或反复下载安装包；旧版只需手动安装一次支持更新的版本。维护者仍需为每个新版本构建并发布安装包与更新源，见[发布指南](publish/README.md)。
 
+支持渠道选择的版本可在 **Settings → Update channel** 选择默认的 Stable 或 Preview (pre)。
+预览渠道接收 `x.y.z-beta.N` 及更新的稳定版，选择在重启后保留。切回 Stable 会取消此前待安装的
+预览更新，并等待同目标版本或更新的稳定版，不会降级当前已安装的预览版；检查或下载期间暂不能切换。
+
 ### CLI 与本地 Web
 
 需要 Node.js **≥22.19.0**。

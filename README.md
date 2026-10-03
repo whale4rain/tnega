@@ -71,6 +71,12 @@ to Settings when ready. Click it to install and restart, or use **Settings →
 Check for updates**. Users do not need to build or download each later installer.
 Older clients need a one-time installation of an update-capable version.
 
+In versions with channel selection, **Settings → Update channel** offers
+**Stable** (default) and **Preview (pre)**. Preview includes `x.y.z-beta.N` early
+releases and newer stable releases. The choice persists across restarts.
+Switching back to Stable waits for a matching or newer stable release; it does
+not downgrade an installed preview or install a pending preview download.
+
 ### CLI and local Web
 
 Requires **Node.js ≥22.19.0**.

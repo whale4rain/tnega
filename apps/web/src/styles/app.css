@@ -3527,6 +3527,10 @@ kbd {
   margin: 2px 0 0;
 }
 
+.update-settings > div { min-width: 0; }
+.update-settings > button { flex-shrink: 0; }
+.update-channel { margin-top: 12px; }
+
 /* ==========================================================================
    Files panel — workspace tree beside a CodeMirror editor
    ========================================================================== */

@@ -28,6 +28,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Let desktop users choose Stable or Preview (pre) updates in Settings, persist
+  the choice across restarts and prevent pending updates from the old channel
+  being installed. Switching to Stable does not downgrade an installed preview.
+- Support `x.y.z-beta.N` release preparation, `beta.yml` preview feeds, GitHub
+  prerelease validation and explicit npm `preview` publication guidance.
 - Ensure every desktop release carries its `latest.yml` update feed, including
   recovery for an installer built without publishing.
 - Reorganize English and Chinese guides, refresh screenshots, add this changelog

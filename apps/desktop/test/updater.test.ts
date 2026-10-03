@@ -3,6 +3,9 @@ import { describe, expect, test, vi } from 'vitest'
 import { summarizeUpdateError, UpdateController, type UpdaterLike, type UpdateState } from '../src/updater.js'
 
 class FakeUpdater extends EventEmitter implements UpdaterLike {
+  channel = 'latest'
+  allowPrerelease = false
+  allowDowngrade = true
   autoDownload = false
   autoInstallOnAppQuit = true
   checks = 0
@@ -20,10 +23,63 @@ class FakeUpdater extends EventEmitter implements UpdaterLike {
 }
 
 describe('desktop self-update', () => {
+  test('defaults to stable even when the installed version is a preview', () => {
+    const updater = new FakeUpdater()
+    updater.allowPrerelease = true
+    const controller = new UpdateController({ version: '0.4.7-beta.1', updater })
+    expect(controller.state()).toMatchObject({ channel: 'stable' })
+    expect(updater.allowPrerelease).toBe(false)
+    expect(updater.allowDowngrade).toBe(false)
+  })
+
+  test('selects preview and discards a ready preview when returning to stable', () => {
+    const updater = new FakeUpdater()
+    const saved: string[] = []
+    const controller = new UpdateController({ version: '0.4.6', updater, saveChannel: channel => saved.push(channel) })
+    controller.setChannel('preview')
+    expect(controller.state()).toMatchObject({ status: 'idle', channel: 'preview' })
+    expect(updater.channel).toBe('beta')
+    expect(updater.allowPrerelease).toBe(true)
+    expect(updater.allowDowngrade).toBe(false)
+    updater.emit('update-downloaded', { version: '0.4.7-beta.1' })
+    controller.setChannel('stable')
+    expect(controller.state()).toMatchObject({ status: 'idle', channel: 'stable' })
+    expect(controller.installOnExit()).toBe(false)
+    controller.install()
+    expect(updater.installs).toEqual([])
+    expect(updater.channel).toBe('latest')
+    expect(updater.allowPrerelease).toBe(false)
+    expect(saved).toEqual(['preview', 'stable'])
+  })
+
+  test('keeps the channel fixed during an in-flight download', () => {
+    const updater = new FakeUpdater()
+    const controller = new UpdateController({ version: '0.4.6', updater })
+    updater.emit('update-available', { version: '0.4.7' })
+    controller.setChannel('preview')
+    expect(controller.state()).toMatchObject({ status: 'downloading', channel: 'stable' })
+  })
+
+  test('restores the saved preview channel on startup', () => {
+    const updater = new FakeUpdater()
+    const controller = new UpdateController({ version: '0.4.6', updater, channel: 'preview' })
+    expect(controller.state()).toMatchObject({ channel: 'preview' })
+    expect(updater.channel).toBe('beta')
+    expect(updater.allowPrerelease).toBe(true)
+  })
+
+  test('leaves the channel intact when saving preferences fails', () => {
+    const updater = new FakeUpdater()
+    const controller = new UpdateController({ version: '0.4.6', updater, saveChannel: () => { throw new Error('disk full') } })
+    expect(() => controller.setChannel('preview')).toThrow('disk full')
+    expect(controller.state()).toMatchObject({ channel: 'stable' })
+    expect(updater.allowPrerelease).toBe(false)
+  })
+
   test('development builds report that updates are unsupported', async () => {
     const controller = new UpdateController({ version: '0.4.5', updater: undefined })
-    expect(controller.state()).toEqual({ status: 'unsupported', version: '0.4.5' })
-    expect(await controller.check()).toEqual({ status: 'unsupported', version: '0.4.5' })
+    expect(controller.state()).toEqual({ status: 'unsupported', version: '0.4.5', channel: 'stable' })
+    expect(await controller.check()).toEqual({ status: 'unsupported', version: '0.4.5', channel: 'stable' })
     expect(controller.installOnExit()).toBe(false)
   })
 
@@ -48,7 +104,7 @@ describe('desktop self-update', () => {
     await controller.check()
     expect(updater.checks).toBe(1)
     updater.emit('error', new Error('offline'))
-    expect(controller.state()).toEqual({ status: 'ready', version: '0.4.5', next: '0.4.6' })
+    expect(controller.state()).toEqual({ status: 'ready', version: '0.4.5', next: '0.4.6', channel: 'stable' })
 
     controller.install()
     expect(updater.installs).toEqual([[true, true]])
@@ -58,12 +114,12 @@ describe('desktop self-update', () => {
     const updater = new FakeUpdater()
     const controller = new UpdateController({ version: '0.4.5', updater, now: () => 7 })
     updater.next = () => { updater.emit('update-not-available') }
-    expect(await controller.check()).toEqual({ status: 'idle', version: '0.4.5', checkedAt: 7 })
+    expect(await controller.check()).toEqual({ status: 'idle', version: '0.4.5', checkedAt: 7, channel: 'stable' })
 
     updater.next = undefined
     updater.checkForUpdates = vi.fn(() => Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED')))
     expect(await controller.check()).toEqual({
-      status: 'error', version: '0.4.5', message: 'Could not reach GitHub to check for updates.', checkedAt: 7,
+      status: 'error', version: '0.4.5', channel: 'stable', message: 'Could not reach GitHub to check for updates.', checkedAt: 7,
     })
     expect(controller.installOnExit()).toBe(false)
   })

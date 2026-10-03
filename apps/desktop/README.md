@@ -35,6 +35,11 @@ For a public release, follow [docs/publish](../../docs/publish/README.md) and us
 Packaged clients from 0.4.6 onward check at startup and every four hours, download
 updates in the background and offer Update / Restart to update in the UI.
 Settings also provides Check for updates. Development builds do not self-update.
+Settings → Update channel selects Stable (default) or Preview (pre), persisted
+in `update-preferences.json` under Electron userData. Preview follows beta
+releases and newer stable releases. Switching back does not downgrade; it also
+invalidates any previously downloaded update. Switching is disabled during
+checks/downloads.
 
 ```bash
 pnpm --filter @tnega/desktop package

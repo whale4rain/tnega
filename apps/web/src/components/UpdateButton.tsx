@@ -1,4 +1,5 @@
 import { ArrowDownToLine, RotateCw } from 'lucide-react'
+import { useState } from 'react'
 import { describeUpdate, type DesktopUpdates } from '../lib/desktop-updates'
 
 /**
@@ -27,14 +28,35 @@ export function UpdateButton({ updates }: { updates: DesktopUpdates | undefined 
 
 /** Settings row: the running version, the update status and the matching action. */
 export function UpdateSettings({ updates }: { updates: DesktopUpdates | undefined }) {
+  const [channelError, setChannelError] = useState<string>()
+  const [savingChannel, setSavingChannel] = useState(false)
   if (!updates) return null
   const { state } = updates
   const busy = state.status === 'checking' || state.status === 'downloading'
+  const changeChannel = async (value: string) => {
+    if ((value !== 'stable' && value !== 'preview') || !updates.setChannel) return
+    setSavingChannel(true)
+    setChannelError(undefined)
+    try { await updates.setChannel(value) }
+    catch { setChannelError('Could not save the update channel. Please try again.') }
+    finally { setSavingChannel(false) }
+  }
   return (
     <div className="update-settings">
       <div>
         <div className="field-label">Tnega {state.version}</div>
         <p className="muted small">{describeUpdate(state)}</p>
+        {updates.setChannel && state.status !== 'unsupported' && (
+          <label className="field update-channel">
+            <span className="field-label">Update channel</span>
+            <select aria-label="Update channel" value={state.channel ?? 'stable'} disabled={busy || savingChannel} onChange={event => void changeChannel(event.target.value)}>
+              <option value="stable">Stable</option>
+              <option value="preview">Preview (pre)</option>
+            </select>
+            <span className="muted small">Preview includes early releases. Stable waits for the next stable release; it does not downgrade.</span>
+          </label>
+        )}
+        {channelError && <p className="notice-error small" role="alert">{channelError}</p>}
       </div>
       {state.status === 'ready'
         ? <button type="button" className="button primary small" onClick={updates.install}>Restart to update</button>

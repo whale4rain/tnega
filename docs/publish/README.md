@@ -40,6 +40,7 @@ through npm.
 | `tnega` npm package (`dist/`) | npm registry | `npm install -g tnega` |
 | `Tnega-Setup-<v>.exe` + `.blockmap` | GitHub release `v<v>` on `whale4rain/tnega` | new installs |
 | `latest.yml` | same GitHub release | installed clients: `electron-updater` reads it to find, download and verify the new installer |
+| `beta.yml` | GitHub prerelease `v<x.y.z-beta.N>` | clients that selected Preview (pre) |
 
 The update feed is configured once in `apps/desktop/electron-builder.yml`
 (`publish: github whale4rain/tnega`). electron-builder bakes `app-update.yml`
@@ -50,7 +51,10 @@ silently and relaunches; quitting with an update downloaded installs it without
 relaunching. Settings shows the version and a **Check for updates** button.
 
 A client only sees a release that is **published** (not draft) and contains
-`latest.yml`. The version it compares is `apps/desktop/package.json`.
+its channel's feed. Stable requires `latest.yml` on a non-prerelease;
+Preview uses `beta.yml` on beta prereleases and can move to a newer stable
+release. The version it compares is `apps/desktop/package.json`.
+Settings → Update channel persists Stable / Preview per desktop installation.
 
 ## Prerequisites
 
@@ -71,15 +75,19 @@ A client only sees a release that is **published** (not draft) and contains
 2. **Bump and write notes.**
 
    ```bash
-   pnpm release version 0.4.6
+   pnpm release version 0.4.7
+   # For a preview of the next patch:
+   # pnpm release version 0.4.7-beta.1
    ```
 
    This sets `package.json` and `apps/desktop/package.json` to the same version
-   and creates `docs/releases/v0.4.6.md` from the template. Fill in the notes in
+   and creates `docs/releases/v0.4.7.md` from the template. Fill in the notes in
    the style of earlier files: user-visible changes first, one line each, then
    the Install section. Summarize from `git log v<previous>..HEAD --oneline`.
    Update the root `CHANGELOG.md`: move shipped entries out of Unreleased into
-   the new version, with its date and release link.
+   the new version, with its date and release link. `pnpm release check` rejects
+   a version without its own changelog section. For previews, retain the batch
+   history so the final stable section covers all intervening previews.
 
 3. **Verify.** Resolve failures introduced by the release. Record any remaining
    pre-existing failures explicitly before deciding whether to publish:
@@ -94,18 +102,20 @@ A client only sees a release that is **published** (not draft) and contains
 4. **Commit, tag, push.**
 
    ```bash
-   git commit -am "chore(release): bump version to 0.4.6"
-   git tag v0.4.6
-   git push origin main v0.4.6
+   git add package.json apps/desktop/package.json CHANGELOG.md docs/releases/v0.4.7.md
+   git commit -m "chore(release): bump version to 0.4.7"
+   git tag v0.4.7
+   git push origin main v0.4.7
    ```
 
-   `pnpm release check` must now print `v0.4.6 is ready to publish`.
+   `pnpm release check` must now print `v0.4.7 is ready to publish`.
 
 5. **Publish the npm package.** `prepublishOnly` builds and runs
    `test/publish.test.ts`.
 
    ```bash
-   npm publish
+   npm publish --tag latest
+   # Preview version only: npm publish --tag preview
    ```
 
 6. **Publish the desktop client and update feed.**
@@ -115,10 +125,14 @@ A client only sees a release that is **published** (not draft) and contains
    ```
 
    This re-runs the readiness check, builds the runtime, web and desktop
-   bundles, and has electron-builder upload `Tnega-Setup-0.4.6.exe`, its
-   blockmap and `latest.yml` to the `v0.4.6` release, with the notes file as the
+   bundles, and has electron-builder upload `Tnega-Setup-0.4.7.exe`, its
+   blockmap and `latest.yml` to the `v0.4.7` release, with the notes file as the
    release body. If packaging fails midway, delete
    `apps/desktop/release/win-unpacked.tmp` and run it again.
+
+   For `x.y.z-beta.N`, the same command uses GitHub `releaseType=prerelease`
+   and uploads `beta.yml`. Stable uses `releaseType=release` and `latest.yml`.
+   A preview must never replace npm `latest` or the stable update feed.
 
 7. **Confirm the release.** `pnpm release desktop` ends with this check; run
    it again any time:
@@ -127,12 +141,14 @@ A client only sees a release that is **published** (not draft) and contains
    pnpm release verify
    ```
 
-   It fails unless `latest.yml` is on the release, describes this version and
-   points at an installer of the declared size that downloads.
+   It selects `latest.yml` / `beta.yml` from the version and checks the feed,
+   installer size and download, and GitHub's draft/prerelease metadata.
 
    The release must be published (not draft) and list the `.exe`, the
    `.exe.blockmap` and `latest.yml`. An installed older client should show
    **Update** within a few minutes of **Check for updates** in Settings.
+   For a beta release, verify with a client on Preview (pre); the prerelease
+   must contain `beta.yml` and must not appear to Stable clients.
 
 ## When something goes wrong
 
@@ -148,10 +164,14 @@ A client only sees a release that is **published** (not draft) and contains
   pnpm release verify
   ```
 
+  For beta versions, use `beta.yml` in the upload command instead of
+  `latest.yml`; `pnpm release feed` writes the appropriate file automatically.
+
 - **Draft release:** electron-builder found an existing draft. Publish it with
   `gh release edit v<v> --draft=false`.
-- **Clients see nothing:** `latest.yml` is missing, the release is a draft or a
-  prerelease, or the desktop version was not bumped.
+- **Clients see nothing:** the selected channel's feed is missing, the release
+  is a draft, its stable/prerelease metadata is wrong, the user chose Stable
+  for a preview release, or the desktop version was not bumped.
 - **Bad release:** do not delete the tag clients already downloaded. Fix
   forward with a new patch version; the updater only moves forward.
 - **Code signing:** builds are unsigned, so Windows SmartScreen warns on a

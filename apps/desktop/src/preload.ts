@@ -7,6 +7,7 @@ const desktopApi = Object.freeze({
   updates: Object.freeze({
     state: (): Promise<unknown> => ipcRenderer.invoke('tnega:update-state'),
     check: (): Promise<unknown> => ipcRenderer.invoke('tnega:update-check'),
+    setChannel: (channel: 'stable' | 'preview'): Promise<unknown> => ipcRenderer.invoke('tnega:update-channel', channel),
     install: (): Promise<void> => ipcRenderer.invoke('tnega:update-install') as Promise<void>,
     onState: (listener: (state: unknown) => void): (() => void) => {
       const handler = (_event: unknown, state: unknown) => listener(state)

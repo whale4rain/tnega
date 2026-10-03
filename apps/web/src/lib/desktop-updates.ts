@@ -4,18 +4,22 @@ import { useCallback, useEffect, useState } from 'react'
  * The desktop app's self-update state, as `apps/desktop/src/updater.ts` reports
  * it. In a browser there is no bridge and the hook returns `undefined`.
  */
-export type UpdateState =
+export type UpdateChannel = 'stable' | 'preview'
+
+export type UpdateState = { channel?: UpdateChannel } & (
   | { status: 'unsupported'; version: string }
   | { status: 'idle'; version: string; checkedAt?: number }
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
   | { status: 'ready'; version: string; next: string }
   | { status: 'error'; version: string; message: string; checkedAt?: number }
+)
 
 interface UpdatesBridge {
   state(): Promise<unknown>
   check(): Promise<unknown>
   install(): Promise<void>
+  setChannel?(channel: UpdateChannel): Promise<unknown>
   onState(listener: (state: unknown) => void): () => void
 }
 
@@ -35,6 +39,8 @@ export function parseUpdateState(value: unknown): UpdateState | undefined {
   const status: unknown = Reflect.get(value, 'status')
   const version: unknown = Reflect.get(value, 'version')
   if (typeof status !== 'string' || !STATUSES.has(status) || typeof version !== 'string') return undefined
+  const channel: unknown = Reflect.get(value, 'channel')
+  if (channel !== undefined && channel !== 'stable' && channel !== 'preview') return undefined
   return value as UpdateState
 }
 
@@ -42,6 +48,7 @@ export interface DesktopUpdates {
   state: UpdateState
   check: () => void
   install: () => void
+  setChannel?: (channel: UpdateChannel) => Promise<void>
 }
 
 export function useDesktopUpdates(): DesktopUpdates | undefined {
@@ -67,7 +74,12 @@ export function useDesktopUpdates(): DesktopUpdates | undefined {
     })
   }, [])
   const install = useCallback(() => { void bridge()?.install() }, [])
-  return state ? { state, check, install } : undefined
+  const setChannel = useCallback(async (channel: UpdateChannel) => {
+    const value = await bridge()?.setChannel?.(channel)
+    const parsed = parseUpdateState(value)
+    if (parsed) setState(parsed)
+  }, [])
+  return state ? { state, check, install, ...(bridge()?.setChannel ? { setChannel } : {}) } : undefined
 }
 
 /** One line for Settings: where the app stands relative to the latest release. */
