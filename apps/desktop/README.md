@@ -21,6 +21,13 @@ pnpm --filter @tnega/desktop exec electron scripts/verify-chrome.cjs
 The main process is bundled as ESM; the sandboxed preload is bundled as CommonJS
 without the main process's `node:module` compatibility banner.
 
+Verify that Browser attachment, new tabs and reconnection preserve system,
+light and dark themes with an isolated hidden Electron host:
+
+```bash
+pnpm --filter @tnega/desktop exec electron scripts/verify-browser-theme.cjs
+```
+
 Window controls share the existing header; its empty space can drag the window,
 while buttons remain clickable. Minimizing keeps the window in the taskbar;
 maximizing toggles between maximized and restored sizes. Closing hides the window

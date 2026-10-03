@@ -29,6 +29,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Preserve the desktop's theme when Browser attaches, opens tabs or reconnects;
+  CDP connections no longer apply Playwright defaults to the host UI.
 - Fix packaged Windows desktop sandbox execution: ship the ACL runner beside
   the main bundle and launch it in Electron's Node mode, with native koffi
   dependencies retained. Keep sandbox enforcement fail closed.

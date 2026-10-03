@@ -162,7 +162,9 @@ export function cdpPageSource(options: CdpSourceOptions): PageSource {
   const connect = async (): Promise<Browser> => {
     if (browser?.isConnected()) return browser
     try {
-      browser = await (await chromiumType()).connectOverCDP(await options.endpoint())
+      // The endpoint also contains the host UI: default context overrides
+      // would change its color scheme, motion preferences and focus behavior.
+      browser = await (await chromiumType()).connectOverCDP(await options.endpoint(), { noDefaults: true })
       return browser
     } catch (error) {
       throw new BrowserError('BROWSER_UNAVAILABLE', `could not attach to the in-app browser: ${error instanceof Error ? error.message : String(error)}`, { cause: error })

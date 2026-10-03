@@ -31,7 +31,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/desktop/scripts/verify-workbench.cjs', 'apps/desktop/scripts/verify-chrome.cjs'],
+    files: ['apps/desktop/scripts/verify-workbench.cjs', 'apps/desktop/scripts/verify-chrome.cjs', 'apps/desktop/scripts/verify-browser-theme.cjs'],
     languageOptions: {
       globals: {
         URL: 'readonly',
