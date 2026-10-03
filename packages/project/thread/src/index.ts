@@ -44,6 +44,22 @@ export type ThreadState =
 
 export type ThreadPermission = 'read-only' | 'workspace-write' | 'bypass'
 
+/** 清单一项的进度：还没开始、正在做、做完了。 */
+export type ThreadChecklistStatus = 'pending' | 'active' | 'done'
+
+/**
+ * Thread 自己维护的实时清单：用户不看工具调用也能知道它在做什么。
+ *
+ * 清单是 Thread 的状态而不是消息：它写在 Thread 记录上，界面随记录的提交实时刷新；
+ * 新的要求到来时由 Thread 整份改写，而不是追加。
+ */
+export interface ThreadChecklistItem {
+  title: string
+  status: ThreadChecklistStatus
+}
+
+export const MAX_CHECKLIST_ITEMS = 12
+
 /**
  * Thread 是 Project 中一个可持续交互的 Agent 身份：稳定 ID、一个文件夹、一个 Session。
  *
@@ -67,6 +83,8 @@ export interface ThreadRecord {
   detail?: string
   depth: number
   permission: ThreadPermission
+  /** 实时清单；没有清单的 Thread 省略此字段。 */
+  checklist?: ThreadChecklistItem[]
   createdAt: number
   updatedAt: number
 }
@@ -101,6 +119,28 @@ export function narrowPermission(
   const rank = (value: ThreadPermission): number => PERMISSIONS.indexOf(value)
   if (!requested) return parent
   return rank(requested) < rank(parent) ? requested : parent
+}
+
+/** 校验并整理模型给的清单：去空白、丢空项、限制长度；不合法的形状直接拒绝。 */
+export function normalizeChecklist(items: unknown): ThreadChecklistItem[] {
+  if (!Array.isArray(items)) throw new ThreadError('checklist must be an array', 'THREAD_INVALID')
+  if (items.length > MAX_CHECKLIST_ITEMS) {
+    throw new ThreadError(`checklist has at most ${MAX_CHECKLIST_ITEMS} items`, 'THREAD_INVALID')
+  }
+  const out: ThreadChecklistItem[] = []
+  for (const item of items) {
+    if (typeof item !== 'object' || item === null) {
+      throw new ThreadError('checklist items must be objects', 'THREAD_INVALID')
+    }
+    const { title, status } = item as { title?: unknown; status?: unknown }
+    if (typeof title !== 'string') throw new ThreadError('checklist item title must be a string', 'THREAD_INVALID')
+    if (status !== 'pending' && status !== 'active' && status !== 'done') {
+      throw new ThreadError('checklist item status must be pending, active or done', 'THREAD_INVALID')
+    }
+    const trimmed = title.trim().replace(/s+/g, ' ')
+    if (trimmed) out.push({ title: trimmed.length > 120 ? `${trimmed.slice(0, 119)}…` : trimmed, status })
+  }
+  return out
 }
 
 export function normalizeGoal(goal: unknown): string {
@@ -171,6 +211,9 @@ export abstract class ThreadService extends Service {
   abstract list(options?: ThreadListOptions): Promise<ThreadRecord[]>
 
   abstract setState(threadId: string, state: ThreadState, detail?: string): Promise<ThreadRecord>
+
+  /** 整份替换该 Thread 的实时清单；空数组清掉它。 */
+  abstract setChecklist(threadId: string, items: readonly ThreadChecklistItem[]): Promise<ThreadRecord>
 
   /** 激活或恢复该 Thread 的 Agent；同一 ID 在进程内只有一个实例。 */
   abstract activate(threadId: string): Promise<LiveAgent>

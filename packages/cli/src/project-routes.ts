@@ -104,6 +104,31 @@ export async function handleProjectApi(
     return
   }
 
+  if (rest === '/stop' && req.method === 'POST') {
+    context.sendJson(res, 200, { stopped: await host.stop(projectId) })
+    return
+  }
+
+  const artifact = /^\/artifacts\/([0-9a-f]{64})$/.exec(rest)
+  if (artifact && req.method === 'GET') {
+    const found = await host.artifact(projectId, artifact[1]!)
+    if (!found) {
+      context.sendError(res, 404, 'artifact not found')
+      return
+    }
+    // 产物是模型写的内容：一律按文本交给客户端，由它在沙箱里渲染，绝不让本服务的
+    // 源直接执行一份 HTML。
+    res.writeHead(200, {
+      'content-type': 'text/plain; charset=utf-8',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "sandbox; default-src 'none'",
+      'x-artifact-media-type': found.mediaType,
+      'cache-control': 'private, max-age=31536000, immutable',
+    })
+    res.end(Buffer.from(found.content))
+    return
+  }
+
   const approval = /^\/approvals\/([^/]+)$/.exec(rest)
   if (approval && req.method === 'POST') {
     const body = await context.readJsonBody(req)
@@ -120,7 +145,7 @@ export async function handleProjectApi(
     return
   }
 
-  const thread = /^\/threads\/([^/]+)(\/messages)?$/.exec(rest)
+  const thread = /^\/threads\/([^/]+)(\/messages|\/stop)?$/.exec(rest)
   if (thread) {
     const threadId = thread[1]!
     if (!isProjectId(threadId)) {
@@ -131,7 +156,11 @@ export async function handleProjectApi(
       context.sendJson(res, 200, await host.thread(projectId, threadId))
       return
     }
-    if (thread[2] && req.method === 'POST') {
+    if (thread[2] === '/stop' && req.method === 'POST') {
+      context.sendJson(res, 200, { stopped: await host.stopThread(projectId, threadId) })
+      return
+    }
+    if (thread[2] === '/messages' && req.method === 'POST') {
       const body = await context.readJsonBody(req)
       if (typeof body.text !== 'string' || !body.text.trim()) {
         context.sendError(res, 400, 'text must be a non-empty string')

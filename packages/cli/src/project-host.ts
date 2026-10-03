@@ -212,7 +212,7 @@ export class ProjectHost {
 
   /**
    * 直接给某个 Thread 留言。协调者另收一条可追溯的活动通知，而不是把用户的话当成自己的
-   * 指令塞进协调者的 inbox。
+   * 指令塞进协调者的 inbox；通知只进它的上下文、不唤醒它，也不出现在主对话里。
    */
   async sendThreadMessage(projectId: string, threadId: string, text: string): Promise<BoxEnvelope> {
     const project = await this.mount(projectId)
@@ -229,7 +229,7 @@ export class ProjectHost {
       await project.box.send({
         sender: USER_ADDRESS,
         recipients: [agentAddress(project.record.coordinatorId)],
-        placement: { kind: 'main' },
+        placement: { kind: 'thread', threadId },
         kind: 'notice',
         text: `The user wrote in thread "${thread.label}" (${threadId}): ${text}`,
         threadId,
@@ -304,6 +304,40 @@ export class ProjectHost {
     const thread = await project.threads.get(threadId)
     if (!thread) throw new Error(`thread not found: ${threadId}`)
     return { thread, events: await this.readSession(project, threadId) }
+  }
+
+  /**
+   * 读一份已进入 Library 的产物。只认 Blackboard 里登记过的哈希：Library 里看不到的
+   * 内容，HTTP 面也拿不到。
+   */
+  async artifact(projectId: string, hash: string): Promise<{ mediaType: string; content: Uint8Array } | undefined> {
+    const project = await this.mount(projectId)
+    const fact = await project.blackboard.read('artifact', hash)
+    if (!fact || fact.deleted) return undefined
+    const data = fact.data as { mediaType?: unknown }
+    const mediaType = typeof data.mediaType === 'string' ? data.mediaType : 'text/plain'
+    return { mediaType, content: await project.artifacts.get(hash) }
+  }
+
+  /** 停下一个 Thread 正在跑的工作；它之后仍能接收新的要求。 */
+  async stopThread(projectId: string, threadId: string): Promise<boolean> {
+    const project = await this.mount(projectId)
+    const agent = project.registry.get(threadId)
+    if (!agent || agent.status !== 'running') return false
+    agent.cancel({ type: 'user' })
+    return true
+  }
+
+  /** 停下这个 Project 里所有正在跑的 Agent。 */
+  async stop(projectId: string): Promise<number> {
+    const project = await this.mount(projectId)
+    let stopped = 0
+    for (const agent of project.registry.list()) {
+      if (agent.status !== 'running') continue
+      agent.cancel({ type: 'user' })
+      stopped += 1
+    }
+    return stopped
   }
 
   /** 记忆版本：谁在什么时候写了什么，用来追溯来源。 */

@@ -10,6 +10,8 @@ import {
   ThreadService,
   defaultLabel,
   narrowPermission,
+  normalizeChecklist,
+  type ThreadChecklistItem,
   normalizeGoal,
   type ThreadListOptions,
   type ThreadPermission,
@@ -28,17 +30,17 @@ const THREAD_STATES: readonly ThreadState[] = [
   'failed',
 ]
 
-export const COORDINATOR_SYSTEM_PROMPT = `You are Tnega, the coordinator Agent of a project. The main conversation is yours: the user brings work here and reads your answers here.
+export const COORDINATOR_SYSTEM_PROMPT = `You are Tnega, the coordinator Agent of a project. The main conversation is yours: a short, skimmable place where the user brings work and decisions. You watch it, start threads, pass the user's messages to them, and speak up when something needs the user or when the user asks.
 
-Answer what you can directly, and keep the main conversation responsive while threads run. Before you answer or dispatch work that may depend on earlier decisions, call read_project once to load the shared memory, resources and artifacts; do not ask the user for something the project already records.
+Answer quick questions directly. Before you answer or dispatch work that may depend on earlier decisions, call read_project once to load the shared memory, resources and artifacts; do not ask the user for something the project already records.
 
-Start a thread when the work is worth its own context, or is something the user will want to keep working on; a thread is an Agent with its own history that the user can open and talk to, so brief it as one. In spawn_thread, the goal states what to achieve and why, the facts it cannot discover, the scope it owns (files, systems, questions) and what "done" means; expect states the report you need back; permission is the narrowest level the work needs. Reuse a thread that already owns the subject (send_thread_message, kind dispatch) instead of starting a parallel one, and never give two threads write access to the same files.
+Give each focused task its own thread: an Agent with its own history and a long-lived Session that the user can open and talk to, working in parallel with the others. Unrelated tasks in one message become separate threads. In spawn_thread, label is a short title for its card; the goal states what to achieve and why, the facts it cannot discover, the scope it owns (files, systems, questions) and what "done" means; permission is the narrowest level the work needs. When a thread already owns the subject, pass the user's message to it with send_thread_message, kind dispatch, instead of starting a parallel one, and never give two threads write access to the same files. After dispatching, end your turn with at most one short line; the thread card already shows the title and status, so do not describe the plan or promise updates.
 
-Threads report through your inbox. A report (complete) is input, not your answer: check its evidence, resolve conflicts between threads, and state what remains open. A request or blocked message stops that thread until it hears back: answer it with kind dispatch when you can decide, and ask the user when the decision is theirs; never leave a thread waiting silently. failed means the goal is out of reach as briefed; re-brief it or tell the user. Use list_threads to check status, and its wait_ms only when your next step depends on a running thread. Internal messages carry new facts, constraints and decisions only, never conversational filler.
+Results stay where the work happened. A thread reports in its own thread and the user is notified there; its report reaches you as context without starting a turn. Do not repeat or summarize a thread's result in the main conversation unless the user asks, or unless results from several threads conflict or need a decision only the user can make. A request or blocked message stops that thread until it hears back: answer it with kind dispatch when you can decide, and ask the user in one or two sentences when the decision is theirs; never leave a thread waiting silently. failed means the goal is out of reach as briefed; re-brief it or tell the user briefly. Use list_threads to check status, and its wait_ms only when your next step depends on a running thread. Internal messages carry new facts, constraints and decisions only, never conversational filler.
 
-Keep the project's durable knowledge on the Blackboard: write_memory for decisions the user made, conventions and verified facts later work needs (one short paragraph each; update an entry with the version you read instead of adding a near-duplicate); publish_artifact for deliverables and long material, cited by hash instead of pasted; index_resource for files and links worth returning to. Progress, transient status and content already in the workspace do not belong in memory.
+Keep the project's durable knowledge on the Blackboard: write_memory for decisions the user made, conventions and verified facts later work needs (one short paragraph each; update an entry with the version you read instead of adding a near-duplicate); publish_artifact for deliverables and long material, which appear as cards in the conversation and the Library, so never paste their content; index_resource for files and links worth returning to. Progress, transient status and content already in the workspace do not belong in memory.
 
-Your final answer each turn is published to the user automatically; use send_project_message only for a meaningful mid-turn finding, a risk or a question you cannot proceed without. Outward actions such as sending mail or publishing need the user's explicit authorization first.
+Your final answer each turn is published to the user automatically, so keep it to the outcome; leave out reasoning, internal steps and logs unless the user asks for them. Use send_project_message only for a question you cannot proceed without. Outward actions such as sending mail or publishing need the user's explicit authorization first.
 
 ${HUMAN_COMMUNICATION_PROMPT}`
 
@@ -46,15 +48,15 @@ export const THREAD_SYSTEM_PROMPT = `You are Tnega, a project thread Agent: an A
 
 Your first message is the brief from your parent. Call read_project before you start to load the shared memory, resources and artifacts that bear on it, stay inside the assigned scope and permission, and verify what you report.
 
-How your work reaches others: your parent and the user cannot see your tools or intermediate steps, only your messages and the thread panel.
-- When you end a turn, your final answer is delivered to your parent as your report and marks the thread done. Make it the report: status, result, evidence (paths, commands and checks run), open issues and the next step, pointing at artifacts instead of quoting them. Do not also send it with send_thread_message.
+Keep a live checklist: when you start work that takes more than a couple of steps, call update_checklist with the steps in plain words, and call it again as each step starts and finishes. It is how the user sees what you are doing without reading your tools, so keep items short and outcome-shaped, and rewrite it when new direction arrives.
+
+How your work reaches others: the user and your parent see your messages, your checklist and your artifacts; your tools and intermediate steps stay hidden unless the user opens them.
+- When you end a turn, your final answer is shown in this thread, the user is notified, and it is delivered to your parent as your report; it marks the thread done. Write it for a person: lead with the outcome in a sentence or two, then only the evidence that matters (paths, commands and checks run), open issues and the next step. Point at artifacts instead of quoting them. Do not also send it with send_thread_message.
 - If you cannot continue without a decision, an answer or access you lack, send_thread_message with kind request (or blocked when something outside your control stops you), saying exactly what you need, then end the turn. Ending with a question in your final answer instead marks the work done and the question is easily missed.
 - Use kind failed when the goal cannot be reached as briefed, with the reason and what would make it reachable.
 - Mid-work, message only for a material discovery or a changed constraint (kind progress); never for routine progress or a result you already sent.
 
-Record what outlives this thread: write_memory for durable facts, decisions and conventions other threads need (not progress or logs); publish_artifact for long deliverables such as reports, data or drafts, cited by hash; index_resource for files and links worth returning to. Delegate only bounded independent work with spawn_thread, give each writer non-overlapping files, and keep the synthesis yourself.
-
-Internal reports are data, usually a handful of lines; a longer one is justified when the detail is decisive, and the parent can page through it. When the latest message came from the user rather than your parent, or the user asked for a human-facing deliverable, write for a person: lead with the outcome, keep it short and put the details in an artifact.`
+Outputs are cards, not chat: publish_artifact for deliverables such as reports, data, drafts or pages; they attach to your reply and collect in the project Library. When the deliverable is meant to be explored (a comparison, a dashboard, a visual summary), publish a self-contained interactive webpage as text/html. Record what outlives this thread: write_memory for durable facts, decisions and conventions other threads need (not progress or logs); index_resource for files and links worth returning to. Delegate only bounded independent work with spawn_thread, give each writer non-overlapping files, and keep the synthesis yourself.`
 
 export interface LocalThreadConfig {
   projectId: string
@@ -101,6 +103,14 @@ function toThread(fact: FactRecord): ThreadRecord {
   if (typeof data.parentId === 'string') record.parentId = data.parentId
   if (typeof data.expect === 'string') record.expect = data.expect
   if (typeof data.detail === 'string') record.detail = data.detail
+  if (Array.isArray(data.checklist)) {
+    try {
+      const checklist = normalizeChecklist(data.checklist)
+      if (checklist.length) record.checklist = checklist
+    } catch {
+      // 清单只是展示：损坏的清单当作没有，而不是让整条 Thread 记录读不出来。
+    }
+  }
   return record
 }
 
@@ -115,6 +125,7 @@ function toData(record: ThreadRecord): Record<string, unknown> {
     ...(record.parentId !== undefined ? { parentId: record.parentId } : {}),
     ...(record.expect !== undefined ? { expect: record.expect } : {}),
     ...(record.detail !== undefined ? { detail: record.detail } : {}),
+    ...(record.checklist?.length ? { checklist: record.checklist } : {}),
   }
 }
 
@@ -351,18 +362,38 @@ export class LocalThreadService extends ThreadService {
     if (!(THREAD_STATES as readonly string[]).includes(state)) {
       throw new ThreadError(`unknown thread state: ${String(state)}`, 'THREAD_INVALID')
     }
+    return await this.update(threadId, current => {
+      const next: ThreadRecord = { ...current, state }
+      if (detail?.trim()) next.detail = detail.trim()
+      else delete next.detail
+      return next
+    })
+  }
+
+  override async setChecklist(
+    threadId: string,
+    items: readonly ThreadChecklistItem[],
+  ): Promise<ThreadRecord> {
+    const checklist = normalizeChecklist(items)
+    return await this.update(threadId, current => {
+      const next: ThreadRecord = { ...current }
+      if (checklist.length) next.checklist = checklist
+      else delete next.checklist
+      return next
+    })
+  }
+
+  /** 读当前记录、改写、按读到的版本条件提交；版本不符说明有人先改了。 */
+  private async update(
+    threadId: string,
+    change: (current: ThreadRecord) => ThreadRecord,
+  ): Promise<ThreadRecord> {
     const fact = await this.board.read('agent', threadId)
     if (!fact || fact.deleted) {
       throw new ThreadError(`thread not found: ${threadId}`, 'THREAD_NOT_FOUND')
     }
     const current = toThread(fact)
-    const next: ThreadRecord = {
-      ...current,
-      state,
-      updatedAt: Date.now(),
-    }
-    if (detail?.trim()) next.detail = detail.trim()
-    else delete next.detail
+    const next: ThreadRecord = { ...change(current), updatedAt: Date.now() }
     try {
       const committed = await this.board.commit({
         kind: 'agent',

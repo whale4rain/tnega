@@ -136,7 +136,7 @@ it('accepts two user messages while the coordinator has not replied yet', async 
   }
 })
 
-it('continues the parent automatically when a child thread finishes', async () => {
+it('keeps a finished thread result in its thread and out of the main conversation', async () => {
   const root = await workspace()
   const ctx = await mount(root)
   try {
@@ -163,31 +163,99 @@ it('continues the parent automatically when a child thread finishes', async () =
       'the child thread to settle',
     )
 
-    // 子 Thread 的详细输出留在自己的面板：主对话里只有派工卡片和协调者自己的发言。
+    // 结果留在完成它的 Thread 里：它的回复发布在 Thread 自己的时间线上。
+    const own = await waitFor(
+      async () => (await timeline(ctx)).find(entry => entry.kind === 'agent-reply' && entry.sender.id === child.id),
+      'the thread reply in its own thread',
+    )
+    expect(own.placement).toEqual({ kind: 'thread', threadId: child.id })
     await waitFor(
-      async () => (await timeline(ctx))
-        .some(entry => entry.placement.kind === 'main'
-          && entry.kind === 'agent-reply'
-          && entry.sender.id === coordinator.id)
+      async () => (await ctx.box.delivery(report.messageId, agentAddress(coordinator.id)))?.status === 'acked'
         ? true
         : undefined,
-      'the coordinator to report back in the main conversation',
+      'the report to reach the coordinator',
     )
-    const main = await timeline(ctx)
-    expect(main.filter(entry => entry.placement.kind === 'main').map(entry => entry.kind))
-      .toEqual(['dispatch', 'agent-reply'])
-    expect(main.filter(entry => entry.placement.kind === 'main')
-      .some(entry => entry.sender.kind === 'agent' && entry.sender.id === child.id)).toBe(false)
-    expect(main.find(entry => entry.kind === 'dispatch')).toMatchObject({ threadId: child.id })
 
+    // 回报只进协调者的上下文，不起新一轮：主对话里只有派工卡片。
+    await new Promise(resolve => setTimeout(resolve, 100))
     const parent = await ctx.threads.activate(coordinator.id)
+    expect(parent.status).toBe('idle')
+    const main = (await timeline(ctx)).filter(entry => entry.placement.kind === 'main')
+    expect(main.map(entry => entry.kind)).toEqual(['dispatch'])
+    expect(main[0]).toMatchObject({ threadId: child.id })
+
+    // 用户下一次在主对话里发言时，协调者已经知道这份结果。
+    await ctx.box.send({
+      sender: USER_ADDRESS,
+      recipients: [agentAddress(coordinator.id)],
+      placement: { kind: 'main' },
+      kind: 'user-message',
+      text: 'How did section 2 go?',
+    })
     await waitFor(
-      async () => (await parent.session.read())
-        .some(event => event.type === 'user/message' && event.payload.content.includes('understood'))
-        ? true
-        : undefined,
-      'the parent to receive the child report',
+      async () => (await timeline(ctx)).some(entry => entry.placement.kind === 'main'
+        && entry.kind === 'agent-reply' && entry.sender.id === coordinator.id) ? true : undefined,
+      'the coordinator answer',
     )
+    const events = await parent.session.read()
+    const inputs = events.filter(event => event.type === 'user/message')
+    expect(inputs.map(event => event.payload.name)).toContain(`box:${report.messageId}`)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it('wakes the coordinator when a thread needs a decision', async () => {
+  const root = await workspace()
+  const ctx = await mount(root)
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Pick a licence' })
+    await ctx.box.send({
+      sender: agentAddress(child.id),
+      recipients: [agentAddress(coordinator.id)],
+      placement: { kind: 'thread', threadId: child.id },
+      kind: 'request',
+      text: 'MIT or Apache-2.0?',
+    })
+    const answer = await waitFor(
+      async () => (await timeline(ctx)).find(entry => entry.kind === 'agent-reply' && entry.sender.id === coordinator.id),
+      'the coordinator to take up the request',
+    )
+    expect(answer.placement).toEqual({ kind: 'main' })
+    expect((await ctx.threads.get(child.id))?.state).toBe('waiting')
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it('attaches artifacts published during a turn to that reply', async () => {
+  const root = await workspace()
+  const ctx = await mount(root)
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Write the report' })
+    const hash = 'a'.repeat(64)
+    await ctx.blackboard.commit({
+      kind: 'artifact',
+      id: hash,
+      data: { title: 'Report', hash, size: 12, mediaType: 'text/html' },
+      author: child.id,
+      expectedVersion: null,
+    })
+    await ctx.box.send({
+      sender: agentAddress(coordinator.id),
+      recipients: [agentAddress(child.id)],
+      placement: { kind: 'main' },
+      kind: 'dispatch',
+      text: 'Write the report.',
+      threadId: child.id,
+    })
+    const reply = await waitFor(
+      async () => (await timeline(ctx)).find(entry => entry.kind === 'agent-reply' && entry.sender.id === child.id),
+      'the thread reply',
+    )
+    expect(reply.refs).toEqual([{ hash, size: 12, mediaType: 'text/html' }])
   } finally {
     await ctx.fiber.dispose()
   }

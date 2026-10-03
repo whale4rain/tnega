@@ -1,6 +1,6 @@
 import { agentAddress, type BoxMessageKind, type BoxService } from '@tnega/box'
 import type { Context } from '@tnega/core'
-import type { ThreadService, ThreadState } from '@tnega/thread'
+import { normalizeChecklist, type ThreadService, type ThreadState } from '@tnega/thread'
 import type { ToolsService } from '@tnega/tools'
 
 /** `send_thread_message` 允许的消息类型：回报结论，或给子 Thread 新的方向。 */
@@ -102,6 +102,38 @@ export const toolThread = {
 
     tools.register({
       schema: {
+        name: 'update_checklist',
+        description: 'Replace your live checklist: the short list of steps the user sees on your thread card and at the top of your thread while you work. Send the whole list each time, marking the step in progress active and finished steps done. An empty list clears it.',
+        parameters: {
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array',
+              description: 'The steps in order, at most 12.',
+              items: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'The step in a few plain words.' },
+                  status: { type: 'string', enum: ['pending', 'active', 'done'] },
+                },
+                required: ['title', 'status'],
+              },
+            },
+          },
+          required: ['items'],
+        },
+      },
+      async execute(input, options) {
+        const value = fields(input)
+        const record = await threads.setChecklist(caller(options.agentId), normalizeChecklist(value.items))
+        const items = record.checklist ?? []
+        const done = items.filter(item => item.status === 'done').length
+        return items.length ? `Checklist updated (${done}/${items.length} done).` : 'Checklist cleared.'
+      },
+    })
+
+    tools.register({
+      schema: {
         name: 'list_threads',
         description: 'Read the state of the threads you can act on. Reports arrive in your inbox; use this only to check status. If your remaining work depends on a running thread, set wait_ms and call again until it is no longer working.',
         parameters: {
@@ -174,15 +206,19 @@ export const toolThread = {
         if (!toChild && !toParent) {
           throw new Error('thread messages require a direct parent-child relationship')
         }
+        const kind = (value.kind as BoxMessageKind | undefined) ?? 'progress'
+        // 协调者把工作交给已有 Thread 时，主对话里出现一张指向它的卡片，就像新开一个
+        // Thread 一样；其余的回报与指令都留在 Thread 自己的面板。
+        const routed = toChild && kind === 'dispatch' && sender.parentId === undefined
         await box.send({
           sender: agentAddress(senderId),
           recipients: [agentAddress(target.id)],
-          // 回报与自己这轮的工作放在一起；给子 Thread 的指令出现在它的面板。
-          placement: toChild
-            ? { kind: 'thread', threadId: target.id }
-            : { kind: 'thread', threadId: senderId },
-          kind: (value.kind as BoxMessageKind | undefined) ?? 'progress',
+          placement: routed
+            ? { kind: 'main' }
+            : { kind: 'thread', threadId: toChild ? target.id : senderId },
+          kind,
           text: value.message,
+          ...(routed ? { threadId: target.id } : {}),
         })
         return `Message delivered to ${target.id}.`
       },

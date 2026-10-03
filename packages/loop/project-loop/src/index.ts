@@ -29,6 +29,36 @@ export interface ProjectLoopConfig {
 
 export const DEFAULT_SWEEP_INTERVAL_MS = 15_000
 
+type ArtifactRef = BoxEnvelope['refs'][number]
+
+/**
+ * 读产物索引需要的那一小块 Blackboard 面。Project Loop 不依赖具体的 Blackboard 包：
+ * 作用域里没有 Blackboard 时，回复照常发布，只是不带产物卡片。
+ */
+interface ArtifactIndex {
+  list(kind: 'artifact'): Promise<ReadonlyArray<{
+    author: string
+    createdAt: number
+    deleted?: boolean
+    data: unknown
+  }>>
+}
+
+function artifactRef(data: unknown): ArtifactRef | undefined {
+  if (typeof data !== 'object' || data === null) return undefined
+  const { hash, size, mediaType } = data as Record<string, unknown>
+  if (typeof hash !== 'string' || typeof size !== 'number' || typeof mediaType !== 'string') return undefined
+  return { hash, size, mediaType }
+}
+
+/**
+ * 送给协调者时只进上下文、不起新一轮的信封。
+ *
+ * 结果留在完成它的 Thread 里：协调者知道它发生了，但不在主对话里复述。只有需要决定的
+ * `request` / `blocked` / `failed` 才唤醒协调者 —— 它要么自己回答，要么转问用户。
+ */
+const QUIET_FOR_COORDINATOR: ReadonlySet<BoxEnvelope['kind']> = new Set(['complete', 'progress', 'notice'])
+
 const TERMINAL_KINDS: Partial<Record<BoxEnvelope['kind'], ThreadRecord['state']>> = {
   complete: 'done',
   blocked: 'blocked',
@@ -111,7 +141,8 @@ function isReply(event: SessionEvent): event is SessionEvent & {
  * 1. **投递**。把未确认的 Box 信封送进收件 Agent 的 durable inbox，收件 Session 准入并
  *    冲刷之后才确认；`messageId` 已经在 Session 里出现过就只补确认，不重复进入模型。
  * 2. **唤醒**。空闲的收件 Agent 用 `followup` 起一轮；运行中的用 `steer`，在新消息到达
- *    的下个安全 step 边界进入，绝不打断正在进行的工具调用。
+ *    的下个安全 step 边界进入，绝不打断正在进行的工具调用。给协调者的回报与通知只用
+ *    `inject` 暂存进上下文、不唤醒：结果留在 Thread 里，主对话只在需要用户时出声。
  * 3. **发布**。Agent 的 Session 落入面向用户的回复后自动发布到 Box，让主对话与 Thread
  *    面板各自看到自己那条时间线。
  * 4. **回报**。`complete` / `blocked` / `failed` / `request` 这类信封到达时更新发送方
@@ -125,6 +156,7 @@ export class ProjectLoopRuntime {
   private readonly box: BoxService
   private readonly threads: ThreadService
   private readonly registry: AgentRegistry
+  private readonly artifacts: ArtifactIndex | undefined
   private readonly attached = new Set<string>()
   /** 子 Thread 最近一次发给父 Agent 的回报正文，用来避免重复补发。 */
   private readonly reported = new Map<string, string>()
@@ -150,6 +182,7 @@ export class ProjectLoopRuntime {
     this.box = box
     this.threads = threads
     this.registry = registry
+    this.artifacts = ctx.get('blackboard') as ArtifactIndex | undefined
   }
 
   /** 挂上事件面并做第一次扫描。 */
@@ -280,7 +313,10 @@ export class ProjectLoopRuntime {
             content: envelope.text,
           }],
         }
-        if (agent.status === 'running') await agent.steer(input)
+        const quiet = this.known.get(threadId)?.parentId === undefined
+          && QUIET_FOR_COORDINATOR.has(envelope.kind)
+        if (quiet) await agent.inject(input)
+        else if (agent.status === 'running') await agent.steer(input)
         else await agent.followup(input)
         await agent.session.flush()
       }
@@ -360,12 +396,14 @@ export class ProjectLoopRuntime {
     const messageId = publishedMessageId(this.projectId, agentId, `report ${reply.id}`)
     if (await this.box.delivery(messageId, recipient)) return
     const causationId = lastInboundMessageId(events)
+    const refs = await this.turnArtifacts(agentId, events, reply)
     await this.box.send({
       sender: { kind: 'agent', id: agentId },
       recipients: [recipient],
       placement: { kind: 'thread', threadId: agentId },
       kind: 'complete',
       text,
+      refs,
       messageId,
       ...(causationId ? { causationId } : {}),
       createdAt: reply.ts,
@@ -396,17 +434,49 @@ export class ProjectLoopRuntime {
       if (!isReply(event)) continue
       const messageId = publishedMessageId(this.projectId, agentId, event.id)
       if (await this.box.delivery(messageId, USER_ADDRESS)) continue
+      const refs = await this.turnArtifacts(agentId, history, event)
       await this.box.send({
         sender: { kind: 'agent', id: agentId },
         recipients: [USER_ADDRESS],
         placement,
         kind: 'agent-reply',
         text: event.payload.content,
+        refs,
         messageId,
         ...(causationId ? { causationId } : {}),
         createdAt: event.ts,
       })
     }
+  }
+
+  /**
+   * 这条回复带上的产物：该 Agent 在上一条回复之后、这条回复之前发布的产物。
+   *
+   * 产物是卡片而不是贴进正文的内容：它挂在产生它的那条回复下面，同时留在 Library 里。
+   * 时间窗只由 Session 与 Blackboard 两份事实决定，重新发布时得到同一组引用。
+   */
+  private async turnArtifacts(
+    agentId: string,
+    history: readonly SessionEvent[],
+    reply: SessionEvent,
+  ): Promise<ArtifactRef[]> {
+    if (!this.artifacts) return []
+    const index = history.findIndex(event => event.id === reply.id)
+    let since = Number.NEGATIVE_INFINITY
+    for (let i = (index < 0 ? history.length : index) - 1; i >= 0; i -= 1) {
+      const event = history[i]!
+      if (isReply(event)) {
+        since = event.ts
+        break
+      }
+    }
+    const facts = await this.artifacts.list('artifact')
+    return facts
+      .filter(fact => !fact.deleted && fact.author === agentId
+        && fact.createdAt > since && fact.createdAt <= reply.ts)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map(fact => artifactRef(fact.data))
+      .filter((ref): ref is ArtifactRef => ref !== undefined)
   }
 
   /**
