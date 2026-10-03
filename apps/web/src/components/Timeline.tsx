@@ -293,7 +293,7 @@ const AgentTurn = memo(function AgentTurn({
       <div className="agent-avatar" aria-hidden>
         {agent
           ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={26} live={live} weather={weather === 'clear' && !live ? undefined : weather} title={agent.role === 'coordinator' ? 'Agent' : undefined} />
-          : <AgentAvatar id="session-agent" role="coordinator" size={26} live={live} weather={weather === 'clear' && !live ? undefined : weather} title="Agent" />}
+          : <span className="brand-mark small" />}
       </div>
       <div className="agent-body">
         {presentation.process.length > 0 && (
