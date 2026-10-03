@@ -22,11 +22,14 @@ feature or fix lands, and move entries into a version only when it ships.
 | 0.4.2 | [`v0.4.1...v0.4.2`](https://github.com/whale4rain/tnega/compare/v0.4.1...v0.4.2) | 53 |
 | 0.4.5 | [`v0.4.2...v0.4.5`](https://github.com/whale4rain/tnega/compare/v0.4.2...v0.4.5) | 157 |
 | 0.4.6 | [`v0.4.5...v0.4.6`](https://github.com/whale4rain/tnega/compare/v0.4.5...v0.4.6) | 56 |
+| 0.4.7 | [`v0.4.6...v0.4.7`](https://github.com/whale4rain/tnega/compare/v0.4.6...v0.4.7) | 10 |
 
 Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.4.7](https://github.com/whale4rain/tnega/releases/tag/v0.4.7) — 2026-10-03
 
 - Store default desktop/Web/CLI Sessions, subagent and Project Thread histories
   in `~/.tnega`, partitioned by Workspace path, with `TNEGA_HOME` overrides.
