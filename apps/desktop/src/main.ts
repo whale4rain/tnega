@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,6 +6,7 @@ import { defaultHotProfile, startWebServer, type WebServer } from '@tnega/cli'
 import { DesktopBrowser, enableBrowserDebugging } from './browser.js'
 import { closeDesktopRuntime } from './shutdown.js'
 import { installTray } from './tray.js'
+import { installCompletionNotice } from './completion.js'
 import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from './titlebar.js'
 import { UpdateController, type UpdaterLike } from './updater.js'
 import { readUpdateChannel, saveUpdateChannel } from './update-preferences.js'
@@ -18,6 +19,7 @@ let allowedOrigin = ''
 let quitting = false
 let tray: ReturnType<typeof installTray> | undefined
 let updates: UpdateController | undefined
+let completion: ReturnType<typeof installCompletionNotice> | undefined
 
 /** Only an installed build has a release feed (`app-update.yml`) to follow. */
 function createUpdates(): UpdateController {
@@ -58,6 +60,10 @@ function isTrustedSender(senderUrl: string): boolean {
 }
 
 function installDesktopHandlers(): void {
+  ipcMain.on('tnega:completion', (event, outcome: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return
+    completion?.notify(outcome)
+  })
   ipcMain.handle('tnega:pick-folder', async event => {
     if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined
     const options: OpenDialogOptions = {
@@ -131,11 +137,18 @@ async function createWindow(): Promise<void> {
     if (/^https?:/u.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  const iconDirectory = join(dirname(fileURLToPath(import.meta.url)), '../build')
+  completion = installCompletionNotice(window, {
+    completed: nativeImage.createFromPath(join(iconDirectory, 'completion-rain.png')),
+    failed: nativeImage.createFromPath(join(iconDirectory, 'completion-storm.png')),
+  }, () => shell.beep())
   browser = new DesktopBrowser(window, event => isTrustedSender(event.senderFrame?.url ?? ''))
   server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile(), ptcRuntime: desktopPtcAssets(appRoot()) })
   allowedOrigin = new URL(server.url).origin
   tray = installTray(window, join(dirname(fileURLToPath(import.meta.url)), '../build/icon.png'), () => { void closeAndExit() })
   window.on('closed', () => {
+    completion?.dispose()
+    completion = undefined
     tray?.dispose()
     tray = undefined
   })

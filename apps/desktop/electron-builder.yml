@@ -13,6 +13,7 @@ publish:
 files:
   - out/**
   - build/icon.png
+  - build/completion-*.png
   - package.json
 extraResources:
   - from: ../../dist

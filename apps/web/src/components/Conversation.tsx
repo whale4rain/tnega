@@ -1,3 +1,4 @@
+import { completionObserver } from '../lib/desktop-completion'
 import {
   ArrowDown,
   Check,
@@ -312,6 +313,7 @@ export function Conversation({
 
   const run = useCallback(async (id: string, prompt: string, base: readonly Entry[], resumeQueued = false, images: readonly ImageAttachment[] = []) => {
     const controller = new AbortController()
+    const notifyCompletion = completionObserver(controller.signal)
     abort.current = controller
     streamingFor.current = id
     setRunning(true)
@@ -320,7 +322,10 @@ export function Conversation({
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
-          await streamRun(workspace, id, prompt, onStreamEvent, controller.signal, resumeQueued, images)
+          await streamRun(workspace, id, prompt, event => {
+            notifyCompletion(event)
+            onStreamEvent(event)
+          }, controller.signal, resumeQueued, images)
           break
         } catch (reason) {
           // A previous run can take a moment to release the session.

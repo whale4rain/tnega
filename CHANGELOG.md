@@ -30,6 +30,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Desktop sessions play one system sound when a run finishes. Unfocused Windows
+  clients show a rain taskbar badge for a ready reply or lightning for a failed
+  run; returning to the window clears it. Cancelled runs do not notify.
+
 - Settings use a wider, responsive two-column layout with separate model and
   approval sections, keeping save actions visible while the content scrolls.
 
