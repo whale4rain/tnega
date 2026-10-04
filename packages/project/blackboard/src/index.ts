@@ -28,6 +28,8 @@ export type FactKind =
   | 'resource'
   | 'artifact'
   | 'dependency'
+  /** 定时工作：一条带日程的指令，每次运行交给它自己的 Thread。 */
+  | 'routine'
 
 export const FACT_KINDS: readonly FactKind[] = [
   'project',
@@ -39,6 +41,7 @@ export const FACT_KINDS: readonly FactKind[] = [
   'resource',
   'artifact',
   'dependency',
+  'routine',
 ]
 
 export type BlackboardErrorCode =

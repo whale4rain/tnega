@@ -31,7 +31,8 @@ import { searchRipgrep } from '@tnega/search-ripgrep'
 import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
-import { SessionLog, type SessionEvent } from '@tnega/session'
+import { SessionLog, foldUsage, type SessionEvent } from '@tnega/session'
+import { RoutineRunner, registerRoutineTools } from './project-routines.js'
 import { spillLocal } from '@tnega/spill-local'
 import { COORDINATOR_SYSTEM_PROMPT, THREAD_SYSTEM_PROMPT, threadLocal } from '@tnega/thread-local'
 import type { ThreadRecord, ThreadService } from '@tnega/thread'
@@ -70,7 +71,63 @@ export interface OpenProject {
   artifacts: ArtifactStore
   registry: AgentRegistry
   tools: ToolsService
+  routines: RoutineRunner
   directory: string
+}
+
+/** What one thread (or the whole project) has consumed. */
+export interface UsageTotals {
+  responses: number
+  promptTokens: number
+  completionTokens: number
+  cachedTokens: number
+  /** Time spent inside turns, summed from turn start to turn end. */
+  activeMs: number
+  turns: number
+}
+
+export interface ProjectUsage {
+  total: UsageTotals
+  /** Totals for events at or after `since`, when it was asked for. */
+  since?: UsageTotals
+  byThread: Array<UsageTotals & { threadId: string; lastActiveAt?: number }>
+}
+
+function emptyTotals(): UsageTotals {
+  return { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, activeMs: 0, turns: 0 }
+}
+
+function addTotals(into: UsageTotals, from: UsageTotals): void {
+  into.responses += from.responses
+  into.promptTokens += from.promptTokens
+  into.completionTokens += from.completionTokens
+  into.cachedTokens += from.cachedTokens
+  into.activeMs += from.activeMs
+  into.turns += from.turns
+}
+
+/** Tokens from the usage each response reported; active time from turn boundaries. */
+export function sessionTotals(events: readonly SessionEvent[]): UsageTotals {
+  const metrics = foldUsage(events)
+  let activeMs = 0
+  let turns = 0
+  let started: number | undefined
+  for (const event of events) {
+    if (event.type === 'turn/start') started = event.ts
+    else if (event.type === 'turn/end' && started !== undefined) {
+      activeMs += Math.max(0, event.ts - started)
+      turns += 1
+      started = undefined
+    }
+  }
+  return {
+    responses: metrics.responses,
+    promptTokens: metrics.promptTokens,
+    completionTokens: metrics.completionTokens,
+    cachedTokens: metrics.cachedTokens,
+    activeMs,
+    turns,
+  }
 }
 
 export interface ProjectSnapshot {
@@ -85,6 +142,7 @@ export interface ProjectSnapshot {
   inboxMessages: BoxEnvelope[]
   memory: FactRecord[]
   library: { artifacts: FactRecord[]; resources: FactRecord[] }
+  routines: FactRecord[]
 }
 
 export interface ProjectThreadDetail {
@@ -195,6 +253,7 @@ export class ProjectHost {
         artifacts: await project.blackboard.list('artifact'),
         resources: await project.blackboard.list('resource'),
       },
+      routines: (await project.blackboard.list('routine')).filter(fact => !fact.deleted),
     }
   }
 
@@ -345,6 +404,46 @@ export class ProjectHost {
     return stopped
   }
 
+  /** 人收下（或重新打开）一个 Thread。重新打开回到空闲，等下一条消息。 */
+  async setThreadResolved(projectId: string, threadId: string, resolved: boolean): Promise<ThreadRecord> {
+    const project = await this.mount(projectId)
+    const thread = await project.threads.get(threadId)
+    if (!thread || thread.id === project.record.coordinatorId) throw new Error(`thread not found: ${threadId}`)
+    if (resolved && thread.state === 'working') {
+      project.registry.get(threadId)?.cancel({ type: 'user' })
+    }
+    return await project.threads.setState(threadId, resolved ? 'resolved' : 'idle')
+  }
+
+  /** 每个 Thread 与整个 Project 的消耗；`since` 给出时另算这之后的部分（比如「今天」）。 */
+  async usage(projectId: string, since?: number): Promise<ProjectUsage> {
+    const project = await this.mount(projectId)
+    const total = emptyTotals()
+    const recent = emptyTotals()
+    const byThread: ProjectUsage['byThread'] = []
+    for (const thread of await project.threads.list()) {
+      const events = await this.readSession(project, thread.id)
+      const totals = sessionTotals(events)
+      addTotals(total, totals)
+      if (since !== undefined) addTotals(recent, sessionTotals(events.filter(event => event.ts >= since)))
+      const last = events.at(-1)
+      byThread.push({ threadId: thread.id, ...totals, ...(last ? { lastActiveAt: last.ts } : {}) })
+    }
+    return { total, byThread, ...(since !== undefined ? { since: recent } : {}) }
+  }
+
+  async createRoutine(projectId: string, input: { title: unknown; prompt: unknown; schedule: unknown; enabled?: unknown }): Promise<FactRecord> {
+    return await (await this.mount(projectId)).routines.create(input, 'user')
+  }
+
+  async updateRoutine(projectId: string, routineId: string, patch: Record<string, unknown>): Promise<FactRecord> {
+    return await (await this.mount(projectId)).routines.update(routineId, patch, 'user')
+  }
+
+  async runRoutine(projectId: string, routineId: string): Promise<FactRecord> {
+    return await (await this.mount(projectId)).routines.run(routineId, 'user')
+  }
+
   /** 记忆版本：谁在什么时候写了什么，用来追溯来源。 */
   async memoryHistory(projectId: string, memoryId: string): Promise<FactRecord[]> {
     const project = await this.mount(projectId)
@@ -455,7 +554,7 @@ export class ProjectHost {
       await ctx.plugin(skillTools, { cwd })
     }
 
-    await ctx.plugin(toolBlackboard)
+    await ctx.plugin(toolBlackboard, { cwd: this.workspace })
     await ctx.plugin(toolThread)
     await ctx.plugin(toolBox)
 
@@ -491,6 +590,15 @@ export class ProjectHost {
     }))
 
     await ctx.plugin(projectLoop, { projectId: record.id })
+    const routines = new RoutineRunner({
+      blackboard: ctx.get('blackboard') as BlackboardService,
+      threads,
+      box: ctx.get('box') as BoxService,
+      coordinatorId: record.coordinatorId,
+    })
+    registerRoutineTools(toolService, routines)
+    routines.start()
+    ctx.fiber.effect(() => () => routines.dispose(), 'stop routines')
     await ctx.plugin(ptcRuntimeQuickjs, this.options.ptcRuntime)
     await ctx.plugin(toolPtc, {
       mode: this.options.systemConfig?.codeMode ? 'ptc' : 'native',
@@ -506,6 +614,7 @@ export class ProjectHost {
       artifacts: ctx.get('artifacts') as ArtifactStore,
       registry,
       tools: toolService,
+      routines,
       directory,
     }
   }

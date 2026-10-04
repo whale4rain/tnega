@@ -41,6 +41,11 @@ export type ThreadState =
   | 'idle'
   | 'done'
   | 'failed'
+  /**
+   * 人已经收下了它的结果：区别于 Agent 自己说的 `done`。只由人（或人授权的协调者）设置；
+   * 它再收到消息开始工作时自动回到 `working`。
+   */
+  | 'resolved'
 
 export type ThreadPermission = 'read-only' | 'workspace-write' | 'bypass'
 

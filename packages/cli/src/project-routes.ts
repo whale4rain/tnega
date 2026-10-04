@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { BlackboardError } from '@tnega/blackboard'
 import { PROJECT_ID_PATTERN } from '@tnega/project'
 import type { ProjectHost } from './project-host.js'
+import { RoutineError } from './project-routines.js'
+import { isTextual } from '@tnega/tool-blackboard'
 
 /** 路由层需要的宿主与 HTTP 工具；由 `server.ts` 提供，避免两处各写一套。 */
 export interface ProjectRouteContext {
@@ -18,6 +20,23 @@ const PROJECT_PATH = /^\/api\/projects\/([^/]+)(\/.*)?$/
 
 function isProjectId(value: string | undefined): value is string {
   return typeof value === 'string' && PROJECT_ID_PATTERN.test(value)
+}
+
+/** Routine 的输入错误是 400，其余照常抛给上层。 */
+async function routine(
+  res: ServerResponse,
+  context: ProjectRouteContext,
+  run: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    context.sendJson(res, 200, await run())
+  } catch (error) {
+    if (error instanceof RoutineError) {
+      context.sendError(res, 400, error.message)
+      return
+    }
+    throw error
+  }
 }
 
 /**
@@ -104,6 +123,39 @@ export async function handleProjectApi(
     return
   }
 
+  if (rest === '/usage' && req.method === 'GET') {
+    const sinceParam = url.searchParams.get('since')
+    const since = sinceParam === null ? undefined : Number(sinceParam)
+    if (since !== undefined && (!Number.isSafeInteger(since) || since < 0)) {
+      context.sendError(res, 400, 'since must be a non-negative integer')
+      return
+    }
+    context.sendJson(res, 200, await host.usage(projectId, since))
+    return
+  }
+
+  if (rest === '/routines' && req.method === 'POST') {
+    const body = await context.readJsonBody(req)
+    await routine(res, context, async () => ({ routine: await host.createRoutine(projectId, {
+      title: body.title, prompt: body.prompt, schedule: body.schedule, enabled: body.enabled,
+    }) }))
+    return
+  }
+
+  const routineMatch = /^\/routines\/([^/]+)(\/run)?$/.exec(rest)
+  if (routineMatch && isProjectId(routineMatch[1])) {
+    const routineId = routineMatch[1]
+    if (!routineMatch[2] && req.method === 'PATCH') {
+      const body = await context.readJsonBody(req)
+      await routine(res, context, async () => ({ routine: await host.updateRoutine(projectId, routineId, body) }))
+      return
+    }
+    if (routineMatch[2] && req.method === 'POST') {
+      await routine(res, context, async () => ({ routine: await host.runRoutine(projectId, routineId) }))
+      return
+    }
+  }
+
   if (rest === '/stop' && req.method === 'POST') {
     context.sendJson(res, 200, { stopped: await host.stop(projectId) })
     return
@@ -116,10 +168,10 @@ export async function handleProjectApi(
       context.sendError(res, 404, 'artifact not found')
       return
     }
-    // 产物是模型写的内容：一律按文本交给客户端，由它在沙箱里渲染，绝不让本服务的
-    // 源直接执行一份 HTML。
+    // 产物是模型写的内容：文本一律按纯文本、其余按字节流交给客户端，由它在沙箱里渲染，
+    // 绝不让本服务的源直接执行一份 HTML。
     res.writeHead(200, {
-      'content-type': 'text/plain; charset=utf-8',
+      'content-type': isTextual(found.mediaType) ? 'text/plain; charset=utf-8' : 'application/octet-stream',
       'x-content-type-options': 'nosniff',
       'content-security-policy': "sandbox; default-src 'none'",
       'x-artifact-media-type': found.mediaType,
@@ -154,6 +206,15 @@ export async function handleProjectApi(
     }
     if (!thread[2] && req.method === 'GET') {
       context.sendJson(res, 200, await host.thread(projectId, threadId))
+      return
+    }
+    if (!thread[2] && req.method === 'PATCH') {
+      const body = await context.readJsonBody(req)
+      if (typeof body.resolved !== 'boolean') {
+        context.sendError(res, 400, 'resolved must be a boolean')
+        return
+      }
+      context.sendJson(res, 200, { thread: await host.setThreadResolved(projectId, threadId, body.resolved) })
       return
     }
     if (thread[2] === '/stop' && req.method === 'POST') {

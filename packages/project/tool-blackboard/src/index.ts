@@ -6,8 +6,46 @@ import {
   type FactRecord,
 } from '@tnega/blackboard'
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { extname } from 'node:path'
 import type { Context } from '@tnega/core'
-import type { ToolsService } from '@tnega/tools'
+import { resolveInside, type ToolsService } from '@tnega/tools'
+
+export interface ToolBlackboardConfig {
+  /** Workspace root; enables publishing a workspace file (`path`) as an artifact. */
+  cwd?: string
+}
+
+/** Media types by extension for files published from the workspace. */
+const MEDIA_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
+  '.txt': 'text/plain',
+  '.csv': 'text/csv',
+  '.tsv': 'text/tab-separated-values',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+}
+
+export function mediaTypeOf(path: string): string {
+  return MEDIA_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream'
+}
+
+/** Whether an artifact's bytes can be shown to a model as text. */
+export function isTextual(mediaType: string): boolean {
+  return mediaType.startsWith('text/') || /json|xml|javascript|svg/.test(mediaType)
+}
 
 const READABLE_KINDS: readonly FactKind[] = [
   'memory',
@@ -65,7 +103,7 @@ function summarize(record: FactRecord): string {
 export const toolBlackboard = {
   name: 'tool-blackboard',
   inject: ['blackboard', 'artifacts', 'tools'],
-  apply(ctx: Context): void {
+  apply(ctx: Context, config: ToolBlackboardConfig = {}): void {
     const board = ctx.get('blackboard') as BlackboardService
     const artifacts = ctx.get('artifacts') as ArtifactStore
     const tools = ctx.get('tools') as ToolsService
@@ -173,15 +211,16 @@ export const toolBlackboard = {
     tools.register({
       schema: {
         name: 'publish_artifact',
-        description: 'Store a piece of content in the project artifact store and index it, so other threads and the user can find it later. Publishing the same content twice reuses the same entry.',
+        description: 'Publish a deliverable to the project Library and attach it to your reply as a card. Give either content (text, such as Markdown or a self-contained HTML page) or path (a workspace file such as a .docx, .pptx, .xlsx, .pdf or image, stored as a snapshot). Publishing the same bytes twice reuses the same entry.',
         parameters: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'What this artifact is, shown in the project library.' },
-            content: { type: 'string', description: 'The content itself.' },
-            media_type: { type: 'string', description: 'Defaults to text/plain.' },
+            content: { type: 'string', description: 'The content itself, for text artifacts.' },
+            path: { type: 'string', description: 'A workspace file to publish instead of content.' },
+            media_type: { type: 'string', description: 'Defaults to text/plain for content, or from the file extension for path.' },
           },
-          required: ['title', 'content'],
+          required: ['title'],
         },
       },
       async execute(input, options) {
@@ -189,12 +228,20 @@ export const toolBlackboard = {
         if (typeof value.title !== 'string' || !value.title.trim()) {
           throw new TypeError('title must be a non-empty string')
         }
-        if (typeof value.content !== 'string') throw new TypeError('content must be a string')
         const author = caller(options.agentId)
-        const ref = await artifacts.put({
-          content: value.content,
-          ...(typeof value.media_type === 'string' ? { mediaType: value.media_type } : {}),
-        })
+        let content: string | Uint8Array
+        let mediaType = typeof value.media_type === 'string' && value.media_type.trim() ? value.media_type.trim() : undefined
+        if (typeof value.path === 'string' && value.path.trim()) {
+          if (!config.cwd) throw new Error('this project cannot publish workspace files')
+          const file = await resolveInside(config.cwd, value.path.trim())
+          content = new Uint8Array(await readFile(file))
+          mediaType ??= mediaTypeOf(file)
+        } else if (typeof value.content === 'string') {
+          content = value.content
+        } else {
+          throw new TypeError('give content or path')
+        }
+        const ref = await artifacts.put({ content, ...(mediaType ? { mediaType } : {}) })
         const existing = await board.read('artifact', ref.hash)
         if (existing) return `Artifact already published: ${summarize(existing)}`
         try {
@@ -235,6 +282,10 @@ export const toolBlackboard = {
           ? Math.floor(value.max_bytes)
           : MAX_ARTIFACT_READ_BYTES
         try {
+          const ref = await artifacts.stat(value.hash)
+          if (ref && !isTextual(ref.mediaType)) {
+            return `(binary artifact, ${ref.mediaType}, ${ref.size} bytes; it cannot be read as text. Open the source file in the workspace instead.)`
+          }
           const bytes = await artifacts.get(value.hash)
           const text = new TextDecoder().decode(bytes.subarray(0, cap))
           return bytes.byteLength > cap
