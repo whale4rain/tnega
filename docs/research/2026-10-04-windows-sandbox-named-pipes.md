@@ -170,6 +170,23 @@ proxying pipes (they are created inside the confined process, not by us).
    unconfined) when setup is declined or blocked by policy.
 3. Do not do C beyond our own code; it cannot cover npm, vite or esbuild.
 
+## 7. End-to-end check with a real dev server (2026-10-04)
+
+A tiny app whose `npm run dev` runs vite 7 (which starts esbuild with piped
+stdio), driven through the Web UI in a workspace-write session:
+
+| Step | Result |
+| --- | --- |
+| `process_start npm run dev` (confined) | vite prints "ready" and its URL; `/` serves 200 — the failure is **lazy** |
+| first request for `/main.js` | 500 `spawn EPERM` in the browser and in vite's log; nothing in the tool result |
+| after the fixes in `0fea8b5` | `process_start` carries a note that confined servers can fail later; `process_output` carries the escalation hint once `spawn EPERM` appears; the approval card says "Runs outside the sandbox" with the justification |
+| `process_start … escalate: true` (approved) | vite ready, `/main.js` 200 with the transformed module |
+
+Also found and fixed on the way: PowerShell serialised npm's progress records
+as a `#< CLIXML` block on captured stderr (`f97608a`).
+
+The dedicated-user option is tracked in [docs/roadmap.md](../roadmap.md).
+
 Next step if accepted: a design note for B (account lifecycle, credential
 storage via DPAPI / Credential Manager, grant set for common toolchains,
 uninstall), then a spike on a clean Windows VM to confirm `npm run dev` with

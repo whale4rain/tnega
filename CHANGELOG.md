@@ -39,7 +39,12 @@ compare links provide a convenient browser view of the boundaries.
   Such failures now explain this, and `shell` / `process_start` can ask to
   run outside the sandbox with `escalate` and a justification; once that call
   is approved it really runs unsandboxed (approved calls used to stay
-  confined).
+  confined). A confined dev server can look ready and fail its first request
+  later; `process_start` now says so, `process_output` points at escalation
+  once `spawn EPERM` appears, and the approval card shows when a call asks to
+  leave the sandbox and why.
+- PowerShell progress records no longer leak into captured output as a
+  `#< CLIXML` block.
 - Project threads no longer ask you for permission. Their tool calls are
   reviewed automatically for the coordinator, with your requests in the room
   as evidence; what is not approved goes back to the thread, which asks its
