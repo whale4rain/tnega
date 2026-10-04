@@ -375,7 +375,7 @@ function ProcessHead({ blocks, live, open, onToggle }: { blocks: readonly Block[
       className="tool-group-head"
       onClick={onToggle}
       aria-expanded={open}
-      aria-label={live ? `Working: ${title}${tools.length ? `, ${tools.length} steps so far` : ''}` : `${title}${summary ? `: ${summary}` : ''}`}
+      aria-label={live ? `Working: ${title}${tools.length ? `, ${tools.length} ${tools.length === 1 ? 'step' : 'steps'} so far` : ''}` : `${title}${summary ? `: ${summary}` : ''}`}
     >
       <span className="tool-icon"><Icon size={14} /></span>
       <span className={`tool-group-title${live ? ' shimmer' : ''}`}>{title}</span>

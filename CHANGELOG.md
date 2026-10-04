@@ -33,6 +33,30 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Windows sandbox: commands that start child processes and read their output
+  (`npm run dev`, vite, esbuild, most test runners) fail inside the write
+  sandbox because it cannot allow named pipes without lifting the write fence.
+  Such failures now explain this, and `shell` / `process_start` can ask to
+  run outside the sandbox with `escalate` and a justification; once that call
+  is approved it really runs unsandboxed (approved calls used to stay
+  confined).
+- Project threads no longer ask you for permission. Their tool calls are
+  reviewed automatically for the coordinator, with your requests in the room
+  as evidence; what is not approved goes back to the thread, which asks its
+  coordinator, and the coordinator asks you only when the decision is yours.
+- Tool calls fold behind one line while a turn runs ("Running npm test"),
+  and a finished turn sums them up ("Used 6 tools: 3 reads, 2 commands")
+  instead of listing every call.
+- Settings → Models: register several chat models, edit or remove them,
+  and choose the default; sessions still switch from the composer. Your
+  existing model is kept as the first entry. Approval reviewers such as
+  TypeSafe Jev stay under Approvals.
+- Each project's coordinator has its own colour, so projects no longer look
+  alike in the sidebar.
+- Selects have an inset chevron and themed options.
+- The agent browser keeps the address you typed and shows a loading bar
+  until the page arrives.
+
 - Projects work like a team room. Every run of messages shows its author and
   time, days are separated, and the coordinator "is typing" while it writes.
   Hovering a thread card lets you reply to that thread directly. Agents now
