@@ -144,8 +144,11 @@ export function shellCommandArgv(shell: SystemShell, command: string): string[] 
       // which PowerShell enters under the read-only sandbox; `decodeOutput`
       // then reads the OEM code page instead. A failing last statement reports a native command's own
       // exit code rather than PowerShell's generic 1.
+      // Progress records (module loading, npm) are serialized as a `#< CLIXML` block on
+      // redirected stderr; nobody watches a progress bar here, so they are switched off.
       const prelude = 'try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}; '
         + '$OutputEncoding=[System.Text.Encoding]::UTF8; try { $PSStyle.OutputRendering=\'PlainText\' } catch {}; '
+        + '$ProgressPreference=\'SilentlyContinue\'; '
       const script = `${prelude}${command}\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }`
       return [shell.path, '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
         '-OutputFormat', 'Text', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]

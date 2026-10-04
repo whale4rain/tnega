@@ -71,6 +71,8 @@ describe('shellCommandArgv', () => {
     const argv = shellCommandArgv({ kind: 'pwsh', path: 'pwsh', label: 'PowerShell 7' }, 'Write-Output "x"')
     const encoded = argv[argv.indexOf('-EncodedCommand') + 1] ?? ''
     expect(Buffer.from(encoded, 'base64').toString('utf16le')).toContain('Write-Output "x"')
+    // Progress records would arrive as a #< CLIXML block on captured stderr.
+    expect(Buffer.from(encoded, 'base64').toString('utf16le')).toContain("$ProgressPreference='SilentlyContinue'")
     expect(describeShell({ kind: 'pwsh', path: 'pwsh', label: 'PowerShell 7' })).toContain('PowerShell syntax')
   })
 })
