@@ -46,6 +46,28 @@ Sources:
    fails for `WRITE_DAC` on creation and for the write open → `ERROR_ACCESS_DENIED`
    → Node reports `spawn EPERM` (or `listen EACCES` for a pipe server).
 
+### What `stdio: 'inherit'` fixes, and what it cannot
+
+DSH spawns the confined command with inherited stdio
+(`sandbox.spawn({ command, args, stdio: 'inherit', … })`), so the sandbox
+never has to create a pipe for the command's own output. Tnega does the same:
+
+- Tnega (unrestricted) starts the runner with pipes
+  (`packages/execution`, `stdio: [stdin, 'pipe', 'pipe']`). Those pipes are
+  created outside the sandbox.
+- The runner passes those handles to the confined command
+  (`STARTF_USESTDHANDLES`, inherited stdio; `runner.ts`). No pipe is created
+  under the restricted token, and the command's output reaches Tnega.
+
+That solves the **first hop**: `cmd /c echo`, `npm --version` or a test that
+prints directly all work and are captured. It cannot solve the **next hop**: when
+the confined program itself spawns children with piped stdio (npm → vite →
+esbuild, `execSync` in a build script), *that program* creates the named pipe
+under the restricted token, and we do not control how third-party tools spawn.
+This is exactly the case the DSH README limits its "impossible" statement to:
+"confined **grandchildren**". Option C below (change how children are spawned)
+is the same idea applied one level down, and is equally limited to code we own.
+
 ## 3. Our reproduction (2026-10-04)
 
 Run through the real runner (`resolveRunnerCommand()`), workspace-write mode:
