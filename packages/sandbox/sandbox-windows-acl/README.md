@@ -161,6 +161,8 @@ Provider 实例不会互相覆盖 ACE；命中完全一致的 ACE 时跳过 `Set
   vite / esbuild、多数测试运行器都会这样启动子进程——所以出路在上层：`execution-sandbox`
   识别这类失败并在 stderr 里提示，`shell` / `process_start` 带 `escalate: true` 与理由重试，
   经批准后在沙箱外运行（`ShellRequest.unsandboxed`）。
+  调研与方案比较（Codex elevated 专用沙箱用户、DSH 按命令提权）见
+  [docs/research/2026-10-04-windows-sandbox-named-pipes.md](../../../docs/research/2026-10-04-windows-sandbox-named-pipes.md)。
 - **CIM/WMI 不可用**：`Authenticated Users` 缺席使 WMI 命名空间安全检查失败（`0x80041003`），
   因此两种模式下的 `Get-CimInstance` / `Get-ComputerInfo` 都不可用。这是关掉 `C:\` 根树创建逃逸
   的另一面。
