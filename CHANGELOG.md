@@ -33,6 +33,28 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Projects work like a team room. Every run of messages shows its author and
+  time, days are separated, and the coordinator "is typing" while it writes.
+  Hovering a thread card lets you reply to that thread directly. Agents now
+  receive who is speaking and which message a reply answers.
+- The project panel is the same Workbench a session uses: Board, Library and
+  Routines lead its tabs, threads and project settings open as tabs, and it
+  resizes and toggles with Ctrl+J. Files, Changes and Terminal stay available.
+- The **Board** replaces Overview. It shows today's activity under the
+  project's weather (threads opened, finished, outputs, tokens) and lanes for
+  Needs you, Working, Ready and Idle threads, each card with its step or
+  question, checklist progress, outputs, active time and tokens. Resolve a
+  thread when you have taken its result; resolved threads fold away and
+  reopen when they get a new message.
+- **Routines** put recurring work on a schedule (daily, weekdays, weekly or
+  every few minutes). Create them from the Routines tab or by asking the
+  coordinator; each run goes to the routine's own thread.
+- Threads can publish workspace files — Word, PowerPoint, Excel, PDF,
+  images — as artifacts. The Library filters by type and previews them with
+  the same viewers as workspace files.
+- Project memory moves into project settings. The room and threads share a
+  one-line message box that grows as you type.
+
 ## [0.4.11](https://github.com/whale4rain/tnega/releases/tag/v0.4.11) — 2026-10-03
 
 - Projects are redesigned as a calm group chat. The main conversation holds

@@ -32,11 +32,16 @@ Projects 产品设计（最新）：[Projects: a room where people and agents wo
 | `GET /api/projects` | 列出该 workspace 的 Project |
 | `POST /api/projects` | 建 Project：`{ name, goal? }`；`?workspace=<文件夹>` 就是它的工作位置，不存在时创建 |
 | `GET /api/projects/:id` | 快照：Project、协调者 ID、游标、Thread、主对话、记忆、Library |
-| `POST /api/projects/:id/messages` | 主对话发言：`{ text }`；回执表示信封落盘，不是模型回复 |
+| `POST /api/projects/:id/messages` | 主对话发言：`{ text, replyTo? }`；`replyTo` 存为信封的 `causationId`；回执表示信封落盘，不是模型回复 |
 | `POST /api/projects/:id/threads/:tid/messages` | 直接给某个 Thread 留言；协调者只收一条不唤醒它的通知 |
 | `POST /api/projects/:id/threads/:tid/stop` | 停下该 Thread 正在跑的工作 |
 | `POST /api/projects/:id/stop` | 停下所有正在跑的 Agent |
-| `GET /api/projects/:id/artifacts/:hash` | Library 里登记过的产物内容，一律按文本返回，由前端在沙箱里渲染 |
+| `GET /api/projects/:id/artifacts/:hash` | Library 里登记过的产物内容：文本按纯文本、其余按字节流返回，由前端在沙箱里渲染 |
+| `PATCH /api/projects/:id/threads/:tid` | `{ resolved }`：人收下（或重新打开）一个 Thread |
+| `GET /api/projects/:id/usage?since=` | 每个 Thread 与整个 Project 的 token 与工作时长；`since` 另算这之后的部分 |
+| `POST /api/projects/:id/routines` | 建 Routine：`{ title, prompt, schedule }` |
+| `PATCH /api/projects/:id/routines/:rid` | 改、暂停、恢复或删除 Routine |
+| `POST /api/projects/:id/routines/:rid/run` | 立即运行一次 |
 | `GET /api/projects/:id/threads/:tid` | 该 Thread 的记录与它的 Session 事件 |
 | `POST /api/projects/:id/memory` | 新增一条项目记忆 |
 | `GET /api/projects/:id/memory/:mid` | 该记忆的全部版本与来源 |
@@ -68,21 +73,26 @@ Project 是一个「群聊」：主对话短、好扫读，每件专注的工作
 
 ## Web 屏
 
-Project 屏与会话屏共用同一套骨架：`WorkbenchShell` 里一块主内容加一个可选侧栏，左栏还是
-`WorkspaceSidebar`（Projects 一节在 Workspaces 之上）。切到 Project 只是换主内容，不是换界面。
+Project 屏与会话屏共用同一套骨架：左栏、主内容、右侧**工作台**。Project 的面板就是会话的工作台
+（同样的位置、宽度、拖拽与 Ctrl+J），只是它的标签栏以 Board · Library · Routines 开头，打开的
+Thread 与 Project 设置是可关闭的标签，后面仍是 Files · Changes · Terminal · Browser。设计依据见
+[projects-design.md](projects-design.md)。
 
 | 位置 | 内容 |
 | --- | --- |
 | 左栏 Projects | 最近打开的 Project（名称 + 它所在的文件夹）；`+` 新建 |
 | 顶部 | Project 名称；有 Thread 在跑时一行「N threads working」，断线时「Reconnecting…」 |
-| 主对话 | 用户发言与协调者回复；交出去的工作是一张 Thread 卡片：**只有标题与状态**（工作中显示清单的当前一步），有新结果时带未读点。回复带产物时下面是产物卡片 |
-| 右栏 Overview / Memory / Library / Settings | Overview 按「需要你 / 工作中 / 空闲 / 已完成」分组列出 Thread |
-| Thread 面板 | 标题与状态、Stop；然后依次是实时清单、产物卡片、折叠的 Brief、每轮的回答（步骤折叠成「Show N steps」），底部是直接给它留言的输入框 |
+| 主对话（聊天室） | 每段发言带作者、头像与时间，按天分隔；协调者在写时显示「Coordinator is typing…」。交出去的工作是一张 Thread 卡片：**只有标题与状态**（工作中显示清单的当前一步），有新结果时带未读点；悬停卡片可「回复」，消息直接发给那个 Thread。回复带产物时下面是产物卡片 |
+| Board | 顶部是项目天气与「今天」：开了几个 Thread、完成几个、产出几份、用了多少 token；下面是 Needs you · Working · Ready · Idle 四条泳道（宽面板并排成看板，窄面板纵向堆叠），Resolved 折叠。卡片有天气头像、当前步骤 / 等待的问题 / 回报首行、清单进度条、产物类型、最近活动、工作时长与 token；悬停可 Resolve / Reopen / Stop |
+| Library | 人加的与 Thread 产出的，按类型（Pages · Docs · Slides · Sheets · Data…）筛选；就地预览，Word / PowerPoint / Excel / PDF 用工作区文件的同一套预览器 |
+| Routines | 定时工作：日程、下次运行、上次运行与错误；可新建、暂停、恢复、立即运行、删除。每次运行进入它自己的 Thread |
+| Thread 标签 | 标题与状态、Stop / Resolve / Reopen；然后依次是实时清单、产物卡片、折叠的 Brief、每轮的回答（步骤折叠成「Show N steps」），底部是直接给它留言的输入框 |
+| Project 设置 | Brief（目标、指令）、**Memory**、协作偏好、模型、用量、归档与删除 |
 
 - **Project 是长期工作空间**。一个 Project 就是一个文件夹：创建时选（或新建）目录，它的
   记忆、Thread 与产物都在那个目录下，Agent 也在那里运行。
-- **输入区**。主对话与 Thread 各有一份，用的就是会话屏的输入框；Project 这一层改不了工具权限、
-  也没有 plan/goal 模式，所以不渲染这两个控件。
+- **输入区**。主对话与 Thread 用同一个一行高的输入框（`PromptBox` 的 `inline`），随输入增高；
+  Project 这一层改不了工具权限、也没有 plan/goal 模式，所以不渲染这两个控件。
 - **流的状态可见**。断线后客户端按游标自己接回来，不靠刷新。
 
 创建只要名称与文件夹；目标可以后补，创建时不拉起任何 Agent。发完就显示（判据是信封落盘，

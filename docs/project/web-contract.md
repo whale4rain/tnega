@@ -18,7 +18,9 @@ Claude Projects 的能力而**提议**的接口。提议接口尚未实现时，
 | Library（你加的文件 + Claude 的产物） | Blackboard `artifact` / `resource` + Artifact Store | 右侧 Library：列表、查看、添加 |
 | 偏好：check-in 频率、开 Thread 的积极度、更新详略 | **提议** `settings.preferences` | 右侧 Settings |
 | 协调者与 Thread 分别选模型和思考强度 | **提议** `settings.coordinator` / `settings.threads` | 右侧 Settings |
-| 按 Project 查看用量 | **提议** `GET …/usage` | Settings → Usage |
+| 按 Project 查看用量 | `GET …/usage?since=` | Board 卡片与「今天」；Settings → Usage |
+| Routines | Blackboard `routine` 事实；`POST …/routines`、`PATCH …/routines/:id`、`POST …/routines/:id/run` | 工作台 Routines 标签 |
+| 收下结果（Resolved） | `PATCH …/threads/:id` `{ resolved }` | Board 卡片与 Thread 标签的 Resolve / Reopen |
 | （Tnega 补充）暂停全部 / 停止单个 Thread | `POST …/stop`、`POST …/threads/:id/stop` | 顶栏菜单；Thread 面板 Stop |
 
 Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tnega 仍是本地产品。
@@ -45,6 +47,10 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 | PATCH | `/api/projects/:id/memory/:memoryId` `{ text, expected_version, tags? }` / `{ deleted: true, expected_version }` | 编辑 / 删除；前端写之前先读历史取当前版本，409 时保留草稿并提示 |
 | GET | `/api/projects/:id/memory/:memoryId` | 版本历史 |
 | GET | `/api/projects/:id/stream?after=<cursor>` | SSE 变化流，断线后按游标重连 |
+| GET | `/api/projects/:id/usage?since=<ms>` | 每个 Thread 的 token、回复数、工作时长（turn 开始到结束）与最近活动；`since` 另给这之后的汇总（Board 的「今天」） |
+| PATCH | `/api/projects/:id/threads/:threadId` `{ resolved }` | 收下 / 重新打开 Thread；正在跑时收下会先停下它 |
+| POST / PATCH | `/api/projects/:id/routines`、`/routines/:id` | 建、改、暂停（`enabled`）、删除（`deleted`）Routine；日程不合法返回 400 |
+| POST | `/api/projects/:id/routines/:id/run` | 立即运行一次 Routine |
 
 流帧：`message`（信封，含 `seq`）、`commit`（`agent` / `memory` / `artifact` / `resource` / `project`，带 `author`、`version`、`updatedAt`、`source`）、
 `chunk`（`agentId` 的实时正文增量）、`agent-status`（`running` / `idle`）、`approval/request`、`heartbeat`。
@@ -110,17 +116,6 @@ interface ProjectSettings {
 - `maxParallelThreads` 对应 `thread-local` 的并发上限；`threadSpawning: 'ask-first'` 时协调者先在主对话提议，
   得到用户同意再 `spawn_thread`。
 - 降级：前端在 PATCH 返回 400（`archived must be a boolean`）/404/405 时提示「服务端尚不支持」。
-
-### P1-2 用量：`GET /api/projects/:id/usage`
-
-```ts
-interface ProjectUsage {
-  total: { responses: number; promptTokens: number; completionTokens: number; cachedTokens: number }
-  byThread: Array<{ threadId: string; responses: number; promptTokens: number; completionTokens: number; cachedTokens: number }>
-}
-```
-
-对每个 Agent 的 Session 做与 `readSessionMetrics` 相同的汇总。降级：Settings 中显示「不可用」。
 
 ### P1-3 添加到 Library：`POST /api/projects/:id/library`
 

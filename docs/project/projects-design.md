@@ -253,7 +253,10 @@ between the room and a thread does not change the feel of typing.
 
 ## 7. Plan
 
-### Phase 1 (this change)
+### Phase 1 — delivered 2026-10-04
+
+All nine items below shipped, plus one found on the way (#10). Verified with
+unit tests and in the running Web UI against a scripted model.
 
 | # | Change | Where |
 | --- | --- | --- |
@@ -266,6 +269,19 @@ between the room and a thread does not change the feel of typing.
 | 7 | Room as a chat room: author heads with time, day separators, "is typing…", reply to a thread card goes to the thread | `ProjectView` |
 | 8 | Routines: stored schedule, host scheduler, coordinator tool, Routines tab | `@tnega/cli` project host, `tool-routine` in `tool-thread`, `ProjectPanels` |
 | 9 | Binary artifacts from workspace paths, typed Library with filters and office previews | `tool-blackboard`, artifact route, `Artifacts.tsx` |
+| 10 | Precise input: a child's report reaches its parent as "[Report from thread "…" (id)]", a person's reply as "[In reply to …: "…"]"; the server stores the reply target the UI sends | `project-loop` (`renderEnvelope`), host `sendUserMessage` |
+
+Notes from building it:
+
+- The project panel *is* the session Workbench: App passes the project's tabs
+  to `Workbench`, which renders a slot; `ProjectView` portals the active tab
+  into it, so the tabs share the view's live state. Files, Changes, Terminal
+  and Browser stay available after a divider.
+- The Board stacks its lanes in a narrow panel (empty lanes hidden) and lays
+  them out as a four-column kanban from 720 px wide (a CSS container query).
+- Routines run while the project is mounted in a running Tnega; a run missed
+  while nothing ran happens once on the next tick. They are `routine` facts
+  on the project Blackboard.
 
 ### Phase 2 (roadmap)
 
