@@ -80,3 +80,46 @@ describe('process tools', () => {
     expect((root.get('tools') as ToolsService).list().some(tool => tool.schema.name === 'process_start')).toBe(false)
   })
 })
+
+describe('process tools under the Windows sandbox', () => {
+  it.runIf(process.platform === 'win32')('warn that a confined server can fail later, and point at escalation once it does', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'tnega-process-'))
+    dirs.push(cwd)
+    let output = 'VITE ready\n  Local: http://localhost:5199/\n'
+    const requests: Array<{ unsandboxed?: boolean }> = []
+    const fake = {
+      runShell: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
+      runProcess: async () => ({ exitCode: 0, stdout: '', stderr: '', stdoutTruncated: false }),
+      fetchHttp: async () => ({ status: 200, ok: true, headers: {}, body: '', truncated: false }),
+      startShell: async (request: { unsandboxed?: boolean }) => {
+        requests.push(request)
+        return {
+          pid: 1,
+          sandboxed: request.unsandboxed !== true,
+          output: () => output,
+          exitCode: () => undefined,
+          exited: new Promise<number | null>(() => {}),
+          kill: async () => {},
+        }
+      },
+      startProcess: async () => { throw new Error('unused') },
+    }
+    const root = new Context()
+    await root.plugin(tools)
+    const fiber = await root.plugin(builtinTools, { cwd, allowShell: true, execution: fake })
+    const registry = root.get('tools') as ToolsService
+
+    const started = await registry.execute('process_start', { command: 'npm run dev', waitForUrlMs: 0 }, {})
+    expect((started.output as { note?: string }).note).toMatch(/spawn EPERM/)
+
+    output += '[vite] Internal server error: spawn EPERM\n'
+    const read = await registry.execute('process_output', { id: 'p1' }, {})
+    expect((read.output as { hint?: string }).hint).toMatch(/escalate: true/)
+
+    // Escalation only takes effect on an approved call.
+    await registry.execute('process_start', { command: 'npm run dev', waitForUrlMs: 0, escalate: true }, {})
+    await registry.execute('process_start', { command: 'npm run dev', waitForUrlMs: 0, escalate: true }, { approvedElevation: true })
+    expect(requests.map(request => request.unsandboxed === true)).toEqual([false, false, true])
+    await fiber.dispose()
+  })
+})

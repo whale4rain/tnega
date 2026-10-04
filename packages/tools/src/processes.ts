@@ -1,4 +1,4 @@
-import { describeShell, systemShell, type BackgroundProcess, type ExecutionProvider } from '@tnega/execution'
+import { describeShell, isSandboxPipeDenial, SANDBOX_PIPE_HINT, systemShell, type BackgroundProcess, type ExecutionProvider } from '@tnega/execution'
 import type { ToolDefinition, ToolExecuteOptions } from './index.js'
 import { ESCALATE_HINT, ESCALATE_PROPERTIES, escalated } from './escalation.js'
 
@@ -75,6 +75,20 @@ function tail(text: string, chars = 4_000): string {
   return text.length > chars ? `…${text.slice(-chars)}` : text
 }
 
+/**
+ * On Windows a confined dev server usually looks healthy at first: vite,
+ * webpack and test runners start their helper processes lazily, and those
+ * fail only on the first request. Say so up front, and point at the fix
+ * once the denial shows up in the output.
+ */
+const SANDBOXED_SERVER_NOTE = 'Runs inside the Windows sandbox. Servers and build tools that start helper processes (vite/esbuild, webpack, jest) can look ready here and then fail requests with spawn EPERM; check the page or process_output before relying on it.'
+
+function sandboxNotes(process: BackgroundProcess, output: string, starting: boolean): { note?: string; hint?: string } {
+  if (globalThis.process.platform !== 'win32' || process.sandboxed !== true) return {}
+  if (isSandboxPipeDenial(output)) return { hint: SANDBOX_PIPE_HINT }
+  return starting ? { note: SANDBOXED_SERVER_NOTE } : {}
+}
+
 function status(entry: ProcessEntry): string {
   const code = entry.process.exitCode()
   return code === undefined ? 'running' : `exited (${code ?? 'killed'})`
@@ -131,7 +145,7 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
         }
         const output = process.output()
         entry.read = output.length
-        return { id, status: status(entry), urls: localUrls(output), output: tail(stripAnsi(output)) }
+        return { id, status: status(entry), urls: localUrls(output), output: tail(stripAnsi(output)), ...sandboxNotes(process, output, true) }
       },
     },
     {
@@ -153,7 +167,7 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
         const output = entry.process.output()
         const fresh = all || output.length < entry.read ? output : output.slice(entry.read)
         entry.read = output.length
-        return { id: entry.id, status: status(entry), urls: localUrls(output), output: tail(stripAnsi(fresh), 8_000) }
+        return { id: entry.id, status: status(entry), urls: localUrls(output), output: tail(stripAnsi(fresh), 8_000), ...sandboxNotes(entry.process, fresh, false) }
       },
     },
     {

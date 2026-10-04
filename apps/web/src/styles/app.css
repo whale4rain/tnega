@@ -3977,3 +3977,9 @@ kbd {
   font-size: var(--text-sm);
   color: var(--text-2);
 }
+
+.approval-escalation {
+  margin: 8px 0 0;
+  font-size: var(--text-sm);
+  color: var(--warn);
+}

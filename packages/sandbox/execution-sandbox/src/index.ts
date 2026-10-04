@@ -1,6 +1,9 @@
 import type { Context } from '@tnega/core'
 import {
   isMsysShell,
+  isSandboxPipeDenial,
+  SANDBOX_PIPE_HINT,
+  type BackgroundProcess,
   localExecutionProvider,
   shellCommandArgv,
   systemShell,
@@ -47,15 +50,25 @@ export interface SandboxedExecutionConfig {
  * owner is not in the token's restricting list. Widening the list would undo
  * the write fence, so the command fails; this tells the agent how to proceed.
  */
-const PIPE_DENIAL = /\b(?:spawn(?:Sync)?\s+\S+\s+EPERM|Error: spawn EPERM|listen EACCES[^\n]*\\pipe\\)/
-
-export const SANDBOX_PIPE_HINT = '[tnega] This command needs to start child processes and read their output, which the Windows sandbox cannot allow. '
-  + 'If it is needed, run it again with escalate: true and a one-line justification; it then runs outside the sandbox after approval.'
+export { SANDBOX_PIPE_HINT }
 
 function withPipeHint(result: { exitCode: number; stdout: string; stderr: string }): { exitCode: number; stdout: string; stderr: string } {
   if (process.platform !== 'win32' || result.exitCode === 0) return result
-  if (!PIPE_DENIAL.test(`${result.stdout}\n${result.stderr}`)) return result
+  if (!isSandboxPipeDenial(`${result.stdout}\n${result.stderr}`)) return result
   return { ...result, stderr: `${result.stderr}${result.stderr.endsWith('\n') || !result.stderr ? '' : '\n'}${SANDBOX_PIPE_HINT}\n` }
+}
+
+/** Tell the process tools a background process runs confined, so they can explain its failures. */
+function markSandboxed(process: BackgroundProcess, sandboxed: boolean): BackgroundProcess {
+  if (!sandboxed) return process
+  return {
+    get pid() { return process.pid },
+    sandboxed: true,
+    output: () => process.output(),
+    exitCode: () => process.exitCode(),
+    exited: process.exited,
+    kill: () => process.kill(),
+  }
 }
 
 function shellArgv(request: ShellRequest, config: SandboxedExecutionConfig, confined = true): string[] {
@@ -156,15 +169,15 @@ export function sandboxedExecution(
             const confined = open
               ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config, false) }
               : await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy)
-            return inner.startProcess!({ ...confined, cwd: request.cwd })
+            return markSandboxed(await inner.startProcess!({ ...confined, cwd: request.cwd }), !open)
           },
           async startProcess(request: BackgroundProcessRequest) {
             const activePolicy = await policy()
             if (activePolicy.mode === 'bypass' || !confineProcess) return inner.startProcess!(request)
             const confined = await confine('process', request.argv, {}, activePolicy)
-            return inner.startProcess!({ ...request, ...confined,
+            return markSandboxed(await inner.startProcess!({ ...request, ...confined,
               ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
-            })
+            }), true)
           },
         }
       : {}),

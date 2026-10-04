@@ -79,9 +79,28 @@ export interface BackgroundProcessRequest {
   cwd: string
 }
 
+/**
+ * The Windows write sandbox cannot let a confined program create named pipes
+ * for its own children (Node/libuv `spawn` with captured output: npm → vite →
+ * esbuild, test runners, `execSync`). The pipe's default DACL only lets its
+ * owner write and the owner is not a restricting SID, so the program sees
+ * `spawn EPERM` (see docs/research/2026-10-04-windows-sandbox-named-pipes.md).
+ */
+const PIPE_DENIAL = /\bspawn(?:Sync)?\b[^\n]*?\bEPERM\b|listen EACCES[^\n]*\\pipe\\/
+
+/** Whether `text` carries the Windows sandbox's named-pipe denial. */
+export function isSandboxPipeDenial(text: string): boolean {
+  return PIPE_DENIAL.test(text)
+}
+
+export const SANDBOX_PIPE_HINT = '[tnega] This command needs to start child processes and read their output, which the Windows sandbox cannot allow. '
+  + 'If it is needed, run it again with escalate: true and a one-line justification; it then runs outside the sandbox after approval.'
+
 /** Handle to a running child. Output is the combined stdout/stderr tail. */
 export interface BackgroundProcess {
   readonly pid: number | undefined
+  /** Set by a sandbox decorator when the process runs confined. */
+  readonly sandboxed?: boolean
   /** Combined stdout and stderr, most recent `maxOutput` characters. */
   output(): string
   /** Exit code once exited, `null` when killed by a signal, `undefined` while running. */

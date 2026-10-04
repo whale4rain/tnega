@@ -809,13 +809,30 @@ export function ApprovalCard({ approval, onAnswer }: { approval: Approval; onAns
         <span>The agent wants to use <strong>{approval.tool}</strong></span>
       </div>
       {approval.input && <pre className="approval-input">{approvalText(approval.input)}</pre>}
+      {escalation(approval.input) && (
+        <p className="approval-escalation">
+          <strong>Runs outside the sandbox</strong>, with your full access{escalation(approval.input)?.justification ? `: ${escalation(approval.input)?.justification}` : '.'}
+        </p>
+      )}
       <div className="approval-actions">
-        <span className="muted small">Outside the current permission level</span>
+        <span className="muted small">{escalation(approval.input) ? 'Asks to leave the sandbox for this one call' : 'Outside the current permission level'}</span>
         <button type="button" className="button ghost small" onClick={() => onAnswer(false)}>Deny</button>
         <button type="button" className="button primary small" onClick={() => onAnswer(true)}>Allow once</button>
       </div>
     </div>
   )
+}
+
+/** Whether a request asks to run outside the sandbox, and why. */
+function escalation(input: string): { justification?: string } | undefined {
+  try {
+    const parsed: unknown = JSON.parse(input)
+    if (!parsed || typeof parsed !== 'object' || Reflect.get(parsed, 'escalate') !== true) return undefined
+    const justification: unknown = Reflect.get(parsed, 'justification')
+    return typeof justification === 'string' && justification.trim() ? { justification: justification.trim() } : {}
+  } catch {
+    return undefined
+  }
 }
 
 /** Show a shell command as `$ cmd`, other JSON inputs pretty-printed. */
