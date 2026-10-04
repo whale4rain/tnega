@@ -11,7 +11,7 @@ import {
   type SandboxConfineRequest,
   type SandboxMechanismRequest,
 } from '@tnega/sandbox'
-import { sandboxedExecution } from '../src/index.js'
+import { SANDBOX_PIPE_HINT, sandboxedExecution } from '../src/index.js'
 
 const WORKSPACE = process.platform === 'win32' ? 'C:\\work' : '/work'
 
@@ -144,6 +144,28 @@ describe('sandboxed execution', () => {
     expect(shell.stdout).toBe('direct')
     expect(sandbox.requests).toHaveLength(0)
     expect(inner.shells).toHaveLength(1)
+  })
+
+  it('runs an approved escalation outside the sandbox and confines everything else', async () => {
+    const { ctx, sandbox, inner } = mount()
+    const provider = execution(ctx, inner)
+    const escalated = await provider.runShell({ command: 'npm run build', cwd: WORKSPACE, unsandboxed: true })
+    expect(escalated.stdout).toBe('direct')
+    expect(sandbox.requests).toHaveLength(0)
+    await provider.runShell({ command: 'npm run build', cwd: WORKSPACE })
+    expect(sandbox.requests).toHaveLength(1)
+  })
+
+  it.runIf(process.platform === 'win32')('explains a pipe denial and how to escalate', async () => {
+    const { ctx, inner } = mount()
+    inner.runProcess = async request => {
+      inner.processes.push(request)
+      return { exitCode: 1, stdout: '', stderr: 'Error: spawn EPERM\n    at ChildProcess.spawn', stdoutTruncated: false }
+    }
+    const result = await execution(ctx, inner).runShell({ command: 'npm run dev', cwd: WORKSPACE })
+    expect(result.stderr).toContain(SANDBOX_PIPE_HINT)
+    inner.runProcess = async () => ({ exitCode: 1, stdout: '', stderr: 'plain failure', stdoutTruncated: false })
+    expect((await execution(ctx, inner).runShell({ command: 'false', cwd: WORKSPACE })).stderr).toBe('plain failure')
   })
 
   it('resolves the policy for each execution instead of keeping the startup mode', async () => {

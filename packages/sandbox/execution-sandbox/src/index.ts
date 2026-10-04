@@ -40,6 +40,24 @@ export interface SandboxedExecutionConfig {
   confineProcess?: boolean
 }
 
+/**
+ * The Windows write sandbox cannot let a process create named pipes for its
+ * children (Node/libuv `spawn` with captured output, npm scripts that start
+ * vite or esbuild…): the pipe's default DACL only lets its owner write, and the
+ * owner is not in the token's restricting list. Widening the list would undo
+ * the write fence, so the command fails; this tells the agent how to proceed.
+ */
+const PIPE_DENIAL = /\b(?:spawn(?:Sync)?\s+\S+\s+EPERM|Error: spawn EPERM|listen EACCES[^\n]*\\pipe\\)/
+
+export const SANDBOX_PIPE_HINT = '[tnega] This command needs to start child processes and read their output, which the Windows sandbox cannot allow. '
+  + 'If it is needed, run it again with escalate: true and a one-line justification; it then runs outside the sandbox after approval.'
+
+function withPipeHint(result: { exitCode: number; stdout: string; stderr: string }): { exitCode: number; stdout: string; stderr: string } {
+  if (process.platform !== 'win32' || result.exitCode === 0) return result
+  if (!PIPE_DENIAL.test(`${result.stdout}\n${result.stderr}`)) return result
+  return { ...result, stderr: `${result.stderr}${result.stderr.endsWith('\n') || !result.stderr ? '' : '\n'}${SANDBOX_PIPE_HINT}\n` }
+}
+
 function shellArgv(request: ShellRequest, config: SandboxedExecutionConfig, confined = true): string[] {
   const shell = config.shell ?? systemShell()
   // Fail closed with a reason instead of Cygwin's cryptic CreateFileMapping crash.
@@ -101,7 +119,8 @@ export function sandboxedExecution(
   return {
     async runShell(request: ShellRequest) {
       const activePolicy = await policy()
-      if (activePolicy.mode === 'bypass') return inner.runShell(request)
+      // An approved escalation runs as the user would; the approval was the gate.
+      if (activePolicy.mode === 'bypass' || request.unsandboxed) return inner.runShell(request)
       const confined = await confine('shell', shellArgv(request, config), request, activePolicy)
       const result = await inner.runProcess({
         ...confined,
@@ -110,7 +129,7 @@ export function sandboxedExecution(
         ...(request.maxBuffer !== undefined ? { maxBuffer: request.maxBuffer } : {}),
         ...(request.signal ? { signal: request.signal } : {}),
       })
-      return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr }
+      return withPipeHint({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr })
     },
 
     async runProcess(request: ProcessRequest) {
@@ -132,8 +151,9 @@ export function sandboxedExecution(
       ? {
           async startShell(request: BackgroundShellRequest) {
             const activePolicy = await policy()
-            if (activePolicy.mode === 'bypass' && inner.startShell) return inner.startShell(request)
-            const confined = activePolicy.mode === 'bypass'
+            const open = activePolicy.mode === 'bypass' || request.unsandboxed === true
+            if (open && inner.startShell) return inner.startShell(request)
+            const confined = open
               ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config, false) }
               : await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy)
             return inner.startProcess!({ ...confined, cwd: request.cwd })

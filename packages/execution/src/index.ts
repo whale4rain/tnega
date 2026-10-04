@@ -11,6 +11,11 @@ export interface ShellRequest {
   timeoutMs?: number
   maxBuffer?: number
   signal?: AbortSignal
+  /**
+   * Run outside any sandbox decorator. Set only by a tool whose call was
+   * approved for escalation (`ToolExecuteOptions.approvedElevation`).
+   */
+  unsandboxed?: boolean
 }
 
 export interface ShellResult {
@@ -64,6 +69,8 @@ export interface HttpResponse {
 export interface BackgroundShellRequest {
   command: string
   cwd: string
+  /** See {@link ShellRequest.unsandboxed}. */
+  unsandboxed?: boolean
 }
 
 export interface BackgroundProcessRequest {

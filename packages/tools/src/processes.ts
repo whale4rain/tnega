@@ -1,5 +1,6 @@
 import { describeShell, systemShell, type BackgroundProcess, type ExecutionProvider } from '@tnega/execution'
 import type { ToolDefinition, ToolExecuteOptions } from './index.js'
+import { ESCALATE_HINT, ESCALATE_PROPERTIES, escalated } from './escalation.js'
 
 /** Names of the background-process tools. */
 export const PROCESS_TOOL_NAMES: readonly string[] = ['process_start', 'process_output', 'process_list', 'process_stop']
@@ -101,13 +102,14 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
     {
       schema: {
         name: 'process_start',
-        description: 'Start a long-running command in the background, such as a dev server (`npm run dev`) or a watcher, and return its id, first output and any local URLs it printed. Use `shell` for commands that finish on their own. ' + describeShell(systemShell()),
+        description: 'Start a long-running command in the background, such as a dev server (`npm run dev`) or a watcher, and return its id, first output and any local URLs it printed. Use `shell` for commands that finish on their own. ' + describeShell(systemShell()) + ' ' + ESCALATE_HINT,
         parameters: {
           type: 'object',
           properties: {
             command: { type: 'string', description: 'shell command to run' },
             cwd: { type: 'string', description: 'working directory relative to the workspace' },
             waitForUrlMs: { type: 'number', description: 'how long to wait for a local URL in the output (default 15000, 0 to return at once)' },
+            ...ESCALATE_PROPERTIES,
           },
           required: ['command'],
         },
@@ -119,7 +121,7 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
         const running = registry.running()
         if (running.length >= registry.maxProcesses) throw new Error(`already running ${running.length} processes; stop one with process_stop first`)
         const cwd = await config.resolveCwd(typeof args.cwd === 'string' ? args.cwd : '.')
-        const process = await start!({ command: args.command, cwd })
+        const process = await start!({ command: args.command, cwd, ...(escalated(args, options) ? { unsandboxed: true } : {}) })
         const entry = registry.add(args.command, cwd, process)
         const id = entry.id
         const waitMs = typeof args.waitForUrlMs === 'number' ? Math.min(Math.max(args.waitForUrlMs, 0), 60_000) : 15_000

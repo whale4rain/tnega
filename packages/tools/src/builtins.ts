@@ -19,6 +19,7 @@ import type {
 } from './index.js'
 import { evaluateExpression } from './calc.js'
 import { resolveInside } from './path.js'
+import { ESCALATE_HINT, ESCALATE_PROPERTIES, escalated } from './escalation.js'
 import { createProcessTools, type ProcessRegistry } from './processes.js'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import {
@@ -564,7 +565,7 @@ function httpGetTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
 function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   return definition(
     'shell',
-    `Run a shell command inside the workspace and return { exitCode, stdout, stderr }. ${describeShell(systemShell())}`,
+    `Run a shell command inside the workspace and return { exitCode, stdout, stderr }. ${describeShell(systemShell())} ${ESCALATE_HINT}`,
     async (input, options: ToolExecuteOptions) => {
       const args = record(input)
       const command = stringField(args.command, 'command')
@@ -576,6 +577,7 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
         timeoutMs,
         maxBuffer: config.maxWriteBytes,
         ...(options.signal ? { signal: options.signal } : {}),
+        ...(escalated(args, options) ? { unsandboxed: true } : {}),
       })
       return {
         exitCode: result.exitCode,
@@ -589,6 +591,7 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
         command: { type: 'string', description: 'shell command to run' },
         cwd: { type: 'string', description: 'working directory relative to the workspace' },
         timeoutMs: { type: 'number', description: 'optional timeout in milliseconds' },
+        ...ESCALATE_PROPERTIES,
       },
       required: ['command'],
     },

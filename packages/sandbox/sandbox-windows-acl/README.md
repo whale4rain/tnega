@@ -156,6 +156,11 @@ Provider 实例不会互相覆盖 ACE；命中完全一致的 ACE 时跳过 `Set
   打开请求写的权限没有任何 restricting SID 被授予（Win32 层的默认 SD 模板，不是令牌默认 DACL）。
   继承与忽略 stdio 的 spawn 正常；匿名管道（PowerShell 管道）正常，因为受限令牌的默认 DACL 里
   有一条指向 restricting SID 的全权 ACE（`setTokenDefaultDaclGrant` 合并的那条）。
+  修不了：能让 pass-2 通过的只有管道 owner（当前用户 SID），把它放进 restricting 列表等于
+  撤掉写围栏（Codex 只在专用沙箱账户的 elevated 模式下这样做）。影响面很大——`npm run dev`、
+  vite / esbuild、多数测试运行器都会这样启动子进程——所以出路在上层：`execution-sandbox`
+  识别这类失败并在 stderr 里提示，`shell` / `process_start` 带 `escalate: true` 与理由重试，
+  经批准后在沙箱外运行（`ShellRequest.unsandboxed`）。
 - **CIM/WMI 不可用**：`Authenticated Users` 缺席使 WMI 命名空间安全检查失败（`0x80041003`），
   因此两种模式下的 `Get-CimInstance` / `Get-ComputerInfo` 都不可用。这是关掉 `C:\` 根树创建逃逸
   的另一面。
