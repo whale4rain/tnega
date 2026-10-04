@@ -233,6 +233,26 @@ export function presentRun(entry: AgentEntry): { process: Block[]; visible: Bloc
 }
 
 /**
+ * A running turn, folded the way a finished one is: only the newest text (it
+ * may be streaming), files, and warnings stay in view; every tool call and
+ * earlier narration sits behind one live line that names the current step.
+ */
+export function presentLive(entry: AgentEntry): { process: Block[]; visible: Block[] } {
+  const last = entry.blocks.at(-1)
+  const process: Block[] = []
+  const visible: Block[] = []
+  for (const block of entry.blocks) {
+    const shown = (block === last && block.kind === 'text')
+      || block.kind === 'files'
+      || (block.kind === 'notice' && !block.process && block.tone !== 'info')
+      || (block.kind === 'subagent' && block.agent.status !== 'ready')
+    if (shown) visible.push(block)
+    else process.push(block)
+  }
+  return { process, visible }
+}
+
+/**
  * Outcome first: a finished turn shows its answer, the files it changed and
  * anything that went wrong; every other step folds away until asked for.
  * While the turn runs nothing streams into view — the thread's checklist

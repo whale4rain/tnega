@@ -17,7 +17,7 @@ it('displays a live compaction message with an expandable summary while the Agen
   expect(view.queryByText('The earlier investigation is complete.')).toBeNull()
   fireEvent.click(marker)
   expect(view.getByText('The earlier investigation is complete.')).toBeTruthy()
-  expect(view.queryByRole('button', { name: 'Completed process' })).toBeNull()
+  expect(view.queryByRole('button', { name: /Show details|Used/ })).toBeNull()
 })
 
 const completed: Entry = {
@@ -37,17 +37,18 @@ it('shows final reply and files by default and reveals completed process on dema
   expect(view.getByText('src/main.ts')).toBeTruthy()
   expect(view.getByText('A retry was required.')).toBeTruthy()
   expect(view.queryByText('Investigating the problem.')).toBeNull()
-  const toggle = view.getByRole('button', { name: 'Completed process' })
+  const toggle = view.getByRole('button', { name: 'Show details' })
   expect(toggle.getAttribute('aria-expanded')).toBe('false')
   fireEvent.click(toggle)
   expect(toggle.getAttribute('aria-expanded')).toBe('true')
   expect(view.getByText('Investigating the problem.')).toBeTruthy()
 })
 
-it('keeps process fully visible while streaming', () => {
+it('folds the process while streaming, keeping files and warnings in view', () => {
   const view = render(createElement(Timeline, { entries: [completed], running: true, actions: {} }))
-  expect(view.getByText('Investigating the problem.')).toBeTruthy()
-  expect(view.queryByRole('button', { name: 'Completed process' })).toBeNull()
+  expect(view.queryByText('Investigating the problem.')).toBeNull()
+  expect(view.getByText('A retry was required.')).toBeTruthy()
+  expect(view.getByRole('button', { name: /^Working: Thinking/ }).getAttribute('aria-expanded')).toBe('false')
 })
 
 it('reveals PTC child tools and their errors inside the outer tool details', () => {
@@ -58,7 +59,9 @@ it('reveals PTC child tools and their errors inside the outer tool details', () 
     },
   }] }
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
-  // An ordinary failure is the agent's to handle: no red counter, but the detail keeps the message.
+  // An ordinary failure is the agent's to handle: it folds with the rest of the process.
+  expect(view.queryByText('1 tool call · 1 done')).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: /^Used 1 tool/ }))
   expect(view.getByText('1 tool call · 1 done')).toBeTruthy()
   expect(view.queryByText('Tests failed')).toBeNull()
   fireEvent.click(view.getByRole('button', { name: /CodeMode/ }))
@@ -77,27 +80,28 @@ it('keeps model-facing tool errors quiet and flags only failures a person must a
     tool('denied', { error: 'network access is not allowed', errorName: 'ToolAuthorizationError' }),
   ] }
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
-  expect(view.getByText('1 failed')).toBeTruthy()
-  fireEvent.click(view.getByRole('button', { name: /Used 2 steps/ }))
-  expect(view.getByRole('button', { name: /missing, Returned an error to the agent/ })).toBeTruthy()
+  // The failure a person must act on stays in view; the agent's own error folds away.
   expect(view.getByRole('button', { name: /denied, Failed/ })).toBeTruthy()
+  expect(view.queryByRole('button', { name: /missing, Returned an error to the agent/ })).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: /^Used 1 tool/ }))
+  expect(view.getByRole('button', { name: /missing, Returned an error to the agent/ })).toBeTruthy()
   expect(view.container.querySelectorAll('.tool-row.status-error')).toHaveLength(1)
   expect(view.container.querySelectorAll('.tool-row.status-note')).toHaveLength(1)
 })
 
-it('lists tool calls flat while a turn streams instead of folding and unfolding them', () => {
+it('folds tool calls behind one line that names the current step while a turn streams', () => {
   const block = (callId: string, status: ToolView['status']): Block => ({
     kind: 'tool', id: callId, tool: { callId, name: 'read_file', args: { path: `${callId}.ts` }, status },
   })
   const live: Entry = { kind: 'agent', id: 'live', status: 'running', blocks: [block('a', 'ok'), block('b', 'ok')] }
   const view = render(createElement(Timeline, { entries: [live], running: true, actions: {} }))
-  expect(view.queryByRole('button', { name: /steps/ })).toBeNull()
-  expect(view.getByRole('button', { name: /Read a.ts/ })).toBeTruthy()
+  expect(view.queryByRole('button', { name: /Read a.ts/ })).toBeNull()
+  expect(view.getByRole('button', { name: 'Working: Thinking, 2 steps so far' })).toBeTruthy()
   view.rerender(createElement(Timeline, { entries: [{ ...live, blocks: [...live.blocks, block('c', 'running')] }], running: true, actions: {} }))
-  expect(view.queryByRole('button', { name: /steps/ })).toBeNull()
-  expect(view.getByRole('button', { name: /Reading c.ts/ })).toBeTruthy()
+  expect(view.getByRole('button', { name: 'Working: Reading c.ts, 3 steps so far' })).toBeTruthy()
+  expect(view.container.querySelectorAll('.tool-row')).toHaveLength(0)
   view.rerender(createElement(Timeline, { entries: [{ ...live, status: 'done', blocks: [...live.blocks, block('c', 'ok')] }], running: false, actions: {} }))
-  expect(view.getByRole('button', { name: /Used 3 steps/ }).getAttribute('aria-expanded')).toBe('false')
+  expect(view.getByRole('button', { name: 'Used 3 tools: 3 reads' }).getAttribute('aria-expanded')).toBe('false')
 })
 
 it('opens running CodeMode scripts and child tool progress without showing escaped JSON', () => {
@@ -112,7 +116,8 @@ it('opens running CodeMode scripts and child tool progress without showing escap
     },
   }] }
   const view = render(createElement(Timeline, { entries: [entry], running: true, actions: {} }))
-  expect(view.getByRole('button', { name: /CodeMode/ }).getAttribute('aria-expanded')).toBe('true')
+  fireEvent.click(view.getByRole('button', { name: /^Working: CodeMode/ }))
+  expect(view.getByRole('button', { name: /^CodeMode/ }).getAttribute('aria-expanded')).toBe('true')
   expect(view.container.querySelector('.code-block pre code')?.textContent).toBe(code)
   expect(view.getByText('javascript')).toBeTruthy()
   expect(view.container.querySelector('.code-token-keyword')?.textContent).toBe('const')
@@ -129,6 +134,7 @@ it('renders text emissions as separate readable blocks and a returned value sepa
     },
   }] }
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
+  fireEvent.click(view.getByRole('button', { name: /^Used 1 tool/ }))
   fireEvent.click(view.getByRole('button', { name: /CodeMode/ }))
   expect([...view.container.querySelectorAll('.ptc-output-block')].map(block => block.textContent)).toEqual(['first line\nsecond line', '<script>literal text</script>'])
   expect(view.getByText('Return value')).toBeTruthy()

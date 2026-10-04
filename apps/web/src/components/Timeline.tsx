@@ -23,7 +23,7 @@ import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { turnWeather } from '../lib/weather'
 import { useCopy } from '../lib/hooks'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
-import { formatDuration, formatTokens, presentOutcome, presentRun, stringify } from '../lib/timeline'
+import { formatDuration, formatTokens, presentLive, presentOutcome, presentRun, stringify } from '../lib/timeline'
 import { officeFiles } from '../lib/office'
 import { codeModeOutput, needsAttention, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
@@ -271,14 +271,14 @@ const AgentTurn = memo(function AgentTurn({
   const weather = sky || live || justFinished || entry.status === 'error'
     ? turnWeather(entry, { live, justFinished, ...(sky?.waiting ? { waiting: true } : {}), ...(sky?.contextRatio !== undefined ? { contextRatio: sky.contextRatio } : {}) })
     : undefined
-  const presentation = outcomeFirst ? presentOutcome(entry, live) : live ? { process: [], visible: entry.blocks } : presentRun(entry)
+  const presentation = present(entry, live, outcomeFirst)
   const segments = segment(presentation.visible)
   const [processOpen, setProcessOpen] = useState(false)
   const [copied, copy] = useCopy()
   const text = entry.blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n\n')
   const last = entry.blocks.at(-1)
-  const busyTool = entry.blocks.some(b => b.kind === 'tool' && b.tool.status === 'running')
-  const thinking = live && (outcomeFirst || (!busyTool && !(last?.kind === 'text' && last.streaming)))
+  // The process line already says what is happening; the bare indicator is for an empty turn.
+  const thinking = live && presentation.process.length === 0 && !(last?.kind === 'text' && last.streaming)
   // Produced files stay visible even when the tools that wrote them fold into the process.
   const files = live ? [] : officeFiles(entry.blocks)
 
@@ -310,13 +310,8 @@ const AgentTurn = memo(function AgentTurn({
       </div>
       <div className="agent-body">
         {presentation.process.length > 0 && (
-          <div className={`tool-group${processOpen ? ' open' : ''}`}>
-            <button type="button" className="tool-group-head" onClick={() => setProcessOpen(value => !value)} aria-expanded={processOpen}>
-              <span className="tool-icon"><Layers size={14} /></span>
-              <span className="tool-group-title">{outcomeFirst ? `${live ? 'Working through' : 'Show'} ${presentation.process.length} step${presentation.process.length === 1 ? '' : 's'}` : 'Completed process'}</span>
-              <span className="tool-group-summary" />
-              <ChevronRight size={14} className="chevron" />
-            </button>
+          <div className={`tool-group process${processOpen ? ' open' : ''}${live ? ' is-live' : ''}`}>
+            <ProcessHead blocks={presentation.process} live={live} open={processOpen} onToggle={() => setProcessOpen(value => !value)} />
             {processOpen && <div className="tool-group-list run-process-list">{segment(presentation.process).map(renderSegment)}</div>}
           </div>
         )}
@@ -346,6 +341,50 @@ const AgentTurn = memo(function AgentTurn({
     </div>
   )
 })
+
+/** Finished turns with a run summary keep it; everything else folds outcome-first. */
+function present(entry: Extract<Entry, { kind: 'agent' }>, live: boolean, outcomeFirst: boolean): { process: Block[]; visible: Block[] } {
+  if (outcomeFirst) return presentOutcome(entry, live)
+  if (live) return presentLive(entry)
+  const run = presentRun(entry)
+  return run.process.length ? run : presentOutcome(entry, false)
+}
+
+/**
+ * The one line a folded process shows. While the turn runs it names the
+ * current step ("Running npm test"); once done it sums up what was used
+ * ("Used 6 tools · 3 reads, 2 commands, 1 search").
+ */
+function ProcessHead({ blocks, live, open, onToggle }: { blocks: readonly Block[]; live: boolean; open: boolean; onToggle: () => void }) {
+  const tools = blocks.flatMap(block => (block.kind === 'tool' ? [block.tool] : []))
+  const running = [...tools].reverse().find(tool => tool.status === 'running')
+  const counts = new Map<ToolFamily, number>()
+  for (const tool of tools) {
+    const family = presentTool(tool).family
+    counts.set(family, (counts.get(family) ?? 0) + 1)
+  }
+  const summary = [...counts].map(([family, n]) => `${n} ${FAMILY_NOUN[family][n === 1 ? 0 : 1]}`).join(', ')
+  const current = running ? presentTool(running) : undefined
+  const title = live
+    ? current ? `${current.verb}${current.target ? ` ${current.target}` : ''}` : 'Thinking'
+    : tools.length ? `Used ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}` : 'Show details'
+  const Icon = current ? FAMILY_ICON[current.family] : Layers
+  return (
+    <button
+      type="button"
+      className="tool-group-head"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={live ? `Working: ${title}${tools.length ? `, ${tools.length} steps so far` : ''}` : `${title}${summary ? `: ${summary}` : ''}`}
+    >
+      <span className="tool-icon"><Icon size={14} /></span>
+      <span className={`tool-group-title${live ? ' shimmer' : ''}`}>{title}</span>
+      <span className="tool-group-summary">{live ? (tools.length > 1 ? `${tools.length} steps` : '') : summary}</span>
+      {live && <span className="spinner" aria-hidden />}
+      <ChevronRight size={14} className="chevron" />
+    </button>
+  )
+}
 
 function ThinkingLine({ hasContent }: { hasContent: boolean }) {
   return (
