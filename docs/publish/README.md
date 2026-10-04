@@ -202,6 +202,16 @@ Settings → Update channel persists Stable / Preview per desktop installation.
   with `gh release upload`. Do not rebuild or substitute different bytes under
   the existing feed. Verify all three assets and compare the uploaded asset's
   SHA256 digest with the local file.
+- **Only an orphan blockmap (0.4.11):** the published release had no installer
+  or update feed, and this checkout did not have the original installer. Reuse
+  the existing release record and exact Git tag. Build locally with publishing
+  disabled, generate `latest.yml` with `pnpm release feed`, and verify the
+  packaged version and local installer/feed hashes. Upload the installer first,
+  replace the orphan blockmap with the rebuilt installer's matching blockmap,
+  and upload the feed last. Compare all remote asset sizes and SHA256 digests
+  to local files and run `pnpm release verify`. This recovery applies only when
+  no published installer/feed needs preserving; otherwise follow the exact-byte
+  recovery above or fix forward. npm already had 0.4.11 and was not republished.
 - **Duplicate GitHub releases (0.4.7):** concurrent publisher requests created
   two release records for the same tag; one contained only the installer.
   List all releases rather than relying only on the tag endpoint. Compare
