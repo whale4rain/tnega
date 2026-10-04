@@ -117,7 +117,11 @@ export async function handleProjectApi(
       context.sendError(res, 400, 'text must be a non-empty string')
       return
     }
-    const envelope = await host.sendUserMessage(projectId, body.text)
+    const envelope = await host.sendUserMessage(
+      projectId,
+      body.text,
+      typeof body.replyTo === 'string' && body.replyTo ? body.replyTo : undefined,
+    )
     // 发送成功的判据是信封落盘，不是模型回复。
     context.sendJson(res, 200, { messageId: envelope.messageId, createdAt: envelope.createdAt })
     return

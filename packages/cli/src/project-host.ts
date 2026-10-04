@@ -258,14 +258,19 @@ export class ProjectHost {
   }
 
   /** 主对话发言：送协调者 inbox，UI 立刻显示已接收，不等模型回复。 */
-  async sendUserMessage(projectId: string, text: string): Promise<BoxEnvelope> {
+  async sendUserMessage(projectId: string, text: string, replyTo?: string): Promise<BoxEnvelope> {
     const project = await this.mount(projectId)
+    // 回复只认主对话里真实存在的消息；找不到就当作普通发言，而不是挂一个悬空引用。
+    const source = replyTo
+      ? (await project.box.timeline()).find(envelope => envelope.messageId === replyTo)
+      : undefined
     return await project.box.send({
       sender: USER_ADDRESS,
       recipients: [agentAddress(project.record.coordinatorId)],
       placement: { kind: 'main' },
       kind: 'user-message',
       text,
+      ...(source ? { causationId: source.messageId } : {}),
     })
   }
 

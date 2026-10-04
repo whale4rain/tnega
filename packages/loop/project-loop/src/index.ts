@@ -96,6 +96,44 @@ export function boxMessageName(messageId: string): string {
   return `box:${messageId}`
 }
 
+const REPORT_LABEL: Partial<Record<BoxEnvelope['kind'], string>> = {
+  complete: 'Report',
+  progress: 'Progress',
+  request: 'Request',
+  blocked: 'Blocked',
+  failed: 'Failed',
+}
+
+function excerpt(text: string, max = 160): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+
+/**
+ * What an Agent reads for one envelope: the text, preceded by who is speaking
+ * and what it answers when that is not obvious. A report from a child says
+ * which thread sent it; a reply says which message it answers. The parent's
+ * brief and plain user messages go in unchanged.
+ */
+export function renderEnvelope(
+  envelope: BoxEnvelope,
+  context: { label: (agentId: string) => string | undefined; source?: BoxEnvelope | undefined; reader?: string },
+): string {
+  const lines: string[] = []
+  const kind = REPORT_LABEL[envelope.kind]
+  if (kind && envelope.sender.kind === 'agent') {
+    lines.push(`[${kind} from thread "${context.label(envelope.sender.id) ?? envelope.sender.id}" (${envelope.sender.id})]`)
+  }
+  const source = context.source
+  if (source) {
+    const who = source.sender.kind === 'user'
+      ? 'the user'
+      : source.sender.id === context.reader ? 'your message' : `"${context.label(source.sender.id) ?? source.sender.id}"`
+    lines.push(`[In reply to ${who}: "${excerpt(source.text)}"]`)
+  }
+  return lines.length ? `${lines.join('\n')}\n\n${envelope.text}` : envelope.text
+}
+
 function boxIdOfName(name: unknown): string | undefined {
   return typeof name === 'string' && name.startsWith('box:') ? name.slice(4) : undefined
 }
@@ -306,11 +344,14 @@ export class ProjectLoopRuntime {
       // 立刻跑完并回到 idle，随后到达的「开始工作」会把 idle 覆盖掉。
       await this.applyEnvelopeState(threadId, envelope)
       if (isNew) {
+        const source = envelope.causationId && envelope.sender.kind === 'user'
+          ? (await this.box.timeline()).find(entry => entry.messageId === envelope.causationId)
+          : undefined
         const input = {
           messages: [{
             role: 'user' as const,
             name: boxMessageName(envelope.messageId),
-            content: envelope.text,
+            content: renderEnvelope(envelope, { label: id => this.known.get(id)?.label, source, reader: threadId }),
           }],
         }
         const quiet = this.known.get(threadId)?.parentId === undefined

@@ -385,3 +385,16 @@ it('keeps answering the user while a child thread is still running', async () =>
     await ctx.fiber.dispose()
   }
 })
+
+it('tells the reader who is speaking and what a reply answers', async () => {
+  const { renderEnvelope } = await import('../src/index.js')
+  const base = { messageId: 'm2', projectId: project.id, recipients: [], refs: [], createdAt: 2 }
+  const label = (id: string) => (id === 'c1' ? 'Licence check' : undefined)
+  expect(renderEnvelope({ ...base, sender: agentAddress('c1'), placement: { kind: 'thread', threadId: 'c1' }, kind: 'complete', text: 'MIT is fine.' }, { label }))
+    .toBe('[Report from thread "Licence check" (c1)]\n\nMIT is fine.')
+  const question = { ...base, messageId: 'm1', sender: agentAddress(project.coordinatorId), placement: { kind: 'main' as const }, kind: 'agent-reply' as const, text: 'Ship Friday or Monday?' }
+  expect(renderEnvelope({ ...base, sender: USER_ADDRESS, placement: { kind: 'main' }, kind: 'user-message', text: 'Monday.', causationId: 'm1' }, { label, source: question, reader: project.coordinatorId }))
+    .toBe('[In reply to your message: "Ship Friday or Monday?"]\n\nMonday.')
+  expect(renderEnvelope({ ...base, sender: agentAddress(project.coordinatorId), placement: { kind: 'main' }, kind: 'dispatch', text: 'Brief.' }, { label }))
+    .toBe('Brief.')
+})
