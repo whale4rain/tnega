@@ -1,33 +1,59 @@
-import { FileCode2, FileText, Globe, Table2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { FileCode2, FileImage, FileSpreadsheet, FileText, Globe, Presentation, Table2, type LucideIcon } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import { formatBytes } from '../../lib/project-model'
 import type { ArtifactFact } from '../../lib/project-types'
 import { Dialog } from '../Dialog'
 import { CodeBlock, Markdown } from '../Markdown'
+import { PreviewView } from '../preview/FilePreview'
 
-type ArtifactKind = 'page' | 'document' | 'data' | 'code' | 'text'
+export type ArtifactKind = 'page' | 'doc' | 'slides' | 'sheet' | 'pdf' | 'image' | 'data' | 'code' | 'text'
 
-/** What an artifact is, for a person: a page to explore, a document to read, data or code. */
+/** What an artifact is, for a person: a page to explore, a document to read, slides, a sheet… */
 export function artifactKind(mediaType: string): ArtifactKind {
   if (/html/.test(mediaType)) return 'page'
-  if (/markdown/.test(mediaType)) return 'document'
+  if (/wordprocessingml|msword/.test(mediaType)) return 'doc'
+  if (/presentationml|powerpoint/.test(mediaType)) return 'slides'
+  if (/spreadsheetml|ms-excel/.test(mediaType)) return 'sheet'
+  if (/pdf/.test(mediaType)) return 'pdf'
+  if (/^image\//.test(mediaType) && !/svg/.test(mediaType)) return 'image'
+  if (/markdown/.test(mediaType)) return 'doc'
   if (/(csv|tab-separated|json)/.test(mediaType)) return 'data'
-  if (/(javascript|typescript|diff|x-)/.test(mediaType)) return 'code'
+  if (/(javascript|typescript|diff|x-|svg)/.test(mediaType)) return 'code'
   return 'text'
 }
 
-const KIND: Record<ArtifactKind, { label: string; icon: typeof FileText }> = {
-  page: { label: 'Interactive page', icon: Globe },
-  document: { label: 'Document', icon: FileText },
-  data: { label: 'Data', icon: Table2 },
-  code: { label: 'Code', icon: FileCode2 },
-  text: { label: 'Text', icon: FileText },
+export const ARTIFACT_KIND: Record<ArtifactKind, { label: string; plural: string; icon: LucideIcon }> = {
+  page: { label: 'Page', plural: 'Pages', icon: Globe },
+  doc: { label: 'Doc', plural: 'Docs', icon: FileText },
+  slides: { label: 'Slides', plural: 'Slides', icon: Presentation },
+  sheet: { label: 'Sheet', plural: 'Sheets', icon: FileSpreadsheet },
+  pdf: { label: 'PDF', plural: 'PDFs', icon: FileText },
+  image: { label: 'Image', plural: 'Images', icon: FileImage },
+  data: { label: 'Data', plural: 'Data', icon: Table2 },
+  code: { label: 'Code', plural: 'Code', icon: FileCode2 },
+  text: { label: 'Text', plural: 'Text', icon: FileText },
+}
+
+/** Extensions the preview viewers recognise, for bytes that arrive without a file name. */
+const EXTENSION: Partial<Record<ArtifactKind, string>> = {
+  slides: 'pptx',
+  sheet: 'xlsx',
+  pdf: 'pdf',
+  image: 'png',
+}
+
+function previewName(artifact: ArtifactFact): string | undefined {
+  const kind = artifactKind(artifact.data.mediaType)
+  if (kind === 'doc' && /wordprocessingml|msword/.test(artifact.data.mediaType)) return `${artifact.data.title}.docx`
+  if (kind === 'image') return `${artifact.data.title}.${/jpe?g/.test(artifact.data.mediaType) ? 'jpg' : /gif/.test(artifact.data.mediaType) ? 'gif' : /webp/.test(artifact.data.mediaType) ? 'webp' : 'png'}`
+  const extension = EXTENSION[kind]
+  return extension ? `${artifact.data.title}.${extension}` : undefined
 }
 
 export function ArtifactIcon({ mediaType, size = 15 }: { mediaType: string; size?: number }) {
-  const Icon = KIND[artifactKind(mediaType)].icon
+  const Icon = ARTIFACT_KIND[artifactKind(mediaType)].icon
   return <Icon size={size} aria-hidden />
 }
 
@@ -39,10 +65,10 @@ export function ArtifactCards({ workspace, projectId, artifacts }: { workspace: 
     <div className="artifact-cards">
       {artifacts.map(artifact => (
         <button key={artifact.id} type="button" className="artifact-card" onClick={() => setViewing(artifact)}>
-          <span className="artifact-card-icon"><ArtifactIcon mediaType={artifact.data.mediaType} size={16} /></span>
+          <span className={`artifact-card-icon kind-${artifactKind(artifact.data.mediaType)}`}><ArtifactIcon mediaType={artifact.data.mediaType} size={16} /></span>
           <span className="artifact-card-main">
             <span className="artifact-card-title">{artifact.data.title}</span>
-            <span className="artifact-card-meta">{KIND[artifactKind(artifact.data.mediaType)].label} · {formatBytes(artifact.data.size)}</span>
+            <span className="artifact-card-meta">{ARTIFACT_KIND[artifactKind(artifact.data.mediaType)].label} · {formatBytes(artifact.data.size)}</span>
           </span>
         </button>
       ))}
@@ -54,9 +80,24 @@ export function ArtifactCards({ workspace, projectId, artifacts }: { workspace: 
 /**
  * An artifact opened from a card or the Library. Pages run in a sandboxed
  * frame with scripts but no access to this app's origin, so a generated page
- * can be interactive without reaching the local server.
+ * can be interactive without reaching the local server. Documents, slides,
+ * sheets, PDFs and images use the same viewers as workspace files.
  */
 export function ArtifactViewer({ workspace, projectId, artifact, onClose }: { workspace: string; projectId: string; artifact: ArtifactFact; onClose: () => void }) {
+  const kind = artifactKind(artifact.data.mediaType)
+  const binaryName = previewName(artifact)
+  const hash = artifact.data.hash
+  const load = useCallback(() => projectApi.artifactBlob(workspace, projectId, hash), [workspace, projectId, hash])
+  return (
+    <Dialog title={artifact.data.title} description={`${ARTIFACT_KIND[kind].label} · ${formatBytes(artifact.data.size)}`} onClose={onClose} width={kind === 'text' || kind === 'code' || kind === 'data' ? 760 : 980}>
+      {binaryName
+        ? <div className="artifact-preview"><PreviewView workspace={workspace} path={binaryName} load={load} /></div>
+        : <TextArtifact workspace={workspace} projectId={projectId} artifact={artifact} />}
+    </Dialog>
+  )
+}
+
+function TextArtifact({ workspace, projectId, artifact }: { workspace: string; projectId: string; artifact: ArtifactFact }) {
   const [content, setContent] = useState<string | undefined>()
   const [unavailable, setUnavailable] = useState<string | undefined>()
   useEffect(() => {
@@ -69,7 +110,7 @@ export function ArtifactViewer({ workspace, projectId, artifact, onClose }: { wo
   const kind = artifactKind(artifact.data.mediaType)
   const language = artifact.data.mediaType.split('/').pop()?.replace(/^x-/, '')
   return (
-    <Dialog title={artifact.data.title} description={`${KIND[kind].label} · ${formatBytes(artifact.data.size)}`} onClose={onClose} width={kind === 'page' ? 980 : 760}>
+    <>
       {content === undefined && !unavailable && <div className="skeleton"><div className="skeleton-line w90" /><div className="skeleton-line w75" /></div>}
       {unavailable && (
         <div className="notice notice-info">
@@ -79,10 +120,10 @@ export function ArtifactViewer({ workspace, projectId, artifact, onClose }: { wo
       {content !== undefined && (
         kind === 'page'
           ? <iframe className="artifact-frame" title={artifact.data.title} sandbox="allow-scripts allow-forms allow-popups" srcDoc={content} />
-          : kind === 'document'
+          : kind === 'doc'
             ? <Markdown text={content} />
             : <CodeBlock code={content} language={language} />
       )}
-    </Dialog>
+    </>
   )
 }

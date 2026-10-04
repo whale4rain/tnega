@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artifactsFor, fromSnapshot, isUnread, latestReport, mainTimeline, overview, reduceProject, threadState, threadStatusLine } from './project-model'
+import { artifactsFor, board, fromSnapshot, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
 import type { BoxEnvelope, ProjectSnapshot, ThreadRecord } from './project-types'
 
 const COORD = 'c0000000-0000-4000-8000-000000000000'
@@ -101,12 +101,15 @@ describe('threads', () => {
     state = reduceProject(state, { type: 'message', seq: 9, envelope: report })
     expect(latestReport(state, T2)?.text).toBe('All done')
     expect(state.messages).toHaveLength(0)
-    expect(overview(state).map(group => group.key)).toEqual(['attention', 'finished'])
+    const lanes = board(state, {})
+    expect(lanes.find(lane => lane.key === 'needs')?.threads.map(t => t.id)).toEqual([T1])
+    expect(lanes.find(lane => lane.key === 'ready')?.threads.map(t => t.id)).toEqual([T2])
+    expect(threadActivity(state, state.threads[T2]!)).toBe('All done')
   })
 
   it('never lists the coordinator as a worker thread', () => {
     const state = fromSnapshot(snapshot())
-    expect(overview(state)).toEqual([])
+    expect(board(state, {}).every(lane => lane.threads.length === 0)).toBe(true)
   })
 })
 
@@ -211,5 +214,39 @@ describe('thread status', () => {
     expect(isUnread(state, done, {})).toBe(true)
     expect(isUnread(state, done, { [T1]: 50 })).toBe(false)
     expect(isUnread(state, thread(T2, { state: 'working', updatedAt: 60 }), {})).toBe(false)
+  })
+})
+
+describe('the Board', () => {
+  it('moves a reported thread from Ready to Idle once seen, and folds resolved ones away', () => {
+    const done = thread(T1, { state: 'done', updatedAt: 50 })
+    const resolved = thread(T2, { state: 'resolved', updatedAt: 60 })
+    const state = fromSnapshot(snapshot({ threads: [thread(COORD, { depth: 0 }), done, resolved] }))
+    const lane = (seen: Record<string, number>, key: string) => board(state, seen).find(column => column.key === key)?.threads.map(t => t.id)
+    expect(lane({}, 'ready')).toEqual([T1])
+    expect(lane({ [T1]: 50 }, 'idle')).toEqual([T1])
+    expect(lane({}, 'resolved')).toEqual([T2])
+    expect(isUnread(state, resolved, {})).toBe(false)
+  })
+
+  it('reads the project weather from its most urgent thread', () => {
+    const base = [thread(COORD, { depth: 0 })]
+    expect(projectWeather(fromSnapshot(snapshot({ threads: base })))).toBe('clear')
+    expect(projectWeather(fromSnapshot(snapshot({ threads: [...base, thread(T1, { state: 'working' })] })))).toBe('drizzle')
+    expect(projectWeather(fromSnapshot(snapshot({ threads: [...base, thread(T1, { state: 'working' }), thread(T2, { state: 'working' })] })))).toBe('rain')
+    expect(projectWeather(fromSnapshot(snapshot({ threads: [...base, thread(T1, { state: 'working' }), thread(T2, { state: 'waiting' })] })))).toBe('snow')
+    expect(projectWeather(fromSnapshot(snapshot({ threads: [...base, thread(T1, { state: 'failed' }), thread(T2, { state: 'waiting' })] })))).toBe('storm')
+  })
+
+  it('counts today from midnight', () => {
+    const now = new Date(2026, 9, 4, 15, 0).getTime()
+    const morning = new Date(2026, 9, 4, 9, 0).getTime()
+    const yesterday = new Date(2026, 9, 3, 23, 0).getTime()
+    const state = fromSnapshot(snapshot({
+      threads: [thread(COORD, { depth: 0 }), thread(T1, { createdAt: morning, updatedAt: morning, state: 'done' }), thread(T2, { createdAt: yesterday, updatedAt: yesterday, state: 'done' })],
+    }))
+    expect(today(state, now)).toEqual({ started: 1, finished: 1, artifacts: 0 })
+    const usage = { total: { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0 }, since: { responses: 2, promptTokens: 900, completionTokens: 100, cachedTokens: 0 }, byThread: [] }
+    expect(today(state, now, usage).tokens).toBe(1000)
   })
 })

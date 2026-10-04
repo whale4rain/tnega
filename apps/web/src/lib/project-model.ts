@@ -11,10 +11,13 @@ import type {
   ProjectRecord,
   ProjectSnapshot,
   ProjectStreamEvent,
+  ProjectUsage,
   ResourceFact,
+  RoutineFact,
   ThreadRecord,
   ThreadState,
 } from './project-types'
+import type { Weather } from './weather'
 
 export interface Approval {
   id: string
@@ -34,6 +37,7 @@ export interface ProjectState {
   memory: MemoryFact[]
   artifacts: ArtifactFact[]
   resources: ResourceFact[]
+  routines: RoutineFact[]
   /** Text an agent is producing right now, keyed by agent id. */
   live: Record<string, string>
   running: Record<string, boolean>
@@ -75,6 +79,7 @@ export function fromSnapshot(snapshot: ProjectSnapshot, localReplies: Record<str
     memory: snapshot.memory.filter(m => !m.deleted),
     artifacts: snapshot.library.artifacts.filter(a => !a.deleted),
     resources: snapshot.library.resources.filter(r => !r.deleted),
+    routines: (snapshot.routines ?? []).filter(r => !r.deleted),
     live: {},
     running,
     approvals: [],
@@ -146,6 +151,13 @@ export function reduceProject(state: ProjectState, event: ProjectStreamEvent): P
         const previous = state.resources.find(item => item.id === event.id)
         return { ...state, resources: upsert(state.resources, commitToFact(event, previous) as ResourceFact, event.deleted) }
       }
+      if (event.kind === 'routine') {
+        const previous = state.routines.find(item => item.id === event.id)
+        const fact = commitToFact(event, previous)
+        if (!event.deleted && !isRoutineData(fact.data)) return state
+        const routine: RoutineFact = { ...fact, data: fact.data as unknown as RoutineFact['data'] }
+        return { ...state, routines: upsert(state.routines, routine, event.deleted) }
+      }
       if (event.kind === 'project' && event.id === state.project.id && event.data && typeof event.data === 'object') {
         return { ...state, project: { ...state.project, ...(event.data as Partial<ProjectRecord>) } }
       }
@@ -193,6 +205,12 @@ function commitToFact(
 }
 
 type FactSource = { messageId?: string; sessionEventId?: string; agentId?: string }
+
+function isRoutineData(data: Record<string, unknown>): boolean {
+  return typeof data.title === 'string' && typeof data.prompt === 'string'
+    && typeof data.enabled === 'boolean' && typeof data.nextRunAt === 'number'
+    && typeof data.schedule === 'object' && data.schedule !== null
+}
 
 // ---------------------------------------------------------------------------
 // Projections
@@ -323,6 +341,7 @@ export const THREAD_STATE: Record<ThreadState, { label: string; tone: ThreadTone
   idle: { label: 'Idle', tone: 'idle' },
   done: { label: 'Done', tone: 'done' },
   failed: { label: 'Failed', tone: 'failed' },
+  resolved: { label: 'Resolved', tone: 'idle' },
 }
 
 /**
@@ -340,7 +359,7 @@ export function threadStatusLine(state: ProjectState, thread: ThreadRecord): { l
 }
 
 /** States a thread reaches that the user should hear about. */
-const SETTLED: ReadonlySet<ThreadState> = new Set(['done', 'failed', 'waiting', 'blocked'])
+const SETTLED: ReadonlySet<ThreadState> = new Set(['done', 'idle', 'failed', 'waiting', 'blocked'])
 
 /**
  * A thread reported, failed or needs a decision since the user last opened
@@ -349,6 +368,130 @@ const SETTLED: ReadonlySet<ThreadState> = new Set(['done', 'failed', 'waiting', 
 export function isUnread(state: ProjectState, thread: ThreadRecord, seen: Readonly<Record<string, number>>): boolean {
   if (!SETTLED.has(threadState(state, thread))) return false
   return (seen[thread.id] ?? 0) < thread.updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// The Board
+// ---------------------------------------------------------------------------
+
+export type BoardColumnKey = 'needs' | 'working' | 'ready' | 'idle' | 'resolved'
+
+export interface BoardColumn {
+  key: BoardColumnKey
+  label: string
+  /** What the column means, for its tooltip. */
+  hint: string
+  threads: ThreadRecord[]
+}
+
+const COLUMNS: ReadonlyArray<Omit<BoardColumn, 'threads'>> = [
+  { key: 'needs', label: 'Needs you', hint: 'Waiting on a decision, blocked, or failed' },
+  { key: 'working', label: 'Working', hint: 'Running right now' },
+  { key: 'ready', label: 'Ready', hint: 'Reported back; the result is waiting for you' },
+  { key: 'idle', label: 'Idle', hint: 'Nothing pending; can take more work' },
+  { key: 'resolved', label: 'Resolved', hint: 'You took the result' },
+]
+
+export function boardColumn(state: ProjectState, thread: ThreadRecord, seen: Readonly<Record<string, number>>): BoardColumnKey {
+  const current = threadState(state, thread)
+  if (current === 'waiting' || current === 'blocked' || current === 'failed') return 'needs'
+  if (current === 'working') return 'working'
+  if (current === 'resolved') return 'resolved'
+  return (seen[thread.id] ?? 0) < thread.updatedAt ? 'ready' : 'idle'
+}
+
+/** Threads by where they stand, most recently changed first. Every column is returned, even empty. */
+export function board(state: ProjectState, seen: Readonly<Record<string, number>>): BoardColumn[] {
+  const columns = COLUMNS.map(column => ({ ...column, threads: [] as ThreadRecord[] }))
+  for (const thread of workerThreads(state)) {
+    const key = boardColumn(state, thread, seen)
+    columns.find(column => column.key === key)!.threads.push(thread)
+  }
+  for (const column of columns) column.threads.sort((a, b) => b.updatedAt - a.updatedAt)
+  return columns
+}
+
+export function startOfDay(now: number): number {
+  const day = new Date(now)
+  day.setHours(0, 0, 0, 0)
+  return day.getTime()
+}
+
+export interface Today {
+  started: number
+  finished: number
+  artifacts: number
+  /** Prompt plus completion tokens since midnight, when the server reports usage. */
+  tokens?: number
+}
+
+/** The Board's "Today" strip. */
+export function today(state: ProjectState, now: number, usage?: ProjectUsage): Today {
+  const since = startOfDay(now)
+  const threads = workerThreads(state)
+  const result: Today = {
+    started: threads.filter(thread => thread.createdAt >= since).length,
+    finished: threads.filter(thread => thread.updatedAt >= since
+      && (thread.state === 'done' || thread.state === 'resolved')).length,
+    artifacts: state.artifacts.filter(artifact => artifact.createdAt >= since).length,
+  }
+  if (usage?.since) result.tokens = usage.since.promptTokens + usage.since.completionTokens
+  return result
+}
+
+/**
+ * One thread's weather (docs/design/weather-language.md): snow when it waits
+ * on you, storm when it failed, drizzle while it works, clear otherwise.
+ */
+export function threadWeather(state: ProjectState, thread: ThreadRecord): Weather {
+  const current = threadState(state, thread)
+  if (current === 'waiting' || current === 'blocked') return 'snow'
+  if (current === 'failed') return 'storm'
+  if (current === 'working') return 'drizzle'
+  return 'clear'
+}
+
+/** The project's forecast: the most urgent weather among its threads. */
+export function projectWeather(state: ProjectState): Weather {
+  const weathers = workerThreads(state).map(thread => threadWeather(state, thread))
+  if (weathers.includes('storm')) return 'storm'
+  if (weathers.includes('snow')) return 'snow'
+  const working = weathers.filter(weather => weather === 'drizzle').length
+  if (working >= 2) return 'rain'
+  if (working === 1) return 'drizzle'
+  return 'clear'
+}
+
+/**
+ * The line under a Board card's title: the step it is on, what it is waiting
+ * for, or the first line of what it reported.
+ */
+export function threadActivity(state: ProjectState, thread: ThreadRecord): string | undefined {
+  const current = threadState(state, thread)
+  if (current === 'working') return threadStatusLine(state, thread).step ?? 'Working'
+  if ((current === 'waiting' || current === 'blocked' || current === 'failed') && thread.detail) return plainPreview(thread.detail, 140)
+  const report = latestReport(state, thread.id)
+  if (report?.text.trim()) return plainPreview(report.text, 140)
+  return thread.detail ? plainPreview(thread.detail, 140) : undefined
+}
+
+export function checklistProgress(thread: ThreadRecord): { done: number; total: number } | undefined {
+  const items = thread.checklist ?? []
+  if (!items.length) return undefined
+  return { done: items.filter(item => item.status === 'done').length, total: items.length }
+}
+
+export function formatCount(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
+}
+
+export function formatActive(ms: number): string {
+  const minutes = Math.round(ms / 60_000)
+  if (minutes < 1) return `${Math.max(1, Math.round(ms / 1000))}s`
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
 
 /** Library entries for a message's artifact references, in reference order. */
@@ -368,31 +511,6 @@ export function threadState(state: ProjectState, thread: ThreadRecord): ThreadSt
   if (state.running[thread.id] && thread.state !== 'failed') return 'working'
   if (thread.state === 'working' && state.running[thread.id] === false) return 'idle'
   return thread.state
-}
-
-export interface OverviewGroup {
-  key: 'attention' | 'working' | 'reported' | 'finished'
-  label: string
-  threads: ThreadRecord[]
-}
-
-/** Overview: what needs you first, then what is moving, then the rest. */
-export function overview(state: ProjectState): OverviewGroup[] {
-  const groups: OverviewGroup[] = [
-    { key: 'attention', label: 'Needs attention', threads: [] },
-    { key: 'working', label: 'Working', threads: [] },
-    { key: 'reported', label: 'Idle', threads: [] },
-    { key: 'finished', label: 'Finished', threads: [] },
-  ]
-  for (const thread of workerThreads(state)) {
-    const current = threadState(state, thread)
-    const index = current === 'waiting' || current === 'blocked' || current === 'failed' ? 0
-      : current === 'working' ? 1
-        : current === 'idle' ? 2 : 3
-    groups[index]!.threads.push(thread)
-  }
-  for (const group of groups) group.threads.sort((a, b) => b.updatedAt - a.updatedAt)
-  return groups.filter(group => group.threads.length > 0)
 }
 
 export function activeCount(state: ProjectState): number {

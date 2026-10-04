@@ -6,8 +6,8 @@ import { NewProjectDialog } from './components/project/NewProjectDialog'
 import { ProjectView } from './components/project/ProjectView'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
-import { Workbench } from './components/workbench/Workbench'
-import { openDoc, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
+import { Workbench, type WorkbenchProject } from './components/workbench/Workbench'
+import { enterProject, openDoc, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
 import { useChangeCount } from './lib/hooks'
 import { desktopBrowser } from './lib/desktop-browser'
 import { browserAvailable } from './lib/browser-live'
@@ -190,6 +190,19 @@ export function App() {
     }
   }, [workspace, mode])
 
+  // A project screen puts its own tabs (Board, Library, Routines, threads) at the
+  // front of the same Workbench a session uses, and renders them into a slot.
+  const [projectSlot, setProjectSlot] = useState<HTMLDivElement | null>(null)
+  const [projectTabs, setProjectTabs] = useState<WorkbenchProject['tabs']>([])
+  const activeProject = mode === 'projects' && workspace ? projectRoute.id : undefined
+  // Adjusted while rendering rather than in an effect, so a double render (StrictMode)
+  // applies the same idempotent change instead of comparing the project with itself.
+  const [enteredProject, setEnteredProject] = useState<string | undefined>(undefined)
+  if (enteredProject !== activeProject) {
+    setEnteredProject(activeProject)
+    setWorkbench(current => enterProject(current, activeProject, enteredProject))
+  }
+
   // --- selection mirrors the URL hash so sessions and projects are linkable --
 
   const select = useCallback((id: string | undefined) => {
@@ -363,6 +376,10 @@ export function App() {
             onChanged={refreshProjects}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
+            workbench={workbench}
+            onWorkbench={setWorkbench}
+            panelSlot={projectSlot}
+            onPanelTabs={setProjectTabs}
           />
         )
         : (
@@ -429,6 +446,7 @@ export function App() {
           browser={browserReady}
           changeCount={changeCount}
           onChangeCount={setChangeCount}
+          project={activeProject ? { tabs: projectTabs, slot: setProjectSlot } : undefined}
         />
       )}
 

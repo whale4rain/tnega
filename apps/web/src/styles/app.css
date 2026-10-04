@@ -3413,9 +3413,7 @@ kbd {
 
 .desktop-chrome .sidebar-top,
 .desktop-chrome .conv-header,
-.desktop-chrome .wb-rail,
-.desktop-chrome .project-side .side-tabs,
-.desktop-chrome .project-side .side-header {
+.desktop-chrome .wb-rail {
   -webkit-app-region: drag;
 }
 
@@ -3426,8 +3424,6 @@ kbd {
 .desktop-chrome .wb-rail button,
 .desktop-chrome .wb-rail .wb-tab,
 .desktop-chrome .zoom-controls,
-.desktop-chrome .project-side button,
-.desktop-chrome .side-title,
 .desktop-chrome .conv-header > button {
   -webkit-app-region: no-drag;
 }

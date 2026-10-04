@@ -29,8 +29,12 @@ const FIT: Record<OfficeKind, { measure: string, initial: ZoomSetting }> = {
   xlsx: { measure: '.xlsx-grid', initial: 1 },
 }
 
-/** A Workbench document tab that previews an office file, PDF or image from the workspace. */
-export function PreviewView({ workspace, path }: { workspace: string; path: string }) {
+/**
+ * A Workbench document tab that previews an office file, PDF or image from the
+ * workspace. `load` replaces the workspace read, for bytes that live elsewhere
+ * (a project artifact); `path` then only names the file and picks the viewer.
+ */
+export function PreviewView({ workspace, path, load }: { workspace: string; path: string; load?: (signal: AbortSignal) => Promise<Blob> }) {
   const [blob, setBlob] = useState<Blob | undefined>()
   const [error, setError] = useState<string | undefined>()
   const kind = officeKind(path)
@@ -45,11 +49,12 @@ export function PreviewView({ workspace, path }: { workspace: string; path: stri
     const controller = new AbortController()
     setBlob(undefined)
     setError(undefined)
-    fetchWorkspaceFile(workspace, path, controller.signal).then(setBlob, reason => {
+    const read = load ?? (signal => fetchWorkspaceFile(workspace, path, signal))
+    read(controller.signal).then(setBlob, reason => {
       if (!controller.signal.aborted) setError(errorText(reason))
     })
     return () => controller.abort()
-  }, [workspace, path])
+  }, [workspace, path, load])
 
   return (
     <div className="wb-view" aria-label={`Preview ${fileName(path)}`}>
@@ -103,7 +108,7 @@ function NativePreview({ blob, path }: { blob: Blob; path: string }) {
     return () => URL.revokeObjectURL(next)
   }, [blob])
   if (!url) return null
-  if (/\.(png|jpe?g)$/i.test(path)) {
+  if (/\.(png|jpe?g|gif|webp)$/i.test(path)) {
     return <div className="image-preview"><img src={url} alt={fileName(path)} /></div>
   }
   if (/\.pdf$/i.test(path)) {

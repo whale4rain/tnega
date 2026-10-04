@@ -9,7 +9,10 @@ import type {
   ProjectStreamEvent,
   ProjectUsage,
   ResourceFact,
+  RoutineFact,
+  RoutineSchedule,
   ThreadDetail,
+  ThreadRecord,
 } from './project-types'
 
 async function call<T>(path: string, workspace: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
@@ -111,7 +114,25 @@ export const projectApi = {
   // --- proposed endpoints (see docs/project/web-contract.md) -------------
   saveSettings: (workspace: string, id: string, patch: { name?: string; goal?: string; settings?: ProjectSettings }) =>
     call<{ project: ProjectRecord }>(base(id), workspace, { method: 'PATCH', body: patch }),
-  usage: (workspace: string, id: string) => call<ProjectUsage>(`${base(id)}/usage`, workspace),
+  usage: (workspace: string, id: string, since?: number) =>
+    call<ProjectUsage>(`${base(id)}/usage${since !== undefined ? `?since=${Math.floor(since)}` : ''}`, workspace),
+  /** A person takes a thread's result (resolved) or reopens it. */
+  resolveThread: (workspace: string, id: string, threadId: string, resolved: boolean) =>
+    call<{ thread: ThreadRecord }>(`${base(id)}/threads/${threadId}`, workspace, { method: 'PATCH', body: { resolved } }),
+  createRoutine: (workspace: string, id: string, input: { title: string; prompt: string; schedule: RoutineSchedule }) =>
+    call<{ routine: RoutineFact }>(`${base(id)}/routines`, workspace, { method: 'POST', body: input }),
+  updateRoutine: (workspace: string, id: string, routineId: string, patch: { enabled?: boolean; deleted?: boolean; title?: string; prompt?: string; schedule?: RoutineSchedule }) =>
+    call<{ routine: RoutineFact }>(`${base(id)}/routines/${routineId}`, workspace, { method: 'PATCH', body: patch }),
+  runRoutine: (workspace: string, id: string, routineId: string) =>
+    call<{ routine: RoutineFact }>(`${base(id)}/routines/${routineId}/run`, workspace, { method: 'POST', body: {} }),
+  /** An artifact's bytes, for documents, slides, sheets, PDFs and images. */
+  artifactBlob: async (workspace: string, id: string, hash: string): Promise<Blob> => {
+    const response = await fetch(`${base(id)}/artifacts/${hash}?${new URLSearchParams({ workspace }).toString()}`, {
+      headers: { 'x-tnega-client': '1' },
+    })
+    if (!response.ok) throw new ApiError(response.status, `${response.status} ${response.statusText}`)
+    return response.blob()
+  },
   stopThread: (workspace: string, id: string, threadId: string) =>
     call<{ stopped: boolean }>(`${base(id)}/threads/${threadId}/stop`, workspace, { method: 'POST', body: {} }),
   pause: (workspace: string, id: string) =>

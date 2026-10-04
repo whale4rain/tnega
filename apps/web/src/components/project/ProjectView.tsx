@@ -1,7 +1,4 @@
 import {
-  BookOpen,
-  Brain,
-  LayoutList,
   MoreHorizontal,
   PanelLeft,
   PanelRight,
@@ -13,32 +10,48 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { avatarVersion, distinctSeeds, subscribeAvatars } from '../../lib/avatar'
-import { errorText, useStoredState } from '../../lib/hooks'
+import { errorText } from '../../lib/hooks'
 import { followProject, isUnsupported, localReplies, projectApi } from '../../lib/project-api'
 import { notifyDesktopThread } from '../../lib/desktop-completion'
-import { activeCount, artifactsFor, fromSnapshot, isUnread, mainTimeline, plainPreview, reduceProject, threadState, workerThreads, type MainItem, type ProjectState, type ReplyRef } from '../../lib/project-model'
+import {
+  activeCount,
+  artifactsFor,
+  board,
+  fromSnapshot,
+  isUnread,
+  mainTimeline,
+  plainPreview,
+  reduceProject,
+  threadState,
+  workerThreads,
+  type MainItem,
+  type ProjectState,
+  type ReplyRef,
+} from '../../lib/project-model'
 import type { ProjectStreamEvent } from '../../lib/project-types'
 import type { ConfigSnapshot } from '../../lib/types'
+import { BOARD_KEY, openDoc, select, toggle, type WorkbenchState } from '../../lib/workbench'
+import type { WorkbenchProject } from '../workbench/Workbench'
 import { AgentAvatar, AvatarSeeds } from '../AgentAvatar'
 import { PromptBox } from '../Composer'
 import { ApprovalCard } from '../Conversation'
 import { Markdown } from '../Markdown'
 import { Menu } from '../Menu'
-import { LibraryPanel, MemoryPanel, OverviewPanel, SettingsPanel } from './ProjectPanels'
 import { ArtifactCards } from './Artifacts'
+import { BoardPanel } from './Board'
+import { LibraryPanel, SettingsPanel } from './ProjectPanels'
+import { RoutinesPanel } from './Routines'
 import { ThreadCard } from './ThreadCard'
 import { ThreadPanel } from './ThreadPanel'
 
-type Tab = 'overview' | 'memory' | 'library' | 'settings'
-
-const TABS: Array<{ key: Tab; label: string; icon: typeof Brain }> = [
-  { key: 'overview', label: 'Overview', icon: LayoutList },
-  { key: 'memory', label: 'Memory', icon: Brain },
-  { key: 'library', label: 'Library', icon: BookOpen },
-  { key: 'settings', label: 'Settings', icon: Settings2 },
-]
-
+/**
+ * A project screen: the room on the left, and the project's own tabs (Board,
+ * Library, Routines, opened threads, settings) in the same Workbench a
+ * session uses. The tabs render here and are portalled into the Workbench's
+ * project slot, so they share this view's state and live stream.
+ */
 export function ProjectView({
   workspace,
   projectId,
@@ -49,6 +62,10 @@ export function ProjectView({
   onChanged,
   sidebarOpen,
   onToggleSidebar,
+  workbench,
+  onWorkbench,
+  panelSlot,
+  onPanelTabs,
 }: {
   workspace: string
   projectId: string
@@ -59,12 +76,14 @@ export function ProjectView({
   onChanged: () => void
   sidebarOpen: boolean
   onToggleSidebar: () => void
+  workbench: WorkbenchState
+  onWorkbench: (update: (state: WorkbenchState) => WorkbenchState) => void
+  panelSlot: HTMLDivElement | null
+  onPanelTabs: (tabs: WorkbenchProject['tabs']) => void
 }) {
   const [state, setState] = useState<ProjectState | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [connected, setConnected] = useState(true)
-  const [tab, setTab] = useStoredState<Tab>('tnega.projectTab', 'overview', ['overview', 'memory', 'library', 'settings'])
-  const [panelOpen, setPanelOpen] = useStoredState<'open' | 'closed'>('tnega.projectPanel', 'open', ['open', 'closed'])
   const [notice, setNotice] = useState<string | undefined>()
   const [replyTarget, setReplyTarget] = useState<ReplyRef | undefined>()
   const [seen, markSeen] = useSeenThreads(projectId)
@@ -104,11 +123,28 @@ export function ProjectView({
     if (name !== undefined) onChanged()
   }, [name, archived, onChanged])
 
-  // Opening a thread marks what it reported as read.
-  const openThread = threadId && state ? state.threads[threadId] : undefined
+  /** Open a thread as a Workbench tab, and remember it in the address. */
+  const openThread = useCallback((id: string) => {
+    const label = state?.threads[id]?.label ?? 'Thread'
+    onWorkbench(current => openDoc(current, { kind: 'thread', id, label }))
+    onOpenThread(id)
+  }, [state?.threads, onWorkbench, onOpenThread])
+
+  // A thread named in the address (a link, a reload) opens once the project has loaded.
+  const loaded = Boolean(state)
+  const routed = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (openThread) markSeen(openThread.id, openThread.updatedAt)
-  }, [openThread, markSeen])
+    if (!loaded || !threadId || routed.current === threadId) return
+    routed.current = threadId
+    openThread(threadId)
+  }, [loaded, threadId, openThread])
+
+  // The thread whose tab is showing counts as read.
+  const shownThreadId = workbench.open && workbench.active.startsWith('thread:') ? workbench.active.slice('thread:'.length) : undefined
+  const shownThread = shownThreadId && state ? state.threads[shownThreadId] : undefined
+  useEffect(() => {
+    if (shownThread) markSeen(shownThread.id, shownThread.updatedAt)
+  }, [shownThread, markSeen])
 
   // A thread that finishes, fails or needs a decision notifies the user once.
   const settled = useRef<Record<string, string> | undefined>(undefined)
@@ -120,13 +156,26 @@ export function ProjectView({
     settled.current = now
     if (!before) return
     for (const [id, current] of Object.entries(now)) {
-      if (before[id] === current || id === threadId) continue
+      if (before[id] === current || id === shownThreadId) continue
       const key = `${id}:${state.threads[id]?.updatedAt ?? 0}`
       if (current === 'done') notifyDesktopThread(key, 'completed')
       else if (current === 'failed') notifyDesktopThread(key, 'failed')
       else if (current === 'waiting' || current === 'blocked') notifyDesktopThread(key, 'waiting')
     }
-  }, [state, threadId])
+  }, [state, shownThreadId])
+
+  // The Board tab carries a count: what needs you, else what is working.
+  const columns = useMemo(() => (state ? board(state, seen) : []), [state, seen])
+  const needs = columns.find(column => column.key === 'needs')?.threads.length ?? 0
+  const live = columns.find(column => column.key === 'working')?.threads.length ?? 0
+  const routineCount = state?.routines.filter(routine => routine.data.enabled).length ?? 0
+  useEffect(() => {
+    onPanelTabs([
+      { tab: 'board', badge: needs || live, attention: needs > 0 },
+      { tab: 'library' },
+      { tab: 'routines', badge: routineCount },
+    ])
+  }, [needs, live, routineCount, onPanelTabs])
 
   const items = useMemo(() => (state ? mainTimeline(state) : []), [state])
   const coordinatorRunning = state ? Boolean(state.running[state.coordinatorId]) : false
@@ -150,6 +199,18 @@ export function ProjectView({
   }, [items, state?.approvals])
 
   const send = useCallback(async (text: string) => {
+    // Replying to a thread card is a direct message to that thread.
+    if (replyTarget?.who === 'thread' && replyTarget.threadId) {
+      try {
+        await projectApi.sendToThread(workspace, projectId, replyTarget.threadId, text)
+        setReplyTarget(undefined)
+        openThread(replyTarget.threadId)
+        return true
+      } catch (reason) {
+        setError(errorText(reason))
+        return false
+      }
+    }
     const replyTo = replyTarget?.id
     try {
       const receipt = await projectApi.send(workspace, projectId, text, replyTo)
@@ -177,7 +238,7 @@ export function ProjectView({
       setError(errorText(reason))
       return false
     }
-  }, [workspace, projectId, replyTarget])
+  }, [workspace, projectId, replyTarget, openThread])
 
   /** Scroll to a message in the conversation, or open the thread it came from. */
   const jump = useCallback((ref: ReplyRef) => {
@@ -188,9 +249,9 @@ export function ProjectView({
       void target.offsetWidth
       target.classList.add('flash')
     } else if (ref.threadId) {
-      onOpenThread(ref.threadId)
+      openThread(ref.threadId)
     }
-  }, [onOpenThread])
+  }, [openThread])
 
   const answer = async (approvalId: string, allow: boolean) => {
     setState(current => current && { ...current, approvals: current.approvals.filter(a => a.id !== approvalId) })
@@ -227,11 +288,21 @@ export function ProjectView({
   }
 
   const working = activeCount(state)
-  const showPanel = panelOpen === 'open' || Boolean(threadId)
+  const active = workbench.active
+  const panel = !panelSlot ? null : active === BOARD_KEY
+    ? <BoardPanel workspace={workspace} state={state} seen={seen} onOpenThread={openThread} />
+    : active === 'project:library'
+      ? <LibraryPanel workspace={workspace} state={state} />
+      : active === 'project:routines'
+        ? <RoutinesPanel workspace={workspace} state={state} onOpenThread={openThread} />
+        : active === 'project-settings'
+          ? <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onDeleted={onDeleted} />
+          : shownThreadId
+            ? <ThreadPanel key={shownThreadId} workspace={workspace} state={state} threadId={shownThreadId} onBack={() => onWorkbench(current => select(current, BOARD_KEY))} />
+            : null
 
   return (
     <AvatarSeeds.Provider value={seeds}>
-    <div className={`project-view${showPanel ? ' with-panel' : ''}`}>
       <main className="conversation project-main">
         <header className="conv-header">
           {!sidebarOpen && (
@@ -248,30 +319,31 @@ export function ProjectView({
             </div>
           </div>
           <div className="conv-header-actions">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Project settings"
+              title="Project settings: instructions, memory, models"
+              onClick={() => onWorkbench(current => openDoc(current, { kind: 'settings', label: 'Settings' }))}
+            >
+              <Settings2 size={17} />
+            </button>
             <Menu
               label="Project actions"
               align="end"
               trigger={<MoreHorizontal size={17} />}
               items={[
                 { key: 'pause', label: 'Pause all work', icon: <Pause size={14} />, onSelect: () => void pause(), disabled: working === 0 && !coordinatorRunning },
-                { key: 'settings', label: 'Project settings', icon: <Settings2 size={14} />, onSelect: () => { setTab('settings'); setPanelOpen('open'); onOpenThread(undefined) } },
               ]}
             />
             <button
               type="button"
               className="icon-button"
-              onClick={() => {
-                if (showPanel) {
-                  setPanelOpen('closed')
-                  onOpenThread(undefined)
-                } else {
-                  setPanelOpen('open')
-                }
-              }}
-              aria-label={showPanel ? 'Hide panel' : 'Show panel'}
-              title={showPanel ? 'Hide panel' : 'Show panel'}
+              onClick={() => onWorkbench(toggle)}
+              aria-label={workbench.open ? 'Hide panel' : 'Show panel'}
+              title={workbench.open ? 'Hide panel (Ctrl+J)' : 'Show panel (Ctrl+J)'}
             >
-              {showPanel ? <PanelRightClose size={17} /> : <PanelRight size={17} />}
+              {workbench.open ? <PanelRightClose size={17} /> : <PanelRight size={17} />}
             </button>
           </div>
         </header>
@@ -282,18 +354,14 @@ export function ProjectView({
         }}>
           <div className="conv-column">
             {items.length === 0 && <ProjectEmpty name={state.project.name} coordinatorId={state.coordinatorId} />}
-            <MainTimeline
+            <Room
               workspace={workspace}
               items={items}
               state={state}
               seen={seen}
-              activeThread={threadId}
+              activeThread={shownThreadId}
               coordinatorRunning={coordinatorRunning}
-              handlers={{
-                onOpenThread: id => onOpenThread(id === threadId ? undefined : id),
-                onReply: setReplyTarget,
-                onJump: jump,
-              }}
+              handlers={{ onOpenThread: openThread, onReply: setReplyTarget, onJump: jump }}
             />
           </div>
         </div>
@@ -320,6 +388,7 @@ export function ProjectView({
               </div>
             )}
             <PromptBox
+              inline
               placeholder={replyTarget ? `Reply to ${replyTarget.label}…` : items.length ? 'Message the project…' : 'Describe what needs to get done…'}
               onSubmit={send}
               running={coordinatorRunning}
@@ -328,64 +397,69 @@ export function ProjectView({
           </div>
         </div>
       </main>
-
-      {showPanel && (
-        <aside className="project-side" aria-label="Project panel">
-          {threadId
-            ? <ThreadPanel workspace={workspace} state={state} threadId={threadId} onBack={() => onOpenThread(undefined)} />
-            : (
-              <div className="side-panel">
-                <div className="side-tabs" role="tablist">
-                  {TABS.map(item => (
-                    <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} className={tab === item.key ? 'active' : undefined} onClick={() => setTab(item.key)}>
-                      <item.icon size={14} />
-                      <span>{item.label}</span>
-                      {item.key === 'overview' && working > 0 && <span className="tab-badge">{working}</span>}
-                    </button>
-                  ))}
-                </div>
-                <div className="side-scroll">
-                  {tab === 'overview' && <OverviewPanel state={state} onOpenThread={onOpenThread} unread={thread => isUnread(state, thread, seen)} />}
-                  {tab === 'memory' && <MemoryPanel workspace={workspace} state={state} />}
-                  {tab === 'library' && <LibraryPanel workspace={workspace} state={state} />}
-                  {tab === 'settings' && <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onDeleted={onDeleted} />}
-                </div>
-              </div>
-            )}
-        </aside>
-      )}
-    </div>
+      {panelSlot && panel && createPortal(panel, panelSlot)}
     </AvatarSeeds.Provider>
   )
 }
 
 // ---------------------------------------------------------------------------
+// The room
+// ---------------------------------------------------------------------------
 
 type Group =
-  | { kind: 'user'; item: Extract<MainItem, { kind: 'user' }> }
-  | { kind: 'agent'; id: string; items: MainItem[] }
+  | { kind: 'user'; id: string; at: number; items: Array<Extract<MainItem, { kind: 'user' }>> }
+  | { kind: 'agent'; id: string; at: number; items: MainItem[] }
 
+/** How long one author can keep talking under the same head. */
+const RUN_GAP_MS = 5 * 60_000
+
+function itemTime(item: MainItem): number | undefined {
+  return item.kind === 'draft' ? undefined : item.at
+}
+
+/** Runs of consecutive messages by one author, the way chat rooms group them. */
 function group(items: readonly MainItem[]): Group[] {
   const out: Group[] = []
   for (const item of items) {
+    const last = out.at(-1)
+    const at = itemTime(item) ?? last?.at ?? Date.now()
     if (item.kind === 'user') {
-      out.push({ kind: 'user', item })
+      if (last?.kind === 'user' && at - last.at < RUN_GAP_MS && sameDay(at, last.at)) last.items.push(item)
+      else out.push({ kind: 'user', id: item.id, at, items: [item] })
       continue
     }
-    const last = out.at(-1)
-    if (last?.kind === 'agent') last.items.push(item)
-    else out.push({ kind: 'agent', id: item.id, items: [item] })
+    if (last?.kind === 'agent' && (item.kind === 'draft' || (at - last.at < RUN_GAP_MS && sameDay(at, last.at)))) last.items.push(item)
+    else out.push({ kind: 'agent', id: item.id, at, items: [item] })
   }
   return out
 }
 
-interface TimelineHandlers {
+function sameDay(a: number, b: number): boolean {
+  return new Date(a).toDateString() === new Date(b).toDateString()
+}
+
+function dayLabel(at: number, now = Date.now()): string {
+  if (sameDay(at, now)) return 'Today'
+  if (sameDay(at, now - 86_400_000)) return 'Yesterday'
+  return new Date(at).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+}
+
+function clock(at: number): string {
+  return new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+interface RoomHandlers {
   onOpenThread: (id: string) => void
   onReply: (ref: ReplyRef) => void
   onJump: (ref: ReplyRef) => void
 }
 
-function MainTimeline({
+/**
+ * The main conversation as a chat room: every run of messages has its
+ * author, avatar and time; days are separated; the coordinator "is typing"
+ * instead of thinking.
+ */
+function Room({
   workspace,
   items,
   state,
@@ -400,31 +474,44 @@ function MainTimeline({
   seen: Readonly<Record<string, number>>
   activeThread: string | undefined
   coordinatorRunning: boolean
-  handlers: TimelineHandlers
+  handlers: RoomHandlers
 }) {
   const groups = group(items)
-  const last = groups.at(-1)
   const drafting = items.at(-1)?.kind === 'draft'
-  const thinking = coordinatorRunning && !drafting
+  const typing = coordinatorRunning && !drafting
+  let previousDay: number | undefined
   return (
-    <div className="timeline">
-      {groups.map((entry, index) => {
+    <div className="timeline room">
+      {groups.map(entry => {
+        const showDay = previousDay === undefined || !sameDay(previousDay, entry.at)
+        previousDay = entry.at
+        const day = showDay ? <div key={`day-${entry.id}`} className="room-day" role="separator"><span>{dayLabel(entry.at)}</span></div> : null
         if (entry.kind === 'user') {
-          return (
-            <div key={entry.item.id} id={`msg-${entry.item.id}`} className="user-row">
-              {entry.item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} align="end" />)}
-              <div className="user-bubble">{entry.item.text}</div>
-            </div>
-          )
+          return [
+            day,
+            <Run key={entry.id} author="You" at={entry.at} avatar={<span className="room-avatar-you" aria-hidden>Y</span>}>
+              {entry.items.map(item => (
+                <div key={item.id} id={`msg-${item.id}`} className="room-message">
+                  {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
+                  <div className="room-text">{item.text}</div>
+                </div>
+              ))}
+            </Run>,
+          ]
         }
-        const live = thinking && index === groups.length - 1
-        return (
-          <AgentGroup key={entry.id} agentId={state.coordinatorId} live={live || (drafting && entry === last)}>
+        return [
+          day,
+          <Run
+            key={entry.id}
+            author="Coordinator"
+            at={entry.at}
+            avatar={<AgentAvatar id={state.coordinatorId} role="coordinator" size={30} live={drafting && entry === groups.at(-1)} title="Coordinator" />}
+          >
             {entry.items.map(item => {
               switch (item.kind) {
                 case 'coordinator':
                   return (
-                    <div key={item.id} id={`msg-${item.id}`} className="main-message">
+                    <div key={item.id} id={`msg-${item.id}`} className="room-message main-message">
                       {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
                       {item.text.trim() && <Markdown text={item.text} />}
                       <ArtifactCards workspace={workspace} projectId={state.project.id} artifacts={artifactsFor(state, item.refs)} />
@@ -433,7 +520,7 @@ function MainTimeline({
                           type="button"
                           className="icon-button tiny"
                           aria-label="Reply to this message"
-                          title="Reply to this message"
+                          title="Reply"
                           onClick={() => handlers.onReply({ id: item.id, who: 'coordinator', label: 'Coordinator', agentId: state.coordinatorId, excerpt: plainPreview(item.text, 110), inMain: true })}
                         >
                           <CornerUpLeft size={14} />
@@ -442,7 +529,7 @@ function MainTimeline({
                     </div>
                   )
                 case 'draft':
-                  return <div key={item.id} className="streaming"><Markdown text={item.text} /></div>
+                  return <div key={item.id} className="room-message streaming"><Markdown text={item.text} /></div>
                 case 'threads':
                   return (
                     <div key={item.id} className="thread-stack">
@@ -454,6 +541,7 @@ function MainTimeline({
                           active={id === activeThread}
                           unread={Boolean(state.threads[id]) && isUnread(state, state.threads[id]!, seen)}
                           onOpen={handlers.onOpenThread}
+                          onReply={handlers.onReply}
                         />
                       ))}
                     </div>
@@ -462,13 +550,30 @@ function MainTimeline({
                   return null
               }
             })}
-            {live && <Coordinating />}
-          </AgentGroup>
-        )
+          </Run>,
+        ]
       })}
-      {thinking && last?.kind !== 'agent' && (
-        <AgentGroup agentId={state.coordinatorId} live><Coordinating /></AgentGroup>
+      {typing && (
+        <div className="room-typing" role="status">
+          <span className="thinking-dots" aria-hidden><i /><i /><i /></span>
+          <span><strong>Coordinator</strong> is typing…</span>
+        </div>
       )}
+    </div>
+  )
+}
+
+function Run({ author, at, avatar, children }: { author: string; at: number; avatar: ReactNode; children: ReactNode }) {
+  return (
+    <div className="room-run">
+      <div className="room-avatar">{avatar}</div>
+      <div className="room-body">
+        <div className="room-head">
+          <span className="room-author">{author}</span>
+          <time className="room-time" dateTime={new Date(at).toISOString()}>{clock(at)}</time>
+        </div>
+        {children}
+      </div>
     </div>
   )
 }
@@ -492,30 +597,12 @@ export function ReplyChip({ reply, onJump, align = 'start' }: { reply: ReplyRef;
   )
 }
 
-function AgentGroup({ children, live, agentId }: { children: ReactNode; live?: boolean; agentId: string }) {
-  return (
-    <div className={`agent-turn${live ? ' is-live' : ''}`}>
-      <div className="agent-avatar"><AgentAvatar id={agentId} role="coordinator" size={28} live={Boolean(live)} title="Coordinator" /></div>
-      <div className="agent-body">{children}</div>
-    </div>
-  )
-}
-
-function Coordinating() {
-  return (
-    <div className="thinking" role="status">
-      <span className="thinking-dots" aria-hidden><i /><i /><i /></span>
-      <span className="shimmer">Coordinating</span>
-    </div>
-  )
-}
-
 function ProjectEmpty({ name, coordinatorId }: { name: string; coordinatorId: string }) {
   return (
     <div className="empty-state">
       <AgentAvatar id={coordinatorId} role="coordinator" size={56} title="Your coordinator (click to change its look)" rerollable />
       <h2>What should {name} get done?</h2>
-      <p>Describe the outcome. Each focused task gets its own thread; results stay there and you hear when one needs you.</p>
+      <p>Talk here like you would with a teammate. Each focused task gets its own thread; follow them on the Board, and find what they make in the Library.</p>
     </div>
   )
 }

@@ -1,6 +1,6 @@
-import { ChevronRight, CircleAlert, CircleCheck, CircleDot, CircleX } from 'lucide-react'
-import type { ProjectState } from '../../lib/project-model'
-import { threadStatusLine } from '../../lib/project-model'
+import { ChevronRight, CircleAlert, CircleCheck, CircleDot, CircleX, CornerUpLeft } from 'lucide-react'
+import type { ProjectState, ReplyRef } from '../../lib/project-model'
+import { plainPreview, threadStatusLine } from '../../lib/project-model'
 import type { ThreadRecord } from '../../lib/project-types'
 
 /** The state of a thread as an icon and a few words; while working, the step it is on. */
@@ -26,12 +26,15 @@ export function ThreadCard({
   active,
   unread,
   onOpen,
+  onReply,
 }: {
   state: ProjectState
   threadId: string
   active: boolean
   unread: boolean
   onOpen: (id: string) => void
+  /** Reply to the thread itself: the message goes straight to it. */
+  onReply?: (ref: ReplyRef) => void
 }) {
   const thread = state.threads[threadId]
   if (!thread) {
@@ -43,17 +46,30 @@ export function ThreadCard({
     )
   }
   return (
-    <button
-      type="button"
-      className={`thread-card${active ? ' active' : ''}${unread ? ' unread' : ''}`}
-      onClick={() => onOpen(threadId)}
-      aria-pressed={active}
-      title={thread.goal}
-    >
-      <span className="thread-card-label">{thread.label}</span>
-      {unread && <span className="unread-dot" aria-label="New" />}
-      <ThreadStatus state={state} thread={thread} />
-      <ChevronRight size={15} className="thread-card-chevron" aria-hidden />
-    </button>
+    <div className="thread-card-wrap">
+      <button
+        type="button"
+        className={`thread-card${active ? ' active' : ''}${unread ? ' unread' : ''}`}
+        onClick={() => onOpen(threadId)}
+        aria-pressed={active}
+        title={thread.goal}
+      >
+        <span className="thread-card-label">{thread.label}</span>
+        {unread && <span className="unread-dot" aria-label="New" />}
+        <ThreadStatus state={state} thread={thread} />
+        <ChevronRight size={15} className="thread-card-chevron" aria-hidden />
+      </button>
+      {onReply && (
+        <button
+          type="button"
+          className="thread-card-reply icon-button tiny"
+          aria-label={`Reply to ${thread.label}`}
+          title="Reply in this thread"
+          onClick={() => onReply({ id: `thread:${thread.id}`, who: 'thread', label: thread.label, agentId: thread.id, threadId: thread.id, excerpt: plainPreview(thread.goal, 110), inMain: false })}
+        >
+          <CornerUpLeft size={13} />
+        </button>
+      )}
+    </div>
   )
 }

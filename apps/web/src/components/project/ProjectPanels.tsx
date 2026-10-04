@@ -9,7 +9,6 @@ import {
   Plus,
   Trash2,
   Upload,
-  GitFork,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../lib/api'
@@ -17,67 +16,20 @@ import { errorText, relativeTime } from '../../lib/hooks'
 import { confirmDialog } from '../../lib/dialogs'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import type { ProjectState } from '../../lib/project-model'
-import { formatBytes, overview, threadStatusLine, workerThreads } from '../../lib/project-model'
+import { formatBytes } from '../../lib/project-model'
 import type {
   ArtifactFact,
   CheckIns,
   MemoryFact,
   ProjectSettings,
   ProjectUsage,
-  ThreadRecord,
   ThreadSpawning,
   UpdateDetail,
 } from '../../lib/project-types'
 import { formatTokens } from '../../lib/timeline'
 import type { ConfigSnapshot, Effort, Permission } from '../../lib/types'
 import { Dialog } from '../Dialog'
-import { ArtifactIcon, ArtifactViewer } from './Artifacts'
-import { ThreadStatus } from './ThreadCard'
-
-// ---------------------------------------------------------------------------
-// Overview
-// ---------------------------------------------------------------------------
-
-export function OverviewPanel({ state, onOpenThread, unread }: { state: ProjectState; onOpenThread: (id: string) => void; unread: (thread: ThreadRecord) => boolean }) {
-  const groups = overview(state)
-  const total = workerThreads(state).length
-  if (total === 0) {
-    return (
-      <div className="panel-empty">
-        <GitFork size={22} />
-        <p>No threads yet.</p>
-        <span>When the coordinator splits work into parallel threads, they show up here with their status.</span>
-      </div>
-    )
-  }
-  return (
-    <div className="panel-stack">
-      {groups.map(group => (
-        <section key={group.key} className="panel-section">
-          <h3 className="panel-heading">{group.label} <span className="count">{group.threads.length}</span></h3>
-          <div className="overview-list">
-            {group.threads.map(thread => (
-              <button key={thread.id} type="button" className="overview-row" onClick={() => onOpenThread(thread.id)}>
-                <ThreadStatus state={state} thread={thread} withLabel={false} />
-                <span className="overview-row-main">
-                  <span className="overview-row-label">{thread.label}</span>
-                  <span className="overview-row-goal"><ThreadStatusText state={state} thread={thread} /></span>
-                </span>
-                {unread(thread) && <span className="unread-dot" aria-label="New" />}
-                <span className="muted small">{relativeTime(thread.updatedAt)}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  )
-}
-
-function ThreadStatusText({ state, thread }: { state: ProjectState; thread: ThreadRecord }) {
-  const line = threadStatusLine(state, thread)
-  return <>{line.step ?? line.label}</>
-}
+import { ARTIFACT_KIND, ArtifactIcon, ArtifactViewer, artifactKind, type ArtifactKind } from './Artifacts'
 
 // ---------------------------------------------------------------------------
 // Memory
@@ -242,14 +194,28 @@ export function authorName(state: ProjectState, author: string | undefined): str
 export function LibraryPanel({ workspace, state }: { workspace: string; state: ProjectState }) {
   const [viewing, setViewing] = useState<ArtifactFact | undefined>()
   const [adding, setAdding] = useState(false)
-  const artifacts = [...state.artifacts].sort((a, b) => b.seq - a.seq)
-  const resources = [...state.resources].sort((a, b) => b.seq - a.seq)
+  const [filter, setFilter] = useState<ArtifactKind | 'links' | 'all'>('all')
+  const everything = [...state.artifacts].sort((a, b) => b.seq - a.seq)
+  const kinds = [...new Set(everything.map(artifact => artifactKind(artifact.data.mediaType)))]
+  const artifacts = filter === 'all' ? everything : filter === 'links' ? [] : everything.filter(artifact => artifactKind(artifact.data.mediaType) === filter)
+  const resources = filter === 'all' || filter === 'links' ? [...state.resources].sort((a, b) => b.seq - a.seq) : []
   return (
-    <div className="panel-stack">
-      <div className="panel-toolbar">
-        <p className="panel-intro">Files you add and artifacts the agents produce, in one place for later work.</p>
+    <div className="wb-view" aria-label="Library">
+      <div className="wb-toolbar">
+        <span className="wb-toolbar-title">Library</span>
         <button type="button" className="button secondary small" onClick={() => setAdding(true)}><Upload size={13} /> Add</button>
       </div>
+      <div className="wb-card wb-scroll">
+    <div className="panel-stack">
+      {(kinds.length > 1 || (kinds.length > 0 && state.resources.length > 0)) && (
+        <div className="library-filters" role="group" aria-label="Show">
+          <button type="button" className={`board-chip${filter === 'all' ? ' active' : ''}`} onClick={() => setFilter('all')}>All</button>
+          {kinds.map(kind => (
+            <button key={kind} type="button" className={`board-chip${filter === kind ? ' active' : ''}`} onClick={() => setFilter(kind)}>{ARTIFACT_KIND[kind].plural}</button>
+          ))}
+          {state.resources.length > 0 && <button type="button" className={`board-chip${filter === 'links' ? ' active' : ''}`} onClick={() => setFilter('links')}>Links</button>}
+        </div>
+      )}
       {artifacts.length === 0 && resources.length === 0 && (
         <div className="panel-empty">
           <BookOpen size={22} />
@@ -267,8 +233,9 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
                 <span className="library-main">
                   <span className="library-title">{artifact.data.title}</span>
                   <span className="library-meta">
-                    {artifact.data.mediaType} · {formatBytes(artifact.data.size)}
+                    {ARTIFACT_KIND[artifactKind(artifact.data.mediaType)].label} · {formatBytes(artifact.data.size)}
                     {artifact.author ? ` · ${authorName(state, artifact.author)}` : ''}
+                    {` · ${relativeTime(artifact.createdAt)}`}
                   </span>
                 </span>
               </button>
@@ -294,6 +261,8 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
       )}
       {viewing && <ArtifactViewer workspace={workspace} projectId={state.project.id} artifact={viewing} onClose={() => setViewing(undefined)} />}
       {adding && <AddToLibraryDialog workspace={workspace} projectId={state.project.id} onClose={() => setAdding(false)} />}
+    </div>
+      </div>
     </div>
   )
 }
@@ -482,6 +451,11 @@ export function SettingsPanel({
 
   const models = config?.models ?? []
   return (
+    <div className="wb-view" aria-label="Project settings">
+      <div className="wb-toolbar">
+        <span className="wb-toolbar-title">Project settings</span>
+      </div>
+      <div className="wb-card wb-scroll">
     <div className="panel-stack settings-panel">
       <section className="panel-section">
         <h3 className="panel-heading">Brief</h3>
@@ -493,6 +467,11 @@ export function SettingsPanel({
           <span className="field-label">Instructions</span>
           <textarea className="field-textarea" rows={4} value={instructions} onChange={event => setInstructions(event.target.value)} placeholder="How the coordinator and every thread should work: standards, people to check with, things to avoid…" />
         </label>
+      </section>
+
+      <section className="panel-section">
+        <h3 className="panel-heading">Memory</h3>
+        <MemoryPanel workspace={workspace} state={state} />
       </section>
 
       <section className="panel-section">
@@ -545,6 +524,8 @@ export function SettingsPanel({
           <button type="button" className="button danger small" onClick={() => void remove()}><Trash2 size={13} /> Delete</button>
         </div>
       </section>
+    </div>
+      </div>
     </div>
   )
 }

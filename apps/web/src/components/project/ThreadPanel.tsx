@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, ChevronRight, Square } from 'lucide-react'
+import { ArrowLeft, Check, CheckCheck, ChevronRight, RotateCcw, Square } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import { isUnsupported, projectApi } from '../../lib/project-api'
@@ -74,13 +74,21 @@ export function ThreadPanel({
 
   if (!thread) {
     return (
-      <div className="side-panel">
-        <div className="side-header"><button type="button" className="icon-button" onClick={onBack} aria-label="Back"><ArrowLeft size={16} /></button><span className="muted">Thread not found</span></div>
+      <div className="wb-view">
+        <div className="wb-toolbar"><button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board"><ArrowLeft size={15} /></button><span className="muted">Thread not found</span></div>
       </div>
     )
   }
 
-  const working = threadState(state, thread) === 'working'
+  const current = threadState(state, thread)
+  const working = current === 'working'
+  const resolve = async (resolved: boolean) => {
+    try {
+      await projectApi.resolveThread(workspace, projectId, threadId, resolved)
+    } catch (reason) {
+      setNotice(isUnsupported(reason) ? 'Resolving a thread is not supported by this server yet.' : errorText(reason))
+    }
+  }
   const send = async (text: string) => {
     try {
       await projectApi.sendToThread(workspace, projectId, threadId, text)
@@ -99,19 +107,21 @@ export function ThreadPanel({
   }
 
   return (
-    <div className="side-panel thread-panel">
-      <div className="side-header">
-        <button type="button" className="icon-button" onClick={onBack} aria-label="Back to overview" title="Back to overview"><ArrowLeft size={16} /></button>
-        <div className="side-titles">
-          <div className="side-title">{thread.label}</div>
-          <ThreadStatus state={state} thread={thread} />
-        </div>
+    <div className="wb-view thread-panel" aria-label={`Thread ${thread.label}`}>
+      <div className="wb-toolbar">
+        <button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board" title="Back to the Board"><ArrowLeft size={15} /></button>
+        <span className="wb-toolbar-title" title={thread.goal}>{thread.label}</span>
+        <ThreadStatus state={state} thread={thread} />
         {working && (
           <button type="button" className="button ghost small" onClick={() => void stop()} title="Stop this thread">
             <Square size={11} fill="currentColor" /> Stop
           </button>
         )}
+        {!working && (current === 'resolved'
+          ? <button type="button" className="button ghost small" onClick={() => void resolve(false)} title="Reopen this thread"><RotateCcw size={12} /> Reopen</button>
+          : <button type="button" className="button ghost small" onClick={() => void resolve(true)} title="You took the result: move it to Resolved"><CheckCheck size={13} /> Resolve</button>)}
       </div>
+      <div className="wb-card thread-body">
       <div className="side-scroll" ref={scroller}>
         {thread.checklist && thread.checklist.length > 0 && <Checklist items={thread.checklist} working={working} />}
         {outputs.length > 0 && (
@@ -128,11 +138,12 @@ export function ThreadPanel({
       </div>
       <div className="side-dock">
         <PromptBox
-          compact
+          inline
           placeholder={`Message ${thread.label}…`}
           onSubmit={send}
           autoFocusKey={threadId}
         />
+      </div>
       </div>
     </div>
   )

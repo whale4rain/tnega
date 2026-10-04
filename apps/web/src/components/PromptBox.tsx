@@ -51,6 +51,7 @@ export function PromptBox({
   footer,
   autoFocusKey,
   compact,
+  inline,
   acceptImages = false,
   imageNotice,
 }: {
@@ -69,6 +70,8 @@ export function PromptBox({
   footer?: ReactNode
   autoFocusKey?: string | undefined
   compact?: boolean
+  /** One line at rest with the send button beside the text; grows as you type. Project room and threads. */
+  inline?: boolean
   /** Allow pasting, dropping or picking images to send with the message. */
   acceptImages?: boolean
   /** Shown under attached images, e.g. when the model cannot see them. */
@@ -89,7 +92,7 @@ export function PromptBox({
   const pendingCaret = useRef<number | undefined>(undefined)
   const showStop = running && Boolean(onStop)
 
-  const maxHeight = compact ? 180 : 280
+  const maxHeight = compact || inline ? 180 : 280
   const fit = useCallback(() => {
     const el = input.current
     // Without a width (hidden or not laid out yet) the text would wrap per character.
@@ -260,7 +263,7 @@ export function PromptBox({
   const open = Boolean(completion)
 
   return (
-    <div className={`composer${running ? ' is-running' : ''}${compact ? ' compact' : ''}`}>
+    <div className={`composer${running ? ' is-running' : ''}${compact ? ' compact' : ''}${inline ? ' inline' : ''}`}>
       {completion && (
         <div className="slash-menu" role="listbox" aria-label={completion.title} ref={menu}>
           <div className="slash-menu-title">
@@ -439,7 +442,7 @@ export function PromptBox({
             )}
         </div>
       </div>
-      {!compact && (disabledReason || footer) && (
+      {!compact && !inline && (disabledReason || footer) && (
         <div className="composer-footer">
           {disabledReason ? <span className="composer-warning"><Sparkles size={13} />{disabledReason}</span> : footer}
         </div>

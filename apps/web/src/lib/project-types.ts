@@ -49,7 +49,7 @@ export interface ProjectSettings {
   maxParallelThreads?: number
 }
 
-export type ThreadState = 'working' | 'waiting' | 'blocked' | 'idle' | 'done' | 'failed'
+export type ThreadState = 'working' | 'waiting' | 'blocked' | 'idle' | 'done' | 'failed' | 'resolved'
 
 /** One step of a thread's live checklist (`update_checklist`). */
 export interface ChecklistItem {
@@ -122,6 +122,25 @@ export interface FactRecord<T = Record<string, unknown>> {
   deleted: boolean
 }
 
+export type RoutineSchedule =
+  | { kind: 'daily'; time: string }
+  | { kind: 'weekdays'; time: string }
+  | { kind: 'weekly'; time: string; weekday: number }
+  | { kind: 'interval'; minutes: number }
+
+export interface RoutineData {
+  title: string
+  prompt: string
+  schedule: RoutineSchedule
+  enabled: boolean
+  threadId?: string
+  nextRunAt: number
+  lastRunAt?: number
+  lastError?: string
+}
+
+export type RoutineFact = FactRecord<RoutineData>
+
 export type MemoryFact = FactRecord<{ text: string; tags?: string[] }>
 export type ArtifactFact = FactRecord<{ title: string; hash: string; size: number; mediaType: string }>
 export type ResourceFact = FactRecord<{ title: string; uri: string; note?: string }>
@@ -135,6 +154,8 @@ export interface ProjectSnapshot {
   inboxMessages: BoxEnvelope[]
   memory: MemoryFact[]
   library: { artifacts: ArtifactFact[]; resources: ResourceFact[] }
+  /** Older servers omit routines. */
+  routines?: RoutineFact[]
 }
 
 export interface ThreadDetail {
@@ -142,10 +163,12 @@ export interface ThreadDetail {
   events: SessionEvent[]
 }
 
-/** Proposed: `GET /api/projects/:id/usage`. */
+/** `GET /api/projects/:id/usage?since=`. */
 export interface ProjectUsage {
   total: UsageTotals
-  byThread: Array<UsageTotals & { threadId: string }>
+  /** Totals since the `since` asked for (the Board asks for today). */
+  since?: UsageTotals
+  byThread: Array<UsageTotals & { threadId: string; lastActiveAt?: number }>
 }
 
 export interface UsageTotals {
@@ -153,6 +176,9 @@ export interface UsageTotals {
   promptTokens: number
   completionTokens: number
   cachedTokens: number
+  /** Time spent inside turns. */
+  activeMs?: number
+  turns?: number
 }
 
 /** Frames of `GET /api/projects/:id/stream`. */

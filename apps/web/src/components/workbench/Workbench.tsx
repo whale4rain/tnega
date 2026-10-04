@@ -1,13 +1,26 @@
-import { Bot, FileText, FolderTree, GitCompareArrows, Globe, SquareTerminal, X, type LucideIcon } from 'lucide-react'
+import { BookOpen, Bot, CalendarClock, FileText, FolderTree, GitCompareArrows, Globe, KanbanSquare, MessagesSquare, Settings2, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { fileName } from '../../lib/office'
-import { closeDoc, isTool, openDoc, openTool, select, type DocTab, type ToolId, type WorkbenchState } from '../../lib/workbench'
+import { BOARD_KEY, closeDoc, isProjectKey, isTool, openDoc, openTool, projectTabKey, select, type DocTab, type ProjectTabId, type ToolId, type WorkbenchState } from '../../lib/workbench'
 import { PreviewView } from '../preview/FilePreview'
 import { BrowserView } from './BrowserView'
 import { ChangesView } from './ChangesView'
 import { FilesView } from './FilesView'
 import { SubagentView } from './SubagentView'
 import { TerminalView } from './TerminalView'
+
+const PROJECT_META: Record<ProjectTabId, { label: string; icon: LucideIcon; hint: string }> = {
+  board: { label: 'Board', icon: KanbanSquare, hint: 'Every thread at a glance' },
+  library: { label: 'Library', icon: BookOpen, hint: 'Files you added and outputs threads made' },
+  routines: { label: 'Routines', icon: CalendarClock, hint: 'Recurring work on a schedule' },
+}
+
+/** What a project contributes to the panel: its tabs, and where it renders them. */
+export interface WorkbenchProject {
+  tabs: Array<{ tab: ProjectTabId; badge?: number; attention?: boolean }>
+  /** The element the project view portals its active tab into. */
+  slot: (element: HTMLDivElement | null) => void
+}
 
 /** Narrowest and widest the panel may be dragged, in CSS pixels. */
 export const WORKBENCH_MIN_WIDTH = 360
@@ -39,6 +52,7 @@ export function Workbench({
   browser,
   changeCount,
   onChangeCount,
+  project,
 }: {
   workspace: string
   state: WorkbenchState
@@ -49,9 +63,14 @@ export function Workbench({
   browser: boolean
   changeCount: number | undefined
   onChangeCount: (count: number) => void
+  /** Present on a project screen: its tabs lead the rail. */
+  project?: WorkbenchProject | undefined
 }) {
   const [visited, setVisited] = useState<ReadonlySet<ToolId>>(() => new Set(isTool(state.active) ? [state.active] : []))
-  const active = state.active
+  // Outside a project its tabs do not exist; show the first tool instead.
+  const active = !project && isProjectKey(state.active) ? 'files' : state.active
+  const projectDocs = project ? state.docs.filter(doc => doc.kind === 'thread' || doc.kind === 'settings') : []
+  const otherDocs = state.docs.filter(doc => doc.kind === 'preview' || doc.kind === 'subagent')
   if (isTool(active) && !visited.has(active)) setVisited(new Set([...visited, active]))
   const tools = (['files', 'changes', 'terminal', 'browser'] as const).filter(tool => tool !== 'browser' || browser)
   const keep = (tool: ToolId, view: ReactNode) => (visited.has(tool) || active === tool) && (
@@ -63,6 +82,28 @@ export function Workbench({
     <aside className="workbench" aria-label="Workbench">
       <ResizeHandle onResize={onResize} />
       <div className="wb-rail" role="tablist" aria-label="Workbench">
+        {project?.tabs.map(({ tab, badge, attention }) => {
+          const meta = PROJECT_META[tab]
+          const key = projectTabKey(tab)
+          const Icon = meta.icon
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active === key}
+              className={`wb-tab${active === key ? ' active' : ''}`}
+              title={meta.hint}
+              onClick={() => onChange(current => select(current, key))}
+            >
+              <Icon size={14} aria-hidden />
+              <span className="wb-tab-label">{meta.label}</span>
+              {badge !== undefined && badge > 0 && <span className={`wb-count${attention ? ' attention' : ''}`}>{badge}</span>}
+            </button>
+          )
+        })}
+        {projectDocs.map(item => <DocTabButton key={item.key} doc={item} active={active === item.key} onSelect={() => onChange(current => select(current, item.key))} onClose={() => onChange(current => closeDoc(current, item.key, BOARD_KEY))} />)}
+        {project && <span className="wb-rail-divider" aria-hidden />}
         {tools.map(tool => {
           const meta = TOOL_META[tool]
           const Icon = meta.icon
@@ -82,14 +123,15 @@ export function Workbench({
             </button>
           )
         })}
-        {state.docs.length > 0 && <span className="wb-rail-divider" aria-hidden />}
-        {state.docs.map(item => <DocTabButton key={item.key} doc={item} active={active === item.key} onSelect={() => onChange(current => select(current, item.key))} onClose={() => onChange(current => closeDoc(current, item.key))} />)}
+        {otherDocs.length > 0 && <span className="wb-rail-divider" aria-hidden />}
+        {otherDocs.map(item => <DocTabButton key={item.key} doc={item} active={active === item.key} onSelect={() => onChange(current => select(current, item.key))} onClose={() => onChange(current => closeDoc(current, item.key))} />)}
         <span className="wb-rail-fill" />
         <button type="button" className="icon-button small" aria-label="Close workbench" title="Close (Ctrl+J)" onClick={onClose}>
           <X size={15} />
         </button>
       </div>
       <div className="wb-body">
+        {project && <div className="wb-pane" ref={project.slot} hidden={!isProjectKey(active)} />}
         {keep('files', <FilesView workspace={workspace} focus={state.focus} onPreview={path => onChange(current => openDoc(current, { kind: 'preview', path }))} />)}
         {keep('changes', <ChangesView workspace={workspace} visible={active === 'changes'} focus={state.focus} onCount={onChangeCount} onOpenInFiles={path => onChange(current => openTool(current, 'files', path))} onPreview={path => onChange(current => openDoc(current, { kind: 'preview', path }))} />)}
         {keep('terminal', <TerminalView workspace={workspace} visible={active === 'terminal'} />)}
@@ -105,11 +147,19 @@ export function Workbench({
   )
 }
 
+const DOC_ICON: Record<DocTab['kind'], LucideIcon> = {
+  preview: FileText,
+  subagent: Bot,
+  thread: MessagesSquare,
+  settings: Settings2,
+}
+
 function DocTabButton({ doc, active, onSelect, onClose }: { doc: DocTab; active: boolean; onSelect: () => void; onClose: () => void }) {
   const label = doc.kind === 'preview' ? fileName(doc.path) : doc.label
-  const Icon = doc.kind === 'preview' ? FileText : Bot
+  const Icon = DOC_ICON[doc.kind]
+  const title = doc.kind === 'preview' ? doc.path : doc.kind === 'subagent' ? `Subagent ${doc.label}` : doc.kind === 'thread' ? `Thread ${doc.label}` : doc.label
   return (
-    <div className={`wb-tab doc${active ? ' active' : ''}`} role="tab" aria-selected={active} title={doc.kind === 'preview' ? doc.path : `Subagent ${doc.label}`}>
+    <div className={`wb-tab doc${active ? ' active' : ''}`} role="tab" aria-selected={active} title={title}>
       <button type="button" className="wb-tab-main" onClick={onSelect}>
         <Icon size={14} aria-hidden />
         <span className="wb-tab-label">{label}</span>
