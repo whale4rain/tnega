@@ -71,13 +71,19 @@ function between(next: () => number, min: number, max: number): number {
   return Math.round((min + next() * (max - min)) * 2) / 2
 }
 
+/**
+ * Colours a coordinator may take: the brand accent and the bright palette.
+ * The cloud shape is what marks the coordinator; the colour tells projects apart.
+ */
+export const COORDINATOR_COLORS: readonly string[] = [ACCENT, ...COLORS.filter(color => color !== 'ink' && color !== '#6e7781')]
+
 export function avatarSpec(seed: string, role: 'coordinator' | 'agent' = 'agent'): AvatarSpec {
   const next = random(hash(`${role}:${seed}`))
   const coordinator = role === 'coordinator'
   const shape: Shape = coordinator ? 'cloud' : pick(next, SHAPES)
   return {
     shape,
-    color: coordinator ? ACCENT : pick(next, COLORS),
+    color: pick(next, coordinator ? COORDINATOR_COLORS : COLORS),
     eyes: next() < 0.62 ? 'pill' : 'dot',
     gazeX: between(next, -5, 5),
     gazeY: between(next, -3, 1),

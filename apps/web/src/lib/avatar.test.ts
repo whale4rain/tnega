@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ACCENT, avatarSpec, COLORS, distinctSeeds, effectiveSeed, SHAPES } from './avatar'
+import { avatarSpec, COLORS, COORDINATOR_COLORS, distinctSeeds, effectiveSeed, SHAPES } from './avatar'
 
 describe('avatarSpec', () => {
   it('is stable for an id and varies across ids', () => {
@@ -13,10 +13,15 @@ describe('avatarSpec', () => {
     }
   })
 
-  it('draws the main agent as an accent cloud', () => {
+  it('draws every coordinator as a cloud, in a colour that tells projects apart', () => {
+    const colors = new Set<string>()
     for (let i = 0; i < 20; i += 1) {
-      expect(avatarSpec(`project-${i}`, 'coordinator')).toMatchObject({ shape: 'cloud', color: ACCENT })
+      const spec = avatarSpec(`project-${i}`, 'coordinator')
+      expect(spec.shape).toBe('cloud')
+      expect(COORDINATOR_COLORS).toContain(spec.color)
+      colors.add(spec.color)
     }
+    expect(colors.size).toBeGreaterThanOrEqual(5)
   })
 
   it('uses the plain id until rerolled', () => {
