@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { readSystemConfig, SystemConfigError, systemConfigProblem, updateSystemConfig } from '../src/config.js'
+import { availableModels, ModelRouteError, parseModelRouteInput, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/config.js'
 
 const dirs: string[] = []
 
@@ -39,5 +39,42 @@ describe('system config file', () => {
     await updateSystemConfig({ model: 'deepseek-flash', vision: true }, file)
     await updateSystemConfig({ workspaces: ['D:/ws'] }, file)
     expect(await readSystemConfig(file)).toEqual({ model: 'deepseek-flash', vision: true, workspaces: ['D:/ws'] })
+  })
+})
+
+describe('chat model routes', () => {
+  it('registers several models, keeps a saved key when the form leaves it blank, and removes one', async () => {
+    const file = await configFile(JSON.stringify({ model: 'deepseek-flash', apiKey: 'sk-default' }))
+    await upsertModelRoute('deepseek-flash', parseModelRouteInput({ name: 'DeepSeek Flash', model: 'deepseek-flash', protocol: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: 'sk-ds' }), file)
+    await upsertModelRoute('sonnet', parseModelRouteInput({ name: 'Sonnet', model: 'claude-sonnet-5-5', protocol: 'anthropic', apiKey: 'sk-ant', contextWindow: 200000 }), file)
+    // Editing without a key keeps the stored one.
+    await upsertModelRoute('sonnet', parseModelRouteInput({ name: 'Sonnet 5.5', model: 'claude-sonnet-5-5', apiKey: '' }), file)
+
+    let config = await readSystemConfig(file)
+    expect(config.models?.map(route => route.id)).toEqual(['deepseek-flash', 'sonnet'])
+    expect(config.models?.[1]).toMatchObject({ name: 'Sonnet 5.5', apiKey: 'sk-ant', protocol: 'anthropic', contextWindow: 200000 })
+    expect(availableModels(config, {}).map(model => [model.id, model.apiKeySet])).toEqual([['deepseek-flash', true], ['sonnet', true]])
+
+    await updateSystemConfig({ model: 'sonnet' }, file)
+    config = await removeModelRoute('sonnet', file)
+    expect(config.models?.map(route => route.id)).toEqual(['deepseek-flash'])
+    expect(config.model).toBeUndefined()
+    await expect(removeModelRoute('sonnet', file)).rejects.toBeInstanceOf(ModelRouteError)
+  })
+
+  it('rejects routes it could not call', () => {
+    expect(() => parseModelRouteInput({ model: '' })).toThrow(ModelRouteError)
+    expect(() => parseModelRouteInput({ model: 'x', baseUrl: 'ftp://host' })).toThrow(ModelRouteError)
+    expect(() => parseModelRouteInput({ model: 'x', protocol: 'grpc' })).toThrow(ModelRouteError)
+  })
+})
+
+describe('the first extra model', () => {
+  it('keeps the single configured route as a registered model and as the default', async () => {
+    const file = await configFile(JSON.stringify({ model: 'deepseek-flash', baseUrl: 'https://api.deepseek.com', protocol: 'openai', apiKey: 'sk-ds' }))
+    const config = await upsertModelRoute('sonnet', parseModelRouteInput({ model: 'claude-sonnet-5-5', protocol: 'anthropic', apiKey: 'sk-ant' }), file)
+    expect(config.models?.map(route => route.id)).toEqual(['deepseek-flash', 'sonnet'])
+    expect(config.models?.[0]).toMatchObject({ model: 'deepseek-flash', baseUrl: 'https://api.deepseek.com', protocol: 'openai', apiKey: 'sk-ds' })
+    expect(config.model).toBe('deepseek-flash')
   })
 })

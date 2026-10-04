@@ -4,6 +4,7 @@ import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, Protocol } from '../lib/types'
 import { Dialog } from './Dialog'
+import { ModelRoutes } from './ModelRoutes'
 import { UpdateSettings } from './UpdateButton'
 import type { DesktopUpdates } from '../lib/desktop-updates'
 
@@ -16,7 +17,7 @@ import type { DesktopUpdates } from '../lib/desktop-updates'
 type SectionId = 'model' | 'approvals' | 'tools' | 'appearance' | 'about'
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: string; icon: typeof Cpu }> = [
-  { id: 'model', label: 'Model', description: 'The model connection every session uses unless it picks another route.', icon: Cpu },
+  { id: 'model', label: 'Models', description: 'Chat models that run sessions, projects and threads. Register several, choose the default, and switch per session from the composer. Approval reviewers such as TypeSafe Jev are not chat models; set them under Approvals.', icon: Cpu },
   { id: 'approvals', label: 'Approvals', description: 'Who reviews actions that need permission.', icon: ShieldCheck },
   { id: 'tools', label: 'Tools & shell', description: 'How the agent runs commands and calls its tools.', icon: SquareTerminal },
   { id: 'appearance', label: 'Appearance', description: 'How Tnega looks on this device.', icon: Palette },
@@ -153,7 +154,15 @@ export function SettingsDialog({
           </header>
 
           {panel('model', <>
-            {effective && (
+            {config && (
+              <ModelRoutes
+                config={config}
+                defaultId={model.trim() || effective?.modelId || ''}
+                onDefault={setModel}
+                onChanged={onSaved}
+              />
+            )}
+            {!stored?.models?.length && effective && (
               <div className="effective-card">
                 <div className="effective-row"><span>Active model</span><strong>{effective.modelId || effective.model || '—'}</strong></div>
                 <div className="effective-row"><span>Endpoint</span><strong className="mono">{effective.baseUrl || 'provider default'}</strong></div>
@@ -164,6 +173,7 @@ export function SettingsDialog({
               </div>
             )}
             <div className="form-grid">
+              {!stored?.models?.length && <>
               <label className="field">
                 <span className="field-label">Protocol</span>
                 <select value={protocol} onChange={event => setProtocol(event.target.value as '' | Protocol)}>
@@ -197,8 +207,9 @@ export function SettingsDialog({
                   </button>
                 </span>
               </label>
+              </>}
               <label className="field">
-                <span className="field-label">Reasoning effort</span>
+                <span className="field-label">Reasoning effort (all models)</span>
                 <select value={effort} onChange={event => setEffort(event.target.value as '' | Effort)}>
                   <option value="">Model default</option>
                   <option value="low">Low</option>
@@ -207,15 +218,10 @@ export function SettingsDialog({
                 </select>
               </label>
               <label className="field">
-                <span className="field-label">Temperature</span>
+                <span className="field-label">Temperature (all models)</span>
                 <input value={temperature} onChange={event => setTemperature(event.target.value)} placeholder="Model default" inputMode="decimal" />
               </label>
             </div>
-            {config && config.models.length > 1 && (
-              <p className="muted small">
-                {config.models.length} model routes are configured in the config file; pick one per session from the composer.
-              </p>
-            )}
           </>)}
 
           {panel('approvals', <div className="form-grid">

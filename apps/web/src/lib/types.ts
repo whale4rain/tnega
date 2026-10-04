@@ -185,6 +185,30 @@ export interface ModelOption {
   contextWindow?: number
 }
 
+/** A registered chat model route as stored in the config file (no key, only whether one is set). */
+export interface ModelRouteSettings {
+  id: string
+  model?: string
+  name?: string
+  baseUrl?: string
+  protocol?: Protocol
+  apiKeyEnv?: string
+  apiKeySet: boolean
+  contextWindow?: number
+  vision?: boolean
+}
+
+/** What the model route form sends; a blank key keeps the saved one. */
+export interface ModelRouteInput {
+  name?: string
+  model: string
+  protocol?: Protocol | ''
+  baseUrl?: string
+  apiKey?: string
+  contextWindow?: number
+  vision?: boolean
+}
+
 export interface ConfigSnapshot {
   apiKeySet: boolean
   /** The config file exists but could not be parsed; saving is refused until it is fixed. */
@@ -212,6 +236,8 @@ export interface ConfigSnapshot {
     protocol?: Protocol
     reasoningEffort?: Effort
     temperature?: number
+    /** Registered chat model routes. */
+    models?: ModelRouteSettings[]
   }
   env: { apiKeySet: boolean; baseUrl?: string; model?: string }
   models: ModelOption[]

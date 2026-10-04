@@ -1,4 +1,5 @@
 import type {
+  ModelRouteInput,
   AgentType,
   ApprovalMode,
   ApprovalReviewerSettings,
@@ -108,6 +109,11 @@ export interface TextFile {
 
 export const api = {
   config: () => call<ConfigSnapshot>('/api/config'),
+  /** Add or replace one chat model route. */
+  saveModelRoute: (id: string, input: ModelRouteInput) =>
+    call<ConfigSnapshot>(`/api/config/models/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
+  removeModelRoute: (id: string) =>
+    call<ConfigSnapshot>(`/api/config/models/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   saveConfig: async (patch: ConfigPatch): Promise<ConfigSnapshot> => {
     const saved = await call<ConfigSnapshot>('/api/config', { method: 'PUT', body: patch })
     if (patch.codeMode !== undefined && saved.config.codeMode !== patch.codeMode) {

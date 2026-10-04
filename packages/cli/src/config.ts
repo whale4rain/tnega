@@ -196,6 +196,116 @@ export async function updateSystemConfig(
   return next
 }
 
+/** A chat model route as the Settings form sends it; an empty or missing key keeps the stored one. */
+export interface ModelRouteInput {
+  name?: string
+  model: string
+  protocol?: LlmProtocol | ''
+  baseUrl?: string
+  apiKey?: string
+  apiKeyEnv?: string
+  contextWindow?: number
+  vision?: boolean
+}
+
+export class ModelRouteError extends Error {
+  override name = 'ModelRouteError'
+}
+
+const ROUTE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/
+
+export function parseModelRouteInput(value: unknown): ModelRouteInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ModelRouteError('model route must be an object')
+  const record = value as Record<string, unknown>
+  const model = typeof record.model === 'string' ? record.model.trim() : ''
+  if (!model) throw new ModelRouteError('model is required')
+  const input: ModelRouteInput = { model }
+  for (const key of ['name', 'baseUrl', 'apiKey', 'apiKeyEnv'] as const) {
+    if (record[key] === undefined) continue
+    if (typeof record[key] !== 'string') throw new ModelRouteError(`${key} must be a string`)
+    input[key] = record[key].trim()
+  }
+  if (record.protocol !== undefined) {
+    if (record.protocol !== 'openai' && record.protocol !== 'anthropic' && record.protocol !== '') throw new ModelRouteError('protocol must be openai, anthropic or empty')
+    input.protocol = record.protocol
+  }
+  if (record.contextWindow !== undefined && record.contextWindow !== null) {
+    if (!isContextWindow(record.contextWindow)) throw new ModelRouteError('contextWindow must be a positive whole number of tokens')
+    input.contextWindow = record.contextWindow
+  }
+  if (record.vision !== undefined) {
+    if (typeof record.vision !== 'boolean') throw new ModelRouteError('vision must be a boolean')
+    input.vision = record.vision
+  }
+  if (input.baseUrl) {
+    try {
+      const url = new URL(input.baseUrl)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocol')
+    } catch {
+      throw new ModelRouteError('baseUrl must be an http(s) URL')
+    }
+  }
+  return input
+}
+
+/**
+ * Add or replace one chat model route. Fields the form leaves out keep their
+ * stored values, and a blank key keeps the saved credential.
+ */
+export async function upsertModelRoute(id: string, input: ModelRouteInput, file = systemConfigPath()): Promise<SystemConfig> {
+  if (!ROUTE_ID.test(id)) throw new ModelRouteError('model route id may use letters, digits and . _ : / @ + -')
+  const problem = await systemConfigProblem(file)
+  if (problem) throw new SystemConfigError(file, problem)
+  const current = await readSystemConfig(file)
+  const routes = [...(current.models ?? [])]
+  // The first registered route carries the single legacy route over, so adding
+  // a second model never loses the one that was configured before.
+  if (!routes.length && current.model && current.model !== id) {
+    const legacy: ConfiguredModel = { id: current.model, model: current.model }
+    if (current.baseUrl) legacy.baseUrl = current.baseUrl
+    if (current.protocol) legacy.protocol = current.protocol
+    if (current.apiKey) legacy.apiKey = current.apiKey
+    if (current.apiKeyHeader) legacy.apiKeyHeader = current.apiKeyHeader
+    if (current.contextWindow !== undefined) legacy.contextWindow = current.contextWindow
+    if (current.vision !== undefined) legacy.vision = current.vision
+    routes.push(legacy)
+  }
+  const index = routes.findIndex(route => route.id === id)
+  const previous = index >= 0 ? routes[index]! : undefined
+  const next: ConfiguredModel = { ...(previous ?? {}), id, model: input.model }
+  for (const key of ['name', 'baseUrl', 'apiKeyEnv'] as const) {
+    if (input[key] === undefined) continue
+    if (input[key]) next[key] = input[key]
+    else delete next[key]
+  }
+  if (input.apiKey) next.apiKey = input.apiKey
+  if (input.protocol !== undefined) {
+    if (input.protocol) next.protocol = input.protocol
+    else delete next.protocol
+  }
+  if (input.contextWindow !== undefined) next.contextWindow = input.contextWindow
+  if (input.vision !== undefined) next.vision = input.vision
+  if (index >= 0) routes[index] = next
+  else routes.push(next)
+  const config: SystemConfig = { ...current, models: routes }
+  await writeSystemConfig(config, file)
+  return config
+}
+
+/** Remove a chat model route; the default falls back to the next route when it was this one. */
+export async function removeModelRoute(id: string, file = systemConfigPath()): Promise<SystemConfig> {
+  const problem = await systemConfigProblem(file)
+  if (problem) throw new SystemConfigError(file, problem)
+  const current = await readSystemConfig(file)
+  if (!current.models?.some(route => route.id === id)) throw new ModelRouteError(`no model route ${id}`)
+  const config: SystemConfig = { ...current, models: current.models.filter(route => route.id !== id) }
+  if (!config.models?.length) delete config.models
+  if (config.model === id) delete config.model
+  if (config.approvalReview?.modelId === id) config.approvalReview = { ...config.approvalReview, modelId: '' }
+  await writeSystemConfig(config, file)
+  return config
+}
+
 export function effectiveLlmConfig(
   config: SystemConfig,
   env: NodeJS.ProcessEnv = process.env,

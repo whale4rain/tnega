@@ -57,8 +57,8 @@ it('groups settings into sections and saves the chosen shell', async () => {
     { path: 'C:/Git/bin/bash.exe', label: 'Git Bash', kind: 'bash' },
   ] } }
   const view = render(createElement(SettingsDialog, { config: withShells, onClose: vi.fn(), onSaved: vi.fn() }))
-  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Model', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
-  expect(view.getByRole('tab', { name: 'Model' }).getAttribute('aria-selected')).toBe('true')
+  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Models', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
+  expect(view.getByRole('tab', { name: 'Models' }).getAttribute('aria-selected')).toBe('true')
   fireEvent.click(view.getByRole('tab', { name: 'Tools & shell' }))
   expect(view.getByRole('tabpanel').id).toBe('settings-panel-tools')
   const shell = view.getByLabelText('Shell')
@@ -73,10 +73,10 @@ it('jumps to the section holding an invalid field', () => {
   localStorage.removeItem('tnega.settingsSection')
   const view = render(createElement(SettingsDialog, { config: snapshot, onClose: vi.fn(), onSaved: vi.fn() }))
   fireEvent.click(view.getByRole('tab', { name: 'Approvals' }))
-  fireEvent.change(view.getByLabelText('Temperature'), { target: { value: 'warm' } })
+  fireEvent.change(view.getByLabelText('Temperature (all models)'), { target: { value: 'warm' } })
   fireEvent.click(view.getByText('Save changes'))
   expect(view.getByRole('alert').textContent).toBe('Temperature must be a number')
-  expect(view.getByRole('tab', { name: 'Model' }).getAttribute('aria-selected')).toBe('true')
+  expect(view.getByRole('tab', { name: 'Models' }).getAttribute('aria-selected')).toBe('true')
 })
 
 it('switches theme from Appearance right away', () => {

@@ -95,6 +95,10 @@ import {
   systemConfigProblem,
   updateSystemConfig,
   normalizeApprovalReviewer,
+  ModelRouteError,
+  parseModelRouteInput,
+  removeModelRoute,
+  upsertModelRoute,
   type EffectiveLlmConfig,
   type SystemConfig,
   type SystemConfigPatch,
@@ -523,6 +527,25 @@ async function handleApi(
     const config = await updateSystemConfig(patch, context.configFile)
     configureSystemShell(config.shell)
     sendJson(res, 200, configSnapshot(config, context.configFile))
+    return
+  }
+
+  // Chat model routes: register several and choose one per session or as the default.
+  const modelRoute = /^\/api\/config\/models\/([^/]+)$/.exec(url.pathname)
+  if (modelRoute && (req.method === 'PUT' || req.method === 'DELETE')) {
+    const id = decodeURIComponent(modelRoute[1]!)
+    try {
+      const config = req.method === 'PUT'
+        ? await upsertModelRoute(id, parseModelRouteInput(await readJsonBody(req)), context.configFile)
+        : await removeModelRoute(id, context.configFile)
+      sendJson(res, 200, configSnapshot(config, context.configFile))
+    } catch (error) {
+      if (error instanceof ModelRouteError) {
+        sendError(res, 400, error.message)
+        return
+      }
+      throw error
+    }
     return
   }
 
@@ -2149,6 +2172,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
         ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
         ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
         ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+        ...(model.vision !== undefined ? { vision: model.vision } : {}),
       })) ?? [],
     },
     env: {
