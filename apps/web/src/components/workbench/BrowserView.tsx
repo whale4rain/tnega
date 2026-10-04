@@ -24,7 +24,19 @@ interface PageState {
   title: string
   canGoBack: boolean
   canGoForward: boolean
+  /** The desktop view reports loading; the headless page only reports where it is. */
+  loading?: boolean
 }
+
+/** A navigation the user asked for that has not shown up in the page state yet. */
+interface Pending {
+  address: string
+  /** The page's URL when it was asked for: any change means the navigation landed. */
+  from: string
+}
+
+/** How long a typed address is held if the page never reports a new URL. */
+const PENDING_TIMEOUT_MS = 30_000
 
 const EMPTY: PageState = { url: 'about:blank', title: '', canGoBack: false, canGoForward: false }
 
@@ -80,7 +92,33 @@ export function BrowserView({ width }: { width?: number | undefined }) {
 
   useEffect(() => bridge?.onState(next => setState(next)), [bridge])
 
-  const navigate = (url: string) => bridge ? bridge.navigate(url) : void navigateBrowser(url).catch(() => {})
+  // What the user typed stays in the address bar, and the bar shows progress,
+  // until the page reports that it moved.
+  const [pending, setPending] = useState<Pending | undefined>()
+  useEffect(() => {
+    if (pending && state.url !== pending.from) setPending(undefined)
+  }, [pending, state.url])
+  // Loading that finishes also settles it (the same URL again never changes the address).
+  const wasLoading = useRef(false)
+  useEffect(() => {
+    if (wasLoading.current && !state.loading) setPending(undefined)
+    wasLoading.current = state.loading === true
+  }, [state.loading])
+  useEffect(() => {
+    if (!pending) return
+    const timer = setTimeout(() => setPending(current => (current === pending ? undefined : current)), PENDING_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [pending])
+  const navigate = (url: string) => {
+    const next: Pending = { address: url, from: state.url }
+    setPending(next)
+    if (bridge) bridge.navigate(url)
+    else {
+      void navigateBrowser(url).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)))
+        .finally(() => setPending(current => (current === next ? undefined : current)))
+    }
+  }
+  const loading = Boolean(pending) || state.loading === true
   const command = (name: 'back' | 'forward' | 'reload') => bridge ? bridge.command(name) : void browserCommand(name).catch(() => {})
 
   const togglePick = async () => {
@@ -112,7 +150,7 @@ export function BrowserView({ width }: { width?: number | undefined }) {
         onClose={id => void browserTab('close', id).catch(() => {})}
         onNew={() => void browserTab('new').catch(() => {})}
       />
-      <Toolbar state={state} picking={picking} onNavigate={navigate} onCommand={command} onPick={() => void togglePick()} />
+      <Toolbar state={state} pending={pending?.address} loading={loading} picking={picking} onNavigate={navigate} onCommand={command} onPick={() => void togglePick()} />
       <div className="browser-card">
         {bridge
           ? <NativeViewport bridge={bridge} url={state.url} />
@@ -151,8 +189,11 @@ function TabStrip({ tabs, onSelect, onClose, onNew }: {
   )
 }
 
-function Toolbar({ state, picking, onNavigate, onCommand, onPick }: {
+function Toolbar({ state, pending, loading, picking, onNavigate, onCommand, onPick }: {
   state: PageState
+  /** The address the user just entered, shown until the page gets there. */
+  pending: string | undefined
+  loading: boolean
   picking: boolean
   onNavigate: (url: string) => void
   onCommand: (command: 'back' | 'forward' | 'reload') => void
@@ -160,11 +201,12 @@ function Toolbar({ state, picking, onNavigate, onCommand, onPick }: {
 }) {
   const [address, setAddress] = useState('')
   const [editing, setEditing] = useState(false)
+  const shown = pending ?? displayUrl(state.url)
   useEffect(() => {
-    if (!editing) setAddress(displayUrl(state.url))
-  }, [state.url, editing])
+    if (!editing) setAddress(shown)
+  }, [shown, editing])
   return (
-    <div className="browser-toolbar">
+    <div className={`browser-toolbar${loading ? ' is-loading' : ''}`} aria-busy={loading}>
       <button type="button" className="icon-button small" aria-label="Back" title="Back" disabled={!state.canGoBack} onClick={() => onCommand('back')}>
         <ArrowLeft size={16} />
       </button>
@@ -189,11 +231,11 @@ function Toolbar({ state, picking, onNavigate, onCommand, onPick }: {
           aria-label="Address"
           spellCheck={false}
           onFocus={event => { setEditing(true); event.currentTarget.select() }}
-          onBlur={() => { setEditing(false); setAddress(displayUrl(state.url)) }}
+          onBlur={() => setEditing(false)}
           onChange={event => setAddress(event.target.value)}
           onKeyDown={event => {
             if (event.key === 'Escape') {
-              setAddress(displayUrl(state.url))
+              setAddress(shown)
               event.currentTarget.blur()
             }
           }}
@@ -209,6 +251,7 @@ function Toolbar({ state, picking, onNavigate, onCommand, onPick }: {
       >
         <SquareMousePointer size={16} />
       </button>
+      {loading && <span className="browser-progress" role="progressbar" aria-label="Loading" />}
     </div>
   )
 }
