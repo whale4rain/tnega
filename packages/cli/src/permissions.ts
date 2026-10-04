@@ -129,6 +129,13 @@ export function permissionGuard(
     review?: (request: ToolRequest) => Promise<ApprovalDecision | undefined>
     /** URL of the agent browser's current page, for the browser tool rules. */
     browserUrl?: () => string | undefined
+    /**
+     * Agents whose approvals never reach a person: project threads. The
+     * automatic reviewer decides for them (on the coordinator's behalf); what it
+     * does not approve goes back to the Agent with instructions to ask its
+     * coordinator, instead of waiting on someone who is not watching.
+     */
+    delegated?: (agentId: string | undefined) => boolean
   },
 ): ToolGuard {
   return async request => {
@@ -154,12 +161,22 @@ export function permissionGuard(
     if (effective === 'workspace-write' && browserInteractionIsLocal(request, options.browserUrl?.())) return undefined
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
     let reviewed: ApprovalDecision | undefined
-    // A narrower child cannot use the parent's automatic elevation policy.
-    if (!(childMode && rank[childMode] < rank[parentMode])) {
+    const delegated = options.delegated?.(request.options.agentId) === true
+    // A narrower child cannot use the parent's automatic elevation policy, unless
+    // the reviewer is the only one who decides for it (a project thread).
+    if (delegated || !(childMode && rank[childMode] < rank[parentMode])) {
       try { reviewed = await options.review?.(request) } catch { /* Fall back to human approval. */ }
     }
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
     if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during review'
+    if (delegated && reviewed?.decision !== 'allow') {
+      const reason = reviewed?.reason ? `: ${reviewed.reason}` : ''
+      return `${request.name} was not approved${reason}. Do not retry it unchanged. If it is necessary, ask your coordinator with send_thread_message (kind request), saying what you need and why; it decides, or asks the user when the call is theirs.`
+    }
+    if (delegated) {
+      request.options.approvedElevation = true
+      return undefined
+    }
     if (reviewed?.decision === 'deny') return `Automatic review denied ${request.name}: ${reviewed.reason}`
     const allowed = reviewed?.decision === 'allow' || await approvals.request(key, request)
     if (request.options.signal?.aborted) return 'Tool approval cancelled'

@@ -44,3 +44,5 @@ Jev 的新审查只使用风险、风险置信度和冲突概率，保存对应 
 
 Session 使用 `approval/mode` 元数据保存模式，fork 保留模式与历史审查记录。
 现有 JSONL 格式兼容，旧 Session 默认为 manual；升级不会修改历史内容。
+
+Project threads are always reviewed automatically (`mode` returns `auto` for them) and never fall back to a person: the guard returns what was not approved to the thread, which asks its coordinator. For a thread, `evidenceMessages` also receives the user's latest messages in the project room, so what the user asked for there counts as authorization.

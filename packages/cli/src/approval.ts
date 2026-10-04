@@ -19,7 +19,7 @@ export interface ApprovalComposition {
   model?: string
   session: (agentId: string | undefined) => SessionLog | undefined
   mode?: (agentId?: string) => ApprovalMode | Promise<ApprovalMode>
-  evidenceMessages?: (messages: ModelMessage[]) => Promise<ModelMessage[]>
+  evidenceMessages?: (messages: ModelMessage[], agentId?: string) => Promise<ModelMessage[]>
 }
 
 /** Provider selection belongs here, never in the Consumer. */

@@ -33,6 +33,10 @@ import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { SessionLog, foldUsage, type SessionEvent } from '@tnega/session'
 import { RoutineRunner, registerRoutineTools } from './project-routines.js'
+import { foldApprovalMode } from '@tnega/approval-review'
+
+/** How many of the user's latest room messages a thread's reviewer reads as authorization. */
+const ROOM_EVIDENCE_MESSAGES = 8
 import { spillLocal } from '@tnega/spill-local'
 import { COORDINATOR_SYSTEM_PROMPT, THREAD_SYSTEM_PROMPT, threadLocal } from '@tnega/thread-local'
 import type { ThreadRecord, ThreadService } from '@tnega/thread'
@@ -568,16 +572,31 @@ export class ProjectHost {
     await ctx.plugin(toolJobs, { resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session })
     const threads = ctx.get('threads') as ThreadService
     const toolService = ctx.get('tools') as ToolsService
+    // Threads never wait on a person: their tool calls are reviewed automatically on the
+    // coordinator's behalf, and the reviewer reads what the user asked for in the room.
+    const isThread = (agentId: string | undefined): boolean => agentId !== undefined && agentId !== record.coordinatorId
+    const systemConfig = this.options.systemConfig ?? {}
     await mountApprovalReview(ctx, {
-      config: this.options.systemConfig ?? {}, workspace: this.workspace, adapter: this.options.llm,
+      config: systemConfig, workspace: this.workspace, adapter: this.options.llm,
       session: agentId => agentId ? registry.get(agentId)?.session : registry.get(record.coordinatorId)?.session,
-      evidenceMessages: async messages => {
+      mode: async agentId => {
+        if (isThread(agentId)) return 'auto'
+        const session = registry.get(record.coordinatorId)?.session
+        return (session ? foldApprovalMode(await session.read()) : undefined) ?? systemConfig.approvalReview?.defaultMode ?? 'manual'
+      },
+      evidenceMessages: async (messages, agentId) => {
         const envelopes = await ctx.box.timeline()
         const humanIds = new Set(envelopes.filter(envelope => envelope.sender.kind === 'user').map(envelope => `box:${envelope.messageId}`))
-        return messages.map(message => {
+        const own = messages.map(message => {
           if (message.role !== 'user' || !message.name || !humanIds.has(message.name)) return message
           return { role: message.role, content: message.content }
         })
+        if (!isThread(agentId)) return own
+        const room = envelopes
+          .filter(envelope => envelope.sender.kind === 'user' && envelope.placement.kind === 'main' && envelope.kind === 'user-message')
+          .slice(-ROOM_EVIDENCE_MESSAGES)
+          .map(envelope => ({ role: 'user' as const, content: envelope.text }))
+        return [...room, ...own]
       },
     })
     const permission: PermissionMode = this.options.permission
@@ -592,6 +611,7 @@ export class ProjectHost {
       review: request => reviewAutomaticApproval(ctx, request),
       // 没有记录的 Agent（例如 Thread 内部再起的普通 Subagent）按最窄处理。
       agentMode: agentId => this.permissions.get(agentId) ?? 'read-only',
+      delegated: isThread,
     }))
 
     await ctx.plugin(projectLoop, { projectId: record.id })

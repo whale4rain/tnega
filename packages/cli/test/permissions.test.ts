@@ -38,6 +38,34 @@ describe('permissionGuard', () => {
     expect(reviews).toBe(1)
   })
 
+  it('lets the reviewer decide for project threads and never asks a person', async () => {
+    const broker = new ApprovalBroker()
+    const asked: string[] = []
+    broker.attach('project', event => asked.push(String(event.tool)))
+    let decision: 'allow' | 'ask' | 'deny' = 'allow'
+    const guard = permissionGuard('workspace-write', 'project', broker, {
+      workspace: process.cwd(),
+      agentMode: () => 'read-only',
+      delegated: agentId => agentId === 'thread',
+      review: async () => ({ decision, risk: 'low', reason: decision === 'allow' ? 'covered by the request' : 'outside the workspace' }),
+    })
+    const allowed = request('shell', { command: 'pnpm test' })
+    allowed.options.agentId = 'thread'
+    expect(await guard(allowed)).toBeUndefined()
+    expect(allowed.options.approvedElevation).toBe(true)
+
+    for (const next of ['ask', 'deny'] as const) {
+      decision = next
+      const blocked = request('shell', { command: 'rm -rf ../elsewhere' })
+      blocked.options.agentId = 'thread'
+      const message = await guard(blocked)
+      expect(message).toMatch(/not approved: outside the workspace/)
+      expect(message).toMatch(/ask your coordinator/)
+      expect(blocked.options.approvedElevation).toBeUndefined()
+    }
+    expect(asked).toEqual([])
+  })
+
   it('never elevates a cancelled model-reviewed call', async () => {
     const controller = new AbortController()
     const guard = permissionGuard('workspace-write', 'session', new ApprovalBroker(), {

@@ -12,7 +12,8 @@ export interface AutoApprovalConfig {
   mode: (agentId?: string) => ApprovalMode | Promise<ApprovalMode>
   session: (agentId: string | undefined) => SessionLog | undefined
   constraints?: () => Promise<string>
-  evidenceMessages?: (messages: ModelMessage[]) => Promise<ModelMessage[]>
+  /** Adjust the evidence the reviewer reads; `agentId` is the Agent asking. */
+  evidenceMessages?: (messages: ModelMessage[], agentId?: string) => Promise<ModelMessage[]>
 }
 
 export const autoApproval = {
@@ -31,7 +32,7 @@ export const autoApproval = {
         event.decision = { decision: 'ask', reason: 'Action exceeds automatic review budget; human review is required.' }
       } else {
         const derived = await session.deriveMessages()
-        const messages = config.evidenceMessages ? await config.evidenceMessages(derived) : derived
+        const messages = config.evidenceMessages ? await config.evidenceMessages(derived, request.options.agentId) : derived
         const context = buildReviewContext(messages, await session.read())
         const latestHuman = [...messages].reverse().find(message => message.role === 'user' && !message.name)
         const constraints = await config.constraints?.() ?? ''
