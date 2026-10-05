@@ -12,7 +12,7 @@
   - `cdpPageSource`：经 CDP 附着到另一个 Chromium 中已存在的页面，只驱动指定 target id 的那一页。
 - **Consumer** `@tnega/tool-browser`：`browser_*` 工具，工具集参照 Playwright MCP；动作结果自带新快照与本次出现的 console 错误；截图以图片附件交给模型（依赖多模态消息）。
 - **桌面端**：`WebContentsView` 放在独立分区 `persist:tnega-browser`，主进程开启只监听 127.0.0.1 的 DevTools 端点，Playwright 经它附着到该视图。渲染进程的 Browser 面板只负责告诉主进程视图的位置。
-- **后台进程**：执行边界增加可选的 `startShell` / `startProcess`，沙箱装饰器对其做与前台命令相同的 `confine`；`process_start` / `process_output` / `process_list` / `process_stop` 让 Agent 能起 dev server 再去浏览器验证。
+- **后台进程**：执行边界增加可选的 `startShell` / `startProcess`，沙箱装饰器对其做与前台命令相同的 `confine`；Agent 用 `job_start({tool:'shell'})` 把命令作为后台进程启动（最初是独立的 `process_*` 工具，2026-10 并入 jobs），起 dev server 再去浏览器验证。
 
 ## 原因
 
@@ -29,7 +29,7 @@
 ## 安全
 
 - DevTools 端点只监听 127.0.0.1；Chromium 默认拒绝带网页 Origin 的 DevTools WebSocket 连接（未设置 `--remote-allow-origins`），所以网页——包括 Agent 浏览的页面——无法连到它。能连上的只有本机进程，这与它们本来就拥有的用户权限相当。
-- 权限规则（`packages/cli/src/permissions.ts`）：观察、导航、滚动、悬停、等待、调整视口总是放行；点击、输入、选择、按键、`browser_evaluate` 在本地开发页（loopback、`*.localhost`、`*.test`）上于 `workspace-write` 放行，其余情况需要批准；`process_start` 与 `shell` 同级。
+- 权限规则（`packages/cli/src/permissions.ts`）：观察、导航、滚动、悬停、等待、调整视口总是放行；点击、输入、选择、按键、`browser_evaluate` 在本地开发页（loopback、`*.localhost`、`*.test`）上于 `workspace-write` 放行，其余情况需要批准；后台进程由 `job_start` 发起，内部的 `shell` 调用照常经过 `shell` 的守卫。
 - 网页内容是不可信输入。工具结果只是数据，Agent 的指令来源仍然只有用户。
 
 ## 修订：标签、面板尺寸与元素选择（2026-10-02）

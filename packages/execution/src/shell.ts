@@ -188,7 +188,7 @@ export function systemShell(): SystemShell {
 
 /**
  * Apply the user's shell choice (a name such as `pwsh` / `bash`, or a path);
- * empty means detect. Later `shell` and `process_start` calls use it.
+ * empty means detect. Later `shell` calls, foreground or background, use it.
  */
 export function configureSystemShell(preferred: string | undefined): SystemShell {
   const next = preferred?.trim() || undefined

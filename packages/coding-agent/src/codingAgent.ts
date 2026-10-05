@@ -45,7 +45,7 @@ Work in small verified steps: read the code before you change it, keep the chang
 Report the outcome, the files that changed, the checks you ran with their result, and anything still unresolved. Summarize command output instead of pasting it.
 
 For web frontends, check your changes in the browser when browser_* tools are available:
-- Start the dev server with process_start (not shell, which waits for exit) and open the URL it prints with browser_navigate.
+- Start the dev server with job_start (tool shell, wait_for_url_ms 15000; plain shell waits for exit) and open the URL it prints with browser_navigate.
 - Read the page with browser_snapshot, interact by ref, and use browser_take_screenshot to judge layout and styling.
 - Check browser_console_messages and browser_network_requests for errors before calling the work done.
 

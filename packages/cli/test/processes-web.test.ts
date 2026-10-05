@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { startWebServer } from '../src/server.js'
 
-it('keeps a process visible after the run and lets the user read and stop it within its workspace', async () => {
+it('keeps a background shell job visible after the run and lets the user read and stop it within its workspace', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-processes-web-'))
   let requests = 0
   const llm = createServer((req, res) => {
@@ -13,7 +13,7 @@ it('keeps a process visible after the run and lets the user read and stop it wit
     req.on('end', () => {
       const first = ++requests === 1
       const delta = first ? { tool_calls: [{ index: 0, id: 'call-process', type: 'function', function: {
-        name: 'process_start', arguments: JSON.stringify({ command: 'node server.cjs', waitForUrlMs: 5000 }),
+        name: 'job_start', arguments: JSON.stringify({ tool: 'shell', input: { command: 'node server.cjs' }, wait_for_url_ms: 5000 }),
       } }] } : { content: 'Server started' }
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: first ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`)
@@ -40,6 +40,7 @@ it('keeps a process visible after the run and lets the user read and stop it wit
     expect((await call(`/api/sessions/${id}`, 'PATCH', { permission: 'bypass' })).status).toBe(200)
     expect(await (await call(`/api/sessions/${id}/runs`, 'POST', { prompt: 'Start server' })).text()).toContain('Server started')
     expect(await (await call('/api/processes')).json()).toMatchObject({ processes: [{ id: 'p1', status: 'running', urls: ['http://localhost:4321/'] }] })
+    expect(await (await call(`/api/sessions/${id}/jobs`)).json()).toMatchObject({ jobs: [{ label: 'node server.cjs', status: 'running', processId: 'p1', urls: ['http://localhost:4321/'] }] })
     if (process.platform === 'win32') {
       expect(await (await call('/api/processes', 'GET', undefined, workspace.toUpperCase())).json()).toMatchObject({ processes: [{ id: 'p1' }] })
     }

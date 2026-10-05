@@ -57,6 +57,19 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- The `process_start` / `process_output` / `process_list` / `process_stop`
+  tools are gone: long-running commands are background jobs. `job_start` with
+  `tool: "shell"` starts a dev server or watcher without a deadline, returns
+  once it runs with its first output (and, with `wait_for_url_ms`, its local
+  URL); `job_output` reads only new output plus URLs; `job_kill` stops it.
+  In the Web app a server keeps running in the workspace when its session's
+  runtime is rebuilt (a settings change), and can still be stopped there.
+
+- The Background tasks list is easier to scan: running work first with what
+  it is (command, agent or tool), how long it has run and its local URLs as
+  links; finished work folds below with how long it took and why it failed.
+  A row opens its output in place and follows new lines while it runs.
+
 - Failed tool calls tell the model why: the reason follows the error's cause
   chain (`fetch failed: getaddrinfo ENOTFOUND host` instead of `fetch
   failed`), keeps system codes, and is never empty or `[object Object]`. An

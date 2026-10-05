@@ -126,11 +126,12 @@ describe('browser and process permissions', () => {
     expect(await guardAt('bypass', 'https://shop.example.com')(request('browser_click', { ref: 'e3' }))).toBeUndefined()
   })
 
-  it('gates starting a background process like shell but not reading or stopping it', async () => {
+  it('lets job tools through so the shell they start meets the shell gate', async () => {
     const guard = guardAt('workspace-write', undefined)
-    expect(await guard(request('process_start', { command: 'npm run dev' }))).toMatch(/approval/)
-    expect(await guard(request('process_output', { id: 'p1' }))).toBeUndefined()
-    expect(await guard(request('process_stop', { id: 'p1' }))).toBeUndefined()
+    expect(await guard(request('job_start', { tool: 'shell', input: { command: 'npm run dev' } }))).toBeUndefined()
+    expect(await guard(request('shell', { command: 'npm run dev' }))).toMatch(/approval/)
+    expect(await guard(request('job_output', { job_id: 'tool-1' }))).toBeUndefined()
+    expect(await guard(request('job_kill', { job_id: 'tool-1' }))).toBeUndefined()
   })
 })
 

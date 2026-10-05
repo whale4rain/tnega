@@ -56,7 +56,7 @@ export interface LlmEnvConfig {
 
 export interface SystemConfig {
   codeMode?: boolean
-  /** Shell for the `shell` / `process_start` tools: a name (`pwsh`, `bash`…) or a path; absent detects one. */
+  /** Shell for the `shell` tool (also when run as a background job): a name (`pwsh`, `bash`…) or a path; absent detects one. */
   shell?: string
   approvalReview?: ApprovalReviewerConfig
   apiKey?: string

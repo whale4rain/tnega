@@ -20,7 +20,7 @@ import type {
 import { evaluateExpression } from './calc.js'
 import { resolveInside } from './path.js'
 import { ESCALATE_HINT, ESCALATE_PROPERTIES, escalated } from './escalation.js'
-import { createProcessTools, type ProcessRegistry } from './processes.js'
+import { ProcessRegistry, type ProcessEntry } from './processes.js'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import {
   describeShell,
@@ -60,7 +60,28 @@ interface NormalizedBuiltinToolsConfig {
   timeoutMs: number
   searchExcludeSet: ReadonlySet<string>
   execution: ExecutionProvider
+  /** Where `shell` run as a background job keeps its process; none means it cannot. */
+  processes?: ProcessRegistry
+  sharedProcesses: boolean
 }
+
+/**
+ * Execute option a background-job runner passes to `shell` (see
+ * `job_start`): instead of waiting for the command to exit, the tool starts it
+ * as a background process in the workspace registry and hands the entry over.
+ * Tools that accept it declare `metadata.backgroundProcess: true`.
+ */
+export const ADOPT_BACKGROUND_PROCESS = 'adoptBackgroundProcess'
+
+export interface AdoptedProcess {
+  entry: ProcessEntry
+  /** True when the registry outlives this runtime (the web server's per-workspace one). */
+  shared: boolean
+  /** Stop the process tree through the registry, so it reads as stopped rather than failed. */
+  stop(): Promise<void>
+}
+
+export type AdoptBackgroundProcess = (process: AdoptedProcess) => void
 
 export class ToolInputError extends Error {
   override name = 'ToolInputError'
@@ -76,7 +97,8 @@ const DEFAULT_TOOL_NAMES = [
   'list_dir',
 ] as const
 
-function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinToolsConfig {
+function normalizeConfig(config: BuiltinToolsConfig = {}, ownedProcesses?: ProcessRegistry): NormalizedBuiltinToolsConfig {
+  const processes = config.processes ?? ownedProcesses
   return {
     cwd: config.cwd ?? process.cwd(),
     allowNetwork: config.allowNetwork ?? false,
@@ -90,6 +112,8 @@ function normalizeConfig(config: BuiltinToolsConfig = {}): NormalizedBuiltinTool
     timeoutMs: config.timeoutMs ?? 15_000,
     searchExcludeSet: new Set(config.searchExcludes ?? DEFAULT_SEARCH_EXCLUDES),
     execution: config.execution ?? localExecutionProvider,
+    ...(processes ? { processes } : {}),
+    sharedProcesses: config.processes !== undefined,
   }
 }
 
@@ -570,6 +594,20 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
       const args = record(input)
       const command = stringField(args.command, 'command')
       const cwd = await resolveToolPath(config, optionalString(args.cwd, 'cwd') ?? '.')
+      const adopt = options[ADOPT_BACKGROUND_PROCESS]
+      if (typeof adopt === 'function') {
+        const start = config.execution.startShell?.bind(config.execution)
+        const registry = config.processes
+        if (!start || !registry) throw new Error('this host cannot run background processes; run the command with shell and a timeout instead')
+        const running = registry.running()
+        if (running.length >= registry.maxProcesses) {
+          throw new Error(`already running ${running.length} background processes (${running.map(entry => entry.command).join('; ')}); stop one with job_kill first`)
+        }
+        const process = await start({ command, cwd, ...(escalated(args, options) ? { unsandboxed: true } : {}) })
+        const entry = registry.add(command, cwd, process)
+        ;(adopt as AdoptBackgroundProcess)({ entry, shared: config.sharedProcesses, stop: async () => { await registry.stop(entry.id) } })
+        return { processId: entry.id, status: 'running', ...(process.pid !== undefined ? { pid: process.pid } : {}) }
+      }
       const timeoutMs = optionalNumber(args.timeoutMs, 'timeoutMs') ?? config.timeoutMs
       const result = await config.execution.runShell({
         command,
@@ -600,8 +638,10 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
 
 export function createBuiltinToolDefinitions(
   config: BuiltinToolsConfig = {},
+  /** A registry the caller owns and disposes, used when `config.processes` is absent. */
+  ownedProcesses?: ProcessRegistry,
 ): ToolDefinition[] {
-  const normalized = normalizeConfig(config)
+  const normalized = normalizeConfig(config, ownedProcesses)
   const disabled = new Set(normalized.disabled)
   const definitions: ToolDefinition[] = []
   if (!disabled.has('echo')) definitions.push(echoTool())
@@ -615,7 +655,10 @@ export function createBuiltinToolDefinitions(
     definitions.push(httpGetTool(normalized))
   }
   if (normalized.allowShell && !disabled.has('shell')) {
-    definitions.push(shellTool(normalized))
+    const shell = shellTool(normalized)
+    // job_start runs it as a background process (a dev server, a watcher).
+    if (normalized.processes && normalized.execution.startShell) shell.metadata = { ...shell.metadata, backgroundProcess: true }
+    definitions.push(shell)
   }
   return definitions
 }
@@ -625,18 +668,12 @@ export const builtinTools = {
   inject: ['tools'],
   apply(ctx: Context, config: BuiltinToolsConfig = {}) {
     const service = ctx.get('tools') as ToolsService
-    for (const definition of createBuiltinToolDefinitions(config)) {
+    // Without a shared registry, background processes die with this plugin.
+    const owned = config.processes || !config.allowShell ? undefined : new ProcessRegistry()
+    if (owned) ctx.fiber.effect(() => () => { void owned.dispose() }, 'builtinTools/processes')
+    const definitions = createBuiltinToolDefinitions(config, owned)
+    for (const definition of definitions) {
       service.register(definition)
-    }
-    const normalized = normalizeConfig(config)
-    if (normalized.allowShell && !normalized.disabled.includes('process_start')) {
-      const processes = createProcessTools({
-        execution: normalized.execution,
-        resolveCwd: path => resolveToolPath(normalized, path),
-        ...(config.processes ? { registry: config.processes } : {}),
-      })
-      for (const definition of processes.tools) service.register(definition)
-      ctx.fiber.effect(() => () => { void processes.dispose() }, 'builtinTools/processes')
     }
   },
 }

@@ -1,6 +1,6 @@
 import type { Context } from '@tnega/core'
 import type { LiveAgent } from '@tnega/agent'
-import { JobRegistry, type JobStart, type JobOutcome, type JobSnapshot, type JobRead, type JobDoneListener } from '@tnega/jobs'
+import { JobOwnerDisposedError, JobRegistry, type JobStart, type JobOutcome, type JobSnapshot, type JobRead, type JobDoneListener } from '@tnega/jobs'
 
 export interface JobsLocalConfig { maxConcurrent?: number; maxRetained?: number }
 interface Record {
@@ -10,6 +10,7 @@ interface Record {
   done: Promise<void>
   output?: string
   waiters: Set<() => void>
+  progress?: JobStart['progress']
 }
 function terminal(job: JobSnapshot): boolean {
   return job.status !== 'running' && job.status !== 'stopping'
@@ -79,6 +80,7 @@ export class LocalJobRegistry extends JobRegistry {
     const record: Record = {
       view: { id, kind: spec.kind, label: spec.label, status: 'running', startedAt: Date.now(), reported: false },
       owner: spec.owner, controller: new AbortController(), done: Promise.resolve(), waiters: new Set(),
+      ...(spec.progress ? { progress: spec.progress } : {}),
     }
     this.records.set(id, record)
     // Admit and register before the asynchronous producer can allocate resources.
@@ -93,13 +95,14 @@ export class LocalJobRegistry extends JobRegistry {
   }
 
   override list(caller?: LiveAgent): JobSnapshot[] {
-    return [...this.records.values()].filter(record => this.visible(record, caller)).map(record => ({ ...record.view }))
+    return [...this.records.values()].filter(record => this.visible(record, caller)).map(record => this.snapshot(record))
   }
-  override get(id: string, caller?: LiveAgent): JobSnapshot { return { ...this.lookup(id, caller).view } }
+  override get(id: string, caller?: LiveAgent): JobSnapshot { return this.snapshot(this.lookup(id, caller)) }
   override read(id: string, caller?: LiveAgent): JobRead {
     const record = this.lookup(id, caller)
     if (terminal(record.view)) record.view.reported = true
-    return { job: { ...record.view }, ...(record.output !== undefined ? { output: record.output } : {}) }
+    const output = record.output ?? (terminal(record.view) ? undefined : this.live(record)?.output)
+    return { job: this.snapshot(record), ...(output !== undefined ? { output } : {}) }
   }
   override kill(id: string, caller?: LiveAgent, reason = 'background job cancelled'): JobSnapshot {
     const record = this.lookup(id, caller)
@@ -109,12 +112,12 @@ export class LocalJobRegistry extends JobRegistry {
       record.controller.abort(new Error(reason))
       this.changed(record)
     }
-    return { ...record.view }
+    return this.snapshot(record)
   }
   override async wait(id: string, timeoutMs: number, caller?: LiveAgent, signal?: AbortSignal): Promise<JobSnapshot> {
     const record = this.lookup(id, caller)
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error('job wait timeout must be a positive integer')
-    if (terminal(record.view)) { record.view.reported = true; return { ...record.view } }
+    if (terminal(record.view)) { record.view.reported = true; return this.snapshot(record) }
     signal?.throwIfAborted()
     await new Promise<void>((resolve, reject) => {
         const finish = (error?: unknown): void => {
@@ -130,7 +133,19 @@ export class LocalJobRegistry extends JobRegistry {
         signal?.addEventListener('abort', abort, { once: true })
         record.waiters.add(settled)
       })
-    return { ...record.view }
+    return this.snapshot(record)
+  }
+  /** The stored view plus what a running job reports about itself right now. */
+  private snapshot(record: Record): JobSnapshot {
+    const live = this.live(record)
+    return {
+      ...record.view,
+      ...(live?.urls?.length ? { urls: [...live.urls] } : {}),
+      ...(live?.processId ? { processId: live.processId } : {}),
+    }
+  }
+  private live(record: Record): ReturnType<NonNullable<JobStart['progress']>> {
+    try { return record.progress?.() } catch { return undefined }
   }
   private visible(record: Record, caller?: LiveAgent): boolean {
     return record.owner === undefined || record.owner === caller
@@ -147,6 +162,11 @@ export class LocalJobRegistry extends JobRegistry {
     if (outcome.detail) record.view.detail = outcome.detail
     if (outcome.output !== undefined) record.output = outcome.output
     if (record.waiters.size > 0) record.view.reported = true
+    // Keep the last live view (URLs, process) on the finished record.
+    const live = this.live(record)
+    if (live?.urls?.length) record.view.urls = [...live.urls]
+    if (live?.processId) record.view.processId = live.processId
+    if (record.output === undefined && live?.output !== undefined) record.output = live.output
     this.changed(record)
     for (const finish of [...record.waiters]) finish()
     if (!this.closed) for (const listener of this.listeners) {
@@ -154,14 +174,14 @@ export class LocalJobRegistry extends JobRegistry {
     }
   }
   private changed(record: Record): void {
-    try { this.ctx.emit('jobs/change', { ...record.view }) } catch { /* observer isolation */ }
+    try { this.ctx.emit('jobs/change', this.snapshot(record)) } catch { /* observer isolation */ }
   }
   private async disposeRecords(records: Record[]): Promise<void> {
     for (const record of records) {
       if (!terminal(record.view)) {
         record.view.status = 'stopping'
         record.view.reported = true
-        record.controller.abort(new Error('job owner disposed'))
+        record.controller.abort(new JobOwnerDisposedError())
       }
     }
     await Promise.all(records.map(record => record.done))

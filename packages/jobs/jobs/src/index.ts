@@ -16,10 +16,21 @@ export interface JobSnapshot {
   finishedAt?: number
   detail?: string
   reported: boolean
+  /** Local URLs a process job printed, such as a dev server's address. */
+  urls?: string[]
+  /** The workspace process backing a process job, when it has one. */
+  processId?: string
 }
 export interface JobRead {
   job: JobSnapshot
+  /** The final output once finished; the output so far while a live job runs. */
   output?: string
+}
+/** What a running job can show before it finishes. */
+export interface JobProgress {
+  output?: string
+  urls?: string[]
+  processId?: string
 }
 export interface JobStart {
   kind: string
@@ -27,6 +38,19 @@ export interface JobStart {
   owner?: LiveAgent
   /** Resolve only after execution resources have been released. Observe signal. */
   run(signal: AbortSignal): Promise<JobOutcome>
+  /** Live view of a job that produces output while it runs (a process). */
+  progress?(): JobProgress | undefined
+}
+
+/**
+ * The abort reason when a job's owner Agent or the registry itself goes away,
+ * as opposed to a person or the model stopping it. Work that a host keeps
+ * beyond one runtime (a dev server in the workspace registry) may detach on
+ * this reason instead of stopping.
+ */
+export class JobOwnerDisposedError extends Error {
+  override name = 'JobOwnerDisposedError'
+  constructor() { super('job owner disposed') }
 }
 export type JobDoneListener = (job: JobSnapshot, owner?: LiveAgent) => void | Promise<void>
 

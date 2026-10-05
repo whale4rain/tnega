@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { ProcessRegistry } from '../src/processes.js'
 
-it('exposes live process output without consuming the agent cursor and retains stopped output', async () => {
+it('exposes live process output and retains stopped output', async () => {
   const registry = new ProcessRegistry()
   let code: number | null | undefined
   let text = '\u001b[32mready http://localhost:4321/\u001b[0m\n'
@@ -11,12 +11,10 @@ it('exposes live process output without consuming the agent cursor and retains s
     pid: 123, output: () => text, exitCode: () => code, exited,
     kill: async () => { code = null; finish(null) },
   })
-  entry.read = 3
   expect(registry.list()).toMatchObject([{ id: entry.id, command: 'npm run dev', status: 'running', urls: ['http://localhost:4321/'] }])
   expect(registry.read(entry.id)?.output).toContain('ready')
   text += 'next line\n'
   expect(registry.read(entry.id)?.output).toContain('next line')
-  expect(entry.read).toBe(3)
   expect(await registry.stop(entry.id)).toMatchObject({ status: 'killed' })
   expect(registry.read(entry.id)?.output).toContain('next line')
   expect(await registry.stop('unknown')).toBeUndefined()

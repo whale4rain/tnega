@@ -15,7 +15,7 @@ an item ships, move it to the CHANGELOG and delete it here.
   signed-in user) is not a restricting SID. Inherited stdio already covers the
   command Tnega itself starts; it cannot reach the program's own children.
 - **Today.** The failure is explained where it shows up (`shell` stderr,
-  `process_start` note, `process_output` hint), and `shell` / `process_start`
+  background-job start note, `job_output` hint), and `shell` (foreground or as a job)
   can retry with `escalate: true` and a justification: after approval that one
   call runs outside the sandbox. Verified with a real `npm run dev` → vite →
   esbuild chain (confined: `main.js` 500 `spawn EPERM`; escalated: 200).

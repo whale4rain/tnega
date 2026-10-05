@@ -31,9 +31,8 @@ const ALWAYS_ALLOWED = new Set([
   'write_memory', 'publish_artifact', 'index_resource',
   // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。
   'run_code', 'ask_user_question',
+  // 后台任务（含后台进程）：启动的子工具（如 shell）仍经过同一道守卫。
   'job_start', 'job_list', 'job_output', 'job_kill',
-  // 只读或只作用于 Agent 自己启动的后台进程；启动本身（process_start）与 shell 同级。
-  'process_output', 'process_list', 'process_stop',
 ])
 
 /**
@@ -145,12 +144,12 @@ export function permissionGuard(
     const effective = childMode && rank[childMode] < rank[parentMode] ? childMode : parentMode
     if (effective === 'bypass') return undefined
     const unrestricted = parentMode === 'bypass'
-    const pathKey = request.name === 'shell' || request.name === 'process_start' ? 'cwd' : 'path'
+    const pathKey = request.name === 'shell' ? 'cwd' : 'path'
     const input = request.input && typeof request.input === 'object' && !Array.isArray(request.input)
       ? request.input as Record<string, unknown> : {}
     const rawPath = typeof input[pathKey] === 'string' ? input[pathKey] : '.'
     let scoped = true
-    if (unrestricted && ['read_file', 'write_file', 'list_dir', 'shell', 'process_start'].includes(request.name)) {
+    if (unrestricted && ['read_file', 'write_file', 'list_dir', 'shell'].includes(request.name)) {
       try { await resolveInside(options.workspace, rawPath) } catch { scoped = false }
     }
     if (ALWAYS_ALLOWED.has(request.name) && scoped
