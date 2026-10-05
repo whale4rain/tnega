@@ -35,6 +35,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Clicking Update in the desktop app now shows an "Updating to Tnega x.y.z"
+  card at once while the app closes, installs and reopens; before, the window
+  stayed as it was with no sign that anything was happening. The Update pill
+  also loses the detached focus ring that floated around it.
+
 - The workbench terminal copies with Ctrl+C when text is selected (Ctrl+C
   still interrupts otherwise), pastes with Ctrl+V, and has a right-click menu
   with Copy, Paste, Select all and Clear.

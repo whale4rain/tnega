@@ -12,6 +12,8 @@ export type UpdateState = { channel?: UpdateChannel } & (
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
   | { status: 'ready'; version: string; next: string }
+  /** Restarting into the update: the app closes, installs and reopens. */
+  | { status: 'installing'; version: string; next: string }
   | { status: 'error'; version: string; message: string; checkedAt?: number }
 )
 
@@ -32,7 +34,7 @@ function bridge(): UpdatesBridge | undefined {
   return methods.every(name => typeof Reflect.get(updates, name) === 'function') ? updates as UpdatesBridge : undefined
 }
 
-const STATUSES = new Set(['unsupported', 'idle', 'checking', 'downloading', 'ready', 'error'])
+const STATUSES = new Set(['unsupported', 'idle', 'checking', 'downloading', 'ready', 'installing', 'error'])
 
 export function parseUpdateState(value: unknown): UpdateState | undefined {
   if (!value || typeof value !== 'object') return undefined
@@ -73,7 +75,13 @@ export function useDesktopUpdates(): DesktopUpdates | undefined {
       if (parsed) setState(parsed)
     })
   }, [])
-  const install = useCallback(() => { void bridge()?.install() }, [])
+  const install = useCallback(() => {
+    const updates = bridge()
+    if (!updates) return
+    // Say so at once; the main process confirms while it shuts the runtime down.
+    setState(current => current?.status === 'ready' ? { ...current, status: 'installing' } : current)
+    void updates.install()
+  }, [])
   const setChannel = useCallback(async (channel: UpdateChannel) => {
     const value = await bridge()?.setChannel?.(channel)
     const parsed = parseUpdateState(value)
@@ -89,6 +97,7 @@ export function describeUpdate(state: UpdateState): string {
     case 'checking': return 'Checking for updates…'
     case 'downloading': return `Downloading ${state.next}… ${state.percent}%`
     case 'ready': return `Version ${state.next} is ready. Restart to update.`
+    case 'installing': return `Updating to ${state.next}. Tnega will reopen by itself.`
     case 'error': return `Update check failed: ${state.message}`
     case 'idle': return state.checkedAt ? 'Tnega is up to date.' : 'Updates are checked automatically.'
   }

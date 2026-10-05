@@ -3,13 +3,13 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useDesktopUpdates, type UpdateState } from '../lib/desktop-updates'
-import { UpdateButton, UpdateSettings } from './UpdateButton'
+import { UpdateButton, UpdateSettings, UpdatingOverlay } from './UpdateButton'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 function Harness() {
   const updates = useDesktopUpdates()
-  return createElement('div', null, createElement(UpdateButton, { updates }), createElement(UpdateSettings, { updates }))
+  return createElement('div', null, createElement(UpdateButton, { updates }), createElement(UpdateSettings, { updates }), createElement(UpdatingOverlay, { updates }))
 }
 
 function stubBridge(initial: UpdateState) {
@@ -41,9 +41,16 @@ it('shows download progress, then restarts into the downloaded release', async (
   expect(view.getByRole('status').textContent).toBe('37%')
 
   emit({ status: 'ready', version: '0.4.5', next: '0.4.6' })
+  expect(view.getByText('Version 0.4.6 is ready. Restart to update.')).toBeTruthy()
+  expect(view.queryByRole('alertdialog')).toBeNull()
   fireEvent.click(view.getByRole('button', { name: 'Update' }))
   expect(bridge.install).toHaveBeenCalledOnce()
-  expect(view.getByText('Version 0.4.6 is ready. Restart to update.')).toBeTruthy()
+  // The click shows the restart at once, before the app starts closing.
+  expect(view.getByRole('alertdialog', { name: 'Updating to Tnega 0.4.6' })).toBeTruthy()
+  expect(view.getByRole('status').textContent).toBe('Updating…')
+  expect((view.getByRole('button', { name: 'Restarting…' }) as HTMLButtonElement).disabled).toBe(true)
+  emit({ status: 'installing', version: '0.4.5', next: '0.4.6' })
+  expect(view.getByText('Updating to 0.4.6. Tnega will reopen by itself.')).toBeTruthy()
 })
 
 it('ignores malformed states from the bridge', async () => {

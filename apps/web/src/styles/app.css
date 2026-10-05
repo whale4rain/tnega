@@ -3755,6 +3755,29 @@ kbd {
   filter: brightness(1.08);
 }
 
+/* The global ring floats 2px off a filled pill and reads as a second border. */
+.update-pill.ready:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.updating-scrim {
+  z-index: 200;
+}
+
+.updating-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 360px;
+  padding: 28px 28px 24px;
+  text-align: center;
+}
+
+.updating-card p {
+  margin: 0 0 6px;
+}
+
 .update-settings {
   display: flex;
   align-items: center;

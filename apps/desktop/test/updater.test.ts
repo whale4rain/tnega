@@ -131,6 +131,25 @@ describe('desktop self-update', () => {
     expect(controller.installOnExit()).toBe(true)
     expect(updater.installs).toEqual([[true, false]])
   })
+
+  test('announces the install before restarting, once, and holds still while it runs', async () => {
+    const updater = new FakeUpdater()
+    const controller = new UpdateController({ version: '0.4.5', updater })
+    const seen: UpdateState[] = []
+    controller.subscribe(state => seen.push(state))
+    expect(controller.beginInstall()).toBe(false)
+    updater.emit('update-downloaded', { version: '0.5.0' })
+    expect(controller.beginInstall()).toBe(true)
+    expect(seen.at(-1)).toEqual({ status: 'installing', version: '0.4.5', channel: 'stable', next: '0.5.0' })
+    expect(controller.beginInstall()).toBe(false)
+    controller.setChannel('preview')
+    await controller.check()
+    updater.emit('error', new Error('late failure'))
+    expect(controller.state()).toMatchObject({ status: 'installing', channel: 'stable' })
+    expect(updater.checks).toBe(0)
+    controller.install()
+    expect(updater.installs).toEqual([[true, true]])
+  })
 })
 
 describe('update error messages', () => {

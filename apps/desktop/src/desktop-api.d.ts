@@ -16,6 +16,7 @@ export type TnegaDesktopUpdateState = { channel: 'stable' | 'preview' } & (
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
   | { status: 'ready'; version: string; next: string }
+  | { status: 'installing'; version: string; next: string }
   | { status: 'error'; version: string; message: string; checkedAt?: number }
 )
 

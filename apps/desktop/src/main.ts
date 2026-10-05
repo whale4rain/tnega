@@ -102,7 +102,7 @@ function installDesktopHandlers(): void {
     return updates?.check()
   })
   ipcMain.handle('tnega:update-install', event => {
-    if (!isTrustedSender(event.senderFrame?.url ?? '') || !updates?.ready()) return
+    if (!isTrustedSender(event.senderFrame?.url ?? '') || !updates?.beginInstall()) return
     void closeAndExit({ restartIntoUpdate: true })
   })
   ipcMain.handle('tnega:update-channel', (event, channel: unknown) => {

@@ -16,6 +16,8 @@ export type UpdateState = { channel: UpdateChannel } & (
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
   | { status: 'ready'; version: string; next: string }
+  /** The user chose to restart: the app is closing to run the installer. */
+  | { status: 'installing'; version: string; next: string }
   | { status: 'error'; version: string; message: string; checkedAt?: number }
 )
 
@@ -83,7 +85,7 @@ export class UpdateController {
     updater.on('update-downloaded', info => this.set({ status: 'ready', version: this.version, channel: this.channel, next: info.version }))
     updater.on('error', error => {
       // A failed check must not hide an update that is already downloaded.
-      if (this.current.status === 'ready') return
+      if (this.ready()) return
       this.set({ status: 'error', version: this.version, channel: this.channel, message: summarizeUpdateError(error), checkedAt: this.now() })
     })
   }
@@ -93,7 +95,8 @@ export class UpdateController {
   }
 
   setChannel(channel: UpdateChannel): UpdateState {
-    if (channel === this.channel || this.current.status === 'checking' || this.current.status === 'downloading') return this.current
+    const status = this.current.status
+    if (channel === this.channel || status === 'checking' || status === 'downloading' || status === 'installing') return this.current
     // Persist before applying; failed saves leave the selected channel intact.
     this.options.saveChannel?.(channel)
     this.channel = channel
@@ -131,7 +134,7 @@ export class UpdateController {
 
   async check(): Promise<UpdateState> {
     const status = this.current.status
-    if (!this.updater || status === 'checking' || status === 'downloading' || status === 'ready') return this.current
+    if (!this.updater || status === 'checking' || status === 'downloading' || status === 'ready' || status === 'installing') return this.current
     try {
       await this.updater.checkForUpdates()
     } catch (error) {
@@ -144,7 +147,18 @@ export class UpdateController {
 
   /** Whether `install()` would restart into a new version. */
   ready(): boolean {
-    return this.current.status === 'ready'
+    return this.current.status === 'ready' || this.current.status === 'installing'
+  }
+
+  /**
+   * The user asked to restart into the update. Announce it before the slow
+   * shutdown starts so the window can say what is happening; false when
+   * there is nothing to install or an install is already under way.
+   */
+  beginInstall(): boolean {
+    if (this.current.status !== 'ready') return false
+    this.set({ status: 'installing', version: this.version, channel: this.channel, next: this.current.next })
+    return true
   }
 
   /** Run the downloaded installer and relaunch. The caller shuts the runtime down first. */

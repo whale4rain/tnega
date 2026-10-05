@@ -17,6 +17,14 @@ export function UpdateButton({ updates }: { updates: DesktopUpdates | undefined 
       </span>
     )
   }
+  if (state.status === 'installing') {
+    return (
+      <span className="update-pill pending" role="status" title={describeUpdate(state)}>
+        <span className="spinner tiny" aria-hidden />
+        <span>Updating…</span>
+      </span>
+    )
+  }
   if (state.status !== 'ready') return null
   return (
     <button type="button" className="update-pill ready" onClick={updates.install} title={`Restart into Tnega ${state.next}`}>
@@ -58,13 +66,32 @@ export function UpdateSettings({ updates }: { updates: DesktopUpdates | undefine
         )}
         {channelError && <p className="notice-error small" role="alert">{channelError}</p>}
       </div>
-      {state.status === 'ready'
-        ? <button type="button" className="button primary small" onClick={updates.install}>Restart to update</button>
+      {state.status === 'ready' || state.status === 'installing'
+        ? <button type="button" className="button primary small" onClick={updates.install} disabled={state.status === 'installing'}>{state.status === 'installing' ? 'Restarting…' : 'Restart to update'}</button>
         : state.status !== 'unsupported' && (
           <button type="button" className="button ghost small" onClick={updates.check} disabled={busy}>
             {busy ? 'Checking…' : 'Check for updates'}
           </button>
         )}
+    </div>
+  )
+}
+
+/**
+ * While the app closes to install an update, cover the window with one calm
+ * card so the click visibly did something; it disappears with the window.
+ */
+export function UpdatingOverlay({ updates }: { updates: DesktopUpdates | undefined }) {
+  const state = updates?.state
+  if (state?.status !== 'installing') return null
+  return (
+    <div className="dialog-scrim updating-scrim">
+      <div className="dialog updating-card" role="alertdialog" aria-modal="true" aria-labelledby="updating-title" aria-describedby="updating-text">
+        <span className="brand-mark large" aria-hidden />
+        <h2 className="dialog-title" id="updating-title">Updating to Tnega {state.next}</h2>
+        <p className="muted" id="updating-text">Tnega closes, installs the update and reopens by itself. This takes a few seconds.</p>
+        <span className="spinner" aria-hidden />
+      </div>
     </div>
   )
 }

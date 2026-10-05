@@ -16,6 +16,7 @@ import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
 import { useDesktopChrome } from './lib/desktop-chrome'
 import { useDesktopUpdates } from './lib/desktop-updates'
+import { UpdatingOverlay } from './components/UpdateButton'
 import { projectApi } from './lib/project-api'
 import type { ProjectRecord } from './lib/project-types'
 import type { AgentType, ApprovalMode, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
@@ -460,6 +461,7 @@ export function App() {
           }}
         />
       )}
+      <UpdatingOverlay updates={updates} />
       {dialog === 'settings' &&<SettingsDialog config={config} updates={updates} theme={theme} onThemeChange={setTheme} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
       {dialog === 'workspace' && (
         <WorkspaceDialog
