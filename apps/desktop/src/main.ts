@@ -142,7 +142,7 @@ async function createWindow(): Promise<void> {
     completed: nativeImage.createFromPath(join(iconDirectory, 'completion-rain.png')),
     failed: nativeImage.createFromPath(join(iconDirectory, 'completion-storm.png')),
     waiting: nativeImage.createFromPath(join(iconDirectory, 'completion-snow.png')),
-  }, () => shell.beep())
+  })
   browser = new DesktopBrowser(window, event => isTrustedSender(event.senderFrame?.url ?? ''))
   server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile(), ptcRuntime: desktopPtcAssets(appRoot()) })
   allowedOrigin = new URL(server.url).origin

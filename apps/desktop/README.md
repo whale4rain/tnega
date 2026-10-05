@@ -35,11 +35,12 @@ from the taskbar while the local runtime continues running in the notification
 area. Click the tray icon or choose **Show Tnega** to restore it. Choose
 **Exit Tnega** from the tray menu to shut down the local runtime.
 
-Session completion plays a system sound. When the window is not focused,
-Windows shows a rain overlay on the taskbar icon for a ready reply and lightning
-for a failed run. Focusing the window clears the overlay and attention flash.
-Cancelled runs and intermediate Goal rounds do not notify. Sound follows the
-system volume settings. Rebuild the small overlays with
+Session completion plays a soft two-note chime from the app itself (not the
+system "ding"). When the window is not focused, Windows shows a small weather
+badge on the taskbar icon: rain drops for a ready reply, lightning for a failed
+run and a snowflake when a question waits. The button does not flash. Focusing
+the window clears the badge. Cancelled runs and intermediate Goal rounds do not
+notify. The chime follows the system volume. Rebuild the small overlays with
 `node apps/desktop/scripts/render-completion-icons.mjs`.
 
 ## Packaging

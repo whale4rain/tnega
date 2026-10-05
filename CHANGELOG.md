@@ -35,6 +35,14 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- New app icon and brand mark: the Tnega cloud with two eyes replaces the
+  squircle with a cloud on top.
+
+- Desktop notices are quieter: the taskbar badge shows only the weather
+  (drops, lightning or a snowflake), so it no longer stacks a second cloud on
+  the icon; the taskbar button no longer flashes orange; and the Windows
+  system "ding" is replaced by a soft two-note chime.
+
 - Clicking Update in the desktop app now shows an "Updating to Tnega x.y.z"
   card at once while the app closes, installs and reopens; before, the window
   stayed as it was with no sign that anything was happening. The Update pill

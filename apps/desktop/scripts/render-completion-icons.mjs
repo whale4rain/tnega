@@ -8,11 +8,14 @@ const color = name => {
   if (!values.length) throw new Error(`Missing weather color ${name}`)
   return values.at(-1)[1]
 }
-const cloud = '<path d="M7 18a5 5 0 0 1-1-10 8 8 0 0 1 15-1 6 6 0 0 1 4 11Z"/>'
+// The app icon is already the cloud, so a badge carries only the weather on a
+// small dark disc: one cloud on the taskbar, legible on light and dark bars.
+const disc = '<circle cx="16" cy="16" r="15" fill="#1f2531"/>'
+const drop = 'c3 4.5 5 7.4 5 10a5 5 0 0 1-10 0c0-2.6 2-5.5 5-10Z'
 const icons = {
-  rain: `<g fill="${color('rain')}">${cloud}<path d="m10 21-3 6a2 2 0 0 0 4 1l2-7Zm10 0-3 6a2 2 0 0 0 4 1l2-7Z"/></g>`,
-  storm: `<g fill="${color('storm')}">${cloud}</g><path fill="${color('bolt')}" d="m17 16-8 9h6l-3 7 12-13h-7l3-3Z"/>`,
-  snow: `<g fill="${color('snow')}">${cloud}<circle cx="10" cy="24" r="2.4"/><circle cx="16" cy="28" r="2.4"/><circle cx="22" cy="24" r="2.4"/></g>`,
+  rain: `${disc}<g fill="${color('rain')}"><path d="M12 7${drop}"/><path d="M20.5 11${drop}"/></g>`,
+  storm: `${disc}<path fill="${color('bolt')}" d="M18.5 5 9 18h6l-2.5 9L23 14h-6.2Z"/>`,
+  snow: `${disc}<g stroke="${color('snow')}" stroke-width="2.6" stroke-linecap="round"><path d="M16 7v18M8.2 11.5l15.6 9M8.2 20.5l15.6-9"/></g>`,
 }
 const browser = await chromium.launch({ channel: process.platform === 'win32' ? 'msedge' : 'chrome', headless: true })
 try {
