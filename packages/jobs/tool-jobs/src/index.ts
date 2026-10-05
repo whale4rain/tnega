@@ -3,7 +3,7 @@ import type { Context } from '@tnega/core'
 import type { AgentRegistry, LiveAgent, SystemPromptService } from '@tnega/agent'
 import type { JobOutcome } from '@tnega/jobs'
 import { renderToolResult, type SessionLog } from '@tnega/session'
-import type { ToolsService, ToolExecuteOptions } from '@tnega/tools'
+import { ToolNotFoundError, type ToolsService, type ToolExecuteOptions } from '@tnega/tools'
 import type { SubagentEntry, SubagentStartRequest } from '@tnega/subagent'
 
 export interface ToolJobsConfig {
@@ -138,7 +138,7 @@ export const toolJobs = {
         } else {
           const name = required(value.tool, 'tool')
           const definition = tools.list().find(tool => tool.schema.name === name)
-          if (!definition) throw new Error(`tool not found: ${name}`)
+          if (!definition) throw new ToolNotFoundError(name, tools.list().map(tool => tool.schema.name).filter(tool => !tool.startsWith('job_')))
           if (name.startsWith('job_') || name === 'spawn_subagent' || definition.metadata?.background === false) {
             throw new Error('tool cannot be backgrounded; use kind=subagent for Subagent work')
           }

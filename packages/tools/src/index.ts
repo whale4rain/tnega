@@ -1,5 +1,6 @@
 import type { Context, Disposable } from '@tnega/core'
 import { Service } from '@tnega/core'
+import { closestToolNames, toToolError } from './errors.js'
 import { ToolAuthorizationError, validateToolInput } from './policy.js'
 import type {
   ToolAuthorizer,
@@ -12,6 +13,7 @@ export * from './builtins.js'
 export * from './processes.js'
 export * from './calc.js'
 export * from './path.js'
+export { closestToolNames, describeError, describeParameters, toToolError } from './errors.js'
 export * from '@tnega/execution'
 export {
   ToolAuthorizationError,
@@ -157,9 +159,18 @@ export type ToolGuard = (
 export class ToolNotFoundError extends Error {
   override name = 'ToolNotFoundError'
 
-  constructor(readonly toolName: string) {
-    super(`tool not found: ${toolName}`)
+  /** `available` lets the message point a model at the name it meant. */
+  constructor(readonly toolName: string, available: readonly string[] = []) {
+    super(`tool not found: ${toolName}${toolNotFoundHint(toolName, available)}`)
   }
+}
+
+function toolNotFoundHint(name: string, available: readonly string[]): string {
+  if (!available.length) return ''
+  const close = closestToolNames(name, available)
+  if (close.length) return `. Did you mean ${close.join(' or ')}?`
+  const listed = available.slice(0, 40).join(', ')
+  return `. Available tools: ${listed}${available.length > 40 ? ', …' : ''}`
 }
 
 export class ToolAlreadyRegisteredError extends Error {
@@ -179,22 +190,7 @@ export class ToolTimeoutError extends Error {
   override name = 'ToolTimeoutError'
 
   constructor(readonly toolName: string, readonly timeoutMs: number) {
-    super(`tool call timed out after ${timeoutMs}ms: ${toolName}`)
-  }
-}
-
-function toToolError(error: unknown): ToolError {
-  if (error instanceof Error) {
-    const result: ToolError = {
-      name: error.name,
-      message: error.message,
-    }
-    if (error.stack) result.stack = error.stack
-    return result
-  }
-  return {
-    name: 'ToolExecutionError',
-    message: String(error),
+    super(`tool call timed out after ${timeoutMs}ms: ${toolName}. The call was stopped; split the work into smaller calls, or run it in the background if a background tool such as job_start is available`)
   }
 }
 
@@ -269,7 +265,7 @@ export class ToolsService extends Service<never> {
     options: ToolExecuteOptions = {},
   ): Promise<ToolResult> {
     const tool = this._tools.get(name)
-    if (!tool) throw new ToolNotFoundError(name)
+    if (!tool) throw new ToolNotFoundError(name, [...this._tools.keys()])
 
     const timeoutMs = tool.timeoutMs ?? 0
     const deadline = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined

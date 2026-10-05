@@ -17,7 +17,7 @@ import {
   type ToolResultPayload,
   type TurnEndReason,
 } from '@tnega/session'
-import type { ToolDefinition, ToolError, ToolResult } from '@tnega/tools'
+import { toToolError, type ToolDefinition, type ToolError, type ToolResult } from '@tnega/tools'
 import type { ToolSchemaSnapshot } from './prompt.js'
 import type { ToolsService } from '@tnega/tools'
 
@@ -1311,21 +1311,6 @@ function copySteps(steps: readonly AgentStep[]): readonly AgentStep[] {
     completion: copyCompletion(step.completion),
     toolResults: step.toolResults.map(result => ({ ...result })),
   }))
-}
-
-function toToolError(error: unknown): ToolError {
-  if (error instanceof Error) {
-    const result: ToolError = {
-      name: error.name,
-      message: error.message,
-    }
-    if (error.stack) result.stack = error.stack
-    return result
-  }
-  return {
-    name: 'ToolExecutionError',
-    message: String(error),
-  }
 }
 
 function completionFromStreamEvents(events: readonly LLMStreamEvent[]): LLMCompletion {

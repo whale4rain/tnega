@@ -1,4 +1,5 @@
 import { ToolInputError } from './builtins.js'
+import { describeParameters, describeUnparsedArguments } from './errors.js'
 import type {
   ToolDefinition,
   ToolParameterSchema,
@@ -108,7 +109,16 @@ export function validateSchema(
   return issues
 }
 
+/**
+ * Reject input that does not fit the tool's schema. The message names the
+ * tool, each problem, and the expected call shape, so a model can correct the
+ * call in one step instead of guessing.
+ */
 export function validateToolInput(input: unknown, tool: ToolDefinition): void {
   const issues = validateSchema(input, tool.schema.parameters)
-  if (issues.length) throw new ToolInputError(issues.join('; '))
+  if (!issues.length) return
+  const name = tool.schema.name
+  const unparsed = typeof input === 'string' ? describeUnparsedArguments(input) : undefined
+  const problem = unparsed ?? issues.join('; ')
+  throw new ToolInputError(`invalid arguments for ${name}: ${problem}. Expected ${describeParameters(name, tool.schema.parameters)}`)
 }

@@ -57,6 +57,13 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- Failed tool calls tell the model why: the reason follows the error's cause
+  chain (`fetch failed: getaddrinfo ENOTFOUND host` instead of `fetch
+  failed`), keeps system codes, and is never empty or `[object Object]`. An
+  unknown tool name suggests the closest real one; bad arguments name the
+  tool, each problem (including arguments that were not valid JSON) and the
+  expected call shape; a timeout says the call was stopped and how to retry.
+
 - Verified desktop releases and update feeds now publish independently of npm
   validation or registry propagation; npm failures do not hide desktop updates.
 

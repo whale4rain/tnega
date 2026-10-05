@@ -1003,7 +1003,10 @@ function stringify(value: unknown): string {
 export function renderToolResult(
   payload: Pick<ToolResultPayload, 'ok' | 'output' | 'error'>,
 ): string {
-  if (!payload.ok) return `error: ${payload.error?.message ?? 'unknown'}`
+  if (!payload.ok) {
+    const reason = payload.error?.message?.trim() || payload.error?.name || 'the tool failed without a reason'
+    return `error: ${reason}`
+  }
   return stringify(payload.output)
 }
 
