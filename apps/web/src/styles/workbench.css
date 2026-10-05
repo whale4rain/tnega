@@ -501,6 +501,10 @@
   background: transparent !important;
 }
 
+.terminal-menu {
+  position: fixed;
+}
+
 .subagent-card {
   background: var(--bg);
 }

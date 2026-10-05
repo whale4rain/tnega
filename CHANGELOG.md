@@ -35,6 +35,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- The workbench terminal copies with Ctrl+C when text is selected (Ctrl+C
+  still interrupts otherwise), pastes with Ctrl+V, and has a right-click menu
+  with Copy, Paste, Select all and Clear.
+
 - The agent's browser click now waits for menus and dropdowns that open a
   moment after the click, so the returned snapshot shows them. Clicking a
   native `<select>` lists its options and points to `browser_select_option`
