@@ -15,7 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.4.12 | [`v0.4.11...v0.4.12`](https://github.com/whale4rain/tnega/compare/v0.4.11...v0.4.12) | 22 |
+| 0.4.12 | [`v0.4.11...v0.4.12`](https://github.com/whale4rain/tnega/compare/v0.4.11...v0.4.12) | 33 |
 | 0.4.11 | [`v0.4.10...v0.4.11`](https://github.com/whale4rain/tnega/compare/v0.4.10...v0.4.11) | 5 |
 | 0.4.10 | [`v0.4.9...v0.4.10`](https://github.com/whale4rain/tnega/compare/v0.4.9...v0.4.10) | 9 |
 | 0.4.9 | [`v0.4.8...v0.4.9`](https://github.com/whale4rain/tnega/compare/v0.4.8...v0.4.9) | 7 |
@@ -34,15 +34,13 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.12](https://github.com/whale4rain/tnega/releases/tag/v0.4.12) — 2026-10-05
+
 - Agent runs now continue and save their reply when the browser's SSE
   connection closes; stopping a run still requires the Stop action.
-
 - Publish npm and the Windows desktop update source automatically when a
   prepared version tag is pushed. Stable and preview channels remain separate;
   fixed artifact checks and staged GitHub drafts make failed uploads retryable.
-
-## [0.4.12](https://github.com/whale4rain/tnega/releases/tag/v0.4.12) — 2026-10-05
-
 - Projects work like a team room. Every run of messages shows its author and
   time, days are separated, and the coordinator "is typing" while it writes.
   Hovering a thread card lets you reply to that thread directly. Agents now

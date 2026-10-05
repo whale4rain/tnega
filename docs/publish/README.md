@@ -105,8 +105,9 @@ on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://d
    git push origin v0.4.13
    ```
 
-   This example is a future release; use the version actually prepared. The
-   existing `v0.4.12` tag predates this workflow and is not republished.
+   This example is a future release; use the version actually prepared. To
+   exercise the new workflow on `v0.4.12`, move that unpublished tag to the
+   fully validated commit containing the workflow and push the updated tag.
 3. Follow the **Release** run in GitHub Actions. Windows checks versions,
    typechecks, lints and runs the full suite. It explicitly downloads the
    Electron test runtime (its postinstall is not globally allowed by pnpm).
