@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.14 | [`v0.4.13...v0.4.14`](https://github.com/whale4rain/tnega/compare/v0.4.13...v0.4.14) | 21 |
 | 0.4.13 | [`v0.4.12...v0.4.13`](https://github.com/whale4rain/tnega/compare/v0.4.12...v0.4.13) | 8 |
 | 0.4.12 | [`v0.4.11...v0.4.12`](https://github.com/whale4rain/tnega/compare/v0.4.11...v0.4.12) | 35 |
 | 0.4.11 | [`v0.4.10...v0.4.11`](https://github.com/whale4rain/tnega/compare/v0.4.10...v0.4.11) | 5 |
@@ -34,6 +35,8 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.4.14](https://github.com/whale4rain/tnega/releases/tag/v0.4.14) — 2026-10-05
 
 - New app icon and brand mark: the Tnega cloud with two eyes replaces the
   squircle with a cloud on top.
