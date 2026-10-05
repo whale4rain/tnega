@@ -35,6 +35,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- The agent's browser click now waits for menus and dropdowns that open a
+  moment after the click, so the returned snapshot shows them. Clicking a
+  native `<select>` lists its options and points to `browser_select_option`
+  instead of opening an OS popup the agent cannot see.
+
 - Verified desktop releases and update feeds now publish independently of npm
   validation or registry propagation; npm failures do not hide desktop updates.
 

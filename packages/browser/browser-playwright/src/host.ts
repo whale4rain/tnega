@@ -39,6 +39,37 @@ export interface PickResult {
 
 const WAIT_MS_CAP = 10_000
 
+/** Interactions that usually change the page in place (menus, dropdowns, validation). */
+const SETTLING_OPS = new Set(['click', 'hover', 'type', 'select', 'press'])
+
+/**
+ * Resolves once the DOM has been quiet for `quiet` ms, or after `cap` ms.
+ * Menus and dropdowns often open a tick after the click (state updates,
+ * timers, animations); without this the next snapshot misses them and the
+ * agent clicks the trigger again, closing what it just opened.
+ */
+export function settleSource(quiet = 150, cap = 1_500): string {
+  return `new Promise(resolve => {
+  let timer
+  const done = () => { observer.disconnect(); clearTimeout(timer); clearTimeout(limit); resolve(undefined) }
+  const observer = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(done, ${quiet}) })
+  observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true })
+  timer = setTimeout(done, ${quiet})
+  const limit = setTimeout(done, ${cap})
+})`
+}
+
+interface SelectLike {
+  tagName: string
+  options?: ArrayLike<{ label: string; value: string; selected: boolean }>
+}
+
+/** Runs in the page: labels of a native <select>'s options, or null when the element is not one. */
+function selectOptions(element: SelectLike): string[] | null {
+  if (element.tagName !== 'SELECT' || !element.options) return null
+  return Array.from(element.options, option => (option.selected ? '* ' : '') + (option.label || option.value))
+}
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message.split('\n')[0]! : String(error)
 }
@@ -242,6 +273,8 @@ export class PlaywrightBrowserHost {
       await this._source.prepare?.(page)
       const note = await withSignal(this._perform(page, action), options.signal)
       await page.waitForLoadState('domcontentloaded', { timeout: 3_000 }).catch(() => {})
+      // A navigation can replace the document mid-wait; that is settled enough.
+      if (SETTLING_OPS.has(action.op)) await withSignal(page.evaluate(settleSource()), options.signal).catch(() => {})
       await this._refresh(page)
       return { ...this.state(), ...(note ? { note } : {}) }
     } catch (error) {
@@ -359,6 +392,15 @@ export class PlaywrightBrowserHost {
         return undefined
       case 'click': {
         const locator = await this._locate(page, action.ref)
+        // A native <select> opens an OS popup that screenshots and the live view
+        // never show and whose options have no refs; choose with browser_select_option.
+        const choices = action.button === undefined || action.button === 'left'
+          ? await locator.evaluate(selectOptions).catch(() => null)
+          : undefined
+        if (choices) {
+          await locator.focus({ timeout }).catch(() => {})
+          return `this is a <select>; clicking does not open it here. Use browser_select_option with one of: ${choices.join(', ')} (* = selected)`
+        }
         await locator.click({ button: action.button ?? 'left', clickCount: action.doubleClick ? 2 : 1, timeout })
         return undefined
       }

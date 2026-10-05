@@ -125,7 +125,7 @@ export function browserTools(browser: BrowserService, config: ToolBrowserConfig 
       const snapshot = await browser.snapshot(options.signal ? { signal: options.signal } : {})
       return `URL: ${snapshot.url}\nTitle: ${snapshot.title}\nSnapshot:\n${snapshot.snapshot}`
     }),
-    tool('browser_click', 'Click an element by ref.', {
+    tool('browser_click', 'Click an element by ref. Menus that open after the click are in the returned snapshot; for a native <select> use browser_select_option.', {
       ref: REF,
       element: ELEMENT,
       button: { type: 'string', enum: ['left', 'right', 'middle'] },

@@ -26,12 +26,37 @@ const APP = `<!doctype html>
   }
 </script>`
 
+// A native select, a menu that opens a tick after the click (like most framework
+// dropdowns) and one whose options only exist while it is open.
+const DROPDOWNS = `<!doctype html>
+<title>Dropdowns</title>
+<label>Fruit <select id="fruit"><option>Apple</option><option>Banana</option></select></label>
+<button id="color" aria-haspopup="listbox">Pick color</button>
+<ul id="menu" role="listbox" hidden>
+  <li role="option" data-value="red">Red</li>
+  <li role="option" data-value="blue">Blue</li>
+</ul>
+<p id="out">none</p>
+<script>
+  const menu = document.getElementById('menu')
+  document.getElementById('color').onclick = () => setTimeout(() => { menu.hidden = !menu.hidden }, 60)
+  menu.onclick = event => {
+    document.getElementById('out').textContent = event.target.dataset.value
+    menu.hidden = true
+  }
+</script>`
+
 let server: Server
 let base = ''
 let available = true
 
 beforeAll(async () => {
   server = createServer((req, res) => {
+    if (req.url === '/dropdowns') {
+      res.setHeader('content-type', 'text/html')
+      res.end(DROPDOWNS)
+      return
+    }
     if (req.url === '/') {
       res.setHeader('content-type', 'text/html')
       res.end(APP)
@@ -107,6 +132,39 @@ describe('browser-playwright with tool-browser', () => {
 
       const mobile = String((await call('browser_resize', { width: 375, height: 700 })).output)
       expect(mobile).toContain('viewport 375x700')
+    } finally {
+      await provider.dispose()
+    }
+  }, 90_000)
+
+  it('waits for menus that open after the click and steers native selects to select_option', async ({ skip }) => {
+    if (!available) skip()
+    const root = new Context()
+    await root.plugin(tools)
+    const provider = await root.plugin(browserPlaywright, { launch: { headless: true } })
+    await root.plugin(toolBrowser)
+    const registry = root.get('tools') as ToolsService
+    const call = async (name: string, input: unknown) => {
+      const result = await registry.execute(name, input, {})
+      if (!result.ok) throw new Error(`${name}: ${result.error?.message}`)
+      return String(result.output)
+    }
+
+    try {
+      const opened = await call('browser_navigate', { url: `${base}/dropdowns` })
+      const select = /combobox "Fruit" \[ref=(e\d+)\]/u.exec(opened)?.[1]
+      const trigger = /button "Pick color" \[ref=(e\d+)\]/u.exec(opened)?.[1]
+      expect(select && trigger).toBeTruthy()
+
+      const clickedSelect = await call('browser_click', { ref: select })
+      expect(clickedSelect).toContain('Use browser_select_option with one of: * Apple, Banana')
+      expect(await call('browser_select_option', { ref: select, values: ['Banana'] })).toContain('selected Banana')
+
+      const menu = await call('browser_click', { ref: trigger })
+      const blue = /option "Blue" \[ref=(e\d+)\]/u.exec(menu)?.[1]
+      expect(blue).toBeTruthy()
+      await call('browser_click', { ref: blue })
+      expect(await call('browser_evaluate', { function: '() => document.getElementById("out").textContent' })).toBe('blue')
     } finally {
       await provider.dispose()
     }
