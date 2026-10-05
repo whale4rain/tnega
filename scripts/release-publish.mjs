@@ -48,12 +48,14 @@ export async function publishRelease(manifest, dir, deps = {}) {
     const args = ['release', 'create', tag, '--repo', repo, '--draft', '--verify-tag', '--title', `Tnega ${tag}`, '--notes-file', `docs/releases/${tag}.md`]
     if (metadata.preview) args.push('--prerelease')
     run('gh', args)
-    release = json(['api', `repos/${repo}/releases/tags/${tag}`])
+    const created = json(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]).flat().filter(item => item.tag_name === tag)
+    if (created.length !== 1) throw new Error('Expected exactly one created release draft')
+    release = created[0]
   }
   if (release.draft) {
     const paths = manifest.files.filter(file => !file.name.endsWith('.tgz')).map(file => join(dir, file.name))
     run('gh', ['release', 'upload', tag, ...paths, '--repo', repo, '--clobber'])
-    release = json(['api', `repos/${repo}/releases/tags/${tag}`])
+    release = json(['api', `repos/${repo}/releases/${release.id}`])
     checkAssets(release.assets, manifest)
   }
   if (!existing) {
@@ -72,7 +74,7 @@ export async function publishRelease(manifest, dir, deps = {}) {
   if (release.draft) {
     run('gh', ['release', 'edit', tag, '--repo', repo, '--draft=false', `--latest=${metadata.preview ? 'false' : 'true'}`])
   }
-  const final = json(['api', `repos/${repo}/releases/tags/${tag}`])
+  const final = json(['api', `repos/${repo}/releases/${release.id}`])
   if (final.draft || final.prerelease !== metadata.preview) throw new Error('Release was not published on the expected channel')
   checkAssets(final.assets, manifest)
   console.log(`Published ${tag}: npm ${metadata.npmTag}, installer, blockmap and ${metadata.feed}`)

@@ -71,7 +71,7 @@ function publisherFixture({ version = '0.4.12', published = false, existingNpm =
   ] }
   const calls = []
   let npmExists = existingNpm
-  const release = { tag_name: `v${version}`, draft: !published, prerelease: preview,
+  const release = { id: 123, tag_name: `v${version}`, draft: !published, prerelease: preview,
     assets: [{ name: 'installer.exe', size: 42, digest: wrongAsset ? 'sha256:other' : 'sha256:abc' }] }
   const deps = {
     run(binary, args) {
@@ -79,7 +79,10 @@ function publisherFixture({ version = '0.4.12', published = false, existingNpm =
       if (binary === 'npm') npmExists = true
       if (args.includes('--draft=false')) release.draft = false
     },
-    json(args) { return args.includes('--slurp') ? [[release]] : release },
+    json(args) {
+      assert.ok(args.includes('--slurp') || args.includes('repos/whale4rain/tnega/releases/123'))
+      return args.includes('--slurp') ? [[release]] : release
+    },
     async registry(path) {
       if (path === 'tnega') return { 'dist-tags': { [preview ? 'preview' : 'latest']: channel } }
       return npmExists ? { dist: { integrity: wrongNpm ? 'sha512-other' : 'sha512-fixed' } } : undefined
@@ -123,7 +126,10 @@ test('beta publication uses preview and does not become the latest GitHub releas
 test('create exactly one draft before uploading; duplicate releases stop before mutation', async () => {
   const fixture = publisherFixture()
   let created = false
-  fixture.deps.json = args => args.includes('--slurp') ? [] : fixture.release
+  fixture.deps.json = args => {
+    assert.ok(args.includes('--slurp') || args.includes('repos/whale4rain/tnega/releases/123'))
+    return args.includes('--slurp') ? (created ? [[fixture.release]] : []) : fixture.release
+  }
   const originalRun = fixture.deps.run
   fixture.deps.run = (binary, args) => {
     if (args.includes('create')) {
