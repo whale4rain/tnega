@@ -856,6 +856,9 @@ async function handleApi(
       return
     }
     if (action === undefined && req.method === 'GET') {
+      // History is read asynchronously. If a run finishes during this read,
+      // this snapshot may not contain its final reply yet; let clients poll again.
+      const runningAtReadStart = isActive(context.activeRuns, workspace, id)
       const summary = await readSessionSummary(workspace, id)
       const detail = await readSessionEvents(workspace, id)
       const configuredWindow = effectiveLlmConfig(
@@ -871,7 +874,7 @@ async function handleApi(
         surface: detail.surface,
         context: contextUsage,
         metrics,
-        running: isActive(context.activeRuns, workspace, id),
+        running: runningAtReadStart || isActive(context.activeRuns, workspace, id),
       })
       return
     }

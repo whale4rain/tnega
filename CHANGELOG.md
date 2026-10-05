@@ -34,6 +34,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Session queries keep reporting a run as active when it finishes during the
+  history read, so reconnecting clients poll again instead of missing its final reply.
+
 - Project Threads now automatically route undecided tool permission requests
   to their direct parent. The parent can approve the exact waiting call once,
   deny it, or forward it to the user; cancellation, expiry and Project shutdown
