@@ -164,7 +164,7 @@ describe('tnega run builtin tools via OpenAI compatible endpoint', () => {
       return calls === 1
         ? openaiResponse('', [
           toolCall('call_http_1', 'http_get', {
-            url: 'https://example.test/data',
+            url: 'https://1.1.1.1/data',
           }),
         ], 'tool_calls')
         : openaiResponse('done')
@@ -172,7 +172,7 @@ describe('tnega run builtin tools via OpenAI compatible endpoint', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await runAgentCommand({
-      prompt: 'fetch https://example.test/data',
+      prompt: 'fetch https://1.1.1.1/data',
       cwd: dir,
       allowNetwork: true,
       maxTokens: 64,

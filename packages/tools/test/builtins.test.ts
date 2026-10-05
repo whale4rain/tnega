@@ -402,7 +402,7 @@ describe('network and shell tools', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const fetched = await ok(service, 'http_get', {
-      url: 'https://example.test/data',
+      url: 'https://1.1.1.1/data',
     }) as { status: number; ok: boolean; body: string }
     expect(fetched.status).toBe(200)
     expect(fetched.ok).toBe(true)
