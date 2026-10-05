@@ -64,6 +64,8 @@ export function SettingsDialog({
   const [reviewBaseUrl, setReviewBaseUrl] = useState(stored?.approvalReview?.baseUrl ?? '')
   const [reviewKey, setReviewKey] = useState('')
   const [reviewKeyEnv, setReviewKeyEnv] = useState(stored?.approvalReview?.apiKeyEnv ?? '')
+  const [proxy, setProxy] = useState(config?.network?.proxy ?? '')
+  const [allowedHosts, setAllowedHosts] = useState((config?.network?.allowedHosts ?? []).join('\n'))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
 
@@ -89,6 +91,11 @@ export function SettingsDialog({
       patch.temperature = value
     }
     if (reviewProvider === 'model' && !reviewModelId) return fail('Select a configured model route for automatic review', 'approvals')
+    const hosts = allowedHosts.split(/[\s,]+/).map(host => host.trim().toLowerCase()).filter(Boolean)
+    const badHost = hosts.find(host => !/^(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*$/.test(host))
+    if (badHost) return fail(`"${badHost}" is not a host name; use names like example.com or *.example.com`, 'tools')
+    if (proxy.trim() && !/^https?:\/\/[^\s/]+/i.test(proxy.trim())) return fail('The proxy is a URL such as http://127.0.0.1:7890', 'tools')
+    if (config?.network) patch.network = { allowedHosts: hosts, proxy: proxy.trim() }
     try {
       onSaved(await api.saveConfig(patch))
       onClose()
@@ -290,6 +297,19 @@ export function SettingsDialog({
               </select>
               <span className="muted small">开启后模型只看到 run_code，通过代码调用原有工具。关闭后仅使用原生工具。保存后于下一次运行生效。</span>
             </label>
+            {config?.network && <>
+              <label className="field span-2">
+                <span className="field-label">Network proxy</span>
+                <input aria-label="Network proxy" value={proxy} onChange={event => setProxy(event.target.value)} spellCheck={false}
+                  placeholder={config.network.environmentProxy ? `From the environment · ${config.network.environmentProxy}` : 'None · direct, or the system proxy in the desktop app'} />
+                <span className="muted small">For the agent's web requests and skill installs, such as http://127.0.0.1:7890. Leave empty to use HTTPS_PROXY from the environment.</span>
+              </label>
+              <label className="field span-2">
+                <span className="field-label">Allowed hosts</span>
+                <textarea aria-label="Allowed hosts" rows={3} value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} spellCheck={false} placeholder="docs.example.com&#10;*.example.org" />
+                <span className="muted small">Web requests to private or reserved addresses are blocked. Hosts listed here are trusted whatever their DNS answers, which a proxy in fake-IP mode (198.18.x.x) needs. Trusted already: {config.network.defaultAllowedHosts.join(', ')}.</span>
+              </label>
+            </>}
           </div>)}
 
           {panel('appearance', <div className="form-grid">

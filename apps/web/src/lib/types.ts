@@ -255,6 +255,15 @@ export interface ConfigSnapshot {
   }
   /** The shell the `shell` tool runs in now, and the ones this machine offers. */
   shell?: { active: string; available: ShellOption[] }
+  /** How the HTTP tools reach the network. */
+  network?: {
+    allowedHosts: string[]
+    proxy: string
+    /** Hosts trusted out of the box. */
+    defaultAllowedHosts: string[]
+    /** The proxy HTTPS_PROXY / HTTP_PROXY sets, without credentials. */
+    environmentProxy?: string
+  }
   config: {
     codeMode?: boolean
     /** Saved shell preference; empty means detect automatically. */

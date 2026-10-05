@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, shell, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -35,6 +35,13 @@ function createUpdates(): UpdateController {
   })
   return controller
 }
+
+/**
+ * The agent's web requests (http_get, skill installs) through Chromium's
+ * network stack, which follows the system proxy, PAC scripts included.
+ * Node's own fetch ignores them, so GitHub fails where only a proxy reaches it.
+ */
+const systemProxyFetch: typeof fetch = (input, init) => net.fetch(input instanceof URL ? input.href : input, init)
 
 function appRoot(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'tnega-runtime')
@@ -144,7 +151,7 @@ async function createWindow(): Promise<void> {
     waiting: nativeImage.createFromPath(join(iconDirectory, 'completion-snow.png')),
   })
   browser = new DesktopBrowser(window, event => isTrustedSender(event.senderFrame?.url ?? ''))
-  server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile(), ptcRuntime: desktopPtcAssets(appRoot()) })
+  server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile(), ptcRuntime: desktopPtcAssets(appRoot()), fetch: systemProxyFetch })
   allowedOrigin = new URL(server.url).origin
   tray = installTray(window, join(dirname(fileURLToPath(import.meta.url)), '../build/icon.png'), () => { void closeAndExit() })
   window.on('closed', () => {

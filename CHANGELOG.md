@@ -57,6 +57,15 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- Skill installs and web requests work behind a proxy and with fake-IP DNS:
+  the HTTP tools follow `HTTPS_PROXY` / `HTTP_PROXY` (and, in the desktop
+  app, the system proxy) or a proxy set in Settings → Tools & shell →
+  Network, and hosts on the new Allowed hosts list (GitHub, npm and PyPI by
+  default) are trusted even when DNS answers with a reserved address such as
+  a proxy's `198.18.x.x`. Failures now say which address a name resolved to,
+  that DNS failed, or that the host could not be reached and how to fix it.
+  `skill_install` also accepts a GitHub page link and fetches the raw file.
+
 - Usage and cost: Settings has a Usage section with input, cached and output
   tokens and the cache (KV cache) hit share for today, the last seven days and
   all time, split by model; the session's context meter now also shows cached

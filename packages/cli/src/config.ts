@@ -104,6 +104,37 @@ export interface SystemConfig {
   workspaces?: string[]
   /** Browser launched for the agent's `browser_*` tools outside the desktop app. */
   browser?: BrowserLaunchConfig
+  network?: NetworkConfig
+}
+
+/** How the HTTP tools reach the network (see `NetworkPolicy` in @tnega/execution). */
+export interface NetworkConfig {
+  /** Hosts trusted even when DNS answers with a private or reserved address; `*.domain` for subdomains. */
+  allowedHosts?: string[]
+  /** `http://host:port` proxy; absent uses HTTPS_PROXY / HTTP_PROXY / ALL_PROXY or the system proxy (desktop). */
+  proxy?: string
+}
+
+export function parseNetworkConfig(value: unknown): NetworkConfig | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  const network: NetworkConfig = {}
+  if (Array.isArray(record.allowedHosts)) {
+    const hosts = record.allowedHosts
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map(entry => entry.trim().toLowerCase())
+      .filter(entry => /^(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*$/.test(entry))
+    if (hosts.length) network.allowedHosts = [...new Set(hosts)]
+  }
+  if (typeof record.proxy === 'string' && record.proxy.trim()) {
+    try {
+      const url = new URL(record.proxy.trim())
+      if (url.protocol === 'http:' || url.protocol === 'https:') network.proxy = url.href.replace(/\/$/, '')
+    } catch {
+      // An unusable proxy is dropped rather than breaking every request.
+    }
+  }
+  return network
 }
 
 export interface BrowserLaunchConfig {
@@ -127,9 +158,11 @@ export interface EffectiveLlmConfig {
   pricing?: ModelPricing
 }
 
-export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort'> & {
+export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort' | 'network'> & {
   protocol?: 'anthropic' | 'openai' | ''
   reasoningEffort?: ReasoningEffort | ''
+  /** `undefined` written explicitly clears the network settings. */
+  network?: NetworkConfig | undefined
 }
 
 export function systemConfigPath(): string {
@@ -505,6 +538,8 @@ function normalizeConfig(value: unknown): SystemConfig {
     if (typeof headless === 'boolean') launch.headless = headless
     config.browser = launch
   }
+  const network = parseNetworkConfig(fieldOf(record, 'network'))
+  if (network && (network.allowedHosts || network.proxy)) config.network = network
   if (Array.isArray(record.workspaces)) {
     config.workspaces = record.workspaces
       .filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))

@@ -78,6 +78,7 @@ export interface ConfigPatch {
   protocol?: '' | 'anthropic' | 'openai'
   reasoningEffort?: '' | 'low' | 'medium' | 'high'
   temperature?: number
+  network?: { allowedHosts: string[]; proxy: string }
 }
 
 export interface BackgroundJob {

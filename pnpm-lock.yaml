@@ -482,7 +482,11 @@ importers:
 
   packages/core: {}
 
-  packages/execution: {}
+  packages/execution:
+    dependencies:
+      undici:
+        specifier: 7.29.1
+        version: 7.29.1
 
   packages/jobs/jobs:
     dependencies:
@@ -8809,8 +8813,7 @@ snapshots:
 
   undici@6.28.1: {}
 
-  undici@7.29.1:
-    optional: true
+  undici@7.29.1: {}
 
   undici@8.10.2:
     optional: true

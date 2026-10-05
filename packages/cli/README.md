@@ -216,6 +216,18 @@ Windows PowerShell、Git Bash、cmd；其他平台为 `$SHELL`）。环境变量
 同样生效。Windows 上 `bash` 指 Git Bash，不会选中 WSL 的 `System32\bash.exe`；Git Bash 无法在
 Windows 沙箱内运行，只适合完全访问权限。Settings → Tools & shell 可直接选择。
 
+`network` 决定 `http_get`（以及经它下载的 skill 安装）怎样上网：
+
+```json
+{ "network": { "proxy": "http://127.0.0.1:7890", "allowedHosts": ["docs.example.com", "*.example.org"] } }
+```
+
+`proxy` 省略时使用环境变量 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`（遵守 `NO_PROXY`），
+桌面端再退到系统代理（Electron 的网络栈，含 PAC）；Node 自带的 fetch 不读这些设置。
+指向私有或保留地址的请求默认被拦截（防 SSRF）；`allowedHosts` 中的主机不论 DNS 解析到
+什么都放行——代理的 fake-IP 模式会把所有域名解析到 `198.18.x.x`，被污染的 DNS 会给出
+`0.0.0.0`。GitHub、npm、PyPI 的常用主机默认可信。Settings → Tools & shell → Network 可直接修改。
+
 ## 测试
 
 `packages/cli/test/`：CLI 端到端、runtime 组合、profile 文件、store 元数据、

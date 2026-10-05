@@ -82,6 +82,15 @@ export function skillCreateTool(): ToolDefinition {
     },
   }
 }
+/**
+ * A GitHub page link (`github.com/o/r/blob/main/SKILL.md`) serves HTML; the
+ * file itself is on raw.githubusercontent.com.
+ */
+export function rawGitHubUrl(url: URL): URL {
+  const match = url.hostname === 'github.com' ? /^\/([^/]+)\/([^/]+)\/(?:blob|raw)\/(.+)$/.exec(url.pathname) : null
+  return match ? new URL(`https://raw.githubusercontent.com/${match[1]}/${match[2]}/${match[3]}`) : url
+}
+
 export function skillInstallTool(cwd: string, registry: ToolsService): ToolDefinition {
   return {
     schema: { name: 'skill_install', description: 'Install a SKILL.md from a workspace file/directory or HTTPS raw Markdown URL into user home. Copies only instructions, never scripts or assets; existing files are not overwritten. HTTPS requires the http_get tool.', parameters: {
@@ -93,7 +102,7 @@ export function skillInstallTool(cwd: string, registry: ToolsService): ToolDefin
       const source = textField(args, 'source')
       const name = typeof args.name === 'string' ? args.name : undefined
       if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) return installSkill(cwd, { source, ...(name ? { name } : {}) }, options.signal)
-      const url = new URL(source)
+      const url = rawGitHubUrl(new URL(source))
       if (url.protocol !== 'https:' || url.username || url.password) throw new Error('only HTTPS URLs without embedded credentials are supported')
       const response = await registry.execute('http_get', { url: url.href, maxBytes: MAX_BYTES }, { ...options, callId: `${options.callId ?? 'skill-install'}:download` })
       if (!response.ok) throw new Error(response.error?.message ?? 'skill download failed')

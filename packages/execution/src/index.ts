@@ -1,9 +1,9 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { assertPublicHttpUrl, networkFetch } from './network.js'
 import { shellCommandArgv, systemShell } from './shell.js'
 
 export * from './shell.js'
+export * from './network.js'
 
 export interface ShellRequest {
   command: string
@@ -415,7 +415,7 @@ export const localExecutionProvider: ExecutionProvider = {
     let response: Response | undefined
     for (let redirects = 0; redirects <= 5; redirects += 1) {
       if (!request.allowPrivate) await assertPublicHttpUrl(url)
-      response = await fetch(url, init)
+      response = await networkFetch(url, init)
       if (![301, 302, 303, 307, 308].includes(response.status)) break
       const location = response.headers.get('location')
       if (!location || redirects === 5) throw new Error('HTTP redirect limit reached')
@@ -440,36 +440,3 @@ export const localExecutionProvider: ExecutionProvider = {
   },
 }
 
-async function assertPublicHttpUrl(url: URL): Promise<void> {
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new Error(`unsupported protocol: ${url.protocol}`)
-  }
-  if (url.username || url.password) throw new Error('URL credentials are not allowed')
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
-    throw new Error('HTTP destination must be public')
-  }
-  const addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true })
-  if (!addresses.length || addresses.some(({ address }) => !isPublicAddress(address))) {
-    throw new Error('HTTP destination must be public')
-  }
-}
-
-function isPublicAddress(address: string): boolean {
-  if (address.includes(':')) {
-    const value = address.toLowerCase()
-    if (value.startsWith('::ffff:') || value.startsWith('2002:')
-      || value.startsWith('64:ff9b:')) return false
-    return value !== '::1' && value !== '::' && !value.startsWith('fc')
-      && !value.startsWith('fd') && !value.startsWith('fe8')
-      && !value.startsWith('fe9') && !value.startsWith('fea') && !value.startsWith('feb')
-      && !value.startsWith('ff') && !value.startsWith('2001:db8:')
-  }
-  const bytes = address.split('.').map(Number)
-  if (bytes.length !== 4 || bytes.some(byte => !Number.isInteger(byte) || byte < 0 || byte > 255)) return false
-  const [a, b] = bytes
-  return a !== 0 && a !== 10 && a !== 127 && a! < 224
-    && !(a === 169 && b === 254) && !(a === 192 && (b === 168 || b === 0))
-    && !(a === 100 && b! >= 64 && b! <= 127)
-    && !(a === 172 && b! >= 16 && b! <= 31) && !(a === 198 && (b === 18 || b === 19))
-}

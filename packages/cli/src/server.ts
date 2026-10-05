@@ -57,7 +57,7 @@ import { toolBrowser } from '@tnega/tool-browser'
 import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
-import { availableShells, configureSystemShell, systemShell } from '@tnega/execution'
+import { availableShells, configureNetwork, configureSystemShell, DEFAULT_ALLOWED_HOSTS, systemShell } from '@tnega/execution'
 import { spillLocal } from '@tnega/spill-local'
 import { listStoredSubagents, readSubagentEvents, subagentLocal } from '@tnega/subagent-local'
 import { SubagentError } from '@tnega/subagent'
@@ -98,6 +98,7 @@ import {
   normalizeApprovalReviewer,
   ModelRouteError,
   parseModelRouteInput,
+  parseNetworkConfig,
   removeModelRoute,
   upsertModelRoute,
   type EffectiveLlmConfig,
@@ -239,6 +240,11 @@ export interface WebServerOptions {
    */
   browser?: PlaywrightBrowserHost | false
   /**
+   * Fetch for the HTTP tools when no proxy is configured. The desktop app
+   * passes Electron's, which follows the system proxy settings.
+   */
+  fetch?: typeof fetch
+  /**
    * Profile file whose plugins are mounted into every agent runtime and reloaded
    * in place when the profile or a local plugin module changes. Off by default;
    * `tnega web` and the desktop app pass `defaultHotProfile()`.
@@ -274,7 +280,9 @@ export async function startWebServer(
   const port = options.port ?? DEFAULT_PORT
   const webRoot = options.webRoot ?? defaultWebRoot()
   const configFile = options.configFile
-  configureSystemShell((await readSystemConfig(configFile)).shell)
+  const startConfig = await readSystemConfig(configFile)
+  configureSystemShell(startConfig.shell)
+  applyNetwork(startConfig, options.fetch)
   const activeRuns = new Map<string, AbortController>()
   const approvals = new ApprovalBroker()
   const residentAgents = new Map<string, ResidentAgentEntry>()
@@ -289,6 +297,7 @@ export async function startWebServer(
     ? await createHotPluginHost(options.profile, { onEvent: logHotPluginEvent })
     : undefined
   const context: ServerContext = {
+    ...(options.fetch ? { hostFetch: options.fetch } : {}),
     webRoot,
     activeRuns,
     approvals,
@@ -346,6 +355,8 @@ export async function startWebServer(
 
 interface ServerContext {
   ptcRuntime?: PtcRuntimeQuickjsConfig
+  /** The host's fetch for the HTTP tools (see `WebServerOptions.fetch`). */
+  hostFetch?: typeof fetch
   webRoot: string
   configFile?: string
   activeRuns: Map<string, AbortController>
@@ -526,8 +537,14 @@ async function handleApi(
       const previous = (await readSystemConfig(context.configFile)).approvalReview
       patch.approvalReview = { ...(previous?.provider === review.provider ? previous : {}), ...review }
     }
+    if (body.network !== undefined) {
+      const network = parseNetworkConfig(body.network)
+      if (!network) { sendError(res, 400, 'network must be an object'); return }
+      patch.network = network.allowedHosts || network.proxy ? network : undefined
+    }
     const config = await updateSystemConfig(patch, context.configFile)
     configureSystemShell(config.shell)
+    applyNetwork(config, context.hostFetch)
     sendJson(res, 200, configSnapshot(config, context.configFile))
     return
   }
@@ -2175,6 +2192,12 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
       active: systemShell().label,
       available: availableShells().map(shell => ({ path: shell.path, label: shell.label, kind: shell.kind })),
     },
+    network: {
+      allowedHosts: config.network?.allowedHosts ?? [],
+      proxy: config.network?.proxy ?? '',
+      defaultAllowedHosts: DEFAULT_ALLOWED_HOSTS,
+      ...(environmentProxy() ? { environmentProxy: environmentProxy() } : {}),
+    },
     config: {
       apiKeySet: Boolean(config.apiKey),
       codeMode: config.codeMode ?? false,
@@ -2219,6 +2242,23 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
     },
     models: availableModels(config),
   }
+}
+
+/** The proxy the environment sets for the HTTP tools, without any credentials in it. */
+function environmentProxy(): string | undefined {
+  const raw = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? process.env.HTTP_PROXY ?? process.env.http_proxy ?? process.env.ALL_PROXY ?? process.env.all_proxy
+  if (!raw?.trim()) return undefined
+  try {
+    const url = new URL(raw.trim())
+    return `${url.protocol}//${url.host}`
+  } catch {
+    return undefined
+  }
+}
+
+/** Point the HTTP tools at the configured proxy and allowed hosts, keeping the host's fetch. */
+function applyNetwork(config: SystemConfig, hostFetch: typeof fetch | undefined): void {
+  configureNetwork({ ...config.network, ...(hostFetch ? { fetch: hostFetch } : {}) })
 }
 
 function workspaceParam(url: URL): string | undefined {

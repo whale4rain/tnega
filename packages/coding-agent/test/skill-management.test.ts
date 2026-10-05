@@ -5,7 +5,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { Context } from '@tnega/core'
 import { tools, type ToolsService } from '@tnega/tools'
 import { skillTools, readSkill } from '../src/skills.js'
-import { createSkill, installSkill } from '../src/skill-management.js'
+import { createSkill, installSkill, rawGitHubUrl } from '../src/skill-management.js'
 import { createSlashRegistry } from '../src/slash.js'
 let home: string
 let cwd: string
@@ -106,4 +106,11 @@ it('reads skills whose names collide with management subcommands', async () => {
   const context = { cwd, tools: [] }
   expect(await registry.suggest('/skills', context)).toContainEqual(expect.objectContaining({ label: 'create', args: ['read', 'create'] }))
   expect(await registry.run('/skills', ['read', 'create'], context)).toMatchObject({ kind: 'text', text: expect.stringContaining('name: create') })
+})
+
+it('installs from a GitHub page link by fetching the raw file', () => {
+  expect(rawGitHubUrl(new URL('https://github.com/acme/skills/blob/main/review/SKILL.md')).href)
+    .toBe('https://raw.githubusercontent.com/acme/skills/main/review/SKILL.md')
+  expect(rawGitHubUrl(new URL('https://example.com/acme/skills/blob/main/SKILL.md')).href)
+    .toBe('https://example.com/acme/skills/blob/main/SKILL.md')
 })
