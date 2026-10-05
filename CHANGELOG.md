@@ -34,6 +34,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Agent runs now continue and save their reply when the browser's SSE
+  connection closes; stopping a run still requires the Stop action.
+
 - Publish npm and the Windows desktop update source automatically when a
   prepared version tag is pushed. Stable and preview channels remain separate;
   fixed artifact checks and staged GitHub drafts make failed uploads retryable.

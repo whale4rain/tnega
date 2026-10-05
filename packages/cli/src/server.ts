@@ -1288,7 +1288,6 @@ async function handleRun(
   })
   res.once('close', () => {
     detachApproval()
-    controller.abort({ type: 'user' })
   })
 
   let ptcObservation: Fiber | undefined
@@ -1733,7 +1732,6 @@ async function runResidentTurn(
   })
   res.once('close', () => {
     detachApproval()
-    controller.abort({ type: 'user' })
   })
 
   let ptcObservation: Fiber | undefined
