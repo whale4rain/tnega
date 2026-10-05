@@ -35,6 +35,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Verified desktop releases and update feeds now publish independently of npm
+  validation or registry propagation; npm failures do not hide desktop updates.
+
 - npm publication retries now honor their scheduled delays instead of always
   waiting five seconds, preserving the advertised 34-minute visibility window.
 

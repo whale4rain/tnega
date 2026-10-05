@@ -92,31 +92,33 @@ function publisherFixture({ version = '0.4.12', published = false, existingNpm =
   }
   return { manifest, calls, deps, release }
 }
-test('publisher uploads and verifies the draft before npm and release visibility', async () => {
+test('publisher makes verified desktop assets public before npm publication', async () => {
   const fixture = publisherFixture()
   await publishRelease(fixture.manifest, '/fixed', fixture.deps)
   assert.equal(fixture.calls.length, 3)
   assert.ok(fixture.calls[0].includes('upload'))
-  assert.equal(fixture.calls[1][0], 'npm')
-  assert.ok(fixture.calls[1].includes('--ignore-scripts'))
-  assert.ok(fixture.calls[2].includes('--draft=false'))
+  assert.ok(fixture.calls[1].includes('--draft=false'))
+  assert.equal(fixture.calls[2][0], 'npm')
+  assert.ok(fixture.calls[2].includes('--ignore-scripts'))
 })
 test('retry skips immutable npm and published GitHub artifacts', async () => {
   const fixture = publisherFixture({ published: true, existingNpm: true })
   await publishRelease(fixture.manifest, '/fixed', fixture.deps)
   assert.deepEqual(fixture.calls, [])
 })
-test('different published bytes and channel downgrade fail before any mutations', async () => {
+test('invalid npm bytes or channel block npm while preserving the verified desktop release', async () => {
   for (const options of [{ existingNpm: true, wrongNpm: true }, { published: true, wrongAsset: true }, { channel: '0.4.13' }]) {
     const fixture = publisherFixture(options)
     await assert.rejects(publishRelease(fixture.manifest, '/fixed', fixture.deps), /different|asset|downgrade/)
-    assert.deepEqual(fixture.calls, [])
+    assert.ok(fixture.calls.every(call => call[0] !== 'npm'))
+    if (options.wrongAsset) assert.deepEqual(fixture.calls, [])
+    else assert.equal(fixture.release.draft, false)
   }
 })
-test('failed npm propagation preserves the draft for a retry', async () => {
+test('failed npm propagation leaves the verified desktop release public', async () => {
   const fixture = publisherFixture({ channel: '0.4.11' })
   await assert.rejects(publishRelease(fixture.manifest, '/fixed', fixture.deps), /not visible/)
-  assert.ok(fixture.calls.every(call => !call.includes('--draft=false')))
+  assert.equal(fixture.release.draft, false)
 })
 test('publisher waits through delayed npm processing before publishing the draft', async () => {
   const fixture = publisherFixture({ channel: '0.4.11' })
@@ -134,6 +136,14 @@ test('publisher waits through delayed npm processing before publishing the draft
   assert.equal(polls, 40)
   assert.ok(fixture.calls.some(call => call[0] === 'npm'))
   assert.ok(fixture.calls.some(call => call.includes('--draft=false')))
+})
+
+test('npm registry unavailability cannot block a verified desktop release', async () => {
+  const fixture = publisherFixture()
+  fixture.deps.registry = async () => { throw new Error('registry unavailable') }
+  await assert.rejects(publishRelease(fixture.manifest, '/fixed', fixture.deps), /registry unavailable/)
+  assert.equal(fixture.release.draft, false)
+  assert.ok(fixture.calls.every(call => call[0] !== 'npm'))
 })
 
 test('production wait honors each registry retry delay', async context => {
@@ -162,8 +172,8 @@ test('production wait honors each registry retry delay', async context => {
 test('beta publication uses preview and does not become the latest GitHub release', async () => {
   const fixture = publisherFixture({ version: '0.4.12-beta.1' })
   await publishRelease(fixture.manifest, '/fixed', fixture.deps)
-  assert.ok(fixture.calls[1].includes('preview'))
-  assert.ok(fixture.calls[2].includes('--latest=false'))
+  assert.ok(fixture.calls[2].includes('preview'))
+  assert.ok(fixture.calls[1].includes('--latest=false'))
 })
 test('create exactly one draft before uploading; duplicate releases stop before mutation', async () => {
   const fixture = publisherFixture()

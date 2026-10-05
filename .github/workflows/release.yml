@@ -99,9 +99,11 @@ jobs:
           name: release-${{ github.run_id }}
           path: .tnega/release-ci
       - run: node scripts/release-ci.mjs verify "$GITHUB_REF_NAME"
-      - name: Publish fixed npm bytes and verified GitHub draft
+      - name: Publish verified desktop release, then fixed npm bytes
+        id: publish
         run: node scripts/release-publish.mjs
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Verify public desktop update source
+        if: ${{ always() && steps.publish.outcome != 'skipped' }}
         run: node scripts/release.mjs verify

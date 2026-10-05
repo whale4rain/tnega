@@ -42,12 +42,6 @@ export async function publishRelease(manifest, dir, deps = {}) {
   for (const published of releases.filter(item => !item.draft && !item.prerelease && /^v\d+\.\d+\.\d+$/.test(item.tag_name))) {
     if (compareVersions(published.tag_name.slice(1), manifest.version) > 0) throw new Error('A newer stable desktop release exists')
   }
-  const packageInfo = await npm('tnega')
-  const channel = packageInfo?.['dist-tags']?.[metadata.npmTag]
-  if (channel && compareVersions(channel, manifest.version) > 0) throw new Error(`Refusing to downgrade npm ${metadata.npmTag}`)
-  let existing = await npm(`tnega/${manifest.version}`)
-  if (existing && existing.dist?.integrity !== manifest.npmIntegrity) throw new Error('npm version already exists with different bytes')
-
   if (!release) {
     // Keep verify-tag semantics, then use the creation response directly:
     // the paginated list can remain stale after a successful draft creation.
@@ -65,11 +59,25 @@ export async function publishRelease(manifest, dir, deps = {}) {
     release = json(['api', `repos/${repo}/releases/${release.id}`])
     checkAssets(release.assets, manifest)
   }
+  // The desktop artifacts have their own build, identity and digest gates.
+  // npm validation or availability must not hold back desktop updates.
+  if (release.draft) {
+    run('gh', ['release', 'edit', tag, '--repo', repo, '--draft=false', `--latest=${metadata.preview ? 'false' : 'true'}`])
+  }
+  const final = json(['api', `repos/${repo}/releases/${release.id}`])
+  if (final.draft || final.prerelease !== metadata.preview) throw new Error('Release was not published on the expected channel')
+  checkAssets(final.assets, manifest)
+  console.log(`Published desktop ${tag}: installer, blockmap and ${metadata.feed}`)
+
+  const packageInfo = await npm('tnega')
+  const channel = packageInfo?.['dist-tags']?.[metadata.npmTag]
+  if (channel && compareVersions(channel, manifest.version) > 0) throw new Error(`Refusing to downgrade npm ${metadata.npmTag}`)
+  let existing = await npm(`tnega/${manifest.version}`)
+  if (existing && existing.dist?.integrity !== manifest.npmIntegrity) throw new Error('npm version already exists with different bytes')
   if (!existing) {
     run('npm', ['publish', join(dir, `tnega-${manifest.version}.tgz`), '--ignore-scripts', '--access', 'public', '--provenance', '--tag', metadata.npmTag, '--registry=https://registry.npmjs.org'])
   }
-  // Registry propagation is asynchronous. Keep the draft private until the
-  // public version and its channel both identify the verified package bytes.
+  // npm is tracked independently after the verified desktop release is public.
   let visible = false
   for (let attempt = 0; ; attempt++) {
     existing = await npm(`tnega/${manifest.version}`)
@@ -84,13 +92,7 @@ export async function publishRelease(manifest, dir, deps = {}) {
     await wait(delay)
   }
   if (!visible) throw new Error('npm version/channel was not visible within 34 minutes; rerun the failed publisher job after propagation')
-  if (release.draft) {
-    run('gh', ['release', 'edit', tag, '--repo', repo, '--draft=false', `--latest=${metadata.preview ? 'false' : 'true'}`])
-  }
-  const final = json(['api', `repos/${repo}/releases/${release.id}`])
-  if (final.draft || final.prerelease !== metadata.preview) throw new Error('Release was not published on the expected channel')
-  checkAssets(final.assets, manifest)
-  console.log(`Published ${tag}: npm ${metadata.npmTag}, installer, blockmap and ${metadata.feed}`)
+  console.log(`Published npm ${tag}: ${metadata.npmTag}`)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

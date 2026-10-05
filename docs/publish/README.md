@@ -120,13 +120,15 @@ on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://d
    containing the tag commit, sizes, SHA256 and npm SHA512 integrity. The
    isolated Ubuntu job verifies them, creates/reuses one GitHub **draft**, and
    verifies every uploaded desktop asset's size and SHA256 digest. It then
-   publishes npm (`latest` stable, `preview` beta), waits for registry visibility,
-   and publishes the verified draft. A final check verifies the public update
+   publishes the verified desktop draft independently, then publishes npm
+   (`latest` stable, `preview` beta) and waits for registry visibility.
+   A final check verifies the public update
    source. Beta releases contain `beta.yml` and never become GitHub latest.
 
 Releases are serialized across tags using a GitHub concurrency queue (up to
 100 queued runs), so publisher requests cannot race. Attempts to downgrade an
-npm channel or a newer stable desktop release fail before publication.
+npm channel or a newer stable desktop release fail before the corresponding
+channel publication.
 
 ### Validation baseline and retries
 
@@ -147,13 +149,14 @@ The workflow installs ripgrep for the search integration tests.
 After `npm publish` accepts the verified tarball, the publisher remains running
 while npm makes the version and its channel visible in the public registry. It
 checks at 5, 10, 20 and 40 seconds, then every 30 seconds for about 34 minutes;
-the publisher job has a 45-minute ceiling. The draft stays private throughout
-this wait. If that upper bound expires, choose **Re-run failed jobs**, which
+the publisher job has a 45-minute ceiling. The verified desktop release and
+update feed are already public during this wait. If that upper bound expires,
+choose **Re-run failed jobs**, which
 reuses the original build artifact for 14 days. Do not choose **Re-run all jobs**
 after any external publication: installers can change bytes between builds.
 An already published npm version is skipped only when its integrity matches;
 published GitHub assets must match and are never overwritten. Draft assets may
-be repaired. A delayed registry channel leaves the GitHub release a draft; after
+be repaired. A delayed registry channel does not hide the desktop release; after
 the wait ceiling, wait for the registry and rerun only the failed job. An npm authentication failure
 requires correcting the Trusted Publisher fields/allowed action, then the same
 retry. There is no automatic deletion of published versions or tags.
