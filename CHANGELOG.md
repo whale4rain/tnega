@@ -35,6 +35,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Release publication now uses the draft creation response directly, avoiding
+  failures when GitHub's Release list has not yet reflected the new draft.
+
 ## [0.4.13](https://github.com/whale4rain/tnega/releases/tag/v0.4.13) — 2026-10-05
 
 - Session queries keep reporting a run as active when it finishes during the

@@ -144,8 +144,17 @@ test('create exactly one draft before uploading; duplicate releases stop before 
   const fixture = publisherFixture()
   let created = false
   fixture.deps.json = args => {
+    if (args.includes('POST')) {
+      assert.ok(args.includes('draft=true'))
+      assert.ok(args.includes(`tag_name=${fixture.release.tag_name}`))
+      created = true
+      fixture.calls.push(['gh', ...args])
+      return fixture.release
+    }
+    if (args.includes(`repos/whale4rain/tnega/git/ref/tags/${fixture.release.tag_name}`)) return { ref: `refs/tags/${fixture.release.tag_name}` }
     assert.ok(args.includes('--slurp') || args.includes('repos/whale4rain/tnega/releases/123'))
-    return args.includes('--slurp') ? (created ? [[fixture.release]] : []) : fixture.release
+    // The list can remain stale after creation; only the POST response is authoritative.
+    return args.includes('--slurp') ? [] : fixture.release
   }
   const originalRun = fixture.deps.run
   fixture.deps.run = (binary, args) => {
@@ -156,7 +165,7 @@ test('create exactly one draft before uploading; duplicate releases stop before 
     originalRun(binary, args)
   }
   await publishRelease(fixture.manifest, '/fixed', fixture.deps)
-  assert.equal(fixture.calls.filter(call => call.includes('create')).length, 1)
+  assert.equal(fixture.calls.filter(call => call.includes('POST')).length, 1)
   const duplicate = publisherFixture()
   duplicate.deps.json = () => [[duplicate.release, duplicate.release]]
   await assert.rejects(publishRelease(duplicate.manifest, '/fixed', duplicate.deps), /Duplicate/)

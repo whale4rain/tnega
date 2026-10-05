@@ -49,12 +49,15 @@ export async function publishRelease(manifest, dir, deps = {}) {
   if (existing && existing.dist?.integrity !== manifest.npmIntegrity) throw new Error('npm version already exists with different bytes')
 
   if (!release) {
-    const args = ['release', 'create', tag, '--repo', repo, '--draft', '--verify-tag', '--title', `Tnega ${tag}`, '--notes-file', `docs/releases/${tag}.md`]
-    if (metadata.preview) args.push('--prerelease')
-    run('gh', args)
-    const created = json(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]).flat().filter(item => item.tag_name === tag)
-    if (created.length !== 1) throw new Error('Expected exactly one created release draft')
-    release = created[0]
+    // Keep verify-tag semantics, then use the creation response directly:
+    // the paginated list can remain stale after a successful draft creation.
+    json(['api', `repos/${repo}/git/ref/tags/${tag}`])
+    release = json(['api', '--method', 'POST', `repos/${repo}/releases`,
+      '-f', `tag_name=${tag}`, '-f', `name=Tnega ${tag}`, '-F', 'draft=true',
+      '-F', `prerelease=${metadata.preview}`, '-F', `body=@docs/releases/${tag}.md`])
+    if (!Number.isSafeInteger(release.id) || release.tag_name !== tag || !release.draft || release.prerelease !== metadata.preview) {
+      throw new Error('Created release does not match the expected draft and channel')
+    }
   }
   if (release.draft) {
     const paths = manifest.files.filter(file => !file.name.endsWith('.tgz')).map(file => join(dir, file.name))
