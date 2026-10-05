@@ -13,31 +13,27 @@ function report(status = 'passed', title = 'works') {
     numRuntimeErrorTestSuites: 0, testResults: [{ name: `${root}/test/publish.test.ts`,
       status, message: '', assertionResults: [{ ancestorTitles: ['package'], title, status }] }] }
 }
-test('new failures and runtime/hook errors block; exact historical failures may pass', () => {
-  const baseline = [{ file: 'test/publish.test.ts', titles: ['package', 'old failure'] }]
-  assert.doesNotThrow(() => checkReport(report(), baseline, root))
-  assert.doesNotThrow(() => checkReport(report('failed', 'old failure'), baseline, root, false))
-  assert.throws(() => checkReport(report('failed', 'new failure'), baseline, root, false), /Unexpected/)
-  assert.throws(() => checkReport({ ...report(), numRuntimeErrorTestSuites: 1 }, baseline, root), /runtime/)
-  assert.throws(() => checkReport({ ...report(), testResults: [] }, baseline, root), /empty|incomplete/)
+test('all test failures and runtime/hook errors block publication', () => {
+  assert.doesNotThrow(() => checkReport(report(), root))
+  assert.throws(() => checkReport(report('failed', 'old failure'), root, false), /Unexpected/)
+  assert.throws(() => checkReport(report('failed', 'new failure'), root, false), /Unexpected/)
+  assert.throws(() => checkReport({ ...report(), numRuntimeErrorTestSuites: 1 }, root), /runtime/)
+  assert.throws(() => checkReport({ ...report(), testResults: [] }, root), /empty|incomplete/)
   const hook = report()
   hook.testResults[0].status = 'failed'
   hook.testResults[0].message = 'beforeAll failed'
-  assert.throws(() => checkReport(hook, baseline, root), /suite/)
+  assert.throws(() => checkReport(hook, root), /suite/)
 })
 test('package tests must pass and partial reports cannot approve publication', () => {
-  assert.throws(() => checkReport(report('failed', 'old failure'), [], root), /Unexpected/)
-  assert.throws(() => checkReport({ ...report(), numTotalTests: 10 }, [], root), /incomplete/)
+  assert.throws(() => checkReport(report('failed', 'old failure'), root), /Unexpected/)
+  assert.throws(() => checkReport({ ...report(), numTotalTests: 10 }, root), /incomplete/)
   const skipped = report('pending')
-  assert.throws(() => checkReport(skipped, [], root), /package/)
+  assert.throws(() => checkReport(skipped, root), /package/)
 })
-test('legacy ACL output allowance cannot hide a denied-write regression', () => {
-  const baseline = [{ file: 'test/publish.test.ts', titles: ['package', 'denies writes'], failureIncludes: ['expected false to be true'] }]
+test('a denied-write regression blocks publication', () => {
   const result = report('failed', 'denies writes')
   result.testResults[0].assertionResults[0].failureMessages = ['expected true to be false']
-  assert.throws(() => checkReport(result, baseline, root, false), /Unexpected/)
-  result.testResults[0].assertionResults[0].failureMessages = ['expected false to be true']
-  assert.doesNotThrow(() => checkReport(result, baseline, root, false))
+  assert.throws(() => checkReport(result, root, false), /Unexpected/)
 })
 test('stable promotion and numeric beta ordering prevent channel downgrade', () => {
   assert.equal(compareVersions('0.4.12-beta.10', '0.4.12-beta.2'), 1)

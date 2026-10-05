@@ -24,31 +24,26 @@ export function compareVersions(a, b) {
   return left[3] === right[3] ? 0 : left[3] > right[3] ? 1 : -1
 }
 
-export function checkReport(report, baseline, checkout, requirePackage = true) {
+export function checkReport(report, checkout, requirePackage = true) {
   if (report.numRuntimeErrorTestSuites || report.unhandledErrors?.length) throw new Error('Test runtime errors')
   if (!report.testResults?.length) throw new Error('Test report is empty or incomplete')
-  const allow = new Map(baseline.map(item => [JSON.stringify([item.file, ...item.titles]), item]))
-  let total = 0, failed = 0, packagePassed = 0
+  let total = 0, packagePassed = 0
   for (const suite of report.testResults) {
     const file = relative(checkout, suite.name).replaceAll('\\', '/')
-    let suiteFailures = 0
     for (const test of suite.assertionResults) {
       total++
       if (test.status === 'failed') {
-        failed++
-        suiteFailures++
         const key = JSON.stringify([file, ...test.ancestorTitles, test.title])
-        const known = allow.get(key)
-        if (!known || known.failureIncludes?.some(text => !test.failureMessages?.join('\n').includes(text))) throw new Error(`Unexpected failure: ${key}`)
+        throw new Error(`Unexpected failure: ${key}`)
       }
       if (file === 'test/publish.test.ts' && test.status === 'passed') packagePassed++
     }
     // Vitest serializes hook/collection failures as a failed suite with a message.
-    if (suite.message || (suite.status === 'failed' && !suiteFailures)) throw new Error(`Test suite error: ${file}: ${suite.message}`)
+    if (suite.message || suite.status === 'failed') throw new Error(`Test suite error: ${file}: ${suite.message}`)
   }
-  if (total !== report.numTotalTests || failed !== report.numFailedTests) throw new Error('Test report incomplete')
+  if (total !== report.numTotalTests || report.numFailedTests !== 0) throw new Error('Test report incomplete')
   if (requirePackage && !packagePassed) throw new Error('The package artifact tests did not pass')
-  return { total, failed, packagePassed }
+  return { total, packagePassed }
 }
 
 function artifactNames(version) {
@@ -112,9 +107,9 @@ async function main() {
     if (result.error || result.signal || ![0, 1].includes(result.status)) throw new Error(`Vitest process failed: ${result.error ?? result.signal ?? result.status}`)
     const runtime = readJson(errorsFile)
     if (runtime.errors.length || !['passed', 'failed'].includes(runtime.reason)) throw new Error(`Test runtime error or interrupted run: ${JSON.stringify(runtime)}`)
-    const checked = checkReport(readJson(reportFile), readJson(join(root, 'docs/publish/test-baseline.json')).failures, root)
-    if (checked.total < 1200 || checked.packagePassed < 12 || (result.status === 1 && checked.failed === 0)) throw new Error('Full suite or package checks did not complete')
-    console.log(`Release gate: ${checked.total} tests, ${checked.failed} named legacy failures; no new failures`)
+    const checked = checkReport(readJson(reportFile), root)
+    if (checked.total < 1200 || checked.packagePassed < 12 || result.status !== 0) throw new Error('Full suite or package checks did not complete')
+    console.log(`Release gate: ${checked.total} tests passed with no failures`)
   } else if (command === 'check') {
     const metadata = checkTag(argument)
     console.log(`Tag v${metadata.version} is ready for CI`)

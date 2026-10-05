@@ -129,16 +129,11 @@ npm channel or a newer stable desktop release fail before publication.
 
 ### Validation baseline and retries
 
-[test-baseline.json](test-baseline.json) records exactly 19 historical failures
-audited at 0.4.11. The two transient Project failures from that release passed
-in isolation and are **not** allowed. The Windows ACL entries are old denial
-output assertions; their allowance also requires the specific old assertion
-message, so a denied-write regression cannot pass under that allowance. Denied
-writes were verified. This is recorded test debt, not a claim of a green suite.
-Remove entries as their tests are fixed. Any failure outside the exact file and
-nested test title blocks publishing, as do hook/collection errors, unhandled
-runtime errors, an interrupted run or an incomplete package report. No step
-uses `continue-on-error`. JSON validation reports are retained even on failure.
+The 19 historical test failures audited at 0.4.11 have been resolved. The
+release gate now requires a fully passing suite; any failed test, hook/collection
+error, unhandled runtime error, interrupted run or incomplete package report
+blocks publication. No step uses `continue-on-error`. JSON validation reports
+are retained even on failure.
 
 If the build passes but publishing fails, choose **Re-run failed jobs**, which
 reuses the original build artifact for 14 days. Do not choose **Re-run all jobs**

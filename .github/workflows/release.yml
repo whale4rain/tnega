@@ -42,7 +42,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm --filter @tnega/desktop typecheck
       - run: pnpm lint
-      - name: Full suite, package build and exact historical failure gate
+      - name: Full suite and package artifact gate
         run: node scripts/release-ci.mjs test
       - name: Retain validation report even on failure
         if: always()
