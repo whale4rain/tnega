@@ -47,6 +47,7 @@ describe('createSlashRegistry', () => {
     const registry = createSlashRegistry()
     expect(registry.list().map(command => command.name)).toEqual([
       '/plan',
+      '/goal',
       '/mode',
       '/skills',
       '/mcp',
@@ -55,10 +56,10 @@ describe('createSlashRegistry', () => {
     expect(await registry.run('/plan', [], { cwd: '.', tools })).toMatchObject({
       kind: 'text',
     })
-    const mode = await registry.run('/mode', [], { cwd: '.', tools, mode: 'execute' })
+    const mode = await registry.run('/mode', [], { cwd: '.', tools, mode: 'goal' })
     expect(mode).toEqual({
       kind: 'json',
-      value: { modes: ['auto', 'plan', 'execute'], current: 'execute' },
+      value: { modes: ['auto', 'plan', 'goal'], current: 'goal' },
     })
     const skills = await registry.run('/skills', [], {
       cwd,

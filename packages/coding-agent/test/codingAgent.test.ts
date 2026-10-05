@@ -44,8 +44,8 @@ describe('createCodingAgentPlugin', () => {
     await fiber
 
     const service = root.get('tools') as ToolsService
-    expect(service.has('plan_execute_mark')).toBe(true)
-    expect(service.has('plan_execute_result')).toBe(true)
+    expect(service.has('plan_execute_mark')).toBe(false)
+    expect(service.has('plan_execute_result')).toBe(false)
     expect(service.has('skills_list')).toBe(true)
     expect(service.has('skill_read')).toBe(true)
 
@@ -53,7 +53,7 @@ describe('createCodingAgentPlugin', () => {
     expect(coding.survey()).toEqual({
       agentType: 'coding',
       mode: 'plan',
-      planTools: 2,
+      planTools: 0,
       skillsEnabled: true,
       skills: 4,
       mcpEnabled: false,
@@ -65,7 +65,7 @@ describe('createCodingAgentPlugin', () => {
     const mode = await coding.runCommand('/mode', [])
     expect(mode).toEqual({
       kind: 'json',
-      value: { modes: ['auto', 'plan', 'execute'], current: 'plan' },
+      value: { modes: ['auto', 'plan', 'goal'], current: 'plan' },
     })
 
     await fiber.dispose()
@@ -170,13 +170,13 @@ describe('createCodingAgentPlugin', () => {
     await fiber
 
     const coding = root.get('coding') as CodingService
-    const result = await coding.runCommand('/mode', ['execute'])
-    expect(switched).toEqual(['execute'])
+    const result = await coding.runCommand('/mode', ['goal'])
+    expect(switched).toEqual(['goal'])
     expect(result).toEqual({
       kind: 'json',
       value: {
-        modes: ['auto', 'plan', 'execute'],
-        current: 'execute',
+        modes: ['auto', 'plan', 'goal'],
+        current: 'goal',
         switched: true,
       },
     })
@@ -184,9 +184,9 @@ describe('createCodingAgentPlugin', () => {
     const invalid = await coding.runCommand('/mode', ['sandbox'])
     expect(invalid).toEqual({
       kind: 'text',
-      text: 'invalid mode: sandbox; expected auto, plan or execute',
+      text: 'invalid mode: sandbox; expected auto, plan or goal',
     })
-    expect(switched).toEqual(['execute'])
+    expect(switched).toEqual(['goal'])
 
     await fiber.dispose()
   })
