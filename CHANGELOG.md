@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.12 | [`v0.4.11...v0.4.12`](https://github.com/whale4rain/tnega/compare/v0.4.11...v0.4.12) | 22 |
 | 0.4.11 | [`v0.4.10...v0.4.11`](https://github.com/whale4rain/tnega/compare/v0.4.10...v0.4.11) | 5 |
 | 0.4.10 | [`v0.4.9...v0.4.10`](https://github.com/whale4rain/tnega/compare/v0.4.9...v0.4.10) | 9 |
 | 0.4.9 | [`v0.4.8...v0.4.9`](https://github.com/whale4rain/tnega/compare/v0.4.8...v0.4.9) | 7 |
@@ -33,6 +34,29 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.12](https://github.com/whale4rain/tnega/releases/tag/v0.4.12) — 2026-10-05
+
+- Projects work like a team room. Every run of messages shows its author and
+  time, days are separated, and the coordinator "is typing" while it writes.
+  Hovering a thread card lets you reply to that thread directly. Agents now
+  receive who is speaking and which message a reply answers.
+- The project panel is the same Workbench a session uses: Board, Library and
+  Routines lead its tabs, threads and project settings open as tabs, and it
+  resizes and toggles with Ctrl+J. Files, Changes and Terminal stay available.
+- The **Board** replaces Overview. It shows today's activity under the
+  project's weather (threads opened, finished, outputs, tokens) and lanes for
+  Needs you, Working, Ready and Idle threads, each card with its step or
+  question, checklist progress, outputs, active time and tokens. Resolve a
+  thread when you have taken its result; resolved threads fold away and
+  reopen when they get a new message.
+- **Routines** put recurring work on a schedule (daily, weekdays, weekly or
+  every few minutes). Create them from the Routines tab or by asking the
+  coordinator; each run goes to the routine's own thread.
+- Threads can publish workspace files — Word, PowerPoint, Excel, PDF,
+  images — as artifacts. The Library filters by type and previews them with
+  the same viewers as workspace files.
+- Project memory moves into project settings. The room and threads share a
+  one-line message box that grows as you type.
 - Windows sandbox: commands that start child processes and read their output
   (`npm run dev`, vite, esbuild, most test runners) fail inside the write
   sandbox because it cannot allow named pipes without lifting the write fence.
@@ -61,28 +85,6 @@ compare links provide a convenient browser view of the boundaries.
 - Selects have an inset chevron and themed options.
 - The agent browser keeps the address you typed and shows a loading bar
   until the page arrives.
-
-- Projects work like a team room. Every run of messages shows its author and
-  time, days are separated, and the coordinator "is typing" while it writes.
-  Hovering a thread card lets you reply to that thread directly. Agents now
-  receive who is speaking and which message a reply answers.
-- The project panel is the same Workbench a session uses: Board, Library and
-  Routines lead its tabs, threads and project settings open as tabs, and it
-  resizes and toggles with Ctrl+J. Files, Changes and Terminal stay available.
-- The **Board** replaces Overview. It shows today's activity under the
-  project's weather (threads opened, finished, outputs, tokens) and lanes for
-  Needs you, Working, Ready and Idle threads, each card with its step or
-  question, checklist progress, outputs, active time and tokens. Resolve a
-  thread when you have taken its result; resolved threads fold away and
-  reopen when they get a new message.
-- **Routines** put recurring work on a schedule (daily, weekdays, weekly or
-  every few minutes). Create them from the Routines tab or by asking the
-  coordinator; each run goes to the routine's own thread.
-- Threads can publish workspace files — Word, PowerPoint, Excel, PDF,
-  images — as artifacts. The Library filters by type and previews them with
-  the same viewers as workspace files.
-- Project memory moves into project settings. The room and threads share a
-  one-line message box that grows as you type.
 
 ## [0.4.11](https://github.com/whale4rain/tnega/releases/tag/v0.4.11) — 2026-10-03
 

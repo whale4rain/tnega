@@ -142,7 +142,7 @@ Two Windows sandboxes ([docs](https://learn.chatgpt.com/docs/windows/windows-san
 | Security | Approved command is fully unconfined (writes anywhere, all network) | Stronger than today: also no access to the user's profile, keys and tokens unless granted; per-user firewall possible | Unchanged |
 | Approvals | Every blocked build/dev-server run needs approval | None for ordinary commands | — |
 | Failure modes | Approval fatigue; models over-escalate (DSH) | Enterprise policy can forbid user creation; credential storage; tools installed per-user (nvm, pnpm in `%AppData%`) need read grants; files the sandbox user creates are owned by it | Third-party tools spawn as they like |
-| Effort | Done (v0.4.11+ unreleased) | Large: new Provider mode, setup flow, credential vault, grants, tests on a clean VM | Small, partial |
+| Effort | Done (v0.4.12) | Large: new Provider mode, setup flow, credential vault, grants, tests on a clean VM | Small, partial |
 
 Not viable: adding the user's SID to the restricting list (removes the fence);
 AppContainer (breaks reading the user's toolchains and most of the disk);
