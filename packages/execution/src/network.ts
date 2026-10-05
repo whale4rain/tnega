@@ -1,6 +1,13 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
-import { EnvHttpProxyAgent, fetch as undiciFetch, ProxyAgent, type Dispatcher } from 'undici'
+import type { Dispatcher, fetch as UndiciFetch } from 'undici'
+
+// undici is loaded only when a proxy is in use: it is a runtime dependency of
+// the package rather than part of every bundle, and a copied runtime without
+// node_modules still works without a proxy.
+type Undici = typeof import('undici')
+let undici: Promise<Undici> | undefined
+const loadUndici = (): Promise<Undici> => undici ??= import('undici')
 
 /**
  * How the HTTP tools reach the network. Two things break them on real
@@ -66,28 +73,29 @@ function envProxy(env: NodeJS.ProcessEnv = process.env): string | undefined {
   return undefined
 }
 
-function proxyDispatcher(): Dispatcher | undefined {
+async function proxyDispatcher(): Promise<{ dispatcher: Dispatcher; fetch: typeof UndiciFetch } | undefined> {
   const configured = policy.proxy?.trim()
   const key = configured ? `proxy:${configured}` : envProxy() ? `env:${envProxy()}:${process.env.NO_PROXY ?? process.env.no_proxy ?? ''}` : undefined
   if (!key) return undefined
+  const { EnvHttpProxyAgent, fetch, ProxyAgent } = await loadUndici()
   if (dispatcher?.key !== key) {
     void dispatcher?.value.close().catch(() => undefined)
     dispatcher = { key, value: configured ? new ProxyAgent(configured) : new EnvHttpProxyAgent() }
   }
-  return dispatcher.value
+  return { dispatcher: dispatcher.value, fetch }
 }
 
 /** Fetch through the configured proxy, the host's fetch, or directly. */
 export async function networkFetch(url: URL, init: RequestInit): Promise<Response> {
-  const viaProxy = proxyDispatcher()
+  const viaProxy = await proxyDispatcher()
   try {
     if (viaProxy) {
       // undici's fetch with its own dispatcher; the Response it returns is web-compatible.
-      const proxied: Parameters<typeof undiciFetch>[1] = { dispatcher: viaProxy }
+      const proxied: Parameters<typeof UndiciFetch>[1] = { dispatcher: viaProxy.dispatcher }
       if (init.redirect) proxied.redirect = init.redirect
       if (init.signal) proxied.signal = init.signal
       if (init.headers) proxied.headers = new Headers(init.headers)
-      return await undiciFetch(url, proxied) as unknown as Response
+      return await viaProxy.fetch(url, proxied) as unknown as Response
     }
     return await (policy.fetch ?? globalThis.fetch)(url, init)
   } catch (error) {

@@ -274,6 +274,7 @@
   },
   "dependencies": {
     "playwright-core": "1.63.0",
+    "undici": "7.29.1",
     "tnega": "^0.1.1"
   },
   "optionalDependencies": {
