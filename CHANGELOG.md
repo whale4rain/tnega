@@ -34,6 +34,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Publish npm and the Windows desktop update source automatically when a
+  prepared version tag is pushed. Stable and preview channels remain separate;
+  fixed artifact checks and staged GitHub drafts make failed uploads retryable.
+
 ## [0.4.12](https://github.com/whale4rain/tnega/releases/tag/v0.4.12) — 2026-10-05
 
 - Projects work like a team room. Every run of messages shows its author and

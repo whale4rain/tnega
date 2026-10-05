@@ -44,8 +44,9 @@ system volume settings. Rebuild the small overlays with
 
 ## Packaging
 
-For a public release, follow [docs/publish](../../docs/publish/README.md) and use
-`pnpm release desktop` to ship the installer with its `latest.yml` update feed.
+For a public release, follow [docs/publish](../../docs/publish/README.md) and push
+the prepared version tag. GitHub Actions builds and publishes the installer with
+its matching stable/preview update feed; `pnpm release desktop` is a manual fallback.
 Packaged clients from 0.4.6 onward check at startup and every four hours, download
 updates in the background and offer Update / Restart to update in the UI.
 Settings also provides Check for updates. Development builds do not self-update.

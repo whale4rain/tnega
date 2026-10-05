@@ -173,9 +173,10 @@ Run the checks appropriate to your change: `pnpm test`, `pnpm typecheck`,
 [apps/desktop](apps/desktop/README.md); interface conventions are in the
 [design guide](docs/design/tnega-design.md).
 
-Read [docs/publish](docs/publish/README.md) before releasing. Maintainers build
-and publish each new desktop version with its installer, blockmap and
-`latest.yml` feed; installed clients consume that feed automatically. Keep
+Read [docs/publish](docs/publish/README.md) before releasing. Pushing a prepared
+version tag starts GitHub Actions validation, npm publishing and Windows
+installer/update-feed publication. npm needs one-time Trusted Publisher setup;
+installed clients consume the stable or preview feed automatically. Keep
 [CHANGELOG.md](CHANGELOG.md) and the version's [release notes](docs/releases/)
 current.
 

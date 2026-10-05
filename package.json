@@ -4,6 +4,10 @@
   "description": "A minimal agent harness with spacetime-composable plugin lifecycles.",
   "private": false,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whale4rain/tnega.git"
+  },
   "bin": {
     "tnega": "./dist/bin.js"
   },

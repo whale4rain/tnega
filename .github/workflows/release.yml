@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: read
+
+# Serialize all versions, including reruns, without replacing pending releases.
+concurrency:
+  group: tnega-release
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Check tag, versions, notes and main ancestry
+        run: node scripts/release-ci.mjs check $env:GITHUB_REF_NAME
+      - run: pnpm install --frozen-lockfile
+      # pnpm deliberately does not allow Electron's postinstall globally.
+      # Install the test runtime explicitly on the clean hosted runner.
+      - name: Install Electron for the real desktop browser check
+        run: pnpm --filter @tnega/desktop exec node -e "require('electron/install.js')"
+      - run: node --test test/release-ci.test.mjs
+      - run: pnpm typecheck
+      - run: pnpm --filter @tnega/desktop typecheck
+      - run: pnpm lint
+      - name: Full suite, package build and exact historical failure gate
+        run: node scripts/release-ci.mjs test
+      - name: Retain validation report even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tnega/release-ci-tests.json
+            .tnega/release-ci-errors.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+      - run: pnpm --filter @tnega/desktop build
+      - name: Package Windows without publishing
+        run: pnpm --filter @tnega/desktop exec electron-builder --win --x64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: pnpm release feed
+      - name: Pack the already validated npm bytes
+        run: |
+          New-Item -ItemType Directory -Force .tnega/release-ci | Out-Null
+          npm pack --ignore-scripts --pack-destination .tnega/release-ci
+      - run: node scripts/release-ci.mjs bundle $env:GITHUB_REF_NAME
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ github.run_id }}
+          path: .tnega/release-ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+          # Do not rebuild a successful job when retrying an external publish.
+          overwrite: false
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      # OIDC support needs npm >=11.5.1; do not create a token-based .npmrc.
+      - run: npm install --global npm@11.21.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ github.run_id }}
+          path: .tnega/release-ci
+      - run: node scripts/release-ci.mjs verify "$GITHUB_REF_NAME"
+      - name: Publish fixed npm bytes and verified GitHub draft
+        run: node scripts/release-publish.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Verify public desktop update source
+        run: node scripts/release.mjs verify

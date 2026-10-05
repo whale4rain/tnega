@@ -1,8 +1,9 @@
 # Publishing a release
 
-The runbook for cutting a Tnega release: the npm package (`tnega` CLI) and the
-Windows desktop client, whose installed copies update themselves from the
-GitHub release. Follow it in order; every step names its check.
+The default release path is GitHub Actions: push a new version tag to publish
+the npm package (`tnega` CLI) and the Windows desktop installer/update feed.
+Prepare the version and notes first; no local packaging or OTP is needed after
+the one-time npm Trusted Publisher configuration below.
 
 Desktop 0.4.6 and later already support in-app updates. Users install an
 update-capable client once; later upgrades happen through Settings → Check for
@@ -64,7 +65,97 @@ Preview uses `beta.yml` on beta prereleases and can move to a newer stable
 release. The version it compares is `apps/desktop/package.json`.
 Settings → Update channel persists Stable / Preview per desktop installation.
 
-## Prerequisites
+## Automatic tag releases
+
+The workflow is [release.yml](../../.github/workflows/release.yml). It runs when
+a `v[0-9]*` tag is pushed, then rejects any tag other than `vx.y.z` or
+`vx.y.z-beta.N`. The tag must match both package versions, have release notes
+and a released changelog section, and point at a commit reachable from
+`origin/main`. Ordinary pushes and documentation changes do not publish.
+
+### One-time npm configuration
+
+In [tnega's npm settings](https://www.npmjs.com/package/tnega/access), add a
+**GitHub Actions Trusted Publisher** using:
+
+| Field | Value |
+| --- | --- |
+| Organization or user | `whale4rain` |
+| Repository | `tnega` |
+| Workflow filename | `release.yml` |
+| Environment | leave empty |
+| Allowed actions | explicitly enable **npm publish** |
+
+The Ubuntu publisher job uses `id-token: write` and npm 11.21.0 to obtain a
+short-lived OIDC identity, with provenance enabled. Do not add `NPM_TOKEN`, an
+OTP, or a token-based `.npmrc`. GitHub release uploads use the job's
+`GITHUB_TOKEN` with `contents: write`; no personal token is needed. This works
+on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://docs.npmjs.com/trusted-publishers/).
+
+### Cut a release
+
+1. Apply the version policy above and audit the complete previous-tag range.
+   Run `pnpm release version <version>`, finish `docs/releases/v<version>.md`,
+   and move the shipped changes from Unreleased into `CHANGELOG.md`.
+2. Commit the version and notes on main, then push main and the tag:
+
+   ```bash
+   git tag v0.4.12
+   git push origin main v0.4.12
+   ```
+
+   This example is a future release; use the version actually prepared.
+3. Follow the **Release** run in GitHub Actions. Windows checks versions,
+   typechecks, lints and runs the full suite. It explicitly downloads the
+   Electron test runtime (its postinstall is not globally allowed by pnpm).
+   `test/publish.test.ts` builds the
+   root runtime/Web/declarations and checks all 12 npm artifact tests; a missing
+   or failed package check blocks packaging. The desktop is built separately
+   and packaged with `--publish never`; its feed is generated from the exact
+   installer, and npm is packed with `--ignore-scripts` from the checked build.
+4. The job retains fixed tarball/installer/blockmap/feed bytes with a manifest
+   containing the tag commit, sizes, SHA256 and npm SHA512 integrity. The
+   isolated Ubuntu job verifies them, creates/reuses one GitHub **draft**, and
+   verifies every uploaded desktop asset's size and SHA256 digest. It then
+   publishes npm (`latest` stable, `preview` beta), waits for registry visibility,
+   and publishes the verified draft. A final check verifies the public update
+   source. Beta releases contain `beta.yml` and never become GitHub latest.
+
+Releases are serialized across tags using a GitHub concurrency queue (up to
+100 queued runs), so publisher requests cannot race. Attempts to downgrade an
+npm channel or a newer stable desktop release fail before publication.
+
+### Validation baseline and retries
+
+[test-baseline.json](test-baseline.json) records exactly 19 historical failures
+audited at 0.4.11. The two transient Project failures from that release passed
+in isolation and are **not** allowed. The Windows ACL entries are old denial
+output assertions; their allowance also requires the specific old assertion
+message, so a denied-write regression cannot pass under that allowance. Denied
+writes were verified. This is recorded test debt, not a claim of a green suite.
+Remove entries as their tests are fixed. Any failure outside the exact file and
+nested test title blocks publishing, as do hook/collection errors, unhandled
+runtime errors, an interrupted run or an incomplete package report. No step
+uses `continue-on-error`. JSON validation reports are retained even on failure.
+
+If the build passes but publishing fails, choose **Re-run failed jobs**, which
+reuses the original build artifact for 14 days. Do not choose **Re-run all jobs**
+after any external publication: installers can change bytes between builds.
+An already published npm version is skipped only when its integrity matches;
+published GitHub assets must match and are never overwritten. Draft assets may
+be repaired. A delayed registry channel leaves the GitHub release a draft;
+wait a few minutes and rerun only the failed job. An npm authentication failure
+requires correcting the Trusted Publisher fields/allowed action, then the same
+retry. There is no automatic deletion of published versions or tags.
+
+If the original build artifact has expired, preserve/download the original
+assets and tarball and verify their hashes, or fix forward with a new version.
+Do not rebuild and silently replace published bytes. After a failed final
+public verification, inspect the existing release and retry; do not create a
+second release. Older tags whose commits predate this workflow do not acquire
+it retroactively.
+
+## Manual fallback prerequisites
 
 - On `main`, up to date with `origin/main`, clean working tree.
 - `GH_TOKEN`: a GitHub token with `contents: write` on `whale4rain/tnega`
@@ -74,7 +165,12 @@ Settings → Update channel persists Stable / Preview per desktop installation.
 - Network: electron-builder downloads Electron and NSIS from GitHub. The release
   script defaults to the npmmirror mirrors (see `apps/desktop/AGENTS.md`).
 
-## Steps
+## Manual fallback steps
+
+Use these only when the automatic workflow cannot be used. Do not run a local
+publisher concurrently with a tag-triggered workflow. In this fallback the user
+still enters `npm publish` in their own terminal; the OIDC workflow above is the
+authorized automatic path.
 
 1. **Decide the version.** Apply the policy above: patch batches are autonomous,
    major/minor require the user's decision. Check the last
@@ -178,6 +274,11 @@ Settings → Update channel persists Stable / Preview per desktop installation.
 
 ## When something goes wrong
 
+- **Workflow validator version lag:** actionlint 1.7.12 does not recognize
+  `concurrency.queue`, although GitHub supports `queue: max` with
+  `cancel-in-progress: false`. When checking locally, ignore only that exact
+  unknown-key diagnostic; keep every other check enabled. The workflow uses
+  [GitHub's documented concurrency syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency).
 - **Record blockers:** when a release encounters a reproducible failure or
   needs a recovery step, add its symptom, cause when known, recovery and
   verification here. Do not record credentials. Documentation-only runbook
