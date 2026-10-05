@@ -163,6 +163,13 @@ export interface WorkspaceUsage {
   sessions: number
 }
 
+/** Where a ChatGPT sign-in stands (`/api/auth/chatgpt`). */
+export type ChatGptLoginState =
+  | { status: 'signed-out' }
+  | { status: 'pending'; url: string }
+  | { status: 'signed-in'; email?: string }
+  | { status: 'error'; message: string }
+
 /** Prices per million tokens for a model route. */
 export interface ModelPricing {
   input: number
@@ -225,6 +232,8 @@ export interface ModelRouteSettings {
   contextWindow?: number
   vision?: boolean
   pricing?: ModelPricing
+  /** `chatgpt` when the route signs in with ChatGPT instead of an API key. */
+  auth?: 'chatgpt'
 }
 
 /** What the model route form sends; a blank key keeps the saved one. */

@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, lookupModel, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
 import type { ApprovalMode } from '@tnega/approval-review'
+import { CHATGPT_CODEX_BASE_URL, CHATGPT_SIGNED_IN, isChatgptSignedIn } from './chatgpt-auth.js'
 
 export interface ApprovalReviewerConfig {
   provider: 'conversation' | 'model' | 'jev' | 'openai'
@@ -77,6 +78,8 @@ export interface ConfiguredModel {
   /** Override the model-id heuristic for image input. */
   vision?: boolean
   pricing?: ModelPricing
+  /** `chatgpt`: authenticate with the ChatGPT sign-in instead of an API key (see chatgpt-auth.ts). */
+  auth?: 'chatgpt'
 }
 
 export interface LlmEnvConfig {
@@ -156,6 +159,8 @@ export interface EffectiveLlmConfig {
   contextWindow?: number
   vision: boolean
   pricing?: ModelPricing
+  /** Signs in with ChatGPT instead of an API key; see `llmAuthOptions`. */
+  auth?: 'chatgpt'
 }
 
 export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort' | 'network'> & {
@@ -273,6 +278,7 @@ export interface ModelRouteInput {
   vision?: boolean
   /** Prices per million tokens; `null` clears them. */
   pricing?: ModelPricing | null
+  auth?: 'chatgpt'
 }
 
 export class ModelRouteError extends Error {
@@ -360,6 +366,7 @@ export async function upsertModelRoute(id: string, input: ModelRouteInput, file 
   if (input.vision !== undefined) next.vision = input.vision
   if (input.pricing === null) delete next.pricing
   else if (input.pricing) next.pricing = input.pricing
+  if (input.auth) next.auth = input.auth
   if (index >= 0) routes[index] = next
   else routes.push(next)
   const config: SystemConfig = { ...current, models: routes }
@@ -390,7 +397,8 @@ export function effectiveLlmConfig(
   const modelId = selectedModel ?? envConfig.model ?? config.model ?? config.models?.[0]?.id ?? DEFAULT_MODEL
   const profile = config.models?.find(entry => entry.id === modelId)
   const apiKey = effectiveApiKey(config, env, modelId)
-  const baseUrl = profile?.baseUrl ?? envConfig.baseUrl ?? config.baseUrl ?? DEFAULT_OPENCODE_GO_BASE_URL
+  const baseUrl = profile?.baseUrl ?? (profile?.auth === 'chatgpt' ? CHATGPT_CODEX_BASE_URL : undefined)
+    ?? envConfig.baseUrl ?? config.baseUrl ?? DEFAULT_OPENCODE_GO_BASE_URL
   const model = profile?.model ?? modelId
   const result: EffectiveLlmConfig = {
     apiKeySet: Boolean(apiKey),
@@ -404,6 +412,7 @@ export function effectiveLlmConfig(
   const apiKeyHeader = profile?.apiKeyHeader ?? config.apiKeyHeader
   if (apiKeyHeader) result.apiKeyHeader = apiKeyHeader
   if (profile?.pricing) result.pricing = profile.pricing
+  if (profile?.auth) result.auth = profile.auth
   if (config.temperature !== undefined) result.temperature = config.temperature
   const contextWindow = profile?.contextWindow ?? config.contextWindow ?? lookupModel(model)?.contextWindow
   if (contextWindow !== undefined) result.contextWindow = contextWindow
@@ -453,6 +462,7 @@ export function effectiveApiKey(
   selectedModel?: string,
 ): string | undefined {
   const profile = config.models?.find(entry => entry.id === selectedModel)
+  if (profile?.auth === 'chatgpt') return isChatgptSignedIn() ? CHATGPT_SIGNED_IN : undefined
   if (profile?.apiKeyEnv) return env[profile.apiKeyEnv] || profile.apiKey
   if (profile?.apiKey) return profile.apiKey
   if (env.TNEGA_API_KEY) return env.TNEGA_API_KEY
@@ -520,6 +530,7 @@ function normalizeConfig(value: unknown): SystemConfig {
       if (typeof vision === 'boolean') model.vision = vision
       const pricing = parseModelPricing(fieldOf(entry, 'pricing'))
       if (pricing) model.pricing = pricing
+      if (fieldOf(entry, 'auth') === 'chatgpt') model.auth = 'chatgpt'
       const efforts = fieldOf(entry, 'reasoningEfforts')
       if (Array.isArray(efforts)) {
         model.reasoningEfforts = [...new Set(efforts.filter(isReasoningEffort))]

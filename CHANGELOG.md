@@ -57,6 +57,14 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- Sign in with ChatGPT (Settings → Models) to use a ChatGPT plan instead of
+  an API key, the way the Codex CLI does: OAuth with PKCE, a local callback
+  on port 1455, tokens kept in `~/.tnega/auth/chatgpt.json` and refreshed
+  automatically, and a new `chatgpt` model route (default `gpt-5-codex`)
+  that talks to the Codex backend through a new OpenAI Responses API adapter.
+  Covered by tests against mocked endpoints; not yet tried with a live
+  ChatGPT account.
+
 - CodeMode under the sandbox is covered end to end: every tool a `run_code`
   script calls still asks for approval under Workspace write, a denial reaches
   the script as an error it can handle, the call stays inside the Windows

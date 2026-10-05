@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { llmAuthOptions } from './chatgpt-auth.js'
 import { join } from 'node:path'
 import type { Context, Fiber } from '@tnega/core'
 import type { LLMAdapter } from '@tnega/agent'
@@ -47,7 +48,7 @@ async function applyApprovalReview(ctx: Context, options: ApprovalComposition): 
         const effective = effectiveLlmConfig(options.config, process.env, review.modelId)
         const key = effectiveApiKey(options.config, process.env, review.modelId)
         if (!key) throw new Error('Approval model credential is not configured')
-        return createLlmAdapter({ ...effective, apiKey: key })
+        return createLlmAdapter({ ...effective, apiKey: key, ...llmAuthOptions(effective) })
       },
     })
   }

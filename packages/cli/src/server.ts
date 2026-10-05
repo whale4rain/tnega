@@ -19,6 +19,7 @@ import { observeCompaction } from './compaction-observation.js'
 import { sessionUsage, workspaceUsage } from './usage.js'
 import { buildCompactionPrompt, SUMMARIZATION_SYSTEM_PROMPT } from './compaction-prompt.js'
 import { autoContextBudget, SUMMARY_PREFIX } from './auto-compaction.js'
+import { ChatGptLogin, llmAuthOptions } from './chatgpt-auth.js'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
@@ -143,6 +144,8 @@ const MAX_RUN_ATTACHMENTS = 8
 // past the surface size changes manual compaction from "keep the tail" to
 // "summarize everything". Keep it a deliberate choice, not a derived one.
 const KEEP_RECENT_TOKENS = 20_000
+/** The model a new ChatGPT sign-in route starts with; editable like any route. */
+const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
 
 
 export interface WebServerOptions {
@@ -270,6 +273,7 @@ export async function startWebServer(
       projectHosts.clear()
       await Promise.all(hosts.map(entry => entry.host.dispose()))
       context.terminals.dispose()
+      await context.chatgptLogin?.stop()
       await hotPlugins?.close()
       await ownedBrowser?.close()
       const registries = [...context.processes.values()]
@@ -281,6 +285,7 @@ export async function startWebServer(
 
 interface ServerContext {
   ptcRuntime?: PtcRuntimeQuickjsConfig
+  chatgptLogin?: ChatGptLogin
   /** The host's fetch for the HTTP tools (see `WebServerOptions.fetch`). */
   hostFetch?: typeof fetch
   webRoot: string
@@ -497,6 +502,28 @@ async function handleApi(
   if (url.pathname.startsWith('/api/browser')) {
     await handleBrowser(req, res, url, context)
     return
+  }
+
+  // ChatGPT sign-in: start opens the callback server and returns the URL to open.
+  if (url.pathname === '/api/auth/chatgpt') {
+    const login = context.chatgptLogin ??= new ChatGptLogin({
+      onSignedIn: async () => {
+        const config = await readSystemConfig(context.configFile)
+        if (!config.models?.some(route => route.auth === 'chatgpt')) {
+          await upsertModelRoute('chatgpt', { model: CHATGPT_DEFAULT_MODEL, name: `ChatGPT · ${CHATGPT_DEFAULT_MODEL}`, auth: 'chatgpt' }, context.configFile)
+        }
+      },
+    })
+    if (req.method === 'GET') { sendJson(res, 200, await login.state()); return }
+    if (req.method === 'POST') {
+      try {
+        sendJson(res, 200, await login.start())
+      } catch (error) {
+        sendError(res, 409, errorMessage(error))
+      }
+      return
+    }
+    if (req.method === 'DELETE') { await login.signOut(); sendJson(res, 200, await login.state()); return }
   }
 
   if (url.pathname === '/api/usage' && req.method === 'GET') {
@@ -1075,6 +1102,7 @@ function compactionAdapter(effective: EffectiveLlmConfig, apiKey: string): Retur
       ? { temperature: effective.temperature }
       : {}),
     ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
+    ...llmAuthOptions(effective),
   })
 }
 
@@ -2038,7 +2066,7 @@ function adapterFromConfig(
   if (effective.apiKeyHeader) options.apiKeyHeader = effective.apiKeyHeader
   if (effective.temperature !== undefined) options.temperature = effective.temperature
   if (effective.reasoningEffort) options.reasoningEffort = effective.reasoningEffort
-  return createLlmAdapter(options)
+  return createLlmAdapter({ ...options, ...llmAuthOptions(effective) })
 }
 
 async function appendSlashMeta(
@@ -2126,6 +2154,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
         ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
         ...(model.vision !== undefined ? { vision: model.vision } : {}),
         ...(model.pricing ? { pricing: model.pricing } : {}),
+        ...(model.auth ? { auth: model.auth } : {}),
       })) ?? [],
     },
     env: {

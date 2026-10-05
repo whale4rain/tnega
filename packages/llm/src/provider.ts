@@ -1,4 +1,5 @@
 import { anthropicMessagesAdapter } from './anthropic-messages.js'
+import { openaiResponsesAdapter } from './openai-responses.js'
 import { withImageFallback } from './images.js'
 import { lookupModel } from './models.js'
 import { openaiCompatAdapter } from './openai.js'
@@ -9,6 +10,9 @@ export function createLlmAdapter(config: LlmConfig): ReturnType<typeof openaiCom
 }
 
 function routeAdapter(config: LlmConfig): ReturnType<typeof openaiCompatAdapter> {
+  if (config.protocol === 'responses') {
+    return openaiResponsesAdapter({ ...config, ...(config.requestHeaders ? { headers: config.requestHeaders } : {}) })
+  }
   if (config.protocol === 'anthropic') {
     return anthropicMessagesAdapter(config)
   }

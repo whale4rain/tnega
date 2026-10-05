@@ -216,6 +216,14 @@ Windows PowerShell、Git Bash、cmd；其他平台为 `$SHELL`）。环境变量
 同样生效。Windows 上 `bash` 指 Git Bash，不会选中 WSL 的 `System32\bash.exe`；Git Bash 无法在
 Windows 沙箱内运行，只适合完全访问权限。Settings → Tools & shell 可直接选择。
 
+**ChatGPT 登录**：Settings → Models →「Sign in with ChatGPT」用 ChatGPT 套餐代替 API key，流程与
+Codex CLI 相同——向 auth.openai.com 发起带 PKCE 的 OAuth，回调到本机 `localhost:1455`，令牌存进
+`~/.tnega/auth/chatgpt.json`（仅本人可读）并在过期前刷新。登录后自动添加 `chatgpt` 路由
+（`"auth": "chatgpt"`，默认模型 `gpt-5-codex`，可在表单里改），请求走 Codex 后端
+`chatgpt.com/backend-api/codex/responses`（Responses API，`protocol: responses`）。若后端只接受
+Codex 自己的 instructions，第一次被拒时从 openai/codex 仓库取回并缓存，会话的系统提示改作
+developer 消息发送。
+
 `network` 决定 `http_get`（以及经它下载的 skill 安装）怎样上网：
 
 ```json

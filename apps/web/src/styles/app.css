@@ -4107,3 +4107,11 @@ kbd {
   font-weight: 500;
   color: var(--text);
 }
+
+.chatgpt-sign-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 10px;
+}

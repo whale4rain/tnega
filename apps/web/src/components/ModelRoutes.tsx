@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { confirmDialog } from '../lib/dialogs'
 import { errorText } from '../lib/hooks'
 import type { ConfigSnapshot, ModelOption, ModelRouteSettings, Protocol } from '../lib/types'
+import { ChatGptSignIn } from './ChatGptSignIn'
 
 /**
  * Chat models: every model route you registered, which one sessions start
@@ -70,6 +71,7 @@ export function ModelRoutes({
         })}
       </div>
       {error && <div className="notice notice-error"><span>{error}</span></div>}
+      <ChatGptSignIn onChanged={onChanged} />
       {editing === 'new'
         ? <RouteForm existing={config.models.map(option => option.id)} onCancel={() => setEditing(undefined)} onSaved={next => { onChanged(next); setEditing(undefined) }} />
         : <button type="button" className="button secondary small" onClick={() => setEditing('new')}><Plus size={13} /> Add model</button>}
@@ -85,6 +87,7 @@ function routeMeta(option: ModelOption, route: ModelRouteSettings | undefined): 
   } catch {
     host = route?.baseUrl
   }
+  if (route?.auth === 'chatgpt') return [wire, 'ChatGPT sign-in'].filter(Boolean).join(' · ')
   const protocol = option.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI compatible'
   return [wire, host, protocol].filter(Boolean).join(' · ')
 }

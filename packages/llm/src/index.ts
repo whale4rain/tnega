@@ -17,6 +17,7 @@ export {
   type ModelPricingMeta,
 } from './models.js'
 export { openaiCompatAdapter, listModels } from './openai.js'
+export { openaiResponsesAdapter, parseResponsesStream, parseResponsesUsage, toResponsesInput, type OpenAIResponsesConfig } from './openai-responses.js'
 export { createLlmAdapter } from './provider.js'
 export { isImageRejection, withImageFallback } from './images.js'
 export {
