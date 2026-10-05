@@ -1372,12 +1372,12 @@ describe('durable meta patches', () => {
     const events = await log.read()
     expect(foldSessionMeta(events)).toEqual({
       title: 'after',
-      mode: 'execute',
+      mode: 'auto',
       agentType: 'coding',
     })
     expect(await log.meta()).toEqual({
       title: 'after',
-      mode: 'execute',
+      mode: 'auto',
       agentType: 'coding',
     })
   })
@@ -1662,6 +1662,7 @@ describe('transcriptEvents', () => {
       'checkpoint',
       'user/message',
       'assistant/message',
+      'compaction/end',
     ])
     const contents = transcript
       .filter(event => event.type === 'user/message')
