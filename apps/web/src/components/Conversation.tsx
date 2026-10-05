@@ -612,7 +612,7 @@ export function Conversation({
             <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} />
           </div>
           <div className="header-group header-tools">
-          {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} />}
+          {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} onOpenBrowser={onBrowserActivity} />}
           {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} />}
           {onToggleWorkbench && (
             <button

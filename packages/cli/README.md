@@ -2,6 +2,12 @@
 
 CLI 命令、agent runtime 组合层、web server 与会话存储。
 
+Background Tasks 同时展示 Session 的 Job 与 Workspace 共享的长驻进程。
+`GET /api/processes?workspace=...` 列表、加 `process_id` 读取有界日志；
+`POST /api/processes?workspace=...` 携带 `{action:"stop",process_id:"..."}`
+直接停止该工作区注册的进程树，无需 Agent 审批。读取不会消费 Agent 的输出游标，
+进程跨 Agent Run 保留，停止后保留日志；服务端重启不恢复。Project 使用同一注册表。
+
 ## 命令
 
 ```

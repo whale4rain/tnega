@@ -34,6 +34,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Background Tasks now also shows workspace long-lived processes in chats and
+  Projects: live status, start time, refreshing logs, local URLs opening in the
+  Browser workbench, and a direct Stop control that terminates the process tree.
+  Stopped process output remains available; process records are in-memory and
+  require the matching server version for the new controls.
+
 - Restore the desktop Browser after its last tab closes. Agent attachment and
   address-bar navigation now create a live replacement instead of using the
   closed page, which left navigation stuck without opening a website.

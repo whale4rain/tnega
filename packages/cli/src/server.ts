@@ -363,7 +363,7 @@ interface ServerContext {
 }
 
 function processesFor(context: ServerContext, workspace: string): ProcessRegistry {
-  const key = resolve(workspace)
+  const key = canonicalWorkspace(workspace)
   let registry = context.processes.get(key)
   if (!registry) {
     registry = new ProcessRegistry()
@@ -551,6 +551,26 @@ async function handleApi(
 
   if (url.pathname.startsWith('/api/browser')) {
     await handleBrowser(req, res, url, context)
+    return
+  }
+
+  if (url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST')) {
+    const workspace = workspaceParam(url)
+    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+    const registry = context.processes.get(canonicalWorkspace(workspace))
+    if (req.method === 'GET' && !url.searchParams.has('process_id')) {
+      sendJson(res, 200, { processes: registry?.list() ?? [] })
+      return
+    }
+    const body = req.method === 'POST' ? await readJsonBody(req) : undefined
+    if (body && (body.action !== 'stop' || typeof body.process_id !== 'string' || !body.process_id.trim())) {
+      sendError(res, 400, 'action=stop and process_id are required'); return
+    }
+    const id = body?.process_id ?? url.searchParams.get('process_id')
+    if (typeof id !== 'string' || !id.trim()) { sendError(res, 400, 'process_id is required'); return }
+    const result = body ? await registry?.stop(id) : registry?.read(id)
+    if (!result) { sendError(res, 404, 'background process not found'); return }
+    sendJson(res, 200, body ? { process: result } : result)
     return
   }
 
@@ -1656,6 +1676,7 @@ async function residentQuestionRequest(context: ServerContext, workspace: string
     prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
     approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
     effective, apiKey, config, resumeQueued: true,
+    processes: processesFor(context, workspace),
     ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
   }
 }
@@ -1700,6 +1721,7 @@ async function projectHostFor(
     systemConfig: config,
     builtinTools: {
       cwd: path,
+      processes: processesFor(context, path),
       allowNetwork: true,
       allowShell: true,
       allowOutsideWorkspace: context.projectPermission === 'bypass',

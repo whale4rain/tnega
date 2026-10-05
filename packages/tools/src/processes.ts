@@ -33,6 +33,17 @@ export interface ProcessEntry {
   read: number
 }
 
+export interface ProcessSnapshot {
+  id: string
+  command: string
+  cwd: string
+  startedAt: number
+  pid?: number
+  status: 'running' | 'stopping' | 'completed' | 'failed' | 'killed'
+  exitCode?: number | null
+  urls: string[]
+}
+
 /**
  * Background processes started by agents in one workspace. The web server
  * keeps one per workspace so a dev server outlives the run that started it;
@@ -41,6 +52,8 @@ export interface ProcessEntry {
 export class ProcessRegistry {
   readonly entries = new Map<string, ProcessEntry>()
   private _next = 1
+  private readonly _stopping = new Set<string>()
+  private readonly _stopped = new Set<string>()
 
   constructor(readonly maxProcesses = 4) {}
 
@@ -52,6 +65,38 @@ export class ProcessRegistry {
     const entry: ProcessEntry = { id: `p${this._next++}`, command, cwd, startedAt: Date.now(), process, read: 0 }
     this.entries.set(entry.id, entry)
     return entry
+  }
+
+  list(): ProcessSnapshot[] {
+    return [...this.entries.values()].map(entry => this.snapshot(entry))
+  }
+
+  read(id: string): { process: ProcessSnapshot; output: string; note?: string; hint?: string } | undefined {
+    const entry = this.entries.get(id)
+    if (!entry) return undefined
+    const output = entry.process.output()
+    return { process: this.snapshot(entry), output: tail(stripAnsi(output), 64_000), ...sandboxNotes(entry.process, output, true) }
+  }
+
+  async stop(id: string): Promise<ProcessSnapshot | undefined> {
+    const entry = this.entries.get(id)
+    if (!entry) return undefined
+    if (entry.process.exitCode() !== undefined) return this.snapshot(entry)
+    this._stopping.add(id)
+    try { await entry.process.kill(); this._stopped.add(id) }
+    finally { this._stopping.delete(id) }
+    return this.snapshot(entry)
+  }
+
+  private snapshot(entry: ProcessEntry): ProcessSnapshot {
+    const exitCode = entry.process.exitCode()
+    return {
+      id: entry.id, command: entry.command, cwd: entry.cwd, startedAt: entry.startedAt,
+      ...(entry.process.pid !== undefined ? { pid: entry.process.pid } : {}),
+      status: exitCode === undefined ? (this._stopping.has(entry.id) ? 'stopping' : 'running')
+        : exitCode === null || this._stopped.has(entry.id) ? 'killed' : exitCode === 0 ? 'completed' : 'failed',
+      ...(exitCode !== undefined ? { exitCode } : {}), urls: localUrls(entry.process.output()),
+    }
   }
 
   async dispose(): Promise<void> {
@@ -190,7 +235,7 @@ export function createProcessTools(config: ProcessToolsConfig): { tools: ToolDef
       },
       async execute(input: unknown) {
         const entry = find(input)
-        await entry.process.kill()
+        await registry.stop(entry.id)
         return { id: entry.id, status: status(entry) }
       },
     },

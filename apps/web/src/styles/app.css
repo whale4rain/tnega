@@ -1030,7 +1030,8 @@ kbd {
 .background-job-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .background-job-head strong { overflow-wrap: anywhere; }
 .background-job-head span { white-space: nowrap; }
-.background-job-actions { display: flex; gap: 6px; margin-top: 6px; }
+.background-job-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.background-job p, .background-job-actions button { overflow-wrap: anywhere; }
 
 .conv-title {
   display: inline-flex;

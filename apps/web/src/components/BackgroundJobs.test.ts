@@ -6,6 +6,38 @@ import { BackgroundJobs } from './BackgroundJobs'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
+it('shows workspace processes with logs, local URLs and direct stop controls', async () => {
+  let stopped = false
+  let reads = 0
+  const openBrowser = vi.fn()
+  vi.stubGlobal('fetch', async (path: string, init?: RequestInit) => {
+    if (path.includes('/jobs')) return Response.json({ jobs: [] })
+    if (path.includes('/api/browser/navigate')) {
+      expect(JSON.parse(String(init?.body))).toEqual({ url: 'http://localhost:4321/' })
+      return Response.json({})
+    }
+    const process = { id: 'p1', command: 'npm run dev', cwd: '/work', startedAt: 1, status: stopped ? 'killed' : 'running', urls: ['http://localhost:4321/'] }
+    if (init?.method === 'POST') {
+      expect(JSON.parse(String(init.body))).toEqual({ process_id: 'p1', action: 'stop' })
+      stopped = true
+      return Response.json({ process: { ...process, status: 'killed' } })
+    }
+    return Response.json(path.includes('process_id=') ? { process, output: ++reads === 1 ? 'server ready' : 'server ready\nrequest served' } : { processes: [process] })
+  })
+  const view = render(createElement(BackgroundJobs, { workspace: '/work', sessionId: 'session', onOpenBrowser: openBrowser }))
+  fireEvent.click(await view.findByRole('button', { name: /Background tasks/ }))
+  expect(await view.findByText('npm run dev')).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: 'http://localhost:4321/' }))
+  expect(openBrowser).toHaveBeenCalledWith('http://localhost:4321/')
+  fireEvent.click(view.getByRole('button', { name: /Background tasks/ }))
+  fireEvent.click(view.getByRole('button', { name: 'Output npm run dev' }))
+  expect(await view.findByText('server ready')).toBeTruthy()
+  await waitFor(() => expect(view.getByText(/request served/)).toBeTruthy(), { timeout: 3500 })
+  fireEvent.click(view.getByRole('button', { name: 'Stop npm run dev' }))
+  expect(await view.findByText('Stopped')).toBeTruthy()
+  expect(view.queryByRole('button', { name: 'Stop npm run dev' })).toBeNull()
+})
+
 it('shows jobs after the foreground run, stops one and retains its result', async () => {
   let stopped = false
   vi.stubGlobal('fetch', async (path: string, init?: RequestInit) => {

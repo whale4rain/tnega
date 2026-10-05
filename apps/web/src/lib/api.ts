@@ -90,6 +90,17 @@ export interface BackgroundJob {
   reported: boolean
 }
 
+export interface BackgroundProcess {
+  id: string
+  command: string
+  cwd: string
+  startedAt: number
+  pid?: number
+  status: BackgroundJob['status']
+  exitCode?: number | null
+  urls: string[]
+}
+
 /** One row of the Files panel tree (`GET /api/files/tree`). */
 export interface DirectoryEntry {
   name: string
@@ -108,6 +119,12 @@ export interface TextFile {
 }
 
 export const api = {
+  processes: (workspace: string, signal?: AbortSignal) =>
+    call<{ processes: BackgroundProcess[] }>(scoped('/api/processes', workspace), { signal }),
+  processOutput: (workspace: string, id: string, signal?: AbortSignal) =>
+    call<{ process: BackgroundProcess; output: string; note?: string; hint?: string }>(scoped('/api/processes', workspace, { process_id: id }), { signal }),
+  stopProcess: (workspace: string, id: string, signal?: AbortSignal) =>
+    call<{ process: BackgroundProcess }>(scoped('/api/processes', workspace), { method: 'POST', body: { process_id: id, action: 'stop' }, signal }),
   config: () => call<ConfigSnapshot>('/api/config'),
   /** Add or replace one chat model route. */
   saveModelRoute: (id: string, input: ModelRouteInput) =>

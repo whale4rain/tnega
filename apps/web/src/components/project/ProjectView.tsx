@@ -32,11 +32,12 @@ import {
 } from '../../lib/project-model'
 import type { ProjectStreamEvent } from '../../lib/project-types'
 import type { ConfigSnapshot } from '../../lib/types'
-import { BOARD_KEY, openDoc, select, toggle, type WorkbenchState } from '../../lib/workbench'
+import { BOARD_KEY, openDoc, openTool, select, toggle, type WorkbenchState } from '../../lib/workbench'
 import type { WorkbenchProject } from '../workbench/Workbench'
 import { AgentAvatar, AvatarSeeds } from '../AgentAvatar'
 import { PromptBox } from '../Composer'
 import { ApprovalCard } from '../Conversation'
+import { BackgroundJobs } from '../BackgroundJobs'
 import { Markdown } from '../Markdown'
 import { Menu } from '../Menu'
 import { ArtifactCards } from './Artifacts'
@@ -319,6 +320,7 @@ export function ProjectView({
             </div>
           </div>
           <div className="conv-header-actions">
+            <BackgroundJobs workspace={workspace} onOpenBrowser={() => onWorkbench(current => openTool(current, 'browser'))} />
             <button
               type="button"
               className="icon-button"
