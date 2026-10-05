@@ -147,6 +147,7 @@ describe('tnega run builtin tools via OpenAI compatible endpoint', () => {
       prompt: 'use shell',
       cwd: dir,
       allowShell: true,
+      sandboxMode: 'bypass',
       maxTokens: 64,
     })
 

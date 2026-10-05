@@ -129,6 +129,7 @@ describe('createAgentRuntime composition', () => {
     const runtime = await createAgentRuntime(runtimeOptions(dir, {
       llm: adapter,
       allowShell: true,
+      sandboxMode: 'bypass',
     }))
     try {
       const loop = runtime.root.get('agentLoop') as AgentLoop

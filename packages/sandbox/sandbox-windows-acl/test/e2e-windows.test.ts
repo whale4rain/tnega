@@ -27,7 +27,9 @@ import { writeIsAmbientlyAllowed } from './support/acl-reader.js'
 import { isMsysShell, shellCommandArgv, systemShell } from '../../../execution/src/shell.js'
 import { decodeOutput } from '../../../execution/src/index.js'
 
-const e2eReady = process.platform === 'win32' && await isWindowsAclAvailable()
+// Hosted GitHub runners launch without the interactive console that restricted
+// child processes need for DLL initialization (STATUS_DLL_INIT_FAILED).
+const e2eReady = process.platform === 'win32' && !process.env.GITHUB_ACTIONS && await isWindowsAclAvailable()
 
 describe.skipIf(!e2eReady)('runner end-to-end under the real restricted token', () => {
   let api: Win32Api | undefined

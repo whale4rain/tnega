@@ -28,7 +28,7 @@ describe('resolveInside', () => {
     const root = await tempDir('tnega-fs-inside-')
     await mkdir(join(root, 'src'), { recursive: true })
     expect(await resolveInside(root, 'src/a.ts')).toBe(join(root, 'src', 'a.ts'))
-    expect(await resolveInside(root, '.')).toBe(canonicalPath(root))
+    expect(await resolveInside(root, '.')).toBe(root)
   })
 
   it('rejects an empty path and an inaccessible workspace root', async () => {

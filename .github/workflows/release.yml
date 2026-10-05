@@ -34,6 +34,8 @@ jobs:
       - name: Check tag, versions, notes and main ancestry
         run: node scripts/release-ci.mjs check $env:GITHUB_REF_NAME
       - run: pnpm install --frozen-lockfile
+      - name: Install ripgrep for search integration tests
+        run: choco install ripgrep --yes --no-progress
       # pnpm deliberately does not allow Electron's postinstall globally.
       # Install the test runtime explicitly on the clean hosted runner.
       - name: Install Electron for the real desktop browser check

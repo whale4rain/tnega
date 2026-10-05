@@ -136,6 +136,14 @@ error, unhandled runtime error, interrupted run or incomplete package report
 blocks publication. No step uses `continue-on-error`. JSON validation reports
 are retained even on failure.
 
+GitHub's Windows service runner cannot initialize workspace-write restricted
+children without an interactive console (`STATUS_DLL_INIT_FAILED`). The 13
+live Windows ACL tests therefore run on an interactive Windows host and skip
+on GitHub Actions; their unit/failure-path tests still run in CI. Verify the
+live suite locally before cutting a release. Shell permission and spill tests
+use explicit bypass because their assertions concern composition, not ACLs.
+The workflow installs ripgrep for the search integration tests.
+
 If the build passes but publishing fails, choose **Re-run failed jobs**, which
 reuses the original build artifact for 14 days. Do not choose **Re-run all jobs**
 after any external publication: installers can change bytes between builds.
