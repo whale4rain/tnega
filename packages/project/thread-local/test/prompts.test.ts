@@ -12,6 +12,7 @@ import { COORDINATOR_SYSTEM_PROMPT, THREAD_SYSTEM_PROMPT } from '../src/index.js
 const toolSources = ['tool-thread', 'tool-blackboard', 'tool-box']
   .map(name => readFileSync(new URL(`../../${name}/src/index.ts`, import.meta.url), 'utf8'))
   .concat(readFileSync(new URL('../../../cli/src/project-routines.ts', import.meta.url), 'utf8'))
+  .concat(readFileSync(new URL('../../../cli/src/thread-approval.ts', import.meta.url), 'utf8'))
 const registered = new Set(toolSources.flatMap(source => [...source.matchAll(/^\s+name: '([a-z_]+)',$/gmu)].map(match => match[1]!)))
 const loop = readFileSync(new URL('../../../loop/project-loop/src/index.ts', import.meta.url), 'utf8')
 
