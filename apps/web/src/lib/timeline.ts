@@ -233,23 +233,13 @@ export function presentRun(entry: AgentEntry): { process: Block[]; visible: Bloc
 }
 
 /**
- * A running turn, folded the way a finished one is: only the newest text (it
- * may be streaming), files, and warnings stay in view; every tool call and
- * earlier narration sits behind one live line that names the current step.
+ * A running turn reads like the conversation it is: the agent's narration
+ * stays in view as it is written, while each run of tool calls sits behind
+ * one line that names the current step. The narration folds away only once
+ * the turn ends (see `presentRun` / `presentOutcome`), leaving the answer.
  */
 export function presentLive(entry: AgentEntry): { process: Block[]; visible: Block[] } {
-  const last = entry.blocks.at(-1)
-  const process: Block[] = []
-  const visible: Block[] = []
-  for (const block of entry.blocks) {
-    const shown = (block === last && block.kind === 'text')
-      || block.kind === 'files'
-      || (block.kind === 'notice' && !block.process && block.tone !== 'info')
-      || (block.kind === 'subagent' && block.agent.status !== 'ready')
-    if (shown) visible.push(block)
-    else process.push(block)
-  }
-  return { process, visible }
+  return { process: [], visible: entry.blocks.filter(block => !(block.kind === 'notice' && block.process)) }
 }
 
 /**

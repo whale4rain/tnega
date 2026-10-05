@@ -44,11 +44,14 @@ it('shows final reply and files by default and reveals completed process on dema
   expect(view.getByText('Investigating the problem.')).toBeTruthy()
 })
 
-it('folds the process while streaming, keeping files and warnings in view', () => {
+it('keeps the narration in view while the turn runs and folds it once the turn ends', () => {
   const view = render(createElement(Timeline, { entries: [completed], running: true, actions: {} }))
-  expect(view.queryByText('Investigating the problem.')).toBeNull()
+  expect(view.getByText('Investigating the problem.')).toBeTruthy()
   expect(view.getByText('A retry was required.')).toBeTruthy()
-  expect(view.getByRole('button', { name: /^Working: Thinking/ }).getAttribute('aria-expanded')).toBe('false')
+  expect(view.queryByRole('button', { name: /Show details|^Working/ })).toBeNull()
+  view.rerender(createElement(Timeline, { entries: [completed], running: false, actions: {} }))
+  expect(view.queryByText('Investigating the problem.')).toBeNull()
+  expect(view.getByRole('button', { name: 'Show details' }).getAttribute('aria-expanded')).toBe('false')
 })
 
 it('reveals PTC child tools and their errors inside the outer tool details', () => {
@@ -93,15 +96,22 @@ it('folds tool calls behind one line that names the current step while a turn st
   const block = (callId: string, status: ToolView['status']): Block => ({
     kind: 'tool', id: callId, tool: { callId, name: 'read_file', args: { path: `${callId}.ts` }, status },
   })
-  const live: Entry = { kind: 'agent', id: 'live', status: 'running', blocks: [block('a', 'ok'), block('b', 'ok')] }
+  const say: Block = { kind: 'text', id: 'say', text: 'Reading the sources first.' }
+  const live: Entry = { kind: 'agent', id: 'live', status: 'running', blocks: [say, block('a', 'ok'), block('b', 'ok')] }
   const view = render(createElement(Timeline, { entries: [live], running: true, actions: {} }))
+  expect(view.getByText('Reading the sources first.')).toBeTruthy()
   expect(view.queryByRole('button', { name: /Read a.ts/ })).toBeNull()
-  expect(view.getByRole('button', { name: 'Working: Thinking, 2 steps so far' })).toBeTruthy()
+  expect(view.getByRole('button', { name: /^Used 2 steps/ }).getAttribute('aria-expanded')).toBe('false')
   view.rerender(createElement(Timeline, { entries: [{ ...live, blocks: [...live.blocks, block('c', 'running')] }], running: true, actions: {} }))
-  expect(view.getByRole('button', { name: 'Working: Reading c.ts, 3 steps so far' })).toBeTruthy()
+  expect(view.getByRole('button', { name: /^Reading c.ts\s*3 steps/ })).toBeTruthy()
   expect(view.container.querySelectorAll('.tool-row')).toHaveLength(0)
-  view.rerender(createElement(Timeline, { entries: [{ ...live, status: 'done', blocks: [...live.blocks, block('c', 'ok')] }], running: false, actions: {} }))
+  fireEvent.click(view.getByRole('button', { name: /^Reading c.ts/ }))
+  expect(view.container.querySelectorAll('.tool-row')).toHaveLength(3)
+  const answer: Block = { kind: 'text', id: 'answer', text: 'All three files agree.' }
+  view.rerender(createElement(Timeline, { entries: [{ ...live, status: 'done', blocks: [...live.blocks, block('c', 'ok'), answer] }], running: false, actions: {} }))
   expect(view.getByRole('button', { name: 'Used 3 tools: 3 reads' }).getAttribute('aria-expanded')).toBe('false')
+  expect(view.queryByText('Reading the sources first.')).toBeNull()
+  expect(view.getByText('All three files agree.')).toBeTruthy()
 })
 
 it('opens running CodeMode scripts and child tool progress without showing escaped JSON', () => {
@@ -116,7 +126,6 @@ it('opens running CodeMode scripts and child tool progress without showing escap
     },
   }] }
   const view = render(createElement(Timeline, { entries: [entry], running: true, actions: {} }))
-  fireEvent.click(view.getByRole('button', { name: /^Working: CodeMode/ }))
   expect(view.getByRole('button', { name: /^CodeMode/ }).getAttribute('aria-expanded')).toBe('true')
   expect(view.container.querySelector('.code-block pre code')?.textContent).toBe(code)
   expect(view.getByText('javascript')).toBeTruthy()

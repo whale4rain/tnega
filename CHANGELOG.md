@@ -57,6 +57,10 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- While a reply is being written, the agent's own words stay in view and only
+  its tool calls fold, behind one line naming the current step; when the turn
+  ends, everything before the final message folds into one line.
+
 - The `process_start` / `process_output` / `process_list` / `process_stop`
   tools are gone: long-running commands are background jobs. `job_start` with
   `tool: "shell"` starts a dev server or watcher without a deadline, returns

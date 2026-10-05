@@ -277,8 +277,11 @@ const AgentTurn = memo(function AgentTurn({
   const [copied, copy] = useCopy()
   const text = entry.blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n\n')
   const last = entry.blocks.at(-1)
-  // The process line already says what is happening; the bare indicator is for an empty turn.
-  const thinking = live && presentation.process.length === 0 && !(last?.kind === 'text' && last.streaming)
+  // A running step or streaming text already shows activity; otherwise say the model is working.
+  const thinking = live && presentation.process.length === 0
+    && !(last?.kind === 'text' && last.streaming)
+    && !(last?.kind === 'tool' && last.tool.status === 'running')
+    && !(last?.kind === 'subagent' && (last.agent.status === 'running' || last.agent.status === 'starting'))
   // Produced files stay visible even when the tools that wrote them fold into the process.
   const files = live ? [] : officeFiles(entry.blocks)
 
@@ -432,13 +435,10 @@ const FAMILY_NOUN: Record<ToolFamily, [string, string]> = {
 function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
   const running = tools.some(t => t.status === 'running')
   const failed = tools.filter(needsAttention).length
-  const [open, setOpen] = useState<boolean | undefined>(undefined)
-  // While the turn streams, calls are plain rows: a folder that opens for each
-  // running call and shuts between them flickers. It folds once, at the end.
-  if (tools.length === 1 || (live && open === undefined)) {
+  const [open, setOpen] = useState(false)
+  if (tools.length === 1) {
     return <div className="tool-group single">{tools.map(tool => <ToolRow key={tool.callId} tool={tool} />)}</div>
   }
-  const expanded = open ?? false
 
   const counts = new Map<ToolFamily, number>()
   for (const tool of tools) {
@@ -446,18 +446,24 @@ function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
     counts.set(family, (counts.get(family) ?? 0) + 1)
   }
   const summary = [...counts].map(([family, n]) => `${n} ${FAMILY_NOUN[family][n === 1 ? 0 : 1]}`).join(', ')
+  // While steps run, the folded line names the current one, like a status bar.
+  const current = live ? [...tools].reverse().find(tool => tool.status === 'running') : undefined
+  const step = current ? presentTool(current) : undefined
+  const Icon = step ? FAMILY_ICON[step.family] : Layers
 
   return (
-    <div className={`tool-group${expanded ? ' open' : ''}`}>
-      <button type="button" className="tool-group-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded}>
-        <span className="tool-icon"><Layers size={14} /></span>
-        <span className="tool-group-title">{running ? 'Working through' : 'Used'} {tools.length} steps</span>
-        <span className="tool-group-summary">{summary}</span>
+    <div className={`tool-group${open ? ' open' : ''}${current ? ' is-live' : ''}`}>
+      <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="tool-icon"><Icon size={14} /></span>
+        <span className={`tool-group-title${current ? ' shimmer' : ''}`}>
+          {step ? `${step.verb}${step.target ? ` ${step.target}` : ''}` : `${running ? 'Working through' : 'Used'} ${tools.length} steps`}
+        </span>
+        <span className="tool-group-summary">{step ? `${tools.length} steps` : summary}</span>
         {failed > 0 && <span className="pill pill-danger">{failed} failed</span>}
         {running ? <span className="spinner" aria-label="Running" /> : null}
         <ChevronRight size={14} className="chevron" />
       </button>
-      {expanded && (
+      {open && (
         <div className="tool-group-list">
           {tools.map(tool => <ToolRow key={tool.callId} tool={tool} />)}
         </div>
