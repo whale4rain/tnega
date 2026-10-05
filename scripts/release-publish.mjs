@@ -10,6 +10,10 @@ import { releaseVersion } from './release-version.mjs'
 
 const repo = 'whale4rain/tnega'
 const root = resolve(import.meta.dirname, '..')
+// npm may accept a trusted publication before the version and dist-tag are
+// visible from its public registry. This waits about 34 minutes while keeping
+// the job below the workflow's 45 minute ceiling.
+const registryWaitDelays = [5_000, 10_000, 20_000, 40_000, ...Array(66).fill(30_000)]
 function command(binary, args) {
   return execFileSync(binary, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim()
 }
@@ -61,16 +65,22 @@ export async function publishRelease(manifest, dir, deps = {}) {
   if (!existing) {
     run('npm', ['publish', join(dir, `tnega-${manifest.version}.tgz`), '--ignore-scripts', '--access', 'public', '--provenance', '--tag', metadata.npmTag, '--registry=https://registry.npmjs.org'])
   }
-  // Registry propagation is asynchronous. A timeout preserves the verified draft.
+  // Registry propagation is asynchronous. Keep the draft private until the
+  // public version and its channel both identify the verified package bytes.
   let visible = false
-  for (let attempt = 0; attempt < 36; attempt++) {
+  for (let attempt = 0; ; attempt++) {
     existing = await npm(`tnega/${manifest.version}`)
     const tags = (await npm('tnega'))?.['dist-tags']
     if (existing && existing.dist?.integrity !== manifest.npmIntegrity) throw new Error('Published npm integrity differs')
     if (existing && tags?.[metadata.npmTag] === manifest.version) { visible = true; break }
-    await wait()
+    const delay = registryWaitDelays[attempt]
+    if (delay === undefined) break
+    if (attempt < 4 || attempt % 10 === 4) {
+      console.log(`npm ${manifest.version} is not public yet; checking again in ${delay / 1_000}s`)
+    }
+    await wait(delay)
   }
-  if (!visible) throw new Error('npm version/channel not visible yet; rerun the failed publisher job after propagation')
+  if (!visible) throw new Error('npm version/channel was not visible within 34 minutes; rerun the failed publisher job after propagation')
   if (release.draft) {
     run('gh', ['release', 'edit', tag, '--repo', repo, '--draft=false', `--latest=${metadata.preview ? 'false' : 'true'}`])
   }

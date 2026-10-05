@@ -117,6 +117,23 @@ test('failed npm propagation preserves the draft for a retry', async () => {
   await assert.rejects(publishRelease(fixture.manifest, '/fixed', fixture.deps), /not visible/)
   assert.ok(fixture.calls.every(call => !call.includes('--draft=false')))
 })
+test('publisher waits through delayed npm processing before publishing the draft', async () => {
+  const fixture = publisherFixture({ channel: '0.4.11' })
+  let polls = 0
+  fixture.deps.registry = async path => {
+    if (path === 'tnega') {
+      return { 'dist-tags': { latest: polls >= 40 ? fixture.manifest.version : '0.4.11' } }
+    }
+    return polls >= 40 ? { dist: { integrity: fixture.manifest.npmIntegrity } } : undefined
+  }
+  fixture.deps.wait = async () => { polls++ }
+
+  await publishRelease(fixture.manifest, '/fixed', fixture.deps)
+
+  assert.equal(polls, 40)
+  assert.ok(fixture.calls.some(call => call[0] === 'npm'))
+  assert.ok(fixture.calls.some(call => call.includes('--draft=false')))
+})
 test('beta publication uses preview and does not become the latest GitHub release', async () => {
   const fixture = publisherFixture({ version: '0.4.12-beta.1' })
   await publishRelease(fixture.manifest, '/fixed', fixture.deps)

@@ -144,13 +144,17 @@ live suite locally before cutting a release. Shell permission and spill tests
 use explicit bypass because their assertions concern composition, not ACLs.
 The workflow installs ripgrep for the search integration tests.
 
-If the build passes but publishing fails, choose **Re-run failed jobs**, which
+After `npm publish` accepts the verified tarball, the publisher remains running
+while npm makes the version and its channel visible in the public registry. It
+checks at 5, 10, 20 and 40 seconds, then every 30 seconds for about 34 minutes;
+the publisher job has a 45-minute ceiling. The draft stays private throughout
+this wait. If that upper bound expires, choose **Re-run failed jobs**, which
 reuses the original build artifact for 14 days. Do not choose **Re-run all jobs**
 after any external publication: installers can change bytes between builds.
 An already published npm version is skipped only when its integrity matches;
 published GitHub assets must match and are never overwritten. Draft assets may
-be repaired. A delayed registry channel leaves the GitHub release a draft;
-wait a few minutes and rerun only the failed job. An npm authentication failure
+be repaired. A delayed registry channel leaves the GitHub release a draft; after
+the wait ceiling, wait for the registry and rerun only the failed job. An npm authentication failure
 requires correcting the Trusted Publisher fields/allowed action, then the same
 retry. There is no automatic deletion of published versions or tags.
 
