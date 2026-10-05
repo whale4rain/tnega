@@ -31,7 +31,7 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 - 改动 Web UI 的颜色、头像、图标、状态表达或浏览器面板前，先读 `docs/design/tnega-design.md`（总规范）与 `docs/design/weather-language.md`（天气状态语言）。
 - 颜色只来自 `apps/web/src/styles/tokens.css`，组件不写裸色值；深浅主题同步修改，并通过 `apps/web/src/styles/contrast.test.ts` 的对比度底线（正文 ≥7:1，所有文字角色在所有面上 ≥4.5:1）。
 - Agent 的状态用天气表达，一种天气只有一个含义（见 `apps/web/src/lib/weather.ts`）；新增状态先归入已有天气，不给同一天气赋第二个含义；动效遵循 `prefers-reduced-motion`。
-- 标识是「方块上的云」：改标志时同步 `--brand-image`、favicon 与 `apps/desktop/build/icon.svg`，并用 `apps/desktop/scripts/render-icon.mjs` 重新生成安装包图标。
+- 标识是「带眼睛的云」（与协调者头像同形）：改标志时同步 `--brand-image`、favicon 与 `apps/desktop/build/icon.svg`，并用 `apps/desktop/scripts/render-icon.mjs` 重新生成安装包图标。
 - 文件、改动、终端、浏览器与从对话打开的文档都放在右侧**工作台**（`apps/web/src/components/workbench/`），共用「标签栏 → 工具栏行 → 圆角卡片」的形状（见设计规范 5.3）；新增此类能力时加成工作台的工具或文档标签，不再新开抽屉。
 - Agent 浏览器在两端都显示在工作台的 Browser 工具里（桌面原生视图 / Web 端 screencast），不弹独立窗口。
 
