@@ -100,11 +100,12 @@ on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://d
 2. Commit the version and notes on main, then push main and the tag:
 
    ```bash
-   git tag v0.4.12
-   git push origin main v0.4.12
+   git tag v0.4.13
+   git push origin main v0.4.13
    ```
 
-   This example is a future release; use the version actually prepared.
+   This example is a future release; use the version actually prepared. The
+   existing `v0.4.12` tag predates this workflow and is not republished.
 3. Follow the **Release** run in GitHub Actions. Windows checks versions,
    typechecks, lints and runs the full suite. It explicitly downloads the
    Electron test runtime (its postinstall is not globally allowed by pnpm).
