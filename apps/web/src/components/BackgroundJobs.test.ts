@@ -34,7 +34,7 @@ it('shows workspace processes with logs, local URLs and direct stop controls', a
   expect(await view.findByText('server ready')).toBeTruthy()
   await waitFor(() => expect(view.getByText(/request served/)).toBeTruthy(), { timeout: 3500 })
   fireEvent.click(view.getByRole('button', { name: 'Stop npm run dev' }))
-  expect(await view.findByText('Stopped')).toBeTruthy()
+  expect(await view.findByText(/^Stopped/)).toBeTruthy()
   expect(view.queryByRole('button', { name: 'Stop npm run dev' })).toBeNull()
 })
 
@@ -58,7 +58,7 @@ it('shows jobs after the foreground run, stops one and retains its result', asyn
   await waitFor(() => expect(view.queryByRole('button', { name: 'Stop Long tests' })).toBeNull())
   fireEvent.click(view.getByRole('button', { name: 'Output Long tests' }))
   expect(await view.findByText('Partial test result')).toBeTruthy()
-  expect(view.getByText('Stopped')).toBeTruthy()
+  expect(view.getByText(/^Stopped/)).toBeTruthy()
 })
 
 it('clears the previous session while loading another session', async () => {
@@ -69,4 +69,30 @@ it('clears the previous session while loading another session', async () => {
   expect(await view.findByText('First work')).toBeTruthy()
   view.rerender(createElement(BackgroundJobs, { workspace: '/work', sessionId: 'second' }))
   await waitFor(() => expect(view.queryByText('First work')).toBeNull())
+})
+
+it('shows a background shell job once, live work first, and folds finished work', async () => {
+  const now = Date.now()
+  vi.stubGlobal('fetch', async (path: string) => {
+    if (path.includes('/api/processes')) {
+      return Response.json({ processes: [
+        { id: 'p1', command: 'npm run dev', cwd: '/work', startedAt: now - 5000, status: 'running', urls: ['http://localhost:5173/'] },
+        { id: 'p2', command: 'node old-server.js', cwd: '/work', startedAt: now - 90_000, status: 'running', urls: [] },
+      ] })
+    }
+    return Response.json({ jobs: [
+      { id: 'tool-1', kind: 'tool', label: 'npm run dev', status: 'running', startedAt: now - 5000, reported: false, processId: 'p1', urls: ['http://localhost:5173/'] },
+      { id: 'subagent-2', kind: 'subagent', label: 'Review the parser', status: 'completed', startedAt: now - 60_000, finishedAt: now - 30_000, reported: true },
+    ] })
+  })
+  const view = render(createElement(BackgroundJobs, { workspace: '/work', sessionId: 'session', onOpenBrowser: vi.fn() }))
+  fireEvent.click(await view.findByRole('button', { name: /Background tasks \(2 running\)/ }))
+  await view.findByText('node old-server.js')
+  expect(view.getAllByText('npm run dev')).toHaveLength(1)
+  expect(view.getByText(/left running in the workspace/)).toBeTruthy()
+  expect(view.getByRole('button', { name: 'http://localhost:5173/' }).textContent).toBe('localhost:5173')
+  expect(view.queryByText('Review the parser')).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: '1 finished' }))
+  expect(view.getByText('Review the parser')).toBeTruthy()
+  expect(view.getByText('Completed · took 30s')).toBeTruthy()
 })

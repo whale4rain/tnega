@@ -88,6 +88,10 @@ export interface BackgroundJob {
   finishedAt?: number
   detail?: string
   reported: boolean
+  /** Local URLs a background shell process printed. */
+  urls?: string[]
+  /** The workspace process behind a background shell job. */
+  processId?: string
 }
 
 export interface BackgroundProcess {
