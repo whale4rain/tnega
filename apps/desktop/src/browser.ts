@@ -75,21 +75,18 @@ export class DesktopBrowser {
   readonly host: PlaywrightBrowserHost
   private readonly _views = new Map<string, TabView>()
   private _active: TabView | undefined
-  private _first: Promise<TabView>
+  private _first: Promise<TabView> | undefined
   private _bounds: BrowserRect | null = null
   private _attached = false
   private _waiters: Array<() => void> = []
   private readonly _disposers: Array<() => void> = []
 
   constructor(private readonly _window: BrowserWindow, private readonly _isTrusted: (event: IpcMainEvent) => boolean) {
-    this._first = this._create().then(tab => {
-      this._active ??= tab
-      return tab
-    })
+    void this._ensureTab()
 
     this.host = new PlaywrightBrowserHost(cdpPageSource({
       endpoint: debuggingEndpoint,
-      targetId: async () => (await this._first).targetId,
+      targetId: async () => (await this._ensureTab()).targetId,
       openTarget: async () => (await this._create()).targetId,
       activateTarget: async id => this._activate(id),
       closeTarget: async id => this._close(id),
@@ -111,8 +108,8 @@ export class DesktopBrowser {
       if (rect !== undefined) this._place(rect)
     })
     on('tnega:browser-navigate', (_event, value) => {
-      const contents = this._active?.view.webContents
-      if (contents && typeof value === 'string' && value.trim()) void contents.loadURL(normalizeBrowserUrl(value)).catch(() => {})
+      if (typeof value !== 'string' || !value.trim()) return
+      void this._ensureTab().then(tab => tab.view.webContents.loadURL(normalizeBrowserUrl(value))).catch(() => {})
     })
     on('tnega:browser-command', (_event, value) => {
       const contents = this._active?.view.webContents
@@ -149,6 +146,20 @@ export class DesktopBrowser {
       tab.view.webContents.close()
     }
     this._views.clear()
+  }
+
+  private async _ensureTab(): Promise<TabView> {
+    if (this._active) return this._active
+    this._first ??= this._create().then(tab => {
+      this._active ??= tab
+      this._place(this._bounds)
+      this._publish()
+      return tab
+    }).catch(error => {
+      this._first = undefined
+      throw error
+    })
+    return this._first
   }
 
   private async _create(): Promise<TabView> {
@@ -199,6 +210,7 @@ export class DesktopBrowser {
       this._active = undefined
     }
     tab.view.webContents.close()
+    if (!this._views.size) this._first = undefined
   }
 
   private _place(rect: BrowserRect | null): void {

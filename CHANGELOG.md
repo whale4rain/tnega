@@ -34,6 +34,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Restore the desktop Browser after its last tab closes. Agent attachment and
+  address-bar navigation now create a live replacement instead of using the
+  closed page, which left navigation stuck without opening a website.
+
 ## [0.4.12](https://github.com/whale4rain/tnega/releases/tag/v0.4.12) — 2026-10-05
 
 - Agent runs now continue and save their reply when the browser's SSE
