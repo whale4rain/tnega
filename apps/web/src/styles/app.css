@@ -1293,7 +1293,7 @@ kbd {
   top: calc(100% + 6px);
   right: 0;
   z-index: 30;
-  width: 230px;
+  width: 250px;
   padding: 10px 12px;
   border-radius: var(--radius-md);
   background: var(--surface-raised);
@@ -1324,6 +1324,23 @@ kbd {
 .context-pop-row strong {
   color: var(--text);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A part of the row above (cached input, reasoning output). */
+.context-pop-row.sub {
+  padding-left: 10px;
+  color: var(--text-3);
+}
+
+.context-pop-row.sub strong {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.context-pop-sep {
+  margin: 5px 0;
+  border-top: 1px solid var(--border);
 }
 
 .context-pop-note {
@@ -4057,4 +4074,36 @@ kbd {
   margin: 8px 0 0;
   font-size: var(--text-sm);
   color: var(--warn);
+}
+
+/* Model route prices: four small inputs on one row. */
+.price-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.price-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.price-fields input {
+  min-width: 0;
+}
+
+.usage-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.usage-summary .usage-table tbody th {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text);
 }

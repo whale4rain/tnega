@@ -464,7 +464,7 @@ export function App() {
         />
       )}
       <UpdatingOverlay updates={updates} />
-      {dialog === 'settings' &&<SettingsDialog config={config} updates={updates} theme={theme} onThemeChange={setTheme} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
+      {dialog === 'settings' &&<SettingsDialog config={config} workspace={workspace} updates={updates} theme={theme} onThemeChange={setTheme} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
       {dialog === 'workspace' && (
         <WorkspaceDialog
           onClose={() => setDialog(undefined)}

@@ -59,6 +59,15 @@ interface AnthropicUsage {
   input_tokens?: unknown
   output_tokens?: unknown
   cache_read_input_tokens?: unknown
+  cache_creation_input_tokens?: unknown
+}
+
+/** The counts a usage block states; later blocks override what they repeat. */
+interface AnthropicCounts {
+  input?: number
+  output?: number
+  cacheRead?: number
+  cacheWrite?: number
 }
 
 interface AnthropicToolCallState {
@@ -334,7 +343,7 @@ function parseCompletion(payload: unknown): LLMCompletion {
   const completion: LLMCompletion = { finishReason }
   if (text) completion.content = text
   if (toolCalls.length) completion.toolCalls = toolCalls
-  const usage = mergeUsage(undefined, parseAnthropicUsage(record?.usage))
+  const usage = toModelUsage(parseAnthropicUsage(record?.usage))
   if (usage) completion.usage = usage
   return completion
 }
@@ -344,29 +353,45 @@ function parseCompletion(payload: unknown): LLMCompletion {
  * `message_start` announces the input side while `message_delta` carries the
  * final output count, so each block contributes only what it states.
  */
-function parseAnthropicUsage(value: unknown): Partial<ModelUsage> {
+function parseAnthropicUsage(value: unknown): AnthropicCounts {
   if (!value || typeof value !== 'object') return {}
   const raw = value as AnthropicUsage
-  const usage: Partial<ModelUsage> = {}
-  const prompt = toCount(raw.input_tokens)
-  if (prompt !== undefined) usage.promptTokens = prompt
-  const completion = toCount(raw.output_tokens)
-  if (completion !== undefined) usage.completionTokens = completion
-  const cached = toCount(raw.cache_read_input_tokens)
-  if (cached !== undefined) usage.cachedTokens = cached
+  const counts: AnthropicCounts = {}
+  const input = toCount(raw.input_tokens)
+  if (input !== undefined) counts.input = input
+  const output = toCount(raw.output_tokens)
+  if (output !== undefined) counts.output = output
+  const cacheRead = toCount(raw.cache_read_input_tokens)
+  if (cacheRead !== undefined) counts.cacheRead = cacheRead
+  const cacheWrite = toCount(raw.cache_creation_input_tokens)
+  if (cacheWrite !== undefined) counts.cacheWrite = cacheWrite
+  return counts
+}
+
+function mergeUsage(current: AnthropicCounts, next: AnthropicCounts): AnthropicCounts {
+  return { ...current, ...next }
+}
+
+/**
+ * Anthropic's `input_tokens` counts only the uncached part of the prompt;
+ * cache reads and cache writes are reported beside it. `promptTokens` is the
+ * whole prompt, as OpenAI-compatible providers report it, so the context
+ * meter and the cache hit rate mean the same thing on every provider.
+ * Nothing is reported until both the input and the output side arrived.
+ */
+function toModelUsage(counts: AnthropicCounts): ModelUsage | undefined {
+  if (counts.input === undefined || counts.output === undefined) return undefined
+  const usage: ModelUsage = {
+    promptTokens: counts.input + (counts.cacheRead ?? 0) + (counts.cacheWrite ?? 0),
+    completionTokens: counts.output,
+  }
+  if (counts.cacheRead !== undefined) usage.cachedTokens = counts.cacheRead
   return usage
 }
 
-/** Fold a partial usage block in; nothing is reported until both required counts exist. */
-function mergeUsage(
-  current: ModelUsage | undefined,
-  next: Partial<ModelUsage>,
-): ModelUsage | undefined {
-  const merged = { ...current, ...next }
-  if (merged.promptTokens === undefined || merged.completionTokens === undefined) {
-    return undefined
-  }
-  return merged as ModelUsage
+function usageField(counts: AnthropicCounts): { usage?: ModelUsage } {
+  const usage = toModelUsage(counts)
+  return usage ? { usage } : {}
 }
 
 function toCount(value: unknown): number | undefined {
@@ -426,7 +451,7 @@ async function* parseAnthropicStream(
   let messageStarted = false
   let text = ''
   let stopReason: unknown
-  let usage: ModelUsage | undefined
+  let counts: AnthropicCounts = {}
   let stopped = false
   let textBlockIndex: number | undefined
   const calls = new Map<number, AnthropicToolCallState>()
@@ -465,7 +490,7 @@ async function* parseAnthropicStream(
             model = typeof start.message?.model === 'string'
               ? start.message.model
               : undefined
-            usage = mergeUsage(usage, parseAnthropicUsage(start.message?.usage))
+            counts = mergeUsage(counts, parseAnthropicUsage(start.message?.usage))
             messageStarted = true
             yield {
               type: 'message_start',
@@ -565,7 +590,7 @@ async function* parseAnthropicStream(
             if (raw.delta?.stop_reason !== undefined) {
               stopReason = raw.delta.stop_reason
             }
-            usage = mergeUsage(usage, parseAnthropicUsage(raw.usage))
+            counts = mergeUsage(counts, parseAnthropicUsage(raw.usage))
             continue
           }
           if (record?.type === 'message_stop') {
@@ -582,7 +607,7 @@ async function* parseAnthropicStream(
               type: 'message_stop',
               id: messageId,
               finishReason: toFinishReason(stopReason, text, calls.size > 0),
-              ...(usage ? { usage } : {}),
+              ...usageField(counts),
             }
             continue
           }
@@ -611,7 +636,7 @@ async function* parseAnthropicStream(
       type: 'message_stop',
       id: messageId,
       finishReason: toFinishReason(stopReason, text, calls.size > 0),
-      ...(usage ? { usage } : {}),
+      ...usageField(counts),
     }
   }
 }

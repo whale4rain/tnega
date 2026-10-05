@@ -556,8 +556,9 @@ describe('request accounting', () => {
 
     const adapter = anthropicMessagesAdapter({ apiKey: 'test-key' })
     const completion = await adapter.complete([{ role: 'user', content: 'hi' }], [], {})
+    // input_tokens is only the uncached part: the prompt is 1200 + 1024 cached.
     expect(completion.usage).toEqual({
-      promptTokens: 1200,
+      promptTokens: 2224,
       completionTokens: 40,
       cachedTokens: 1024,
     })
@@ -585,8 +586,18 @@ describe('request accounting', () => {
       type: 'message_stop',
       id: 'msg_1',
       finishReason: 'stop',
-      usage: { promptTokens: 1200, completionTokens: 40, cachedTokens: 1024 },
+      usage: { promptTokens: 2224, completionTokens: 40, cachedTokens: 1024 },
     })
+  })
+
+  it('counts cache writes as prompt tokens', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+      content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn',
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 3000 },
+    })) as FetchMock)
+    const adapter = anthropicMessagesAdapter({ apiKey: 'test-key' })
+    const completion = await adapter.complete([{ role: 'user', content: 'hi' }], [], {})
+    expect(completion.usage).toEqual({ promptTokens: 3010, completionTokens: 5 })
   })
 
   it('omits usage from the stop event when the stream never reports it', async () => {

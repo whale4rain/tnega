@@ -15,6 +15,7 @@ import {
 import { Context, type Fiber, type Plugin } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
 import { observeCompaction } from './compaction-observation.js'
+import { sessionUsage, workspaceUsage } from './usage.js'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
@@ -116,6 +117,7 @@ import {
   prepareSessionCompact,
   readSessionMessages,
   readSessionMetrics,
+  readSessionLog,
   readSessionSummary,
   setSessionPermission,
   setSessionApprovalMode,
@@ -554,6 +556,15 @@ async function handleApi(
     return
   }
 
+  if (url.pathname === '/api/usage' && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+    const sessions = await listSessions(workspace)
+    const logs = await Promise.all(sessions.map(session => readSessionLog(workspace, session.id).catch(() => [])))
+    sendJson(res, 200, workspaceUsage(logs, await readSystemConfig(context.configFile)))
+    return
+  }
+
   if (url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST')) {
     const workspace = workspaceParam(url)
     if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
@@ -864,9 +875,10 @@ async function handleApi(
       const configuredWindow = effectiveLlmConfig(
         await readSystemConfig(context.configFile), process.env, summary.model,
       ).contextWindow
-      const [contextUsage, metrics] = await Promise.all([
+      const [contextUsage, metrics, log] = await Promise.all([
         estimateContextUsage(workspace, id, configuredWindow),
         readSessionMetrics(workspace, id),
+        readSessionLog(workspace, id),
       ])
       sendJson(res, 200, {
         summary,
@@ -874,6 +886,7 @@ async function handleApi(
         surface: detail.surface,
         context: contextUsage,
         metrics,
+        usage: sessionUsage(log, await readSystemConfig(context.configFile)),
         running: runningAtReadStart || isActive(context.activeRuns, workspace, id),
       })
       return
@@ -2196,6 +2209,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
         ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
         ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
         ...(model.vision !== undefined ? { vision: model.vision } : {}),
+        ...(model.pricing ? { pricing: model.pricing } : {}),
       })) ?? [],
     },
     env: {

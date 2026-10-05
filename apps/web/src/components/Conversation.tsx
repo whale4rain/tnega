@@ -42,6 +42,7 @@ import type {
   SessionDetail,
   SessionEvent,
   SessionMetrics,
+  UsageTotals,
   SessionSummary,
   SlashCommand,
   StreamEvent,
@@ -56,6 +57,7 @@ import { QuestionPanel } from './QuestionPanel'
 import { BackgroundJobs } from './BackgroundJobs'
 import { LinkContext, type LinkHandlers } from '../lib/links'
 import { navigateBrowser } from '../lib/browser-live'
+import { formatCost, formatRate } from '../lib/usage'
 
 export interface Approval {
   id: string
@@ -115,6 +117,7 @@ export function Conversation({
   const [entries, setEntries] = useState<readonly Entry[]>([])
   const [context, setContext] = useState<ContextUsage | undefined>()
   const [metrics, setMetrics] = useState<SessionMetrics | undefined>()
+  const [usage, setUsage] = useState<UsageTotals | undefined>()
   const [plan, setPlan] = useState<PlanPayload | undefined>()
   const [goal, setGoal] = useState<GoalState | null>(null)
   const [commands, setCommands] = useState<SlashCommand[]>([])
@@ -141,6 +144,7 @@ export function Conversation({
     setEntries(fromEvents(detail.events))
     setContext(detail.context)
     setMetrics(detail.metrics)
+    setUsage(detail.usage)
     setPlan(latestPlan(detail.events))
     setRemoteRunning(detail.running && streamingFor.current !== detail.summary.id)
   }, [])
@@ -166,6 +170,7 @@ export function Conversation({
       setEntries([])
       setContext(undefined)
       setMetrics(undefined)
+      setUsage(undefined)
       setPlan(undefined)
       setGoal(null)
       setRemoteRunning(false)
@@ -623,7 +628,7 @@ export function Conversation({
           </div>
           <div className="header-group header-tools">
           {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} onOpenBrowser={onBrowserActivity} />}
-          {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} />}
+          {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} usage={usage} />}
           {onToggleWorkbench && (
             <button
               type="button"
@@ -777,29 +782,40 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (value: strin
   )
 }
 
-function ContextMeter({ context, metrics }: { context: ContextUsage; metrics: SessionMetrics | undefined }) {
+function ContextMeter({ context, metrics, usage }: { context: ContextUsage; metrics: SessionMetrics | undefined; usage: UsageTotals | undefined }) {
   const ratio = Math.min(1, Math.max(0, context.ratio))
   const tone = ratio > 0.85 ? 'danger' : ratio > 0.65 ? 'warn' : 'ok'
   const r = 6
   const c = 2 * Math.PI * r
   const percent = Math.round(ratio * 100)
+  const tokens = usage ?? metrics
+  const cost = formatCost(usage?.cost)
+  const hitRate = formatRate(usage?.cacheHitRate ?? metrics?.cacheHitRate)
   return (
-    <div className={`context-meter tone-${tone}`} tabIndex={0} aria-label={`Context ${percent}% used`}>
+    <div className={`context-meter tone-${tone}`} tabIndex={0} aria-label={`Context ${percent}% used${cost ? `, ${cost} spent` : ''}`}>
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
         <circle cx="8" cy="8" r={r} className="ring-track" />
         <circle cx="8" cy="8" r={r} className={`ring-fill tone-${tone}`} strokeDasharray={`${c * ratio} ${c}`} transform="rotate(-90 8 8)" />
       </svg>
       <div className="context-pop" role="tooltip">
         <div className="context-pop-row"><span>Context</span><strong>{percent}% · {formatTokens(context.tokens)} / {formatTokens(context.limit)}</strong></div>
-        {metrics && metrics.responses > 0 && (
+        {tokens && tokens.responses > 0 && (
           <>
-            <div className="context-pop-row"><span>Input tokens</span><strong>{formatTokens(metrics.promptTokens)}</strong></div>
-            <div className="context-pop-row"><span>Output tokens</span><strong>{formatTokens(metrics.completionTokens)}</strong></div>
-            {metrics.cacheHitRate !== undefined && <div className="context-pop-row"><span>Cache hit rate</span><strong>{Math.round(metrics.cacheHitRate * 100)}%</strong></div>}
-            {metrics.tokensPerSecond !== undefined && <div className="context-pop-row"><span>Speed</span><strong>{Math.round(metrics.tokensPerSecond)} tok/s</strong></div>}
+            <div className="context-pop-sep" />
+            <div className="context-pop-row"><span>Input tokens</span><strong>{formatTokens(tokens.promptTokens)}</strong></div>
+            {tokens.cachedTokens > 0 && <div className="context-pop-row sub"><span>from cache</span><strong>{formatTokens(tokens.cachedTokens)}</strong></div>}
+            {hitRate && <div className="context-pop-row"><span>Cache hit rate</span><strong>{hitRate}</strong></div>}
+            <div className="context-pop-row"><span>Output tokens</span><strong>{formatTokens(tokens.completionTokens)}</strong></div>
+            {usage && usage.reasoningTokens > 0 && <div className="context-pop-row sub"><span>reasoning</span><strong>{formatTokens(usage.reasoningTokens)}</strong></div>}
+            <div className="context-pop-row"><span>Responses</span><strong>{tokens.responses}</strong></div>
+            {metrics?.tokensPerSecond !== undefined && <div className="context-pop-row"><span>Speed</span><strong>{Math.round(metrics.tokensPerSecond)} tok/s</strong></div>}
+            <div className="context-pop-row"><span>Estimated cost</span><strong>{cost ?? '—'}</strong></div>
           </>
         )}
-        <div className="context-pop-note">{context.source === 'provider' ? 'Reported by the model provider' : 'Estimated'}</div>
+        <div className="context-pop-note">
+          {context.source === 'provider' ? 'Context reported by the model provider' : 'Context estimated'}
+          {tokens && tokens.responses > 0 && !cost ? ' · add prices to this model in Settings → Models to see cost' : ''}
+        </div>
       </div>
     </div>
   )

@@ -144,12 +144,40 @@ export interface SessionMetrics {
   lastDurationMs?: number
 }
 
+/** Token use and estimated spend over a span (`GET /api/usage`, session detail). */
+export interface UsageTotals {
+  responses: number
+  promptTokens: number
+  completionTokens: number
+  cachedTokens: number
+  reasoningTokens: number
+  cacheHitRate?: number
+  cost?: Array<{ amount: number; currency: string }>
+}
+
+export interface WorkspaceUsage {
+  today: UsageTotals
+  week: UsageTotals
+  total: UsageTotals
+  byModel: Array<UsageTotals & { modelId: string; name: string; priced: boolean }>
+  sessions: number
+}
+
+/** Prices per million tokens for a model route. */
+export interface ModelPricing {
+  input: number
+  output: number
+  cachedInput?: number
+  currency?: string
+}
+
 export interface SessionDetail {
   summary: SessionSummary
   events: SessionEvent[]
   surface: SessionEvent[]
   context: ContextUsage
   metrics: SessionMetrics
+  usage?: UsageTotals
   running: boolean
 }
 
@@ -196,6 +224,7 @@ export interface ModelRouteSettings {
   apiKeySet: boolean
   contextWindow?: number
   vision?: boolean
+  pricing?: ModelPricing
 }
 
 /** What the model route form sends; a blank key keeps the saved one. */
@@ -207,6 +236,8 @@ export interface ModelRouteInput {
   apiKey?: string
   contextWindow?: number
   vision?: boolean
+  /** `null` clears saved prices. */
+  pricing?: ModelPricing | null
 }
 
 export interface ConfigSnapshot {

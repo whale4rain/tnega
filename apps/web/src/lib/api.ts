@@ -18,6 +18,7 @@ import type {
   StreamEvent,
   SubagentEntry,
   ImageAttachment,
+  WorkspaceUsage,
 } from './types'
 
 export class ApiError extends Error {
@@ -130,6 +131,8 @@ export const api = {
   stopProcess: (workspace: string, id: string, signal?: AbortSignal) =>
     call<{ process: BackgroundProcess }>(scoped('/api/processes', workspace), { method: 'POST', body: { process_id: id, action: 'stop' }, signal }),
   config: () => call<ConfigSnapshot>('/api/config'),
+  /** Token use and estimated spend across a workspace's sessions. */
+  usage: (workspace: string, signal?: AbortSignal) => call<WorkspaceUsage>(scoped('/api/usage', workspace), { signal }),
   /** Add or replace one chat model route. */
   saveModelRoute: (id: string, input: ModelRouteInput) =>
     call<ConfigSnapshot>(`/api/config/models/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),

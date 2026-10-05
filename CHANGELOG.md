@@ -57,6 +57,18 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- Usage and cost: Settings has a Usage section with input, cached and output
+  tokens and the cache (KV cache) hit share for today, the last seven days and
+  all time, split by model; the session's context meter now also shows cached
+  and reasoning tokens, responses and the session's estimated cost. Costs use
+  per-million-token prices you set on each model (input, cached input,
+  output, currency); models without prices show no cost.
+
+- Anthropic-protocol usage now counts cache reads and writes as prompt
+  tokens, as the Messages API reports them separately from `input_tokens`.
+  Before, cached prompts made the context meter read far too low and the
+  cache hit rate could exceed 100%.
+
 - Links in replies open where they belong: links to workspace files
   (including `path:line`, which used to lose its link) and inline code that
   names a file such as `src/app.ts` open in the Workbench's Files view; local

@@ -413,6 +413,11 @@ export async function estimateContextUsage(
   })
 }
 
+/** Every event of a session's log, for reports that fold over its history. */
+export async function readSessionLog(workspace: string, id: string): Promise<SessionEvent[]> {
+  return withSessionLog(sessionFile(workspace, id), log => log.read())
+}
+
 /** Provider-reported cost and throughput of a session's committed responses. */
 export async function readSessionMetrics(
   workspace: string,

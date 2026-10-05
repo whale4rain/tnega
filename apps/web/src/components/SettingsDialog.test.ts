@@ -57,7 +57,7 @@ it('groups settings into sections and saves the chosen shell', async () => {
     { path: 'C:/Git/bin/bash.exe', label: 'Git Bash', kind: 'bash' },
   ] } }
   const view = render(createElement(SettingsDialog, { config: withShells, onClose: vi.fn(), onSaved: vi.fn() }))
-  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Models', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
+  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Models', 'Usage', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
   expect(view.getByRole('tab', { name: 'Models' }).getAttribute('aria-selected')).toBe('true')
   fireEvent.click(view.getByRole('tab', { name: 'Tools & shell' }))
   expect(view.getByRole('tabpanel').id).toBe('settings-panel-tools')
@@ -85,4 +85,21 @@ it('switches theme from Appearance right away', () => {
   fireEvent.click(view.getByRole('tab', { name: 'Appearance' }))
   fireEvent.click(view.getByRole('radio', { name: 'Dark' }))
   expect(onThemeChange).toHaveBeenCalledWith('dark')
+})
+
+it('shows workspace usage with cache share and cost, and points at missing prices', async () => {
+  localStorage.setItem('tnega.settingsSection', 'usage')
+  const totals = (input: number) => ({ responses: 2, promptTokens: input, completionTokens: 1500, cachedTokens: input / 2, reasoningTokens: 0, cacheHitRate: 0.5 })
+  vi.spyOn(api, 'usage').mockResolvedValue({
+    today: { ...totals(12_000), cost: [{ amount: 0.12, currency: 'USD' }] },
+    week: totals(40_000), total: totals(90_000),
+    byModel: [{ ...totals(90_000), modelId: 'pro', name: 'Pro', priced: false }],
+    sessions: 3,
+  })
+  const view = render(createElement(SettingsDialog, { config: snapshot, workspace: '/work', onClose: vi.fn(), onSaved: vi.fn() }))
+  expect(await view.findByText('Today')).toBeTruthy()
+  expect(view.getByText('$0.12')).toBeTruthy()
+  expect(view.getAllByText('50%').length).toBeGreaterThan(0)
+  expect(view.getByText(/No prices set for Pro/)).toBeTruthy()
+  localStorage.removeItem('tnega.settingsSection')
 })

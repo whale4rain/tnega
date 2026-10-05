@@ -113,6 +113,10 @@ function RouteForm({
   const [showKey, setShowKey] = useState(false)
   const [contextWindow, setContextWindow] = useState(route?.contextWindow !== undefined ? String(route.contextWindow) : '')
   const [vision, setVision] = useState(route?.vision ?? false)
+  const [priceIn, setPriceIn] = useState(route?.pricing ? String(route.pricing.input) : '')
+  const [priceCached, setPriceCached] = useState(route?.pricing?.cachedInput !== undefined ? String(route.pricing.cachedInput) : '')
+  const [priceOut, setPriceOut] = useState(route?.pricing ? String(route.pricing.output) : '')
+  const [currency, setCurrency] = useState(route?.pricing?.currency ?? 'USD')
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
 
@@ -121,6 +125,16 @@ function RouteForm({
     if (!wire) return setError('Enter the model id the provider expects, such as deepseek-chat.')
     const window = contextWindow.trim() ? Number(contextWindow) : undefined
     if (window !== undefined && (!Number.isSafeInteger(window) || window <= 0)) return setError('Context window is a whole number of tokens.')
+    const price = (text: string) => text.trim() ? Number(text) : undefined
+    const prices = [price(priceIn), price(priceCached), price(priceOut)]
+    if (prices.some(value => value !== undefined && (!Number.isFinite(value) || value < 0))) return setError('Prices are non-negative numbers per million tokens.')
+    const [input, cachedInput, output] = prices
+    if ((input === undefined) !== (output === undefined)) return setError('Enter both the input and the output price, or neither.')
+    if (cachedInput !== undefined && input === undefined) return setError('Enter the input and output prices too.')
+    const pricing = input !== undefined && output !== undefined
+      ? { input, output, ...(cachedInput !== undefined ? { cachedInput } : {}), currency: currency.trim().toUpperCase() || 'USD' }
+      : route?.pricing ? null : undefined
+    if (pricing && !/^[A-Z]{3}$/.test(pricing.currency)) return setError('Currency is a three-letter code such as USD or CNY.')
     let id = route?.id ?? slug(name || wire)
     if (!route) for (let n = 2; existing.includes(id); n += 1) id = `${slug(name || wire)}-${n}`
     setBusy(true)
@@ -134,6 +148,7 @@ function RouteForm({
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         ...(window !== undefined ? { contextWindow: window } : {}),
         vision,
+        ...(pricing !== undefined ? { pricing } : {}),
       }))
     } catch (reason) {
       setError(errorText(reason))
@@ -189,6 +204,15 @@ function RouteForm({
         <input type="checkbox" checked={vision} onChange={event => setVision(event.target.checked)} />
         <span>Accepts images</span>
       </label>
+      <div className="field span-2" role="group" aria-label="Price per million tokens">
+        <span className="field-label">Price per million tokens <span className="muted">· optional, for cost estimates</span></span>
+        <div className="price-fields">
+        <label><span>Input</span><input value={priceIn} onChange={event => setPriceIn(event.target.value)} inputMode="decimal" placeholder="2.00" aria-label="Input price per million tokens" /></label>
+        <label><span>Cached input</span><input value={priceCached} onChange={event => setPriceCached(event.target.value)} inputMode="decimal" placeholder="Same as input" aria-label="Cached input price per million tokens" /></label>
+        <label><span>Output</span><input value={priceOut} onChange={event => setPriceOut(event.target.value)} inputMode="decimal" placeholder="8.00" aria-label="Output price per million tokens" /></label>
+        <label><span>Currency</span><input value={currency} onChange={event => setCurrency(event.target.value)} maxLength={3} spellCheck={false} aria-label="Currency" /></label>
+        </div>
+      </div>
       {error && <div className="notice notice-error span-2"><span>{error}</span></div>}
       <div className="model-route-form-actions span-2">
         <button type="button" className="button ghost small" onClick={onCancel}>Cancel</button>

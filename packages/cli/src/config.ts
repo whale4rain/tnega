@@ -31,6 +31,36 @@ export function normalizeApprovalReviewer(value: unknown): ApprovalReviewerConfi
   return result
 }
 
+/**
+ * What a model costs per million tokens, as the user entered it from the
+ * provider's price list. Only used to estimate spend; nothing is billed here.
+ */
+export interface ModelPricing {
+  input: number
+  output: number
+  /** Price of prompt tokens served from the provider's cache; defaults to `input`. */
+  cachedInput?: number
+  /** Display currency, e.g. `USD` or `CNY`; defaults to USD. */
+  currency?: string
+}
+
+export function parseModelPricing(value: unknown): ModelPricing | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  const price = (key: string): number | undefined => {
+    const raw = record[key]
+    return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : undefined
+  }
+  const input = price('input')
+  const output = price('output')
+  if (input === undefined || output === undefined) return undefined
+  const pricing: ModelPricing = { input, output }
+  const cached = price('cachedInput')
+  if (cached !== undefined) pricing.cachedInput = cached
+  if (typeof record.currency === 'string' && /^[A-Za-z]{3}$/.test(record.currency.trim())) pricing.currency = record.currency.trim().toUpperCase()
+  return pricing
+}
+
 export interface ConfiguredModel {
   /** Unique selector id. Defaults to the wire model id when model is omitted. */
   id: string
@@ -46,6 +76,7 @@ export interface ConfiguredModel {
   contextWindow?: number
   /** Override the model-id heuristic for image input. */
   vision?: boolean
+  pricing?: ModelPricing
 }
 
 export interface LlmEnvConfig {
@@ -93,6 +124,7 @@ export interface EffectiveLlmConfig {
   reasoningEffort?: ReasoningEffort
   contextWindow?: number
   vision: boolean
+  pricing?: ModelPricing
 }
 
 export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort'> & {
@@ -206,6 +238,8 @@ export interface ModelRouteInput {
   apiKeyEnv?: string
   contextWindow?: number
   vision?: boolean
+  /** Prices per million tokens; `null` clears them. */
+  pricing?: ModelPricing | null
 }
 
 export class ModelRouteError extends Error {
@@ -236,6 +270,12 @@ export function parseModelRouteInput(value: unknown): ModelRouteInput {
   if (record.vision !== undefined) {
     if (typeof record.vision !== 'boolean') throw new ModelRouteError('vision must be a boolean')
     input.vision = record.vision
+  }
+  if (record.pricing === null) input.pricing = null
+  else if (record.pricing !== undefined) {
+    const pricing = parseModelPricing(record.pricing)
+    if (!pricing) throw new ModelRouteError('pricing needs non-negative input and output prices per million tokens')
+    input.pricing = pricing
   }
   if (input.baseUrl) {
     try {
@@ -285,6 +325,8 @@ export async function upsertModelRoute(id: string, input: ModelRouteInput, file 
   }
   if (input.contextWindow !== undefined) next.contextWindow = input.contextWindow
   if (input.vision !== undefined) next.vision = input.vision
+  if (input.pricing === null) delete next.pricing
+  else if (input.pricing) next.pricing = input.pricing
   if (index >= 0) routes[index] = next
   else routes.push(next)
   const config: SystemConfig = { ...current, models: routes }
@@ -328,6 +370,7 @@ export function effectiveLlmConfig(
   if (protocol) result.protocol = protocol
   const apiKeyHeader = profile?.apiKeyHeader ?? config.apiKeyHeader
   if (apiKeyHeader) result.apiKeyHeader = apiKeyHeader
+  if (profile?.pricing) result.pricing = profile.pricing
   if (config.temperature !== undefined) result.temperature = config.temperature
   const contextWindow = profile?.contextWindow ?? config.contextWindow ?? lookupModel(model)?.contextWindow
   if (contextWindow !== undefined) result.contextWindow = contextWindow
@@ -442,6 +485,8 @@ function normalizeConfig(value: unknown): SystemConfig {
       if (isContextWindow(contextWindow)) model.contextWindow = contextWindow
       const vision = fieldOf(entry, 'vision')
       if (typeof vision === 'boolean') model.vision = vision
+      const pricing = parseModelPricing(fieldOf(entry, 'pricing'))
+      if (pricing) model.pricing = pricing
       const efforts = fieldOf(entry, 'reasoningEfforts')
       if (Array.isArray(efforts)) {
         model.reasoningEfforts = [...new Set(efforts.filter(isReasoningEffort))]

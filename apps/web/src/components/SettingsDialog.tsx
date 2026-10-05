@@ -1,10 +1,11 @@
-import { Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, ShieldCheck, SquareTerminal, Sun } from 'lucide-react'
+import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, ShieldCheck, SquareTerminal, Sun } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, Protocol } from '../lib/types'
 import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
+import { UsageSummary } from './UsageSummary'
 import { UpdateSettings } from './UpdateButton'
 import type { DesktopUpdates } from '../lib/desktop-updates'
 
@@ -14,10 +15,11 @@ import type { DesktopUpdates } from '../lib/desktop-updates'
  * entry in `SECTIONS` plus its panel below. Form fields are saved together
  * with "Save changes"; appearance and updates apply immediately.
  */
-type SectionId = 'model' | 'approvals' | 'tools' | 'appearance' | 'about'
+type SectionId = 'model' | 'usage' | 'approvals' | 'tools' | 'appearance' | 'about'
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: string; icon: typeof Cpu }> = [
   { id: 'model', label: 'Models', description: 'Chat models that run sessions, projects and threads. Register several, choose the default, and switch per session from the composer. Approval reviewers such as TypeSafe Jev are not chat models; set them under Approvals.', icon: Cpu },
+  { id: 'usage', label: 'Usage', description: 'Tokens and estimated cost of the sessions in this workspace. Set prices on each model under Models to see cost.', icon: ChartColumn },
   { id: 'approvals', label: 'Approvals', description: 'Who reviews actions that need permission.', icon: ShieldCheck },
   { id: 'tools', label: 'Tools & shell', description: 'How the agent runs commands and calls its tools.', icon: SquareTerminal },
   { id: 'appearance', label: 'Appearance', description: 'How Tnega looks on this device.', icon: Palette },
@@ -28,6 +30,7 @@ const SECTION_IDS = SECTIONS.map(section => section.id)
 
 export function SettingsDialog({
   config,
+  workspace,
   updates,
   theme,
   onThemeChange,
@@ -35,6 +38,8 @@ export function SettingsDialog({
   onSaved,
 }: {
   config: ConfigSnapshot | undefined
+  /** The open workspace, for the Usage section. */
+  workspace?: string | undefined
   updates?: DesktopUpdates | undefined
   theme?: ThemePreference
   onThemeChange?: (theme: ThemePreference) => void
@@ -224,6 +229,7 @@ export function SettingsDialog({
             </div>
           </>)}
 
+          {panel('usage', section === 'usage' ? <UsageSummary workspace={workspace} /> : null)}
           {panel('approvals', <div className="form-grid">
             <label className="field">
               <span className="field-label">Approval reviewer</span>
