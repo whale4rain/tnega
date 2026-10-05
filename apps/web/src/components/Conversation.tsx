@@ -54,6 +54,8 @@ import { Menu } from './Menu'
 import { Timeline } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
 import { BackgroundJobs } from './BackgroundJobs'
+import { LinkContext, type LinkHandlers } from '../lib/links'
+import { navigateBrowser } from '../lib/browser-live'
 
 export interface Approval {
   id: string
@@ -74,6 +76,7 @@ export function Conversation({
   onConfigSaved,
   onOpenSubagent,
   onOpenFile,
+  onOpenPath,
   onOpenChange,
   onToggleWorkbench,
   workbenchOpen = false,
@@ -94,6 +97,8 @@ export function Conversation({
   onConfigSaved?: (config: ConfigSnapshot) => void
   onOpenSubagent: (id: string, label: string) => void
   onOpenFile: (path: string) => void
+  /** Open a workspace file a reply links to in the Workbench's Files view. */
+  onOpenPath?: (path: string) => void
   /** Show one changed file in the Workbench's Changes view. */
   onOpenChange?: (path: string) => void
   /** Show or hide the Workbench (files, changes, terminal, browser). */
@@ -581,6 +586,11 @@ export function Conversation({
   // --- render -------------------------------------------------------------
 
   const live = running || remoteRunning
+  const links = useMemo<LinkHandlers>(() => ({
+    workspace,
+    ...(onOpenPath ? { openPath: onOpenPath } : {}),
+    ...(onBrowserActivity ? { openLocalUrl: (url: string) => { onBrowserActivity(); void navigateBrowser(url).catch(() => undefined) } } : {}),
+  }), [workspace, onOpenPath, onBrowserActivity])
   const apiKeyMissing = config !== undefined && !config.apiKeySet && !(config.models.some(model => model.apiKeySet))
   const empty = !loading && entries.length === 0
   const title = summary?.title || (sessionId ? 'Untitled session' : 'New session')
@@ -657,6 +667,7 @@ export function Conversation({
               disabled={Boolean(disabledReason)}
             />
           )}
+          <LinkContext.Provider value={links}>
           <Timeline
             entries={entries}
             running={live}
@@ -674,6 +685,7 @@ export function Conversation({
               ...(context && context.limit > 0 ? { contextRatio: context.ratio } : {}),
             }}
           />
+          </LinkContext.Provider>
           {remoteRunning && !running && (
             <div className="notice notice-info remote-run">
               <CircleDashed size={14} className="spin-slow" />

@@ -57,6 +57,11 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- Links in replies open where they belong: links to workspace files
+  (including `path:line`, which used to lose its link) and inline code that
+  names a file such as `src/app.ts` open in the Workbench's Files view; local
+  dev server URLs open in the Workbench browser; other sites open in a new tab.
+
 - While a reply is being written, the agent's own words stay in view and only
   its tool calls fold, behind one line naming the current step; when the turn
   ends, everything before the final message folds into one line.

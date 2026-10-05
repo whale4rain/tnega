@@ -2308,6 +2308,21 @@ kbd {
   text-decoration-color: currentColor;
 }
 
+/* Inline code that names a workspace file opens it in the Workbench. */
+.prose a.code-link {
+  text-decoration: none;
+}
+
+.prose a.code-link > code {
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.prose a.code-link:hover > code {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .prose blockquote {
   margin: 0 0 0.8em;
   padding: 2px 0 2px 14px;

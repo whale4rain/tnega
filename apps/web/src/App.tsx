@@ -87,6 +87,7 @@ export function App() {
     localStorage.setItem('tnega.workbenchWidth', String(width))
   }, [])
   // The desktop app asks for the browser whenever the agent is about to use it.
+  const openPath = useCallback((path: string) => setWorkbench(current => openTool(current, 'files', path)), [setWorkbench])
   const showBrowser = useCallback(() => setWorkbench(current => current.open && current.active === 'browser' ? current : openTool(current, 'browser')), [setWorkbench])
   useEffect(() => desktopBrowser()?.onReveal(showBrowser), [showBrowser])
   // Ctrl+J shows or hides the Workbench; Ctrl+` opens the terminal.
@@ -415,6 +416,7 @@ export function App() {
             onOpenSettings={() => setDialog('settings')}
             onOpenSubagent={(id, label) => setWorkbench(current => openDoc(current, { kind: 'subagent', id, label }))}
             onOpenFile={path => setWorkbench(current => openDoc(current, { kind: 'preview', path }))}
+            onOpenPath={openPath}
             onOpenChange={path => setWorkbench(current => openTool(current, 'changes', path))}
             {...(browserReady ? { onBrowserActivity: showBrowser } : {})}
             onToggleWorkbench={() => setWorkbench(toggle)}
