@@ -48,6 +48,7 @@ import { toolSearch } from '@tnega/tool-search'
 import { toolThread } from '@tnega/tool-thread'
 import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
+import { mountThreadApprovals } from './thread-approval.js'
 
 export interface ProjectHostOptions {
   ptcRuntime?: PtcRuntimeQuickjsConfig
@@ -572,8 +573,8 @@ export class ProjectHost {
     await ctx.plugin(toolJobs, { resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session })
     const threads = ctx.get('threads') as ThreadService
     const toolService = ctx.get('tools') as ToolsService
-    // Threads never wait on a person: their tool calls are reviewed automatically on the
-    // coordinator's behalf, and the reviewer reads what the user asked for in the room.
+    // Review first with trusted room evidence; an undecided call waits on its
+    // direct parent, which can decide or forward the exact call to the user.
     const isThread = (agentId: string | undefined): boolean => agentId !== undefined && agentId !== record.coordinatorId
     const systemConfig = this.options.systemConfig ?? {}
     await mountApprovalReview(ctx, {
@@ -604,6 +605,7 @@ export class ProjectHost {
       this.permissions.set(entry.id, entry.permission)
     }
     await threads.ensureRoot(record)
+    const threadApprovals = mountThreadApprovals(ctx, { projectId: record.id, approvals: this.options.approvals })
     for (const thread of await threads.list()) track(thread)
     ctx.on('thread/spawned', (event: { thread: ThreadRecord }) => track(event.thread))
     toolService.guard(permissionGuard(permission, record.id, this.options.approvals, {
@@ -612,6 +614,7 @@ export class ProjectHost {
       // 没有记录的 Agent（例如 Thread 内部再起的普通 Subagent）按最窄处理。
       agentMode: agentId => this.permissions.get(agentId) ?? 'read-only',
       delegated: isThread,
+      delegateApproval: (request, review) => threadApprovals.request(request, review),
     }))
 
     await ctx.plugin(projectLoop, { projectId: record.id })

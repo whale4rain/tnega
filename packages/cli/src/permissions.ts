@@ -26,7 +26,7 @@ const ALWAYS_ALLOWED = new Set([
   'get_goal', 'update_goal', 'list_subagent', 'send_agent_message',
   'read_project', 'list_threads', 'read_artifact', 'office_inspect', 'office_read',
   // Project 内部
-  'spawn_thread', 'send_thread_message', 'send_project_message', 'update_checklist',
+  'spawn_thread', 'send_thread_message', 'send_project_message', 'update_checklist', 'decide_thread_approval',
   'create_routine', 'list_routines', 'update_routine',
   'write_memory', 'publish_artifact', 'index_resource',
   // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。
@@ -84,7 +84,7 @@ export class ApprovalBroker {
     return true
   }
 
-  request(key: string, request: ToolRequest): Promise<boolean> {
+  request(key: string, request: ToolRequest, options: { fullInput?: boolean } = {}): Promise<boolean> {
     const emit = this.runs.get(key)
     if (!emit || request.options.signal?.aborted) return Promise.resolve(false)
     const id = randomUUID()
@@ -101,7 +101,7 @@ export class ApprovalBroker {
           type: 'approval/request',
           id,
           tool: request.name,
-          input: (JSON.stringify(request.input) ?? '').slice(0, 2_000),
+          input: options.fullInput ? (JSON.stringify(request.input) ?? '') : (JSON.stringify(request.input) ?? '').slice(0, 2_000),
         })
       } catch {
         this.settle(id, false)
@@ -127,13 +127,13 @@ export function permissionGuard(
     workspace: string
     agentMode?: (agentId: string) => PermissionMode | undefined
     review?: (request: ToolRequest) => Promise<ApprovalDecision | undefined>
+    delegateApproval?: (request: ToolRequest, review: ApprovalDecision | undefined) => Promise<ApprovalDecision>
     /** URL of the agent browser's current page, for the browser tool rules. */
     browserUrl?: () => string | undefined
     /**
      * Agents whose approvals never reach a person: project threads. The
-     * automatic reviewer decides for them (on the coordinator's behalf); what it
-     * does not approve goes back to the Agent with instructions to ask its
-     * coordinator, instead of waiting on someone who is not watching.
+     * automatic reviewer decides first. An undecided call is delegated to its
+     * direct parent; explicit reviewer denials remain terminal.
      */
     delegated?: (agentId: string | undefined) => boolean
   },
@@ -169,8 +169,14 @@ export function permissionGuard(
     }
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
     if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during review'
+    if (delegated && reviewed?.decision !== 'allow' && reviewed?.decision !== 'deny' && options.delegateApproval) {
+      reviewed = await options.delegateApproval(request, reviewed)
+      if (request.options.signal?.aborted) return 'Tool approval cancelled'
+      if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during approval'
+    }
     if (delegated && reviewed?.decision !== 'allow') {
       const reason = reviewed?.reason ? `: ${reviewed.reason}` : ''
+      if (options.delegateApproval) return `${request.name} was not approved${reason}. This call is finished; do not retry it unchanged. Find another way within the rules or report the remaining blocker to your coordinator.`
       return `${request.name} was not approved${reason}. Do not retry it unchanged. If it is necessary, ask your coordinator with send_thread_message (kind request), saying what you need and why; it decides, or asks the user when the call is theirs.`
     }
     if (delegated) {

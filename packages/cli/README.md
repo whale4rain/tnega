@@ -2,6 +2,13 @@
 
 CLI 命令、agent runtime 组合层、web server 与会话存储。
 
+Project Thread 的具体工具调用在自动 review 返回 `ask`（包括 reviewer 无效输出）时保持等待，
+由宿主通过 Box 自动送到直接父 Agent。父 Agent 的 `decide_thread_approval` 可以一次性批准、
+拒绝，或以 `ask-user` 转交已有的 Project 人工审批通道；普通留言不能批准调用。
+批准只恢复原调用，不提升 Session 权限或覆盖明确的 review 拒绝。请求最多等待两分钟，
+取消、Project 卸载及进程重启使旧请求失效，原调用不会自动重放。
+Session `approval/delegation` 保留请求 ID、调用 ID、父 Agent、决定及来源，已有 Session 无需迁移。
+
 Background Tasks 同时展示 Session 的 Job 与 Workspace 共享的长驻进程。
 `GET /api/processes?workspace=...` 列表、加 `process_id` 读取有界日志；
 `POST /api/processes?workspace=...` 携带 `{action:"stop",process_id:"..."}`

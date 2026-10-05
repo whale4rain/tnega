@@ -34,6 +34,14 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Project Threads now automatically route undecided tool permission requests
+  to their direct parent. The parent can approve the exact waiting call once,
+  deny it, or forward it to the user; cancellation, expiry and Project shutdown
+  invalidate the request. Decisions are audited without changing permission
+  presets or treating agent messages as human authorization.
+  Human escalation preserves the full input, and shell approval cards also
+  display working-directory and other execution parameters.
+
 - Background Tasks now also shows workspace long-lived processes in chats and
   Projects: live status, start time, refreshing logs, local URLs opening in the
   Browser workbench, and a direct Stop control that terminates the process tree.

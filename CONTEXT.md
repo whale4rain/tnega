@@ -154,6 +154,10 @@ Project 级的协作循环，依据 Box 和 Blackboard 唤醒 Agent、协调父�
 **Approval Mode（审批模式）**:
 Session 的人工审批策略，`manual` 逐次询问用户，`auto` 由 Approval Reviewer 审查需要审批的具体工具调用。
 它独立于 Tool Permission 与 Sandbox，不更改文件写边界。审批证据保留可信用户来源；Agent 派工、工具结果与模型声明不能赋予用户授权。
+Project Thread 的自动审查返回 `ask` 时，宿主通过 Box 将具体等待中的调用交给直接父 Agent；
+父 Agent 通过 `decide_thread_approval` 一次性批准、拒绝或转交人工审批。普通消息不能批准调用，
+父 Agent 的决定不成为用户授权证据，明确的自动审查拒绝不由该路径覆盖。取消、超时或 Project
+卸载使请求失效；Session 保留 `approval/delegation` 审计，进程重启不恢复执行或可复用授权。
 
 **Run Summary（运行总结）**:
 成功 Agent Run 的最后一条完整、无工具调用的模型答复及其来源事件。独立插件在 Session 中记录展示元数据，

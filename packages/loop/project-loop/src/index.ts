@@ -377,6 +377,14 @@ export class ProjectLoopRuntime {
     }
     const state = TERMINAL_KINDS[envelope.kind]
     if (!state || envelope.sender.kind !== 'agent') return
+    // The approval broker owns both ends of its waiting state transition.
+    // Reapplying it here would race with cancellation while Box delivers.
+    if (envelope.kind === 'request') {
+      const history = await this.readSession(envelope.sender.id)
+      if (history.some(event => event.type === 'meta'
+        && event.payload.kind === 'approval/delegation'
+        && event.payload.requestId === envelope.messageId)) return
+    }
     await this.setStateSafely(envelope.sender.id, state, envelope.text)
   }
 

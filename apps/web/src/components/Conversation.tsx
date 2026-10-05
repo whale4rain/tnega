@@ -835,13 +835,17 @@ function escalation(input: string): { justification?: string } | undefined {
   }
 }
 
-/** Show a shell command as `$ cmd`, other JSON inputs pretty-printed. */
+/** Keep the command readable without hiding parameters that affect execution. */
 function approvalText(input: string): string {
   try {
     const parsed: unknown = JSON.parse(input)
     if (parsed && typeof parsed === 'object') {
-      const command = (parsed as { command?: unknown }).command
-      return typeof command === 'string' ? `$ ${command}` : JSON.stringify(parsed, null, 2)
+      const command: unknown = Reflect.get(parsed, 'command')
+      if (typeof command === 'string') {
+        const parameters = Object.fromEntries(Object.entries(parsed).filter(([key]) => key !== 'command'))
+        return `$ ${command}${Object.keys(parameters).length ? `\n\n${JSON.stringify(parameters, null, 2)}` : ''}`
+      }
+      return JSON.stringify(parsed, null, 2)
     }
   } catch {
     // Plain text input.
