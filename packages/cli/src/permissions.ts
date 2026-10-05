@@ -55,9 +55,15 @@ function browserInteractionIsLocal(request: ToolRequest, pageUrl: string | undef
   return pageUrl !== undefined && isLocalUrl(normalizeBrowserUrl(pageUrl))
 }
 
+/** How an approval request ended. */
+export type ApprovalOutcome = 'allow' | 'deny' | 'timeout' | 'cancelled'
+
+/** How long a person has to answer an approval request. */
+export const APPROVAL_TIMEOUT_MS = 120_000
+
 interface PendingApproval {
   key: string
-  resolve: (allowed: boolean) => void
+  resolve: (outcome: ApprovalOutcome) => void
   timer: ReturnType<typeof setTimeout>
   signal?: AbortSignal
   onAbort: () => void
@@ -72,25 +78,30 @@ export class ApprovalBroker {
     return () => {
       this.runs.delete(key)
       for (const [id, approval] of this.pending) {
-        if (approval.key === key) this.settle(id, false)
+        if (approval.key === key) this.settle(id, 'cancelled')
       }
     }
   }
 
   decide(id: string, key: string, allow: boolean): boolean {
     if (this.pending.get(id)?.key !== key) return false
-    this.settle(id, allow)
+    this.settle(id, allow ? 'allow' : 'deny')
     return true
   }
 
-  request(key: string, request: ToolRequest, options: { fullInput?: boolean } = {}): Promise<boolean> {
+  async request(key: string, request: ToolRequest, options: { fullInput?: boolean } = {}): Promise<boolean> {
+    return await this.ask(key, request, options) === 'allow'
+  }
+
+  /** Ask a person and say how it ended: answered, unanswered in time, or cancelled. */
+  ask(key: string, request: ToolRequest, options: { fullInput?: boolean } = {}): Promise<ApprovalOutcome> {
     const emit = this.runs.get(key)
-    if (!emit || request.options.signal?.aborted) return Promise.resolve(false)
+    if (!emit || request.options.signal?.aborted) return Promise.resolve('cancelled')
     const id = randomUUID()
     return new Promise(resolve => {
       const signal = request.options.signal
-      const onAbort = (): void => this.settle(id, false)
-      const timer = setTimeout(() => this.settle(id, false), 120_000)
+      const onAbort = (): void => this.settle(id, 'cancelled')
+      const timer = setTimeout(() => this.settle(id, 'timeout'), APPROVAL_TIMEOUT_MS)
       this.pending.set(id, {
         key, resolve, timer, onAbort, ...(signal ? { signal } : {}),
       })
@@ -101,20 +112,22 @@ export class ApprovalBroker {
           id,
           tool: request.name,
           input: options.fullInput ? (JSON.stringify(request.input) ?? '') : (JSON.stringify(request.input) ?? '').slice(0, 2_000),
+          // A call a CodeMode script made: the model only called run_code.
+          ...(typeof request.options.ptcParentCallId === 'string' ? { via: 'run_code' } : {}),
         })
       } catch {
-        this.settle(id, false)
+        this.settle(id, 'cancelled')
       }
     })
   }
 
-  private settle(id: string, allow: boolean): void {
+  private settle(id: string, outcome: ApprovalOutcome): void {
     const approval = this.pending.get(id)
     if (!approval) return
     this.pending.delete(id)
     clearTimeout(approval.timer)
     approval.signal?.removeEventListener('abort', approval.onAbort)
-    approval.resolve(allow)
+    approval.resolve(outcome)
   }
 }
 
@@ -183,10 +196,16 @@ export function permissionGuard(
       return undefined
     }
     if (reviewed?.decision === 'deny') return `Automatic review denied ${request.name}: ${reviewed.reason}`
-    const allowed = reviewed?.decision === 'allow' || await approvals.request(key, request)
+    const outcome = reviewed?.decision === 'allow' ? 'allow' : await approvals.ask(key, request)
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
     if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during approval'
-    if (allowed) request.options.approvedElevation = true
-    return allowed ? undefined : `${request.name} requires human approval in ${effective} mode`
+    if (outcome === 'allow') {
+      request.options.approvedElevation = true
+      return undefined
+    }
+    if (outcome === 'timeout') {
+      return `${request.name} was not approved: nobody answered the approval request within ${APPROVAL_TIMEOUT_MS / 60_000} minutes. Do not retry it now; if it is still needed, say so in your reply so the user can approve it.`
+    }
+    return `${request.name} requires human approval in ${effective} mode`
   }
 }

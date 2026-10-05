@@ -63,6 +63,8 @@ export interface Approval {
   id: string
   tool: string
   input: string
+  /** Set when a CodeMode script made the call. */
+  via?: 'run_code'
 }
 
 export function Conversation({
@@ -293,7 +295,7 @@ export function Conversation({
     switch (event.type) {
       case 'approval/request':
         notifyDesktopWaiting(event.id)
-        setApprovals(list => [...list, { id: event.id, tool: event.tool, input: event.input }])
+        setApprovals(list => [...list, { id: event.id, tool: event.tool, input: event.input, ...(event.via ? { via: event.via } : {}) }])
         return
       case 'plan/start':
         setPlan({ items: [], status: 'pending' })
@@ -834,7 +836,7 @@ export function ApprovalCard({ approval, onAnswer }: { approval: Approval; onAns
     <div className="approval-card" role="alertdialog" aria-label="Permission request">
       <div className="approval-head">
         <ShieldQuestion size={16} />
-        <span>The agent wants to use <strong>{approval.tool}</strong></span>
+        <span>The agent wants to use <strong>{approval.tool}</strong>{approval.via === 'run_code' ? ' from a CodeMode script' : ''}</span>
       </div>
       {approval.input && <pre className="approval-input">{approvalText(approval.input)}</pre>}
       {escalation(approval.input) && (

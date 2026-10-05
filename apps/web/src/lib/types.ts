@@ -325,7 +325,7 @@ export type StreamEvent =
   | { type: 'plan/done'; plan: PlanPayload }
   | { type: 'plan/error'; message: string }
   | { type: 'run/end'; run: { output: string; finishReason: string } }
-  | { type: 'approval/request'; id: string; tool: string; input: string }
+  | { type: 'approval/request'; id: string; tool: string; input: string; via?: 'run_code' }
   | { type: 'assistant/stream' }
   | { type: 'done' }
   | { type: 'error'; message: string }

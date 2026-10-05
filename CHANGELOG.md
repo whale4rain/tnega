@@ -57,6 +57,14 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- CodeMode under the sandbox is covered end to end: every tool a `run_code`
+  script calls still asks for approval under Workspace write, a denial reaches
+  the script as an error it can handle, the call stays inside the Windows
+  sandbox, and an approved `escalate: true` call runs outside it. Approval
+  cards now say when a call came from a CodeMode script, and an approval
+  nobody answered within two minutes tells the agent so instead of reading
+  like a refusal.
+
 - An agent that ends its turn mid-task, saying what it will do next ("Let me
   run the tests:") or answering nothing, is reminded once or twice in the
   same turn to continue or give its final answer, instead of stopping with

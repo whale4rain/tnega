@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ToolRequest } from '@tnega/tools'
 
 import { ApprovalBroker, permissionGuard } from '../src/permissions.js'
@@ -145,5 +145,25 @@ it('gates fixed-home skill writes, including narrower child permissions', async 
     const child = request(name, {})
     child.options.agentId = 'child'
     expect(await writable(child)).toMatch(/approval/)
+  }
+})
+
+it('tells the model when nobody answered an approval in time, apart from a refusal', async () => {
+  vi.useFakeTimers()
+  try {
+    const approvals = new ApprovalBroker()
+    const events: Array<Record<string, unknown>> = []
+    approvals.attach('session', event => { events.push(event) })
+    const guard = permissionGuard('workspace-write', 'session', approvals, { workspace: process.cwd() })
+    const unanswered = guard(request('shell', { command: 'npm test' }))
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(await unanswered).toMatch(/^shell was not approved: nobody answered the approval request within 2 minutes/)
+    const refused = guard({ ...request('shell', { command: 'npm test' }), options: { ptcParentCallId: 'outer' } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(events.at(-1)).toMatchObject({ type: 'approval/request', tool: 'shell', via: 'run_code' })
+    approvals.decide(String(events.at(-1)!.id), 'session', false)
+    expect(await refused).toBe('shell requires human approval in workspace-write mode')
+  } finally {
+    vi.useRealTimers()
   }
 })

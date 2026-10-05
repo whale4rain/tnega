@@ -17,3 +17,11 @@ it('shows the whole shell command and the working directory before approval', ()
   expect(text).toContain('important-folder')
   expect(text).toContain('90000')
 })
+
+it('says when a CodeMode script made the call', () => {
+  const view = render(createElement(ApprovalCard, {
+    approval: { id: 'approval', tool: 'shell', input: JSON.stringify({ command: 'npm test' }), via: 'run_code' },
+    onAnswer: () => {},
+  }))
+  expect(view.getByRole('alertdialog').textContent).toContain('wants to use shell from a CodeMode script')
+})
