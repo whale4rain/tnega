@@ -154,7 +154,6 @@ function apiFetch(
 function isMessageEvent(event: { type: string }): boolean {
   return event.type === 'user/message'
     || event.type === 'assistant/message'
-    || event.type === 'system/message'
 }
 
 interface SessionDetailForTest {
@@ -323,10 +322,10 @@ describe('web server', () => {
       `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ mode: 'execute' }),
+        body: JSON.stringify({ mode: 'auto' }),
       },
     ).then(r => r.json()) as { summary: { mode: string; agentType: string } }
-    expect(patched.summary).toMatchObject({ mode: 'execute', agentType: 'coding' })
+    expect(patched.summary).toMatchObject({ mode: 'auto', agentType: 'coding' })
 
     const fork = await apiFetch(
       server.url,
@@ -335,7 +334,7 @@ describe('web server', () => {
     ).then(r => r.json()) as {
       session: { mode?: string; agentType?: string }
     }
-    expect(fork.session).toMatchObject({ mode: 'execute', agentType: 'coding' })
+    expect(fork.session).toMatchObject({ mode: 'auto', agentType: 'coding' })
   })
 
   it('forks a session with all history up to the selected user message', async () => {
@@ -1088,7 +1087,7 @@ describe('web server', () => {
       server.url,
       workspace,
       id,
-      session => session.running,
+      session => session.running && mock.requestCount() > 0,
     )
     expect(running.running).toBe(true)
 
@@ -1186,7 +1185,6 @@ describe('web server', () => {
     expect(text).toContain('event: plan/item')
     expect(text).toContain('event: plan/done')
     expect(text).toContain('Implement a greeting endpoint')
-    expect(text).toContain('event: message_start')
     expect(text).toContain('event: done')
 
     const detail = await apiFetch(
@@ -1211,15 +1209,11 @@ describe('web server', () => {
     const messages = detail.events.filter(isMessageEvent)
     const contents = messages.map(message => message.payload.content)
     expect(contents).toContain('build a greeting endpoint')
-    expect(contents).toContain(planJson)
-    const system = messages.find(message => message.type === 'system/message')
-    expect(system?.payload.content).toContain('You are Tnega')
-    expect(
-      messages.some(message => message.payload.content?.includes('<plan>') ?? false),
-    ).toBe(true)
+    expect(contents).toContain('Implement a greeting endpoint\n1. Inspect the project\n2. Add the endpoint')
+    expect(detail.events.some(message => message.type === 'system/message')).toBe(false)
   })
 
-  it('reuses the persisted plan in execute mode without regenerating it', async () => {
+  it('keeps a persisted plan when switching to auto mode without regenerating it', async () => {
     const dir = await tempDir('tnega-web-coding-execute-')
     const workspace = await mkdir(dir, 'workspace')
     const configFile = join(dir, 'config.json')
@@ -1268,23 +1262,22 @@ describe('web server', () => {
 
     const first = await run('refactor the worker')
     expect(first).toContain('event: plan/start')
-    expect(mock.requestCount()).toBe(2)
+    expect(mock.requestCount()).toBe(1)
 
     const patched = await apiFetch(
       server.url,
       `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ mode: 'execute' }),
+        body: JSON.stringify({ mode: 'auto' }),
       },
     )
     expect(patched.status).toBe(200)
 
     const second = await run('continue with the plan')
-    expect(second).toContain('event: plan/start')
-    expect(second).toContain('event: plan/items')
-    expect(second).toContain('event: plan/done')
-    expect(mock.requestCount()).toBe(3)
+    expect(second).toContain('event: message_start')
+    expect(second).not.toContain('event: plan/start')
+    expect(mock.requestCount()).toBe(2)
 
     // A resumed coding run must not double the coding system prompt: the first
     // run persisted it as a durable system/message, which already leads the
@@ -1306,7 +1299,7 @@ describe('web server', () => {
       }>
     }
     const plans = detail.events.filter(event => event.type === 'plan')
-    expect(plans.length).toBeGreaterThanOrEqual(2)
+    expect(plans).toHaveLength(1)
     expect(plans.at(-1)!.payload.items).toMatchObject([
       { id: 'plan-1', status: 'pending' },
       { id: 'plan-2', status: 'pending' },
@@ -1468,6 +1461,7 @@ describe('web server', () => {
     })
     expect(commandsBody.commands.map(command => command.name)).toEqual([
       '/plan',
+      '/goal',
       '/mode',
       '/skills',
       '/mcp',
@@ -1509,7 +1503,7 @@ describe('web server', () => {
       `/api/sessions/${id}/coding/slash?workspace=${encodeURIComponent(workspace)}`,
       {
         method: 'POST',
-        body: JSON.stringify({ name: '/mode', args: ['execute'] }),
+        body: JSON.stringify({ name: '/mode', args: ['goal'] }),
       },
     )
     expect(switched.status).toBe(200)
@@ -1517,17 +1511,17 @@ describe('web server', () => {
       mode: string
       result: { kind: string; value: { current: string; switched: boolean } }
     }
-    expect(switchedBody.mode).toBe('execute')
+    expect(switchedBody.mode).toBe('goal')
     expect(switchedBody.result).toMatchObject({
       kind: 'json',
-      value: { current: 'execute', switched: true },
+      value: { current: 'goal', switched: true },
     })
 
     const summary = await apiFetch(
       server.url,
       `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
     ).then(r => r.json()) as { summary: { mode: string } }
-    expect(summary.summary.mode).toBe('execute')
+    expect(summary.summary.mode).toBe('goal')
 
     const general = await apiFetch(
       server.url,
