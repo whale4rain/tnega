@@ -35,6 +35,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- npm publication retries now honor their scheduled delays instead of always
+  waiting five seconds, preserving the advertised 34-minute visibility window.
+
 - Release publication now uses the draft creation response directly, avoiding
   failures when GitHub's Release list has not yet reflected the new draft.
 

@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { setTimeout } from 'node:timers/promises'
+import timers from 'node:timers/promises'
 import process from 'node:process'
 import console from 'node:console'
 import { checkTag, verifyBundle, compareVersions, checkAssets } from './release-ci.mjs'
@@ -30,7 +30,7 @@ export async function publishRelease(manifest, dir, deps = {}) {
   const run = deps.run ?? command
   const json = deps.json ?? ghJson
   const npm = deps.registry ?? registry
-  const wait = deps.wait ?? (() => setTimeout(5000))
+  const wait = deps.wait ?? (delay => timers.setTimeout(delay))
   const metadata = releaseVersion(manifest.version)
   const tag = `v${manifest.version}`
   const releases = json(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]).flat()

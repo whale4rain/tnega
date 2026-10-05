@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { setImmediate } from 'node:timers/promises'
 import { checkReport, compareVersions, verifyBundle, checkAssets } from '../scripts/release-ci.mjs'
 import { publishRelease } from '../scripts/release-publish.mjs'
 
@@ -133,6 +134,30 @@ test('publisher waits through delayed npm processing before publishing the draft
   assert.equal(polls, 40)
   assert.ok(fixture.calls.some(call => call[0] === 'npm'))
   assert.ok(fixture.calls.some(call => call.includes('--draft=false')))
+})
+
+test('production wait honors each registry retry delay', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const fixture = publisherFixture()
+  delete fixture.deps.wait
+  let reads = 0
+  fixture.deps.registry = async path => {
+    if (path === 'tnega') return { 'dist-tags': { latest: fixture.manifest.version } }
+    reads++
+    return reads >= 5 ? { dist: { integrity: fixture.manifest.npmIntegrity } } : undefined
+  }
+  const publishing = publishRelease(fixture.manifest, '/fixed', fixture.deps)
+  await setImmediate()
+  assert.equal(reads, 2)
+  for (const [delay, expected] of [[5000, 3], [10000, 4], [20000, 5]]) {
+    context.mock.timers.tick(delay - 1)
+    await setImmediate()
+    assert.equal(reads, expected - 1)
+    context.mock.timers.tick(1)
+    await setImmediate()
+    assert.equal(reads, expected)
+  }
+  await publishing
 })
 test('beta publication uses preview and does not become the latest GitHub release', async () => {
   const fixture = publisherFixture({ version: '0.4.12-beta.1' })
