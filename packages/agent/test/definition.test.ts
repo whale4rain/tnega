@@ -343,8 +343,10 @@ describe('defineAgent contract', () => {
       limit: 200,
     })
     expect(compactEvents[0]!.tokensBefore).toBeGreaterThan(100)
-    expect(compactEvents[0]!.messagesAfter).toBe(1)
-    const summaryMessage = messages[0]!.at(-1)
+    // System prompt, the summary, and the user's message that started the run.
+    expect(compactEvents[0]!.messagesAfter).toBe(3)
+    expect(messages[0]!.at(-1)).toMatchObject({ role: 'user', content: longContent })
+    const summaryMessage = messages[0]!.find(message => String(message.content).includes('Earlier context was compacted.'))
     expect(summaryMessage?.role).toBe('system')
     expect(String(summaryMessage?.content)).toContain('Earlier context was compacted.')
     expect(String(summaryMessage?.content)).toContain('Tokens before compaction:')
@@ -384,17 +386,57 @@ describe('defineAgent contract', () => {
     await loop({ text: 'y'.repeat(400) })
     expect(events).toHaveLength(1)
     expect(events[0]!.keepTokens).toBe(16)
-    expect(String(messages[0]!.at(-1)?.content)).toContain('summary of 2 messages')
+    expect(messages[0]!.map(message => message.content)).toContain('summary of 2 messages')
+    expect(messages[0]!.at(-1)).toMatchObject({ role: 'user', content: 'y'.repeat(400) })
   })
 
-  it('starts compacting at 80% of the window and retains the newest 16%', async () => {
-    // 4 characters per estimated token: a 3000-character prompt plus the
-    // one-token system message lands at 751/1000, a 3400-character one at 851.
-    expect(await compactEventsFor(1000, 'x'.repeat(3000))).toHaveLength(0)
+  it('starts compacting at 75% of the window and retains the newest 16%', async () => {
+    // 4 characters per estimated token: a 2900-character prompt plus the
+    // one-token system message lands at 726/1000, a 3000-character one at 751.
+    expect(await compactEventsFor(1000, 'x'.repeat(2900))).toHaveLength(0)
 
-    const events = await compactEventsFor(1000, 'x'.repeat(3400))
+    const events = await compactEventsFor(1000, 'x'.repeat(3000))
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({ limit: 1000, keepTokens: 160 })
+  })
+
+  it('lets a run that is about to finish keep its context until the hard ratio', async () => {
+    // Each step reads a 1000-character file (250 tokens) into a 2000-token window.
+    const run = async (nearEnd: boolean) => {
+      const root = await mountRoot()
+      const tools = root.get('tools') as ToolsService
+      tools.register({ schema: { name: 'read_chunk', description: 'read' }, execute: () => 'z'.repeat(1000) })
+      const events: AgentContextCompactEvent[] = []
+      root.on('agent/context-compact', (value: AgentContextCompactEvent) => { events.push(value) })
+      let calls = 0
+      const judged: number[] = []
+      await root.plugin(defineAgent({ name: `near-end-${String(nearEnd)}`, system: 'SYS' }), {
+        llm: {
+          async complete() {
+            calls += 1
+            return calls <= 8
+              ? { finishReason: 'tool_calls', toolCalls: [{ id: `c${calls}`, name: 'read_chunk', arguments: {} }] }
+              : { content: 'done', finishReason: 'stop' }
+          },
+        },
+        contextBudget: {
+          limit: 2000,
+          nearEnd: (_messages: readonly import('@tnega/session').ModelMessage[], usage: import('@tnega/session').ContextUsage) => { judged.push(Math.round(usage.ratio * 100)); return nearEnd },
+        },
+      })
+      const loop = root.get('agentLoop') as AgentLoop
+      expect((await loop({ text: 'go' })).output).toBe('done')
+      return { events, judged }
+    }
+    const nearlyDone = await run(true)
+    // Asked once, at the first step past 75%; compacted only past 90%.
+    expect(nearlyDone.judged).toHaveLength(1)
+    expect(nearlyDone.judged[0]).toBeGreaterThanOrEqual(75)
+    expect(nearlyDone.events).toHaveLength(1)
+    expect(nearlyDone.events[0]!.tokensBefore / 2000).toBeGreaterThanOrEqual(0.9)
+
+    const midTask = await run(false)
+    expect(midTask.events[0]!.tokensBefore / 2000).toBeLessThan(0.9)
   })
 
   it('rejects invalid context budget configuration', async () => {

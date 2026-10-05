@@ -98,3 +98,13 @@ await handle.dispose()
 
 `packages/agent/test/`。agent 循环时序用 fake LLM 驱动；durable inbox 覆盖
 insert/steer/claim/restore 的崩溃重建；live 测试覆盖 resume 后自动续跑。
+
+## 上下文预算
+
+`contextBudget` 让 Agent 在每个 step 前检查上下文：达到窗口的 75%（`compactRatio`）时压缩，
+保留最新约 16% 原文（`keepTokens` 默认 `limit × 0.16`），其余换成 `summarize` 给出的摘要；
+本 step 尚未写入 Session 的输入（新的用户消息）总是保留在摘要之后。Run 中途（step > 0）越过
+75% 时，若提供了 `nearEnd`，每个 Run 只询问一次「是否即将结束」：即将结束则保留完整上下文直到
+`hardRatio`（默认 90%）才压缩，下一个 Run 开始时再压缩。Web 端常驻会话由
+`packages/cli/src/auto-compaction.ts` 用同一模型写摘要并判断是否即将结束。
+

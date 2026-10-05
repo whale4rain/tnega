@@ -57,6 +57,14 @@ compare links provide a convenient browser view of the boundaries.
   native `<select>` lists its options and points to `browser_select_option`
   instead of opening an OS popup the agent cannot see.
 
+- Long Web sessions compact themselves: past 75% of the context window the
+  agent first asks the model whether the run is about to finish; if it is,
+  the full context is kept until 90% so the answer is not written from a
+  summary, otherwise the session compacts at once, keeping the newest 16% of
+  the conversation word for word. Automatic compaction (also in the CLI) now
+  keeps the user's new message after the summary; before, a compaction at
+  the start of a run dropped it from that run's requests.
+
 - Skill installs and web requests work behind a proxy and with fake-IP DNS:
   the HTTP tools follow `HTTPS_PROXY` / `HTTP_PROXY` (and, in the desktop
   app, the system proxy) or a proxy set in Settings → Tools & shell →

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 
 import {
   DEFAULT_CONTEXT_COMPACT_RATIO,
+  DEFAULT_CONTEXT_HARD_RATIO,
   DEFAULT_CONTEXT_LIMIT,
   DEFAULT_CONTEXT_RETAIN_RATIO,
   estimateContextUsage,
@@ -529,6 +530,8 @@ export class AgentService {
     }
 
     let index = 0
+    // Whether this run was judged near its end when it crossed the compact ratio.
+    const budgetState: { nearEnd?: boolean } = {}
     let finalTurnGranted = false
     let currentStepIndex: number | undefined
     let turnError: unknown
@@ -543,7 +546,7 @@ export class AgentService {
         break
       }
       if (contextBudget) {
-        messages = await this._enforceContextBudget(session, contextBudget, messages, llm)
+        messages = await this._enforceContextBudget(session, contextBudget, messages, llm, index, budgetState)
       }
 
       const stepInput = copyMessages(messages)
@@ -972,15 +975,38 @@ export class AgentService {
     session: SessionLog,
     budget: AgentContextBudget,
     messages: readonly ModelMessage[],
-    llm?: LLMAdapter,
+    llm: LLMAdapter | undefined,
+    step: number,
+    state: { nearEnd?: boolean },
   ): Promise<ModelMessage[]> {
     const limit = budget.limit ?? DEFAULT_CONTEXT_LIMIT
     const compactRatio = budget.compactRatio ?? DEFAULT_CONTEXT_COMPACT_RATIO
+    const hardRatio = Math.max(compactRatio, budget.hardRatio ?? DEFAULT_CONTEXT_HARD_RATIO)
     if (limit <= 0 || compactRatio <= 0 || compactRatio > 1) {
       throw new AgentError('invalid context budget: limit must be positive and compactRatio must be in (0, 1]')
     }
     const usage = estimateContextUsage(messages, limit)
     if (usage.ratio < compactRatio) return copyMessages(messages)
+    // Between steps of a run, a run that is about to finish keeps its context
+    // until the hard ratio. A new run (step 0) always starts compacted.
+    if (step > 0 && usage.ratio < hardRatio && budget.nearEnd) {
+      if (state.nearEnd === undefined) {
+        try {
+          state.nearEnd = await budget.nearEnd(copyMessages(messages), usage)
+        } catch (error) {
+          this.ctx.logger.warn(`context near-end check failed, compacting: ${String(error)}`)
+          state.nearEnd = false
+        }
+      }
+      if (state.nearEnd) return copyMessages(messages)
+    }
+    // Messages already in the Session are what compaction replaces or keeps;
+    // input this step has not persisted yet (the new user message) stays.
+    const persisted = await session.deriveMessages()
+    const head = messages[0]?.role === 'system' && persisted[0]?.role !== 'system' ? 1 : 0
+    const pending = canonicalMessages(messages.slice(head, head + persisted.length)) === canonicalMessages(persisted)
+      ? messages.slice(head + persisted.length)
+      : undefined
     const keepTokens = budget.keepTokens
       ?? Math.max(1, Math.floor(limit * DEFAULT_CONTEXT_RETAIN_RATIO))
     const compactMessages = budget.summarize
@@ -1006,15 +1032,20 @@ export class AgentService {
         this.ctx.logger.warn(`project memory update failed after compaction: ${String(error)}`)
       }
     }
+    // The request continues from the compacted Session: the summary, the
+    // retained tail, then the input not yet persisted.
+    const next = pending
+      ? [...copyMessages(messages.slice(0, head)), ...await session.deriveMessages(), ...copyMessages(pending)]
+      : compactMessages.map(message => copyMessages([message])[0]!)
     this.ctx.emit('agent/context-compact', {
       type: 'agent/context-compact',
       messagesBefore: messages.length,
       tokensBefore: usage.tokens,
       limit,
       keepTokens,
-      messagesAfter: compactMessages.length,
+      messagesAfter: next.length,
     })
-    return compactMessages.map(message => copyMessages([message])[0]!)
+    return next
   }
 
   private async _persistStepInput(

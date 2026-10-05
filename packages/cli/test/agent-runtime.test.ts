@@ -232,8 +232,10 @@ describe('createAgentRuntime composition', () => {
         messagesBefore: 1,
         limit: 100,
       })
-      expect(String(calls[1]!.messages.at(-1)?.content))
+      // The summary replaces the history; the user's message that started the run stays last.
+      expect(calls[1]!.messages.map(message => String(message.content)).join('\n'))
         .toContain('Earlier context was compacted.')
+      expect(calls[1]!.messages.at(-1)).toMatchObject({ role: 'user', content: 'z'.repeat(400) })
       expect(await readFile(join(dir, '.tnega', 'MEMORY.md'), 'utf8'))
         .toContain('- Use pnpm')
     } finally {

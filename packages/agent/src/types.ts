@@ -159,10 +159,29 @@ export type AgentNextStepClaimer = () => Promise<readonly AgentInput[]>
 
 export interface AgentContextBudget {
   limit?: number
+  /** Share of the window at which compaction is considered (default 0.75). */
   compactRatio?: number
+  /**
+   * Share of the window at which a run compacts even when `nearEnd` says it is
+   * about to finish (default 0.9), so one more long tool result cannot
+   * overflow the window.
+   */
+  hardRatio?: number
   keepTokens?: number
   summarize?: AgentContextSummarizer
+  /**
+   * Asked once per Agent Run when it crosses `compactRatio` between steps:
+   * whether the work is about to finish. A run that is nearly done keeps its
+   * full context (compacting would cost a summary and lose detail just before
+   * the answer) until `hardRatio`; the next run starts with a compaction.
+   */
+  nearEnd?: AgentContextNearEndJudge
 }
+
+export type AgentContextNearEndJudge = (
+  messages: readonly ModelMessage[],
+  usage: ContextUsage,
+) => boolean | Promise<boolean>
 
 export type AgentContextSummarizer = (
   messages: readonly ModelMessage[],

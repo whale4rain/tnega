@@ -541,7 +541,13 @@ export const DEFAULT_CONTEXT_LIMIT = 128_000
  * the context window — a band of headroom wide enough that one long tool
  * result cannot push a step past the limit before compaction gets a chance.
  */
-export const DEFAULT_CONTEXT_COMPACT_RATIO = 0.8
+export const DEFAULT_CONTEXT_COMPACT_RATIO = 0.75
+
+/**
+ * A run that is about to finish may defer compaction past the compact ratio,
+ * but never past this fraction of the window.
+ */
+export const DEFAULT_CONTEXT_HARD_RATIO = 0.9
 
 /**
  * Fraction of the context window kept verbatim when compacting: the most recent
