@@ -59,12 +59,14 @@ export const RUNNER_FAILURE_PREFIX = 'windows-acl-run: '
 /**
  * 本后端的「权限拒绝」方言：受限命令被 ACL 拒绝时 stderr 里会出现的**小写**子串。
  *
- * 按小写给出，匹配时做大小写不敏感的子串比较（cmd 说 "Access is denied."，pwsh/.NET 说
+ * 按小写给出，匹配时做大小写不敏感的子串比较（英文 cmd 说 "Access is denied."，
+ * 简体中文 cmd 说“拒绝访问”，pwsh/.NET 说
  * "Access to the path '...' is denied."，Node 说 "permission denied"）。不得把跨后端的
  * 并集当成本后端的方言，否则会把「runner 坏了」误判成「被策略拒绝」。
  */
 export const DENIAL_SIGNATURES: readonly string[] = [
   'access is denied',
+  '拒绝访问',
   'access to the path',
   'permission denied',
 ]

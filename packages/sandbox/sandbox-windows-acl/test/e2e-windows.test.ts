@@ -9,7 +9,7 @@
  * 3. read-only 下 workspace 之内也**不可写**（没有能力 SID 就没有写权限）。
  *
  * 用 `cmd` 而不是 pwsh：`cmd.exe` 在任何 Windows 上都在，不引入额外跳过条件；被拒绝时的
- * 文案（"Access is denied."）同时用来核对本包导出的 DENIAL_SIGNATURES。`cmd /c` 的命令文本
+ * 文案（含系统语言的“拒绝访问”）同时用来核对本包导出的 DENIAL_SIGNATURES。`cmd /c` 的命令文本
  * 还必须原样传给它（见 runner 里 buildCommandLine 的 cmd 特例），所以引号与重定向形态单独
  * 覆盖了一组回归用例。
  */
@@ -87,10 +87,9 @@ describe.skipIf(!e2eReady)('runner end-to-end under the real restricted token', 
     expect(program).toBe(process.execPath)
     const result = spawnSync(program ?? process.execPath, [...prefix, ...args], {
       cwd,
-      encoding: 'utf8',
       timeout: 30_000,
     })
-    return { status: result.status, output: `${result.stdout}${result.stderr}` }
+    return { status: result.status, output: `${decodeOutput(result.stdout)}${decodeOutput(result.stderr)}` }
   }
 
   /** 本机是否有可用的 Windows PowerShell（功能探测，不是 where.exe）。 */
