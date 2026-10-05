@@ -101,7 +101,8 @@ on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://d
 
    ```bash
    git tag v0.4.13
-   git push origin main v0.4.13
+   git push origin main
+   git push origin v0.4.13
    ```
 
    This example is a future release; use the version actually prepared. The
