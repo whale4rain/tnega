@@ -875,6 +875,7 @@ export class AgentService {
             ? 'error'
             : 'stop'
         const keepGoing = await this.ctx.serial('agent/turn-stopping', {
+          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
           index,
           turn,
           steps: copySteps(steps),

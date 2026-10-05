@@ -280,6 +280,8 @@ export type AgentRequestRetryDecision =
   | undefined
 
 export interface AgentTurnStoppingEvent {
+  /** The live Agent whose turn is stopping, when it has an identity. */
+  agentId?: string
   index: number
   turn?: number
   steps: readonly AgentStep[]

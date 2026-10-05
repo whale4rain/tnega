@@ -5,6 +5,7 @@ import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   agents,
+  continuationNudge,
   type DurableInbox,
   type AgentCreationOptions,
   type AgentHandle,
@@ -1417,6 +1418,8 @@ async function createResidentRuntime(
   }
   fibers.push(await root.plugin(agents))
   fibers.push(await root.plugin(runSummary))
+  // A turn that stops on "Let me run the tests:" is steered back to work.
+  fibers.push(await root.plugin(continuationNudge))
   const toolService = root.get('tools') as ToolsService
   const registry = root.get('agents') as AgentRegistry
   fibers.push(await root.plugin(jobsLocal))

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { agents, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
+import { agents, continuationNudge, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import { artifactLocal } from '@tnega/artifact-local'
 import type { ArtifactStore } from '@tnega/artifact-store'
 import { blackboardLocal } from '@tnega/blackboard-local'
@@ -571,6 +571,7 @@ export class ProjectHost {
     const registry = ctx.get('agents') as AgentRegistry
     await ctx.plugin(jobsLocal)
     await ctx.plugin(toolJobs, { resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session })
+    await ctx.plugin(continuationNudge)
     const threads = ctx.get('threads') as ThreadService
     const toolService = ctx.get('tools') as ToolsService
     // Review first with trusted room evidence; an undecided call waits on its
