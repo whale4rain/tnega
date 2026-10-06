@@ -90,13 +90,18 @@ export function checkBalancedSteps(events: readonly SessionEvent[]): SessionInva
 /** Balanced `tool/call` ↔ `tool/result` per call id. */
 export function checkBalancedToolCalls(events: readonly SessionEvent[]): SessionInvariantFailure[] {
   const open = new Set<string>()
+  const declared = new Set<string>()
   const failures: SessionInvariantFailure[] = []
   for (const event of events) {
+    if (event.type === 'assistant/message') {
+      for (const call of event.payload.toolCalls ?? []) declared.add(call.id)
+    }
     if (event.type === 'tool/call') {
       open.add(event.payload.id)
     } else if (event.type === 'tool/result') {
       const payload = event.payload as ToolResultPayload
       const id = payload.toolCallId
+      declared.delete(id)
       if (!open.delete(id)) {
         failures.push({
           name: 'tool/result-without-call',
@@ -109,6 +114,12 @@ export function checkBalancedToolCalls(events: readonly SessionEvent[]): Session
     failures.push({
       name: 'tool/call-without-result',
       detail: `tool/call ${id} has no matching tool/result`,
+    })
+  }
+  for (const id of declared) {
+    if (!open.has(id)) failures.push({
+      name: 'assistant/tool-call-without-result',
+      detail: `assistant declared call ${id} has no matching tool/result`,
     })
   }
   return failures

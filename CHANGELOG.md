@@ -38,6 +38,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Reopening an interrupted Session closes all assistant-declared tool calls,
+  including calls not yet started, with visible failures instead of leaving
+  unresolved model history. Tools may declare retry or confirmation guidance;
+  recovery never automatically replays side effects and repeated reopen is stable.
+
 - Tool calls now reject invalid array members, undeclared properties when forbidden,
   and declared numeric/string/array bounds before execution. Failures remain visible
   in the Session and model context so the model can correct the next call.

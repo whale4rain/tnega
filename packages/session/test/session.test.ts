@@ -711,6 +711,39 @@ describe('SessionLog lifecycle and repair', () => {
     })
   })
 
+  it('closes every assistant-declared call after interruption and remains stable on reopen', async () => {
+    const file = await tempFile('declared-calls.jsonl')
+    const writer = new SessionLog(file)
+    await writer.init()
+    await writer.append('turn/start', { turn: 1 })
+    await writer.append('step/start', { turn: 1, step: 0 })
+    await writer.append('assistant/message', { content: '', toolCalls: [
+      { id: 'done', name: 'read', arguments: {} },
+      { id: 'running', name: 'write', arguments: { path: 'a' } },
+      { id: 'pending', name: 'shell', arguments: { command: 'build' }, interruption: 'confirm' },
+    ] })
+    await writer.append('tool/call', { id: 'done', name: 'read', arguments: {} })
+    await writer.append('tool/result', { id: 'done', toolCallId: 'done', name: 'read', ok: true, output: 'ok' })
+    await writer.append('tool/call', { id: 'running', name: 'write', arguments: { path: 'a' } })
+    await writer.close()
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    const events = await reopened.read()
+    expect(checkSessionInvariants(events)).toEqual([])
+    const results = events.filter(event => event.type === 'tool/result')
+    expect(results.map(event => event.payload.toolCallId)).toEqual(['done', 'running', 'pending'])
+    expect(results.slice(1).every(event => !event.payload.ok && event.payload.error?.name === 'SessionInterruptedError')).toBe(true)
+    expect(results[2]?.payload.error?.message).toContain('confirm the prior effect')
+    expect(await reopened.deriveMessages()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'tool', tool_call_id: 'pending' }),
+    ]))
+    await reopened.close()
+    const again = new SessionLog(file)
+    await again.init()
+    expect(await again.read()).toEqual(events)
+    await again.close()
+  })
+
   it('does not synthesize closures while a live writer owns the log', async () => {
     const file = await tempFile('live-reader.jsonl')
     const writer = new SessionLog(file)

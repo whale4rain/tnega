@@ -64,6 +64,8 @@ export interface ToolDefinition {
    * abort and reach quiescence. A tool that declares none runs without one.
    */
   timeoutMs?: number
+  /** Restart disposition; no tool is automatically replayed after interruption. */
+  interruption?: 'fail' | 'retry' | 'confirm'
 }
 
 export interface ToolError {

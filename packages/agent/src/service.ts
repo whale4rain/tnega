@@ -766,6 +766,7 @@ export class AgentService {
             id: call.id,
             name: call.name,
             arguments: call.arguments,
+            interruption: availableTools.find(tool => tool.schema.name === call.name)?.interruption ?? 'fail',
           })),
           ...settledMeta(),
         })
@@ -777,6 +778,7 @@ export class AgentService {
           id: call.id,
           name: call.name,
           arguments: call.arguments,
+          interruption: availableTools.find(tool => tool.schema.name === call.name)?.interruption ?? 'fail',
         })
         const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string } = { callId: call.id }
         if (this.config.agentId) toolOptions.agentId = this.config.agentId

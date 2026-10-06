@@ -103,6 +103,11 @@ provider/model/contextWindow。它们都是 log-only 事件（不产生 LLM 消�
 
 ## 持久化与崩溃恢复
 
+恢复同时扫描 `assistant/message.toolCalls`，未开始的调用补写调用意图与失败结果。
+Tools 可声明 `interruption: 'fail' | 'retry' | 'confirm'`（默认 `fail`）；Agent 将处置
+写入声明与调用记录。恢复总是闭合为失败，retry/confirm 只提供后续重试指导，绝不自动重放副作用。
+该可选元数据兼容现有 v10 日志，无需迁移。
+
 `SessionLog` 是内存事实层：`append()` 同步提交并广播 `session/event`，
 底层异步批量写入 JSONL（`flush()` 冲刷）。`repairUnclosed()` 在加载时
 为撕裂的 `tool/call`/`step/start`/`turn/start` 补写失败闭合事件，保证

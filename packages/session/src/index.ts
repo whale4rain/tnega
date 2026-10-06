@@ -63,6 +63,8 @@ export interface ModelToolCall {
   id: string
   name: string
   arguments: unknown
+  /** Harness recovery hint, persisted with the call intent. Defaults to fail. */
+  interruption?: 'fail' | 'retry' | 'confirm'
 }
 
 /** Image formats every supported provider accepts inline. */
@@ -222,6 +224,7 @@ export interface ToolCallPayload {
   id: string
   name: string
   arguments: unknown
+  interruption?: 'fail' | 'retry' | 'confirm'
   /** Exact raw arguments JSON as produced by the model; preserves serialization. */
   argRaw?: string
   turn?: number
@@ -717,7 +720,9 @@ export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
       if (!event.payload.content && !(toolCalls && toolCalls.length)) return null
       const message: ModelMessage = { role: 'assistant', content: event.payload.content }
       if (event.payload.name) message.name = event.payload.name
-      if (toolCalls?.length) message.tool_calls = clone(toolCalls)
+      if (toolCalls?.length) message.tool_calls = toolCalls.map(call => ({
+        id: call.id, name: call.name, arguments: clone(call.arguments),
+      }))
       return message
     }
     case 'tool/result': {
@@ -1134,19 +1139,25 @@ export function repairUnclosed(
   events: readonly SessionEvent[],
 ): SessionEvent[] {
   const openCalls: Extract<SessionEvent, { type: 'tool/call' }>[] = []
+  const declaredCalls = new Map<string, ModelToolCall>()
+  const recordedCalls = new Set<string>()
   const openSteps: Extract<SessionEvent, { type: 'step/start' }>[] = []
   const openTurns: Extract<SessionEvent, { type: 'turn/start' }>[] = []
   for (const event of events) {
     switch (event.type) {
+      case 'assistant/message':
+        for (const call of event.payload.toolCalls ?? []) declaredCalls.set(call.id, call)
+        break
       case 'tool/call':
+        recordedCalls.add(event.payload.id)
         openCalls.push(event)
         break
       case 'tool/result': {
+        declaredCalls.delete(event.payload.toolCallId)
         const callIndex = openCalls.findIndex(
           call => call.payload.id === event.payload.toolCallId,
         )
         if (callIndex >= 0) openCalls.splice(callIndex, 1)
-        else openCalls.pop()
         break
       }
       case 'step/start':
@@ -1164,7 +1175,7 @@ export function repairUnclosed(
     }
   }
 
-  if (!openCalls.length && !openSteps.length && !openTurns.length) return []
+  if (!openCalls.length && !declaredCalls.size && !openSteps.length && !openTurns.length) return []
 
   const synthetic: SessionEvent[] = []
   let nextSeq = (events.at(-1)?.seq ?? 0) + 1
@@ -1181,6 +1192,12 @@ export function repairUnclosed(
     nextTs += 1
   }
 
+  for (const call of declaredCalls.values()) {
+    if (recordedCalls.has(call.id)) continue
+    const payload: ToolCallPayload = { id: call.id, name: call.name, arguments: call.arguments, interruption: call.interruption ?? 'fail' }
+    push('tool/call', payload)
+    openCalls.push({ id: '', seq: 0, ts: 0, type: 'tool/call', payload })
+  }
   for (const call of openCalls) {
     push('tool/result', {
       id: call.payload.id,
@@ -1189,7 +1206,10 @@ export function repairUnclosed(
       ok: false,
       error: {
         name: 'SessionInterruptedError',
-        message: 'session interrupted before tool result was recorded',
+        message: 'session interrupted before tool result was recorded; '
+          + (call.payload.interruption === 'retry' ? 'a new call may retry this tool'
+            : call.payload.interruption === 'confirm' ? 'confirm the prior effect with the user before retrying'
+              : 'the call failed and was not replayed'),
       },
     })
   }
