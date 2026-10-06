@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 
-afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetModules() })
 
 function fakeAudio() {
   const tones: Array<{ frequency: number; start: number; stop: number }> = []

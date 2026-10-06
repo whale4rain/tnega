@@ -56,6 +56,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Desktop completion sounds use the native application window's focus state,
+  so focusing the embedded Browser panel also keeps the application silent.
+
 - Reopening an interrupted Session closes all assistant-declared tool calls,
   including calls not yet started, with visible failures instead of leaving
   unresolved model history. Tools may declare retry or confirmation guidance;

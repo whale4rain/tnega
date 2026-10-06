@@ -67,9 +67,9 @@ function isTrustedSender(senderUrl: string): boolean {
 }
 
 function installDesktopHandlers(): void {
-  ipcMain.on('tnega:completion', (event, outcome: unknown) => {
-    if (!isTrustedSender(event.senderFrame?.url ?? '')) return
-    completion?.notify(outcome)
+  ipcMain.handle('tnega:completion', (event, outcome: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return false
+    return completion?.notify(outcome) ?? false
   })
   ipcMain.handle('tnega:pick-folder', async event => {
     if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined

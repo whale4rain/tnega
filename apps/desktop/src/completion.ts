@@ -27,10 +27,11 @@ export function installCompletionNotice<Icon>(window: CompletionWindow<Icon>, ic
   }
   window.on('focus', clear)
   return {
-    notify(outcome: unknown): void {
-      if ((outcome !== 'completed' && outcome !== 'failed' && outcome !== 'waiting') || window.isDestroyed()) return
-      if (window.isFocused()) return
+    notify(outcome: unknown): boolean {
+      if ((outcome !== 'completed' && outcome !== 'failed' && outcome !== 'waiting') || window.isDestroyed()) return false
+      if (window.isFocused()) return false
       if (platform === 'win32') window.setOverlayIcon(icons[outcome], DESCRIPTION[outcome])
+      return true
     },
     dispose(): void {
       window.removeListener('focus', clear)

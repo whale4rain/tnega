@@ -35,7 +35,9 @@ from the taskbar while the local runtime continues running in the notification
 area. Click the tray icon or choose **Show Tnega** to restore it. Choose
 **Exit Tnega** from the tray menu to shut down the local runtime.
 
-Session completion plays a soft two-note chime from the app itself (not the
+Session completion plays a soft two-note chime only while the native application
+window is unfocused, including when focus moves into the embedded Browser.
+The sound comes from the app itself (not the
 system "ding"). When the window is not focused, Windows shows a small weather
 badge on the taskbar icon: rain drops for a ready reply, lightning for a failed
 run and a snowflake when a question waits. The button does not flash. Focusing

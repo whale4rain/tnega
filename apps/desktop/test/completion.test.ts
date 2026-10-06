@@ -29,10 +29,12 @@ it('ignores invalid IPC payloads, closed windows and focused windows', () => {
     setOverlayIcon: vi.fn(), on: vi.fn(), removeListener: vi.fn(),
   }
   const notice = installCompletionNotice(window, { completed: 'rain.png', failed: 'storm.png', waiting: 'snow.png' }, 'win32')
-  notice.notify({ outcome: 'completed' })
-  notice.notify('completed')
+  expect(notice.notify({ outcome: 'completed' })).toBe(false)
+  expect(notice.notify('completed')).toBe(false)
   window.isFocused.mockReturnValue(false)
+  expect(notice.notify('completed')).toBe(true)
+  window.setOverlayIcon.mockClear()
   window.isDestroyed.mockReturnValue(true)
-  notice.notify('failed')
+  expect(notice.notify('failed')).toBe(false)
   expect(window.setOverlayIcon).not.toHaveBeenCalled()
 })

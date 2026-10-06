@@ -20,8 +20,9 @@ let shared: AudioContext | undefined
 let lastNotice = -Infinity
 
 /** Foreground work is silent; coalesce simultaneous completion notices. */
-export function playNoticeChime(kind: ChimeKind): void {
-  if (typeof document === 'undefined' || (document.visibilityState === 'visible' && document.hasFocus())) return
+export function playNoticeChime(kind: ChimeKind, background?: boolean): void {
+  if (background === false) return
+  if (background === undefined && (typeof document === 'undefined' || (document.visibilityState === 'visible' && document.hasFocus()))) return
   const now = Date.now()
   if (now - lastNotice < 1000) return
   lastNotice = now
