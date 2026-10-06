@@ -71,6 +71,8 @@ export interface BoxEnvelope {
   placement: BoxPlacement
   kind: BoxMessageKind
   text: string
+  /** Trusted user correction: enqueue durably, then interrupt the current Run. */
+  interrupt?: boolean
   /** 随消息带上的产物引用，不复制内容。 */
   refs: ArtifactRef[]
   /** 派工卡片指向的 Thread。 */
@@ -86,6 +88,7 @@ export interface BoxSendInput {
   placement: BoxPlacement
   kind: BoxMessageKind
   text: string
+  interrupt?: boolean
   refs?: ArtifactRef[]
   threadId?: string
   causationId?: string
@@ -172,6 +175,7 @@ export interface NormalizedBoxSend {
   placement: BoxPlacement
   kind: BoxMessageKind
   text: string
+  interrupt?: boolean
   refs: ArtifactRef[]
   /** 缺省时由 Provider 生成。 */
   messageId?: string
@@ -195,6 +199,12 @@ export function normalizeSend(input: BoxSendInput): NormalizedBoxSend {
     throw new BoxError(`unknown box message kind: ${String(input.kind)}`, 'BOX_INVALID')
   }
   const text = typeof input.text === 'string' ? input.text : ''
+  if (input.interrupt !== undefined && typeof input.interrupt !== 'boolean') {
+    throw new BoxError('interrupt must be a boolean', 'BOX_INVALID')
+  }
+  if (input.interrupt && (sender.kind !== 'user' || !['user-message', 'user-thread'].includes(input.kind))) {
+    throw new BoxError('only direct user messages can interrupt an Agent Run', 'BOX_INVALID')
+  }
   const refs = normalizeRefs(input.refs)
   if (!text.trim() && !refs.length) {
     throw new BoxError('box message needs text or at least one ref', 'BOX_INVALID')
@@ -214,6 +224,7 @@ export function normalizeSend(input: BoxSendInput): NormalizedBoxSend {
     placement: normalizePlacement(input.placement),
     kind: input.kind as BoxMessageKind,
     text,
+    ...(input.interrupt ? { interrupt: true } : {}),
     refs,
     ...(input.messageId !== undefined ? { messageId: input.messageId.trim() } : {}),
     ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),

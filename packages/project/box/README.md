@@ -32,6 +32,10 @@ Project 内消息通道的 **Service Definition**：拥有 `ctx.box`。
 
 ## 事件面
 
+用户的 `user-message` / `user-thread` 信封可携带可选 `interrupt: true`。
+Project Loop 将该输入先持久写入 inbox，再取消收件 Agent 当前 Run；普通消息保持异步。
+Agent 发送的信封不能声明此用户控制动作。字段缺省时行为与旧历史相同，已有记录无需迁移。
+
 `send` 是基类上的模板方法，落盘成功后统一派发只读的 `box/sent`（`{ envelope }`）。
 Provider 只实现 `runSend`，因此任何 Provider 都自动参与该事件。观察者失败被吞掉 ——
 事件用来观察**已落盘的信封**，不用来改写投递结果。Project Loop 靠它唤醒收件 Agent，

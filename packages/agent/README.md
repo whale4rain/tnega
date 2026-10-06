@@ -6,6 +6,9 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
 
 ## 核心概念
 
+`LiveAgent.interrupt(input)` 先将纠正持久写入下一轮 inbox，再取消当前 Agent Run，
+保留此前已接收的输入。`steer` 仍只在安全 step 边界插入；单独 `cancel` 默认清空待处理 inbox。
+
 - **turn / step 状态机**：一次 run 从认领一批输入开始，`turn/start → step/start →
   user/message → assistant/* → tool/* → step/end` 可重复多轮，直到不再欠任何东西才
   `turn/end`。一条用户消息 ≠ 一次模型请求。

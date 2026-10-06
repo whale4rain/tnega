@@ -47,6 +47,9 @@ compare links provide a convenient browser view of the boundaries.
 - Project and Thread composers keep asynchronous sending available during a run,
   alongside a separate Stop button and Interrupt and send for immediate corrections.
   Replies to a Thread control that Thread rather than the coordinator.
+- Explicit Project corrections are saved through Box and enqueued before cancelling
+  the current Agent Run, preserving pending input and preventing old queued messages
+  from restarting work without the correction. Only direct user messages can interrupt.
 
 ## [0.4.17](https://github.com/whale4rain/tnega/releases/tag/v0.4.17) — 2026-10-06
 

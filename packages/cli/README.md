@@ -13,6 +13,11 @@ Project Thread 的具体工具调用在自动 review 返回 `ask`（包括 revie
 取消、Project 卸载及进程重启使旧请求失效，原调用不会自动重放。
 Session `approval/delegation` 保留请求 ID、调用 ID、父 Agent、决定及来源，已有 Session 无需迁移。
 
+Project 主对话和 Thread 输入框允许运行中异步发送，并分别提供 Stop 与 Interrupt and send。
+主对话 Stop 只取消协调者，其他 Thread 继续运行；Pause all work 仍取消所有正在运行的 Agent。
+两个消息 API 可携带可选布尔 `interrupt: true`，纠正通过 Box 持久投递后中断目标当前 Run，
+保留此前已接收的输入。普通消息仍等安全 step 边界；取消不回滚已经完成的工具效果。
+
 Background Tasks 同时展示 Session 的 Job 与 Workspace 共享的长驻进程。
 `GET /api/processes?workspace=...` 列表、加 `process_id` 读取有界日志；
 `POST /api/processes?workspace=...` 携带 `{action:"stop",process_id:"..."}`

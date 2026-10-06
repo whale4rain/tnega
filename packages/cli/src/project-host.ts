@@ -264,7 +264,7 @@ export class ProjectHost {
   }
 
   /** 主对话发言：送协调者 inbox，UI 立刻显示已接收，不等模型回复。 */
-  async sendUserMessage(projectId: string, text: string, replyTo?: string): Promise<BoxEnvelope> {
+  async sendUserMessage(projectId: string, text: string, replyTo?: string, interrupt = false): Promise<BoxEnvelope> {
     const project = await this.mount(projectId)
     // 回复只认主对话里真实存在的消息；找不到就当作普通发言，而不是挂一个悬空引用。
     const source = replyTo
@@ -275,6 +275,7 @@ export class ProjectHost {
       recipients: [agentAddress(project.record.coordinatorId)],
       placement: { kind: 'main' },
       kind: 'user-message',
+      ...(interrupt ? { interrupt: true } : {}),
       text,
       ...(source ? { causationId: source.messageId } : {}),
     })
@@ -284,7 +285,7 @@ export class ProjectHost {
    * 直接给某个 Thread 留言。协调者另收一条可追溯的活动通知，而不是把用户的话当成自己的
    * 指令塞进协调者的 inbox；通知只进它的上下文、不唤醒它，也不出现在主对话里。
    */
-  async sendThreadMessage(projectId: string, threadId: string, text: string): Promise<BoxEnvelope> {
+  async sendThreadMessage(projectId: string, threadId: string, text: string, interrupt = false): Promise<BoxEnvelope> {
     const project = await this.mount(projectId)
     const thread = await project.threads.get(threadId)
     if (!thread) throw new Error(`thread not found: ${threadId}`)
@@ -293,6 +294,7 @@ export class ProjectHost {
       recipients: [agentAddress(threadId)],
       placement: { kind: 'thread', threadId },
       kind: 'user-thread',
+      ...(interrupt ? { interrupt: true } : {}),
       text,
     })
     if (threadId !== project.record.coordinatorId) {

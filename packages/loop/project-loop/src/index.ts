@@ -356,7 +356,9 @@ export class ProjectLoopRuntime {
         }
         const quiet = this.known.get(threadId)?.parentId === undefined
           && QUIET_FOR_COORDINATOR.has(envelope.kind)
-        if (quiet) await agent.inject(input)
+        if (envelope.interrupt && envelope.sender.kind === 'user'
+          && (envelope.kind === 'user-message' || envelope.kind === 'user-thread')) await agent.interrupt(input)
+        else if (quiet) await agent.inject(input)
         else if (agent.status === 'running') await agent.steer(input)
         else await agent.followup(input)
         await agent.session.flush()

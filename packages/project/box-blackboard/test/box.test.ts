@@ -31,6 +31,25 @@ async function mount(): Promise<Context> {
   return root
 }
 
+it('persists user interruption intent and rejects Agent attempts to interrupt', async () => {
+  const root = await mount()
+  try {
+    const envelope = await root.box.send({
+      sender: USER_ADDRESS, recipients: [coordinator], placement: { kind: 'main' },
+      kind: 'user-message', text: 'Change direction', interrupt: true,
+    })
+    expect(envelope.interrupt).toBe(true)
+    expect((await root.box.inbox(coordinator))[0]?.interrupt).toBe(true)
+    await expect(root.box.send({
+      sender: coordinator, recipients: [coordinator], placement: { kind: 'main' },
+      kind: 'dispatch', text: 'Stop the other Agent', interrupt: true,
+    })).rejects.toMatchObject({ code: 'BOX_INVALID' })
+    expect(await root.box.timeline()).toHaveLength(1)
+  } finally {
+    await root.fiber.dispose()
+  }
+})
+
 it('writes the envelope and one delivery per recipient in one commit', async () => {
   const root = await mount()
   try {

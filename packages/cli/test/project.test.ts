@@ -230,6 +230,14 @@ it('rejects malformed project requests without touching the store', async () => 
     { method: 'POST', body: JSON.stringify({ text: '' }) },
   )
   expect(noText.status).toBe(400)
+  for (const path of ['messages', 'threads/11111111-1111-4111-8111-111111111111/messages']) {
+    const badInterrupt = await apiFetch(server.url,
+      `/api/projects/22222222-2222-4222-8222-222222222222/${path}?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: JSON.stringify({ text: 'Correct the direction', interrupt: 'true' }) },
+    )
+    expect(badInterrupt.status).toBe(400)
+    expect(await badInterrupt.json()).toMatchObject({ error: 'interrupt must be a boolean' })
+  }
 })
 
 it('creates the folder a project asks for and keeps its data inside', async () => {

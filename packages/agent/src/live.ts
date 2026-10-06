@@ -92,6 +92,8 @@ export interface LiveAgent {
   readonly agentCtx: Context
   followup(input: AgentInput): Promise<void>
   steer(input: AgentInput): Promise<void>
+  /** Durably enqueue a correction before aborting the current Run; preserve prior inbox items. */
+  interrupt(input: AgentInput): Promise<void>
   replaceMessage(messageId: string, input: AgentInput): Promise<void>
   removeMessage(messageId: string): Promise<void>
   /** Durably stage model-visible input for the next step without waking idle work. */
@@ -338,6 +340,10 @@ class LiveAgentImpl implements LiveAgent {
     return this._send(input, 'steer')
   }
 
+  interrupt(input: AgentInput): Promise<void> {
+    return this._send(input, 'followup', true)
+  }
+
   inject(input: AgentInput): Promise<void> {
     return this._send(input, 'inject')
   }
@@ -349,6 +355,7 @@ class LiveAgentImpl implements LiveAgent {
   private _send(
     input: AgentInput,
     target: AgentInboxInsertionIntent,
+    interrupt = false,
   ): Promise<void> {
     const text = input.text ?? ''
     const content = inboxContent(input)
@@ -361,6 +368,9 @@ class LiveAgentImpl implements LiveAgent {
           ? await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
           : await this._durable.steer({ text, ...(content !== undefined ? { content } : {}) })
         : await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) }, 'next-step')
+      // The durable correction is ready before cancellation releases the old
+      // Run. No queued older input can restart it without seeing this message.
+      if (interrupt) this.cancel({ type: 'user' }, { keepInbox: true })
       if (target !== 'inject') this._wakeReserved = true
       const event: AgentInboxInsertedEvent = {
         id: this.id,

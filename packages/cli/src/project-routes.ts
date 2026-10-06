@@ -113,6 +113,10 @@ export async function handleProjectApi(
 
   if (rest === '/messages' && req.method === 'POST') {
     const body = await context.readJsonBody(req)
+    if (body.interrupt !== undefined && typeof body.interrupt !== 'boolean') {
+      context.sendError(res, 400, 'interrupt must be a boolean')
+      return
+    }
     if (typeof body.text !== 'string' || !body.text.trim()) {
       context.sendError(res, 400, 'text must be a non-empty string')
       return
@@ -121,6 +125,7 @@ export async function handleProjectApi(
       projectId,
       body.text,
       typeof body.replyTo === 'string' && body.replyTo ? body.replyTo : undefined,
+      body.interrupt === true,
     )
     // 发送成功的判据是信封落盘，不是模型回复。
     context.sendJson(res, 200, { messageId: envelope.messageId, createdAt: envelope.createdAt })
@@ -227,11 +232,15 @@ export async function handleProjectApi(
     }
     if (thread[2] === '/messages' && req.method === 'POST') {
       const body = await context.readJsonBody(req)
+      if (body.interrupt !== undefined && typeof body.interrupt !== 'boolean') {
+        context.sendError(res, 400, 'interrupt must be a boolean')
+        return
+      }
       if (typeof body.text !== 'string' || !body.text.trim()) {
         context.sendError(res, 400, 'text must be a non-empty string')
         return
       }
-      const envelope = await host.sendThreadMessage(projectId, threadId, body.text)
+      const envelope = await host.sendThreadMessage(projectId, threadId, body.text, body.interrupt === true)
       context.sendJson(res, 200, { messageId: envelope.messageId, createdAt: envelope.createdAt })
       return
     }

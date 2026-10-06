@@ -45,6 +45,7 @@ function toEnvelope(fact: FactRecord): BoxEnvelope {
       : { kind: 'main' },
     kind: data.kind as BoxEnvelope['kind'],
     text: data.text,
+    ...(data.interrupt === true ? { interrupt: true } : {}),
     refs: Array.isArray(data.refs)
       ? data.refs.filter(isRecord).map(ref => ({
         hash: String(ref.hash ?? ''),
@@ -119,6 +120,7 @@ export class BoxBlackboardService extends BoxService {
       placement: input.placement,
       kind: input.kind,
       text: input.text,
+      ...(input.interrupt ? { interrupt: true } : {}),
       refs: input.refs,
       createdAt: input.createdAt,
       ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),

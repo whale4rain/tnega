@@ -24,6 +24,9 @@ Definition）：它消费 Box、唤醒 Agent、驱动父子回报，并把结果
 
 ## 关键取舍
 
+用户显式中断消息通过 `LiveAgent.interrupt` 投递，先持久入队再取消当前 Run，
+避免旧排队消息在纠正到达前抢先启动。普通消息仍通过 `steer` / `followup` 异步投递。
+
 - **不替代 Agent Loop**。它不调用模型、不改 Session 内容、不复制对话。每个 Thread 仍由
   自己的 Agent Loop 驱动，每个 Agent 恰有自己的 Session。
 - **去重键是 Session 里的 Box ID**。投递时把 `messageId` 写进那条 user 消息的 `name`
