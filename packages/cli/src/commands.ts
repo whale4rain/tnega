@@ -1,5 +1,6 @@
 import { skillTools } from '@tnega/coding-agent'
 import { resolve } from 'node:path'
+import { workspacePrompt } from './workspace-prompt.js'
 import { Context, type Plugin } from '@tnega/core'
 import type { AgentProfile } from './profile.js'
 import {
@@ -332,6 +333,7 @@ export async function createAgentRuntime(
   // path the loop reads when a systemPrompt service is present.
   const promptFiber = await root.plugin(systemPrompt)
   fibers.push(promptFiber)
+  fibers.push(await root.plugin(workspacePrompt, { workspace: merged.cwd }))
   const promptService = root.get('systemPrompt') as {
     registerTools(
       provider: () => readonly {

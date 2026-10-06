@@ -38,6 +38,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Features
 
+- Settings → Instructions saves or clears one custom system prompt per
+  Workspace. Subsequent model requests reload it alongside built-in instructions,
+  including resident Sessions, without restarting the application.
+
 - Workspace usage includes a daily calendar heatmap with keyboard-accessible
   cells, intensity legend and dated Session/model/input/output/cache details.
   The view uses local calendar dates and supports both themes and narrow screens.

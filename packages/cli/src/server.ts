@@ -5,6 +5,7 @@ import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   agents,
+  systemPrompt,
   continuationNudge,
   type DurableInbox,
   type AgentCreationOptions,
@@ -17,6 +18,7 @@ import { Context, type Fiber, type Plugin } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
 import { observeCompaction } from './compaction-observation.js'
 import { sessionUsage, workspaceUsage } from './usage.js'
+import { readWorkspacePrompt, writeWorkspacePrompt, workspacePrompt } from './workspace-prompt.js'
 import { buildCompactionPrompt, SUMMARIZATION_SYSTEM_PROMPT } from './compaction-prompt.js'
 import { autoContextBudget, SUMMARY_PREFIX } from './auto-compaction.js'
 import { ChatGptLogin, llmAuthOptions } from './chatgpt-auth.js'
@@ -532,6 +534,20 @@ async function handleApi(
     const sessions = await listSessions(workspace)
     const logs = await Promise.all(sessions.map(session => readSessionLog(workspace, session.id).catch(() => [])))
     sendJson(res, 200, workspaceUsage(logs, await readSystemConfig(context.configFile), Date.now(), sessions.map(session => session.id)))
+    return
+  }
+
+  if (url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT')) {
+    const workspace = workspaceParam(url)
+    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+    if (req.method === 'PUT') {
+      const body = await readJsonBody(req)
+      if (typeof body.prompt !== 'string' || body.prompt.length > 32000) {
+        sendError(res, 400, 'prompt must be a string of at most 32000 characters'); return
+      }
+      await writeWorkspacePrompt(workspace, body.prompt)
+    }
+    sendJson(res, 200, { prompt: await readWorkspacePrompt(workspace) })
     return
   }
 
@@ -1400,6 +1416,8 @@ async function createResidentRuntime(
 ): Promise<{ root: Context; dispose: () => Promise<void> }> {
   const root = new Context()
   const fibers: Array<{ dispose: () => Promise<void> }> = []
+  fibers.push(await root.plugin(systemPrompt))
+  fibers.push(await root.plugin(workspacePrompt, { workspace }))
   fibers.push(await root.plugin(tools))
   fibers.push(await root.plugin(memoryLocal, { cwd: workspace }))
   fibers.push(await root.plugin(toolMemory))

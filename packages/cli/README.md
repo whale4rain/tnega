@@ -27,6 +27,11 @@ tnega web                                # 本地 web UI（HTTP + SSE，127.0.0.
 
 ## runtime 组合层（产品形态 = 组合）
 
+Settings → Instructions 保存一条 Workspace 用户提示词，存于 home 的 Workspace
+状态目录 `user-prompt.txt`（最多 32000 字符）。`workspacePrompt` 通过 `systemPrompt`
+动态 section/context 机制与请求头前缀注入，每次请求重新读取，支持直接清除。
+CLI runtime 与 Web/桌面 resident runtime 使用相同组装；已有 Session 格式不变。
+
 `profile.ts` / `profile-file.ts` / `commands.ts#createAgentRuntime` 提供共享启动层：
 
 - `AgentProfile`：`{ name, bundles, options }`，bundle 先装，profile 默认选项与调用方

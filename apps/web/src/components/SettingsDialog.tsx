@@ -6,6 +6,7 @@ import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, Pr
 import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
 import { UsageSummary } from './UsageSummary'
+import { WorkspacePrompt } from './WorkspacePrompt'
 import { UpdateSettings } from './UpdateButton'
 import type { DesktopUpdates } from '../lib/desktop-updates'
 
@@ -15,11 +16,12 @@ import type { DesktopUpdates } from '../lib/desktop-updates'
  * entry in `SECTIONS` plus its panel below. Form fields are saved together
  * with "Save changes"; appearance and updates apply immediately.
  */
-type SectionId = 'model' | 'usage' | 'approvals' | 'tools' | 'appearance' | 'about'
+type SectionId = 'model' | 'usage' | 'instructions' | 'approvals' | 'tools' | 'appearance' | 'about'
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: string; icon: typeof Cpu }> = [
   { id: 'model', label: 'Models', description: 'Chat models that run sessions, projects and threads. Register several, choose the default, and switch per session from the composer. Approval reviewers such as TypeSafe Jev are not chat models; set them under Approvals.', icon: Cpu },
   { id: 'usage', label: 'Usage', description: 'Tokens and estimated cost of the sessions in this workspace. Set prices on each model under Models to see cost.', icon: ChartColumn },
+  { id: 'instructions', label: 'Instructions', description: 'Your instructions for every session in the open workspace.', icon: SquareTerminal },
   { id: 'approvals', label: 'Approvals', description: 'Who reviews actions that need permission.', icon: ShieldCheck },
   { id: 'tools', label: 'Tools & shell', description: 'How the agent runs commands and calls its tools.', icon: SquareTerminal },
   { id: 'appearance', label: 'Appearance', description: 'How Tnega looks on this device.', icon: Palette },
@@ -237,6 +239,7 @@ export function SettingsDialog({
           </>)}
 
           {panel('usage', section === 'usage' ? <UsageSummary workspace={workspace} /> : null)}
+          {panel('instructions', section === 'instructions' ? <WorkspacePrompt key={workspace} workspace={workspace} /> : null)}
           {panel('approvals', <div className="form-grid">
             <label className="field">
               <span className="field-label">Approval reviewer</span>
