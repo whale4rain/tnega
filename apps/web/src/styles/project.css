@@ -1182,6 +1182,21 @@
   gap: 10px;
 }
 
+.room-run-user {
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+
+.room-run-user .room-avatar {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.room-run-user .room-body {
+  grid-column: 1;
+  grid-row: 1;
+  align-items: flex-end;
+}
+
 .room-avatar {
   padding-top: 2px;
 }
@@ -1203,6 +1218,7 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  align-items: flex-start;
 }
 
 .room-head {
@@ -1223,6 +1239,39 @@
 .room-message {
   position: relative;
   min-width: 0;
+  max-width: 92%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.room-run-user .room-message {
+  background: var(--accent-soft);
+}
+
+.room-message .prose {
+  min-width: 0;
+}
+
+.room-body > .thread-stack {
+  width: 100%;
+}
+
+.thread-execution {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.thread-execution > summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.thread-execution .timeline {
+  margin-top: 12px;
 }
 
 .room-text {

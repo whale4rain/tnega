@@ -13,6 +13,8 @@ Box 的 **Consumer**：模型可见的 `send_project_message`。只依赖 `@tneg
 
 一轮执行结束时的回复由 Project Loop 从 Session 自动发布，不需要模型调用工具。这个工具
 只用于**执行途中**主动说话：长活里的进度、需要用户拍板的选择、已经看出来的风险。
+每次调用形成一个独立聊天气泡；Project 与 Thread 都显示用户可见消息，刷新后从 Box
+恢复。原始 assistant chunks 不作为聊天气泡显示；内部步骤留在可展开的执行详情中。
 
 ## 契约
 

@@ -30,7 +30,7 @@ export const toolBox = {
     tools.register({
       schema: {
         name: 'send_project_message',
-        description: 'Send a message to the user in the project conversation while you are still working. Your final answer for this turn is published automatically, so use this only for a progress note, a question you cannot proceed without, or a risk the user should see now.',
+        description: 'Publish one chat bubble to the user in your project conversation while working. Send a short material update, a question, or a risk the user should see now. Each call creates a separate visible message; internal assistant narration stays in execution details. Your final answer is also published automatically, so do not repeat a message already sent.',
         parameters: {
           type: 'object',
           properties: {

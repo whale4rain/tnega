@@ -54,12 +54,12 @@ describe('mainTimeline', () => {
     expect(mainTimeline(state)[1]).toMatchObject({ threadIds: [T1, T2] })
   })
 
-  it('shows the coordinator draft while it streams and drops it once the reply is published', () => {
+  it('keeps raw model chunks out of chat until an explicit reply is published', () => {
     let state = fromSnapshot(snapshot())
     state = reduceProject(state, { type: 'agent-status', agentId: COORD, status: 'running' })
     state = reduceProject(state, { type: 'chunk', agentId: COORD, text: 'Work' })
     state = reduceProject(state, { type: 'chunk', agentId: COORD, text: 'ing on it' })
-    expect(mainTimeline(state).at(-1)).toEqual({ kind: 'draft', id: 'coordinator-draft', text: 'Working on it' })
+    expect(mainTimeline(state)).toEqual([])
     state = reduceProject(state, {
       type: 'message',
       seq: 5,

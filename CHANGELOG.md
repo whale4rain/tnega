@@ -41,6 +41,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Features
 
+- Project conversations use separate user-right and Agent-left chat bubbles.
+  Agents can publish meaningful messages while working with send_project_message;
+  Thread chat is restored from Box after reload and execution details stay folded.
 - Ordinary Sessions accept text and image steering messages during an active Run,
   including Sessions running in another client. Messages persist in the next-step
   inbox and enter at a safe step boundary; Stop remains a separate control.

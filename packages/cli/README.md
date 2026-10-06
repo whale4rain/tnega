@@ -18,6 +18,11 @@ Project 主对话和 Thread 输入框允许运行中异步发送，并分别提�
 两个消息 API 可携带可选布尔 `interrupt: true`，纠正通过 Box 持久投递后中断目标当前 Run，
 保留此前已接收的输入。普通消息仍等安全 step 边界；取消不回滚已经完成的工具效果。
 
+Project 主对话与 Thread 使用左右分开的聊天气泡。`send_project_message` 每次调用发布一条
+独立消息，最终答复仍自动发布；内部 assistant chunks 不进入聊天，执行记录可展开查看。
+Project 快照新增 `threadMessages`，从已有 Box 恢复 Thread 用户消息和工具发布的答复，
+无需迁移 Session 或 Blackboard；旧客户端可忽略此新增字段。
+
 普通 Session 在运行中也可继续发送 steer 消息，独立 Stop 仍停止当前 Run。
 `POST /api/sessions/:id/steer?workspace=...` 接收 `{prompt, attachments?}`，
 将文字与图片持久写入当前 Agent 的 next-step inbox，在安全 step 边界读取；

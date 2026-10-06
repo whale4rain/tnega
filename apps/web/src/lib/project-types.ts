@@ -154,6 +154,8 @@ export interface ProjectSnapshot {
   threads: ThreadRecord[]
   messages: BoxEnvelope[]
   inboxMessages: BoxEnvelope[]
+  /** User-facing Thread chat; older servers omit this field. */
+  threadMessages?: BoxEnvelope[]
   memory: MemoryFact[]
   library: { artifacts: ArtifactFact[]; resources: ResourceFact[] }
   /** Older servers omit routines. */

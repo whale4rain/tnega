@@ -35,6 +35,41 @@ function snapshot(): ProjectSnapshot {
   }
 }
 
+it('keeps separate agent chat bubbles and aligns the user on the opposite side', async () => {
+  const initial = snapshot()
+  const base = { projectId: 'project', recipients: [{ kind: 'user' as const, id: 'user' as const }], placement: { kind: 'main' as const }, refs: [] }
+  initial.messages = [
+    { ...base, messageId: 'user-1', sender: { kind: 'user', id: 'user' }, kind: 'user-message', text: 'Please investigate', createdAt: 1 },
+    { ...base, messageId: 'agent-1', sender: { kind: 'agent', id: 'coordinator' }, kind: 'agent-reply', text: 'I found the cause.', createdAt: 2 },
+    { ...base, messageId: 'agent-2', sender: { kind: 'agent', id: 'coordinator' }, kind: 'agent-reply', text: 'The fix is ready.', createdAt: 3 },
+  ]
+  vi.spyOn(projectApi, 'snapshot').mockResolvedValue(initial)
+  const view = render(createElement(ProjectView, {
+    workspace: 'workspace', projectId: 'project', threadId: undefined, config: undefined,
+    onOpenThread: vi.fn(), onDeleted: vi.fn(), onChanged: vi.fn(), sidebarOpen: true,
+    onToggleSidebar: vi.fn(), workbench: INITIAL_WORKBENCH, onWorkbench: vi.fn(),
+    panelSlot: null, onPanelTabs: vi.fn(),
+  }))
+  const user = await view.findByText('Please investigate')
+  expect(user.closest('.room-run')?.classList.contains('room-run-user')).toBe(true)
+  const first = view.getByText('I found the cause.').closest('.room-message')
+  const second = view.getByText('The fix is ready.').closest('.room-message')
+  expect(first).not.toBe(second)
+  expect(first?.closest('.room-run')?.classList.contains('room-run-agent')).toBe(true)
+})
+
+it('shows tool-published Thread messages after loading a snapshot', async () => {
+  const initial = snapshot()
+  initial.threadMessages = [
+    { messageId: 'thread-user', projectId: 'project', sender: { kind: 'user', id: 'user' }, recipients: [{ kind: 'agent', id: 'worker' }], placement: { kind: 'thread', threadId: 'worker' }, kind: 'user-thread', text: 'Check the parser', refs: [], createdAt: 2 },
+    { messageId: 'thread-note', projectId: 'project', sender: { kind: 'agent', id: 'worker' }, recipients: [{ kind: 'user', id: 'user' }], placement: { kind: 'thread', threadId: 'worker' }, kind: 'agent-reply', text: 'The parser has a boundary bug.', refs: [], createdAt: 3 },
+  ]
+  vi.spyOn(projectApi, 'thread').mockResolvedValue({ thread: initial.threads[1]!, events: [] })
+  const view = render(createElement(ThreadPanel, { workspace: 'workspace', state: fromSnapshot(initial), threadId: 'worker', onBack: vi.fn() }))
+  expect(await view.findByText('The parser has a boundary bug.')).toBeTruthy()
+  expect(view.getByText('Check the parser').closest('.room-run')?.classList.contains('room-run-user')).toBe(true)
+})
+
 it('stops and corrects the coordinator, then redirects controls to a thread reply', async () => {
   vi.spyOn(projectApi, 'snapshot').mockResolvedValue(snapshot())
   const stop = vi.spyOn(projectApi, 'stopThread').mockResolvedValue({ stopped: true })

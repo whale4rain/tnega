@@ -14,7 +14,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })))
 })
 
-async function fixture() {
+async function fixture(adapter?: LLMAdapter) {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-project-controls-'))
   roots.push(workspace, workspaceProjectStateRoot(workspace))
   const signals: AbortSignal[] = []
@@ -32,13 +32,41 @@ async function fixture() {
     })
     throw new Error('Fixture should only finish by cancellation')
   } }
-  const host = new ProjectHost({ workspace, llm, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker() })
+  const host = new ProjectHost({ workspace, llm: adapter ?? llm, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker() })
   hosts.push(host)
   const record = await host.create({ name: 'Control' })
   roots.push(projectSessionRoot(workspace, record.id))
   const project = await host.mount(record.id)
-  return { host, record, project, signals }
+  return { host, record, project, signals, workspace }
 }
+
+it.each(['coordinator', 'thread'])('publishes separate tool chat messages for a %s and restores them from Box', async target => {
+  let calls = 0
+  const llm: LLMAdapter = { async complete() {
+    calls += 1
+    if (calls <= 2) return {
+      content: 'Internal execution narration.', finishReason: 'tool_calls',
+      toolCalls: [{ id: `chat-${calls}`, name: 'send_project_message', arguments: { message: `Visible message ${calls}` } }],
+    }
+    return { content: 'Work is complete.', finishReason: 'stop' }
+  } }
+  const { host, record, project, workspace } = await fixture(llm)
+  const id = target === 'coordinator' ? record.coordinatorId
+    : (await project.threads.spawn({ parentId: record.coordinatorId, goal: 'Investigate' })).id
+  if (target === 'coordinator') await host.sendUserMessage(record.id, 'Start work')
+  else await host.sendThreadMessage(record.id, id, 'Start work')
+  await expect.poll(async () => (await project.box.timeline()).filter(message => message.sender.id === id && message.kind === 'agent-reply').length).toBe(3)
+  const visible = (await project.box.timeline()).filter(message => message.sender.id === id && message.kind === 'agent-reply')
+  expect(visible.map(message => message.text)).toEqual(['Visible message 1', 'Visible message 2', 'Work is complete.'])
+  await host.dispose()
+  const reopened = new ProjectHost({ workspace, llm, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker() })
+  hosts.push(reopened)
+  const snapshot = await reopened.snapshot(record.id)
+  const messages = target === 'coordinator' ? snapshot.messages : snapshot.threadMessages
+  expect(messages.filter(message => message.kind === 'agent-reply').map(message => message.text))
+    .toEqual(['Visible message 1', 'Visible message 2', 'Work is complete.'])
+  expect(messages.some(message => message.text.includes('Internal execution narration'))).toBe(false)
+})
 
 it('keeps normal messages asynchronous and interrupts the coordinator for an explicit correction', async () => {
   const { host, record, project, signals } = await fixture()

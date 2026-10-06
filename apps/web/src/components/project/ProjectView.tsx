@@ -9,7 +9,7 @@ import {
   CornerUpLeft,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { avatarVersion, distinctSeeds, subscribeAvatars } from '../../lib/avatar'
 import { errorText } from '../../lib/hooks'
@@ -46,6 +46,7 @@ import { LibraryPanel, SettingsPanel } from './ProjectPanels'
 import { RoutinesPanel } from './Routines'
 import { ThreadCard } from './ThreadCard'
 import { ThreadPanel } from './ThreadPanel'
+import { ChatRun as Run } from './ChatRun'
 
 /**
  * A project screen: the room on the left, and the project's own tabs (Board,
@@ -431,22 +432,18 @@ type Group =
 /** How long one author can keep talking under the same head. */
 const RUN_GAP_MS = 5 * 60_000
 
-function itemTime(item: MainItem): number | undefined {
-  return item.kind === 'draft' ? undefined : item.at
-}
-
 /** Runs of consecutive messages by one author, the way chat rooms group them. */
 function group(items: readonly MainItem[]): Group[] {
   const out: Group[] = []
   for (const item of items) {
     const last = out.at(-1)
-    const at = itemTime(item) ?? last?.at ?? Date.now()
+    const at = item.at
     if (item.kind === 'user') {
       if (last?.kind === 'user' && at - last.at < RUN_GAP_MS && sameDay(at, last.at)) last.items.push(item)
       else out.push({ kind: 'user', id: item.id, at, items: [item] })
       continue
     }
-    if (last?.kind === 'agent' && (item.kind === 'draft' || (at - last.at < RUN_GAP_MS && sameDay(at, last.at)))) last.items.push(item)
+    if (last?.kind === 'agent' && at - last.at < RUN_GAP_MS && sameDay(at, last.at)) last.items.push(item)
     else out.push({ kind: 'agent', id: item.id, at, items: [item] })
   }
   return out
@@ -460,10 +457,6 @@ function dayLabel(at: number, now = Date.now()): string {
   if (sameDay(at, now)) return 'Today'
   if (sameDay(at, now - 86_400_000)) return 'Yesterday'
   return new Date(at).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-}
-
-function clock(at: number): string {
-  return new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 interface RoomHandlers {
@@ -495,8 +488,7 @@ function Room({
   handlers: RoomHandlers
 }) {
   const groups = group(items)
-  const drafting = items.at(-1)?.kind === 'draft'
-  const typing = coordinatorRunning && !drafting
+  const typing = coordinatorRunning
   let previousDay: number | undefined
   return (
     <div className="timeline room">
@@ -507,7 +499,7 @@ function Room({
         if (entry.kind === 'user') {
           return [
             day,
-            <Run key={entry.id} author="You" at={entry.at} avatar={<span className="room-avatar-you" aria-hidden>Y</span>}>
+            <Run key={entry.id} side="user" author="You" at={entry.at} avatar={<span className="room-avatar-you" aria-hidden>Y</span>}>
               {entry.items.map(item => (
                 <div key={item.id} id={`msg-${item.id}`} className="room-message">
                   {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
@@ -521,9 +513,10 @@ function Room({
           day,
           <Run
             key={entry.id}
+            side="agent"
             author="Coordinator"
             at={entry.at}
-            avatar={<AgentAvatar id={state.coordinatorId} role="coordinator" size={30} live={drafting && entry === groups.at(-1)} title="Coordinator" />}
+            avatar={<AgentAvatar id={state.coordinatorId} role="coordinator" size={30} live={coordinatorRunning && entry === groups.at(-1)} title="Coordinator" />}
           >
             {entry.items.map(item => {
               switch (item.kind) {
@@ -546,8 +539,6 @@ function Room({
                       </div>
                     </div>
                   )
-                case 'draft':
-                  return <div key={item.id} className="room-message streaming"><Markdown text={item.text} /></div>
                 case 'threads':
                   return (
                     <div key={item.id} className="thread-stack">
@@ -577,21 +568,6 @@ function Room({
           <span><strong>Coordinator</strong> is typing…</span>
         </div>
       )}
-    </div>
-  )
-}
-
-function Run({ author, at, avatar, children }: { author: string; at: number; avatar: ReactNode; children: ReactNode }) {
-  return (
-    <div className="room-run">
-      <div className="room-avatar">{avatar}</div>
-      <div className="room-body">
-        <div className="room-head">
-          <span className="room-author">{author}</span>
-          <time className="room-time" dateTime={new Date(at).toISOString()}>{clock(at)}</time>
-        </div>
-        {children}
-      </div>
     </div>
   )
 }

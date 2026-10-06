@@ -146,6 +146,8 @@ export interface ProjectSnapshot {
   messages: BoxEnvelope[]
   /** 发给 coordinator 的子 Agent inbox 信封；前端将其归入对应的 Subagent 卡片。 */
   inboxMessages: BoxEnvelope[]
+  /** User-facing Thread chat, including tool-published messages. */
+  threadMessages: BoxEnvelope[]
   memory: FactRecord[]
   library: { artifacts: FactRecord[]; resources: FactRecord[] }
   routines: FactRecord[]
@@ -254,6 +256,8 @@ export class ProjectHost {
       threads: await project.threads.list(),
       messages,
       inboxMessages,
+      threadMessages: envelopes.filter(envelope => envelope.placement.kind === 'thread'
+        && (envelope.kind === 'user-thread' || envelope.kind === 'agent-reply')),
       memory: await project.blackboard.list('memory'),
       library: {
         artifacts: await project.blackboard.list('artifact'),

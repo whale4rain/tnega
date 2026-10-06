@@ -11,6 +11,7 @@ import { PromptBox } from '../Composer'
 import { Timeline } from '../Timeline'
 import { ArtifactCards } from './Artifacts'
 import { ThreadStatus } from './ThreadCard'
+import { ThreadMessages } from './ThreadMessages'
 
 /**
  * One thread, opened beside the conversation. Outcomes come first: its live
@@ -65,12 +66,16 @@ export function ThreadPanel({
     return goal ? all.filter(entry => !(entry.kind === 'user' && entry.text.startsWith(goal))) : all
   }, [events, goal])
   const outputs = useMemo(() => threadArtifacts(state, threadId), [state, threadId])
+  const messages = useMemo(() => Object.values(state.envelopes)
+    .filter(envelope => envelope.placement.kind === 'thread' && envelope.placement.threadId === threadId
+      && (envelope.kind === 'user-thread' || envelope.kind === 'agent-reply'))
+    .sort((a, b) => a.createdAt - b.createdAt), [state.envelopes, threadId])
 
   const scroller = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = scroller.current
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight
-  }, [entries])
+  }, [entries, messages])
 
   if (!thread) {
     return (
@@ -134,7 +139,11 @@ export function ThreadPanel({
         {error && <div className="error-banner">{error}</div>}
         {!events && !error && <div className="skeleton"><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div>}
         {events && events.length === 0 && <p className="muted small">Starting up…</p>}
-        <Timeline entries={entries} running={working} actions={{}} agent={{ id: threadId }} outcomeFirst />
+        <ThreadMessages messages={messages} label={thread.label} running={working} />
+        <details className="thread-execution">
+          <summary>Execution details</summary>
+          <Timeline entries={entries} running={working} actions={{}} agent={{ id: threadId }} outcomeFirst />
+        </details>
       </div>
       <div className="side-dock">
         <PromptBox

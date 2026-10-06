@@ -67,7 +67,7 @@ export function fromSnapshot(snapshot: ProjectSnapshot, localReplies: Record<str
   }
   const messages = snapshot.messages.map(withLocal)
   const envelopes: Record<string, BoxEnvelope> = {}
-  for (const envelope of [...messages, ...snapshot.inboxMessages]) envelopes[envelope.messageId] = envelope
+  for (const envelope of [...messages, ...snapshot.inboxMessages, ...(snapshot.threadMessages ?? [])]) envelopes[envelope.messageId] = envelope
   return {
     envelopes,
     project: snapshot.project,
@@ -267,7 +267,6 @@ export type MainItem =
   | { kind: 'user'; id: string; text: string; at: number; replyTo: ReplyRef[] }
   | { kind: 'coordinator'; id: string; text: string; at: number; replyTo: ReplyRef[]; refs: ArtifactRef[] }
   | { kind: 'threads'; id: string; threadIds: string[]; at: number }
-  | { kind: 'draft'; id: string; text: string }
 
 /**
  * The main conversation: what the user said, what the coordinator said, and
@@ -312,8 +311,8 @@ export function mainTimeline(state: ProjectState): MainItem[] {
         break
     }
   }
-  const draft = state.live[state.coordinatorId]
-  if (draft?.trim()) items.push({ kind: 'draft', id: 'coordinator-draft', text: draft })
+  // Raw assistant chunks may belong to internal tool steps. Only published
+  // Box messages become chat bubbles; status events show that work continues.
   return items
 }
 
