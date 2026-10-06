@@ -22,6 +22,21 @@ export function localUsageDate(timestamp: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+export function dailyUsageTotals(responses: readonly UsageResponse[]): UsageTotals {
+  const sum: UsageTotals = { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0 }
+  const costs = new Map<string, number>()
+  for (const response of responses) {
+    sum.responses += response.responses
+    sum.promptTokens += response.promptTokens
+    sum.completionTokens += response.completionTokens
+    sum.cachedTokens += response.cachedTokens
+    sum.reasoningTokens += response.reasoningTokens
+    for (const cost of response.cost ?? []) costs.set(cost.currency, (costs.get(cost.currency) ?? 0) + cost.amount)
+  }
+  if (costs.size) sum.cost = [...costs].map(([currency, amount]) => ({ currency, amount }))
+  return sum
+}
+
 /** Calendar arithmetic uses setDate so DST days still occupy one cell. */
 export function usageCalendar(responses: readonly UsageResponse[], now = Date.now()) {
   const grouped = new Map<string, UsageResponse[]>()

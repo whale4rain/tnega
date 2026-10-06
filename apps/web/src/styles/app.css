@@ -4110,8 +4110,17 @@ kbd {
 
 .usage-totals { display: flex; flex-wrap: wrap; gap: 24px; }
 .usage-totals > div { display: flex; flex-direction: column; gap: 4px; }
-.usage-calendar-scroll, .usage-detail-scroll { overflow-x: auto; max-width: 100%; }
-.usage-calendar { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); grid-auto-columns: 12px; gap: 3px; width: max-content; padding: 3px; }
+.usage-calendar-scroll { min-width: 0; max-width: 100%; }
+.usage-calendar { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, auto); gap: 2px; width: 100%; padding: 3px; box-sizing: border-box; }
+.usage-calendar .usage-day { width: 100%; height: auto; aspect-ratio: 1; min-width: 0; }
+.usage-numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 12px; margin: 16px 0 0; }
+.usage-numbers dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.usage-models { display: flex; flex-direction: column; gap: 16px; }
+.usage-model { border-top: 1px solid var(--border); padding-top: 12px; }
+.usage-model h4 { margin: 0; overflow-wrap: anywhere; }
+.workspace-instructions { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.workspace-instructions textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; }
+.workspace-instructions-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .usage-day { display: inline-block; width: 12px; height: 12px; padding: 0; border: 1px solid var(--border); border-radius: 3px; }
 .usage-day[aria-pressed="true"], .usage-day:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
 .usage-level-0 { background: var(--usage-0); }

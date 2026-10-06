@@ -37,6 +37,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- Workspace instructions use a full-width stacked layout, and the usage calendar
+  fits the available width. Selecting a day shows combined input, output, cache,
+  reasoning, response count and cost instead of a response-by-response table.
+
 ## [0.4.15](https://github.com/whale4rain/tnega/releases/tag/v0.4.15) — 2026-10-06
 
 ### Features
