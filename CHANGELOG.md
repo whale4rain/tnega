@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.17 | [`v0.4.16...v0.4.17`](https://github.com/whale4rain/tnega/compare/v0.4.16...v0.4.17) | 2 |
 | 0.4.16 | [`v0.4.15...v0.4.16`](https://github.com/whale4rain/tnega/compare/v0.4.15...v0.4.16) | 10 |
 | 0.4.15 | [`v0.4.14...v0.4.15`](https://github.com/whale4rain/tnega/compare/v0.4.14...v0.4.15) | 18 |
 | 0.4.14 | [`v0.4.13...v0.4.14`](https://github.com/whale4rain/tnega/compare/v0.4.13...v0.4.14) | 22 |
@@ -37,6 +38,8 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.4.17](https://github.com/whale4rain/tnega/releases/tag/v0.4.17) — 2026-10-06
 
 ### Fixes
 
