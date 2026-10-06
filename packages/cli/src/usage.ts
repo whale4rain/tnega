@@ -108,6 +108,8 @@ export function eachResponse(
       const payload = event.payload as Record<string, unknown>
       if (typeof payload.kind === 'string' && payload.kind.startsWith('approval/')) continue
       if (typeof payload.model === 'string' && payload.model) model = payload.model
+    } else if (event.type === 'meta/patch' && event.payload.fields.includes('model')) {
+      model = event.payload.model || defaultModel
     } else if (event.type === 'assistant/message' && event.payload.usage) {
       visit(event.payload.usage, model, event.ts)
     }

@@ -23,6 +23,11 @@ describe('usage', () => {
       sessionId: 'session-one', timestamp: at, modelId: 'pro', promptTokens: 10, completionTokens: 3, cachedTokens: 4,
     })])
   })
+  it('follows model changes written by the Session settings API', () => {
+    const patch: SessionEvent = { id: 'route-patch', seq: 2, ts: 2, type: 'meta/patch', payload: { fields: ['model'], model: 'pro' } }
+    const summary = workspaceUsage([[switchTo('flash', 1), patch, reply({ promptTokens: 10, completionTokens: 3 }, 3)]], config)
+    expect(summary.responses[0]?.modelId).toBe('pro')
+  })
   it('prices cached prompt tokens at the cache price', () => {
     expect(responseCost({ promptTokens: 1_000_000, cachedTokens: 600_000, completionTokens: 100_000 }, { input: 2, cachedInput: 0.5, output: 8 }))
       .toBeCloseTo(0.8 + 0.3 + 0.8)

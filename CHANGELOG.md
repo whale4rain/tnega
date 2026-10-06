@@ -56,6 +56,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Usage accounting follows model switches made in Session settings, including
+  the per-response model attribution and route pricing.
+
 - Desktop completion sounds use the native application window's focus state,
   so focusing the embedded Browser panel also keeps the application silent.
 
