@@ -134,7 +134,7 @@ export const api = {
     call<{ process: BackgroundProcess }>(scoped('/api/processes', workspace), { method: 'POST', body: { process_id: id, action: 'stop' }, signal }),
   config: () => call<ConfigSnapshot>('/api/config'),
   chatgptLogin: () => call<ChatGptLoginState>('/api/auth/chatgpt'),
-  startChatgptLogin: () => call<{ url: string }>('/api/auth/chatgpt', { method: 'POST' }),
+  startChatgptLogin: () => call<{ url: string }>('/api/auth/chatgpt', { method: 'POST', body: {} }),
   signOutChatgpt: () => call<ChatGptLoginState>('/api/auth/chatgpt', { method: 'DELETE' }),
   /** Token use and estimated spend across a workspace's sessions. */
   usage: (workspace: string, signal?: AbortSignal) => call<WorkspaceUsage>(scoped('/api/usage', workspace), { signal }),
