@@ -39,6 +39,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Ordinary request-context rewrites no longer appear as "Context compacted";
+  real compaction summaries remain visible. Memory and Workspace instructions
+  share a request header without duplicating Memory across tool steps.
+
 - ChatGPT sign-in sends the required JSON request body, fixing the HTTP 415
   rejection before OAuth starts while preserving cross-site request checks.
 

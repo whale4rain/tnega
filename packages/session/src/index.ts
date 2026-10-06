@@ -793,16 +793,53 @@ export function transcriptEvents(events: readonly SessionEvent[]): SessionEvent[
   )
 
   const skeleton: SessionEvent[] = []
-  const appendHistory = (checkpointSeq: number): void => {
-    for (const shadowed of shadowedOf.get(checkpointSeq) ?? []) {
-      if (shadowed.type === 'checkpoint') appendHistory(shadowed.seq)
+  const isCompaction = (event: Extract<SessionEvent, { type: 'checkpoint' }>): boolean =>
+    event.payload.summary !== undefined || event.payload.tokensBefore !== undefined
+  const appendHistory = (checkpointSeq: number, keepMarkers: boolean): void => {
+    const shadowedEvents = shadowedOf.get(checkpointSeq) ?? []
+    for (const shadowed of shadowedEvents) {
+      if (shadowed.type === 'checkpoint') {
+        appendHistory(shadowed.seq, keepMarkers && !isCompaction(shadowed))
+        if (keepMarkers && isCompaction(shadowed)) skeleton.push(shadowed)
+      }
       else if (isVisible(shadowed)) skeleton.push(shadowed)
+    }
+    const checkpoint = bySeq.get(checkpointSeq)
+    if (checkpoint?.type !== 'checkpoint' || isCompaction(checkpoint)) return
+    // Older request rewrites could admit a user directly into checkpoint
+    // messages. Recover only the new occurrences, with stable display ids;
+    // never write these transcript projections back into the Session.
+    const previousUsers = shadowedEvents.flatMap(event => {
+      if (event.type === 'checkpoint') return event.payload.messages
+      const message = deriveEventMessage(event)
+      return message ? [message] : []
+    }).filter(message => message.role === 'user')
+    let userIndex = 0
+    for (const [index, message] of checkpoint.payload.messages.entries()) {
+      if (message.role !== 'user') continue
+      const match = previousUsers.findIndex((previous, position) => position >= userIndex
+        && previous.content === message.content && previous.name === message.name
+        && JSON.stringify(previous.attachments ?? []) === JSON.stringify(message.attachments ?? []))
+      if (match >= 0) { userIndex = match + 1; continue }
+      skeleton.push({
+        id: `${checkpoint.id}:user:${index}`, seq: checkpoint.seq, ts: checkpoint.ts,
+        type: 'user/message',
+        payload: { content: message.content,
+          ...(message.name ? { name: message.name } : {}),
+          ...(message.attachments?.length ? { attachments: clone(message.attachments) } : {}),
+        },
+      })
     }
   }
   for (const seq of nodes) {
     const event = bySeq.get(seq)
     if (!event) continue
-    if (event.type === 'checkpoint') appendHistory(event.seq)
+    if (event.type === 'checkpoint') {
+      // Request rewrites use the same surface replacement without summarizing
+      // history. They are transparent to readers and keep real summary markers.
+      appendHistory(event.seq, !isCompaction(event))
+      if (!isCompaction(event)) continue
+    }
     skeleton.push(event)
   }
 

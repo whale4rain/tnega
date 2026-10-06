@@ -64,6 +64,7 @@ export const toolMemory = {
     const tools = ctx.get('tools') as ToolsService
     const explicitGlobalRequests = new Map<string, boolean>()
     const runMemoryBlocks = new Map<string, string>()
+    const injectedMemoryBlocks = new Map<string, string>()
     const isChild = (id: string): boolean => {
       const registry = ctx.get('agents') as AgentRegistry | undefined
       return registry?.get(id)?.meta.subagentMode !== undefined
@@ -77,6 +78,7 @@ export const toolMemory = {
     ctx.on('agent/disposed', (event: { id: string }) => {
       explicitGlobalRequests.delete(event.id)
       runMemoryBlocks.delete(event.id)
+      injectedMemoryBlocks.delete(event.id)
     })
     ctx.on('agent/pre-step', async (event: AgentPreStepEvent, next: () => unknown) => {
       const id = event.agentId ?? ''
@@ -85,11 +87,23 @@ export const toolMemory = {
         runMemoryBlocks.set(id, memoryBlock(global, project))
       }
       const runMemoryBlock = runMemoryBlocks.get(id) ?? ''
-      if (runMemoryBlock && event.messages[0]?.content !== runMemoryBlock) {
+      const previousBlock = injectedMemoryBlocks.get(id)
+      for (let index = 0; event.messages[index]?.role === 'system'; index += 1) {
+        const message = event.messages[index]!
+        for (const block of new Set([previousBlock, runMemoryBlock])) {
+          if (block) message.content = message.content.split(block).join('').trim()
+        }
+        if (!message.content) { event.messages.splice(index, 1); index -= 1 }
+      }
+      if (runMemoryBlock) {
         // Compaction may have replaced the request-local prefix between steps.
-        // Keep this Agent Run's original snapshot without changing Session history.
-        event.messages.unshift({ role: 'system', content: runMemoryBlock })
+        // Share one header-owned message with other dynamic contexts; separate
+        // prefixes would be persisted as surface rewrites and duplicate memory.
+        if (event.requestHeaderOwnsSystem && event.messages[0]?.role === 'system') {
+          event.messages[0].content = `${runMemoryBlock}\n\n${event.messages[0].content}`
+        } else event.messages.unshift({ role: 'system', content: runMemoryBlock })
         event.requestHeaderOwnsSystem = true
+        injectedMemoryBlocks.set(id, runMemoryBlock)
       }
       return next()
     })

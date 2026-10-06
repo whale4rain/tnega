@@ -141,6 +141,7 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         break
       }
       case 'checkpoint':
+        if (event.payload.summary === undefined && event.payload.tokensBefore === undefined) break
         entries.push({
           kind: 'compaction',
           id: event.id,

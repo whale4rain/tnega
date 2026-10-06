@@ -54,7 +54,9 @@ export const workspacePrompt = {
       }
       const header = wrap(await readWorkspacePrompt(workspace))
       if (header) {
-        event.messages.unshift({ role: 'system', content: header })
+        if (event.requestHeaderOwnsSystem && event.messages[0]?.role === 'system') {
+          event.messages[0].content = `${header}\n\n${event.messages[0].content}`
+        } else event.messages.unshift({ role: 'system', content: header })
         event.requestHeaderOwnsSystem = true
         headers.set(key, header)
       } else headers.delete(key)

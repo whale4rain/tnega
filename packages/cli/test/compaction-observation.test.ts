@@ -16,6 +16,7 @@ it.each([false, true])('forwards only the owned checkpoint and removes its obser
   const observer = await observeCompaction(ctx, session, event => { frames.push(event) })
   try {
     await session.append('user/message', { content: 'A long conversation' })
+    await session.append('checkpoint', { messages: [{ role: 'user', content: 'Rewritten request' }] })
     await sibling.append('checkpoint', { messages: [], summary: 'Other Agent summary' })
     const checkpoint = await session.append('checkpoint', { messages: [], summary: 'Owned summary', tokensBefore: 1000 })
     await observer.dispose()

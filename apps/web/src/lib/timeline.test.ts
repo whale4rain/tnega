@@ -12,6 +12,17 @@ function ev<T extends SessionEvent['type']>(type: T, payload: Extract<SessionEve
 const SUB = '0f8f6c1e-3b0a-4a39-9d7e-7f1d2a3b4c5d'
 
 describe('fromEvents', () => {
+  it('does not split Agent activity at request rewrite checkpoints', () => {
+    const entries = fromEvents([
+      ev('user/message', { content: 'go' }),
+      ev('assistant/message', { content: 'Checking' }),
+      ev('checkpoint', {}),
+      ev('tool/call', { id: 'call', name: 'get_goal', arguments: {} }),
+    ])
+    expect(entries.map(entry => entry.kind)).toEqual(['user', 'agent'])
+    expect(entries[1]).toMatchObject({ blocks: [{ kind: 'text' }, { kind: 'tool' }] })
+  })
+
   it('nests PTC dispatches below their outer tool without creating top-level tool messages', () => {
     const entries = fromEvents([
       ev('turn/start', { turn: 1 }),

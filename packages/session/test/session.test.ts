@@ -1652,6 +1652,47 @@ describe('context budget', () => {
 
 
 describe('transcriptEvents', () => {
+  it('recovers users stored only in rewrite checkpoints without duplicating repeated messages', async () => {
+    const log = new SessionLog(await tempFile('transcript-rewrite-users.jsonl'))
+    const persona = await log.append('system/message', { content: 'Persona' })
+    const first = await log.append('checkpoint', {
+      messages: [{ role: 'system', content: 'Memory' }, { role: 'user', content: 'go' }],
+      surfaceOp: { op: 'replace', start: persona.seq, end: persona.seq },
+    })
+    const answer = await log.append('assistant/message', { content: 'done' })
+    await log.append('checkpoint', {
+      messages: [...await log.deriveMessages(), { role: 'user', content: 'go', attachments: [{ type: 'image', mediaType: 'image/png', data: 'abc' }] }],
+      surfaceOp: { op: 'replace', start: first.seq, end: answer.seq },
+    })
+    const before = await log.read()
+    const transcript = transcriptEvents(before)
+    const users = transcript.filter(event => event.type === 'user/message')
+    expect(users.map(event => event.payload.content)).toEqual(['go', 'go'])
+    expect(users[1]?.payload.attachments).toHaveLength(1)
+    expect(new Set(users.map(event => event.id)).size).toBe(2)
+    expect(transcriptEvents(before)).toEqual(transcript)
+    expect(await log.read()).toEqual(before)
+    expect(before.filter(event => event.type === 'user/message')).toHaveLength(0)
+  })
+
+  it('keeps the actual compaction marker through subsequent request rewrites', async () => {
+    const log = new SessionLog(await tempFile('transcript-rewrite.jsonl'))
+    await log.append('user/message', { content: 'go' })
+    await log.append('assistant/message', { content: 'working' })
+    await log.compact({ messages: [{ role: 'system', content: 'older summary' }], summary: 'older summary', keep: 0 })
+    await log.compact({ messages: [{ role: 'system', content: 'summary' }], summary: 'summary', keep: 0 })
+    for (let index = 0; index < 2; index += 1) {
+      const nodes = await log.surfaceEvents()
+      await log.append('checkpoint', {
+        messages: await log.deriveMessages(),
+        surfaceOp: { op: 'replace', start: nodes[0]!.seq, end: nodes.at(-1)!.seq },
+      })
+    }
+    const transcript = transcriptEvents(await log.read())
+    expect(transcript.filter(event => event.type === 'checkpoint').map(event => event.payload.summary)).toEqual(['summary'])
+    expect(transcript.filter(event => event.type === 'user/message').map(event => event.payload.content)).toEqual(['go'])
+  })
+
   it('preserves lifecycle event order around visible messages', async () => {
     const log = new SessionLog(await tempFile('transcript-lifecycle-order.jsonl'))
     await log.init()

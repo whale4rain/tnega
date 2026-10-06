@@ -48,6 +48,48 @@ it('loads both scopes into a replayable request prefix while preserving durable 
   }
 })
 
+it('shares the request header with other dynamic contexts without duplicating memory across steps', async () => {
+  const { root, session } = await setup()
+  try {
+    await root.memory.writeProject('- Use pnpm')
+    await session.append('system/message', { content: 'Coding persona' })
+    const prefix = '<workspace-user-instructions>\n"Use Chinese"\n</workspace-user-instructions>'
+    const wrapper = await root.plugin({ name: 'workspace-context', apply(ctx: Context) {
+      ctx.on('agent/pre-step', (event: AgentPreStepEvent, next: () => unknown) => {
+        for (let index = 0; event.messages[index]?.role === 'system'; index += 1) {
+          const message = event.messages[index]!
+          message.content = message.content.replace(prefix, '').trim()
+          if (!message.content) { event.messages.splice(index, 1); index -= 1 }
+        }
+        event.messages.unshift({ role: 'system', content: prefix })
+        event.requestHeaderOwnsSystem = true
+        return next()
+      }, { prepend: true })
+    } })
+    const requests: string[][] = []
+    const llm: LLMAdapter = { async complete(messages) {
+      requests.push(messages.map(message => message.content))
+      return requests.length === 1
+        ? { content: '', toolCalls: [{ id: 'goal', name: 'check', arguments: {} }], finishReason: 'tool_calls' }
+        : { content: 'done', finishReason: 'stop' }
+    } }
+    const registry: ToolsService = root.get('tools')
+    registry.register({ schema: { name: 'check', description: 'Check', parameters: {} }, async execute() { return 'ok' } })
+    root.provide('session', session)
+    await root.plugin(agent, { session, llm })
+    const service: AgentService = root.get('agent')
+    await service.run({ messages: [...await session.deriveMessages(), { role: 'user', content: 'go' }] })
+    expect(requests).toHaveLength(2)
+    for (const request of requests) expect(request.join('\n').split('Persistent memory for this run:')).toHaveLength(2)
+    expect((await session.read()).filter(event => event.type === 'checkpoint')).toHaveLength(0)
+    expect((await session.read()).filter(event => event.type === 'user/message').map(event => event.payload.content)).toEqual(['go'])
+    await wrapper.dispose()
+  } finally {
+    await session.close()
+    await root.fiber.dispose()
+  }
+})
+
 it('allows global writes only during a turn with an explicit memory request', async () => {
   const { root, session } = await setup()
   try {

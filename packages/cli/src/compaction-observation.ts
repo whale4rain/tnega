@@ -7,6 +7,7 @@ export async function observeCompaction(ctx: Context, session: SessionLog, emit:
     let pending = Promise.resolve()
     scope.on('session/event', (event: SessionEvent) => {
       if (event.type !== 'checkpoint') return
+      if (event.payload.summary === undefined && event.payload.tokensBefore === undefined) return
       pending = pending.then(async () => {
         if (!(await session.read()).some(ownEvent => ownEvent.id === event.id)) return
         emit({ type: 'session/compaction', id: event.id, summary: event.payload.summary ?? '',
