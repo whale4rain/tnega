@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { agents, continuationNudge, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
+import { agents, continuationNudge, systemPrompt, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
+import { workspacePrompt } from './workspace-prompt.js'
 import { artifactLocal } from '@tnega/artifact-local'
 import type { ArtifactStore } from '@tnega/artifact-store'
 import { blackboardLocal } from '@tnega/blackboard-local'
@@ -515,6 +516,8 @@ export class ProjectHost {
     const directory = join(this.tnegaRoot, 'projects', record.id)
     const ctx = new Context()
     await ctx.plugin(tools)
+    await ctx.plugin(systemPrompt)
+    await ctx.plugin(workspacePrompt, { workspace: this.workspace })
     await ctx.plugin(blackboardLocal, { root: join(directory, 'blackboard') })
     await ctx.plugin(artifactLocal, { root: join(this.workspace, '.tnega', 'projects', record.id, 'artifacts') })
     await ctx.plugin(boxBlackboard, { projectId: record.id })

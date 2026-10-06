@@ -30,7 +30,7 @@ export const workspacePrompt = {
   apply(ctx: Context, { workspace }: { workspace: string }) {
     const prompts: SystemPromptService = ctx.get('systemPrompt')
     const headers = new Map<string, string>()
-    const wrap = (prompt: string) => prompt ? `<workspace-user-instructions>\n${prompt}\n</workspace-user-instructions>` : ''
+    const wrap = (prompt: string) => prompt ? `<workspace-user-instructions>\n${JSON.stringify(prompt)}\n</workspace-user-instructions>` : ''
     ctx.effect(() => prompts.registerContext({
       name: 'workspace:user-instructions', order: 100,
       content: async () => wrap(await readWorkspacePrompt(workspace)),
@@ -42,14 +42,18 @@ export const workspacePrompt = {
       const key = event.agentId ?? ''
       const previous = headers.get(key)
       if (previous && event.messages[0]?.role === 'system' && event.messages[0].content === previous) event.messages.shift()
+      // Other contexts (jobs/skills) can surround this one in initial assembly.
+      // Strip our JSON-encoded single-line block before adding the current value.
+      for (let index = 0; event.messages[index]?.role === 'system'; index += 1) {
+        const message = event.messages[index]!
+        const cleaned = message.content.replace(/<workspace-user-instructions>\n[^\n]*\n<\/workspace-user-instructions>/g, '')
+        if (cleaned !== message.content) {
+          message.content = cleaned.trim()
+          if (!message.content) { event.messages.splice(index, 1); index -= 1 }
+        }
+      }
       const header = wrap(await readWorkspacePrompt(workspace))
       if (header) {
-        const first = event.messages[0]
-        if (first?.role === 'system' && first.content.endsWith(header)) {
-          const base = first.content.slice(0, -header.length).trimEnd()
-          if (base) first.content = base
-          else event.messages.shift()
-        }
         event.messages.unshift({ role: 'system', content: header })
         event.requestHeaderOwnsSystem = true
         headers.set(key, header)

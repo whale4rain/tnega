@@ -38,6 +38,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Features
 
+- Workspace instructions also apply to Project coordinators and Threads;
+  clearing the setting removes it from their subsequent requests.
+
 - New Sessions generate a concise name from the first completed reply's intent,
   instead of truncating the user's message. Names persist across reloads;
   manual names always win. A failed or timed-out naming request keeps the default.

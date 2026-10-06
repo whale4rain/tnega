@@ -136,6 +136,10 @@ it('creates a project, runs the main conversation and takes thread notes', async
   servers.push(server)
   const query = `?workspace=${encodeURIComponent(workspace)}`
 
+  await apiFetch(server.url, `/api/workspace-prompt${query}`, {
+    method: 'PUT', body: JSON.stringify({ prompt: 'Use concise release summaries.' }),
+  })
+
   // 创建只需要一个名称。
   const created = await apiFetch(server.url, `/api/projects${query}`, {
     method: 'POST',
@@ -159,6 +163,7 @@ it('creates a project, runs the main conversation and takes thread notes', async
       && snapshot.threads.every(thread => thread.state === 'idle'))
   expect(requests[0]).toContain('skill_read')
   expect(requests[0]).toContain('using-tnega')
+  expect(requests[0]).toContain('Use concise release summaries.')
   expect(settled.project.name).toBe('Notes')
   expect(settled.messages.map(entry => entry.kind)).toEqual(['user-message', 'agent-reply'])
   expect(settled.messages[1]).toMatchObject({
@@ -171,6 +176,7 @@ it('creates a project, runs the main conversation and takes thread notes', async
   expect(existsSync(join(workspace, '.tnega', 'projects', project.id, 'agents', settled.coordinatorId, 'session.jsonl'))).toBe(false)
 
   // 用户直接给协调者 Thread 留言：进入它的 Session，而不是又起一条主对话分支。
+  await apiFetch(server.url, `/api/workspace-prompt${query}`, { method: 'PUT', body: JSON.stringify({ prompt: '' }) })
   const noted = await apiFetch(
     server.url,
     `/api/projects/${project.id}/threads/${settled.coordinatorId}/messages${query}`,
@@ -187,6 +193,7 @@ it('creates a project, runs the main conversation and takes thread notes', async
       events: Array<{ type: string; payload: { content?: string } }>
     }
   expect(requests[1]?.split('Available skills (descriptions are metadata):')).toHaveLength(2)
+  expect(requests[1]).not.toContain('Use concise release summaries.')
   expect(detail.thread.id).toBe(settled.coordinatorId)
   expect(detail.events.some(event => event.type === 'user/message'
     && event.payload.content === 'Keep it under 200 words')).toBe(true)
