@@ -36,6 +36,13 @@ type DynamicContext = Context & {
 const dynamic = (ctx: Context): DynamicContext => ctx as unknown as DynamicContext
 
 const dirs: string[] = []
+const contexts: Context[] = []
+
+function testContext(): Context {
+  const root = new Context()
+  contexts.push(root)
+  return root
+}
 
 async function tempFile(name: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'tnega-agent-'))
@@ -44,6 +51,8 @@ async function tempFile(name: string): Promise<string> {
 }
 
 afterEach(async () => {
+  // Session appends are buffered; disposal closes logs before removing their files.
+  await Promise.all(contexts.splice(0).map(root => root.fiber.dispose()))
   await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
 
@@ -144,7 +153,7 @@ describe('AgentInbox', () => {
 
 describe('agent service wiring', () => {
   it('persists schema failures and lets the model correct a call in the next step', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('invalid-tool.jsonl') })
     await root.plugin(tools)
     const executed = vi.fn(() => 'ok')
@@ -170,7 +179,7 @@ describe('agent service wiring', () => {
     await root.get('session').close()
   })
   it('stays pending until session and tools are available', async () => {
-    const root = new Context()
+    const root = testContext()
     const { adapter } = fakeLLM([{ content: 'hi', finishReason: 'stop' }])
     const fiber = root.plugin(agent, { llm: adapter })
     await fiber
@@ -183,7 +192,7 @@ describe('agent service wiring', () => {
   })
 
   it('exposes a replaceable agentLoop service', async () => {
-    const root = new Context()
+    const root = testContext()
     const expected: AgentRunResult = {
       input: { text: 'custom' },
       output: 'custom loop',
@@ -201,7 +210,7 @@ describe('agent service wiring', () => {
   })
 
   it('requires an LLM adapter before running', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('no-llm.jsonl') })
     await root.plugin(tools)
     await root.plugin(agent)
@@ -213,7 +222,7 @@ describe('agent service wiring', () => {
 
 describe('agent loop', () => {
   it('runs a single step and emits the turn lifecycle', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('single.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'hello', finishReason: 'stop' }])
@@ -245,7 +254,7 @@ describe('agent loop', () => {
   })
 
   it('claims the next input from the inbox', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('inbox.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([{ content: 'claimed', finishReason: 'stop' }])
@@ -261,7 +270,7 @@ describe('agent loop', () => {
   })
 
   it('passes injected context into the start event', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('inject.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
@@ -280,7 +289,7 @@ describe('agent loop', () => {
   })
 
   it('runs a multi-step tool loop and reconstructs the model input', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('tool-loop.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -366,7 +375,7 @@ describe('agent loop', () => {
   })
 
   it('stops after maxTurns when the model keeps requesting tools', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('max-turns.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -387,7 +396,7 @@ describe('agent loop', () => {
   })
 
   it('runs a final turn when maxTurns ends on a tool call', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('max-turns-final.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -424,7 +433,7 @@ describe('agent loop', () => {
   })
 
   it('stops after maxSteps when the model keeps requesting tools', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('max-steps.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -445,7 +454,7 @@ describe('agent loop', () => {
   })
 
   it('surfaces tool failures as tool messages', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('tool-error.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -488,7 +497,7 @@ describe('agent loop', () => {
   })
 
   it('closes tool calls with a failed result when execution throws', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('tool-exec-error.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([
@@ -542,7 +551,7 @@ describe('agent loop', () => {
   })
 
   it('aborts the loop when the signal is already aborted', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('abort.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
@@ -557,7 +566,7 @@ describe('agent loop', () => {
   })
 
   it('settles a failed stream once without adding its prefix to model history', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('attempt-failure.jsonl') })
     await root.plugin(tools)
     await root.plugin(agent, { llm: {
@@ -590,7 +599,7 @@ describe('agent loop', () => {
   })
 
   it('routes an error stop through request recovery without committing a message', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('attempt-error-stop.jsonl') })
     await root.plugin(tools)
     let streams = 0
@@ -623,7 +632,7 @@ describe('agent loop', () => {
   })
 
   it('publishes an abandoned attempt end when terminal settlement rejects', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('attempt-abandoned.jsonl') })
     await root.plugin(tools)
     await root.plugin(agent, { llm: {
@@ -648,7 +657,7 @@ describe('agent loop', () => {
   })
 
   it('allocates distinct attempts and increasing lifecycle revisions across retries and runs', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('attempt-retry.jsonl') })
     await root.plugin(tools)
     let calls = 0
@@ -684,7 +693,7 @@ describe('agent loop', () => {
   })
 
   it.each(['throw', 'return'] as const)('settles cancellation without a message when the stream ends by %s', async (ending) => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile(`attempt-cancel-${ending}.jsonl`) })
     await root.plugin(tools)
     const controller = new AbortController()
@@ -712,7 +721,7 @@ describe('agent loop', () => {
   })
 
   it('publishes start before consuming and end only after committing the normalized assistant stream', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('attempt-success.jsonl') })
     await root.plugin(tools)
     const order: string[] = []
@@ -752,7 +761,7 @@ describe('agent loop', () => {
   })
 
   it('streams LLM deltas and returns the collected result', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('stream.jsonl') })
     await root.plugin(tools)
     const adapter = streamingLLM([
@@ -784,7 +793,7 @@ describe('agent loop', () => {
   })
 
   it('streams tool start and end events around a tool call', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('stream-tools.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -853,7 +862,7 @@ describe('agent loop', () => {
   })
 
   it('lets llm/stream rewrite the final request before the adapter runs', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('stream-waterfall.jsonl') })
     await root.plugin(tools)
     const requests: ModelMessage[][] = []
@@ -897,7 +906,7 @@ describe('agent loop', () => {
   })
 
   it('lets llm/stream short-circuit without calling the adapter', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('stream-short-circuit.jsonl') })
     await root.plugin(tools)
     let adapterCalls = 0
@@ -936,7 +945,7 @@ describe('agent loop', () => {
   })
 
   it('uses native stream for run when the adapter supplies one', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('run-native-stream.jsonl') })
     await root.plugin(tools)
     let completeCalls = 0
@@ -963,7 +972,7 @@ describe('agent loop', () => {
   })
 
   it('routes non-streaming run calls through llm/stream', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('run-stream-waterfall.jsonl') })
     await root.plugin(tools)
     const requests: ModelMessage[][] = []
@@ -985,7 +994,7 @@ describe('agent loop', () => {
   })
 
   it('persists stream-rewritten tools and route configuration', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('stream-envelope.jsonl') })
     await root.plugin(tools)
     const registered = addTool()
@@ -1032,7 +1041,7 @@ describe('agent loop', () => {
   })
 
   it('persists the final routed request envelope after a retry', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('retry-final-envelope.jsonl') })
     await root.plugin(tools)
     let calls = 0
@@ -1063,7 +1072,7 @@ describe('agent loop', () => {
   })
 
   it('rebuilds retries from admitted messages without accumulating waterfall edits', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('retry-admitted-input.jsonl') })
     await root.plugin(tools)
     const requests: ModelMessage[][] = []
@@ -1102,7 +1111,7 @@ describe('agent loop', () => {
   })
 
   it('re-enters request waterfalls and recovers from the final failed envelope', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('retry-request-envelope.jsonl') })
     await root.plugin(tools)
     const registered = addTool()
@@ -1159,7 +1168,7 @@ describe('agent loop', () => {
     { role: 'assistant', content: 'unowned answer' },
     { role: 'tool', content: 'unowned result', name: 'add', tool_call_id: 'ghost' },
   ] satisfies ModelMessage[])('rejects an unowned $role message without replay opt-in', async (message) => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile(`unowned-${message.role}.jsonl`) })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
@@ -1179,7 +1188,7 @@ describe('agent loop', () => {
   })
 
   it('checks transcript ownership even when llm/stream short-circuits', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('unowned-short-circuit.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
@@ -1198,7 +1207,7 @@ describe('agent loop', () => {
   it.each(['append', 'replace', 'change-role'] as const)(
     'rejects a lazy short-circuit transcript %s before dispatch',
     async (mutation) => {
-      const root = new Context()
+      const root = testContext()
       await root.plugin(session, { file: await tempFile(`lazy-short-circuit-${mutation}.jsonl`) })
       await root.plugin(tools)
       const requests: ModelMessage[][] = []
@@ -1232,7 +1241,7 @@ describe('agent loop', () => {
   )
 
   it('rejects a lazy next stream transcript mutation before dispatch', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('lazy-next-stream.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'never', finishReason: 'stop' }])
@@ -1254,7 +1263,7 @@ describe('agent loop', () => {
     'options-replace', 'provider', 'model', 'temperature',
     'tools-replace', 'tools-append', 'tool-schema', 'tool-parameters',
   ] as const)('rejects lazy short-circuit envelope mutation: %s', async mutation => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile(`lazy-envelope-${mutation}.jsonl`) })
     await root.plugin(tools)
     const tool = addTool()
@@ -1298,7 +1307,7 @@ describe('agent loop', () => {
   })
 
   it('dispatches a short-circuit stream with its persisted envelope and live abort signal', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('short-circuit-locked-envelope.jsonl') })
     await root.plugin(tools)
     const tool = addTool()
@@ -1349,7 +1358,7 @@ describe('agent loop', () => {
   })
 
   it('makes each retry user and system replacement replayable before dispatch', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('retry-replaced-transcript.jsonl') })
     await root.plugin(tools)
     const log = dynamic(root).session as SessionLog
@@ -1389,7 +1398,7 @@ describe('agent loop', () => {
     { retained: 'earlier', retainedIndex: 0 },
     { retained: 'go', retainedIndex: 2 },
   ])('can retry admitted history after a failed attempt retains only $retained', async ({ retained, retainedIndex }) => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('retry-omitted-history.jsonl') })
     await root.plugin(tools)
     const log = dynamic(root).session as SessionLog
@@ -1433,7 +1442,7 @@ describe('agent loop', () => {
   })
 
   it('continues after an empty assistant response using the durable transcript', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('empty-assistant-continue.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([
@@ -1450,7 +1459,7 @@ describe('agent loop', () => {
   })
 
   it('rejects reordered assistant and tool messages already on the durable surface', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('reordered-tool-transcript.jsonl') })
     await root.plugin(tools)
     const log = dynamic(root).session as SessionLog
@@ -1473,7 +1482,7 @@ describe('agent loop', () => {
   })
 
   it('marks a run cancelled when the stream aborts', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('stream-cancel.jsonl') })
     await root.plugin(tools)
     const controller = new AbortController()
@@ -1540,7 +1549,7 @@ describe('agent loop', () => {
   })
 
   it('settles completed tool calls when the stream aborts before dispatch', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('stream-tool-batch-cancel.jsonl') })
     await root.plugin(tools)
     const controller = new AbortController()
@@ -1617,7 +1626,7 @@ describe('agent loop', () => {
   })
 
   it('waits for an in-flight tool before marking the run cancelled', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('tool-cancel.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -1669,7 +1678,7 @@ describe('agent loop', () => {
   })
 
   it('records aborted results for tool calls not started after cancellation', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('tool-batch-cancel.jsonl') })
     await root.plugin(tools)
     const controller = new AbortController()
@@ -1727,7 +1736,7 @@ describe('agent loop', () => {
   })
 
   it('preserves a typed user cancellation cause in durable events', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('tool-cancel-user.jsonl') })
     await root.plugin(tools)
     const toolService = dynamic(root).tools as ToolsService
@@ -1768,7 +1777,7 @@ describe('agent loop', () => {
   })
 
   it('writes durable turn and step lifecycle around model calls', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('durable-lifecycle.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([{ content: 'hello', finishReason: 'stop' }])
@@ -1802,7 +1811,7 @@ describe('agent loop', () => {
   })
 
   it('persists a new user turn without duplicating history', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('multi-turn.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([
@@ -1843,7 +1852,7 @@ describe('agent loop', () => {
   })
 
   it('does not duplicate history when the new user text repeats an old one', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('multi-turn-repeat.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([
@@ -1873,7 +1882,7 @@ describe('agent loop', () => {
   })
 
   it('does not re-append old user turns when a resumed run prepends a run-scoped system prompt', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('resume-system-skew.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([
@@ -1923,7 +1932,7 @@ describe('agent loop', () => {
   })
 
   it('persists only the delta when pre-step rewrites multi-user history', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('pre-step-delta.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([
@@ -1974,7 +1983,7 @@ describe('agent loop', () => {
   })
 
   it('lets agent/pre-step rewrite the model input and persists it', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('pre-step.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
@@ -2003,7 +2012,7 @@ describe('agent loop', () => {
   })
 
   it('lets agent/pre-step reject a proposed step without calling the model', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('pre-step-reject.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'unused', finishReason: 'stop' }])
@@ -2021,7 +2030,7 @@ describe('agent loop', () => {
   })
 
   it('awaits agent/pre-step rewrites before admitting and persisting the step input', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('async-pre-step.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
@@ -2053,7 +2062,7 @@ describe('agent loop', () => {
   })
 
   it('starts a request series from pre-step', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('pre-step-series.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([
@@ -2087,7 +2096,7 @@ describe('agent loop', () => {
   })
 
   it('keeps agent/request messages read-only while pre-step owns the rewrite', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('request-wrap.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([{ content: 'ok', finishReason: 'stop' }])
@@ -2116,7 +2125,7 @@ describe('agent loop', () => {
   })
 
   it('awaits agent/request route, tool and option rewrites before dispatch and persistence', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('async-request.jsonl') })
     await root.plugin(tools)
     const registered = addTool()
@@ -2169,7 +2178,7 @@ describe('agent loop', () => {
   })
 
   it('lets agent/turn-stopping keep the turn alive', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('turn-stopping.jsonl') })
     await root.plugin(tools)
     const { adapter, calls } = fakeLLM([
@@ -2193,7 +2202,7 @@ describe('agent loop', () => {
   })
 
   it('recovers a failed model request through agent/request-error', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('request-error-retry.jsonl') })
     await root.plugin(tools)
     let calls = 0
@@ -2269,7 +2278,7 @@ describe('agent loop', () => {
   })
 
   it('enforces replayability when assertReplayable is enabled', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('assert-replay.jsonl') })
     await root.plugin(tools)
     const service = dynamic(root).tools as ToolsService
@@ -2291,7 +2300,7 @@ describe('agent loop', () => {
   })
 
   it('stops the turn when a tool result concludes the turn', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('concludes-turn.jsonl') })
     await root.plugin(tools)
     const service = dynamic(root).tools as ToolsService
@@ -2320,7 +2329,7 @@ describe('agent loop', () => {
   })
 
   it('excludes a failed non-cancelled stream prefix from retry history', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('request-error-stream.jsonl') })
     await root.plugin(tools)
     const requests: ModelMessage[][] = []
@@ -2390,7 +2399,7 @@ describe('agent loop', () => {
   })
 
   it('closes step and turn with an error when the model request fails', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('lifecycle-error.jsonl') })
     await root.plugin(tools)
     const adapter: LLMAdapter = {
@@ -2433,7 +2442,7 @@ describe('agent loop', () => {
 
 describe('request header snapshots across steps', () => {
   it('does not append a header when the envelope is unchanged', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('header-stable.jsonl') })
     await root.plugin(tools)
     const service = dynamic(root).tools as ToolsService
@@ -2459,7 +2468,7 @@ describe('request header snapshots across steps', () => {
   })
 
   it('records explicit series boundaries as series headers', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('header-series.jsonl') })
     await root.plugin(tools)
     const { adapter } = fakeLLM([
@@ -2485,7 +2494,7 @@ describe('request header snapshots across steps', () => {
   })
 
   it('records a changed envelope at a series boundary as change-series', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('header-change-series.jsonl') })
     await root.plugin(tools)
     const service = dynamic(root).tools as ToolsService
@@ -2516,7 +2525,7 @@ describe('request header snapshots across steps', () => {
   })
 
   it('records contextWindow on request context when route capacity is available', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('request-context-capacity.jsonl') })
     await root.plugin(tools)
     await root.plugin(llmService)
@@ -2538,7 +2547,7 @@ describe('request header snapshots across steps', () => {
   })
 
   it('records the final request contextWindow over the default route capacity', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('request-context-final-capacity.jsonl') })
     await root.plugin(tools)
     await root.plugin(agent, { llm: fakeLLM([{ content: 'ok', finishReason: 'stop' }]).adapter })
@@ -2555,7 +2564,7 @@ describe('request header snapshots across steps', () => {
   })
 
   it('records a new request context when route capacity changes', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('request-context-capacity-change.jsonl') })
     await root.plugin(tools)
     await root.plugin(llmService)
@@ -2582,7 +2591,7 @@ describe('request header snapshots across steps', () => {
   })
 
   it('clears route capacity in request context when it disappears', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('request-context-capacity-clear.jsonl') })
     await root.plugin(tools)
     await root.plugin(llmService)
@@ -2612,7 +2621,7 @@ describe('request header snapshots across steps', () => {
 
 describe('response accounting', () => {
   it('records provider usage and response latency on the committed message', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('usage.jsonl') })
     await root.plugin(tools)
     const adapter: LLMAdapter = {
@@ -2653,7 +2662,7 @@ describe('response accounting', () => {
   })
 
   it('records no usage when the provider reports none', async () => {
-    const root = new Context()
+    const root = testContext()
     await root.plugin(session, { file: await tempFile('no-usage.jsonl') })
     await root.plugin(tools)
     const adapter: LLMAdapter = {
