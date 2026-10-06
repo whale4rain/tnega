@@ -81,18 +81,20 @@ export const projectApi = {
   remove: (workspace: string, id: string) => call<{ deleted: boolean }>(base(id), workspace, { method: 'DELETE' }),
 
   /** `replyTo` is proposed: the server should store it as the envelope's `causationId`. */
-  send: async (workspace: string, id: string, text: string, replyTo?: string) => {
+  send: async (workspace: string, id: string, text: string, replyTo?: string, interrupt = false) => {
     const receipt = await call<{ messageId: string; createdAt: number }>(`${base(id)}/messages`, workspace, {
       method: 'POST',
-      body: { text, ...(replyTo ? { replyTo } : {}) },
+      body: { text, ...(replyTo ? { replyTo } : {}), ...(interrupt ? { interrupt: true } : {}) },
     })
     if (replyTo) rememberReply(id, receipt.messageId, replyTo)
     return receipt
   },
   thread: (workspace: string, id: string, threadId: string) =>
     call<ThreadDetail>(`${base(id)}/threads/${threadId}`, workspace),
-  sendToThread: (workspace: string, id: string, threadId: string, text: string) =>
-    call<{ messageId: string; createdAt: number }>(`${base(id)}/threads/${threadId}/messages`, workspace, { method: 'POST', body: { text } }),
+  sendToThread: (workspace: string, id: string, threadId: string, text: string, interrupt = false) =>
+    call<{ messageId: string; createdAt: number }>(`${base(id)}/threads/${threadId}/messages`, workspace, {
+      method: 'POST', body: { text, ...(interrupt ? { interrupt: true } : {}) },
+    }),
   approve: (workspace: string, id: string, approvalId: string, allow: boolean) =>
     call<{ accepted: boolean }>(`${base(id)}/approvals/${approvalId}`, workspace, { method: 'POST', body: { allow } }),
 

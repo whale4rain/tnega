@@ -62,3 +62,37 @@ it('completes command arguments through the given source', async () => {
   fireEvent.keyDown(box, { key: 'Enter' })
   expect(box.value).toBe('/model gpt-x ')
 })
+
+it('allows asynchronous messages, interruption and independent stop while running', async () => {
+  const onSubmit = vi.fn(() => true)
+  const onInterruptSubmit = vi.fn(() => true)
+  const onStop = vi.fn()
+  const view = render(createElement(PromptBox, {
+    running: true, allowWhileRunning: true, onSubmit, onInterruptSubmit, onStop, placeholder: 'Reply…',
+  }))
+  const box = messageBox(view)
+  type(box, 'Keep investigating')
+  await act(async () => { fireEvent.keyDown(box, { key: 'Enter' }) })
+  expect(onSubmit).toHaveBeenCalledWith('Keep investigating', [])
+  expect(onInterruptSubmit).not.toHaveBeenCalled()
+  expect(box.value).toBe('')
+  type(box, 'Change direction now')
+  await act(async () => { fireEvent.click(view.getByRole('button', { name: 'Interrupt and send' })) })
+  expect(onInterruptSubmit).toHaveBeenCalledWith('Change direction now', [])
+  expect(box.value).toBe('')
+  fireEvent.click(view.getByRole('button', { name: 'Stop' }))
+  fireEvent.keyDown(box, { key: 'Escape' })
+  expect(onStop).toHaveBeenCalledTimes(2)
+})
+
+it('keeps the session stop-only behavior unless sending while running is enabled', async () => {
+  const onSubmit = vi.fn(() => true)
+  const onStop = vi.fn()
+  const view = render(createElement(PromptBox, { running: true, onSubmit, onStop, placeholder: 'Reply…' }))
+  type(messageBox(view), 'Later')
+  await act(async () => { fireEvent.keyDown(messageBox(view), { key: 'Enter' }) })
+  expect(onSubmit).not.toHaveBeenCalled()
+  expect(view.queryByRole('button', { name: 'Send' })).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: 'Stop' }))
+  expect(onStop).toHaveBeenCalledOnce()
+})

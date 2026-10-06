@@ -104,6 +104,8 @@ export interface BoxEnvelope {
   refs: ArtifactRef[]
   threadId?: string
   causationId?: string
+  /** Interrupt the recipient's current run before processing this correction. */
+  interrupt?: boolean
   /** Proposed: every message this one answers, when an agent replies to several at once. */
   replyTo?: string[]
   createdAt: number

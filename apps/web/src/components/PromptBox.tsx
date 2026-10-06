@@ -43,8 +43,10 @@ export function PromptBox({
   completeArgument,
   searchFiles,
   running = false,
+  allowWhileRunning = false,
   disabledReason,
   onSubmit,
+  onInterruptSubmit,
   onStop,
   placeholder,
   toolbar,
@@ -61,10 +63,14 @@ export function PromptBox({
   /** Workspace files for an `@` mention. */
   searchFiles?: ((query: string) => Promise<string[]>) | undefined
   running?: boolean
+  /** Keep sending asynchronous messages alongside a separate stop control. */
+  allowWhileRunning?: boolean
   disabledReason?: ReactNode
   onSubmit: (text: string, images: ImageAttachment[]) => Promise<boolean> | boolean
-  /** When given, the send button becomes a stop button while `running`. */
+  /** Stop the current run; replaces Send unless `allowWhileRunning` is enabled. */
   onStop?: (() => void) | undefined
+  /** Stop the current run and send a correction, offered separately while running. */
+  onInterruptSubmit?: ((text: string, images: ImageAttachment[]) => Promise<boolean> | boolean) | undefined
   placeholder: string
   toolbar?: ReactNode
   footer?: ReactNode
@@ -246,10 +252,12 @@ export function PromptBox({
 
   const canSend = (Boolean(text.trim()) || images.length > 0 || contexts.length > 0) && reading === 0
 
-  const submit = async () => {
+  const submit = async (interrupt = false) => {
     const value = [...contexts.map(context => context.text), text.trim()].filter(Boolean).join('\n\n')
-    if (!canSend || showStop || disabledReason) return
-    const accepted = await onSubmit(value, images)
+    if (!canSend || (showStop && !allowWhileRunning) || disabledReason) return
+    const send = interrupt ? onInterruptSubmit : onSubmit
+    if (!send) return
+    const accepted = await send(value, images)
     if (accepted) {
       setText('')
       setImages([])
@@ -421,25 +429,35 @@ export function PromptBox({
               </>
             )}
             {toolbar}
-          </div>
-          {showStop
-            ? (
-              <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
-                <Square size={13} fill="currentColor" />
-              </button>
-            )
-            : (
+            {running && allowWhileRunning && onInterruptSubmit && (
               <button
                 type="button"
-                className="send-button"
-                onClick={() => void submit()}
+                className="button ghost small"
+                onClick={() => void submit(true)}
                 disabled={!canSend || Boolean(disabledReason)}
-                aria-label="Send"
-                title="Send (Enter)"
+                title="Stop the current run and send this correction"
               >
-                <ArrowUp size={17} strokeWidth={2.4} />
+                Interrupt and send
               </button>
             )}
+          </div>
+          {showStop && (
+            <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
+              <Square size={13} fill="currentColor" />
+            </button>
+          )}
+          {(!showStop || allowWhileRunning) && (
+            <button
+              type="button"
+              className="send-button"
+              onClick={() => void submit()}
+              disabled={!canSend || Boolean(disabledReason)}
+              aria-label="Send"
+              title="Send (Enter)"
+            >
+              <ArrowUp size={17} strokeWidth={2.4} />
+            </button>
+          )}
         </div>
       </div>
       {!compact && !inline && (disabledReason || footer) && (

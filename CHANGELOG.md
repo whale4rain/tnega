@@ -44,6 +44,9 @@ compare links provide a convenient browser view of the boundaries.
 - Project coordinators are guided to start or reuse Threads before investigation,
   implementation and multi-step deliverables. Agents proactively delegate useful
   independent work while keeping small or tightly coupled tasks in one context.
+- Project and Thread composers keep asynchronous sending available during a run,
+  alongside a separate Stop button and Interrupt and send for immediate corrections.
+  Replies to a Thread control that Thread rather than the coordinator.
 
 ## [0.4.17](https://github.com/whale4rain/tnega/releases/tag/v0.4.17) — 2026-10-06
 

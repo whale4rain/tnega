@@ -89,9 +89,9 @@ export function ThreadPanel({
       setNotice(isUnsupported(reason) ? 'Resolving a thread is not supported by this server yet.' : errorText(reason))
     }
   }
-  const send = async (text: string) => {
+  const send = async (text: string, interrupt = false) => {
     try {
-      await projectApi.sendToThread(workspace, projectId, threadId, text)
+      await projectApi.sendToThread(workspace, projectId, threadId, text, interrupt)
       return true
     } catch (reason) {
       setError(errorText(reason))
@@ -140,7 +140,11 @@ export function ThreadPanel({
         <PromptBox
           inline
           placeholder={`Message ${thread.label}…`}
-          onSubmit={send}
+          onSubmit={text => send(text)}
+          onInterruptSubmit={text => send(text, true)}
+          onStop={() => void stop()}
+          running={working}
+          allowWhileRunning
           autoFocusKey={threadId}
         />
       </div>

@@ -180,6 +180,9 @@ export function ProjectView({
 
   const items = useMemo(() => (state ? mainTimeline(state) : []), [state])
   const coordinatorRunning = state ? Boolean(state.running[state.coordinatorId]) : false
+  const messageTargetId = replyTarget?.who === 'thread' && replyTarget.threadId
+    ? replyTarget.threadId : state?.coordinatorId
+  const messageTargetRunning = Boolean(messageTargetId && state?.running[messageTargetId])
 
   // Give every agent in the project its own look, coordinator first.
   const avatarsVersion = useSyncExternalStore(subscribeAvatars, avatarVersion, () => 0)
@@ -199,11 +202,11 @@ export function ProjectView({
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [items, state?.approvals])
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, interrupt = false) => {
     // Replying to a thread card is a direct message to that thread.
     if (replyTarget?.who === 'thread' && replyTarget.threadId) {
       try {
-        await projectApi.sendToThread(workspace, projectId, replyTarget.threadId, text)
+        await projectApi.sendToThread(workspace, projectId, replyTarget.threadId, text, interrupt)
         setReplyTarget(undefined)
         openThread(replyTarget.threadId)
         return true
@@ -214,7 +217,7 @@ export function ProjectView({
     }
     const replyTo = replyTarget?.id
     try {
-      const receipt = await projectApi.send(workspace, projectId, text, replyTo)
+      const receipt = await projectApi.send(workspace, projectId, text, replyTo, interrupt)
       // Show the message immediately; the stream will confirm the same envelope.
       setState(current => current && reduceProject(current, {
         type: 'message',
@@ -229,6 +232,7 @@ export function ProjectView({
           text,
           refs: [],
           ...(replyTo ? { causationId: replyTo } : {}),
+          ...(interrupt ? { interrupt: true } : {}),
           createdAt: receipt.createdAt,
         },
       }))
@@ -240,6 +244,15 @@ export function ProjectView({
       return false
     }
   }, [workspace, projectId, replyTarget, openThread])
+
+  const stopMessageTarget = async () => {
+    if (!messageTargetId) return
+    try {
+      await projectApi.stopThread(workspace, projectId, messageTargetId)
+    } catch (reason) {
+      setError(errorText(reason))
+    }
+  }
 
   /** Scroll to a message in the conversation, or open the thread it came from. */
   const jump = useCallback((ref: ReplyRef) => {
@@ -392,8 +405,11 @@ export function ProjectView({
             <PromptBox
               inline
               placeholder={replyTarget ? `Reply to ${replyTarget.label}…` : items.length ? 'Message the project…' : 'Describe what needs to get done…'}
-              onSubmit={send}
-              running={coordinatorRunning}
+              onSubmit={text => send(text)}
+              onInterruptSubmit={text => send(text, true)}
+              onStop={() => void stopMessageTarget()}
+              running={messageTargetRunning}
+              allowWhileRunning
               autoFocusKey={replyTarget?.id ?? projectId}
             />
           </div>
