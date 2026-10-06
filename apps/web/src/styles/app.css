@@ -4119,7 +4119,8 @@ kbd {
 .usage-model { border-top: 1px solid var(--border); padding-top: 12px; }
 .usage-model h4 { margin: 0; overflow-wrap: anywhere; }
 .workspace-instructions { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.workspace-instructions textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; }
+.workspace-instructions textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; padding: 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; }
+.workspace-instructions textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .workspace-instructions-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .usage-day { display: inline-block; width: 12px; height: 12px; padding: 0; border: 1px solid var(--border); border-radius: 3px; }
 .usage-day[aria-pressed="true"], .usage-day:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
