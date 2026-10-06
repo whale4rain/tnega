@@ -38,6 +38,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Features
 
+- The usage calendar includes Project coordinator and Thread responses, with
+  their Project/Thread identities and detailed token accounting.
+
 - Workspace instructions also apply to Project coordinators and Threads;
   clearing the setting removes it from their subsequent requests.
 

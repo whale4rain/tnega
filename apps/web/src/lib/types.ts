@@ -169,6 +169,8 @@ export interface UsageResponse extends UsageTotals {
   sessionTitle: string
   timestamp: number
   modelId: string
+  projectId?: string
+  threadId?: string
 }
 
 /** Where a ChatGPT sign-in stands (`/api/auth/chatgpt`). */

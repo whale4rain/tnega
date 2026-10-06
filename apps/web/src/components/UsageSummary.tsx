@@ -29,13 +29,11 @@ export function UsageSummary({ workspace }: { workspace: string | undefined }) {
   const unpriced = usage.byModel.filter(model => !model.priced).map(model => model.name)
   const days = usageCalendar(usage.responses ?? [])
   const chosen = days.find(day => day.date === selected) ?? days.at(-1)!
+  const spans = [{ label: 'Today', totals: usage.today }, { label: 'Last 7 days', totals: usage.week }, { label: 'All time', totals: usage.total }]
   return (
     <div className="usage-summary">
       <div className="usage-totals">
-        {[['Today', usage.today], ['Last 7 days', usage.week], ['All time', usage.total]].map(([label, value]) => {
-          if (typeof value === 'string' || !value) return null
-          return <div key={String(label)}><span className="muted small">{String(label)}</span><strong>{formatTokens(value.promptTokens + value.completionTokens)} tokens</strong><span className="muted small">{formatCost(value.cost) ?? 'Cost unavailable'}</span></div>
-        })}
+        {spans.map(({ label, totals }) => <div key={label}><span className="muted small">{label}</span><strong>{formatTokens(totals.promptTokens + totals.completionTokens)} tokens</strong><span className="muted small">{formatCost(totals.cost) ?? 'Cost unavailable'}</span></div>)}
       </div>
       <p className="muted small">Daily usage · {days[0]!.date} – {days.at(-1)!.date} · local time</p>
       <div className="usage-calendar-scroll">
@@ -49,7 +47,20 @@ export function UsageSummary({ workspace }: { workspace: string | undefined }) {
       <div className="usage-legend"><span>Less</span>{[0, 1, 2, 3, 4].map(level => <span key={level} className={`usage-day usage-level-${level}`} aria-label={`Intensity ${level} of 4`} />)}<span>More</span><span className="muted small">Input + output tokens; cache is included in input.</span></div>
       <details open className="usage-details">
         <summary>{chosen.date} · {chosen.tokens.toLocaleString()} tokens · {chosen.responses.length} responses</summary>
-        {chosen.responses.length === 0 ? <p className="muted small">No usage on this day.</p> : <div className="usage-detail-scroll"><table className="usage-table"><thead><tr><th>Time / Session</th><th>Model</th><th>Input</th><th>Output</th><th>Cached</th><th>Reasoning</th></tr></thead><tbody>{chosen.responses.map((response, index) => <tr key={`${response.sessionId}-${response.timestamp}-${index}`}><th scope="row" title={response.sessionId}>{new Date(response.timestamp).toLocaleTimeString()}<br />{response.sessionTitle}</th><td>{response.modelId}</td><td>{formatTokens(response.promptTokens)}</td><td>{formatTokens(response.completionTokens)}</td><td>{formatTokens(response.cachedTokens)}</td><td>{formatTokens(response.reasoningTokens)}</td></tr>)}</tbody></table></div>}
+        {chosen.responses.length === 0 ? <p className="muted small">No usage on this day.</p> : (
+          <div className="usage-detail-scroll"><table className="usage-table">
+            <thead><tr><th>Time / Session or Thread</th><th>Model</th><th>Input</th><th>Output</th><th>Cached</th><th>Reasoning</th></tr></thead>
+            <tbody>{chosen.responses.map((response, index) => (
+              <tr key={`${response.sessionId}-${response.timestamp}-${index}`}>
+                <th scope="row" title={response.sessionId}>
+                  {new Date(response.timestamp).toLocaleTimeString()}<br />{response.sessionTitle}
+                  {response.threadId && <><br /><span className="muted small" title={response.projectId}>Thread · {response.threadId.slice(0, 8)}</span></>}
+                </th>
+                <td>{response.modelId}</td><td>{formatTokens(response.promptTokens)}</td><td>{formatTokens(response.completionTokens)}</td><td>{formatTokens(response.cachedTokens)}</td><td>{formatTokens(response.reasoningTokens)}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
       </details>
       {usage.byModel.length > 0 && (
         <table className="usage-table">

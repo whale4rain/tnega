@@ -17,7 +17,8 @@ import {
 import { Context, type Fiber, type Plugin } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
 import { observeCompaction } from './compaction-observation.js'
-import { sessionUsage, workspaceUsage } from './usage.js'
+import { sessionUsage } from './usage.js'
+import { storedWorkspaceUsage } from './usage-store.js'
 import { autoNameSession } from './session-title.js'
 import { readWorkspacePrompt, writeWorkspacePrompt, workspacePrompt } from './workspace-prompt.js'
 import { buildCompactionPrompt, SUMMARIZATION_SYSTEM_PROMPT } from './compaction-prompt.js'
@@ -531,9 +532,7 @@ async function handleApi(
   if (url.pathname === '/api/usage' && req.method === 'GET') {
     const workspace = workspaceParam(url)
     if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
-    const sessions = await listSessions(workspace)
-    const logs = await Promise.all(sessions.map(session => readSessionLog(workspace, session.id).catch(() => [])))
-    sendJson(res, 200, workspaceUsage(logs, await readSystemConfig(context.configFile), Date.now(), sessions.map(session => session.id)))
+    sendJson(res, 200, await storedWorkspaceUsage(workspace, await readSystemConfig(context.configFile)))
     return
   }
 
