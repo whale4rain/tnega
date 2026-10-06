@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http'
+import { randomInt } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -65,7 +66,22 @@ beforeAll(async () => {
     res.statusCode = 404
     res.end('not found')
   })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  // Windows can assign port 0 to Chromium's restricted range (e.g. 6669).
+  // Use unprivileged high ports without weakening browser port restrictions.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(randomInt(20_000, 60_000), '127.0.0.1', () => {
+          server.off('error', reject)
+          resolve()
+        })
+      })
+      break
+    } catch (error) {
+      if (attempt >= 9 || !(error instanceof Error && 'code' in error && error.code === 'EADDRINUSE')) throw error
+    }
+  }
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   // Skip on machines without Edge, Chrome or Playwright's Chromium.
   // A machine too busy to start one within the budget is treated like one without a browser.
