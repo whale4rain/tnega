@@ -62,6 +62,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Interrupted-call repair also handles tool call IDs reused in later steps,
+  without mistaking a completed earlier invocation for the current one.
+
 - Usage accounting follows model switches made in Session settings, including
   the per-response model attribution and route pricing.
 

@@ -1140,7 +1140,6 @@ export function repairUnclosed(
 ): SessionEvent[] {
   const openCalls: Extract<SessionEvent, { type: 'tool/call' }>[] = []
   const declaredCalls = new Map<string, ModelToolCall>()
-  const recordedCalls = new Set<string>()
   const openSteps: Extract<SessionEvent, { type: 'step/start' }>[] = []
   const openTurns: Extract<SessionEvent, { type: 'turn/start' }>[] = []
   for (const event of events) {
@@ -1149,7 +1148,6 @@ export function repairUnclosed(
         for (const call of event.payload.toolCalls ?? []) declaredCalls.set(call.id, call)
         break
       case 'tool/call':
-        recordedCalls.add(event.payload.id)
         openCalls.push(event)
         break
       case 'tool/result': {
@@ -1193,7 +1191,7 @@ export function repairUnclosed(
   }
 
   for (const call of declaredCalls.values()) {
-    if (recordedCalls.has(call.id)) continue
+    if (openCalls.some(open => open.payload.id === call.id)) continue
     const payload: ToolCallPayload = { id: call.id, name: call.name, arguments: call.arguments, interruption: call.interruption ?? 'fail' }
     push('tool/call', payload)
     openCalls.push({ id: '', seq: 0, ts: 0, type: 'tool/call', payload })

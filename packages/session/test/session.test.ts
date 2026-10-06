@@ -617,6 +617,15 @@ describe('SessionLog replay', () => {
 })
 
 describe('SessionLog lifecycle and repair', () => {
+  it('repairs a repeated call id whose earlier invocation already completed', () => {
+    const events: SessionEvent[] = [
+      { id: 'a1', seq: 1, ts: 1, type: 'assistant/message', payload: { content: '', toolCalls: [{ id: 'reused', name: 'read', arguments: {} }] } },
+      { id: 'c1', seq: 2, ts: 2, type: 'tool/call', payload: { id: 'reused', name: 'read', arguments: {} } },
+      { id: 'r1', seq: 3, ts: 3, type: 'tool/result', payload: { id: 'reused', toolCallId: 'reused', name: 'read', ok: true } },
+      { id: 'a2', seq: 4, ts: 4, type: 'assistant/message', payload: { content: '', toolCalls: [{ id: 'reused', name: 'read', arguments: {} }] } },
+    ]
+    expect(repairUnclosed(events).map(event => event.type)).toEqual(['tool/call', 'tool/result'])
+  })
   it('leaves a closed event stream untouched', () => {
     expect(repairUnclosed([])).toEqual([])
   })
