@@ -16,6 +16,11 @@ async function setup(mode: 'blocking' | 'nonblocking', resident = true, delayRep
     let body = ''
     req.on('data', chunk => { body += String(chunk) })
     req.on('end', () => {
+      if (body.includes('Name this Session from the first user intent.')) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: '风格选择' }, finish_reason: 'stop' }] }))
+        return
+      }
       requests.push(JSON.parse(body))
       const question = requests.length === 1
       const delta = question ? {

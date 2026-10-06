@@ -13,6 +13,11 @@ it.each([true, false])('switches the complete model tool surface across runs (re
     let body = ''
     req.on('data', chunk => { body += String(chunk) })
     req.on('end', () => {
+      if (body.includes('Name this Session from the first user intent.')) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Tool checks' }, finish_reason: 'stop' }] }))
+        return
+      }
       requests.push(JSON.parse(body))
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'Done' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`)

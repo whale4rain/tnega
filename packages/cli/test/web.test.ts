@@ -74,6 +74,11 @@ async function startMockLlm(
       body += String(chunk)
     })
     req.on('end', () => {
+      if (body.includes('Name this Session from the first user intent.')) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Mock session title' }, finish_reason: 'stop' }] }))
+        return
+      }
       count += 1
       if (typeof body !== 'string') {
         res.writeHead(400)
@@ -915,7 +920,7 @@ describe('web server', () => {
       summary: { title: string }
       events: Array<{ type: string; payload: { role?: string; content?: string } }>
     }
-    expect(detail.summary.title).toBe('say hello')
+    expect(detail.summary.title).toBe('Mock session title')
     const messages = detail.events.filter(isMessageEvent)
     expect(messages).toHaveLength(2)
     expect(messages[0]!.type).toBe('user/message')
