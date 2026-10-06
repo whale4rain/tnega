@@ -39,6 +39,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- ChatGPT sign-in sends the required JSON request body, fixing the HTTP 415
+  rejection before OAuth starts while preserving cross-site request checks.
+
 - Workspace instructions use a full-width stacked layout, and the usage calendar
   fits the available width. Selecting a day shows combined input, output, cache,
   reasoning, response count and cost instead of a response-by-response table.
