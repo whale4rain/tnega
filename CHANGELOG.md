@@ -15,7 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.4.18 | [`v0.4.17...v0.4.18`](https://github.com/whale4rain/tnega/compare/v0.4.17...v0.4.18) | 8 |
+| 0.4.18 | [`v0.4.17...v0.4.18`](https://github.com/whale4rain/tnega/compare/v0.4.17...v0.4.18) | 9 |
 | 0.4.17 | [`v0.4.16...v0.4.17`](https://github.com/whale4rain/tnega/compare/v0.4.16...v0.4.17) | 2 |
 | 0.4.16 | [`v0.4.15...v0.4.16`](https://github.com/whale4rain/tnega/compare/v0.4.15...v0.4.16) | 10 |
 | 0.4.15 | [`v0.4.14...v0.4.15`](https://github.com/whale4rain/tnega/compare/v0.4.14...v0.4.15) | 18 |
@@ -67,6 +67,12 @@ compare links provide a convenient browser view of the boundaries.
 - Explicit Project corrections are saved through Box and enqueued before cancelling
   the current Agent Run, preserving pending input and preventing old queued messages
   from restarting work without the correction. Only direct user messages can interrupt.
+
+### Other
+
+- Question Web tests retry transient Windows directory locks and drain every
+  cleanup once even after an error, preventing stale server closers from causing
+  cascading failures in later tests.
 
 ## [0.4.17](https://github.com/whale4rain/tnega/releases/tag/v0.4.17) — 2026-10-06
 

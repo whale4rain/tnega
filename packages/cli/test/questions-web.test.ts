@@ -6,11 +6,33 @@ import { afterEach, expect, it } from 'vitest'
 import { startWebServer } from '../src/server.js'
 
 const cleanup: Array<() => Promise<void>> = []
-afterEach(async () => { for (const close of cleanup.reverse()) await close(); cleanup.length = 0 })
+async function drainCleanup(): Promise<void> {
+  // Detach the stack before awaiting: one failed cleanup must not leak old
+  // closers into the next test or prevent the remaining resources from closing.
+  const closers = cleanup.splice(0).reverse()
+  const errors: unknown[] = []
+  for (const close of closers) {
+    try { await close() } catch (error) { errors.push(error) }
+  }
+  if (errors.length) throw new AggregateError(errors, 'Question fixture cleanup failed')
+}
+
+afterEach(drainCleanup)
+
+it('drains failed cleanup once without reusing old server closers', async () => {
+  let closes = 0
+  cleanup.push(async () => { closes += 1 })
+  cleanup.push(async () => { throw new Error('fixture locked') })
+  await expect(drainCleanup()).rejects.toThrow()
+  expect(closes).toBe(1)
+  expect(cleanup).toHaveLength(0)
+  await expect(drainCleanup()).resolves.toBeUndefined()
+  expect(closes).toBe(1)
+})
 
 async function setup(mode: 'blocking' | 'nonblocking', resident = true, delayReply = false) {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-question-web-'))
-  cleanup.push(() => rm(workspace, { recursive: true, force: true }))
+  cleanup.push(() => rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))
   const requests: Array<{ messages: Array<{ role: string; content?: string }> }> = []
   const llm = createServer((req, res) => {
     let body = ''
