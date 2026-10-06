@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/tnega-icon.png" alt="Tnega: a cloud on a cube" width="120" />
+  <img src="docs/assets/tnega-icon.png" alt="Tnega: a blue cloud with white eyes" width="120" />
 </p>
 
 # Tnega

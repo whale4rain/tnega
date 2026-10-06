@@ -82,6 +82,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Other
 
+- The README uses the current blue cloud app icon.
+
 - Changelog entries use Features, Fixes and Other consistently, including
   historical versions; publishing guidance defines the grouping rules.
 
