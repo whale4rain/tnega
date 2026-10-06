@@ -29,6 +29,16 @@ function simpleTool(name = 'simple'): ToolDefinition {
 }
 
 describe('schema validator', () => {
+  it('rejects invalid array members and declared bounds at every depth', () => {
+    expect(validateSchema(['wrong'], { type: 'array', items: { type: 'integer' } }))
+      .toContain('[0].expected integer, received string')
+    expect(validateSchema({ count: 0, extra: true }, {
+      type: 'object', properties: { count: { type: 'integer', minimum: 1 } }, additionalProperties: false,
+    })).toEqual(expect.arrayContaining(['count.must be >= 1', 'unexpected property: extra']))
+    expect(validateSchema('long', { type: 'string', maxLength: 3 })).toContain('length must be <= 3')
+    expect(validateSchema([], { type: 'array', minItems: 1 })).toContain('item count must be >= 1')
+    expect(validateSchema('bad', { enum: ['ok'] })).toContain('must be one of ok')
+  })
   it('accepts valid inputs and properties without an explicit type', () => {
     const schema = {
       type: 'object',

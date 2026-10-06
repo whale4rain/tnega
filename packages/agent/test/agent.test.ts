@@ -143,6 +143,32 @@ describe('AgentInbox', () => {
 })
 
 describe('agent service wiring', () => {
+  it('persists schema failures and lets the model correct a call in the next step', async () => {
+    const root = new Context()
+    await root.plugin(session, { file: await tempFile('invalid-tool.jsonl') })
+    await root.plugin(tools)
+    const executed = vi.fn(() => 'ok')
+    root.get('tools').register({
+      schema: { name: 'bounded', description: 'bounded', parameters: {
+        type: 'object', properties: { count: { type: 'integer', minimum: 1 } }, additionalProperties: false,
+      } }, execute: executed,
+    })
+    const { adapter, calls } = fakeLLM([
+      { toolCalls: [toolCall('bad', 'bounded', { count: 0 })], finishReason: 'tool_calls' },
+      { toolCalls: [toolCall('good', 'bounded', { count: 1 })], finishReason: 'tool_calls' },
+      { content: 'done', finishReason: 'stop' },
+    ])
+    await root.plugin(agent, { llm: adapter })
+    await root.get('agent').run({ text: 'go' })
+    expect(executed).toHaveBeenCalledTimes(1)
+    expect(calls[1]?.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'tool', content: expect.stringContaining('must be >= 1') }),
+    ]))
+    expect(await root.get('session').read()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'tool/result', payload: expect.objectContaining({ toolCallId: 'bad', ok: false }) }),
+    ]))
+    await root.get('session').close()
+  })
   it('stays pending until session and tools are available', async () => {
     const root = new Context()
     const { adapter } = fakeLLM([{ content: 'hi', finishReason: 'stop' }])

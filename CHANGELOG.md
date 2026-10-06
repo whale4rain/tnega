@@ -36,6 +36,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- Tool calls now reject invalid array members, undeclared properties when forbidden,
+  and declared numeric/string/array bounds before execution. Failures remain visible
+  in the Session and model context so the model can correct the next call.
+
 ## [0.4.14](https://github.com/whale4rain/tnega/releases/tag/v0.4.14) — 2026-10-05
 
 - New app icon and brand mark: the Tnega cloud with two eyes replaces the

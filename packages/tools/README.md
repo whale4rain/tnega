@@ -59,6 +59,10 @@ Consumer 互不依赖；Provider 的挑选属于 composition 层。
 
 ## 事件
 
+格式不合 schema 的调用在执行前以 `ToolInputError` 拒绝，不做类型强转或静默宽容解析。
+错误包含字段问题与期望参数形状；Agent 将失败结果持久化并交回模型，下一 step 可纠正。
+校验包括嵌套对象/数组、enum、禁止额外字段及声明的数值、字符串长度和数组长度边界。
+
 `tools/change`（注册表变更）、`tools/pre-execute`、`tools/execute`、
 `tools/post-execute`、`tools/result`（见上）。
 

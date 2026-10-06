@@ -77,36 +77,58 @@ export function validateSchema(
     issues.push('expected object')
     return issues
   }
-  if (!objectLike || typeof input !== 'object' || input === null || Array.isArray(input)) {
+  if (Array.isArray(schema.enum) && !schema.enum.some(value => JSON.stringify(value) === JSON.stringify(input))) {
+    issues.push(`must be one of ${schema.enum.join(', ')}`)
+  }
+  if (typeof input === 'number') {
+    if (typeof schema.minimum === 'number' && input < schema.minimum) issues.push(`must be >= ${schema.minimum}`)
+    if (typeof schema.maximum === 'number' && input > schema.maximum) issues.push(`must be <= ${schema.maximum}`)
+    if (typeof schema.exclusiveMinimum === 'number' && input <= schema.exclusiveMinimum) issues.push(`must be > ${schema.exclusiveMinimum}`)
+    if (typeof schema.exclusiveMaximum === 'number' && input >= schema.exclusiveMaximum) issues.push(`must be < ${schema.exclusiveMaximum}`)
+  }
+  if (typeof input === 'string') {
+    const length = Array.from(input).length
+    if (typeof schema.minLength === 'number' && length < schema.minLength) issues.push(`length must be >= ${schema.minLength}`)
+    if (typeof schema.maxLength === 'number' && length > schema.maxLength) issues.push(`length must be <= ${schema.maxLength}`)
+  }
+  if (Array.isArray(input)) {
+    if (typeof schema.minItems === 'number' && input.length < schema.minItems) issues.push(`item count must be >= ${schema.minItems}`)
+    if (typeof schema.maxItems === 'number' && input.length > schema.maxItems) issues.push(`item count must be <= ${schema.maxItems}`)
+    const items = schema.items
+    if (isSchema(items)) {
+      input.forEach((value, index) => {
+        issues.push(...validateSchema(value, items).map(issue => `[${index}].${issue}`))
+      })
+    }
     return issues
   }
-
-  const record = input as Record<string, unknown>
+  if (!objectLike || !isSchema(input)) return issues
+  const record = input
   for (const key of schema.required ?? []) {
-    if (!(key in record)) issues.push(`missing required property: ${key}`)
+    if (!Object.hasOwn(record, key)) issues.push(`missing required property: ${key}`)
   }
 
   for (const [key, raw] of Object.entries(schema.properties ?? {})) {
     const value = record[key]
     if (value === undefined) continue
-    if (!raw || typeof raw !== 'object') continue
-    const property = raw as ToolParameterSchema
-    const nested = validateSchema(value, property)
-    if (nested.length) issues.push(...nested.map(issue => `${key}.${issue}`))
-    if (Array.isArray(property.enum) && !property.enum.includes(value)) {
-      issues.push(`${key} must be one of ${property.enum.join(', ')}`)
-    }
+    if (!isSchema(raw)) continue
+    const nested = validateSchema(value, raw)
+    if (nested.length) issues.push(...nested.map(issue => issue.startsWith('must be one of') ? `${key} ${issue}` : `${key}.${issue}`))
   }
 
-  if (schema.type === 'array' && Array.isArray(input) && schema.items) {
-    const itemSchema = schema.items as ToolParameterSchema
-    for (let index = 0; index < input.length; index += 1) {
-      const nested = validateSchema(input[index], itemSchema)
-      if (nested.length) issues.push(...nested.map(issue => `[${index}].${issue}`))
+  for (const key of Object.keys(record)) {
+    if (Object.hasOwn(schema.properties ?? {}, key)) continue
+    if (schema.additionalProperties === false) issues.push(`unexpected property: ${key}`)
+    else if (isSchema(schema.additionalProperties)) {
+      issues.push(...validateSchema(record[key], schema.additionalProperties).map(issue => `${key}.${issue}`))
     }
   }
 
   return issues
+}
+
+function isSchema(value: unknown): value is ToolParameterSchema {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
