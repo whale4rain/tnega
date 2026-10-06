@@ -85,7 +85,7 @@ if (command === 'version') {
   writeVersion(desktopPackage, argument)
   const notes = resolve(root, `docs/releases/v${argument}.md`)
   if (!existsSync(notes)) {
-    writeFileSync(notes, `# Tnega v${argument}\n\n- \n\n## Install\n\n\`\`\`bash\nnpm install -g tnega@${argument}\n\`\`\`\n\nWindows: download **Tnega-Setup-${argument}.exe** from this release, or let an installed client update itself (Settings → Check for updates).\n`)
+    writeFileSync(notes, `# Tnega v${argument}\n\n## Features\n\n- \n\n## Fixes\n\n- \n\n## Other\n\n- \n\n## Install\n\n\`\`\`bash\nnpm install -g tnega@${argument}\n\`\`\`\n\nWindows: download **Tnega-Setup-${argument}.exe** from this release, or let an installed client update itself (Settings → Check for updates).\n`)
   }
   console.log(`version ${argument}; write the notes in docs/releases/v${argument}.md`)
   console.log(`publish CLI with: npm publish --tag ${metadata.npmTag}`)

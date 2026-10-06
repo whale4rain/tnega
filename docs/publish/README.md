@@ -32,6 +32,9 @@ files are preserved, so upgrades only add missing instructions.
   For mixed entries choose the primary user effect. Preserve historical wording
   when grouping, and do not rewrite historical entries merely to change style.
 - Audit `git log <previous-actual-tag>..<new-tag>` including merged branches.
+- GitHub release notes (`docs/releases/v<version>.md`) use **Features**, **Fixes**
+  and **Other** headings before **Install**, omitting empty groups. Keep install
+  and compatibility notes outside the change groups.
   Gaps in version numbers do not create gaps in coverage. A preview's notes
   describe its changes; final stable notes include the whole batch since the
   previous stable tag, including all intervening previews.
