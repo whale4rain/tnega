@@ -8,6 +8,10 @@ Provider 与 Consumer 只依赖 Definition，组合层选择 Provider。
 `spawn` 从空对话开始；`fork` 在新 Session 的 checkpoint 中复制父 Session 已完成的 turn。
 两种模式均与父 Agent 共享 Workspace 文件，写文件时应分配不重叠的范围。
 
+普通 Agent 在开始较大任务时主动寻找适合独立上下文的调查、实现分支或验证，
+有收益时先调用 `spawn_subagent` 派工，再继续自己的工作。小任务与紧密关联的步骤
+由当前 Agent 完成，父 Agent 始终负责整合与验收；并发只用于范围独立的任务。
+
 父子消息写入收件方的 durable inbox，内容按数据写（字段、路径、结论），不是给人读的成品。
 仅相邻父子可互发消息。子代理结束时，Provider 把最终答复写入父 Agent inbox：超过 1200 字符
 只送行边界上的开头，并附 `read_subagent_result` 的续读位置，因此长结果可恢复，不会静默截断。

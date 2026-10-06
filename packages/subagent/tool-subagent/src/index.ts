@@ -31,7 +31,7 @@ export const toolSubagent = {
     tools.register({
       schema: {
         name: 'spawn_subagent',
-        description: 'Start a bounded independent task in a child Agent. Returns its ID immediately. Use spawn for a self-contained task; use fork only when the child needs completed conversation history. Assign separate files to agents that edit code. Check progress with list_subagent.',
+        description: 'Proactively delegate a bounded independent investigation, implementation branch or verification that benefits from its own context. Dispatch useful branches before doing them yourself; keep small or tightly coupled work local and own integration. Returns its ID immediately. Use spawn for a self-contained task; use fork only when the child needs completed conversation history. Assign separate files to agents that edit code. Check progress with list_subagent.',
         parameters: {
           type: 'object',
           properties: {

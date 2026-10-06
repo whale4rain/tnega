@@ -39,6 +39,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- Project coordinators are guided to start or reuse Threads before investigation,
+  implementation and multi-step deliverables. Agents proactively delegate useful
+  independent work while keeping small or tightly coupled tasks in one context.
+
 ## [0.4.17](https://github.com/whale4rain/tnega/releases/tag/v0.4.17) — 2026-10-06
 
 ### Fixes

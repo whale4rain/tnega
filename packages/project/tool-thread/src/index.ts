@@ -47,7 +47,7 @@ export const toolThread = {
     tools.register({
       schema: {
         name: 'spawn_thread',
-        description: 'Start a new project thread: an Agent with its own context, model history and folder, which the user can open and talk to directly. Returns its ID immediately; the thread reports back through your inbox. Reuse an existing thread with send_thread_message when the work continues that thread\'s goal.',
+        description: 'Delegate project investigation, implementation or a multi-step deliverable to a thread the user can open and direct. As coordinator, start one before executing that work yourself, even for a single task. Keep quick answers in the main conversation and cohesive work in one thread; parallelize independent scopes. Returns its ID immediately; reports arrive through your inbox. Reuse an existing thread with send_thread_message when the work continues its goal.',
         parameters: {
           type: 'object',
           properties: {
