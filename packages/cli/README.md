@@ -158,6 +158,10 @@ SHA-256（Windows 忽略大小写），可用 `TNEGA_HOME` 改根目录。CLI �
 子代理和 Project Thread 历史也在此工作区目录下；Project 的内部消息、身份数据在
 `~/.tnega/workspaces/<workspace-key>/`。工具工作目录仍是原 Workspace。
 
+Workspace Usage 的用量与每日/模型汇总缓存保存在该状态目录的 `usage-cache.json`，
+不包含对话内容；未变化的历史直接复用，日志、价格或时区变化会刷新对应汇总。
+缓存可删除或自动重建，Session 格式无需迁移。
+
 首次访问自动导入旧工作区日志，保留原文件与 mtime；迁移标记防止删除后的会话被旧备份
 再次导入。复制前后检查源文件是否变化，同名不同内容或旧进程继续写入时明确拒绝。
 升级前先退出旧客户端和 CLI。显式 `--session` 路径仍生效；项目配置、记忆、skills 和

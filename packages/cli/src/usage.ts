@@ -129,31 +129,50 @@ export function sessionUsage(events: readonly SessionEvent[], config: SystemConf
 
 /** Today, the last seven days and all time across a workspace's sessions, plus a split by model. */
 export function workspaceUsage(sessions: ReadonlyArray<readonly SessionEvent[]>, config: SystemConfig, now = Date.now(), sessionIds: readonly string[] = []): WorkspaceUsage {
+  return workspaceUsageFromSummaries(sessions.map(events => summarizeUsage(events)), config, now, sessionIds)
+}
+
+export interface SessionUsageSummary {
+  title: string
+  responses: { usage: ModelUsage; modelId: string; timestamp: number }[]
+}
+
+/** Retain only usage facts; an empty route follows the current default model. */
+export function summarizeUsage(events: readonly SessionEvent[]): SessionUsageSummary {
+  const responses: SessionUsageSummary['responses'] = []
+  eachResponse(events, '', (usage, modelId, timestamp) => responses.push({ usage, modelId, timestamp }))
+  return { title: foldSessionMeta(events).title ?? 'Session', responses }
+}
+
+export function workspaceUsageFromSummaries(sessions: readonly SessionUsageSummary[], config: SystemConfig, now = Date.now(), sessionIds: readonly string[] = []): WorkspaceUsage {
   const defaultModel = effectiveLlmConfig(config).modelId
   const prices = pricesFor(config)
   const startOfDay = new Date(now)
   startOfDay.setHours(0, 0, 0, 0)
   const dayStart = startOfDay.getTime()
-  const weekStart = dayStart - 6 * 24 * 60 * 60 * 1000
+  const weekDate = new Date(dayStart)
+  weekDate.setDate(weekDate.getDate() - 6)
+  const weekStart = weekDate.getTime()
   const today = accumulator()
   const week = accumulator()
   const total = accumulator()
   const byModel = new Map<string, Accumulator>()
   const responses: UsageResponse[] = []
-  for (const [index, events] of sessions.entries()) {
-    const meta = foldSessionMeta(events)
-    eachResponse(events, defaultModel, (usage, modelId, ts) => {
+  for (const [index, session] of sessions.entries()) {
+    for (const entry of session.responses) {
+      const { usage, timestamp: ts } = entry
+      const modelId = entry.modelId || defaultModel
       const pricing = prices(modelId)
       const response = accumulator()
       add(response, usage, pricing)
-      responses.push({ ...totals(response), sessionId: sessionIds[index] ?? String(index), sessionTitle: meta.title ?? 'Session', timestamp: ts, modelId })
+      responses.push({ ...totals(response), sessionId: sessionIds[index] ?? String(index), sessionTitle: session.title, timestamp: ts, modelId })
       add(total, usage, pricing)
       if (ts >= weekStart) add(week, usage, pricing)
       if (ts >= dayStart) add(today, usage, pricing)
       let model = byModel.get(modelId)
       if (!model) byModel.set(modelId, model = accumulator())
       add(model, usage, pricing)
-    })
+    }
   }
   return {
     today: totals(today),

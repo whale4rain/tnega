@@ -1297,6 +1297,11 @@ export function estimateContextUsage(
 }
 
 export class SessionLog {
+  /** Flush an existing writer without loading a historical Session. */
+  static async flushLive(file: string): Promise<void> {
+    await liveSessions.get(sessionFileKey(file))?.flush()
+  }
+
   private _events: SessionEvent[] = []
   private _surface: ModelMessage[] = []
   private _surfaceNodes: number[] = []
