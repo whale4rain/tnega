@@ -66,6 +66,11 @@
   --text-inverse: #f8fafc;
 
   --accent: #2f6fd0;
+  --usage-0: var(--surface-sunken);
+  --usage-1: color-mix(in srgb, var(--accent) 25%, var(--surface));
+  --usage-2: color-mix(in srgb, var(--accent) 50%, var(--surface));
+  --usage-3: color-mix(in srgb, var(--accent) 75%, var(--surface));
+  --usage-4: var(--accent);
   --accent-hover: #255cb0;
   --accent-soft: #e5eefb;
   --accent-text: #2259ad;
@@ -137,6 +142,11 @@
   --text-inverse: #0b0f15;
 
   --accent: #8ab4f8;
+  --usage-0: var(--surface-sunken);
+  --usage-1: color-mix(in srgb, var(--accent) 25%, var(--surface));
+  --usage-2: color-mix(in srgb, var(--accent) 50%, var(--surface));
+  --usage-3: color-mix(in srgb, var(--accent) 75%, var(--surface));
+  --usage-4: var(--accent);
   --accent-hover: #a5c6fa;
   --accent-soft: rgba(138, 180, 248, 0.14);
   --accent-text: #a8c7fa;

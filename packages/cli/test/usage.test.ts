@@ -16,6 +16,13 @@ const config: SystemConfig = {
 }
 
 describe('usage', () => {
+  it('retains timestamp, session and model details for the calendar', () => {
+    const at = new Date(2026, 9, 6, 12).getTime()
+    const summary = workspaceUsage([[switchTo('pro', at - 1), reply({ promptTokens: 10, completionTokens: 3, cachedTokens: 4 }, at)]], config, at, ['session-one'])
+    expect(summary.responses).toEqual([expect.objectContaining({
+      sessionId: 'session-one', timestamp: at, modelId: 'pro', promptTokens: 10, completionTokens: 3, cachedTokens: 4,
+    })])
+  })
   it('prices cached prompt tokens at the cache price', () => {
     expect(responseCost({ promptTokens: 1_000_000, cachedTokens: 600_000, completionTokens: 100_000 }, { input: 2, cachedInput: 0.5, output: 8 }))
       .toBeCloseTo(0.8 + 0.3 + 0.8)

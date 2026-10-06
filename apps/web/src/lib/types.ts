@@ -161,6 +161,14 @@ export interface WorkspaceUsage {
   total: UsageTotals
   byModel: Array<UsageTotals & { modelId: string; name: string; priced: boolean }>
   sessions: number
+  responses: UsageResponse[]
+}
+
+export interface UsageResponse extends UsageTotals {
+  sessionId: string
+  sessionTitle: string
+  timestamp: number
+  modelId: string
 }
 
 /** Where a ChatGPT sign-in stands (`/api/auth/chatgpt`). */

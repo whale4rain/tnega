@@ -4108,6 +4108,20 @@ kbd {
   color: var(--text);
 }
 
+.usage-totals { display: flex; flex-wrap: wrap; gap: 24px; }
+.usage-totals > div { display: flex; flex-direction: column; gap: 4px; }
+.usage-calendar-scroll, .usage-detail-scroll { overflow-x: auto; max-width: 100%; }
+.usage-calendar { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); grid-auto-columns: 12px; gap: 3px; width: max-content; padding: 3px; }
+.usage-day { display: inline-block; width: 12px; height: 12px; padding: 0; border: 1px solid var(--border); border-radius: 3px; }
+.usage-day[aria-pressed="true"], .usage-day:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+.usage-level-0 { background: var(--usage-0); }
+.usage-level-1 { background: var(--usage-1); }
+.usage-level-2 { background: var(--usage-2); }
+.usage-level-3 { background: var(--usage-3); }
+.usage-level-4 { background: var(--usage-4); }
+.usage-legend { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; font-size: var(--text-sm); }
+.usage-details summary { cursor: pointer; }
+
 .chatgpt-sign-in {
   display: flex;
   flex-wrap: wrap;

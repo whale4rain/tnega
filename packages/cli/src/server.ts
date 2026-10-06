@@ -531,7 +531,7 @@ async function handleApi(
     if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
     const sessions = await listSessions(workspace)
     const logs = await Promise.all(sessions.map(session => readSessionLog(workspace, session.id).catch(() => [])))
-    sendJson(res, 200, workspaceUsage(logs, await readSystemConfig(context.configFile)))
+    sendJson(res, 200, workspaceUsage(logs, await readSystemConfig(context.configFile), Date.now(), sessions.map(session => session.id)))
     return
   }
 

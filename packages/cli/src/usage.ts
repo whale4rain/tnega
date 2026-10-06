@@ -1,4 +1,4 @@
-import type { ModelUsage, SessionEvent } from '@tnega/session'
+import { foldSessionMeta, type ModelUsage, type SessionEvent } from '@tnega/session'
 import { effectiveLlmConfig, type ModelPricing, type SystemConfig } from './config.js'
 
 /** Token use over some span, as providers reported it. */
@@ -32,6 +32,14 @@ export interface WorkspaceUsage {
   total: UsageTotals
   byModel: ModelUsageTotals[]
   sessions: number
+  responses: UsageResponse[]
+}
+
+export interface UsageResponse extends UsageTotals {
+  sessionId: string
+  sessionTitle: string
+  timestamp: number
+  modelId: string
 }
 
 interface Accumulator {
@@ -116,7 +124,7 @@ export function sessionUsage(events: readonly SessionEvent[], config: SystemConf
 }
 
 /** Today, the last seven days and all time across a workspace's sessions, plus a split by model. */
-export function workspaceUsage(sessions: ReadonlyArray<readonly SessionEvent[]>, config: SystemConfig, now = Date.now()): WorkspaceUsage {
+export function workspaceUsage(sessions: ReadonlyArray<readonly SessionEvent[]>, config: SystemConfig, now = Date.now(), sessionIds: readonly string[] = []): WorkspaceUsage {
   const defaultModel = effectiveLlmConfig(config).modelId
   const prices = pricesFor(config)
   const startOfDay = new Date(now)
@@ -127,9 +135,14 @@ export function workspaceUsage(sessions: ReadonlyArray<readonly SessionEvent[]>,
   const week = accumulator()
   const total = accumulator()
   const byModel = new Map<string, Accumulator>()
-  for (const events of sessions) {
+  const responses: UsageResponse[] = []
+  for (const [index, events] of sessions.entries()) {
+    const meta = foldSessionMeta(events)
     eachResponse(events, defaultModel, (usage, modelId, ts) => {
       const pricing = prices(modelId)
+      const response = accumulator()
+      add(response, usage, pricing)
+      responses.push({ ...totals(response), sessionId: sessionIds[index] ?? String(index), sessionTitle: meta.title ?? 'Session', timestamp: ts, modelId })
       add(total, usage, pricing)
       if (ts >= weekStart) add(week, usage, pricing)
       if (ts >= dayStart) add(today, usage, pricing)
@@ -149,6 +162,7 @@ export function workspaceUsage(sessions: ReadonlyArray<readonly SessionEvent[]>,
       ...totals(sum),
     })).sort((a, b) => (b.promptTokens + b.completionTokens) - (a.promptTokens + a.completionTokens)),
     sessions: sessions.length,
+    responses: responses.sort((a, b) => b.timestamp - a.timestamp),
   }
 }
 

@@ -38,6 +38,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Features
 
+- Workspace usage includes a daily calendar heatmap with keyboard-accessible
+  cells, intensity legend and dated Session/model/input/output/cache details.
+  The view uses local calendar dates and supports both themes and narrow screens.
+
 - Completion sounds on Web and desktop are silent while the application is
   visible and focused. Background notices play a soft chime; simultaneous notices
   are coalesced so sounds do not overlap.

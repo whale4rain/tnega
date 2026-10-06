@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { errorText } from '../lib/hooks'
 import { formatTokens } from '../lib/timeline'
 import type { UsageTotals, WorkspaceUsage } from '../lib/types'
-import { formatCost, formatRate } from '../lib/usage'
+import { formatCost, formatRate, usageCalendar } from '../lib/usage'
 
 /**
  * Token use and estimated spend for the current workspace: today, the last
@@ -13,6 +13,7 @@ import { formatCost, formatRate } from '../lib/usage'
 export function UsageSummary({ workspace }: { workspace: string | undefined }) {
   const [usage, setUsage] = useState<WorkspaceUsage | undefined>()
   const [error, setError] = useState<string>()
+  const [selected, setSelected] = useState<string>()
   useEffect(() => {
     if (!workspace) return
     const scope = new AbortController()
@@ -26,18 +27,30 @@ export function UsageSummary({ workspace }: { workspace: string | undefined }) {
   if (error) return <div role="alert" className="notice notice-error">{error}</div>
   if (!usage) return <div className="skeleton-line w60" />
   const unpriced = usage.byModel.filter(model => !model.priced).map(model => model.name)
+  const days = usageCalendar(usage.responses ?? [])
+  const chosen = days.find(day => day.date === selected) ?? days.at(-1)!
   return (
     <div className="usage-summary">
-      <table className="usage-table">
-        <thead>
-          <tr><th scope="col" /><th scope="col">Input</th><th scope="col">Cached</th><th scope="col">Output</th><th scope="col">Cost</th></tr>
-        </thead>
-        <tbody>
-          <Row label="Today" totals={usage.today} />
-          <Row label="Last 7 days" totals={usage.week} />
-          <Row label="All time" totals={usage.total} />
-        </tbody>
-      </table>
+      <div className="usage-totals">
+        {[['Today', usage.today], ['Last 7 days', usage.week], ['All time', usage.total]].map(([label, value]) => {
+          if (typeof value === 'string' || !value) return null
+          return <div key={String(label)}><span className="muted small">{String(label)}</span><strong>{formatTokens(value.promptTokens + value.completionTokens)} tokens</strong><span className="muted small">{formatCost(value.cost) ?? 'Cost unavailable'}</span></div>
+        })}
+      </div>
+      <p className="muted small">Daily usage · {days[0]!.date} – {days.at(-1)!.date} · local time</p>
+      <div className="usage-calendar-scroll">
+        <div className="usage-calendar" role="group" aria-label="Daily token usage calendar">
+          {days.map((day, index) => {
+            const label = `${day.date}: ${day.tokens.toLocaleString()} tokens, ${day.responses.length} responses`
+            return <button key={day.date} type="button" className={`usage-day usage-level-${day.level}`} aria-label={label} title={label} aria-pressed={chosen.date === day.date} style={index === 0 ? { gridRowStart: day.weekday + 1 } : undefined} onClick={() => setSelected(day.date)} />
+          })}
+        </div>
+      </div>
+      <div className="usage-legend"><span>Less</span>{[0, 1, 2, 3, 4].map(level => <span key={level} className={`usage-day usage-level-${level}`} aria-label={`Intensity ${level} of 4`} />)}<span>More</span><span className="muted small">Input + output tokens; cache is included in input.</span></div>
+      <details open className="usage-details">
+        <summary>{chosen.date} · {chosen.tokens.toLocaleString()} tokens · {chosen.responses.length} responses</summary>
+        {chosen.responses.length === 0 ? <p className="muted small">No usage on this day.</p> : <div className="usage-detail-scroll"><table className="usage-table"><thead><tr><th>Time / Session</th><th>Model</th><th>Input</th><th>Output</th><th>Cached</th><th>Reasoning</th></tr></thead><tbody>{chosen.responses.map((response, index) => <tr key={`${response.sessionId}-${response.timestamp}-${index}`}><th scope="row" title={response.sessionId}>{new Date(response.timestamp).toLocaleTimeString()}<br />{response.sessionTitle}</th><td>{response.modelId}</td><td>{formatTokens(response.promptTokens)}</td><td>{formatTokens(response.completionTokens)}</td><td>{formatTokens(response.cachedTokens)}</td><td>{formatTokens(response.reasoningTokens)}</td></tr>)}</tbody></table></div>}
+      </details>
       {usage.byModel.length > 0 && (
         <table className="usage-table">
           <thead>

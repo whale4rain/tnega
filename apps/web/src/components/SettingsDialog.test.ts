@@ -95,6 +95,7 @@ it('shows workspace usage with cache share and cost, and points at missing price
     week: totals(40_000), total: totals(90_000),
     byModel: [{ ...totals(90_000), modelId: 'pro', name: 'Pro', priced: false }],
     sessions: 3,
+    responses: [],
   })
   const view = render(createElement(SettingsDialog, { config: snapshot, workspace: '/work', onClose: vi.fn(), onSaved: vi.fn() }))
   expect(await view.findByText('Today')).toBeTruthy()
