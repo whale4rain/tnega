@@ -17,6 +17,16 @@ const STEP = 0.13
 const DECAY = 0.9
 
 let shared: AudioContext | undefined
+let lastNotice = -Infinity
+
+/** Foreground work is silent; coalesce simultaneous completion notices. */
+export function playNoticeChime(kind: ChimeKind): void {
+  if (typeof document === 'undefined' || (document.visibilityState === 'visible' && document.hasFocus())) return
+  const now = Date.now()
+  if (now - lastNotice < 1000) return
+  lastNotice = now
+  playChime(kind)
+}
 
 function audio(): AudioContext | undefined {
   if (!shared && typeof AudioContext === 'function') shared = new AudioContext()

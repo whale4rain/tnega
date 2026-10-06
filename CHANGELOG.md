@@ -36,6 +36,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- Completion sounds on Web and desktop are silent while the application is
+  visible and focused. Background notices play a soft chime; simultaneous notices
+  are coalesced so sounds do not overlap.
+
 ### Fixes
 
 - Reopening an interrupted Session closes all assistant-declared tool calls,

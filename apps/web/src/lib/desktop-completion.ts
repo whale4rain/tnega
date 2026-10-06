@@ -1,4 +1,4 @@
-import { playChime } from './chime'
+import { playNoticeChime } from './chime'
 import type { StreamEvent } from './types'
 
 /** One terminal notification per submitted run, never for an aborted stream. */
@@ -30,10 +30,10 @@ export function notifyDesktopWaiting(requestId: string, notify = notifyDesktopCo
 
 function notifyDesktopCompletion(outcome: 'completed' | 'failed' | 'waiting'): void {
   const desktop: unknown = Reflect.get(globalThis, 'tnegaDesktop')
-  if (!desktop || typeof desktop !== 'object' || !('notifyCompletion' in desktop)) return
-  if (typeof desktop.notifyCompletion !== 'function') return
-  desktop.notifyCompletion(outcome)
-  playChime(outcome)
+  if (desktop && typeof desktop === 'object' && 'notifyCompletion' in desktop && typeof desktop.notifyCompletion === 'function') {
+    desktop.notifyCompletion(outcome)
+  }
+  playNoticeChime(outcome)
 }
 
 /**

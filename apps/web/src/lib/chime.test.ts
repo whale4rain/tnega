@@ -55,3 +55,22 @@ it('stays silent without Web Audio', async () => {
   const { playChime } = await import('./chime')
   expect(() => playChime('waiting')).not.toThrow()
 })
+
+it('completion notices stay silent while focused and sound when blurred or hidden', async () => {
+  const { tones } = fakeAudio()
+  let focused = true
+  let visibility = 'visible'
+  vi.stubGlobal('document', { hasFocus: () => focused, get visibilityState() { return visibility } })
+  const { playNoticeChime } = await import('./chime')
+  playNoticeChime('completed')
+  expect(tones).toHaveLength(0)
+  focused = false
+  playNoticeChime('completed')
+  expect(tones).toHaveLength(4)
+  tones.length = 0
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 2000)
+  focused = true
+  visibility = 'hidden'
+  playNoticeChime('failed')
+  expect(tones).toHaveLength(4)
+})
