@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultHotProfile, startWebServer, type WebServer } from '@tnega/cli'
 import { DesktopBrowser, enableBrowserDebugging } from './browser.js'
-import { closeDesktopRuntime } from './shutdown.js'
+import { closeDesktopRuntime, finishDesktopShutdown } from './shutdown.js'
 import { installTray } from './tray.js'
 import { installCompletionNotice } from './completion.js'
 import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from './titlebar.js'
@@ -159,6 +159,8 @@ async function createWindow(): Promise<void> {
     completion = undefined
     tray?.dispose()
     tray = undefined
+    // A destroyed host has no tray to control its runtime, including on macOS.
+    void closeAndExit()
   })
   window.maximize()
   await window.loadURL(server.url)
@@ -167,17 +169,36 @@ async function createWindow(): Promise<void> {
 async function closeAndExit(options: { restartIntoUpdate?: boolean } = {}): Promise<void> {
   if (quitting) return
   quitting = true
-  tray?.dispose()
-  tray = undefined
-  updates?.stop()
-  await closeDesktopRuntime(server)
-  server = undefined
-  await browser?.dispose().catch(() => {})
-  browser = undefined
-  // A downloaded update installs on the way out; the update button also relaunches.
-  if (options.restartIntoUpdate) updates?.install()
-  else if (updates?.installOnExit()) return
-  else app.exit(0)
+  await finishDesktopShutdown({
+    prepare: () => {
+      tray?.dispose()
+      tray = undefined
+      // Remove the hide-on-close handler first, then close every native surface
+      // immediately rather than leaving a working client during runtime cleanup.
+      for (const window of BrowserWindow.getAllWindows()) window.destroy()
+      updates?.stop()
+    },
+    closeRuntime: async () => {
+      await closeDesktopRuntime(server)
+      server = undefined
+    },
+    closeBrowser: async () => {
+      await browser?.dispose()
+      browser = undefined
+    },
+    finish: () => {
+      // A downloaded update installs on exit; the update button also relaunches.
+      if (options.restartIntoUpdate && updates?.ready()) {
+        updates.install()
+        return true
+      }
+      if (updates?.installOnExit()) return true
+      app.exit(0)
+      return false
+    },
+    forceExit: () => app.exit(0),
+    reportError: error => console.error(error),
+  })
 }
 
 app.whenReady().then(async () => {
@@ -187,7 +208,7 @@ app.whenReady().then(async () => {
   await createWindow()
   updates.start()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) void createWindow()
+    if (!quitting && BrowserWindow.getAllWindows().length === 0) void createWindow()
   })
 }).catch(error => {
   console.error(error)
@@ -195,7 +216,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') void closeAndExit()
+  void closeAndExit()
 })
 
 app.on('before-quit', event => {

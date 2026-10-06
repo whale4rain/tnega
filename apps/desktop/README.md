@@ -34,6 +34,11 @@ maximizing toggles between maximized and restored sizes. Closing hides the windo
 from the taskbar while the local runtime continues running in the notification
 area. Click the tray icon or choose **Show Tnega** to restore it. Choose
 **Exit Tnega** from the tray menu to shut down the local runtime.
+Exit immediately closes all native windows and shuts down the local runtime and
+embedded Browser. Cleanup failures are logged and do not prevent exit; a ten-second
+deadline also terminates the desktop host if cleanup or the update installer stalls.
+An unexpectedly destroyed main window exits the host on every platform, so a
+desktop runtime cannot remain active without its tray.
 
 Session completion plays a soft two-note chime only while the native application
 window is unfocused, including when focus moves into the embedded Browser.

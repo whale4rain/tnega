@@ -41,6 +41,9 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Desktop tray Exit immediately closes native windows and shuts down the runtime
+  and embedded Browser. Cleanup failures and stalled shutdown or update installers
+  cannot leave the client running without its tray; shutdown has a ten-second deadline.
 - Project coordinators are guided to start or reuse Threads before investigation,
   implementation and multi-step deliverables. Agents proactively delegate useful
   independent work while keeping small or tightly coupled tasks in one context.
