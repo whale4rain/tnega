@@ -429,8 +429,19 @@ export function Conversation({
   }
 
   const send = async (text: string, images: ImageAttachment[] = []): Promise<boolean> => {
-    if (running) return false
     setError(undefined)
+    if (running || remoteRunning) {
+      const id = streamingFor.current ?? sessionId
+      if (!id) return false
+      try {
+        await api.steer(workspace, id, text, images)
+        setCommandNotice('Steering sent. The agent will read it at the next step.')
+        return true
+      } catch (reason) {
+        setError(errorText(reason))
+        return false
+      }
+    }
     if (!images.length) {
       const handled = await runClientCommand(text)
       if (handled !== undefined) return handled
@@ -730,11 +741,12 @@ export function Conversation({
             completeArgument={completeArgument}
             searchFiles={searchFiles}
             running={live}
+            allowWhileRunning
             locked={live || Boolean(busy)}
             disabledReason={disabledReason}
             onSubmit={send}
             onStop={() => void stop()}
-            placeholder={sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
+            placeholder={live ? 'Steer the agent… (@ for files)' : sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
             autoFocusKey={sessionId ?? 'draft'}
           />
         </div>

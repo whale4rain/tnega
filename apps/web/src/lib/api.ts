@@ -199,6 +199,10 @@ export const api = {
     call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}/compact`, workspace), { method: 'POST', body: {} }),
   stop: (workspace: string, id: string) =>
     call<{ stopped: boolean }>(scoped(`/api/sessions/${id}/stop`, workspace), { method: 'POST', body: {} }),
+  steer: (workspace: string, id: string, prompt: string, attachments: readonly ImageAttachment[] = []) =>
+    call<{ accepted: boolean }>(scoped(`/api/sessions/${id}/steer`, workspace), {
+      method: 'POST', body: { prompt, ...(attachments.length ? { attachments } : {}) },
+    }),
   approve: (workspace: string, id: string, approvalId: string, allow: boolean) =>
     call<{ accepted: boolean }>(scoped(`/api/sessions/${id}/approvals/${approvalId}`, workspace), {
       method: 'POST',

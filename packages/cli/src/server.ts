@@ -238,6 +238,7 @@ export async function startWebServer(
     projectHosts,
     questionRoots: new Map(),
     questionInboxes: new Map(),
+    steeringReady: new Map(),
     residentCreation: new Map(),
     projectPermission: options.projectPermission ?? 'workspace-write',
     ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
@@ -299,6 +300,8 @@ interface ServerContext {
   residentAgents?: Map<string, ResidentAgentEntry>
   questionRoots?: Map<string, Context>
   questionInboxes?: Map<string, DurableInbox>
+  /** Resident startup must persist its first prompt before accepting corrections. */
+  steeringReady: Map<string, Promise<boolean>>
   residentCreation?: Map<string, Promise<ResidentAgentEntry>>
   projectHosts?: Map<string, ProjectHostEntry>
   projectPermission: PermissionMode
@@ -1012,6 +1015,35 @@ async function handleApi(
       sendJson(res, 200, { stopped: true })
       return
     }
+    if (action === 'steer' && req.method === 'POST') {
+      const body = await readJsonBody(req, MAX_RUN_BODY_BYTES)
+      const attachments = parseRunAttachments(body.attachments)
+      if (typeof attachments === 'string') {
+        sendError(res, 400, attachments)
+        return
+      }
+      const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+      if (!prompt && !attachments.length) {
+        sendError(res, 400, 'prompt is required')
+        return
+      }
+      const key = runKey(workspace, id)
+      const ready = context.steeringReady.get(key)
+      if (ready && !await ready) {
+        sendError(res, 409, 'session failed to start')
+        return
+      }
+      const entry = context.residentAgents?.get(key)
+      const inbox = context.questionInboxes?.get(key)
+      if (!isActive(context.activeRuns, workspace, id) || (!entry && !inbox) || entry?.agent.status === 'idle') {
+        sendError(res, 409, 'session has no active run to steer')
+        return
+      }
+      if (entry) await entry.agent.steer({ text: prompt, attachments })
+      else if (inbox) await inbox.steer({ text: prompt, ...(attachments.length ? { content: [userMessage(prompt, attachments)] } : {}) })
+      sendJson(res, 200, { accepted: true })
+      return
+    }
     if (action === 'runs' && req.method === 'POST') {
       await handleRun(req, res, context, workspace, id)
       return
@@ -1352,6 +1384,8 @@ async function handleRun(
         // The client may have disconnected; the run itself must continue.
       }
     }
+    // The model Run has closed; title generation is not a steering boundary.
+    context.questionInboxes?.delete(key)
     await autoNameSession(sessionLog, adapter)
     if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
   } catch (error) {
@@ -1711,6 +1745,9 @@ async function runResidentTurn(
   req: ResidentRunRequest,
 ): Promise<void> {
   const key = runKey(workspace, id)
+  let markReady: (ready: boolean) => void = () => undefined
+  const ready = new Promise<boolean>(resolveReady => { markReady = resolveReady })
+  context.steeringReady.set(key, ready)
   const controller = new AbortController()
   context.activeRuns.set(key, controller)
   res.writeHead(200, {
@@ -1770,6 +1807,7 @@ async function runResidentTurn(
     }
     while (true) {
       for await (const event of agent.runTurns(controller.signal)) {
+        markReady(true)
         if (!res.destroyed && !res.writableEnded) writeSse(res, event)
       }
       if (!req.goalMode) break
@@ -1816,6 +1854,8 @@ async function runResidentTurn(
     }
     detachApproval()
     context.activeRuns.delete(key)
+    markReady(false)
+    context.steeringReady.delete(key)
     if (!res.destroyed && !res.writableEnded) res.end()
   }
 }

@@ -63,6 +63,7 @@ export function Composer({
   completeArgument,
   searchFiles,
   running,
+  allowWhileRunning,
   locked,
   disabledReason,
   onSubmit,
@@ -78,6 +79,7 @@ export function Composer({
   completeArgument?: (command: string, query: string) => Promise<ArgumentSuggestion[]>
   searchFiles?: (query: string) => Promise<string[]>
   running: boolean
+  allowWhileRunning?: boolean
   /** Settings can't change while a run is active. */
   locked: boolean
   disabledReason?: ReactNode
@@ -97,6 +99,7 @@ export function Composer({
       completeArgument={completeArgument}
       searchFiles={searchFiles}
       running={running}
+      allowWhileRunning={allowWhileRunning}
       disabledReason={disabledReason}
       onSubmit={onSubmit}
       onStop={onStop}

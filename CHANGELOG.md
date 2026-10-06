@@ -39,6 +39,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- Ordinary Sessions accept text and image steering messages during an active Run,
+  including Sessions running in another client. Messages persist in the next-step
+  inbox and enter at a safe step boundary; Stop remains a separate control.
+
 ### Fixes
 
 - Settings navigation keeps its full labels and button height in narrow or short

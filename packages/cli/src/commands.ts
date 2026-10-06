@@ -25,7 +25,7 @@ import { canonicalPath, isSandboxMode, resolveSandboxPolicy, type SandboxMode } 
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { configureSystemShell } from '@tnega/execution'
-import { SESSION_FORMAT_VERSION, session } from '@tnega/session'
+import { SESSION_FORMAT_VERSION, session, isModelAttachment } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { toolSpill } from '@tnega/tool-spill'
 import { toolOffice } from '@tnega/tool-office'
@@ -384,7 +384,20 @@ export async function createAgentRuntime(
     if (merged.maxSteps !== undefined) agentConfig.maxSteps = merged.maxSteps
     if (merged.inbox) agentConfig.inbox = merged.inbox
     if (merged.contextBudget) agentConfig.contextBudget = merged.contextBudget
-    if (durableInbox) agentConfig.claimNextStep = () => durableInbox.claimNextStep()
+    if (durableInbox) agentConfig.claimNextStep = async () => (await durableInbox.claimNextStep()).map(message => {
+      const content: unknown = message.content
+      if (Array.isArray(content)) {
+        const messages = content.flatMap((entry: unknown) => {
+          if (!entry || typeof entry !== 'object' || !('role' in entry) || entry.role !== 'user'
+            || !('content' in entry) || typeof entry.content !== 'string') return []
+          const attachments = 'attachments' in entry && Array.isArray(entry.attachments)
+            ? entry.attachments.filter(isModelAttachment) : []
+          return [{ role: 'user' as const, content: entry.content, ...(attachments.length ? { attachments } : {}) }]
+        })
+        if (messages.length) return { messages }
+      }
+      return { text: message.text ?? '' }
+    })
     const agentFiber = await root.plugin(agent, agentConfig)
     fibers.push(agentFiber)
   }

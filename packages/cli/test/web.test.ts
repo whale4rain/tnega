@@ -1685,6 +1685,43 @@ describe('web server', () => {
 })
 
 describe('web server with resident agents', () => {
+  it.each([true, false])('steers the existing run without cancelling or duplicating messages (resident=%s)', async resident => {
+    const dir = await tempDir('tnega-web-steer-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const mock = await startMockLlm('continued', 150)
+    await writeFile(configFile, JSON.stringify({ apiKey: 'test-key', baseUrl: mock.url, model: 'mock-model' }))
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile, resident })
+    servers.push(server)
+    const created = await apiFetch(server.url, `/api/sessions?workspace=${encodeURIComponent(workspace)}`, {
+      method: 'POST', body: '{}',
+    }).then(response => response.json()) as { session: { id: string } }
+    const path = `/api/sessions/${created.session.id}`
+    const scope = `?workspace=${encodeURIComponent(workspace)}`
+    const idle = await apiFetch(server.url, `${path}/steer${scope}`, { method: 'POST', body: JSON.stringify({ prompt: 'idle' }) })
+    expect(idle.status).toBe(409)
+    const run = await apiFetch(server.url, `${path}/runs${scope}`, { method: 'POST', body: JSON.stringify({ prompt: 'start' }) })
+    const malformed = await apiFetch(server.url, `${path}/steer${scope}`, { method: 'POST', body: JSON.stringify({ prompt: ' ' }) })
+    expect(malformed.status).toBe(400)
+    const wrongWorkspace = await apiFetch(server.url, `${path}/steer?workspace=${encodeURIComponent(dir)}`, {
+      method: 'POST', body: JSON.stringify({ prompt: 'wrong workspace' }),
+    })
+    expect(wrongWorkspace.status).toBe(409)
+    const attachments = [{ type: 'image', mediaType: 'image/png', data: 'aGVsbG8=' }]
+    const steer = await apiFetch(server.url, `${path}/steer${scope}`, { method: 'POST', body: JSON.stringify({ prompt: 'change direction', attachments }) })
+    expect(steer.status).toBe(200)
+    const stream = await run.text()
+    expect(stream).not.toContain('cancelled')
+    const detail = await apiFetch(server.url, `${path}${scope}`).then(response => response.json()) as {
+      events: Array<{ type: string; payload: { content?: string } }>
+    }
+    expect(detail.events.filter(event => event.type === 'user/message').map(event => event.payload.content)).toEqual(['start', 'change direction'])
+    expect(JSON.stringify(mock.bodies())).toContain('change direction')
+    expect(JSON.stringify(mock.bodies())).toContain('aGVsbG8=')
+    const completed = await apiFetch(server.url, `${path}/steer${scope}`, { method: 'POST', body: JSON.stringify({ prompt: 'too late' }) })
+    expect(completed.status).toBe(409)
+  })
+
   it('keeps a resident durable-inbox agent across runs without duplicating turns', async () => {
     const dir = await tempDir('tnega-web-resident-')
     const workspace = await mkdir(dir, 'workspace')

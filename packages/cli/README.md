@@ -18,6 +18,11 @@ Project 主对话和 Thread 输入框允许运行中异步发送，并分别提�
 两个消息 API 可携带可选布尔 `interrupt: true`，纠正通过 Box 持久投递后中断目标当前 Run，
 保留此前已接收的输入。普通消息仍等安全 step 边界；取消不回滚已经完成的工具效果。
 
+普通 Session 在运行中也可继续发送 steer 消息，独立 Stop 仍停止当前 Run。
+`POST /api/sessions/:id/steer?workspace=...` 接收 `{prompt, attachments?}`，
+将文字与图片持久写入当前 Agent 的 next-step inbox，在安全 step 边界读取；
+不会取消正在执行的模型请求或工具，也不会另开并发 Run。没有活动 Run 时返回 409。
+
 Background Tasks 同时展示 Session 的 Job 与 Workspace 共享的长驻进程。
 `GET /api/processes?workspace=...` 列表、加 `process_id` 读取有界日志；
 `POST /api/processes?workspace=...` 携带 `{action:"stop",process_id:"..."}`
