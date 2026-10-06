@@ -41,6 +41,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Settings navigation keeps its full labels and button height in narrow or short
+  windows. Instruction panels wrap long text without horizontal overflow.
 - Desktop tray Exit immediately closes native windows and shuts down the runtime
   and embedded Browser. Cleanup failures and stalled shutdown or update installers
   cannot leave the client running without its tray; shutdown has a ten-second deadline.

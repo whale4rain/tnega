@@ -2975,11 +2975,14 @@ kbd {
   gap: 2px;
   padding-right: 12px;
   border-right: 1px solid var(--border);
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
 }
 
 .settings-nav-item {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 9px;
   height: 34px;
@@ -3026,6 +3029,8 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .settings-panel[hidden] {
@@ -3080,10 +3085,11 @@ kbd {
 
   .settings-nav {
     flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
     padding: 0 0 8px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
-    overflow-x: auto;
   }
 }
 
