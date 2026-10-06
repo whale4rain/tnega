@@ -15,7 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.4.15 | [`v0.4.14...v0.4.15`](https://github.com/whale4rain/tnega/compare/v0.4.14...v0.4.15) | 16 |
+| 0.4.15 | [`v0.4.14...v0.4.15`](https://github.com/whale4rain/tnega/compare/v0.4.14...v0.4.15) | 18 |
 | 0.4.14 | [`v0.4.13...v0.4.14`](https://github.com/whale4rain/tnega/compare/v0.4.13...v0.4.14) | 22 |
 | 0.4.13 | [`v0.4.12...v0.4.13`](https://github.com/whale4rain/tnega/compare/v0.4.12...v0.4.13) | 8 |
 | 0.4.12 | [`v0.4.11...v0.4.12`](https://github.com/whale4rain/tnega/compare/v0.4.11...v0.4.12) | 35 |
@@ -84,6 +84,9 @@ compare links provide a convenient browser view of the boundaries.
   in the Session and model context so the model can correct the next call.
 
 ### Other
+
+- Agent loop tests dispose Contexts and flush Session logs before removing
+  temporary directories, fixing a Windows CI cleanup race.
 
 - The README uses the current blue cloud app icon.
 
