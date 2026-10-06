@@ -38,6 +38,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Features
 
+- New Sessions generate a concise name from the first completed reply's intent,
+  instead of truncating the user's message. Names persist across reloads;
+  manual names always win. A failed or timed-out naming request keeps the default.
+
 - Settings → Instructions saves or clears one custom system prompt per
   Workspace. Subsequent model requests reload it alongside built-in instructions,
   including resident Sessions, without restarting the application.

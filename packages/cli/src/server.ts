@@ -18,6 +18,7 @@ import { Context, type Fiber, type Plugin } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
 import { observeCompaction } from './compaction-observation.js'
 import { sessionUsage, workspaceUsage } from './usage.js'
+import { autoNameSession } from './session-title.js'
 import { readWorkspacePrompt, writeWorkspacePrompt, workspacePrompt } from './workspace-prompt.js'
 import { buildCompactionPrompt, SUMMARIZATION_SYSTEM_PROMPT } from './compaction-prompt.js'
 import { autoContextBudget, SUMMARY_PREFIX } from './auto-compaction.js'
@@ -129,7 +130,6 @@ import {
   setSessionPermission,
   setSessionApprovalMode,
   type SessionSummary,
-  setSessionTitle,
   sessionFile,
   truncateSessionAt,
 } from './store.js'
@@ -1317,7 +1317,7 @@ async function handleRun(
         content: [plan.summary ?? 'Plan', ...plan.items.map((item, index) => `${index + 1}. ${item.title}`)].join('\n'),
       })
       await sessionLog.flush()
-      await autoTitle(workspace, id, prompt)
+      await autoNameSession(sessionLog, adapter)
       await runtime.dispose()
       runtime = undefined
       if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
@@ -1353,7 +1353,7 @@ async function handleRun(
         // The client may have disconnected; the run itself must continue.
       }
     }
-    await autoTitle(workspace, id, prompt)
+    await autoNameSession(sessionLog, adapter)
     if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
   } catch (error) {
     if (!res.destroyed && !res.writableEnded) {
@@ -1795,7 +1795,7 @@ async function runResidentTurn(
       await agent.followup({ text: `<goal_round>\nObjective: ${JSON.stringify(goal.objective)}\nRound ${rounds + 1}/${goal.maxRounds}. Continue toward the objective using the current Session and Workspace. Call update_goal when complete, paused, or blocked.\n</goal_round>` })
     }
     await agent.session.flush()
-    if (req.prompt) await autoTitle(workspace, id, req.prompt, agent.session)
+    if (req.prompt) await autoNameSession(agent.session, adapterFromConfig(req.effective, req.apiKey))
     if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
   } catch (error) {
     if (!res.destroyed && !res.writableEnded) {
@@ -2019,20 +2019,6 @@ async function handleStopRun(
   const controller = context.activeRuns.get(runKey(workspace, id))
   if (!controller) throw new HttpError(409, 'session is not running')
   controller.abort({ type: 'user' })
-}
-
-async function autoTitle(
-  workspace: string, id: string, prompt: string, activeLog?: SessionLog,
-): Promise<void> {
-  const summary = await readSessionSummary(workspace, id)
-  if (summary.title === 'New session') {
-    if (activeLog) {
-      await activeLog.append('meta/patch', { fields: ['title'], title: prompt.slice(0, 40) })
-      await activeLog.flush()
-    } else {
-      await setSessionTitle(workspace, id, prompt.slice(0, 40))
-    }
-  }
 }
 
 async function readSessionEvents(

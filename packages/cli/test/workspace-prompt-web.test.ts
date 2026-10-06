@@ -13,6 +13,11 @@ it('injects saved instructions into real requests and removes them after clearin
     req.on('data', chunk => { body += String(chunk) })
     req.on('end', () => {
       requests.push(body)
+      if (!body.includes('"stream":true')) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ choices: [{ index: 0, message: { role: 'assistant', content: 'Greeting session' }, finish_reason: 'stop' }] }))
+        return
+      }
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'Finished.' }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`)
     })
@@ -38,6 +43,7 @@ it('injects saved instructions into real requests and removes them after clearin
     const path = `/api/sessions/${created.session.id}/runs`
     expect(await (await call(path, 'POST', { prompt: 'Hello' })).text()).toContain('Finished.')
     expect(requests[0]).toContain('Reply with a short poem.')
+    expect(await (await call(`/api/sessions/${created.session.id}`)).json()).toMatchObject({ summary: { title: 'Greeting session' } })
     await call('/api/workspace-prompt', 'PUT', { prompt: '' })
     const before = requests.length
     await (await call(path, 'POST', { prompt: 'Again' })).text()
