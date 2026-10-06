@@ -37,7 +37,7 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
-### Performance
+### Other
 
 - Workspace Usage persists token-only Session and Project Thread summaries and daily/model aggregates in the home workspace state directory. Unchanged histories reuse cached aggregates; log edits, deletion, pricing and timezone changes rebuild affected data. Damaged caches rebuild automatically without changing Session history.
 
