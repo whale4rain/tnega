@@ -25,6 +25,12 @@ files are preserved, so upgrades only add missing instructions.
 - Update root `CHANGELOG.md` / Unreleased with each user-visible feature, fix or
   compatibility change, in the same commit. Describe behavior and migration,
   not internal refactors with no user effect.
+- Group Unreleased and version sections consistently under **Features**, **Fixes**,
+  and **Other**, omitting empty groups. Features introduce user capabilities or
+  deliberate behavior changes; Fixes correct failures or regressions; Other covers
+  performance, compatibility/migration, publishing and internal/documentation work.
+  For mixed entries choose the primary user effect. Preserve historical wording
+  when grouping, and do not rewrite historical entries merely to change style.
 - Audit `git log <previous-actual-tag>..<new-tag>` including merged branches.
   Gaps in version numbers do not create gaps in coverage. A preview's notes
   describe its changes; final stable notes include the whole batch since the
