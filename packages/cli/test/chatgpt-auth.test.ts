@@ -2,10 +2,11 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { configureNetwork } from '@tnega/execution'
 import { authorizeUrl, chatgptHeaders, ChatGptLogin, CHATGPT_CLIENT_ID, jwtClaims, pkcePair, tokensFrom } from '../src/chatgpt-auth.js'
 
 const dirs: string[] = []
-afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
+afterEach(async () => { configureNetwork({}); await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
 
 const jwt = (claims: Record<string, unknown>) => `e30.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.sig`
 const idToken = jwt({ email: 'me@example.com', 'https://api.openai.com/auth': { chatgpt_account_id: 'acct_1' } })
@@ -17,6 +18,21 @@ async function tempFile(): Promise<string> {
 }
 
 describe('ChatGPT sign-in', () => {
+  it('uses the host network transport for token refresh and model requests', async () => {
+    const file = await tempFile()
+    await (await import('node:fs/promises')).mkdir(join(file, '..'), { recursive: true })
+    await writeFile(file, JSON.stringify({ accessToken: 'old', refreshToken: 'r1', expiresAt: 1000 }))
+    const transport: typeof fetch = vi.fn(async (_input, init) => {
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(Buffer.from(await new Response(init?.body).arrayBuffer()).toString())).toMatchObject({ grant_type: 'refresh_token' })
+      return Response.json({ access_token: 'fresh', refresh_token: 'r2', expires_in: 3600 })
+    })
+    configureNetwork({ fetch: transport })
+    expect((await chatgptHeaders({ file, now: () => 0 })()).authorization).toBe('Bearer fresh')
+    expect(transport).toHaveBeenCalledOnce()
+    const { llmAuthOptions } = await import('../src/chatgpt-auth.js')
+    expect(llmAuthOptions({ auth: 'chatgpt' }).fetch).toBeTypeOf('function')
+  })
   it('builds a PKCE authorize URL like the Codex CLI', () => {
     const { verifier, challenge } = pkcePair()
     expect(verifier).toMatch(/^[\w-]{43}$/)
@@ -58,13 +74,14 @@ describe('ChatGPT sign-in', () => {
     const file = await tempFile()
     const port = 20_000 + Math.floor(Math.random() * 20_000)
     const onSignedIn = vi.fn()
-    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const form = new URLSearchParams(String(init.body))
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      const form = new URLSearchParams(await new Response(init?.body).text())
       expect(Object.fromEntries(form)).toMatchObject({ grant_type: 'authorization_code', code: 'the-code', client_id: CHATGPT_CLIENT_ID })
       expect(form.get('code_verifier')).toMatch(/^[\w-]{43}$/)
       return Response.json({ access_token: jwt({ exp: 9_999_999_999 }), refresh_token: 'r1', id_token: idToken })
     })
-    const login = new ChatGptLogin({ file, port, fetch: fetchMock as unknown as typeof fetch, onSignedIn })
+    configureNetwork({ fetch: fetchMock })
+    const login = new ChatGptLogin({ file, port, onSignedIn })
     try {
       const { url } = await login.start()
       expect(await login.state()).toMatchObject({ status: 'pending' })

@@ -38,6 +38,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- ChatGPT OAuth token exchange, refresh and Responses requests follow the
+  configured proxy, environment proxy or desktop network transport. Proxy POST
+  requests retain their method and body; provider 403 errors remain visible.
+
 ## [0.4.16](https://github.com/whale4rain/tnega/releases/tag/v0.4.16) — 2026-10-06
 
 ### Other

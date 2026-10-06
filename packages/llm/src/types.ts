@@ -1,6 +1,8 @@
 import type { ReasoningEffort } from './models.js'
 
 export interface LlmConfig {
+  /** Responses transport; composition may supply a fetch that follows its network settings. */
+  fetch?: typeof globalThis.fetch
   apiKey?: string
   /** Header used for API-key authentication with Anthropic-compatible providers. */
   apiKeyHeader?: 'x-api-key' | 'api-key'

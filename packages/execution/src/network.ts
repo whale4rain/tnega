@@ -92,6 +92,11 @@ export async function networkFetch(url: URL, init: RequestInit): Promise<Respons
     if (viaProxy) {
       // undici's fetch with its own dispatcher; the Response it returns is web-compatible.
       const proxied: Parameters<typeof UndiciFetch>[1] = { dispatcher: viaProxy.dispatcher }
+      if (init.method) proxied.method = init.method
+      if (init.body !== undefined && init.body !== null) {
+        // Normalize the DOM/undici body types without casts or dropping POST data.
+        proxied.body = new Uint8Array(await new Response(init.body).arrayBuffer())
+      }
       if (init.redirect) proxied.redirect = init.redirect
       if (init.signal) proxied.signal = init.signal
       if (init.headers) proxied.headers = new Headers(init.headers)

@@ -19,6 +19,17 @@ const reply = [
 ]
 
 describe('OpenAI Responses adapter', () => {
+  it('uses the supplied transport for Responses requests and preserves a regional 403', async () => {
+    const fetchMock: typeof fetch = vi.fn(async (_url, init) => {
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toMatchObject({ model: 'fixture', stream: true })
+      return new Response(JSON.stringify({ error: { code: 'unsupported_country_region_territory', message: 'Country, region, or territory not supported' } }), { status: 403 })
+    })
+    vi.stubGlobal('fetch', vi.fn(() => { throw new Error('must use supplied transport') }))
+    const adapter = createLlmAdapter({ protocol: 'responses', model: 'fixture', baseUrl: 'https://fixture.invalid', fetch: fetchMock })
+    await expect(adapter.complete([{ role: 'user', content: 'hello' }], [], {})).rejects.toMatchObject({ status: 403, detail: expect.stringContaining('unsupported_country_region_territory') })
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
   it('sends the system prompt as instructions and the history as input items', () => {
     const { instructions, input } = toResponsesInput([
       { role: 'system', content: 'You are Tnega.' },

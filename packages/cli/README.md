@@ -2,6 +2,10 @@
 
 CLI 命令、agent runtime 组合层、web server 与会话存储。
 
+ChatGPT OAuth 授权码兑换、token 刷新与 Responses 请求共用宿主网络配置：
+Settings → Tools & shell → Network 的代理优先，然后使用环境代理或桌面系统网络。
+本机 OAuth 回调仍通过 localhost 接收。OpenAI 返回的地区限制错误不会被屏蔽。
+
 Project Thread 的具体工具调用在自动 review 返回 `ask`（包括 reviewer 无效输出）时保持等待，
 由宿主通过 Box 自动送到直接父 Agent。父 Agent 的 `decide_thread_approval` 可以一次性批准、
 拒绝，或以 `ask-user` 转交已有的 Project 人工审批通道；普通留言不能批准调用。

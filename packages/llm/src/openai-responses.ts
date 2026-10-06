@@ -149,7 +149,7 @@ export function openaiResponsesAdapter(config: OpenAIResponsesConfig): LLMAdapte
       const request = await buildRequest(messages, tools, settings, combineSignal(options.signal, timeoutMs))
       let response: Response
       try {
-        response = await fetch(request.url, request.init)
+        response = await (config.fetch ?? fetch)(request.url, request.init)
       } catch (error) {
         if (isExternalAbort(error, options.signal)) throw new OpenAICompatibleError(0, `LLM stream aborted: ${errorMessage(error)}`)
         if (attempt >= maxRetries) throw new OpenAICompatibleError(0, `LLM stream failed: ${errorMessage(error)}`)

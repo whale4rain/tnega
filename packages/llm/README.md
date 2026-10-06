@@ -11,6 +11,8 @@
 | `anthropicMessagesAdapter` | Anthropic Messages API | `minimax-m3` |
 
 `createLlmAdapter` 按模型表选择协议，未知模型回退 OpenAI。
+Responses 适配器接受可选 `fetch` 传输函数，由 composition 层接入宿主网络配置；
+未配置时使用原生 fetch，其余协议的默认行为不变。
 `modelCapabilities` 向配置与会话选择器提供协议及思考强度能力。支持的模型可设置
 `reasoningEffort`（low / medium / high）：OpenAI compatible 使用
 `reasoning_effort`，Anthropic Messages 使用 adaptive thinking 和

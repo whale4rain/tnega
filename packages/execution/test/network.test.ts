@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
-import { configureNetwork, isAllowedHost, localExecutionProvider } from '../src/index.js'
+import { configureNetwork, isAllowedHost, localExecutionProvider, networkFetch } from '../src/index.js'
 
 const servers: Server[] = []
 afterEach(async () => {
@@ -31,6 +31,27 @@ async function proxy(): Promise<{ url: string; seen: string[] }> {
 }
 
 describe('network policy', () => {
+  it('preserves POST bodies and headers through the configured proxy', async () => {
+    const server = createServer(async (req, res) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(Buffer.from(chunk))
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ method: req.method, body: Buffer.concat(chunks).toString(), authorization: req.headers.authorization }))
+    })
+    server.on('connect', (_req, socket) => {
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+      server.emit('connection', socket)
+    })
+    servers.push(server)
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('no address')
+    configureNetwork({ proxy: `http://127.0.0.1:${address.port}` })
+    const result = await networkFetch(new URL('http://auth.example.test/token'), {
+      method: 'POST', headers: { authorization: 'Bearer fixture', 'content-type': 'application/json' }, body: '{"grant_type":"refresh_token"}',
+    })
+    expect(await result.json()).toEqual({ method: 'POST', body: '{"grant_type":"refresh_token"}', authorization: 'Bearer fixture' })
+  })
   it('matches allowed hosts exactly or by subdomain wildcard', () => {
     expect(isAllowedHost('raw.githubusercontent.com')).toBe(true)
     expect(isAllowedHost('GitHub.com.')).toBe(true)

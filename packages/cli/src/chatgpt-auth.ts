@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { dirname, join } from 'node:path'
-import { localExecutionProvider } from '@tnega/execution'
+import { localExecutionProvider, networkFetch } from '@tnega/execution'
 import type { LlmConfig } from '@tnega/llm'
 import { resolveTnegaHome } from './home-paths.js'
 
@@ -98,6 +98,16 @@ async function writeChatgptTokens(tokens: ChatGptTokens, file: string): Promise<
   await chmod(file, 0o600).catch(() => undefined)
 }
 
+/** Keep OAuth and Responses on the same configured network path as the host. */
+const chatgptFetch: typeof fetch = async (input, init) => {
+  const request = new Request(input, init)
+  return networkFetch(new URL(request.url), {
+    method: request.method, headers: request.headers, signal: request.signal,
+    redirect: request.redirect,
+    ...(!['GET', 'HEAD'].includes(request.method) ? { body: await request.arrayBuffer() } : {}),
+  })
+}
+
 async function tokenRequest(body: Record<string, string>, form: boolean, fetchImpl: typeof fetch, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const response = await fetchImpl(`${CHATGPT_ISSUER}/oauth/token`, {
     method: 'POST',
@@ -118,7 +128,7 @@ async function tokenRequest(body: Record<string, string>, form: boolean, fetchIm
  */
 export function chatgptHeaders(options: { file?: string; fetch?: typeof fetch; now?: () => number } = {}): (signal?: AbortSignal) => Promise<Record<string, string>> {
   const file = options.file ?? chatgptAuthFile()
-  const fetchImpl = options.fetch ?? fetch
+  const fetchImpl = options.fetch ?? chatgptFetch
   const now = options.now ?? Date.now
   let refreshing: Promise<ChatGptTokens> | undefined
   return async signal => {
@@ -202,7 +212,7 @@ export class ChatGptLogin {
     const { verifier, challenge } = pkcePair()
     const state = base64url(randomBytes(24))
     const url = authorizeUrl(challenge, state)
-    const fetchImpl = this.options.fetch ?? fetch
+    const fetchImpl = this.options.fetch ?? chatgptFetch
     const server = createServer((req, res) => {
       const requestUrl = new URL(req.url ?? '/', CHATGPT_REDIRECT_URI)
       if (requestUrl.pathname !== '/auth/callback') { res.writeHead(404).end(); return }
@@ -291,5 +301,5 @@ async function codexInstructions(): Promise<string> {
 export function llmAuthOptions(effective: { auth?: 'chatgpt' }): Partial<LlmConfig> {
   if (effective.auth !== 'chatgpt') return {}
   sharedHeaders ??= chatgptHeaders()
-  return { protocol: 'responses', requestHeaders: sharedHeaders, fallbackInstructions: codexInstructions }
+  return { protocol: 'responses', fetch: chatgptFetch, requestHeaders: sharedHeaders, fallbackInstructions: codexInstructions }
 }
