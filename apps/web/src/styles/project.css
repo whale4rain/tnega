@@ -1280,6 +1280,72 @@
   overflow-wrap: anywhere;
 }
 
+/* Quiet receipts open the exact Agent pair in the Workbench. */
+.message-receipt {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.message-receipt-open,
+.message-receipt .menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.message-receipt-open:hover,
+.message-receipt .menu-trigger:hover {
+  background: var(--surface-hover);
+  color: var(--text-2);
+}
+
+.message-receipt-avatars { display: inline-flex; }
+.message-receipt-avatars > * + * { margin-left: -5px; }
+.message-receipt-reply { opacity: 0; }
+.message-receipt:hover .message-receipt-reply,
+.message-receipt:focus-within .message-receipt-reply { opacity: 1; }
+
+.exchange-toolbar { justify-content: space-between; }
+.exchange-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-3);
+}
+.exchange-participant {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.exchange-participant span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exchange-body { padding: 16px 12px; overflow: auto; }
+.exchange-body .room-message { max-width: 100%; }
+
+@media (hover: none) {
+  .message-receipt-reply { opacity: 1; }
+}
+
 .room-day {
   display: flex;
   align-items: center;

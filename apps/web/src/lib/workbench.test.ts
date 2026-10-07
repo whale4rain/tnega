@@ -38,6 +38,14 @@ describe('workbench state', () => {
 })
 
 describe('workbench in a project', () => {
+  it('opens one exchange tab for either direction and removes it when leaving a project', () => {
+    const first = openDoc(INITIAL_WORKBENCH, { kind: 'exchange', firstId: 'c', secondId: 'a', label: 'C ↔ A' })
+    const again = openDoc(first, { kind: 'exchange', firstId: 'a', secondId: 'c', label: 'A ↔ C' })
+    expect(again.docs).toHaveLength(1)
+    expect(again.active).toBe(first.active)
+    expect(closeDoc(again, again.active, BOARD_KEY).active).toBe(BOARD_KEY)
+    expect(enterProject(again, undefined, 'p')).toMatchObject({ docs: [], active: 'files' })
+  })
   it('shows the Board when entering a project and drops another project\'s threads', () => {
     let state = openDoc(INITIAL_WORKBENCH, { kind: 'preview', path: 'a.docx' })
     state = enterProject(state, 'p1', undefined)

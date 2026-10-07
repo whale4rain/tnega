@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artifactsFor, board, fromSnapshot, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
+import { artifactsFor, board, exchangeMessages, fromSnapshot, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
 import type { BoxEnvelope, ProjectSnapshot, ThreadRecord } from './project-types'
 
 const COORD = 'c0000000-0000-4000-8000-000000000000'
@@ -40,6 +40,21 @@ function snapshot(partial: Partial<ProjectSnapshot> = {}): ProjectSnapshot {
 }
 
 describe('mainTimeline', () => {
+  it('restores both directions of an Agent exchange without leaking user chat or other pairs', () => {
+    const dispatch = envelope({ kind: 'dispatch', sender: { kind: 'agent', id: COORD }, recipients: [{ kind: 'agent', id: T1 }], threadId: T1, text: 'Fix parser' })
+    const report = envelope({ kind: 'progress', sender: { kind: 'agent', id: T1 }, recipients: [{ kind: 'agent', id: COORD }], placement: { kind: 'thread', threadId: T1 }, text: 'Found cause' })
+    const nested = envelope({ kind: 'dispatch', sender: { kind: 'agent', id: T1 }, recipients: [{ kind: 'agent', id: T2 }], placement: { kind: 'thread', threadId: T2 }, text: 'Check output' })
+    const user = envelope({ kind: 'user-thread', sender: { kind: 'user', id: 'user' }, recipients: [{ kind: 'agent', id: T1 }], placement: { kind: 'thread', threadId: T1 }, text: 'Private direct note' })
+    let state = fromSnapshot(snapshot({ messages: [dispatch], inboxMessages: [report], agentMessages: [nested, report, dispatch], threadMessages: [user] }))
+    expect(exchangeMessages(state, COORD, T1).map(m => m.text)).toEqual(['Fix parser', 'Found cause'])
+    expect(exchangeMessages(state, T1, T2).map(m => m.text)).toEqual(['Check output'])
+    expect(mainTimeline(state).filter(item => item.kind === 'threads')).toEqual([
+      expect.objectContaining({ senderId: COORD, threadIds: [T1] }),
+      expect.objectContaining({ senderId: T1, threadIds: [COORD, T2] }),
+    ])
+    state = reduceProject(state, { type: 'message', seq: 10, envelope: report })
+    expect(exchangeMessages(state, COORD, T1)).toHaveLength(2)
+  })
   it('groups consecutive dispatches into one card stack under the coordinator turn', () => {
     const state = fromSnapshot(snapshot({
       threads: [thread(COORD, { depth: 0 }), thread(T1), thread(T2)],

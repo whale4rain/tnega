@@ -67,7 +67,7 @@ export function fromSnapshot(snapshot: ProjectSnapshot, localReplies: Record<str
   }
   const messages = snapshot.messages.map(withLocal)
   const envelopes: Record<string, BoxEnvelope> = {}
-  for (const envelope of [...messages, ...snapshot.inboxMessages, ...(snapshot.threadMessages ?? [])]) envelopes[envelope.messageId] = envelope
+  for (const envelope of [...messages, ...snapshot.inboxMessages, ...(snapshot.threadMessages ?? []), ...(snapshot.agentMessages ?? [])]) envelopes[envelope.messageId] = envelope
   return {
     envelopes,
     project: snapshot.project,
@@ -266,7 +266,18 @@ export function replyRef(state: ProjectState, id: string): ReplyRef | undefined 
 export type MainItem =
   | { kind: 'user'; id: string; text: string; at: number; replyTo: ReplyRef[] }
   | { kind: 'coordinator'; id: string; text: string; at: number; replyTo: ReplyRef[]; refs: ArtifactRef[] }
-  | { kind: 'threads'; id: string; threadIds: string[]; at: number }
+  | { kind: 'threads'; id: string; senderId: string; threadIds: string[]; at: number }
+
+/** Exact pair, both directions, deduplicated by the durable message identity. */
+export function exchangeMessages(state: ProjectState, firstId: string, secondId: string): BoxEnvelope[] {
+  return sortByTime(Object.values(state.envelopes).filter(message => message.sender.kind === 'agent'
+    && ((message.sender.id === firstId && message.recipients.some(to => to.kind === 'agent' && to.id === secondId))
+      || (message.sender.id === secondId && message.recipients.some(to => to.kind === 'agent' && to.id === firstId)))))
+}
+
+export function agentLabel(state: ProjectState, id: string): string {
+  return id === state.coordinatorId ? 'Coordinator' : state.threads[id]?.label ?? 'Agent'
+}
 
 /**
  * The main conversation: what the user said, what the coordinator said, and
@@ -287,7 +298,11 @@ export function mainTimeline(state: ProjectState): MainItem[] {
       .map(id => replyRef(state, id))
       .filter((ref): ref is ReplyRef => ref !== undefined)
   }
-  for (const message of state.messages) {
+  const communications = Object.values(state.envelopes).filter(message => message.sender.kind === 'agent'
+    && message.recipients.some(to => to.kind === 'agent')
+    && message.kind !== 'complete' && message.kind !== 'notice' && message.kind !== 'agent-reply')
+  const timeline = sortByTime([...new Map([...state.messages, ...communications].map(message => [message.messageId, message])).values()])
+  for (const message of timeline) {
     switch (message.kind) {
       case 'user-message':
         items.push({ kind: 'user', id: message.messageId, text: message.text, at: message.createdAt, replyTo: refs(message) })
@@ -297,13 +312,21 @@ export function mainTimeline(state: ProjectState): MainItem[] {
           items.push({ kind: 'coordinator', id: message.messageId, text: message.text, at: message.createdAt, replyTo: refs(message), refs: message.refs ?? [] })
         }
         break
-      case 'dispatch': {
-        if (!message.threadId) break
+      case 'dispatch':
+      case 'progress':
+      case 'request':
+      case 'blocked':
+      case 'failed': {
+        if (message.sender.kind !== 'agent') break
+        const threadIds = message.recipients.filter(to => to.kind === 'agent').map(to => to.id)
+        // Legacy dispatch snapshots can name the Thread only in threadId.
+        if (!threadIds.length && message.threadId) threadIds.push(message.threadId)
+        if (!threadIds.length) break
         const last = items.at(-1)
-        if (last?.kind === 'threads') {
-          if (!last.threadIds.includes(message.threadId)) last.threadIds.push(message.threadId)
+        if (last?.kind === 'threads' && last.senderId === message.sender.id && message.createdAt - last.at < 5 * 60_000) {
+          for (const id of threadIds) if (!last.threadIds.includes(id)) last.threadIds.push(id)
         } else {
-          items.push({ kind: 'threads', id: message.messageId, threadIds: [message.threadId], at: message.createdAt })
+          items.push({ kind: 'threads', id: message.messageId, senderId: message.sender.id, threadIds, at: message.createdAt })
         }
         break
       }

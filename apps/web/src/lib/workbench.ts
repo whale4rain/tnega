@@ -30,6 +30,7 @@ export type DocTab =
   | { key: string; kind: 'preview'; path: string }
   | { key: string; kind: 'subagent'; id: string; label: string }
   | { key: string; kind: 'thread'; id: string; label: string }
+  | { key: string; kind: 'exchange'; firstId: string; secondId: string; label: string }
   | { key: string; kind: 'settings'; label: string }
 
 /** A file to bring into view when a tool opens (a changed file, a file to edit). */
@@ -60,7 +61,7 @@ export function isProjectTab(value: string): boolean {
 
 /** Tabs that only exist inside a project: its fixed tabs, its threads and its settings. */
 export function isProjectKey(value: string): boolean {
-  return isProjectTab(value) || value.startsWith('thread:') || value === 'project-settings'
+  return isProjectTab(value) || value.startsWith('thread:') || value.startsWith('exchange:') || value === 'project-settings'
 }
 
 export function openTool(state: WorkbenchState, tool: ToolId, path?: string): WorkbenchState {
@@ -78,6 +79,7 @@ export type NewDoc =
   | { kind: 'preview'; path: string }
   | { kind: 'subagent'; id: string; label: string }
   | { kind: 'thread'; id: string; label: string }
+  | { kind: 'exchange'; firstId: string; secondId: string; label: string }
   | { kind: 'settings'; label: string }
 
 function withKey(doc: NewDoc): DocTab {
@@ -85,6 +87,7 @@ function withKey(doc: NewDoc): DocTab {
     case 'preview': return { ...doc, key: `preview:${doc.path}` }
     case 'subagent': return { ...doc, key: `subagent:${doc.id}` }
     case 'thread': return { ...doc, key: `thread:${doc.id}` }
+    case 'exchange': return { ...doc, key: `exchange:${[doc.firstId, doc.secondId].sort().join(':')}` }
     case 'settings': return { ...doc, key: 'project-settings' }
   }
 }

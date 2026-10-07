@@ -68,6 +68,19 @@ it.each(['coordinator', 'thread'])('publishes separate tool chat messages for a 
   expect(messages.some(message => message.text.includes('Internal execution narration'))).toBe(false)
 })
 
+it('restores Agent exchanges including nested parent messages in the snapshot', async () => {
+  const { host, record, project } = await fixture({ async complete() { return { content: 'Done.', finishReason: 'stop' } } })
+  const child = await project.threads.spawn({ parentId: record.coordinatorId, goal: 'Research' })
+  const nested = await project.threads.spawn({ parentId: child.id, goal: 'Verify' })
+  const base = { placement: { kind: 'thread' as const, threadId: nested.id }, kind: 'progress' as const }
+  const sent = await project.box.send({ ...base, sender: { kind: 'agent', id: child.id }, recipients: [{ kind: 'agent', id: nested.id }], text: 'Use revised scope.' })
+  const reply = await project.box.send({ ...base, sender: { kind: 'agent', id: nested.id }, recipients: [{ kind: 'agent', id: child.id }], text: 'Verified the scope.' })
+  const direct = await project.box.send({ ...base, sender: { kind: 'user', id: 'user' }, recipients: [{ kind: 'agent', id: nested.id }], text: 'Direct user note.' })
+  const snapshot = await host.snapshot(record.id)
+  expect(snapshot.agentMessages.map(message => message.messageId)).toEqual(expect.arrayContaining([sent.messageId, reply.messageId]))
+  expect(snapshot.agentMessages.some(message => message.messageId === direct.messageId)).toBe(false)
+})
+
 it('keeps normal messages asynchronous and interrupts the coordinator for an explicit correction', async () => {
   const { host, record, project, signals } = await fixture()
   await host.sendUserMessage(record.id, 'Start working')

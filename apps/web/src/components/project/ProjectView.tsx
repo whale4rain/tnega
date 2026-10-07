@@ -17,10 +17,10 @@ import { followProject, isUnsupported, localReplies, projectApi } from '../../li
 import { notifyDesktopThread } from '../../lib/desktop-completion'
 import {
   activeCount,
+  agentLabel,
   artifactsFor,
   board,
   fromSnapshot,
-  isUnread,
   mainTimeline,
   plainPreview,
   reduceProject,
@@ -32,7 +32,7 @@ import {
 } from '../../lib/project-model'
 import type { ProjectStreamEvent } from '../../lib/project-types'
 import type { ConfigSnapshot } from '../../lib/types'
-import { BOARD_KEY, openDoc, openTool, select, toggle, type WorkbenchState } from '../../lib/workbench'
+import { BOARD_KEY, closeDoc, openDoc, openTool, select, toggle, type WorkbenchState } from '../../lib/workbench'
 import type { WorkbenchProject } from '../workbench/Workbench'
 import { AgentAvatar, AvatarSeeds } from '../AgentAvatar'
 import { PromptBox } from '../Composer'
@@ -44,7 +44,7 @@ import { ArtifactCards } from './Artifacts'
 import { BoardPanel } from './Board'
 import { LibraryPanel, SettingsPanel } from './ProjectPanels'
 import { RoutinesPanel } from './Routines'
-import { ThreadCard } from './ThreadCard'
+import { ExchangePanel } from './ExchangePanel'
 import { ThreadPanel } from './ThreadPanel'
 import { ChatRun as Run } from './ChatRun'
 
@@ -131,6 +131,12 @@ export function ProjectView({
     onWorkbench(current => openDoc(current, { kind: 'thread', id, label }))
     onOpenThread(id)
   }, [state?.threads, onWorkbench, onOpenThread])
+
+  const openExchange = (firstId: string, secondId: string) => {
+    if (!state) return
+    onWorkbench(current => openDoc(current, { kind: 'exchange', firstId, secondId,
+      label: `${agentLabel(state, firstId)} ↔ ${agentLabel(state, secondId)}` }))
+  }
 
   // A thread named in the address (a link, a reload) opens once the project has loaded.
   const loaded = Boolean(state)
@@ -304,6 +310,7 @@ export function ProjectView({
 
   const working = activeCount(state)
   const active = workbench.active
+  const activeDoc = workbench.docs.find(doc => doc.key === active)
   const panel = !panelSlot ? null : active === BOARD_KEY
     ? <BoardPanel workspace={workspace} state={state} seen={seen} onOpenThread={openThread} />
     : active === 'project:library'
@@ -312,6 +319,9 @@ export function ProjectView({
         ? <RoutinesPanel workspace={workspace} state={state} onOpenThread={openThread} />
         : active === 'project-settings'
           ? <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onDeleted={onDeleted} />
+          : activeDoc?.kind === 'exchange'
+            ? <ExchangePanel workspace={workspace} state={state} firstId={activeDoc.firstId} secondId={activeDoc.secondId}
+                onOpenThread={openThread} onClose={() => onWorkbench(current => closeDoc(current, active, BOARD_KEY))} />
           : shownThreadId
             ? <ThreadPanel key={shownThreadId} workspace={workspace} state={state} threadId={shownThreadId} onBack={() => onWorkbench(current => select(current, BOARD_KEY))} />
             : null
@@ -374,10 +384,8 @@ export function ProjectView({
               workspace={workspace}
               items={items}
               state={state}
-              seen={seen}
-              activeThread={shownThreadId}
               coordinatorRunning={coordinatorRunning}
-              handlers={{ onOpenThread: openThread, onReply: setReplyTarget, onJump: jump }}
+              handlers={{ onOpenThread: openThread, onOpenExchange: openExchange, onReply: setReplyTarget, onJump: jump }}
             />
           </div>
         </div>
@@ -428,6 +436,7 @@ export function ProjectView({
 type Group =
   | { kind: 'user'; id: string; at: number; items: Array<Extract<MainItem, { kind: 'user' }>> }
   | { kind: 'agent'; id: string; at: number; items: MainItem[] }
+  | { kind: 'exchange'; id: string; at: number; item: Extract<MainItem, { kind: 'threads' }> }
 
 /** How long one author can keep talking under the same head. */
 const RUN_GAP_MS = 5 * 60_000
@@ -436,6 +445,10 @@ const RUN_GAP_MS = 5 * 60_000
 function group(items: readonly MainItem[]): Group[] {
   const out: Group[] = []
   for (const item of items) {
+    if (item.kind === 'threads') {
+      out.push({ kind: 'exchange', id: item.id, at: item.at, item })
+      continue
+    }
     const last = out.at(-1)
     const at = item.at
     if (item.kind === 'user') {
@@ -460,6 +473,7 @@ function dayLabel(at: number, now = Date.now()): string {
 }
 
 interface RoomHandlers {
+  onOpenExchange: (firstId: string, secondId: string) => void
   onOpenThread: (id: string) => void
   onReply: (ref: ReplyRef) => void
   onJump: (ref: ReplyRef) => void
@@ -474,16 +488,12 @@ function Room({
   workspace,
   items,
   state,
-  seen,
-  activeThread,
   coordinatorRunning,
   handlers,
 }: {
   workspace: string
   items: readonly MainItem[]
   state: ProjectState
-  seen: Readonly<Record<string, number>>
-  activeThread: string | undefined
   coordinatorRunning: boolean
   handlers: RoomHandlers
 }) {
@@ -496,6 +506,16 @@ function Room({
         const showDay = previousDay === undefined || !sameDay(previousDay, entry.at)
         previousDay = entry.at
         const day = showDay ? <div key={`day-${entry.id}`} className="room-day" role="separator"><span>{dayLabel(entry.at)}</span></div> : null
+        if (entry.kind === 'exchange') {
+          const { senderId, threadIds } = entry.item
+          const content = <><span>Messaged</span><span className="message-receipt-avatars">{threadIds.map(id => <AgentAvatar key={id} id={id} role={id === state.coordinatorId ? 'coordinator' : 'agent'} size={18} />)}</span><span>{threadIds.length === 1 ? agentLabel(state, threadIds[0]!) : `${threadIds.length} Agents`}</span></>
+          return [day, <div key={entry.id} className="message-receipt" title={`From ${agentLabel(state, senderId)}`}>
+            {threadIds.length === 1
+              ? <button type="button" className="message-receipt-open" aria-label={`Open conversation with ${agentLabel(state, threadIds[0]!)}`} onClick={() => handlers.onOpenExchange(senderId, threadIds[0]!)}>{content}</button>
+              : <Menu className="message-receipt-open" label={`Messaged ${threadIds.length} Agents`} trigger={content} items={threadIds.map(id => ({ key: id, label: agentLabel(state, id), onSelect: () => handlers.onOpenExchange(senderId, id) }))} />}
+            {threadIds.filter(id => id !== state.coordinatorId).map(id => <button key={id} type="button" className="icon-button tiny message-receipt-reply" aria-label={`Reply to ${agentLabel(state, id)}`} title={`Message ${agentLabel(state, id)}`} onClick={() => handlers.onReply({ id: entry.id, who: 'thread', threadId: id, agentId: id, label: agentLabel(state, id), excerpt: '', inMain: false })}><CornerUpLeft size={12} /></button>)}
+          </div>]
+        }
         if (entry.kind === 'user') {
           return [
             day,
@@ -537,22 +557,6 @@ function Room({
                           <CornerUpLeft size={14} />
                         </button>
                       </div>
-                    </div>
-                  )
-                case 'threads':
-                  return (
-                    <div key={item.id} className="thread-stack">
-                      {item.threadIds.map(id => (
-                        <ThreadCard
-                          key={id}
-                          state={state}
-                          threadId={id}
-                          active={id === activeThread}
-                          unread={Boolean(state.threads[id]) && isUnread(state, state.threads[id]!, seen)}
-                          onOpen={handlers.onOpenThread}
-                          onReply={handlers.onReply}
-                        />
-                      ))}
                     </div>
                   )
                 default:

@@ -12,8 +12,8 @@ Claude Projects 的能力而**提议**的接口。提议接口尚未实现时，
 | Claude Projects | Tnega 对象 | 前端位置 |
 | --- | --- | --- |
 | Project（主对话 / chief of staff） | `ProjectRecord` + 根 Thread（`coordinatorId`） | 中间的主对话 |
-| Thread（并行的工作会话） | 子 `ThreadRecord`，各自一个 Session | 主对话里的 Thread 卡片；右侧 Thread 面板 |
-| 在主对话里看进度 / 进入 Thread 细调 | Box 信封（`dispatch` 卡片）/ Thread 记录（状态、实时清单）/ Thread Session | 卡片只有标题与状态；Thread 面板先给清单、产物与回答，步骤折叠 |
+| Thread（并行的工作会话） | 子 `ThreadRecord`，各自一个 Session | Board 卡片；右侧 Thread 面板 |
+| 查看 Agent 之间的通信 / 进入 Thread 细调 | Box 信封（Messaged 入口）/ Thread 记录 / Thread Session | 主对话显示紧凑的通信入口，点击在工作台打开双方气泡记录；参与者可进入自己的 Thread |
 | Shared memory | Blackboard `memory` 事实（有版本） | 右侧 Memory：新增、编辑、删除、版本历史 |
 | Library（你加的文件 + Claude 的产物） | Blackboard `artifact` / `resource` + Artifact Store | 右侧 Library：列表、查看、添加 |
 | 偏好：check-in 频率、开 Thread 的积极度、更新详略 | **提议** `settings.preferences` | 右侧 Settings |
@@ -33,7 +33,8 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 | --- | --- | --- |
 | GET | `/api/projects` | 侧栏项目列表（含 `archived`） |
 | POST | `/api/projects` `{ name, goal? }` | 新建项目，只需名称 |
-| GET | `/api/projects/:id` | 快照：`project`、`coordinatorId`、`cursor`、`threads`、`messages`（主对话）、`inboxMessages`（子→协调者回报）、`memory`、`library` |
+| GET | `/api/projects/:id` | 快照：`project`、`coordinatorId`、`cursor`、`threads`、`messages`（主对话）、`inboxMessages`（子→协调者回报）、`agentMessages`（全部 Agent 间通信）、`threadMessages`（用户与 Thread 的直接聊天）、`memory`、`library` |
+
 | PATCH | `/api/projects/:id` `{ archived }` | 归档 / 恢复 |
 | DELETE | `/api/projects/:id` | 删除 |
 | POST | `/api/projects/:id/messages` `{ text }` | 主对话发言；回执即成功，协调者运行时也可发送 |
@@ -61,6 +62,8 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 面板的产物按 `author` 归属；协调者的 `chunk` 作为流式草稿显示，收到它的 `agent-reply` 后替换。
 
 ## 提议的后端改动
+
+`agentMessages` 是已实现的增量快照字段，不改变 Blackboard 或 Session 格式。前端仍接受旧服务端省略该字段，但旧快照只能展示原有主对话和协调者 inbox 里已有的通信；新版 SSE 通信无需重载即可更新工作台记录。
 
 按优先级排列。每项都给出前端当前的降级行为。
 

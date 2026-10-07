@@ -148,6 +148,8 @@ export interface ProjectSnapshot {
   inboxMessages: BoxEnvelope[]
   /** User-facing Thread chat, including tool-published messages. */
   threadMessages: BoxEnvelope[]
+  /** Agent-to-Agent exchanges, independent of their timeline placement. */
+  agentMessages: BoxEnvelope[]
   memory: FactRecord[]
   library: { artifacts: FactRecord[]; resources: FactRecord[] }
   routines: FactRecord[]
@@ -256,6 +258,8 @@ export class ProjectHost {
       threads: await project.threads.list(),
       messages,
       inboxMessages,
+      agentMessages: envelopes.filter(envelope => envelope.sender.kind === 'agent'
+        && envelope.recipients.some(recipient => recipient.kind === 'agent')),
       threadMessages: envelopes.filter(envelope => envelope.placement.kind === 'thread'
         && (envelope.kind === 'user-thread' || envelope.kind === 'agent-reply')),
       memory: await project.blackboard.list('memory'),

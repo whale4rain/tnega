@@ -69,7 +69,7 @@ export function Workbench({
   const [visited, setVisited] = useState<ReadonlySet<ToolId>>(() => new Set(isTool(state.active) ? [state.active] : []))
   // Outside a project its tabs do not exist; show the first tool instead.
   const active = !project && isProjectKey(state.active) ? 'files' : state.active
-  const projectDocs = project ? state.docs.filter(doc => doc.kind === 'thread' || doc.kind === 'settings') : []
+  const projectDocs = project ? state.docs.filter(doc => doc.kind === 'thread' || doc.kind === 'exchange' || doc.kind === 'settings') : []
   const otherDocs = state.docs.filter(doc => doc.kind === 'preview' || doc.kind === 'subagent')
   if (isTool(active) && !visited.has(active)) setVisited(new Set([...visited, active]))
   const tools = (['files', 'changes', 'terminal', 'browser'] as const).filter(tool => tool !== 'browser' || browser)
@@ -151,6 +151,7 @@ const DOC_ICON: Record<DocTab['kind'], LucideIcon> = {
   preview: FileText,
   subagent: Bot,
   thread: MessagesSquare,
+  exchange: MessagesSquare,
   settings: Settings2,
 }
 

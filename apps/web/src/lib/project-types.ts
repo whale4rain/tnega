@@ -156,6 +156,8 @@ export interface ProjectSnapshot {
   inboxMessages: BoxEnvelope[]
   /** User-facing Thread chat; older servers omit this field. */
   threadMessages?: BoxEnvelope[]
+  /** Agent-to-Agent envelopes for inspectable exchanges; older servers omit this. */
+  agentMessages?: BoxEnvelope[]
   memory: MemoryFact[]
   library: { artifacts: ArtifactFact[]; resources: ResourceFact[] }
   /** Older servers omit routines. */
