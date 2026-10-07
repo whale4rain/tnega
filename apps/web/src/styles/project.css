@@ -892,7 +892,11 @@
 }
 
 .main-message .turn-actions {
-  margin-top: -2px;
+  position: absolute;
+  left: calc(100% + 3px);
+  top: 50%;
+  margin: 0;
+  transform: translateY(-50%);
 }
 
 .reply-chip {
