@@ -15,12 +15,12 @@
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, "Microsoft YaHei Mono", monospace;
 
-  --text-xs: 11.5px;
-  --text-sm: 12.5px;
-  --text-md: 14px;
-  --text-lg: 15.5px;
-  --text-xl: 20px;
-  --text-2xl: 28px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 13.5px;
+  --text-xl: 18px;
+  --text-2xl: 24px;
 
   --radius-xs: 5px;
   --radius-sm: 7px;

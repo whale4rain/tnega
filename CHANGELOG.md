@@ -40,6 +40,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- 统一 Project、Session 与工作台字号，缩小对话正文和输入文字；气泡改为无描边的柔和背景，收紧连续消息间距。
+
 ## [0.4.18](https://github.com/whale4rain/tnega/releases/tag/v0.4.18) — 2026-10-06
 
 ### Features

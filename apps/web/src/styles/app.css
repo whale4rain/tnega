@@ -659,7 +659,7 @@ kbd {
 
 .brand-name {
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--text-lg);
   letter-spacing: -0.02em;
 }
 
@@ -1562,7 +1562,7 @@ kbd {
 .timeline {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
 }
 
 .user-row {
@@ -1576,11 +1576,9 @@ kbd {
 
 .user-bubble {
   max-width: min(84%, 620px);
-  padding: 10px 15px;
-  border-radius: var(--radius-xl) var(--radius-xl) 6px var(--radius-xl);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  padding: 8px 12px;
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
+  background: var(--surface-raised);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: var(--text-lg);
@@ -1695,7 +1693,7 @@ kbd {
 .agent-turn {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
-  gap: 14px;
+  gap: 10px;
   animation: fade-up 260ms var(--ease-out);
 }
 
@@ -1706,8 +1704,16 @@ kbd {
 .agent-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
+}
+
+.agent-body > div > .prose {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-xs) var(--radius-lg) var(--radius-lg);
+  background: var(--surface-raised);
 }
 
 .turn-actions {
@@ -2264,7 +2270,7 @@ kbd {
 
 .prose {
   font-size: var(--text-lg);
-  line-height: 1.7;
+  line-height: 1.6;
   color: var(--text);
   overflow-wrap: break-word;
 }
@@ -2278,14 +2284,14 @@ kbd {
 }
 
 .prose p {
-  margin: 0 0 0.8em;
+  margin: 0 0 0.65em;
 }
 
 .prose h1,
 .prose h2,
 .prose h3,
 .prose h4 {
-  margin: 1.4em 0 0.5em;
+  margin: 1.1em 0 0.45em;
   line-height: 1.3;
   letter-spacing: -0.015em;
   font-weight: 650;
@@ -2298,7 +2304,7 @@ kbd {
 
 .prose ul,
 .prose ol {
-  margin: 0 0 0.8em;
+  margin: 0 0 0.65em;
   padding-left: 1.4em;
 }
 
