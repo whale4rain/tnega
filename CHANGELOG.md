@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.19-beta.1 | [`v0.4.18...v0.4.19-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.18...v0.4.19-beta.1) | 8 |
 | 0.4.18 | [`v0.4.17...v0.4.18`](https://github.com/whale4rain/tnega/compare/v0.4.17...v0.4.18) | 9 |
 | 0.4.17 | [`v0.4.16...v0.4.17`](https://github.com/whale4rain/tnega/compare/v0.4.16...v0.4.17) | 2 |
 | 0.4.16 | [`v0.4.15...v0.4.16`](https://github.com/whale4rain/tnega/compare/v0.4.15...v0.4.16) | 10 |
@@ -40,19 +41,31 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
-- 新增本地 E2E 系列验证 Project 与普通 Session 的消息、通信、链接、主题和窄屏，不加入 CI。
+## [0.4.19-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.1) — 2026-10-08
 
-- Project 气泡的回复按钮移至气泡旁，不再为隐藏按钮保留空行。
+### Features
 
-- 普通 Session 的用户消息也支持点击文件路径和网站链接，与 Agent 回复及 Project 对话使用相同的引用交互。
+- Project Agent communication appears as compact Messaged receipts. Open an
+  exchange in the Workbench to read both participants' messages, including nested
+  Threads and restored history. Participant avatars open their Thread chats.
+- Project, Thread, Agent exchanges and ordinary Session user messages support
+  file and website references. File paths open the Workbench, local websites open
+  Browser, and external websites retain normal link behavior.
+- Project coordinators and Threads are guided to send one topic per message,
+  usually in 1–3 sentences. Assignments, changed constraints, findings, blockers
+  and verified outcomes include concise context and useful references.
 
-- 主副 Agent 默认一条消息一个主题、1–3 个短句；派工和改向传递约束增量，关键发现、阻塞和交付使用简短说明与文件或网站引用，避免长篇复述。
+### Fixes
 
-- Project、Thread 与 Agent 通信消息中的文件引用可打开工作台，裸路径和绝对路径也可识别；本地网站打开 Browser，外部网站保持正常外链。
+- Smaller typography is shared across Projects, Sessions and the Workbench.
+  Conversation bubbles use softer backgrounds, tighter spacing and separate
+  short messages; hidden reply controls no longer leave an empty row.
 
-- Project 主副 Agent 通信显示为紧凑的 Messaged 入口；工作台可查看选定双方的往返消息，支持嵌套 Thread 和重载恢复，直接用户对话保持独立。
+### Other
 
-- 统一 Project、Session 与工作台字号，缩小对话正文和输入文字；气泡改为无描边的柔和背景，收紧连续消息间距。
+- Optional local browser E2E checks cover Project and ordinary Session messages,
+  Agent exchanges, references, reloads, themes and narrow windows. These checks
+  are available through the Web package and are not part of CI.
 
 ## [0.4.18](https://github.com/whale4rain/tnega/releases/tag/v0.4.18) — 2026-10-06
 
