@@ -1,0 +1,17 @@
+# Local Project chat E2E
+
+Run from the repository root:
+
+```sh
+pnpm --filter @tnega/web test:e2e
+```
+
+This optional implementation check starts Vite on a free local port and uses the installed Chrome or Edge through the existing `playwright-core` dependency. It requires no backend, model key, browser download, or new dependency, and is not included in CI. To select another installed Chromium browser, set `TNEGA_E2E_BROWSER` to its executable path.
+
+`project-chat.mjs` loads the real App with `#p/project` and explicitly intercepts the backend endpoints in `fixtures.mjs`. Unknown API requests and unhandled browser errors fail the run. External reference navigation uses a local fixture; no external service is contacted.
+
+The connected flow checks short independent bubbles, computed text sizes, grouped Agent receipts, conversation pair isolation, late SSE arrival and duplicate suppression, reconnect cursor, durable exchange history after reload and reopening, routed Thread restoration, participant navigation, close chat, workspace file links, external web links, local preview navigation into Browser, and narrow layouts in both themes. Document tabs follow the existing Workbench rule and are reopened after reload. Screenshots are saved under `.artifacts/` for visual review and ignored by Git.
+
+These fixtures verify UI behavior and the incremental wire flow, not real provider communication, server persistence, desktop native Browser rendering, or screenshot pixel similarity. Add corresponding backend or desktop checks when those boundaries change.
+
+The same run opens an ordinary General Session in each theme, checks body/user/Agent typography and the short Agent bubble's height, and opens both user and Agent file/web references. It saves `session-dark.png` and `session-light.png` alongside the Project captures. The full run has 14 checks.

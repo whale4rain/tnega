@@ -40,6 +40,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- 新增本地 E2E 系列验证 Project 与普通 Session 的消息、通信、链接、主题和窄屏，不加入 CI。
+
 - Project 气泡的回复按钮移至气泡旁，不再为隐藏按钮保留空行。
 
 - 普通 Session 的用户消息也支持点击文件路径和网站链接，与 Agent 回复及 Project 对话使用相同的引用交互。
