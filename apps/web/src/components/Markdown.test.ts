@@ -7,6 +7,20 @@ import { Markdown } from './Markdown'
 
 afterEach(cleanup)
 
+it('opens bare and absolute file references while leaving code blocks and existing links intact', () => {
+  const openPath = vi.fn()
+  const view = render(createElement(LinkContext.Provider, { value: { workspace: '/repo', openPath } }, createElement(Markdown, {
+    text: 'Changed src/app.ts:42，see /repo/docs/brief.md. Also `/repo/docs/brief.md` and [brief](docs/brief.md).\n\n```\nsrc/app.ts\n```',
+  })))
+  fireEvent.click(view.getByText('src/app.ts:42'))
+  fireEvent.click(view.getAllByText('/repo/docs/brief.md')[0]!)
+  fireEvent.click(view.getAllByText('/repo/docs/brief.md')[1]!)
+  fireEvent.click(view.getByText('brief'))
+  expect(openPath.mock.calls).toEqual([['src/app.ts'], ['docs/brief.md'], ['docs/brief.md'], ['docs/brief.md']])
+  expect(view.container.querySelectorAll('a a')).toHaveLength(0)
+  expect(view.container.querySelector('.code-block a')).toBeNull()
+})
+
 const text = 'See [the app](src/App.tsx:12), `apps/web/src/main.tsx`, [the server](http://localhost:5173/) and [docs](https://example.com).'
 
 it('opens file links and file-like inline code in the Workbench and dev servers in the app browser', () => {

@@ -34,7 +34,6 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 | GET | `/api/projects` | 侧栏项目列表（含 `archived`） |
 | POST | `/api/projects` `{ name, goal? }` | 新建项目，只需名称 |
 | GET | `/api/projects/:id` | 快照：`project`、`coordinatorId`、`cursor`、`threads`、`messages`（主对话）、`inboxMessages`（子→协调者回报）、`agentMessages`（全部 Agent 间通信）、`threadMessages`（用户与 Thread 的直接聊天）、`memory`、`library` |
-
 | PATCH | `/api/projects/:id` `{ archived }` | 归档 / 恢复 |
 | DELETE | `/api/projects/:id` | 删除 |
 | POST | `/api/projects/:id/messages` `{ text }` | 主对话发言；回执即成功，协调者运行时也可发送 |
@@ -56,14 +55,11 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 流帧：`message`（信封，含 `seq`）、`commit`（`agent` / `memory` / `artifact` / `resource` / `project`，带 `author`、`version`、`updatedAt`、`source`）、
 `chunk`（`agentId` 的实时正文增量）、`agent-status`（`running` / `idle`）、`approval/request`、`heartbeat`。
 
-前端的推导规则（见 `project-model.ts`）：主对话只读 `placement.kind === 'main'` 的用户发言、协调者回复与
-`dispatch`（`notice` 不显示）；连续的 `dispatch` 合成一组卡片；卡片状态读 Thread 记录，并以 `agent-status`
-覆盖，工作中显示清单里 `active` 的那一步；回复的 `refs` 按哈希对到 Library 的产物，渲染成卡片；Thread
-面板的产物按 `author` 归属；协调者的 `chunk` 作为流式草稿显示，收到它的 `agent-reply` 后替换。
+`agentMessages` 是已实现的增量快照字段，不改变 Blackboard 或 Session 格式。前端仍接受旧服务端省略该字段，但旧快照只能展示原有主对话和协调者 inbox 里已有的通信；新版 SSE 通信无需重载即可更新工作台记录。
+
+前端的推导规则（见 `project-model.ts`）：主对话显示用户与协调者的已发布消息，以及 Agent 间的派工、关键进展、请求和阻塞的 Messaged 入口；同一发送者连续发送的通信合成一组入口。自动完成回报保留在双方通信记录中，不在主对话重复插入入口；`notice` 和原始 `chunk` 不显示为气泡。Board 卡片状态读 Thread 记录，以 `agent-status` 覆盖；回复的 `refs` 按哈希对到 Library，Thread 面板的产物按 `author` 归属。
 
 ## 提议的后端改动
-
-`agentMessages` 是已实现的增量快照字段，不改变 Blackboard 或 Session 格式。前端仍接受旧服务端省略该字段，但旧快照只能展示原有主对话和协调者 inbox 里已有的通信；新版 SSE 通信无需重载即可更新工作台记录。
 
 按优先级排列。每项都给出前端当前的降级行为。
 

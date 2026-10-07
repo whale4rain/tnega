@@ -32,6 +32,8 @@ import {
 } from '../../lib/project-model'
 import type { ProjectStreamEvent } from '../../lib/project-types'
 import type { ConfigSnapshot } from '../../lib/types'
+import { LinkContext, type LinkHandlers } from '../../lib/links'
+import { navigateBrowser } from '../../lib/browser-live'
 import { BOARD_KEY, closeDoc, openDoc, openTool, select, toggle, type WorkbenchState } from '../../lib/workbench'
 import type { WorkbenchProject } from '../workbench/Workbench'
 import { AgentAvatar, AvatarSeeds } from '../AgentAvatar'
@@ -89,6 +91,15 @@ export function ProjectView({
   const [notice, setNotice] = useState<string | undefined>()
   const [replyTarget, setReplyTarget] = useState<ReplyRef | undefined>()
   const [seen, markSeen] = useSeenThreads(projectId)
+  const links = useMemo<LinkHandlers>(() => ({
+    workspace,
+    openPath: path => onWorkbench(current => /\.(?:docx|xlsx|pptx|pdf|png|jpe?g|webp|gif|svg)$/i.test(path)
+      ? openDoc(current, { kind: 'preview', path }) : openTool(current, 'files', path)),
+    openLocalUrl: url => {
+      onWorkbench(current => openTool(current, 'browser'))
+      void navigateBrowser(url).catch(reason => setError(errorText(reason)))
+    },
+  }), [workspace, onWorkbench])
 
   // Snapshot first, then follow the change stream from its cursor.
   useEffect(() => {
@@ -328,6 +339,7 @@ export function ProjectView({
 
   return (
     <AvatarSeeds.Provider value={seeds}>
+      <LinkContext.Provider value={links}>
       <main className="conversation project-main">
         <header className="conv-header">
           {!sidebarOpen && (
@@ -425,6 +437,7 @@ export function ProjectView({
         </div>
       </main>
       {panelSlot && panel && createPortal(panel, panelSlot)}
+      </LinkContext.Provider>
     </AvatarSeeds.Provider>
   )
 }
@@ -523,7 +536,7 @@ function Room({
               {entry.items.map(item => (
                 <div key={item.id} id={`msg-${item.id}`} className="room-message">
                   {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
-                  <div className="room-text">{item.text}</div>
+                  <Markdown text={item.text} />
                 </div>
               ))}
             </Run>,

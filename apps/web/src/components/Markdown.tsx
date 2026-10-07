@@ -45,6 +45,11 @@ function highlightJavaScript(code: string): ReactNode[] {
 }
 
 const components: Components = {
+  p({ children }) { return <p><FileReferences>{children}</FileReferences></p> },
+  li({ children }) { return <li><FileReferences>{children}</FileReferences></li> },
+  strong({ children }) { return <strong><FileReferences>{children}</FileReferences></strong> },
+  em({ children }) { return <em><FileReferences>{children}</FileReferences></em> },
+  td({ children }) { return <td><FileReferences>{children}</FileReferences></td> },
   pre({ children }) {
     const child = Array.isArray(children) ? children[0] : children
     const className = child && typeof child === 'object' && 'props' in child
@@ -101,6 +106,29 @@ function InlineCode({ text, children }: { text: string; children: ReactNode }) {
   if (!target || !openPath) return <code>{children}</code>
   const open = (event: MouseEvent) => { event.preventDefault(); openPath(target.path) }
   return <a href={target.path} className="file-link code-link" title={`Open ${target.path}`} onClick={open}><code>{children}</code></a>
+}
+
+/** Link plain file references without traversing code blocks or existing anchors. */
+function FileReferences({ children }: { children: ReactNode }) {
+  const { workspace, openPath } = useContext(LinkContext)
+  if (!openPath) return children
+  const render = (child: ReactNode): ReactNode => {
+    if (Array.isArray(child)) return child.map(render)
+    if (typeof child !== 'string') return child
+    // Stop at punctuation (including Chinese punctuation); leave sentence dots outside.
+    const tokens = /(?:[a-z]:[\\/]|\/|\.{1,2}\/)?[\w@.-]+(?:[\\/][\w@.-]+)+(?:[:]\d+(?::\d+)?)?|[\w@.-]+\.[a-z][a-z0-9]{0,7}:\d+(?::\d+)?/gi
+    const parts: ReactNode[] = []
+    let offset = 0
+    for (const match of child.matchAll(tokens)) {
+      const path = match[0].replace(/[.,;:!?]+$/, '')
+      if (!codePathTarget(path, workspace)) continue
+      parts.push(child.slice(offset, match.index), <SmartLink key={match.index} href={path}>{path}</SmartLink>)
+      offset = match.index + path.length
+    }
+    parts.push(child.slice(offset))
+    return parts
+  }
+  return render(children)
 }
 
 export const Markdown = memo(function Markdown({ text }: { text: string }) {

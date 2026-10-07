@@ -18,6 +18,26 @@ vi.mock('../Timeline', () => ({ Timeline: () => null }))
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
+it('opens file references from Project chat in the shared Workbench', async () => {
+  const initial = snapshot()
+  initial.messages = [{ messageId: 'answer', projectId: 'project', sender: { kind: 'agent', id: 'coordinator' },
+    recipients: [{ kind: 'user', id: 'user' }], placement: { kind: 'main' }, kind: 'agent-reply',
+    text: 'Updated docs/brief.md. See [report](reports/draft.pdf) and [site](https://example.com).', refs: [], createdAt: 2 }]
+  vi.spyOn(projectApi, 'snapshot').mockResolvedValue(initial)
+  const onWorkbench = vi.fn()
+  const view = render(createElement(ProjectView, {
+    workspace: '/repo', projectId: 'project', threadId: undefined, config: undefined,
+    onOpenThread: vi.fn(), onDeleted: vi.fn(), onChanged: vi.fn(), sidebarOpen: true,
+    onToggleSidebar: vi.fn(), workbench: INITIAL_WORKBENCH, onWorkbench,
+    panelSlot: null, onPanelTabs: vi.fn(),
+  }))
+  fireEvent.click(await view.findByText('docs/brief.md'))
+  expect(onWorkbench.mock.calls[0]![0](INITIAL_WORKBENCH)).toMatchObject({ active: 'files', focus: { path: 'docs/brief.md' } })
+  fireEvent.click(view.getByText('report'))
+  expect(onWorkbench.mock.calls[1]![0](INITIAL_WORKBENCH)).toMatchObject({ active: 'preview:reports/draft.pdf' })
+  expect(view.getByText('site').closest('a')?.getAttribute('target')).toBe('_blank')
+})
+
 function thread(id: string): ThreadRecord {
   return { id, projectId: 'project', label: id, goal: 'Investigate', state: 'working', depth: 1,
     permission: 'workspace-write', createdAt: 1, updatedAt: 1 }

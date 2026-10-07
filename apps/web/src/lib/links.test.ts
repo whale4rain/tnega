@@ -32,5 +32,8 @@ describe('link targets', () => {
     expect(workspaceRelative('/home/me/repo/a/b.ts', '/home/me/repo')).toBe('a/b.ts')
     expect(workspaceRelative('/home/me/repository/a.ts', '/home/me/repo')).toBeUndefined()
     expect(workspaceRelative('C:/Repo/x.ts', 'c:\\repo\\')).toBe('x.ts')
+    expect(workspaceRelative('../outside.md', '/repo')).toBeUndefined()
+    expect(workspaceRelative('/repo/../outside.md', '/repo')).toBeUndefined()
+    expect(workspaceRelative('src/../docs/brief.md', '/repo')).toBe('docs/brief.md')
   })
 })

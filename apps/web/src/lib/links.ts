@@ -69,16 +69,27 @@ export function linkTarget(href: string | undefined, workspace?: string): LinkTa
 export function workspaceRelative(path: string, workspace?: string): string | undefined {
   const normalized = path.replace(/\\/g, '/')
   const absolute = normalized.startsWith('/') || WINDOWS_DRIVE.test(normalized)
-  if (!absolute) return normalized.replace(/^(?:\.\/)+/, '')
+  const clean = (value: string): string | undefined => {
+    const segments: string[] = []
+    for (const part of value.split('/')) {
+      if (!part || part === '.') continue
+      if (part === '..') {
+        if (!segments.length) return undefined
+        segments.pop()
+      } else segments.push(part)
+    }
+    return segments.join('/')
+  }
+  if (!absolute) return clean(normalized)
   if (!workspace) return undefined
   const root = workspace.replace(/\\/g, '/').replace(/\/+$/, '')
   const windows = WINDOWS_DRIVE.test(root)
   const inside = windows ? normalized.toLowerCase().startsWith(`${root.toLowerCase()}/`) : normalized.startsWith(`${root}/`)
-  return inside ? normalized.slice(root.length + 1) : undefined
+  return inside ? clean(normalized.slice(root.length + 1)) : undefined
 }
 
 /** Inline code that names a file (`apps/web/src/App.tsx`, `server.ts:42`). */
-const CODE_PATH = /^(?:\.{1,2}\/)?(?:[\w@.-]+\/)*[\w@-][\w@.-]*\.[a-z][a-z0-9]{0,7}(?::\d+(?::\d+)?)?$/i
+const CODE_PATH = /^(?:\/|\.{1,2}\/)?(?:[\w@.-]+\/)*[\w@-][\w@.-]*\.[a-z][a-z0-9]{0,7}(?::\d+(?::\d+)?)?$/i
 
 export function codePathTarget(text: string, workspace?: string): Extract<LinkTarget, { kind: 'file' }> | undefined {
   const value = text.trim()
