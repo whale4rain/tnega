@@ -5,8 +5,19 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { Block, Entry, ToolView } from '../lib/timeline'
 import { applyStream, beginRun } from '../lib/timeline'
 import { Timeline } from './Timeline'
+import { LinkContext } from '../lib/links'
 
 afterEach(cleanup)
+
+it('opens file and website references in ordinary user messages', () => {
+  const openPath = vi.fn()
+  const entries: Entry[] = [{ kind: 'user', id: 'user', text: 'Check docs/brief.md and https://example.com.' }]
+  const view = render(createElement(LinkContext.Provider, { value: { workspace: '/repo', openPath } },
+    createElement(Timeline, { entries, running: false, actions: {} })))
+  fireEvent.click(view.getByRole('link', { name: 'docs/brief.md' }))
+  expect(openPath).toHaveBeenCalledWith('docs/brief.md')
+  expect(view.getByRole('link', { name: 'https://example.com' }).getAttribute('target')).toBe('_blank')
+})
 
 it('displays a live compaction message with an expandable summary while the Agent Run continues', () => {
   const entries = applyStream(beginRun([], 'Continue', 1), {

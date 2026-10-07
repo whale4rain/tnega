@@ -177,7 +177,7 @@ const UserMessage = memo(function UserMessage({
           ))}
         </div>
       )}
-      {picked.rest && <div className="user-bubble">{picked.rest}</div>}
+      {picked.rest && <div className="user-bubble"><Markdown text={picked.rest} /></div>}
       <div className="row-actions">
         <IconAction label={copied ? 'Copied' : 'Copy'} onClick={() => copy(entry.text)}>
           {copied ? <Check size={14} /> : <Copy size={14} />}

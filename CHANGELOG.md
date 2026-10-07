@@ -40,6 +40,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- 普通 Session 的用户消息也支持点击文件路径和网站链接，与 Agent 回复及 Project 对话使用相同的引用交互。
+
 - 主副 Agent 默认一条消息一个主题、1–3 个短句；派工和改向传递约束增量，关键发现、阻塞和交付使用简短说明与文件或网站引用，避免长篇复述。
 
 - Project、Thread 与 Agent 通信消息中的文件引用可打开工作台，裸路径和绝对路径也可识别；本地网站打开 Browser，外部网站保持正常外链。
