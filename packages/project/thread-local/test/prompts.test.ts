@@ -18,7 +18,7 @@ const loop = readFileSync(new URL('../../../loop/project-loop/src/index.ts', imp
 
 function mentionedTools(prompt: string): string[] {
   return [...new Set([...prompt.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/gu)].map(match => match[1]!))]
-    .filter(name => !['wait_ms', 'expected_version'].includes(name))
+    .filter(name => !['wait_ms', 'expected_version', 'on_report'].includes(name))
 }
 
 describe('project prompts', () => {

@@ -21,6 +21,9 @@ import type { Weather } from '../../lib/weather'
 import { AgentAvatar } from '../AgentAvatar'
 import { ARTIFACT_KIND, artifactKind, type ArtifactKind } from './Artifacts'
 
+/** Lanes with nothing for you to do fold into one line. */
+const FOLDED: ReadonlySet<BoardColumn['key']> = new Set(['idle', 'resolved'])
+
 const FORECAST: Partial<Record<Weather, string>> = {
   storm: 'Something failed',
   snow: 'Waiting on you',
@@ -74,18 +77,12 @@ export function BoardPanel({
       </div>
       <div className="wb-card wb-scroll board-scroll">
         <section className="board-today" aria-label="Today">
-          <AgentAvatar id={state.coordinatorId} role="coordinator" size={28} weather={weather} live={weather === 'drizzle' || weather === 'rain'} title={FORECAST[weather]} />
-          <div className="board-today-main">
-            <div className="board-today-headline">
-              <strong>{day.started}</strong> {day.started === 1 ? 'thread' : 'threads'} opened today
-            </div>
-            <div className="board-today-stats">
-              <Stat value={day.finished} label="finished" />
-              <Stat value={day.artifacts} label={day.artifacts === 1 ? 'output' : 'outputs'} />
-              {day.tokens !== undefined && <Stat value={day.tokens} label="tokens" />}
-              <Stat value={columns.find(column => column.key === 'working')!.threads.length} label="live" />
-            </div>
-          </div>
+          <AgentAvatar id={state.coordinatorId} role="coordinator" size={22} weather={weather} live={weather === 'drizzle' || weather === 'rain'} title={FORECAST[weather]} />
+          <span className="board-today-label">Today</span>
+          <Stat value={day.started} label="started" />
+          <Stat value={day.finished} label="finished" />
+          <Stat value={day.artifacts} label={day.artifacts === 1 ? 'output' : 'outputs'} />
+          {day.tokens !== undefined && <Stat value={day.tokens} label="tokens" />}
         </section>
         {error && <div className="notice notice-error"><span>{error}</span></div>}
         {total === 0
@@ -97,12 +94,12 @@ export function BoardPanel({
           )
           : (
             <div className="board-lanes">
-              {columns.filter(column => column.key !== 'resolved').map(column => (
+              {columns.filter(column => !FOLDED.has(column.key)).map(column => (
                 <Lane key={column.key} column={column} state={state} usageOf={usageOf} actions={actions} />
               ))}
             </div>
           )}
-        <Resolved column={columns.find(column => column.key === 'resolved')!} state={state} usageOf={usageOf} actions={actions} />
+        <Folded columns={columns.filter(column => FOLDED.has(column.key))} state={state} usageOf={usageOf} actions={actions} />
       </div>
     </div>
   )
@@ -124,6 +121,7 @@ function Lane({ column, state, usageOf, actions }: { column: BoardColumn; state:
   return (
     <section className={`board-lane lane-${column.key}`} aria-label={column.label}>
       <h3 className="board-lane-head" title={column.hint}>
+        <span className={`lane-dot lane-dot-${column.key}`} aria-hidden />
         <span>{column.label}</span>
         <span className="count">{column.threads.length}</span>
       </h3>
@@ -137,21 +135,30 @@ function Lane({ column, state, usageOf, actions }: { column: BoardColumn; state:
   )
 }
 
-function Resolved({ column, state, usageOf, actions }: { column: BoardColumn; state: ProjectState; usageOf: UsageOf; actions: CardActions }) {
+/**
+ * Threads with nothing pending stay out of the way: idle and resolved ones
+ * fold into one line under the lanes and open together.
+ */
+function Folded({ columns, state, usageOf, actions }: { columns: BoardColumn[]; state: ProjectState; usageOf: UsageOf; actions: CardActions }) {
   const [open, setOpen] = useState(false)
-  if (column.threads.length === 0) return null
+  const shown = columns.filter(column => column.threads.length > 0)
+  if (shown.length === 0) return null
   return (
     <section className={`board-resolved${open ? ' open' : ''}`}>
       <button type="button" className="board-resolved-head" onClick={() => setOpen(value => !value)} aria-expanded={open}>
         <ChevronRight size={12} className="chevron" />
-        <span>Resolved</span>
-        <span className="count">{column.threads.length}</span>
+        {shown.map((column, index) => (
+          <span key={column.key} title={column.hint}>
+            {index > 0 && <span className="sep" aria-hidden>·</span>}
+            {column.label} <span className="count">{column.threads.length}</span>
+          </span>
+        ))}
       </button>
       {open && (
         <div className="board-lane-cards">
-          {column.threads.map(thread => (
-            <BoardCard key={thread.id} thread={thread} column="resolved" state={state} usage={usageOf(thread.id)} actions={actions} />
-          ))}
+          {shown.flatMap(column => column.threads.map(thread => (
+            <BoardCard key={thread.id} thread={thread} column={column.key} state={state} usage={usageOf(thread.id)} actions={actions} />
+          )))}
         </div>
       )}
     </section>

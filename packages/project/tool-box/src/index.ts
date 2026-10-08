@@ -3,6 +3,13 @@ import type { Context } from '@tnega/core'
 import type { ThreadService } from '@tnega/thread'
 import type { ToolsService } from '@tnega/tools'
 
+/**
+ * A bubble is a chat line, not a report. Longer text is refused so the Agent
+ * moves the detail into an artifact or its final answer instead of filling
+ * the room (and its own output budget) with it.
+ */
+export const PROJECT_MESSAGE_MAX_CHARS = 600
+
 function fields(input: unknown): Record<string, unknown> {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     throw new TypeError('tool input must be an object')
@@ -30,7 +37,7 @@ export const toolBox = {
     tools.register({
       schema: {
         name: 'send_project_message',
-        description: 'Publish one chat bubble to the user in your project conversation while working. Send a short material update, a question, or a risk the user should see now. Each call creates a separate visible message; internal assistant narration stays in execution details. Your final answer is also published automatically, so do not repeat a message already sent.',
+        description: 'Publish one chat bubble to the user in your project conversation while working. Send a short material update, a question, or a risk the user should see now, in at most a few sentences (600 characters); put longer material in publish_artifact. Each call creates a separate visible message; internal assistant narration stays in execution details. Your final answer is also published automatically, so do not repeat a message already sent.',
         parameters: {
           type: 'object',
           properties: {
@@ -43,6 +50,9 @@ export const toolBox = {
         const value = fields(input)
         if (typeof value.message !== 'string' || !value.message.trim()) {
           throw new TypeError('message must be a non-empty string')
+        }
+        if (value.message.trim().length > PROJECT_MESSAGE_MAX_CHARS) {
+          throw new RangeError(`message is ${value.message.trim().length} characters; a chat bubble holds at most ${PROJECT_MESSAGE_MAX_CHARS}. Say the point in a few sentences and publish longer material with publish_artifact.`)
         }
         const agentId = options.agentId
         if (!agentId) throw new Error('box tools require a live Agent identity')

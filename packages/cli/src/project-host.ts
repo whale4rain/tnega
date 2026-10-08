@@ -49,6 +49,9 @@ import { toolSearch } from '@tnega/tool-search'
 import { toolThread } from '@tnega/tool-thread'
 import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
+import { describeToolCall } from './project-activity.js'
+import { PROJECT_DISABLED_BUILTINS, projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
+import { DEFAULT_THREAD_LIMITS } from '@tnega/thread'
 import { mountThreadApprovals } from './thread-approval.js'
 
 export interface ProjectHostOptions {
@@ -186,6 +189,7 @@ export class ProjectHost {
   private readonly options: ProjectHostOptions
   private readonly open = new Map<string, Promise<OpenProject>>()
   private readonly permissions = new Map<string, PermissionMode>()
+  private readonly roles = new Map<string, ProjectAgentRole>()
   private indexScope: Promise<IndexScope> | undefined
 
   constructor(options: ProjectHostOptions) {
@@ -339,13 +343,23 @@ export class ProjectHost {
       if (attached.has(agentId)) return
       attached.add(agentId)
       agent.ctx.on('session/event', (event: SessionEvent) => {
+        if (event.type === 'tool/call') {
+          send({ type: 'activity', agentId, text: describeToolCall(String(event.payload.name), event.payload.arguments) })
+          return
+        }
         if (event.type !== 'assistant/chunk') return
         const payload = event.payload
         if (typeof payload.content !== 'string' || !payload.content) return
         send({ type: 'chunk', agentId, text: payload.content })
       })
     }
-    for (const agent of project.registry.list()) attach(agent.id, agent)
+    for (const agent of project.registry.list()) {
+      attach(agent.id, agent)
+      // A subscriber that arrives mid-run learns the current step right away.
+      if (agent.status !== 'running') continue
+      const last = (await agent.session.read()).findLast(event => event.type === 'tool/call')
+      if (last?.type === 'tool/call') send({ type: 'activity', agentId: agent.id, text: describeToolCall(String(last.payload.name), last.payload.arguments) })
+    }
     disposers.push(project.ctx.on('agent/created', (event: { id: string; agent: LiveAgent }) => {
       attach(event.id, event.agent)
     }))
@@ -535,7 +549,11 @@ export class ProjectHost {
     await ctx.plugin(runSummary)
     if (this.options.builtinTools !== false) await installBuiltinSkills()
     const skillsPrompt = this.options.builtinTools !== false ? await renderSkillIndex(this.workspace) : ''
+    const maxDepth = this.options.maxDepth ?? DEFAULT_THREAD_LIMITS.maxDepth
     await ctx.plugin(threadLocal, {
+      // Each Agent sees only its role's tools: smaller requests, and the
+      // coordinator routes work instead of doing it.
+      setupAgent: (agentCtx: Context, thread: ThreadRecord) => scopeAgentTools(agentCtx, projectAgentRole(thread, maxDepth)),
       coordinatorPrompt: `${COORDINATOR_SYSTEM_PROMPT}\n\n${skillsPrompt}`,
       threadPrompt: `${THREAD_SYSTEM_PROMPT}\n\n${skillsPrompt}`,
       projectId: record.id,
@@ -559,6 +577,7 @@ export class ProjectHost {
       await ctx.plugin(builtinTools, {
         cwd,
         ...(config ?? {}),
+        disabled: [...new Set([...PROJECT_DISABLED_BUILTINS, ...(config?.disabled ?? [])])],
         execution: sandboxedExecution(ctx, {
           policy: resolveSandboxPolicy({
             mode: this.options.permission,
@@ -617,11 +636,13 @@ export class ProjectHost {
     const permission: PermissionMode = this.options.permission
     const track = (entry: ThreadRecord): void => {
       this.permissions.set(entry.id, entry.permission)
+      this.roles.set(entry.id, projectAgentRole(entry, maxDepth))
     }
     await threads.ensureRoot(record)
     const threadApprovals = mountThreadApprovals(ctx, { projectId: record.id, approvals: this.options.approvals })
     for (const thread of await threads.list()) track(thread)
     ctx.on('thread/spawned', (event: { thread: ThreadRecord }) => track(event.thread))
+    toolService.guard(projectToolGuard(agentId => this.roles.get(agentId)))
     toolService.guard(permissionGuard(permission, record.id, this.options.approvals, {
       workspace: this.workspace,
       review: request => reviewAutomaticApproval(ctx, request),

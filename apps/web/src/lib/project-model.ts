@@ -40,6 +40,8 @@ export interface ProjectState {
   routines: RoutineFact[]
   /** Text an agent is producing right now, keyed by agent id. */
   live: Record<string, string>
+  /** The latest tool step of each running agent, in a few words. */
+  activity: Record<string, string>
   running: Record<string, boolean>
   approvals: Approval[]
   /** Every envelope seen, by id, so replies can point at their source. */
@@ -81,6 +83,7 @@ export function fromSnapshot(snapshot: ProjectSnapshot, localReplies: Record<str
     resources: snapshot.library.resources.filter(r => !r.deleted),
     routines: (snapshot.routines ?? []).filter(r => !r.deleted),
     live: {},
+    activity: {},
     running,
     approvals: [],
   }
@@ -167,14 +170,18 @@ export function reduceProject(state: ProjectState, event: ProjectStreamEvent): P
       return { ...state, live: { ...state.live, [event.agentId]: (state.live[event.agentId] ?? '') + event.text } }
     case 'agent-status': {
       const running = { ...state.running, [event.agentId]: event.status === 'running' }
+      const activity = { ...state.activity }
+      delete activity[event.agentId]
       if (event.status === 'running') {
         // A new run starts a fresh draft.
         const live = { ...state.live }
         delete live[event.agentId]
-        return { ...state, running, live }
+        return { ...state, running, live, activity }
       }
-      return { ...state, running }
+      return { ...state, running, activity }
     }
+    case 'activity':
+      return { ...state, activity: { ...state.activity, [event.agentId]: event.text } }
     case 'approval/request':
       if (state.approvals.some(a => a.id === event.id)) return state
       return { ...state, approvals: [...state.approvals, { id: event.id, tool: event.tool, input: event.input }] }
@@ -374,7 +381,12 @@ export function threadStatusLine(state: ProjectState, thread: ThreadRecord): { l
   const current = threadState(state, thread)
   const { label, tone } = THREAD_STATE[current]
   const items = thread.checklist ?? []
-  if (current !== 'working' || items.length === 0) return { label, tone }
+  if (current !== 'working') return { label, tone }
+  if (items.length === 0) {
+    // No checklist: the latest tool step says what the thread is doing.
+    const step = state.activity[thread.id]
+    return step ? { label, tone, step } : { label, tone }
+  }
   const active = items.find(item => item.status === 'active')
   const done = items.filter(item => item.status === 'done').length
   return { label, tone, step: active ? active.title : `${done} of ${items.length} steps` }

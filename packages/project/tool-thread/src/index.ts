@@ -47,7 +47,7 @@ export const toolThread = {
     tools.register({
       schema: {
         name: 'spawn_thread',
-        description: 'Delegate project investigation, implementation or a multi-step deliverable to a thread the user can open and direct. As coordinator, start one before executing that work yourself, even for a single task. Keep quick answers in the main conversation and cohesive work in one thread; parallelize independent scopes. Returns its ID immediately; reports arrive through your inbox. Reuse an existing thread with send_thread_message when the work continues its goal.',
+        description: 'Delegate project investigation, implementation or a multi-step deliverable to a thread the user can open and direct. As coordinator, start one before executing that work yourself, even for a single task. Keep quick answers in the main conversation and cohesive work in one thread; parallelize independent scopes. Returns its ID immediately; its report arrives through your inbox on its own, so end your turn instead of waiting. Reuse an existing thread with send_thread_message when the work continues its goal.',
         parameters: {
           type: 'object',
           properties: {
@@ -58,6 +58,10 @@ export const toolThread = {
               type: 'string',
               enum: ['read-only', 'workspace-write', 'bypass'],
               description: 'Narrows this thread\'s permission; it can never exceed your own.',
+            },
+            on_report: {
+              type: 'string',
+              description: 'Omit for ordinary work: the user reads the result in the thread. Only when you have a concrete next step that needs this result, name it (for example "dispatch the UI thread with the API shape"); the report then starts a new turn for you.',
             },
           },
           required: ['goal'],
@@ -72,6 +76,9 @@ export const toolThread = {
         if (value.expect !== undefined && typeof value.expect !== 'string') {
           throw new TypeError('expect must be a string')
         }
+        if (value.on_report !== undefined && typeof value.on_report !== 'string') {
+          throw new TypeError('on_report must be a string')
+        }
         if (value.permission !== undefined && value.permission !== 'read-only'
           && value.permission !== 'workspace-write' && value.permission !== 'bypass') {
           throw new TypeError('permission must be read-only, workspace-write or bypass')
@@ -84,6 +91,7 @@ export const toolThread = {
           ...(typeof value.expect === 'string' ? { expect: value.expect } : {}),
           ...(value.permission === 'read-only' || value.permission === 'workspace-write'
             || value.permission === 'bypass' ? { permission: value.permission } : {}),
+          ...(typeof value.on_report === 'string' && value.on_report.trim() ? { onReport: value.on_report } : {}),
         })
         await box.send({
           sender: agentAddress(parentId),
@@ -96,7 +104,10 @@ export const toolThread = {
             : value.goal,
           threadId: thread.id,
         })
-        return `Started thread ${thread.id} (${thread.label}). It runs on its own; its report arrives in your inbox.`
+        const root = (await threads.get(parentId))?.parentId === undefined
+        return root
+          ? `Started thread ${thread.id} (${thread.label}). Its card in the conversation already shows the brief and its status, and its report arrives on its own. Unless the user asked something else that you still have to answer, end your turn now with one short sentence (for example: "Started a thread for this."), without restating the scope.`
+          : `Started thread ${thread.id} (${thread.label}). It runs on its own; its report arrives in your inbox.`
       },
     })
 
@@ -135,12 +146,12 @@ export const toolThread = {
     tools.register({
       schema: {
         name: 'list_threads',
-        description: 'Read the state of the threads you can act on. Reports arrive in your inbox; use this only to check status. If your remaining work depends on a running thread, set wait_ms and call again until it is no longer working.',
+        description: 'Read the state of the threads you can act on, or one thread\'s latest full report with thread_id. Reports arrive in your inbox on their own; use this only to check status, never to wait for a result.',
         parameters: {
           type: 'object',
           properties: {
             scope: { type: 'string', enum: ['children', 'descendants'] },
-            wait_ms: { type: 'number', description: 'Optional bounded wait for a status change, 0-30000 ms.' },
+            thread_id: { type: 'string', description: 'Return this thread\'s state and its latest full report.' },
           },
         },
       },
@@ -153,7 +164,17 @@ export const toolThread = {
           || !Number.isSafeInteger(value.wait_ms) || value.wait_ms < 0 || value.wait_ms > 30_000)) {
           throw new TypeError('wait_ms must be an integer from 0 to 30000')
         }
+        if (value.thread_id !== undefined && typeof value.thread_id !== 'string') {
+          throw new TypeError('thread_id must be a string')
+        }
         const parentId = caller(options.agentId)
+        if (typeof value.thread_id === 'string') {
+          const target = await threads.get(value.thread_id)
+          const visible = target && (await threads.list({ parentId, descendants: true }))
+            .some(entry => entry.id === target.id)
+          if (!target || !visible) throw new Error(`thread not found among yours: ${value.thread_id}`)
+          return `${target.id} [${statusOf(target.state)}] ${target.label}\n\n${target.detail ?? '(no report yet)'}`
+        }
         const scope = value.scope === 'descendants' ? 'descendants' : 'children'
         let entries = await threads.list({ parentId, descendants: scope === 'descendants' })
         const initial = entries.map(entry => `${entry.id}:${entry.state}`).join('|')
@@ -209,7 +230,10 @@ export const toolThread = {
         const kind = (value.kind as BoxMessageKind | undefined) ?? 'progress'
         // 协调者把工作交给已有 Thread 时，主对话里出现一张指向它的卡片，就像新开一个
         // Thread 一样；其余的回报与指令都留在 Thread 自己的面板。
-        const routed = toChild && kind === 'dispatch' && sender.parentId === undefined
+        // Steering a thread that is still on it (an answer, a nudge) is not a new
+        // hand-off, so it stays in that thread instead of adding a room card.
+        const active = target.state === 'working' || target.state === 'waiting' || target.state === 'blocked'
+        const routed = toChild && kind === 'dispatch' && sender.parentId === undefined && !active
         await box.send({
           sender: agentAddress(senderId),
           recipients: [agentAddress(target.id)],

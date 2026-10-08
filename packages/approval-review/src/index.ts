@@ -66,9 +66,20 @@ export function reviewState(request: ApprovalReviewRequest): Record<string, unkn
   return { workspace: request.workspace, evidence: request.evidence, contextTruncated: request.contextTruncated, pendingAction: request.action }
 }
 
+/**
+ * The decision object a reviewer answered with. Models often fence JSON or add
+ * a sentence around it, so the outermost object is taken from the text; the
+ * fields are still validated strictly below.
+ */
+function decisionJson(content: string): string {
+  const start = content.indexOf('{')
+  const end = content.lastIndexOf('}')
+  return start >= 0 && end > start ? content.slice(start, end + 1) : content
+}
+
 export function parseApprovalDecision(content: string | undefined): ApprovalDecision {
   try {
-    const value: unknown = JSON.parse(content ?? '')
+    const value: unknown = JSON.parse(decisionJson(content ?? ''))
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required')
     const decision: unknown = Reflect.get(value, 'decision')
     const risk: unknown = Reflect.get(value, 'risk')

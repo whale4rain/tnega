@@ -34,7 +34,7 @@ describe('LLM approval provider', () => {
     const ctx = new Context()
     const adapter: LLMAdapter = { async complete(messages, tools, options) {
       expect(tools).toEqual([])
-      expect(options.maxTokens).toBe(512)
+      expect(options.maxTokens).toBe(4096)
       expect(messages[1]?.content).toContain('pnpm test')
       expect(messages[0]?.content).toContain('untrusted')
       return { content: '{"decision":"allow","risk":"low","reason":"Tests requested"}', finishReason: 'stop' }
@@ -43,6 +43,14 @@ describe('LLM approval provider', () => {
     expect(await ctx.approvalReviewer.review(action)).toMatchObject({ decision: 'allow', risk: 'low' })
     await fiber.dispose()
     expect(ctx.get('approvalReviewer', false)).toBeUndefined()
+  })
+
+  it('reads a decision the model fenced or wrapped in prose', async () => {
+    const ctx = new Context()
+    const adapter: LLMAdapter = { complete: async () => ({ content: 'Decision:\n```json\n{"decision":"allow","risk":"low","reason":"Tests requested"}\n```', finishReason: 'stop' }) }
+    const fiber = await ctx.plugin(LlmApprovalReviewer, { adapter })
+    expect((await ctx.approvalReviewer.review(action)).decision).toBe('allow')
+    await fiber.dispose()
   })
 
   it.each([

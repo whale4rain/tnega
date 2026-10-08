@@ -958,9 +958,10 @@ kbd {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   height: var(--control);
-  padding: 0 10px;
+  padding: 0 8px;
+  overflow: hidden;
   border-radius: var(--radius-sm);
   color: var(--text-2);
   font-weight: 500;
@@ -968,6 +969,17 @@ kbd {
 
 .sidebar-footer > .segmented {
   margin-left: auto;
+  flex: none;
+}
+
+.sidebar-footer-button > svg {
+  flex: none;
+}
+
+/* A narrow sidebar truncates the label instead of running under the theme switch. */
+.sidebar-footer-button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-footer-button.icon-only {

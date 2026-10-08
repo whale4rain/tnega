@@ -559,7 +559,7 @@ function Room({
                   return (
                     <div key={item.id} id={`msg-${item.id}`} className="room-message main-message">
                       {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
-                      {item.text.trim() && <Markdown text={item.text} />}
+                      {item.text.trim() && <FoldedText text={item.text} />}
                       <ArtifactCards workspace={workspace} projectId={state.project.id} artifacts={artifactsFor(state, item.refs)} />
                       <div className="turn-actions">
                         <button
@@ -647,4 +647,29 @@ function useSeenThreads(projectId: string): [Readonly<Record<string, number>>, (
     })
   }, [key])
   return [seen, mark]
+}
+
+/** Past this length a room message opens folded; the room stays skimmable. */
+const ROOM_FOLD_CHARS = 420
+
+/**
+ * A long coordinator message shows its first lines and a "Show more" toggle.
+ * The opening states the outcome (the prompts ask for that), so the folded
+ * part is detail the reader can pull in.
+ */
+function FoldedText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  const long = text.trim().length > ROOM_FOLD_CHARS
+  return (
+    <>
+      <div className={long && !open ? 'message-fold' : undefined}>
+        <Markdown text={text} />
+      </div>
+      {long && (
+        <button type="button" className="message-fold-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+          {open ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </>
+  )
 }

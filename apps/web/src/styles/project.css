@@ -100,10 +100,10 @@
 .thread-card {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  min-height: 32px;
-  padding: 10px 12px 10px 14px;
+  min-height: 30px;
+  padding: 4px 8px;
   border-radius: var(--radius-md);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1256,6 +1256,26 @@
   min-width: 0;
 }
 
+/* A long message opens folded to about five lines. */
+.message-fold {
+  max-height: 7.5em;
+  overflow: hidden;
+}
+
+.message-fold-toggle {
+  display: block;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.message-fold-toggle:hover {
+  text-decoration: underline;
+}
+
 .room-body > .thread-stack {
   width: 100%;
 }
@@ -1416,35 +1436,20 @@
 .board-today {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-  border-radius: var(--radius-lg);
-  background: var(--surface-sunken);
-}
-
-.board-today-main {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.board-today-headline {
-  font-size: var(--text-lg);
-}
-
-.board-today-headline strong {
-  font-size: 22px;
-  font-variant-numeric: tabular-nums;
-}
-
-.board-today-stats {
-  display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: 4px 12px;
+  min-height: var(--control-lg);
+  padding: 4px 10px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
   font-size: var(--text-sm);
   color: var(--text-2);
+}
+
+.board-today-label {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .board-stat strong {
@@ -1471,20 +1476,20 @@
 .board-lanes {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
 /* A wide panel is a kanban: lanes side by side. */
 @container (min-width: 720px) {
   .board-lanes {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: start;
     gap: 12px;
   }
 
   .board-lane {
-    padding: 10px;
+    padding: 8px;
     border-radius: var(--radius-lg);
     background: var(--surface-sunken);
   }
@@ -1501,7 +1506,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1513,10 +1518,22 @@
   color: var(--warn);
 }
 
+.lane-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--text-3);
+  flex: none;
+}
+
+.lane-dot-needs { background: var(--warn); }
+.lane-dot-working { background: var(--accent); }
+.lane-dot-ready { background: var(--success); }
+
 .board-lane-cards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .board-lane-empty {
@@ -1545,16 +1562,16 @@
 .board-card-open {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 10px;
   text-align: left;
 }
 
 .board-card-body {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
@@ -1571,7 +1588,7 @@
   font-size: var(--text-sm);
   color: var(--text-2);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1584,7 +1601,7 @@
 
 .board-progress-bar {
   flex: 1;
-  height: 4px;
+  height: 3px;
   border-radius: var(--radius-full);
   background: var(--surface-sunken);
   overflow: hidden;
@@ -1662,7 +1679,7 @@ button.board-chip.active {
 }
 
 .board-resolved {
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .board-resolved-head {
@@ -1674,6 +1691,10 @@ button.board-chip.active {
   font-weight: 700;
   text-transform: uppercase;
   color: var(--text-3);
+}
+
+.board-resolved-head .sep {
+  margin-right: 6px;
 }
 
 .board-resolved-head .chevron {
