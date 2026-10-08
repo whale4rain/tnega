@@ -2,10 +2,6 @@
    Projects — coordinator conversation, thread cards, side panel
    ========================================================================== */
 
-.sidebar-modes {
-  margin-top: 4px;
-}
-
 .segmented.wide {
   display: flex;
   width: 100%;

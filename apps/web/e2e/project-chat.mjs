@@ -201,8 +201,7 @@ try {
     })
     await check(`${theme}: ordinary Session has plain messages and opens user/Agent references`, async () => {
       await page.setViewportSize({ width: 1440, height: 1000 })
-      if (!await page.getByRole('tab', { name: 'Sessions', exact: true }).isVisible()) await page.keyboard.press('Control+b')
-      await page.getByRole('tab', { name: 'Sessions', exact: true }).click()
+      if (!await page.getByRole('complementary', { name: 'Workspaces', exact: true }).isVisible()) await page.keyboard.press('Control+b')
       await page.getByTitle('Short general chat', { exact: true }).click()
       assert.equal(new URL(page.url()).hash, '#session-fixture')
       const user = page.locator('.user-bubble')

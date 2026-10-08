@@ -179,9 +179,10 @@ export function App() {
     projectApi.list(workspace).then(result => setProjects(result.projects), () => {})
   }, [workspace])
 
+  // The sidebar lists projects next to sessions, so they load in either mode.
   useEffect(() => {
     setProjects([])
-    if (!workspace || mode !== 'projects') return
+    if (!workspace) return
     setProjectsLoading(true)
     let cancelled = false
     projectApi.list(workspace)
@@ -190,7 +191,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [workspace, mode])
+  }, [workspace])
 
   // A project screen puts its own tabs (Board, Library, Routines, threads) at the
   // front of the same Workbench a session uses, and renders them into a slot.
@@ -222,12 +223,6 @@ export function App() {
     setHash(id ? `#p/${id}${threadId ? `/${threadId}` : ''}` : '')
     if (window.innerWidth <= 860) setSidebarOpen(false)
   }, [setMode])
-
-  const changeMode = (next: Mode) => {
-    if (next === mode) return
-    if (next === 'projects') openProject(projectRoute.id)
-    else select(selectedId)
-  }
 
   useEffect(() => {
     const onHash = () => {
@@ -283,29 +278,38 @@ export function App() {
     }
   }
 
-  const forkSession = async (id: string) => {
+  /** Sidebar items can live in any workspace; acting on one makes it current. */
+  const enterWorkspace = (path: string) => {
+    if (path !== workspace) setWorkspace(path)
+  }
+
+  const forkSession = async (path: string, id: string) => {
     try {
-      const { session } = await api.forkSession(workspace, id)
-      setSessions(list => [session, ...list])
+      const { session } = await api.forkSession(path, id)
+      if (path === workspace) setSessions(list => [session, ...list])
+      else setWorkspace(path)
       select(session.id)
     } catch (reason) {
       void noticeDialog('Something went wrong', errorText(reason))
     }
   }
 
-  const deleteSession = async (session: SessionSummary) => {
+  const deleteSession = async (path: string, session: SessionSummary): Promise<boolean> => {
     if (!await confirmDialog({
       title: 'Delete session?',
       message: `“${session.title || 'Untitled session'}” will be deleted. This can't be undone.`,
       confirmLabel: 'Delete',
       danger: true,
-    })) return
+    })) return false
     try {
-      await api.deleteSession(workspace, session.id)
+      await api.deleteSession(path, session.id)
+      if (path !== workspace) return true
       setSessions(list => list.filter(s => s.id !== session.id))
       if (session.id === selectedId) select(undefined)
+      return true
     } catch (reason) {
       void noticeDialog('Something went wrong', errorText(reason))
+      return false
     }
   }
 
@@ -338,27 +342,25 @@ export function App() {
           updates={updates}
           workspaces={workspaces}
           workspace={workspace || undefined}
-          onSelectWorkspace={chooseWorkspace}
           onAddWorkspace={() => setDialog('workspace')}
           onRemoveWorkspace={path => void removeWorkspace(path)}
           sessions={sessions}
           sessionsLoading={sessionsLoading}
           selectedId={selectedId}
-          onSelectSession={select}
-          onNewSession={() => select(undefined)}
-          onForkSession={id => void forkSession(id)}
-          onDeleteSession={session => void deleteSession(session)}
+          onSelectSession={(path, id) => { enterWorkspace(path); select(id) }}
+          onNewSession={path => { enterWorkspace(path); select(undefined) }}
+          onForkSession={(path, id) => void forkSession(path, id)}
+          onDeleteSession={deleteSession}
           onOpenSettings={() => setDialog('settings')}
           theme={theme}
           onThemeChange={setTheme}
           onCollapse={() => setSidebarOpen(false)}
           mode={mode}
-          onModeChange={changeMode}
           projects={projects}
           projectsLoading={projectsLoading}
           selectedProjectId={projectRoute.id}
-          onSelectProject={id => openProject(id)}
-          onNewProject={() => setNewProject(true)}
+          onSelectProject={(path, id) => { enterWorkspace(path); openProject(id) }}
+          onNewProject={path => { enterWorkspace(path); setNewProject(true) }}
         />
       )}
 

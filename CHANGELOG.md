@@ -47,6 +47,7 @@ compare links provide a convenient browser view of the boundaries.
 ### Features
 
 - 界面整体改为紧凑密度：控件、列表行与工具行变矮（行高 26px、工具行 22px），会话标题与工作区合为一行、顶栏与桌面标题栏同高（32px），圆角变小，侧栏变窄；图标统一为 14 / 12px 细线，工具行去掉底色方块；工作台的工具标签只在选中时显示名称。配色、天气状态与对比度不变。
+- 侧栏改为按工作区组织：每个工作区是一个可折叠的分组，先列项目、再按最近时间列会话（默认 8 条，其余与已归档项目收在“N more”里）；取消顶部的工作区切换卡片与 Sessions / Projects 切换。点开其他工作区的会话或项目会直接切换到该工作区；悬停工作区行可新建项目或会话，“Add workspace”移到侧栏底部。折叠状态会被记住。
 
 ## [0.4.20](https://github.com/whale4rain/tnega/releases/tag/v0.4.20) — 2026-10-08
 
