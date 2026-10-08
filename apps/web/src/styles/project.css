@@ -1320,7 +1320,8 @@
 .message-receipt:hover .message-receipt-reply,
 .message-receipt:focus-within .message-receipt-reply { opacity: 1; }
 
-.exchange-toolbar { justify-content: space-between; }
+.wb-toolbar.exchange-toolbar { position: relative; justify-content: center; padding: 0 30px; flex: none; }
+.exchange-toolbar > .icon-button { position: absolute; right: 2px; }
 .exchange-pair {
   display: flex;
   align-items: center;
@@ -1333,7 +1334,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 4px 6px;
+  padding: 4px 12px 4px 6px;
   border: 0;
   border-radius: var(--radius-full);
   background: var(--surface-raised);
@@ -1343,7 +1344,7 @@
   cursor: pointer;
 }
 .exchange-participant span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.exchange-body { padding: 16px 12px; overflow: auto; }
+.wb-card.exchange-body { display: block; padding: 16px 12px; overflow: auto; overscroll-behavior: contain; }
 .exchange-body .room-message { max-width: 100%; }
 
 @media (hover: none) {

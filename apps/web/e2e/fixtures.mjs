@@ -49,6 +49,7 @@ export async function installFixtures(context) {
   const streamCursors = []
   let deliverLate = false
   let delivered = false
+  let longHistory = false
   await context.route('**/api/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
@@ -75,7 +76,10 @@ export async function installFixtures(context) {
       // Before the saved General Session arrives, the App briefly consults the draft coding settings.
       if (path === '/api/sessions/session-fixture/coding/commands') return json({ commands: [] })
       if (path === '/api/projects') return json({ projects: [project] })
-      if (path === '/api/projects/project') return json(delivered ? { ...snapshot, cursor: 11, agentMessages: [...snapshot.agentMessages, lateMessage] } : snapshot)
+      if (path === '/api/projects/project') {
+        const history = longHistory ? Array.from({ length: 60 }, (_, index) => message(`history-${index}`, index % 2 ? 'writer' : 'coordinator', [index % 2 ? 'coordinator' : 'writer'], 'progress', `History message ${index}: one concise update.`, 12000 + index * 1000)) : []
+        return json({ ...snapshot, cursor: delivered ? 11 : 10, agentMessages: [...snapshot.agentMessages, ...(delivered ? [lateMessage] : []), ...history] })
+      }
       if (path === '/api/projects/project/usage') return json({ total: totals, since: totals, byThread: [] })
       if (path === '/api/usage') return json({ today: totals, week: totals, total: totals, byModel: [], sessions: 0, responses: [] })
       if (path === '/api/changes') return json({ git: true, branch: 'fixture', files: [] })
@@ -92,5 +96,5 @@ export async function installFixtures(context) {
     unexpected.push(`${method} ${path}${url.search}`)
     return route.fulfill({ status: 501, contentType: 'application/json', body: JSON.stringify({ error: `Missing E2E fixture: ${method} ${path}` }) })
   })
-  return { unexpected, navigation, streamCursors, releaseLate: () => { deliverLate = true } }
+  return { unexpected, navigation, streamCursors, releaseLate: () => { deliverLate = true }, expandHistory: () => { longHistory = true } }
 }

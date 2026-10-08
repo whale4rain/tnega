@@ -1578,7 +1578,7 @@ kbd {
   max-width: min(84%, 620px);
   padding: 8px 12px;
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
-  background: var(--surface-raised);
+  background: transparent;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: var(--text-lg);
@@ -1706,14 +1706,6 @@ kbd {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-}
-
-.agent-body > div > .prose {
-  width: fit-content;
-  max-width: 100%;
-  padding: 8px 12px;
-  border-radius: var(--radius-xs) var(--radius-lg) var(--radius-lg);
-  background: var(--surface-raised);
 }
 
 .turn-actions {

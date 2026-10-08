@@ -41,6 +41,15 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- Project Agent exchanges center their participant header, add space after names
+  and scroll long histories. Workbench tabs support ordinary mouse-wheel scrolling
+  and a visible horizontal scrollbar.
+- Ordinary Sessions use plain messages again; chat bubbles remain in Projects.
+- Project composers use one action: Stop when empty and Send with content.
+  Ctrl+Enter retains immediate correction while running.
+
 ## [0.4.19-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.1) — 2026-10-08
 
 ### Features

@@ -97,6 +97,8 @@ export function PromptBox({
   const menu = useRef<HTMLDivElement>(null)
   const pendingCaret = useRef<number | undefined>(undefined)
   const showStop = running && Boolean(onStop)
+  const singleControl = inline && allowWhileRunning && Boolean(onStop)
+  const hasContent = Boolean(text.trim() || images.length || contexts.length)
 
   const maxHeight = compact || inline ? 180 : 280
   const fit = useCallback(() => {
@@ -392,7 +394,7 @@ export function PromptBox({
             }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
-              void submit()
+              void submit(singleControl && running && event.ctrlKey && Boolean(onInterruptSubmit))
             }
             if (event.key === 'Escape' && showStop) {
               event.preventDefault()
@@ -429,7 +431,7 @@ export function PromptBox({
               </>
             )}
             {toolbar}
-            {running && allowWhileRunning && onInterruptSubmit && (
+            {!singleControl && running && allowWhileRunning && onInterruptSubmit && (
               <button
                 type="button"
                 className="button ghost small"
@@ -441,19 +443,19 @@ export function PromptBox({
               </button>
             )}
           </div>
-          {showStop && (
-            <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
+          {(singleControl ? !hasContent : showStop) && (
+            <button type="button" className="send-button stop" onClick={onStop} disabled={!running} aria-label="Stop" title="Stop (Esc)">
               <Square size={13} fill="currentColor" />
             </button>
           )}
-          {(!showStop || allowWhileRunning) && (
+          {(singleControl ? hasContent : !showStop || allowWhileRunning) && (
             <button
               type="button"
               className="send-button"
               onClick={() => void submit()}
               disabled={!canSend || Boolean(disabledReason)}
               aria-label="Send"
-              title="Send (Enter)"
+              title={singleControl && running && onInterruptSubmit ? 'Send (Enter); interrupt and send (Ctrl+Enter)' : 'Send (Enter)'}
             >
               <ArrowUp size={17} strokeWidth={2.4} />
             </button>

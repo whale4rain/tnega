@@ -54,8 +54,11 @@
   align-items: center;
   gap: 2px;
   min-height: 36px;
+  flex: none;
   overflow-x: auto;
-  scrollbar-width: none;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
 }
 
 .wb-tab {

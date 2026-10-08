@@ -81,7 +81,9 @@ export function Workbench({
   return (
     <aside className="workbench" aria-label="Workbench">
       <ResizeHandle onResize={onResize} />
-      <div className="wb-rail" role="tablist" aria-label="Workbench">
+      <div className="wb-rail" role="tablist" aria-label="Workbench" onWheel={event => {
+        if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY
+      }}>
         {project?.tabs.map(({ tab, badge, attention }) => {
           const meta = PROJECT_META[tab]
           const key = projectTabKey(tab)
@@ -91,6 +93,7 @@ export function Workbench({
               key={key}
               type="button"
               role="tab"
+              aria-label={meta.label}
               aria-selected={active === key}
               className={`wb-tab${active === key ? ' active' : ''}`}
               title={meta.hint}
@@ -112,6 +115,7 @@ export function Workbench({
               key={tool}
               type="button"
               role="tab"
+              aria-label={meta.label}
               aria-selected={active === tool}
               className={`wb-tab${active === tool ? ' active' : ''}`}
               title={meta.hint}

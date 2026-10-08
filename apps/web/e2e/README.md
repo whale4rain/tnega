@@ -14,4 +14,4 @@ The connected flow checks short independent bubbles, computed text sizes, groupe
 
 These fixtures verify UI behavior and the incremental wire flow, not real provider communication, server persistence, desktop native Browser rendering, or screenshot pixel similarity. Add corresponding backend or desktop checks when those boundaries change.
 
-The same run opens an ordinary General Session in each theme, checks body/user/Agent typography and the short Agent bubble's height, and opens both user and Agent file/web references. It saves `session-dark.png` and `session-light.png` alongside the Project captures. The full run has 14 checks.
+The same run opens an ordinary General Session in each theme, checks body/user/Agent typography and plain message backgrounds, and opens both user and Agent file/web references. Long exchange fixtures verify scrolling to the first message, centered participants, ordinary mouse-wheel access to crowded tabs, and the Project composer's single Stop/Send action. It saves Session and tab-scroll screenshots alongside the Project captures. The full run has 16 checks.
