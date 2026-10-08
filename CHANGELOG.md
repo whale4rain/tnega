@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.19 | [`v0.4.19-beta.2...v0.4.19`](https://github.com/whale4rain/tnega/compare/v0.4.19-beta.2...v0.4.19) | 10 |
 | 0.4.19-beta.2 | [`v0.4.19-beta.1...v0.4.19-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.19-beta.1...v0.4.19-beta.2) | 5 |
 | 0.4.19-beta.1 | [`v0.4.18...v0.4.19-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.18...v0.4.19-beta.1) | 8 |
 | 0.4.18 | [`v0.4.17...v0.4.18`](https://github.com/whale4rain/tnega/compare/v0.4.17...v0.4.18) | 9 |
@@ -42,8 +43,13 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.19](https://github.com/whale4rain/tnega/releases/tag/v0.4.19) — 2026-10-08
+
 ### Features
 
+- Open compact Agent-message receipts as pair conversations in the Workbench;
+  follow nested exchanges, restored history and clickable file or website links.
+  Coordinators and Threads are guided to send short messages on one topic.
 - Discover models from a saved provider or third-party connection, or the current
   ChatGPT login, with real authenticated catalogs and paginated Anthropic results.
   Add discovered models by copying the connection on the server without exposing
@@ -58,6 +64,25 @@ compare links provide a convenient browser view of the boundaries.
   cancelling an in-flight save refreshes saved models without changing the
   current selection.
   Existing top-level API configurations also appear as saved connections.
+
+### Fixes
+
+- Reduce shared typography and spacing throughout Sessions, Projects and the
+  Workbench. Ordinary Sessions use plain messages; Projects retain bubbles.
+- Scroll long Agent conversations and crowded Workbench tabs. Center participant
+  names, widen their trailing padding, and retain native Windows control space.
+- Use one Project action: empty input shows Stop, content shows Send; Ctrl+Enter
+  interrupts and sends a correction, and Esc stops the current Run.
+- Suppress Windows startup cursor feedback for built-in restricted tool workers,
+  preserving complete output, stdin EOF, exit codes and process-tree cleanup.
+
+### Other
+
+- Six local browser E2E checks cover model discovery, connection reuse, grouping,
+  adding and draft retention in both themes. These checks remain outside CI.
+- Publish this stable batch without another full-suite run at the maintainer's
+  request; completed targeted checks and local E2E accompany build and artifact
+  verification. Other releases retain the usual full-suite gate.
 
 ## [0.4.19-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.2) — 2026-10-08
 
