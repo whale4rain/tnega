@@ -105,3 +105,34 @@ it.each([false, true])('keeps ChatGPT manual routes on their login without showi
   expect(save.mock.calls[0]?.[1].baseUrl).toBeUndefined()
   expect(save.mock.calls[0]?.[1].protocol).toBeUndefined()
 })
+
+it.each([
+  ['openai', 'https://api.openai.com/v1'],
+  ['anthropic', 'https://api.anthropic.com/v1'],
+] as const)('pins the %s connection for discovery and saving instead of inheriting a gateway', async (protocol, baseUrl) => {
+  const config: ConfigSnapshot = { ...snapshot, effective: { ...snapshot.effective, baseUrl: 'https://gateway.example/v1' } }
+  const discover = vi.spyOn(api, 'discoverModels').mockResolvedValue({ source: 'provider', models: [{ id: 'official-model', name: 'Official' }] })
+  const save = vi.spyOn(api, 'saveModelRoute').mockResolvedValue(config)
+  const view = render(createElement(ModelBrowser, { config, onSaved: vi.fn(), onCancel: vi.fn() }))
+  fireEvent.change(view.getByLabelText('Connection'), { target: { value: protocol } })
+  fireEvent.change(view.getByLabelText('API key'), { target: { value: 'official-key' } })
+  fireEvent.click(view.getByRole('button', { name: 'Get models' }))
+  fireEvent.click(await view.findByRole('button', { name: 'Add Official' }))
+  await vi.waitFor(() => expect(save).toHaveBeenCalledWith('official-model', expect.objectContaining({ protocol, baseUrl, apiKey: 'official-key' })))
+  expect(discover).toHaveBeenCalledWith({ protocol, baseUrl, apiKey: 'official-key' }, expect.any(AbortSignal))
+})
+
+it.each([
+  ['openai', 'https://api.openai.com/v1'],
+  ['anthropic', 'https://api.anthropic.com/v1'],
+] as const)('pins a manual %s route even when its URL field is cleared', async (protocol, baseUrl) => {
+  const save = vi.spyOn(api, 'saveModelRoute').mockResolvedValue(snapshot)
+  const view = render(createElement(ModelBrowser, { config: snapshot, onSaved: vi.fn(), onCancel: vi.fn() }))
+  fireEvent.change(view.getByLabelText('Connection'), { target: { value: protocol } })
+  fireEvent.click(view.getByRole('button', { name: 'Enter model manually' }))
+  fireEvent.change(view.getByLabelText('Base URL'), { target: { value: '' } })
+  fireEvent.change(view.getByLabelText('API key'), { target: { value: 'official-key' } })
+  fireEvent.change(view.getByPlaceholderText('deepseek-chat'), { target: { value: 'manual-official' } })
+  fireEvent.click(view.getByRole('button', { name: 'Add model' }))
+  await vi.waitFor(() => expect(save).toHaveBeenCalledWith('manual-official', expect.objectContaining({ protocol, baseUrl, apiKey: 'official-key' })))
+})

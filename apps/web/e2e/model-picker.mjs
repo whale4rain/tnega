@@ -57,12 +57,13 @@ try {
   for (const theme of ['dark', 'light']) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' })
     const fixtures = await installFixtures(context)
-    let config = { ...baseConfig, effective: { baseUrl: 'https://api.openai.com/v1', model: 'official', modelId: 'official' },
+    let config = { ...baseConfig, effective: { baseUrl: 'https://gateway.example/v1', model: 'official', modelId: 'official' },
       config: { ...baseConfig.config, models: [{ id: 'official', model: 'official', name: 'Official model', protocol: 'openai', apiKeySet: true, source: 'provider' }] },
       models: [{ id: 'official', name: 'Official model', protocol: 'openai', reasoningEfforts: ['high'], apiKeySet: true, source: 'provider' },
         { id: 'proxy', name: 'Proxy model', protocol: 'openai', reasoningEfforts: [], apiKeySet: true, source: 'third-party' }] }
     let discovery = 'normal'
     const saved = []
+    const discoveries = []
     let sessionPatch
     await context.route('**/api/config**', async route => {
       const request = route.request()
@@ -71,6 +72,7 @@ try {
       if (path === '/api/config' && request.method() === 'GET') return json(config)
       if (path === '/api/config/models/discover') {
         const body = request.postDataJSON()
+        discoveries.push(body)
         assert.equal(Object.hasOwn(body, 'apiKey'), false, 'Saved connections never send their API key')
         if (body.auth === 'chatgpt') return json({ error: 'Sign in to ChatGPT first' }, 401)
         if (discovery === 'empty') return json({ models: [], source: 'provider' })
@@ -136,12 +138,16 @@ try {
       await dialog.getByText(/Uses your ChatGPT login/).waitFor()
       await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
       await dialog.getByLabel('Connection').selectOption('openai')
+      await dialog.getByRole('button', { name: 'Get models', exact: true }).click()
+      await dialog.getByRole('status').getByText(/returned no models/).waitFor()
+      assert.deepEqual(discoveries.at(-1), { protocol: 'openai', baseUrl: 'https://api.openai.com/v1' })
       await dialog.getByRole('button', { name: 'Enter model manually' }).click()
       await dialog.getByLabel('API key', { exact: true }).fill('fixture-manual-key')
       await dialog.getByPlaceholder('deepseek-chat').fill('manual-api')
       await dialog.getByRole('button', { name: 'Add model', exact: true }).click()
       await page.getByRole('button', { name: 'Model: manual-api', exact: true }).waitFor()
       assert.equal(saved[1].apiKey, 'fixture-manual-key')
+      assert.equal(saved[1].baseUrl, 'https://api.openai.com/v1')
       assert.equal(Object.hasOwn(saved[1], 'auth'), false)
       assert.equal(await input.inputValue(), 'Keep this unsent draft')
       discovery = 'normal'

@@ -16,6 +16,10 @@ export function newModelRouteId(text: string, existing: readonly string[]): stri
   return id
 }
 
+export function providerBaseUrl(protocol: Protocol): string {
+  return protocol === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1'
+}
+
 export function RouteForm({
   route,
   existing = [],
@@ -66,6 +70,8 @@ export function RouteForm({
       : route?.pricing ? null : undefined
     if (pricing && !/^[A-Z]{3}$/.test(pricing.currency)) return setError('Currency is a three-letter code such as USD or CNY.')
     const id = route?.id ?? newModelRouteId(name || wire, existing)
+    const connectionProtocol = protocol || initial?.protocol
+    const endpoint = baseUrl.trim() || (!route && !initial?.sourceRouteId && connectionProtocol ? providerBaseUrl(connectionProtocol) : '')
     setBusy(true)
     setError(undefined)
     try {
@@ -73,7 +79,7 @@ export function RouteForm({
         name: name.trim(),
         model: wire,
         ...(!chatgpt && (!initial?.sourceRouteId || protocol) ? { protocol } : {}),
-        ...(!chatgpt && (!initial?.sourceRouteId || baseUrl.trim()) ? { baseUrl: baseUrl.trim() } : {}),
+        ...(!chatgpt && (!initial?.sourceRouteId || endpoint) ? { baseUrl: endpoint } : {}),
         ...(!chatgpt && apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         ...(window !== undefined ? { contextWindow: window } : {}),
         vision,

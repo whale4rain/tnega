@@ -4,7 +4,7 @@ import { api } from '../lib/api'
 import { errorText } from '../lib/hooks'
 import type { ConfigSnapshot, DiscoveredModel, ModelDiscovery, ModelDiscoveryInput, ModelRouteInput, ModelRouteSettings } from '../lib/types'
 import { ChatGptSignIn } from './ChatGptSignIn'
-import { RouteForm, newModelRouteId } from './ModelRouteForm'
+import { RouteForm, newModelRouteId, providerBaseUrl } from './ModelRouteForm'
 
 /** Discover with an existing login or connection; credentials stay on the server. */
 export function ModelBrowser({ config, onSaved, onCancel, initialConnection, onPersisted }: {
@@ -41,9 +41,10 @@ export function ModelBrowser({ config, onSaved, onCancel, initialConnection, onP
   const routeId = connection.startsWith('route:') ? connection.slice(6) : undefined
   const sourceRoute = routes.find(route => route.id === routeId)
   const custom = connection === 'openai' || connection === 'anthropic'
+  const customProtocol = connection === 'anthropic' ? 'anthropic' : 'openai'
   const input: ModelDiscoveryInput = routeId ? { routeId }
     : connection === 'chatgpt' ? { auth: 'chatgpt' }
-      : { protocol: connection === 'anthropic' ? 'anthropic' : 'openai', ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }
+      : { protocol: customProtocol, baseUrl: baseUrl.trim() || providerBaseUrl(customProtocol), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }
   const seed: ModelRouteInput = {
     model: '',
     ...(routeId ? { sourceRouteId: routeId, ...(sourceRoute?.auth ? { auth: sourceRoute.auth } : {}) } : { ...input }),
