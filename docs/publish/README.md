@@ -76,10 +76,11 @@ Settings → Update channel persists Stable / Preview per desktop installation.
 
 ## Automatic tag releases
 
-For `v0.4.19` only, the maintainer explicitly requested stable publication
+For `v0.4.19` and its `v0.4.20` hotfix, the maintainer requested stable publication
 without another full-suite run. Its workflow builds the artifacts directly and
 retains type, lint, tag and artifact-integrity checks. Targeted feature tests and
-local E2E were completed before publication. All other tags retain the full-suite
+local E2E were completed before publication; the hotfix additionally runs its
+ChatGPT and Responses regression tests in the workflow. All other tags retain the full-suite
 and package-test gate; this exception does not change the default policy.
 
 The workflow is [release.yml](../../.github/workflows/release.yml). It runs when
