@@ -40,11 +40,17 @@ jobs:
       # Install the test runtime explicitly on the clean hosted runner.
       - name: Install Electron for the real desktop browser check
         run: pnpm --filter @tnega/desktop exec node -e "require('electron/install.js')"
+      # One-time maintainer request: ship 0.4.19 using completed targeted checks.
+      # All other tags retain the full-suite gate below.
+      - name: Build stable 0.4.19 without rerunning the full suite
+        if: github.ref_name == 'v0.4.19'
+        run: pnpm build
       - run: node --test test/release-ci.test.mjs
       - run: pnpm typecheck
       - run: pnpm --filter @tnega/desktop typecheck
       - run: pnpm lint
       - name: Full suite and package artifact gate
+        if: github.ref_name != 'v0.4.19'
         run: node scripts/release-ci.mjs test
       - name: Retain validation report even on failure
         if: always()

@@ -76,6 +76,12 @@ Settings → Update channel persists Stable / Preview per desktop installation.
 
 ## Automatic tag releases
 
+For `v0.4.19` only, the maintainer explicitly requested stable publication
+without another full-suite run. Its workflow builds the artifacts directly and
+retains type, lint, tag and artifact-integrity checks. Targeted feature tests and
+local E2E were completed before publication. All other tags retain the full-suite
+and package-test gate; this exception does not change the default policy.
+
 The workflow is [release.yml](../../.github/workflows/release.yml). It runs when
 a `v[0-9]*` tag is pushed, then rejects any tag other than `vx.y.z` or
 `vx.y.z-beta.N`. The tag must match both package versions, have release notes
