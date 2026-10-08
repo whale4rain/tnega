@@ -80,6 +80,35 @@ export interface ConfiguredModel {
   pricing?: ModelPricing
   /** `chatgpt`: authenticate with the ChatGPT sign-in instead of an API key (see chatgpt-auth.ts). */
   auth?: 'chatgpt'
+  source?: 'provider' | 'third-party'
+}
+
+/** The connection's origin, independent of its wire protocol or model name. */
+export function modelSource(route: { source?: 'provider' | 'third-party'; auth?: 'chatgpt'; baseUrl?: string }): 'provider' | 'third-party' {
+  if (route.source) return route.source
+  if (route.auth === 'chatgpt') return 'provider'
+  try {
+    const host = new URL(route.baseUrl ?? '').hostname
+    if (['api.openai.com', 'api.anthropic.com', 'api.deepseek.com', 'api.x.ai', 'generativelanguage.googleapis.com', 'api.mistral.ai', 'api.cohere.com'].includes(host)) return 'provider'
+  } catch { /* A missing endpoint has no verified provider identity. */ }
+  return 'third-party'
+}
+
+/** Resolve a registered connection, or the legacy default as one endpoint/key pair. */
+export function modelConnection(config: SystemConfig, id: string, env: NodeJS.ProcessEnv = process.env): ConfiguredModel | undefined {
+  const saved = config.models?.find(route => route.id === id)
+  if (saved) return saved
+  if (config.models?.length) return undefined
+  const effective = effectiveLlmConfig(config, env)
+  if (effective.modelId !== id) return undefined
+  const route: ConfiguredModel = { id, model: effective.model, baseUrl: effective.baseUrl }
+  if (effective.protocol) route.protocol = effective.protocol
+  if (effective.apiKeyHeader) route.apiKeyHeader = effective.apiKeyHeader
+  const key = effectiveApiKey(config, env, id)
+  const variable = ['TNEGA_API_KEY', 'OPENCODE_GO_API_KEY', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY'].find(name => key && env[name] === key)
+  if (variable) route.apiKeyEnv = variable
+  else if (key) route.apiKey = key
+  return route
 }
 
 export interface LlmEnvConfig {
@@ -279,6 +308,9 @@ export interface ModelRouteInput {
   /** Prices per million tokens; `null` clears them. */
   pricing?: ModelPricing | null
   auth?: 'chatgpt'
+  source?: 'provider' | 'third-party'
+  /** Copy the saved connection without sending its key to the browser. */
+  sourceRouteId?: string
 }
 
 export class ModelRouteError extends Error {
@@ -293,10 +325,18 @@ export function parseModelRouteInput(value: unknown): ModelRouteInput {
   const model = typeof record.model === 'string' ? record.model.trim() : ''
   if (!model) throw new ModelRouteError('model is required')
   const input: ModelRouteInput = { model }
-  for (const key of ['name', 'baseUrl', 'apiKey', 'apiKeyEnv'] as const) {
+  for (const key of ['name', 'baseUrl', 'apiKey', 'apiKeyEnv', 'sourceRouteId'] as const) {
     if (record[key] === undefined) continue
     if (typeof record[key] !== 'string') throw new ModelRouteError(`${key} must be a string`)
     input[key] = record[key].trim()
+  }
+  if (record.auth !== undefined) {
+    if (record.auth !== 'chatgpt') throw new ModelRouteError('auth must be chatgpt')
+    input.auth = record.auth
+  }
+  if (record.source !== undefined) {
+    if (record.source !== 'provider' && record.source !== 'third-party') throw new ModelRouteError('source must be provider or third-party')
+    input.source = record.source
   }
   if (record.protocol !== undefined) {
     if (record.protocol !== 'openai' && record.protocol !== 'anthropic' && record.protocol !== '') throw new ModelRouteError('protocol must be openai, anthropic or empty')
@@ -352,6 +392,21 @@ export async function upsertModelRoute(id: string, input: ModelRouteInput, file 
   const index = routes.findIndex(route => route.id === id)
   const previous = index >= 0 ? routes[index]! : undefined
   const next: ConfiguredModel = { ...(previous ?? {}), id, model: input.model }
+  if (input.sourceRouteId) {
+    const source = modelConnection(current, input.sourceRouteId)
+    if (!source) throw new ModelRouteError('source model route does not exist')
+    if (input.baseUrl && input.baseUrl !== source.baseUrl && !input.apiKey) throw new ModelRouteError('a different endpoint needs its own API key')
+    for (const key of ['baseUrl', 'protocol', 'apiKey', 'apiKeyEnv', 'apiKeyHeader', 'auth', 'source'] as const) delete next[key]
+    if (source.baseUrl) next.baseUrl = source.baseUrl
+    if (source.protocol) next.protocol = source.protocol
+    if (source.apiKey) next.apiKey = source.apiKey
+    if (source.apiKeyEnv) next.apiKeyEnv = source.apiKeyEnv
+    if (source.apiKeyHeader) next.apiKeyHeader = source.apiKeyHeader
+    if (source.auth) next.auth = source.auth
+    next.source = modelSource(source)
+    if (input.apiKey) { delete next.apiKeyEnv; delete next.auth }
+    if (input.apiKeyEnv && input.apiKeyEnv !== source.apiKeyEnv) { delete next.apiKey; delete next.auth }
+  }
   for (const key of ['name', 'baseUrl', 'apiKeyEnv'] as const) {
     if (input[key] === undefined) continue
     if (input[key]) next[key] = input[key]
@@ -367,6 +422,7 @@ export async function upsertModelRoute(id: string, input: ModelRouteInput, file 
   if (input.pricing === null) delete next.pricing
   else if (input.pricing) next.pricing = input.pricing
   if (input.auth) next.auth = input.auth
+  if (input.source) next.source = input.source
   if (index >= 0) routes[index] = next
   else routes.push(next)
   const config: SystemConfig = { ...current, models: routes }
@@ -432,6 +488,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
   vision: boolean
   apiKeySet: boolean
   contextWindow?: number
+  source: 'provider' | 'third-party'
 }> {
   const effective = effectiveLlmConfig(config, env)
   const ids = [...new Set([effective.modelId, ...(config.models?.map(entry => entry.id) ?? [])])]
@@ -441,6 +498,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
     return {
       id,
       name: profile?.name ?? id,
+      source: modelSource({ ...profile, baseUrl: route.baseUrl }),
       ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile ? profile.vision : config.vision),
       apiKeySet: route.apiKeySet,
       ...(route.contextWindow !== undefined ? { contextWindow: route.contextWindow } : {}),
@@ -531,6 +589,8 @@ function normalizeConfig(value: unknown): SystemConfig {
       const pricing = parseModelPricing(fieldOf(entry, 'pricing'))
       if (pricing) model.pricing = pricing
       if (fieldOf(entry, 'auth') === 'chatgpt') model.auth = 'chatgpt'
+      const source = fieldOf(entry, 'source')
+      if (source === 'provider' || source === 'third-party') model.source = source
       const efforts = fieldOf(entry, 'reasoningEfforts')
       if (Array.isArray(efforts)) {
         model.reasoningEfforts = [...new Set(efforts.filter(isReasoningEffort))]

@@ -238,6 +238,19 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 每次请求读取配置文件，因此修改后无需重启；Settings 小窗里的 Reload file 可刷新选择列表。
 `apiKey` 也可逐模型填写，但 `apiKeyEnv` 可避免将密钥写入文件。
 
+`POST /api/config/models/discover` 读取当前登录或凭据可用的真实模型目录。
+已有连接只传 `{routeId}`；未保存的连接传 `{protocol, baseUrl?, apiKey?, apiKeyEnv?}`，
+ChatGPT 则传 `{auth:"chatgpt"}`。返回 `{models:[{id,name,contextWindow?,vision?}],source}`，
+`source` 是 `provider` 或 `third-party`；旧配置根据官方主机或 ChatGPT 登录推断。
+读取失败明确返回错误，不以静态列表替代。请求共用宿主代理、限制 15 秒和每页 2 MB，
+禁止跟随重定向传出凭据。已保存连接只使用自己的 key / 环境变量，不能借用其他连接的 key。
+添加发现的模型时，路由输入携带 `sourceRouteId` 即可在服务端复制连接设置和凭据，
+不复制旧模型的上下文、图像能力或价格；凭据不返回浏览器。原有路由无需迁移。
+OpenAI compatible 使用 [`GET /models`](https://platform.openai.com/docs/api-reference/models/list)，
+Anthropic 使用 [`GET /v1/models`](https://platform.claude.com/docs/en/api/models/list) 并按 `last_id` 分页，
+ChatGPT 沿用 [Codex 的模型目录协议](https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/endpoint/models.rs)，
+复用登录刷新与账户 header（目录 schema client version 固定为经官方 npm 核验的 `0.161.0`）。
+
 `shell` 选择 `shell` 工具（包括经 `job_start` 后台运行时）使用的系统 shell：名称（`pwsh`、`powershell`、
 `bash`、`cmd`、`zsh`…）或可执行文件路径；省略时自动检测（Windows 依次为 PowerShell 7、
 Windows PowerShell、Git Bash、cmd；其他平台为 `$SHELL`）。环境变量 `TNEGA_SHELL` 在未配置时

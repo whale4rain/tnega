@@ -24,6 +24,7 @@ import { readWorkspacePrompt, writeWorkspacePrompt, workspacePrompt } from './wo
 import { buildCompactionPrompt, SUMMARIZATION_SYSTEM_PROMPT } from './compaction-prompt.js'
 import { autoContextBudget, SUMMARY_PREFIX } from './auto-compaction.js'
 import { ChatGptLogin, llmAuthOptions } from './chatgpt-auth.js'
+import { discoverModels, ModelDiscoveryError, parseModelDiscoveryInput } from './model-discovery.js'
 import { runSummary } from '@tnega/run-summary'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { toolPtc } from '@tnega/tool-ptc'
@@ -483,6 +484,20 @@ async function handleApi(
     configureSystemShell(config.shell)
     applyNetwork(config, context.hostFetch)
     sendJson(res, 200, configSnapshot(config, context.configFile))
+    return
+  }
+
+  if (url.pathname === '/api/config/models/discover' && req.method === 'POST') {
+    try {
+      const input = parseModelDiscoveryInput(await readJsonBody(req))
+      sendJson(res, 200, await discoverModels(input, await readSystemConfig(context.configFile)))
+    } catch (error) {
+      if (error instanceof ModelRouteError || error instanceof ModelDiscoveryError) {
+        sendError(res, error instanceof ModelDiscoveryError ? error.status : 400, error.message)
+        return
+      }
+      throw error
+    }
     return
   }
 
@@ -2198,6 +2213,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
         ...(model.vision !== undefined ? { vision: model.vision } : {}),
         ...(model.pricing ? { pricing: model.pricing } : {}),
         ...(model.auth ? { auth: model.auth } : {}),
+        ...(model.source ? { source: model.source } : {}),
       })) ?? [],
     },
     env: {

@@ -42,6 +42,13 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- Discover models from a saved provider or third-party connection, or the current
+  ChatGPT login, with real authenticated catalogs and paginated Anthropic results.
+  Add discovered models by copying the connection on the server without exposing
+  credentials to the browser; existing routes keep working without migration.
+
 ## [0.4.19-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.2) — 2026-10-08
 
 ### Fixes
