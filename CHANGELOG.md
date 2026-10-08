@@ -48,6 +48,8 @@ compare links provide a convenient browser view of the boundaries.
   ChatGPT login, with real authenticated catalogs and paginated Anthropic results.
   Add discovered models by copying the connection on the server without exposing
   credentials to the browser; existing routes keep working without migration.
+  Inherited endpoints follow the active runtime configuration and are pinned when
+  copying a route, keeping each connection's key attached to the same gateway.
 
 ## [0.4.19-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.2) — 2026-10-08
 

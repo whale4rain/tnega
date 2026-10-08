@@ -39,12 +39,24 @@ describe('model discovery', () => {
     expect(String(request.mock.calls[1]?.[0])).toContain('after_id=claude-one')
   })
 
-  it('never sends a global key to a saved third-party connection and defaults saved Anthropic to its official host', async () => {
+  it('never sends a global key to a saved connection and preserves its inherited runtime endpoint', async () => {
     const request = vi.fn<typeof fetch>(async () => Response.json({ data: [] }))
     await expect(discoverModels({ routeId: 'missing-key' }, { apiKey: 'unrelated', models: [{ id: 'missing-key', baseUrl: 'https://gateway.example/v1' }] }, { fetch: request, env: { OPENAI_API_KEY: 'unrelated-env' } })).rejects.toThrow(/API key/)
     expect(request).not.toHaveBeenCalled()
-    await discoverModels({ routeId: 'anthropic' }, { models: [{ id: 'anthropic', protocol: 'anthropic', apiKey: 'correct' }] }, { fetch: request })
-    expect(String(request.mock.calls[0]?.[0])).toBe('https://api.anthropic.com/v1/models?limit=1000')
+    await discoverModels({ routeId: 'anthropic' }, { baseUrl: 'https://gateway.example/v1', models: [{ id: 'anthropic', protocol: 'anthropic', apiKey: 'correct' }] }, { fetch: request, env: {} })
+    expect(String(request.mock.calls[0]?.[0])).toBe('https://gateway.example/v1/models?limit=1000')
+    await discoverModels({ routeId: 'openai' }, { baseUrl: 'https://wrong.example/v1', apiKeyHeader: 'api-key', models: [{ id: 'openai', protocol: 'openai', apiKey: 'own-key' }] }, { fetch: request, env: { OPENCODE_GO_BASE_URL: 'https://env-gateway.example/v1' } })
+    expect(String(request.mock.calls[1]?.[0])).toBe('https://env-gateway.example/v1/models')
+    expect(new Headers(request.mock.calls[1]?.[1]?.headers).get('api-key')).toBe('own-key')
+  })
+
+  it('pins the effective inherited endpoint when cloning a saved connection', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tnega-discovery-inherited-')); dirs.push(dir)
+    const file = join(dir, 'config.json')
+    await writeFile(file, JSON.stringify({ baseUrl: 'https://global.example/v1', models: [{ id: 'source', model: 'old', apiKey: 'own-key', protocol: 'openai' }] }))
+    vi.stubEnv('OPENCODE_GO_BASE_URL', 'https://env-gateway.example/v1')
+    const next = await upsertModelRoute('copy', parseModelRouteInput({ model: 'new', sourceRouteId: 'source' }), file)
+    expect(next.models?.find(model => model.id === 'copy')).toMatchObject({ baseUrl: 'https://env-gateway.example/v1', apiKey: 'own-key', source: 'third-party' })
   })
 
   it('uses refreshed ChatGPT account headers and filters hidden catalog models', async () => {

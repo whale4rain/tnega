@@ -97,7 +97,14 @@ export function modelSource(route: { source?: 'provider' | 'third-party'; auth?:
 /** Resolve a registered connection, or the legacy default as one endpoint/key pair. */
 export function modelConnection(config: SystemConfig, id: string, env: NodeJS.ProcessEnv = process.env): ConfiguredModel | undefined {
   const saved = config.models?.find(route => route.id === id)
-  if (saved) return saved
+  if (saved) {
+    const effective = effectiveLlmConfig(config, env, id)
+    const connection: ConfiguredModel = { ...saved, baseUrl: effective.baseUrl }
+    const protocol = modelCapabilities(effective.model, effective.protocol).protocol
+    connection.protocol = protocol
+    if (effective.apiKeyHeader) connection.apiKeyHeader = effective.apiKeyHeader
+    return connection
+  }
   if (config.models?.length) return undefined
   const effective = effectiveLlmConfig(config, env)
   if (effective.modelId !== id) return undefined
