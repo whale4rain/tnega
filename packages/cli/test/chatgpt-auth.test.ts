@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configureNetwork } from '@tnega/execution'
+import { createLlmAdapter } from '@tnega/llm'
 import { authorizeUrl, chatgptHeaders, ChatGptLogin, CHATGPT_CLIENT_ID, jwtClaims, pkcePair, tokensFrom } from '../src/chatgpt-auth.js'
 
 const dirs: string[] = []
@@ -18,6 +19,21 @@ async function tempFile(): Promise<string> {
 }
 
 describe('ChatGPT sign-in', () => {
+  it('omits global temperature from login requests without reasoning effort', async () => {
+    const { llmAuthOptions } = await import('../src/chatgpt-auth.js')
+    const transport: typeof fetch = vi.fn(async (_url, init) => {
+      const body = JSON.parse(String(init?.body))
+      expect(body).not.toHaveProperty('temperature')
+      expect(body).not.toHaveProperty('reasoning')
+      return new Response('event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n', { headers: { 'content-type': 'text/event-stream' } })
+    })
+    const adapter = createLlmAdapter({
+      model: 'gpt-6.1-sol', temperature: 0, ...llmAuthOptions({ auth: 'chatgpt' }),
+      fetch: transport, requestHeaders: () => ({}), maxRetries: 0,
+    })
+    await adapter.complete([{ role: 'user', content: 'hello' }], [], {})
+    expect(transport).toHaveBeenCalledOnce()
+  })
   it('uses the host network transport for token refresh and model requests', async () => {
     const file = await tempFile()
     await (await import('node:fs/promises')).mkdir(join(file, '..'), { recursive: true })

@@ -21,7 +21,8 @@ export interface LlmConfig {
    * accepts only its own); the system prompt then travels as a developer message.
    */
   fallbackInstructions?: () => Promise<string>
-  temperature?: number
+  /** Undefined explicitly clears an inherited sampling setting. */
+  temperature?: number | undefined
   reasoningEffort?: ReasoningEffort
   /** Whether the model accepts images; defaults to the model-id heuristic. */
   vision?: boolean

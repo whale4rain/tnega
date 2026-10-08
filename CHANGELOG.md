@@ -6,6 +6,12 @@ point; historical capabilities may have since been removed. There are no Git
 tags for 0.2.0, 0.4.3 or 0.4.4. Their development changes are included in the
 next actual tag's range; missing tags alone do not prove no package was published.
 
+## Unreleased
+
+### Fixes
+
+- ChatGPT 登录模型不再携带全局 temperature；未设置思考强度时也可正常发送，避免 `Unsupported parameter: temperature` 导致 HTTP 400。已有配置和会话无需迁移。
+
 ## Audited history boundaries
 
 Each release covers all commits reachable from its tag but not the preceding

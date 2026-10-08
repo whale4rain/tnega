@@ -301,5 +301,6 @@ async function codexInstructions(): Promise<string> {
 export function llmAuthOptions(effective: { auth?: 'chatgpt' }): Partial<LlmConfig> {
   if (effective.auth !== 'chatgpt') return {}
   sharedHeaders ??= chatgptHeaders()
-  return { protocol: 'responses', fetch: chatgptFetch, requestHeaders: sharedHeaders, fallbackInstructions: codexInstructions }
+  // The ChatGPT Codex backend rejects temperature even when reasoning is unset.
+  return { protocol: 'responses', temperature: undefined, fetch: chatgptFetch, requestHeaders: sharedHeaders, fallbackInstructions: codexInstructions }
 }
