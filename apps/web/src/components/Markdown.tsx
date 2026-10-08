@@ -21,7 +21,7 @@ export function CodeBlock({ code, language }: { code: string; language?: string 
       <div className="code-block-header">
         <span className="code-block-lang">{language || 'text'}</span>
         <button type="button" className="code-copy" onClick={() => copy(code)} aria-label="Copy code">
-          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? <Check size={12} /> : <Copy size={12} />}
           <span>{copied ? 'Copied' : 'Copy'}</span>
         </button>
       </div>

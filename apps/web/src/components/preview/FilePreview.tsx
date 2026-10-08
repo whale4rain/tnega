@@ -64,7 +64,7 @@ export function PreviewView({ workspace, path, load }: { workspace: string; path
         {Viewer && (
           <div className="zoom-controls" role="group" aria-label="Zoom">
             <button type="button" className="icon-button" aria-label="Zoom out" title="Zoom out (Ctrl+wheel)" disabled={zoom <= ZOOM_STEPS[0]} onClick={() => step(-1)}>
-              <ZoomOut size={15} />
+              <ZoomOut size={14} />
             </button>
             <button
               type="button"
@@ -75,12 +75,12 @@ export function PreviewView({ workspace, path, load }: { workspace: string; path
               {setting === 'fit' ? `Fit · ${Math.round(zoom * 100)}%` : `${Math.round(zoom * 100)}%`}
             </button>
             <button type="button" className="icon-button" aria-label="Zoom in" title="Zoom in (Ctrl+wheel)" disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} onClick={() => step(1)}>
-              <ZoomIn size={15} />
+              <ZoomIn size={14} />
             </button>
           </div>
         )}
         <button type="button" className="icon-button small" aria-label="Download" title="Download" disabled={!blob} onClick={() => blob && saveBlob(blob, fileName(path))}>
-          <Download size={15} />
+          <Download size={14} />
         </button>
       </div>
       <div className="wb-card wb-scroll file-preview" ref={body}>

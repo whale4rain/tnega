@@ -128,7 +128,7 @@ export function FilesView({
         </button>
         {file?.content !== undefined && (
           <button type="button" className="button primary small" disabled={!dirty || saving} onClick={() => void save()} title="Save (Ctrl+S)">
-            <Save size={13} />{saving ? 'Saving…' : 'Save'}
+            <Save size={12} />{saving ? 'Saving…' : 'Save'}
           </button>
         )}
       </div>

@@ -62,7 +62,7 @@ export function WorkspaceDialog({ onClose, onAdded }: { onClose: () => void; onA
             spellCheck={false}
           />
           <button type="button" className="button secondary" onClick={() => void browse()}>
-            <FolderSearch size={15} /> Browse…
+            <FolderSearch size={14} /> Browse…
           </button>
         </span>
       </label>

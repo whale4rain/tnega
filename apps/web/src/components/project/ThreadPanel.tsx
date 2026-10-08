@@ -80,7 +80,7 @@ export function ThreadPanel({
   if (!thread) {
     return (
       <div className="wb-view">
-        <div className="wb-toolbar"><button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board"><ArrowLeft size={15} /></button><span className="muted">Thread not found</span></div>
+        <div className="wb-toolbar"><button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board"><ArrowLeft size={14} /></button><span className="muted">Thread not found</span></div>
       </div>
     )
   }
@@ -114,17 +114,17 @@ export function ThreadPanel({
   return (
     <div className="wb-view thread-panel" aria-label={`Thread ${thread.label}`}>
       <div className="wb-toolbar">
-        <button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board" title="Back to the Board"><ArrowLeft size={15} /></button>
+        <button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board" title="Back to the Board"><ArrowLeft size={14} /></button>
         <span className="wb-toolbar-title" title={thread.goal}>{thread.label}</span>
         <ThreadStatus state={state} thread={thread} />
         {working && (
           <button type="button" className="button ghost small" onClick={() => void stop()} title="Stop this thread">
-            <Square size={11} fill="currentColor" /> Stop
+            <Square size={12} fill="currentColor" /> Stop
           </button>
         )}
         {!working && (current === 'resolved'
           ? <button type="button" className="button ghost small" onClick={() => void resolve(false)} title="Reopen this thread"><RotateCcw size={12} /> Reopen</button>
-          : <button type="button" className="button ghost small" onClick={() => void resolve(true)} title="You took the result: move it to Resolved"><CheckCheck size={13} /> Resolve</button>)}
+          : <button type="button" className="button ghost small" onClick={() => void resolve(true)} title="You took the result: move it to Resolved"><CheckCheck size={12} /> Resolve</button>)}
       </div>
       <div className="wb-card thread-body">
       <div className="side-scroll" ref={scroller}>
@@ -177,7 +177,7 @@ function Checklist({ items, working }: { items: readonly ChecklistItem[]; workin
           return (
             <li key={`${index}-${item.title}`} className={`plan-item status-${status}`}>
               <span className="plan-check">
-                {item.status === 'done' ? <Check size={11} strokeWidth={3} /> : status === 'running' ? <span className="spinner tiny" aria-hidden /> : null}
+                {item.status === 'done' ? <Check size={12} strokeWidth={3} /> : status === 'running' ? <span className="spinner tiny" aria-hidden /> : null}
               </span>
               <span>{item.title}</span>
             </li>
@@ -194,7 +194,7 @@ function Brief({ goal }: { goal: string }) {
   return (
     <div className={`thread-brief${open ? ' open' : ''}`}>
       <button type="button" className="thread-brief-head" onClick={() => setOpen(value => !value)} aria-expanded={open}>
-        <ChevronRight size={13} className="chevron" />
+        <ChevronRight size={12} className="chevron" />
         <span>Brief</span>
       </button>
       {open && <p className="thread-brief-text">{goal}</p>}

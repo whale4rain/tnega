@@ -121,7 +121,7 @@ export function Choice<T extends string>({
       >
         {current?.icon ?? icon}
         <span>{current?.label}</span>
-        <ChevronDown size={13} className="chip-caret" />
+        <ChevronDown size={12} className="chip-caret" />
       </button>
       {open && (
         <div className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label}>
@@ -233,7 +233,7 @@ export function SectionChoice({
       >
         {icon}
         <span>{summary}</span>
-        <ChevronDown size={13} className="chip-caret" />
+        <ChevronDown size={12} className="chip-caret" />
       </button>
       {open && (
         <div className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label}>

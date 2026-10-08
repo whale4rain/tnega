@@ -10,7 +10,7 @@ export function ThreadMessages({ messages, label, running }: { messages: readonl
         const user = message.sender.kind === 'user'
         return (
           <ChatRun key={message.messageId} author={user ? 'You' : label} at={message.createdAt} side={user ? 'user' : 'agent'}
-            avatar={user ? <span className="room-avatar-you" aria-hidden>Y</span> : <AgentAvatar id={message.sender.id} size={26} />}>
+            avatar={user ? <span className="room-avatar-you" aria-hidden>Y</span> : <AgentAvatar id={message.sender.id} size={20} />}>
             <div id={`msg-${message.messageId}`} className="room-message">
               <Markdown text={message.text} />
             </div>

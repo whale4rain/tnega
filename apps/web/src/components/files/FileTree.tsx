@@ -69,7 +69,7 @@ export const FileTree = forwardRef<FileTreeHandle, {
             style={{ paddingLeft: 6 + level * 14 }}
             title={data?.path}
           >
-            <ChevronRight size={13} className={`file-tree-caret${folder ? '' : ' hidden'}${item.isExpanded() ? ' open' : ''}`} aria-hidden />
+            <ChevronRight size={12} className={`file-tree-caret${folder ? '' : ' hidden'}${item.isExpanded() ? ' open' : ''}`} aria-hidden />
             <Icon size={14} className={`file-tree-icon${folder ? ' folder' : ''}`} aria-hidden />
             <span className="file-tree-name">{item.getItemName()}</span>
             {item.isLoading() && <span className="spinner tiny" aria-hidden />}

@@ -144,7 +144,7 @@ export function BackgroundJobs({ workspace, sessionId, onOpenBrowser }: { worksp
         title={tasks.length ? `Background tasks · ${live.length} running of ${tasks.length}` : 'Background tasks'}
         onClick={() => setOpen(value => !value)}
       >
-        <ListTodo size={15} />
+        <ListTodo size={14} />
         {tasks.length > 0 && <span className={`count-badge${live.length ? ' live' : ''}`} aria-hidden>{live.length || tasks.length}</span>}
       </button>
       {open && <section className="menu-popover side-bottom align-end background-jobs-popover" aria-label="Background tasks">
@@ -159,7 +159,7 @@ export function BackgroundJobs({ workspace, sessionId, onOpenBrowser }: { worksp
           <div className="bg-tasks-finished">
             {live.length > 0 && (
               <button type="button" className={`bg-tasks-fold${showFinished ? ' open' : ''}`} aria-expanded={showFinished} onClick={() => setShowFinished(value => !value)}>
-                <ChevronRight size={13} className="chevron" />{finished.length} finished
+                <ChevronRight size={12} className="chevron" />{finished.length} finished
               </button>
             )}
             {(showFinished || live.length === 0) && <div className="bg-task-list">{finished.map(row)}</div>}
@@ -198,7 +198,7 @@ function TaskRow({ task, now, busy, output, onToggle, onStop, onOpenUrl }: {
         </button>
         {task.status === 'running' && (
           <button type="button" className="icon-button small bg-task-stop" aria-label={`Stop ${task.label}`} title="Stop" disabled={busy} onClick={onStop}>
-            <Square size={11} />
+            <Square size={12} />
           </button>
         )}
       </div>

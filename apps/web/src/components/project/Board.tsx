@@ -74,7 +74,7 @@ export function BoardPanel({
       </div>
       <div className="wb-card wb-scroll board-scroll">
         <section className="board-today" aria-label="Today">
-          <AgentAvatar id={state.coordinatorId} role="coordinator" size={44} weather={weather} live={weather === 'drizzle' || weather === 'rain'} title={FORECAST[weather]} />
+          <AgentAvatar id={state.coordinatorId} role="coordinator" size={28} weather={weather} live={weather === 'drizzle' || weather === 'rain'} title={FORECAST[weather]} />
           <div className="board-today-main">
             <div className="board-today-headline">
               <strong>{day.started}</strong> {day.started === 1 ? 'thread' : 'threads'} opened today
@@ -143,7 +143,7 @@ function Resolved({ column, state, usageOf, actions }: { column: BoardColumn; st
   return (
     <section className={`board-resolved${open ? ' open' : ''}`}>
       <button type="button" className="board-resolved-head" onClick={() => setOpen(value => !value)} aria-expanded={open}>
-        <ChevronRight size={13} className="chevron" />
+        <ChevronRight size={12} className="chevron" />
         <span>Resolved</span>
         <span className="count">{column.threads.length}</span>
       </button>
@@ -179,7 +179,7 @@ function BoardCard({
   return (
     <div className={`board-card col-${column}`}>
       <button type="button" className="board-card-open" onClick={() => actions.open(thread.id)} title={thread.goal}>
-        <AgentAvatar id={thread.id} size={28} weather={weather === 'clear' ? undefined : weather} live={weather === 'drizzle'} />
+        <AgentAvatar id={thread.id} size={20} weather={weather === 'clear' ? undefined : weather} live={weather === 'drizzle'} />
         <span className="board-card-body">
           <span className="board-card-title">{thread.label}</span>
           {activity && <span className="board-card-activity">{activity}</span>}
@@ -193,7 +193,7 @@ function BoardCard({
             <span className="board-card-outputs">
               {kinds.map(([kind, count]) => {
                 const meta = ARTIFACT_KIND[kind]
-                return <span key={kind} className="board-chip"><meta.icon size={11} aria-hidden />{count > 1 ? `${count} ${meta.plural}` : meta.label}</span>
+                return <span key={kind} className="board-chip"><meta.icon size={12} aria-hidden />{count > 1 ? `${count} ${meta.plural}` : meta.label}</span>
               })}
             </span>
           )}
@@ -207,13 +207,13 @@ function BoardCard({
       <span className="board-card-actions">
         {column === 'working' && (
           <button type="button" className="icon-button tiny" aria-label="Stop" title="Stop this thread" onClick={() => actions.stop(thread.id)}>
-            <Square size={11} fill="currentColor" />
+            <Square size={12} fill="currentColor" />
           </button>
         )}
         {column === 'resolved'
           ? (
             <button type="button" className="icon-button tiny" aria-label="Reopen" title="Reopen" onClick={() => actions.resolve(thread.id, false)}>
-              <RotateCcw size={13} />
+              <RotateCcw size={12} />
             </button>
           )
           : column !== 'working' && (

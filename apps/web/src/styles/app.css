@@ -30,6 +30,11 @@ body {
   background: var(--selection);
 }
 
+/* Icons are mini line glyphs: a lighter stroke keeps 12–14px icons from looking heavy. */
+svg.lucide[stroke-width="2"] {
+  stroke-width: 1.75;
+}
+
 button,
 input,
 textarea,
@@ -45,7 +50,7 @@ select {
  */
 select {
   appearance: none;
-  min-height: 32px;
+  min-height: var(--control);
   padding: 0 34px 0 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -197,8 +202,8 @@ kbd {
 .icon-button {
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--control);
+  height: var(--control);
   flex: none;
   border-radius: var(--radius-sm);
   color: var(--text-2);
@@ -216,8 +221,8 @@ kbd {
 }
 
 .icon-button.tiny {
-  width: 26px;
-  height: 26px;
+  width: var(--control-sm);
+  height: var(--control-sm);
   border-radius: var(--radius-xs);
 }
 
@@ -226,7 +231,7 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  height: 34px;
+  height: var(--control);
   padding: 0 14px;
   border-radius: var(--radius-sm);
   font-weight: 550;
@@ -283,13 +288,13 @@ kbd {
 }
 
 .button.small {
-  height: 28px;
+  height: var(--control-sm);
   padding: 0 11px;
   font-size: var(--text-sm);
 }
 
 .button.large {
-  height: 42px;
+  height: var(--control-lg);
   padding: 0 20px;
   font-size: var(--text-lg);
   border-radius: var(--radius-md);
@@ -317,7 +322,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--control-sm);
   padding: 0 8px 0 9px;
   border-radius: var(--radius-full);
   color: var(--text-2);
@@ -496,7 +501,7 @@ kbd {
   align-items: center;
   gap: 9px;
   width: 100%;
-  min-height: 32px;
+  min-height: var(--row-h);
   padding: 5px 9px;
   border-radius: var(--radius-sm);
   text-align: left;
@@ -691,8 +696,8 @@ kbd {
 .workspace-icon {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   flex: none;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
@@ -770,7 +775,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 36px;
+  height: var(--row-h);
   padding: 0 10px;
   margin-top: 4px;
   border-radius: var(--radius-sm);
@@ -806,7 +811,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 32px;
+  height: var(--control);
   padding: 0 4px 0 10px;
   border-radius: var(--radius-sm);
   background: var(--surface-hover);
@@ -874,7 +879,7 @@ kbd {
   gap: 8px;
   flex: 1;
   min-width: 0;
-  height: 34px;
+  height: var(--row-h);
   padding: 0 10px;
   text-align: left;
 }
@@ -981,7 +986,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 32px;
+  height: var(--control);
   padding: 0 10px;
   border-radius: var(--radius-sm);
   color: var(--text-2);
@@ -1011,18 +1016,23 @@ kbd {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 52px;
+  height: var(--header-h);
   flex: none;
   padding: 0 16px;
   border-bottom: 1px solid transparent;
 }
 
+/* Title and workspace share one line so the header fits the 32px title bar. */
 .conv-title-wrap {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   min-width: 96px;
   flex: 1;
 }
+
+.conv-title-row { flex: 0 1 auto; margin-left: -6px; }
+.conv-title-row > .conv-title { margin-left: 0; }
 
 .conv-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .conv-title-row > .conv-title, .conv-title-row > .conv-title-input { min-width: 0; }
@@ -1125,6 +1135,8 @@ kbd {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
   font-size: var(--text-xs);
   color: var(--text-3);
 }
@@ -1175,7 +1187,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 32px;
+  height: var(--control);
   padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
@@ -1199,15 +1211,15 @@ kbd {
 }
 
 .header-group .chip {
-  height: 26px;
+  height: var(--control-sm);
   padding: 0 8px 0 10px;
   font-size: var(--text-xs);
 }
 
 .header-icon.icon-button.small {
   position: relative;
-  width: 26px;
-  height: 26px;
+  width: var(--control-sm);
+  height: var(--control-sm);
   border-radius: var(--radius-full);
 }
 
@@ -1251,8 +1263,8 @@ kbd {
   position: relative;
   display: inline-grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: var(--control-sm);
+  height: var(--control-sm);
   border-radius: var(--radius-full);
   color: var(--text-2);
   font-size: var(--text-xs);
@@ -1396,8 +1408,8 @@ kbd {
   left: 50%;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--control);
+  height: var(--control);
   margin-left: -16px;
   border-radius: 50%;
   background: var(--surface-raised);
@@ -1762,7 +1774,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 26px;
+  height: var(--control-sm);
   color: var(--text-3);
   font-size: var(--text-md);
 }
@@ -1871,10 +1883,10 @@ kbd {
 .tool-row-head {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   width: 100%;
-  min-height: 36px;
-  padding: 6px 10px;
+  min-height: var(--control-sm);
+  padding: 2px 6px;
   text-align: left;
   font-size: var(--text-sm);
   transition: background var(--duration-fast);
@@ -1887,19 +1899,18 @@ kbd {
 
 .tool-group.single .tool-row-head {
   border-radius: var(--radius-md);
-  margin-left: -10px;
-  width: calc(100% + 10px);
+  margin-left: -6px;
+  width: calc(100% + 6px);
 }
 
+/* A bare glyph, not a tile: the row's text carries the weight. */
 .tool-icon {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: var(--icon);
+  height: var(--icon);
   flex: none;
-  border-radius: 6px;
-  background: var(--surface-active);
-  color: var(--text-2);
+  color: var(--text-3);
 }
 
 .tool-group-title {
@@ -1978,12 +1989,10 @@ kbd {
 }
 
 .tool-row.status-error .tool-icon {
-  background: var(--danger-soft);
   color: var(--danger);
 }
 
 .tool-row.status-running .tool-icon {
-  background: var(--accent-soft);
   color: var(--accent-text);
 }
 
@@ -1991,7 +2000,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 2px 0 8px 31px;
+  margin: 2px 0 6px 20px;
   padding-left: 12px;
   border-left: 2px solid var(--border);
   animation: fade-up 180ms var(--ease-out);
@@ -2059,8 +2068,8 @@ kbd {
 .subagent-icon {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   flex: none;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
@@ -2403,7 +2412,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 32px;
+  height: var(--toolbar-h);
   padding: 0 6px 0 12px;
   border-bottom: 1px solid var(--code-border);
 }
@@ -2532,8 +2541,8 @@ kbd {
 .composer-attach {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: var(--control);
+  height: var(--control);
   border-radius: var(--radius-md);
   color: var(--text-2);
   transition: background var(--duration-fast), color var(--duration-fast);
@@ -2587,8 +2596,8 @@ kbd {
 .send-button {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: var(--control);
+  height: var(--control);
   flex: none;
   border-radius: 50%;
   background: var(--accent);
@@ -2985,7 +2994,7 @@ kbd {
   flex-shrink: 0;
   align-items: center;
   gap: 9px;
-  height: 34px;
+  height: var(--control);
   padding: 0 10px;
   border-radius: var(--radius-sm);
   color: var(--text-2);
@@ -3057,7 +3066,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
+  height: var(--control);
   padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -3119,7 +3128,7 @@ kbd {
 .field input,
 .field select,
 .input-with-icon {
-  height: 38px;
+  height: var(--control-lg);
   width: 100%;
   padding: 0 11px;
   border-radius: var(--radius-sm);
@@ -3168,7 +3177,7 @@ kbd {
 }
 
 .input-row .button {
-  height: 38px;
+  height: var(--control-lg);
 }
 
 .effective-card {
@@ -3333,8 +3342,8 @@ kbd {
 .office-file-icon {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
   flex-shrink: 0;
@@ -3563,8 +3572,8 @@ kbd {
 }
 
 .zoom-controls .icon-button {
-  width: 26px;
-  height: 26px;
+  width: var(--control-sm);
+  height: var(--control-sm);
 }
 
 .zoom-level {
@@ -3641,8 +3650,8 @@ kbd {
 }
 
 .icon-button.small {
-  width: 28px;
-  height: 28px;
+  width: var(--control-sm);
+  height: var(--control-sm);
 }
 
 .icon-button:disabled {
@@ -3660,7 +3669,7 @@ kbd {
 .browser-address input {
   flex: 1;
   min-width: 0;
-  height: 30px;
+  height: var(--control);
   padding: 0 14px;
   border-radius: var(--radius-full);
   border: 1px solid transparent;
@@ -3761,7 +3770,7 @@ kbd {
   align-items: center;
   gap: 6px;
   max-width: 260px;
-  height: 30px;
+  height: var(--control);
   padding: 0 4px 0 10px;
   border-radius: var(--radius-full);
   background: var(--accent-soft);
@@ -3805,7 +3814,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 26px;
+  height: var(--control-sm);
   margin-left: auto;
   margin-right: 6px;
   padding: 0 10px;
@@ -3900,7 +3909,7 @@ kbd {
   align-items: center;
   gap: 5px;
   width: 100%;
-  height: 26px;
+  height: var(--control-sm);
   padding-right: 8px;
   border-radius: var(--radius-xs);
   color: var(--text-2);

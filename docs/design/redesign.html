@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tnega · Dense redesign canvas</title>
+<style>
+/* ---------- canvas chrome (not part of the design) ---------- */
+:root {
+  --font-sans: "Inter", ui-sans-serif, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body.canvas { background: #e7eaee; color: #1b2330; font: 13px/1.5 var(--font-sans); padding: 32px 40px 80px; }
+body.canvas.night { background: #07090d; color: #e8ebf1; }
+.canvas-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 6px; }
+.canvas-head h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
+.canvas-head .sub { color: #626d7c; }
+.night .canvas-head .sub { color: #8d98aa; }
+.canvas-toggle { margin-left: auto; font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid #bcc5d1; background: transparent; color: inherit; cursor: pointer; }
+.canvas-lede { max-width: 820px; color: #4f5a68; margin: 0 0 28px; }
+.night .canvas-lede { color: #b0b9c7; }
+.section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #626d7c; margin: 40px 0 12px; }
+.night .section-title { color: #8d98aa; }
+.row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+.board { display: flex; flex-direction: column; gap: 8px; }
+.board-label { font-size: 12px; color: #626d7c; display: flex; gap: 8px; align-items: center; }
+.board-label b { color: inherit; font-weight: 600; }
+.night .board-label { color: #8d98aa; }
+.pill { font-size: 10.5px; padding: 1px 6px; border-radius: 99px; background: #dfe4ea; color: #4f5a68; }
+.pill.new { background: #2f6fd0; color: #fff; }
+.night .pill { background: #2a3240; color: #b0b9c7; }
+.night .pill.new { background: #8ab4f8; color: #0b0f15; }
+
+/* ---------- design tokens: CURRENT (frozen copy of tokens.css) ---------- */
+.t-old {
+  --text-xs: 11.5px; --text-sm: 12.5px; --text-md: 14px; --text-lg: 15.5px;
+  --radius-sm: 7px; --radius-md: 10px; --radius-lg: 14px;
+  --row-h: 34px; --tool-h: 36px; --icon: 16px; --icon-sm: 14px; --icon-tile: 22px;
+  --avatar: 28px; --header-h: 48px; --sidebar-w: 276px; --pad: 10px; --gap: 9px; --lh: 1.55;
+}
+/* ---------- design tokens: PROPOSED ---------- */
+.t-new {
+  --text-xs: 11px; --text-sm: 12px; --text-md: 13px; --text-lg: 14px;
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px;
+  --row-h: 26px; --tool-h: 24px; --icon: 14px; --icon-sm: 12px; --icon-tile: 0px;
+  --avatar: 18px; --header-h: 32px; --sidebar-w: 232px; --pad: 8px; --gap: 6px; --lh: 1.5;
+}
+
+/* sky palette, unchanged from tokens.css */
+.app {
+  --bg: #f4f6f8; --bg-sidebar: #eceff3; --surface: #fff; --surface-sunken: #eef1f5;
+  --surface-hover: rgba(28,44,70,.05); --surface-active: rgba(28,44,70,.085);
+  --border: #dfe4ea; --border-strong: #bcc5d1;
+  --text: #1b2330; --text-2: #4f5a68; --text-3: #626d7c;
+  --accent: #2f6fd0; --accent-soft: #e5eefb; --accent-text: #2259ad;
+  --success: #2c7a55; --success-soft: #e2f1ea; --warn: #955c0a; --warn-soft: #f9eedb; --danger: #bd3f3a; --danger-soft: #f9e5e4;
+  --code-bg: #f1f4f7; --wx-cloud: #c9d4e2; --wx-rain: #3d8be8; --wx-snow: #9ec3ec;
+  --shadow-sm: 0 1px 2px rgba(20,32,52,.06);
+}
+.night .app {
+  --bg: #0f131a; --bg-sidebar: #0c1016; --surface: #171c26; --surface-sunken: #12161e;
+  --surface-hover: rgba(200,214,238,.06); --surface-active: rgba(200,214,238,.1);
+  --border: #2a3240; --border-strong: #3b4659;
+  --text: #e8ebf1; --text-2: #b0b9c7; --text-3: #8d98aa;
+  --accent: #8ab4f8; --accent-soft: rgba(138,180,248,.14); --accent-text: #a8c7fa;
+  --success: #7dcfa0; --success-soft: rgba(125,207,160,.13); --warn: #ecbc6b; --warn-soft: rgba(236,188,107,.13); --danger: #f28b82; --danger-soft: rgba(242,139,130,.13);
+  --code-bg: #12161e; --wx-cloud: #3a4458; --wx-rain: #7ab3f5; --wx-snow: #d2e3f8;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+}
+
+/* ---------- shared component styles, driven only by tokens ---------- */
+.app { font-family: var(--font-sans); font-size: var(--text-md); line-height: var(--lh); color: var(--text); background: var(--bg);
+  border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden; display: flex; }
+.ico { width: var(--icon); height: var(--icon); flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.ico.sm { width: var(--icon-sm); height: var(--icon-sm); }
+.mono { font-family: var(--font-mono); font-size: calc(var(--text-sm) - .5px); }
+.muted { color: var(--text-3); }
+.dim { color: var(--text-2); }
+
+/* sidebar */
+.sb { min-height: 0; width: var(--sidebar-w); background: var(--bg-sidebar); border-right: 1px solid var(--border); padding: var(--pad); display: flex; flex-direction: column; gap: 4px; }
+.sb-top { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px; }
+.brand-name { font-weight: 700; letter-spacing: -.02em; }
+.t-old .brand-name { font-size: 16px; } .t-new .brand-name { font-size: 13px; }
+.icon-btn { display: grid; place-items: center; width: calc(var(--icon) + 10px); height: calc(var(--icon) + 10px); border-radius: var(--radius-sm); color: var(--text-3); }
+.icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+.ws { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+.t-new .ws { background: transparent; border-color: transparent; box-shadow: none; padding: 3px 4px; }
+.t-new .ws:hover { background: var(--surface-hover); }
+.ws-icon { display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent-text); flex: none; }
+.t-old .ws-icon { width: 30px; height: 30px; } .t-new .ws-icon { width: 18px; height: 18px; }
+.ws-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.t-new .ws-text { flex-direction: row; gap: 6px; align-items: baseline; }
+.ws-path { font-size: var(--text-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search { display: flex; align-items: center; gap: 6px; height: var(--row-h); padding: 0 8px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); color: var(--text-3); font-size: var(--text-sm); }
+.t-new .search { background: transparent; }
+.kbd { margin-left: auto; font-size: 10px; font-family: var(--font-mono); padding: 0 4px; border: 1px solid var(--border); border-radius: 3px; }
+.group-label { font-size: var(--text-xs); color: var(--text-3); padding: 8px 8px 2px; font-weight: 500; }
+.t-new .group-label { padding: 6px 6px 1px; text-transform: uppercase; letter-spacing: .05em; font-size: 10px; }
+.sess { display: flex; align-items: center; gap: var(--gap); height: var(--row-h); padding: 0 8px; border-radius: var(--radius-sm); color: var(--text-2); }
+.t-new .sess { padding: 0 6px; }
+.sess:hover { background: var(--surface-hover); }
+.sess.on { background: var(--surface-active); color: var(--text); font-weight: 500; }
+.sess-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-meta { font-size: var(--text-xs); color: var(--text-3); flex: none; display: flex; gap: 6px; align-items: center; }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.dot.run { background: var(--wx-rain); } .dot.wait { background: var(--warn); } .dot.err { background: var(--danger); } .dot.idle { background: transparent; border: 1px solid var(--border-strong); }
+.diffstat { font-family: var(--font-mono); font-size: 10.5px; }
+.add { color: var(--success); } .del { color: var(--danger); }
+.sb-foot { margin-top: auto; display: flex; gap: 2px; align-items: center; padding-top: 6px; border-top: 1px solid var(--border); }
+.t-new .sb-foot .label { display: none; }
+.sb-foot .fbtn { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: var(--radius-sm); color: var(--text-3); font-size: var(--text-sm); }
+
+/* main */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--surface); }
+.hdr { height: var(--header-h); display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--border); flex: none; }
+.hdr-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-old .hdr-title { font-size: 15px; }
+.crumb { color: var(--text-3); font-size: var(--text-sm); white-space: nowrap; }
+.hdr-right { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--text-2); background: var(--surface-sunken); white-space: nowrap; }
+.t-old .chip { height: 26px; padding: 0 10px; border-radius: 99px; font-size: var(--text-sm); }
+.conv { flex: 1; overflow: hidden; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.t-old .conv { padding: 28px 32px; gap: 22px; }
+.user-msg { align-self: flex-end; max-width: 78%; background: var(--surface-sunken); padding: 6px 10px; border-radius: var(--radius-lg); }
+.t-old .user-msg { padding: 10px 14px; font-size: var(--text-lg); }
+.turn { display: flex; gap: 10px; }
+.t-new .turn { gap: 8px; }
+.turn-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.t-old .turn-body { gap: 10px; font-size: var(--text-lg); }
+.turn-body p { margin: 0; }
+.avatar { width: var(--avatar); height: var(--avatar); flex: none; margin-top: 1px; }
+
+/* tool rows */
+.tools { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.t-new .tools { border: 0; border-left: 1px solid var(--border); border-radius: 0; padding-left: 8px; }
+.tool { display: flex; align-items: center; gap: var(--gap); min-height: var(--tool-h); padding: 0 10px; font-size: var(--text-sm); color: var(--text-2); }
+.t-old .tool { padding: 6px 10px; }
+.t-old .tool + .tool { border-top: 1px solid var(--border); }
+.t-new .tool { padding: 0 4px; border-radius: var(--radius-sm); }
+.tool:hover { background: var(--surface-hover); }
+.tool-tile { display: grid; place-items: center; width: var(--icon-tile); height: var(--icon-tile); border-radius: 6px; background: var(--surface-active); color: var(--text-2); flex: none; }
+.t-new .tool-tile { width: auto; height: auto; background: none; color: var(--text-3); }
+.tool-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+.t-new .tool-name { font-weight: 500; }
+.tool-arg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+.tool-meta { font-size: var(--text-xs); color: var(--text-3); white-space: nowrap; display: flex; gap: 8px; }
+.collapsed { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-3); }
+.files { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.files-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: var(--text-sm); background: var(--surface-sunken); color: var(--text-2); }
+.t-old .files-head { padding: 8px 12px; }
+.file { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; font-size: var(--text-sm); }
+.t-old .file { height: 32px; padding: 0 12px; }
+.file .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; width: 10px; }
+.st.M { color: var(--warn); } .st.A { color: var(--success); } .st.D { color: var(--danger); }
+
+/* approval */
+.approval { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: var(--radius-md); padding: 6px 8px; display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); }
+.t-old .approval { padding: 12px 14px; flex-direction: column; align-items: stretch; gap: 10px; font-size: var(--text-md); }
+.approval code { font-family: var(--font-mono); font-size: 11.5px; background: var(--surface); padding: 1px 5px; border-radius: 3px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--radius-sm); font-size: var(--text-sm); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); white-space: nowrap; }
+.t-old .btn { height: 30px; padding: 0 14px; border-radius: var(--radius-md); font-size: var(--text-md); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.night .btn.primary { color: #0b0f15; }
+.btn-row { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* composer */
+.composer { padding: 8px 20px 12px; }
+.t-old .composer { padding: 12px 32px 20px; }
+.cbox { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
+.t-old .cbox { border-radius: 14px; }
+.cinput { padding: 8px 10px 4px; color: var(--text-3); }
+.t-old .cinput { padding: 14px 14px 10px; min-height: 52px; font-size: var(--text-lg); }
+.cbar { display: flex; align-items: center; gap: 2px; padding: 4px 6px; }
+.t-old .cbar { padding: 6px 8px; gap: 6px; }
+.send { margin-left: auto; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--radius-sm); background: var(--accent); color: #fff; }
+.t-old .send { width: 32px; height: 32px; border-radius: 99px; }
+.night .send { color: #0b0f15; }
+.ctx { font-size: var(--text-xs); color: var(--text-3); display: flex; gap: 10px; padding: 4px 4px 0; }
+
+/* workbench */
+.wb { width: 400px; border-left: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; }
+.tabs { display: flex; align-items: center; gap: 2px; height: var(--header-h); padding: 0 6px; border-bottom: 1px solid var(--border); }
+.tab { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--text-3); }
+.t-old .tab { height: 32px; padding: 0 12px; }
+.tab.on { background: var(--surface-active); color: var(--text); }
+.tab .badge { font-size: 10px; padding: 0 4px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); }
+.toolbar { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: var(--text-xs); color: var(--text-3); }
+.t-old .toolbar { height: 40px; }
+.split { display: flex; flex: 1; margin: 0 8px 8px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); }
+.split-list { width: 150px; border-right: 1px solid var(--border); padding: 4px; }
+.split-list .file { padding: 0 4px; border-radius: var(--radius-sm); }
+.split-list .file.on { background: var(--accent-soft); }
+.diff { flex: 1; font-family: var(--font-mono); font-size: 11px; line-height: 17px; background: var(--code-bg); padding: 4px 0; overflow: hidden; }
+.t-old .diff { font-size: 12.5px; line-height: 21px; }
+.dl { padding: 0 8px; white-space: pre; display: flex; gap: 8px; }
+.dl .ln { color: var(--text-3); width: 18px; text-align: right; flex: none; }
+.dl.a { background: var(--success-soft); } .dl.r { background: var(--danger-soft); }
+
+/* native window controls (Electron titleBarOverlay, 32px tall, ~138px wide on Windows) */
+.app { position: relative; }
+.winctl { position: absolute; top: 0; right: 0; height: 32px; display: flex; z-index: 2; }
+.winctl span { width: 46px; display: grid; place-items: center; color: var(--text-2); font-size: 13px; }
+.winctl span:last-child:hover { background: #c42b1c; color: #fff; }
+.winctl-zone { position: absolute; top: 0; right: 0; width: 138px; height: 32px; outline: 1px dashed rgba(189,63,58,.55); outline-offset: -1px; pointer-events: none; z-index: 3; }
+.clear-ctl { padding-right: 146px !important; }
+.t-new .hdr .hdr-right { margin-left: auto; }
+
+/* sidebar grouped by workspace */
+.ws-group { display: flex; flex-direction: column; }
+.ws-head { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px; border-radius: var(--radius-sm); color: var(--text-2); font-size: var(--text-sm); font-weight: 600; }
+.ws-head:hover { background: var(--surface-hover); }
+.ws-head .ws-add { margin-left: auto; opacity: 0; color: var(--text-3); display: flex; gap: 2px; }
+.ws-head:hover .ws-add { opacity: 1; }
+.ws-head .count { font-weight: 400; color: var(--text-3); font-size: var(--text-xs); }
+.ws-head .ico.chev { color: var(--text-3); transition: transform .12s; }
+.ws-group.open .ws-head .ico.chev { transform: rotate(90deg); }
+.ws-group .sess { padding-left: 22px; }
+.sess.proj .sess-title { color: var(--text); }
+.proj-ico { color: var(--accent-text); display: flex; }
+.more-row { padding-left: 22px; height: 22px; display: flex; align-items: center; font-size: var(--text-xs); color: var(--text-3); }
+.sb .sess .diffstat { display: none; }
+.sb .sess:hover .diffstat { display: inline; }
+.sb-list { display: flex; flex-direction: column; gap: 4px; overflow: hidden; flex: 1; min-height: 0; }
+
+/* project room */
+.room { flex: 1; overflow: hidden; padding: 12px 20px; display: flex; flex-direction: column; gap: 10px; }
+.day { display: flex; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--text-3); }
+.day::before, .day::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.msg { display: flex; gap: 8px; }
+.msg-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.msg-head { display: flex; gap: 6px; align-items: baseline; font-size: var(--text-sm); }
+.msg-head b { font-weight: 600; }
+.msg-head .t { font-size: var(--text-xs); color: var(--text-3); }
+.me { width: 18px; height: 18px; border-radius: 50%; background: #9a3a63; color: #fff; font-size: 10px; display: grid; place-items: center; flex: none; margin-top: 1px; }
+.reply-chip { display: flex; gap: 4px; align-items: center; font-size: var(--text-xs); color: var(--text-3); }
+.reply-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: var(--text-sm); max-width: 520px; }
+.tcard:hover { border-color: var(--border-strong); }
+.tcard .tt { font-weight: 500; white-space: nowrap; }
+.tcard .ts { flex: 1; min-width: 0; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shape { width: 12px; height: 12px; flex: none; }
+.acard { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-md); max-width: 320px; font-size: var(--text-sm); }
+.acard .k { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: var(--accent-soft); color: var(--accent-text); }
+.typing { font-size: var(--text-xs); color: var(--text-3); }
+
+/* board */
+.board-p { flex: 1; overflow: hidden; margin: 0 8px 8px; display: flex; flex-direction: column; gap: 8px; }
+.today { display: grid; grid-template-columns: auto repeat(4, 1fr); align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.stat { display: flex; flex-direction: column; line-height: 1.2; }
+.stat b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 10.5px; color: var(--text-3); }
+.lane-h { display: flex; align-items: center; gap: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); font-weight: 600; padding: 2px 2px 0; }
+.lane-h .n { font-weight: 400; }
+.bcard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; font-size: var(--text-sm); }
+.bcard.need { border-color: var(--warn); }
+.bcard .top { display: flex; align-items: center; gap: 6px; }
+.bcard .top b { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bcard .line { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bcard .foot { display: flex; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--text-3); }
+.bar { flex: 1; height: 3px; border-radius: 2px; background: var(--surface-active); overflow: hidden; max-width: 80px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.achip { font-size: 10px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--border); color: var(--text-2); }
+.folded { display: flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--text-3); padding: 2px; }
+
+/* specs */
+.spec { background: #fff; border: 1px solid #dfe4ea; border-radius: 10px; padding: 16px 18px; font-size: 12.5px; }
+.night .spec { background: #171c26; border-color: #2a3240; }
+.spec table { border-collapse: collapse; width: 100%; }
+.spec th, .spec td { text-align: left; padding: 4px 14px 4px 0; border-bottom: 1px solid rgba(127,140,160,.18); white-space: nowrap; }
+.spec th { font-weight: 600; font-size: 11px; color: #626d7c; text-transform: uppercase; letter-spacing: .04em; }
+.spec td.was { color: #8d98aa; text-decoration: line-through; }
+.spec td.now { font-weight: 600; }
+.spec td.why { white-space: normal; color: #626d7c; }
+.night .spec td.why, .night .spec th { color: #8d98aa; }
+.icon-grid { display: grid; grid-template-columns: repeat(8, 64px); gap: 6px; }
+.icon-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0 6px; border-radius: 6px; font-size: 10px; color: #626d7c; }
+.icon-cell svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: #1b2330; }
+.night .icon-cell svg { color: #e8ebf1; }
+.sizes { display: flex; gap: 24px; align-items: flex-end; margin-top: 12px; }
+.sizes div { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10.5px; color: #626d7c; }
+.sizes svg { stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; color: #1b2330; }
+.night .sizes svg { color: #e8ebf1; }
+.rules { margin: 0; padding-left: 18px; max-width: 560px; }
+.rules li { margin: 3px 0; }
+</style>
+</head>
+<body class="canvas">
+
+<!-- icon sprite: one stroke family, 16-unit grid, 1.5 stroke, drawn to read at 12px -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="m10 10 3 3"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 16 16"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 16 16"><path d="m3 13 .6-2.6L10.5 3.5l2 2-6.9 6.9z"/></symbol>
+    <symbol id="i-term" viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c2 2 2 9 0 11M8 2.5c-2 2-2 9 0 11"/></symbol>
+    <symbol id="i-diff" viewBox="0 0 16 16"><path d="M5 3v6M2 6h6M10 7v6M8 10h4"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M9.5 3v10"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/><path d="M8 2v1.5M8 12.5V14M2 8h1.5M12.5 8H14M3.8 3.8l1 1M11.2 11.2l1 1M3.8 12.2l1-1M11.2 4.8l1-1"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></symbol>
+    <symbol id="i-down" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01" stroke-width="2.2"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 16 16"><path d="M12 7.5 7.5 12a3 3 0 0 1-4.2-4.2L8 3.2a2 2 0 0 1 2.8 2.8L6.3 10.5a1 1 0 0 1-1.4-1.4L9 5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="m3 11.5 3.5-3.5 3 3 1.5-1.5 2.5 2.5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 12.5v-9M4 7.5l4-4 4 4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 16 16"><path d="M9 2 4 9h4l-1 5 5-7H8z"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="11" cy="6" r="1.5"/><path d="M5 5.5v5M11 7.5c0 2-6 1.5-6 3"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5"/><path d="M8 2v1.2M8 12.8V14M2 8h1.2M12.8 8H14"/></symbol>
+    <symbol id="i-agent" viewBox="0 0 16 16"><circle cx="8" cy="6" r="2.5"/><path d="M3.5 13.5c.8-2.2 2.5-3.3 4.5-3.3s3.7 1.1 4.5 3.3"/></symbol>
+    <symbol id="i-board" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M6.2 3v10M9.8 3v10"/></symbol>
+    <symbol id="i-library" viewBox="0 0 16 16"><path d="M3 3h3v10H3zM7 3h3v10H7zM11 3.5l2.2.6-2 9-2.2-.6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></symbol>
+    <symbol id="i-reply" viewBox="0 0 16 16"><path d="M6.5 4 3 7.5 6.5 11M3 7.5h6a4 4 0 0 1 4 4V12"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path stroke="none" fill="var(--accent, #2f6fd0)" d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.5a4.8 4.8 0 0 1-.5 9.5z"/><circle stroke="none" cx="10" cy="13" r="1.4" fill="#fff"/><circle stroke="none" cx="14.5" cy="13" r="1.4" fill="#fff"/></symbol>
+  </defs>
+</svg>
+
+<div class="canvas-head">
+  <h1>Tnega · dense redesign</h1>
+  <span class="sub">docs/design/redesign.html · 2026-10-08 · draft for review</span>
+  <button class="canvas-toggle" onclick="document.body.classList.toggle('night')">Day / Night</button>
+</div>
+<p class="canvas-lede">
+  A whole-app change: same sky palette and weather language, but a <b>tighter scale</b>. Icons drop to 12–14px line glyphs with no tinted tiles,
+  rows go from 34–36px to 24–26px, and chrome (workspace card, header, composer) gets thinner, so noticeably more fits on one screen
+  without making the body text hard to read. Each pair below uses identical markup; only the token block changes (<code>.t-old</code> → <code>.t-new</code>).
+</p>
+
+<!-- ================= 1. Full window ================= -->
+<div class="section-title">1 · Session window: current vs proposed</div>
+<div class="row">
+  <div class="board">
+    <div class="board-label"><span class="pill">current</span><b>1180 × 640</b></div>
+    <div class="app t-old" style="width:1180px;height:640px" id="win-old"></div>
+  </div>
+  <div class="board">
+    <div class="board-label"><span class="pill new">proposed</span><b>1180 × 640</b> same window: all 18 sessions fit (current: 15), and the whole turn fits (current: cut off ~240px below the fold)</div>
+    <div class="app t-new" style="width:1180px;height:640px" id="win-new"></div>
+  </div>
+</div>
+
+<div class="spec" style="margin-top:12px;max-width:1180px">
+  <b>Sidebar is organised by workspace.</b> The workspace switcher card and the Sessions / Projects toggle are gone. Each workspace is a collapsible group:
+  its projects (board icon) come first, then its sessions by recency, then "N older". Hovering a workspace row shows <i>New project</i> and <i>New session</i>; "Add workspace" sits in the footer.
+  <b>Window controls:</b> the dashed box marks the native minimise / maximise / close overlay (138 × 32). <code>--header-h</code> becomes 32px, the same as <code>TITLE_BAR_HEIGHT</code>,
+  so the controls sit inside whichever bar touches the top-right corner, which reserves 146px of padding on the right (<code>.window-controls-header</code> already does this).
+</div>
+
+<!-- ================= 1b. Project ================= -->
+<div class="section-title">1b · Project: room + Board (proposed)</div>
+<div class="row">
+  <div class="board">
+    <div class="board-label"><span class="pill new">proposed</span><b>Room + Board</b> threads as one-line cards in the room; the Board holds the detail</div>
+    <div class="app t-new" style="width:1180px;height:640px" id="win-proj"></div>
+  </div>
+  <div class="board">
+    <div class="board-label"><span class="pill new">proposed</span><b>Thread open in the panel</b> checklist first, then its own short log and a one-line box</div>
+    <div class="app t-new" style="width:1180px;height:640px" id="win-thread"></div>
+  </div>
+</div>
+
+<!-- ================= 2. Tokens ================= -->
+<div class="section-title">2 · Token changes (tokens.css)</div>
+<div class="row">
+  <div class="spec" style="width:760px">
+    <table>
+      <tr><th>Token</th><th>Was</th><th>Now</th><th>Why</th></tr>
+      <tr><td>--text-md (UI)</td><td class="was">14px</td><td class="now">13px</td><td class="why">UI chrome default; matches desktop IDE density</td></tr>
+      <tr><td>--text-lg (reading)</td><td class="was">15.5 / 1.55</td><td class="now">14 / 1.5</td><td class="why">Agent prose stays the largest text and still holds 7:1 contrast</td></tr>
+      <tr><td>--text-sm / xs</td><td class="was">12.5 / 11.5</td><td class="now">12 / 11</td><td class="why">metadata, tool rows</td></tr>
+      <tr><td>--row-h (new)</td><td class="was">34px</td><td class="now">26px</td><td class="why">sessions, tree, menu items</td></tr>
+      <tr><td>--tool-h (new)</td><td class="was">36px</td><td class="now">24px</td><td class="why">tool rows read as a log, not cards</td></tr>
+      <tr><td>--icon / --icon-sm (new)</td><td class="was">14–22px, mixed</td><td class="now">14 / 12px</td><td class="why">two sizes only; 16px reserved for the brand</td></tr>
+      <tr><td>tool icon tile</td><td class="was">22px tinted square</td><td class="now">none</td><td class="why">glyph sits bare in --text-3</td></tr>
+      <tr><td>--avatar</td><td class="was">28px</td><td class="now">18px</td><td class="why">weather still readable; avatar now sits on the text line</td></tr>
+      <tr><td>--header-h (new)</td><td class="was">48px</td><td class="now">32px</td><td class="why">= TITLE_BAR_HEIGHT, so native window controls sit in the bar</td></tr>
+      <tr><td>--radius sm / md / lg</td><td class="was">7 / 10 / 14</td><td class="now">4 / 6 / 8</td><td class="why">small radii suit tight rows; xl 20→12 for dialogs</td></tr>
+      <tr><td>--sidebar-width</td><td class="was">276px</td><td class="now">232px</td><td class="why">titles still fit ~30 chars</td></tr>
+      <tr><td>colors</td><td colspan="2" class="now">unchanged</td><td class="why">contrast.test.ts keeps passing</td></tr>
+    </table>
+  </div>
+  <div class="spec" style="width:420px">
+    <b>Rules</b>
+    <ol class="rules">
+      <li>Every icon is a 1.5px stroke on a 16-unit grid, drawn at 14px (or 12px inline). No fills except the brand cloud and status dots.</li>
+      <li>Icons are <b>--text-3</b> at rest and <b>--text</b> on hover; color carries meaning only for status.</li>
+      <li>Status is a 6px dot plus a label or tooltip. The weather avatar appears only on the active turn and in the header.</li>
+      <li>No bordered card around a single tool row; groups get a 1px left rule instead.</li>
+      <li>Secondary chrome (workspace card, search field, footer labels) goes transparent and only appears on hover.</li>
+      <li>Hit targets stay ≥24px even when the glyph is 12px; the padding does the work.</li>
+      <li>Optional <code>data-density="comfortable"</code> restores the old scale for anyone who wants it.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ================= 3. Icons ================= -->
+<div class="section-title">3 · Icon set: one family, mini</div>
+<div class="row">
+  <div class="spec" style="width:620px">
+    <div class="icon-grid" id="icon-grid"></div>
+    <div class="sizes">
+      <div><svg width="22" height="22" stroke-width="1.5"><use href="#i-term"/></svg>was 22 tile</div>
+      <div><svg width="16" height="16" stroke-width="1.5"><use href="#i-term"/></svg>16 · brand only</div>
+      <div><svg width="14" height="14" stroke-width="1.5"><use href="#i-term"/></svg>14 · default</div>
+      <div><svg width="12" height="12" stroke-width="1.5"><use href="#i-term"/></svg>12 · inline / meta</div>
+    </div>
+  </div>
+  <div class="spec" style="width:560px">
+    <b>Status: dot + label, avatar only where it matters</b>
+    <div class="app t-new" style="border:0;margin-top:10px;flex-direction:column;background:transparent">
+      <div class="sess"><span class="dot idle"></span><span class="sess-title">Ready / 晴</span><span class="sess-meta">idle</span></div>
+      <div class="sess"><span class="dot run"></span><span class="sess-title">Running tools / 雨</span><span class="sess-meta">3 tools · 12s</span></div>
+      <div class="sess"><span class="dot wait"></span><span class="sess-title">Waiting for you / 雪</span><span class="sess-meta">approval</span></div>
+      <div class="sess"><span class="dot err"></span><span class="sess-title">Error / 雷暴</span><span class="sess-meta">retry</span></div>
+    </div>
+    <p class="muted" style="margin:10px 0 0;font-size:11.5px">The weather animation keeps the full avatar in the session header and on the turn in progress. Lists show a dot whose color matches the weather.</p>
+  </div>
+</div>
+
+<script>
+const I = (id, cls = '') => `<svg class="ico ${cls}"><use href="#i-${id}"/></svg>`
+const cloud = (s) => `<svg class="avatar" viewBox="0 0 24 24" style="width:${s};height:${s}"><use href="#i-cloud"/></svg>`
+
+const sessions = [
+  ['Today'],
+  ['Refactor approval pipeline', 'run', '2m', '+84 −12', true],
+  ['Fix spill threshold on Windows', 'wait', '14m', '+6 −2'],
+  ['Weather calibration page', 'idle', '1h', ''],
+  ['Publish 0.4.14', 'idle', '3h', '+2 −2'],
+  ['Yesterday'],
+  ['Browser element picker chips', 'err', '1d', '+120 −40'],
+  ['Office preview for xlsx', 'idle', '1d', ''],
+  ['Subagent transcript tabs', 'idle', '1d', '+33 −8'],
+  ['DeepSeek route fallback', 'idle', '1d', ''],
+  ['Earlier'],
+  ['Composer image downscale', 'idle', '3d', ''],
+  ['Terminal replay on reconnect', 'idle', '4d', ''],
+  ['Headless screencast sizing', 'idle', '5d', ''],
+  ['Contrast test for syntax tokens', 'idle', '6d', ''],
+  ['Project coordinator avatar', 'idle', '1w', ''],
+  ['Changes panel refresh', 'idle', '1w', ''],
+  ['Spill file rotation', 'idle', '2w', ''],
+  ['Jobs panel empty state', 'idle', '2w', ''],
+  ['QuickJS runtime limits', 'idle', '2w', ''],
+  ['Desktop update feed', 'idle', '3w', ''],
+]
+
+const diffstat = ds => ds ? `<span class="diffstat"><span class="add">${ds.split(' ')[0]}</span>${ds.split(' ')[1] ? ` <span class="del">${ds.split(' ')[1]}</span>` : ''}</span>` : ''
+
+// Proposed sidebar: workspaces are the groups; projects sit first in their workspace, then sessions by recency.
+const workspaces = [
+  { name: 'tnega', open: true, items: [
+    ['p', 'Approval v2', 'run', '2 working'],
+    ['p', 'Desktop 0.5 release', 'wait', 'needs you'],
+    ['s', 'Refactor approval pipeline', 'run', '2m', '+84 −12'],
+    ['s', 'Fix spill threshold on Windows', 'wait', '14m', '+6 −2'],
+    ['s', 'Weather calibration page', 'idle', '1h'],
+    ['s', 'Publish 0.4.14', 'idle', '3h', '+2 −2'],
+    ['s', 'Browser element picker chips', 'err', '1d', '+120 −40'],
+    ['s', 'Office preview for xlsx', 'idle', '1d'],
+    ['s', 'Subagent transcript tabs', 'idle', '1d'],
+    ['more', '14 older'],
+  ] },
+  { name: 'tnega-e2e', open: true, items: [
+    ['s', 'Headless screencast sizing', 'idle', '5d'],
+    ['s', 'Terminal replay on reconnect', 'idle', '6d'],
+  ] },
+  { name: 'work-e2e', open: false, count: 12 },
+  { name: 'tnega-new-frontend', open: false, count: 5 },
+]
+
+function sidebarGrouped(active) {
+  const groups = workspaces.map(w => {
+    const items = w.open ? w.items.map(([k, t, st, time, ds]) => {
+      if (k === 'more') return `<div class="more-row">${t}</div>`
+      const on = t === active
+      if (k === 'p') return `<div class="sess proj ${on ? 'on' : ''}"><span class="proj-ico">${I('board', 'sm')}</span><span class="sess-title">${t}</span><span class="sess-meta"><span class="dot ${st}"></span>${time}</span></div>`
+      return `<div class="sess ${on ? 'on' : ''}"><span class="dot ${st}"></span><span class="sess-title">${t}</span><span class="sess-meta">${diffstat(ds)}<span>${time}</span></span></div>`
+    }).join('') : ''
+    return `<div class="ws-group ${w.open ? 'open' : ''}">
+      <div class="ws-head">${I('chevron', 'sm chev')}${I('folder', 'sm')}<span>${w.name}</span>${w.open ? '' : `<span class="count">${w.count}</span>`}
+        <span class="ws-add"><span title="New project">${I('board', 'sm')}</span><span title="New session">${I('plus', 'sm')}</span></span></div>
+      ${items}</div>`
+  }).join('')
+  return `<aside class="sb">
+    <div class="sb-top">${cloud('16px')}<span class="brand-name">Tnega</span>
+      <span style="margin-left:auto;display:flex;gap:2px"><span class="icon-btn">${I('plus')}</span></span></div>
+    <div class="search">${I('search', 'sm')}<span>Search</span><span class="kbd">Ctrl K</span></div>
+    <div class="sb-list">${groups}</div>
+    <div class="sb-foot"><span class="fbtn">${I('gear')}</span><span class="fbtn">${I('sun')}</span><span class="fbtn">${I('folder')}<span style="font-size:var(--text-xs)">Add workspace</span></span><span class="fbtn" style="margin-left:auto">${I('agent')}</span></div>
+  </aside>`
+}
+
+function sidebar(dense, active = 'Refactor approval pipeline') {
+  if (dense) return sidebarGrouped(active)
+  const rows = sessions.map(s => {
+    if (s.length === 1) return `<div class="group-label">${s[0]}</div>`
+    const [t, st, time, ds, on] = s
+    const lead = dense ? `<span class="dot ${st}"></span>` : `${I('chat', 'sm')}`
+    const meta = dense
+      ? `${ds ? `<span class="diffstat"><span class="add">${ds.split(' ')[0]}</span> <span class="del">${ds.split(' ')[1]}</span></span>` : ''}<span>${time}</span>`
+      : `<span>${time}</span>`
+    return `<div class="sess ${on ? 'on' : ''}">${lead}<span class="sess-title">${t}</span><span class="sess-meta">${meta}</span></div>`
+  }).join('')
+  return `<aside class="sb">
+    <div class="sb-top">${cloud(dense ? '16px' : '24px')}<span class="brand-name">Tnega</span>
+      <span style="margin-left:auto;display:flex;gap:2px"><span class="icon-btn">${I('plus')}</span>${dense ? '' : `<span class="icon-btn">${I('panel')}</span>`}</span></div>
+    <div class="ws"><span class="ws-icon">${I('folder', 'sm')}</span><span class="ws-text"><b style="font-size:var(--text-md)">tnega</b><span class="ws-path">D:\\claude-workspace\\hello-claude\\tnega</span></span>${dense ? `<span style="margin-left:auto" class="muted">${I('down','sm')}</span>` : ''}</div>
+    <div class="search">${I('search', 'sm')}<span>Search sessions</span><span class="kbd">Ctrl K</span></div>
+    <div style="display:flex;flex-direction:column;gap:${dense ? 0 : 2}px;overflow:hidden;flex:1;min-height:0">${rows}</div>
+    <div class="sb-foot"><span class="fbtn">${I('gear')}<span class="label">Settings</span></span><span class="fbtn">${I('sun')}<span class="label">Theme</span></span><span class="fbtn" style="margin-left:auto">${I('agent')}<span class="label">Account</span></span></div>
+  </aside>`
+}
+
+const tools = [
+  ['file', 'Read', 'packages/approval-review/src/index.ts', '0.2s'],
+  ['search', 'Grep', '"needsAttention" in apps/web/src', '0.1s · 7 hits'],
+  ['pencil', 'Edit', 'packages/approval-review/src/pipeline.ts', '+42 −9'],
+  ['term', 'Bash', 'pnpm exec vitest run packages/approval-review', '4.8s · 31 passed'],
+]
+
+function main(dense) {
+  const toolRows = tools.map(([ic, n, a, m]) =>
+    `<div class="tool"><span class="tool-tile">${I(ic, dense ? 'sm' : '')}</span><span class="tool-name">${n}</span><span class="tool-arg ${dense ? 'mono' : ''}">${a}</span><span class="tool-meta">${m}</span></div>`).join('')
+  return `<section class="main">
+    <header class="hdr">${cloud(dense ? '18px' : '28px')}<span class="hdr-title">Refactor approval pipeline</span>
+      ${dense ? `<span class="crumb">· tnega · ${I('branch','sm')} main</span>` : ''}
+      <span class="hdr-right">
+        <span class="chip">${dense ? '' : I('bolt','sm')}deepseek-v4 ${I('down','sm')}</span>
+        ${dense ? `<span class="chip">38% ctx</span>` : ''}
+        <span class="icon-btn">${I('panel')}</span><span class="icon-btn">${I('more')}</span>
+      </span>
+    </header>
+    <div class="conv">
+      <div class="user-msg">Split the approval pipeline so review and LLM approvers share one queue, then run the package tests.</div>
+      <div class="turn">${cloud('var(--avatar)')}<div class="turn-body">
+        <p>I'll move the queue into <code class="mono">pipeline.ts</code> and have both approvers consume it.</p>
+        <div class="tools">${toolRows}</div>
+        <p>Done. Both approvers now pull from <code class="mono">ApprovalQueue</code>; ordering is FIFO per session and all 31 tests pass.</p>
+        <div class="files">
+          <div class="files-head">${I('diff','sm')}<span>3 files changed</span><span class="diffstat" style="margin-left:auto"><span class="add">+84</span> <span class="del">−12</span></span></div>
+          <div class="file"><span class="st M">M</span><span class="path mono">packages/approval-review/src/pipeline.ts</span><span class="diffstat"><span class="add">+42</span> <span class="del">−9</span></span></div>
+          <div class="file"><span class="st A">A</span><span class="path mono">packages/approval-review/src/queue.ts</span><span class="diffstat"><span class="add">+38</span></span></div>
+          <div class="file"><span class="st M">M</span><span class="path mono">packages/approval-llm/src/index.ts</span><span class="diffstat"><span class="add">+4</span> <span class="del">−3</span></span></div>
+        </div>
+        <div class="approval">${dense ? `<span style="color:var(--warn)">${I('bolt','sm')}</span><span>Run</span>` : '<b>Approve command?</b>'}
+          <code>git commit -am "approval: shared queue"</code>
+          <span class="btn-row"><span class="btn">Deny</span><span class="btn primary">${I('check','sm')}Allow</span></span></div>
+      </div></div>
+    </div>
+    <div class="composer"><div class="cbox">
+      <div class="cinput">Ask Tnega, @ to mention files, / for commands</div>
+      <div class="cbar"><span class="icon-btn">${I('clip')}</span><span class="icon-btn">${I('image')}</span>
+        ${dense ? '<span class="ctx"><span>Auto-approve: reads</span><span>Ctrl+J workbench</span></span>' : ''}
+        <span class="send">${I('up', dense ? 'sm' : '')}</span></div>
+    </div></div>
+  </section>`
+}
+
+function workbench(dense) {
+  const lines = [
+    ['12', ' ', 'export class ApprovalQueue {'],
+    ['13', 'r', '-  private items: Request[] = []'],
+    ['13', 'a', '+  private readonly items = new Map<string, Request[]>()'],
+    ['14', ' ', ''],
+    ['15', 'a', '+  enqueue(session: string, req: Request) {'],
+    ['16', 'a', '+    const q = this.items.get(session) ?? []'],
+    ['17', 'a', '+    q.push(req); this.items.set(session, q)'],
+    ['18', 'a', '+  }'],
+    ['19', ' ', ''],
+    ['20', ' ', '  next(session: string) {'],
+    ['21', 'r', '-    return this.items.shift()'],
+    ['21', 'a', '+    return this.items.get(session)?.shift()'],
+    ['22', ' ', '  }'],
+    ['23', ' ', '}'],
+  ].map(([n, k, t]) => `<div class="dl ${k}"><span class="ln">${n}</span><span>${t.replace(/</g, '&lt;')}</span></div>`).join('')
+  return `<aside class="wb">
+    <div class="tabs clear-ctl">
+      <span class="tab">${I('folder','sm')}${dense ? '' : 'Files'}</span>
+      <span class="tab on">${I('diff','sm')}Changes <span class="badge">3</span></span>
+      <span class="tab">${I('term','sm')}${dense ? '' : 'Terminal'}</span>
+      <span class="tab">${I('globe','sm')}${dense ? '' : 'Browser'}</span>
+      <span style="margin-left:auto" class="icon-btn">${I('more')}</span>
+    </div>
+    <div class="toolbar">${I('branch','sm')}<span>main · vs HEAD</span><span style="margin-left:auto">Unified ${I('down','sm')}</span></div>
+    <div class="split">
+      <div class="split-list">
+        <div class="file on"><span class="st M">M</span><span class="path">pipeline.ts</span></div>
+        <div class="file"><span class="st A">A</span><span class="path">queue.ts</span></div>
+        <div class="file"><span class="st M">M</span><span class="path">index.ts</span></div>
+      </div>
+      <div class="diff">${lines}</div>
+    </div>
+  </aside>`
+}
+
+// Thread avatars keep their random shape + colour (design spec §2); drawn at 12px.
+const shape = (k, c) => {
+  const p = { circle: '<circle cx="6" cy="6" r="5.5"/>', square: '<rect x=".5" y=".5" width="11" height="11" rx="3"/>',
+    diamond: '<path d="M6 .5 11.5 6 6 11.5.5 6z"/>', drop: '<path d="M6 .5C9 4 10.5 6 10.5 7.8a4.5 4.5 0 0 1-9 0C1.5 6 3 4 6 .5z"/>' }[k]
+  return `<svg class="shape" viewBox="0 0 12 12" fill="${c}">${p}</svg>`
+}
+const TH = {
+  queue: ['circle', '#3d8be8', 'Shared approval queue'],
+  docs: ['diamond', '#9a3a63', 'Migration notes'],
+  bench: ['square', '#2c7a55', 'Benchmark approvers'],
+  order: ['drop', '#955c0a', 'Queue ordering policy'],
+}
+
+function projectRoom() {
+  const tcard = (id, st, text) => { const [k, c, t] = TH[id]; return `<div class="tcard">${shape(k, c)}<span class="tt">${t}</span><span class="dot ${st}"></span><span class="ts">${text}</span>${I('chevron', 'sm')}</div>` }
+  return `<section class="main">
+    <header class="hdr">${I('board')}<span class="hdr-title">Approval v2</span><span class="crumb">· tnega · project</span>
+      <span class="hdr-right"><span class="chip"><span class="dot run"></span>2 working · 1 needs you</span>
+        <span class="icon-btn" title="Board (Ctrl+J)">${I('panel')}</span><span class="icon-btn">${I('gear')}</span></span>
+    </header>
+    <div class="room">
+      <div class="day">Today</div>
+      <div class="msg"><span class="me">Y</span><div class="msg-body">
+        <div class="msg-head"><b>You</b><span class="t">10:02</span></div>
+        <div>Split approval into one shared queue, write migration notes for plugin authors, and benchmark both approvers.</div>
+      </div></div>
+      <div class="msg">${cloud('18px')}<div class="msg-body">
+        <div class="msg-head"><b>Coordinator</b><span class="t">10:02</span></div>
+        <div>Three threads. Ordering is a product call, so I've asked you in its own thread.</div>
+        ${tcard('queue', 'run', 'Editing pipeline.ts · 3/5')}
+        ${tcard('docs', 'idle', 'Ready · draft attached')}
+        ${tcard('bench', 'run', 'Running 200 cases · 1/4')}
+        ${tcard('order', 'wait', 'FIFO per session, or global?')}
+      </div></div>
+      <div class="msg"><span class="me">Y</span><div class="msg-body">
+        <div class="reply-chip">${I('reply', 'sm')}<span>Coordinator: Three threads. Ordering is a product call…</span></div>
+        <div class="msg-head"><b>You</b><span class="t">10:09</span></div>
+        <div>Per session. Also keep the old API for one release.</div>
+      </div></div>
+      <div class="msg">${cloud('18px')}<div class="msg-body">
+        <div class="msg-head"><b>Coordinator</b><span class="t">10:09</span></div>
+        <div>Passed to <b>Queue ordering policy</b> and <b>Shared approval queue</b>. Notes are ready to review:</div>
+        <div class="acard"><span class="k">DOC</span><span style="flex:1">Approval v2 migration notes</span><span class="muted" style="font-size:var(--text-xs)">from Migration notes</span></div>
+      </div></div>
+      <div class="typing"><b>Shared approval queue</b> is working…</div>
+    </div>
+    <div class="composer"><div class="cbox" style="display:flex;align-items:center">
+      <div class="cinput" style="flex:1;padding:6px 10px">Message the room, @ to address a thread</div>
+      <div class="cbar"><span class="icon-btn">${I('clip')}</span><span class="send">${I('up', 'sm')}</span></div>
+    </div></div>
+  </section>`
+}
+
+function boardPanel() {
+  const card = (id, st, line, prog, chips, foot, need) => { const [k, c, t] = TH[id]; return `<div class="bcard ${need ? 'need' : ''}">
+      <div class="top">${shape(k, c)}<b>${t}</b><span class="dot ${st}"></span></div>
+      <div class="line">${line}</div>
+      <div class="foot">${prog ? `<span class="bar"><i style="width:${prog[0] / prog[1] * 100}%"></i></span><span>${prog[0]}/${prog[1]}</span>` : ''}${chips.map(x => `<span class="achip">${x}</span>`).join('')}<span style="margin-left:auto">${foot}</span></div>
+    </div>` }
+  return `<aside class="wb">
+    <div class="tabs clear-ctl">
+      <span class="tab on">${I('board','sm')}Board</span>
+      <span class="tab">${I('library','sm')}</span>
+      <span class="tab">${I('clock','sm')}</span>
+      <span style="width:1px;height:14px;background:var(--border)"></span>
+      <span class="tab">${I('folder','sm')}</span><span class="tab">${I('term','sm')}</span>
+    </div>
+    <div class="toolbar"><span>Today</span><span style="margin-left:auto">Resolved hidden</span></div>
+    <div class="board-p">
+      <div class="today"><span title="Project weather: rain, 2 working">${cloud('22px')}</span>
+        <div class="stat"><b>4</b><span>started</span></div><div class="stat"><b>1</b><span>finished</span></div>
+        <div class="stat"><b>2</b><span>artifacts</span></div><div class="stat"><b>182k</b><span>tokens</span></div></div>
+      <div class="lane-h"><span class="dot wait"></span>Needs you <span class="n">1</span></div>
+      ${card('order', 'wait', '“FIFO per session, or global?”', null, [], '3m', true)}
+      <div class="lane-h"><span class="dot run"></span>Working <span class="n">2</span></div>
+      ${card('queue', 'run', 'Editing packages/approval-review/src/pipeline.ts', [3, 5], [], '12m · 64k')}
+      ${card('bench', 'run', 'Running 200 cases against review + llm', [1, 4], ['Data'], '6m · 21k')}
+      <div class="lane-h"><span class="dot" style="background:var(--success)"></span>Ready <span class="n">1</span></div>
+      ${card('docs', 'idle', 'Draft covers API changes and a codemod.', [4, 4], ['Doc'], '8m · 33k')}
+      <div class="folded">${I('chevron','sm')}Idle 2 · Resolved 5</div>
+    </div>
+  </aside>`
+}
+
+function threadPanel() {
+  const [k, c, t] = TH.queue
+  const step = (done, txt, cur) => `<div style="display:flex;gap:6px;align-items:center;height:20px;font-size:var(--text-sm);color:${done ? 'var(--text-3)' : cur ? 'var(--text)' : 'var(--text-2)'}">
+    ${done ? `<span style="color:var(--success)">${I('check','sm')}</span>` : cur ? '<span class="dot run" style="margin:0 3px"></span>' : '<span class="dot idle" style="margin:0 3px"></span>'}
+    <span style="${done ? 'text-decoration:line-through' : ''}">${txt}</span></div>`
+  return `<aside class="wb">
+    <div class="tabs clear-ctl">
+      <span class="icon-btn" title="Back to Board" style="transform:rotate(180deg)">${I('chevron','sm')}</span>${shape(k, c)}<span style="font-weight:600;font-size:var(--text-sm)">${t}</span>
+    </div>
+    <div class="toolbar"><span class="dot run"></span><span>Working · 12m active · 64k tokens</span><span style="margin-left:auto">Resolve · Stop</span></div>
+    <div class="board-p">
+      <div class="bcard">
+        ${step(true, 'Read current approvers')}${step(true, 'Extract ApprovalQueue')}${step(true, 'Per-session FIFO (from you, 10:09)')}
+        ${step(false, 'Keep legacy API one release', true)}${step(false, 'Run package tests')}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:var(--text-sm);padding:2px">
+        <div class="msg-head"><b>${t}</b><span class="t">10:11</span></div>
+        <div>Queue is per session now. Adding a <code class="mono">LegacyApprover</code> shim next.</div>
+        <div class="tools" style="border:0;border-left:1px solid var(--border);padding-left:8px">
+          <div class="tool"><span class="tool-tile">${I('pencil','sm')}</span><span class="tool-name">Edit</span><span class="tool-arg mono">src/legacy.ts</span><span class="tool-meta">+18</span></div>
+          <div class="tool"><span class="tool-tile">${I('term','sm')}</span><span class="tool-name">Bash</span><span class="tool-arg mono">pnpm exec tsc -p packages/approval-review</span><span class="tool-meta">running</span></div>
+        </div>
+      </div>
+      <div class="cbox" style="display:flex;align-items:center;margin-top:auto">
+        <div class="cinput" style="flex:1;padding:6px 10px">Message this thread</div>
+        <div class="cbar"><span class="send">${I('up', 'sm')}</span></div>
+      </div>
+    </div>
+  </aside>`
+}
+
+const winctl =`<div class="winctl"><span>&#x2014;</span><span>&#x25A1;</span><span>&#x2715;</span></div><div class="winctl-zone" title="native window controls, 138 x 32"></div>`
+document.getElementById('win-old').innerHTML = sidebar(false) + main(false) + workbench(false) + winctl
+document.getElementById('win-new').innerHTML = sidebar(true) + main(true) + workbench(true) + winctl
+document.getElementById('win-proj').innerHTML = sidebar(true, 'Approval v2') + projectRoom() + boardPanel() + winctl
+document.getElementById('win-thread').innerHTML = sidebar(true, 'Approval v2') + projectRoom() + threadPanel() + winctl
+
+const names = ['board','library','clock','reply','plus','search','folder','chat','file','pencil','term','globe','diff','panel','gear','chevron','down','more','clip','image','up','check','bolt','branch','sun','agent']
+document.getElementById('icon-grid').innerHTML = names.map(n => `<div class="icon-cell"><svg><use href="#i-${n}"/></svg>${n}</div>`).join('')
+</script>
+</body>
+</html>

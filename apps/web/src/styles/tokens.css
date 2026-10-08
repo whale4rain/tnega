@@ -22,11 +22,11 @@
   --text-xl: 18px;
   --text-2xl: 24px;
 
-  --radius-xs: 5px;
-  --radius-sm: 7px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-full: 999px;
 
   --space-1: 4px;
@@ -38,7 +38,21 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  --sidebar-width: 276px;
+  /*
+   * Density. Controls, rows and bars share a few heights so the whole app
+   * tightens or loosens together. The header matches the desktop title bar
+   * (TITLE_BAR_HEIGHT), so the native window controls sit inside it.
+   */
+  --header-h: 32px;
+  --toolbar-h: 28px;
+  --control-lg: 32px;
+  --control: 26px;
+  --control-sm: 22px;
+  --row-h: 26px;
+  --icon: 14px;
+  --icon-sm: 12px;
+
+  --sidebar-width: 240px;
   --reading-width: 780px;
 
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);

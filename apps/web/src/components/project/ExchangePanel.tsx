@@ -32,15 +32,15 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
   }, [messages.length])
   const participant = (id: string) => (
     <button type="button" className="exchange-participant" onClick={() => onOpenThread(id)} aria-label={`Open ${agentLabel(state, id)}`}>
-      <AgentAvatar id={id} role={id === state.coordinatorId ? 'coordinator' : 'agent'} size={22} />
+      <AgentAvatar id={id} role={id === state.coordinatorId ? 'coordinator' : 'agent'} size={18} />
       <span>{agentLabel(state, id)}</span>
     </button>
   )
   return (
     <div className="wb-view exchange-panel">
       <div className="wb-toolbar exchange-toolbar">
-        <div className="exchange-pair">{participant(firstId)}<ArrowLeftRight size={13} aria-hidden />{participant(secondId)}</div>
-        <button type="button" className="icon-button small" aria-label="Close chat" onClick={onClose}><X size={15} /></button>
+        <div className="exchange-pair">{participant(firstId)}<ArrowLeftRight size={12} aria-hidden />{participant(secondId)}</div>
+        <button type="button" className="icon-button small" aria-label="Close chat" onClick={onClose}><X size={14} /></button>
       </div>
       <div className="wb-card exchange-body" ref={scroll} onScroll={() => {
         const el = scroll.current
@@ -52,7 +52,7 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
             const coordinator = first.sender.id === state.coordinatorId
             return (
               <ChatRun key={first.messageId} author={agentLabel(state, first.sender.id)} at={first.createdAt} side="agent"
-                avatar={<AgentAvatar id={first.sender.id} role={coordinator ? 'coordinator' : 'agent'} size={24} />}>
+                avatar={<AgentAvatar id={first.sender.id} role={coordinator ? 'coordinator' : 'agent'} size={20} />}>
                 {group.map(message => (
                   <div key={message.messageId} className="room-message">
                     <Markdown text={message.text} />

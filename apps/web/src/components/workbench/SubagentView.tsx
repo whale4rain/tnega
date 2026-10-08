@@ -34,7 +34,7 @@ export function SubagentView({
   return (
     <div className="wb-view" aria-label={`Subagent ${label}`}>
       <div className="wb-toolbar">
-        <AgentAvatar id={id} size={22} rerollable />
+        <AgentAvatar id={id} size={18} rerollable />
         <span className="wb-toolbar-title">{label} <span className="muted small mono">{id.slice(0, 8)}</span></span>
         <button type="button" className="icon-button small" onClick={load} aria-label="Refresh" title="Refresh"><RefreshCw size={14} /></button>
       </div>

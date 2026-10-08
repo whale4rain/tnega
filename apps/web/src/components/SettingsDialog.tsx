@@ -156,7 +156,7 @@ export function SettingsDialog({
                 className={`settings-nav-item${section === entry.id ? ' active' : ''}`}
                 onClick={() => setSection(entry.id)}
               >
-                <Icon size={15} aria-hidden />{entry.label}
+                <Icon size={14} aria-hidden />{entry.label}
               </button>
             )
           })}
@@ -329,7 +329,7 @@ export function SettingsDialog({
                     disabled={!onThemeChange}
                     onClick={() => onThemeChange?.(value)}
                   >
-                    <Icon size={15} aria-hidden />{label}
+                    <Icon size={14} aria-hidden />{label}
                   </button>
                 ))}
               </div>

@@ -63,12 +63,12 @@ export function ChatGptSignIn({ onChanged, onGetModels }: { onChanged: (config: 
         ? <>
           <span className="muted small">Signed in to ChatGPT{state.email ? ` as ${state.email}` : ''}; the ChatGPT model uses your plan.</span>
           {onGetModels && <button type="button" className="button secondary small" disabled={busy} onClick={onGetModels}>Get models</button>}
-          <button type="button" className="button ghost small" disabled={busy} onClick={() => void signOut()}><LogOut size={13} /> Sign out</button>
+          <button type="button" className="button ghost small" disabled={busy} onClick={() => void signOut()}><LogOut size={12} /> Sign out</button>
         </>
         : state?.status === 'pending'
           ? <span className="muted small">Finish signing in in your browser… <a href={state.url} target="_blank" rel="noreferrer noopener">Open the sign-in page again</a></span>
           : <>
-            <button type="button" className="button secondary small" disabled={busy} onClick={() => void signIn()}><LogIn size={13} /> Sign in with ChatGPT</button>
+            <button type="button" className="button secondary small" disabled={busy} onClick={() => void signIn()}><LogIn size={12} /> Sign in with ChatGPT</button>
             <span className="muted small">Use your ChatGPT plan instead of an API key.</span>
           </>}
       {(error || state?.status === 'error') && <div role="alert" className="notice notice-error"><span>{error ?? (state?.status === 'error' ? state.message : '')}</span></div>}

@@ -68,9 +68,9 @@ export function ModelRoutes({
               </span>
               {route && (
                 <span className="model-route-actions">
-                  <button type="button" className="icon-button tiny" aria-label={`Get models from ${option.name}`} title="Get models" onClick={() => { setConnection(`route:${option.id}`); setEditing('new') }}><RefreshCw size={13} /></button>
-                  <button type="button" className="icon-button tiny" aria-label={`Edit ${option.name}`} title="Edit" onClick={() => setEditing(option.id)}><Pencil size={13} /></button>
-                  <button type="button" className="icon-button tiny" aria-label={`Remove ${option.name}`} title="Remove" onClick={() => void remove(route)}><Trash2 size={13} /></button>
+                  <button type="button" className="icon-button tiny" aria-label={`Get models from ${option.name}`} title="Get models" onClick={() => { setConnection(`route:${option.id}`); setEditing('new') }}><RefreshCw size={12} /></button>
+                  <button type="button" className="icon-button tiny" aria-label={`Edit ${option.name}`} title="Edit" onClick={() => setEditing(option.id)}><Pencil size={12} /></button>
+                  <button type="button" className="icon-button tiny" aria-label={`Remove ${option.name}`} title="Remove" onClick={() => void remove(route)}><Trash2 size={12} /></button>
                 </span>
               )}
               {editing === option.id && route && (
@@ -84,7 +84,7 @@ export function ModelRoutes({
       <ChatGptSignIn onChanged={onChanged} onGetModels={() => { setConnection('chatgpt'); setEditing('new') }} />
       {editing === 'new'
         ? <ModelBrowser config={config} initialConnection={connection} onCancel={() => setEditing(undefined)} onPersisted={onChanged} onSaved={() => setEditing(undefined)} />
-        : <button type="button" className="button secondary small" onClick={() => { setConnection(undefined); setEditing('new') }}><Plus size={13} /> Add model</button>}
+        : <button type="button" className="button secondary small" onClick={() => { setConnection(undefined); setEditing('new') }}><Plus size={12} /> Add model</button>}
     </div>
   )
 }

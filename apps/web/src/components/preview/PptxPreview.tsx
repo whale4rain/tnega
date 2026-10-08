@@ -64,11 +64,11 @@ export default function PptxPreview({ blob }: PreviewProps) {
       {count > 0 && (
         <div className="pptx-nav">
           <button type="button" className="icon-button" aria-label="Previous slide" disabled={index === 0} onClick={() => go(index - 1)}>
-            <ChevronLeft size={16} />
+            <ChevronLeft size={14} />
           </button>
           <span className="muted small">Slide {index + 1} of {count}</span>
           <button type="button" className="icon-button" aria-label="Next slide" disabled={index >= count - 1} onClick={() => go(index + 1)}>
-            <ChevronRight size={16} />
+            <ChevronRight size={14} />
           </button>
         </div>
       )}

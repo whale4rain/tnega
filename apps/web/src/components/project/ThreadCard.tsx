@@ -9,7 +9,7 @@ export function ThreadStatus({ state, thread, withLabel = true }: { state: Proje
   const Icon = tone === 'done' ? CircleCheck : tone === 'failed' ? CircleX : tone === 'attention' ? CircleAlert : CircleDot
   return (
     <span className={`thread-status tone-${tone}`}>
-      {tone === 'working' ? <span className="spinner tiny" aria-hidden /> : <Icon size={13} aria-hidden />}
+      {tone === 'working' ? <span className="spinner tiny" aria-hidden /> : <Icon size={12} aria-hidden />}
       {withLabel && <span className="thread-status-text">{step ?? label}</span>}
     </span>
   )
@@ -57,7 +57,7 @@ export function ThreadCard({
         <span className="thread-card-label">{thread.label}</span>
         {unread && <span className="unread-dot" aria-label="New" />}
         <ThreadStatus state={state} thread={thread} />
-        <ChevronRight size={15} className="thread-card-chevron" aria-hidden />
+        <ChevronRight size={14} className="thread-card-chevron" aria-hidden />
       </button>
       {onReply && (
         <button
@@ -67,7 +67,7 @@ export function ThreadCard({
           title="Reply in this thread"
           onClick={() => onReply({ id: `thread:${thread.id}`, who: 'thread', label: thread.label, agentId: thread.id, threadId: thread.id, excerpt: plainPreview(thread.goal, 110), inMain: false })}
         >
-          <CornerUpLeft size={13} />
+          <CornerUpLeft size={12} />
         </button>
       )}
     </div>

@@ -171,7 +171,7 @@ const UserMessage = memo(function UserMessage({
         <div className="user-contexts">
           {picked.contexts.map((context, index) => (
             <span key={index} className="composer-context" title={context.text}>
-              <SquareMousePointer size={13} aria-hidden />
+              <SquareMousePointer size={12} aria-hidden />
               <span className="composer-context-label">{context.label}</span>
             </span>
           ))}
@@ -308,7 +308,7 @@ const AgentTurn = memo(function AgentTurn({
     <div className={`agent-turn${live ? ' is-live' : ''}${latest ? ' is-latest' : ''}`}>
       <div className="agent-avatar" aria-hidden>
         {agent
-          ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={26} live={live} weather={weather === 'clear' && !live ? undefined : weather} title={agent.role === 'coordinator' ? 'Agent' : undefined} />
+          ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={18} live={live} weather={weather === 'clear' && !live ? undefined : weather} title={agent.role === 'coordinator' ? 'Agent' : undefined} />
           : <span className="brand-mark small" />}
       </div>
       <div className="agent-body">
@@ -335,7 +335,7 @@ const AgentTurn = memo(function AgentTurn({
                 title="Start a new session that continues from this reply"
                 onClick={() => actions.onFork?.(entry.forkId!)}
               >
-                <GitBranch size={13} />Fork from here
+                <GitBranch size={12} />Fork from here
               </button>
             )}
           </div>
@@ -493,7 +493,7 @@ function ToolRow({ tool }: { tool: ToolView }) {
         {children.length ? <span className="tool-group-summary">{children.length} tool {children.length === 1 ? 'call' : 'calls'} · {completed} done{running ? ` · ${running} running` : ''}{failed ? ` · ${failed} failed` : ''}</span> : null}
         <span className="tool-meta">
           {tool.status === 'running' && <span className="spinner" aria-label="Running" />}
-          {attention && <X size={13} className="tool-status-error" aria-label="Failed" />}
+          {attention && <X size={12} className="tool-status-error" aria-label="Failed" />}
           {!attention && tool.status !== 'running' && tool.durationMs !== undefined && <span className="tool-duration">{formatDuration(tool.durationMs)}</span>}
         </span>
         <ChevronRight size={14} className="chevron" />
@@ -605,7 +605,7 @@ function SubagentCard({ agent, onOpen }: { agent: SubagentView; onOpen?: ((id: s
       )}
       {agent.id && onOpen && (
         <button type="button" className="link-button" onClick={() => onOpen(agent.id!, agent.label)}>
-          Open transcript <ChevronRight size={13} />
+          Open transcript <ChevronRight size={12} />
         </button>
       )}
     </div>
@@ -649,7 +649,7 @@ function CompactionMarker({ summary, tokensBefore }: { summary: string; tokensBe
         <span className="compaction-line" />
         <span className="compaction-label">
           Context compacted{tokensBefore ? ` · ${formatTokens(tokensBefore)} tokens summarized` : ''}
-          <ChevronRight size={13} className={`chevron${open ? ' rotated' : ''}`} />
+          <ChevronRight size={12} className={`chevron${open ? ' rotated' : ''}`} />
         </span>
         <span className="compaction-line" />
       </button>

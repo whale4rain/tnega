@@ -391,7 +391,7 @@ export function App() {
             <h1>Projects</h1>
             <p>Describe an outcome once. A coordinator splits it into parallel threads that share memory and a library, and reports back in one conversation.</p>
             <button type="button" className="button primary large" onClick={() => setNewProject(true)}>
-              <FolderPlus size={17} /> New project
+              <FolderPlus size={14} /> New project
             </button>
           </main>
         ))}
@@ -433,7 +433,7 @@ export function App() {
             <h1>Welcome to tnega</h1>
             <p>Pick a folder for the agent to work in. You can switch between workspaces at any time.</p>
             <button type="button" className="button primary large" onClick={() => setDialog('workspace')}>
-              <FolderPlus size={17} /> Open a folder
+              <FolderPlus size={14} /> Open a folder
             </button>
           </main>
         )}

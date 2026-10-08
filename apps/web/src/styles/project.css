@@ -14,7 +14,7 @@
 .segmented.wide button {
   flex: 1;
   width: auto;
-  height: 28px;
+  height: var(--control-sm);
   gap: 6px;
   display: inline-flex;
   align-items: center;
@@ -26,7 +26,7 @@
 
 .project-button {
   height: auto;
-  min-height: 44px;
+  min-height: var(--row-h);
   padding: 6px 8px;
   gap: 10px;
 }
@@ -34,8 +34,8 @@
 .project-avatar {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   flex: none;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
@@ -106,7 +106,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 44px;
+  min-height: 32px;
   padding: 10px 12px 10px 14px;
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -205,8 +205,8 @@
 .artifact-card-icon {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
@@ -293,7 +293,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 58px;
+  height: var(--header-h);
   flex: none;
   padding: 0 12px 0 10px;
   border-bottom: 1px solid var(--border);
@@ -316,7 +316,7 @@
 .side-tabs {
   display: flex;
   gap: 2px;
-  height: 58px;
+  height: var(--header-h);
   flex: none;
   align-items: center;
   padding: 0 10px;
@@ -328,7 +328,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  height: var(--control-sm);
   padding: 0 10px;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
@@ -411,8 +411,8 @@
 }
 
 .composer.compact .send-button {
-  width: 30px;
-  height: 30px;
+  width: var(--control);
+  height: var(--control);
 }
 
 /* --- panels -------------------------------------------------------------- */
@@ -554,8 +554,8 @@
 .library-icon {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: var(--radius-sm);
   background: var(--surface-active);
@@ -1170,8 +1170,8 @@
 }
 
 .composer.inline .send-button {
-  width: 30px;
-  height: 30px;
+  width: var(--control);
+  height: var(--control);
 }
 
 /* --- the room ------------------------------------------------------------ */
@@ -1208,8 +1208,8 @@
 .room-avatar-you {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--radius-full);
   background: var(--accent-soft);
   color: var(--accent-text);
@@ -1720,8 +1720,8 @@ button.board-chip.active {
 .routine-icon {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);

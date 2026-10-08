@@ -68,13 +68,13 @@ export function MemoryPanel({ workspace, state }: { workspace: string; state: Pr
         />
         <div className="memory-add-footer">
           <span className="muted small">Ctrl+Enter to save</span>
-          <button type="button" className="button primary small" onClick={() => void add()} disabled={!draft.trim()}><Plus size={13} /> Remember</button>
+          <button type="button" className="button primary small" onClick={() => void add()} disabled={!draft.trim()}><Plus size={12} /> Remember</button>
         </div>
       </div>
       {error && <div className="error-banner">{error}</div>}
       {sorted.length === 0 && (
         <div className="panel-empty">
-          <Brain size={22} />
+          <Brain size={18} />
           <p>Nothing remembered yet.</p>
           <span>Things like "release moved to Friday" or "ask Sam before touching billing" belong here.</span>
         </div>
@@ -158,9 +158,9 @@ function MemoryItem({ workspace, state, record }: { workspace: string; state: Pr
         <span>{[record.author || record.source.agentId ? authorName(state, record.author || record.source.agentId) : undefined, record.updatedAt ? relativeTime(record.updatedAt) : undefined].filter(Boolean).join(' · ')}</span>
         {!editing && (
           <span className="memory-actions">
-            <button type="button" className="icon-button tiny" aria-label="Version history" title="Version history" onClick={() => void toggleHistory()}><History size={13} /></button>
-            <button type="button" className="icon-button tiny" aria-label="Edit" title="Edit" onClick={() => setEditing(true)}><Pencil size={13} /></button>
-            <button type="button" className="icon-button tiny" aria-label="Forget" title="Forget" onClick={() => void remove()}><Trash2 size={13} /></button>
+            <button type="button" className="icon-button tiny" aria-label="Version history" title="Version history" onClick={() => void toggleHistory()}><History size={12} /></button>
+            <button type="button" className="icon-button tiny" aria-label="Edit" title="Edit" onClick={() => setEditing(true)}><Pencil size={12} /></button>
+            <button type="button" className="icon-button tiny" aria-label="Forget" title="Forget" onClick={() => void remove()}><Trash2 size={12} /></button>
           </span>
         )}
       </div>
@@ -204,7 +204,7 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
     <div className="wb-view" aria-label="Library">
       <div className="wb-toolbar">
         <span className="wb-toolbar-title">Library</span>
-        <button type="button" className="button secondary small" onClick={() => setAdding(true)}><Upload size={13} /> Add</button>
+        <button type="button" className="button secondary small" onClick={() => setAdding(true)}><Upload size={12} /> Add</button>
       </div>
       <div className="wb-card wb-scroll">
     <div className="panel-stack">
@@ -219,7 +219,7 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
       )}
       {artifacts.length === 0 && resources.length === 0 && (
         <div className="panel-empty">
-          <BookOpen size={22} />
+          <BookOpen size={18} />
           <p>The library is empty.</p>
           <span>Artifacts that threads publish (reports, patches, drafts) and links you add appear here.</span>
         </div>
@@ -250,7 +250,7 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
           <div className="library-list">
             {resources.map(resource => (
               <a key={resource.id} className="library-row" href={resource.data.uri} target="_blank" rel="noreferrer noopener">
-                <span className="library-icon"><Link2 size={15} /></span>
+                <span className="library-icon"><Link2 size={14} /></span>
                 <span className="library-main">
                   <span className="library-title">{resource.data.title}</span>
                   <span className="library-meta">{resource.data.note || resource.data.uri}</span>
@@ -337,7 +337,7 @@ function AddToLibraryDialog({ workspace, projectId, onClose }: { workspace: stri
             <textarea className="field-textarea" rows={8} value={content} onChange={event => setContent(event.target.value)} placeholder="Paste text, or choose a file below" />
             <span className="input-row">
               <input ref={fileInput} type="file" hidden accept=".md,.txt,.json,.csv,.ts,.js,.py,.html,.css,.yaml,.yml,text/*" onChange={event => void pickFile(event.target.files?.[0])} />
-              <button type="button" className="button secondary small" onClick={() => fileInput.current?.click()}><Upload size={13} /> Choose file…</button>
+              <button type="button" className="button secondary small" onClick={() => fileInput.current?.click()}><Upload size={12} /> Choose file…</button>
               <span className="muted small">{mediaType}</span>
             </span>
           </label>
@@ -523,11 +523,11 @@ export function SettingsPanel({
         <h3 className="panel-heading">Project</h3>
         <div className="danger-row">
           <span><strong>{project.archived ? 'Restore project' : 'Archive project'}</strong><br /><span className="muted small">{project.archived ? 'Move it back to your active projects.' : 'Hide it from the list; everything stays readable.'}</span></span>
-          <button type="button" className="button secondary small" onClick={() => void archive()}><Archive size={13} /> {project.archived ? 'Restore' : 'Archive'}</button>
+          <button type="button" className="button secondary small" onClick={() => void archive()}><Archive size={12} /> {project.archived ? 'Restore' : 'Archive'}</button>
         </div>
         <div className="danger-row">
           <span><strong>Delete project</strong><br /><span className="muted small">Removes threads, memory and library.</span></span>
-          <button type="button" className="button danger small" onClick={() => void remove()}><Trash2 size={13} /> Delete</button>
+          <button type="button" className="button danger small" onClick={() => void remove()}><Trash2 size={12} /> Delete</button>
         </div>
       </section>
     </div>

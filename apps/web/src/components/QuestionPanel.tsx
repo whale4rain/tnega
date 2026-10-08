@@ -96,7 +96,7 @@ export function QuestionCard({ request, onAnswer }: {
   return (
     <form className="question-card" aria-label="会话问题" onSubmit={event => { event.preventDefault(); void submit() }}>
       <div className="question-head">
-        <MessageCircleQuestion size={16} />
+        <MessageCircleQuestion size={14} />
         <strong>需要你的意见</strong>
         <span className="question-mode">{request.mode === 'blocking' ? '正在等待回答' : '继续执行中 · 回答会作为补充指示'}</span>
       </div>

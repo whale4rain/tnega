@@ -12,7 +12,7 @@ export function UpdateButton({ updates }: { updates: DesktopUpdates | undefined 
   if (state.status === 'downloading') {
     return (
       <span className="update-pill pending" role="status" title={describeUpdate(state)}>
-        <ArrowDownToLine size={13} />
+        <ArrowDownToLine size={12} />
         <span>{state.percent}%</span>
       </span>
     )
@@ -28,7 +28,7 @@ export function UpdateButton({ updates }: { updates: DesktopUpdates | undefined 
   if (state.status !== 'ready') return null
   return (
     <button type="button" className="update-pill ready" onClick={updates.install} title={`Restart into Tnega ${state.next}`}>
-      <RotateCw size={13} />
+      <RotateCw size={12} />
       <span>Update</span>
     </button>
   )

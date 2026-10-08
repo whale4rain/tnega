@@ -114,7 +114,7 @@ export function Sidebar({
           <span className="brand-name">tnega</span>
         </div>
         <button type="button" className="icon-button" onClick={onCollapse} aria-label="Hide sidebar" title="Hide sidebar (Ctrl+B)">
-          <PanelLeftClose size={17} />
+          <PanelLeftClose size={14} />
         </button>
       </div>
 
@@ -149,7 +149,7 @@ export function Sidebar({
         : (
           <>
       <button type="button" className="new-session" onClick={onNewSession} disabled={!workspace}>
-        <SquarePen size={16} />
+        <SquarePen size={14} />
         <span>New session</span>
         <kbd className="kbd-hint">Ctrl ⇧ O</kbd>
       </button>
@@ -159,7 +159,7 @@ export function Sidebar({
           <Search size={14} />
           <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search sessions" aria-label="Search sessions" />
           {query && (
-            <button type="button" className="icon-button tiny" aria-label="Clear search" onClick={() => setQuery('')}><X size={13} /></button>
+            <button type="button" className="icon-button tiny" aria-label="Clear search" onClick={() => setQuery('')}><X size={12} /></button>
           )}
         </label>
       )}
@@ -198,7 +198,7 @@ export function Sidebar({
                   label="Session options"
                   align="end"
                   className="icon-button tiny session-more"
-                  trigger={<MoreHorizontal size={15} />}
+                  trigger={<MoreHorizontal size={14} />}
                   items={[
                     { key: 'fork', label: 'Fork', icon: <GitBranch size={14} />, onSelect: () => onForkSession(session.id) },
                     { key: 'delete', label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => onDeleteSession(session) },
@@ -214,7 +214,7 @@ export function Sidebar({
 
       <div className="sidebar-footer">
         <button type="button" className="sidebar-footer-button" onClick={onOpenSettings}>
-          <Settings size={16} />
+          <Settings size={14} />
           <span>Settings</span>
         </button>
         <UpdateButton updates={updates} />
@@ -252,7 +252,7 @@ function ProjectList({
         aria-current={project.id === selectedId ? 'page' : undefined}
         title={project.goal ? `${project.name} — ${project.goal}` : project.name}
       >
-        <AgentAvatar id={project.coordinatorId} role="coordinator" size={30} />
+        <AgentAvatar id={project.coordinatorId} role="coordinator" size={20} />
         <span className="project-text">
           <span className="session-title"><span>{project.name}</span></span>
           {project.goal && <span className="project-goal">{project.goal}</span>}
@@ -263,7 +263,7 @@ function ProjectList({
   return (
     <>
       <button type="button" className="new-session" onClick={onNew} disabled={disabled}>
-        <FolderPlus size={16} />
+        <FolderPlus size={14} />
         <span>New project</span>
       </button>
       <nav className="session-list">
@@ -309,7 +309,7 @@ function WorkspaceSwitcher({
   return (
     <div className="menu-root workspace-switcher" ref={root}>
       <button type="button" className="workspace-button" onClick={() => setOpen(v => !v)} aria-haspopup="listbox" aria-expanded={open}>
-        <span className="workspace-icon"><FolderOpen size={15} /></span>
+        <span className="workspace-icon"><FolderOpen size={14} /></span>
         <span className="workspace-text">
           <span className="workspace-name">{workspace ? folderName(workspace) : 'No workspace'}</span>
           <span className="workspace-path">{workspace ?? 'Open a folder to begin'}</span>
@@ -339,7 +339,7 @@ function WorkspaceSwitcher({
                 <span className="menu-check">{path === workspace && <Check size={14} />}</span>
               </button>
               <button type="button" className="icon-button tiny workspace-remove" aria-label={`Remove ${folderName(path)} from list`} title="Remove from list" onClick={() => onRemove(path)}>
-                <X size={13} />
+                <X size={12} />
               </button>
             </div>
           ))}

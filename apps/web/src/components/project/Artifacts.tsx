@@ -65,7 +65,7 @@ export function ArtifactCards({ workspace, projectId, artifacts }: { workspace: 
     <div className="artifact-cards">
       {artifacts.map(artifact => (
         <button key={artifact.id} type="button" className="artifact-card" onClick={() => setViewing(artifact)}>
-          <span className={`artifact-card-icon kind-${artifactKind(artifact.data.mediaType)}`}><ArtifactIcon mediaType={artifact.data.mediaType} size={16} /></span>
+          <span className={`artifact-card-icon kind-${artifactKind(artifact.data.mediaType)}`}><ArtifactIcon mediaType={artifact.data.mediaType} size={14} /></span>
           <span className="artifact-card-main">
             <span className="artifact-card-title">{artifact.data.title}</span>
             <span className="artifact-card-meta">{ARTIFACT_KIND[artifactKind(artifact.data.mediaType)].label} · {formatBytes(artifact.data.size)}</span>

@@ -622,7 +622,7 @@ export function Conversation({
       <header className="conv-header">
         {!sidebarOpen && (
           <button type="button" className="icon-button" onClick={onToggleSidebar} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)">
-            <PanelLeft size={17} />
+            <PanelLeft size={14} />
           </button>
         )}
         <div className="conv-title-wrap">
@@ -631,7 +631,7 @@ export function Conversation({
           </div>
           <div className="conv-subtitle">
             <span className="conv-workspace" title={workspace}>{folderName(workspace)}</span>
-            {summary?.parentSessionId && <span className="conv-tag"><GitBranch size={11} /> fork</span>}
+            {summary?.parentSessionId && <span className="conv-tag"><GitBranch size={12} /> fork</span>}
             {goal && <GoalPill goal={goal} />}
           </div>
         </div>
@@ -651,7 +651,7 @@ export function Conversation({
               aria-pressed={workbenchOpen}
               title={changeCount ? `Workbench · ${changeCount} changed ${changeCount === 1 ? 'file' : 'files'} (Ctrl+J)` : 'Workbench (Ctrl+J)'}
             >
-              <PanelRight size={15} />
+              <PanelRight size={14} />
               {changeCount !== undefined && changeCount > 0 && <span className="count-badge live" aria-hidden>{changeCount > 99 ? '99+' : changeCount}</span>}
             </button>
           )}
@@ -660,7 +660,7 @@ export function Conversation({
               label="Session actions"
               align="end"
               className="icon-button small header-icon"
-              trigger={<MoreHorizontal size={15} />}
+              trigger={<MoreHorizontal size={14} />}
               items={[
                 { key: 'fork', label: 'Fork entire session', icon: <GitBranch size={14} />, onSelect: () => void fork(), disabled: live },
                 { key: 'compact', label: 'Compact context', icon: <Shrink size={14} />, onSelect: () => void compact(), disabled: live || entries.length === 0 },
@@ -717,7 +717,7 @@ export function Conversation({
         <div className="conv-column">
           {showJump && (
             <button type="button" className="jump-button" onClick={jump} aria-label="Jump to latest">
-              <ArrowDown size={15} />
+              <ArrowDown size={14} />
             </button>
           )}
           {error && (
@@ -774,7 +774,7 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (value: strin
     return (
       <button type="button" className="conv-title editable" onClick={() => { setDraft(value); setEditing(true) }} title="Rename">
         <span>{value}</span>
-        <Pencil size={13} className="edit-hint" />
+        <Pencil size={12} className="edit-hint" />
       </button>
     )
   }
@@ -840,7 +840,7 @@ function ContextMeter({ context, metrics, usage }: { context: ContextUsage; metr
 function GoalPill({ goal }: { goal: GoalState }) {
   return (
     <span className={`conv-tag goal-${goal.status}`} title={goal.objective}>
-      <Target size={11} /> Goal {goal.status} · round {goal.rounds}/{goal.maxRounds}
+      <Target size={12} /> Goal {goal.status} · round {goal.rounds}/{goal.maxRounds}
     </span>
   )
 }
@@ -849,7 +849,7 @@ export function ApprovalCard({ approval, onAnswer }: { approval: Approval; onAns
   return (
     <div className="approval-card" role="alertdialog" aria-label="Permission request">
       <div className="approval-head">
-        <ShieldQuestion size={16} />
+        <ShieldQuestion size={14} />
         <span>The agent wants to use <strong>{approval.tool}</strong>{approval.via === 'run_code' ? ' from a CodeMode script' : ''}</span>
       </div>
       {approval.input && <pre className="approval-input">{approvalText(approval.input)}</pre>}
@@ -903,7 +903,7 @@ function PlanPanel({ plan }: { plan: PlanPayload }) {
   return (
     <div className={`plan-panel${open ? ' open' : ''}`}>
       <button type="button" className="plan-head" onClick={() => setOpen(v => !v)} aria-expanded={open}>
-        <ListChecks size={15} />
+        <ListChecks size={14} />
         <span className="plan-title">{plan.summary || 'Plan'}</span>
         <span className="plan-count">{plan.items.length ? `${done}/${plan.items.length}` : 'Drafting…'}</span>
         <ChevronDown size={14} className="chevron" />
@@ -921,7 +921,7 @@ function PlanRow({ item }: { item: PlanItem }) {
   return (
     <li className={`plan-item status-${item.status}`}>
       <span className="plan-check">
-        {item.status === 'done' ? <Check size={11} strokeWidth={3} /> : item.status === 'failed' ? <X size={11} strokeWidth={3} /> : null}
+        {item.status === 'done' ? <Check size={12} strokeWidth={3} /> : item.status === 'failed' ? <X size={12} strokeWidth={3} /> : null}
       </span>
       <span>
         {item.title}
@@ -993,7 +993,7 @@ function EmptyState({ workspace, agentType, onPick, disabled }: { workspace: str
             title={starter.prompt}
             onClick={() => onPick(starter.prompt)}
           >
-            <starter.icon size={16} />
+            <starter.icon size={14} />
             <span className="starter-title">{starter.title}</span>
             <span className="starter-prompt">{starter.prompt}</span>
           </button>

@@ -324,10 +324,10 @@ export function PromptBox({
           <div className="composer-attachments" onClick={event => event.stopPropagation()}>
             {contexts.map((context, index) => (
               <span className="composer-context" key={`${index}-${context.label}`} title={context.text}>
-                <SquareMousePointer size={13} aria-hidden />
+                <SquareMousePointer size={12} aria-hidden />
                 <span className="composer-context-label">{context.label}</span>
                 <button type="button" aria-label={`Remove ${context.label}`} onClick={() => setContexts(current => current.filter((_, at) => at !== index))}>
-                  <X size={11} strokeWidth={2.6} />
+                  <X size={12} strokeWidth={2.6} />
                 </button>
               </span>
             ))}
@@ -340,7 +340,7 @@ export function PromptBox({
                   aria-label={`Remove ${image.name ?? `image ${index + 1}`}`}
                   onClick={() => setImages(current => current.filter((_, at) => at !== index))}
                 >
-                  <X size={11} strokeWidth={2.6} />
+                  <X size={12} strokeWidth={2.6} />
                 </button>
               </div>
             ))}
@@ -414,7 +414,7 @@ export function PromptBox({
                   disabled={images.length >= MAX_IMAGES_PER_MESSAGE}
                   onClick={() => picker.current?.click()}
                 >
-                  <ImagePlus size={15} />
+                  <ImagePlus size={14} />
                 </button>
                 <input
                   ref={picker}
@@ -445,7 +445,7 @@ export function PromptBox({
           </div>
           {(singleControl ? !hasContent : showStop) && (
             <button type="button" className="send-button stop" onClick={onStop} disabled={!running} aria-label="Stop" title="Stop (Esc)">
-              <Square size={13} fill="currentColor" />
+              <Square size={12} fill="currentColor" />
             </button>
           )}
           {(singleControl ? hasContent : !showStop || allowWhileRunning) && (
@@ -457,14 +457,14 @@ export function PromptBox({
               aria-label="Send"
               title={singleControl && running && onInterruptSubmit ? 'Send (Enter); interrupt and send (Ctrl+Enter)' : 'Send (Enter)'}
             >
-              <ArrowUp size={17} strokeWidth={2.4} />
+              <ArrowUp size={14} strokeWidth={2.4} />
             </button>
           )}
         </div>
       </div>
       {!compact && !inline && (disabledReason || footer) && (
         <div className="composer-footer">
-          {disabledReason ? <span className="composer-warning"><Sparkles size={13} />{disabledReason}</span> : footer}
+          {disabledReason ? <span className="composer-warning"><Sparkles size={12} />{disabledReason}</span> : footer}
         </div>
       )}
     </div>

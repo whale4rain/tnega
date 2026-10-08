@@ -49,13 +49,13 @@ export function RoutinesPanel({ workspace, state, onOpenThread }: { workspace: s
     <div className="wb-view" aria-label="Routines">
       <div className="wb-toolbar">
         <span className="wb-toolbar-title">Routines</span>
-        <button type="button" className="button secondary small" onClick={() => setCreating(true)}><Plus size={13} /> New routine</button>
+        <button type="button" className="button secondary small" onClick={() => setCreating(true)}><Plus size={12} /> New routine</button>
       </div>
       <div className="wb-card wb-scroll routines">
         {error && <div className="notice notice-error"><span>{error}</span></div>}
         {routines.length === 0 && (
           <div className="board-empty">
-            <CalendarClock size={22} />
+            <CalendarClock size={18} />
             <p>No routines yet.</p>
             <span>Put recurring work on a schedule here, or ask in the conversation: “every weekday at 9, summarise new issues”. Each run goes to its own thread.</span>
           </div>
@@ -99,7 +99,7 @@ function RoutineRow({
   const data = routine.data
   return (
     <div className={`routine-row${data.enabled ? '' : ' paused'}`}>
-      <span className="routine-icon"><CalendarClock size={16} /></span>
+      <span className="routine-icon"><CalendarClock size={14} /></span>
       <div className="routine-main">
         <div className="routine-title">{data.title}</div>
         <div className="routine-schedule">
@@ -116,11 +116,11 @@ function RoutineRow({
         )}
       </div>
       <div className="routine-actions">
-        <button type="button" className="icon-button tiny" aria-label="Run now" title="Run now" onClick={onRun}><Zap size={13} /></button>
+        <button type="button" className="icon-button tiny" aria-label="Run now" title="Run now" onClick={onRun}><Zap size={12} /></button>
         <button type="button" className="icon-button tiny" aria-label={data.enabled ? 'Pause' : 'Resume'} title={data.enabled ? 'Pause' : 'Resume'} onClick={onToggle}>
-          {data.enabled ? <Pause size={13} /> : <Play size={13} />}
+          {data.enabled ? <Pause size={12} /> : <Play size={12} />}
         </button>
-        <button type="button" className="icon-button tiny" aria-label="Delete" title="Delete" onClick={onDelete}><Trash2 size={13} /></button>
+        <button type="button" className="icon-button tiny" aria-label="Delete" title="Delete" onClick={onDelete}><Trash2 size={12} /></button>
       </div>
     </div>
   )

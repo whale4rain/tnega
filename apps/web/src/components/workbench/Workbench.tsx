@@ -133,7 +133,7 @@ export function Workbench({
         <span className="wb-rail-fill" />
       </div>
         <button type="button" className="icon-button small" aria-label="Close workbench" title="Close (Ctrl+J)" onClick={onClose}>
-          <X size={15} />
+          <X size={14} />
         </button>
       </div>
       <div className="wb-body">
@@ -172,7 +172,7 @@ function DocTabButton({ doc, active, onSelect, onClose }: { doc: DocTab; active:
         <span className="wb-tab-label">{label}</span>
       </button>
       <button type="button" className="wb-tab-close" aria-label={`Close ${label}`} onClick={onClose}>
-        <X size={11} />
+        <X size={12} />
       </button>
     </div>
   )

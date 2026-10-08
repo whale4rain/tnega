@@ -40,7 +40,7 @@ function ImageViewer({ image, onClose }: { image: ImageAttachment; onClose: () =
     <div className="image-viewer" role="dialog" aria-modal="true" aria-label={image.name ?? 'Image'} onPointerDown={event => event.target === event.currentTarget && onClose()}>
       <img src={imageSrc(image)} alt={image.name ?? 'Image'} />
       <button type="button" className="icon-button image-viewer-close" aria-label="Close" onClick={onClose}>
-        <X size={16} />
+        <X size={14} />
       </button>
     </div>
   )

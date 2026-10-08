@@ -346,7 +346,7 @@ export function ProjectView({
         <header className="conv-header">
           {!sidebarOpen && (
             <button type="button" className="icon-button" onClick={onToggleSidebar} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)">
-              <PanelLeft size={17} />
+              <PanelLeft size={14} />
             </button>
           )}
           <div className="conv-title-wrap">
@@ -354,7 +354,7 @@ export function ProjectView({
             <div className="conv-subtitle">
               {state.project.archived && <span className="conv-tag">Archived</span>}
               {working > 0 && <span className="conv-workspace">{working} thread{working === 1 ? '' : 's'} working</span>}
-              {!connected && <span className="conv-workspace"><WifiOff size={11} /> Reconnecting…</span>}
+              {!connected && <span className="conv-workspace"><WifiOff size={12} /> Reconnecting…</span>}
             </div>
           </div>
           <div className="conv-header-actions">
@@ -366,12 +366,12 @@ export function ProjectView({
               title="Project settings: instructions, memory, models"
               onClick={() => onWorkbench(current => openDoc(current, { kind: 'settings', label: 'Settings' }))}
             >
-              <Settings2 size={17} />
+              <Settings2 size={14} />
             </button>
             <Menu
               label="Project actions"
               align="end"
-              trigger={<MoreHorizontal size={17} />}
+              trigger={<MoreHorizontal size={14} />}
               items={[
                 { key: 'pause', label: 'Pause all work', icon: <Pause size={14} />, onSelect: () => void pause(), disabled: working === 0 && !coordinatorRunning },
               ]}
@@ -383,7 +383,7 @@ export function ProjectView({
               aria-label={workbench.open ? 'Hide panel' : 'Show panel'}
               title={workbench.open ? 'Hide panel (Ctrl+J)' : 'Show panel (Ctrl+J)'}
             >
-              {workbench.open ? <PanelRightClose size={17} /> : <PanelRight size={17} />}
+              {workbench.open ? <PanelRightClose size={14} /> : <PanelRight size={14} />}
             </button>
           </div>
         </header>
@@ -551,7 +551,7 @@ function Room({
             side="agent"
             author="Coordinator"
             at={entry.at}
-            avatar={<AgentAvatar id={state.coordinatorId} role="coordinator" size={30} live={coordinatorRunning && entry === groups.at(-1)} title="Coordinator" />}
+            avatar={<AgentAvatar id={state.coordinatorId} role="coordinator" size={20} live={coordinatorRunning && entry === groups.at(-1)} title="Coordinator" />}
           >
             {entry.items.map(item => {
               switch (item.kind) {
@@ -602,7 +602,7 @@ export function ReplyChip({ reply, onJump, align = 'start' }: { reply: ReplyRef;
     >
       <CornerUpLeft size={12} className="reply-chip-arrow" />
       {reply.agentId
-        ? <AgentAvatar id={reply.agentId} role={reply.who === 'coordinator' ? 'coordinator' : 'agent'} size={16} />
+        ? <AgentAvatar id={reply.agentId} role={reply.who === 'coordinator' ? 'coordinator' : 'agent'} size={14} />
         : <span className="reply-chip-you" aria-hidden>{reply.label.charAt(0)}</span>}
       <span className="reply-chip-label">{reply.label}</span>
       <span className="reply-chip-text">{reply.excerpt}</span>

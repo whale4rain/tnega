@@ -54,7 +54,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  min-height: 36px;
+  min-height: var(--header-h);
   flex: 1;
   min-width: 0;
   overflow-x: auto;
@@ -68,7 +68,7 @@
   align-items: center;
   flex: none;
   gap: 6px;
-  height: 30px;
+  height: var(--control-sm);
   padding: 0 10px;
   border-radius: var(--radius-md);
   color: var(--text-2);
@@ -162,7 +162,16 @@
 .wb-rail-fill {
   flex: 1;
   min-width: 12px;
-  height: 30px;
+  height: var(--control-sm);
+}
+
+/* Tool tabs show only their icon until selected; the name stays in the tooltip and accessible label. */
+.wb-tab:not(.doc):not(.active) {
+  padding: 0 6px;
+}
+
+.wb-tab:not(.doc):not(.active) .wb-tab-label {
+  display: none;
 }
 
 /* A narrow Workbench keeps tool tabs to their icons. */
@@ -204,7 +213,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 32px;
+  min-height: var(--toolbar-h);
   padding: 0 2px;
 }
 
@@ -254,7 +263,7 @@
   align-items: center;
   flex: 0 1 190px;
   min-width: 90px;
-  height: 28px;
+  height: var(--control-sm);
   border-radius: var(--radius-md);
   color: var(--text-2);
   transition: background var(--duration-fast), color var(--duration-fast);
@@ -378,7 +387,7 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: 28px;
+  height: var(--control-sm);
   padding: 0 8px;
   border-radius: var(--radius-xs);
   color: var(--text-2);

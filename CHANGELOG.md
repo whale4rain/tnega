@@ -44,6 +44,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- 界面整体改为紧凑密度：控件、列表行与工具行变矮（行高 26px、工具行 22px），会话标题与工作区合为一行、顶栏与桌面标题栏同高（32px），圆角变小，侧栏变窄；图标统一为 14 / 12px 细线，工具行去掉底色方块；工作台的工具标签只在选中时显示名称。配色、天气状态与对比度不变。
+
 ## [0.4.20](https://github.com/whale4rain/tnega/releases/tag/v0.4.20) — 2026-10-08
 
 ### Fixes

@@ -173,17 +173,17 @@ function TabStrip({ tabs, onSelect, onClose, onNew }: {
         {tabs.map(tab => (
           <div key={tab.id} className={`wb-subtab${tab.active ? ' active' : ''}`} role="tab" aria-selected={tab.active} title={tab.url}>
             <button type="button" className="wb-subtab-main" onClick={() => onSelect(tab.id)}>
-              <Globe size={13} aria-hidden />
+              <Globe size={12} aria-hidden />
               <span>{tab.title || displayUrl(tab.url) || 'New tab'}</span>
             </button>
             <button type="button" className="wb-subtab-close" aria-label={`Close ${tab.title || 'tab'}`} onClick={() => onClose(tab.id)}>
-              <X size={11} />
+              <X size={12} />
             </button>
           </div>
         ))}
       </div>
       <button type="button" className="icon-button small" aria-label="New tab" title="New tab" onClick={onNew}>
-        <Plus size={15} />
+        <Plus size={14} />
       </button>
     </div>
   )
@@ -208,13 +208,13 @@ function Toolbar({ state, pending, loading, picking, onNavigate, onCommand, onPi
   return (
     <div className={`browser-toolbar${loading ? ' is-loading' : ''}`} aria-busy={loading}>
       <button type="button" className="icon-button small" aria-label="Back" title="Back" disabled={!state.canGoBack} onClick={() => onCommand('back')}>
-        <ArrowLeft size={16} />
+        <ArrowLeft size={14} />
       </button>
       <button type="button" className="icon-button small" aria-label="Forward" title="Forward" disabled={!state.canGoForward} onClick={() => onCommand('forward')}>
-        <ArrowRight size={16} />
+        <ArrowRight size={14} />
       </button>
       <button type="button" className="icon-button small" aria-label="Reload" title="Reload" onClick={() => onCommand('reload')}>
-        <RotateCw size={15} />
+        <RotateCw size={14} />
       </button>
       <form
         className="browser-address"
@@ -249,7 +249,7 @@ function Toolbar({ state, pending, loading, picking, onNavigate, onCommand, onPi
         title="Pick an element to chat about"
         onClick={onPick}
       >
-        <SquareMousePointer size={16} />
+        <SquareMousePointer size={14} />
       </button>
       {loading && <span className="browser-progress" role="progressbar" aria-label="Loading" />}
     </div>
@@ -259,7 +259,7 @@ function Toolbar({ state, pending, loading, picking, onNavigate, onCommand, onPi
 function EmptyPage({ children }: { children?: ReactNode }) {
   return (
     <div className="browser-empty">
-      <Globe size={22} />
+      <Globe size={18} />
       <p>{children ?? 'The agent opens pages here when it checks your frontend. You can browse too.'}</p>
     </div>
   )

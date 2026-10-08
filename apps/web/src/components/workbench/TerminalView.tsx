@@ -63,24 +63,24 @@ export function TerminalView({ workspace, visible }: { workspace: string; visibl
           {terminals?.map((terminal, index) => (
             <div key={terminal.id} className={`wb-subtab${terminal.id === active ? ' active' : ''}`} role="tab" aria-selected={terminal.id === active}>
               <button type="button" className="wb-subtab-main" onClick={() => setActive(terminal.id)}>
-                <SquareTerminal size={13} aria-hidden />
+                <SquareTerminal size={12} aria-hidden />
                 <span>{terminal.title} {index + 1}</span>
               </button>
               <button type="button" className="wb-subtab-close" aria-label={`Close ${terminal.title} ${index + 1}`} onClick={() => void close(terminal.id)}>
-                <X size={11} />
+                <X size={12} />
               </button>
             </div>
           ))}
         </div>
         <button type="button" className="icon-button small" aria-label="New terminal" title="New terminal" onClick={() => void create()}>
-          <Plus size={15} />
+          <Plus size={14} />
         </button>
       </div>
       <div className="wb-card terminal-card">
         {error && <div className="notice notice-error wb-notice" role="alert"><span>{error}</span></div>}
         {terminals && terminals.length === 0 && !error && (
           <div className="wb-empty">
-            <SquareTerminal size={22} />
+            <SquareTerminal size={18} />
             <p>No terminal is open. <button type="button" className="link-button inline" onClick={() => void create()}>Open one</button> in this workspace.</p>
           </div>
         )}

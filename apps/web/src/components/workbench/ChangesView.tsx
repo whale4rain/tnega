@@ -113,7 +113,7 @@ export function ChangesView({
         </div>
         {current && current.status !== 'deleted' && (
           <button type="button" className="icon-button small" title="Open in Files" aria-label="Open in Files" onClick={() => onOpenInFiles(current.path)}>
-            <FileCode2 size={15} />
+            <FileCode2 size={14} />
           </button>
         )}
         <button type="button" className="icon-button small" title="Refresh" aria-label="Refresh changes" onClick={() => void refresh()}>
@@ -124,13 +124,13 @@ export function ChangesView({
         {error && <div className="notice notice-error wb-notice" role="alert"><span>{error}</span></div>}
         {summary && !summary.git && (
           <div className="wb-empty">
-            <GitBranch size={22} />
+            <GitBranch size={18} />
             <p>This workspace is not a git repository. Each turn still lists the files it changed in the conversation.</p>
           </div>
         )}
         {summary?.git && files?.length === 0 && (
           <div className="wb-empty">
-            <GitBranch size={22} />
+            <GitBranch size={18} />
             <p>No changes since the last commit. Edits from you or the agent appear here as they happen.</p>
           </div>
         )}
