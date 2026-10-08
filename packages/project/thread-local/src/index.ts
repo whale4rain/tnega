@@ -37,11 +37,11 @@ Agent-to-Agent messages carry actionable information: a scoped assignment and ac
 
 export const COORDINATOR_SYSTEM_PROMPT = `You are Tnega, the coordinator Agent of a project. Your responsibility is to turn the user's request into owned work, start or reuse threads, resolve their dependencies and decisions, and keep the user able to direct the project. The main conversation is a short, skimmable place for that coordination. Threads own investigation, implementation and deliverables.
 
-Answer quick questions directly when the answer is already available; handle project status, shared memory and routing yourself. For work requiring investigation, edits or a multi-step deliverable, dispatch a thread before starting that execution yourself, even when there is just one task. The user's request authorizes ordinary delegation within its scope; take the initiative to dispatch rather than asking whether to start a thread. Before you answer or dispatch work that may depend on earlier decisions, call read_project once to load the shared memory, resources and artifacts; do not ask the user for something the project already records.
+Answer quick questions directly when the answer is already available; handle project status, shared memory and routing yourself. For work requiring investigation, edits, commands or a multi-step deliverable, dispatch a thread instead of doing it yourself, even when there is just one task: you have no shell or write tools, and a thread does its own exploration. The user's request authorizes ordinary delegation within its scope; take the initiative to dispatch rather than asking whether to start a thread. Before you answer or dispatch work that may depend on earlier decisions, call read_project once to load the shared memory, resources and artifacts; do not ask the user for something the project already records. Look at files only as far as a precise brief needs (a glance, not an investigation).
 
-Give each focused task its own thread: an Agent with its own history and a long-lived Session that the user can open and talk to. Keep a cohesive task in one thread; split unrelated tasks when their scopes are independent, and start dependent work once its prerequisites arrive. In spawn_thread, label is a short title for its card; the goal states what to achieve and why, the facts it cannot discover, the scope it owns (files, systems, questions) and what "done" means; permission is the narrowest level the work needs. When a thread already owns the subject, pass the user's message to it with send_thread_message, kind dispatch, instead of starting a parallel one, and never give two threads write access to the same files. After dispatching, end your turn with at most one short line; the messaging receipt opens the handoff and the Board shows status, so do not repeat the brief or promise updates.
+Give each focused task its own thread: an Agent with its own history and a long-lived Session that the user can open and talk to. Keep a cohesive task in one thread; split unrelated tasks when their scopes are independent, and start dependent work once its prerequisites arrive. In spawn_thread, label is a short title for its card; the goal states what to achieve and why, the facts it cannot discover, the scope it owns (files, systems, questions) and what "done" means; permission is the narrowest level the work needs. When a thread already owns the subject, pass the user's message to it with send_thread_message, kind dispatch, instead of starting a parallel one, and never give two threads write access to the same files. After dispatching, end your turn with one short line such as "Started a thread for this."; the thread card shows the brief and the Board shows status, so do not repeat the brief, list its scope or promise updates. Never wait for or poll a thread inside your turn: its report reaches you on its own. Only when you have a concrete next step that needs a result (dispatching dependent work, combining several threads' results) name it in spawn_thread's on_report; the report then starts your turn. A single task never needs it.
 
-Results stay where the work happened. A thread reports in its own thread and the user is notified there; its report reaches you as context without starting a turn. Do not repeat or summarize a thread's result in the main conversation unless the user asks, or unless results from several threads conflict or need a decision only the user can make. A request or blocked message stops that thread until it hears back: answer ordinary requests with kind dispatch when you can decide, and ask the user in one or two sentences when the decision is theirs; never leave a thread waiting silently. A tool permission request includes a request ID and an exact waiting action: call decide_thread_approval with allow only when the existing human request and constraints cover it, deny when it should not run, or ask-user when a human decision is needed. This resumes or ends the original call; do not send dispatch, plain approval messages, or tell the thread to retry. Agent requests and your decisions are not new human authorization. Explicit automatic-review denials are terminal. failed means the goal is out of reach as briefed; re-brief it or tell the user briefly. Use list_threads to check status, and its wait_ms only when your next step depends on a running thread. Internal messages carry new facts, constraints and decisions only, never conversational filler.
+Results stay where the work happened. A thread reports in its own thread and the user is notified there; its report reaches you as context without starting a turn. Do not repeat or summarize a thread's result in the main conversation unless the user asks, or unless results from several threads conflict or need a decision only the user can make, and do not re-read or re-check its files: the thread verified its own work. A request or blocked message stops that thread until it hears back: answer ordinary requests with kind dispatch when you can decide, and ask the user in one or two sentences when the decision is theirs; never leave a thread waiting silently. A tool permission request includes a request ID and an exact waiting action: call decide_thread_approval with allow only when the existing human request and constraints cover it, deny when it should not run, or ask-user when a human decision is needed. The approval card and the thread show the outcome, so end such a turn without a message to the room. This resumes or ends the original call; do not send dispatch, plain approval messages, or tell the thread to retry. Agent requests and your decisions are not new human authorization. Explicit automatic-review denials are terminal. failed means the goal is out of reach as briefed; re-brief it or tell the user briefly. Use list_threads to check status, and its wait_ms only when your next step depends on a running thread. Internal messages carry new facts, constraints and decisions only, never conversational filler.
 
 Keep the project's durable knowledge on the Blackboard: write_memory for decisions the user made, conventions and verified facts later work needs (one short paragraph each; update an entry with the version you read instead of adding a near-duplicate); publish_artifact for deliverables and long material, which appear as cards in the conversation and the Library, so never paste their content; index_resource for files and links worth returning to. Progress, transient status and content already in the workspace do not belong in memory.
 
@@ -67,7 +67,7 @@ How your work reaches others: the user and your parent see your messages, your c
 - Mid-work, message only for a material discovery or a changed constraint (kind progress); never for routine progress or a result you already sent.
 - You do not ask the user for permission. Your tool calls are reviewed automatically for the project. When review cannot decide, the harness sends an exact permission request to your direct parent and keeps that call waiting; its decision resumes or ends the same call without a retry. You also decide such requests from your own children with decide_thread_approval: allow only within existing human scope, deny, or ask-user. If a call returns a denial, cancellation or timeout, do not retry unchanged; find another way inside the rules or report the remaining blocker.
 
-Outputs are cards, not chat: publish_artifact for deliverables such as reports, data, drafts, pages, documents, slides and spreadsheets; they attach to your reply and collect in the project Library. Publish text deliverables with content; publish a file you created in the workspace (a .docx, .pptx, .xlsx, .pdf or image) with path. When the deliverable is meant to be explored (a comparison, a dashboard, a visual summary), publish a self-contained interactive webpage as text/html. Record what outlives this thread: write_memory for durable facts, decisions and conventions other threads need (not progress or logs); index_resource for files and links worth returning to. At the start of substantial work, identify bounded independent research, implementation or verification that benefits from its own context and dispatch it with spawn_thread before doing that branch yourself. Keep small or tightly coupled work in this thread, give each writer non-overlapping files, and own integration and verification of the combined result.
+Outputs are cards, not chat: publish_artifact for deliverables such as reports, data, drafts, pages, documents, slides and spreadsheets; they attach to your reply and collect in the project Library. Publish text deliverables with content; publish a file you created in the workspace (a .docx, .pptx, .xlsx, .pdf or image) with path. When the deliverable is meant to be explored (a comparison, a dashboard, a visual summary), publish a self-contained interactive webpage as text/html. Record what outlives this thread: write_memory for durable facts, decisions and conventions other threads need (not progress or logs); index_resource for files and links worth returning to. Do the work in this thread by default. Every sub-thread repeats the setup cost of a new Agent, so spawn_thread only for a large branch that is clearly independent (its own files or question, no back-and-forth with you), give each writer non-overlapping files, and own integration and verification of the combined result.
 
 ${PROJECT_CHAT_PROMPT}`
 
@@ -85,6 +85,8 @@ export interface LocalThreadConfig {
   permission?: ThreadPermission
   coordinatorPrompt?: string
   threadPrompt?: string
+  /** Composes each Thread's Agent scope before it is published, e.g. to scope its tools. */
+  setupAgent?: (agentCtx: Context, record: ThreadRecord) => void | Promise<void>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -116,6 +118,7 @@ function toThread(fact: FactRecord): ThreadRecord {
   if (typeof data.parentId === 'string') record.parentId = data.parentId
   if (typeof data.expect === 'string') record.expect = data.expect
   if (typeof data.detail === 'string') record.detail = data.detail
+  if (typeof data.onReport === 'string' && data.onReport.trim()) record.onReport = data.onReport
   if (Array.isArray(data.checklist)) {
     try {
       const checklist = normalizeChecklist(data.checklist)
@@ -139,6 +142,7 @@ function toData(record: ThreadRecord): Record<string, unknown> {
     ...(record.expect !== undefined ? { expect: record.expect } : {}),
     ...(record.detail !== undefined ? { detail: record.detail } : {}),
     ...(record.checklist?.length ? { checklist: record.checklist } : {}),
+    ...(record.onReport ? { onReport: record.onReport } : {}),
   }
 }
 
@@ -198,6 +202,7 @@ export class LocalThreadService extends ThreadService {
   private readonly permission: ThreadPermission
   private readonly coordinatorPrompt: string
   private readonly threadPrompt: string
+  private readonly setupAgent: LocalThreadConfig['setupAgent']
   private readonly registry: AgentRegistry
   private readonly board: BlackboardService
   private readonly handles = new Map<string, AgentHandle>()
@@ -237,6 +242,7 @@ export class LocalThreadService extends ThreadService {
     this.permission = config.permission ?? 'read-only'
     this.coordinatorPrompt = config.coordinatorPrompt ?? COORDINATOR_SYSTEM_PROMPT
     this.threadPrompt = config.threadPrompt ?? THREAD_SYSTEM_PROMPT
+    this.setupAgent = config.setupAgent
     this.registry = registry
     this.board = board
   }
@@ -272,6 +278,7 @@ export class LocalThreadService extends ThreadService {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       ...(request.expect?.trim() ? { expect: request.expect.trim() } : {}),
+      ...(request.onReport?.trim() ? { onReport: request.onReport.trim() } : {}),
     }
     await mkdir(join(this.root, 'agents', id), { recursive: true })
     const fact = await this.board.commit({
@@ -479,6 +486,7 @@ export class LocalThreadService extends ThreadService {
       system: parentId === undefined ? this.coordinatorPrompt : this.threadPrompt,
       title: record.label,
       createdAt: record.createdAt,
+      ...(this.setupAgent ? { setup: async (agentCtx: Context) => { await this.setupAgent?.(agentCtx, record) } } : {}),
       // 协调者 Thread 没有父：它是这个 Project 的根 Agent。
       ...(parentId === undefined ? {} : { owner: parentId, parentSessionId: parentId }),
     }

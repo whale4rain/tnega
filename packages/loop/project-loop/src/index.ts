@@ -104,6 +104,23 @@ const REPORT_LABEL: Partial<Record<BoxEnvelope['kind'], string>> = {
   failed: 'Failed',
 }
 
+/**
+ * A quiet report reaches the coordinator as context on every later request,
+ * so it carries the outcome, not the whole write-up: threads lead with the
+ * outcome, and the full text stays in the thread (and in `list_threads` with
+ * `thread_id`) for the rare decision that needs it.
+ */
+export const COORDINATOR_REPORT_CHARS = 1200
+
+export function boundReport(text: string, threadId: string, max = COORDINATOR_REPORT_CHARS): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= max) return trimmed
+  const cut = trimmed.slice(0, max)
+  const boundary = Math.max(cut.lastIndexOf('\n\n'), cut.lastIndexOf('. '))
+  const head = (boundary > max / 2 ? cut.slice(0, boundary + 1) : cut).trimEnd()
+  return `${head}\n\n[Report shortened; the full text is in the thread. Call list_threads with thread_id "${threadId}" only if a decision needs it.]`
+}
+
 function excerpt(text: string, max = 160): string {
   const line = text.replace(/\s+/g, ' ').trim()
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
@@ -169,6 +186,40 @@ function isReply(event: SessionEvent): event is SessionEvent & {
   return typeof payload.content === 'string'
     && payload.content.trim().length > 0
     && !(Array.isArray(payload.toolCalls) && payload.toolCalls.length > 0)
+}
+
+/** Coordinator tools that settle a thread's ask without the user. */
+const SETTLING_TOOLS: ReadonlySet<string> = new Set(['decide_thread_approval', 'send_thread_message'])
+
+/**
+ * Whether the coordinator's final answer for this turn is only narration of a
+ * hand-off it already completed: the turn was started by threads, not the
+ * user, and the coordinator answered them with a tool (an approval decision or
+ * a message to the thread). The room stays for the user; that narration stays
+ * in the coordinator's execution details. A turn that ends without settling
+ * the ask (for example, a question for the user) is still published.
+ */
+export function settledAgentTurn(
+  history: readonly SessionEvent[],
+  replyId: string,
+  fromUser: (messageId: string) => boolean,
+): boolean {
+  const end = history.findIndex(event => event.id === replyId)
+  if (end < 0) return false
+  let start = end
+  while (start > 0 && history[start]!.type !== 'turn/start') start -= 1
+  let inputs = 0
+  let settled = false
+  for (const event of history.slice(start, end)) {
+    if (event.type === 'user/message') {
+      const id = boxIdOfName(event.payload.name)
+      if (!id || fromUser(id)) return false
+      inputs += 1
+    } else if (event.type === 'tool/call' && SETTLING_TOOLS.has(String(event.payload.name))) {
+      settled = true
+    }
+  }
+  return inputs > 0 && settled
 }
 
 /**
@@ -347,15 +398,27 @@ export class ProjectLoopRuntime {
         const source = envelope.causationId && envelope.sender.kind === 'user'
           ? (await this.box.timeline()).find(entry => entry.messageId === envelope.causationId)
           : undefined
+        // A report the coordinator asked to be woken by (its next step depends on
+        // it) starts a turn; every other report only joins its context.
+        const quiet = this.known.get(threadId)?.parentId === undefined
+          && QUIET_FOR_COORDINATOR.has(envelope.kind)
+          && !(envelope.kind === 'complete' && envelope.sender.kind === 'agent'
+            && this.known.get(envelope.sender.id)?.onReport !== undefined)
+        const planned = envelope.kind === 'complete' && envelope.sender.kind === 'agent'
+          ? this.known.get(envelope.sender.id)?.onReport
+          : undefined
+        const shown = quiet && envelope.kind === 'complete' && envelope.sender.kind === 'agent'
+          ? { ...envelope, text: boundReport(envelope.text, envelope.sender.id) }
+          : planned
+            ? { ...envelope, text: `${envelope.text}\n\n[Your planned next step: ${planned}]` }
+            : envelope
         const input = {
           messages: [{
             role: 'user' as const,
             name: boxMessageName(envelope.messageId),
-            content: renderEnvelope(envelope, { label: id => this.known.get(id)?.label, source, reader: threadId }),
+            content: renderEnvelope(shown, { label: id => this.known.get(id)?.label, source, reader: threadId }),
           }],
         }
-        const quiet = this.known.get(threadId)?.parentId === undefined
-          && QUIET_FOR_COORDINATOR.has(envelope.kind)
         if (envelope.interrupt && envelope.sender.kind === 'user'
           && (envelope.kind === 'user-message' || envelope.kind === 'user-thread')) await agent.interrupt(input)
         else if (quiet) await agent.inject(input)
@@ -481,10 +544,16 @@ export class ProjectLoopRuntime {
       ? { kind: 'main' }
       : { kind: 'thread', threadId: agentId }
     const causationId = lastInboundMessageId(history)
+    let senders: Map<string, BoxEnvelope['sender']['kind']> | undefined
     for (const event of slice) {
       if (!isReply(event)) continue
       const messageId = publishedMessageId(this.projectId, agentId, event.id)
       if (await this.box.delivery(messageId, USER_ADDRESS)) continue
+      if (record.parentId === undefined) {
+        senders ??= new Map((await this.box.timeline()).map(entry => [entry.messageId, entry.sender.kind]))
+        const known = senders
+        if (settledAgentTurn(history, event.id, id => known.get(id) !== 'agent')) continue
+      }
       const refs = await this.turnArtifacts(agentId, history, event)
       await this.box.send({
         sender: { kind: 'agent', id: agentId },

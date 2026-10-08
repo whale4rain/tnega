@@ -229,6 +229,99 @@ it('wakes the coordinator when a thread needs a decision', async () => {
   }
 })
 
+it('wakes the coordinator for a report it asked to act on', async () => {
+  const root = await workspace()
+  const ctx = await mount(root)
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Draft the outline', onReport: 'Dispatch the writing thread with the outline' })
+    expect((await ctx.threads.get(child.id))?.onReport).toBe('Dispatch the writing thread with the outline')
+    await ctx.box.send({
+      sender: agentAddress(child.id),
+      recipients: [agentAddress(coordinator.id)],
+      placement: { kind: 'thread', threadId: child.id },
+      kind: 'complete',
+      text: 'Outline ready in outline.md.',
+    })
+    const answer = await waitFor(
+      async () => (await timeline(ctx)).find(entry => entry.kind === 'agent-reply' && entry.sender.id === coordinator.id),
+      'the coordinator to act on the report',
+    )
+    expect(answer.placement).toEqual({ kind: 'main' })
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it('gives the coordinator a long report as its outcome with a pointer to the rest', async () => {
+  const { boundReport, COORDINATOR_REPORT_CHARS } = await import('../src/index.js')
+  expect(boundReport('  Short and done.  ', 't1')).toBe('Short and done.')
+  const long = `Outcome: shipped.\n\n${'Evidence line. '.repeat(200)}`
+  const bounded = boundReport(long, 't1')
+  expect(bounded.startsWith('Outcome: shipped.')).toBe(true)
+  expect(bounded.length).toBeLessThan(COORDINATOR_REPORT_CHARS + 200)
+  expect(bounded).toContain('list_threads with thread_id "t1"')
+
+  const root = await workspace()
+  const ctx = await mount(root)
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Long work' })
+    const report = await ctx.box.send({
+      sender: agentAddress(child.id),
+      recipients: [agentAddress(coordinator.id)],
+      placement: { kind: 'thread', threadId: child.id },
+      kind: 'complete',
+      text: long,
+    })
+    await waitFor(
+      async () => (await ctx.box.delivery(report.messageId, agentAddress(coordinator.id)))?.status === 'acked' ? true : undefined,
+      'the report to reach the coordinator',
+    )
+    const parent = await ctx.threads.activate(coordinator.id)
+    expect(parent.status).toBe('idle')
+    // Staged input enters the Session with the next turn.
+    await ctx.box.send({
+      sender: USER_ADDRESS,
+      recipients: [agentAddress(coordinator.id)],
+      placement: { kind: 'main' },
+      kind: 'user-message',
+      text: 'Anything new?',
+    })
+    await waitFor(
+      async () => (await timeline(ctx)).some(entry => entry.kind === 'agent-reply' && entry.sender.id === coordinator.id) ? true : undefined,
+      'the coordinator answer',
+    )
+    const input = (await parent.session.read()).find(event => event.type === 'user/message'
+      && event.payload.name === `box:${report.messageId}`)
+    const content = JSON.stringify(input?.payload)
+    expect(content).toContain('Outcome: shipped.')
+    expect(content.length).toBeLessThan(COORDINATOR_REPORT_CHARS + 800)
+    // The thread keeps the full report for whoever opens it.
+    expect((await ctx.threads.get(child.id))?.detail).toBe(long.trim())
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it('keeps the coordinator\'s narration of a settled thread request out of the room', async () => {
+  const { settledAgentTurn } = await import('../src/index.js')
+  const event = (id: string, type: string, payload: Record<string, unknown> = {}) =>
+    ({ id, type, ts: 0, payload }) as unknown as import('@tnega/session').SessionEvent
+  const turn = (input: string, tool?: string) => [
+    event('s', 'turn/start'),
+    event('u', 'user/message', { name: `box:${input}`, content: 'x' }),
+    ...(tool ? [event('c', 'tool/call', { id: 'c', name: tool, arguments: {} })] : []),
+    event('r', 'assistant/message', { content: 'Approved.' }),
+  ]
+  const fromUser = (id: string) => id === 'human'
+  expect(settledAgentTurn(turn('thread-ask', 'decide_thread_approval'), 'r', fromUser)).toBe(true)
+  expect(settledAgentTurn(turn('thread-ask', 'send_thread_message'), 'r', fromUser)).toBe(true)
+  // A question the coordinator puts to the user, or any turn the user started, is published.
+  expect(settledAgentTurn(turn('thread-ask'), 'r', fromUser)).toBe(false)
+  expect(settledAgentTurn(turn('human', 'send_thread_message'), 'r', fromUser)).toBe(false)
+})
+
 it('attaches artifacts published during a turn to that reply', async () => {
   const root = await workspace()
   const ctx = await mount(root)

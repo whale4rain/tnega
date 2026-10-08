@@ -90,6 +90,8 @@ export interface ThreadRecord {
   permission: ThreadPermission
   /** 实时清单；没有清单的 Thread 省略此字段。 */
   checklist?: ThreadChecklistItem[]
+  /** The parent's next step on this thread's report; when set, the report starts a parent turn. */
+  onReport?: string
   createdAt: number
   updatedAt: number
 }
@@ -102,6 +104,8 @@ export interface ThreadSpawnRequest {
   expect?: string
   /** 只能比父 Thread 更窄。 */
   permission?: ThreadPermission
+  /** What the parent will do with the report; the report then starts a parent turn instead of only joining its context. */
+  onReport?: string
 }
 
 export interface ThreadListOptions {
