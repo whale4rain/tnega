@@ -33,6 +33,7 @@ vi.mock('electron', () => ({
   dialog: {}, ipcMain: { handle: vi.fn(), on: vi.fn() },
   Menu: { setApplicationMenu: vi.fn() }, nativeImage: { createFromPath: vi.fn() },
   nativeTheme: { shouldUseDarkColors: false }, net: {}, shell: {},
+  utilityProcess: { fork: vi.fn() },
 }))
 vi.mock('@tnega/cli', () => ({
   defaultHotProfile: vi.fn(),
@@ -65,7 +66,10 @@ beforeEach(async () => {
   await new Promise(resolve => setImmediate(resolve))
 })
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  app.emit('will-quit')
+  vi.useRealTimers()
+})
 
 test('tray Exit removes every window before waiting for stalled runtime cleanup', async () => {
   vi.useFakeTimers()
