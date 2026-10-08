@@ -102,11 +102,11 @@ it('stops and corrects the coordinator, then redirects controls to a thread repl
     panelSlot: null, onPanelTabs: vi.fn(),
   }))
   const box = await view.findByRole('textbox', { name: 'Message' })
-  expect(view.queryByRole('button', { name: 'Send', exact: true })).toBeNull()
+  expect(view.queryByRole('button', { name: 'Send' })).toBeNull()
   await act(async () => { fireEvent.click(view.getByRole('button', { name: 'Stop' })) })
   expect(stop).toHaveBeenLastCalledWith('workspace', 'project', 'coordinator')
   fireEvent.change(box, { target: { value: 'Delegate the implementation' } })
-  expect(view.queryByRole('button', { name: 'Stop', exact: true })).toBeNull()
+  expect(view.queryByRole('button', { name: 'Stop' })).toBeNull()
   expect(view.queryByRole('button', { name: 'Interrupt and send' })).toBeNull()
   await act(async () => { fireEvent.keyDown(box, { key: 'Enter', ctrlKey: true }) })
   expect(send).toHaveBeenCalledWith('workspace', 'project', 'Delegate the implementation', undefined, true)
