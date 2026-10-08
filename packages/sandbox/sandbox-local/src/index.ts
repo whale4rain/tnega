@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@tnega/core'
+import { localExecutionProvider } from '@tnega/execution'
 import { containsDirectory } from '@tnega/fs-sandbox'
 import {
   SandboxError,
@@ -191,7 +192,10 @@ export class LocalSandboxService extends SandboxService {
     return {
       argv: runnerArgv,
       ...(selection.runner === 'windows-acl' && process.versions.electron
-        && runnerArgv[0] === process.execPath ? { env: { ELECTRON_RUN_AS_NODE: '1' } } : {}),
+        && runnerArgv[0] === process.execPath
+        ? { env: { ELECTRON_RUN_AS_NODE: '1',
+          ...(this.config.windowsAclRunnerCommand === undefined ? { TNEGA_DESKTOP_ACL_RUNNER: '1' } : {}),
+        } } : {}),
       runner: selection.runner,
       enforcement: selection.enforcement,
       denialSignatures: denialSignatures(selection.runner, this.config),
@@ -408,20 +412,29 @@ export class LocalSandboxService extends SandboxService {
       this.probeFailure = 'windows-acl runner command is empty'
       return 'unusable'
     }
-    return this.probeCommand(
-      command,
-      [
-        ...prefix,
-        '--workspace', this.probePolicy().workspaceRoot,
-        '--temp', tmpdir(),
-        '--mode', 'read-only',
-        '--', 'cmd.exe', '/d', '/s', '/c', 'exit 0',
-      ],
-      timeout,
-      STATIC_ENFORCEMENT['windows-acl'],
-      process.versions.electron && command === process.execPath
-        ? { ELECTRON_RUN_AS_NODE: '1' } : undefined,
-    )
+    try {
+      const result = await localExecutionProvider.runProcess({
+        argv: [
+          command, ...prefix,
+          '--workspace', this.probePolicy().workspaceRoot,
+          '--temp', tmpdir(),
+          '--mode', 'read-only',
+          '--', 'cmd.exe', '/d', '/s', '/c', 'exit 0',
+        ],
+        cwd: this.probePolicy().workspaceRoot,
+        timeoutMs: timeout,
+        maxBuffer: 64 * 1024,
+        ...(process.versions.electron && command === process.execPath
+          ? { env: { ELECTRON_RUN_AS_NODE: '1',
+            ...(this.config.windowsAclRunnerCommand === undefined ? { TNEGA_DESKTOP_ACL_RUNNER: '1' } : {}),
+          } } : {}),
+      })
+      if (result.exitCode === 0) return STATIC_ENFORCEMENT['windows-acl']
+      this.probeFailure = result.stderr.trim() || `runner exited ${result.exitCode}`
+    } catch (error) {
+      this.probeFailure = error instanceof Error ? error.message : String(error)
+    }
+    return 'unusable'
   }
 
   private probeCommand(

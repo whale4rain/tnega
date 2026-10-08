@@ -389,6 +389,38 @@ describe('token failure paths', () => {
 })
 
 describe('spawn failure paths', () => {
+  it('replaces only an unusable stdin with a NUL handle and closes it', () => {
+    const fake = createFakeWin32()
+    const closed: NativePtr[] = []
+    const bindings: FakeBindings = {
+      ...fake.bindings,
+      setHandleInformation: (handle) => handle === 0x10n ? 0 : 1,
+      openNullInput: () => 0x20n,
+      encodeStartupInfo: (ptr, fields) => {
+        expect(fields.hStdInput).toBe(0x20n)
+        expect(fields.hStdOutput).toBe(0x11n)
+        expect(fields.hStdError).toBe(0x12n)
+        fake.bindings.encodeStartupInfo(ptr, fields)
+      },
+      closeHandle: (handle) => { closed.push(handle); return fake.bindings.closeHandle(handle) },
+    }
+    spawnRestrictedInherited(bindings, 0x400n, { command: 'cmd', args: [], cwd: 'C:\\cwd' })
+    expect(closed).toContain(0x20n)
+    expect(closed).not.toContain(0x11n)
+  })
+
+  it('fails closed when an unusable stdin cannot be replaced', () => {
+    const closed: NativePtr[] = []
+    const fake = createFakeWin32({
+      setHandleInformation: () => 0, openNullInput: () => 0xFFFFFFFFFFFFFFFFn, getLastError: () => 5,
+      closeHandle: handle => { closed.push(handle); return 1 },
+    })
+    expect(() => spawnRestrictedInherited(fake.bindings, 0x400n, { command: 'cmd', args: [], cwd: 'C:\\cwd' }))
+      .toThrow(/CreateFileW failed \(Win32 5\)/)
+    expect(fake.calls).not.toContain('createProcessAsUserW')
+    expect(closed).not.toContain(0xFFFFFFFFFFFFFFFFn)
+  })
+
   it('takes the standard handles from the runner and marks them inheritable', () => {
     const fake = createFakeWin32()
     let startupInfo: NativePtr | undefined
@@ -431,7 +463,7 @@ describe('spawn failure paths', () => {
     expect(startupInfo).toBeDefined()
     if (startupInfo === undefined) throw new Error('unreachable: createProcessAsUserW ran')
     const fields = fake.startupInfoAt(startupInfo)
-    expect(fields.dwFlags).toBe(abi.STARTF_USESTDHANDLES)
+    expect(fields.dwFlags).toBe(abi.STARTF_USESTDHANDLES | abi.STARTF_FORCEOFFFEEDBACK)
     expect(fields.cb).toBe(abi.STARTUPINFOW_SIZE)
     expect([fields.hStdInput, fields.hStdOutput, fields.hStdError]).toEqual([0x10n, 0x11n, 0x12n])
     expect(fake.calls).toContain('assignProcessToJobObject')

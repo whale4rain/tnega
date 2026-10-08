@@ -72,6 +72,21 @@ pnpm --filter @tnega/desktop package
 The desktop build ships the Windows ACL runner beside `out/main.js`, with
 `koffi` retained as a native runtime dependency. The sandbox launches the runner
 using Electron's Node mode without changing the application's environment.
+On Windows, its built-in ACL runner uses Electron's native utility launcher,
+which suppresses the operating system's process-starting cursor. The runner
+still creates its restricted token and Job, preserves inherited output and
+uses an EOF stdin when the utility host's stdin handle cannot be inherited.
+Custom runner commands and ordinary processes keep their existing launch path.
+
+Run the local Windows process checks (not part of CI) with:
+
+```bash
+pnpm --filter @tnega/desktop exec electron e2e/verify-process-launcher.mjs
+```
+
+This verifies real utility workers, the restricted runner, argv/environment,
+stdin EOF, large output and exit tails, early cancellation and descendant
+cleanup. See [the E2E guide](e2e/README.md).
 For a quick Windows artifact validation without an installer, run:
 
 ```bash

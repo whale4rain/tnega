@@ -1,4 +1,5 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import type { Readable } from 'node:stream'
 import { assertPublicHttpUrl, networkFetch } from './network.js'
 import { shellCommandArgv, systemShell } from './shell.js'
 
@@ -121,6 +122,31 @@ export interface ExecutionProvider {
   startProcess?(request: BackgroundProcessRequest): Promise<BackgroundProcess>
 }
 
+/** The process lifecycle needed by local execution, independent of its host. */
+export interface ExecutionChild {
+  readonly pid?: number | undefined
+  readonly stdout: Readable | null
+  readonly stderr: Readable | null
+  on(event: 'error', listener: (error: Error) => void): this
+  on(event: 'close', listener: (code: number | null, signal?: NodeJS.Signals | null) => void): this
+  kill(signal?: NodeJS.Signals): boolean
+}
+
+export type ProcessLauncher = (request: BackgroundProcessRequest) => ExecutionChild | undefined
+
+const hostLaunchers: ProcessLauncher[] = []
+
+/** Install a host-specific launcher; undefined results use the normal argv spawn. */
+export function configureProcessLauncher(launcher: ProcessLauncher): () => void {
+  // Keep each installation distinct, even if the same function is installed twice.
+  const installed: ProcessLauncher = request => launcher(request)
+  hostLaunchers.push(installed)
+  return () => {
+    const index = hostLaunchers.indexOf(installed)
+    if (index >= 0) hostLaunchers.splice(index, 1)
+  }
+}
+
 /** Characters of output a background process keeps. */
 export const BACKGROUND_OUTPUT_LIMIT = 64 * 1024
 
@@ -149,21 +175,22 @@ while ($queue.Count) { $p = $queue.Dequeue(); foreach ($c in $all) { if ($c.Pare
   })
 }
 
-async function killProcessTree(child: ChildProcess): Promise<void> {
-  if (child.pid === undefined) return
+async function killProcessTree(child: ExecutionChild): Promise<void> {
+  const pid = child.pid
+  if (pid === undefined) { child.kill('SIGKILL'); return }
   if (process.platform === 'win32') {
     await new Promise<void>((resolve) => {
-      const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+      const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], {
         stdio: 'ignore',
         windowsHide: true,
       })
       killer.on('error', () => resolve())
       killer.on('exit', () => resolve())
     })
-    await killOrphans(child.pid)
+    await killOrphans(pid)
   } else {
     try {
-      process.kill(-child.pid, 'SIGKILL')
+      process.kill(-pid, 'SIGKILL')
     } catch {
       // Process group already gone.
     }
@@ -251,7 +278,7 @@ interface RunOptions {
  * (timeout, cancellation, or a failed spawn); anything the child itself did
  * resolves with its exit code.
  */
-function runChild(spawnChild: () => ChildProcess, options: RunOptions): Promise<CapturedOutput> {
+function runChild(spawnChild: () => ExecutionChild, options: RunOptions): Promise<CapturedOutput> {
   const { timeoutMs, maxBuffer, signal, label } = options
   return new Promise((resolve, reject) => {
     const child = spawnChild()
@@ -317,9 +344,18 @@ function spawnOptions(
 }
 
 /** Spawn the system shell directly with the command as one argument: no cmd.exe hop, no console window. */
-function spawnShell(command: string, cwd: string): ChildProcess {
+function spawnShell(command: string, cwd: string): ExecutionChild {
   const [file, ...args] = shellCommandArgv(systemShell(), command)
-  return spawn(file!, args, { ...spawnOptions(cwd, 'ignore'), shell: false })
+  return spawnProcess({ argv: [file!, ...args], cwd })
+}
+
+function spawnProcess(request: BackgroundProcessRequest): ExecutionChild {
+  const [command, ...args] = request.argv
+  if (!command) throw new Error('process argv must name an executable')
+  return hostLaunchers.at(-1)?.(request) ?? spawn(command, args, {
+    ...spawnOptions(request.cwd, 'ignore'), shell: false,
+    ...(request.env ? { env: { ...process.env, ...request.env } } : {}),
+  })
 }
 
 function runLocalShell(request: ShellRequest): Promise<ShellResult> {
@@ -335,17 +371,11 @@ function runLocalShell(request: ShellRequest): Promise<ShellResult> {
 }
 
 function runLocalProcess(request: ProcessRequest): Promise<ProcessResult> {
-  const [command, ...args] = request.argv
-  if (!command) throw new Error('process argv must name an executable')
   return runChild(
     // Nothing ever writes to a child's stdin here, and an open pipe makes a
     // reader (ripgrep without an explicit path) block forever, so it gets EOF
     // instead.
-    () => spawn(command, args, {
-      ...spawnOptions(request.cwd, 'ignore'),
-      ...(request.env ? { env: { ...process.env, ...request.env } } : {}),
-      shell: false,
-    }),
+    () => spawnProcess(request),
     {
       timeoutMs: request.timeoutMs ?? 15_000,
       maxBuffer: request.maxBuffer ?? 1024 * 1024,
@@ -355,7 +385,7 @@ function runLocalProcess(request: ProcessRequest): Promise<ProcessResult> {
   )
 }
 
-function background(child: ChildProcess): BackgroundProcess {
+function background(child: ExecutionChild): BackgroundProcess {
   let output = ''
   let code: number | null | undefined
   const append = (chunk: Buffer): void => {
@@ -377,7 +407,7 @@ ${errorMessage(error)}`
     })
   })
   return {
-    pid: child.pid,
+    get pid() { return child.pid },
     output: () => output,
     exitCode: () => code,
     exited,
@@ -394,12 +424,7 @@ async function startLocalShell(request: BackgroundShellRequest): Promise<Backgro
 }
 
 async function startLocalProcess(request: BackgroundProcessRequest): Promise<BackgroundProcess> {
-  const [command, ...args] = request.argv
-  if (!command) throw new Error('process argv must name an executable')
-  return background(spawn(command, args, {
-    ...spawnOptions(request.cwd, 'ignore'), shell: false,
-    ...(request.env ? { env: { ...process.env, ...request.env } } : {}),
-  }))
+  return background(spawnProcess(request))
 }
 
 export const localExecutionProvider: ExecutionProvider = {

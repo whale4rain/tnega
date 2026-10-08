@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, shell, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, shell, utilityProcess, type OpenDialogOptions } from 'electron'
+import { configureProcessLauncher } from '@tnega/execution'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +12,7 @@ import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from 
 import { UpdateController, type UpdaterLike } from './updater.js'
 import { readUpdateChannel, saveUpdateChannel } from './update-preferences.js'
 import { desktopPtcAssets } from './ptc-assets.js'
+import { desktopProcessLauncher } from './process-launcher.js'
 import electronUpdater from 'electron-updater'
 
 let server: WebServer | undefined
@@ -202,6 +204,10 @@ async function closeAndExit(options: { restartIntoUpdate?: boolean } = {}): Prom
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'win32') {
+    const restoreLauncher = configureProcessLauncher(desktopProcessLauncher(utilityProcess.fork, process.execPath))
+    app.once('will-quit', restoreLauncher)
+  }
   Menu.setApplicationMenu(null)
   installDesktopHandlers()
   updates = createUpdates()

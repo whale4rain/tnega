@@ -76,6 +76,7 @@ const DISABLE_MAX_PRIVILEGE = 0x1
 const LUA_TOKEN = 0x4
 const WRITE_RESTRICTED = 0x8
 const STARTF_USESTDHANDLES = 0x00000100
+const STARTF_FORCEOFFFEEDBACK = 0x00000080
 const HANDLE_FLAG_INHERIT = 0x1
 const STD_INPUT_HANDLE = -10
 const STD_OUTPUT_HANDLE = -11
@@ -181,6 +182,7 @@ export interface RunnerBindings {
     processInfo: NativePtr,
   ): number
   getStdHandle(stdHandle: number): NativePtr
+  openNullInput(): NativePtr
   setHandleInformation(handle: NativePtr, mask: number, flags: number): number
   setConsoleCtrlHandler(handler: null, add: number): number
   createJobObjectW(attributes: null, name: null): NativePtr
@@ -614,6 +616,7 @@ export function createRunnerBindings(koffi: KoffiModule): RunnerBindings {
     koffi.pointer(STARTUPINFOW), koffi.pointer(PROCESS_INFORMATION),
   ])
   const getStdHandle = bind(kernel32, 'GetStdHandle', PVOID, ['int'])
+  const createFileW = bind(kernel32, 'CreateFileW', PVOID, ['str16', 'uint32', 'uint32', PVOID, 'uint32', 'uint32', PVOID])
   const setHandleInformation = bind(kernel32, 'SetHandleInformation', 'int', [PVOID, 'uint32', 'uint32'])
   const setConsoleCtrlHandler = bind(kernel32, 'SetConsoleCtrlHandler', 'int', [PVOID, 'int'])
   const createJobObjectW = bind(kernel32, 'CreateJobObjectW', PVOID, [PVOID, 'str16'])
@@ -712,6 +715,7 @@ export function createRunnerBindings(koffi: KoffiModule): RunnerBindings {
       'CreateProcessAsUserW',
     ),
     getStdHandle: (stdHandle: number) => asPointer(getStdHandle(stdHandle), 'GetStdHandle'),
+    openNullInput: () => asPointer(createFileW('NUL', 0x80000000, 0x3, null, 3, 0x80, null), 'CreateFileW'),
     setHandleInformation: (handle: NativePtr, mask: number, flags: number) =>
       asNumber(setHandleInformation(handle, mask, flags), 'SetHandleInformation'),
     setConsoleCtrlHandler: (handler: null, add: number) => asNumber(setConsoleCtrlHandler(handler, add), 'SetConsoleCtrlHandler'),
@@ -1035,7 +1039,7 @@ function inheritedStandardHandles(api: RunnerBindings): StandardHandles {
     throwLastError(api, 'GetStdHandle', `null ${label} handle`)
   }
   return {
-    stdin: get(STD_INPUT_HANDLE, 'stdin'),
+    stdin: api.getStdHandle(STD_INPUT_HANDLE),
     stdout: get(STD_OUTPUT_HANDLE, 'stdout'),
     stderr: get(STD_ERROR_HANDLE, 'stderr'),
   }
@@ -1065,22 +1069,37 @@ export function spawnRestrictedInherited(
   // Node 启动时会清掉自己的 stdio 继承位（uv_disable_stdio_inheritance），
   // STARTF_USESTDHANDLES 要求它们重新可继承；用完立刻还原（尽力而为）。
   const enabled: NativePtr[] = []
+  let nullInput: NativePtr = 0n
   try {
+    // Utility hosts can have an unusable STD_INPUT_HANDLE. Execution never
+    // writes stdin, so supply a real inheritable NUL handle with immediate EOF.
     const stdio = inheritedStandardHandles(api)
-    for (const [handle, label] of [
+    for (const [inherited, label] of [
       [stdio.stdin, 'stdin'],
       [stdio.stdout, 'stdout'],
       [stdio.stderr, 'stderr'],
     ] as const) {
-      if (api.setHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) === 0) {
-        throwLastError(api, 'SetHandleInformation', `${label} (enable inherit)`)
+      let handle = inherited
+      if (isNullPtr(handle) || api.setHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) === 0) {
+        if (label !== 'stdin') throwLastError(api, 'SetHandleInformation', `${label} (enable inherit)`)
+        const openedInput = api.openNullInput()
+        if (isNullPtr(openedInput) || openedInput === -1n || openedInput === 0xFFFFFFFFFFFFFFFFn) {
+          throwLastError(api, 'CreateFileW', 'NUL stdin')
+        }
+        nullInput = openedInput
+        handle = nullInput
+        stdio.stdin = handle
+        if (api.setHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) === 0) {
+          throwLastError(api, 'SetHandleInformation', 'NUL stdin (enable inherit)')
+        }
       }
       enabled.push(handle)
     }
     const startupInfo = api.allocStartupInfo()
     api.encodeStartupInfo(startupInfo, {
       cb: STARTUPINFOW_SIZE,
-      dwFlags: STARTF_USESTDHANDLES,
+      // Hidden GUI-subsystem tools otherwise activate the Windows startup cursor.
+      dwFlags: STARTF_USESTDHANDLES | STARTF_FORCEOFFFEEDBACK,
       hStdInput: stdio.stdin,
       hStdOutput: stdio.stdout,
       hStdError: stdio.stderr,
@@ -1132,6 +1151,7 @@ export function spawnRestrictedInherited(
     throw error
   } finally {
     for (const handle of enabled) api.setHandleInformation(handle, HANDLE_FLAG_INHERIT, 0)
+    if (!isNullPtr(nullInput)) api.closeHandle(nullInput)
   }
 }
 
@@ -1222,9 +1242,14 @@ if (isDirectRun()) {
       // 0xC0000005 = 3221225477）赋给 process.exitCode 之后，父进程通过 spawnSync 观察到的
       // 就是同一个数值，链路上没有任何截断或掩码。
       process.exitCode = exitCode
+      // Electron utility services stay alive for their IPC channel; unlike a
+      // plain Node worker, setting exitCode alone does not end the runner.
+      if ('type' in process && process.type === 'utility') process.exit(exitCode)
     },
     (error: unknown) => {
-      process.stderr.write(`${RUNNER_FAILURE_PREFIX}${error instanceof Error ? error.message : String(error)}\n`)
+      process.stderr.write(`${RUNNER_FAILURE_PREFIX}${error instanceof Error ? error.message : String(error)}\n`, () => {
+        if ('type' in process && process.type === 'utility') process.exit(RUNNER_FAILURE_EXIT_CODE)
+      })
       process.exitCode = RUNNER_FAILURE_EXIT_CODE
     },
   )

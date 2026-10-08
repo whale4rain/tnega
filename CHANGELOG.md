@@ -43,6 +43,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Windows desktop restricted shell/search workers suppress process startup cursor
+  feedback, while preserving output, stdin EOF, exit codes and process cleanup.
+  Ordinary programs and custom sandbox runners retain their existing launch path.
+
 - Project Agent exchanges center their participant header, add space after names
   and scroll long histories. Workbench tabs support ordinary mouse-wheel scrolling
   and a visible horizontal scrollbar.

@@ -36,3 +36,14 @@ Service Definition，也不构成能力缝。它导出的是词汇（`ShellReque
 - 超时与调用方中断都会终止整棵进程树，并以 reject 结束；子进程自身的退出码则以结果返回。
 - `stdoutTruncated` 标记这一次捕获是否被 `maxBuffer` 截断，调用方必须据此拒绝解析，
   而不是把半截输出当成完整结果。
+
+## 宿主启动方式
+
+`configureProcessLauncher(launcher)` 为整个宿主进程安装可选的 argv 启动方式；返回的清理函数
+可重复调用，且重叠安装按任意顺序清理不会重新启用已经清理的 launcher。最近安装的 launcher
+返回 `undefined` 时使用原本的 Node `spawn`。命令捕获、输出上限、取消、超时与进程树终止仍由
+本包统一处理；后台进程的 `pid` 在宿主异步创建进程后可用。
+
+Windows 桌面仅将沙箱 Provider 标记的内置 ACL runner 交给 Electron `utilityProcess`；其
+原生启动器关闭系统的启动游标反馈，避免每次 shell/search 工具调用都让鼠标转圈。普通命令、
+Web/CLI 宿主与自定义 runner 保持原本启动方式。桌面退出时撤销这个宿主入口。

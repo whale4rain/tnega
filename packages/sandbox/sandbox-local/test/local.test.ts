@@ -46,6 +46,8 @@ it('sets Node mode only for the Electron executable running the ACL runner', asy
       policy: { ...policy('read-only'), workspaceRoot: process.cwd() },
     }
     expect((await create(process.execPath).confine(request)).env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
+    const builtin = mount({ internals: { platform: 'win32', chain: ['windows-acl'], probe: () => 'partial' } })
+    expect((await builtin.confine(request)).env).toEqual({ ELECTRON_RUN_AS_NODE: '1', TNEGA_DESKTOP_ACL_RUNNER: '1' })
     expect((await create('node').confine(request)).env).toBeUndefined()
   } finally {
     if (descriptor) Object.defineProperty(process.versions, 'electron', descriptor)

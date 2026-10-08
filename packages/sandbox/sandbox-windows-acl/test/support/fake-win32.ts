@@ -303,6 +303,7 @@ export function createFakeWin32(overrides: Partial<FakeBindings> = {}): FakeWin3
       record('getStdHandle')
       return stdHandle === -10 ? 0x10n : stdHandle === -11 ? 0x11n : 0x12n
     },
+    openNullInput: () => { record('openNullInput'); return 0x10n },
     setHandleInformation: () => {
       record('setHandleInformation')
       return 1

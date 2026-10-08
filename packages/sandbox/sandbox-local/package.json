@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@tnega/core": "workspace:*",
+    "@tnega/execution": "workspace:*",
     "@tnega/fs-sandbox": "workspace:*",
     "@tnega/sandbox": "workspace:*",
     "@tnega/sandbox-windows-acl": "workspace:*"

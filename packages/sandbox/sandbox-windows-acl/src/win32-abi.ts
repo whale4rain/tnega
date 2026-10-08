@@ -142,6 +142,8 @@ export const LUA_TOKEN = 0x4
 export const WRITE_RESTRICTED = 0x8
 /** STARTUPINFOW：使用给定的标准句柄。 */
 export const STARTF_USESTDHANDLES = 0x00000100
+/** STARTUPINFOW：后台命令启动时不显示 Windows 加载游标。 */
+export const STARTF_FORCEOFFFEEDBACK = 0x00000080
 /** 允许子进程继承该句柄。 */
 export const HANDLE_FLAG_INHERIT = 0x1
 /** GetStdHandle：标准输入。 */
