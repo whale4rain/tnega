@@ -60,6 +60,21 @@ async function run() {
   assert.equal(layout.drag.trim(), 'drag', 'title bar must be draggable')
   assert.equal(layout.actionsDrag.trim(), 'no-drag', 'controls must remain clickable')
   console.log('Sandboxed preload, title bar clearance and drag region passed:', layout)
+  await window.webContents.executeJavaScript(`document.querySelector('button[aria-label^="Show workbench"]').click()`)
+  for (let index = 0; index < 100; index += 1) {
+    if (await window.webContents.executeJavaScript(`!!document.querySelector('.wb-header.window-controls-header')`)) break
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  const workbench = await window.webContents.executeJavaScript(`({
+    closeRight: document.querySelector('button[aria-label="Close workbench"]').getBoundingClientRect().right,
+    width: innerWidth,
+    railDrag: getComputedStyle(document.querySelector('.wb-rail')).getPropertyValue('-webkit-app-region'),
+    fillDrag: getComputedStyle(document.querySelector('.wb-rail-fill')).getPropertyValue('-webkit-app-region'),
+  })`)
+  assert.ok(workbench.closeRight <= workbench.width - 138, 'Workbench controls must clear native buttons')
+  assert.equal(workbench.railDrag.trim(), 'no-drag', 'tab scrolling must not drag the window')
+  assert.equal(workbench.fillDrag.trim(), 'drag', 'empty header space remains draggable')
+  console.log('Workbench scroll region and native controls clearance passed:', workbench)
   window.destroy()
   server.close()
   app.exit(0)

@@ -49,12 +49,14 @@
 }
 
 /* Tab rail: tools first, then documents opened from the conversation. */
+.wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; }
 .wb-rail {
   display: flex;
   align-items: center;
   gap: 2px;
   min-height: 36px;
-  flex: none;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -159,6 +161,8 @@
 
 .wb-rail-fill {
   flex: 1;
+  min-width: 12px;
+  height: 30px;
 }
 
 /* A narrow Workbench keeps tool tabs to their icons. */

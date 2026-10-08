@@ -3535,7 +3535,8 @@ kbd {
 
 .desktop-chrome .sidebar-top,
 .desktop-chrome .conv-header,
-.desktop-chrome .wb-rail {
+.desktop-chrome .wb-header,
+.desktop-chrome .wb-rail-fill {
   -webkit-app-region: drag;
 }
 
@@ -3543,8 +3544,8 @@ kbd {
 .desktop-chrome .conv-header-actions,
 .desktop-chrome .conv-title,
 .desktop-chrome .conv-subtitle,
-.desktop-chrome .wb-rail button,
-.desktop-chrome .wb-rail .wb-tab,
+.desktop-chrome .wb-rail,
+.desktop-chrome .wb-header button,
 .desktop-chrome .zoom-controls,
 .desktop-chrome .conv-header > button {
   -webkit-app-region: no-drag;

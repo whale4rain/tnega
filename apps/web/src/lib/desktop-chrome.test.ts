@@ -4,12 +4,15 @@ import { backgroundBehind, cssColorToHex, markWindowControls } from './desktop-c
 
 it('reserves native controls only in the header at the top-right edge', () => {
   const root = document.createElement('div')
-  root.innerHTML = '<header class="conv-header"></header><div class="wb-rail"></div>'
+  root.innerHTML = '<header class="conv-header"></header><aside class="workbench"><div class="wb-header"><div class="wb-rail"></div></div></aside>'
   const conversation = root.children[0]
-  const drawer = root.children[1]
+  const drawer = root.querySelector('.wb-header')
   if (!conversation || !drawer) throw new Error('missing headers')
   conversation.getBoundingClientRect = () => new DOMRect(0, 0, 700, 58)
-  drawer.getBoundingClientRect = () => new DOMRect(700, 0, 580, 58)
+  drawer.getBoundingClientRect = () => new DOMRect(708, 6, 564, 36)
+  const workbench = root.querySelector('.workbench')
+  if (!workbench) throw new Error('missing workbench')
+  workbench.getBoundingClientRect = () => new DOMRect(700, 0, 580, 820)
   markWindowControls(root, 1280)
   expect(conversation.classList.contains('window-controls-header')).toBe(false)
   expect(drawer.classList.contains('window-controls-header')).toBe(true)

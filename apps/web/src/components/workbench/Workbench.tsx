@@ -81,6 +81,7 @@ export function Workbench({
   return (
     <aside className="workbench" aria-label="Workbench">
       <ResizeHandle onResize={onResize} />
+      <div className="wb-header">
       <div className="wb-rail" role="tablist" aria-label="Workbench" onWheel={event => {
         if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY
       }}>
@@ -130,6 +131,7 @@ export function Workbench({
         {otherDocs.length > 0 && <span className="wb-rail-divider" aria-hidden />}
         {otherDocs.map(item => <DocTabButton key={item.key} doc={item} active={active === item.key} onSelect={() => onChange(current => select(current, item.key))} onClose={() => onChange(current => closeDoc(current, item.key))} />)}
         <span className="wb-rail-fill" />
+      </div>
         <button type="button" className="icon-button small" aria-label="Close workbench" title="Close (Ctrl+J)" onClick={onClose}>
           <X size={15} />
         </button>

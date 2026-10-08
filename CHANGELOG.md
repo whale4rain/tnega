@@ -49,6 +49,8 @@ compare links provide a convenient browser view of the boundaries.
 - Ordinary Sessions use plain messages again; chat bubbles remain in Projects.
 - Project composers use one action: Stop when empty and Send with content.
   Ctrl+Enter retains immediate correction while running.
+- Desktop Workbench tabs scroll independently of window drag regions and native
+  window controls; the close button stays reachable while tabs scroll.
 
 ## [0.4.19-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.1) — 2026-10-08
 
