@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.21 | [`v0.4.20...v0.4.21`](https://github.com/whale4rain/tnega/compare/v0.4.20...v0.4.21) | 10 |
 | 0.4.20 | [`v0.4.19...v0.4.20`](https://github.com/whale4rain/tnega/compare/v0.4.19...v0.4.20) | 2 |
 | 0.4.19 | [`v0.4.19-beta.2...v0.4.19`](https://github.com/whale4rain/tnega/compare/v0.4.19-beta.2...v0.4.19) | 10 |
 | 0.4.19-beta.2 | [`v0.4.19-beta.1...v0.4.19-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.19-beta.1...v0.4.19-beta.2) | 5 |
@@ -44,13 +45,14 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.21](https://github.com/whale4rain/tnega/releases/tag/v0.4.21) — 2026-10-08
+
 ### Features
 
 - 界面整体改为紧凑密度：控件、列表行与工具行变矮（行高 26px、工具行 22px），会话标题与工作区合为一行、顶栏与桌面标题栏同高（32px），圆角变小，侧栏变窄；图标统一为 14 / 12px 细线，工具行去掉底色方块；工作台的工具标签只在选中时显示名称。配色、天气状态与对比度不变。
 - 侧栏改为按工作区组织：每个工作区是一个可折叠的分组，先列项目、再按最近时间列会话（默认 8 条，其余与已归档项目收在“N more”里）；取消顶部的工作区切换卡片与 Sessions / Projects 切换。点开其他工作区的会话或项目会直接切换到该工作区；悬停工作区行可新建项目或会话，“Add workspace”移到侧栏底部。折叠状态会被记住。
 - 项目里的 Agent 按角色只拿到需要的工具：协调者只负责派工与读写项目知识（不再有 shell、写文件、后台任务等，直接调用会被拒绝并提示派给 Thread），Thread 不再看到定时任务工具，到达深度上限的 Thread 不再看到 `spawn_thread`；项目里也不再挂 `echo` / `calculator` / `json`。每次请求的工具定义更少、前缀更稳定，便于缓存。
 - 项目协作更省：协调者派工后用一句话结束，不再在本轮里轮询等待 Thread、也不再复查 Thread 已验证的文件；Thread 默认自己完成工作，只为大块且独立的分支开子 Thread。Thread 的长报告进入协调者上下文时只保留结论部分（约 1200 字符），完整内容仍在 Thread 里，可用 `list_threads` 的 `thread_id` 取回。`spawn_thread` 新增 `on_report`：协调者确有下一步要依赖结果时写明，报告到达时才会唤醒它。用 DeepSeek 实测同一任务：总提示 token 由约 235k 降到约 89k，耗时由约 150 秒降到约 43 秒。
-
 - Project 屏幕更紧凑（紧凑重设计第 3 阶段）：Board 顶部改为一行 Today（started / finished / outputs / tokens），泳道收为 Needs you / Working / Ready 并带状态点，Idle 与 Resolved 折叠为泳道下方的一行；卡片更矮、进展只占一行、进度条 3px。房间里的 Thread 卡片改为一行并带头像。没有清单的 Thread 在卡片和 Board 上显示它正在做的步骤（如 “Editing count.mjs”），来自新的 `activity` 实时事件。协调者的长消息在房间里默认折叠，可展开。
 
 ### Fixes
