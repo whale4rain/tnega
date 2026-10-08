@@ -24,6 +24,8 @@ export interface LlmConfig {
   /** Undefined explicitly clears an inherited sampling setting. */
   temperature?: number | undefined
   reasoningEffort?: ReasoningEffort
+  /** `off` skips hidden reasoning on routes known to support it (DeepSeek's own API); others ignore it. */
+  reasoning?: 'off'
   /** Whether the model accepts images; defaults to the model-id heuristic. */
   vision?: boolean
   /** Most recent images sent per request; older ones become a text note. */

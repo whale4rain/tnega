@@ -656,6 +656,26 @@ describe('request accounting', () => {
     expect(bodyOf(1).max_tokens).toBe(256)
   })
 
+  it('turns reasoning off per call only on DeepSeek\'s own API', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const deepseek = openaiCompatAdapter({ apiKey: 'test-key', baseUrl: 'https://api.deepseek.com/v1', reasoningEffort: 'high' })
+    await deepseek.complete([{ role: 'user', content: 'hi' }], [], { reasoning: 'off' })
+    await deepseek.complete([{ role: 'user', content: 'hi' }], [], {})
+    await openaiCompatAdapter({ apiKey: 'test-key' }).complete([{ role: 'user', content: 'hi' }], [], { reasoning: 'off' })
+
+    const bodyOf = (call: number) =>
+      JSON.parse(String(fetchMock.mock.calls[call]![1]!.body)) as { thinking?: unknown; reasoning_effort?: string }
+    expect(bodyOf(0)).toMatchObject({ thinking: { type: 'disabled' } })
+    expect(bodyOf(0).reasoning_effort).toBeUndefined()
+    expect(bodyOf(1).thinking).toBeUndefined()
+    expect(bodyOf(1).reasoning_effort).toBe('high')
+    expect(bodyOf(2).thinking).toBeUndefined()
+  })
+
   it('reports provider usage on a buffered completion', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],

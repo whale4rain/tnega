@@ -45,6 +45,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- 自动审批（LLM 审查）在 DeepSeek 官方 API 上不再生成隐藏推理：项目 Thread 里每次 shell 调用都要等这次审查，实测中位耗时由约 1.8 秒降到约 1.0 秒，也不再出现约 1/10 的审查推理写满 4096 token、约 20 秒后判为无效并转交协调者的情况。其他模型路由不变。
+
 ## [0.4.21](https://github.com/whale4rain/tnega/releases/tag/v0.4.21) — 2026-10-08
 
 ### Features
