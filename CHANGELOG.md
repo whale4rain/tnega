@@ -15,6 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.19-beta.2 | [`v0.4.19-beta.1...v0.4.19-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.19-beta.1...v0.4.19-beta.2) | 5 |
 | 0.4.19-beta.1 | [`v0.4.18...v0.4.19-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.18...v0.4.19-beta.1) | 8 |
 | 0.4.18 | [`v0.4.17...v0.4.18`](https://github.com/whale4rain/tnega/compare/v0.4.17...v0.4.18) | 9 |
 | 0.4.17 | [`v0.4.16...v0.4.17`](https://github.com/whale4rain/tnega/compare/v0.4.16...v0.4.17) | 2 |
@@ -41,6 +42,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.19-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.2) — 2026-10-08
+
 ### Fixes
 
 - Windows desktop restricted shell/search workers suppress process startup cursor
@@ -55,6 +58,12 @@ compare links provide a convenient browser view of the boundaries.
   Ctrl+Enter retains immediate correction while running.
 - Desktop Workbench tabs scroll independently of window drag regions and native
   window controls; the close button stays reachable while tabs scroll.
+
+### Other
+
+- Local browser E2E covers long exchange histories, crowded tabs and plain
+  Session messages. New local Electron E2E verifies restricted workers, complete
+  large output, stdin EOF and descendant cleanup; these checks stay outside CI.
 
 ## [0.4.19-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.1) — 2026-10-08
 
