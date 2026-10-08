@@ -28,6 +28,7 @@ it('lists the models, picks a default, and adds a route with an id derived from 
   expect(view.getByText('Default')).toBeTruthy()
 
   fireEvent.click(view.getByRole('button', { name: 'Add model' }))
+  fireEvent.change(view.getByLabelText('Connection'), { target: { value: 'openai' } })
   fireEvent.click(view.getByRole('button', { name: 'Enter model manually' }))
   fireEvent.change(view.getByPlaceholderText('DeepSeek Flash'), { target: { value: 'Claude Sonnet' } })
   fireEvent.change(view.getByPlaceholderText('deepseek-chat'), { target: { value: 'claude-sonnet-5-5' } })
@@ -35,6 +36,7 @@ it('lists the models, picks a default, and adds a route with an id derived from 
   fireEvent.click(view.getAllByRole('button', { name: 'Add model' }).at(-1)!)
   await vi.waitFor(() => expect(onChanged).toHaveBeenCalledWith(snapshot))
   expect(saved).toHaveBeenCalledWith('claude-sonnet', expect.objectContaining({ name: 'Claude Sonnet', model: 'claude-sonnet-5-5', apiKey: 'sk-test' }))
+  expect(saved.mock.calls[0]?.[1].auth).toBeUndefined()
 })
 
 it('discovers models using a saved connection, disables duplicates, and reuses credentials on add', async () => {
@@ -50,6 +52,18 @@ it('discovers models using a saved connection, disables duplicates, and reuses c
   await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith(snapshot, 'fresh'))
   expect(discover).toHaveBeenCalledWith({ routeId: 'saved' }, expect.any(AbortSignal))
   expect(save).toHaveBeenCalledWith('fresh', { model: 'fresh', name: 'Fresh model', source: 'provider', sourceRouteId: 'saved', vision: true })
+})
+
+it('discovers and copies a legacy top-level connection without asking for its saved key', async () => {
+  const discover = vi.spyOn(api, 'discoverModels').mockResolvedValue({ source: 'third-party', models: [{ id: 'deepseek-flash', name: 'Already configured' }, { id: 'legacy-new', name: 'Legacy new' }] })
+  const save = vi.spyOn(api, 'saveModelRoute').mockResolvedValue(snapshot)
+  const view = render(createElement(ModelBrowser, { config: snapshot, onSaved: vi.fn(), onCancel: vi.fn() }))
+  expect(view.getByLabelText('Connection')).toHaveProperty('value', 'route:deepseek-flash')
+  fireEvent.click(view.getByRole('button', { name: 'Get models' }))
+  expect(await view.findByRole('button', { name: 'Already added' })).toHaveProperty('disabled', true)
+  fireEvent.click(await view.findByRole('button', { name: 'Add Legacy new' }))
+  await vi.waitFor(() => expect(save).toHaveBeenCalledWith('legacy-new', { model: 'legacy-new', name: 'Legacy new', source: 'third-party', sourceRouteId: 'deepseek-flash' }))
+  expect(discover).toHaveBeenCalledWith({ routeId: 'deepseek-flash' }, expect.any(AbortSignal))
 })
 
 it('shows discovery failure without removing the manual model form', async () => {
@@ -71,4 +85,23 @@ it('does not hide a model available through another account on the same endpoint
   const view = render(createElement(ModelBrowser, { config, onSaved: vi.fn(), onCancel: vi.fn() }))
   fireEvent.click(view.getByRole('button', { name: 'Get models' }))
   expect(await view.findByRole('button', { name: 'Add Other account model' })).toHaveProperty('disabled', false)
+})
+
+it.each([false, true])('keeps ChatGPT manual routes on their login without showing API credentials (copied=%s)', async copied => {
+  const config: ConfigSnapshot = { ...snapshot, apiKeySet: copied, config: { ...snapshot.config, models: copied ? [{ id: 'chatgpt', model: 'one', apiKeySet: true, auth: 'chatgpt' }] : [] } }
+  const save = vi.spyOn(api, 'saveModelRoute').mockResolvedValue(snapshot)
+  vi.spyOn(api, 'chatgptLogin').mockResolvedValue({ status: 'signed-out' })
+  const view = render(createElement(ModelBrowser, { config, onSaved: vi.fn(), onCancel: vi.fn() }))
+  fireEvent.click(view.getByRole('button', { name: 'Enter model manually' }))
+  expect(view.queryByLabelText('API key')).toBeNull()
+  expect(view.queryByLabelText('Base URL')).toBeNull()
+  expect(view.queryByLabelText('Protocol')).toBeNull()
+  expect(view.getByText(/Uses your ChatGPT login/)).toBeTruthy()
+  fireEvent.change(view.getByPlaceholderText('deepseek-chat'), { target: { value: 'gpt-manual' } })
+  fireEvent.click(view.getByRole('button', { name: 'Add model' }))
+  await vi.waitFor(() => expect(save).toHaveBeenCalled())
+  expect(save.mock.calls[0]?.[1]).toMatchObject({ auth: 'chatgpt', model: 'gpt-manual' })
+  expect(save.mock.calls[0]?.[1].apiKey).toBeUndefined()
+  expect(save.mock.calls[0]?.[1].baseUrl).toBeUndefined()
+  expect(save.mock.calls[0]?.[1].protocol).toBeUndefined()
 })

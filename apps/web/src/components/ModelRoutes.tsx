@@ -74,7 +74,7 @@ export function ModelRoutes({
                 </span>
               )}
               {editing === option.id && route && (
-                <RouteForm route={route} onCancel={() => setEditing(undefined)} onSaved={next => { onChanged(next); setEditing(undefined) }} />
+                <RouteForm route={route} onCancel={() => setEditing(undefined)} onPersisted={onChanged} onSaved={() => setEditing(undefined)} />
               )}
             </div>
           )
@@ -83,7 +83,7 @@ export function ModelRoutes({
       {error && <div className="notice notice-error"><span>{error}</span></div>}
       <ChatGptSignIn onChanged={onChanged} onGetModels={() => { setConnection('chatgpt'); setEditing('new') }} />
       {editing === 'new'
-        ? <ModelBrowser config={config} initialConnection={connection} onCancel={() => setEditing(undefined)} onSaved={next => { onChanged(next); setEditing(undefined) }} />
+        ? <ModelBrowser config={config} initialConnection={connection} onCancel={() => setEditing(undefined)} onPersisted={onChanged} onSaved={() => setEditing(undefined)} />
         : <button type="button" className="button secondary small" onClick={() => { setConnection(undefined); setEditing('new') }}><Plus size={13} /> Add model</button>}
     </div>
   )

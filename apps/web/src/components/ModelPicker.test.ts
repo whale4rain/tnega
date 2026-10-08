@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api } from '../lib/api'
@@ -57,4 +57,30 @@ it('keeps the empty picker usable and cancels an in-flight model discovery', asy
   fireEvent.click(view.getByRole('button', { name: 'Cancel' }))
   expect(requestSignal?.aborted).toBe(true)
   expect(view.queryByRole('dialog')).toBeNull()
+})
+
+it.each(['Close', 'Cancel'])('does not select a manually saved model after %s, but refreshes the saved configuration', async action => {
+  let complete: ((config: ConfigSnapshot) => void) | undefined
+  vi.spyOn(api, 'saveModelRoute').mockImplementation(() => new Promise(resolve => { complete = resolve }))
+  const onChange = vi.fn()
+  const onConfigChanged = vi.fn()
+  const view = render(createElement(ModelPicker, { model: 'one', models: config.models, config, onChange, onConfigChanged }))
+  fireEvent.click(view.getByRole('button', { name: /^Model:/ }))
+  fireEvent.click(view.getByRole('button', { name: 'Add model…' }))
+  fireEvent.click(view.getByRole('button', { name: 'Enter model manually' }))
+  fireEvent.change(view.getByPlaceholderText('deepseek-chat'), { target: { value: 'manual' } })
+  fireEvent.click(view.getByRole('button', { name: 'Add model' }))
+  fireEvent.click(view.getByRole('button', { name: action }))
+  if (action === 'Close') {
+    expect(view.queryByRole('dialog')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: /^Model:/ }))
+    fireEvent.click(view.getByRole('button', { name: 'Add model…' }))
+  }
+  const next: ConfigSnapshot = { ...config, config: { ...config.config, models: [...(config.config.models ?? []), { id: 'manual', model: 'manual', apiKeySet: true }] } }
+  await act(async () => { complete?.(next) })
+  expect(onChange).not.toHaveBeenCalled()
+  expect(onConfigChanged).toHaveBeenCalledWith(next)
+  expect(view.getByRole('dialog')).toBeTruthy()
+  expect(view.getByLabelText('Connection')).toBeTruthy()
+  expect(view.getByRole('option', { name: 'manual' })).toBeTruthy()
 })

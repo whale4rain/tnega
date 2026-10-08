@@ -54,6 +54,10 @@ compare links provide a convenient browser view of the boundaries.
   authenticated catalog, reuse a saved connection, or enter a model manually;
   saving refreshes the choices and selects the new model without losing the
   draft. Model providers and third-party connections have separate groups.
+  Manual ChatGPT models keep their login and show no API credential fields;
+  cancelling an in-flight save refreshes saved models without changing the
+  current selection.
+  Existing top-level API configurations also appear as saved connections.
 
 ## [0.4.19-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.2) — 2026-10-08
 

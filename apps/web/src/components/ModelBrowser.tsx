@@ -2,20 +2,31 @@ import { Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { errorText } from '../lib/hooks'
-import type { ConfigSnapshot, DiscoveredModel, ModelDiscovery, ModelDiscoveryInput, ModelRouteInput } from '../lib/types'
+import type { ConfigSnapshot, DiscoveredModel, ModelDiscovery, ModelDiscoveryInput, ModelRouteInput, ModelRouteSettings } from '../lib/types'
 import { ChatGptSignIn } from './ChatGptSignIn'
 import { RouteForm, newModelRouteId } from './ModelRouteForm'
 
 /** Discover with an existing login or connection; credentials stay on the server. */
-export function ModelBrowser({ config, onSaved, onCancel, initialConnection }: {
+export function ModelBrowser({ config, onSaved, onCancel, initialConnection, onPersisted }: {
   config: ConfigSnapshot
   onSaved: (config: ConfigSnapshot, id: string) => void
   onCancel: () => void
   initialConnection?: string | undefined
+  onPersisted?: ((config: ConfigSnapshot) => void) | undefined
 }) {
   const [current, setCurrent] = useState(config)
-  const routes = current.config.models ?? []
-  const [connection, setConnection] = useState(initialConnection ?? (routes[0] ? `route:${routes[0].id}` : 'chatgpt'))
+  useEffect(() => { setCurrent(config) }, [config])
+  const registered = current.config.models ?? []
+  const legacy = current.models.find(model => model.id === current.effective.modelId)
+  const legacyProtocol = current.effective.protocol ?? legacy?.protocol
+  const routes: ModelRouteSettings[] = registered.length ? registered : current.effective.modelId ? [{
+    id: current.effective.modelId, model: current.effective.model, name: legacy?.name ?? current.effective.modelId,
+    apiKeySet: current.apiKeySet, baseUrl: current.effective.baseUrl,
+    ...(legacyProtocol ? { protocol: legacyProtocol } : {}),
+    ...(legacy?.source ? { source: legacy.source } : {}),
+  }] : []
+  const defaultConnection = routes.find(route => route.apiKeySet || route.auth === 'chatgpt')
+  const [connection, setConnection] = useState(initialConnection ?? (defaultConnection ? `route:${defaultConnection.id}` : 'chatgpt'))
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [catalog, setCatalog] = useState<ModelDiscovery>()
@@ -28,13 +39,14 @@ export function ModelBrowser({ config, onSaved, onCancel, initialConnection }: {
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false; request.current?.abort() } }, [])
   const routeId = connection.startsWith('route:') ? connection.slice(6) : undefined
+  const sourceRoute = routes.find(route => route.id === routeId)
   const custom = connection === 'openai' || connection === 'anthropic'
   const input: ModelDiscoveryInput = routeId ? { routeId }
     : connection === 'chatgpt' ? { auth: 'chatgpt' }
       : { protocol: connection === 'anthropic' ? 'anthropic' : 'openai', ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }
   const seed: ModelRouteInput = {
     model: '',
-    ...(routeId ? { sourceRouteId: routeId } : { ...input }),
+    ...(routeId ? { sourceRouteId: routeId, ...(sourceRoute?.auth ? { auth: sourceRoute.auth } : {}) } : { ...input }),
     ...(catalog ? { source: catalog.source } : {}),
   }
   const getModels = async () => {
@@ -53,8 +65,8 @@ export function ModelBrowser({ config, onSaved, onCancel, initialConnection }: {
       if (alive.current && !controller.signal.aborted) setBusy(false)
     }
   }
-  const added = (model: DiscoveredModel) => addedHere.includes(model.id) || (current.config.models?.some(route =>
-    (route.model ?? route.id) === model.id && (routeId ? route.id === routeId : connection === 'chatgpt' && route.auth === 'chatgpt')) ?? false)
+  const added = (model: DiscoveredModel) => addedHere.includes(model.id) || routes.some(route =>
+    (route.model ?? route.id) === model.id && (routeId ? route.id === routeId : connection === 'chatgpt' && route.auth === 'chatgpt'))
   const add = async (model: DiscoveredModel) => {
     if (!catalog || busy || added(model)) return
     setBusy(true)
@@ -67,6 +79,7 @@ export function ModelBrowser({ config, onSaved, onCancel, initialConnection }: {
     }
     try {
       const next = await api.saveModelRoute(id, payload)
+      onPersisted?.(next)
       if (alive.current) { setCurrent(next); setAddedHere(ids => [...ids, model.id]); onSaved(next, id) }
     } catch (reason) {
       if (alive.current) setError(errorText(reason))
@@ -74,7 +87,7 @@ export function ModelBrowser({ config, onSaved, onCancel, initialConnection }: {
       if (alive.current) setBusy(false)
     }
   }
-  if (manual) return <RouteForm existing={current.models.map(model => model.id)} initial={seed} onSaved={onSaved} onCancel={() => setManual(false)} />
+  if (manual) return <RouteForm existing={current.models.map(model => model.id)} initial={seed} onSaved={onSaved} onPersisted={next => { if (alive.current) setCurrent(next); onPersisted?.(next) }} onCancel={() => setManual(false)} />
   const filtered = catalog?.models.filter(model => `${model.name} ${model.id}`.toLowerCase().includes(search.toLowerCase())) ?? []
   return <div className="model-browser">
     <label className="field">

@@ -1,5 +1,5 @@
 import { Eye, EyeOff, KeyRound } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { errorText } from '../lib/hooks'
 import type { ConfigSnapshot, ModelRouteInput, ModelRouteSettings, ModelSource, Protocol } from '../lib/types'
@@ -22,13 +22,18 @@ export function RouteForm({
   initial,
   onCancel,
   onSaved,
+  onPersisted,
 }: {
   route?: ModelRouteSettings
   existing?: readonly string[]
   initial?: ModelRouteInput
   onCancel: () => void
   onSaved: (config: ConfigSnapshot, id: string) => void
+  onPersisted?: ((config: ConfigSnapshot) => void) | undefined
 }) {
+  const chatgpt = route?.auth === 'chatgpt' || initial?.auth === 'chatgpt'
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   const [name, setName] = useState(route?.name ?? '')
   const [model, setModel] = useState(route?.model ?? route?.id ?? initial?.model ?? '')
   const [protocol, setProtocol] = useState<Protocol | ''>(route?.protocol ?? initial?.protocol ?? '')
@@ -64,23 +69,25 @@ export function RouteForm({
     setBusy(true)
     setError(undefined)
     try {
-      onSaved(await api.saveModelRoute(id, {
+      const next = await api.saveModelRoute(id, {
         name: name.trim(),
         model: wire,
-        ...(!initial?.sourceRouteId || protocol ? { protocol } : {}),
-        ...(!initial?.sourceRouteId || baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
-        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        ...(!chatgpt && (!initial?.sourceRouteId || protocol) ? { protocol } : {}),
+        ...(!chatgpt && (!initial?.sourceRouteId || baseUrl.trim()) ? { baseUrl: baseUrl.trim() } : {}),
+        ...(!chatgpt && apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         ...(window !== undefined ? { contextWindow: window } : {}),
         vision,
         ...(pricing !== undefined ? { pricing } : {}),
         ...(source ? { source } : {}),
         ...(initial?.sourceRouteId ? { sourceRouteId: initial.sourceRouteId } : {}),
         ...(initial?.auth ? { auth: initial.auth } : {}),
-      }), id)
+      })
+      onPersisted?.(next)
+      if (active.current) onSaved(next, id)
     } catch (reason) {
-      setError(errorText(reason))
+      if (active.current) setError(errorText(reason))
     } finally {
-      setBusy(false)
+      if (active.current) setBusy(false)
     }
   }
 
@@ -94,7 +101,8 @@ export function RouteForm({
         <span className="field-label">Model id</span>
         <input value={model} onChange={event => setModel(event.target.value)} placeholder="deepseek-chat" spellCheck={false} />
       </label>
-      <label className="field">
+      {chatgpt && <p className="muted small span-2">Uses your ChatGPT login. To use an API key, return to Connection and choose an API connection.</p>}
+      {!chatgpt && <label className="field">
         <span className="field-label">Protocol</span>
         <select value={protocol} onChange={event => {
           const value = event.target.value
@@ -104,7 +112,7 @@ export function RouteForm({
           <option value="anthropic">Anthropic Messages</option>
           <option value="openai">OpenAI compatible</option>
         </select>
-      </label>
+      </label>}
       <label className="field">
         <span className="field-label">Model source</span>
         <select value={source} onChange={event => {
@@ -119,11 +127,11 @@ export function RouteForm({
         <span className="field-label">Context window (tokens)</span>
         <input value={contextWindow} onChange={event => setContextWindow(event.target.value)} placeholder="Model default" inputMode="numeric" />
       </label>
-      <label className="field span-2">
+      {!chatgpt && <label className="field span-2">
         <span className="field-label">Base URL</span>
         <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder="https://api.deepseek.com" spellCheck={false} />
-      </label>
-      <label className="field span-2">
+      </label>}
+      {!chatgpt && <label className="field span-2">
         <span className="field-label">API key</span>
         <span className="input-with-icon">
           <KeyRound size={14} />
@@ -139,7 +147,7 @@ export function RouteForm({
             {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
         </span>
-      </label>
+      </label>}
       <label className="field-check span-2">
         <input type="checkbox" checked={vision} onChange={event => setVision(event.target.checked)} />
         <span>Accepts images</span>
@@ -155,7 +163,7 @@ export function RouteForm({
       </div>
       {error && <div className="notice notice-error span-2"><span>{error}</span></div>}
       <div className="model-route-form-actions span-2">
-        <button type="button" className="button ghost small" onClick={onCancel}>Cancel</button>
+        <button type="button" className="button ghost small" onClick={() => { active.current = false; onCancel() }}>Cancel</button>
         <button type="button" className="button primary small" disabled={busy} onClick={() => void save()}>{route ? 'Save model' : 'Add model'}</button>
       </div>
     </div>
