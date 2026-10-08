@@ -1,9 +1,11 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:http'
+import { createLlmAdapter } from '@tnega/llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { discoverModels, parseModelDiscoveryInput } from '../src/model-discovery.js'
-import { availableModels, parseModelRouteInput, readSystemConfig, upsertModelRoute } from '../src/config.js'
+import { availableModels, effectiveLlmConfig, parseModelRouteInput, readSystemConfig, upsertModelRoute, type SystemConfig } from '../src/config.js'
 import { startWebServer, type WebServer } from '../src/server.js'
 
 const dirs: string[] = []
@@ -37,6 +39,33 @@ describe('model discovery', () => {
     expect(result.source).toBe('provider')
     expect(result.models).toEqual([{ id: 'claude-one', name: 'Claude One', contextWindow: 200000, vision: true }, { id: 'claude-two', name: 'claude-two' }])
     expect(String(request.mock.calls[1]?.[0])).toContain('after_id=claude-one')
+  })
+
+  it('uses the same custom Anthropic authentication header as actual runtime requests', async () => {
+    const paths: string[] = []
+    const gateway = createServer((req, res) => {
+      req.resume()
+      paths.push(req.url ?? '')
+      res.setHeader('content-type', 'application/json')
+      if (req.headers['api-key'] !== 'gateway-key' || req.headers['x-api-key'] !== undefined || req.headers['anthropic-version'] !== '2023-06-01') {
+        res.writeHead(401)
+        res.end(JSON.stringify({ error: 'wrong authentication header' }))
+        return
+      }
+      res.end(JSON.stringify(req.url?.startsWith('/v1/models')
+        ? { data: [{ id: 'claude-gateway' }], has_more: false }
+        : { id: 'msg-one', model: 'claude-gateway', content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' }))
+    })
+    await new Promise<void>(resolve => gateway.listen(0, '127.0.0.1', resolve))
+    try {
+      const address = gateway.address()
+      if (!address || typeof address === 'string') throw new Error('Missing fixture address')
+      const config: SystemConfig = { models: [{ id: 'gateway', model: 'claude-gateway', protocol: 'anthropic', apiKeyHeader: 'api-key', apiKey: 'gateway-key', baseUrl: `http://127.0.0.1:${address.port}/v1` }] }
+      const adapter = createLlmAdapter({ ...effectiveLlmConfig(config, {}, 'gateway'), apiKey: 'gateway-key', maxRetries: 0 })
+      await adapter.complete([{ role: 'user', content: 'hello' }], [], {})
+      expect(await discoverModels({ routeId: 'gateway' }, config, { fetch, env: {} })).toEqual({ source: 'third-party', models: [{ id: 'claude-gateway', name: 'claude-gateway' }] })
+      expect(paths).toEqual(['/v1/messages', '/v1/models?limit=1000'])
+    } finally { await new Promise<void>((resolve, reject) => gateway.close(error => error ? reject(error) : resolve())) }
   })
 
   it('never sends a global key to a saved connection and preserves its inherited runtime endpoint', async () => {

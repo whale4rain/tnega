@@ -83,7 +83,7 @@ export async function discoverModels(input: ModelDiscoveryInput, config: SystemC
       try { for (const [name, value] of Object.entries(await chatgptHeaders({ ...(options.authFile ? { file: options.authFile } : {}), fetch: request })(controller.signal))) headers.set(name, value) }
       catch { if (controller.signal.aborted) throw controller.signal.reason; throw new ModelDiscoveryError('ChatGPT login could not be refreshed. Sign in again from Settings → Models.', 401) }
     } else if (protocol === 'anthropic') {
-      headers.set('x-api-key', key ?? '')
+      headers.set(saved?.apiKeyHeader ?? 'x-api-key', key ?? '')
       headers.set('anthropic-version', '2023-06-01')
     } else if (saved?.apiKeyHeader) headers.set(saved.apiKeyHeader, key ?? '')
     else headers.set('authorization', `Bearer ${key}`)
