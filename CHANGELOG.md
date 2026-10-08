@@ -45,6 +45,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- 设置 → Appearance 新增调色板：除默认的 Sky 外，还有 Sand（暖纸墨、赤陶强调色）、Forest（绿灰、深青）与 Graphite（纯中性灰、对比最强），每个都有浅色与深色两份，并通过同一套对比度底线。天气状态色不随调色板改变。
+- 新增信息显示选项：密度（Compact / Comfortable）、字号（Small / Default / Large）与对话宽度（Narrow / Standard / Wide / Full width）。即时生效，按设备记住，页面首帧前就会套用，不会闪烁。
+
 ## [0.4.21](https://github.com/whale4rain/tnega/releases/tag/v0.4.21) — 2026-10-08
 
 ### Features

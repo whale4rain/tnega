@@ -3080,6 +3080,98 @@ kbd {
   color: var(--accent-text);
 }
 
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.palette-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.palette-card:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.palette-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.palette-swatch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* Each half carries its own data-palette/data-theme, so it draws that palette's real tokens. */
+.palette-swatch-half {
+  display: block;
+  padding: 8px;
+  background: var(--bg);
+}
+
+.palette-swatch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+}
+
+.palette-swatch-line {
+  display: block;
+  width: 60%;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--text-3);
+}
+
+.palette-swatch-line.strong {
+  width: 85%;
+  background: var(--text);
+}
+
+.palette-swatch-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.palette-swatch-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+}
+
+.palette-swatch-dots .accent { background: var(--accent); }
+.palette-swatch-dots .success { background: var(--success); }
+.palette-swatch-dots .warn { background: var(--warn); }
+.palette-swatch-dots .danger { background: var(--danger); }
+
+.palette-name {
+  font-weight: 600;
+  font-size: var(--text-md);
+}
+
+.palette-description {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
 @media (max-width: 720px) {
   .settings-layout {
     grid-template-columns: minmax(0, 1fr);

@@ -47,6 +47,12 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 - **强调色两用。** 月光蓝作文字时 ≥4.5:1；作按钮底色时承载深色文字 ≥4.5:1。
 - **天气色单独调过。** 夜里降水更亮、云更暗、太阳偏暖（`--wx-*` 的深色值）。
 
+### 3.2a 调色板与信息显示
+
+- **模式与调色板分开。** `data-theme` 只表示浅色 / 深色；`data-palette` 在该模式内换中性色、强调色与状态色。Sky 是默认（上面的两组 token），另有 Sand（暖纸墨、赤陶）、Forest（绿灰、深青）、Graphite（纯中性灰、对比最强）。每个调色板都在 `tokens.css` 里写全浅深两份，并过同一套对比度底线。
+- **天气色不随调色板变。** 一种天气只有一个含义，换调色板也不改。
+- **信息显示偏好** 同样是根元素属性：`data-density`（compact / comfortable，标题栏高度不变）、`data-text-size`（small / default / large，缩放字号 token）、`data-reading`（narrow / standard / wide / full，改 `--reading-width`）。逻辑在 `apps/web/src/lib/display.ts`，`index.html` 在首帧前套用。
+
 ### 3.3 对比度底线 {#contrast}
 
 两个主题都必须满足下面的底线，由 `apps/web/src/styles/contrast.test.ts` 直接解析 `tokens.css` 检查：

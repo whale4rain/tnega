@@ -24,12 +24,36 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
-const THEMES = {
+const BASE = {
   light: theme(/:root,\s*\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/u),
-  dark: theme(/\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/u),
+  dark: theme(/^\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/mu),
 }
 
-describe.each(Object.entries(THEMES))('%s palette', (name, t) => {
+/** Each palette overrides Sky inside a mode, so it is checked merged over Sky. */
+const PALETTES = [...new Set([...css.matchAll(/\[data-palette="([\w-]+)"\]/gu)].map(match => match[1]!))]
+
+const THEMES: Array<[string, 'light' | 'dark', Record<string, string>]> = [
+  ['sky light', 'light', BASE.light],
+  ['sky dark', 'dark', BASE.dark],
+  ...PALETTES.flatMap(palette => (['light', 'dark'] as const).map(mode => {
+    const overrides = theme(new RegExp(`\\[data-palette="${palette}"\\]\\[data-theme="${mode}"\\]\\s*\\{([\\s\\S]*?)\\n\\}`, 'u'))
+    return [`${palette} ${mode}`, mode, { ...BASE[mode], ...overrides }] as [string, 'light' | 'dark', Record<string, string>]
+  })),
+]
+
+it('defines every palette in both modes with its own surfaces, text and accent', () => {
+  expect(PALETTES.length).toBeGreaterThanOrEqual(3)
+  for (const palette of PALETTES) {
+    for (const mode of ['light', 'dark'] as const) {
+      const block = css.match(new RegExp(`\\[data-palette="${palette}"\\]\\[data-theme="${mode}"\\]\\s*\\{([\\s\\S]*?)\\n\\}`, 'u'))?.[1] ?? ''
+      for (const token of ['bg', 'surface', 'surface-raised', 'surface-sunken', 'text', 'text-2', 'text-3', 'accent', 'accent-text', 'code-bg']) {
+        expect(block, `${palette} ${mode} --${token}`).toMatch(new RegExp(`--${token}:`, 'u'))
+      }
+    }
+  }
+})
+
+describe.each(THEMES)('%s palette', (_label, name, t) => {
   const surfaces = ['bg', 'surface', 'surface-raised', 'surface-sunken'] as const
 
   it('keeps body text at least 7:1 and every text colour at AA (4.5:1) on every surface', () => {

@@ -203,3 +203,301 @@
   --wx-rainbow-2: #ffd06e;
   --wx-rainbow-3: #7cc7ff;
 }
+
+/*
+ * Palettes. The mode (`data-theme`) says light or dark; the palette
+ * (`data-palette`, chosen in Settings → Appearance) recolours the neutrals,
+ * accent and status colours inside that mode. Sky is the blocks above. Every
+ * palette overrides the same colour tokens in both modes and is held to the
+ * same contrast floors (contrast.test.ts). Weather colours stay shared, so a
+ * weather keeps its one meaning whatever the palette.
+ */
+
+/* Sand: warm paper and ink with a terracotta accent, easy on long reading. */
+[data-palette="sand"][data-theme="light"] {
+  --bg: #f6f3ee;
+  --bg-sidebar: #eeeae3;
+  --surface: #fffdf9;
+  --surface-raised: #fffdf9;
+  --surface-sunken: #f0ebe3;
+  --surface-hover: rgba(70, 52, 28, 0.05);
+  --surface-active: rgba(70, 52, 28, 0.085);
+  --border: #e2dbcf;
+  --border-strong: #bfb4a3;
+  --border-focus: #a84f28;
+
+  --text: #27221b;
+  --text-2: #574f45;
+  --text-3: #6a6155;
+  --text-inverse: #fffaf3;
+
+  --accent: #a84f28;
+  --accent-hover: #8e4120;
+  --accent-soft: #f6e6dc;
+  --accent-text: #93441f;
+
+  --success: #3b7340;
+  --success-soft: #e5efdf;
+  --warn: #8a5a0c;
+  --warn-soft: #f6ebd5;
+  --danger: #b2382f;
+  --danger-soft: #f7e2df;
+
+  --code-bg: #f3eee6;
+  --code-border: #e2dbcf;
+  --selection: rgba(168, 79, 40, 0.18);
+
+  --syntax-keyword: #8a3b8f;
+  --syntax-string: #3b7340;
+  --syntax-number: #8a5a0c;
+  --syntax-comment: #6a6155;
+  --syntax-function: #93441f;
+  --syntax-type: #2f5f86;
+  --syntax-property: #1f6466;
+}
+
+[data-palette="sand"][data-theme="dark"] {
+  --bg: #15130f;
+  --bg-sidebar: #110f0c;
+  --surface: #1e1b16;
+  --surface-raised: #27231d;
+  --surface-sunken: #181612;
+  --surface-hover: rgba(238, 222, 198, 0.06);
+  --surface-active: rgba(238, 222, 198, 0.1);
+  --border: #353029;
+  --border-strong: #4c453b;
+  --border-focus: #e9a47e;
+
+  --text: #eee8de;
+  --text-2: #c5bbac;
+  --text-3: #a29788;
+  --text-inverse: #16110c;
+
+  --accent: #e9a47e;
+  --accent-hover: #f0b897;
+  --accent-soft: rgba(233, 164, 126, 0.14);
+  --accent-text: #efb593;
+
+  --success: #9fcf8a;
+  --success-soft: rgba(159, 207, 138, 0.13);
+  --warn: #e7c06e;
+  --warn-soft: rgba(231, 192, 110, 0.13);
+  --danger: #f2907f;
+  --danger-soft: rgba(242, 144, 127, 0.13);
+
+  --code-bg: #181612;
+  --code-border: #353029;
+  --selection: rgba(233, 164, 126, 0.26);
+
+  --syntax-keyword: #d6a8e0;
+  --syntax-string: #9fcf8a;
+  --syntax-number: #e7c06e;
+  --syntax-comment: #a29788;
+  --syntax-function: #efb593;
+  --syntax-type: #9cc3e8;
+  --syntax-property: #86d1cc;
+}
+
+/* Forest: green-grey neutrals with a deep teal accent. */
+[data-palette="forest"][data-theme="light"] {
+  --bg: #f2f5f2;
+  --bg-sidebar: #e9eee9;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #ebf0ec;
+  --surface-hover: rgba(24, 56, 38, 0.05);
+  --surface-active: rgba(24, 56, 38, 0.085);
+  --border: #d9e2db;
+  --border-strong: #b3c2b6;
+  --border-focus: #146b64;
+
+  --text: #17231b;
+  --text-2: #49584d;
+  --text-3: #5a6a5f;
+  --text-inverse: #f5fbf8;
+
+  --accent: #146b64;
+  --accent-hover: #0f5852;
+  --accent-soft: #dff0ec;
+  --accent-text: #0f5f58;
+
+  --success: #3a7326;
+  --success-soft: #e4f0dc;
+  --warn: #8d5b08;
+  --warn-soft: #f7ecd6;
+  --danger: #b33a37;
+  --danger-soft: #f8e3e2;
+
+  --code-bg: #eef3ef;
+  --code-border: #d9e2db;
+  --selection: rgba(20, 107, 100, 0.18);
+
+  --syntax-keyword: #7a3a9e;
+  --syntax-string: #3a7326;
+  --syntax-number: #8d5b08;
+  --syntax-comment: #5a6a5f;
+  --syntax-function: #0f5f58;
+  --syntax-type: #9a3a5e;
+  --syntax-property: #2a5f8a;
+}
+
+[data-palette="forest"][data-theme="dark"] {
+  --bg: #0e1411;
+  --bg-sidebar: #0b100d;
+  --surface: #151e19;
+  --surface-raised: #1d2822;
+  --surface-sunken: #111814;
+  --surface-hover: rgba(200, 232, 214, 0.06);
+  --surface-active: rgba(200, 232, 214, 0.1);
+  --border: #283630;
+  --border-strong: #394b42;
+  --border-focus: #6fd2c0;
+
+  --text: #e4ede7;
+  --text-2: #adbdb3;
+  --text-3: #8a9c91;
+  --text-inverse: #08110e;
+
+  --accent: #6fd2c0;
+  --accent-hover: #8ddccd;
+  --accent-soft: rgba(111, 210, 192, 0.13);
+  --accent-text: #86dbcb;
+
+  --success: #a8d681;
+  --success-soft: rgba(168, 214, 129, 0.13);
+  --warn: #e8c06a;
+  --warn-soft: rgba(232, 192, 106, 0.13);
+  --danger: #f1907f;
+  --danger-soft: rgba(241, 144, 127, 0.13);
+
+  --code-bg: #111814;
+  --code-border: #283630;
+  --selection: rgba(111, 210, 192, 0.24);
+
+  --syntax-keyword: #c9a9f0;
+  --syntax-string: #a8d681;
+  --syntax-number: #e8c06a;
+  --syntax-comment: #8a9c91;
+  --syntax-function: #86dbcb;
+  --syntax-type: #f0a3c0;
+  --syntax-property: #8fc3f0;
+}
+
+/* Graphite: true neutral greys and the strongest text contrast, for dense reading. */
+[data-palette="graphite"][data-theme="light"] {
+  --bg: #f4f4f4;
+  --bg-sidebar: #ececec;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eeeeee;
+  --surface-hover: rgba(0, 0, 0, 0.05);
+  --surface-active: rgba(0, 0, 0, 0.085);
+  --border: #dcdcdc;
+  --border-strong: #b5b5b5;
+  --border-focus: #4a44c2;
+
+  --text: #111111;
+  --text-2: #3d3d3d;
+  --text-3: #545454;
+  --text-inverse: #fafafa;
+
+  --accent: #4a44c2;
+  --accent-hover: #3b36a3;
+  --accent-soft: #ebeafb;
+  --accent-text: #403aaf;
+
+  --success: #24713f;
+  --success-soft: #e0f0e5;
+  --warn: #855400;
+  --warn-soft: #f6ead3;
+  --danger: #b5302b;
+  --danger-soft: #f8e1e0;
+
+  --code-bg: #f2f2f2;
+  --code-border: #dcdcdc;
+  --selection: rgba(74, 68, 194, 0.18);
+
+  --syntax-keyword: #6f34a8;
+  --syntax-string: #24713f;
+  --syntax-number: #855400;
+  --syntax-comment: #545454;
+  --syntax-function: #403aaf;
+  --syntax-type: #9a2f5c;
+  --syntax-property: #155e78;
+}
+
+[data-palette="graphite"][data-theme="dark"] {
+  --bg: #111111;
+  --bg-sidebar: #0d0d0d;
+  --surface: #1a1a1a;
+  --surface-raised: #232323;
+  --surface-sunken: #151515;
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --surface-active: rgba(255, 255, 255, 0.1);
+  --border: #2f2f2f;
+  --border-strong: #444444;
+  --border-focus: #aaa6ff;
+
+  --text: #f2f2f2;
+  --text-2: #c6c6c6;
+  --text-3: #a2a2a2;
+  --text-inverse: #0e0e14;
+
+  --accent: #aaa6ff;
+  --accent-hover: #c0bdff;
+  --accent-soft: rgba(170, 166, 255, 0.14);
+  --accent-text: #bab7ff;
+
+  --success: #84d4a2;
+  --success-soft: rgba(132, 212, 162, 0.13);
+  --warn: #eec070;
+  --warn-soft: rgba(238, 192, 112, 0.13);
+  --danger: #f58e86;
+  --danger-soft: rgba(245, 142, 134, 0.13);
+
+  --code-bg: #151515;
+  --code-border: #2f2f2f;
+  --selection: rgba(170, 166, 255, 0.26);
+
+  --syntax-keyword: #d0a8f5;
+  --syntax-string: #84d4a2;
+  --syntax-number: #eec070;
+  --syntax-comment: #a2a2a2;
+  --syntax-function: #bab7ff;
+  --syntax-type: #f5a3c4;
+  --syntax-property: #80d0e8;
+}
+
+/*
+ * Information display (Settings → Appearance). Density loosens rows and
+ * controls; the header keeps its height so desktop window controls still fit.
+ * Text size scales the type ramp; reading width sets the conversation column.
+ */
+[data-density="comfortable"] {
+  --toolbar-h: 32px;
+  --control-lg: 36px;
+  --control: 30px;
+  --control-sm: 26px;
+  --row-h: 32px;
+  --icon: 15px;
+}
+
+[data-text-size="small"] {
+  --text-xs: 10.5px;
+  --text-sm: 11.5px;
+  --text-md: 12px;
+  --text-lg: 12.5px;
+}
+
+[data-text-size="large"] {
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14.5px;
+  --text-lg: 15.5px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+}
+
+[data-reading="narrow"] { --reading-width: 660px; }
+[data-reading="wide"] { --reading-width: 1000px; }
+[data-reading="full"] { --reading-width: 100%; }

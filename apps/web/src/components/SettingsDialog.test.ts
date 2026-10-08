@@ -104,3 +104,22 @@ it('shows workspace usage with cache share and cost, and points at missing price
   expect(view.getByText(/No prices set for Pro/)).toBeTruthy()
   localStorage.removeItem('tnega.settingsSection')
 })
+
+it('applies colour palette and display choices without saving the config', () => {
+  localStorage.setItem('tnega.settingsSection', 'appearance')
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  const onDisplayChange = vi.fn()
+  const view = render(createElement(SettingsDialog, {
+    config: snapshot, onClose: vi.fn(), onSaved: vi.fn(),
+    display: { palette: 'sky', density: 'compact', textSize: 'default', readingWidth: 'standard' }, onDisplayChange,
+  }))
+  const palettes = view.getByRole('radiogroup', { name: 'Colour palette' })
+  expect([...palettes.querySelectorAll('[role="radio"] .palette-name')].map(name => name.textContent)).toEqual(['Sky', 'Sand', 'Forest', 'Graphite'])
+  expect(view.getByRole('radio', { name: /^Sky/ }).getAttribute('aria-checked')).toBe('true')
+  fireEvent.click(view.getByRole('radio', { name: /^Graphite/ }))
+  fireEvent.click(view.getByRole('radio', { name: 'Comfortable' }))
+  fireEvent.click(view.getByRole('radio', { name: 'Large' }))
+  fireEvent.click(view.getByRole('radio', { name: 'Full width' }))
+  expect(onDisplayChange.mock.calls).toEqual([['palette', 'graphite'], ['density', 'comfortable'], ['textSize', 'large'], ['readingWidth', 'full']])
+  expect(save).not.toHaveBeenCalled()
+})
