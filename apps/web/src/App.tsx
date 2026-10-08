@@ -370,6 +370,7 @@ export function App() {
             projectId={projectRoute.id}
             threadId={projectRoute.threadId}
             config={config}
+            onConfigChanged={setConfig}
             onOpenThread={threadId => openProject(projectRoute.id, threadId)}
             onDeleted={() => {
               setProjects(list => list.filter(p => p.id !== projectRoute.id))

@@ -29,6 +29,7 @@ import type {
 import { formatTokens } from '../../lib/timeline'
 import type { ConfigSnapshot, Effort, Permission } from '../../lib/types'
 import { Dialog } from '../Dialog'
+import { ModelPicker } from '../ModelPicker'
 import { ARTIFACT_KIND, ArtifactIcon, ArtifactViewer, artifactKind, type ArtifactKind } from './Artifacts'
 
 // ---------------------------------------------------------------------------
@@ -381,11 +382,13 @@ export function SettingsPanel({
   workspace,
   state,
   config,
+  onConfigChanged,
   onDeleted,
 }: {
   workspace: string
   state: ProjectState
   config: ConfigSnapshot | undefined
+  onConfigChanged?: ((config: ConfigSnapshot) => void) | undefined
   onDeleted: () => void
 }) {
   const project = state.project
@@ -394,6 +397,8 @@ export function SettingsPanel({
   const [instructions, setInstructions] = useState(initial.instructions ?? '')
   const [coordinator, setCoordinator] = useState(initial.coordinator ?? {})
   const [threads, setThreads] = useState(initial.threads ?? {})
+  const [addedConfig, setAddedConfig] = useState<ConfigSnapshot>()
+  useEffect(() => { setAddedConfig(undefined) }, [config])
   const [checkIns, setCheckIns] = useState<CheckIns>(initial.preferences?.checkIns ?? 'milestones')
   const [spawning, setSpawning] = useState<ThreadSpawning>(initial.preferences?.threadSpawning ?? 'balanced')
   const [detail, setDetail] = useState<UpdateDetail>(initial.preferences?.updateDetail ?? 'standard')
@@ -449,7 +454,8 @@ export function SettingsPanel({
     }
   }
 
-  const models = config?.models ?? []
+  const currentConfig = addedConfig ?? config
+  const updateModels = (next: ConfigSnapshot) => { setAddedConfig(next); onConfigChanged?.(next) }
   return (
     <div className="wb-view" aria-label="Project settings">
       <div className="wb-toolbar">
@@ -483,8 +489,8 @@ export function SettingsPanel({
 
       <section className="panel-section">
         <h3 className="panel-heading">Models</h3>
-        <RoleModelFields label="Coordinator" value={coordinator} onChange={setCoordinator} models={models} defaultModel={config?.effective.modelId} />
-        <RoleModelFields label="Threads" value={threads} onChange={setThreads} models={models} defaultModel={config?.effective.modelId} />
+        <RoleModelFields label="Coordinator" value={coordinator} onChange={setCoordinator} config={currentConfig} onConfigChanged={updateModels} />
+        <RoleModelFields label="Threads" value={threads} onChange={setThreads} config={currentConfig} onConfigChanged={updateModels} />
         <div className="form-grid">
           <label className="field">
             <span className="field-label">Thread permission</span>
@@ -551,25 +557,24 @@ function RoleModelFields({
   label,
   value,
   onChange,
-  models,
-  defaultModel,
+  config,
+  onConfigChanged,
 }: {
   label: string
   value: { model?: string; reasoningEffort?: Effort }
   onChange: (value: { model?: string; reasoningEffort?: Effort }) => void
-  models: ConfigSnapshot['models']
-  defaultModel: string | undefined
+  config: ConfigSnapshot | undefined
+  onConfigChanged: (config: ConfigSnapshot) => void
 }) {
+  const models = config?.models ?? []
+  const defaultModel = config?.effective.modelId
   const active = models.find(model => model.id === (value.model || defaultModel))
   return (
     <div className="form-grid">
-      <label className="field">
+      <div className="field">
         <span className="field-label">{label} model</span>
-        <select value={value.model ?? ''} onChange={event => onChange({ ...value, ...(event.target.value ? { model: event.target.value } : { model: undefined }) } as typeof value)}>
-          <option value="">Default{defaultModel ? ` (${defaultModel})` : ''}</option>
-          {models.map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}
-        </select>
-      </label>
+        <ModelPicker model={value.model} onChange={patch => onChange({ ...value, model: patch.model })} models={models} defaultModelId={defaultModel} config={config} onConfigChanged={onConfigChanged} label={`${label} model`} showEffort={false} />
+      </div>
       <label className="field">
         <span className="field-label">{label} effort</span>
         <select

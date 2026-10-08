@@ -50,6 +50,10 @@ compare links provide a convenient browser view of the boundaries.
   credentials to the browser; existing routes keep working without migration.
   Inherited endpoints follow the active runtime configuration and are pinned when
   copying a route, keeping each connection's key attached to the same gateway.
+- Add models directly from the Session and Project model selectors. Search an
+  authenticated catalog, reuse a saved connection, or enter a model manually;
+  saving refreshes the choices and selects the new model without losing the
+  draft. Model providers and third-party connections have separate groups.
 
 ## [0.4.19-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.19-beta.2) — 2026-10-08
 

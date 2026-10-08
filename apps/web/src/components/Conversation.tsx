@@ -737,6 +737,8 @@ export function Conversation({
             onSettingsChange={patch => void changeSettings(patch)}
             models={config?.models ?? []}
             defaultModelId={config?.effective.modelId}
+            config={config}
+            onConfigChanged={onConfigSaved}
             commands={allCommands}
             completeArgument={completeArgument}
             searchFiles={searchFiles}

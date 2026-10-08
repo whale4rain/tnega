@@ -8,7 +8,8 @@
     "dev": "vite",
     "typecheck": "tsc -p tsconfig.json",
     "preview": "vite preview",
-    "test:e2e": "node e2e/project-chat.mjs"
+    "test:e2e": "node e2e/project-chat.mjs",
+    "test:e2e:models": "node e2e/model-picker.mjs"
   },
   "dependencies": {
     "@babel/runtime": "^7.29.7",

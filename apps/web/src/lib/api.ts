@@ -1,5 +1,7 @@
 import type {
   ModelRouteInput,
+  ModelDiscovery,
+  ModelDiscoveryInput,
   AgentType,
   ApprovalMode,
   ApprovalReviewerSettings,
@@ -141,6 +143,8 @@ export const api = {
   workspacePrompt: (workspace: string, signal?: AbortSignal) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { signal }),
   saveWorkspacePrompt: (workspace: string, prompt: string) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { method: 'PUT', body: { prompt } }),
   /** Add or replace one chat model route. */
+  discoverModels: (input: ModelDiscoveryInput, signal?: AbortSignal) =>
+    call<ModelDiscovery>('/api/config/models/discover', { method: 'POST', body: input, signal }),
   saveModelRoute: (id: string, input: ModelRouteInput) =>
     call<ConfigSnapshot>(`/api/config/models/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
   removeModelRoute: (id: string) =>

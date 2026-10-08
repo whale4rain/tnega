@@ -8,7 +8,7 @@ import type { ChatGptLoginState, ConfigSnapshot } from '../lib/types'
  * Use a ChatGPT plan instead of an API key: opens OpenAI's sign-in page,
  * waits for the account to come back, then adds a "ChatGPT" model route.
  */
-export function ChatGptSignIn({ onChanged }: { onChanged: (config: ConfigSnapshot) => void }) {
+export function ChatGptSignIn({ onChanged, onGetModels }: { onChanged: (config: ConfigSnapshot) => void; onGetModels?: () => void }) {
   const [state, setState] = useState<ChatGptLoginState>()
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
@@ -62,6 +62,7 @@ export function ChatGptSignIn({ onChanged }: { onChanged: (config: ConfigSnapsho
       {state?.status === 'signed-in'
         ? <>
           <span className="muted small">Signed in to ChatGPT{state.email ? ` as ${state.email}` : ''}; the ChatGPT model uses your plan.</span>
+          {onGetModels && <button type="button" className="button secondary small" disabled={busy} onClick={onGetModels}>Get models</button>}
           <button type="button" className="button ghost small" disabled={busy} onClick={() => void signOut()}><LogOut size={13} /> Sign out</button>
         </>
         : state?.status === 'pending'

@@ -124,7 +124,7 @@ export function Choice<T extends string>({
         <ChevronDown size={13} className="chip-caret" />
       </button>
       {open && (
-        <div className={`menu-popover align-${align} side-${side} menu-wide`} role="listbox" aria-label={label}>
+        <div className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label}>
           <div className="menu-heading">{label}</div>
           {options.map(option => (
             <button
@@ -204,6 +204,7 @@ export function SectionChoice({
   disabled,
   side = 'top',
   align = 'start',
+  action,
 }: {
   label: string
   summary: string
@@ -213,6 +214,7 @@ export function SectionChoice({
   disabled?: boolean
   side?: 'top' | 'bottom'
   align?: 'start' | 'end'
+  action?: { label: string; onSelect: () => void }
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -234,7 +236,7 @@ export function SectionChoice({
         <ChevronDown size={13} className="chip-caret" />
       </button>
       {open && (
-        <div className={`menu-popover align-${align} side-${side} menu-wide`} role="listbox" aria-label={label}>
+        <div className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label}>
           {sections.map((section, index) => (
             <div key={section.key} className="menu-section" role="group" aria-label={section.label}>
               {index > 0 && <div className="menu-separator" role="separator" />}
@@ -261,6 +263,7 @@ export function SectionChoice({
               ))}
             </div>
           ))}
+          {action && <><div className="menu-separator" role="separator" /><button type="button" className="menu-item" onClick={() => { setOpen(false); action.onSelect() }}>{action.label}</button></>}
         </div>
       )}
     </div>

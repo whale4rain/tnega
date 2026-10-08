@@ -219,6 +219,29 @@ export interface SubagentEntry {
   lastOutput?: string
 }
 
+export type ModelSource = 'provider' | 'third-party'
+
+export interface ModelDiscoveryInput {
+  routeId?: string
+  auth?: 'chatgpt'
+  protocol?: Protocol
+  baseUrl?: string
+  apiKey?: string
+  apiKeyEnv?: string
+}
+
+export interface DiscoveredModel {
+  id: string
+  name: string
+  contextWindow?: number
+  vision?: boolean
+}
+
+export interface ModelDiscovery {
+  models: DiscoveredModel[]
+  source: ModelSource
+}
+
 export interface ModelOption {
   id: string
   name: string
@@ -228,6 +251,7 @@ export interface ModelOption {
   vision?: boolean
   apiKeySet: boolean
   contextWindow?: number
+  source?: ModelSource
 }
 
 /** A registered chat model route as stored in the config file (no key, only whether one is set). */
@@ -244,6 +268,7 @@ export interface ModelRouteSettings {
   pricing?: ModelPricing
   /** `chatgpt` when the route signs in with ChatGPT instead of an API key. */
   auth?: 'chatgpt'
+  source?: ModelSource
 }
 
 /** What the model route form sends; a blank key keeps the saved one. */
@@ -257,6 +282,9 @@ export interface ModelRouteInput {
   vision?: boolean
   /** `null` clears saved prices. */
   pricing?: ModelPricing | null
+  auth?: 'chatgpt'
+  source?: ModelSource
+  sourceRouteId?: string
 }
 
 export interface ConfigSnapshot {

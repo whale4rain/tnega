@@ -474,6 +474,8 @@ kbd {
   min-width: 268px;
 }
 
+.menu-scroll { max-height: min(420px, 60vh); overflow-y: auto; overscroll-behavior: contain; }
+
 @keyframes pop-in {
   from {
     opacity: 0;
@@ -3971,6 +3973,12 @@ kbd {
   gap: 10px;
   margin-bottom: 18px;
 }
+
+.model-browser { display: flex; flex-direction: column; gap: 12px; }
+.model-browser-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.model-catalog { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
+.model-catalog-row { display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.model-catalog-row .model-route-text { flex: 1; min-width: 0; }
 
 .model-route-list {
   display: flex;

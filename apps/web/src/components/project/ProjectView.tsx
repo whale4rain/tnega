@@ -61,6 +61,7 @@ export function ProjectView({
   projectId,
   threadId,
   config,
+  onConfigChanged,
   onOpenThread,
   onDeleted,
   onChanged,
@@ -75,6 +76,7 @@ export function ProjectView({
   projectId: string
   threadId: string | undefined
   config: ConfigSnapshot | undefined
+  onConfigChanged?: ((config: ConfigSnapshot) => void) | undefined
   onOpenThread: (threadId: string | undefined) => void
   onDeleted: () => void
   onChanged: () => void
@@ -329,7 +331,7 @@ export function ProjectView({
       : active === 'project:routines'
         ? <RoutinesPanel workspace={workspace} state={state} onOpenThread={openThread} />
         : active === 'project-settings'
-          ? <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onDeleted={onDeleted} />
+          ? <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onConfigChanged={onConfigChanged} onDeleted={onDeleted} />
           : activeDoc?.kind === 'exchange'
             ? <ExchangePanel workspace={workspace} state={state} firstId={activeDoc.firstId} secondId={activeDoc.secondId}
                 onOpenThread={openThread} onClose={() => onWorkbench(current => closeDoc(current, active, BOARD_KEY))} />
