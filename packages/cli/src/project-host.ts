@@ -49,6 +49,7 @@ import { toolSearch } from '@tnega/tool-search'
 import { toolThread } from '@tnega/tool-thread'
 import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
+import { describeToolCall } from './project-activity.js'
 import { PROJECT_DISABLED_BUILTINS, projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 import { DEFAULT_THREAD_LIMITS } from '@tnega/thread'
 import { mountThreadApprovals } from './thread-approval.js'
@@ -342,13 +343,23 @@ export class ProjectHost {
       if (attached.has(agentId)) return
       attached.add(agentId)
       agent.ctx.on('session/event', (event: SessionEvent) => {
+        if (event.type === 'tool/call') {
+          send({ type: 'activity', agentId, text: describeToolCall(String(event.payload.name), event.payload.arguments) })
+          return
+        }
         if (event.type !== 'assistant/chunk') return
         const payload = event.payload
         if (typeof payload.content !== 'string' || !payload.content) return
         send({ type: 'chunk', agentId, text: payload.content })
       })
     }
-    for (const agent of project.registry.list()) attach(agent.id, agent)
+    for (const agent of project.registry.list()) {
+      attach(agent.id, agent)
+      // A subscriber that arrives mid-run learns the current step right away.
+      if (agent.status !== 'running') continue
+      const last = (await agent.session.read()).findLast(event => event.type === 'tool/call')
+      if (last?.type === 'tool/call') send({ type: 'activity', agentId: agent.id, text: describeToolCall(String(last.payload.name), last.payload.arguments) })
+    }
     disposers.push(project.ctx.on('agent/created', (event: { id: string; agent: LiveAgent }) => {
       attach(event.id, event.agent)
     }))

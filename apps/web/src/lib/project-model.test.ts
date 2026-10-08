@@ -104,6 +104,15 @@ describe('threads', () => {
     expect(threadState(state, state.threads[T1]!)).toBe('idle')
   })
 
+  it('says what a working thread without a checklist is doing, until its run ends', () => {
+    let state = fromSnapshot(snapshot({ threads: [thread(COORD, { depth: 0 }), thread(T1, { state: 'working' })] }))
+    expect(threadStatusLine(state, state.threads[T1]!).step).toBeUndefined()
+    state = reduceProject(state, { type: 'activity', agentId: T1, text: 'Editing count.mjs' })
+    expect(threadStatusLine(state, state.threads[T1]!).step).toBe('Editing count.mjs')
+    state = reduceProject(state, { type: 'agent-status', agentId: T1, status: 'idle' })
+    expect(state.activity[T1]).toBeUndefined()
+  })
+
   it('keeps the latest report per thread and puts threads that need attention first', () => {
     let state = fromSnapshot(snapshot({ threads: [thread(COORD, { depth: 0 }), thread(T1, { state: 'blocked' }), thread(T2, { state: 'done' })] }))
     const report = envelope({

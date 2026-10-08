@@ -202,9 +202,8 @@ export function Sidebar({
         <button type="button" className="sidebar-footer-button icon-only" onClick={onOpenSettings} aria-label="Settings" title="Settings">
           <Settings size={14} />
         </button>
-        <button type="button" className="sidebar-footer-button" onClick={onAddWorkspace} title="Open a folder as a workspace">
+        <button type="button" className="sidebar-footer-button icon-only" onClick={onAddWorkspace} aria-label="Add workspace" title="Add workspace: open a folder">
           <FolderPlus size={14} />
-          <span>Add workspace</span>
         </button>
         <UpdateButton updates={updates} />
         <ThemeSwitch value={theme} onChange={onThemeChange} />

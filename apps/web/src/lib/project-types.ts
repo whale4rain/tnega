@@ -205,5 +205,7 @@ export type ProjectStreamEvent =
     }
   | { type: 'chunk'; agentId: string; text: string }
   | { type: 'agent-status'; agentId: string; status: 'idle' | 'running' }
+  /** What an Agent is doing now, in a few words (from its latest tool call). */
+  | { type: 'activity'; agentId: string; text: string }
   | { type: 'approval/request'; id: string; tool: string; input: string; via?: 'run_code' }
   | { type: 'heartbeat'; at: number }

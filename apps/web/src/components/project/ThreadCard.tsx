@@ -1,7 +1,8 @@
 import { ChevronRight, CircleAlert, CircleCheck, CircleDot, CircleX, CornerUpLeft } from 'lucide-react'
 import type { ProjectState, ReplyRef } from '../../lib/project-model'
-import { plainPreview, threadStatusLine } from '../../lib/project-model'
+import { plainPreview, threadStatusLine, threadWeather } from '../../lib/project-model'
 import type { ThreadRecord } from '../../lib/project-types'
+import { AgentAvatar } from '../AgentAvatar'
 
 /** The state of a thread as an icon and a few words; while working, the step it is on. */
 export function ThreadStatus({ state, thread, withLabel = true }: { state: ProjectState; thread: ThreadRecord; withLabel?: boolean }) {
@@ -54,6 +55,7 @@ export function ThreadCard({
         aria-pressed={active}
         title={thread.goal}
       >
+        <AgentAvatar id={thread.id} size={18} weather={threadWeather(state, thread) === 'clear' ? undefined : threadWeather(state, thread)} />
         <span className="thread-card-label">{thread.label}</span>
         {unread && <span className="unread-dot" aria-label="New" />}
         <ThreadStatus state={state} thread={thread} />
