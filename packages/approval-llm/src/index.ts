@@ -2,6 +2,13 @@ import type { Context } from '@tnega/core'
 import type { LLMAdapter } from '@tnega/agent'
 import { ApprovalReviewer, APPROVAL_POLICY, boundedReview, parseApprovalDecision, reviewState, type ApprovalDecision, type ApprovalReviewRequest } from '@tnega/approval-review'
 
+/**
+ * Room for the decision plus the hidden reasoning that thinking models spend
+ * first; a smaller budget ends those reviews at `length` and every call falls
+ * back to a human (or parent) decision.
+ */
+export const REVIEW_MAX_TOKENS = 4_096
+
 export interface LlmApprovalConfig {
   adapter: LLMAdapter | ((request: ApprovalReviewRequest) => LLMAdapter | Promise<LLMAdapter>)
   timeoutMs?: number
@@ -20,7 +27,7 @@ export class LlmApprovalReviewer extends ApprovalReviewer {
       const result = await adapter.complete([
         { role: 'system', content: `${APPROVAL_POLICY}\nReturn only JSON: {"decision":"allow|deny|ask","risk":"low|medium|high","reason":"brief explanation"}.` },
         { role: 'user', content: JSON.stringify(reviewState(request)) },
-      ], [], { signal, maxTokens: 512 })
+      ], [], { signal, maxTokens: REVIEW_MAX_TOKENS })
       const decision = parseApprovalDecision(result.finishReason === 'stop' ? result.content : undefined)
       return { ...decision, provider: 'llm', ...(this.config.model ? { model: this.config.model } : {}) }
     })
