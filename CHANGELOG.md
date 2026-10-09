@@ -49,6 +49,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Project 并发首次打开共用同一运行作用域；挂载失败会清理部分资源，关闭变化流会解除 Session 监听，避免重复调度和重连后的资源泄漏。
+
 - Project 协调者改为明确的协调工具白名单：调查、执行和产物制作只交给 Thread，直接调用与 Code Mode 嵌套调用使用同一职责边界。
 
 ## [0.4.23](https://github.com/whale4rain/tnega/releases/tag/v0.4.23) — 2026-10-09

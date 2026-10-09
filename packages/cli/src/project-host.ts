@@ -308,15 +308,23 @@ export class ProjectHost {
   async mount(projectId: string): Promise<OpenProject> {
     const existing = this.open.get(projectId)
     if (existing) return await existing
-    const record = await this.get(projectId)
-    if (!record) throw new Error(`project not found: ${projectId}`)
-    this.idleSummaries.delete(projectId)
-    const mounting = this.assemble(record)
+    const mounting = (async () => {
+      const record = await this.get(projectId)
+      if (!record) throw new Error(`project not found: ${projectId}`)
+      this.idleSummaries.delete(projectId)
+      const ctx = new Context()
+      try {
+        return await this.assemble(record, ctx)
+      } catch (error) {
+        await ctx.fiber.dispose()
+        throw error
+      }
+    })()
     this.open.set(projectId, mounting)
     try {
       return await mounting
     } catch (error) {
-      this.open.delete(projectId)
+      if (this.open.get(projectId) === mounting) this.open.delete(projectId)
       throw error
     }
   }
@@ -417,7 +425,7 @@ export class ProjectHost {
     const attach = (agentId: string, agent: LiveAgent): void => {
       if (attached.has(agentId)) return
       attached.add(agentId)
-      agent.ctx.on('session/event', (event: SessionEvent) => {
+      disposers.push(agent.ctx.on('session/event', (event: SessionEvent) => {
         if (event.type === 'tool/call') {
           send({ type: 'activity', agentId, text: describeToolCall(String(event.payload.name), event.payload.arguments) })
           return
@@ -426,7 +434,7 @@ export class ProjectHost {
         const payload = event.payload
         if (typeof payload.content !== 'string' || !payload.content) return
         send({ type: 'chunk', agentId, text: payload.content })
-      })
+      }))
     }
     for (const agent of project.registry.list()) {
       attach(agent.id, agent)
@@ -611,9 +619,8 @@ export class ProjectHost {
     return (await this.indexScope).projects
   }
 
-  private async assemble(record: ProjectRecord): Promise<OpenProject> {
+  private async assemble(record: ProjectRecord, ctx: Context): Promise<OpenProject> {
     const directory = join(this.tnegaRoot, 'projects', record.id)
-    const ctx = new Context()
     await ctx.plugin(tools)
     await ctx.plugin(systemPrompt)
     await ctx.plugin(workspacePrompt, { workspace: this.workspace })

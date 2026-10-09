@@ -47,6 +47,27 @@ it('refuses coordinator deliverables at execution time', async () => {
   expect(await project.blackboard.list('artifact')).toHaveLength(0)
 })
 
+it('shares the first mount across concurrent callers', async () => {
+  const { host } = await fixture()
+  const record = await host.create({ name: 'Concurrent' })
+  const opened = await Promise.all([host.mount(record.id), host.mount(record.id)])
+  try { expect(opened[0] === opened[1]).toBe(true) }
+  finally { await Promise.all(opened.map(project => project.ctx.fiber.dispose())) }
+})
+
+it('releases Session listeners when a project subscription closes', async () => {
+  const { host, record, project } = await fixture()
+  const agent = await project.threads.activate(record.coordinatorId)
+  const received: unknown[] = []
+  const stop = await host.watch(record.id, { send: event => received.push(event) })
+  await agent.session.append('assistant/chunk', { content: 'before' })
+  expect(received).toContainEqual({ type: 'chunk', agentId: agent.id, text: 'before' })
+  stop()
+  received.length = 0
+  await agent.session.append('assistant/chunk', { content: 'after' })
+  expect(received).toHaveLength(0)
+})
+
 it.each(['coordinator', 'thread'])('publishes separate tool chat messages for a %s and restores them from Box', async target => {
   let calls = 0
   const llm: LLMAdapter = { async complete() {
