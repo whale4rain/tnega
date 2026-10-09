@@ -151,6 +151,55 @@ it('writes project memory with conditional versions and publishes artifacts', as
   }
 })
 
+it('revises artifacts in place without changing their generating thread or losing old bytes', async () => {
+  const { ctx, tools, coordinatorId } = await mount()
+  try {
+    await call(tools, 'publish_artifact', { title: 'Draft', content: 'Original paragraph' }, coordinatorId)
+    const original = (await ctx.blackboard.list('artifact'))[0]!
+    await call(tools, 'publish_artifact', {
+      title: 'Draft revised', content: 'Revised paragraph', artifact_id: original.id, expected_version: original.version,
+    }, coordinatorId)
+    const records = await ctx.blackboard.list('artifact')
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ id: original.id, author: coordinatorId, version: 2, data: { threadId: coordinatorId, title: 'Draft revised' } })
+    expect(await call(tools, 'read_artifact', { hash: original.id }, coordinatorId)).toBe('Original paragraph')
+    const sibling = await ctx.threads.spawn({ parentId: coordinatorId, goal: 'Other work' })
+    await expect(call(tools, 'publish_artifact', {
+      title: 'Hijack', content: 'Wrong owner', artifact_id: original.id, expected_version: 2,
+    }, sibling.id)).rejects.toThrow('generating thread')
+    await expect(call(tools, 'publish_artifact', {
+      title: 'Stale', content: 'Stale draft', artifact_id: original.id, expected_version: 1,
+    }, coordinatorId)).rejects.toThrow()
+    expect((await ctx.blackboard.read('artifact', original.id))?.version).toBe(2)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it('keeps identical content produced by different threads associated with each generator', async () => {
+  const { ctx, tools, coordinatorId } = await mount()
+  try {
+    const child = await ctx.threads.spawn({ parentId: coordinatorId, goal: 'Other draft' })
+    await Promise.all([
+      call(tools, 'publish_artifact', { title: 'First', content: 'Same bytes' }, coordinatorId),
+      call(tools, 'publish_artifact', { title: 'Second', content: 'Same bytes' }, child.id),
+    ])
+    const records = await ctx.blackboard.list('artifact')
+    expect(records).toHaveLength(2)
+    expect(records.map(record => record.author).sort()).toEqual([coordinatorId, child.id].sort())
+    const original = records.find(record => record.id.includes(':'))!
+    await call(tools, 'publish_artifact', {
+      title: 'Revised', content: 'Different bytes', artifact_id: original.id, expected_version: original.version,
+    }, original.author)
+    await call(tools, 'publish_artifact', { title: 'Republished original', content: 'Same bytes' }, original.author)
+    const versions = await ctx.blackboard.list('artifact')
+    expect(versions).toHaveLength(3)
+    expect(versions.filter(record => record.author === original.author)).toHaveLength(2)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
 it('lets an agent speak to the user mid-turn and records who said it', async () => {
   const { ctx, tools, coordinatorId } = await mount()
   try {

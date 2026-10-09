@@ -127,6 +127,10 @@ export const projectApi = {
     call<{ routine: RoutineFact }>(`${base(id)}/routines/${routineId}`, workspace, { method: 'PATCH', body: patch }),
   runRoutine: (workspace: string, id: string, routineId: string) =>
     call<{ routine: RoutineFact }>(`${base(id)}/routines/${routineId}/run`, workspace, { method: 'POST', body: {} }),
+  artifactThread: (workspace: string, id: string, artifactId: string) =>
+    call<{ artifact: ArtifactFact; thread: ThreadRecord }>(`${base(id)}/artifacts/${encodeURIComponent(artifactId)}/thread`, workspace, { method: 'POST', body: {} }),
+  sendToArtifact: (workspace: string, id: string, artifactId: string, input: { text: string; hash: string; quote?: string }) =>
+    call<{ messageId: string; createdAt: number }>(`${base(id)}/artifacts/${encodeURIComponent(artifactId)}/messages`, workspace, { method: 'POST', body: input }),
   /** An artifact's bytes, for documents, slides, sheets, PDFs and images. */
   artifactBlob: async (workspace: string, id: string, hash: string): Promise<Blob> => {
     const response = await fetch(`${base(id)}/artifacts/${hash}?${new URLSearchParams({ workspace }).toString()}`, {

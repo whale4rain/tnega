@@ -512,7 +512,16 @@ it('attaches artifacts published during a turn to that reply', async () => {
       async () => (await timeline(ctx)).find(entry => entry.kind === 'agent-reply' && entry.sender.id === child.id),
       'the thread reply',
     )
-    expect(reply.refs).toEqual([{ hash, size: 12, mediaType: 'text/html' }])
+    expect(reply.refs).toEqual([{ artifactId: hash, hash, size: 12, mediaType: 'text/html' }])
+    await new Promise(resolve => setTimeout(resolve, 5))
+    const revisedHash = 'b'.repeat(64)
+    await ctx.blackboard.commit({ kind: 'artifact', id: hash, expectedVersion: 1, author: child.id,
+      data: { title: 'Revised report', hash: revisedHash, size: 20, mediaType: 'text/html' } })
+    await ctx.box.send({ sender: agentAddress(coordinator.id), recipients: [agentAddress(child.id)],
+      placement: { kind: 'thread', threadId: child.id }, kind: 'dispatch', text: 'Revise the report.' })
+    const revisedReply = await waitFor(async () => (await timeline(ctx)).find(entry =>
+      entry.kind === 'agent-reply' && entry.sender.id === child.id && entry.messageId !== reply.messageId), 'the revised reply')
+    expect(revisedReply.refs).toEqual([{ artifactId: hash, hash: revisedHash, size: 20, mediaType: 'text/html' }])
   } finally {
     await ctx.fiber.dispose()
   }

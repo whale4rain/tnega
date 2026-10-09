@@ -1,10 +1,13 @@
 import { FileCode2, FileImage, FileSpreadsheet, FileText, Globe, Presentation, Table2, type LucideIcon } from 'lucide-react'
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import { formatBytes } from '../../lib/project-model'
-import type { ArtifactFact } from '../../lib/project-types'
+import type { ProjectState } from '../../lib/project-model'
+import type { ArtifactFact, ThreadRecord } from '../../lib/project-types'
 import { CodeBlock, Markdown } from '../Markdown'
+import { Dialog } from '../Dialog'
+import { ThreadPanel } from './ThreadPanel'
 import { PreviewView } from '../preview/FilePreview'
 
 export type ArtifactKind = 'page' | 'doc' | 'slides' | 'sheet' | 'pdf' | 'image' | 'data' | 'code' | 'text'
@@ -102,6 +105,7 @@ export function ArtifactViewer({ workspace, projectId, artifact }: { workspace: 
 }
 
 function TextArtifact({ workspace, projectId, artifact }: { workspace: string; projectId: string; artifact: ArtifactFact }) {
+  const [source, setSource] = useState(false)
   const [content, setContent] = useState<string | undefined>()
   const [unavailable, setUnavailable] = useState<string | undefined>()
   useEffect(() => {
@@ -128,11 +132,95 @@ function TextArtifact({ workspace, projectId, artifact }: { workspace: string; p
       )}
       {content !== undefined && (
         kind === 'page'
-          ? <iframe className="artifact-frame" title={artifact.data.title} sandbox="allow-scripts allow-forms allow-popups" srcDoc={content} />
+          ? <><button type="button" className="button secondary small" onClick={() => setSource(value => !value)}>{source ? 'Page preview' : 'Select from source'}</button>
+            {source ? <CodeBlock code={content} language="html" /> : <iframe className="artifact-frame" title={artifact.data.title} sandbox="allow-scripts allow-forms allow-popups" srcDoc={content} />}</>
           : kind === 'doc'
             ? <Markdown text={content} />
             : <CodeBlock code={content} language={language} />
       )}
     </>
   )
+}
+
+/** Keep the published version being read stable while its generating Thread works. */
+export function ArtifactDialog({ workspace, state, artifact, onClose, onThread }: {
+  workspace: string
+  state: ProjectState
+  artifact: ArtifactFact
+  onClose: () => void
+  onThread: (thread: ThreadRecord) => void
+}) {
+  const [shown, setShown] = useState(artifact)
+  const [thread, setThread] = useState<ThreadRecord>()
+  const [error, setError] = useState<string>()
+  const [quote, setQuote] = useState<string>()
+  const [selection, setSelection] = useState<string>()
+  const preview = useRef<HTMLDivElement>(null)
+  const onThreadRef = useRef(onThread)
+  onThreadRef.current = onThread
+  useEffect(() => {
+    let cancelled = false
+    projectApi.artifactThread(workspace, state.project.id, artifact.id).then(result => {
+      if (cancelled) return
+      setShown(result.artifact)
+      setThread(result.thread)
+      onThreadRef.current(result.thread)
+    }, reason => {
+      if (!cancelled) setError(isUnsupported(reason)
+        ? 'This server cannot open artifact conversations. Update the server and reopen this artifact.'
+        : errorText(reason))
+    })
+    return () => { cancelled = true }
+  }, [workspace, state.project.id, artifact.id])
+
+  useEffect(() => {
+    const selected = () => {
+      const value = document.getSelection()
+      const content = preview.current?.querySelector('.wb-card')
+      setSelection(value && content && value.anchorNode && value.focusNode
+        && content.contains(value.anchorNode) && content.contains(value.focusNode)
+        ? value.toString().trim() || undefined : undefined)
+    }
+    document.addEventListener('selectionchange', selected)
+    return () => document.removeEventListener('selectionchange', selected)
+  }, [])
+  const latest = state.artifacts.find(item => item.id === shown.id)
+  const send = async (text: string) => {
+    try {
+      await projectApi.sendToArtifact(workspace, state.project.id, shown.id, {
+        text, hash: shown.data.hash, ...(quote ? { quote } : {}),
+      })
+      setQuote(undefined)
+      setError(undefined)
+      return true
+    } catch (reason) {
+      setError(isUnsupported(reason) ? 'This server cannot send artifact messages. Update the server and try again.' : errorText(reason))
+      return false
+    }
+  }
+  const threadState = thread && !state.threads[thread.id]
+    ? { ...state, threads: { ...state.threads, [thread.id]: thread } } : state
+  return <Dialog title={shown.data.title} onClose={onClose} width={1440}>
+    <div className="artifact-dialog">
+      <section className="artifact-dialog-preview" aria-label="Artifact preview">
+        <div className="artifact-selection-bar">
+          <span className="muted small">Select text to discuss with its Thread.</span>
+          <button type="button" className="button secondary small" disabled={!selection || !thread}
+            onMouseDown={event => event.preventDefault()} onClick={() => { setQuote(selection); document.getSelection()?.removeAllRanges() }}>Quote selection</button>
+          {latest && latest.data.hash !== shown.data.hash && <button type="button" className="button secondary small"
+            onClick={() => { setShown(latest); setQuote(undefined); setSelection(undefined) }}>View latest version</button>}
+        </div>
+        <div className="artifact-dialog-content" ref={preview}>
+          <ArtifactViewer key={shown.data.hash} workspace={workspace} projectId={state.project.id} artifact={shown} />
+        </div>
+      </section>
+      <section className="artifact-dialog-thread" aria-label="Artifact conversation">
+        {error && <div className="notice notice-error" role="alert">{error}</div>}
+        {!thread && !error && <p className="muted small">Opening the generating Thread…</p>}
+        {thread && <ThreadPanel workspace={workspace} state={threadState} threadId={thread.id} onSend={send}
+          composerContext={quote && <div className="artifact-quote"><blockquote>{quote}</blockquote>
+            <button type="button" className="button ghost small" onClick={() => setQuote(undefined)}>Remove quote</button></div>} />}
+      </section>
+    </div>
+  </Dialog>
 }

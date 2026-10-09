@@ -1,4 +1,4 @@
-/* global process, console, fetch, localStorage, location, window, document */
+/* global process, console, fetch, localStorage, location, window, document, Event */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -53,12 +53,18 @@ try {
     const memory = { ...artifact, kind: 'memory', id: 'writing-rule', data: { text: 'Use short headings.', tags: ['writing'] } }
     let latest = memory
     const edits = []
+    const artifactMessages = []
     await context.route('**/api/projects/project**', async route => {
       const path = new URL(route.request().url()).pathname
       const method = route.request().method()
       const json = body => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
       if (path === '/api/projects/project' && method === 'GET') return json({ ...snapshot, memory: [memory], library: { ...snapshot.library, artifacts: [artifact] },
         threadMessages: snapshot.threadMessages.map(message => message.messageId === 'thread-reply' ? { ...message, refs: [artifact.data] } : message) })
+      if (path === '/api/projects/project/artifacts/snapshot-report/thread') return json({ artifact, thread: snapshot.threads.find(thread => thread.id === 'writer') })
+      if (path === '/api/projects/project/artifacts/snapshot-report/messages') {
+        artifactMessages.push(route.request().postDataJSON())
+        return json({ messageId: `artifact-message-${artifactMessages.length}`, createdAt: Date.now() })
+      }
       if (path === '/api/projects/project/artifacts/snapshot-report') return route.fulfill({ contentType: 'text/markdown', body: '# Snapshot report\n\nThe original published report stays unchanged when workspace files change.\n\n- Short headings\n- Clear examples' })
       if (path === '/api/projects/project/memory/writing-rule' && method === 'GET') return json({ history: latest.version === 1 ? [memory] : [memory, latest] })
       if (path === '/api/projects/project/memory/writing-rule' && method === 'PATCH') {
@@ -91,13 +97,36 @@ try {
     await page.screenshot({ path: resolve(artifacts, `artifact-source-${theme}-${palette}.png`), fullPage: true })
     await page.getByRole('button', { name: 'Writing report Doc', exact: false }).click()
     await page.getByRole('heading', { name: 'Snapshot report', exact: true }).waitFor()
-    assert.equal(await page.getByRole('dialog').count(), 0)
-    assert.equal(await page.getByRole('button', { name: 'Close Writing report', exact: true }).count(), 1)
-    await page.getByRole('tab', { name: 'Library', exact: true }).click()
-    await page.getByRole('button', { name: 'Writing report Doc', exact: false }).click()
-    await page.getByRole('heading', { name: 'Snapshot report', exact: true }).waitFor()
-    assert.equal(await page.getByRole('button', { name: 'Close Writing report', exact: true }).count(), 1, 'Same artifact opens once')
+    const dialog = page.getByRole('dialog')
+    assert.equal(await dialog.count(), 1)
+    await dialog.getByPlaceholder('Message Content Writer…').waitFor()
+    assert.equal(artifactMessages.length, 0, 'Opening does not send a message')
+    const selectQuote = async () => {
+      await dialog.locator('.artifact-dialog-preview .prose p').evaluate(element => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        window.getSelection().removeAllRanges()
+        window.getSelection().addRange(range)
+        document.dispatchEvent(new Event('selectionchange'))
+      })
+      await dialog.getByRole('button', { name: 'Quote selection' }).click()
+    }
+    await selectQuote()
+    await dialog.getByRole('button', { name: 'Remove quote' }).click()
+    assert.equal(artifactMessages.length, 0, 'Canceling quote does not send')
+    await selectQuote()
+    await dialog.getByPlaceholder('Message Content Writer…').fill('Make this sentence clearer.')
+    await dialog.getByRole('button', { name: 'Send', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Remove quote' }).waitFor({ state: 'hidden' })
+    assert.deepEqual(artifactMessages, [{ text: 'Make this sentence clearer.', hash: 'snapshot-report', quote: 'The original published report stays unchanged when workspace files change.' }])
+    const panes = await dialog.locator('.artifact-dialog-preview, .artifact-dialog-thread').evaluateAll(elements => elements.map(element => {
+      const rect = element.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    }))
+    assert(panes[0].width > 400 && panes[1].width > 300 && panes[0].x < panes[1].x, 'Preview and conversation have usable side-by-side space')
     await page.screenshot({ path: resolve(artifacts, `artifact-preview-${theme}-${palette}.png`), fullPage: true })
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    assert.equal(await page.locator(':focus').textContent().then(text => text.includes('Writing report')), true, 'Close restores artifact card focus')
     await page.getByRole('button', { name: 'Project settings', exact: true }).click()
     await page.getByRole('button', { name: 'Edit', exact: true }).click()
     const editor = page.locator('.memory-edit textarea')

@@ -198,6 +198,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 对话是**谈论**工作的地方，工作台是工作**本身**所在的地方。Agent 和你共同操作的一切——工作区文件、改动、终端、浏览器，以及从对话里打开的文档和子 Agent 记录——都在右侧同一个面板里，不再各自开抽屉。
 
+- **Project 产物例外**：从消息或 Library 打开的产物保留弹窗预览，左侧产物、右侧生成它的 Thread，复用现有预览与 ThreadPanel。一个 Thread 可以维护多个产物；修订沿用产物身份和归属。打开不触发模型请求。两侧独立滚动，关闭恢复焦点。文本、Markdown、代码可以引用实际选中的原文；HTML 可切换源码引用，不扩大 iframe 权限。引用可取消，仅在用户发送时连同所见版本提交。
 - **入口**：会话顶栏只有一个工作台按钮（面板图标），角标是相对上次提交改动的文件数。`Ctrl+J` 开关工作台，`` Ctrl+` `` 直接打开终端。Agent 开始用浏览器时自动切到 Browser；对话里"N files changed"卡片上的每个文件点开即是它的 diff；Office 文件卡片点开是预览标签。
 - **一种形状**：每个视图都是 **标签栏 → 工具栏行 → 圆角卡片**。标签栏先是固定的工具（Files · Changes · Terminal · Browser），竖线之后是可关闭的文档标签（文件预览、子 Agent 记录），同一文档不会开两次。工具栏行左边是上下文（路径、分支、会话），右边是动作；工具内部的多实例（浏览器页面、多个终端）用同一种**子标签胶囊**。内容一律放进圆角卡片：代码、终端与 diff 用 `--code-bg`，文档与页面用 `--surface`，Project 的 Thread 与 Agent 通信是对话，卡片底色用和主对话相同的 `--bg`。
 - **左右分栏**：Files 与 Changes 用同一种布局——左边列表（目录树 / 改动文件），右边详情（编辑器 / diff），选中项用 `--accent-soft`。
@@ -246,7 +247,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - 房间里的 Thread 卡片是一行（约 30px）：状态灯 · 标题 · 状态 / 当前步骤 · 箭头，悬停在卡片右侧出现「回复」。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
 - **状态灯**（`components/StatusLight.tsx`，`threadLight` / `projectLight`）是天气的最小形态，一种颜色只有一个含义：等你或被阻塞（雪）= `--warn` 带光晕；出错（雷暴）= `--danger` 带光晕；工作中（雨）= `--accent` 缓慢明灭（减弱动效时静止）；有你还没打开的结果 = `--success`；其余为 `--border-strong` 的灰点。灯总带文字（无障碍名称与提示）。用在：房间的 Thread 卡、正文里的 Thread 链接、Board 卡片与 Today 行、侧栏的项目行——侧栏只在有 Thread 等你、失败或工作中时亮灯（优先级同 §4），数据来自 `GET /api/projects` 的 `threads` 摘要。
 - **推送与 PR 卡**（`project/GitCard.tsx`）：Thread 用 shell 执行 `git push` 或 `gh pr create` 后，服务端按命令输出记一条带 `git` 的 Library 资源，界面画成一行卡片：图标（分支 / PR）· 标题（“Pushed feature-x”“Pull request #12”）· 仓库 · Thread · 时间 · 状态胶囊（Pushed / Opened 成功色，Up to date 中性，Rejected / Failed 危险色，失败时元数据换成错误行）· 「Open」在浏览器打开（PR、建 PR 的页面或分支页；本地或代理远端没有网页就不显示）。同一分支再推送更新同一张卡。卡片出现在主对话里（按最近变化的时间）、该 Thread 的产物区与 Library 的「Pushes and pull requests」。状态只反映命令本身的结果，不查询代码托管平台。
-- 协调者在房间里的长消息（超过约 420 字符）默认折叠到五行左右，带 “Show more”；开头应是结论，细节按需展开。Thread 自己面板里的报告不折叠。
+- 协调者与 Thread 的消息完整显示，不使用 “Show more” 或行数裁切；简洁表达由 Agent 的沟通指令负责，不由界面隐藏消息。
 - Board 顶部是一行 Today：项目状态灯 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
 
 ## 6. 字号与信息显示偏好
@@ -293,7 +294,7 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 
 ### 7.2 渐进展开
 
-- 过程默认折叠，结论默认展开：工具调用折成一行并写当前步骤，回合结束后过程折成 “Used N tools”（§5.1）；协调者长消息折到约五行（§5.7）。
+- 过程默认折叠，结论默认展开：工具调用折成一行并写当前步骤，回合结束后过程折成 “Used N tools”（§5.1）；协调者与 Thread 消息始终完整显示（§5.7）。
 - 折叠行必须告诉人里面有什么（步骤名、数量），而不是只写 “Details”。展开状态不需要跨重载保留。
 - 列表默认显示有限条数（侧栏 8 条），其余收进 “N more”；数量写在按钮上。
 

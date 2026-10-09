@@ -552,7 +552,7 @@ export function formatActive(ms: number): string {
 /** Library entries for a message's artifact references, in reference order. */
 export function artifactsFor(state: ProjectState, refs: readonly ArtifactRef[]): ArtifactFact[] {
   return refs
-    .map(ref => state.artifacts.find(artifact => artifact.id === ref.hash))
+    .map(ref => state.artifacts.find(artifact => ref.artifactId ? artifact.id === ref.artifactId : artifact.id === ref.hash || artifact.data.hash === ref.hash))
     .filter((artifact): artifact is ArtifactFact => artifact !== undefined)
 }
 

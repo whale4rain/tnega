@@ -98,6 +98,7 @@ export type BoxMessageKind =
   | 'notice'
 
 export interface ArtifactRef {
+  artifactId?: string
   hash: string
   size: number
   mediaType: string
@@ -153,8 +154,8 @@ export interface RoutineData {
 
 export type RoutineFact = FactRecord<RoutineData>
 
-export type MemoryFact = FactRecord<{ text: string; tags?: string[] }>
-export type ArtifactFact = FactRecord<{ title: string; hash: string; size: number; mediaType: string }>
+export type MemoryFact = FactRecord<{ text: string; tags?: string[]; status?: string; authority?: string }>
+export type ArtifactFact = FactRecord<{ title: string; hash: string; size: number; mediaType: string; threadId?: string }>
 /**
  * A push or pull request a thread made with its shell, recorded by the
  * server as a resource (`packages/cli/src/project-git.ts`). Older servers

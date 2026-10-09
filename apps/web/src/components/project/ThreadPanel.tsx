@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowLeftRight, Check, CheckCheck, ChevronRight, RotateCcw, Square } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { errorText } from '../../lib/hooks'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import type { ProjectState } from '../../lib/project-model'
@@ -25,11 +25,15 @@ export function ThreadPanel({
   threadId,
   onBack,
   onOpenExchange,
+  onSend,
+  composerContext,
 }: {
   workspace: string
   state: ProjectState
   threadId: string
-  onBack: () => void
+  onBack?: () => void
+  onSend?: (text: string) => Promise<boolean>
+  composerContext?: ReactNode
   /** Open what this thread and the Agent that started it said to each other. */
   onOpenExchange?: (firstId: string, secondId: string) => void
 }) {
@@ -101,6 +105,7 @@ export function ThreadPanel({
     }
   }
   const send = async (text: string, interrupt = false) => {
+    if (onSend) return onSend(text)
     try {
       await projectApi.sendToThread(workspace, projectId, threadId, text, interrupt)
       return true
@@ -120,7 +125,7 @@ export function ThreadPanel({
   return (
     <div className="wb-view thread-panel" aria-label={`Thread ${thread.label}`}>
       <div className="wb-toolbar">
-        <button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board" title="Back to the Board"><ArrowLeft size={14} /></button>
+        {onBack && <button type="button" className="icon-button small" onClick={onBack} aria-label="Back to the Board" title="Back to the Board"><ArrowLeft size={14} /></button>}
         <span className="wb-toolbar-title" title={thread.goal}>{thread.label}</span>
         <ThreadStatus state={state} thread={thread} />
         {parentId && onOpenExchange && (
@@ -159,11 +164,12 @@ export function ThreadPanel({
         </details>
       </div>
       <div className="side-dock">
+        {composerContext}
         <PromptBox
           inline
           placeholder={`Message ${thread.label}…`}
           onSubmit={text => send(text)}
-          onInterruptSubmit={text => send(text, true)}
+          {...(!onSend ? { onInterruptSubmit: (text: string) => send(text, true) } : {})}
           onStop={() => void stop()}
           running={working}
           allowWhileRunning

@@ -31,7 +31,7 @@ import {
   type ProjectState,
   type ReplyRef,
 } from '../../lib/project-model'
-import type { BoxEnvelope, ProjectStreamEvent } from '../../lib/project-types'
+import type { ArtifactFact, BoxEnvelope, ProjectStreamEvent } from '../../lib/project-types'
 import type { ConfigSnapshot } from '../../lib/types'
 import { LinkContext, type LinkHandlers } from '../../lib/links'
 import { navigateBrowser } from '../../lib/browser-live'
@@ -42,7 +42,7 @@ import { ApprovalCard } from '../Conversation'
 import { BackgroundJobs } from '../BackgroundJobs'
 import { Markdown } from '../Markdown'
 import { Menu } from '../Menu'
-import { ArtifactCards, ArtifactContext, ArtifactViewer } from './Artifacts'
+import { ArtifactCards, ArtifactContext, ArtifactDialog } from './Artifacts'
 import { BoardPanel } from './Board'
 import { LibraryPanel, SettingsPanel } from './ProjectPanels'
 import { RoutinesPanel } from './Routines'
@@ -94,6 +94,19 @@ export function ProjectView({
   const [connected, setConnected] = useState(true)
   const [notice, setNotice] = useState<string | undefined>()
   const [replyTarget, setReplyTarget] = useState<ReplyRef | undefined>()
+  const [openedArtifact, setOpenedArtifact] = useState<ArtifactFact>()
+  const artifactTrigger = useRef<HTMLElement | null>(null)
+  const openArtifact = useCallback((artifact: ArtifactFact) => {
+    if (!artifactTrigger.current || !openedArtifact) {
+      artifactTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    }
+    setOpenedArtifact(artifact)
+  }, [openedArtifact])
+  const closeArtifact = useCallback(() => {
+    setOpenedArtifact(undefined)
+    // Restore the original card after the dialog and its composer clean up focus.
+    queueMicrotask(() => artifactTrigger.current?.focus())
+  }, [])
   const [sourceMessage, setSourceMessage] = useState<string>()
   const [seen, markSeen] = useSeenThreads(projectId)
   const links = useMemo<LinkHandlers>(() => ({
@@ -114,6 +127,7 @@ export function ProjectView({
 
   // Snapshot first, then follow the change stream from its cursor.
   useEffect(() => {
+    setOpenedArtifact(undefined)
     setState(undefined)
     setError(undefined)
     let stop: (() => void) | undefined
@@ -364,8 +378,6 @@ export function ProjectView({
         ? <RoutinesPanel workspace={workspace} state={state} onOpenThread={openThread} />
         : active === 'project-settings'
           ? <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onConfigChanged={onConfigChanged} onDeleted={onDeleted} />
-          : activeDoc?.kind === 'artifact'
-            ? <ArtifactViewer key={activeDoc.key} workspace={workspace} projectId={projectId} artifact={activeDoc.artifact} />
           : activeDoc?.kind === 'exchange'
             ? <ExchangePanel workspace={workspace} state={state} firstId={activeDoc.firstId} secondId={activeDoc.secondId}
                 onOpenThread={openThread} onClose={() => onWorkbench(current => closeDoc(current, active, BOARD_KEY))} />
@@ -375,7 +387,9 @@ export function ProjectView({
 
   return (
       <LinkContext.Provider value={links}>
-      <ArtifactContext.Provider value={artifact => onWorkbench(current => openDoc(current, { kind: 'artifact', artifact, label: artifact.data.title }))}>
+      <ArtifactContext.Provider value={openArtifact}>
+      {openedArtifact && <ArtifactDialog key={`${projectId}:${openedArtifact.id}`} workspace={workspace} state={state} artifact={openedArtifact} onClose={closeArtifact}
+        onThread={thread => setState(current => current && ({ ...current, threads: { ...current.threads, [thread.id]: thread } }))} />}
       <main className="conversation project-main">
         <header className="conv-header">
           {!sidebarOpen && (
@@ -599,7 +613,7 @@ function Room({
                   return (
                     <div key={item.id} id={`msg-${item.id}`} className="room-message main-message">
                       {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
-                      {item.text.trim() && <FoldedText text={item.text} />}
+                      {item.text.trim() && <Markdown text={item.text} />}
                       <ArtifactCards workspace={workspace} projectId={state.project.id} artifacts={artifactsFor(state, item.refs)} />
                       <div className="turn-actions">
                         <button
@@ -683,29 +697,4 @@ function useSeenThreads(projectId: string): [Readonly<Record<string, number>>, (
     })
   }, [key])
   return [seen, mark]
-}
-
-/** Past this length a room message opens folded; the room stays skimmable. */
-const ROOM_FOLD_CHARS = 420
-
-/**
- * A long coordinator message shows its first lines and a "Show more" toggle.
- * The opening states the outcome (the prompts ask for that), so the folded
- * part is detail the reader can pull in.
- */
-function FoldedText({ text }: { text: string }) {
-  const [open, setOpen] = useState(false)
-  const long = text.trim().length > ROOM_FOLD_CHARS
-  return (
-    <>
-      <div className={long && !open ? 'message-fold' : undefined}>
-        <Markdown text={text} />
-      </div>
-      {long && (
-        <button type="button" className="message-fold-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-          {open ? 'Show less' : 'Show more'}
-        </button>
-      )}
-    </>
-  )
 }

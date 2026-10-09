@@ -16,6 +16,22 @@ export interface ToolBlackboardConfig {
   cwd?: string
 }
 
+/** Stable Library identity belongs to its generating Thread; hashes identify revisions. */
+export interface ProjectArtifactData {
+  title: string
+  hash: string
+  size: number
+  mediaType: string
+  threadId?: string
+}
+
+export function projectArtifactData(value: unknown): ProjectArtifactData | undefined {
+  if (!isRecord(value) || typeof value.title !== 'string' || typeof value.hash !== 'string'
+    || typeof value.size !== 'number' || typeof value.mediaType !== 'string') return undefined
+  return { title: value.title, hash: value.hash, size: value.size, mediaType: value.mediaType,
+    ...(typeof value.threadId === 'string' ? { threadId: value.threadId } : {}) }
+}
+
 /** Media types by extension for files published from the workspace. */
 const MEDIA_TYPES: Record<string, string> = {
   '.html': 'text/html',
@@ -212,7 +228,7 @@ export const toolBlackboard = {
     tools.register({
       schema: {
         name: 'publish_artifact',
-        description: 'Publish a deliverable to the project Library and attach it to your reply as a card. Give either content (text, such as Markdown or a self-contained HTML page) or path (a workspace file such as a .docx, .pptx, .xlsx, .pdf or image, stored as a snapshot). Publishing the same bytes twice reuses the same entry.',
+        description: 'Publish a deliverable to the project Library. Give content or a workspace path. To revise your existing artifact, pass artifact_id and the expected_version from read_project: its identity and generating thread stay the same while a new immutable content snapshot is saved. Repeating the same bytes in your thread reuses its entry.',
         parameters: {
           type: 'object',
           properties: {
@@ -220,6 +236,8 @@ export const toolBlackboard = {
             content: { type: 'string', description: 'The content itself, for text artifacts.' },
             path: { type: 'string', description: 'A workspace file to publish instead of content.' },
             media_type: { type: 'string', description: 'Defaults to text/plain for content, or from the file extension for path.' },
+            artifact_id: { type: 'string', description: 'Stable Library ID of your artifact to revise; omit for a new artifact.' },
+            expected_version: { type: 'integer', description: 'Required when revising; the record version you read.' },
           },
           required: ['title'],
         },
@@ -230,6 +248,17 @@ export const toolBlackboard = {
           throw new TypeError('title must be a non-empty string')
         }
         const author = caller(options.agentId)
+        if (value.artifact_id !== undefined && typeof value.artifact_id !== 'string') throw new TypeError('artifact_id must be a string')
+        const previous = typeof value.artifact_id === 'string' ? await board.read('artifact', value.artifact_id) : undefined
+        if (value.artifact_id !== undefined) {
+          if (!previous || previous.deleted) throw new Error('artifact not found')
+          if ((projectArtifactData(previous.data)?.threadId ?? previous.author) !== author) {
+            throw new Error('Only the generating thread can revise this artifact')
+          }
+          if (!Number.isSafeInteger(value.expected_version) || Number(value.expected_version) < 1) {
+            throw new TypeError('expected_version is required when revising an artifact')
+          }
+        }
         let content: string | Uint8Array
         let mediaType = typeof value.media_type === 'string' && value.media_type.trim() ? value.media_type.trim() : undefined
         if (typeof value.path === 'string' && value.path.trim()) {
@@ -243,23 +272,37 @@ export const toolBlackboard = {
           throw new TypeError('give content or path')
         }
         const ref = await artifacts.put({ content, ...(mediaType ? { mediaType } : {}) })
-        const existing = await board.read('artifact', ref.hash)
-        if (existing) return `Artifact already published: ${summarize(existing)}`
-        try {
-          const record = await board.commit({
-            kind: 'artifact',
-            id: ref.hash,
-            data: { title: value.title.trim(), hash: ref.hash, size: ref.size, mediaType: ref.mediaType },
-            author,
-            expectedVersion: null,
-          })
-          return `Published artifact/${record.id} (${ref.size} bytes). Reference it by hash ${ref.hash}.`
-        } catch (error) {
-          if (error instanceof BlackboardError && error.code === 'BLACKBOARD_CONFLICT') {
-            return `Artifact already published with hash ${ref.hash}.`
+        const matching = previous ? undefined : (await board.list('artifact')).find(record =>
+          record.author === author && projectArtifactData(record.data)?.hash === ref.hash)
+        if (matching) return `Artifact already published: ${summarize(matching)}`
+        const initial = await board.read('artifact', ref.hash)
+        let id = previous?.id ?? (initial ? `${ref.hash}:${author}` : ref.hash)
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const record = await board.commit({
+              kind: 'artifact',
+              id,
+              data: { title: value.title.trim(), hash: ref.hash, size: ref.size, mediaType: ref.mediaType, threadId: author },
+              author,
+              source: { agentId: author },
+              expectedVersion: previous ? Number(value.expected_version) : null,
+            })
+            return `Published artifact/${record.id} v${record.version} (${ref.size} bytes). Reference it by hash ${ref.hash}.`
+          } catch (error) {
+            if (!previous && error instanceof BlackboardError && error.code === 'BLACKBOARD_CONFLICT') {
+              const winner = await board.read('artifact', id)
+              if (winner?.author === author && !winner.deleted && projectArtifactData(winner.data)?.hash === ref.hash) {
+                return `Artifact already published: ${summarize(winner)}`
+              }
+              // An older artifact can now point at revised bytes. Publishing
+              // the old bytes again must not claim that newer revision matches.
+              id = id === ref.hash ? `${ref.hash}:${author}` : randomUUID()
+              continue
+            }
+            throw error
           }
-          throw error
         }
+        throw new Error('artifact publication conflict')
       },
     })
 

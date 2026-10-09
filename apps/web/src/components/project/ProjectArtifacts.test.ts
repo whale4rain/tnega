@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { createElement, useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ApiError } from '../../lib/api'
@@ -51,23 +51,57 @@ it('keeps the edit version and draft after a concurrent memory update rejects th
   expect(edit).toHaveBeenLastCalledWith('/repo', 'p', 'memory', { text: 'My draft', expectedVersion: 1, tags: ['keep'] })
 })
 
-it('opens room artifacts as snapshot documents in the shared Workbench', async () => {
-  const initial: ProjectSnapshot = { ...snapshot, library: { artifacts: [artifact], resources: [] }, messages: [
-    { messageId: 'report', projectId: 'p', sender: { kind: 'agent', id: 'c' }, recipients: [{ kind: 'user', id: 'user' }], placement: { kind: 'main' }, kind: 'agent-reply', text: 'Ready', refs: [artifact.data], createdAt: 2 },
-  ] }
-  vi.spyOn(projectApi, 'snapshot').mockResolvedValue(initial)
+it('opens an artifact beside its generating Thread without sending a message', async () => {
+  const textArtifact = { ...artifact, data: { ...artifact.data, mediaType: 'text/plain' } }
+  const worker = { id: 'worker', projectId: 'p', label: 'Research', goal: 'Research', state: 'idle' as const, depth: 1, permission: 'workspace-write' as const, createdAt: 1, updatedAt: 1 }
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ artifact: textArtifact, thread: worker }))))
+  vi.spyOn(projectApi, 'artifact').mockResolvedValue('Published line')
+  vi.spyOn(projectApi, 'thread').mockResolvedValue({ thread: worker, events: [] })
+  const send = vi.spyOn(projectApi, 'sendToThread')
+  const artifactSend = vi.spyOn(projectApi, 'sendToArtifact').mockResolvedValue({ messageId: 'sent', createdAt: 3 })
+  vi.spyOn(projectApi, 'snapshot').mockResolvedValue({ ...snapshot, library: { artifacts: [textArtifact], resources: [] }, messages: [
+    { messageId: 'report', projectId: 'p', sender: { kind: 'agent', id: 'c' }, recipients: [{ kind: 'user', id: 'user' }], placement: { kind: 'main' }, kind: 'agent-reply', text: 'Full coordinator detail. '.repeat(40), refs: [{ ...textArtifact.data, hash: 'old-revision', artifactId: textArtifact.id }], createdAt: 2 },
+  ] })
   const onWorkbench = vi.fn()
   const view = render(createElement(ProjectView, { workspace: '/repo', projectId: 'p', threadId: undefined, config: undefined,
     onOpenThread: vi.fn(), onDeleted: vi.fn(), onChanged: vi.fn(), sidebarOpen: true, onToggleSidebar: vi.fn(),
     workbench: INITIAL_WORKBENCH, onWorkbench, panelSlot: null, onPanelTabs: vi.fn() }))
-  fireEvent.click(await view.findByRole('button', { name: /report.pdf/ }))
-  expect(onWorkbench).toHaveBeenCalled()
-  expect(onWorkbench.mock.calls.at(-1)![0](INITIAL_WORKBENCH)).toMatchObject({ active: 'artifact:snapshot-hash', docs: [{ kind: 'artifact', artifact }] })
-  expect(view.queryByRole('dialog')).toBeNull()
+  const card = await view.findByRole('button', { name: /report.pdf/ })
+  expect(view.queryByRole('button', { name: 'Show more' })).toBeNull()
+  expect(view.container.querySelector('.message-fold')).toBeNull()
+  card.focus()
+  fireEvent.click(card)
+  expect(await view.findByRole('dialog')).toBeTruthy()
+  expect(await view.findByPlaceholderText('Message Research…')).toBeTruthy()
+  expect(await view.findByText('Published line')).toBeTruthy()
+  expect(onWorkbench).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+  const dialog = within(view.getByRole('dialog'))
+  const text = dialog.getByText('Published line')
+  const range = document.createRange()
+  range.selectNodeContents(text)
+  document.getSelection()?.removeAllRanges()
+  document.getSelection()?.addRange(range)
+  fireEvent(document, new Event('selectionchange'))
+  await waitFor(() => expect(dialog.getByRole('button', { name: 'Quote selection' }).hasAttribute('disabled')).toBe(false))
+  fireEvent.click(dialog.getByRole('button', { name: 'Quote selection' }))
+  expect(artifactSend).not.toHaveBeenCalled()
+  fireEvent.click(dialog.getByRole('button', { name: 'Remove quote' }))
+  expect(artifactSend).not.toHaveBeenCalled()
+  document.getSelection()?.removeAllRanges()
+  document.getSelection()?.addRange(range)
+  fireEvent(document, new Event('selectionchange'))
+  await waitFor(() => expect(dialog.getByRole('button', { name: 'Quote selection' }).hasAttribute('disabled')).toBe(false))
+  fireEvent.click(dialog.getByRole('button', { name: 'Quote selection' }))
+  fireEvent.change(dialog.getByPlaceholderText('Message Research…'), { target: { value: 'Revise this line' } })
+  await act(async () => { fireEvent.click(dialog.getByRole('button', { name: 'Send' })) })
+  expect(artifactSend).toHaveBeenCalledExactlyOnceWith('/repo', 'p', artifact.id, { text: 'Revise this line', hash: 'snapshot-hash', quote: 'Published line' })
+  fireEvent.click(view.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(document.activeElement).toBe(card))
 })
 
 it('links Library outputs to the actual attached message, not just their author', () => {
-  const source = { messageId: 'attachment', projectId: 'p', sender: { kind: 'agent' as const, id: 'worker' }, recipients: [{ kind: 'user' as const, id: 'user' as const }], placement: { kind: 'thread' as const, threadId: 'worker' }, kind: 'agent-reply' as const, text: 'Attached report', refs: [artifact.data], createdAt: 2 }
+  const source = { messageId: 'attachment', projectId: 'p', sender: { kind: 'agent' as const, id: 'worker' }, recipients: [{ kind: 'user' as const, id: 'user' as const }], placement: { kind: 'thread' as const, threadId: 'worker' }, kind: 'agent-reply' as const, text: 'Attached report', refs: [{ ...artifact.data, hash: 'old-revision', artifactId: artifact.id }], createdAt: 2 }
   const onOpenSource = vi.fn()
   const view = render(createElement(LibraryPanel, { workspace: '/repo', state: fromSnapshot({ ...snapshot, threadMessages: [source], library: { artifacts: [artifact, { ...artifact, id: 'unattached', data: { ...artifact.data, hash: 'unattached', title: 'No source' } }], resources: [] } }), onOpenSource }))
   fireEvent.click(view.getByRole('button', { name: 'Open source message' }))
@@ -77,7 +111,7 @@ it('links Library outputs to the actual attached message, not just their author'
 
 it('opens and highlights the referenced Thread message from the Library', async () => {
   const worker = { id: 'worker', projectId: 'p', label: 'Research', goal: 'Research', state: 'idle' as const, depth: 1, permission: 'workspace-write' as const, createdAt: 1, updatedAt: 1 }
-  const source = { messageId: 'attachment', projectId: 'p', sender: { kind: 'agent' as const, id: 'worker' }, recipients: [{ kind: 'user' as const, id: 'user' as const }], placement: { kind: 'thread' as const, threadId: 'worker' }, kind: 'agent-reply' as const, text: 'Attached report', refs: [artifact.data], createdAt: 2 }
+  const source = { messageId: 'attachment', projectId: 'p', sender: { kind: 'agent' as const, id: 'worker' }, recipients: [{ kind: 'user' as const, id: 'user' as const }], placement: { kind: 'thread' as const, threadId: 'worker' }, kind: 'agent-reply' as const, text: 'Attached report', refs: [{ ...artifact.data, hash: 'old-revision', artifactId: artifact.id }], createdAt: 2 }
   vi.spyOn(projectApi, 'snapshot').mockResolvedValue({ ...snapshot, threads: [worker], threadMessages: [source], library: { artifacts: [artifact], resources: [] } })
   vi.spyOn(projectApi, 'thread').mockResolvedValue({ thread: worker, events: [] })
   const slot = document.createElement('div')

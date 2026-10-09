@@ -1237,24 +1237,7 @@
 }
 
 /* A long message opens folded to about five lines. */
-.message-fold {
-  max-height: 7.5em;
-  overflow: hidden;
-}
 
-.message-fold-toggle {
-  display: block;
-  align-self: flex-start;
-  margin-top: 4px;
-  padding: 0;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--accent-text);
-}
-
-.message-fold-toggle:hover {
-  text-decoration: underline;
-}
 
 .room-threads {
   gap: 6px;
@@ -1908,4 +1891,79 @@ button.board-chip.active {
 .wb-card.thread-body,
 .wb-card.exchange-body {
   background: var(--bg);
+}
+
+/* Project artifacts keep their preview beside the generating Thread. */
+.dialog:has(.artifact-dialog) .dialog-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.artifact-dialog {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-3);
+  height: min(78vh, 900px);
+  min-height: 0;
+}
+
+.artifact-dialog-preview,
+.artifact-dialog-thread {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.artifact-dialog-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.artifact-dialog-content > .wb-view,
+.artifact-dialog-thread > .thread-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.artifact-dialog-thread {
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+}
+
+.artifact-selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.artifact-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.artifact-quote blockquote {
+  flex: 1;
+  max-height: 8em;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-2);
+  border-left: 2px solid var(--accent);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+@media (max-width: 800px) {
+  .artifact-dialog {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
 }

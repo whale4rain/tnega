@@ -34,6 +34,8 @@ export const HASH_PATTERN = /^[0-9a-f]{64}$/
  * 引用可以安全地写进 Blackboard 与消息信封。
  */
 export interface ArtifactRef {
+  /** Stable Library identity when this snapshot belongs to a revisable artifact. */
+  artifactId?: string
   hash: string
   size: number
   mediaType: string

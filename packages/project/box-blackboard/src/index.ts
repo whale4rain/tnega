@@ -48,6 +48,7 @@ function toEnvelope(fact: FactRecord): BoxEnvelope {
     ...(data.interrupt === true ? { interrupt: true } : {}),
     refs: Array.isArray(data.refs)
       ? data.refs.filter(isRecord).map(ref => ({
+        ...(typeof ref.artifactId === 'string' ? { artifactId: ref.artifactId } : {}),
         hash: String(ref.hash ?? ''),
         size: Number(ref.size ?? 0),
         mediaType: String(ref.mediaType ?? ''),

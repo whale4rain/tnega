@@ -37,13 +37,17 @@ type ArtifactRef = BoxEnvelope['refs'][number]
  * 读产物索引需要的那一小块 Blackboard 面。Project Loop 不依赖具体的 Blackboard 包：
  * 作用域里没有 Blackboard 时，回复照常发布，只是不带产物卡片。
  */
+interface IndexedArtifact {
+  id: string
+  author: string
+  createdAt: number
+  updatedAt: number
+  deleted?: boolean
+  data: unknown
+}
 interface ArtifactIndex {
-  list(kind: 'artifact'): Promise<ReadonlyArray<{
-    author: string
-    createdAt: number
-    deleted?: boolean
-    data: unknown
-  }>>
+  list(kind: 'artifact'): Promise<readonly IndexedArtifact[]>
+  history(kind: 'artifact', id: string): Promise<readonly IndexedArtifact[]>
 }
 
 function artifactRef(data: unknown): ArtifactRef | undefined {
@@ -705,12 +709,16 @@ export class ProjectLoopRuntime {
       }
     }
     const facts = await this.artifacts.list('artifact')
-    return facts
-      .filter(fact => !fact.deleted && fact.author === agentId
-        && fact.createdAt > since && fact.createdAt <= reply.ts)
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .map(fact => artifactRef(fact.data))
-      .filter((ref): ref is ArtifactRef => ref !== undefined)
+    const revisions = await Promise.all(facts.filter(fact => fact.author === agentId)
+      .map(async fact => (await this.artifacts!.history('artifact', fact.id))
+        .findLast(version => version.updatedAt <= reply.ts)))
+    return revisions
+      .filter((fact): fact is IndexedArtifact => fact !== undefined && !fact.deleted && fact.updatedAt > since)
+      .sort((a, b) => a.updatedAt - b.updatedAt)
+      .flatMap(fact => {
+        const ref = artifactRef(fact.data)
+        return ref ? [{ ...ref, artifactId: fact.id }] : []
+      })
   }
 
   /**

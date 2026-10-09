@@ -4,6 +4,7 @@ import { PROJECT_ID_PATTERN } from '@tnega/project'
 import type { ProjectHost } from './project-host.js'
 import { RoutineError } from './project-routines.js'
 import { isTextual } from '@tnega/tool-blackboard'
+import { artifactThread, sendArtifactMessage, ProjectArtifactError } from './project-artifacts.js'
 
 /** 路由层需要的宿主与 HTTP 工具；由 `server.ts` 提供，避免两处各写一套。 */
 export interface ProjectRouteContext {
@@ -173,6 +174,27 @@ export async function handleProjectApi(
   if (rest === '/resume' && req.method === 'POST') {
     await host.resume(projectId)
     context.sendJson(res, 200, { resumed: true })
+    return
+  }
+
+  const artifactAction = /^\/artifacts\/([^/]+)\/(thread|messages)$/.exec(rest)
+  if (artifactAction && req.method === 'POST') {
+    try {
+      let artifactId: string
+      try { artifactId = decodeURIComponent(artifactAction[1]!) }
+      catch { throw new ProjectArtifactError('Invalid artifact ID', 400) }
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(artifactId)) throw new ProjectArtifactError('Invalid artifact ID', 400)
+      if (artifactAction[2] === 'thread') {
+        context.sendJson(res, 200, await artifactThread(host, projectId, artifactId))
+      } else {
+        const body = await context.readJsonBody(req)
+        const envelope = await sendArtifactMessage(host, projectId, artifactId, { text: body.text, hash: body.hash, quote: body.quote })
+        context.sendJson(res, 200, { messageId: envelope.messageId, createdAt: envelope.createdAt })
+      }
+    } catch (error) {
+      if (!(error instanceof ProjectArtifactError)) throw error
+      context.sendError(res, error.status, error.message)
+    }
     return
   }
 

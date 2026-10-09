@@ -163,6 +163,7 @@ function MemoryItem({ workspace, state, record }: { workspace: string; state: Pr
 
   return (
     <div className="memory-item">
+      {record.data.status === 'candidate' && <p className="muted small">Unverified candidate · Not an instruction or authorization</p>}
       {editing
         ? (
           <div className="memory-edit">
@@ -192,7 +193,7 @@ function MemoryItem({ workspace, state, record }: { workspace: string; state: Pr
         <ol className="memory-history">
           {[...history].reverse().map(version => (
             <li key={version.version}>
-              <span className="memory-version">v{version.version}</span>
+              <span className="memory-version">v{version.version}{version.data.status === 'candidate' ? ' · Unverified candidate' : ''}</span>
               <span className={version.deleted ? 'struck' : undefined}>{version.data.text}</span>
               <span className="muted small">{authorName(state, version.author)} · {relativeTime(version.updatedAt)}</span>
             </li>
@@ -309,7 +310,7 @@ export function LibraryPanel({ workspace, state, onOpenSource }: { workspace: st
 
 function artifactSource(state: ProjectState, artifact: ArtifactFact): BoxEnvelope | undefined {
   const attached = (message: BoxEnvelope) => {
-    if (!message.refs.some(ref => ref.hash === artifact.data.hash)) return false
+    if (!message.refs.some(ref => ref.artifactId ? ref.artifactId === artifact.id : ref.hash === artifact.data.hash || ref.hash === artifact.id)) return false
     // Link only to a message that one of the conversation surfaces actually renders.
     if (message.sender.kind === 'agent' && message.recipients.some(to => to.kind === 'agent')) return true
     if (message.placement.kind === 'thread') return message.kind === 'user-thread' || message.kind === 'agent-reply'

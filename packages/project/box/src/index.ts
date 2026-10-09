@@ -164,7 +164,12 @@ function normalizeRefs(value: unknown): ArtifactRef[] {
       || typeof entry.size !== 'number' || typeof entry.mediaType !== 'string') {
       throw new BoxError(`invalid artifact ref: ${JSON.stringify(entry)}`, 'BOX_INVALID')
     }
-    return { hash: entry.hash, size: entry.size, mediaType: entry.mediaType }
+    if (entry.artifactId !== undefined && (typeof entry.artifactId !== 'string'
+      || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(entry.artifactId))) {
+      throw new BoxError('invalid artifact identity', 'BOX_INVALID')
+    }
+    return { hash: entry.hash, size: entry.size, mediaType: entry.mediaType,
+      ...(typeof entry.artifactId === 'string' ? { artifactId: entry.artifactId } : {}) }
   })
 }
 

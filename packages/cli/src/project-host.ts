@@ -515,11 +515,16 @@ export class ProjectHost {
    */
   async artifact(projectId: string, hash: string): Promise<{ mediaType: string; content: Uint8Array } | undefined> {
     const project = await this.mount(projectId)
-    const fact = await project.blackboard.read('artifact', hash)
-    if (!fact || fact.deleted) return undefined
-    const data = fact.data as { mediaType?: unknown }
-    const mediaType = typeof data.mediaType === 'string' ? data.mediaType : 'text/plain'
-    return { mediaType, content: await project.artifacts.get(hash) }
+    const field = (data: unknown, key: string): unknown => data && typeof data === 'object' ? Reflect.get(data, key) : undefined
+    for (const fact of await project.blackboard.list('artifact')) {
+      const versions = field(fact.data, 'hash') === hash ? [fact] : await project.blackboard.history('artifact', fact.id)
+      const version = versions.find(entry => !entry.deleted && field(entry.data, 'hash') === hash)
+      if (!version) continue
+      const value = field(version.data, 'mediaType')
+      const mediaType = typeof value === 'string' ? value : 'text/plain'
+      return { mediaType, content: await project.artifacts.get(hash) }
+    }
+    return undefined
   }
 
   /** 停下一个 Thread 正在跑的工作；它之后仍能接收新的要求。 */
