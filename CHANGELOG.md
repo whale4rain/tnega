@@ -49,6 +49,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Blackboard 损坏尾行不再吞掉恢复后的新提交，批量提交按完整事务恢复并同步落盘。新版本兼容读取旧日志；写入新事务格式后不支持直接降级或与旧版混写。
+
 - Project 并发首次打开共用同一运行作用域；挂载失败会清理部分资源，关闭变化流会解除 Session 监听，避免重复调度和重连后的资源泄漏。
 
 - Project 协调者改为明确的协调工具白名单：调查、执行和产物制作只交给 Thread，直接调用与 Code Mode 嵌套调用使用同一职责边界。

@@ -1,17 +1,156 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import * as fs from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { Context } from '@tnega/core'
 import { BlackboardError, type FactRecord } from '@tnega/blackboard'
 import { blackboardLocal } from '../src/index.js'
 
+// Keep the real filesystem, with replaceable exports only for write-failure injection.
+vi.mock('node:fs/promises', async (importOriginal: () => Promise<typeof import('node:fs/promises')>) => ({
+  ...await importOriginal(),
+}))
+
 const directories: string[] = []
 afterEach(async () => {
+  vi.restoreAllMocks()
   // Windows 上文件可能还被后台写入占着，重试比让清理失败更诚实。
   await Promise.all(directories.splice(0).map(path => rm(path, {
     recursive: true, force: true, maxRetries: 10, retryDelay: 50,
   })))
+})
+
+it.each([false, true])('recovers an interrupted append when rollback fails: %s', async (rollbackFails: boolean) => {
+  const { root, root_dir } = await mount()
+  const file = join(root_dir, 'journal.jsonl')
+  await root.blackboard.commit({ kind: 'memory', id: 'before', data: '中文', author: 'user' })
+  const prefix = await readFile(file)
+  const append = fs.appendFile
+  vi.spyOn(fs, 'appendFile').mockImplementationOnce(async (path: Parameters<typeof appendFile>[0]) => {
+    await append(path, '{"type":"blackboard/transaction",')
+    throw new Error('interrupted append')
+  })
+  if (rollbackFails) vi.spyOn(fs, 'open').mockRejectedValueOnce(new Error('rollback unavailable'))
+  try {
+    await expect(root.blackboard.commitAll([
+      { kind: 'message', id: 'envelope', data: 'hello', author: 'user' },
+      { kind: 'delivery', id: 'recipient', data: 'pending', author: 'box' },
+    ])).rejects.toMatchObject({ code: 'BLACKBOARD_FAILED' })
+    vi.restoreAllMocks()
+    if (rollbackFails) {
+      const failedBytes = await readFile(file)
+      await expect(root.blackboard.commit({ kind: 'memory', id: 'blocked', data: {}, author: 'user' }))
+        .rejects.toMatchObject({ code: 'BLACKBOARD_FAILED' })
+      expect(await readFile(file)).toEqual(failedBytes)
+    } else {
+      expect(await readFile(file)).toEqual(prefix)
+      expect(await root.blackboard.read('message', 'envelope')).toBeUndefined()
+      expect((await root.blackboard.commit({ kind: 'memory', id: 'retry', data: {}, author: 'user' })).seq).toBe(2)
+    }
+  } finally {
+    await root.fiber.dispose()
+  }
+  const recovered = await reopen(root_dir)
+  try {
+    expect(await recovered.blackboard.read('message', 'envelope')).toBeUndefined()
+    expect(await recovered.blackboard.read('delivery', 'recipient')).toBeUndefined()
+    expect((await recovered.blackboard.read('memory', 'before'))?.data).toBe('中文')
+    await recovered.blackboard.commit({ kind: 'memory', id: 'after', data: 'saved', author: 'user' })
+  } finally {
+    await recovered.fiber.dispose()
+  }
+  const restarted = await reopen(root_dir)
+  try {
+    expect((await restarted.blackboard.read('memory', 'after'))?.data).toBe('saved')
+  } finally {
+    await restarted.fiber.dispose()
+  }
+})
+
+async function reopen(root_dir: string): Promise<Context> {
+  const root = new Context()
+  await root.plugin(blackboardLocal, { root: root_dir })
+  return root
+}
+
+it('repairs a torn UTF-8 tail before appending subsequent commits', async () => {
+  const { root, root_dir } = await mount()
+  await root.blackboard.commit({ kind: 'memory', id: 'before', data: '中文', author: 'user' })
+  await root.fiber.dispose()
+  const file = join(root_dir, 'journal.jsonl')
+  const prefix = await readFile(file)
+  await appendFile(file, Buffer.from('{"data":"中').subarray(0, -1))
+  const recovered = await reopen(root_dir)
+  try {
+    expect((await recovered.blackboard.read('memory', 'before'))?.data).toBe('中文')
+    await recovered.blackboard.commit({ kind: 'memory', id: 'after', data: 'saved', author: 'user' })
+  } finally {
+    await recovered.fiber.dispose()
+  }
+  expect((await readFile(file)).subarray(0, prefix.length)).toEqual(prefix)
+  const restarted = await reopen(root_dir)
+  try {
+    expect((await restarted.blackboard.read('memory', 'after'))?.data).toBe('saved')
+    expect((await restarted.blackboard.read('memory', 'before'))?.data).toBe('中文')
+  } finally {
+    await restarted.fiber.dispose()
+  }
+})
+
+it('recovers a batch wholly or not at every journal truncation boundary', async () => {
+  const { root, root_dir } = await mount()
+  await root.blackboard.commit({ kind: 'memory', id: 'before', data: '中文', author: 'user' })
+  const file = join(root_dir, 'journal.jsonl')
+  const prefix = await readFile(file)
+  await root.blackboard.commitAll([
+    { kind: 'message', id: 'envelope', data: '你好', author: 'user' },
+    { kind: 'delivery', id: 'recipient', data: 'pending', author: 'box' },
+  ])
+  await root.fiber.dispose()
+  const complete = await readFile(file)
+  for (let end = complete.length; end >= prefix.length; end -= 1) {
+    await writeFile(file, complete.subarray(0, end))
+    const recovered = await reopen(root_dir)
+    try {
+      const message = await recovered.blackboard.read('message', 'envelope')
+      const delivery = await recovered.blackboard.read('delivery', 'recipient')
+      expect(Boolean(message), `message at byte ${end}`).toBe(end === complete.length)
+      expect(Boolean(delivery), `delivery at byte ${end}`).toBe(end === complete.length)
+      const next = await recovered.blackboard.commit({ kind: 'memory', id: 'after', data: 'saved', author: 'user' })
+      expect(next.seq).toBe(end === complete.length ? 4 : 2)
+    } finally {
+      await recovered.fiber.dispose()
+    }
+    const restarted = await reopen(root_dir)
+    try {
+      expect((await restarted.blackboard.read('memory', 'before'))?.data).toBe('中文')
+      expect((await restarted.blackboard.read('memory', 'after'))?.data).toBe('saved')
+    } finally {
+      await restarted.fiber.dispose()
+    }
+  }
+})
+
+it('loads legacy records without a final newline and preserves later commits', async () => {
+  const { root, root_dir } = await mount()
+  const legacy = await root.blackboard.commit({ kind: 'memory', id: 'legacy', data: '旧格式', author: 'user' })
+  await root.fiber.dispose()
+  await writeFile(join(root_dir, 'journal.jsonl'), JSON.stringify(legacy))
+  const recovered = await reopen(root_dir)
+  try {
+    expect(await recovered.blackboard.read('memory', 'legacy')).toEqual(legacy)
+    await recovered.blackboard.commit({ kind: 'memory', id: 'new', data: 'new', author: 'user' })
+  } finally {
+    await recovered.fiber.dispose()
+  }
+  const restarted = await reopen(root_dir)
+  try {
+    expect(await restarted.blackboard.read('memory', 'legacy')).toEqual(legacy)
+    expect((await restarted.blackboard.read('memory', 'new'))?.seq).toBe(2)
+  } finally {
+    await restarted.fiber.dispose()
+  }
 })
 
 async function mount(): Promise<{ root: Context; root_dir: string }> {
