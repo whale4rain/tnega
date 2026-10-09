@@ -90,6 +90,24 @@ it('shows tool-published Thread messages after loading a snapshot', async () => 
   expect(view.getByText('Check the parser').closest('.room-run')?.classList.contains('room-run-user')).toBe(true)
 })
 
+it('shows what the coordinator sent a thread as dashed relays on the user side, replacing the folded brief', async () => {
+  const initial = snapshot()
+  const worker = initial.threads[1]!
+  initial.agentMessages = [
+    { messageId: 'brief', projectId: 'project', sender: { kind: 'agent', id: 'coordinator' }, recipients: [{ kind: 'agent', id: 'worker' }], placement: { kind: 'main' }, kind: 'dispatch', threadId: 'worker', text: `${worker.goal}\n\nExpected result: a fix`, refs: [], createdAt: 2 },
+    { messageId: 'nudge', projectId: 'project', sender: { kind: 'agent', id: 'coordinator' }, recipients: [{ kind: 'agent', id: 'worker' }], placement: { kind: 'main' }, kind: 'request', text: 'Keep the patch small.', refs: [], createdAt: 3 },
+    { messageId: 'report', projectId: 'project', sender: { kind: 'agent', id: 'worker' }, recipients: [{ kind: 'agent', id: 'coordinator' }], placement: { kind: 'main' }, kind: 'complete', text: 'Report for the coordinator only.', refs: [], createdAt: 4 },
+  ]
+  vi.spyOn(projectApi, 'thread').mockResolvedValue({ thread: worker, events: [] })
+  const view = render(createElement(ThreadPanel, { workspace: 'workspace', state: fromSnapshot(initial), threadId: 'worker', onBack: vi.fn() }))
+  const relay = (await view.findByText('Keep the patch small.')).closest('.room-run')
+  expect(relay?.classList.contains('room-run-relay')).toBe(true)
+  expect(relay?.querySelector('.room-author')?.textContent).toBe('Coordinator')
+  expect(view.queryByText('Report for the coordinator only.')).toBeNull()
+  // The dispatch already shows the brief, so the folded copy is gone.
+  expect(view.queryByRole('button', { name: 'Brief' })).toBeNull()
+})
+
 it('stops and corrects the coordinator, then redirects controls to a thread reply', async () => {
   vi.spyOn(projectApi, 'snapshot').mockResolvedValue(snapshot())
   const stop = vi.spyOn(projectApi, 'stopThread').mockResolvedValue({ stopped: true })

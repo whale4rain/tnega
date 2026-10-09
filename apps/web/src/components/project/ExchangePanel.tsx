@@ -29,6 +29,8 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
     const el = scroll.current
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [messages.length])
+  // What an Agent sent the thread it started reads like an instruction, on the asking side.
+  const relay = (message: BoxEnvelope) => message.recipients.some(to => to.kind === 'agent' && state.threads[to.id]?.parentId === message.sender.id)
   const participant = (id: string) => (
     <button type="button" className="exchange-participant" onClick={() => onOpenThread(id)} aria-label={`Open ${agentLabel(state, id)}`}>
       <span>{agentLabel(state, id)}</span>
@@ -40,7 +42,7 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
         <div className="exchange-pair">{participant(firstId)}<ArrowLeftRight size={12} aria-hidden />{participant(secondId)}</div>
         <button type="button" className="icon-button small" aria-label="Close chat" onClick={onClose}><X size={14} /></button>
       </div>
-      <div className="wb-card exchange-body" ref={scroll} onScroll={() => {
+      <div className="wb-card wb-flow exchange-body" ref={scroll} onScroll={() => {
         const el = scroll.current
         if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
       }}>
@@ -48,7 +50,7 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
           {groups.map(group => {
             const first = group[0]!
             return (
-              <ChatRun key={first.messageId} author={agentLabel(state, first.sender.id)} at={first.createdAt} side="agent">
+              <ChatRun key={first.messageId} author={agentLabel(state, first.sender.id)} at={first.createdAt} side={relay(first) ? 'relay' : 'agent'}>
                 {group.map(message => (
                   <div key={message.messageId} id={`msg-${message.messageId}`} className="room-message">
                     <Markdown text={message.text} />

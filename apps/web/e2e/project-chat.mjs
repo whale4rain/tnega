@@ -89,8 +89,8 @@ try {
         font: getComputedStyle(element).fontSize, body: getComputedStyle(document.body).fontSize,
         border: getComputedStyle(element.parentElement).borderTopWidth,
       }))
-      assert.equal(style.font, '13.5px')
-      assert.equal(style.body, '13px')
+      assert.equal(style.font, '14.5px')
+      assert.equal(style.body, '13.5px')
       assert.equal(style.border, '0px')
       const look = await page.evaluate(() => {
         const agent = document.querySelector('.room-run-agent .room-message')
@@ -154,7 +154,10 @@ try {
       await page.getByText('Done. The headings are shorter.', { exact: true }).waitFor()
       const threadChat = page.getByRole('log', { name: 'Thread conversation' })
       assert.equal(await threadChat.count(), 1)
-      assert.equal(await threadChat.getByText('Please remove hardware topics.', { exact: true }).count(), 0)
+      // What the coordinator asked of the thread shows in its chat as a dashed relay on the user side.
+      const relay = threadChat.locator('.room-run-relay').filter({ hasText: 'Please remove hardware topics.' })
+      assert.equal(await relay.count(), 1)
+      assert.equal(await relay.locator('.room-message').evaluate(element => getComputedStyle(element).borderTopStyle), 'dashed')
       assert.equal(new URL(page.url()).hash, '#p/project/writer')
       await page.reload()
       await page.getByText('Done. The headings are shorter.', { exact: true }).waitFor()
@@ -242,9 +245,9 @@ try {
       await agent.getByText('Done. See', { exact: false }).waitFor()
       const style = await user.evaluate(element => ({ user: getComputedStyle(element).fontSize,
         body: getComputedStyle(document.body).fontSize, agent: getComputedStyle(document.querySelector('.agent-body .prose')).fontSize }))
-      assert.equal(style.body, '13px')
-      assert.equal(style.user, '13.5px')
-      assert.equal(style.agent, '13.5px')
+      assert.equal(style.body, '13.5px')
+      assert.equal(style.user, '14.5px')
+      assert.equal(style.agent, '14.5px')
       for (const element of [user, agent.locator('.prose')]) {
         assert.equal(await element.evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', 'Ordinary messages have no bubble background')
       }

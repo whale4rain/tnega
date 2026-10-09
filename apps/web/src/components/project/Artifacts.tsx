@@ -1,8 +1,8 @@
-import { FileCode2, FileImage, FileSpreadsheet, FileText, Globe, Presentation, Table2, type LucideIcon } from 'lucide-react'
+import { Download, FileCode2, FileImage, FileSpreadsheet, FileText, Globe, Presentation, Quote, RefreshCw, Table2, type LucideIcon } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import { isUnsupported, projectApi } from '../../lib/project-api'
-import { formatBytes } from '../../lib/project-model'
+import { agentLabel, formatBytes } from '../../lib/project-model'
 import type { ProjectState } from '../../lib/project-model'
 import type { ArtifactFact, ThreadRecord } from '../../lib/project-types'
 import { CodeBlock, Markdown } from '../Markdown'
@@ -86,12 +86,25 @@ export function ArtifactCards({ artifacts }: { workspace: string; projectId: str
  * can be interactive without reaching the local server. Documents, slides,
  * sheets, PDFs and images use the same viewers as workspace files.
  */
-export function ArtifactViewer({ workspace, projectId, artifact }: { workspace: string; projectId: string; artifact: ArtifactFact }) {
+export function ArtifactViewer({ workspace, projectId, artifact, bare = false }: {
+  workspace: string
+  projectId: string
+  artifact: ArtifactFact
+  /** Inside the artifact dialog, whose header already names the artifact: no toolbar, documents as a page. */
+  bare?: boolean
+}) {
   const kind = artifactKind(artifact.data.mediaType)
   const binaryName = previewName(artifact)
   const hash = artifact.data.hash
   const load = useCallback(() => projectApi.artifactBlob(workspace, projectId, hash), [workspace, projectId, hash])
   if (binaryName) return <PreviewView workspace={workspace} path={binaryName} load={load} />
+  if (bare) {
+    return (
+      <div className={`artifact-stage kind-${kind}`} aria-label={`Artifact ${artifact.data.title}`}>
+        <div className={kind === 'page' ? 'artifact-stage-page' : 'artifact-paper'}><TextArtifact workspace={workspace} projectId={projectId} artifact={artifact} /></div>
+      </div>
+    )
+  }
   return (
     <div className="wb-view" aria-label={`Artifact ${artifact.data.title}`}>
       <div className="wb-toolbar">
@@ -132,7 +145,11 @@ function TextArtifact({ workspace, projectId, artifact }: { workspace: string; p
       )}
       {content !== undefined && (
         kind === 'page'
-          ? <><button type="button" className="button secondary small" onClick={() => setSource(value => !value)}>{source ? 'Page preview' : 'Select from source'}</button>
+          ? <>
+            <div className="segmented artifact-view-switch" role="radiogroup" aria-label="Show">
+              <button type="button" role="radio" aria-checked={!source} className={source ? '' : 'active'} onClick={() => setSource(false)}>Page preview</button>
+              <button type="button" role="radio" aria-checked={source} className={source ? 'active' : ''} onClick={() => setSource(true)}>Select from source</button>
+            </div>
             {source ? <CodeBlock code={content} language="html" /> : <iframe className="artifact-frame" title={artifact.data.title} sandbox="allow-scripts allow-forms allow-popups" srcDoc={content} />}</>
           : kind === 'doc'
             ? <Markdown text={content} />
@@ -142,7 +159,11 @@ function TextArtifact({ workspace, projectId, artifact }: { workspace: string; p
   )
 }
 
-/** Keep the published version being read stable while its generating Thread works. */
+/**
+ * An artifact opened from a card or the Library: the published version on the
+ * left as a page, its generating Thread on the right to discuss and revise it.
+ * The header names it once and carries the actions on the whole artifact.
+ */
 export function ArtifactDialog({ workspace, state, artifact, onClose, onThread }: {
   workspace: string
   state: ProjectState
@@ -176,7 +197,7 @@ export function ArtifactDialog({ workspace, state, artifact, onClose, onThread }
   useEffect(() => {
     const selected = () => {
       const value = document.getSelection()
-      const content = preview.current?.querySelector('.wb-card')
+      const content = preview.current
       setSelection(value && content && value.anchorNode && value.focusNode
         && content.contains(value.anchorNode) && content.contains(value.focusNode)
         ? value.toString().trim() || undefined : undefined)
@@ -198,29 +219,58 @@ export function ArtifactDialog({ workspace, state, artifact, onClose, onThread }
       return false
     }
   }
+  const download = async () => {
+    try {
+      const blob = await projectApi.artifactBlob(workspace, state.project.id, shown.data.hash)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = downloadName(shown)
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (reason) {
+      setError(errorText(reason))
+    }
+  }
   const threadState = thread && !state.threads[thread.id]
     ? { ...state, threads: { ...state.threads, [thread.id]: thread } } : state
-  return <Dialog title={shown.data.title} onClose={onClose} width={1440}>
+  const kind = artifactKind(shown.data.mediaType)
+  const author = thread ? threadState.threads[thread.id]?.label ?? thread.label : agentLabel(state, shown.author)
+  const stale = latest && latest.data.hash !== shown.data.hash
+  return <Dialog title={shown.data.title} onClose={onClose} width={1680} className="artifact-dialog-frame"
+    icon={<span className={`artifact-card-icon kind-${kind}`}><ArtifactIcon mediaType={shown.data.mediaType} size={15} /></span>}
+    description={<>{ARTIFACT_KIND[kind].label} · {formatBytes(shown.data.size)} · v{shown.version} · {author}</>}
+    actions={<>
+      {stale && <button type="button" className="button secondary small"
+        onClick={() => { setShown(latest); setQuote(undefined); setSelection(undefined) }}><RefreshCw size={12} /> View latest version</button>}
+      <button type="button" className="button ghost small" disabled={!selection || !thread}
+        title="Select text in the artifact, then quote it to its Thread"
+        onMouseDown={event => event.preventDefault()} onClick={() => { setQuote(selection); document.getSelection()?.removeAllRanges() }}><Quote size={12} /> Quote selection</button>
+      <button type="button" className="icon-button small" aria-label="Download" title="Download this version" onClick={() => void download()}><Download size={14} /></button>
+    </>}>
     <div className="artifact-dialog">
       <section className="artifact-dialog-preview" aria-label="Artifact preview">
-        <div className="artifact-selection-bar">
-          <span className="muted small">Select text to discuss with its Thread.</span>
-          <button type="button" className="button secondary small" disabled={!selection || !thread}
-            onMouseDown={event => event.preventDefault()} onClick={() => { setQuote(selection); document.getSelection()?.removeAllRanges() }}>Quote selection</button>
-          {latest && latest.data.hash !== shown.data.hash && <button type="button" className="button secondary small"
-            onClick={() => { setShown(latest); setQuote(undefined); setSelection(undefined) }}>View latest version</button>}
-        </div>
         <div className="artifact-dialog-content" ref={preview}>
-          <ArtifactViewer key={shown.data.hash} workspace={workspace} projectId={state.project.id} artifact={shown} />
+          <ArtifactViewer key={shown.data.hash} workspace={workspace} projectId={state.project.id} artifact={shown} bare />
         </div>
       </section>
       <section className="artifact-dialog-thread" aria-label="Artifact conversation">
         {error && <div className="notice notice-error" role="alert">{error}</div>}
         {!thread && !error && <p className="muted small">Opening the generating Thread…</p>}
-        {thread && <ThreadPanel workspace={workspace} state={threadState} threadId={thread.id} onSend={send}
+        {thread && <ThreadPanel workspace={workspace} state={threadState} threadId={thread.id} onSend={send} hideOutputs
           composerContext={quote && <div className="artifact-quote"><blockquote>{quote}</blockquote>
             <button type="button" className="button ghost small" onClick={() => setQuote(undefined)}>Remove quote</button></div>} />}
       </section>
     </div>
   </Dialog>
+}
+
+/** A file name for a downloaded artifact: its title with the extension its type implies. */
+function downloadName(artifact: ArtifactFact): string {
+  const named = previewName(artifact)
+  if (named) return named
+  const type = artifact.data.mediaType
+  const extension = /markdown/.test(type) ? 'md' : /html/.test(type) ? 'html' : /json/.test(type) ? 'json' : /csv/.test(type) ? 'csv'
+    : /svg/.test(type) ? 'svg' : 'txt'
+  return `${artifact.data.title}.${extension}`
 }

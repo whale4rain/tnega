@@ -7,6 +7,9 @@ export function Dialog({
   onClose,
   children,
   footer,
+  actions,
+  icon,
+  className,
   width = 520,
 }: {
   title: string
@@ -14,6 +17,11 @@ export function Dialog({
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  /** Buttons that act on the whole dialog's content, beside Close. */
+  actions?: ReactNode
+  /** A glyph before the title, for dialogs that show one object. */
+  icon?: ReactNode
+  className?: string
   width?: number
 }) {
   const panel = useRef<HTMLDivElement>(null)
@@ -32,12 +40,14 @@ export function Dialog({
   }, [onClose])
   return (
     <div className="dialog-scrim" onPointerDown={event => event.target === event.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={title} ref={panel} style={{ maxWidth: width }}>
+      <div className={`dialog${className ? ` ${className}` : ''}`} role="dialog" aria-modal="true" aria-label={title} ref={panel} style={{ maxWidth: width }}>
         <header className="dialog-header">
+          {icon && <span className="dialog-icon" aria-hidden>{icon}</span>}
           <div>
             <h2 className="dialog-title">{title}</h2>
             {description && <p className="dialog-description">{description}</p>}
           </div>
+          {actions && <div className="dialog-actions">{actions}</div>}
           <button type="button" className="icon-button dialog-close" aria-label="Close" onClick={onClose}>
             <X size={14} />
           </button>

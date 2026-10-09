@@ -51,7 +51,7 @@ export function RoutinesPanel({ workspace, state, onOpenThread }: { workspace: s
         <span className="wb-toolbar-title">Routines</span>
         <button type="button" className="button secondary small" onClick={() => setCreating(true)}><Plus size={12} /> New routine</button>
       </div>
-      <div className="wb-card wb-scroll routines">
+      <div className="wb-card wb-flow wb-scroll routines">
         {error && <div className="notice notice-error"><span>{error}</span></div>}
         {routines.length === 0 && (
           <div className="board-empty">

@@ -6,7 +6,7 @@ import { NewProjectDialog } from './components/project/NewProjectDialog'
 import { ProjectView } from './components/project/ProjectView'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
-import { Workbench, type WorkbenchProject } from './components/workbench/Workbench'
+import { Workbench, WORKBENCH_MIN_WIDTH, type WorkbenchProject } from './components/workbench/Workbench'
 import { enterProject, openDoc, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
 import { useChangeCount } from './lib/hooks'
 import { desktopBrowser } from './lib/desktop-browser'
@@ -78,7 +78,8 @@ export function App() {
   // The panel keeps the width the user dragged it to (the browser's old setting carries over).
   const [workbenchWidth, setWorkbenchWidth] = useState<number | undefined>(() => {
     const saved = Number(localStorage.getItem('tnega.workbenchWidth') ?? localStorage.getItem('tnega.browserWidth'))
-    return Number.isFinite(saved) && saved > 0 ? saved : undefined
+    // Widths saved before the panel's minimum grew come back at the new minimum.
+    return Number.isFinite(saved) && saved > 0 ? Math.max(WORKBENCH_MIN_WIDTH, saved) : undefined
   })
   const appRoot = useRef<HTMLDivElement>(null)
   useEffect(() => {

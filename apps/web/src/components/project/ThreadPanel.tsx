@@ -27,6 +27,7 @@ export function ThreadPanel({
   onOpenExchange,
   onSend,
   composerContext,
+  hideOutputs = false,
 }: {
   workspace: string
   state: ProjectState
@@ -34,6 +35,8 @@ export function ThreadPanel({
   onBack?: () => void
   onSend?: (text: string) => Promise<boolean>
   composerContext?: ReactNode
+  /** Beside an open artifact the outputs strip would only repeat what is already on screen. */
+  hideOutputs?: boolean
   /** Open what this thread and the Agent that started it said to each other. */
   onOpenExchange?: (firstId: string, secondId: string) => void
 }) {
@@ -75,10 +78,15 @@ export function ThreadPanel({
   }, [events, goal])
   const outputs = useMemo(() => threadArtifacts(state, threadId), [state, threadId])
   const pushes = useMemo(() => gitResources(state, threadId), [state, threadId])
+  // Your messages and the thread's answers, plus what the Agent that started it sent it (shown as relays).
+  const parentOf = thread?.parentId
   const messages = useMemo(() => Object.values(state.envelopes)
-    .filter(envelope => envelope.placement.kind === 'thread' && envelope.placement.threadId === threadId
+    .filter(envelope => (envelope.placement.kind === 'thread' && envelope.placement.threadId === threadId
       && (envelope.kind === 'user-thread' || envelope.kind === 'agent-reply'))
-    .sort((a, b) => a.createdAt - b.createdAt), [state.envelopes, threadId])
+      || (parentOf !== undefined && envelope.sender.kind === 'agent' && envelope.sender.id === parentOf
+        && envelope.recipients.some(to => to.kind === 'agent' && to.id === threadId)))
+    .sort((a, b) => a.createdAt - b.createdAt), [state.envelopes, threadId, parentOf])
+  const authorOf = useCallback((id: string) => agentLabel(state, id), [state])
 
   const scroller = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -143,21 +151,21 @@ export function ThreadPanel({
           ? <button type="button" className="button ghost small" onClick={() => void resolve(false)} title="Reopen this thread"><RotateCcw size={12} /> Reopen</button>
           : <button type="button" className="button ghost small" onClick={() => void resolve(true)} title="You took the result: move it to Resolved"><CheckCheck size={12} /> Resolve</button>)}
       </div>
-      <div className="wb-card thread-body">
+      <div className="wb-card wb-flow thread-body">
       <div className="side-scroll" ref={scroller}>
         {thread.checklist && thread.checklist.length > 0 && <Checklist items={thread.checklist} working={working} />}
-        {(outputs.length > 0 || pushes.length > 0) && (
+        {!hideOutputs && (outputs.length > 0 || pushes.length > 0) && (
           <section className="thread-outputs" aria-label="Outputs">
             {pushes.length > 0 && <div className="git-stack">{pushes.map(resource => <GitCard key={resource.id} resource={resource} />)}</div>}
             {outputs.length > 0 && <ArtifactCards workspace={workspace} projectId={projectId} artifacts={outputs} />}
           </section>
         )}
-        <Brief goal={thread.goal} />
+        {!messages.some(message => message.sender.id === parentId && message.text.startsWith(thread.goal)) && <Brief goal={thread.goal} />}
         {notice && <div className="notice notice-info">{notice}</div>}
         {error && <div className="error-banner">{error}</div>}
         {!events && !error && <div className="skeleton"><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div>}
         {events && events.length === 0 && <p className="muted small">Starting up…</p>}
-        <ThreadMessages messages={messages} label={thread.label} running={working} />
+        <ThreadMessages messages={messages} label={thread.label} running={working} threadId={threadId} authorOf={authorOf} />
         <details className="thread-execution">
           <summary>Execution details</summary>
           <Timeline entries={entries} running={working} actions={{}} agent={{ id: threadId }} outcomeFirst />
