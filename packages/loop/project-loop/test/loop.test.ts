@@ -68,7 +68,7 @@ it('reports a failed child Run once and never reuses its earlier successful answ
     return { finishReason: 'stop', content: 'Earlier success' }
   } }
   const ctx = await mount(root, { llm: failing })
-  let childId = ''
+  let childId: string
   try {
     const parent = await ctx.threads.ensureRoot(project)
     const child = await ctx.threads.spawn({ parentId: parent.id, goal: 'Check service' })
@@ -111,6 +111,26 @@ it('recovers a durable failure that happened before the Loop attached', async ()
     await expect.poll(async () => (await ctx.threads.get(child.id))?.state).toBe('failed')
     const failure = await waitFor(async () => (await timeline(ctx)).find(entry => entry.kind === 'failed'), 'recovered failure')
     expect(failure.text).toContain('Offline')
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it.each(['resolved', 'idle'] as const)('recovers a missing failure report without overwriting a later %s decision', async state => {
+  const root = await workspace()
+  const ctx = await mount(root, { loop: false, llm: { async complete() { throw new Error('Offline') } } })
+  try {
+    const parent = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: parent.id, goal: 'Check service' })
+    const agent = await ctx.threads.activate(child.id)
+    await agent.followup({ text: 'Check' })
+    await waitFor(async () => (await agent.session.read()).find(event => event.type === 'turn/end'), 'durable end')
+    await agent.whenIdle()
+    await ctx.threads.setState(child.id, state)
+    await ctx.plugin(projectLoop, { projectId: project.id, sweepIntervalMs: 0 })
+    const failure = await waitFor(async () => (await timeline(ctx)).find(entry => entry.kind === 'failed'), 'recovered failure')
+    await waitFor(async () => (await ctx.box.delivery(failure.messageId, agentAddress(parent.id)))?.status === 'acked' ? true : undefined, 'failure delivery')
+    expect((await ctx.threads.get(child.id))?.state).toBe(state)
   } finally {
     await ctx.fiber.dispose()
   }

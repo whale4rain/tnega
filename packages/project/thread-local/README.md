@@ -28,6 +28,7 @@ Blackboard 里的 `agent` 记录。`id` 由记录键提供，时间由版本记�
   真正开始跑要等 `activate` —— 创建 Project 不该顺手拉起一个 Agent。
 - **激活有单例保证**。同一进程里同一个 Thread 只会有一个 `LiveAgent`；并发 `activate`
   共享同一个 promise。恢复用 `AgentRegistry.resume`，因此回到的是同一个 Session。
+- **运行时更新按身份串行**。同一 Thread 的状态与清单修改按调用顺序读最新记录并条件提交，避免审批等待与 Run 状态竞争或相互丢失字段；不同 Thread 可并行更新。
 - **只建到 Thread 那一层**。Provider 只创建 `agents/<threadId>/`；子目录由需要它的 Provider
   自己建。
 - **委派只收窄**。权限取父子中更窄的一个；深度与并行数超限以 `THREAD_LIMIT` 拒绝，而不是

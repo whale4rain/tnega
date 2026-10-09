@@ -49,6 +49,19 @@ async function mount(root: string, sessionRoot?: string): Promise<Context> {
   return ctx
 }
 
+it('serializes concurrent runtime state and checklist updates without losing either', async () => {
+  const ctx = await mount(await workspace())
+  try {
+    const coordinator = await ctx.threads.ensureRoot(project)
+    await Promise.all([
+      ctx.threads.setState(coordinator.id, 'working'),
+      ctx.threads.setState(coordinator.id, 'waiting', 'Approval needed'),
+      ctx.threads.setChecklist(coordinator.id, [{ title: 'Verify', status: 'active' }]),
+    ])
+    expect(await ctx.threads.get(coordinator.id)).toMatchObject({ state: 'waiting', detail: 'Approval needed', checklist: [{ title: 'Verify', status: 'active' }] })
+  } finally { await ctx.fiber.dispose() }
+})
+
 it('stores and resumes Session history separately while retaining project identity data', async () => {
   const root = await workspace()
   const sessionRoot = await workspace()

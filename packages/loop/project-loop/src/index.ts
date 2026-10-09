@@ -306,7 +306,9 @@ export class ProjectLoopRuntime {
       this.attach(event.id, event.agent)
     })
     this.ctx.on('agent/status', (event: { id: string; status: 'idle' | 'running' }) => {
-      this.queueStatus(event.id, event.status)
+      // Every Run already queues working from its durable turn/start. Do not
+      // enqueue a second write that can race with the approval waiting state.
+      if (event.status === 'idle') this.queueStatus(event.id, event.status)
     })
     this.ctx.on('project/resumed', (event: { projectId: string }) => {
       if (event.projectId === this.projectId) this.schedule()
@@ -330,7 +332,7 @@ export class ProjectLoopRuntime {
       const events = await this.readSession(thread.id)
       const latest = [...events].reverse().find(event => event.type === 'turn/start' || event.type === 'turn/end')
       if (latest?.type === 'turn/end') {
-        await this.queueTurnEnd(thread.id, latest)
+        await this.queueTurnEnd(thread.id, latest, true)
       }
     }
     this.schedule()
@@ -535,23 +537,29 @@ export class ProjectLoopRuntime {
     await this.setStateSafely(agentId, 'idle')
   }
 
-  private queueTurnEnd(agentId: string, end: Extract<SessionEvent, { type: 'turn/end' }>): Promise<void> {
-    const task = this.statusTail.then(() => this.onTurnEnd(agentId, end))
+  private queueTurnEnd(agentId: string, end: Extract<SessionEvent, { type: 'turn/end' }>, recovering = false): Promise<void> {
+    const task = this.statusTail.then(() => this.onTurnEnd(agentId, end, recovering))
     this.statusTail = task.then(() => undefined, error => this.fail(error))
     return this.statusTail
   }
 
-  private async onTurnEnd(agentId: string, end: Extract<SessionEvent, { type: 'turn/end' }>): Promise<void> {
+  private async onTurnEnd(agentId: string, end: Extract<SessionEvent, { type: 'turn/end' }>, recovering: boolean): Promise<void> {
     if (this.disposed || !this.known.has(agentId)) return
     const history = await this.readSession(agentId)
     const index = history.findIndex(event => event.id === end.id)
     if (index < 0) return
     const events = history.slice(0, index + 1)
     const reason = end.payload.reason
+    const current = await this.threads.get(agentId)
+    // Recovery republishes missing outcomes, but a later human Resolve/Reopen
+    // decision is authoritative even when no failure envelope was sent yet.
+    const latest = !history.slice(index + 1).some(event => event.type === 'turn/start')
+      && (!recovering || current?.state === 'working'
+        || (current !== undefined && current.state !== 'resolved' && current.updatedAt < end.ts))
     if (reason?.kind === 'aborted' || end.payload.finishReason === 'cancelled' || end.payload.cancelCause) return
     if (reason?.kind === 'error' || end.payload.finishReason === 'error') {
       const text = reason?.kind === 'error' ? reason.error.message : end.payload.error?.message ?? 'Agent Run failed.'
-      if (!history.slice(index + 1).some(event => event.type === 'turn/start')) {
+      if (latest) {
         await this.setStateSafely(agentId, 'failed', text)
       }
       const record = this.known.get(agentId)
@@ -570,7 +578,7 @@ export class ProjectLoopRuntime {
     if (reason ? reason.kind !== 'completed' : end.payload.finishReason !== 'stop') return
     const record = await this.threads.get(agentId)
     if (record?.state === 'working' || record?.state === 'idle') {
-      await this.reportTurnEnd(agentId, events, !history.slice(index + 1).some(event => event.type === 'turn/start'))
+      await this.reportTurnEnd(agentId, events, latest)
     }
   }
 

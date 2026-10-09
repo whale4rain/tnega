@@ -207,6 +207,7 @@ export class LocalThreadService extends ThreadService {
   private readonly board: BlackboardService
   private readonly handles = new Map<string, AgentHandle>()
   private readonly activating = new Map<string, Promise<LiveAgent>>()
+  private readonly updating = new Map<string, Promise<ThreadRecord>>()
 
   constructor(ctx: Context, config: LocalThreadConfig) {
     super(ctx)
@@ -405,6 +406,21 @@ export class LocalThreadService extends ThreadService {
 
   /** 读当前记录、改写、按读到的版本条件提交；版本不符说明有人先改了。 */
   private async update(
+    threadId: string,
+    change: (current: ThreadRecord) => ThreadRecord,
+  ): Promise<ThreadRecord> {
+    const task = (this.updating.get(threadId) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.updateOnce(threadId, change))
+    this.updating.set(threadId, task)
+    try {
+      return await task
+    } finally {
+      if (this.updating.get(threadId) === task) this.updating.delete(threadId)
+    }
+  }
+
+  private async updateOnce(
     threadId: string,
     change: (current: ThreadRecord) => ThreadRecord,
   ): Promise<ThreadRecord> {
