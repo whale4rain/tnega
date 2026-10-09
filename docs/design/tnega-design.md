@@ -1,6 +1,22 @@
 # Tnega 设计规范
 
-日期：2026-10-02。本文是 Tnega 界面与交互设计的唯一规范，取代 Astryx 迁移时期的青绿配色规范（历史正文可从 Git 获取）。天气状态语言的细节与扩展方向见 [`weather-language.md`](weather-language.md)；浏览器能力的工程取舍见 [ADR 0012](../adr/0012-agent-browser.md)。
+日期：2026-10-02，2026-10-09 起扩充为前端开发的强制规范。本文是 Tnega 界面与交互设计的唯一规范，取代 Astryx 迁移时期的青绿配色规范（历史正文可从 Git 获取）。天气状态语言的细节与扩展方向见 [`weather-language.md`](weather-language.md)；浏览器能力的工程取舍见 [ADR 0012](../adr/0012-agent-browser.md)。
+
+## 0. 怎样使用本文
+
+**`apps/web` 与 `apps/desktop` 渲染层的每一处改动都以本文为准。** 动手前读相关章节，提交前过一遍 [§11 清单](#checklist)。本文与代码不一致时，以本文的意图为准修代码；确实要改变设计时，在同一次改动里先改本文、再改代码，并在 PR 描述里写明改了哪条规则、为什么。
+
+| 你要做的事 | 先读 |
+| --- | --- |
+| 改颜色、加状态色、做新调色板 | §3 色彩 |
+| 表达 Agent 在做什么 | §4 天气 与 `weather-language.md` |
+| 改对话、输入区、工作台、侧栏、Project | §5 主要界面 |
+| 改字号、行高、控件高度、内容宽度 | §5.5 密度、§6 字号与显示偏好 |
+| 新的列表、卡片、表格、数字、时间、空态 | §7 信息显示原则 |
+| 新按钮、菜单、对话框、表单 | §8 组件与样式复用 |
+| 新的设置项 | §9 设置 |
+
+规则里写“必须 / 不得”的是硬性要求（大多有测试守着）；写“优先 / 默认”的是可以有理由偏离的默认做法，偏离时在代码注释里写理由。
 
 ## 1. 设计主张
 
@@ -17,53 +33,128 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
   - 安装包图标：`apps/desktop/build/icon.svg`，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
 - 会话主 Agent 与 Project 协调者画成强调色的云；Thread 与子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于在多 Agent 场景里区分。
 
-## 3. 色彩：天空
+## 3. 色彩：模式 × 调色板
 
-所有颜色只来自 `apps/web/src/styles/tokens.css`，组件不写裸色值。浅色是白昼的天，深色是同一片天的夜晚。
+所有颜色只来自 `apps/web/src/styles/tokens.css`，组件**不得**写裸色值（`#hex`、`rgb()`、命名色）。唯一的例外是 `tokens.css` 本身、品牌 SVG 数据 URL 里的白眼睛，以及需要具体颜色值的第三方库——它们在运行时从 token 读取（终端 `TerminalView.themeFromTokens`、桌面标题栏 `desktop-chrome.ts`）。
 
-### 3.1 语义 token
+### 3.1 两个独立的轴
+
+| 轴 | 根元素属性 | 取值 | 谁决定 |
+| --- | --- | --- | --- |
+| 模式 | `data-theme` | `light` / `dark` | 设置里的 System / Light / Dark；System 跟随 `prefers-color-scheme`（`useTheme`，`lib/hooks.ts`） |
+| 调色板 | `data-palette` | `sky`（默认）/ `sand` / `forest` / `graphite` | 设置 → Appearance → Colour palette（`useDisplay`，`lib/display.ts`） |
+
+- 模式决定明暗，调色板在该模式内换**中性色、强调色、状态色与语法色**。两者自由组合，共 8 种外观，每一种都必须通过 [§3.6](#contrast) 的底线。
+- 选择器写法：Sky 是 `:root, [data-theme="light"]` 与 `[data-theme="dark"]`；其他调色板是 `[data-palette="x"][data-theme="light|dark"]`，特异度更高，所以只需覆盖颜色 token。
+- 这些属性可以挂在**任何元素**上，属性下的子树就用那套颜色——设置里的调色板色样正是这样画的（每半块各自带 `data-palette` 与 `data-theme`）。需要预览某种外观时用这个办法，不要在 JS 里复制色值。
+- `index.html` 在首帧前从 localStorage 套用模式与全部显示偏好，页面不会闪。新增根属性时同步改那段脚本。
+- 依赖颜色的非 CSS 代码（xterm、标题栏）必须同时监听 `data-theme` 与 `data-palette` 的变化。
+
+### 3.2 语义 token 与用法
+
+按**角色**取 token，不按“看起来像什么颜色”取。
+
+| 角色 | token | 用于 | 不得用于 |
+| --- | --- | --- | --- |
+| 页面底 | `--bg` | 应用最底层、工作台外框 | 卡片、输入框 |
+| 侧栏 | `--bg-sidebar` | 左侧栏 | 其他区域 |
+| 工作面 | `--surface` | 卡片、输入框、对话框正文、文档 | — |
+| 抬升面 | `--surface-raised` | 菜单、浮层、Project 气泡 | 大面积底色 |
+| 凹陷面 | `--surface-sunken` | 代码、空态、只读区、进度条底 | 可点击的主要控件 |
+| 悬停 / 按下 | `--surface-hover` / `--surface-active` | 行与按钮的悬停、按下 | 选中态（选中用 `--accent-soft`） |
+| 分隔线 / 强分隔线 | `--border` / `--border-strong` | 卡片边、分隔 / 输入框边、悬停时加强 | 文字 |
+| 焦点 | `--border-focus` | 焦点环 | 装饰 |
+| 正文 | `--text` | 标题、正文、主要数值 | — |
+| 次级文字 | `--text-2` | 说明、标签、次要按钮文字 | 正文段落 |
+| 三级文字 | `--text-3` | 元数据（时间、计数、路径）、占位、静止图标 | 唯一的重要信息 |
+| 反色文字 | `--text-inverse` | 强调色、危险色实底上的文字 | 普通底色 |
+| 强调 | `--accent` | 主按钮底、选中描边、链接下划线、品牌云 | 大段文字（用 `--accent-text`） |
+| 强调文字 | `--accent-text` | 链接、选中项文字 | 底色 |
+| 强调浅底 | `--accent-soft` | 选中项、当前标签、焦点光晕 | 警示 |
+| 成功 = 晴 / 警告 = 太阳 / 危险 = 雷暴 | `--success` `--warn` `--danger`（及 `-soft`） | 状态文字、状态点、diff 增删、危险按钮 | 装饰、品牌 |
+| 代码 | `--code-bg` / `--code-border` / `--syntax-*` | 代码块、编辑器、终端、diff | 普通卡片 |
+| 用量色阶 | `--usage-0…4` | 用量热力图 | 其他图表的系列色 |
+| 天气 | `--wx-*` | 只用于天气图形（§4） | 状态色、按钮、品牌 |
+
+- 颜色从不单独承载含义：状态色旁边总有文字或图标（§10）。
+- 需要中间色时用 `color-mix(in srgb, var(--a) N%, var(--b))`，两端都必须是 token；`--usage-*` 就是这样派生的，它们会自动跟随调色板。
+- 阴影（`--shadow-sm/md/lg`）只给浮层；深色模式下层级靠明度（§3.5）。
+
+### 3.3 Sky（默认调色板）
+
+浅色是白昼的天，深色是同一片天的夜晚。
 
 | 角色 | token | 浅色 · 白昼 | 深色 · 夜空 |
 | --- | --- | --- | --- |
 | 页面底 | `--bg` | `#f4f6f8` | `#0f131a` |
 | 侧栏 | `--bg-sidebar` | `#eceff3` | `#0c1016` |
 | 工作面 | `--surface` | `#ffffff` | `#171c26` |
-| 抬升面（菜单、浮层） | `--surface-raised` | `#ffffff` | `#1f2531` |
-| 凹陷面（代码、空态） | `--surface-sunken` | `#eef1f5` | `#12161e` |
+| 抬升面 | `--surface-raised` | `#ffffff` | `#1f2531` |
+| 凹陷面 | `--surface-sunken` | `#eef1f5` | `#12161e` |
 | 分隔线 / 强分隔线 | `--border` / `--border-strong` | `#dfe4ea` / `#bcc5d1` | `#2a3240` / `#3b4659` |
 | 正文 | `--text` | `#1b2330` | `#e8ebf1` |
 | 次级文字 | `--text-2` | `#4f5a68` | `#b0b9c7` |
-| 三级文字（元数据、占位） | `--text-3` | `#626d7c` | `#8d98aa` |
-| 强调（主动作、选中、焦点） | `--accent` | `#2f6fd0` 晴空蓝 | `#8ab4f8` 月光蓝 |
+| 三级文字 | `--text-3` | `#626d7c` | `#8d98aa` |
+| 强调 | `--accent` | `#2f6fd0` 晴空蓝 | `#8ab4f8` 月光蓝 |
 | 强调文字 | `--accent-text` | `#2259ad` | `#a8c7fa` |
 | 成功 = 晴 | `--success` | `#2c7a55` | `#7dcfa0` |
 | 警告 = 太阳 | `--warn` | `#955c0a` | `#ecbc6b` |
 | 危险 = 雷暴 | `--danger` | `#bd3f3a` | `#f28b82` |
 
-### 3.2 深色模式的原则
+### 3.4 其他调色板
 
-- **蓝灰而非藏青。** 中性色是低饱和的蓝灰，长时间阅读不刺眼，也让强调色和天气色有空间。
+每个调色板有一个明确的用途；新调色板必须说得出与已有几个的区别。
+
+| 调色板 | 用途 | 中性色 | 强调色（浅 / 深） |
+| --- | --- | --- | --- |
+| Sky | 默认；清爽、通用 | 冷蓝灰 | `#2f6fd0` / `#8ab4f8` |
+| Sand | 长时间阅读；暖、低眩光 | 暖纸色与墨色 | 赤陶 `#a84f28` / `#e9a47e` |
+| Forest | 偏好绿色系、与蓝色工具区分 | 绿灰 | 深青 `#146b64` / `#6fd2c0` |
+| Graphite | 信息最密、对比最强 | 纯中性灰（`#111111` 正文） | 靛紫 `#4a44c2` / `#aaa6ff` |
+
+关键值（完整值以 `tokens.css` 为准）：
+
+| 调色板 · 模式 | `--bg` | `--surface` | `--text` | `--text-3` | `--accent-text` | `--success` / `--warn` / `--danger` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Sand 浅 | `#f6f3ee` | `#fffdf9` | `#27221b` | `#6a6155` | `#93441f` | `#3b7340` / `#8a5a0c` / `#b2382f` |
+| Sand 深 | `#15130f` | `#1e1b16` | `#eee8de` | `#a29788` | `#efb593` | `#9fcf8a` / `#e7c06e` / `#f2907f` |
+| Forest 浅 | `#f2f5f2` | `#ffffff` | `#17231b` | `#5a6a5f` | `#0f5f58` | `#3a7326` / `#8d5b08` / `#b33a37` |
+| Forest 深 | `#0e1411` | `#151e19` | `#e4ede7` | `#8a9c91` | `#86dbcb` | `#a8d681` / `#e8c06a` / `#f1907f` |
+| Graphite 浅 | `#f4f4f4` | `#ffffff` | `#111111` | `#545454` | `#403aaf` | `#24713f` / `#855400` / `#b5302b` |
+| Graphite 深 | `#111111` | `#1a1a1a` | `#f2f2f2` | `#a2a2a2` | `#bab7ff` | `#84d4a2` / `#eec070` / `#f58e86` |
+
+- **强调色不得与成功色同色相。** Forest 的强调是青、成功是黄绿，就是为了让“选中”和“成功”分得开。
+- **天气色不随调色板变。** `--wx-*` 只按模式区分，一种天气在任何调色板里都是同一个颜色、同一个含义。
+- **品牌云随调色板变**（用 `--accent` 填色，§2），favicon 与安装包图标不变。
+
+### 3.5 深色模式的原则
+
+- **低饱和中性色。** 中性色是低饱和的灰（Sky 蓝灰、Sand 暖灰、Forest 绿灰、Graphite 纯灰），长时间阅读不刺眼，也让强调色和天气色有空间。
 - **用明度表达层级，不靠阴影。** `bg < surface < raised`，每一级都有可测的差（≥1.08:1 与 ≥1.15:1）。阴影只留给浮层。
-- **强调色两用。** 月光蓝作文字时 ≥4.5:1；作按钮底色时承载深色文字 ≥4.5:1。
+- **强调色两用。** 作文字时 ≥4.5:1；作按钮底色时承载深色的 `--text-inverse` ≥4.5:1。
+- **`-soft` 用半透明。** 深色下的 `--accent-soft`、`--success-soft` 等是 13–14% 的 rgba，叠在任何面上都成立。
 - **天气色单独调过。** 夜里降水更亮、云更暗、太阳偏暖（`--wx-*` 的深色值）。
 
-### 3.2a 调色板与信息显示
+### 3.6 对比度底线 {#contrast}
 
-- **模式与调色板分开。** `data-theme` 只表示浅色 / 深色；`data-palette` 在该模式内换中性色、强调色与状态色。Sky 是默认（上面的两组 token），另有 Sand（暖纸墨、赤陶）、Forest（绿灰、深青）、Graphite（纯中性灰、对比最强）。每个调色板都在 `tokens.css` 里写全浅深两份，并过同一套对比度底线。
-- **天气色不随调色板变。** 一种天气只有一个含义，换调色板也不改。
-- **信息显示偏好** 同样是根元素属性：`data-density`（compact / comfortable，标题栏高度不变）、`data-text-size`（small / default / large，缩放字号 token）、`data-reading`（narrow / standard / wide / full，改 `--reading-width`）。逻辑在 `apps/web/src/lib/display.ts`，`index.html` 在首帧前套用。
-
-### 3.3 对比度底线 {#contrast}
-
-两个主题都必须满足下面的底线，由 `apps/web/src/styles/contrast.test.ts` 直接解析 `tokens.css` 检查：
+每个调色板的两种模式都必须满足下面的底线，由 `apps/web/src/styles/contrast.test.ts` 直接解析 `tokens.css` 检查（调色板会合并到 Sky 之上再检查，并要求每个调色板在两种模式下都自己定义面、文字与强调色）：
 
 - 正文在每个面上 ≥ 7:1；
 - 次级文字、三级文字、强调文字、成功/警告/危险色在 `bg`、`surface`、`surface-raised`、`surface-sunken` 上都 ≥ 4.5:1（WCAG AA）；
-- 强调色作按钮底时，反色文字 ≥ 4.5:1；
+- 语法色在 `code-bg`、`surface`、`surface-raised` 上 ≥ 4.5:1；
+- 强调色、危险色作按钮底时，反色文字 ≥ 4.5:1；
 - 分隔线 ≥ 1.25:1，强分隔线 ≥ 1.6:1；
 - 深色层级：`surface` 对 `bg` ≥ 1.08:1，`raised` 对 `bg` ≥ 1.15:1。
 
-改颜色时先跑 `pnpm exec vitest run apps/web/src/styles/contrast.test.ts`。
+改颜色时先跑 `pnpm exec vitest run apps/web/src/styles/contrast.test.ts`。测试解析的是 `--token: #rrggbb;` 形式，调色板里需要被检查的颜色必须写成六位十六进制。
+
+### 3.7 新增或修改调色板的步骤
+
+1. 在 `tokens.css` 末尾的调色板区，照现有块写 `[data-palette="x"][data-theme="light"]` 与 `…="dark"]` 两块，**覆盖同一组颜色 token**：面（`bg`、`bg-sidebar`、`surface*`）、悬停与按下、边框与焦点、四级文字、强调四件套、三种状态色及 `-soft`、代码三件套、七个语法色。不写 `--wx-*`、字号、尺寸。
+2. 起点：先定中性色的色相，再从 `--text` 开始往下调到刚好过线，最后挑强调色并检查它作文字与作底色两种用法。
+3. 在 `lib/display.ts` 的 `PALETTES` 里加 `{ id, label, description }`；描述是一句话，说用途而不是颜色名。
+4. 跑对比度测试；在真实页面里按两种模式各截一张（对话、设置、工作台的 Changes），看 diff 增删色、状态点和链接。
+5. 在本节的表里补上它，并更新 `CHANGELOG.md` 的 Unreleased。
 
 ## 4. 状态语言：天气
 
@@ -124,47 +215,155 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - 两端都不弹出独立的浏览器窗口。
 
 
-## 5.5 密度
+### 5.5 密度
 
-2026-10-08 起界面使用紧凑密度（设计稿：[`redesign.html`](redesign.html)）。尺寸只来自 `tokens.css` 的密度 token，组件不写裸高度：
+2026-10-08 起界面默认使用紧凑密度（设计稿：[`redesign.html`](redesign.html)），用户可在设置里改成 Comfortable（§6）。尺寸只来自 `tokens.css` 的密度 token，组件**不得**写裸高度，否则不会随密度设置变化：
 
-| token | 值 | 用于 |
-| --- | --- | --- |
-| `--header-h` | 32px | 会话顶栏、工作台标签栏；等于桌面端 `TITLE_BAR_HEIGHT`，原生窗口按钮正好落在顶栏里 |
-| `--toolbar-h` | 28px | 工作台工具栏行、代码块头 |
-| `--control-lg` / `--control` / `--control-sm` | 32 / 26 / 22px | 大输入框 / 常规按钮、输入框 / 小按钮、chip、工具行 |
-| `--row-h` | 26px | 会话、菜单、项目列表行 |
-| `--icon` / `--icon-sm` | 14 / 12px | 图标只有这两种尺寸；空态插图 18px |
+| token | Compact（默认） | Comfortable | 用于 |
+| --- | --- | --- | --- |
+| `--header-h` | 32px | 32px（不变） | 会话顶栏、工作台标签栏；等于桌面端 `TITLE_BAR_HEIGHT`，原生窗口按钮正好落在顶栏里 |
+| `--toolbar-h` | 28px | 32px | 工作台工具栏行、代码块头 |
+| `--control-lg` / `--control` / `--control-sm` | 32 / 26 / 22px | 36 / 30 / 26px | 大输入框 / 常规按钮、输入框 / 小按钮、chip、工具行 |
+| `--row-h` | 26px | 32px | 会话、菜单、项目列表行 |
+| `--icon` / `--icon-sm` | 14 / 12px | 15 / 12px | 图标只有这两种尺寸；空态插图 18px |
 
 - 图标是 lucide 细线（描边 1.75），静止时用三级文字色，颜色只表达状态；工具行图标不再垫底色方块。
 - 头像：对话回合 18px、项目房间与线程 20px，项目欢迎页保留大头像。
 - 顶栏只有一行：标题 · 工作区。顶栏贴着窗口右上角时用 `.window-controls-header` 给原生按钮让位。
 - 工作台的工具标签只显示图标，选中的那个显示名称；名称始终在提示和无障碍标签里。
 
-## 5.6 侧栏：按工作区组织
+### 5.6 侧栏：按工作区组织
 
 - 侧栏是工作区树：每个工作区一个可折叠分组，组内先列项目（看板图标，强调色），再按最近时间列会话；默认显示 8 条会话，其余与已归档项目收在 “N more” 里。折叠状态存在 `tnega.sidebar.collapsed`。
 - 没有工作区切换卡片，也没有 Sessions / Projects 切换：点开任何分组里的会话或项目，就切到它所在的工作区并打开它。当前工作区的列表来自应用本身（实时）；其他展开的工作区在打开时各自加载。
 - 工作区行悬停时出现“新建项目 / 新建会话 / 更多（移出列表）”；“Add workspace”在侧栏底部，与设置、主题并排，只显示图标（名称在提示与无障碍标签里），侧栏再窄也不会压到主题切换。
 - 搜索同时过滤所有工作区的项目与会话，搜索时折叠的分组也会展开。
 
-## 5.7 Project 屏幕的密度
+### 5.7 Project 屏幕的密度
 
 - 房间里的 Thread 卡片是一行（约 30px）：头像 · 标题 · 状态 · 当前步骤 · 箭头。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
 - 协调者在房间里的长消息（超过约 420 字符）默认折叠到五行左右，带 “Show more”；开头应是结论，细节按需展开。Thread 自己面板里的报告不折叠。
 - Board 顶部是一行 Today：协调者天气头像 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
 
-## 6. 动效与无障碍
+## 6. 字号与信息显示偏好
+
+### 6.1 字号阶梯
+
+字号只来自 `--text-*`。新代码**不得**写裸 `font-size: Npx`（相对单位 `em` 用于 Markdown 内的标题与行内代码可以）；已有的裸像素值在碰到时顺手换成最近的 token。
+
+| token | Small | Default | Large | 用于 |
+| --- | --- | --- | --- | --- |
+| `--text-xs` | 10.5px | 11px | 12px | 元数据：时间、计数、徽标 |
+| `--text-sm` | 11.5px | 12px | 13px | 工具详情、表单说明、表格 |
+| `--text-md` | 12px | 13px | 14.5px | 常规界面：按钮、列表、菜单 |
+| `--text-lg` | 12.5px | 13.5px | 15.5px | 对话正文与输入（行高 1.6） |
+| `--text-xl` | 18px | 18px | 20px | 区块标题 |
+| `--text-2xl` | 24px | 24px | 26px | 页面标题、欢迎页 |
+
+字重以 400 / 500 / 600 为主；700 只留给极小的徽标数字。等宽字体（`--font-mono`）只给代码、路径、命令、哈希与对齐的数字列。
+
+### 6.2 显示偏好
+
+“信息显示”的设置都是根元素属性，由 `lib/display.ts` 写入、`tokens.css` 映射到 token，组件不需要知道当前选了什么：
+
+| 设置 | 属性 | 取值（默认加粗） | 改变的 token |
+| --- | --- | --- | --- |
+| Colour palette | `data-palette` | **sky** / sand / forest / graphite | 颜色（§3） |
+| Density | `data-density` | **compact** / comfortable | `--toolbar-h`、`--control*`、`--row-h`、`--icon` |
+| Text size | `data-text-size` | small / **default** / large | `--text-*` |
+| Conversation width | `data-reading` | narrow 660 / **standard 780** / wide 1000 / full | `--reading-width` |
+
+- 存储键是 `tnega.palette`、`tnega.density`、`tnega.textSize`、`tnega.readingWidth`，按设备保存，不进 System Config。
+- 要让新界面响应这些偏好，**只需用对 token**：高度用密度 token，字号用 `--text-*`，阅读列宽用 `--reading-width`。不要在组件里读 `useDisplay()` 再分支。
+- 新的显示偏好按同样的方式加：`display.ts` 的类型、`DISPLAY_OPTIONS`、`DISPLAY_KEYS`，`tokens.css` 的属性块，`index.html` 的首帧脚本，设置面板的 `ChoiceField`，以及 `display.test.ts`。偏好只调 token，不改信息的有无。
+
+## 7. 信息显示原则
+
+Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标是**一眼看到要紧的事，需要时一步看到细节**。
+
+### 7.1 层级
+
+- 每一块界面先回答一个问题（“它在做什么”“要我做什么”“结果是什么”），答案放在最显眼处：`--text` + 500/600 字重。其余是元数据，用 `--text-3` + `--text-xs`/`--text-sm`，排在同一行的末尾或下一行。
+- 一行只放一个主信息。标题一行、进展一行，超出用省略号截断，完整内容放在 `title` 提示里（路径、长标题都这样做）。
+- 需要用户处理的东西（审批、问题、错误）永远排在最前，并有天气或状态色 + 文字双重标识；“等你”优先于“出错”优先于“进行中”（与 §4 的优先级一致）。
+
+### 7.2 渐进展开
+
+- 过程默认折叠，结论默认展开：工具调用折成一行并写当前步骤，回合结束后过程折成 “Used N tools”（§5.1）；协调者长消息折到约五行（§5.7）。
+- 折叠行必须告诉人里面有什么（步骤名、数量），而不是只写 “Details”。展开状态不需要跨重载保留。
+- 列表默认显示有限条数（侧栏 8 条），其余收进 “N more”；数量写在按钮上。
+
+### 7.3 数字、时间与单位
+
+- 用现成的格式化函数，不要各写一份：`formatTokens`、`formatDuration`（`lib/timeline.ts`），`formatCount`、`formatActive`、`formatBytes`（`lib/project-model.ts`），`formatElapsed`（`lib/background-tasks.ts`），`relativeTime`（`lib/hooks.ts`）。
+- 会变化或要对齐的数字加 `font-variant-numeric: tabular-nums`，避免跳动。
+- 近期时间用相对时间（“3m ago”），完整时间放在提示里；计数大于 999 用 k/M 缩写。
+- 数字与单位之间用窄格式：`12k tokens`、`3/5`、`+12 −4`。
+
+### 7.4 状态与空态
+
+- 状态 = 颜色 + 形状/图标 + 文字，三者至少两个，文字必不可少（可以只在无障碍标签里）。
+- 加载用骨架或细进度，不用整页转圈；超过约 1 秒的操作要有文字说明在做什么。
+- 空态说明“这里会出现什么、怎么让它出现”，并给一个直接的动作；非错误的空态不用危险色。
+- 错误写清发生了什么与下一步，用 `.notice-error` 或 `.form-error`，不弹 alert。
+
+### 7.5 宽度与密度
+
+- 阅读内容（对话、文档）用 `--reading-width` 限宽；表格、diff、终端、日志不限宽，让它们用满可用空间并可横向滚动。
+- 不为了“好看”加大留白：间距只用 `--space-*`，同类元素之间的间距保持一致。
+
+## 8. 组件与样式复用
+
+前端实现优先复用已有组件与类；没有直接适用的，沿用最相近页面的结构和行为，**不新造一套视觉**。
+
+| 需要 | 用 |
+| --- | --- |
+| 按钮 | `.button` + `.primary` / `.secondary` / `.ghost` / `.danger`，尺寸 `.small` / `.large`；只有图标时用 `.icon-button`（`.small` / `.tiny` / `.active`），并写 `aria-label` |
+| 菜单、下拉、单选列表 | `components/Menu.tsx` 的 `Menu`、`Choice`、`SectionChoice`、`choiceSection` |
+| 对话框 | `components/Dialog.tsx`；确认用 `lib/dialogs.ts` 的 `confirmDialog`，不用 `window.confirm` |
+| 表单 | `.form-grid` 两列 + `.field`（`.span-2` 占满）+ `.field-label`；说明文字 `.muted.small`；复选 `.field-check` |
+| 少量互斥选项（2–4 个） | 设置里的 `ChoiceField`（`.settings-choice-row` + `.settings-choice`，`role="radiogroup"`）；更多选项用 `<select>` |
+| 键值摘要 | `.effective-card` + `.effective-row` |
+| 提示条 | `.notice` + `.notice-info` / `.notice-warn` / `.notice-error` |
+| 小标签、过滤器 | `.chip`（`.chip-danger`）、`.pill`（`.pill-danger`） |
+| 空态 | `.empty-state` |
+| 头像与状态 | `components/AgentAvatar.tsx` + `WeatherLayer.tsx`，不另画状态点 |
+| 新的文件 / 改动 / 终端 / 浏览器 / 文档类视图 | 工作台的工具或文档标签（§5.3），不开新抽屉 |
+
+- 图标只用 lucide，尺寸取 `--icon` / `--icon-sm` 对应的 14 / 12，描边 1.75。
+- 交互元素必须能用键盘到达，有可见焦点，有可读的名字（文字或 `aria-label`）；互斥选项用 `role="radio"` + `aria-checked`。
+- 新样式写进对应文件：通用控件进 `app.css`，Project 进 `project.css`，工作台进 `workbench.css`；类名用组件前缀（`.palette-card`、`.bg-task-*`）。
+
+## 9. 设置
+
+设置对话框（`components/SettingsDialog.tsx`）左侧是分区，右侧是面板。
+
+- 新选项放进它所配置的那个分区；全新的一类设置是 `SECTIONS` 里多一项加一个面板，分区描述一句话说清它管什么。
+- **两种保存方式，不要混用：** 写入 System Config 的选项（模型、审批、工具）进表单状态，由 “Save changes” 一起保存；只影响本设备显示的选项（模式、调色板、密度、字号、宽度、更新）立即生效、存 localStorage，不经过 Save。
+- 选项的标签用名词（“Text size”），选项值用短词（“Large”）；后果写在下方一行 `.muted.small` 说明里。
+- 每个新设置至少有一个测试（`SettingsDialog.test.ts` 或对应 lib 的测试）覆盖“选了之后发生什么”。
+
+## 10. 动效与无障碍
 
 - 动效是轻微、循环的状态提示：天气、思考中的浮动、眨眼。不用动效表达唯一的信息。
-- 所有动效遵循 `prefers-reduced-motion`。
+- 所有动效遵循 `prefers-reduced-motion`；过渡时长只用 `--duration-fast` / `--duration-med` 与 `--ease-out`。
 - 焦点必须可见：`--border-focus` 加 `--accent-soft` 光晕。
 - 颜色之外总有文字或形状区分状态。
+- 在 Large 字号与 Comfortable 密度下界面不得出现文字重叠或被裁掉的控件；在 Small 字号下正文仍可读。
 
-## 7. 改动设计时
+## 11. 改动前后清单 {#checklist}
 
-1. 颜色只改 `tokens.css`，深浅主题同步，并跑对比度测试。
-2. 新的状态先问：它是不是已有的某种天气？不要给同一种天气赋第二个含义。
+动手前：
+
+1. 读本文相关章节（§0 的表）与要改的模块及其测试。
+2. 找到最相近的现有界面，决定复用哪些组件和类（§8）。
+3. 新状态先问：它是不是已有的某种天气？不要给同一种天气赋第二个含义（§4）。
+
+提交前：
+
+1. 没有裸色值、裸字号、裸控件高度；颜色只改 `tokens.css`，**所有调色板的两种模式**同步，并跑对比度测试。
+2. 在真实页面里至少看过：浅色与深色；Sky 与另一个调色板；Large 字号 + Comfortable 密度。截图与校准用 `/weather.html` 和真实页面，不用脱离实现的效果图。
 3. 新图形沿用扁平语言：实心色块、无描边、16px 可辨。
 4. 改标志时同步改 `--brand-cloud` / `--brand-eyes`、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
-5. 界面上的截图与校准用 `/weather.html` 和真实页面，不用脱离实现的效果图。
+5. 测试与源文件同目录，覆盖用户可见的行为；跑 `pnpm exec vitest run apps/web`。
+6. 用户可见的变化写进 `CHANGELOG.md` 的 Unreleased；改变了设计规则的，同一次改动里更新本文。
