@@ -32,7 +32,11 @@ export const snapshot = { project, coordinatorId: 'coordinator', cursor: 10, thr
   inboxMessages: [communications[2]], agentMessages: communications, threadMessages: [
     message('thread-user', 'user', ['writer'], 'user-thread', 'Use short headings.', 10000, { kind: 'thread', threadId: 'writer' }),
     message('thread-reply', 'writer', ['user'], 'agent-reply', 'Done. The headings are shorter.', 11000, { kind: 'thread', threadId: 'writer' }),
-  ], memory: [], library: { artifacts: [], resources: [] }, routines: [] }
+  ], memory: [], library: { artifacts: [], resources: [{
+    kind: 'resource', id: 'git-push', seq: 3, version: 1, author: 'writer', source: { agentId: 'writer' }, createdAt: at + 6500, updatedAt: at + 6500, deleted: false,
+    data: { title: 'Pushed guide-headings', uri: 'https://github.com/example/site/pull/new/guide-headings',
+      git: { kind: 'push', status: 'pushed', repo: 'example/site', branch: 'guide-headings' } },
+  }] }, routines: [] }
 export const totals = { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, activeMs: 0 }
 export const config = { effective: { baseUrl: '', model: 'fixture', modelId: 'fixture' },
   config: { apiKeySet: true, path: 'fixture.json', models: [] }, env: { apiKeySet: false }, models: [], apiKeySet: true }

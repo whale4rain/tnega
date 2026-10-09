@@ -50,6 +50,7 @@ import { toolThread } from '@tnega/tool-thread'
 import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { describeToolCall } from './project-activity.js'
+import { trackGitOutcomes } from './project-git.js'
 import { PROJECT_DISABLED_BUILTINS, projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 import { DEFAULT_THREAD_LIMITS } from '@tnega/thread'
 import { mountThreadApprovals } from './thread-approval.js'
@@ -675,6 +676,8 @@ export class ProjectHost {
     await ctx.plugin(toolBox)
 
     const registry = ctx.get('agents') as AgentRegistry
+    // Pushes and pull requests a thread makes become Library cards with their status.
+    trackGitOutcomes(ctx, ctx.get('blackboard') as BlackboardService, registry.list().map(agent => ({ id: agent.id, ctx: agent.ctx })))
     await ctx.plugin(jobsLocal)
     await ctx.plugin(toolJobs, { resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session })
     await ctx.plugin(continuationNudge)

@@ -154,7 +154,21 @@ export type RoutineFact = FactRecord<RoutineData>
 
 export type MemoryFact = FactRecord<{ text: string; tags?: string[] }>
 export type ArtifactFact = FactRecord<{ title: string; hash: string; size: number; mediaType: string }>
-export type ResourceFact = FactRecord<{ title: string; uri: string; note?: string }>
+/**
+ * A push or pull request a thread made with its shell, recorded by the
+ * server as a resource (`packages/cli/src/project-git.ts`). Older servers
+ * never write it.
+ */
+export interface GitInfo {
+  kind: 'push' | 'pull-request'
+  status: 'pushed' | 'up-to-date' | 'rejected' | 'failed' | 'opened'
+  repo?: string
+  branch?: string
+  number?: number
+  detail?: string
+}
+
+export type ResourceFact = FactRecord<{ title: string; uri: string; note?: string; git?: GitInfo }>
 
 export interface ProjectSnapshot {
   project: ProjectRecord

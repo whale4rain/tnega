@@ -245,6 +245,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 - 房间里的 Thread 卡片是一行（约 30px）：状态灯 · 标题 · 状态 / 当前步骤 · 箭头，悬停在卡片右侧出现「回复」。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
 - **状态灯**（`components/StatusLight.tsx`，`threadLight` / `projectLight`）是天气的最小形态，一种颜色只有一个含义：等你或被阻塞（雪）= `--warn` 带光晕；出错（雷暴）= `--danger` 带光晕；工作中（雨）= `--accent` 缓慢明灭（减弱动效时静止）；有你还没打开的结果 = `--success`；其余为 `--border-strong` 的灰点。灯总带文字（无障碍名称与提示）。用在：房间的 Thread 卡、正文里的 Thread 链接、Board 卡片与 Today 行、侧栏的项目行——侧栏只在有 Thread 等你、失败或工作中时亮灯（优先级同 §4），数据来自 `GET /api/projects` 的 `threads` 摘要。
+- **推送与 PR 卡**（`project/GitCard.tsx`）：Thread 用 shell 执行 `git push` 或 `gh pr create` 后，服务端按命令输出记一条带 `git` 的 Library 资源，界面画成一行卡片：图标（分支 / PR）· 标题（“Pushed feature-x”“Pull request #12”）· 仓库 · Thread · 时间 · 状态胶囊（Pushed / Opened 成功色，Up to date 中性，Rejected / Failed 危险色，失败时元数据换成错误行）· 「Open」在浏览器打开（PR、建 PR 的页面或分支页；本地或代理远端没有网页就不显示）。同一分支再推送更新同一张卡。卡片出现在主对话里（按最近变化的时间）、该 Thread 的产物区与 Library 的「Pushes and pull requests」。状态只反映命令本身的结果，不查询代码托管平台。
 - 协调者在房间里的长消息（超过约 420 字符）默认折叠到五行左右，带 “Show more”；开头应是结论，细节按需展开。Thread 自己面板里的报告不折叠。
 - Board 顶部是一行 Today：项目状态灯 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
 

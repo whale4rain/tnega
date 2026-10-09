@@ -31,6 +31,7 @@ import type { ConfigSnapshot, Effort, Permission } from '../../lib/types'
 import { Dialog } from '../Dialog'
 import { ModelPicker } from '../ModelPicker'
 import { ARTIFACT_KIND, ArtifactIcon, ArtifactViewer, artifactKind, type ArtifactKind } from './Artifacts'
+import { GitCard } from './GitCard'
 
 // ---------------------------------------------------------------------------
 // Memory
@@ -199,7 +200,10 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
   const everything = [...state.artifacts].sort((a, b) => b.seq - a.seq)
   const kinds = [...new Set(everything.map(artifact => artifactKind(artifact.data.mediaType)))]
   const artifacts = filter === 'all' ? everything : filter === 'links' ? [] : everything.filter(artifact => artifactKind(artifact.data.mediaType) === filter)
-  const resources = filter === 'all' || filter === 'links' ? [...state.resources].sort((a, b) => b.seq - a.seq) : []
+  const links = filter === 'all' || filter === 'links' ? [...state.resources].sort((a, b) => b.seq - a.seq) : []
+  // Pushes and pull requests are cards with their status; other resources are plain links.
+  const pushes = links.filter(resource => resource.data.git)
+  const resources = links.filter(resource => !resource.data.git)
   return (
     <div className="wb-view" aria-label="Library">
       <div className="wb-toolbar">
@@ -217,7 +221,7 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
           {state.resources.length > 0 && <button type="button" className={`board-chip${filter === 'links' ? ' active' : ''}`} onClick={() => setFilter('links')}>Links</button>}
         </div>
       )}
-      {artifacts.length === 0 && resources.length === 0 && (
+      {artifacts.length === 0 && links.length === 0 && (
         <div className="panel-empty">
           <BookOpen size={18} />
           <p>The library is empty.</p>
@@ -241,6 +245,14 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
                 </span>
               </button>
             ))}
+          </div>
+        </section>
+      )}
+      {pushes.length > 0 && (
+        <section className="panel-section">
+          <h3 className="panel-heading">Pushes and pull requests <span className="count">{pushes.length}</span></h3>
+          <div className="git-stack">
+            {pushes.map(resource => <GitCard key={resource.id} resource={resource} author={authorName(state, resource.author)} />)}
           </div>
         </section>
       )}

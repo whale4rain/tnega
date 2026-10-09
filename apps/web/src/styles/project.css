@@ -1373,13 +1373,16 @@
 }
 
 .thread-card-wrap {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  position: relative;
 }
 
+/* Reply sits over the card's right end, left of the chevron, and shows on hover. */
 .thread-card-reply {
-  flex: none;
+  position: absolute;
+  top: 50%;
+  right: 28px;
+  transform: translateY(-50%);
+  background: var(--surface-hover);
   opacity: 0;
   transition: opacity var(--duration-fast);
 }
@@ -1813,4 +1816,80 @@ button.board-chip.active {
 
 .board-card-open > .status-light {
   margin-top: 5px;
+}
+
+/* --- pushes and pull requests -------------------------------------------- */
+
+.git-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  animation: fade-up 260ms var(--ease-out);
+}
+
+.git-card-icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.git-card.tone-danger .git-card-icon {
+  color: var(--danger);
+}
+
+.git-card-body {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.git-card-title {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-card-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-card-status.tone-success {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.git-card-status.tone-neutral {
+  color: var(--text-2);
+  background: var(--surface-sunken);
+}
+
+.git-card-status.tone-danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.git-card-open {
+  flex: none;
+  text-decoration: none;
+}
+
+.git-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }

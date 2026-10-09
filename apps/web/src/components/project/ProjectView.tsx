@@ -49,6 +49,7 @@ import { RoutinesPanel } from './Routines'
 import { ExchangePanel } from './ExchangePanel'
 import { ThreadPanel } from './ThreadPanel'
 import { ThreadCard } from './ThreadCard'
+import { GitCard } from './GitCard'
 import { ChatRun as Run } from './ChatRun'
 
 /**
@@ -457,6 +458,7 @@ type Group =
   | { kind: 'user'; id: string; at: number; items: Array<Extract<MainItem, { kind: 'user' }>> }
   | { kind: 'agent'; id: string; at: number; items: MainItem[] }
   | { kind: 'threads'; id: string; at: number; item: Extract<MainItem, { kind: 'threads' }> }
+  | { kind: 'git'; id: string; at: number; item: Extract<MainItem, { kind: 'git' }> }
 
 /** How long one author can keep talking under the same head. */
 const RUN_GAP_MS = 5 * 60_000
@@ -467,6 +469,10 @@ function group(items: readonly MainItem[]): Group[] {
   for (const item of items) {
     if (item.kind === 'threads') {
       out.push({ kind: 'threads', id: item.id, at: item.at, item })
+      continue
+    }
+    if (item.kind === 'git') {
+      out.push({ kind: 'git', id: item.id, at: item.at, item })
       continue
     }
     const last = out.at(-1)
@@ -537,6 +543,9 @@ function Room({
               ))}
             </div>
           )]
+        }
+        if (entry.kind === 'git') {
+          return [day, <GitCard key={entry.id} resource={entry.item.resource} author={agentLabel(state, entry.item.resource.author)} />]
         }
         if (entry.kind === 'user') {
           return [

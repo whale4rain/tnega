@@ -120,6 +120,14 @@ try {
       await page.getByText('Done. The headings are shorter.', { exact: true }).waitFor()
       assert.equal(new URL(page.url()).hash, '#p/project/writer')
     })
+    await check(`${theme}: a push is a status card that opens in the browser`, async () => {
+      const card = main.getByRole('group', { name: 'Pushed guide-headings: Pushed', exact: true })
+      await card.waitFor()
+      assert.equal(await card.getByText('example/site · Content Writer', { exact: false }).count(), 1)
+      assert.equal(await card.getByRole('link', { name: 'Open', exact: true }).getAttribute('href'), 'https://github.com/example/site/pull/new/guide-headings')
+      // The thread that pushed shows the same card with its outputs.
+      assert.equal(await page.locator('.thread-panel .git-card').count(), 1)
+    })
     await check(`${theme}: a thread opens its exchange with the coordinator`, async () => {
       await page.getByRole('button', { name: 'Messages with Coordinator', exact: true }).click()
       const exchange = page.getByRole('log', { name: 'Agent conversation' })

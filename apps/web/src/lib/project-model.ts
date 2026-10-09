@@ -276,6 +276,8 @@ export type MainItem =
   | { kind: 'coordinator'; id: string; text: string; at: number; replyTo: ReplyRef[]; refs: ArtifactRef[] }
   /** Threads the coordinator handed work to, or that wrote back: links that open each thread. */
   | { kind: 'threads'; id: string; threadIds: string[]; at: number }
+  /** A push or pull request a thread made: a card with its status, at the time of its latest change. */
+  | { kind: 'git'; id: string; resource: ResourceFact; at: number }
 
 /** Exact pair, both directions, deduplicated by the durable message identity. */
 export function exchangeMessages(state: ProjectState, firstId: string, secondId: string): BoxEnvelope[] {
@@ -349,6 +351,12 @@ export function mainTimeline(state: ProjectState): MainItem[] {
       default:
         break
     }
+  }
+  // Pushes and pull requests interleave by the time they last changed.
+  const git = gitResources(state)
+  if (git.length) {
+    const cards: MainItem[] = git.map(resource => ({ kind: 'git', id: resource.id, resource, at: resource.updatedAt }))
+    return [...items, ...cards].sort((a, b) => a.at - b.at)
   }
   // Raw assistant chunks may belong to internal tool steps. Only published
   // Box messages become chat bubbles; status events show that work continues.
@@ -542,6 +550,13 @@ export function artifactsFor(state: ProjectState, refs: readonly ArtifactRef[]):
   return refs
     .map(ref => state.artifacts.find(artifact => artifact.id === ref.hash))
     .filter((artifact): artifact is ArtifactFact => artifact !== undefined)
+}
+
+/** Pushes and pull requests recorded in the Library, oldest change first. */
+export function gitResources(state: ProjectState, author?: string): ResourceFact[] {
+  return state.resources
+    .filter(resource => resource.data.git && (author === undefined || resource.author === author))
+    .sort((a, b) => a.updatedAt - b.updatedAt)
 }
 
 /** Artifacts a thread published, oldest first. */

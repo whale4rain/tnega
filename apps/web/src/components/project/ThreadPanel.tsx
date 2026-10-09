@@ -3,13 +3,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import type { ProjectState } from '../../lib/project-model'
-import { agentLabel, threadArtifacts, threadState } from '../../lib/project-model'
+import { agentLabel, gitResources, threadArtifacts, threadState } from '../../lib/project-model'
 import type { ChecklistItem } from '../../lib/project-types'
 import type { SessionEvent } from '../../lib/types'
 import { fromEvents, type Entry } from '../../lib/timeline'
 import { PromptBox } from '../Composer'
 import { Timeline } from '../Timeline'
 import { ArtifactCards } from './Artifacts'
+import { GitCard } from './GitCard'
 import { ThreadStatus } from './ThreadCard'
 import { ThreadMessages } from './ThreadMessages'
 
@@ -69,6 +70,7 @@ export function ThreadPanel({
     return goal ? all.filter(entry => !(entry.kind === 'user' && entry.text.startsWith(goal))) : all
   }, [events, goal])
   const outputs = useMemo(() => threadArtifacts(state, threadId), [state, threadId])
+  const pushes = useMemo(() => gitResources(state, threadId), [state, threadId])
   const messages = useMemo(() => Object.values(state.envelopes)
     .filter(envelope => envelope.placement.kind === 'thread' && envelope.placement.threadId === threadId
       && (envelope.kind === 'user-thread' || envelope.kind === 'agent-reply'))
@@ -139,9 +141,10 @@ export function ThreadPanel({
       <div className="wb-card thread-body">
       <div className="side-scroll" ref={scroller}>
         {thread.checklist && thread.checklist.length > 0 && <Checklist items={thread.checklist} working={working} />}
-        {outputs.length > 0 && (
+        {(outputs.length > 0 || pushes.length > 0) && (
           <section className="thread-outputs" aria-label="Outputs">
-            <ArtifactCards workspace={workspace} projectId={projectId} artifacts={outputs} />
+            {pushes.length > 0 && <div className="git-stack">{pushes.map(resource => <GitCard key={resource.id} resource={resource} />)}</div>}
+            {outputs.length > 0 && <ArtifactCards workspace={workspace} projectId={projectId} artifacts={outputs} />}
           </section>
         )}
         <Brief goal={thread.goal} />

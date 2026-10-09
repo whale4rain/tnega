@@ -83,6 +83,7 @@ Thread 与 Project 设置是可关闭的标签，后面仍是 Files · Changes �
 | 左栏 Projects | 最近打开的 Project（名称 + 它所在的文件夹）；`+` 新建 |
 | 顶部 | Project 名称；有 Thread 在跑时一行「N threads working」，断线时「Reconnecting…」 |
 | 主对话 | 任务驱动：你的消息是靠右的气泡；协调者的回复是没有头像和气泡的正文，按天分隔，协调者工作时显示「Coordinating…」。交出去的工作是一张 Thread 链接卡：**状态灯 · 标题 · 状态**（工作中显示清单的当前一步），每个 Thread 只出现一次，点开打开 Thread；协调者正文里用 `[标题](#thread:<id>)` 链接 Thread。悬停卡片可「回复」，消息直接发给那个 Thread。回复带产物时下面是产物卡片 |
+| 推送与 PR | Thread 的 shell 执行 `git push` / `gh pr create` 后，服务端（`project-git.ts`）按输出记一条带 `git: { kind, status, repo, branch, number, detail }` 的 resource，`uri` 是 PR、建 PR 的页面或分支页。主对话、Thread 产物区与 Library 显示为带状态、可在浏览器打开的卡片；同一分支再推送更新同一条记录 |
 | Board | 顶部是项目天气与「今天」：开了几个 Thread、完成几个、产出几份、用了多少 token；下面是 Needs you · Working · Ready · Idle 四条泳道（宽面板并排成看板，窄面板纵向堆叠），Resolved 折叠。卡片有状态灯、当前步骤 / 等待的问题 / 回报首行、清单进度条、产物类型、最近活动、工作时长与 token；悬停可 Resolve / Reopen / Stop |
 | Library | 人加的与 Thread 产出的，按类型（Pages · Docs · Slides · Sheets · Data…）筛选；就地预览，Word / PowerPoint / Excel / PDF 用工作区文件的同一套预览器 |
 | Routines | 定时工作：日程、下次运行、上次运行与错误；可新建、暂停、恢复、立即运行、删除。每次运行进入它自己的 Thread |

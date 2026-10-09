@@ -69,6 +69,20 @@ describe('mainTimeline', () => {
     expect(mainTimeline(state)[1]).toMatchObject({ threadIds: [T1, T2] })
   })
 
+  it('places pushes and pull requests by the time they last changed', () => {
+    const push = { kind: 'resource', id: 'git-1', seq: 1, version: 2, author: T1, source: {}, createdAt: 1, updatedAt: 1500, deleted: false,
+      data: { title: 'Pushed main', uri: 'https://github.com/o/r/tree/main', git: { kind: 'push' as const, status: 'pushed' as const } } }
+    const link = { ...push, id: 'plain', data: { title: 'Docs', uri: 'https://example.com' } }
+    const state = fromSnapshot(snapshot({
+      messages: [
+        envelope({ kind: 'user-message', sender: { kind: 'user', id: 'user' }, text: 'ship it', createdAt: 1000 }),
+        envelope({ kind: 'agent-reply', sender: { kind: 'agent', id: COORD }, text: 'Shipped.', createdAt: 2000 }),
+      ],
+      library: { artifacts: [], resources: [push, link] },
+    }))
+    expect(mainTimeline(state).map(item => item.kind)).toEqual(['user', 'git', 'coordinator'])
+  })
+
   it('links each thread once, where it first came up', () => {
     const state = fromSnapshot(snapshot({
       threads: [thread(COORD, { depth: 0 }), thread(T1)],
