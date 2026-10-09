@@ -1,6 +1,6 @@
 {
   "name": "@tnega/desktop",
-  "version": "0.4.23",
+  "version": "0.4.24",
   "private": true,
   "type": "module",
   "main": "out/main.js",

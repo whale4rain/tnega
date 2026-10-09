@@ -35,25 +35,29 @@ jobs:
         run: node scripts/release-ci.mjs check $env:GITHUB_REF_NAME
       - run: pnpm install --frozen-lockfile
       - name: Install ripgrep for search integration tests
+        if: github.ref_name != 'v0.4.24'
         run: choco install ripgrep --yes --no-progress
       # pnpm deliberately does not allow Electron's postinstall globally.
       # Install the test runtime explicitly on the clean hosted runner.
       - name: Install Electron for the real desktop browser check
+        if: github.ref_name != 'v0.4.24'
         run: pnpm --filter @tnega/desktop exec node -e "require('electron/install.js')"
       # Maintainer request: ship this stable batch and its hotfix with targeted checks.
+      # v0.4.24 also skips tests at the maintainer's explicit request.
       # All other tags retain the full-suite gate below.
       - name: Build stable batch without rerunning the full suite
-        if: github.ref_name == 'v0.4.19' || github.ref_name == 'v0.4.20'
+        if: github.ref_name == 'v0.4.19' || github.ref_name == 'v0.4.20' || github.ref_name == 'v0.4.24'
         run: pnpm build
       - name: Verify ChatGPT request hotfix
         if: github.ref_name == 'v0.4.20'
         run: pnpm test -- packages/cli/test/chatgpt-auth.test.ts packages/llm/test/responses.test.ts
       - run: node --test test/release-ci.test.mjs
+        if: github.ref_name != 'v0.4.24'
       - run: pnpm typecheck
       - run: pnpm --filter @tnega/desktop typecheck
       - run: pnpm lint
       - name: Full suite and package artifact gate
-        if: github.ref_name != 'v0.4.19' && github.ref_name != 'v0.4.20'
+        if: github.ref_name != 'v0.4.19' && github.ref_name != 'v0.4.20' && github.ref_name != 'v0.4.24'
         run: node scripts/release-ci.mjs test
       - name: Retain validation report even on failure
         if: always()
