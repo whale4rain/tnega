@@ -49,6 +49,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Project 产物在工作台文档标签中预览，Library 可跳转到来源消息；Memory 编辑使用打开时的版本校验，并发冲突时保留草稿，避免覆盖他人的更新。
+
 - Project 暂停会持久保存并停止派工与定时任务，明确恢复后继续队列；重连同步完整快照与实际运行状态，避免遗漏事实更新或残留运行标记。
 
 - Thread 的并发状态与清单更新按身份串行处理，避免审批等待与 Run 状态竞争导致误拒绝；恢复失败回报不再覆盖用户后来 Resolve / Reopen 的决定。

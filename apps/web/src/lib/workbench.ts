@@ -12,6 +12,8 @@
  * tabs, so the project screen behaves like a session's.
  */
 
+import type { ArtifactFact } from './project-types'
+
 export type ToolId = 'files' | 'changes' | 'terminal' | 'browser'
 
 export const TOOLS: readonly ToolId[] = ['files', 'changes', 'terminal', 'browser']
@@ -27,6 +29,7 @@ export function projectTabKey(tab: ProjectTabId): string {
 export const BOARD_KEY = projectTabKey('board')
 
 export type DocTab =
+  | { key: string; kind: 'artifact'; artifact: ArtifactFact; label: string }
   | { key: string; kind: 'preview'; path: string }
   | { key: string; kind: 'subagent'; id: string; label: string }
   | { key: string; kind: 'thread'; id: string; label: string }
@@ -61,7 +64,7 @@ export function isProjectTab(value: string): boolean {
 
 /** Tabs that only exist inside a project: its fixed tabs, its threads and its settings. */
 export function isProjectKey(value: string): boolean {
-  return isProjectTab(value) || value.startsWith('thread:') || value.startsWith('exchange:') || value === 'project-settings'
+  return isProjectTab(value) || value.startsWith('artifact:') || value.startsWith('thread:') || value.startsWith('exchange:') || value === 'project-settings'
 }
 
 export function openTool(state: WorkbenchState, tool: ToolId, path?: string): WorkbenchState {
@@ -76,6 +79,7 @@ export function toggle(state: WorkbenchState): WorkbenchState {
 }
 
 export type NewDoc =
+  | { kind: 'artifact'; artifact: ArtifactFact; label: string }
   | { kind: 'preview'; path: string }
   | { kind: 'subagent'; id: string; label: string }
   | { kind: 'thread'; id: string; label: string }
@@ -84,6 +88,7 @@ export type NewDoc =
 
 function withKey(doc: NewDoc): DocTab {
   switch (doc.kind) {
+    case 'artifact': return { ...doc, key: `artifact:${doc.artifact.data.hash}` }
     case 'preview': return { ...doc, key: `preview:${doc.path}` }
     case 'subagent': return { ...doc, key: `subagent:${doc.id}` }
     case 'thread': return { ...doc, key: `thread:${doc.id}` }

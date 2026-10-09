@@ -506,8 +506,13 @@
 }
 
 .overview-row + .overview-row,
+.library-item + .library-item,
 .library-row + .library-row {
   border-top: 1px solid var(--border);
+}
+
+.library-source {
+  margin: 0 12px 6px;
 }
 
 .overview-row:hover,

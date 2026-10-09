@@ -1,14 +1,15 @@
 import { FileCode2, FileImage, FileSpreadsheet, FileText, Globe, Presentation, Table2, type LucideIcon } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import { isUnsupported, projectApi } from '../../lib/project-api'
 import { formatBytes } from '../../lib/project-model'
 import type { ArtifactFact } from '../../lib/project-types'
-import { Dialog } from '../Dialog'
 import { CodeBlock, Markdown } from '../Markdown'
 import { PreviewView } from '../preview/FilePreview'
 
 export type ArtifactKind = 'page' | 'doc' | 'slides' | 'sheet' | 'pdf' | 'image' | 'data' | 'code' | 'text'
+
+export const ArtifactContext = createContext<((artifact: ArtifactFact) => void) | undefined>(undefined)
 
 /** What an artifact is, for a person: a page to explore, a document to read, slides, a sheet… */
 export function artifactKind(mediaType: string): ArtifactKind {
@@ -58,13 +59,13 @@ export function ArtifactIcon({ mediaType, size = 15 }: { mediaType: string; size
 }
 
 /** Outputs attached to a message: one card each, opened in place, kept in the Library. */
-export function ArtifactCards({ workspace, projectId, artifacts }: { workspace: string; projectId: string; artifacts: readonly ArtifactFact[] }) {
-  const [viewing, setViewing] = useState<ArtifactFact | undefined>()
+export function ArtifactCards({ artifacts }: { workspace: string; projectId: string; artifacts: readonly ArtifactFact[] }) {
+  const openArtifact = useContext(ArtifactContext)
   if (!artifacts.length) return null
   return (
     <div className="artifact-cards">
       {artifacts.map(artifact => (
-        <button key={artifact.id} type="button" className="artifact-card" onClick={() => setViewing(artifact)}>
+        <button key={artifact.id} type="button" className="artifact-card" onClick={() => openArtifact?.(artifact)}>
           <span className={`artifact-card-icon kind-${artifactKind(artifact.data.mediaType)}`}><ArtifactIcon mediaType={artifact.data.mediaType} size={14} /></span>
           <span className="artifact-card-main">
             <span className="artifact-card-title">{artifact.data.title}</span>
@@ -72,7 +73,6 @@ export function ArtifactCards({ workspace, projectId, artifacts }: { workspace: 
           </span>
         </button>
       ))}
-      {viewing && <ArtifactViewer workspace={workspace} projectId={projectId} artifact={viewing} onClose={() => setViewing(undefined)} />}
     </div>
   )
 }
@@ -83,17 +83,21 @@ export function ArtifactCards({ workspace, projectId, artifacts }: { workspace: 
  * can be interactive without reaching the local server. Documents, slides,
  * sheets, PDFs and images use the same viewers as workspace files.
  */
-export function ArtifactViewer({ workspace, projectId, artifact, onClose }: { workspace: string; projectId: string; artifact: ArtifactFact; onClose: () => void }) {
+export function ArtifactViewer({ workspace, projectId, artifact }: { workspace: string; projectId: string; artifact: ArtifactFact }) {
   const kind = artifactKind(artifact.data.mediaType)
   const binaryName = previewName(artifact)
   const hash = artifact.data.hash
   const load = useCallback(() => projectApi.artifactBlob(workspace, projectId, hash), [workspace, projectId, hash])
+  if (binaryName) return <PreviewView workspace={workspace} path={binaryName} load={load} />
   return (
-    <Dialog title={artifact.data.title} description={`${ARTIFACT_KIND[kind].label} · ${formatBytes(artifact.data.size)}`} onClose={onClose} width={kind === 'text' || kind === 'code' || kind === 'data' ? 760 : 980}>
-      {binaryName
-        ? <div className="artifact-preview"><PreviewView workspace={workspace} path={binaryName} load={load} /></div>
-        : <TextArtifact workspace={workspace} projectId={projectId} artifact={artifact} />}
-    </Dialog>
+    <div className="wb-view" aria-label={`Artifact ${artifact.data.title}`}>
+      <div className="wb-toolbar">
+        <ArtifactIcon mediaType={artifact.data.mediaType} size={14} />
+        <span className="wb-toolbar-title">{artifact.data.title}</span>
+        <span className="muted small">{ARTIFACT_KIND[kind].label} · {formatBytes(artifact.data.size)}</span>
+      </div>
+      <div className="wb-card wb-scroll"><TextArtifact workspace={workspace} projectId={projectId} artifact={artifact} /></div>
+    </div>
   )
 }
 
@@ -101,11 +105,16 @@ function TextArtifact({ workspace, projectId, artifact }: { workspace: string; p
   const [content, setContent] = useState<string | undefined>()
   const [unavailable, setUnavailable] = useState<string | undefined>()
   useEffect(() => {
-    projectApi.artifact(workspace, projectId, artifact.data.hash).then(setContent, reason => {
+    let cancelled = false
+    setContent(undefined)
+    setUnavailable(undefined)
+    projectApi.artifact(workspace, projectId, artifact.data.hash).then(value => { if (!cancelled) setContent(value) }, reason => {
+      if (cancelled) return
       setUnavailable(isUnsupported(reason)
         ? 'This server does not serve artifact content yet.'
         : errorText(reason))
     })
+    return () => { cancelled = true }
   }, [workspace, projectId, artifact.data.hash])
   const kind = artifactKind(artifact.data.mediaType)
   const language = artifact.data.mediaType.split('/').pop()?.replace(/^x-/, '')

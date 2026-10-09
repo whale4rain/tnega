@@ -50,7 +50,7 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
             return (
               <ChatRun key={first.messageId} author={agentLabel(state, first.sender.id)} at={first.createdAt} side="agent">
                 {group.map(message => (
-                  <div key={message.messageId} className="room-message">
+                  <div key={message.messageId} id={`msg-${message.messageId}`} className="room-message">
                     <Markdown text={message.text} />
                     <ArtifactCards workspace={workspace} projectId={state.project.id} artifacts={artifactsFor(state, message.refs)} />
                   </div>

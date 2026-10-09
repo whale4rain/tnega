@@ -10,7 +10,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../lib/api'
 import { errorText, relativeTime } from '../../lib/hooks'
 import { confirmDialog } from '../../lib/dialogs'
@@ -19,6 +19,7 @@ import type { ProjectState } from '../../lib/project-model'
 import { formatBytes } from '../../lib/project-model'
 import type {
   ArtifactFact,
+  BoxEnvelope,
   CheckIns,
   MemoryFact,
   ProjectSettings,
@@ -30,7 +31,7 @@ import { formatTokens } from '../../lib/timeline'
 import type { ConfigSnapshot, Effort, Permission } from '../../lib/types'
 import { Dialog } from '../Dialog'
 import { ModelPicker } from '../ModelPicker'
-import { ARTIFACT_KIND, ArtifactIcon, ArtifactViewer, artifactKind, type ArtifactKind } from './Artifacts'
+import { ARTIFACT_KIND, ArtifactContext, ArtifactIcon, artifactKind, type ArtifactKind } from './Artifacts'
 import { GitCard } from './GitCard'
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,8 @@ export function MemoryPanel({ workspace, state }: { workspace: string; state: Pr
 
 function MemoryItem({ workspace, state, record }: { workspace: string; state: ProjectState; record: MemoryFact }) {
   const [editing, setEditing] = useState(false)
+  const [editBase, setEditBase] = useState<MemoryFact>()
+  const [loadingEdit, setLoadingEdit] = useState(false)
   const [draft, setDraft] = useState(record.data.text)
   const [history, setHistory] = useState<MemoryFact[] | undefined>()
   const [error, setError] = useState<string | undefined>()
@@ -101,20 +104,39 @@ function MemoryItem({ workspace, state, record }: { workspace: string; state: Pr
   }
 
   const save = async () => {
+    if (!editBase) return
     try {
       await projectApi.editMemory(workspace, projectId, record.id, {
         text: draft.trim(),
-        expectedVersion: await currentVersion(),
-        ...(record.data.tags ? { tags: record.data.tags } : {}),
+        expectedVersion: editBase.version,
+        ...(editBase.data.tags ? { tags: editBase.data.tags } : {}),
       })
       setEditing(false)
       setError(undefined)
     } catch (reason) {
       if (reason instanceof ApiError && reason.status === 409) {
-        setError('Someone changed this while you were editing. Your text is kept; review and save again.')
+        setError('Someone changed this while you were editing. Your text is kept. Copy your draft, cancel, then edit the latest version to reconcile the changes.')
       } else {
         setError(errorText(reason))
       }
+    }
+  }
+
+  const beginEdit = async () => {
+    setLoadingEdit(true)
+    try {
+      // Capture content and version together, before editing. Never rebase a draft silently.
+      const result = await projectApi.memoryHistory(workspace, projectId, record.id)
+      const latest = result.history.at(-1) ?? record
+      if (latest.deleted) throw new Error('This memory was deleted. Its history is still available.')
+      setEditBase(latest)
+      setDraft(latest.data.text)
+      setError(undefined)
+      setEditing(true)
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setLoadingEdit(false)
     }
   }
 
@@ -160,7 +182,7 @@ function MemoryItem({ workspace, state, record }: { workspace: string; state: Pr
         {!editing && (
           <span className="memory-actions">
             <button type="button" className="icon-button tiny" aria-label="Version history" title="Version history" onClick={() => void toggleHistory()}><History size={12} /></button>
-            <button type="button" className="icon-button tiny" aria-label="Edit" title="Edit" onClick={() => setEditing(true)}><Pencil size={12} /></button>
+            <button type="button" className="icon-button tiny" aria-label="Edit" title="Edit" disabled={loadingEdit} onClick={() => void beginEdit()}><Pencil size={12} /></button>
             <button type="button" className="icon-button tiny" aria-label="Forget" title="Forget" onClick={() => void remove()}><Trash2 size={12} /></button>
           </span>
         )}
@@ -193,8 +215,8 @@ export function authorName(state: ProjectState, author: string | undefined): str
 // Library
 // ---------------------------------------------------------------------------
 
-export function LibraryPanel({ workspace, state }: { workspace: string; state: ProjectState }) {
-  const [viewing, setViewing] = useState<ArtifactFact | undefined>()
+export function LibraryPanel({ workspace, state, onOpenSource }: { workspace: string; state: ProjectState; onOpenSource?: (message: BoxEnvelope) => void }) {
+  const openArtifact = useContext(ArtifactContext)
   const [adding, setAdding] = useState(false)
   const [filter, setFilter] = useState<ArtifactKind | 'links' | 'all'>('all')
   const everything = [...state.artifacts].sort((a, b) => b.seq - a.seq)
@@ -232,8 +254,10 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
         <section className="panel-section">
           <h3 className="panel-heading">Artifacts <span className="count">{artifacts.length}</span></h3>
           <div className="library-list">
-            {artifacts.map(artifact => (
-              <button key={artifact.id} type="button" className="library-row" onClick={() => setViewing(artifact)}>
+            {artifacts.map(artifact => {
+              const source = artifactSource(state, artifact)
+              return <div key={artifact.id} className="library-item">
+              <button type="button" className="library-row" onClick={() => openArtifact?.(artifact)}>
                 <span className="library-icon"><ArtifactIcon mediaType={artifact.data.mediaType} /></span>
                 <span className="library-main">
                   <span className="library-title">{artifact.data.title}</span>
@@ -244,7 +268,11 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
                   </span>
                 </span>
               </button>
-            ))}
+              {source && onOpenSource && <button type="button" className="button ghost small library-source" aria-label="Open source message" onClick={() => onOpenSource(source)}>
+                {authorName(state, source.sender.id)} · Source message
+              </button>}
+              </div>
+            })}
           </div>
         </section>
       )}
@@ -272,12 +300,24 @@ export function LibraryPanel({ workspace, state }: { workspace: string; state: P
           </div>
         </section>
       )}
-      {viewing && <ArtifactViewer workspace={workspace} projectId={state.project.id} artifact={viewing} onClose={() => setViewing(undefined)} />}
       {adding && <AddToLibraryDialog workspace={workspace} projectId={state.project.id} onClose={() => setAdding(false)} />}
     </div>
       </div>
     </div>
   )
+}
+
+function artifactSource(state: ProjectState, artifact: ArtifactFact): BoxEnvelope | undefined {
+  const attached = (message: BoxEnvelope) => {
+    if (!message.refs.some(ref => ref.hash === artifact.data.hash)) return false
+    // Link only to a message that one of the conversation surfaces actually renders.
+    if (message.sender.kind === 'agent' && message.recipients.some(to => to.kind === 'agent')) return true
+    if (message.placement.kind === 'thread') return message.kind === 'user-thread' || message.kind === 'agent-reply'
+    return message.kind === 'user-message' || (message.kind === 'agent-reply' && message.sender.id === state.coordinatorId)
+  }
+  const explicit = artifact.source.messageId && state.envelopes[artifact.source.messageId]
+  if (explicit && attached(explicit)) return explicit
+  return Object.values(state.envelopes).find(attached)
 }
 
 

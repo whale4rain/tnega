@@ -40,19 +40,19 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 | GET | `/api/projects/:id/threads/:threadId` | Thread 记录 + Session 事件（面板复用会话 Timeline 渲染） |
 | POST | `/api/projects/:id/threads/:threadId/messages` `{ text }` | 直接给 Thread 留言；协调者只收到一条不唤醒它的通知，主对话里不出现 |
 | POST | `/api/projects/:id/threads/:threadId/stop` | 取消该 Thread 当前的 Agent Run 并清空它已收下的待处理输入；Box 里尚未投递的信封保留。返回 `{ stopped: boolean }` |
-| POST | `/api/projects/:id/stop` | 对所有正在跑的 Agent 做同样操作，返回 `{ stopped: number }` |
+| POST | `/api/projects/:id/stop` | 持久暂停 Project inbox 与 Routine 调度并取消当前 Agent Run，返回 `{ stopped: number }`；重启后仍暂停，`POST /api/projects/:id/resume` 显式恢复 |
 | GET | `/api/projects/:id/artifacts/:hash` | 已登记在 Library 里的产物内容。一律按 `text/plain` 返回（`nosniff`、CSP `sandbox`），真实类型在 `x-artifact-media-type` 头里；前端把 HTML 放进 `sandbox="allow-scripts"` 的 iframe，Markdown 渲染，其余按代码块显示 |
 | POST | `/api/projects/:id/approvals/:approvalId` `{ allow }` | 越权工具审批 |
 | POST | `/api/projects/:id/memory` `{ text, tags? }` | 新增记忆（正文中的 `#tag` 会被提取为 tags） |
-| PATCH | `/api/projects/:id/memory/:memoryId` `{ text, expected_version, tags? }` / `{ deleted: true, expected_version }` | 编辑 / 删除；前端写之前先读历史取当前版本，409 时保留草稿并提示 |
+| PATCH | `/api/projects/:id/memory/:memoryId` `{ text, expected_version, tags? }` / `{ deleted: true, expected_version }` | 编辑 / 删除；前端开始编辑时读取正文和版本，保存提交该基准版本；不得保存前用新版号提交旧草稿，409 时保留草稿并提示 |
 | GET | `/api/projects/:id/memory/:memoryId` | 版本历史 |
-| GET | `/api/projects/:id/stream?after=<cursor>` | SSE 变化流，断线后按游标重连 |
+| GET | `/api/projects/:id/stream?after=<cursor>` | SSE 变化流；每次连接在注册监听后发送 snapshot（含 running 映射），随后补发缓冲增量，断线后恢复全部事实与状态 |
 | GET | `/api/projects/:id/usage?since=<ms>` | 每个 Thread 的 token、回复数、工作时长（turn 开始到结束）与最近活动；`since` 另给这之后的汇总（Board 的「今天」） |
 | PATCH | `/api/projects/:id/threads/:threadId` `{ resolved }` | 收下 / 重新打开 Thread；正在跑时收下会先停下它 |
 | POST / PATCH | `/api/projects/:id/routines`、`/routines/:id` | 建、改、暂停（`enabled`）、删除（`deleted`）Routine；日程不合法返回 400 |
 | POST | `/api/projects/:id/routines/:id/run` | 立即运行一次 Routine |
 
-流帧：`message`（信封，含 `seq`）、`commit`（`agent` / `memory` / `artifact` / `resource` / `project`，带 `author`、`version`、`updatedAt`、`source`）、
+流帧：`snapshot`（完整 ProjectSnapshot，重置过期状态）、`project`（暂停/恢复后的 ProjectRecord）、`message`（信封，含 `seq`）、`commit`（`agent` / `memory` / `artifact` / `resource` / `project`，带 `author`、`version`、`updatedAt`、`source`）、
 `chunk`（`agentId` 的实时正文增量）、`agent-status`（`running` / `idle`）、`approval/request`、`heartbeat`。
 
 `agentMessages` 是已实现的增量快照字段，不改变 Blackboard 或 Session 格式。前端仍接受旧服务端省略该字段，但旧快照只能展示原有主对话和协调者 inbox 里已有的通信；新版 SSE 通信无需重载即可更新工作台记录。

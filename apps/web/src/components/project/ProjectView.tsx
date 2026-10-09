@@ -31,7 +31,7 @@ import {
   type ProjectState,
   type ReplyRef,
 } from '../../lib/project-model'
-import type { ProjectStreamEvent } from '../../lib/project-types'
+import type { BoxEnvelope, ProjectStreamEvent } from '../../lib/project-types'
 import type { ConfigSnapshot } from '../../lib/types'
 import { LinkContext, type LinkHandlers } from '../../lib/links'
 import { navigateBrowser } from '../../lib/browser-live'
@@ -42,7 +42,7 @@ import { ApprovalCard } from '../Conversation'
 import { BackgroundJobs } from '../BackgroundJobs'
 import { Markdown } from '../Markdown'
 import { Menu } from '../Menu'
-import { ArtifactCards } from './Artifacts'
+import { ArtifactCards, ArtifactContext, ArtifactViewer } from './Artifacts'
 import { BoardPanel } from './Board'
 import { LibraryPanel, SettingsPanel } from './ProjectPanels'
 import { RoutinesPanel } from './Routines'
@@ -94,6 +94,7 @@ export function ProjectView({
   const [connected, setConnected] = useState(true)
   const [notice, setNotice] = useState<string | undefined>()
   const [replyTarget, setReplyTarget] = useState<ReplyRef | undefined>()
+  const [sourceMessage, setSourceMessage] = useState<string>()
   const [seen, markSeen] = useSeenThreads(projectId)
   const links = useMemo<LinkHandlers>(() => ({
     workspace,
@@ -161,6 +162,24 @@ export function ProjectView({
     onWorkbench(current => openDoc(current, { kind: 'exchange', firstId, secondId,
       label: `${agentLabel(state, firstId)} ↔ ${agentLabel(state, secondId)}` }))
   }
+
+  const openSource = (message: BoxEnvelope) => {
+    const recipient = message.recipients.find(address => address.kind === 'agent')
+    if (message.sender.kind === 'agent' && recipient) {
+      openExchange(message.sender.id, recipient.id)
+    } else if (message.placement.kind === 'thread') {
+      openThread(message.placement.threadId)
+    }
+    setSourceMessage(message.messageId)
+  }
+  useEffect(() => {
+    if (!sourceMessage) return
+    const target = document.getElementById(`msg-${sourceMessage}`)
+    if (!target) return
+    target.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    target.classList.add('flash')
+    setSourceMessage(undefined)
+  }, [sourceMessage, workbench.active, panelSlot, state])
 
   // A thread named in the address (a link, a reload) opens once the project has loaded.
   const loaded = Boolean(state)
@@ -304,8 +323,15 @@ export function ProjectView({
 
   const pause = async () => {
     try {
-      const result = await projectApi.pause(workspace, projectId)
-      setNotice(`Paused ${result.stopped} running agent${result.stopped === 1 ? '' : 's'}.`)
+      if (state?.project.paused) {
+        await projectApi.resume(workspace, projectId)
+        setState(current => current && { ...current, project: { ...current.project, paused: false } })
+        setNotice('Project resumed.')
+      } else {
+        await projectApi.pause(workspace, projectId)
+        setState(current => current && { ...current, project: { ...current.project, paused: true } })
+        setNotice('Project paused. Queued messages and routines wait until you resume.')
+      }
     } catch (reason) {
       setNotice(isUnsupported(reason) ? 'Pausing a project is not supported by this server yet.' : errorText(reason))
     }
@@ -333,11 +359,13 @@ export function ProjectView({
   const panel = !panelSlot ? null : active === BOARD_KEY
     ? <BoardPanel workspace={workspace} state={state} seen={seen} onOpenThread={openThread} />
     : active === 'project:library'
-      ? <LibraryPanel workspace={workspace} state={state} />
+      ? <LibraryPanel workspace={workspace} state={state} onOpenSource={openSource} />
       : active === 'project:routines'
         ? <RoutinesPanel workspace={workspace} state={state} onOpenThread={openThread} />
         : active === 'project-settings'
           ? <SettingsPanel key={state.project.id} workspace={workspace} state={state} config={config} onConfigChanged={onConfigChanged} onDeleted={onDeleted} />
+          : activeDoc?.kind === 'artifact'
+            ? <ArtifactViewer key={activeDoc.key} workspace={workspace} projectId={projectId} artifact={activeDoc.artifact} />
           : activeDoc?.kind === 'exchange'
             ? <ExchangePanel workspace={workspace} state={state} firstId={activeDoc.firstId} secondId={activeDoc.secondId}
                 onOpenThread={openThread} onClose={() => onWorkbench(current => closeDoc(current, active, BOARD_KEY))} />
@@ -347,6 +375,7 @@ export function ProjectView({
 
   return (
       <LinkContext.Provider value={links}>
+      <ArtifactContext.Provider value={artifact => onWorkbench(current => openDoc(current, { kind: 'artifact', artifact, label: artifact.data.title }))}>
       <main className="conversation project-main">
         <header className="conv-header">
           {!sidebarOpen && (
@@ -378,7 +407,7 @@ export function ProjectView({
               align="end"
               trigger={<MoreHorizontal size={14} />}
               items={[
-                { key: 'pause', label: 'Pause all work', icon: <Pause size={14} />, onSelect: () => void pause(), disabled: working === 0 && !coordinatorRunning },
+                { key: 'pause', label: state.project.paused ? 'Resume project' : 'Pause all work', icon: <Pause size={14} />, onSelect: () => void pause() },
               ]}
             />
             <button
@@ -446,6 +475,7 @@ export function ProjectView({
         </div>
       </main>
       {panelSlot && panel && createPortal(panel, panelSlot)}
+      </ArtifactContext.Provider>
       </LinkContext.Provider>
   )
 }
