@@ -48,6 +48,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.24-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.24-beta.1) — 2026-10-09
+
+### Features
+
 - Project artifact 恢复弹窗预览，右侧常驻生成 Thread 会话，支持选文引用后继续修改；一个 Thread 可管理多个产物。修订保留稳定身份与历史内容，并校验生成者和版本。Coordinator 消息完整显示，所有 Agent 默认简短交流。
 
 - Git Project 的 Thread 使用独立 worktree 和分支并行写入，文件、搜索和嵌套工具沿用各自目录；代码经 `deliver_thread` 创建或更新同一个 PR，未交付改动或远程失败会保持阻塞。Coordinator 只协调，重叠改动由执行 Thread 处理。
