@@ -77,6 +77,9 @@ the intent section is the tie-breaker.
 2. **The coordinator is a teammate.** It replies *to* someone, can answer two
    messages at once, stays quiet when nothing needs anyone, and asks short
    questions when a decision is a person's.
+   Its tools are restricted to dispatch, communication, dependencies, approvals,
+   routines and shared project knowledge. Threads own all investigation,
+   execution, verification and deliverables, including a single focused task.
 3. **Threads are colleagues with their own desk.** A thread is an individual:
    its own Session, folder, processes and budget. It is not a subagent: people
    open it, talk to it, follow its checklist and take its results.
