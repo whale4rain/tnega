@@ -164,16 +164,19 @@ kbd {
   flex: none;
   width: var(--size);
   height: var(--size);
-  background: var(--brand-image) center / contain no-repeat;
+  /*
+   * The cloud is a mask filled with the palette's accent, so the mark follows
+   * the chosen palette; the eyes stay white. The favicon and app icon keep
+   * the Sky blue.
+   */
+  background: var(--brand-eyes) center / contain no-repeat, var(--accent);
+  -webkit-mask: var(--brand-cloud) center / contain no-repeat;
+  mask: var(--brand-cloud) center / contain no-repeat;
 }
 
-:root,
-[data-theme="light"] {
-  --brand-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%232f6fd0'%3E%3Ccircle cx='32' cy='23' r='16'/%3E%3Ccircle cx='18' cy='34' r='14'/%3E%3Ccircle cx='46' cy='34' r='14'/%3E%3Ccircle cx='24' cy='46' r='13'/%3E%3Ccircle cx='40' cy='46' r='13'/%3E%3C/g%3E%3Cg fill='%23fff'%3E%3Crect x='20.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3Crect x='34.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3C/g%3E%3C/svg%3E");
-}
-
-[data-theme="dark"] {
-  --brand-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%238ab4f8'%3E%3Ccircle cx='32' cy='23' r='16'/%3E%3Ccircle cx='18' cy='34' r='14'/%3E%3Ccircle cx='46' cy='34' r='14'/%3E%3Ccircle cx='24' cy='46' r='13'/%3E%3Ccircle cx='40' cy='46' r='13'/%3E%3C/g%3E%3Cg fill='%23fff'%3E%3Crect x='20.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3Crect x='34.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3C/g%3E%3C/svg%3E");
+:root {
+  --brand-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23000'%3E%3Ccircle cx='32' cy='23' r='16'/%3E%3Ccircle cx='18' cy='34' r='14'/%3E%3Ccircle cx='46' cy='34' r='14'/%3E%3Ccircle cx='24' cy='46' r='13'/%3E%3Ccircle cx='40' cy='46' r='13'/%3E%3C/g%3E%3C/svg%3E");
+  --brand-eyes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23fff'%3E%3Crect x='20.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3Crect x='34.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .brand-mark.small {

@@ -12,7 +12,7 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 - 2026-10-05 起取代原先「方块上歇着一朵云」：方块加云在任务栏上与天气角标叠成了两朵云，也不如单独的云可爱。
 - 任务栏角标（`apps/desktop/build/completion-*.png`，由 `scripts/render-completion-icons.mjs` 生成）只画天气本身——雨滴、闪电、雪花，放在小深色圆片上——不再画云，任务栏上始终只有一朵云。桌面通知不闪烁任务栏按钮（Windows 把它画成橙红色，像警报），提示音是应用自己合成的两声轻音，不用系统提示音。
 - 来源：
-  - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-image`，深浅主题各一份。
+  - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-eyes`（白眼睛），云用当前调色板的 `--accent` 填色；favicon 与安装包图标保持 Sky 蓝。
   - favicon：`apps/web/index.html`。
   - 安装包图标：`apps/desktop/build/icon.svg`，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
 - 会话主 Agent 与 Project 协调者画成强调色的云；Thread 与子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于在多 Agent 场景里区分。
@@ -166,5 +166,5 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 1. 颜色只改 `tokens.css`，深浅主题同步，并跑对比度测试。
 2. 新的状态先问：它是不是已有的某种天气？不要给同一种天气赋第二个含义。
 3. 新图形沿用扁平语言：实心色块、无描边、16px 可辨。
-4. 改标志时同步改 `--brand-image`、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
+4. 改标志时同步改 `--brand-cloud` / `--brand-eyes`、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
 5. 界面上的截图与校准用 `/weather.html` 和真实页面，不用脱离实现的效果图。
