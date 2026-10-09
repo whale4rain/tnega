@@ -650,15 +650,18 @@ kbd {
   min-height: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
-  padding: 10px 10px 8px;
+  padding: 0 10px 8px;
   gap: 6px;
 }
 
+/* The title-bar row: level with the conversation header, the Workbench tabs and the window controls. */
 .sidebar-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 2px 6px 6px;
+  flex: none;
+  height: var(--header-h);
+  padding: 0 2px 0 6px;
 }
 
 .brand {
@@ -4250,4 +4253,43 @@ kbd {
   align-items: center;
   gap: 8px;
   margin: 2px 0 10px;
+}
+
+/* ==========================================================================
+   Status light — a thread's or project's weather in one dot (tnega-design §5.7)
+   ========================================================================== */
+
+.status-light {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+}
+
+.status-light.light-waiting {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-soft);
+}
+
+.status-light.light-failed {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+.status-light.light-working {
+  background: var(--accent);
+  animation: status-light-pulse 1.6s var(--ease-out) infinite;
+}
+
+.status-light.light-ready {
+  background: var(--success);
+}
+
+@keyframes status-light-pulse {
+  50% { opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-light.light-working { animation: none; }
 }

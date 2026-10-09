@@ -11,6 +11,7 @@ import type {
   ProjectRecord,
   ProjectSnapshot,
   ProjectStreamEvent,
+  ProjectThreadSummary,
   ProjectUsage,
   ResourceFact,
   RoutineFact,
@@ -273,7 +274,10 @@ export function replyRef(state: ProjectState, id: string): ReplyRef | undefined 
 export type MainItem =
   | { kind: 'user'; id: string; text: string; at: number; replyTo: ReplyRef[] }
   | { kind: 'coordinator'; id: string; text: string; at: number; replyTo: ReplyRef[]; refs: ArtifactRef[] }
-  | { kind: 'threads'; id: string; senderId: string; threadIds: string[]; at: number }
+  /** Threads the coordinator handed work to, or that wrote back: links that open each thread. */
+  | { kind: 'threads'; id: string; threadIds: string[]; at: number }
+  /** A push or pull request a thread made: a card with its status, at the time of its latest change. */
+  | { kind: 'git'; id: string; resource: ResourceFact; at: number }
 
 /** Exact pair, both directions, deduplicated by the durable message identity. */
 export function exchangeMessages(state: ProjectState, firstId: string, secondId: string): BoxEnvelope[] {
@@ -288,7 +292,7 @@ export function agentLabel(state: ProjectState, id: string): string {
 
 /**
  * The main conversation: what the user said, what the coordinator said, and
- * one card per thread where work was handed off. Thread results, notices and
+ * one link per thread where work was first handed off. Thread results, notices and
  * internal steps stay out of it; they live in their own thread.
  */
 export function mainTimeline(state: ProjectState): MainItem[] {
@@ -309,6 +313,7 @@ export function mainTimeline(state: ProjectState): MainItem[] {
     && message.recipients.some(to => to.kind === 'agent')
     && message.kind !== 'complete' && message.kind !== 'notice' && message.kind !== 'agent-reply')
   const timeline = sortByTime([...new Map([...state.messages, ...communications].map(message => [message.messageId, message])).values()])
+  const linked = new Set<string>()
   for (const message of timeline) {
     switch (message.kind) {
       case 'user-message':
@@ -325,21 +330,33 @@ export function mainTimeline(state: ProjectState): MainItem[] {
       case 'blocked':
       case 'failed': {
         if (message.sender.kind !== 'agent') break
-        const threadIds = message.recipients.filter(to => to.kind === 'agent').map(to => to.id)
+        // The thread is whichever party is not the coordinator: the recipient of
+        // a dispatch, the sender of a request or report.
+        const parties = [message.sender.id, ...message.recipients.filter(to => to.kind === 'agent').map(to => to.id)]
         // Legacy dispatch snapshots can name the Thread only in threadId.
-        if (!threadIds.length && message.threadId) threadIds.push(message.threadId)
+        if (message.threadId) parties.push(message.threadId)
+        // A thread's link appears once, where it first came up; it shows live status, so later
+        // traffic with the same thread adds nothing (the coordinator links it in text when it matters).
+        const threadIds = [...new Set(parties)].filter(id => id !== state.coordinatorId && !linked.has(id))
         if (!threadIds.length) break
+        for (const id of threadIds) linked.add(id)
         const last = items.at(-1)
-        if (last?.kind === 'threads' && last.senderId === message.sender.id && message.createdAt - last.at < 5 * 60_000) {
+        if (last?.kind === 'threads' && message.createdAt - last.at < 5 * 60_000) {
           for (const id of threadIds) if (!last.threadIds.includes(id)) last.threadIds.push(id)
         } else {
-          items.push({ kind: 'threads', id: message.messageId, senderId: message.sender.id, threadIds, at: message.createdAt })
+          items.push({ kind: 'threads', id: message.messageId, threadIds, at: message.createdAt })
         }
         break
       }
       default:
         break
     }
+  }
+  // Pushes and pull requests interleave by the time they last changed.
+  const git = gitResources(state)
+  if (git.length) {
+    const cards: MainItem[] = git.map(resource => ({ kind: 'git', id: resource.id, resource, at: resource.updatedAt }))
+    return [...items, ...cards].sort((a, b) => a.at - b.at)
   }
   // Raw assistant chunks may belong to internal tool steps. Only published
   // Box messages become chat bubbles; status events show that work continues.
@@ -535,9 +552,54 @@ export function artifactsFor(state: ProjectState, refs: readonly ArtifactRef[]):
     .filter((artifact): artifact is ArtifactFact => artifact !== undefined)
 }
 
+/** Pushes and pull requests recorded in the Library, oldest change first. */
+export function gitResources(state: ProjectState, author?: string): ResourceFact[] {
+  return state.resources
+    .filter(resource => resource.data.git && (author === undefined || resource.author === author))
+    .sort((a, b) => a.updatedAt - b.updatedAt)
+}
+
 /** Artifacts a thread published, oldest first. */
 export function threadArtifacts(state: ProjectState, threadId: string): ArtifactFact[] {
   return state.artifacts.filter(artifact => artifact.author === threadId).sort((a, b) => a.createdAt - b.createdAt)
+}
+
+/**
+ * A thread's status light: the compact form of its weather (see
+ * docs/design/weather-language.md), so each colour keeps one meaning. Snow
+ * (waiting on you or blocked) is the warning light, storm the danger light,
+ * drizzle the working light; a result you have not opened yet is green.
+ */
+export type LightTone = 'waiting' | 'failed' | 'working' | 'ready' | 'idle'
+
+export function threadLight(state: ProjectState, thread: ThreadRecord, seen?: Readonly<Record<string, number>>): LightTone {
+  const weather = threadWeather(state, thread)
+  if (weather === 'snow') return 'waiting'
+  if (weather === 'storm') return 'failed'
+  if (weather === 'drizzle') return 'working'
+  return seen && isUnread(state, thread, seen) ? 'ready' : 'idle'
+}
+
+export const LIGHT_LABEL: Record<LightTone, string> = {
+  waiting: 'Waiting on you',
+  failed: 'Failed',
+  working: 'Working',
+  ready: 'New result',
+  idle: 'No news',
+}
+
+/**
+ * A project's light in the sidebar, from the server's thread summary: amber
+ * when any thread waits on you, red when one failed, the working light while
+ * any runs. Nothing to report draws no light.
+ */
+export function projectLight(summary: ProjectThreadSummary | undefined): { tone: LightTone; label: string } | undefined {
+  if (!summary) return undefined
+  const threads = (n: number) => `${n} thread${n === 1 ? '' : 's'}`
+  if (summary.waiting > 0) return { tone: 'waiting', label: `${threads(summary.waiting)} waiting on you` }
+  if (summary.failed > 0) return { tone: 'failed', label: `${threads(summary.failed)} failed` }
+  if (summary.working > 0) return { tone: 'working', label: `${threads(summary.working)} working` }
+  return undefined
 }
 
 /** Effective state: the live run flag wins over a stale record. */

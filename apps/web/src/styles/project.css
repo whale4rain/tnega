@@ -101,7 +101,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   width: 100%;
+  min-width: 0;
   min-height: 30px;
   padding: 4px 8px;
   border-radius: var(--radius-md);
@@ -1177,48 +1179,16 @@
 }
 
 .room-run {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 10px;
-}
-
-.room-run-user {
-  grid-template-columns: minmax(0, 1fr) 30px;
-}
-
-.room-run-user .room-avatar {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.room-run-user .room-body {
-  grid-column: 1;
-  grid-row: 1;
-  align-items: flex-end;
-}
-
-.room-avatar {
-  padding-top: 2px;
-}
-
-.room-avatar-you {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-size: var(--text-sm);
-  font-weight: 700;
-}
-
-.room-body {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
   align-items: flex-start;
+}
+
+/* The user's messages stay bubbles on the right; there is no avatar on either side. */
+.room-run-user {
+  align-items: flex-end;
 }
 
 .room-head {
@@ -1241,15 +1211,20 @@
 .room-message {
   position: relative;
   min-width: 0;
-  max-width: 92%;
-  padding: 8px 12px;
-  border-radius: var(--radius-xs) var(--radius-lg) var(--radius-lg);
-  background: var(--surface-raised);
+  max-width: 100%;
   overflow-wrap: anywhere;
 }
 
 .room-run-user .room-message {
+  max-width: 85%;
+  padding: 8px 12px;
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+/* An Agent's message is plain text across the column: task first, no bubble. */
+.room-run-agent .room-message {
+  width: 100%;
 }
 
 .room-message .prose {
@@ -1276,8 +1251,8 @@
   text-decoration: underline;
 }
 
-.room-body > .thread-stack {
-  width: 100%;
+.room-threads {
+  gap: 6px;
 }
 
 .thread-execution {
@@ -1388,7 +1363,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 40px;
   color: var(--text-3);
   font-size: var(--text-sm);
 }
@@ -1402,17 +1376,23 @@
   position: relative;
 }
 
+/* Reply takes the chevron's place at the card's right end while the card is hovered. */
 .thread-card-reply {
   position: absolute;
   top: 50%;
-  right: -34px;
+  right: 4px;
   transform: translateY(-50%);
   opacity: 0;
   transition: opacity var(--duration-fast);
 }
 
+.thread-card-wrap:hover .thread-card-chevron,
+.thread-card-wrap:focus-within .thread-card-chevron {
+  visibility: hidden;
+}
+
 .thread-card-wrap:hover .thread-card-reply,
-.thread-card-reply:focus-visible {
+.thread-card-wrap:focus-within .thread-card-reply {
   opacity: 1;
 }
 
@@ -1825,4 +1805,102 @@ button.board-chip.active {
 .artifact-card-icon.kind-doc {
   color: var(--accent-text);
   background: var(--accent-soft);
+}
+
+/* A thread linked from a message: its status light, then the words. */
+.thread-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.thread-link .status-light {
+  align-self: center;
+}
+
+.board-card-open > .status-light {
+  margin-top: 5px;
+}
+
+/* --- pushes and pull requests -------------------------------------------- */
+
+.git-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  animation: fade-up 260ms var(--ease-out);
+}
+
+.git-card-icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.git-card.tone-danger .git-card-icon {
+  color: var(--danger);
+}
+
+.git-card-body {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.git-card-title {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-card-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-card-status.tone-success {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.git-card-status.tone-neutral {
+  color: var(--text-2);
+  background: var(--surface-sunken);
+}
+
+.git-card-status.tone-danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.git-card-open {
+  flex: none;
+  text-decoration: none;
+}
+
+.git-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A thread (and an Agent exchange) is a conversation, so its card uses the conversation's own
+   background rather than the lighter document surface (tnega-design §5.3). */
+.wb-card.thread-body,
+.wb-card.exchange-body {
+  background: var(--bg);
 }

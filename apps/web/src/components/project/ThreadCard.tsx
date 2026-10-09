@@ -1,8 +1,8 @@
 import { ChevronRight, CircleAlert, CircleCheck, CircleDot, CircleX, CornerUpLeft } from 'lucide-react'
 import type { ProjectState, ReplyRef } from '../../lib/project-model'
-import { plainPreview, threadStatusLine, threadWeather } from '../../lib/project-model'
+import { LIGHT_LABEL, plainPreview, threadLight, threadStatusLine } from '../../lib/project-model'
 import type { ThreadRecord } from '../../lib/project-types'
-import { AgentAvatar } from '../AgentAvatar'
+import { StatusLight } from '../StatusLight'
 
 /** The state of a thread as an icon and a few words; while working, the step it is on. */
 export function ThreadStatus({ state, thread, withLabel = true }: { state: ProjectState; thread: ThreadRecord; withLabel?: boolean }) {
@@ -17,22 +17,23 @@ export function ThreadStatus({ state, thread, withLabel = true }: { state: Proje
 }
 
 /**
- * A thread, shown in the main conversation where the work was handed off:
- * its title and its status, nothing else. Everything the thread produces
- * lives behind the card.
+ * A thread, shown in the main conversation where the work was handed off: a
+ * link that opens the thread, with its status light, title and current step.
+ * Everything the thread produces lives behind it.
  */
 export function ThreadCard({
   state,
   threadId,
   active,
-  unread,
+  seen,
   onOpen,
   onReply,
 }: {
   state: ProjectState
   threadId: string
   active: boolean
-  unread: boolean
+  /** Thread id → the `updatedAt` the user last saw, so an unopened result lights up. */
+  seen?: Readonly<Record<string, number>>
   onOpen: (id: string) => void
   /** Reply to the thread itself: the message goes straight to it. */
   onReply?: (ref: ReplyRef) => void
@@ -46,18 +47,19 @@ export function ThreadCard({
       </div>
     )
   }
+  const light = threadLight(state, thread, seen)
   return (
     <div className="thread-card-wrap">
       <button
         type="button"
-        className={`thread-card${active ? ' active' : ''}${unread ? ' unread' : ''}`}
+        className={`thread-card light-${light}${active ? ' active' : ''}`}
         onClick={() => onOpen(threadId)}
         aria-pressed={active}
+        aria-label={`Open thread ${thread.label}: ${LIGHT_LABEL[light]}`}
         title={thread.goal}
       >
-        <AgentAvatar id={thread.id} size={18} weather={threadWeather(state, thread) === 'clear' ? undefined : threadWeather(state, thread)} />
+        <StatusLight tone={light} label={LIGHT_LABEL[light]} />
         <span className="thread-card-label">{thread.label}</span>
-        {unread && <span className="unread-dot" aria-label="New" />}
         <ThreadStatus state={state} thread={thread} />
         <ChevronRight size={14} className="thread-card-chevron" aria-hidden />
       </button>

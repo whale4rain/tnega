@@ -61,7 +61,7 @@ export async function handleProjectApi(
 
   if (url.pathname === '/api/projects') {
     if (req.method === 'GET') {
-      context.sendJson(res, 200, { workspace, projects: await host.list() })
+      context.sendJson(res, 200, { workspace, projects: await host.listWithStatus() })
       return
     }
     if (req.method === 'POST') {

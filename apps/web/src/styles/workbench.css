@@ -19,7 +19,8 @@
   gap: 6px;
   min-width: 0;
   min-height: 0;
-  padding: 6px 8px 8px;
+  /* No top padding: the tab rail is the title-bar row, level with the conversation header and the window controls. */
+  padding: 0 8px 8px;
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
   animation: slide-in 240ms var(--ease-out);
@@ -49,18 +50,24 @@
 }
 
 /* Tab rail: tools first, then documents opened from the conversation. */
-.wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; }
+.wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; height: var(--header-h); }
+/* Overflowing tabs scroll with the wheel or trackpad and the active one scrolls into view; no scrollbar,
+   which would add height to the row and push the tabs off the title-bar line. */
 .wb-rail {
   display: flex;
   align-items: center;
   gap: 2px;
-  min-height: var(--header-h);
+  height: var(--header-h);
   flex: 1;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   overscroll-behavior-x: contain;
+}
+
+.wb-rail::-webkit-scrollbar {
+  display: none;
 }
 
 .wb-tab {

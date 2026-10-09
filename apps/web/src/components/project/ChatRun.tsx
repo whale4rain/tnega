@@ -1,23 +1,26 @@
 import type { ReactNode } from 'react'
 
-/** Consecutive chat bubbles from one author. Users are on the right. */
-export function ChatRun({ author, at, avatar, side, children }: {
-  author: string
+/**
+ * Consecutive messages from one author. The user's are bubbles on the right
+ * with their time; an Agent's are plain text across the column, with no
+ * avatar or bubble, and a name only where several Agents speak.
+ */
+export function ChatRun({ author, at, side, children }: {
+  author?: string | undefined
   at: number
-  avatar: ReactNode
   side: 'user' | 'agent'
   children: ReactNode
 }) {
+  const time = new Date(at)
   return (
     <div className={`room-run room-run-${side}`}>
-      <div className="room-avatar">{avatar}</div>
-      <div className="room-body">
+      {(side === 'user' || author) && (
         <div className="room-head">
-          <span className="room-author">{author}</span>
-          <time className="room-time" dateTime={new Date(at).toISOString()}>{new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</time>
+          {author && <span className="room-author">{author}</span>}
+          <time className="room-time" dateTime={time.toISOString()}>{time.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</time>
         </div>
-        {children}
-      </div>
+      )}
+      {children}
     </div>
   )
 }

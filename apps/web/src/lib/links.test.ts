@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { codePathTarget, linkTarget, workspaceRelative } from './links'
 
 describe('link targets', () => {
+  it('reads #thread:<id> as a project thread and other fragments as nothing', () => {
+    expect(linkTarget('#thread:4f1c2a9e-0000-4000-8000-000000000000')).toEqual({ kind: 'thread', id: '4f1c2a9e-0000-4000-8000-000000000000' })
+    expect(linkTarget('#thread/writer')).toEqual({ kind: 'thread', id: 'writer' })
+    expect(linkTarget('#thread:bad id')).toEqual({ kind: 'other' })
+    expect(linkTarget('#section')).toEqual({ kind: 'other' })
+  })
+
   it('sends workspace files to the Workbench, with or without a line', () => {
     expect(linkTarget('src/app.ts')).toEqual({ kind: 'file', path: 'src/app.ts' })
     expect(linkTarget('./src/app.ts:42')).toEqual({ kind: 'file', path: 'src/app.ts', line: 42 })

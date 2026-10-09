@@ -20,6 +20,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import { folderName, relativeTime, type ThemePreference } from '../lib/hooks'
 import { projectApi } from '../lib/project-api'
+import { projectLight } from '../lib/project-model'
+import { StatusLight } from './StatusLight'
 import type { ProjectRecord } from '../lib/project-types'
 import type { SessionSummary } from '../lib/types'
 import { Menu } from './Menu'
@@ -295,7 +297,9 @@ function WorkspaceGroup({
           {!lists.loading && !query && sessions.length === 0 && projects.length === 0 && (
             <p className="sidebar-empty">No sessions yet.</p>
           )}
-          {projects.map(project => (
+          {projects.map(project => {
+            const light = projectLight(project.threads)
+            return (
             <div key={project.id} className={`session-item project-item${project.id === selectedProject ? ' active' : ''}${project.archived ? ' archived' : ''}`}>
               <button
                 type="button"
@@ -308,10 +312,12 @@ function WorkspaceGroup({
                   <FolderKanban size={12} className="session-glyph project-glyph" />
                   <span>{project.name}</span>
                 </span>
+                {light && <StatusLight tone={light.tone} label={light.label} />}
                 <span className="session-time">{relativeTime(project.updatedAt)}</span>
               </button>
             </div>
-          ))}
+            )
+          })}
           {sessions.slice(0, limit).map(session => (
             <div key={session.id} className={`session-item${session.id === selectedSession ? ' active' : ''}`}>
               <button

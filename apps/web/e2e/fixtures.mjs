@@ -7,7 +7,8 @@ export const project = { id: 'project', name: 'Writing site', coordinatorId: 'co
 export const threads = ['coordinator', 'writer', 'research'].map((id, index) => ({
   id, projectId: project.id, label: ['Coordinator', 'Content Writer', 'Research'][index],
   goal: ['Coordinate the project.', 'Write the beginner guide.', 'Review the brief.'][index],
-  state: 'idle', depth: index ? 1 : 0, permission: 'read-only', createdAt: at, updatedAt: at,
+  state: index === 2 ? 'waiting' : 'idle', depth: index ? 1 : 0, ...(index ? { parentId: 'coordinator' } : {}),
+  permission: 'read-only', createdAt: at, updatedAt: at,
 }))
 function message(id, sender, recipients, kind, text, offset, placement = { kind: 'main' }) {
   return { messageId: id, projectId: project.id, sender: { kind: sender === 'user' ? 'user' : 'agent', id: sender },
@@ -18,7 +19,7 @@ const messages = [
   message('reply-1', 'coordinator', ['user'], 'agent-reply', 'I’ll split the work into two focused tasks.', 1000),
   message('reply-2', 'coordinator', ['user'], 'agent-reply', 'The brief is ready in docs/brief.md.', 2000),
   message('reply-3', 'coordinator', ['user'], 'agent-reply', 'Read the [reference site](https://example.com). Preview at http://localhost:4173.', 3000),
-  message('reply-4', 'coordinator', ['user'], 'agent-reply', 'I’ve shared the brief with both Agents.', 7000),
+  message('reply-4', 'coordinator', ['user'], 'agent-reply', 'I’ve shared the brief with [Content Writer](#thread:writer) and [Research](#thread:research).', 7000),
 ]
 const communications = [
   message('dispatch-1', 'coordinator', ['writer', 'research'], 'dispatch', 'Use the brief. Keep the scope small.', 4000),
@@ -31,7 +32,11 @@ export const snapshot = { project, coordinatorId: 'coordinator', cursor: 10, thr
   inboxMessages: [communications[2]], agentMessages: communications, threadMessages: [
     message('thread-user', 'user', ['writer'], 'user-thread', 'Use short headings.', 10000, { kind: 'thread', threadId: 'writer' }),
     message('thread-reply', 'writer', ['user'], 'agent-reply', 'Done. The headings are shorter.', 11000, { kind: 'thread', threadId: 'writer' }),
-  ], memory: [], library: { artifacts: [], resources: [] }, routines: [] }
+  ], memory: [], library: { artifacts: [], resources: [{
+    kind: 'resource', id: 'git-push', seq: 3, version: 1, author: 'writer', source: { agentId: 'writer' }, createdAt: at + 6500, updatedAt: at + 6500, deleted: false,
+    data: { title: 'Pushed guide-headings', uri: 'https://github.com/example/site/pull/new/guide-headings',
+      git: { kind: 'push', status: 'pushed', repo: 'example/site', branch: 'guide-headings' } },
+  }] }, routines: [] }
 export const totals = { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, activeMs: 0 }
 export const config = { effective: { baseUrl: '', model: 'fixture', modelId: 'fixture' },
   config: { apiKeySet: true, path: 'fixture.json', models: [] }, env: { apiKeySet: false }, models: [], apiKeySet: true }
@@ -75,7 +80,7 @@ export async function installFixtures(context) {
       if (path === '/api/sessions/session-fixture/questions') return json({ questions: [] })
       // Before the saved General Session arrives, the App briefly consults the draft coding settings.
       if (path === '/api/sessions/session-fixture/coding/commands') return json({ commands: [] })
-      if (path === '/api/projects') return json({ projects: [project] })
+      if (path === '/api/projects') return json({ projects: [{ ...project, threads: { waiting: 1, failed: 0, working: 0 } }] })
       if (path === '/api/projects/project') {
         const history = longHistory ? Array.from({ length: 60 }, (_, index) => message(`history-${index}`, index % 2 ? 'writer' : 'coordinator', [index % 2 ? 'coordinator' : 'writer'], 'progress', `History message ${index}: one concise update.`, 12000 + index * 1000)) : []
         return json({ ...snapshot, cursor: delivered ? 11 : 10, agentMessages: [...snapshot.agentMessages, ...(delivered ? [lateMessage] : []), ...history] })

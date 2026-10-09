@@ -75,9 +75,16 @@ try {
     await page.goto(`${origin}/#p/project`)
     const main = page.locator('.project-main')
     await main.getByRole('heading', { name: 'Writing site', exact: true }).waitFor()
-    await check(`${theme}: compact independent bubbles`, async () => {
+    const openExchange = async () => {
+      await main.getByRole('button', { name: /^Open thread Content Writer/ }).first().click()
+      await page.getByRole('log', { name: 'Thread conversation' }).waitFor()
+      await page.getByRole('button', { name: 'Messages with Coordinator', exact: true }).click()
+      await page.getByRole('log', { name: 'Agent conversation' }).waitFor()
+    }
+    await check(`${theme}: task-first room: user bubbles, plain coordinator text, no avatars`, async () => {
       assert.equal(await main.locator('.room-message').count(), 5)
       assert.equal(await main.locator('.room-run-agent').first().locator('.room-message').count(), 3)
+      assert.equal(await page.locator('.project-main .agent-avatar, .project-main .room-avatar').count(), 0)
       const style = await main.locator('.room-message .prose').first().evaluate(element => ({
         font: getComputedStyle(element).fontSize, body: getComputedStyle(document.body).fontSize,
         border: getComputedStyle(element.parentElement).borderTopWidth,
@@ -85,26 +92,48 @@ try {
       assert.equal(style.font, '13.5px')
       assert.equal(style.body, '13px')
       assert.equal(style.border, '0px')
-      const bubble = await main.locator('.room-run-agent .room-message').first().boundingBox()
-      assert(bubble && bubble.height <= 44, `A one-line bubble should fit its text: ${bubble?.height}px`)
+      const look = await page.evaluate(() => {
+        const agent = document.querySelector('.room-run-agent .room-message')
+        const user = document.querySelector('.room-run-user .room-message')
+        return { agent: getComputedStyle(agent).backgroundColor, user: getComputedStyle(user).backgroundColor,
+          agentWidth: agent.getBoundingClientRect().width, column: agent.closest('.room').getBoundingClientRect().width }
+      })
+      assert.equal(look.agent, 'rgba(0, 0, 0, 0)', 'Coordinator text has no bubble')
+      assert.notEqual(look.user, 'rgba(0, 0, 0, 0)', 'User messages keep their bubble')
+      assert(Math.abs(look.agentWidth - look.column) < 1, `Coordinator text spans the column: ${JSON.stringify(look)}`)
       assert.equal(await page.locator('html').getAttribute('data-theme'), theme)
       await noOverflow(page)
       await page.screenshot({ path: resolve(artifacts, `project-${theme}.png`), fullPage: true })
     })
-    await check(`${theme}: grouped receipt opens the exact conversation`, async () => {
-      await main.getByRole('button', { name: 'Open conversation with Coordinator', exact: true }).click()
-      const direct = page.getByRole('log', { name: 'Agent conversation' })
-      await direct.waitFor()
-      assert.equal(await direct.getByText('Draft ready. See docs/brief.md.', { exact: true }).count(), 1)
-      assert.equal(await direct.getByText('PRIVATE PAIR: Please review the headings.', { exact: true }).count(), 0)
-      await page.getByRole('button', { name: 'Close chat', exact: true }).click()
-      await main.getByRole('button', { name: 'Messaged 2 Agents', exact: true }).click()
-      await page.getByRole('menuitem', { name: 'Content Writer', exact: true }).click()
+    await check(`${theme}: thread links and status lights`, async () => {
+      // The waiting thread lights up in the room, in coordinator text, and on the project in the sidebar.
+      const research = main.getByRole('button', { name: 'Open thread Research: Waiting on you', exact: true }).first()
+      await research.waitFor()
+      assert.equal(await research.locator('.status-light.light-waiting').count(), 1)
+      const link = main.getByRole('link', { name: /Research/ })
+      assert.equal(await link.locator('.status-light.light-waiting').count(), 1)
+      assert.equal(await page.locator('.project-item .status-light.light-waiting').count(), 1)
+      await link.click()
+      await page.locator('.thread-panel[aria-label="Thread Research"]').waitFor()
+      assert.equal(new URL(page.url()).hash, '#p/project/research')
+      await main.getByRole('button', { name: /^Open thread Content Writer/ }).first().click()
+      await page.getByText('Done. The headings are shorter.', { exact: true }).waitFor()
+      assert.equal(new URL(page.url()).hash, '#p/project/writer')
+    })
+    await check(`${theme}: a push is a status card that opens in the browser`, async () => {
+      const card = main.getByRole('group', { name: 'Pushed guide-headings: Pushed', exact: true })
+      await card.waitFor()
+      assert.equal(await card.getByText('example/site · Content Writer', { exact: false }).count(), 1)
+      assert.equal(await card.getByRole('link', { name: 'Open', exact: true }).getAttribute('href'), 'https://github.com/example/site/pull/new/guide-headings')
+      // The thread that pushed shows the same card with its outputs.
+      assert.equal(await page.locator('.thread-panel .git-card').count(), 1)
+    })
+    await check(`${theme}: a thread opens its exchange with the coordinator`, async () => {
+      await page.getByRole('button', { name: 'Messages with Coordinator', exact: true }).click()
       const exchange = page.getByRole('log', { name: 'Agent conversation' })
       await exchange.waitFor()
       assert.equal(await exchange.locator('.room-message').count(), 3)
-      assert.equal(await exchange.getByText('Coordinator', { exact: true }).count(), 1)
-      assert.equal(await exchange.getByText('Content Writer', { exact: true }).count(), 1)
+      assert.equal(await exchange.getByText('Draft ready. See docs/brief.md.', { exact: true }).count(), 1)
       assert.equal(await exchange.getByText('PRIVATE PAIR: Please review the headings.', { exact: true }).count(), 0)
       assert.equal(await main.getByText('Please remove hardware topics.', { exact: true }).count(), 0)
       await page.screenshot({ path: resolve(artifacts, `exchange-${theme}.png`), fullPage: true })
@@ -119,9 +148,7 @@ try {
     })
     await check(`${theme}: reload retains exchange history; participants open direct Thread chat`, async () => {
       await page.reload()
-      await main.getByRole('button', { name: 'Messaged 2 Agents', exact: true }).first().click()
-      await page.getByRole('menuitem', { name: 'Content Writer', exact: true }).click()
-      await page.getByRole('log', { name: 'Agent conversation' }).waitFor()
+      await openExchange()
       assert.equal(await page.getByRole('log', { name: 'Agent conversation' }).getByText('The shorter draft is ready.', { exact: true }).count(), 1)
       await page.getByRole('button', { name: 'Open Content Writer', exact: true }).click()
       await page.getByText('Done. The headings are shorter.', { exact: true }).waitFor()
@@ -131,8 +158,7 @@ try {
       assert.equal(new URL(page.url()).hash, '#p/project/writer')
       await page.reload()
       await page.getByText('Done. The headings are shorter.', { exact: true }).waitFor()
-      await main.getByRole('button', { name: 'Messaged 2 Agents', exact: true }).first().click()
-      await page.getByRole('menuitem', { name: 'Content Writer', exact: true }).click()
+      await page.getByRole('button', { name: 'Messages with Coordinator', exact: true }).click()
       await page.getByRole('button', { name: 'Close chat', exact: true }).click()
       assert.equal(await page.locator('.exchange-panel').count(), 0)
     })
@@ -153,9 +179,7 @@ try {
       await page.setViewportSize({ width: 390, height: 844 })
       await page.keyboard.press('Control+j')
       await page.keyboard.press('Control+b')
-      await main.getByRole('button', { name: 'Messaged 2 Agents', exact: true }).first().click()
-      await page.getByRole('menuitem', { name: 'Content Writer', exact: true }).click()
-      await page.getByRole('log', { name: 'Agent conversation' }).waitFor()
+      await openExchange()
       await noOverflow(page)
       await page.screenshot({ path: resolve(artifacts, `exchange-narrow-${theme}.png`), fullPage: true })
       await page.getByRole('button', { name: 'Close chat', exact: true }).click()
@@ -164,8 +188,7 @@ try {
       await page.setViewportSize({ width: 1440, height: 700 })
       fixtures.expandHistory()
       await page.reload()
-      await main.getByRole('button', { name: 'Messaged 2 Agents', exact: true }).first().click()
-      await page.getByRole('menuitem', { name: 'Content Writer', exact: true }).click()
+      await openExchange()
       const pair = page.locator('.exchange-pair')
       const toolbar = page.locator('.exchange-toolbar')
       const pairBox = await pair.boundingBox()
@@ -179,8 +202,7 @@ try {
       await waitFor(() => body.evaluate(element => element.scrollTop === 0), 'scroll to first message')
       await body.getByText('Use the brief. Keep the scope small.', { exact: true }).click()
       await page.getByRole('button', { name: 'Open Content Writer', exact: true }).click()
-      await main.getByRole('button', { name: 'Messaged 2 Agents', exact: true }).first().click()
-      await page.getByRole('menuitem', { name: 'Content Writer', exact: true }).click()
+      await page.getByRole('button', { name: 'Messages with Coordinator', exact: true }).click()
       await page.setViewportSize({ width: 390, height: 700 })
       const rail = page.getByRole('tablist', { name: 'Workbench', exact: true })
       await rail.evaluate(element => { element.scrollLeft = 0 })
@@ -188,16 +210,27 @@ try {
       await rail.hover()
       await page.mouse.wheel(0, 100000)
       await waitFor(() => rail.evaluate(element => element.scrollLeft > 0), 'ordinary wheel scrolls tabs')
+      // No scrollbar adds height to the rail: its tabs share the title-bar line with the conversation header.
+      const line = await page.evaluate(() => {
+        const center = element => { const box = element.getBoundingClientRect(); return box.top + box.height / 2 }
+        const rail = document.querySelector('.wb-rail')
+        return { rail: center(rail), header: center(document.querySelector('.conv-header')), tab: center(rail.querySelector('.wb-tab')),
+          height: rail.getBoundingClientRect().height, inner: rail.clientHeight }
+      })
+      assert(Math.abs(line.rail - line.header) < 1 && Math.abs(line.tab - line.header) < 1, `Tabs on the header line: ${JSON.stringify(line)}`)
+      assert.equal(line.inner, line.height, 'No horizontal scrollbar in the tab rail')
       await page.getByRole('tab', { name: 'Browser', exact: true }).click()
       await page.screenshot({ path: resolve(artifacts, `scroll-tabs-${theme}.png`), fullPage: true })
       await page.getByRole('button', { name: 'Close workbench', exact: true }).click()
       const input = main.getByRole('textbox', { name: 'Message', exact: true })
-      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).count(), 0)
+      // Nothing runs: an empty box shows a disabled Send, never a Stop it cannot use.
+      assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 0)
+      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true)
       await input.fill('One short update')
-      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).count(), 1)
+      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).isEnabled(), true)
       assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 0)
       await input.fill('')
-      assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 1)
+      assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 0)
     })
     await check(`${theme}: ordinary Session has plain messages and opens user/Agent references`, async () => {
       await page.setViewportSize({ width: 1440, height: 1000 })

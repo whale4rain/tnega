@@ -48,9 +48,9 @@ describe('mainTimeline', () => {
     let state = fromSnapshot(snapshot({ messages: [dispatch], inboxMessages: [report], agentMessages: [nested, report, dispatch], threadMessages: [user] }))
     expect(exchangeMessages(state, COORD, T1).map(m => m.text)).toEqual(['Fix parser', 'Found cause'])
     expect(exchangeMessages(state, T1, T2).map(m => m.text)).toEqual(['Check output'])
+    // One stack of thread links: the coordinator never appears as a thread.
     expect(mainTimeline(state).filter(item => item.kind === 'threads')).toEqual([
-      expect.objectContaining({ senderId: COORD, threadIds: [T1] }),
-      expect.objectContaining({ senderId: T1, threadIds: [COORD, T2] }),
+      expect.objectContaining({ threadIds: [T1, T2] }),
     ])
     state = reduceProject(state, { type: 'message', seq: 10, envelope: report })
     expect(exchangeMessages(state, COORD, T1)).toHaveLength(2)
@@ -67,6 +67,34 @@ describe('mainTimeline', () => {
     }))
     expect(mainTimeline(state).map(item => item.kind)).toEqual(['user', 'threads', 'coordinator'])
     expect(mainTimeline(state)[1]).toMatchObject({ threadIds: [T1, T2] })
+  })
+
+  it('places pushes and pull requests by the time they last changed', () => {
+    const push = { kind: 'resource', id: 'git-1', seq: 1, version: 2, author: T1, source: {}, createdAt: 1, updatedAt: 1500, deleted: false,
+      data: { title: 'Pushed main', uri: 'https://github.com/o/r/tree/main', git: { kind: 'push' as const, status: 'pushed' as const } } }
+    const link = { ...push, id: 'plain', data: { title: 'Docs', uri: 'https://example.com' } }
+    const state = fromSnapshot(snapshot({
+      messages: [
+        envelope({ kind: 'user-message', sender: { kind: 'user', id: 'user' }, text: 'ship it', createdAt: 1000 }),
+        envelope({ kind: 'agent-reply', sender: { kind: 'agent', id: COORD }, text: 'Shipped.', createdAt: 2000 }),
+      ],
+      library: { artifacts: [], resources: [push, link] },
+    }))
+    expect(mainTimeline(state).map(item => item.kind)).toEqual(['user', 'git', 'coordinator'])
+  })
+
+  it('links each thread once, where it first came up', () => {
+    const state = fromSnapshot(snapshot({
+      threads: [thread(COORD, { depth: 0 }), thread(T1)],
+      messages: [
+        envelope({ kind: 'dispatch', sender: { kind: 'agent', id: COORD }, recipients: [{ kind: 'agent', id: T1 }] }),
+        envelope({ kind: 'agent-reply', sender: { kind: 'agent', id: COORD }, text: 'Started.' }),
+      ],
+      agentMessages: [
+        envelope({ kind: 'request', sender: { kind: 'agent', id: T1 }, recipients: [{ kind: 'agent', id: COORD }], placement: { kind: 'thread', threadId: T1 }, createdAt: 10 ** 9 }),
+      ],
+    }))
+    expect(mainTimeline(state).map(item => item.kind)).toEqual(['threads', 'coordinator'])
   })
 
   it('keeps raw model chunks out of chat until an explicit reply is published', () => {

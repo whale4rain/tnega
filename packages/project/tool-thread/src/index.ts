@@ -106,7 +106,7 @@ export const toolThread = {
         })
         const root = (await threads.get(parentId))?.parentId === undefined
         return root
-          ? `Started thread ${thread.id} (${thread.label}). Its card in the conversation already shows the brief and its status, and its report arrives on its own. Unless the user asked something else that you still have to answer, end your turn now with one short sentence (for example: "Started a thread for this."), without restating the scope.`
+          ? `Started thread ${thread.id} (${thread.label}). Its card in the conversation already shows the brief and its status, and its report arrives on its own. Whenever you mention it to the user, link it as [${thread.label}](#thread:${thread.id}). Unless the user asked something else that you still have to answer, end your turn now with one short sentence (for example: "Started a thread for this."), without restating the scope.`
           : `Started thread ${thread.id} (${thread.label}). It runs on its own; its report arrives in your inbox.`
       },
     })

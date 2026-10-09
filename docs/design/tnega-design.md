@@ -31,7 +31,8 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
   - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-eyes`（白眼睛），云用当前调色板的 `--accent` 填色；favicon 与安装包图标保持 Sky 蓝。
   - favicon：`apps/web/index.html`。
   - 安装包图标：`apps/desktop/build/icon.svg`，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
-- 会话主 Agent 与 Project 协调者画成强调色的云；Thread 与子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于在多 Agent 场景里区分。
+- 会话主 Agent 画成强调色的云；会话里的子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于区分。
+- **Project 里不画 Agent 头像**（2026-10-09 起）：Project 是任务驱动的，协调者只负责转派，Thread 用标题和状态灯辨认，不用头像（§5.7）。
 
 ## 3. 色彩：模式 × 调色板
 
@@ -178,16 +179,16 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 ### 5.1 对话
 
-- 普通 Session 不使用气泡：用户消息靠右，Agent 回复靠左，左侧是带天气的头像。Project 使用无描边、无阴影的柔和气泡，底色为 `--surface-raised`，内容按自然宽度展开；连续消息保持短小，消息之间留 4–6px，不把多条消息拼成一大段。
+- 普通 Session 不使用气泡：用户消息靠右，Agent 回复靠左，左侧是带天气的头像。Project 里只有**用户**的消息是气泡（靠右、无描边无阴影、底色 `--surface-raised`、上方一行时间）；协调者与 Thread 的回复是铺满对话列的普通正文，**没有头像、没有气泡、没有作者行**，把空间留给内容；连续消息之间留 4–6px，不把多条消息拼成一大段。
 - 进行中的回合保留 Agent 的叙述文字，连续的工具调用折叠成一行，行上写当前步骤（"Reading c.ts · 3 steps"），点开才看每一步。
 - 回合结束后，最终答复之前的过程（叙述与工具）一起折叠成一行（"Used 4 tools"），只留最终答复、改动文件与需要你处理的警告。
 - 全应用使用同一字号阶梯：常规界面 13px，对话正文与输入 13.5px、1.6 行高，工具详情 12px，元数据 11px；标题 18 / 24px。Project、Session 和工作台沿用同一套 token，不额外放大对话字体。
-- Project 的 Agent 通信显示为紧凑的 `Messaged` 行，带收件人头像；多人通信点击后选择参与者。双方消息在工作台的独立通信标签内按发送者分组，每条保留一个气泡；参与者名字可打开其 Thread，通信标签可关闭。Board 保留工作状态卡片，直接用户聊天与 Agent 间通信分别查看。文档标签不跨重载保留，通信内容从 Box 快照恢复，重新点击入口即可查看。
+- Project 主对话里，协调者把工作交给 Thread（或 Thread 第一次回话）的地方是一张 **Thread 链接卡**：状态灯 · 标题 · 状态 · 箭头，点开在工作台打开该 Thread；每个 Thread 只在它第一次出现的地方放一张卡，卡上的状态是实时的。协调者在正文里提到 Thread 时写成 `[标题](#thread:<id>)`，渲染为带状态灯的链接，同样打开 Thread。Thread 与协调者之间的往来在 Thread 工具栏的「Messages with …」里查看（工作台的通信标签，按发送者分组，只有名字没有头像）；文档标签不跨重载保留，通信内容从 Box 快照恢复。
 - 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台；文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文。
 
 ### 5.2 输入区与图片
 
-- Project 输入区只显示一个主按钮：内容为空时停止当前运行（空闲时禁用），有内容时发送异步消息；`Ctrl+Enter` 可停止当前运行并发送改向消息，`Esc` 停止当前运行。
+- Project 输入区只显示一个主按钮：有内容时是发送（异步消息）；内容为空时，只有收件方正在运行才是停止，空闲时是禁用的发送——不显示一个用不了的停止按钮。`Ctrl+Enter` 可停止当前运行并发送改向消息，`Esc` 停止当前运行。
 
 - 输入区是主要抬升面。图片可以点按钮添加、粘贴或拖入；先缩到长边 1568px 再上传（大图转 JPEG），每条消息最多 8 张。
 - 缩略图在输入框上方，悬停出现删除。所选模型被配置为不接收图片时，缩略图旁会提示。
@@ -198,12 +199,13 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 对话是**谈论**工作的地方，工作台是工作**本身**所在的地方。Agent 和你共同操作的一切——工作区文件、改动、终端、浏览器，以及从对话里打开的文档和子 Agent 记录——都在右侧同一个面板里，不再各自开抽屉。
 
 - **入口**：会话顶栏只有一个工作台按钮（面板图标），角标是相对上次提交改动的文件数。`Ctrl+J` 开关工作台，`` Ctrl+` `` 直接打开终端。Agent 开始用浏览器时自动切到 Browser；对话里"N files changed"卡片上的每个文件点开即是它的 diff；Office 文件卡片点开是预览标签。
-- **一种形状**：每个视图都是 **标签栏 → 工具栏行 → 圆角卡片**。标签栏先是固定的工具（Files · Changes · Terminal · Browser），竖线之后是可关闭的文档标签（文件预览、子 Agent 记录），同一文档不会开两次。工具栏行左边是上下文（路径、分支、会话），右边是动作；工具内部的多实例（浏览器页面、多个终端）用同一种**子标签胶囊**。内容一律放进圆角卡片：代码、终端与 diff 用 `--code-bg`，文档与页面用 `--surface`。
+- **一种形状**：每个视图都是 **标签栏 → 工具栏行 → 圆角卡片**。标签栏先是固定的工具（Files · Changes · Terminal · Browser），竖线之后是可关闭的文档标签（文件预览、子 Agent 记录），同一文档不会开两次。工具栏行左边是上下文（路径、分支、会话），右边是动作；工具内部的多实例（浏览器页面、多个终端）用同一种**子标签胶囊**。内容一律放进圆角卡片：代码、终端与 diff 用 `--code-bg`，文档与页面用 `--surface`，Project 的 Thread 与 Agent 通信是对话，卡片底色用和主对话相同的 `--bg`。
 - **左右分栏**：Files 与 Changes 用同一种布局——左边列表（目录树 / 改动文件），右边详情（编辑器 / diff），选中项用 `--accent-soft`。
 - **Files**：懒加载目录树（headless-tree）+ CodeMirror 6 编辑器，`Ctrl+S` 保存；磁盘上的文件在打开后被改过（比如 Agent 改了）时拒绝覆盖。
 - **Changes**：相对 HEAD 的改动，状态字母（M 警告色、A/U 成功色、D 危险色、R 强调色）与 `+n −n`；diff 用 `@codemirror/merge`，可切换合并 / 并排视图，长段未改动内容折叠；增删着色只用 `--success-soft` / `--danger-soft`。可见时每 5 秒刷新，Agent 的改动随写随现。非 git 工作区给出说明而不是空白。
 - **Terminal**：你自己的 shell（Windows 上优先 PowerShell 7），跑在真实 PTY 上（node-pty + xterm.js），不经沙箱、不是 Agent 工具。切换标签不会断开，重新连接时回放最近的输出。终端配色从 token 读取，随深浅主题切换。
 - **Browser**：见 5.4。
+- **标签栏就是标题栏那一行**：高 `--header-h`，与会话顶栏、侧栏顶部和桌面端原生窗口按钮在同一条中线上；工作台顶部不留内边距。标签多到放不下时用滚轮或触控板横向滚动，选中的标签自动滚入视野；**不显示滚动条**（Windows 上的原生横向滚动条会撑高这一行，把标签挤离中线）。
 - **记忆与宽度**：开关状态与当前工具在重载后保留，文档标签不保留。左边缘可拖动调整宽度并被记住（最窄 360px，最宽为窗口的 72%，默认 `min(640px, 44vw)`）；工具标签只显示图标，选中的那个显示名称（见 5.5）；窗口窄于 1100px 时工作台浮在对话之上。
 
 ### 5.4 Agent 浏览器
@@ -228,7 +230,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 | `--icon` / `--icon-sm` | 14 / 12px | 15 / 12px | 图标只有这两种尺寸；空态插图 18px |
 
 - 图标是 lucide 细线（描边 1.75），静止时用三级文字色，颜色只表达状态；工具行图标不再垫底色方块。
-- 头像：对话回合 18px、项目房间与线程 20px，项目欢迎页保留大头像。
+- 头像：对话回合 18px；Project 不画头像（§2）。
 - 顶栏只有一行：标题 · 工作区。顶栏贴着窗口右上角时用 `.window-controls-header` 给原生按钮让位。
 - 工作台的工具标签只显示图标，选中的那个显示名称；名称始终在提示和无障碍标签里。
 
@@ -241,9 +243,11 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 ### 5.7 Project 屏幕的密度
 
-- 房间里的 Thread 卡片是一行（约 30px）：头像 · 标题 · 状态 · 当前步骤 · 箭头。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
+- 房间里的 Thread 卡片是一行（约 30px）：状态灯 · 标题 · 状态 / 当前步骤 · 箭头，悬停在卡片右侧出现「回复」。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
+- **状态灯**（`components/StatusLight.tsx`，`threadLight` / `projectLight`）是天气的最小形态，一种颜色只有一个含义：等你或被阻塞（雪）= `--warn` 带光晕；出错（雷暴）= `--danger` 带光晕；工作中（雨）= `--accent` 缓慢明灭（减弱动效时静止）；有你还没打开的结果 = `--success`；其余为 `--border-strong` 的灰点。灯总带文字（无障碍名称与提示）。用在：房间的 Thread 卡、正文里的 Thread 链接、Board 卡片与 Today 行、侧栏的项目行——侧栏只在有 Thread 等你、失败或工作中时亮灯（优先级同 §4），数据来自 `GET /api/projects` 的 `threads` 摘要。
+- **推送与 PR 卡**（`project/GitCard.tsx`）：Thread 用 shell 执行 `git push` 或 `gh pr create` 后，服务端按命令输出记一条带 `git` 的 Library 资源，界面画成一行卡片：图标（分支 / PR）· 标题（“Pushed feature-x”“Pull request #12”）· 仓库 · Thread · 时间 · 状态胶囊（Pushed / Opened 成功色，Up to date 中性，Rejected / Failed 危险色，失败时元数据换成错误行）· 「Open」在浏览器打开（PR、建 PR 的页面或分支页；本地或代理远端没有网页就不显示）。同一分支再推送更新同一张卡。卡片出现在主对话里（按最近变化的时间）、该 Thread 的产物区与 Library 的「Pushes and pull requests」。状态只反映命令本身的结果，不查询代码托管平台。
 - 协调者在房间里的长消息（超过约 420 字符）默认折叠到五行左右，带 “Show more”；开头应是结论，细节按需展开。Thread 自己面板里的报告不折叠。
-- Board 顶部是一行 Today：协调者天气头像 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
+- Board 顶部是一行 Today：项目状态灯 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
 
 ## 6. 字号与信息显示偏好
 
@@ -327,7 +331,7 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 | 提示条 | `.notice` + `.notice-info` / `.notice-warn` / `.notice-error` |
 | 小标签、过滤器 | `.chip`（`.chip-danger`）、`.pill`（`.pill-danger`） |
 | 空态 | `.empty-state` |
-| 头像与状态 | `components/AgentAvatar.tsx` + `WeatherLayer.tsx`，不另画状态点 |
+| 头像与状态 | 会话里用 `components/AgentAvatar.tsx` + `WeatherLayer.tsx`；Project 里用 `components/StatusLight.tsx`（§5.7），不再另画其他状态点 |
 | 新的文件 / 改动 / 终端 / 浏览器 / 文档类视图 | 工作台的工具或文档标签（§5.3），不开新抽屉 |
 
 - 图标只用 lucide，尺寸取 `--icon` / `--icon-sm` 对应的 14 / 12，描边 1.75。

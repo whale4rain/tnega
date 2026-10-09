@@ -443,12 +443,12 @@ export function PromptBox({
               </button>
             )}
           </div>
-          {(singleControl ? !hasContent : showStop) && (
-            <button type="button" className="send-button stop" onClick={onStop} disabled={!running} aria-label="Stop" title="Stop (Esc)">
+          {(singleControl ? running && !hasContent : showStop) && (
+            <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
               <Square size={12} fill="currentColor" />
             </button>
           )}
-          {(singleControl ? hasContent : !showStop || allowWhileRunning) && (
+          {(singleControl ? hasContent || !running : !showStop || allowWhileRunning) && (
             <button
               type="button"
               className="send-button"

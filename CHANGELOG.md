@@ -46,6 +46,20 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- Project 改为任务驱动的主对话：你的消息仍是靠右的气泡，协调者的回复改为铺满对话列的正文，不再有头像和气泡；Project 里各处（房间、Thread、Board、欢迎页）都不再画 Agent 头像。
+- 协调者交出去的每个 Thread 在主对话里是一张链接卡（状态灯 · 标题 · 状态），点开在工作台打开 Thread；协调者在正文里提到 Thread 时写成可点击的 Thread 链接。Thread 与协调者的往来改从 Thread 工具栏的「Messages with Coordinator」查看。
+- 状态灯：Thread 等你或被阻塞时亮琥珀灯、失败亮红灯、工作中是缓慢明灭的强调色灯；侧栏的项目行也会亮灯，不用打开项目就知道哪里在等你。`GET /api/projects` 的每项新增 `threads: { waiting, failed, working }` 摘要（向后兼容：旧前端忽略它，新前端在旧服务器上不显示灯）。
+
+- Thread 推送代码或开 PR 后，主对话、Thread 产物区和 Library 里会出现一张卡片：推了哪个分支 / 第几号 PR、仓库、状态（Pushed / Opened / Up to date / Rejected / Failed），点「Open」在浏览器里打开 PR 或建 PR 的页面。同一分支再推送会更新同一张卡。
+
+### Fixes
+
+- 工作台里的 Thread 对话与 Agent 通信改用和主对话相同的底色（深色下更暗），不再像一张浅色文档卡片。
+- 桌面端顶部一行对齐：侧栏、会话顶栏与工作台标签都落在标题栏那一行的中线上，与原生窗口按钮齐平；工作台标签放不下时不再出现 Windows 原生横向滚动条（滚轮 / 触控板仍可横向滚动，选中的标签自动滚入视野）。
+- Project 与 Thread 的输入框在内容为空、也没有运行中的工作时显示（禁用的）发送按钮，不再显示一个用不了的停止按钮；只有确实在运行时才显示停止。
+
 ## [0.4.22](https://github.com/whale4rain/tnega/releases/tag/v0.4.22) — 2026-10-09
 
 ### Features
