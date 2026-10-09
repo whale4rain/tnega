@@ -83,12 +83,6 @@ local E2E were completed before publication; the hotfix additionally runs its
 ChatGPT and Responses regression tests in the workflow. All other tags retain the full-suite
 and package-test gate; this exception does not change the default policy.
 
-For `v0.4.24`, the maintainer explicitly requested push without tests or
-post-push monitoring. This tag builds directly and skips test commands,
-including the release-script tests, while retaining version, type, lint and
-artifact-integrity checks. The Project regression checks were completed before
-the release request. Other tags keep their existing gates.
-
 The workflow is [release.yml](../../.github/workflows/release.yml). It runs when
 a `v[0-9]*` tag is pushed, then rejects any tag other than `vx.y.z` or
 `vx.y.z-beta.N`. The tag must match both package versions, have release notes
