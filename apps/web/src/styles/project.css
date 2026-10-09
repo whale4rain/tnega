@@ -101,7 +101,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   width: 100%;
+  min-width: 0;
   min-height: 30px;
   padding: 4px 8px;
   border-radius: var(--radius-md);
@@ -1177,48 +1179,16 @@
 }
 
 .room-run {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 10px;
-}
-
-.room-run-user {
-  grid-template-columns: minmax(0, 1fr) 30px;
-}
-
-.room-run-user .room-avatar {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.room-run-user .room-body {
-  grid-column: 1;
-  grid-row: 1;
-  align-items: flex-end;
-}
-
-.room-avatar {
-  padding-top: 2px;
-}
-
-.room-avatar-you {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-size: var(--text-sm);
-  font-weight: 700;
-}
-
-.room-body {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
   align-items: flex-start;
+}
+
+/* The user's messages stay bubbles on the right; there is no avatar on either side. */
+.room-run-user {
+  align-items: flex-end;
 }
 
 .room-head {
@@ -1241,15 +1211,20 @@
 .room-message {
   position: relative;
   min-width: 0;
-  max-width: 92%;
-  padding: 8px 12px;
-  border-radius: var(--radius-xs) var(--radius-lg) var(--radius-lg);
-  background: var(--surface-raised);
+  max-width: 100%;
   overflow-wrap: anywhere;
 }
 
 .room-run-user .room-message {
+  max-width: 85%;
+  padding: 8px 12px;
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+/* An Agent's message is plain text across the column: task first, no bubble. */
+.room-run-agent .room-message {
+  width: 100%;
 }
 
 .room-message .prose {
@@ -1276,8 +1251,8 @@
   text-decoration: underline;
 }
 
-.room-body > .thread-stack {
-  width: 100%;
+.room-threads {
+  gap: 6px;
 }
 
 .thread-execution {
@@ -1388,7 +1363,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 40px;
   color: var(--text-3);
   font-size: var(--text-sm);
 }
@@ -1399,14 +1373,13 @@
 }
 
 .thread-card-wrap {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .thread-card-reply {
-  position: absolute;
-  top: 50%;
-  right: -34px;
-  transform: translateY(-50%);
+  flex: none;
   opacity: 0;
   transition: opacity var(--duration-fast);
 }
@@ -1825,4 +1798,19 @@ button.board-chip.active {
 .artifact-card-icon.kind-doc {
   color: var(--accent-text);
   background: var(--accent-soft);
+}
+
+/* A thread linked from a message: its status light, then the words. */
+.thread-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.thread-link .status-light {
+  align-self: center;
+}
+
+.board-card-open > .status-light {
+  margin-top: 5px;
 }

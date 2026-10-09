@@ -139,6 +139,35 @@ export function sessionTotals(events: readonly SessionEvent[]): UsageTotals {
   }
 }
 
+/**
+ * Where a project's threads stand, for the project list: how many need the
+ * user (waiting on a decision or blocked), failed, or are working now. The
+ * coordinator is not counted.
+ */
+export interface ProjectThreadSummary {
+  waiting: number
+  failed: number
+  working: number
+}
+
+export type ProjectListEntry = ProjectRecord & { threads: ProjectThreadSummary }
+
+/** Count thread states; `running` overrides a stale stored state the way the UI does. */
+export function summarizeThreads(
+  threads: ReadonlyArray<{ id: string; state: string }>,
+  coordinatorId: string,
+  running: (id: string) => boolean = () => false,
+): ProjectThreadSummary {
+  const summary: ProjectThreadSummary = { waiting: 0, failed: 0, working: 0 }
+  for (const thread of threads) {
+    if (thread.id === coordinatorId) continue
+    if (thread.state === 'failed') summary.failed += 1
+    else if (running(thread.id)) summary.working += 1
+    else if (thread.state === 'waiting' || thread.state === 'blocked') summary.waiting += 1
+  }
+  return summary
+}
+
 export interface ProjectSnapshot {
   project: ProjectRecord
   coordinatorId: string
@@ -190,6 +219,8 @@ export class ProjectHost {
   private readonly open = new Map<string, Promise<OpenProject>>()
   private readonly permissions = new Map<string, PermissionMode>()
   private readonly roles = new Map<string, ProjectAgentRole>()
+  /** Summaries of projects that are not mounted: nothing changes them until they are. */
+  private readonly idleSummaries = new Map<string, ProjectThreadSummary>()
   private indexScope: Promise<IndexScope> | undefined
 
   constructor(options: ProjectHostOptions) {
@@ -211,6 +242,47 @@ export class ProjectHost {
     return await (await this.projects()).list()
   }
 
+  /** The project list with each project's thread summary, so the sidebar can light up projects that need the user. */
+  async listWithStatus(): Promise<ProjectListEntry[]> {
+    const records = await this.list()
+    return await Promise.all(records.map(async record => ({
+      ...record,
+      threads: await this.threadSummary(record).catch(() => ({ waiting: 0, failed: 0, working: 0 })),
+    })))
+  }
+
+  /**
+   * A mounted project answers from its live registry. One that is not mounted
+   * has nothing running, so its stored thread records are read once from its
+   * Blackboard (without mounting it, which would start its Agents) and cached
+   * until it is mounted.
+   */
+  private async threadSummary(record: ProjectRecord): Promise<ProjectThreadSummary> {
+    const mounted = this.open.get(record.id)
+    if (mounted) {
+      const project = await mounted
+      return summarizeThreads(await project.threads.list(), record.coordinatorId,
+        id => project.registry.get(id)?.status === 'running')
+    }
+    const cached = this.idleSummaries.get(record.id)
+    if (cached) return cached
+    const ctx = new Context()
+    try {
+      await ctx.plugin(blackboardLocal, { root: join(this.tnegaRoot, 'projects', record.id, 'blackboard') })
+      const board = ctx.get('blackboard') as BlackboardService
+      const threads = (await board.list('agent')).flatMap(fact => {
+        const state: unknown = typeof fact.data === 'object' && fact.data !== null ? Reflect.get(fact.data, 'state') : undefined
+        return typeof state === 'string' ? [{ id: fact.id, state }] : []
+      })
+      // Stored "working" is stale here: nothing runs in a project that is not mounted.
+      const summary = summarizeThreads(threads, record.coordinatorId)
+      if (!this.open.has(record.id)) this.idleSummaries.set(record.id, summary)
+      return summary
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }
+
   async get(id: string): Promise<ProjectRecord | undefined> {
     return await (await this.projects()).get(id)
   }
@@ -225,6 +297,7 @@ export class ProjectHost {
       this.open.delete(id)
       await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
     }
+    this.idleSummaries.delete(id)
     await (await this.projects()).delete(id, author)
     await rm(projectSessionRoot(this.workspace, id), { recursive: true, force: true })
     await rm(join(this.workspace, '.tnega', 'projects', id), { recursive: true, force: true })
@@ -236,6 +309,7 @@ export class ProjectHost {
     if (existing) return await existing
     const record = await this.get(projectId)
     if (!record) throw new Error(`project not found: ${projectId}`)
+    this.idleSummaries.delete(projectId)
     const mounting = this.assemble(record)
     this.open.set(projectId, mounting)
     try {

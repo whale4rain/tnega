@@ -2,7 +2,6 @@ import { ArrowLeftRight, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { agentLabel, artifactsFor, exchangeMessages, type ProjectState } from '../../lib/project-model'
 import type { BoxEnvelope } from '../../lib/project-types'
-import { AgentAvatar } from '../AgentAvatar'
 import { Markdown } from '../Markdown'
 import { ArtifactCards } from './Artifacts'
 import { ChatRun } from './ChatRun'
@@ -32,7 +31,6 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
   }, [messages.length])
   const participant = (id: string) => (
     <button type="button" className="exchange-participant" onClick={() => onOpenThread(id)} aria-label={`Open ${agentLabel(state, id)}`}>
-      <AgentAvatar id={id} role={id === state.coordinatorId ? 'coordinator' : 'agent'} size={18} />
       <span>{agentLabel(state, id)}</span>
     </button>
   )
@@ -49,10 +47,8 @@ export function ExchangePanel({ state, workspace, firstId, secondId, onOpenThrea
         <div className="timeline room" role="log" aria-label="Agent conversation">
           {groups.map(group => {
             const first = group[0]!
-            const coordinator = first.sender.id === state.coordinatorId
             return (
-              <ChatRun key={first.messageId} author={agentLabel(state, first.sender.id)} at={first.createdAt} side="agent"
-                avatar={<AgentAvatar id={first.sender.id} role={coordinator ? 'coordinator' : 'agent'} size={20} />}>
+              <ChatRun key={first.messageId} author={agentLabel(state, first.sender.id)} at={first.createdAt} side="agent">
                 {group.map(message => (
                   <div key={message.messageId} className="room-message">
                     <Markdown text={message.text} />

@@ -31,7 +31,8 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
   - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-eyes`（白眼睛），云用当前调色板的 `--accent` 填色；favicon 与安装包图标保持 Sky 蓝。
   - favicon：`apps/web/index.html`。
   - 安装包图标：`apps/desktop/build/icon.svg`，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
-- 会话主 Agent 与 Project 协调者画成强调色的云；Thread 与子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于在多 Agent 场景里区分。
+- 会话主 Agent 画成强调色的云；会话里的子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于区分。
+- **Project 里不画 Agent 头像**（2026-10-09 起）：Project 是任务驱动的，协调者只负责转派，Thread 用标题和状态灯辨认，不用头像（§5.7）。
 
 ## 3. 色彩：模式 × 调色板
 
@@ -178,11 +179,11 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 ### 5.1 对话
 
-- 普通 Session 不使用气泡：用户消息靠右，Agent 回复靠左，左侧是带天气的头像。Project 使用无描边、无阴影的柔和气泡，底色为 `--surface-raised`，内容按自然宽度展开；连续消息保持短小，消息之间留 4–6px，不把多条消息拼成一大段。
+- 普通 Session 不使用气泡：用户消息靠右，Agent 回复靠左，左侧是带天气的头像。Project 里只有**用户**的消息是气泡（靠右、无描边无阴影、底色 `--surface-raised`、上方一行时间）；协调者与 Thread 的回复是铺满对话列的普通正文，**没有头像、没有气泡、没有作者行**，把空间留给内容；连续消息之间留 4–6px，不把多条消息拼成一大段。
 - 进行中的回合保留 Agent 的叙述文字，连续的工具调用折叠成一行，行上写当前步骤（"Reading c.ts · 3 steps"），点开才看每一步。
 - 回合结束后，最终答复之前的过程（叙述与工具）一起折叠成一行（"Used 4 tools"），只留最终答复、改动文件与需要你处理的警告。
 - 全应用使用同一字号阶梯：常规界面 13px，对话正文与输入 13.5px、1.6 行高，工具详情 12px，元数据 11px；标题 18 / 24px。Project、Session 和工作台沿用同一套 token，不额外放大对话字体。
-- Project 的 Agent 通信显示为紧凑的 `Messaged` 行，带收件人头像；多人通信点击后选择参与者。双方消息在工作台的独立通信标签内按发送者分组，每条保留一个气泡；参与者名字可打开其 Thread，通信标签可关闭。Board 保留工作状态卡片，直接用户聊天与 Agent 间通信分别查看。文档标签不跨重载保留，通信内容从 Box 快照恢复，重新点击入口即可查看。
+- Project 主对话里，协调者把工作交给 Thread（或 Thread 第一次回话）的地方是一张 **Thread 链接卡**：状态灯 · 标题 · 状态 · 箭头，点开在工作台打开该 Thread；每个 Thread 只在它第一次出现的地方放一张卡，卡上的状态是实时的。协调者在正文里提到 Thread 时写成 `[标题](#thread:<id>)`，渲染为带状态灯的链接，同样打开 Thread。Thread 与协调者之间的往来在 Thread 工具栏的「Messages with …」里查看（工作台的通信标签，按发送者分组，只有名字没有头像）；文档标签不跨重载保留，通信内容从 Box 快照恢复。
 - 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台；文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文。
 
 ### 5.2 输入区与图片
@@ -229,7 +230,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 | `--icon` / `--icon-sm` | 14 / 12px | 15 / 12px | 图标只有这两种尺寸；空态插图 18px |
 
 - 图标是 lucide 细线（描边 1.75），静止时用三级文字色，颜色只表达状态；工具行图标不再垫底色方块。
-- 头像：对话回合 18px、项目房间与线程 20px，项目欢迎页保留大头像。
+- 头像：对话回合 18px；Project 不画头像（§2）。
 - 顶栏只有一行：标题 · 工作区。顶栏贴着窗口右上角时用 `.window-controls-header` 给原生按钮让位。
 - 工作台的工具标签只显示图标，选中的那个显示名称；名称始终在提示和无障碍标签里。
 
@@ -242,9 +243,10 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 ### 5.7 Project 屏幕的密度
 
-- 房间里的 Thread 卡片是一行（约 30px）：头像 · 标题 · 状态 · 当前步骤 · 箭头。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
+- 房间里的 Thread 卡片是一行（约 30px）：状态灯 · 标题 · 状态 / 当前步骤 · 箭头，悬停在卡片右侧出现「回复」。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
+- **状态灯**（`components/StatusLight.tsx`，`threadLight` / `projectLight`）是天气的最小形态，一种颜色只有一个含义：等你或被阻塞（雪）= `--warn` 带光晕；出错（雷暴）= `--danger` 带光晕；工作中（雨）= `--accent` 缓慢明灭（减弱动效时静止）；有你还没打开的结果 = `--success`；其余为 `--border-strong` 的灰点。灯总带文字（无障碍名称与提示）。用在：房间的 Thread 卡、正文里的 Thread 链接、Board 卡片与 Today 行、侧栏的项目行——侧栏只在有 Thread 等你、失败或工作中时亮灯（优先级同 §4），数据来自 `GET /api/projects` 的 `threads` 摘要。
 - 协调者在房间里的长消息（超过约 420 字符）默认折叠到五行左右，带 “Show more”；开头应是结论，细节按需展开。Thread 自己面板里的报告不折叠。
-- Board 顶部是一行 Today：协调者天气头像 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
+- Board 顶部是一行 Today：项目状态灯 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
 
 ## 6. 字号与信息显示偏好
 
@@ -328,7 +330,7 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 | 提示条 | `.notice` + `.notice-info` / `.notice-warn` / `.notice-error` |
 | 小标签、过滤器 | `.chip`（`.chip-danger`）、`.pill`（`.pill-danger`） |
 | 空态 | `.empty-state` |
-| 头像与状态 | `components/AgentAvatar.tsx` + `WeatherLayer.tsx`，不另画状态点 |
+| 头像与状态 | 会话里用 `components/AgentAvatar.tsx` + `WeatherLayer.tsx`；Project 里用 `components/StatusLight.tsx`（§5.7），不再另画其他状态点 |
 | 新的文件 / 改动 / 终端 / 浏览器 / 文档类视图 | 工作台的工具或文档标签（§5.3），不开新抽屉 |
 
 - 图标只用 lucide，尺寸取 `--icon` / `--icon-sm` 对应的 14 / 12，描边 1.75。

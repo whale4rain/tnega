@@ -21,6 +21,15 @@ export interface ProjectRecord {
   updatedAt: number
   /** Proposed: settings the coordinator and threads run with. */
   settings?: ProjectSettings
+  /** In the project list only: where its threads stand. Older servers omit it. */
+  threads?: ProjectThreadSummary
+}
+
+/** Threads waiting on the user (or blocked), failed, and working now. */
+export interface ProjectThreadSummary {
+  waiting: number
+  failed: number
+  working: number
 }
 
 export type CheckIns = 'often' | 'milestones' | 'end'

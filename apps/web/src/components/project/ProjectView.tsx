@@ -9,9 +9,8 @@ import {
   CornerUpLeft,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { avatarVersion, distinctSeeds, subscribeAvatars } from '../../lib/avatar'
 import { errorText } from '../../lib/hooks'
 import { followProject, isUnsupported, localReplies, projectApi } from '../../lib/project-api'
 import { notifyDesktopThread } from '../../lib/desktop-completion'
@@ -21,9 +20,11 @@ import {
   artifactsFor,
   board,
   fromSnapshot,
+  LIGHT_LABEL,
   mainTimeline,
   plainPreview,
   reduceProject,
+  threadLight,
   threadState,
   workerThreads,
   type MainItem,
@@ -36,7 +37,6 @@ import { LinkContext, type LinkHandlers } from '../../lib/links'
 import { navigateBrowser } from '../../lib/browser-live'
 import { BOARD_KEY, closeDoc, openDoc, openTool, select, toggle, type WorkbenchState } from '../../lib/workbench'
 import type { WorkbenchProject } from '../workbench/Workbench'
-import { AgentAvatar, AvatarSeeds } from '../AgentAvatar'
 import { PromptBox } from '../Composer'
 import { ApprovalCard } from '../Conversation'
 import { BackgroundJobs } from '../BackgroundJobs'
@@ -48,6 +48,7 @@ import { LibraryPanel, SettingsPanel } from './ProjectPanels'
 import { RoutinesPanel } from './Routines'
 import { ExchangePanel } from './ExchangePanel'
 import { ThreadPanel } from './ThreadPanel'
+import { ThreadCard } from './ThreadCard'
 import { ChatRun as Run } from './ChatRun'
 
 /**
@@ -101,7 +102,13 @@ export function ProjectView({
       onWorkbench(current => openTool(current, 'browser'))
       void navigateBrowser(url).catch(reason => setError(errorText(reason)))
     },
-  }), [workspace, onWorkbench])
+    thread: id => {
+      const thread = state?.threads[id]
+      if (!thread) return undefined
+      const tone = threadLight(state, thread, seen)
+      return { label: thread.label, tone, status: LIGHT_LABEL[tone], open: () => openThreadRef.current(id) }
+    },
+  }), [workspace, onWorkbench, state, seen])
 
   // Snapshot first, then follow the change stream from its cursor.
   useEffect(() => {
@@ -144,6 +151,9 @@ export function ProjectView({
     onWorkbench(current => openDoc(current, { kind: 'thread', id, label }))
     onOpenThread(id)
   }, [state?.threads, onWorkbench, onOpenThread])
+  // Links in messages open threads through the latest `openThread`.
+  const openThreadRef = useRef(openThread)
+  openThreadRef.current = openThread
 
   const openExchange = (firstId: string, secondId: string) => {
     if (!state) return
@@ -185,10 +195,16 @@ export function ProjectView({
     }
   }, [state, shownThreadId])
 
+  const loadedRef = useRef(false)
   // The Board tab carries a count: what needs you, else what is working.
   const columns = useMemo(() => (state ? board(state, seen) : []), [state, seen])
   const needs = columns.find(column => column.key === 'needs')?.threads.length ?? 0
   const live = columns.find(column => column.key === 'working')?.threads.length ?? 0
+  // The sidebar's status light for this project follows its threads.
+  useEffect(() => {
+    if (loadedRef.current) onChanged()
+    loadedRef.current = true
+  }, [needs, live, onChanged])
   const routineCount = state?.routines.filter(routine => routine.data.enabled).length ?? 0
   useEffect(() => {
     onPanelTabs([
@@ -203,17 +219,6 @@ export function ProjectView({
   const messageTargetId = replyTarget?.who === 'thread' && replyTarget.threadId
     ? replyTarget.threadId : state?.coordinatorId
   const messageTargetRunning = Boolean(messageTargetId && state?.running[messageTargetId])
-
-  // Give every agent in the project its own look, coordinator first.
-  const avatarsVersion = useSyncExternalStore(subscribeAvatars, avatarVersion, () => 0)
-  const agentOrder = state
-    ? [state.coordinatorId, ...workerThreads(state).map(thread => thread.id)].join(',')
-    : ''
-  const seeds = useMemo(
-    () => distinctSeeds(agentOrder ? agentOrder.split(',') : [], state?.coordinatorId),
-    // `avatarsVersion` invalidates the seeds after a reroll.
-    [agentOrder, avatarsVersion],
-  )
 
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -336,11 +341,10 @@ export function ProjectView({
             ? <ExchangePanel workspace={workspace} state={state} firstId={activeDoc.firstId} secondId={activeDoc.secondId}
                 onOpenThread={openThread} onClose={() => onWorkbench(current => closeDoc(current, active, BOARD_KEY))} />
           : shownThreadId
-            ? <ThreadPanel key={shownThreadId} workspace={workspace} state={state} threadId={shownThreadId} onBack={() => onWorkbench(current => select(current, BOARD_KEY))} />
+            ? <ThreadPanel key={shownThreadId} workspace={workspace} state={state} threadId={shownThreadId} onBack={() => onWorkbench(current => select(current, BOARD_KEY))} onOpenExchange={openExchange} />
             : null
 
   return (
-    <AvatarSeeds.Provider value={seeds}>
       <LinkContext.Provider value={links}>
       <main className="conversation project-main">
         <header className="conv-header">
@@ -393,13 +397,15 @@ export function ProjectView({
           if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
         }}>
           <div className="conv-column">
-            {items.length === 0 && <ProjectEmpty name={state.project.name} coordinatorId={state.coordinatorId} />}
+            {items.length === 0 && <ProjectEmpty name={state.project.name} />}
             <Room
               workspace={workspace}
               items={items}
               state={state}
               coordinatorRunning={coordinatorRunning}
-              handlers={{ onOpenThread: openThread, onOpenExchange: openExchange, onReply: setReplyTarget, onJump: jump }}
+              activeThreadId={shownThreadId}
+              seen={seen}
+              handlers={{ onOpenThread: openThread, onReply: setReplyTarget, onJump: jump }}
             />
           </div>
         </div>
@@ -440,7 +446,6 @@ export function ProjectView({
       </main>
       {panelSlot && panel && createPortal(panel, panelSlot)}
       </LinkContext.Provider>
-    </AvatarSeeds.Provider>
   )
 }
 
@@ -451,7 +456,7 @@ export function ProjectView({
 type Group =
   | { kind: 'user'; id: string; at: number; items: Array<Extract<MainItem, { kind: 'user' }>> }
   | { kind: 'agent'; id: string; at: number; items: MainItem[] }
-  | { kind: 'exchange'; id: string; at: number; item: Extract<MainItem, { kind: 'threads' }> }
+  | { kind: 'threads'; id: string; at: number; item: Extract<MainItem, { kind: 'threads' }> }
 
 /** How long one author can keep talking under the same head. */
 const RUN_GAP_MS = 5 * 60_000
@@ -461,7 +466,7 @@ function group(items: readonly MainItem[]): Group[] {
   const out: Group[] = []
   for (const item of items) {
     if (item.kind === 'threads') {
-      out.push({ kind: 'exchange', id: item.id, at: item.at, item })
+      out.push({ kind: 'threads', id: item.id, at: item.at, item })
       continue
     }
     const last = out.at(-1)
@@ -488,32 +493,35 @@ function dayLabel(at: number, now = Date.now()): string {
 }
 
 interface RoomHandlers {
-  onOpenExchange: (firstId: string, secondId: string) => void
   onOpenThread: (id: string) => void
   onReply: (ref: ReplyRef) => void
   onJump: (ref: ReplyRef) => void
 }
 
 /**
- * The main conversation as a chat room: every run of messages has its
- * author, avatar and time; days are separated; the coordinator "is typing"
- * instead of thinking.
+ * The main conversation, task-first: your messages are bubbles on the right;
+ * the coordinator's are plain text across the column, with no avatar or
+ * bubble; where work was handed off, a link per thread opens it, with its
+ * status light. Days are separated.
  */
 function Room({
   workspace,
   items,
   state,
   coordinatorRunning,
+  activeThreadId,
+  seen,
   handlers,
 }: {
   workspace: string
   items: readonly MainItem[]
   state: ProjectState
   coordinatorRunning: boolean
+  activeThreadId: string | undefined
+  seen: Readonly<Record<string, number>>
   handlers: RoomHandlers
 }) {
   const groups = group(items)
-  const typing = coordinatorRunning
   let previousDay: number | undefined
   return (
     <div className="timeline room">
@@ -521,20 +529,19 @@ function Room({
         const showDay = previousDay === undefined || !sameDay(previousDay, entry.at)
         previousDay = entry.at
         const day = showDay ? <div key={`day-${entry.id}`} className="room-day" role="separator"><span>{dayLabel(entry.at)}</span></div> : null
-        if (entry.kind === 'exchange') {
-          const { senderId, threadIds } = entry.item
-          const content = <><span>Messaged</span><span className="message-receipt-avatars">{threadIds.map(id => <AgentAvatar key={id} id={id} role={id === state.coordinatorId ? 'coordinator' : 'agent'} size={18} />)}</span><span>{threadIds.length === 1 ? agentLabel(state, threadIds[0]!) : `${threadIds.length} Agents`}</span></>
-          return [day, <div key={entry.id} className="message-receipt" title={`From ${agentLabel(state, senderId)}`}>
-            {threadIds.length === 1
-              ? <button type="button" className="message-receipt-open" aria-label={`Open conversation with ${agentLabel(state, threadIds[0]!)}`} onClick={() => handlers.onOpenExchange(senderId, threadIds[0]!)}>{content}</button>
-              : <Menu className="message-receipt-open" label={`Messaged ${threadIds.length} Agents`} trigger={content} items={threadIds.map(id => ({ key: id, label: agentLabel(state, id), onSelect: () => handlers.onOpenExchange(senderId, id) }))} />}
-            {threadIds.filter(id => id !== state.coordinatorId).map(id => <button key={id} type="button" className="icon-button tiny message-receipt-reply" aria-label={`Reply to ${agentLabel(state, id)}`} title={`Message ${agentLabel(state, id)}`} onClick={() => handlers.onReply({ id: entry.id, who: 'thread', threadId: id, agentId: id, label: agentLabel(state, id), excerpt: '', inMain: false })}><CornerUpLeft size={12} /></button>)}
-          </div>]
+        if (entry.kind === 'threads') {
+          return [day, (
+            <div key={entry.id} className="thread-stack room-threads">
+              {entry.item.threadIds.map(id => (
+                <ThreadCard key={id} state={state} threadId={id} active={id === activeThreadId} seen={seen} onOpen={handlers.onOpenThread} onReply={handlers.onReply} />
+              ))}
+            </div>
+          )]
         }
         if (entry.kind === 'user') {
           return [
             day,
-            <Run key={entry.id} side="user" author="You" at={entry.at} avatar={<span className="room-avatar-you" aria-hidden>Y</span>}>
+            <Run key={entry.id} side="user" at={entry.at}>
               {entry.items.map(item => (
                 <div key={item.id} id={`msg-${item.id}`} className="room-message">
                   {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
@@ -546,13 +553,7 @@ function Room({
         }
         return [
           day,
-          <Run
-            key={entry.id}
-            side="agent"
-            author="Coordinator"
-            at={entry.at}
-            avatar={<AgentAvatar id={state.coordinatorId} role="coordinator" size={20} live={coordinatorRunning && entry === groups.at(-1)} title="Coordinator" />}
-          >
+          <Run key={entry.id} side="agent" at={entry.at}>
             {entry.items.map(item => {
               switch (item.kind) {
                 case 'coordinator':
@@ -581,10 +582,10 @@ function Room({
           </Run>,
         ]
       })}
-      {typing && (
+      {coordinatorRunning && (
         <div className="room-typing" role="status">
           <span className="thinking-dots" aria-hidden><i /><i /><i /></span>
-          <span><strong>Coordinator</strong> is typing…</span>
+          <span>Coordinating…</span>
         </div>
       )}
     </div>
@@ -601,21 +602,17 @@ export function ReplyChip({ reply, onJump, align = 'start' }: { reply: ReplyRef;
       title={reply.inMain ? 'Jump to message' : reply.threadId ? 'Open thread' : undefined}
     >
       <CornerUpLeft size={12} className="reply-chip-arrow" />
-      {reply.agentId
-        ? <AgentAvatar id={reply.agentId} role={reply.who === 'coordinator' ? 'coordinator' : 'agent'} size={14} />
-        : <span className="reply-chip-you" aria-hidden>{reply.label.charAt(0)}</span>}
       <span className="reply-chip-label">{reply.label}</span>
       <span className="reply-chip-text">{reply.excerpt}</span>
     </button>
   )
 }
 
-function ProjectEmpty({ name, coordinatorId }: { name: string; coordinatorId: string }) {
+function ProjectEmpty({ name }: { name: string }) {
   return (
     <div className="empty-state">
-      <AgentAvatar id={coordinatorId} role="coordinator" size={56} title="Your coordinator (click to change its look)" rerollable />
       <h2>What should {name} get done?</h2>
-      <p>Talk here like you would with a teammate. Each focused task gets its own thread; follow them on the Board, and find what they make in the Library.</p>
+      <p>Tell the coordinator what you need. Each focused task gets its own thread, linked here so you can open it; follow them all on the Board, and find what they make in the Library.</p>
     </div>
   )
 }

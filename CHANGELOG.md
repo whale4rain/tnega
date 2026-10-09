@@ -46,6 +46,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- Project 改为任务驱动的主对话：你的消息仍是靠右的气泡，协调者的回复改为铺满对话列的正文，不再有头像和气泡；Project 里各处（房间、Thread、Board、欢迎页）都不再画 Agent 头像。
+- 协调者交出去的每个 Thread 在主对话里是一张链接卡（状态灯 · 标题 · 状态），点开在工作台打开 Thread；协调者在正文里提到 Thread 时写成可点击的 Thread 链接。Thread 与协调者的往来改从 Thread 工具栏的「Messages with Coordinator」查看。
+- 状态灯：Thread 等你或被阻塞时亮琥珀灯、失败亮红灯、工作中是缓慢明灭的强调色灯；侧栏的项目行也会亮灯，不用打开项目就知道哪里在等你。`GET /api/projects` 的每项新增 `threads: { waiting, failed, working }` 摘要（向后兼容：旧前端忽略它，新前端在旧服务器上不显示灯）。
+
 ### Fixes
 
 - 桌面端顶部一行对齐：侧栏、会话顶栏与工作台标签都落在标题栏那一行的中线上，与原生窗口按钮齐平；工作台标签放不下时不再出现 Windows 原生横向滚动条（滚轮 / 触控板仍可横向滚动，选中的标签自动滚入视野）。

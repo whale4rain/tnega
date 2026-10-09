@@ -4,6 +4,7 @@ import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markd
 import remarkGfm from 'remark-gfm'
 import { useCopy } from '../lib/hooks'
 import { codePathTarget, LinkContext, linkTarget } from '../lib/links'
+import { StatusLight } from './StatusLight'
 
 function textOf(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node)
@@ -86,8 +87,20 @@ function urlTransform(url: string): string {
  * those to the system browser).
  */
 function SmartLink({ href, children }: { href: string | undefined; children: ReactNode }) {
-  const { workspace, openPath, openLocalUrl } = useContext(LinkContext)
+  const { workspace, openPath, openLocalUrl, thread } = useContext(LinkContext)
   const target = linkTarget(href, workspace)
+  if (target.kind === 'thread') {
+    const info = thread?.(target.id)
+    // Outside a project, or a thread that no longer exists: keep the words, drop the link.
+    if (!info) return <span>{children}</span>
+    const open = (event: MouseEvent) => { event.preventDefault(); info.open() }
+    return (
+      <a href={href} className={`thread-link light-${info.tone}`} title={`Open thread ${info.label} · ${info.status}`} onClick={open}>
+        <StatusLight tone={info.tone} label={info.status} />
+        {children}
+      </a>
+    )
+  }
   if (target.kind === 'file') {
     if (!openPath) return <span className="file-ref" title={target.path}>{children}</span>
     const open = (event: MouseEvent) => { event.preventDefault(); openPath(target.path) }

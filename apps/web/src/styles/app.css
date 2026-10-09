@@ -4254,3 +4254,42 @@ kbd {
   gap: 8px;
   margin: 2px 0 10px;
 }
+
+/* ==========================================================================
+   Status light — a thread's or project's weather in one dot (tnega-design §5.7)
+   ========================================================================== */
+
+.status-light {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+}
+
+.status-light.light-waiting {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-soft);
+}
+
+.status-light.light-failed {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+.status-light.light-working {
+  background: var(--accent);
+  animation: status-light-pulse 1.6s var(--ease-out) infinite;
+}
+
+.status-light.light-ready {
+  background: var(--success);
+}
+
+@keyframes status-light-pulse {
+  50% { opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-light.light-working { animation: none; }
+}

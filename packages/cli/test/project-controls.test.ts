@@ -111,3 +111,21 @@ it('stops only the coordinator and can redirect a child Thread independently', a
   const events = await project.registry.get(child.id)?.session.read()
   expect(events?.filter(event => event.type === 'user/message' && event.payload.name === `box:${correction.messageId}`)).toHaveLength(1)
 })
+
+it('lists projects with a summary of threads that need the user, without mounting idle ones', async () => {
+  const { host, record, project, workspace } = await fixture({ async complete() { return { content: 'Done.', finishReason: 'stop' } } })
+  const waiting = await project.threads.spawn({ parentId: record.coordinatorId, goal: 'Ask first' })
+  const blocked = await project.threads.spawn({ parentId: record.coordinatorId, goal: 'Needs access' })
+  const failed = await project.threads.spawn({ parentId: record.coordinatorId, goal: 'Out of reach' })
+  await project.threads.setState(waiting.id, 'waiting')
+  await project.threads.setState(blocked.id, 'blocked')
+  await project.threads.setState(failed.id, 'failed')
+  const [mounted] = await host.listWithStatus()
+  expect(mounted).toMatchObject({ id: record.id, threads: { waiting: 2, failed: 1, working: 0 } })
+  await host.dispose()
+  // A fresh host reads the stored records without starting the project's Agents.
+  const reopened = new ProjectHost({ workspace, llm: { async complete() { throw new Error('must not run') } }, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker() })
+  hosts.push(reopened)
+  const [idle] = await reopened.listWithStatus()
+  expect(idle).toMatchObject({ id: record.id, threads: { waiting: 2, failed: 1, working: 0 } })
+})

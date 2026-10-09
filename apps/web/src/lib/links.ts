@@ -1,4 +1,5 @@
 import { createContext } from 'react'
+import type { LightTone } from './project-model'
 
 /**
  * Where a link in a reply leads. Agents link to workspace files (often as
@@ -8,6 +9,8 @@ import { createContext } from 'react'
  */
 export type LinkTarget =
   | { kind: 'file'; path: string; line?: number }
+  /** `#thread:<id>`: a project thread, which the coordinator links when it mentions one. */
+  | { kind: 'thread'; id: string }
   | { kind: 'local'; url: string }
   | { kind: 'web'; url: string }
   | { kind: 'other' }
@@ -19,6 +22,16 @@ export interface LinkHandlers {
   openPath?: (path: string) => void
   /** Open a local development URL in the Workbench browser. */
   openLocalUrl?: (url: string) => void
+  /** In a project: a thread's title and status light, and how to open it. */
+  thread?: (id: string) => ThreadLinkInfo | undefined
+}
+
+export interface ThreadLinkInfo {
+  label: string
+  tone: LightTone
+  /** The light's words, e.g. "Waiting on you". */
+  status: string
+  open: () => void
 }
 
 export const LinkContext = createContext<LinkHandlers>({})
@@ -27,10 +40,13 @@ export const LinkContext = createContext<LinkHandlers>({})
 const SCHEME = /^[a-z][a-z0-9+.-]*:(?!\d)/i
 const WINDOWS_DRIVE = /^[a-z]:[\\/]/i
 const LINE_SUFFIX = /(?::(\d+)(?::\d+)?|#L(\d+)(?:-L?\d+)?)$/
+const THREAD_LINK = /^#thread[:/]([A-Za-z0-9-]+)$/
 const LOCAL_HOST = /^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|[\w-]+\.localhost)$/i
 
 export function linkTarget(href: string | undefined, workspace?: string): LinkTarget {
   const raw = href?.trim()
+  const threadId = raw ? THREAD_LINK.exec(raw)?.[1] : undefined
+  if (threadId) return { kind: 'thread', id: threadId }
   if (!raw || raw.startsWith('#')) return { kind: 'other' }
   if (/^https?:/i.test(raw)) {
     try {

@@ -11,18 +11,29 @@ import {
   startOfDay,
   threadActivity,
   threadArtifacts,
-  threadWeather,
+  threadLight,
   today,
+  LIGHT_LABEL,
+  type LightTone,
   type BoardColumn,
   type ProjectState,
 } from '../../lib/project-model'
 import type { ProjectUsage, ThreadRecord } from '../../lib/project-types'
 import type { Weather } from '../../lib/weather'
-import { AgentAvatar } from '../AgentAvatar'
+import { StatusLight } from '../StatusLight'
 import { ARTIFACT_KIND, artifactKind, type ArtifactKind } from './Artifacts'
 
 /** Lanes with nothing for you to do fold into one line. */
 const FOLDED: ReadonlySet<BoardColumn['key']> = new Set(['idle', 'resolved'])
+
+/** The project's forecast as one light, the same colours a thread's light uses. */
+const FORECAST_LIGHT: Partial<Record<Weather, LightTone>> = {
+  storm: 'failed',
+  snow: 'waiting',
+  rain: 'working',
+  drizzle: 'working',
+  clear: 'idle',
+}
 
 const FORECAST: Partial<Record<Weather, string>> = {
   storm: 'Something failed',
@@ -77,7 +88,7 @@ export function BoardPanel({
       </div>
       <div className="wb-card wb-scroll board-scroll">
         <section className="board-today" aria-label="Today">
-          <AgentAvatar id={state.coordinatorId} role="coordinator" size={22} weather={weather} live={weather === 'drizzle' || weather === 'rain'} title={FORECAST[weather]} />
+          <StatusLight tone={FORECAST_LIGHT[weather] ?? 'idle'} label={FORECAST[weather] ?? 'All quiet'} />
           <span className="board-today-label">Today</span>
           <Stat value={day.started} label="started" />
           <Stat value={day.finished} label="finished" />
@@ -178,7 +189,8 @@ function BoardCard({
   usage: ProjectUsage['byThread'][number] | undefined
   actions: CardActions
 }) {
-  const weather = threadWeather(state, thread)
+  // The Ready lane holds results you have not opened: their light is green.
+  const light = column === 'ready' ? 'ready' : threadLight(state, thread)
   const activity = threadActivity(state, thread)
   const progress = checklistProgress(thread)
   const kinds = artifactKinds(state, thread.id)
@@ -186,7 +198,7 @@ function BoardCard({
   return (
     <div className={`board-card col-${column}`}>
       <button type="button" className="board-card-open" onClick={() => actions.open(thread.id)} title={thread.goal}>
-        <AgentAvatar id={thread.id} size={20} weather={weather === 'clear' ? undefined : weather} live={weather === 'drizzle'} />
+        <StatusLight tone={light} label={LIGHT_LABEL[light]} />
         <span className="board-card-body">
           <span className="board-card-title">{thread.label}</span>
           {activity && <span className="board-card-activity">{activity}</span>}

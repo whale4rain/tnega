@@ -13,7 +13,7 @@ Claude Projects 的能力而**提议**的接口。提议接口尚未实现时，
 | --- | --- | --- |
 | Project（主对话 / chief of staff） | `ProjectRecord` + 根 Thread（`coordinatorId`） | 中间的主对话 |
 | Thread（并行的工作会话） | 子 `ThreadRecord`，各自一个 Session | Board 卡片；右侧 Thread 面板 |
-| 查看 Agent 之间的通信 / 进入 Thread 细调 | Box 信封（Messaged 入口）/ Thread 记录 / Thread Session | 主对话显示紧凑的通信入口，点击在工作台打开双方气泡记录；参与者可进入自己的 Thread |
+| 查看 Agent 之间的通信 / 进入 Thread 细调 | Box 信封 / Thread 记录 / Thread Session | 主对话为每个 Thread 放一张链接卡（第一次出现处），点击在工作台打开 Thread；Thread 工具栏的「Messages with …」打开它与上级 Agent 的往来 |
 | Shared memory | Blackboard `memory` 事实（有版本） | 右侧 Memory：新增、编辑、删除、版本历史 |
 | Library（你加的文件 + Claude 的产物） | Blackboard `artifact` / `resource` + Artifact Store | 右侧 Library：列表、查看、添加 |
 | 偏好：check-in 频率、开 Thread 的积极度、更新详略 | **提议** `settings.preferences` | 右侧 Settings |
@@ -57,7 +57,7 @@ Claude 的云端运行、按分支隔离与团队共享不在本期范围；Tneg
 
 `agentMessages` 是已实现的增量快照字段，不改变 Blackboard 或 Session 格式。前端仍接受旧服务端省略该字段，但旧快照只能展示原有主对话和协调者 inbox 里已有的通信；新版 SSE 通信无需重载即可更新工作台记录。
 
-前端的推导规则（见 `project-model.ts`）：主对话显示用户与协调者的已发布消息，以及 Agent 间的派工、关键进展、请求和阻塞的 Messaged 入口；同一发送者连续发送的通信合成一组入口。自动完成回报保留在双方通信记录中，不在主对话重复插入入口；`notice` 和原始 `chunk` 不显示为气泡。Board 卡片状态读 Thread 记录，以 `agent-status` 覆盖；回复的 `refs` 按哈希对到 Library，Thread 面板的产物按 `author` 归属。
+前端的推导规则（见 `project-model.ts`）：主对话显示用户与协调者的已发布消息，以及派工、关键进展、请求和阻塞涉及的 Thread 链接卡（取通信中非协调者的一方，每个 Thread 只在第一次出现时放卡，五分钟内连续的合成一组）。自动完成回报保留在双方通信记录中，不在主对话重复插入入口；`notice` 和原始 `chunk` 不显示为气泡。Board 卡片状态读 Thread 记录，以 `agent-status` 覆盖；回复的 `refs` 按哈希对到 Library，Thread 面板的产物按 `author` 归属。
 
 ## 提议的后端改动
 
