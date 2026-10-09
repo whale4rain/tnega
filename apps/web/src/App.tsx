@@ -14,6 +14,7 @@ import { browserAvailable } from './lib/browser-live'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
+import { useDisplay } from './lib/display'
 import { useDesktopChrome } from './lib/desktop-chrome'
 import { useDesktopUpdates } from './lib/desktop-updates'
 import { UpdatingOverlay } from './components/UpdateButton'
@@ -49,6 +50,7 @@ function setHash(hash: string): void {
 
 export function App() {
   const [theme, setTheme] = useTheme()
+  const [display, setDisplay] = useDisplay()
   const updates = useDesktopUpdates()
   const [config, setConfig] = useState<ConfigSnapshot | undefined>()
   const [workspaces, setWorkspaces] = useState<string[] | undefined>()
@@ -467,7 +469,7 @@ export function App() {
         />
       )}
       <UpdatingOverlay updates={updates} />
-      {dialog === 'settings' &&<SettingsDialog config={config} workspace={workspace} updates={updates} theme={theme} onThemeChange={setTheme} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
+      {dialog === 'settings' &&<SettingsDialog config={config} workspace={workspace} updates={updates} theme={theme} onThemeChange={setTheme} display={display} onDisplayChange={setDisplay} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
       {dialog === 'workspace' && (
         <WorkspaceDialog
           onClose={() => setDialog(undefined)}

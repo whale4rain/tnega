@@ -12,6 +12,12 @@
         var pref = localStorage.getItem('tnega.theme') || 'system'
         var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        // Display preferences from Settings → Appearance (lib/display.ts).
+        var display = { palette: 'tnega.palette', density: 'tnega.density', textSize: 'tnega.textSize', reading: 'tnega.readingWidth' }
+        for (var attribute in display) {
+          var value = localStorage.getItem(display[attribute])
+          if (value && /^[a-z]+$/.test(value)) document.documentElement.dataset[attribute] = value
+        }
       } catch (e) {}
     </script>
   </head>

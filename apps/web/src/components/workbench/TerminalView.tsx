@@ -189,7 +189,7 @@ function XtermPane({ id, visible }: { id: string; visible: boolean }) {
     observer.observe(element)
     // Follow light/dark switches.
     const themeWatch = new MutationObserver(() => { term.options.theme = themeFromTokens() })
-    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette', 'class'] })
     requestAnimationFrame(refit)
 
     return () => {

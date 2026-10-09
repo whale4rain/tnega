@@ -67,7 +67,7 @@ export function useDesktopChrome(layoutKey: string): void {
     }
     sync()
     const themeObserver = new MutationObserver(sync)
-    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme', 'data-palette'] })
     // Workspace loading and opening drawers can mount a header after the effect.
     const layoutObserver = new MutationObserver(sync)
     layoutObserver.observe(document.body, { childList: true, subtree: true })

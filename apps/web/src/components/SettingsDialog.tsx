@@ -2,6 +2,7 @@ import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, 
 import { useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
+import { DISPLAY_DEFAULTS, PALETTES, type DisplayChange, type DisplayPreferences } from '../lib/display'
 import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, Protocol } from '../lib/types'
 import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
@@ -24,7 +25,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: strin
   { id: 'instructions', label: 'Instructions', description: 'Your instructions for every session in the open workspace.', icon: SquareTerminal },
   { id: 'approvals', label: 'Approvals', description: 'Who reviews actions that need permission.', icon: ShieldCheck },
   { id: 'tools', label: 'Tools & shell', description: 'How the agent runs commands and calls its tools.', icon: SquareTerminal },
-  { id: 'appearance', label: 'Appearance', description: 'How Tnega looks on this device.', icon: Palette },
+  { id: 'appearance', label: 'Appearance', description: 'Colours and how much information fits on screen, on this device. Changes apply right away.', icon: Palette },
   { id: 'about', label: 'About & updates', description: 'Version, updates and where settings are stored.', icon: Info },
 ]
 
@@ -36,6 +37,8 @@ export function SettingsDialog({
   updates,
   theme,
   onThemeChange,
+  display = DISPLAY_DEFAULTS,
+  onDisplayChange,
   onClose,
   onSaved,
 }: {
@@ -45,6 +48,8 @@ export function SettingsDialog({
   updates?: DesktopUpdates | undefined
   theme?: ThemePreference
   onThemeChange?: (theme: ThemePreference) => void
+  display?: DisplayPreferences
+  onDisplayChange?: DisplayChange
   onClose: () => void
   onSaved: (config: ConfigSnapshot) => void
 }) {
@@ -316,25 +321,71 @@ export function SettingsDialog({
           </div>)}
 
           {panel('appearance', <div className="form-grid">
+            <ChoiceField
+              id="theme"
+              label="Mode"
+              value={theme}
+              disabled={!onThemeChange}
+              onChange={value => onThemeChange?.(value)}
+              options={[['system', 'System', Monitor], ['light', 'Light', Sun], ['dark', 'Dark', Moon]]}
+            />
             <div className="field span-2">
-              <span className="field-label" id="settings-theme-label">Theme</span>
-              <div className="settings-choice-row" role="radiogroup" aria-labelledby="settings-theme-label">
-                {([['system', 'System', Monitor], ['light', 'Light', Sun], ['dark', 'Dark', Moon]] as const).map(([value, label, Icon]) => (
+              <span className="field-label" id="settings-palette-label">Colour palette</span>
+              <div className="palette-grid" role="radiogroup" aria-labelledby="settings-palette-label">
+                {PALETTES.map(palette => (
                   <button
-                    key={value}
+                    key={palette.id}
                     type="button"
                     role="radio"
-                    aria-checked={theme === value}
-                    className={`settings-choice${theme === value ? ' active' : ''}`}
-                    disabled={!onThemeChange}
-                    onClick={() => onThemeChange?.(value)}
+                    aria-checked={display.palette === palette.id}
+                    className={`palette-card${display.palette === palette.id ? ' active' : ''}`}
+                    disabled={!onDisplayChange}
+                    onClick={() => onDisplayChange?.('palette', palette.id)}
                   >
-                    <Icon size={14} aria-hidden />{label}
+                    <span className="palette-swatch" aria-hidden>
+                      {(['light', 'dark'] as const).map(mode => (
+                        <span key={mode} className="palette-swatch-half" data-palette={palette.id} data-theme={mode}>
+                          <span className="palette-swatch-card">
+                            <span className="palette-swatch-line strong" />
+                            <span className="palette-swatch-line" />
+                            <span className="palette-swatch-dots"><i className="accent" /><i className="success" /><i className="warn" /><i className="danger" /></span>
+                          </span>
+                        </span>
+                      ))}
+                    </span>
+                    <span className="palette-name">{palette.label}</span>
+                    <span className="palette-description">{palette.description}</span>
                   </button>
                 ))}
               </div>
-              <span className="muted small">Applies right away on this device.</span>
+              <span className="muted small">Every palette has a light and a dark version and keeps text readable on every surface. Agent weather keeps its colours.</span>
             </div>
+            <ChoiceField
+              id="density"
+              label="Density"
+              value={display.density}
+              disabled={!onDisplayChange}
+              onChange={value => onDisplayChange?.('density', value)}
+              options={[['compact', 'Compact'], ['comfortable', 'Comfortable']]}
+              hint="Compact fits more rows and controls on screen; comfortable gives them more room."
+            />
+            <ChoiceField
+              id="text-size"
+              label="Text size"
+              value={display.textSize}
+              disabled={!onDisplayChange}
+              onChange={value => onDisplayChange?.('textSize', value)}
+              options={[['small', 'Small'], ['default', 'Default'], ['large', 'Large']]}
+            />
+            <ChoiceField
+              id="reading-width"
+              label="Conversation width"
+              value={display.readingWidth}
+              disabled={!onDisplayChange}
+              onChange={value => onDisplayChange?.('readingWidth', value)}
+              options={[['narrow', 'Narrow'], ['standard', 'Standard'], ['wide', 'Wide'], ['full', 'Full width']]}
+              hint="Wider columns show more of long tables, diffs and tool output without scrolling."
+            />
           </div>)}
 
           {panel('about', <>
@@ -348,5 +399,37 @@ export function SettingsDialog({
         </div>
       </div>
     </Dialog>
+  )
+}
+
+function ChoiceField<T extends string>({ id, label, value, options, disabled, onChange, hint }: {
+  id: string
+  label: string
+  value: T | undefined
+  options: ReadonlyArray<readonly [T, string, typeof Cpu?]>
+  disabled?: boolean
+  onChange: (value: T) => void
+  hint?: string
+}) {
+  return (
+    <div className="field span-2">
+      <span className="field-label" id={`settings-${id}-label`}>{label}</span>
+      <div className="settings-choice-row" role="radiogroup" aria-labelledby={`settings-${id}-label`}>
+        {options.map(([option, text, Icon]) => (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={value === option}
+            className={`settings-choice${value === option ? ' active' : ''}`}
+            disabled={disabled}
+            onClick={() => onChange(option)}
+          >
+            {Icon && <Icon size={14} aria-hidden />}{text}
+          </button>
+        ))}
+      </div>
+      {hint && <span className="muted small">{hint}</span>}
+    </div>
   )
 }

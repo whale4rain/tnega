@@ -45,6 +45,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- 设置 → Appearance 新增调色板：除默认的 Sky 外，还有 Sand（暖纸墨、赤陶强调色）、Forest（绿灰、深青）与 Graphite（纯中性灰、对比最强），每个都有浅色与深色两份，并通过同一套对比度底线。左上角的云标志随调色板的强调色变化；天气状态色不随调色板改变。
+- 新增信息显示选项：密度（Compact / Comfortable）、字号（Small / Default / Large）与对话宽度（Narrow / Standard / Wide / Full width）。即时生效，按设备记住，页面首帧前就会套用，不会闪烁。
+
 ### Fixes
 
 - 自动审批（LLM 审查）在 DeepSeek 官方 API 上不再生成隐藏推理：项目 Thread 里每次 shell 调用都要等这次审查，实测中位耗时由约 1.8 秒降到约 1.0 秒，也不再出现约 1/10 的审查推理写满 4096 token、约 20 秒后判为无效并转交协调者的情况。其他模型路由不变。
