@@ -49,6 +49,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Project 暂停会持久保存并停止派工与定时任务，明确恢复后继续队列；重连同步完整快照与实际运行状态，避免遗漏事实更新或残留运行标记。
+
 - Thread 的并发状态与清单更新按身份串行处理，避免审批等待与 Run 状态竞争导致误拒绝；恢复失败回报不再覆盖用户后来 Resolve / Reopen 的决定。
 
 - Thread 依据持久化的 Agent Run 结束事件回报执行失败，重启可补发，用户取消不会误报失败；协调者只有在全部请求成功处理后才隐藏收尾叙述，失败审批后的求助会保留。

@@ -62,7 +62,7 @@ export function fromSnapshot(snapshot: ProjectSnapshot, localReplies: Record<str
   const threads: Record<string, ThreadRecord> = {}
   for (const thread of snapshot.threads) threads[thread.id] = thread
   const running: Record<string, boolean> = {}
-  for (const thread of snapshot.threads) if (thread.state === 'working') running[thread.id] = true
+  for (const thread of snapshot.threads) running[thread.id] = snapshot.running?.[thread.id] ?? (thread.state === 'working')
   // Replies the user picked are remembered locally until the server stores them.
   const withLocal = (envelope: BoxEnvelope): BoxEnvelope => {
     const local = localReplies[envelope.messageId]
@@ -106,6 +106,10 @@ function upsert<T extends { id: string }>(list: readonly T[], record: T, deleted
 
 export function reduceProject(state: ProjectState, event: ProjectStreamEvent): ProjectState {
   switch (event.type) {
+    case 'snapshot': return fromSnapshot(event.snapshot, Object.fromEntries(
+      Object.values(state.envelopes).flatMap(envelope => envelope.causationId ? [[envelope.messageId, envelope.causationId]] : []),
+    ))
+    case 'project': return { ...state, project: event.project }
     case 'message': {
       const envelope = event.envelope
       const cursor = Math.max(state.cursor, event.seq)

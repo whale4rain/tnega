@@ -33,6 +33,8 @@ export interface ProjectRecord {
   name: string
   goal?: string
   archived?: boolean
+  /** Scheduling and inbox execution wait for explicit resume. */
+  paused?: boolean
   coordinatorId: string
   createdAt: number
   updatedAt: number
@@ -42,6 +44,7 @@ export interface ProjectPatch {
   name?: string
   goal?: string | null
   archived?: boolean
+  paused?: boolean
 }
 
 export const MAX_PROJECT_NAME_CHARS = 200

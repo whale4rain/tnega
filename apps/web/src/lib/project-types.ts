@@ -16,6 +16,7 @@ export interface ProjectRecord {
   name: string
   goal?: string
   archived?: boolean
+  paused?: boolean
   coordinatorId: string
   createdAt: number
   updatedAt: number
@@ -171,6 +172,8 @@ export interface GitInfo {
 export type ResourceFact = FactRecord<{ title: string; uri: string; note?: string; git?: GitInfo }>
 
 export interface ProjectSnapshot {
+  /** Authoritative live states; absent on older hosts. */
+  running?: Record<string, boolean>
   project: ProjectRecord
   coordinatorId: string
   cursor: number
@@ -212,6 +215,8 @@ export interface UsageTotals {
 
 /** Frames of `GET /api/projects/:id/stream`. */
 export type ProjectStreamEvent =
+  | { type: 'snapshot'; snapshot: ProjectSnapshot }
+  | { type: 'project'; project: ProjectRecord }
   | { type: 'message'; seq: number; envelope: BoxEnvelope }
   | {
       type: 'commit'

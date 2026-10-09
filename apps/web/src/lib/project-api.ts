@@ -139,6 +139,8 @@ export const projectApi = {
     call<{ stopped: boolean }>(`${base(id)}/threads/${threadId}/stop`, workspace, { method: 'POST', body: {} }),
   pause: (workspace: string, id: string) =>
     call<{ stopped: number }>(`${base(id)}/stop`, workspace, { method: 'POST', body: {} }),
+  resume: (workspace: string, id: string) =>
+    call<{ resumed: boolean }>(`${base(id)}/resume`, workspace, { method: 'POST', body: {} }),
   artifact: async (workspace: string, id: string, hash: string): Promise<string> => {
     const response = await fetch(`${base(id)}/artifacts/${hash}?${new URLSearchParams({ workspace }).toString()}`, {
       headers: { 'x-tnega-client': '1' },
@@ -187,7 +189,8 @@ export function followProject(
           for (const frame of frames) {
             const event = parseSseFrame(frame) as unknown as ProjectStreamEvent | undefined
             if (!event) continue
-            if (event.type === 'message') cursor = Math.max(cursor, event.seq)
+            if (event.type === 'snapshot') cursor = event.snapshot.cursor
+            else if (event.type === 'message') cursor = Math.max(cursor, event.seq)
             onEvent(event)
           }
         }

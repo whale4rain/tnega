@@ -2,6 +2,10 @@
 
 CLI 命令、agent runtime 组合层、web server 与会话存储。
 
+Project 的 “Pause all work” 持久保存暂停状态并取消当前 Agent Run；Box 中未投递的消息与到期 Routine 等待显式 “Resume project”（`POST /api/projects/:id/resume`）。重启不会自动解除暂停；恢复后错过的 Routine 时段合并为一次执行。单个 Thread 的 Stop 仍只停止该 Run。
+
+Project SSE 每次连接先注册监听，再发送包含事实与实时运行状态的 `snapshot`，随后回放读取期间缓冲的事件；断线期间新增 Thread、产物、记忆与已完成状态无需手动刷新。
+
 ChatGPT OAuth 授权码兑换、token 刷新与 Responses 请求共用宿主网络配置：
 Settings → Tools & shell → Network 的代理优先，然后使用环境代理或桌面系统网络。
 本机 OAuth 回调仍通过 localhost 接收。OpenAI 返回的地区限制错误不会被屏蔽。

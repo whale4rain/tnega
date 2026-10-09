@@ -60,12 +60,54 @@ it('releases Session listeners when a project subscription closes', async () => 
   const agent = await project.threads.activate(record.coordinatorId)
   const received: unknown[] = []
   const stop = await host.watch(record.id, { send: event => received.push(event) })
-  await agent.session.append('assistant/chunk', { content: 'before' })
+  await agent.session.append('assistant/chunk', { id: 'stream', content: 'before' })
   expect(received).toContainEqual({ type: 'chunk', agentId: agent.id, text: 'before' })
   stop()
   received.length = 0
-  await agent.session.append('assistant/chunk', { content: 'after' })
+  await agent.session.append('assistant/chunk', { id: 'stream', content: 'after' })
   expect(received).toHaveLength(0)
+})
+
+it('reconnects with facts and current running state missed while disconnected', async () => {
+  const { host, record, project } = await fixture()
+  const initial = await host.snapshot(record.id)
+  const child = await project.threads.spawn({ parentId: record.coordinatorId, goal: 'Recovered thread' })
+  await project.threads.setState(child.id, 'done')
+  await project.blackboard.commit({ kind: 'memory', id: 'new-memory', data: { text: 'Recovered memory' }, author: 'user', expectedVersion: null })
+  const received: unknown[] = []
+  const close = await host.watch(record.id, { after: initial.cursor, send: event => received.push(event) })
+  try {
+    expect(received).toContainEqual(expect.objectContaining({ type: 'snapshot', snapshot: expect.objectContaining({
+      threads: expect.arrayContaining([expect.objectContaining({ id: child.id, state: 'done' })]),
+      memory: expect.arrayContaining([expect.objectContaining({ id: 'new-memory' })]),
+      running: expect.objectContaining({ [child.id]: false }),
+    }) }))
+  } finally { close() }
+})
+
+it('persists project pause, prevents routine runs and resumes queued work explicitly', async () => {
+  const { host, record, project, workspace } = await fixture()
+  const routine = await project.routines.create({ title: 'Daily', prompt: 'Work', schedule: { kind: 'interval', minutes: 5 } }, 'user')
+  await project.blackboard.commit({ kind: 'routine', id: routine.id, data: { ...routine.data, nextRunAt: 0 }, expectedVersion: routine.version, author: 'user' })
+  await host.stop(record.id)
+  expect((await host.snapshot(record.id)).project).toMatchObject({ paused: true })
+  await project.routines.tick()
+  expect(await project.threads.list()).toHaveLength(1)
+  await expect(project.routines.run(routine.id)).rejects.toThrow(/paused/u)
+  await host.dispose()
+  let calls = 0
+  const reopened = new ProjectHost({ workspace, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker(), llm: { async complete() { calls += 1; return { content: 'Resumed', finishReason: 'stop' } } } })
+  hosts.push(reopened)
+  const loaded = await reopened.mount(record.id)
+  expect(loaded.record).toMatchObject({ paused: true })
+  const message = await reopened.sendUserMessage(record.id, 'Queued while paused')
+  await loaded.routines.tick()
+  expect(calls).toBe(0)
+  expect(await loaded.threads.list()).toHaveLength(1)
+  await reopened.resume(record.id)
+  await expect.poll(async () => (await loaded.box.timeline()).some(entry => entry.causationId === message.messageId && entry.kind === 'agent-reply')).toBe(true)
+  await loaded.routines.tick()
+  expect(await loaded.threads.list()).toHaveLength(2)
 })
 
 it.each(['coordinator', 'thread'])('publishes separate tool chat messages for a %s and restores them from Box', async target => {

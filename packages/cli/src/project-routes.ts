@@ -170,6 +170,12 @@ export async function handleProjectApi(
     return
   }
 
+  if (rest === '/resume' && req.method === 'POST') {
+    await host.resume(projectId)
+    context.sendJson(res, 200, { resumed: true })
+    return
+  }
+
   const artifact = /^\/artifacts\/([0-9a-f]{64})$/.exec(rest)
   if (artifact && req.method === 'GET') {
     const found = await host.artifact(projectId, artifact[1]!)

@@ -40,6 +40,21 @@ function snapshot(partial: Partial<ProjectSnapshot> = {}): ProjectSnapshot {
 }
 
 describe('mainTimeline', () => {
+  it('keeps locally selected reply links across reconnect snapshots', () => {
+    const reply = envelope({ kind: 'user-message', sender: { kind: 'user', id: 'user' } })
+    const fresh = snapshot({ messages: [reply] })
+    const state = fromSnapshot(fresh, { [reply.messageId]: 'source-message' })
+    const reconnected = reduceProject(state, { type: 'snapshot', snapshot: fresh })
+    expect(reconnected.messages[0]?.causationId).toBe('source-message')
+  })
+  it('replaces stale state from a reconnect snapshot', () => {
+    const stale = fromSnapshot(snapshot({ threads: [thread(T1, { state: 'working' })] }))
+    const fresh = snapshot({ threads: [thread(T1, { state: 'done' }), thread(T2)], running: { [T1]: false, [T2]: false } })
+    const state = reduceProject(stale, { type: 'snapshot', snapshot: fresh })
+    expect(threadState(state, state.threads[T1]!)).toBe('done')
+    expect(state.threads[T2]?.goal).toBe('do it')
+    expect(state.running[T1]).toBe(false)
+  })
   it('restores both directions of an Agent exchange without leaking user chat or other pairs', () => {
     const dispatch = envelope({ kind: 'dispatch', sender: { kind: 'agent', id: COORD }, recipients: [{ kind: 'agent', id: T1 }], threadId: T1, text: 'Fix parser' })
     const report = envelope({ kind: 'progress', sender: { kind: 'agent', id: T1 }, recipients: [{ kind: 'agent', id: COORD }], placement: { kind: 'thread', threadId: T1 }, text: 'Found cause' })

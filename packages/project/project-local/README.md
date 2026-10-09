@@ -10,10 +10,12 @@
 ```
 
 身份是同一个 Blackboard 里的 `project` kind 记录，`data` 只有
-`{ name, coordinatorId, goal?, archived? }` —— `id` 由记录键提供，`createdAt` / `updatedAt`
+`{ name, coordinatorId, goal?, archived?, paused? }` —— `id` 由记录键提供，`createdAt` / `updatedAt`
 由缝的版本记录提供，不在 data 里重复一份。
 
 ## 取舍
+
+- **暂停可恢复**。`paused` 缺省为 false；暂停持久化后，宿主阻止 inbox 执行和 Routine 派工，显式恢复后再处理积压工作。旧记录无需迁移。
 
 - **身份只有一个真源**。`project` 记录是唯一权威；Provider 不另外维护
   `projects.json` 之类的索引文件，因此不存在两份列表需要同步。

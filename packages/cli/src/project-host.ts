@@ -171,6 +171,7 @@ export function summarizeThreads(
 
 export interface ProjectSnapshot {
   project: ProjectRecord
+  running: Record<string, boolean>
   coordinatorId: string
   /** 消息流游标：下次带 `after` 拉取就能只补新消息。 */
   cursor: number
@@ -338,11 +339,13 @@ export class ProjectHost {
       && envelope.sender.id !== project.record.coordinatorId
       && envelope.recipients.some(recipient => recipient.kind === 'agent'
         && recipient.id === project.record.coordinatorId))
+    const threads = await project.threads.list()
     return {
       project: project.record,
+      running: Object.fromEntries(threads.map(thread => [thread.id, project.registry.get(thread.id)?.status === 'running'])),
       coordinatorId: project.record.coordinatorId,
       cursor: facts.reduce((max, fact) => Math.max(max, fact.seq), 0),
-      threads: await project.threads.list(),
+      threads,
       messages,
       inboxMessages,
       agentMessages: envelopes.filter(envelope => envelope.sender.kind === 'agent'
@@ -413,11 +416,11 @@ export class ProjectHost {
   ): Promise<() => void> {
     const project = await this.mount(projectId)
     const disposers: Array<() => void> = []
-    const { after, send } = options
-    if (after !== undefined) {
-      for (const fact of await project.blackboard.list('message', { after })) {
-        send({ type: 'message', seq: fact.seq, envelope: fact.data })
-      }
+    const buffered: Array<Record<string, unknown>> = []
+    let ready = false
+    const send = (event: Record<string, unknown>): void => {
+      if (ready) options.send(event)
+      else buffered.push(event)
     }
     // 活的输出：Agent 正在生成的正文按块推下去，状态变化也推 —— 否则界面只能在整轮结束、
     // 回复发布之后才知道发生了什么，看起来就是「没有响应」。
@@ -435,13 +438,6 @@ export class ProjectHost {
         if (typeof payload.content !== 'string' || !payload.content) return
         send({ type: 'chunk', agentId, text: payload.content })
       }))
-    }
-    for (const agent of project.registry.list()) {
-      attach(agent.id, agent)
-      // A subscriber that arrives mid-run learns the current step right away.
-      if (agent.status !== 'running') continue
-      const last = (await agent.session.read()).findLast(event => event.type === 'tool/call')
-      if (last?.type === 'tool/call') send({ type: 'activity', agentId: agent.id, text: describeToolCall(String(last.payload.name), last.payload.arguments) })
     }
     disposers.push(project.ctx.on('agent/created', (event: { id: string; agent: LiveAgent }) => {
       attach(event.id, event.agent)
@@ -472,6 +468,29 @@ export class ProjectHost {
       }
     }))
     disposers.push(this.options.approvals.attach(projectId, event => send(event)))
+    disposers.push(project.ctx.on('project/updated', (record: ProjectRecord) => send({ type: 'project', project: record })))
+    try {
+      // Subscribe before any asynchronous reads; buffer changes across the snapshot.
+      const active = project.registry.list()
+      for (const agent of active) attach(agent.id, agent)
+      if (options.after !== undefined) {
+        for (const fact of await project.blackboard.list('message', { after: options.after })) {
+          send({ type: 'message', seq: fact.seq, envelope: fact.data })
+        }
+      }
+      options.send({ type: 'snapshot', snapshot: await this.snapshot(projectId) })
+      for (const event of buffered) options.send(event)
+      buffered.length = 0
+      ready = true
+      for (const agent of active) {
+        if (agent.status !== 'running') continue
+        const last = (await agent.session.read()).findLast(event => event.type === 'tool/call')
+        if (agent.status === 'running' && last?.type === 'tool/call') send({ type: 'activity', agentId: agent.id, text: describeToolCall(String(last.payload.name), last.payload.arguments) })
+      }
+    } catch (error) {
+      for (const dispose of disposers.reverse()) dispose()
+      throw error
+    }
     const heartbeat = setInterval(() => send({ type: 'heartbeat', at: Date.now() }), 15_000)
     heartbeat.unref?.()
     return () => {
@@ -510,9 +529,18 @@ export class ProjectHost {
     return true
   }
 
-  /** 停下这个 Project 里所有正在跑的 Agent。 */
+  /** 暂停派工和定时任务，取消正在跑的 Agent，直到用户明确恢复。 */
   async stop(projectId: string): Promise<number> {
     const project = await this.mount(projectId)
+    const previous = project.record.paused === true
+    project.record.paused = true
+    try {
+      Object.assign(project.record, await (await this.projects()).update(projectId, { paused: true }, 'user'))
+    } catch (error) {
+      project.record.paused = previous
+      throw error
+    }
+    project.ctx.emit('project/updated', project.record)
     let stopped = 0
     for (const agent of project.registry.list()) {
       if (agent.status !== 'running') continue
@@ -520,6 +548,15 @@ export class ProjectHost {
       stopped += 1
     }
     return stopped
+  }
+
+  async resume(projectId: string): Promise<void> {
+    const project = await this.mount(projectId)
+    const record = await (await this.projects()).update(projectId, { paused: false }, 'user')
+    Object.assign(project.record, record, { paused: false })
+    project.ctx.emit('project/updated', project.record)
+    project.ctx.emit('project/resumed', { projectId })
+    await project.routines.tick()
   }
 
   /** 人收下（或重新打开）一个 Thread。重新打开回到空闲，等下一条消息。 */
@@ -736,12 +773,13 @@ export class ProjectHost {
       delegateApproval: (request, review) => threadApprovals.request(request, review),
     }))
 
-    await ctx.plugin(projectLoop, { projectId: record.id })
+    await ctx.plugin(projectLoop, { projectId: record.id, isPaused: () => record.paused === true })
     const routines = new RoutineRunner({
       blackboard: ctx.get('blackboard') as BlackboardService,
       threads,
       box: ctx.get('box') as BoxService,
       coordinatorId: record.coordinatorId,
+      isPaused: () => record.paused === true,
     })
     registerRoutineTools(toolService, routines)
     routines.start()

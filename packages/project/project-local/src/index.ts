@@ -44,6 +44,7 @@ function toRecord(fact: FactRecord): ProjectRecord {
   }
   if (typeof data.goal === 'string') record.goal = data.goal
   if (data.archived === true) record.archived = true
+  if (data.paused === true) record.paused = true
   return record
 }
 
@@ -53,6 +54,7 @@ function toData(record: ProjectRecord): Record<string, unknown> {
     coordinatorId: record.coordinatorId,
     ...(record.goal !== undefined ? { goal: record.goal } : {}),
     ...(record.archived ? { archived: true } : {}),
+    ...(record.paused ? { paused: true } : {}),
   }
 }
 
@@ -136,6 +138,10 @@ export class LocalProjectsService extends ProjectsService {
       throw new ProjectError(`project not found: ${id}`, 'PROJECT_NOT_FOUND')
     }
     const next: ProjectRecord = { ...toRecord(fact), updatedAt: Date.now() }
+    if (patch.paused !== undefined) {
+      if (typeof patch.paused !== 'boolean') throw new ProjectError('project paused must be a boolean', 'PROJECT_INVALID')
+      next.paused = patch.paused
+    }
     if (patch.name !== undefined) next.name = normalizeProjectName(patch.name)
     if (patch.archived !== undefined) {
       if (typeof patch.archived !== 'boolean') {

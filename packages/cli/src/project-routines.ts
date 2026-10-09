@@ -125,6 +125,7 @@ export interface RoutineScope {
   threads: ThreadService
   box: BoxService
   coordinatorId: string
+  isPaused?: () => boolean
 }
 
 export class RoutineRunner {
@@ -186,6 +187,7 @@ export class RoutineRunner {
 
   /** Run one routine now, whether or not it is due. */
   async run(id: string, author = 'user'): Promise<FactRecord<RoutineData>> {
+    if (this.scope.isPaused?.()) throw new RoutineError('Project is paused; resume it before running routines')
     const fact = await this.scope.blackboard.read<RoutineData>('routine', id)
     if (!fact || fact.deleted) throw new RoutineError(`routine not found: ${id}`)
     const now = this.now()
@@ -203,11 +205,11 @@ export class RoutineRunner {
   }
 
   async tick(): Promise<void> {
-    if (this.disposed || this.ticking) return
+    if (this.disposed || this.ticking || this.scope.isPaused?.()) return
     this.ticking = (async () => {
       const now = this.now()
       for (const fact of await this.list()) {
-        if (this.disposed) return
+        if (this.disposed || this.scope.isPaused?.()) return
         if (fact.data.enabled && fact.data.nextRunAt <= now) await this.run(fact.id, 'routine').catch(() => undefined)
       }
     })()
@@ -222,7 +224,9 @@ export class RoutineRunner {
   private async deliver(routine: RoutineData, now: number): Promise<string> {
     const { threads, box, coordinatorId } = this.scope
     const existing = routine.threadId ? await threads.get(routine.threadId) : undefined
+    if (this.disposed || this.scope.isPaused?.()) throw new RoutineError('Project is paused')
     const thread = existing ?? await threads.spawn({ parentId: coordinatorId, goal: routine.prompt, label: routine.title })
+    if (this.disposed || this.scope.isPaused?.()) throw new RoutineError('Project is paused')
     await box.send({
       sender: agentAddress(coordinatorId),
       recipients: [agentAddress(thread.id)],
