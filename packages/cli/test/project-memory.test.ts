@@ -33,6 +33,7 @@ async function fixture() {
 
 it('forks the durable prefix without mutating the Session and commits source-bound candidates once', async () => {
   const f = await fixture()
+  await f.session.flush()
   const before = await readFile(f.session.file, 'utf8')
   const complete = vi.fn<LLMAdapter['complete']>().mockResolvedValue({ finishReason: 'stop', content: '{"memories":[{"text":"This release must not modify CI.","tags":["release"]}]}' })
   const runner = new ProjectMemoryRunner({ ...f, config: {}, resolveAdapter: () => ({ complete }) })

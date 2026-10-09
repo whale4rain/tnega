@@ -48,6 +48,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- 记忆抽取的不修改 Session 测试先等待已有事件落盘，避免把异步缓冲写入误判为抽取修改。
+
 ## [0.4.24-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.24-beta.1) — 2026-10-09
 
 ### Features
