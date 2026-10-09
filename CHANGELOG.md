@@ -48,6 +48,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.25-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.1) — 2026-10-09
+
+### Other
+
+- 将 Project 协作升级的预览版本目标纠正为 0.4.25；包含 0.4.24-beta.1 的全部功能与下列修复。
+
 ### Fixes
 
 - Windows Thread 恢复使用文件系统实际路径识别已有 worktree，兼容短路径、大小写和 Git 路径输出，避免误判后重复创建目录。
