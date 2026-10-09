@@ -18,6 +18,8 @@ async function fileExists(path: string): Promise<boolean> {
 
 export interface ProjectLoopConfig {
   projectId: string
+  /** Pausing preserves queued envelopes without starting or steering Agents. */
+  isPaused?: () => boolean
   /** 挂载时重投未确认的消息并补发未发布的回复；默认 true。 */
   recover?: boolean
   /**
@@ -202,24 +204,35 @@ const SETTLING_TOOLS: ReadonlySet<string> = new Set(['decide_thread_approval', '
 export function settledAgentTurn(
   history: readonly SessionEvent[],
   replyId: string,
-  fromUser: (messageId: string) => boolean,
+  source: (messageId: string) => { senderId: string; approval: boolean } | undefined,
 ): boolean {
   const end = history.findIndex(event => event.id === replyId)
   if (end < 0) return false
   let start = end
   while (start > 0 && history[start]!.type !== 'turn/start') start -= 1
-  let inputs = 0
-  let settled = false
+  const inputs: { id: string; senderId: string; approval: boolean; settled: boolean }[] = []
+  const calls = new Map<string, Extract<SessionEvent, { type: 'tool/call' }>>()
   for (const event of history.slice(start, end)) {
     if (event.type === 'user/message') {
       const id = boxIdOfName(event.payload.name)
-      if (!id || fromUser(id)) return false
-      inputs += 1
+      const input = id ? source(id) : undefined
+      if (!id || !input) return false
+      inputs.push({ id, ...input, settled: false })
     } else if (event.type === 'tool/call' && SETTLING_TOOLS.has(String(event.payload.name))) {
-      settled = true
+      calls.set(event.payload.id, event)
+    } else if (event.type === 'tool/result' && event.payload.ok) {
+      const call = calls.get(event.payload.toolCallId)
+      const args = call?.payload.arguments
+      if (!call || !args || typeof args !== 'object' || Array.isArray(args)) continue
+      for (const input of inputs) {
+        if (call.payload.name === 'decide_thread_approval'
+          && 'request_id' in args && args.request_id === input.id) input.settled = true
+        if (call.payload.name === 'send_thread_message' && !input.approval
+          && 'thread_id' in args && args.thread_id === input.senderId) input.settled = true
+      }
     }
   }
-  return inputs > 0 && settled
+  return inputs.length > 0 && inputs.every(input => input.settled)
 }
 
 /**
@@ -246,6 +259,7 @@ export class ProjectLoopRuntime {
   private readonly threads: ThreadService
   private readonly registry: AgentRegistry
   private readonly artifacts: ArtifactIndex | undefined
+  private readonly isPaused: () => boolean
   private readonly attached = new Set<string>()
   /** 子 Thread 最近一次发给父 Agent 的回报正文，用来避免重复补发。 */
   private readonly reported = new Map<string, string>()
@@ -268,6 +282,7 @@ export class ProjectLoopRuntime {
       throw new Error('project-loop requires box, threads and the live Agent registry')
     }
     this.projectId = config.projectId
+    this.isPaused = config.isPaused ?? (() => false)
     this.box = box
     this.threads = threads
     this.registry = registry
@@ -293,6 +308,9 @@ export class ProjectLoopRuntime {
     this.ctx.on('agent/status', (event: { id: string; status: 'idle' | 'running' }) => {
       this.queueStatus(event.id, event.status)
     })
+    this.ctx.on('project/resumed', (event: { projectId: string }) => {
+      if (event.projectId === this.projectId) this.schedule()
+    })
     for (const agent of this.registry.list()) this.attach(agent.id, agent)
 
     const interval = options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS
@@ -309,6 +327,11 @@ export class ProjectLoopRuntime {
     await this.refresh()
     for (const thread of this.known.values()) {
       await this.publishThread(thread.id).catch(error => this.fail(error))
+      const events = await this.readSession(thread.id)
+      const latest = [...events].reverse().find(event => event.type === 'turn/start' || event.type === 'turn/end')
+      if (latest?.type === 'turn/end') {
+        await this.queueTurnEnd(thread.id, latest)
+      }
     }
     this.schedule()
   }
@@ -326,6 +349,11 @@ export class ProjectLoopRuntime {
     if (this.attached.has(agentId)) return
     this.attached.add(agentId)
     agent.ctx.on('session/event', (event: SessionEvent) => {
+      if (event.type === 'turn/start') {
+        this.reported.delete(agentId)
+        this.queueStatus(agentId, 'running')
+      }
+      if (event.type === 'turn/end') void this.queueTurnEnd(agentId, event)
       void this.onSessionEvent(agentId, event).catch(error => this.fail(error))
     })
   }
@@ -383,17 +411,24 @@ export class ProjectLoopRuntime {
 
   /** 把还欠这个 Thread 的信封送进它的 inbox，准入并冲刷之后才确认。 */
   private async deliver(threadId: string): Promise<void> {
+    if (this.isPaused()) return
     const recipient = { kind: 'agent' as const, id: threadId }
     const pending = await this.box.inbox(recipient)
-    if (!pending.length) return
+    if (!pending.length || this.isPaused()) return
     const agent = await this.threads.activate(threadId)
     for (const envelope of pending) {
-      if (this.disposed) return
+      if (this.disposed || this.isPaused()) return
       const events = await agent.session.read()
+      if (this.disposed || this.isPaused()) return
       const isNew = !admitted(events, envelope.messageId)
       // 先把信封读出来的状态落定，再唤醒收件方。反过来的话，收件方可能在唤醒之后
       // 立刻跑完并回到 idle，随后到达的「开始工作」会把 idle 覆盖掉。
-      await this.applyEnvelopeState(threadId, envelope)
+      const stateTask = this.statusTail.then(() => {
+        if (!this.disposed && !this.isPaused()) return this.applyEnvelopeState(threadId, envelope)
+      })
+      this.statusTail = stateTask.then(() => undefined, error => this.fail(error))
+      await stateTask
+      if (this.disposed || this.isPaused()) return
       if (isNew) {
         const source = envelope.causationId && envelope.sender.kind === 'user'
           ? (await this.box.timeline()).find(entry => entry.messageId === envelope.causationId)
@@ -419,6 +454,7 @@ export class ProjectLoopRuntime {
             content: renderEnvelope(shown, { label: id => this.known.get(id)?.label, source, reader: threadId }),
           }],
         }
+        if (this.disposed || this.isPaused()) return
         if (envelope.interrupt && envelope.sender.kind === 'user'
           && (envelope.kind === 'user-message' || envelope.kind === 'user-thread')) await agent.interrupt(input)
         else if (quiet) await agent.inject(input)
@@ -442,6 +478,14 @@ export class ProjectLoopRuntime {
     }
     const state = TERMINAL_KINDS[envelope.kind]
     if (!state || envelope.sender.kind !== 'agent') return
+    // Automatic reports already applied their Run's outcome. A delayed
+    // delivery must not overwrite a newer Run that has since started.
+    if (envelope.kind === 'failed' || envelope.kind === 'complete') {
+      const history = await this.readSession(envelope.sender.id)
+      if (history.some(event => (envelope.kind === 'failed' ? event.type === 'turn/end' : isReply(event))
+        && envelope.messageId === publishedMessageId(this.projectId, envelope.sender.id,
+          `${envelope.kind === 'failed' ? 'failure' : 'report'} ${event.id}`))) return
+    }
     // The approval broker owns both ends of its waiting state transition.
     // Reapplying it here would race with cancellation while Box delivers.
     if (envelope.kind === 'request') {
@@ -489,7 +533,45 @@ export class ProjectLoopRuntime {
     // 不因为一轮跑完就被抹掉。
     if (record.state !== 'working') return
     await this.setStateSafely(agentId, 'idle')
-    await this.reportTurnEnd(agentId)
+  }
+
+  private queueTurnEnd(agentId: string, end: Extract<SessionEvent, { type: 'turn/end' }>): Promise<void> {
+    const task = this.statusTail.then(() => this.onTurnEnd(agentId, end))
+    this.statusTail = task.then(() => undefined, error => this.fail(error))
+    return this.statusTail
+  }
+
+  private async onTurnEnd(agentId: string, end: Extract<SessionEvent, { type: 'turn/end' }>): Promise<void> {
+    if (this.disposed || !this.known.has(agentId)) return
+    const history = await this.readSession(agentId)
+    const index = history.findIndex(event => event.id === end.id)
+    if (index < 0) return
+    const events = history.slice(0, index + 1)
+    const reason = end.payload.reason
+    if (reason?.kind === 'aborted' || end.payload.finishReason === 'cancelled' || end.payload.cancelCause) return
+    if (reason?.kind === 'error' || end.payload.finishReason === 'error') {
+      const text = reason?.kind === 'error' ? reason.error.message : end.payload.error?.message ?? 'Agent Run failed.'
+      if (!history.slice(index + 1).some(event => event.type === 'turn/start')) {
+        await this.setStateSafely(agentId, 'failed', text)
+      }
+      const record = this.known.get(agentId)
+      if (!record?.parentId) return
+      const recipient = { kind: 'agent' as const, id: record.parentId }
+      const messageId = publishedMessageId(this.projectId, agentId, `failure ${end.id}`)
+      if (await this.box.delivery(messageId, recipient)) return
+      const causationId = lastInboundMessageId(events)
+      await this.box.send({
+        sender: { kind: 'agent', id: agentId }, recipients: [recipient],
+        placement: { kind: 'thread', threadId: agentId }, kind: 'failed', text,
+        messageId, createdAt: end.ts, ...(causationId ? { causationId } : {}),
+      })
+      return
+    }
+    if (reason ? reason.kind !== 'completed' : end.payload.finishReason !== 'stop') return
+    const record = await this.threads.get(agentId)
+    if (record?.state === 'working' || record?.state === 'idle') {
+      await this.reportTurnEnd(agentId, events, !history.slice(index + 1).some(event => event.type === 'turn/start'))
+    }
   }
 
   /**
@@ -498,14 +580,15 @@ export class ProjectLoopRuntime {
    *
    * 补发消息的 ID 由「这一轮的回复事件」派生，因此同一轮重复触发只会命中同一个信封。
    */
-  private async reportTurnEnd(agentId: string): Promise<void> {
+  private async reportTurnEnd(agentId: string, events: readonly SessionEvent[], latest: boolean): Promise<void> {
     const record = this.known.get(agentId)
     if (!record?.parentId) return
-    const events = await this.readSession(agentId)
-    const reply = [...events].reverse().find(isReply)
+    const start = events.findLastIndex(event => event.type === 'turn/start')
+    const reply = [...events.slice(start + 1)].reverse().find(isReply)
     if (!reply) return
     const text = reply.payload.content.trim()
     if (this.reported.get(agentId) === text) return
+    if (latest) await this.setStateSafely(agentId, 'done', text)
     const recipient = { kind: 'agent' as const, id: record.parentId }
     const messageId = publishedMessageId(this.projectId, agentId, `report ${reply.id}`)
     if (await this.box.delivery(messageId, recipient)) return
@@ -544,15 +627,36 @@ export class ProjectLoopRuntime {
       ? { kind: 'main' }
       : { kind: 'thread', threadId: agentId }
     const causationId = lastInboundMessageId(history)
-    let senders: Map<string, BoxEnvelope['sender']['kind']> | undefined
+    let sources: Map<string, { senderId: string; approval: boolean }> | undefined
     for (const event of slice) {
       if (!isReply(event)) continue
       const messageId = publishedMessageId(this.projectId, agentId, event.id)
       if (await this.box.delivery(messageId, USER_ADDRESS)) continue
       if (record.parentId === undefined) {
-        senders ??= new Map((await this.box.timeline()).map(entry => [entry.messageId, entry.sender.kind]))
-        const known = senders
-        if (settledAgentTurn(history, event.id, id => known.get(id) !== 'agent')) continue
+        if (!sources) {
+          sources = new Map()
+          const timeline = await this.box.timeline()
+          const inputs = new Set(history.flatMap(item => item.type === 'user/message'
+            ? [boxIdOfName(item.payload.name)] : []))
+          const approvals = new Map<string, Set<string>>()
+          for (const entry of timeline) {
+            if (entry.sender.kind !== 'agent' || !inputs.has(entry.messageId)) continue
+            if (entry.kind !== 'request') {
+              sources.set(entry.messageId, { senderId: entry.sender.id, approval: false })
+              continue
+            }
+            let ids = approvals.get(entry.sender.id)
+            if (!ids) {
+              ids = new Set((await this.readSession(entry.sender.id))
+                .filter(item => item.type === 'meta' && item.payload.kind === 'approval/delegation')
+                .flatMap(item => item.type === 'meta' && typeof item.payload.requestId === 'string' ? [item.payload.requestId] : []))
+              approvals.set(entry.sender.id, ids)
+            }
+            sources.set(entry.messageId, { senderId: entry.sender.id, approval: ids.has(entry.messageId) })
+          }
+        }
+        const known = sources
+        if (settledAgentTurn(history, event.id, id => known.get(id))) continue
       }
       const refs = await this.turnArtifacts(agentId, history, event)
       await this.box.send({

@@ -2,13 +2,14 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { agents } from '@tnega/agent'
+import { agents, type LLMAdapter } from '@tnega/agent'
 import { USER_ADDRESS, agentAddress, type BoxEnvelope } from '@tnega/box'
 import { Context } from '@tnega/core'
 import { tools } from '../../../tools/src/index.js'
 import { blackboardLocal } from '../../../project/blackboard-local/src/index.js'
 import { boxBlackboard } from '../../../project/box-blackboard/src/index.js'
 import { threadLocal } from '../../../project/thread-local/src/index.js'
+import { toolThread } from '../../../project/tool-thread/src/index.js'
 import { projectLoop } from '../src/index.js'
 
 const directories: string[] = []
@@ -33,13 +34,13 @@ async function workspace(): Promise<string> {
   return root
 }
 
-async function mount(root: string, options: { loop?: boolean } = {}): Promise<Context> {
+async function mount(root: string, options: { loop?: boolean; llm?: LLMAdapter } = {}): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(tools)
   await ctx.plugin(blackboardLocal, { root: join(root, 'blackboard') })
   await ctx.plugin(boxBlackboard, { projectId: project.id })
   await ctx.plugin(agents)
-  await ctx.plugin(threadLocal, { projectId: project.id, root, llm, permission: 'read-only' })
+  await ctx.plugin(threadLocal, { projectId: project.id, root, llm: options.llm ?? llm, permission: 'read-only' })
   if (options.loop !== false) {
     await ctx.plugin(projectLoop, { projectId: project.id, sweepIntervalMs: 0 })
   }
@@ -59,6 +60,118 @@ async function waitFor<T>(probe: () => Promise<T | undefined>, what: string): Pr
 function timeline(ctx: Context): Promise<BoxEnvelope[]> {
   return ctx.box.timeline()
 }
+
+it('reports a failed child Run once and never reuses its earlier successful answer', async () => {
+  const root = await workspace()
+  const failing: LLMAdapter = { async complete(messages) {
+    if (messages.some(message => message.content === 'Fail this run')) throw new Error('Provider unavailable')
+    return { finishReason: 'stop', content: 'Earlier success' }
+  } }
+  const ctx = await mount(root, { llm: failing })
+  let childId = ''
+  try {
+    const parent = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: parent.id, goal: 'Check service' })
+    childId = child.id
+    const agent = await ctx.threads.activate(child.id)
+    await agent.followup({ text: 'Succeed first' })
+    await waitFor(async () => (await timeline(ctx)).find(entry => entry.kind === 'complete'), 'first completion')
+    await waitFor(async () => (await ctx.threads.get(child.id))?.state === 'done' ? true : undefined, 'first settled state')
+    await agent.followup({ text: 'Fail this run' })
+    await waitFor(async () => agent.status === 'idle' ? true : undefined, 'failed Run to stop')
+    await expect.poll(async () => (await ctx.threads.get(child.id))?.state).toBe('failed')
+    const failure = await waitFor(async () => (await timeline(ctx)).find(entry => entry.kind === 'failed'), 'failure report')
+    expect(failure).toMatchObject({ sender: agentAddress(child.id), recipients: [agentAddress(parent.id)] })
+    expect(failure.text).toContain('Provider unavailable')
+    await waitFor(async () => (await timeline(ctx)).find(entry => entry.kind === 'agent-reply' && entry.sender.id === parent.id), 'parent response to failure')
+    expect((await timeline(ctx)).filter(entry => entry.kind === 'complete')).toHaveLength(1)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+  const recovered = await mount(root)
+  try {
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect((await recovered.threads.get(childId))?.state).toBe('failed')
+    expect((await timeline(recovered)).filter(entry => entry.kind === 'failed')).toHaveLength(1)
+  } finally {
+    await recovered.fiber.dispose()
+  }
+})
+
+it('recovers a durable failure that happened before the Loop attached', async () => {
+  const root = await workspace()
+  const ctx = await mount(root, { loop: false, llm: { async complete() { throw new Error('Offline') } } })
+  try {
+    const parent = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: parent.id, goal: 'Check service' })
+    const agent = await ctx.threads.activate(child.id)
+    await agent.followup({ text: 'Check' })
+    await waitFor(async () => (await agent.session.read()).find(event => event.type === 'turn/end'), 'durable end')
+    await ctx.plugin(projectLoop, { projectId: project.id, sweepIntervalMs: 0 })
+    await expect.poll(async () => (await ctx.threads.get(child.id))?.state).toBe('failed')
+    const failure = await waitFor(async () => (await timeline(ctx)).find(entry => entry.kind === 'failed'), 'recovered failure')
+    expect(failure.text).toContain('Offline')
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it('reports an intermediate failed Run while preserving a queued successful Run', async () => {
+  const root = await workspace()
+  let rejectFirst: ((error: Error) => void) | undefined
+  let started = false
+  const ctx = await mount(root, { llm: { async complete(messages) {
+    if (!started && messages.some(message => message.content === 'First run')) {
+      started = true
+      await new Promise<void>((_resolve, reject) => { rejectFirst = reject })
+    }
+    return { finishReason: 'stop', content: 'Recovered successfully' }
+  } } })
+  try {
+    const parent = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: parent.id, goal: 'Check service' })
+    const agent = await ctx.threads.activate(child.id)
+    await agent.followup({ text: 'First run' })
+    await waitFor(async () => rejectFirst ? true : undefined, 'first request')
+    await agent.followup({ text: 'Retry with new direction' })
+    rejectFirst?.(new Error('Transient failure'))
+    await waitFor(async () => (await timeline(ctx)).find(entry => entry.kind === 'complete'), 'successful second Run')
+    await expect.poll(async () => (await ctx.threads.get(child.id))?.state).toBe('done')
+    const reports = (await timeline(ctx)).filter(entry => entry.sender.id === child.id && ['failed', 'complete'].includes(entry.kind))
+    expect(reports.map(entry => entry.kind)).toEqual(['failed', 'complete'])
+    expect(reports[1]?.text).toBe('Recovered successfully')
+  } finally {
+    rejectFirst?.(new Error('Test cleanup'))
+    await ctx.fiber.dispose()
+  }
+})
+
+it('does not report user cancellation as a failure or repeat an older completion', async () => {
+  const root = await workspace()
+  let entered = false
+  const ctx = await mount(root, { llm: { async complete(messages, _tools, options) {
+    if (messages.some(message => message.content === 'Wait for cancellation')) {
+      entered = true
+      await new Promise<void>((_resolve, reject) => options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+    }
+    return { finishReason: 'stop', content: 'Earlier success' }
+  } } })
+  try {
+    const parent = await ctx.threads.ensureRoot(project)
+    const child = await ctx.threads.spawn({ parentId: parent.id, goal: 'Check service' })
+    const agent = await ctx.threads.activate(child.id)
+    await agent.followup({ text: 'Succeed first' })
+    await waitFor(async () => (await ctx.threads.get(child.id))?.state === 'done' ? true : undefined, 'first completion')
+    await agent.followup({ text: 'Wait for cancellation' })
+    await waitFor(async () => entered ? true : undefined, 'blocked model')
+    agent.cancel({ type: 'user' })
+    await expect.poll(async () => (await ctx.threads.get(child.id))?.state).toBe('idle')
+    expect((await timeline(ctx)).filter(entry => entry.kind === 'failed')).toHaveLength(0)
+    expect((await timeline(ctx)).filter(entry => entry.kind === 'complete')).toHaveLength(1)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
 
 it('delivers a user message into the coordinator Session and publishes its reply', async () => {
   const root = await workspace()
@@ -304,22 +417,53 @@ it('gives the coordinator a long report as its outcome with a pointer to the res
   }
 })
 
-it('keeps the coordinator\'s narration of a settled thread request out of the room', async () => {
-  const { settledAgentTurn } = await import('../src/index.js')
-  const event = (id: string, type: string, payload: Record<string, unknown> = {}) =>
-    ({ id, type, ts: 0, payload }) as unknown as import('@tnega/session').SessionEvent
-  const turn = (input: string, tool?: string) => [
-    event('s', 'turn/start'),
-    event('u', 'user/message', { name: `box:${input}`, content: 'x' }),
-    ...(tool ? [event('c', 'tool/call', { id: 'c', name: tool, arguments: {} })] : []),
-    event('r', 'assistant/message', { content: 'Approved.' }),
-  ]
-  const fromUser = (id: string) => id === 'human'
-  expect(settledAgentTurn(turn('thread-ask', 'decide_thread_approval'), 'r', fromUser)).toBe(true)
-  expect(settledAgentTurn(turn('thread-ask', 'send_thread_message'), 'r', fromUser)).toBe(true)
-  // A question the coordinator puts to the user, or any turn the user started, is published.
-  expect(settledAgentTurn(turn('thread-ask'), 'r', fromUser)).toBe(false)
-  expect(settledAgentTurn(turn('human', 'send_thread_message'), 'r', fromUser)).toBe(false)
+it.each([
+  { requests: 1, fail: false, approval: false, visible: false },
+  { requests: 1, fail: true, approval: false, visible: true },
+  { requests: 2, fail: false, approval: false, visible: true },
+  { requests: 1, fail: false, approval: true, visible: true },
+])('publishes coordinator help when a request remains unresolved: %j', async ({ requests, fail, approval, visible }) => {
+  let target = ''
+  let called = false
+  const root = await workspace()
+  const ctx = await mount(root, { loop: false, llm: { async complete(messages) {
+    if (messages.some(message => message.content.includes('[Request from thread')) && !called) {
+      called = true
+      return { finishReason: 'tool_calls', toolCalls: [{ id: 'answer-request', name: 'send_thread_message', arguments: {
+        thread_id: fail ? 'missing-thread' : target, message: 'Proceed with the investigation.',
+      } }] }
+    }
+    return { finishReason: 'stop', content: 'Please help with the unresolved request.' }
+  } } })
+  try {
+    await ctx.plugin(toolThread)
+    const parent = await ctx.threads.ensureRoot(project)
+    const agent = await ctx.threads.activate(parent.id)
+    for (let index = 0; index < requests; index += 1) {
+      const child = await ctx.threads.spawn({ parentId: parent.id, goal: `Question ${index}` })
+      if (index === 0) target = child.id
+      const request = await ctx.box.send({
+        sender: agentAddress(child.id), recipients: [agentAddress(parent.id)],
+        placement: { kind: 'thread', threadId: child.id }, kind: 'request', text: 'Need a decision',
+      })
+      if (approval) {
+        const childAgent = await ctx.threads.activate(child.id)
+        await childAgent.session.append('meta', { kind: 'approval/delegation', requestId: request.messageId })
+      }
+      // Stage both inputs in one real Run, without depending on timer races.
+      await agent.inject({ messages: [{ role: 'user', name: `box:${request.messageId}`, content: '[Request from thread] Need a decision' }] })
+      await ctx.box.markDelivered(request.messageId, agentAddress(parent.id))
+      await ctx.box.ack(request.messageId, agentAddress(parent.id))
+    }
+    await ctx.plugin(projectLoop, { projectId: project.id, sweepIntervalMs: 0 })
+    await agent.followup({ messages: [] })
+    await waitFor(async () => (await agent.session.read()).find(event => event.type === 'turn/end'), 'coordinator Run')
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const replies = (await timeline(ctx)).filter(entry => entry.kind === 'agent-reply' && entry.sender.id === parent.id)
+    expect(replies).toHaveLength(visible ? 1 : 0)
+  } finally {
+    await ctx.fiber.dispose()
+  }
 })
 
 it('attaches artifacts published during a turn to that reply', async () => {

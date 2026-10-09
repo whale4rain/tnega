@@ -20,7 +20,8 @@ Definition）：它消费 Box、唤醒 Agent、驱动父子回报，并把结果
    子 Thread 发到它自己的面板。带工具调用的中间叙述不发布 —— 那是执行记录，不是对话。
 4. **回报**。`complete` / `blocked` / `failed` / `request` 信封到达时更新发送方 Thread 的
    状态；子 Thread 自己没回报过时，用这轮的结论补一条 `complete` 给直接父 Agent，因此
-   父 Agent 从不需要轮询子 Session。
+   父 Agent 从不需要轮询子 Session。Run 异常则依据 Session 的 `turn/end` 把 Thread 标为
+   `failed` 并向父 Agent 补发失败；取消不算失败，也不会拿上一轮回复充当这一轮的成功。
 
 ## 关键取舍
 
@@ -42,6 +43,13 @@ Definition）：它消费 Box、唤醒 Agent、驱动父子回报，并把结果
   有 `approval/delegation` 审计的权限申请，其等待与恢复由审批宿主串行处理；Loop 不重新
   应用等待状态，避免取消或批准与迟到的请求投递互相覆盖。
 - **状态转移按到达顺序处理**。`running` / `idle` 是一对异步事件；不排队就会让「跑完了」
-  先于「开始跑了」落库，`idle` 被当成过期结论丢掉。
+  先于「开始跑了」落库，`idle` 被当成过期结论丢掉。每个 `turn/start` / `turn/end` 与信封
+  状态共用串行队列；同一 Agent 连续执行多个 Run 时，每一轮的失败都单独回报。自动回报的
+  延迟投递不再覆盖新 Run 的状态，失败回报按结束事件 ID 去重，重启可补发最近一轮遗漏的失败。
+- **只有完成交接的叙述才静默**。协调者这一轮的所有输入都来自 Thread，且每条输入都有
+  对应的成功工具结果，才隐藏其最终叙述。失败调用、未回答的请求或用户输入都保留最终回复；
+  审批请求按 `request_id` 匹配 `decide_thread_approval`，普通 Thread 消息不能替代审批决定。
+- **暂停只保留消息**。宿主可提供 `isPaused`；暂停时不激活收件 Agent、不投递或唤醒，
+  历史回复仍可补发。恢复时宿主发出 `project/resumed`（带 `projectId`）继续扫描。
 - **兜底重扫**。`box/sent` 与 `agent/status` 会立即触发扫描，定时器只覆盖「没有任何事件
   到达」的情况；`sweepIntervalMs: 0` 可关闭它（测试与嵌入式宿主会这么做）。

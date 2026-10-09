@@ -49,6 +49,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Thread 依据持久化的 Agent Run 结束事件回报执行失败，重启可补发，用户取消不会误报失败；协调者只有在全部请求成功处理后才隐藏收尾叙述，失败审批后的求助会保留。
+
 - Blackboard 损坏尾行不再吞掉恢复后的新提交，批量提交按完整事务恢复并同步落盘。新版本兼容读取旧日志；写入新事务格式后不支持直接降级或与旧版混写。
 
 - Project 并发首次打开共用同一运行作用域；挂载失败会清理部分资源，关闭变化流会解除 Session 监听，避免重复调度和重连后的资源泄漏。
