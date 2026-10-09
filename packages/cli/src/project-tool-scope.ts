@@ -10,23 +10,24 @@ import type { ToolGuard } from '@tnega/tools'
 export const PROJECT_DISABLED_BUILTINS: readonly string[] = ['echo', 'calculator', 'json']
 
 /**
- * What the coordinator must not do itself. It routes work, so execution and
- * deliverable-producing tools belong to threads; read and search tools stay
- * so it can answer quick questions and brief threads precisely.
+ * Explicit coordination surface. New capabilities belong to execution Threads
+ * until deliberately admitted here; investigation and deliverables never do.
  */
-const COORDINATOR_HIDDEN: ReadonlySet<string> = new Set([
-  'shell',
-  'write_file',
-  'edit_file',
-  'office_create',
-  'office_edit',
-  'skill_create',
-  'skill_install',
-  'job_start',
-  'job_list',
-  'job_output',
-  'job_kill',
-  'update_checklist',
+const COORDINATOR_TOOLS: ReadonlySet<string> = new Set([
+  'now',
+  'read_project',
+  'write_memory',
+  'index_resource',
+  'spawn_thread',
+  'list_threads',
+  'send_thread_message',
+  'send_project_message',
+  'decide_thread_approval',
+  'create_routine',
+  'update_routine',
+  'list_routines',
+  // Isolated orchestration only: nested calls pass the same role guard.
+  'run_code',
 ])
 
 /** Routines are scheduled by the coordinator; a thread is one run, not a scheduler. */
@@ -47,7 +48,7 @@ export function projectAgentRole(record: ThreadRecord, maxDepth: number): Projec
 
 /** Whether a tool is part of this role's model-visible surface. */
 export function toolVisible(role: ProjectAgentRole, name: string): boolean {
-  if (role.kind === 'coordinator') return !COORDINATOR_HIDDEN.has(name)
+  if (role.kind === 'coordinator') return COORDINATOR_TOOLS.has(name)
   if (THREAD_HIDDEN.has(name)) return false
   return role.canSpawn || name !== 'spawn_thread'
 }

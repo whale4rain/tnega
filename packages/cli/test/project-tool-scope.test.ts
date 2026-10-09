@@ -13,13 +13,13 @@ function call(name: string, agentId?: string): ToolRequest {
 }
 
 describe('project tool scope', () => {
-  it('keeps the coordinator to routing, reading and project knowledge', () => {
+  it('keeps the coordinator to routing and shared project knowledge', () => {
     const role = projectAgentRole(base, 2)
     expect(role).toEqual({ kind: 'coordinator' })
-    for (const name of ['spawn_thread', 'send_thread_message', 'read_project', 'write_memory', 'read_file', 'grep', 'create_routine']) {
+    for (const name of ['spawn_thread', 'send_thread_message', 'read_project', 'write_memory', 'create_routine']) {
       expect(toolVisible(role, name), name).toBe(true)
     }
-    for (const name of ['shell', 'write_file', 'office_create', 'job_start', 'update_checklist']) {
+    for (const name of ['shell', 'write_file', 'office_create', 'job_start', 'update_checklist', 'read_file', 'grep', 'http_get', 'publish_artifact', 'future_execution_tool']) {
       expect(toolVisible(role, name), name).toBe(false)
     }
   })
@@ -37,7 +37,8 @@ describe('project tool scope', () => {
     const roles = new Map([['c', projectAgentRole(base, 2)]])
     const guard = projectToolGuard(id => roles.get(id))
     expect(await guard(call('shell', 'c'))).toMatch(/dispatch this work to a thread/u)
-    expect(await guard(call('read_file', 'c'))).toBeUndefined()
+    expect(await guard(call('read_project', 'c'))).toBeUndefined()
+    expect(await guard(call('publish_artifact', 'c'))).toMatch(/dispatch this work/u)
     expect(await guard(call('shell', 'subagent'))).toBeUndefined()
     expect(await guard(call('shell'))).toBeUndefined()
   })

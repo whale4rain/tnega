@@ -47,6 +47,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- Project 协调者改为明确的协调工具白名单：调查、执行和产物制作只交给 Thread，直接调用与 Code Mode 嵌套调用使用同一职责边界。
+
 ## [0.4.23](https://github.com/whale4rain/tnega/releases/tag/v0.4.23) — 2026-10-09
 
 ### Features

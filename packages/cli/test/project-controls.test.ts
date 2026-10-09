@@ -40,6 +40,13 @@ async function fixture(adapter?: LLMAdapter) {
   return { host, record, project, signals, workspace }
 }
 
+it('refuses coordinator deliverables at execution time', async () => {
+  const { record, project } = await fixture()
+  const result = await project.tools.execute('publish_artifact', { title: 'Report', content: 'Work' }, { agentId: record.coordinatorId })
+  expect(result.ok).toBe(false)
+  expect(await project.blackboard.list('artifact')).toHaveLength(0)
+})
+
 it.each(['coordinator', 'thread'])('publishes separate tool chat messages for a %s and restores them from Box', async target => {
   let calls = 0
   const llm: LLMAdapter = { async complete() {
