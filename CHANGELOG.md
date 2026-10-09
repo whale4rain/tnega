@@ -15,7 +15,7 @@ feature or fix lands, and move entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.4.22 | [`v0.4.21...v0.4.22`](https://github.com/whale4rain/tnega/compare/v0.4.21...v0.4.22) | 8 |
+| 0.4.22 | [`v0.4.21...v0.4.22`](https://github.com/whale4rain/tnega/compare/v0.4.21...v0.4.22) | 9 |
 | 0.4.21 | [`v0.4.20...v0.4.21`](https://github.com/whale4rain/tnega/compare/v0.4.20...v0.4.21) | 10 |
 | 0.4.20 | [`v0.4.19...v0.4.20`](https://github.com/whale4rain/tnega/compare/v0.4.19...v0.4.20) | 2 |
 | 0.4.19 | [`v0.4.19-beta.2...v0.4.19`](https://github.com/whale4rain/tnega/compare/v0.4.19-beta.2...v0.4.19) | 10 |
@@ -56,6 +56,10 @@ compare links provide a convenient browser view of the boundaries.
 ### Fixes
 
 - 自动审批（LLM 审查）在 DeepSeek 官方 API 上不再生成隐藏推理：项目 Thread 里每次 shell 调用都要等这次审查，实测中位耗时由约 1.8 秒降到约 1.0 秒，也不再出现约 1/10 的审查推理写满 4096 token、约 20 秒后判为无效并转交协调者的情况。其他模型路由不变。
+
+### Other
+
+- README 重写为项目介绍：先讲 Tnega 是什么、为什么用、能做什么和快速开始；会话、权限、数据位置、内置技能与更新等细节移到新的 [使用指南](docs/guide/README.md)。
 
 ## [0.4.21](https://github.com/whale4rain/tnega/releases/tag/v0.4.21) — 2026-10-08
 
