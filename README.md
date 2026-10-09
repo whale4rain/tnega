@@ -2,198 +2,127 @@
   <img src="docs/assets/tnega-icon.png" alt="Tnega: a blue cloud with white eyes" width="120" />
 </p>
 
-# Tnega
+<h1 align="center">Tnega</h1>
 
-[中文](docs/zh-CN.md) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/whale4rain/tnega/releases) · [Publishing](docs/publish/README.md)
+<p align="center">
+  <b>A local workspace where agents write code, edit documents and run whole projects alongside you.</b><br />
+  Desktop app, local Web UI, CLI and a TypeScript agent harness. “Tnega” is “agent” backwards.
+</p>
 
-Tnega is a local agent workspace for coding, document work and ongoing projects.
-Chat with an agent, review its changes, edit files, run a terminal and browse the
-web in the same interface. Underneath is a composable Agent Harness: scoped
-plugins connect the model, tools and durable Sessions, and can be replaced or
-disposed without leaving their effects behind. “Tnega” is “agent” backwards.
-
-## See it in action
+<p align="center">
+  <a href="https://github.com/whale4rain/tnega/releases/latest">Download</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/guide/README.md">Guide</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="docs/zh-CN.md">中文</a>
+</p>
 
 ![Coding conversation beside the workspace file tree and editor](docs/assets/workbench.png)
 
-*The current Web interface, with isolated demonstration data.*
+## Why Tnega
 
-![Reviewing Git changes in the dark workbench](docs/assets/changes-dark.png)
-
-*The same workspace in dark mode, with the Changes tool open.*
+- **Everything in one window.** The conversation sits beside a Workbench with
+  your files, Git changes, terminals and a browser the agent can drive, so you
+  review its work where it happens instead of switching tools.
+- **Projects, not just chats.** Hand a goal to a coordinator. It splits the work
+  into parallel Threads, each with its own agent, and keeps a shared Memory and
+  a Library of results. The main room shows decisions and outcomes; the detail
+  stays in each Thread.
+- **Bring your own model.** Any OpenAI-compatible or Anthropic Messages route,
+  such as DeepSeek, OpenAI, Anthropic or a local server, chosen per Session with
+  its thinking level.
+- **Safe by default.** Shell writes run in a local sandbox on Linux, macOS and
+  Windows, and Tnega refuses to run restricted commands when no sandbox is
+  available. Approval can ask you, or let an LLM reviewer decide and escalate
+  when it is unsure.
+- **Your data stays local.** Sessions are plain JSONL event logs under
+  `~/.tnega`. Nothing leaves your machine except the model requests you
+  configure and the network tools you enable.
 
 ## What you can do
 
-| Workflow | Included capabilities |
+| | |
 | --- | --- |
-| **Code** | Coding agents with Auto, Plan and persistent Goal modes; workspace search, file tools, slash commands, skills, MCP servers and `@` file mentions. |
-| **Work with documents** | Work agents create, inspect and edit DOCX, XLSX and PPTX, including themes, tables and native charts. Generated files appear as cards with previews, zoom and download. |
-| **Run ongoing projects** | A coordinator delegates to parallel Threads; inspect progress and message a Thread directly. Projects share Memory, instructions and a Library of artifacts. |
-| **Review and edit** | One right-hand Workbench holds Files, Changes, Terminal and Browser, plus closable document and subagent transcript tabs. Files has a workspace tree, syntax highlighting and Ctrl+S; saves detect newer disk changes. Changes offers unified and side-by-side Git diffs. |
-| **Use your terminal and browser** | Multiple PTY terminals stay open across tab switches. The agent browser supports tabs, screenshots, console/network inspection and an element picker. It stays inside the app in both desktop and Web hosts. |
-| **Keep long tasks moving** | Background commands and delegated jobs expose progress and stop controls. Durable questions let the agent ask for a decision; blocking questions wait for an answer. |
+| **Code** | Coding agents with Auto, Plan and long-running Goal modes; workspace search, file tools, `@` file mentions, slash commands, skills and MCP servers. |
+| **Work with documents** | Create, inspect and edit DOCX, XLSX and PPTX, including themes, tables and native charts. Generated files open as previews you can zoom and download. |
+| **Run ongoing projects** | A coordinator dispatches Threads, a Board shows what needs you, what is working and what is ready, and you can message any Thread directly. Agents only get the tools their role needs, which keeps token use down. |
+| **Review and edit** | Files with syntax highlighting and conflict-aware saves, unified or side-by-side Git diffs, multiple terminals that survive tab switches. |
+| **Browse** | The agent browser has tabs, screenshots, console and network inspection, and an element picker. It runs inside the app on desktop and on the Web. |
+| **Keep long tasks moving** | Background jobs with progress and stop controls; the agent can ask you a question and wait, or carry on while you decide. |
 
-**Conversation and context.** General, Coding and Work Sessions use JSONL event
-logs. Fork a Session, edit and resend a message, compact context, inspect model
-usage and cache metrics, or expand the process behind a completed run's final
-answer. Attach, paste or drop images for vision models. User preferences live in
-`~/.tnega/MEMORY.md`; workspace conventions live in `.tnega/MEMORY.md`.
+![Reviewing Git changes in the dark theme](docs/assets/changes-dark.png)
 
-**Models and tools.** Configure multiple OpenAI-compatible or Anthropic Messages
-routes in Settings, then select a model and thinking level per Session. External
-plugins load from profile files and hot-reload in the Web and desktop hosts.
-Optional CodeMode lets JavaScript orchestrate the existing tools through QuickJS.
+Light, dark and system themes come in four palettes (Sky, Sand, Forest,
+Graphite), with adjustable density, text size and conversation width. Weather
+symbols show what each agent is doing at a glance.
 
-**Permissions.** Choose read-only, workspace-write or bypass. Ask me and Auto
-review control approval separately; automated review falls back to a human when
-it cannot decide. Shell writes are constrained by a local sandbox on Linux,
-macOS and Windows. A missing sandbox mechanism refuses restricted execution.
-Bypass explicitly runs without a sandbox. See the
-[approval guide](packages/auto-approval/README.md) and
-[sandbox design](docs/adr/0008-sandbox-seam.md).
-
-**Interface.** Light, dark and system themes share the sky palette; weather
-symbols communicate agent state. `Ctrl+J` toggles the Workbench and
-`` Ctrl+` `` opens the terminal. The desktop app shares the Web host's config and
-Session data and keeps running in the system tray when its window is closed.
-
-**Data storage.** Desktop and Web Sessions, CLI run logs, subagent transcripts
-and Project Thread histories live under `~/.tnega/sessions/<workspace-key>/`.
-Project messages and identities live under `~/.tnega/workspaces/<workspace-key>/`.
-The key is a hash of the absolute Workspace path; `TNEGA_HOME` overrides the
-home directory. Workspace configuration, custom skills, memory and project artifacts
-stay in the project. Close old clients before upgrading: existing project logs
-are imported on first access, with original files retained as backups. Different
-copies or a legacy writer continuing after import cause an explicit error;
-neither copy is overwritten. This relocates files without changing their Session
-format. An explicit CLI `--session` path is still honored.
-
-**Built-in skills.** Desktop/Web startup and the default CLI runtime install twelve
-bundled skills offline into `~/.tnega/skills/<name>/SKILL.md` (or
-`TNEGA_HOME/skills`). They cover source research, documents, planning, data files,
-implementation, debugging, code review, TDD, DDD, Tnega usage and skill authoring/installing. General, coding and
-Project agents see a short trigger index and read relevant instructions with
-`skills_list` / `skill_read`; coding Sessions also provide `/skills`.
-Existing user files are never overwritten; upgrades only add missing skills.
-Add your own skills in the same directory, or override a name for one Workspace
-with `.tnega/skills/<name>/SKILL.md`. Skills do not change tool permissions.
-
-Use `/skills read <name>` for an explicit read (including names such as `create`).
-Coding Sessions support `/skills create <name> <description>` to create a starter
-template and `/skills install <workspace-path-or-HTTPS-raw-URL> [name]` to import
-a `SKILL.md`. Agents also have `skill_create` (complete content or a template)
-and `skill_install`. Both write to user home and require write permission; they
-never overwrite existing instructions. Installation copies only `SKILL.md`,
-not referenced assets or scripts. Model HTTPS installs require the runtime's
-`http_get` network tool; a typed slash URL explicitly requests the download.
-
-## Install and start
+## Quick start
 
 ### Windows desktop
 
 Download `Tnega-Setup-<version>.exe` from
-[GitHub Releases](https://github.com/whale4rain/tnega/releases/latest), install it
-and configure your model route and API key in **Settings**.
+[Releases](https://github.com/whale4rain/tnega/releases/latest), install it and
+add your model and API key in **Settings**. The app updates itself from then on.
 
-**Desktop 0.4.6 and later update inside the app.** It checks at startup and every
-four hours, downloads a new release in the background and shows **Update** next
-to Settings when ready. Click it to install and restart, or use **Settings →
-Check for updates**. Users do not need to build or download each later installer.
-Older clients need a one-time installation of an update-capable version.
+### CLI and local Web (Windows, macOS, Linux)
 
-In versions with channel selection, **Settings → Update channel** offers
-**Stable** (default) and **Preview (pre)**. Preview includes `x.y.z-beta.N` early
-releases and newer stable releases. The choice persists across restarts.
-Switching back to Stable waits for a matching or newer stable release; it does
-not downgrade an installed preview or install a pending preview download.
-
-### CLI and local Web
-
-Requires **Node.js ≥22.19.0**.
+Requires **Node.js 22.19 or later**.
 
 ```bash
 npm install -g tnega
-# or: pnpm add -g tnega
 tnega web
 # Open http://127.0.0.1:3080 and configure your model in Settings.
 ```
 
-For a headless Agent Run:
+Run a single task headlessly:
 
 ```bash
 export TNEGA_API_KEY=your-api-key
 tnega run "Reply with: hello"
+tnega run --allow-shell "list the files here"   # shell tools are opt-in
 ```
 
-PowerShell uses `$env:TNEGA_API_KEY = 'your-api-key'`. The default route is
-OpenCode Go's `deepseek-v4-flash` through an OpenAI-compatible endpoint;
-`minimax-m3` is also available through Anthropic Messages. Configure your own
-routes in Settings. Config is stored at `%USERPROFILE%\.tnega\config.json` on
-Windows or `~/.config/tnega/config.json` on Linux/macOS. See the
+On PowerShell, set the key with `$env:TNEGA_API_KEY = 'your-api-key'`. See the
 [CLI guide](packages/cli/README.md) for model routes, environment variables and
 flags.
 
-Choose **Coding** for repository work, **Work** for Office files or **General**
-for other tasks. Open **Projects** to start a sustained coordinator conversation
-with shared Memory and a Library. See the [Project guide](docs/project/README.md).
+Pick **Coding** for repository work, **Work** for Office files or **General**
+for anything else. Open **Projects** for longer efforts with a coordinator,
+Threads and shared Memory; the [Project guide](docs/project/README.md) explains
+how they work.
 
-```text
-tnega run "prompt"                     # one Agent Run
-tnega run --allow-shell "list files"   # opt into shell tools
-tnega web                              # local Web interface
-```
+## Learn more
 
-CLI upgrades use `npm install -g tnega@latest`; desktop self-update applies to
-packaged desktop installations. Sessions use format v10; incompatible older
-formats are rejected rather than migrated in place.
+- [Using Tnega](docs/guide/README.md): sessions, models, permissions and the
+  sandbox, where data lives, built-in skills and desktop updates.
+- [Design guide](docs/design/tnega-design.md): the interface rules, colors and
+  the weather language.
+- [Architecture decisions](docs/adr/): persistence, sandboxing, approval,
+  CodeMode and the browser.
 
 ## Build on the harness
 
-The npm package is also a TypeScript library. The root entry and domain
-subpaths expose Context, Fiber, Agent, Session, Tools, LLM and capability seams.
-Providers and consumers depend on a shared service definition; the composition
-layer chooses the provider. Scoped disposal reverses registrations and effects.
+The npm package is also a TypeScript library. Tnega's core is a composable
+Agent Harness: scoped plugins connect the model, tools and durable Sessions,
+and disposing a plugin reverses everything it registered. Capabilities such as
+search, sandbox and browser are seams: a service definition with swappable
+providers and consumers.
 
 Start with [core](packages/core/README.md), [agent](packages/agent/README.md),
 [CLI/runtime](packages/cli/README.md) and the [domain vocabulary](CONTEXT.md).
-The [ADRs](docs/adr/) describe persistence, sandboxing, approval, CodeMode and
-browser tradeoffs. The former eval, evolve and benchmark packages were removed
-in 0.4.6; see [ADR 0011](docs/adr/0011-remove-eval-first.md).
 
-## Develop and release
+## Develop
 
 ```bash
 pnpm install
-pnpm tnega web --port 3080
-pnpm --filter @tnega/web dev
+pnpm tnega web --port 3080        # runtime + Web server
+pnpm --filter @tnega/web dev      # Web UI with hot reload
 ```
 
-Run the checks appropriate to your change: `pnpm test`, `pnpm typecheck`,
-`pnpm lint` and `pnpm build`. Desktop development is documented in
-[apps/desktop](apps/desktop/README.md); interface conventions are in the
-[design guide](docs/design/tnega-design.md).
-
-Read [docs/publish](docs/publish/README.md) before releasing. Pushing a prepared
-version tag starts GitHub Actions validation, npm publishing and Windows
-installer/update-feed publication. npm needs one-time Trusted Publisher setup;
-installed clients consume the stable or preview feed automatically. Keep
-[CHANGELOG.md](CHANGELOG.md) and the version's [release notes](docs/releases/)
-current.
-
-### Development and version policy
-
-Update `CHANGELOG.md` under **Unreleased** in the same change as each user-visible
-feature, fix or compatibility change. Audit every release against the previous
-actual Git tag, including merged branches and skipped version numbers.
-
-Commits remain small, independently verifiable Conventional Commits. A release
-is a larger delivery batch: publish after several new features are stable and
-the relevant checks pass, rather than bumping a version for every commit.
-The agent may choose and increment the third (**patch**) number autonomously.
-Changing the first (**major**) or second (**minor**) number requires the user's
-decision. Preview releases use `x.y.z-beta.N`, share the planned stable version
-and increment `N` for each preview; promote to `x.y.z` when ready. See
-[docs/publish](docs/publish/README.md) for channel selection and release checks.
+Run the checks your change needs: `pnpm test`, `pnpm typecheck`, `pnpm lint`
+and `pnpm build`. Desktop development lives in [apps/desktop](apps/desktop/README.md).
+Releases are cut by pushing a version tag; read [docs/publish](docs/publish/README.md)
+first and keep [CHANGELOG.md](CHANGELOG.md) current.
 
 ## License
 
