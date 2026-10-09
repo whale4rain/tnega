@@ -195,7 +195,7 @@ export class ProjectMemoryRunner {
     const routeId = hot ? undefined : limits.coldModelId
     const adapter = this.options.resolveAdapter
       ? this.options.resolveAdapter(routeId, requestModel)
-      : projectMemoryAdapter(this.options.config, routeId, requestModel)
+      : projectMemoryAdapter(this.options.config, routeId, requestModel, hot ? header?.config?.temperature : undefined)
     if (!adapter) return { status: 'skipped', reason: 'model-unavailable' }
     const reservation = { key, time: now, input: reservedInput, output: limits.maxOutputTokens }
     const release = await this.reserveGlobal(reservation, limits)
@@ -252,7 +252,7 @@ function parseCandidates(text: string): Array<{ text: string; tags: string[] }> 
 }
 
 /** Match the full configured connection, never override only the wire model. */
-export function projectMemoryAdapter(config: SystemConfig, routeId?: string, requestModel?: string): LLMAdapter | undefined {
+export function projectMemoryAdapter(config: SystemConfig, routeId?: string, requestModel?: string, requestTemperature?: number): LLMAdapter | undefined {
   // A mock/programmatic host must not accidentally call the built-in default.
   if (!config.model && !config.models?.length) return undefined
   if (!routeId && requestModel && (config.models?.filter(route => route.id === requestModel || (route.model ?? route.id) === requestModel).length ?? 0) > 1) return undefined
@@ -264,7 +264,9 @@ export function projectMemoryAdapter(config: SystemConfig, routeId?: string, req
   if (!routeId && requestModel && effective.model !== requestModel && effective.modelId !== requestModel) return undefined
   const apiKey = effectiveApiKey(config, process.env, selected?.id)
   if (!apiKey) return undefined
-  return createLlmAdapter({ ...effective, apiKey, ...llmAuthOptions(effective), maxRetries: 0, timeoutMs: 30_000 })
+  return createLlmAdapter({ ...effective, apiKey, ...llmAuthOptions(effective),
+    ...(requestTemperature !== undefined ? { temperature: requestTemperature } : {}),
+    maxRetries: 0, timeoutMs: 30_000 })
 }
 
 export function mountProjectMemory(ctx: Context, options: ProjectMemoryOptions): ProjectMemoryRunner {
