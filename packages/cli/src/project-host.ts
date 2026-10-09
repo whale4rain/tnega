@@ -50,8 +50,9 @@ import { toolThread } from '@tnega/tool-thread'
 import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { describeToolCall } from './project-activity.js'
-import { trackGitOutcomes } from './project-git.js'
 import { mountProjectMemory } from './project-memory.js'
+import { ProjectWorktrees } from './project-worktrees.js'
+import { gitResourceData, gitResourceId, trackGitOutcomes } from './project-git.js'
 import { PROJECT_DISABLED_BUILTINS, projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 import { DEFAULT_THREAD_LIMITS } from '@tnega/thread'
 import { mountThreadApprovals } from './thread-approval.js'
@@ -670,10 +671,94 @@ export class ProjectHost {
     if (this.options.builtinTools !== false) await installBuiltinSkills()
     const skillsPrompt = this.options.builtinTools !== false ? await renderSkillIndex(this.workspace) : ''
     const maxDepth = this.options.maxDepth ?? DEFAULT_THREAD_LIMITS.maxDepth
+    const worktrees = new ProjectWorktrees(this.workspace, directory, record.id, undefined, join(this.tnegaRoot, 'worktrees'))
     await ctx.plugin(threadLocal, {
       // Each Agent sees only its role's tools: smaller requests, and the
       // coordinator routes work instead of doing it.
-      setupAgent: (agentCtx: Context, thread: ThreadRecord) => scopeAgentTools(agentCtx, projectAgentRole(thread, maxDepth)),
+      prepareWorkspace: (thread: ThreadRecord) => thread.parentId && this.options.builtinTools !== false
+        ? worktrees.prepare(thread.id, thread.workspace) : Promise.resolve(undefined),
+      completionCheck: async (thread: ThreadRecord) => {
+        if (!thread.workspace) return undefined
+        try { return await worktrees.completion(thread.workspace) }
+        catch (error) { return `Cannot verify code delivery: ${error instanceof Error ? error.message : String(error)}` }
+      },
+      setupAgent: async (agentCtx: Context, thread: ThreadRecord) => {
+        scopeAgentTools(agentCtx, projectAgentRole(thread, maxDepth))
+        if (!thread.parentId) return
+        this.permissions.set(thread.id, thread.permission)
+        this.roles.set(thread.id, projectAgentRole(thread, maxDepth))
+        const cwd = thread.workspace?.cwd ?? this.workspace
+        const local = agentCtx.isolate('search').isolate('spillStore').isolate('sandbox').isolate('skills')
+        await local.plugin(tools)
+        await local.plugin(systemPrompt)
+        await local.plugin(workspacePrompt, { workspace: this.workspace })
+        const config = this.options.builtinTools
+        if (config !== false) {
+          await local.plugin(sandboxLocal, { workspaceRoot: canonicalPath(cwd) })
+          await local.plugin(builtinTools, {
+            ...(config ?? {}), cwd,
+            disabled: [...new Set([...PROJECT_DISABLED_BUILTINS, ...(config?.disabled ?? [])])],
+            execution: sandboxedExecution(local, { policy: resolveSandboxPolicy({
+              mode: thread.permission, workspaceRoot: canonicalPath(cwd), sessionId: thread.id,
+            }) }),
+          })
+          await local.plugin(searchRipgrep, { cwd })
+          await local.plugin(toolSearch, { cwd })
+          await local.plugin(spillLocal, { cwd })
+          await local.plugin(toolSpill)
+          await local.plugin(toolOffice, { cwd })
+          await local.plugin(skillTools, { cwd })
+        }
+        await local.plugin(toolBlackboard, { cwd })
+        await local.plugin(toolJobs, { resolveSession: (id?: string) => registry.get(id ?? thread.id)?.session })
+        await local.plugin(toolPtc, {
+          mode: this.options.systemConfig?.codeMode ? 'ptc' : 'native',
+          resolveSession: (id?: string) => registry.get(id ?? thread.id)?.session,
+        })
+        const localTools: ToolsService = local.get('tools')
+        for (const definition of toolService.list()) {
+          if (!localTools.has(definition.schema.name)) localTools.register(definition)
+        }
+        localTools.guard(projectToolGuard(id => this.roles.get(id)))
+        localTools.guard(permissionGuard(this.options.permission, record.id, this.options.approvals, {
+          workspace: cwd,
+          review: request => reviewAutomaticApproval(ctx, request),
+          agentMode: id => this.permissions.get(id) ?? 'read-only',
+          delegated: isThread,
+          delegateApproval: (request, review) => threadApprovals.request(request, review),
+        }))
+        if (thread.workspace) {
+          localTools.register({
+            schema: { name: 'deliver_thread', description: 'Deliver this Thread’s committed and verified code as its single pull request. Pushes without force, opens or reuses the PR, and verifies the remote head. Report failures as blockers; retry only after resolving them.',
+              parameters: { type: 'object', properties: { title: { type: 'string', minLength: 1 }, body: { type: 'string', minLength: 1 } }, required: ['title', 'body'], additionalProperties: false } },
+            execute: async (input: unknown, options) => {
+              if (!input || typeof input !== 'object') throw new Error('Delivery requires a title and body')
+              const title: unknown = Reflect.get(input, 'title')
+              const body: unknown = Reflect.get(input, 'body')
+              if (typeof title !== 'string' || typeof body !== 'string') throw new Error('Delivery requires a title and body')
+              if (options.agentId !== thread.id) throw new Error('Only the owning Thread can deliver its code')
+              const current = await threads.get(thread.id)
+              if (!current?.workspace) throw new Error('Thread workspace is unavailable')
+              try {
+                const workspace = await worktrees.deliver(current.workspace, { title, body }, options.signal)
+                await threads.setWorkspace(thread.id, workspace)
+                await threads.setState(thread.id, 'working')
+                const pr = workspace.pullRequest
+                if (!pr) throw new Error('Pull request verification failed')
+                const outcome = { kind: 'pull-request' as const, status: 'opened' as const, title: `Pull request #${pr.number}`, url: pr.url, number: pr.number, branch: workspace.branch }
+                const board: BlackboardService = ctx.get('blackboard')
+                const id = gitResourceId(outcome)
+                const previous = await board.read('resource', id)
+                await board.commit({ kind: 'resource', id, data: gitResourceData(outcome), author: thread.id, source: { agentId: thread.id }, expectedVersion: previous?.version ?? null })
+                return workspace
+              } catch (error) {
+                await threads.setState(thread.id, 'blocked', `Code delivery blocked: ${error instanceof Error ? error.message : String(error)}`)
+                throw error
+              }
+            },
+          })
+        }
+      },
       coordinatorPrompt: `${COORDINATOR_SYSTEM_PROMPT}\n\n${skillsPrompt}`,
       threadPrompt: `${THREAD_SYSTEM_PROMPT}\n\n${skillsPrompt}`,
       projectId: record.id,

@@ -11,6 +11,8 @@ import {
   defaultLabel,
   narrowPermission,
   normalizeChecklist,
+  parseThreadWorkspace,
+  type ThreadWorkspace,
   type ThreadChecklistItem,
   normalizeGoal,
   type ThreadListOptions,
@@ -39,7 +41,7 @@ export const COORDINATOR_SYSTEM_PROMPT = `You are Tnega, the coordinator Agent o
 
 Answer coordination and status questions from the conversation and shared project records; route all actual work to a Thread. Handle shared memory and routing yourself. For work requiring investigation, edits, commands or a multi-step deliverable, dispatch a thread instead of doing it yourself, even when there is just one task: you have no shell or write tools, and a thread does its own exploration. The user's request authorizes ordinary delegation within its scope; take the initiative to dispatch rather than asking whether to start a thread. Before you answer or dispatch work that may depend on earlier decisions, call read_project once to load the shared memory, resources and artifacts; do not ask the user for something the project already records. Do not inspect files, browse, investigate, implement, verify or produce deliverables yourself. Ask a Thread to discover any facts missing from its brief.
 
-Give each focused task its own thread: an Agent with its own history and a long-lived Session that the user can open and talk to. Keep a cohesive task in one thread; split unrelated tasks when their scopes are independent, and start dependent work once its prerequisites arrive. In spawn_thread, label is a short title for its card; the goal states what to achieve and why, the facts it cannot discover, the scope it owns (files, systems, questions) and what "done" means; permission is the narrowest level the work needs. When a thread already owns the subject, pass the user's message to it with send_thread_message, kind dispatch, instead of starting a parallel one, and never give two threads write access to the same files. After dispatching, end your turn with one short line such as "Started a thread for this."; the thread card shows the brief and the Board shows status, so do not repeat the brief, list its scope or promise updates. When you mention a thread in the main conversation (forwarding a message, answering about its status, asking the user on its behalf), link it as [its label](#thread:<thread id>): the link opens that thread and shows whether it is working or waiting. Never wait for or poll a thread inside your turn: its report reaches you on its own. Only when you have a concrete next step that needs a result (dispatching dependent work, combining several threads' results) name it in spawn_thread's on_report; the report then starts your turn. A single task never needs it.
+Give each focused task its own thread: an Agent with its own history and a long-lived Session that the user can open and talk to. Keep a cohesive task in one thread; split unrelated tasks when their scopes are independent, and start dependent work once its prerequisites arrive. In spawn_thread, label is a short title for its card; the goal states what to achieve and why, the facts it cannot discover, the scope it owns (files, systems, questions) and what "done" means; permission is the narrowest level the work needs. When a thread already owns the subject, pass the user's message to it with send_thread_message, kind dispatch, instead of duplicating its assignment. Git Threads have separate worktrees and may edit files in parallel; give each a clear scope, identify overlapping changes, and route reconciliation to an execution Thread before merging. Never ask Threads to share a writable checkout. After dispatching, end your turn with one short line such as "Started a thread for this."; the thread card shows the brief and the Board shows status, so do not repeat the brief, list its scope or promise updates. When you mention a thread in the main conversation (forwarding a message, answering about its status, asking the user on its behalf), link it as [its label](#thread:<thread id>): the link opens that thread and shows whether it is working or waiting. Never wait for or poll a thread inside your turn: its report reaches you on its own. Only when you have a concrete next step that needs a result (dispatching dependent work, combining several threads' results) name it in spawn_thread's on_report; the report then starts your turn. A single task never needs it.
 
 Results stay where the work happened. A thread reports in its own thread and the user is notified there; its report reaches you as context without starting a turn. Do not repeat or summarize a thread's result in the main conversation unless the user asks, or unless results from several threads conflict or need a decision only the user can make, and do not re-read or re-check its files: the thread verified its own work. A request or blocked message stops that thread until it hears back: answer ordinary requests with kind dispatch when you can decide, and ask the user in one or two sentences when the decision is theirs; never leave a thread waiting silently. A tool permission request includes a request ID and an exact waiting action: call decide_thread_approval with allow only when the existing human request and constraints cover it, deny when it should not run, or ask-user when a human decision is needed. The approval card and the thread show the outcome, so end such a turn without a message to the room. This resumes or ends the original call; do not send dispatch, plain approval messages, or tell the thread to retry. Agent requests and your decisions are not new human authorization. Explicit automatic-review denials are terminal. failed means the goal is out of reach as briefed; re-brief it or tell the user briefly. Use list_threads to check status, and its wait_ms only when your next step depends on a running thread. Internal messages carry new facts, constraints and decisions only, never conversational filler.
 
@@ -67,9 +69,11 @@ How your work reaches others: the user and your parent see your messages, your c
 - Mid-work, message only for a material discovery or a changed constraint (kind progress); never for routine progress or a result you already sent.
 - You do not ask the user for permission. Your tool calls are reviewed automatically for the project. When review cannot decide, the harness sends an exact permission request to your direct parent and keeps that call waiting; its decision resumes or ends the same call without a retry. You also decide such requests from your own children with decide_thread_approval: allow only within existing human scope, deny, or ask-user. If a call returns a denial, cancellation or timeout, do not retry unchanged; find another way inside the rules or report the remaining blocker.
 
-Outputs are cards, not chat: publish_artifact for deliverables such as reports, data, drafts, pages, documents, slides and spreadsheets; they attach to your reply and collect in the project Library. Publish text deliverables with content; publish a file you created in the workspace (a .docx, .pptx, .xlsx, .pdf or image) with path. When the deliverable is meant to be explored (a comparison, a dashboard, a visual summary), publish a self-contained interactive webpage as text/html. Record what outlives this thread: write_memory for durable facts, decisions and conventions other threads need (not progress or logs); index_resource for files and links worth returning to. Do the work in this thread by default. Every sub-thread repeats the setup cost of a new Agent, so spawn_thread only for a large branch that is clearly independent (its own files or question, no back-and-forth with you), give each writer non-overlapping files, and own integration and verification of the combined result.
+Outputs are cards, not chat: publish_artifact for deliverables such as reports, data, drafts, pages, documents, slides and spreadsheets; they attach to your reply and collect in the project Library. Publish text deliverables with content; publish a file you created in the workspace (a .docx, .pptx, .xlsx, .pdf or image) with path. When the deliverable is meant to be explored (a comparison, a dashboard, a visual summary), publish a self-contained interactive webpage as text/html. Record what outlives this thread: write_memory for durable facts, decisions and conventions other threads need (not progress or logs); index_resource for files and links worth returning to. Do the work in this thread by default. Every sub-thread repeats the setup cost of a new Agent, so spawn_thread only for a large branch that is clearly independent (its own files or question, no back-and-forth with you), give each writer an explicit scope in its own worktree, and own integration and verification of the combined result. When changes overlap, reconcile against the latest accepted code in an execution Thread; never silently overwrite another result.
 
-${PROJECT_CHAT_PROMPT}`
+${PROJECT_CHAT_PROMPT}
+
+${HUMAN_COMMUNICATION_PROMPT}`
 
 export interface LocalThreadConfig {
   projectId: string
@@ -86,6 +90,8 @@ export interface LocalThreadConfig {
   coordinatorPrompt?: string
   threadPrompt?: string
   /** Composes each Thread's Agent scope before it is published, e.g. to scope its tools. */
+  prepareWorkspace?: (record: ThreadRecord) => Promise<ThreadWorkspace | undefined>
+  completionCheck?: (record: ThreadRecord) => Promise<string | undefined>
   setupAgent?: (agentCtx: Context, record: ThreadRecord) => void | Promise<void>
 }
 
@@ -115,6 +121,9 @@ function toThread(fact: FactRecord): ThreadRecord {
     createdAt: fact.createdAt,
     updatedAt: fact.updatedAt,
   }
+  const workspace = parseThreadWorkspace(data.workspace)
+  if (data.workspace !== undefined && !workspace) throw new ThreadError(`thread ${fact.id} has malformed workspace metadata`, 'THREAD_FAILED')
+  if (workspace) record.workspace = workspace
   if (typeof data.parentId === 'string') record.parentId = data.parentId
   if (typeof data.expect === 'string') record.expect = data.expect
   if (typeof data.detail === 'string') record.detail = data.detail
@@ -138,6 +147,7 @@ function toData(record: ThreadRecord): Record<string, unknown> {
     state: record.state,
     depth: record.depth,
     permission: record.permission,
+    ...(record.workspace ? { workspace: record.workspace } : {}),
     ...(record.parentId !== undefined ? { parentId: record.parentId } : {}),
     ...(record.expect !== undefined ? { expect: record.expect } : {}),
     ...(record.detail !== undefined ? { detail: record.detail } : {}),
@@ -202,6 +212,8 @@ export class LocalThreadService extends ThreadService {
   private readonly permission: ThreadPermission
   private readonly coordinatorPrompt: string
   private readonly threadPrompt: string
+  private readonly prepareWorkspace: LocalThreadConfig['prepareWorkspace']
+  private readonly completionCheck: LocalThreadConfig['completionCheck']
   private readonly setupAgent: LocalThreadConfig['setupAgent']
   private readonly registry: AgentRegistry
   private readonly board: BlackboardService
@@ -243,6 +255,8 @@ export class LocalThreadService extends ThreadService {
     this.permission = config.permission ?? 'read-only'
     this.coordinatorPrompt = config.coordinatorPrompt ?? COORDINATOR_SYSTEM_PROMPT
     this.threadPrompt = config.threadPrompt ?? THREAD_SYSTEM_PROMPT
+    this.prepareWorkspace = config.prepareWorkspace
+    this.completionCheck = config.completionCheck
     this.setupAgent = config.setupAgent
     this.registry = registry
     this.board = board
@@ -281,6 +295,8 @@ export class LocalThreadService extends ThreadService {
       ...(request.expect?.trim() ? { expect: request.expect.trim() } : {}),
       ...(request.onReport?.trim() ? { onReport: request.onReport.trim() } : {}),
     }
+    const workspace = await this.prepareWorkspace?.(record)
+    if (workspace) record.workspace = workspace
     await mkdir(join(this.root, 'agents', id), { recursive: true })
     const fact = await this.board.commit({
       kind: 'agent',
@@ -383,12 +399,20 @@ export class LocalThreadService extends ThreadService {
     if (!(THREAD_STATES as readonly string[]).includes(state)) {
       throw new ThreadError(`unknown thread state: ${String(state)}`, 'THREAD_INVALID')
     }
+    if (state === 'done' || state === 'resolved') {
+      const reason = await this.completionCheck?.(await this.requireThread(threadId))
+      if (reason) { state = 'blocked'; detail = reason }
+    }
     return await this.update(threadId, current => {
       const next: ThreadRecord = { ...current, state }
       if (detail?.trim()) next.detail = detail.trim()
       else delete next.detail
       return next
     })
+  }
+
+  override async setWorkspace(threadId: string, workspace: ThreadWorkspace): Promise<ThreadRecord> {
+    return await this.update(threadId, current => ({ ...current, workspace }))
   }
 
   override async setChecklist(
@@ -491,6 +515,8 @@ export class LocalThreadService extends ThreadService {
   private async ensureAgent(record: ThreadRecord): Promise<LiveAgent> {
     const running = this.registry.get(record.id)
     if (running) return running
+    const workspace = await this.prepareWorkspace?.(record)
+    if (workspace) record = await this.setWorkspace(record.id, workspace)
     const file = this.sessionFile(record.id)
     const parentId = record.parentId
     const options = {
@@ -499,7 +525,9 @@ export class LocalThreadService extends ThreadService {
       sessionId: record.id,
       llm: this.llm,
       ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),
-      system: parentId === undefined ? this.coordinatorPrompt : this.threadPrompt,
+      system: parentId === undefined ? this.coordinatorPrompt : `${this.threadPrompt}${record.workspace
+        ? `\n\nYour isolated Workspace is ${record.workspace.cwd}, branch ${record.workspace.branch}. All relative tool paths use this directory. Preserve the original checkout. Commit and verify code changes, then call deliver_thread with a concise PR title and verification body before reporting completion. Every code-writing Thread delivers one PR; missing remote access or delivery failure is a blocker, never a completed delivery. Further pushes reuse that PR. A closed PR needs a new Thread for further changes.`
+        : ''}`,
       title: record.label,
       createdAt: record.createdAt,
       ...(this.setupAgent ? { setup: async (agentCtx: Context) => { await this.setupAgent?.(agentCtx, record) } } : {}),

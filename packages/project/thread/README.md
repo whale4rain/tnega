@@ -34,6 +34,9 @@ Thread 生命周期的 **Service Definition**：拥有 `ctx.threads`。
   引用传递，而不是复制父对话。
 - **没有「待验收」状态**。普通工作可以用自然语言结束；需要证据或用户明确要求验收时才
   启用 Eval / Review，状态机不把它作为所有 Thread 的完成门槛。
+- **Git 交付元数据可选**。宿主可用 `ThreadRecord.workspace` 记录隔离目录、分支、基线
+  和已核实 PR 的 URL/提交；`setWorkspace` 供可信宿主更新。旧身份记录无需迁移，其他
+  Provider 不需要实现 Git。启用 Git 的宿主在代码未交付时将完成请求保留为 blocked。
 
 ## 事件面
 

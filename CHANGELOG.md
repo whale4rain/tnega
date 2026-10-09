@@ -48,6 +48,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Git Project 的 Thread 使用独立 worktree 和分支并行写入，文件、搜索和嵌套工具沿用各自目录；代码经 `deliver_thread` 创建或更新同一个 PR，未交付改动或远程失败会保持阻塞。Coordinator 只协调，重叠改动由执行 Thread 处理。
+
 - Project 支持完成工作后的异步记忆整理：复用原请求前缀，延迟抽取使用可配置模型；所有 Project 共用调用次数与 token 预留额度，自动记忆标记为待核实候选，保留来源且不覆盖用户修订。
 
 ## [0.4.24](https://github.com/whale4rain/tnega/releases/tag/v0.4.24) — 2026-10-09

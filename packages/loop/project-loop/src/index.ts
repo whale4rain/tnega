@@ -597,6 +597,8 @@ export class ProjectLoopRuntime {
     const text = reply.payload.content.trim()
     if (this.reported.get(agentId) === text) return
     if (latest) await this.setStateSafely(agentId, 'done', text)
+    const completion = latest ? await this.threads.get(agentId) : undefined
+    const blocked = completion?.state === 'blocked'
     const recipient = { kind: 'agent' as const, id: record.parentId }
     const messageId = publishedMessageId(this.projectId, agentId, `report ${reply.id}`)
     if (await this.box.delivery(messageId, recipient)) return
@@ -606,8 +608,8 @@ export class ProjectLoopRuntime {
       sender: { kind: 'agent', id: agentId },
       recipients: [recipient],
       placement: { kind: 'thread', threadId: agentId },
-      kind: 'complete',
-      text,
+      kind: blocked ? 'blocked' : 'complete',
+      text: blocked ? completion.detail ?? 'Delivery is blocked.' : text,
       refs,
       messageId,
       ...(causationId ? { causationId } : {}),

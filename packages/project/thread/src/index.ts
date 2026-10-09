@@ -49,6 +49,33 @@ export type ThreadState =
 
 export type ThreadPermission = 'read-only' | 'workspace-write' | 'bypass'
 
+/** Host-owned Git execution location. Old records without it remain readable. */
+export interface ThreadWorkspace {
+  cwd: string
+  branch: string
+  baseCommit: string
+  baseBranch: string
+  pullRequest?: { url: string; number: number; headCommit: string }
+}
+
+export function parseThreadWorkspace(value: unknown): ThreadWorkspace | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const cwd: unknown = Reflect.get(value, 'cwd')
+  const branch: unknown = Reflect.get(value, 'branch')
+  const baseCommit: unknown = Reflect.get(value, 'baseCommit')
+  const baseBranch: unknown = Reflect.get(value, 'baseBranch')
+  if (typeof cwd !== 'string' || typeof branch !== 'string' || typeof baseCommit !== 'string' || typeof baseBranch !== 'string') return undefined
+  const result: ThreadWorkspace = { cwd, branch, baseCommit, baseBranch }
+  const pr: unknown = Reflect.get(value, 'pullRequest')
+  if (pr && typeof pr === 'object') {
+    const url: unknown = Reflect.get(pr, 'url')
+    const number: unknown = Reflect.get(pr, 'number')
+    const headCommit: unknown = Reflect.get(pr, 'headCommit')
+    if (typeof url === 'string' && typeof number === 'number' && typeof headCommit === 'string') result.pullRequest = { url, number, headCommit }
+  }
+  return result
+}
+
 /** 清单一项的进度：还没开始、正在做、做完了。 */
 export type ThreadChecklistStatus = 'pending' | 'active' | 'done'
 
@@ -88,6 +115,7 @@ export interface ThreadRecord {
   detail?: string
   depth: number
   permission: ThreadPermission
+  workspace?: ThreadWorkspace
   /** 实时清单；没有清单的 Thread 省略此字段。 */
   checklist?: ThreadChecklistItem[]
   /** The parent's next step on this thread's report; when set, the report starts a parent turn. */
@@ -220,6 +248,11 @@ export abstract class ThreadService extends Service {
   abstract list(options?: ThreadListOptions): Promise<ThreadRecord[]>
 
   abstract setState(threadId: string, state: ThreadState, detail?: string): Promise<ThreadRecord>
+
+  /** Host-only metadata: model tools cannot select another Thread's directory. */
+  async setWorkspace(threadId: string, workspace: ThreadWorkspace): Promise<ThreadRecord> {
+    throw new ThreadError(`This Thread Provider cannot save workspace ${workspace.cwd} for ${threadId}`, 'THREAD_FAILED')
+  }
 
   /** 整份替换该 Thread 的实时清单；空数组清掉它。 */
   abstract setChecklist(threadId: string, items: readonly ThreadChecklistItem[]): Promise<ThreadRecord>
