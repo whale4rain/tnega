@@ -20,6 +20,7 @@ import {
   DEFAULT_LLM_TIMEOUT_MS,
   errorMessage,
   isAbortLike,
+  isDeepSeekApi,
   isExternalAbort,
   isRetryableStatus,
   normalizeBaseUrl,
@@ -245,7 +246,8 @@ function buildRequest(
     body.tools = tools.map(toOpenAITool)
   }
   if (config.temperature !== undefined && config.reasoningEffort === undefined) body.temperature = config.temperature
-  if (config.reasoningEffort !== undefined) body.reasoning_effort = config.reasoningEffort
+  if (config.reasoning === 'off' && isDeepSeekApi(config.baseUrl)) body.thinking = { type: 'disabled' }
+  else if (config.reasoningEffort !== undefined) body.reasoning_effort = config.reasoningEffort
   if (config.maxTokens !== undefined) body.max_tokens = config.maxTokens
 
   return {

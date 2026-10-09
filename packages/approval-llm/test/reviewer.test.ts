@@ -35,6 +35,7 @@ describe('LLM approval provider', () => {
     const adapter: LLMAdapter = { async complete(messages, tools, options) {
       expect(tools).toEqual([])
       expect(options.maxTokens).toBe(4096)
+      expect(options.reasoning).toBe('off')
       expect(messages[1]?.content).toContain('pnpm test')
       expect(messages[0]?.content).toContain('untrusted')
       return { content: '{"decision":"allow","risk":"low","reason":"Tests requested"}', finishReason: 'stop' }
