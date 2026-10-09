@@ -188,16 +188,27 @@ try {
       await rail.hover()
       await page.mouse.wheel(0, 100000)
       await waitFor(() => rail.evaluate(element => element.scrollLeft > 0), 'ordinary wheel scrolls tabs')
+      // No scrollbar adds height to the rail: its tabs share the title-bar line with the conversation header.
+      const line = await page.evaluate(() => {
+        const center = element => { const box = element.getBoundingClientRect(); return box.top + box.height / 2 }
+        const rail = document.querySelector('.wb-rail')
+        return { rail: center(rail), header: center(document.querySelector('.conv-header')), tab: center(rail.querySelector('.wb-tab')),
+          height: rail.getBoundingClientRect().height, inner: rail.clientHeight }
+      })
+      assert(Math.abs(line.rail - line.header) < 1 && Math.abs(line.tab - line.header) < 1, `Tabs on the header line: ${JSON.stringify(line)}`)
+      assert.equal(line.inner, line.height, 'No horizontal scrollbar in the tab rail')
       await page.getByRole('tab', { name: 'Browser', exact: true }).click()
       await page.screenshot({ path: resolve(artifacts, `scroll-tabs-${theme}.png`), fullPage: true })
       await page.getByRole('button', { name: 'Close workbench', exact: true }).click()
       const input = main.getByRole('textbox', { name: 'Message', exact: true })
-      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).count(), 0)
+      // Nothing runs: an empty box shows a disabled Send, never a Stop it cannot use.
+      assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 0)
+      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true)
       await input.fill('One short update')
-      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).count(), 1)
+      assert.equal(await main.getByRole('button', { name: 'Send', exact: true }).isEnabled(), true)
       assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 0)
       await input.fill('')
-      assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 1)
+      assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 0)
     })
     await check(`${theme}: ordinary Session has plain messages and opens user/Agent references`, async () => {
       await page.setViewportSize({ width: 1440, height: 1000 })

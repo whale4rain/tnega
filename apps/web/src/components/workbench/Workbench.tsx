@@ -1,5 +1,5 @@
 import { BookOpen, Bot, CalendarClock, FileText, FolderTree, GitCompareArrows, Globe, KanbanSquare, MessagesSquare, Settings2, SquareTerminal, X, type LucideIcon } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fileName } from '../../lib/office'
 import { BOARD_KEY, closeDoc, isProjectKey, isTool, openDoc, openTool, projectTabKey, select, type DocTab, type ProjectTabId, type ToolId, type WorkbenchState } from '../../lib/workbench'
 import { PreviewView } from '../preview/FilePreview'
@@ -77,12 +77,17 @@ export function Workbench({
     <div className="wb-pane" hidden={active !== tool} key={tool}>{view}</div>
   )
   const doc = state.docs.find(item => item.key === active)
+  // The rail scrolls without a scrollbar, so bring the selected tab into view.
+  const rail = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    rail.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [active, state.docs.length])
 
   return (
     <aside className="workbench" aria-label="Workbench">
       <ResizeHandle onResize={onResize} />
       <div className="wb-header">
-      <div className="wb-rail" role="tablist" aria-label="Workbench" onWheel={event => {
+      <div className="wb-rail" ref={rail} role="tablist" aria-label="Workbench" onWheel={event => {
         if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY
       }}>
         {project?.tabs.map(({ tab, badge, attention }) => {

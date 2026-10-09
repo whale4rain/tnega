@@ -46,6 +46,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- 桌面端顶部一行对齐：侧栏、会话顶栏与工作台标签都落在标题栏那一行的中线上，与原生窗口按钮齐平；工作台标签放不下时不再出现 Windows 原生横向滚动条（滚轮 / 触控板仍可横向滚动，选中的标签自动滚入视野）。
+- Project 与 Thread 的输入框在内容为空、也没有运行中的工作时显示（禁用的）发送按钮，不再显示一个用不了的停止按钮；只有确实在运行时才显示停止。
+
 ## [0.4.22](https://github.com/whale4rain/tnega/releases/tag/v0.4.22) — 2026-10-09
 
 ### Features

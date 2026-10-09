@@ -96,3 +96,17 @@ it('keeps the session stop-only behavior unless sending while running is enabled
   fireEvent.click(view.getByRole('button', { name: 'Stop' }))
   expect(onStop).toHaveBeenCalledOnce()
 })
+
+it('shows send, not stop, in an empty single-control box while nothing runs', () => {
+  const props = { allowWhileRunning: true, inline: true, onSubmit: vi.fn(() => true), onStop: vi.fn(), placeholder: 'Message…' }
+  const idle = render(createElement(PromptBox, { ...props, running: false }))
+  expect(idle.queryByRole('button', { name: 'Stop' })).toBeNull()
+  expect((idle.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true)
+  idle.unmount()
+  const busy = render(createElement(PromptBox, { ...props, running: true }))
+  expect(busy.getByRole('button', { name: 'Stop' })).toBeTruthy()
+  expect(busy.queryByRole('button', { name: 'Send' })).toBeNull()
+  type(messageBox(busy), 'More context')
+  expect(busy.queryByRole('button', { name: 'Stop' })).toBeNull()
+  expect(busy.getByRole('button', { name: 'Send' })).toBeTruthy()
+})
