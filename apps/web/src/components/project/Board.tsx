@@ -84,11 +84,16 @@ export function BoardPanel({
     <div className="wb-view board" aria-label="Board">
       <div className="wb-toolbar">
         <span className="wb-toolbar-title">Board</span>
-        <span className="board-forecast">{FORECAST[weather]}</span>
       </div>
-      <div className="wb-card wb-scroll board-scroll">
+      <div className="wb-card wb-flow wb-scroll board-scroll">
+        <header className="board-intro">
+          <h2 className="board-title">{state.project.name}</h2>
+          <p className="board-forecast-line">
+            <StatusLight tone={FORECAST_LIGHT[weather] ?? 'idle'} label={FORECAST[weather] ?? 'All quiet'} />
+            <span className="board-forecast">{FORECAST[weather] ?? 'All quiet'}</span>
+          </p>
+        </header>
         <section className="board-today" aria-label="Today">
-          <StatusLight tone={FORECAST_LIGHT[weather] ?? 'idle'} label={FORECAST[weather] ?? 'All quiet'} />
           <span className="board-today-label">Today</span>
           <Stat value={day.started} label="started" />
           <Stat value={day.finished} label="finished" />

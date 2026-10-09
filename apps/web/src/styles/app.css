@@ -20,6 +20,8 @@ body {
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--text-md);
+  /* Nunito's regular is light on screen; a touch heavier keeps small text crisp in both modes. */
+  font-weight: 450;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -701,14 +703,14 @@ kbd {
 .workspace-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
   min-width: 0;
-  height: var(--control-sm);
-  padding: 0 4px;
+  height: var(--control);
+  padding: 0 6px;
   color: var(--text-2);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  font-size: var(--text-md);
+  font-weight: 650;
   text-align: left;
 }
 
@@ -755,11 +757,11 @@ kbd {
 }
 
 .workspace-items .session-button {
-  padding-left: 20px;
+  padding-left: 24px;
 }
 
 .workspace-items .sidebar-empty {
-  padding: 2px 4px 4px 20px;
+  padding: 2px 4px 4px 24px;
   margin: 0;
 }
 
@@ -773,10 +775,10 @@ kbd {
 
 .workspace-more {
   display: block;
-  height: var(--control-sm);
-  padding: 0 4px 0 20px;
+  height: var(--control);
+  padding: 0 4px 0 24px;
   color: var(--text-3);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   text-align: left;
 }
 
@@ -787,8 +789,8 @@ kbd {
 .sidebar-search {
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: var(--control);
+  gap: 8px;
+  height: var(--control-lg);
   padding: 0 4px 0 10px;
   border-radius: var(--radius-sm);
   background: var(--surface-hover);
@@ -806,7 +808,7 @@ kbd {
   border: 0;
   outline: 0;
   background: transparent;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   color: var(--text);
 }
 
@@ -838,7 +840,7 @@ kbd {
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   transition: background var(--duration-fast);
 }
 
@@ -856,7 +858,7 @@ kbd {
   gap: 8px;
   flex: 1;
   min-width: 0;
-  height: var(--row-h);
+  height: var(--nav-row-h);
   padding: 0 10px;
   text-align: left;
 }
@@ -864,16 +866,16 @@ kbd {
 .session-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
   flex: 1;
   min-width: 0;
-  font-size: var(--text-md);
+  font-size: var(--text-lg);
   color: var(--text-2);
 }
 
 .session-item.active .session-title {
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .session-title > span {
@@ -965,7 +967,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: var(--control);
+  height: var(--control-lg);
   padding: 0 8px;
   overflow: hidden;
   border-radius: var(--radius-sm);
@@ -989,7 +991,7 @@ kbd {
 }
 
 .sidebar-footer-button.icon-only {
-  width: var(--control);
+  width: var(--control-lg);
   padding: 0;
   justify-content: center;
 }
@@ -997,6 +999,22 @@ kbd {
 .sidebar-footer-button:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+/* Sidebar icons are a size up from the rest of the chrome (lucide's size prop only sets the default). */
+.sidebar .session-glyph,
+.sidebar .sidebar-search > svg,
+.sidebar-top-actions svg,
+.sidebar-footer svg {
+  width: var(--nav-icon);
+  height: var(--nav-icon);
+}
+
+.sidebar .workspace-chevron,
+.sidebar .workspace-actions svg,
+.sidebar .session-more svg {
+  width: var(--icon);
+  height: var(--icon);
 }
 
 /* ==========================================================================
@@ -2920,6 +2938,18 @@ kbd {
 
 .dialog-header > div {
   flex: 1;
+}
+
+.dialog-icon {
+  display: flex;
+  flex: none;
+}
+
+.dialog-header > .dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
 }
 
 .dialog-title {

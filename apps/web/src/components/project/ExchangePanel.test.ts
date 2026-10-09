@@ -27,6 +27,9 @@ it('shows both authors and consecutive separate bubbles in the selected Agent co
   expect(log.querySelectorAll('.room-message')).toHaveLength(3)
   expect(log.querySelectorAll('.room-author')[0]?.textContent).toBe('Coordinator')
   expect(log.querySelectorAll('.room-author')[1]?.textContent).toBe('Content Writer')
+  // What the coordinator asked of its thread sits on the asking side as a dashed relay.
+  expect(log.querySelectorAll('.room-run')[0]?.classList.contains('room-run-relay')).toBe(true)
+  expect(log.querySelectorAll('.room-run')[1]?.classList.contains('room-run-agent')).toBe(true)
   expect(view.queryByText('Other pair.')).toBeNull()
   expect(view.getByRole('button', { name: 'Open Content Writer' })).toBeTruthy()
 })

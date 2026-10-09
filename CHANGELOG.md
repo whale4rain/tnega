@@ -48,6 +48,14 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- The interface now uses Nunito, a rounded, open typeface bundled with the app so every system renders it the same; the type ramp sits half a step larger to match.
+- The left sidebar is wider, with taller rows, 16px icons and conversation-sized titles, so projects and sessions are easier to scan.
+- The Workbench opens about as wide as the conversation (default `clamp(420px, 40vw, 760px)`, minimum 420px) and shares its background. Project panels (Thread, Agent messages, Board, Library, Routines, settings) run edge to edge instead of sitting in a second framed card, with clearer headings, the conversation's own text size and a project title on the Board.
+- Opening a Project artifact shows it as a page on a near full-window sheet beside its Thread: one header with type, size, version and author, quote and download actions, and no repeated outputs strip.
+- What the coordinator sends a thread now appears in that thread's chat as a dashed bubble on the user side, labelled with the sender; it replaces the folded brief when it carries it.
+
 ## [0.4.25-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.1) — 2026-10-09
 
 ### Other

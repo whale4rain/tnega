@@ -23,7 +23,7 @@ export interface WorkbenchProject {
 }
 
 /** Narrowest and widest the panel may be dragged, in CSS pixels. */
-export const WORKBENCH_MIN_WIDTH = 360
+export const WORKBENCH_MIN_WIDTH = 420
 export const WORKBENCH_MAX_SHARE = 0.72
 
 const TOOL_META: Record<ToolId, { label: string; icon: LucideIcon; hint: string }> = {

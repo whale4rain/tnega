@@ -233,7 +233,7 @@ export function LibraryPanel({ workspace, state, onOpenSource }: { workspace: st
         <span className="wb-toolbar-title">Library</span>
         <button type="button" className="button secondary small" onClick={() => setAdding(true)}><Upload size={12} /> Add</button>
       </div>
-      <div className="wb-card wb-scroll">
+      <div className="wb-card wb-flow wb-scroll">
     <div className="panel-stack">
       {(kinds.length > 1 || (kinds.length > 0 && state.resources.length > 0)) && (
         <div className="library-filters" role="group" aria-label="Show">
@@ -514,7 +514,7 @@ export function SettingsPanel({
       <div className="wb-toolbar">
         <span className="wb-toolbar-title">Project settings</span>
       </div>
-      <div className="wb-card wb-scroll">
+      <div className="wb-card wb-flow wb-scroll">
     <div className="panel-stack settings-panel">
       <section className="panel-section">
         <h3 className="panel-heading">Brief</h3>

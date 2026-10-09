@@ -5,11 +5,11 @@
    ========================================================================== */
 
 .app.workbench-open {
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--workbench-width, min(640px, 44vw));
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--workbench-width, var(--workbench-default));
 }
 
 .app.workbench-open.sidebar-closed {
-  grid-template-columns: minmax(0, 1fr) var(--workbench-width, min(640px, 44vw));
+  grid-template-columns: minmax(0, 1fr) var(--workbench-width, var(--workbench-default));
 }
 
 .workbench {
@@ -21,7 +21,8 @@
   min-height: 0;
   /* No top padding: the tab rail is the title-bar row, level with the conversation header and the window controls. */
   padding: 0 8px 8px;
-  background: var(--bg-sidebar);
+  /* The conversation's own background: the panel continues the page instead of sitting in a grey gutter. */
+  background: var(--bg);
   border-left: 1px solid var(--border);
   animation: slide-in 240ms var(--ease-out);
   container: workbench / inline-size;
@@ -231,14 +232,17 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  color: var(--text-2);
-  font-size: var(--text-sm);
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .wb-toolbar-title.mono {
+  color: var(--text-2);
   font-size: var(--text-xs);
+  font-weight: 400;
 }
 
 .wb-chip {
@@ -325,6 +329,23 @@
   display: block;
   padding: 16px;
   overflow: auto;
+}
+
+/*
+ * Conversations and Project panels (thread, Agent exchange, Board, Library, Routines, settings) are
+ * reading surfaces like the conversation beside them, so they run edge to edge under a hairline
+ * instead of sitting in a second framed card (tnega-design §5.3).
+ */
+.wb-card.wb-flow {
+  margin: 0 -8px -8px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+}
+
+.wb-card.wb-flow.wb-scroll {
+  padding: 20px 20px 24px;
 }
 
 .wb-card.wb-split {
