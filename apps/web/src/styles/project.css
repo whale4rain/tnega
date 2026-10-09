@@ -1897,3 +1897,10 @@ button.board-chip.active {
   flex-direction: column;
   gap: 6px;
 }
+
+/* A thread (and an Agent exchange) is a conversation, so its card uses the conversation's own
+   background rather than the lighter document surface (tnega-design §5.3). */
+.wb-card.thread-body,
+.wb-card.exchange-body {
+  background: var(--bg);
+}
