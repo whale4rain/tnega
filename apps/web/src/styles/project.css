@@ -1376,19 +1376,23 @@
   position: relative;
 }
 
-/* Reply sits over the card's right end, left of the chevron, and shows on hover. */
+/* Reply takes the chevron's place at the card's right end while the card is hovered. */
 .thread-card-reply {
   position: absolute;
   top: 50%;
-  right: 28px;
+  right: 4px;
   transform: translateY(-50%);
-  background: var(--surface-hover);
   opacity: 0;
   transition: opacity var(--duration-fast);
 }
 
+.thread-card-wrap:hover .thread-card-chevron,
+.thread-card-wrap:focus-within .thread-card-chevron {
+  visibility: hidden;
+}
+
 .thread-card-wrap:hover .thread-card-reply,
-.thread-card-reply:focus-visible {
+.thread-card-wrap:focus-within .thread-card-reply {
   opacity: 1;
 }
 
