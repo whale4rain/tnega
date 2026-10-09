@@ -98,7 +98,7 @@ it('repairs a torn UTF-8 tail before appending subsequent commits', async () => 
   }
 })
 
-it('recovers a batch wholly or not at every journal truncation boundary', async () => {
+it('recovers a batch wholly or not across transaction and UTF-8 boundaries', async () => {
   const { root, root_dir } = await mount()
   await root.blackboard.commit({ kind: 'memory', id: 'before', data: '中文', author: 'user' })
   const file = join(root_dir, 'journal.jsonl')
@@ -109,7 +109,18 @@ it('recovers a batch wholly or not at every journal truncation boundary', async 
   ])
   await root.fiber.dispose()
   const complete = await readFile(file)
-  for (let end = complete.length; end >= prefix.length; end -= 1) {
+  const messageStart = complete.indexOf('"kind":"message"', prefix.length)
+  const deliveryStart = complete.indexOf('"kind":"delivery"', prefix.length)
+  const unicode = complete.indexOf(Buffer.from('你好'), prefix.length)
+  expect(messageStart).toBeGreaterThan(prefix.length)
+  expect(deliveryStart).toBeGreaterThan(messageStart)
+  expect(unicode).toBeGreaterThan(messageStart)
+  // Exercise each structural failure and every byte of the multibyte value,
+  // without repeating hundreds of identical fsync/reopen cycles per test run.
+  const boundaries = new Set([prefix.length, prefix.length + 1, messageStart, deliveryStart - 1,
+    deliveryStart, ...Array.from({ length: Buffer.byteLength('你好') }, (_, index) => unicode + index),
+    complete.length - 2, complete.length - 1, complete.length])
+  for (const end of boundaries) {
     await writeFile(file, complete.subarray(0, end))
     const recovered = await reopen(root_dir)
     try {
