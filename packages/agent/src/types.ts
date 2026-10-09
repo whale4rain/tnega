@@ -46,6 +46,12 @@ export interface CompleteOptions {
    * structured side request, for example — set it per call.
    */
   maxTokens?: number
+  /**
+   * `off` asks the route to skip hidden reasoning for this call, for short
+   * structured side requests where it only adds latency. Routes that cannot
+   * verifiably turn reasoning off ignore it.
+   */
+  reasoning?: 'off'
   /** Capacity of the final model route, for durable request diagnostics. */
   contextWindow?: number
 }

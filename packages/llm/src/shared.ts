@@ -17,16 +17,29 @@ export function combineSignal(
 
 /**
  * Fold a caller's per-request overrides into the adapter's configured defaults.
- * The output cap is legitimately per call — a structured side request may need a
- * budget unrelated to the conversation's — while the rest of the route (base
- * URL, credentials, retries) stays owned by the adapter's configuration.
+ * The output cap and skipping reasoning are legitimately per call — a structured
+ * side request may need a budget unrelated to the conversation's — while the
+ * rest of the route (base URL, credentials, retries) stays owned by the
+ * adapter's configuration.
  */
-export function withCallOverrides<T extends { maxTokens?: number }>(
+export function withCallOverrides<T extends { maxTokens?: number; reasoning?: 'off' }>(
   config: T,
-  options: { maxTokens?: number },
+  options: { maxTokens?: number; reasoning?: 'off' },
 ): T {
-  if (options.maxTokens === undefined) return config
-  return { ...config, maxTokens: options.maxTokens }
+  if (options.maxTokens === undefined && options.reasoning === undefined) return config
+  return {
+    ...config,
+    ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+    ...(options.reasoning !== undefined ? { reasoning: options.reasoning } : {}),
+  }
+}
+
+/** DeepSeek's own API, which documents `thinking: { type: 'disabled' }`. */
+export function isDeepSeekApi(baseUrl: string | undefined): boolean {
+  try {
+    const host = new URL(baseUrl ?? '').hostname
+    return host === 'deepseek.com' || host.endsWith('.deepseek.com')
+  } catch { return false }
 }
 
 export function isRetryableStatus(status: number): boolean {
