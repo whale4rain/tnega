@@ -50,6 +50,7 @@ compare links provide a convenient browser view of the boundaries.
 
 ### Fixes
 
+- Windows Thread 恢复使用文件系统实际路径识别已有 worktree，兼容短路径、大小写和 Git 路径输出，避免误判后重复创建目录。
 - 记忆抽取的不修改 Session 测试先等待已有事件落盘，避免把异步缓冲写入误判为抽取修改。
 
 ## [0.4.24-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.24-beta.1) — 2026-10-09

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rename, rm, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { parseThreadWorkspace, type ThreadWorkspace } from '@tnega/thread'
@@ -11,6 +11,17 @@ export type ProjectGitCommand = (command: string, args: string[], cwd: string, s
 const runCommand: ProjectGitCommand = async (command, args, cwd, signal) => {
   const { stdout } = await exec(command, args, { cwd, windowsHide: true, timeout: 120_000, maxBuffer: 2_000_000, ...(signal ? { signal } : {}) })
   return stdout.trim()
+}
+
+/** Git may expand Windows 8.3 aliases or return a differently cased path. */
+async function pathIdentity(path: string): Promise<string> {
+  let absolute: string
+  try { absolute = await realpath(path) }
+  catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+    absolute = resolve(path)
+  }
+  return process.platform === 'win32' ? absolute.toLowerCase() : absolute
 }
 
 /** Durable checkouts are deliberately retained on dispose: never delete unmerged work. */
@@ -44,7 +55,7 @@ export class ProjectWorktrees {
       }
       catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
     }
-    if (workspace && (workspace.cwd !== cwd || workspace.branch !== branch)) throw new Error('Thread worktree identity mismatch')
+    if (workspace && (await pathIdentity(workspace.cwd) !== await pathIdentity(cwd) || workspace.branch !== branch)) throw new Error('Thread worktree identity mismatch')
     if (!workspace) {
       const baseCommit = await this.command('git', ['rev-parse', 'HEAD'], this.root)
       let baseBranch: string
@@ -56,10 +67,19 @@ export class ProjectWorktrees {
       await writeFile(temporary, JSON.stringify(workspace))
       await rename(temporary, manifest)
     }
-    const entries = await this.command('git', ['worktree', 'list', '--porcelain'], this.root)
-    const block = entries.split(/\r?\n\r?\n/).find(entry => entry.split(/\r?\n/).some(line => line.startsWith('worktree ') && resolve(line.slice(9)) === checkout))
+    const entries = await this.command('git', ['worktree', 'list', '--porcelain', '-z'], this.root)
+    const checkoutIdentity = await pathIdentity(checkout)
+    let block: string[] | undefined
+    for (const entry of entries.split('\0\0')) {
+      const fields = entry.split('\0')
+      const path = fields.find(field => field.startsWith('worktree '))?.slice(9)
+      if (path && await pathIdentity(path) === checkoutIdentity) {
+        block = fields
+        break
+      }
+    }
     if (block) {
-      if (!block.split(/\r?\n/).includes(`branch refs/heads/${branch}`)) throw new Error('Thread worktree branch changed; restore its original branch before continuing')
+      if (!block.includes(`branch refs/heads/${branch}`)) throw new Error('Thread worktree branch changed; restore its original branch before continuing')
       await this.command('git', ['rev-parse', '--show-toplevel'], cwd)
       return workspace
     }
