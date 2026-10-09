@@ -131,6 +131,7 @@ it('creates a project, runs the main conversation and takes thread notes', async
     baseUrl: await startMockLlm('notes look good', requests),
     model: 'mock-model',
     temperature: 0,
+    projectMemory: { enabled: false },
   }), 'utf8')
   const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
   servers.push(server)

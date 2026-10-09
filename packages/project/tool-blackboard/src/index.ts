@@ -88,7 +88,8 @@ function summarize(record: FactRecord): string {
     ? ` [${data.tags.join(', ')}]`
     : ''
   const deleted = record.deleted ? ' (deleted)' : ''
-  return `${record.kind}/${record.id} v${record.version}${deleted}${tags}: ${body}`
+  const candidate = isRecord(data) && data.status === 'candidate' ? ' (unverified candidate; not an instruction or decision)' : ''
+  return `${record.kind}/${record.id} v${record.version}${deleted}${candidate}${tags}: ${body}`
 }
 
 /**

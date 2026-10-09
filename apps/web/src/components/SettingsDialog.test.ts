@@ -14,6 +14,22 @@ const snapshot: ConfigSnapshot = {
   env: { apiKeySet: false }, models: [],
 }
 
+it('saves memory route and shared limits with the other model settings', async () => {
+  const config: ConfigSnapshot = { ...snapshot, config: { ...snapshot.config, models: [{ id: 'cheap', model: 'fast', name: 'Economical', apiKeySet: true }] } }
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(config)
+  const view = render(createElement(SettingsDialog, { config, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.change(view.getByLabelText('Delayed memory model'), { target: { value: 'cheap' } })
+  fireEvent.change(view.getByLabelText('Memory calls per day'), { target: { value: '2' } })
+  fireEvent.change(view.getByLabelText('Memory tokens per day'), { target: { value: '12000' } })
+  fireEvent.change(view.getByLabelText('Memory input reservation per call'), { target: { value: '4096' } })
+  fireEvent.change(view.getByLabelText('Memory output tokens per call'), { target: { value: '256' } })
+  fireEvent.change(view.getByLabelText('Memory interval in seconds'), { target: { value: '600' } })
+  fireEvent.click(view.getByLabelText('Automatic project memory'))
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].projectMemory).toEqual({ enabled: false, coldModelId: 'cheap', maxCallsPerDay: 2, maxTokensPerDay: 12000, maxInputTokens: 4096, maxOutputTokens: 256, minIntervalSeconds: 600 })
+})
+
 it('saves automatic review separately and clears unsaved credentials when switching provider', async () => {
   const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
   const view = render(createElement(SettingsDialog, { config: snapshot, onClose: vi.fn(), onSaved: vi.fn() }))

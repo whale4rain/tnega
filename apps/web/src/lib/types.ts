@@ -312,6 +312,7 @@ export interface ConfigSnapshot {
     environmentProxy?: string
   }
   config: {
+    projectMemory?: ProjectMemorySettings
     codeMode?: boolean
     /** Saved shell preference; empty means detect automatically. */
     shell?: string
@@ -328,6 +329,16 @@ export interface ConfigSnapshot {
   }
   env: { apiKeySet: boolean; baseUrl?: string; model?: string }
   models: ModelOption[]
+}
+
+export interface ProjectMemorySettings {
+  enabled?: boolean
+  coldModelId?: string
+  maxCallsPerDay?: number
+  maxInputTokens?: number
+  maxOutputTokens?: number
+  maxTokensPerDay?: number
+  minIntervalSeconds?: number
 }
 
 export interface ShellOption {

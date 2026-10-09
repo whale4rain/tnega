@@ -105,6 +105,8 @@ import {
   systemConfigProblem,
   updateSystemConfig,
   normalizeApprovalReviewer,
+  normalizeProjectMemory,
+  PROJECT_MEMORY_DEFAULTS,
   ModelRouteError,
   parseModelRouteInput,
   parseNetworkConfig,
@@ -456,6 +458,15 @@ async function handleApi(
     if (body.codeMode !== undefined) {
       if (typeof body.codeMode !== 'boolean') { sendError(res, 400, 'codeMode must be a boolean'); return }
       patch.codeMode = body.codeMode
+    }
+    if (body.projectMemory !== undefined) {
+      const memory = normalizeProjectMemory(body.projectMemory)
+      if (!memory) { sendError(res, 400, 'Invalid project memory limits'); return }
+      const current = await readSystemConfig(context.configFile)
+      if (memory.coldModelId && !current.models?.some(route => route.id === memory.coldModelId)) {
+        sendError(res, 400, 'Project memory model must be a configured route'); return
+      }
+      patch.projectMemory = { ...current.projectMemory, ...memory }
     }
     if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
     if (typeof body.shell === 'string') patch.shell = body.shell.trim()
@@ -1723,6 +1734,8 @@ async function projectHostFor(
     effective.reasoningEffort ?? '',
     context.projectPermission,
     JSON.stringify(config.approvalReview ?? {}),
+    JSON.stringify(config.projectMemory ?? {}),
+    JSON.stringify(config.models ?? []),
     config.codeMode ? 'ptc' : 'native',
   ].join('|')
   const existing = context.projectHosts?.get(path)
@@ -2180,6 +2193,7 @@ function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record
     config: {
       apiKeySet: Boolean(config.apiKey),
       codeMode: config.codeMode ?? false,
+      projectMemory: { ...PROJECT_MEMORY_DEFAULTS, ...config.projectMemory },
       shell: config.shell ?? '',
       path,
       approvalReview: {

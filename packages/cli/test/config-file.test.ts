@@ -19,6 +19,13 @@ async function configFile(text?: string): Promise<string> {
 }
 
 describe('system config file', () => {
+  it('persists memory limits and disables extraction for an invalid budget file setting', async () => {
+    const file = await configFile()
+    await updateSystemConfig({ projectMemory: { enabled: true, maxCallsPerDay: 2, coldModelId: 'economical' } }, file)
+    expect((await readSystemConfig(file)).projectMemory).toEqual({ enabled: true, maxCallsPerDay: 2, coldModelId: 'economical' })
+    await writeFile(file, JSON.stringify({ projectMemory: { maxCallsPerDay: -1 } }))
+    expect((await readSystemConfig(file)).projectMemory).toEqual({ enabled: false })
+  })
   it('never saves over a file it could not parse', async () => {
     const broken = `{
   "apiKey": "sk-keep-me",

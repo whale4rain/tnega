@@ -5,6 +5,7 @@ import type {
   AgentType,
   ApprovalMode,
   ApprovalReviewerSettings,
+  ProjectMemorySettings,
   ConfigSnapshot,
   GoalState,
   Permission,
@@ -71,6 +72,7 @@ export interface SessionPatch {
 }
 
 export interface ConfigPatch {
+  projectMemory?: ProjectMemorySettings
   codeMode?: boolean
   /** Shell name or path; empty restores automatic detection. */
   shell?: string

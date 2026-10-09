@@ -202,6 +202,35 @@ append-only `meta/patch`，不整写文件——因此崩溃与并发下标题�
 `.tnega/projects/<projectId>/agents/<threadId>/session.jsonl`。此规则不修改 Git
 忽略配置；过滤同时兼容遗留目录。`.tnega/MEMORY.md`、skills、配置和项目产物的改动仍可见。
 
+## Project 自动记忆
+
+Settings → Models 的 Project memory 控制完成工作后的异步记忆整理。默认启用，独立请求
+从成功 Agent Run 的 durable Session 重建 messages、tool schemas 与请求头，再追加抽取
+指令；不改原 Session，不执行模型返回的工具。原上下文前缀可能命中提供商缓存，但不保证。
+自动内容以 `candidate` / `authority: none` 保存，带 Thread 与 Session event 来源；不能作为
+权限凭据。每次最多 3 条，Project 总计最多 200 条；同文去重，只做 CAS 新增，用户编辑或
+删除过的记录不会被覆盖、复活。仍可使用显式 `write_memory`。
+
+`projectMemory` 可配置 `enabled`、`coldModelId`、`maxCallsPerDay`（默认 4）、
+`maxInputTokens`（16384）、`maxOutputTokens`（512）、`maxTokensPerDay`（65536）与
+`minIntervalSeconds`（300）。日额度按 UTC 计，所有 Project 共用，跨进程并发为 1。
+输入按 UTF-8 字节加请求封装余量保守预留；包括工具 schema，不按缓存折扣预留。
+输出使用提供商 token 上限。失败、取消和崩溃已预留的额度不返还；没有自动重试。
+这些是请求准入的 token 预留与调用次数限制，不是货币预算，也不宣称提供商计费的精确上界。
+含图片的历史跳过自动抽取，以免误估图片 token。超出输入额度的请求也跳过。
+
+距完成超过两分钟、手工或恢复时的抽取只使用用户选定的已有 `coldModelId` 路由。
+没有路由、凭据或明确模型配置时跳过，不回退到默认昂贵模型。程序化宿主可通过
+`mountProjectMemory` 返回的 runner 调用 `enqueue` 或有界 `recover`；恢复需显式触发，
+不会无限扫描 Session 或重复已预留的抽取。冷请求只携带最近 8 条模型消息作为证据。
+
+Project 状态目录的 `memory-extractions.jsonl` 记录来源、冷热请求、预留、结果以及
+提供商返回的真实 usage（含提供商提供的缓存用量）；不复制对话正文。默认 System Config
+home 目录的 `project-memory-budget.jsonl` 是共享额度日志；自定义 config 文件位置不改变
+这个全局预算目录，避免不同配置文件重复取得额度。`project-memory-budget.lock`
+在抽取期间持有。崩溃后不自动抢占未知锁；确认没有正在运行的 Tnega 实例后才能移除残留锁。
+损坏的额度日志会使记忆抽取停止，避免通过重置额度导致额外开销。
+
 ## 系统配置（config.ts）
 
 独立于工作区，位于用户主目录。Windows：`%USERPROFILE%\.tnega\config.json`。

@@ -51,6 +51,7 @@ import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from 
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { describeToolCall } from './project-activity.js'
 import { trackGitOutcomes } from './project-git.js'
+import { mountProjectMemory } from './project-memory.js'
 import { PROJECT_DISABLED_BUILTINS, projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 import { DEFAULT_THREAD_LIMITS } from '@tnega/thread'
 import { mountThreadApprovals } from './thread-approval.js'
@@ -773,6 +774,7 @@ export class ProjectHost {
       delegateApproval: (request, review) => threadApprovals.request(request, review),
     }))
 
+    mountProjectMemory(ctx, { directory, blackboard: ctx.blackboard, config: systemConfig })
     await ctx.plugin(projectLoop, { projectId: record.id, isPaused: () => record.paused === true })
     const routines = new RoutineRunner({
       blackboard: ctx.get('blackboard') as BlackboardService,

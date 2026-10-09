@@ -56,6 +56,13 @@ export function SettingsDialog({
   const stored = config?.config
   const [section, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
   const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
+  const [memoryEnabled, setMemoryEnabled] = useState(stored?.projectMemory?.enabled ?? true)
+  const [memoryModel, setMemoryModel] = useState(stored?.projectMemory?.coldModelId ?? '')
+  const [memoryCalls, setMemoryCalls] = useState(stored?.projectMemory?.maxCallsPerDay ?? 4)
+  const [memoryInput, setMemoryInput] = useState(stored?.projectMemory?.maxInputTokens ?? 16384)
+  const [memoryOutput, setMemoryOutput] = useState(stored?.projectMemory?.maxOutputTokens ?? 512)
+  const [memoryDaily, setMemoryDaily] = useState(stored?.projectMemory?.maxTokensPerDay ?? 65536)
+  const [memoryInterval, setMemoryInterval] = useState(stored?.projectMemory?.minIntervalSeconds ?? 300)
   const [shell, setShell] = useState(stored?.shell ?? '')
   const [protocol, setProtocol] = useState<'' | Protocol>(stored?.protocol ?? '')
   const [baseUrl, setBaseUrl] = useState(stored?.baseUrl ?? '')
@@ -86,6 +93,7 @@ export function SettingsDialog({
     setSaving(true)
     setError(undefined)
     const patch: ConfigPatch = { codeMode, shell, protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
+    patch.projectMemory = { enabled: memoryEnabled, coldModelId: memoryModel, maxCallsPerDay: memoryCalls, maxInputTokens: memoryInput, maxOutputTokens: memoryOutput, maxTokensPerDay: memoryDaily, minIntervalSeconds: memoryInterval }
     patch.approvalReview = {
       provider: reviewProvider, defaultMode: reviewDefault,
       modelId: reviewModelId.trim(), model: reviewModel.trim(), baseUrl: reviewBaseUrl.trim(), apiKeyEnv: reviewKeyEnv.trim(),
@@ -173,6 +181,22 @@ export function SettingsDialog({
           </header>
 
           {panel('model', <>
+            <h4>Project memory</h4>
+            <div className="form-grid">
+              <label className="field-check span-2"><input type="checkbox" checked={memoryEnabled} onChange={event => setMemoryEnabled(event.target.checked)} />Automatic project memory</label>
+              <label className="field span-2"><span className="field-label">Delayed memory model</span>
+                <select value={memoryModel} onChange={event => setMemoryModel(event.target.value)}>
+                  <option value="">Skip delayed extraction</option>
+                  {stored?.models?.map(route => <option key={route.id} value={route.id}>{route.name || route.id}</option>)}
+                </select>
+              </label>
+              <label className="field"><span className="field-label">Memory calls per day</span><input type="number" min={0} max={100} value={memoryCalls} onChange={event => setMemoryCalls(Number(event.target.value))} /></label>
+              <label className="field"><span className="field-label">Memory tokens per day</span><input type="number" min={0} max={1000000} value={memoryDaily} onChange={event => setMemoryDaily(Number(event.target.value))} /></label>
+              <label className="field"><span className="field-label">Memory input reservation per call</span><input type="number" min={1024} max={131072} value={memoryInput} onChange={event => setMemoryInput(Number(event.target.value))} /></label>
+              <label className="field"><span className="field-label">Memory output tokens per call</span><input type="number" min={128} max={4096} value={memoryOutput} onChange={event => setMemoryOutput(Number(event.target.value))} /></label>
+              <label className="field"><span className="field-label">Memory interval in seconds</span><input type="number" min={0} max={86400} value={memoryInterval} onChange={event => setMemoryInterval(Number(event.target.value))} /></label>
+            </div>
+            <p className="muted small">After completed work, memory uses a separate request with the original context. Cache reuse is possible, never guaranteed. Delayed extraction uses only the selected route; choose an economical model. All projects share the daily limits and run one memory request at a time. Uncached input and maximum output are reserved even for failures. These token reservations are not a currency budget.</p>
             {config && (
               <ModelRoutes
                 config={config}

@@ -125,6 +125,7 @@ export interface LlmEnvConfig {
 }
 
 export interface SystemConfig {
+  projectMemory?: ProjectMemoryConfig
   codeMode?: boolean
   /** Shell for the `shell` tool (also when run as a background job): a name (`pwsh`, `bash`…) or a path; absent detects one. */
   shell?: string
@@ -144,6 +145,51 @@ export interface SystemConfig {
   /** Browser launched for the agent's `browser_*` tools outside the desktop app. */
   browser?: BrowserLaunchConfig
   network?: NetworkConfig
+}
+
+/** All Projects share daily limits. Reservations count uncached input, including failed calls. */
+export interface ProjectMemoryConfig {
+  enabled?: boolean
+  coldModelId?: string
+  maxCallsPerDay?: number
+  maxInputTokens?: number
+  maxOutputTokens?: number
+  maxTokensPerDay?: number
+  minIntervalSeconds?: number
+}
+
+export const PROJECT_MEMORY_DEFAULTS = {
+  enabled: true,
+  coldModelId: '',
+  maxCallsPerDay: 4,
+  maxInputTokens: 16_384,
+  maxOutputTokens: 512,
+  maxTokensPerDay: 65_536,
+  minIntervalSeconds: 300,
+} satisfies Required<ProjectMemoryConfig>
+
+export function normalizeProjectMemory(value: unknown): ProjectMemoryConfig | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const result: ProjectMemoryConfig = {}
+  const enabled: unknown = Reflect.get(value, 'enabled')
+  if (enabled !== undefined) {
+    if (typeof enabled !== 'boolean') return undefined
+    result.enabled = enabled
+  }
+  const route: unknown = Reflect.get(value, 'coldModelId')
+  if (route !== undefined) {
+    if (typeof route !== 'string') return undefined
+    result.coldModelId = route.trim()
+  }
+  const bounds = { maxCallsPerDay: [0, 100], maxInputTokens: [1024, 131072], maxOutputTokens: [128, 4096], maxTokensPerDay: [0, 1_000_000], minIntervalSeconds: [0, 86400] } as const
+  for (const key of Object.keys(bounds) as Array<keyof typeof bounds>) {
+    const field: unknown = Reflect.get(value, key)
+    if (field === undefined) continue
+    const [min, max] = bounds[key]
+    if (typeof field !== 'number' || !Number.isSafeInteger(field) || field < min || field > max) return undefined
+    result[key] = field
+  }
+  return result
 }
 
 /** How the HTTP tools reach the network (see `NetworkPolicy` in @tnega/execution). */
@@ -447,6 +493,7 @@ export async function removeModelRoute(id: string, file = systemConfigPath()): P
   if (!config.models?.length) delete config.models
   if (config.model === id) delete config.model
   if (config.approvalReview?.modelId === id) config.approvalReview = { ...config.approvalReview, modelId: '' }
+  if (config.projectMemory?.coldModelId === id) config.projectMemory = { ...config.projectMemory, coldModelId: '' }
   await writeSystemConfig(config, file)
   return config
 }
@@ -552,6 +599,9 @@ function normalizeConfig(value: unknown): SystemConfig {
   const record = value as Record<string, unknown>
   const config: SystemConfig = {}
   if (typeof record.codeMode === 'boolean') config.codeMode = record.codeMode
+  const memory = normalizeProjectMemory(record.projectMemory)
+  if (memory) config.projectMemory = memory
+  else if (record.projectMemory !== undefined) config.projectMemory = { enabled: false }
   if (typeof record.shell === 'string' && record.shell.trim()) config.shell = record.shell.trim()
   const review = normalizeApprovalReviewer(record.approvalReview)
   if (review) config.approvalReview = review

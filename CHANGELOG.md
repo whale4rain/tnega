@@ -48,6 +48,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+- Project 支持完成工作后的异步记忆整理：复用原请求前缀，延迟抽取使用可配置模型；所有 Project 共用调用次数与 token 预留额度，自动记忆标记为待核实候选，保留来源且不覆盖用户修订。
+
 ## [0.4.24](https://github.com/whale4rain/tnega/releases/tag/v0.4.24) — 2026-10-09
 
 ### Fixes
