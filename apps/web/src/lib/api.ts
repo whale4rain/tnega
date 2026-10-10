@@ -203,6 +203,9 @@ export const api = {
     }),
   compact: (workspace: string, id: string) =>
     call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}/compact`, workspace), { method: 'POST', body: {} }),
+  /** Queue the continuation of a run the app stopped mid-turn; a resumed run then drains it. */
+  recover: (workspace: string, id: string) =>
+    call<{ resumeQueued: boolean }>(scoped(`/api/sessions/${id}/recover`, workspace), { method: 'POST', body: {} }),
   stop: (workspace: string, id: string) =>
     call<{ stopped: boolean }>(scoped(`/api/sessions/${id}/stop`, workspace), { method: 'POST', body: {} }),
   steer: (workspace: string, id: string, prompt: string, attachments: readonly ImageAttachment[] = []) =>

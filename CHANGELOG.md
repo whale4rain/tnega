@@ -55,6 +55,7 @@ compare links provide a convenient browser view of the boundaries.
 - The Workbench opens about as wide as the conversation (default `clamp(420px, 40vw, 760px)`, minimum 420px) and shares its background. Project panels (Thread, Agent messages, Board, Library, Routines, settings) run edge to edge instead of sitting in a second framed card, with clearer headings, the conversation's own text size and a project title on the Board.
 - Opening a Project artifact shows it as a page on a near full-window sheet beside its Thread: one header with type, size, version and author, quote and download actions, and no repeated outputs strip.
 - What the coordinator sends a thread now appears in that thread's chat as a dashed bubble on the user side, labelled with the sender; it replaces the folded brief when it carries it.
+- A session whose run was cut off by a crash or restart picks up where it stopped when you open it, as long as no interrupted tool call may already have taken effect. Otherwise a notice names the uncertain tools and offers Resume; the agent then checks their results before repeating anything.
 
 ### Fixes
 

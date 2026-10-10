@@ -344,3 +344,17 @@ describe('image attachments', () => {
     expect(agent.blocks[0]).toMatchObject({ kind: 'tool', tool: { images: [image] } })
   })
 })
+
+describe('recovered runs', () => {
+  it('shows the recovery input as a notice, not as a user message', () => {
+    const entries = fromEvents([
+      { id: 's', seq: 1, ts: 1, type: 'turn/start', payload: { turn: 2 } },
+      { id: 'r', seq: 2, ts: 2, type: 'user/message', payload: { content: 'The previous run was interrupted…', name: 'plugin:recover' } },
+    ])
+    expect(entries.some(entry => entry.kind === 'user')).toBe(false)
+    const agent = entries.find(entry => entry.kind === 'agent')
+    expect(agent?.kind === 'agent' && agent.blocks).toEqual([
+      expect.objectContaining({ kind: 'notice', text: 'Continued the run that stopped when the app closed' }),
+    ])
+  })
+})

@@ -42,6 +42,7 @@ import type {
   SessionDetail,
   SessionEvent,
   SessionMetrics,
+  SessionRecovery,
   UsageTotals,
   SessionSummary,
   SlashCommand,
@@ -132,6 +133,9 @@ export function Conversation({
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [resumeVersion, setResumeVersion] = useState(0)
   const pendingResume = useRef<string | undefined>(undefined)
+  const [recovery, setRecovery] = useState<SessionRecovery | undefined>()
+  /** Sessions this view already continued on its own, so a failure is not retried in a loop. */
+  const autoRecovered = useRef(new Set<string>())
 
   /** Session id that a local stream is currently writing into. */
   const streamingFor = useRef<string | undefined>(undefined)
@@ -149,6 +153,7 @@ export function Conversation({
     setUsage(detail.usage)
     setPlan(latestPlan(detail.events))
     setRemoteRunning(detail.running && streamingFor.current !== detail.summary.id)
+    setRecovery(detail.recovery)
   }, [])
 
   const reload = useCallback(async (id: string) => {
@@ -176,6 +181,7 @@ export function Conversation({
       setPlan(undefined)
       setGoal(null)
       setRemoteRunning(false)
+      setRecovery(undefined)
       return
     }
     // The session was just created by our own send; the live stream owns it.
@@ -363,6 +369,27 @@ export function Conversation({
       onSessionsChanged()
     }
   }, [workspace, onStreamEvent, flush, reload, onSessionsChanged])
+
+  // A run the app stopped mid-turn: queue its continuation, then drain it like any resumed run.
+  const resumeInterrupted = useCallback(async (id: string) => {
+    setRecovery(undefined)
+    try {
+      const { resumeQueued } = await api.recover(workspace, id)
+      if (resumeQueued) {
+        pendingResume.current = id
+        setResumeVersion(version => version + 1)
+      }
+    } catch (reason) {
+      setError(errorText(reason))
+    }
+  }, [workspace])
+
+  useEffect(() => {
+    if (!sessionId || !recovery?.safe || running || remoteRunning || autoRecovered.current.has(sessionId)) return
+    autoRecovered.current.add(sessionId)
+    setCommandNotice('Continuing the run that stopped when the app closed.')
+    void resumeInterrupted(sessionId)
+  }, [sessionId, recovery, running, remoteRunning, resumeInterrupted])
 
   useEffect(() => {
     if (running || remoteRunning || streamingFor.current || pendingResume.current !== sessionId || !sessionId) return
@@ -727,6 +754,15 @@ export function Conversation({
             </div>
           )}
           {commandNotice && <div className="notice notice-info" role="status">{commandNotice}</div>}
+          {sessionId && recovery && !recovery.safe && !live && (
+            <div className="notice notice-warn recovery-notice" role="status">
+              <span>
+                The last run stopped when the app closed.
+                {recovery.uncertainCalls.length > 0 && ` ${recovery.uncertainCalls.join(', ')} may already have taken effect, so the agent will check before repeating it.`}
+              </span>
+              <button type="button" className="button small secondary" onClick={() => void resumeInterrupted(sessionId)}>Resume</button>
+            </div>
+          )}
           {approvals.map(approval => (
             <ApprovalCard key={approval.id} approval={approval} onAnswer={allow => void answer(approval, allow)} />
           ))}

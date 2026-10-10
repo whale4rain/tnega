@@ -196,6 +196,15 @@ export interface SessionDetail {
   metrics: SessionMetrics
   usage?: UsageTotals
   running: boolean
+  /** The last turn was cut off by a crash or restart and nothing has continued it. */
+  recovery?: SessionRecovery
+}
+
+export interface SessionRecovery {
+  /** Continuing needs no confirmation: no cut-off call may already have taken effect. */
+  safe: boolean
+  /** Tools whose cut-off calls may already have taken effect. */
+  uncertainCalls: string[]
 }
 
 export interface GoalState {

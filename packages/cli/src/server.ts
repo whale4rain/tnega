@@ -7,6 +7,8 @@ import {
   agents,
   systemPrompt,
   continuationNudge,
+  findInterruptedTurn,
+  recoverInterruptedTurn,
   type DurableInbox,
   type AgentCreationOptions,
   type AgentHandle,
@@ -59,6 +61,7 @@ import {
   type ModelAttachment,
   type ModelMessage,
   type PlanPayload,
+  type SessionEvent,
 } from '@tnega/session'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { browserPlaywright, launchPageSource, parseLiveInput, PlaywrightBrowserHost } from '@tnega/browser-playwright'
@@ -902,7 +905,19 @@ async function handleApi(
         metrics,
         usage: sessionUsage(log, await readSystemConfig(context.configFile)),
         running: runningAtReadStart || isActive(context.activeRuns, workspace, id),
+        ...recoveryField(log),
       })
+      return
+    }
+    if (action === 'recover' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      const entry = context.residentAgents?.get(runKey(workspace, id))
+        ?? await ensureResidentAgent(context, workspace, id, await residentQuestionRequest(context, workspace, id))
+      // The queued input is durable: the client's resumed run drains it.
+      sendJson(res, 200, { resumeQueued: await recoverInterruptedTurn(entry.agent) })
       return
     }
     if (action === 'subagents' && req.method === 'GET') {
@@ -1690,6 +1705,12 @@ async function deliverQuestionSteer(
     && event.payload.target !== 'all' && event.payload.inserted?.some(message => message.content === text))
   if (!delivered) await steer({ text })
   await session.flush()
+}
+
+/** A turn a crash cut off, for the client to continue or offer to continue. */
+function recoveryField(events: readonly SessionEvent[]): { recovery?: { safe: boolean; uncertainCalls: string[] } } {
+  const interrupted = findInterruptedTurn(events)
+  return interrupted ? { recovery: { safe: interrupted.safe, uncertainCalls: interrupted.uncertainCalls } } : {}
 }
 
 async function residentQuestionRequest(context: ServerContext, workspace: string, id: string): Promise<ResidentRunRequest> {

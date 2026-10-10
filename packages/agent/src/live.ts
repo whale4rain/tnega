@@ -4,6 +4,7 @@ import { SessionLog, isAgentType, type AgentType, type SessionEvent } from '@tne
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
+import { findInterruptedTurn, recoverInterruptedTurn } from './recovery.js'
 import {
   DurableInbox,
   type DurableInboxMessage,
@@ -148,6 +149,11 @@ export interface AgentCreationOptions {
   initial?: readonly AgentInput[]
   /** Disable the automatic drain; callers drive turns via `runTurns`. */
   manualStreaming?: boolean
+  /**
+   * On resume, continue a turn a crash cut off when that is safe (see
+   * `findInterruptedTurn`): queue one recovery input for the next turn.
+   */
+  autoRecover?: boolean
 }
 
 export interface AgentFactory {
@@ -924,6 +930,10 @@ async function buildHandle(
     await agent.publishSessionStart(resume ? 'resume' : 'startup')
     for (const input of options.initial ?? []) {
       if (!resume) await durable.insert({ text: input.text ?? '' })
+    }
+    // Queued input already continues the work; recovery only fills an empty inbox.
+    if (resume && options.autoRecover && !durable.size && findInterruptedTurn(await log.read())?.safe) {
+      await recoverInterruptedTurn(agent)
     }
     if (
       resume
