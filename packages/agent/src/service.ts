@@ -128,6 +128,7 @@ function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
       role: message.role,
       content: message.content,
     }
+    if (message.reasoning) copy.reasoning = message.reasoning
     if (message.name) copy.name = message.name
     if (message.tool_call_id) copy.tool_call_id = message.tool_call_id
     if (message.toolOk !== undefined) copy.toolOk = message.toolOk
@@ -164,6 +165,7 @@ function copyCompletion(completion: LLMCompletion): LLMCompletion {
     finishReason: completion.finishReason,
   }
   if (completion.content !== undefined) copy.content = completion.content
+  if (completion.reasoning !== undefined) copy.reasoning = completion.reasoning
   if (completion.toolCalls) {
     copy.toolCalls = completion.toolCalls.map(call => ({
       id: call.id,
@@ -178,6 +180,7 @@ function canonicalMessages(messages: readonly ModelMessage[]): string {
   return JSON.stringify(messages.map(message => ({
     role: message.role,
     content: message.content,
+    ...(message.reasoning ? { reasoning: message.reasoning } : {}),
     ...(message.name ? { name: message.name } : {}),
     ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
     ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
@@ -254,6 +257,7 @@ async function* completeAsStream(
   const id = randomUUID()
   yield { type: 'message_start', id }
   const completion = await llm.complete(messages, tools, options)
+  if (completion.reasoning) yield { type: 'reasoning_delta', id, delta: completion.reasoning }
   if (completion.content) yield { type: 'message_delta', id, delta: completion.content }
   for (let index = 0; index < (completion.toolCalls?.length ?? 0); index += 1) {
     const call = completion.toolCalls![index]!
@@ -603,8 +607,9 @@ export class AgentService {
        * carries no duration, and a provider that reported no usage carries
        * none, rather than a zero that would read as a free, instant reply.
        */
-      const settledMeta = (): { durationMs?: number; usage?: ModelUsage } => {
-        const meta: { durationMs?: number; usage?: ModelUsage } = {}
+      const settledMeta = (): { reasoning?: string; durationMs?: number; usage?: ModelUsage } => {
+        const meta: { reasoning?: string; durationMs?: number; usage?: ModelUsage } = {}
+        if (completion?.reasoning) meta.reasoning = completion.reasoning
         if (requestStartedAt > 0) meta.durationMs = Date.now() - requestStartedAt
         if (completion?.usage) meta.usage = completion.usage
         return meta
@@ -689,9 +694,10 @@ export class AgentService {
           yield activeAttempt.push({ type: 'stream_error', error: toToolError(error) })
           if (options.signal?.aborted) {
             const content = partialStreamContent(streamEvents)
+            const reasoning = completionFromStreamEvents(streamEvents).reasoning
             yield* this.settleAttempt(
               activeAttempt,
-              content ? { content, interrupted: true, ...settledMeta() } : undefined,
+              content ? { content, interrupted: true, ...(reasoning ? { reasoning } : {}), ...settledMeta() } : undefined,
             )
             finishReason = 'cancelled'
             break
@@ -1253,6 +1259,7 @@ export class AgentService {
       role: 'assistant',
       content: completion.content ?? '',
     }
+    if (completion.reasoning) assistant.reasoning = completion.reasoning
     const toolCalls = completion.toolCalls ?? []
     if (toolCalls.length) {
       assistant.tool_calls = toolCalls.map(call => ({
@@ -1355,12 +1362,15 @@ function copySteps(steps: readonly AgentStep[]): readonly AgentStep[] {
 
 function completionFromStreamEvents(events: readonly LLMStreamEvent[]): LLMCompletion {
   let content = ''
+  let reasoning = ''
   const calls = new Map<number, LLMToolCall>()
   let finishReason: AgentFinishReason = 'error'
   let usage: ModelUsage | undefined
   for (const event of events) {
     if (event.type === 'message_delta') {
       content += event.delta
+    } else if (event.type === 'reasoning_delta') {
+      reasoning += event.delta
     } else if (event.type === 'toolcall_end') {
       calls.set(event.index, {
         id: event.id,
@@ -1374,6 +1384,7 @@ function completionFromStreamEvents(events: readonly LLMStreamEvent[]): LLMCompl
   }
   const completion: LLMCompletion = { finishReason }
   if (content) completion.content = content
+  if (reasoning) completion.reasoning = reasoning
   if (calls.size) completion.toolCalls = [...calls.values()]
   if (usage) completion.usage = usage
   return completion

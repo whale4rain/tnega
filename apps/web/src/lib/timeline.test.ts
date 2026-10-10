@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSseFrame } from './api'
-import { applyStream, beginRun, fromEvents, presentRun, type Entry } from './timeline'
+import { applyStream, beginRun, fromEvents, presentOutcome, presentRun, type Entry } from './timeline'
 import { presentTool, readableOutput } from './tools'
 import type { SessionEvent, StreamEvent } from './types'
 
@@ -21,6 +21,33 @@ describe('fromEvents', () => {
     ])
     expect(entries.map(entry => entry.kind)).toEqual(['user', 'agent'])
     expect(entries[1]).toMatchObject({ blocks: [{ kind: 'text' }, { kind: 'tool' }] })
+  })
+
+  it('keeps the thought behind the final answer beside it and folds earlier ones into the process', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('assistant/message', { content: '', reasoning: 'List first.', toolCalls: [{ id: 'c1', name: 'shell', arguments: { command: 'ls' } }] }, 'a1'),
+      ev('tool/call', { id: 'c1', name: 'shell', arguments: { command: 'ls' } }),
+      ev('tool/result', { id: 'r1', toolCallId: 'c1', name: 'shell', ok: true, output: 'a.ts' }),
+      ev('assistant/message', {
+        content: 'One file.', reasoning: 'Only a.ts.',
+        stream: [
+          { time: 1000, chunk: { type: 'message_start' } },
+          { time: 1000, chunk: { type: 'reasoning_delta' } },
+          { time: 4200, chunk: { type: 'reasoning_delta' } },
+          { time: 4500, chunk: { type: 'message_delta' } },
+        ],
+      }, 'a2'),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+    ])
+    const entry = entries.find(item => item.kind === 'agent')
+    if (!entry || entry.kind !== 'agent') throw new Error('Missing agent')
+    expect(entry.blocks.map(block => block.kind)).toEqual(['reasoning', 'tool', 'reasoning', 'text'])
+    expect(entry.blocks[2]).toEqual({ kind: 'reasoning', id: 'reasoning-a2', text: 'Only a.ts.', durationMs: 3500 })
+    const view = presentRun(entry)
+    expect(view.visible.map(block => block.id)).toEqual(['reasoning-a2', 'a2'])
+    expect(view.process.map(block => block.id)).toEqual(['reasoning-a1', 'tool-c1'])
+    expect(presentOutcome(entry, false).visible.map(block => block.id)).toEqual(['reasoning-a2', 'a2'])
   })
 
   it('nests PTC dispatches below their outer tool without creating top-level tool messages', () => {
@@ -234,6 +261,26 @@ describe('applyStream', () => {
     expect(applyStream(compacted, frame)).toBe(compacted)
     const streamed = applyStream(applyStream(compacted, { type: 'message_start', id: 'after' }), { type: 'message_delta', id: 'after', delta: 'Continuing' })
     expect(streamed.at(-1)).toMatchObject({ kind: 'agent', status: 'running', blocks: [{ text: 'Continuing' }] })
+  })
+
+  it('streams reasoning ahead of the answer and closes it when the answer begins', () => {
+    const thinking = run([
+      { type: 'message_start', id: 'm1' },
+      { type: 'reasoning_delta', id: 'm1', delta: 'Add ' },
+      { type: 'reasoning_delta', id: 'm1', delta: 'them.' },
+    ])
+    const live = thinking[1] as Extract<Entry, { kind: 'agent' }>
+    expect(live.blocks.map(block => block.kind)).toEqual(['reasoning', 'text'])
+    expect(live.blocks[0]).toMatchObject({ text: 'Add them.', streaming: true })
+
+    const answered = [
+      { type: 'message_delta', id: 'm1', delta: '5' },
+      { type: 'message_stop', id: 'm1', finishReason: 'stop' },
+    ].reduce(applyStream, thinking) as Entry[]
+    const agent = answered[1] as Extract<Entry, { kind: 'agent' }>
+    expect(agent.blocks[0]).toMatchObject({ kind: 'reasoning', text: 'Add them.', streaming: false, durationMs: expect.any(Number) })
+    expect(agent.blocks[0]).not.toHaveProperty('startedAt')
+    expect(agent.blocks[1]).toMatchObject({ kind: 'text', text: '5' })
   })
 
   it('streams text deltas into a single block and settles it on stop', () => {

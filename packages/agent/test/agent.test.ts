@@ -861,6 +861,48 @@ describe('agent loop', () => {
     ])
   })
 
+  it('keeps streamed reasoning durable and hands it back within the tool loop', async () => {
+    const root = testContext()
+    await root.plugin(session, { file: await tempFile('stream-reasoning.jsonl') })
+    await root.plugin(tools)
+    const toolService = dynamic(root).tools as ToolsService
+    toolService.register(addTool())
+    const requests: ModelMessage[][] = []
+    const adapter: LLMAdapter = {
+      complete: async () => ({ content: '3', finishReason: 'stop' }),
+      stream: async function* (messages) {
+        requests.push(structuredClone([...messages]))
+        if (requests.length === 1) {
+          yield { type: 'message_start', id: 'm1' }
+          yield { type: 'reasoning_delta', id: 'm1', delta: 'Use ' }
+          yield { type: 'reasoning_delta', id: 'm1', delta: 'add.' }
+          yield { type: 'toolcall_start', id: 'c1', index: 0, name: 'add' }
+          yield { type: 'toolcall_end', id: 'c1', index: 0, name: 'add', arguments: { a: 1, b: 2 } }
+          yield { type: 'message_stop', id: 'm1', finishReason: 'tool_calls' }
+          return
+        }
+        yield { type: 'message_start', id: 'm2' }
+        yield { type: 'reasoning_delta', id: 'm2', delta: 'It is 3.' }
+        yield { type: 'message_delta', id: 'm2', delta: '3' }
+        yield { type: 'message_stop', id: 'm2', finishReason: 'stop' }
+      },
+    }
+    await root.plugin(agent, { llm: adapter })
+
+    const service = dynamic(root).agent as AgentService
+    const { events } = await collectStream(service.runStream({ text: '1+2' }))
+    expect(events.filter(event => event.type === 'reasoning_delta')).toHaveLength(3)
+    expect(requests[1]?.[1]).toMatchObject({ role: 'assistant', reasoning: 'Use add.' })
+
+    const log = dynamic(root).session as SessionLog
+    const answers = (await log.read()).filter(event => event.type === 'assistant/message')
+    expect(answers.map(event => event.payload.reasoning)).toEqual(['Use add.', 'It is 3.'])
+    expect((await log.deriveMessages()).filter(message => message.role === 'assistant')).toEqual([
+      { role: 'assistant', content: '', reasoning: 'Use add.', tool_calls: [{ id: 'c1', name: 'add', arguments: { a: 1, b: 2 } }] },
+      { role: 'assistant', content: '3', reasoning: 'It is 3.' },
+    ])
+  })
+
   it('lets llm/stream rewrite the final request before the adapter runs', async () => {
     const root = testContext()
     await root.plugin(session, { file: await tempFile('stream-waterfall.jsonl') })
