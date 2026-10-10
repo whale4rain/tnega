@@ -48,6 +48,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
+
 ### Features
 
 - The interface now uses Nunito, a rounded, open typeface bundled with the app so every system renders it the same; the type ramp sits half a step larger to match.
