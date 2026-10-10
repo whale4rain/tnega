@@ -44,6 +44,8 @@ interface OpenAICompatibleToolCall {
 interface OpenAICompatibleChoice {
   message?: {
     content?: string | null
+    reasoning_content?: unknown
+    reasoning?: unknown
     tool_calls?: unknown
   }
   finish_reason?: string | null
@@ -70,6 +72,8 @@ interface OpenAICompatibleUsage {
 interface OpenAIStreamChoice {
   delta?: {
     content?: string | null
+    reasoning_content?: unknown
+    reasoning?: unknown
     tool_calls?: unknown
   }
   finish_reason?: string | null
@@ -286,9 +290,17 @@ function toOpenAIMessages(messages: readonly ModelMessage[]): Record<string, unk
     })
     pendingToolImages = []
   }
-  for (const message of messages) {
+  // DeepSeek's thinking mode rejects a tool loop whose assistant turns lost
+  // their `reasoning_content`; turns before the latest user message need none.
+  let lastUser = -1
+  for (const [index, message] of messages.entries()) if (message.role === 'user') lastUser = index
+  for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool') flushToolImages()
-    result.push(toOpenAIMessage(message))
+    const payload = toOpenAIMessage(message)
+    if (message.role === 'assistant' && message.reasoning && index > lastUser) {
+      payload.reasoning_content = message.reasoning
+    }
+    result.push(payload)
     if (message.role === 'tool' && message.attachments?.length) {
       pendingToolImages.push(...message.attachments)
     }
@@ -354,6 +366,7 @@ function parseCompletion(payload: unknown): LLMCompletion {
   const choice = choices[0]
   const rawContent = choice?.message?.content
   const content = typeof rawContent === 'string' ? rawContent : undefined
+  const reasoning = reasoningText(choice?.message)
   const toolCalls = parseToolCalls(choice?.message?.tool_calls)
   const finishReason = toFinishReason(
     choice?.finish_reason,
@@ -364,10 +377,23 @@ function parseCompletion(payload: unknown): LLMCompletion {
     finishReason,
   }
   if (content !== undefined) completion.content = content
+  if (reasoning) completion.reasoning = reasoning
   if (toolCalls !== undefined) completion.toolCalls = toolCalls
   const usage = parseUsage(record?.usage)
   if (usage) completion.usage = usage
   return completion
+}
+
+/**
+ * Reasoning text, under DeepSeek's `reasoning_content` or the shorter
+ * `reasoning` some OpenAI-compatible servers use.
+ */
+function reasoningText(
+  part: { reasoning_content?: unknown; reasoning?: unknown } | undefined,
+): string | undefined {
+  if (typeof part?.reasoning_content === 'string') return part.reasoning_content
+  if (typeof part?.reasoning === 'string') return part.reasoning
+  return undefined
 }
 
 /**
@@ -523,6 +549,7 @@ async function* parseJSONCompletionStream(response: Response): AsyncGenerator<LL
   const id = typeof record?.id === 'string' && record.id ? record.id : randomUUID()
   const model = typeof record?.model === 'string' && record.model ? record.model : undefined
   yield { type: 'message_start', id, ...(model ? { model } : {}) }
+  if (completion.reasoning) yield { type: 'reasoning_delta', id, delta: completion.reasoning }
   if (completion.content) yield { type: 'message_delta', id, delta: completion.content }
   for (const [index, call] of (completion.toolCalls ?? []).entries()) {
     yield { type: 'toolcall_start', id: call.id, index, name: call.name }
@@ -599,6 +626,8 @@ function processStreamChunk(
     finishReason = choice.finish_reason
   }
   const delta = choice?.delta
+  const reasoning = reasoningText(delta)
+  if (reasoning) events.push({ type: 'reasoning_delta', id: messageId, delta: reasoning })
   if (typeof delta?.content === 'string' && delta.content) {
     content += delta.content
     events.push({ type: 'message_delta', id: messageId, delta: delta.content })

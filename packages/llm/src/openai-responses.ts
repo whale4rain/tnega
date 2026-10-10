@@ -189,11 +189,13 @@ export function openaiResponsesAdapter(config: OpenAIResponsesConfig): LLMAdapte
 
 async function completionFromEvents(events: AsyncIterable<LLMStreamEvent>): Promise<LLMCompletion> {
   let content = ''
+  let reasoning = ''
   const toolCalls: LLMToolCall[] = []
   let finishReason: AgentFinishReason = 'stop'
   let usage: ModelUsage | undefined
   for await (const event of events) {
     if (event.type === 'message_delta') content += event.delta
+    else if (event.type === 'reasoning_delta') reasoning += event.delta
     else if (event.type === 'toolcall_end') toolCalls.push({ id: event.id, name: event.name, arguments: event.arguments })
     else if (event.type === 'message_stop') {
       finishReason = event.finishReason
@@ -203,6 +205,7 @@ async function completionFromEvents(events: AsyncIterable<LLMStreamEvent>): Prom
   return {
     finishReason,
     ...(content ? { content } : {}),
+    ...(reasoning.trim() ? { reasoning: reasoning.trim() } : {}),
     ...(toolCalls.length ? { toolCalls } : {}),
     ...(usage ? { usage } : {}),
   }
@@ -261,6 +264,15 @@ export async function* parseResponsesStream(body: ReadableStream<Uint8Array>): A
           case 'response.output_text.delta':
             yield* start()
             if (typeof event.delta === 'string' && event.delta) yield { type: 'message_delta', id, delta: event.delta }
+            break
+          // `summary: 'auto'` (set with an effort) streams a readable summary of the hidden reasoning.
+          case 'response.reasoning_summary_text.delta':
+            yield* start()
+            if (typeof event.delta === 'string' && event.delta) yield { type: 'reasoning_delta', id, delta: event.delta }
+            break
+          case 'response.reasoning_summary_part.done':
+            yield* start()
+            yield { type: 'reasoning_delta', id, delta: '\n\n' }
             break
           case 'response.output_item.added':
             if (event.item?.type === 'function_call' && typeof event.item.call_id === 'string' && typeof event.item.name === 'string') {
