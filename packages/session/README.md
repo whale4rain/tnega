@@ -109,9 +109,12 @@ Tools 可声明 `interruption: 'fail' | 'retry' | 'confirm'`（默认 `fail`）�
 该可选元数据兼容现有 v10 日志，无需迁移。
 
 `SessionLog` 是内存事实层：`append()` 同步提交并广播 `session/event`，
-底层异步批量写入 JSONL（`flush()` 冲刷）。`repairUnclosed()` 在加载时
+底层异步批量写入 JSONL；`flush()` 冲刷并 `fsync`，是持久化屏障。`repairUnclosed()` 在加载时
 为撕裂的 `tool/call`/`step/start`/`turn/start` 补写失败闭合事件，保证
-一个崩溃后的日志仍能重建出一个关闭的 turn。`runInvariants()` 断言已加载
+一个崩溃后的日志仍能重建出一个关闭的 turn。修复从不整写文件：只把撕裂的尾部截断到最后
+一条有效记录之后，再追加闭合事件并 `fsync`；修复中途再次崩溃时文件仍是有效前缀。若无效行之后
+还有有效记录（文件中部损坏而非尾部撕裂），截断前先在旁边保留 `<file>.corrupt-<time>` 原样副本。
+新建日志经同步过的临时文件 rename 落地。`runInvariants()` 断言已加载
 日志的 turn/step/tool-call 成对闭合且 seq 单调。
 
 同进程内，提交事件的 `SessionLog` 接管该文件的 live owner 登记；临时读取对象

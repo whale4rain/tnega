@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { vi } from 'vitest'
 
@@ -859,7 +859,7 @@ describe('SessionLog lifecycle and repair', () => {
     await log.close()
   })
 
-  it('drops a torn tail and rewrites the file', async () => {
+  it('cuts a torn tail at the last valid record', async () => {
     const file = await tempFile('torn.jsonl')
     await writeV5(file, [
       {
@@ -880,6 +880,56 @@ describe('SessionLog lifecycle and repair', () => {
     const text = await readFile(file, 'utf8')
     expect(text).not.toContain('partial')
     expect(text.trimEnd().split('\n')).toHaveLength(2)
+  })
+
+  it('repairs by appending closers after the original bytes', async () => {
+    const file = await tempFile('repair-append.jsonl')
+    await writeV5(file, [
+      { id: 'turn-1', seq: 2, ts: 2, type: 'turn/start', payload: { turn: 1, input: 'go' } },
+      { id: 'call-1', seq: 3, ts: 3, type: 'tool/call', payload: { id: 'c1', name: 'read', arguments: {} } },
+    ])
+    const original = await readFile(file, 'utf8')
+
+    const log = new SessionLog(file)
+    await log.init()
+    await log.close()
+
+    const text = await readFile(file, 'utf8')
+    expect(text.startsWith(original)).toBe(true)
+    expect(text.slice(original.length).trimEnd().split('\n').map(line => JSON.parse(line).type))
+      .toEqual(['tool/result', 'turn/end'])
+  })
+
+  it('terminates a final record that lost its newline before appending', async () => {
+    const file = await tempFile('no-newline.jsonl')
+    await writeV5(file, [{ id: 'm1', seq: 2, ts: 2, type: 'user/message', payload: { content: 'hello' } }])
+    await writeFile(file, (await readFile(file, 'utf8')).trimEnd(), 'utf8')
+
+    const log = new SessionLog(file)
+    await log.init()
+    await log.append('user/message', { content: 'again' })
+    await log.flush()
+    await log.close()
+
+    const reopened = new SessionLog(file)
+    expect((await reopened.read()).map(event => event.type)).toEqual(['meta', 'user/message', 'user/message'])
+  })
+
+  it('keeps a copy of a log damaged in the middle before cutting it', async () => {
+    const file = await tempFile('damaged.jsonl')
+    await writeV5(file, [{ id: 'm1', seq: 2, ts: 2, type: 'user/message', payload: { content: 'hello' } }])
+    const later = JSON.stringify({ id: 'm2', seq: 3, ts: 3, type: 'user/message', payload: { content: 'later' } })
+    const damaged = `${await readFile(file, 'utf8')}{"id":"garbage\n${later}\n`
+    await writeFile(file, damaged, 'utf8')
+
+    const log = new SessionLog(file)
+    await log.init()
+    expect((await log.read()).map(event => event.type)).toEqual(['meta', 'user/message'])
+    await log.close()
+
+    const copies = (await readdir(dirname(file))).filter(name => name.startsWith(`${basename(file)}.corrupt-`))
+    expect(copies).toHaveLength(1)
+    expect(await readFile(join(dirname(file), copies[0]!), 'utf8')).toBe(damaged)
   })
 
   it('rejects files without the current format version', async () => {

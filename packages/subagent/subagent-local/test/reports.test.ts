@@ -103,6 +103,8 @@ it('cuts a long delivered report at a line boundary and keeps the remainder reac
   const { service, parent } = await setup(output)
   const child = await service.start({ parentId: 'parent', task: 'inspect' })
   await settled(service)
+  // The report reaches the parent's inbox after the child's Session is flushed.
+  await expect.poll(() => deliveredReport(parent)).toContain('showing')
   const report = deliveredReport(parent)
   expect(report).not.toContain('SENTINEL')
   // 送进父 Agent 上下文的部分有上限，不会把整篇答复灌进去。

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, open, readFile, rename, truncate } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
@@ -55,6 +55,86 @@ const liveSessions = new Map<string, SessionLog>()
 
 function sessionFileKey(file: string): string {
   return resolve(file)
+}
+
+interface SessionLineScan {
+  events: SessionEvent[]
+  /** Byte offset just past the last valid record (and its newline, if any). */
+  validEnd: number
+  /** Byte offset of the first unreadable record, if any. */
+  tornAt?: number
+  /** A valid record follows the first unreadable one: damage, not a torn tail. */
+  validAfterTorn: boolean
+}
+
+function scanSessionLines(buffer: Buffer): SessionLineScan {
+  const events: SessionEvent[] = []
+  let validEnd = 0
+  let tornAt: number | undefined
+  let validAfterTorn = false
+  let offset = 0
+  while (offset < buffer.length) {
+    const newline = buffer.indexOf(0x0a, offset)
+    const lineEnd = newline < 0 ? buffer.length : newline
+    const next = newline < 0 ? buffer.length : newline + 1
+    const line = buffer.subarray(offset, lineEnd).toString('utf8')
+    if (line.trim()) {
+      const event = parseSessionLine(line)
+      if (tornAt !== undefined) {
+        if (event) validAfterTorn = true
+      } else if (event) {
+        events.push(event)
+        validEnd = next
+      } else {
+        tornAt = offset
+      }
+    } else if (tornAt === undefined) {
+      validEnd = next
+    }
+    offset = next
+  }
+  return { events, validEnd, ...(tornAt !== undefined ? { tornAt } : {}), validAfterTorn }
+}
+
+function parseSessionLine(line: string): SessionEvent | undefined {
+  try {
+    const parsed: unknown = JSON.parse(line)
+    return isSessionEvent(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function syncFile(file: string): Promise<void> {
+  const handle = await open(file, 'r+')
+  try {
+    await handle.datasync()
+  } finally {
+    await handle.close()
+  }
+}
+
+async function appendDurably(file: string, text: string): Promise<void> {
+  const handle = await open(file, 'a')
+  try {
+    if (text) await handle.appendFile(text, 'utf8')
+    await handle.datasync()
+  } finally {
+    await handle.close()
+  }
+}
+
+/** Write a whole file through a synced temporary, so readers never see half of it. */
+async function writeFileDurably(file: string, text: string): Promise<void> {
+  const temporary = `${file}.${randomUUID()}.tmp`
+  const handle = await open(temporary, 'w')
+  try {
+    await handle.writeFile(text, 'utf8')
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  await rename(temporary, file)
 }
 
 export type ModelRole = 'system' | 'user' | 'assistant' | 'tool'
@@ -1470,6 +1550,8 @@ export class SessionLog {
         this._writeError = undefined
         throw error
       }
+      // flush() is the durability barrier: the appended batches reach the disk.
+      await syncFile(this.file)
       const seq = this._nextSeq - 1
       this._broadcast?.('flush', { file: this.file, seq })
       return seq
@@ -1733,7 +1815,7 @@ export class SessionLog {
         type: 'meta',
         payload: { formatVersion: SESSION_FORMAT_VERSION },
       }
-      await writeFile(this.file, `${JSON.stringify(meta)}\n`, 'utf8')
+      await writeFileDurably(this.file, `${JSON.stringify(meta)}\n`)
       this._events = [meta]
       this._refreshSurface()
       this._nextSeq = 2
@@ -1749,37 +1831,19 @@ export class SessionLog {
   }
 
   private async _read(): Promise<{ existing: boolean; events: SessionEvent[] }> {
-    let text: string
+    let buffer: Buffer
     try {
-      text = await readFile(this.file, 'utf8')
+      buffer = await readFile(this.file)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return { existing: false, events: [] }
       }
       throw error
     }
-    if (!text.trim()) return { existing: false, events: [] }
+    if (!buffer.toString('utf8').trim()) return { existing: false, events: [] }
 
-    const lines = text.split('\n')
-    const events: SessionEvent[] = []
-    let torn = false
-    for (const line of lines) {
-      if (!line.trim()) continue
-      if (torn) continue
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(line)
-      } catch {
-        torn = true
-        continue
-      }
-      if (!isSessionEvent(parsed)) {
-        torn = true
-        continue
-      }
-      events.push(parsed)
-    }
-
+    const scan = scanSessionLines(buffer)
+    const events = scan.events
     this._assertFormat(events)
 
     const key = sessionFileKey(this.file)
@@ -1790,15 +1854,25 @@ export class SessionLog {
     }
 
     const synthetic = repairUnclosed(events)
-    if (!torn && !synthetic.length) return { existing: true, events }
+    const missingNewline = scan.validEnd > 0 && buffer[scan.validEnd - 1] !== 0x0a
+    if (scan.tornAt === undefined && !synthetic.length && !missingNewline) return { existing: true, events }
 
-    const repaired = [...events, ...synthetic]
-    await writeFile(
+    // Repair never rewrites history: an unreadable tail is cut at the end of
+    // the last valid line and the closers are appended after it, so a crash
+    // during repair leaves either the old file or a valid prefix of the new one.
+    if (scan.tornAt !== undefined) {
+      if (scan.validAfterTorn) {
+        // Valid records after an unreadable line mean the file was damaged in
+        // the middle, not torn at the tail. Keep the original beside it.
+        await copyFile(this.file, `${this.file}.corrupt-${Date.now()}`)
+      }
+      await truncate(this.file, scan.validEnd)
+    }
+    await appendDurably(
       this.file,
-      `${repaired.map(event => JSON.stringify(event)).join('\n')}\n`,
-      'utf8',
+      `${missingNewline ? '\n' : ''}${synthetic.map(event => `${JSON.stringify(event)}\n`).join('')}`,
     )
-    return { existing: true, events: repaired }
+    return { existing: true, events: [...events, ...synthetic] }
   }
 
   private _assertFormat(events: readonly SessionEvent[]): void {
