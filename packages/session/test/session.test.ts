@@ -38,6 +38,7 @@ import {
   isAppendSurfaceEvent,
   projectEvents,
   repairUnclosed,
+  TOOL_OUTPUT_META_KIND,
   resolveCompactKeep,
   safeCompactSplit,
   SessionLog,
@@ -755,6 +756,23 @@ describe('SessionLog lifecycle and repair', () => {
     await again.init()
     expect(await again.read()).toEqual(events)
     await again.close()
+  })
+
+  it('quotes the last recorded output of a call the crash cut off', async () => {
+    const file = await tempFile('partial-output.jsonl')
+    const writer = new SessionLog(file)
+    await writer.append('turn/start', { turn: 1 })
+    await writer.append('tool/call', { id: 'build', name: 'shell', arguments: { command: 'make' }, interruption: 'confirm' })
+    await writer.append('meta', { kind: TOOL_OUTPUT_META_KIND, toolCallId: 'build', output: 'compiling a.c' })
+    await writer.append('meta', { kind: TOOL_OUTPUT_META_KIND, toolCallId: 'build', output: 'linking app', truncated: true })
+    await writer.close()
+
+    const reopened = new SessionLog(file)
+    await reopened.init()
+    const result = (await reopened.read()).find(event => event.type === 'tool/result')
+    expect(result?.payload.error?.message).toContain('Output before the interruption (last part only):\nlinking app')
+    expect(result?.payload.error?.message).not.toContain('compiling')
+    await reopened.close()
   })
 
   it('does not synthesize closures while a live writer owns the log', async () => {

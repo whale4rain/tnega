@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import { SessionLog, type ModelMessage } from '@tnega/session'
+import { SessionLog, TOOL_OUTPUT_META_KIND, type ModelMessage } from '@tnega/session'
 import { tools } from '@tnega/tools'
 import {
   agents,
@@ -129,4 +129,42 @@ it('leaves cancelled and failed turns alone', () => {
   expect(findInterruptedTurn([...base, { id: 'e', seq: 2, ts: 2, type: 'turn/end', payload: { turn: 1, finishReason: 'cancelled', cancelCause: { type: 'user' } } }])).toBeUndefined()
   expect(findInterruptedTurn([...base, { id: 'e', seq: 2, ts: 2, type: 'turn/end', payload: { turn: 1, finishReason: 'error', interrupted: true, error: { name: 'Error', message: 'boom' } } }])).toBeUndefined()
   expect(findInterruptedTurn([...base, { id: 'e', seq: 2, ts: 2, type: 'turn/end', payload: { turn: 1, finishReason: 'interrupted', interrupted: true } }])).toMatchObject({ turn: 1, safe: true })
+})
+
+it('keeps the output tail of a long-running call durable while it runs', async () => {
+  const file = await tempFile('progress.jsonl')
+  const root = new Context()
+  await root.plugin(tools)
+  await root.plugin(agents)
+  const service = (root as unknown as { tools: { register(definition: unknown): void } }).tools
+  let release: () => void = () => {}
+  service.register({
+    schema: { name: 'build', description: 'build', parameters: { type: 'object', properties: {} } },
+    async execute(_input: unknown, options: { progress?: (output: string) => void }) {
+      options.progress?.('step 1\n')
+      options.progress?.('step 2\n')
+      await new Promise<void>(resolve => { release = resolve })
+      return 'built'
+    },
+  })
+  let calls = 0
+  const llm: LLMAdapter = { async complete() {
+    calls += 1
+    return calls === 1
+      ? { content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'b1', name: 'build', arguments: {} }] }
+      : { content: 'done', finishReason: 'stop' }
+  } }
+  const registry = (root as unknown as { agents: AgentRegistry }).agents
+  const handle = await registry.create({ id: 'agent-1', file, llm })
+  await handle.agent.followup({ text: 'build it' })
+  await expect.poll(async () => (await handle.agent.session.read())
+    .find(event => event.type === 'meta' && event.payload.kind === TOOL_OUTPUT_META_KIND)?.payload, { timeout: 5_000 })
+    .toMatchObject({ toolCallId: 'b1', output: 'step 1\nstep 2\n' })
+  release()
+  await handle.agent.whenIdle()
+  const events = await handle.agent.session.read()
+  const result = events.findIndex(event => event.type === 'tool/result')
+  // Nothing is recorded for the call after its result.
+  expect(events.slice(result).some(event => event.type === 'meta' && event.payload.kind === TOOL_OUTPUT_META_KIND)).toBe(false)
+  await handle.dispose()
 })

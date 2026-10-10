@@ -106,6 +106,10 @@ provider/model/contextWindow。它们都是 log-only 事件（不产生 LLM 消�
 恢复同时扫描 `assistant/message.toolCalls`，未开始的调用补写调用意图与失败结果。
 Tools 可声明 `interruption: 'fail' | 'retry' | 'confirm'`（默认 `fail`）；Agent 将处置
 写入声明与调用记录。恢复总是闭合为失败，retry/confirm 只提供后续重试指导，绝不自动重放副作用。
+补写的结果区分 `TOOL_NOT_STARTED`（从未开始，可直接再调）与 `TOOL_OUTCOME_UNKNOWN`（可能已生效）。
+运行中的工具可经 `ToolExecuteOptions.progress` 报告输出；Agent 每 2 秒把最近 2000 字符写成
+log-only 的 `meta { kind: 'tool/output', toolCallId, output, truncated? }`（`TOOL_OUTPUT_META_KIND`），
+修复时把最后一条引用进中断结果。
 该可选元数据兼容现有 v10 日志，无需迁移。
 
 `SessionLog` 是内存事实层：`append()` 同步提交并广播 `session/event`，

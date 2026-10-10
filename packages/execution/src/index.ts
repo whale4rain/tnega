@@ -17,7 +17,12 @@ export interface ShellRequest {
    * approved for escalation (`ToolExecuteOptions.approvedElevation`).
    */
   unsandboxed?: boolean
+  /** Each chunk of output as it arrives, for a caller that reports progress. */
+  onOutput?: OutputListener
 }
+
+/** A raw output chunk from a running child; decoding is the listener's job. */
+export type OutputListener = (chunk: Buffer, stream: 'stdout' | 'stderr') => void
 
 export interface ShellResult {
   exitCode: number
@@ -39,6 +44,8 @@ export interface ProcessRequest {
   timeoutMs?: number
   maxBuffer?: number
   signal?: AbortSignal
+  /** Each chunk of output as it arrives, for a caller that reports progress. */
+  onOutput?: OutputListener
 }
 
 export interface ProcessResult {
@@ -270,6 +277,7 @@ interface RunOptions {
   signal?: AbortSignal
   /** Prefix used in timeout and cancellation messages, e.g. `shell command`. */
   label: string
+  onOutput?: OutputListener
 }
 
 /**
@@ -279,7 +287,14 @@ interface RunOptions {
  * resolves with its exit code.
  */
 function runChild(spawnChild: () => ExecutionChild, options: RunOptions): Promise<CapturedOutput> {
-  const { timeoutMs, maxBuffer, signal, label } = options
+  const { timeoutMs, maxBuffer, signal, label, onOutput } = options
+  const report = (chunk: Buffer, stream: 'stdout' | 'stderr'): void => {
+    try {
+      onOutput?.(chunk, stream)
+    } catch {
+      // Progress reporting must never break the run it observes.
+    }
+  }
   return new Promise((resolve, reject) => {
     const child = spawnChild()
     const stdout = new ByteCapture(maxBuffer)
@@ -310,8 +325,14 @@ function runChild(spawnChild: () => ExecutionChild, options: RunOptions): Promis
     if (timeoutMs > 0) {
       timer = setTimeout(() => fail(`${label} timed out after ${timeoutMs}ms`), timeoutMs)
     }
-    child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk))
-    child.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout.push(chunk)
+      report(chunk, 'stdout')
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr.push(chunk)
+      report(chunk, 'stderr')
+    })
     child.on('error', (error) => {
       finish(() => resolve({
         exitCode: 1,
@@ -366,6 +387,7 @@ function runLocalShell(request: ShellRequest): Promise<ShellResult> {
       maxBuffer: request.maxBuffer ?? 1024 * 1024,
       label: 'shell command',
       ...(request.signal ? { signal: request.signal } : {}),
+      ...(request.onOutput ? { onOutput: request.onOutput } : {}),
     },
   )
 }
@@ -381,6 +403,7 @@ function runLocalProcess(request: ProcessRequest): Promise<ProcessResult> {
       maxBuffer: request.maxBuffer ?? 1024 * 1024,
       label: 'process',
       ...(request.signal ? { signal: request.signal } : {}),
+      ...(request.onOutput ? { onOutput: request.onOutput } : {}),
     },
   )
 }

@@ -141,6 +141,7 @@ export function sandboxedExecution(
         ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
         ...(request.maxBuffer !== undefined ? { maxBuffer: request.maxBuffer } : {}),
         ...(request.signal ? { signal: request.signal } : {}),
+        ...(request.onOutput ? { onOutput: request.onOutput } : {}),
       })
       return withPipeHint({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr })
     },

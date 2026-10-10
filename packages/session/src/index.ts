@@ -1255,6 +1255,12 @@ export function safeCompactSplit(
   return index
 }
 
+/**
+ * `meta` kind of a running tool's latest output tail (`{ toolCallId, output,
+ * truncated? }`). Log-only; crash repair quotes it in the interrupted result.
+ */
+export const TOOL_OUTPUT_META_KIND = 'tool/output'
+
 /** The session stopped before this tool call started; it never ran. */
 export const TOOL_NOT_STARTED = 'TOOL_NOT_STARTED'
 /** The call was recorded as started, but its outcome never was. */
@@ -1268,6 +1274,7 @@ export const TOOL_OUTCOME_UNKNOWN = 'TOOL_OUTCOME_UNKNOWN'
 export function interruptedToolMessage(
   notStarted: boolean,
   interruption: 'fail' | 'retry' | 'confirm' | undefined,
+  partial?: { output: string; truncated?: boolean },
 ): string {
   if (notStarted) {
     return `${TOOL_NOT_STARTED}: the session was interrupted before this tool call started, so it never ran. Call it again if it is still needed.`
@@ -1277,7 +1284,10 @@ export function interruptedToolMessage(
     : interruption === 'confirm'
       ? 'It may already have taken effect. Check the current state (or ask the user) before calling it again.'
       : 'It may already have taken effect and was not replayed. Retry only if the operation is read-only or idempotent; otherwise verify the current state first.'
-  return `${TOOL_OUTCOME_UNKNOWN}: the session was interrupted while this tool call was running, and its result was not recorded. ${advice}`
+  const printed = partial?.output
+    ? `\n\nOutput before the interruption${partial.truncated ? ' (last part only)' : ''}:\n${partial.output}`
+    : ''
+  return `${TOOL_OUTCOME_UNKNOWN}: the session was interrupted while this tool call was running, and its result was not recorded. ${advice}${printed}`
 }
 
 export function repairUnclosed(
@@ -1287,8 +1297,16 @@ export function repairUnclosed(
   const declaredCalls = new Map<string, ModelToolCall>()
   const openSteps: Extract<SessionEvent, { type: 'step/start' }>[] = []
   const openTurns: Extract<SessionEvent, { type: 'turn/start' }>[] = []
+  const partials = new Map<string, { output: string; truncated?: boolean }>()
   for (const event of events) {
     switch (event.type) {
+      case 'meta': {
+        const { kind, toolCallId, output, truncated } = event.payload as Record<string, unknown>
+        if (kind === TOOL_OUTPUT_META_KIND && typeof toolCallId === 'string' && typeof output === 'string') {
+          partials.set(toolCallId, { output, ...(truncated === true ? { truncated: true } : {}) })
+        }
+        break
+      }
       case 'assistant/message':
         for (const call of event.payload.toolCalls ?? []) declaredCalls.set(call.id, call)
         break
@@ -1351,7 +1369,7 @@ export function repairUnclosed(
       ok: false,
       error: {
         name: 'SessionInterruptedError',
-        message: interruptedToolMessage(notStarted.has(call.payload.id), call.payload.interruption),
+        message: interruptedToolMessage(notStarted.has(call.payload.id), call.payload.interruption, partials.get(call.payload.id)),
       },
     })
   }

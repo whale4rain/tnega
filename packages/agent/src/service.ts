@@ -13,6 +13,7 @@ import {
   type ModelMessage,
   type ModelUsage,
   renderToolResult,
+  TOOL_OUTPUT_META_KIND,
   type RequestContextPayload,
   type SessionLog,
   type ToolResultPayload,
@@ -780,7 +781,11 @@ export class AgentService {
           arguments: call.arguments,
           interruption: availableTools.find(tool => tool.schema.name === call.name)?.interruption ?? 'fail',
         })
-        const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string } = { callId: call.id }
+        const recorder = new ToolOutputRecorder(session, call.id)
+        const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string; progress: (output: string) => void } = {
+          callId: call.id,
+          progress: output => recorder.push(output),
+        }
         if (this.config.agentId) toolOptions.agentId = this.config.agentId
         if (options.signal) toolOptions.signal = options.signal
         const startedAt = Date.now()
@@ -810,6 +815,7 @@ export class AgentService {
             }
           }
         }
+        await recorder.stop()
         toolResults.push(result)
         const toolResultPayload: ToolResultPayload = {
           id: call.id,
@@ -1396,3 +1402,49 @@ export const agent = {
 }
 
 export const name = '@tnega/agent'
+
+/**
+ * Keeps the tail of a running tool's output durable, at most every
+ * {@link TOOL_OUTPUT_INTERVAL_MS}, as a log-only `meta` record. Crash repair
+ * reads the latest one, so an interrupted call can say what it printed.
+ */
+class ToolOutputRecorder {
+  private tail = ''
+  private dropped = false
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private writing: Promise<unknown> = Promise.resolve()
+  private stopped = false
+
+  constructor(private readonly session: SessionLog, private readonly toolCallId: string) {}
+
+  push(output: string): void {
+    if (this.stopped || !output) return
+    this.tail += output
+    if (this.tail.length > TOOL_OUTPUT_TAIL_CHARS) {
+      this.tail = this.tail.slice(-TOOL_OUTPUT_TAIL_CHARS)
+      this.dropped = true
+    }
+    if (this.timer) return
+    this.timer = setTimeout(() => {
+      this.timer = undefined
+      this.writing = this.session.append('meta', {
+        kind: TOOL_OUTPUT_META_KIND,
+        toolCallId: this.toolCallId,
+        output: this.tail,
+        ...(this.dropped ? { truncated: true } : {}),
+      }).catch(() => undefined)
+    }, TOOL_OUTPUT_INTERVAL_MS)
+    this.timer.unref?.()
+  }
+
+  /** The result supersedes the progress: stop before it is recorded. */
+  async stop(): Promise<void> {
+    this.stopped = true
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = undefined
+    await this.writing
+  }
+}
+
+const TOOL_OUTPUT_TAIL_CHARS = 2_000
+const TOOL_OUTPUT_INTERVAL_MS = 2_000
