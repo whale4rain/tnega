@@ -9,6 +9,7 @@ import {
   Globe,
   Info,
   Layers,
+  Lightbulb,
   Brain,
   Pencil,
   RotateCcw,
@@ -301,6 +302,8 @@ const AgentTurn = memo(function AgentTurn({
         return <EditedFiles key={seg.id} files={seg.files} onOpen={actions.onOpenChange} />
       case 'notice':
         return <Notice key={seg.id} tone={seg.tone} text={seg.text} />
+      case 'reasoning':
+        return <Thought key={seg.id} text={seg.text} streaming={live && seg.streaming === true} {...(seg.durationMs !== undefined ? { durationMs: seg.durationMs } : {})} />
     }
   }
 
@@ -386,6 +389,31 @@ function ProcessHead({ blocks, live, open, onToggle }: { blocks: readonly Block[
       {live && <span className="spinner" aria-hidden />}
       <ChevronRight size={14} className="chevron" />
     </button>
+  )
+}
+
+/**
+ * The model's visible reasoning. It reads as it is written, then folds to one
+ * line ("Thought for 8s") once the answer begins; opening it is a choice.
+ */
+function Thought({ text, streaming, durationMs }: { text: string; streaming: boolean; durationMs?: number }) {
+  const [chosen, setChosen] = useState<boolean | undefined>(undefined)
+  const open = chosen ?? streaming
+  const body = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // Follow the newest line while it streams, like a terminal tail.
+    if (streaming && open && body.current) body.current.scrollTop = body.current.scrollHeight
+  }, [text, streaming, open])
+  const title = streaming ? 'Thinking' : durationMs !== undefined && durationMs >= 1000 ? `Thought for ${formatDuration(durationMs)}` : 'Thought'
+  return (
+    <div className={`thought${open ? ' open' : ''}${streaming ? ' is-live' : ''}`}>
+      <button type="button" className="thought-head" aria-expanded={open} onClick={() => setChosen(!open)}>
+        <span className="tool-icon"><Lightbulb size={14} /></span>
+        <span className={`thought-title${streaming ? ' shimmer' : ''}`}>{title}</span>
+        <ChevronRight size={14} className="chevron" />
+      </button>
+      {open && <div ref={body} className={`thought-body${streaming ? ' is-live' : ''}`}>{text}</div>}
+    </div>
   )
 }
 

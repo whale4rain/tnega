@@ -48,6 +48,14 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- Replies show the model's thinking when the provider exposes it (DeepSeek `reasoning_content`, Anthropic thinking, OpenAI reasoning summaries). It streams in a muted block while the model reasons and folds to one line ("Thought for 6.4s") as soon as the answer begins; click to reopen it. Thinking from earlier tool steps folds into the turn's process. The text is saved with the session, so it survives a reload.
+
+### Fixes
+
+- Tool calls work with DeepSeek's own API in thinking mode. DeepSeek rejects a tool loop whose assistant turns lost their `reasoning_content` (`The reasoning_content in the thinking mode must be passed back to the API`); it is now kept and sent back within the current turn, and dropped for earlier turns.
+
 ## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
 
 ### Features

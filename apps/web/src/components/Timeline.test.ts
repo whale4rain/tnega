@@ -191,3 +191,36 @@ it('offers a visible fork from each finished reply, keyed to its assistant messa
   fireEvent.click(forks[0]!)
   expect(onFork).toHaveBeenCalledWith('m1')
 })
+
+it('streams the thought while the model reasons and folds it once the answer starts', () => {
+  const thinking = [
+    { type: 'message_start', id: 'm1' },
+    { type: 'reasoning_delta', id: 'm1', delta: 'Weighing the two options.' },
+  ].reduce(applyStream, beginRun([], 'Which one?', 1))
+  const view = render(createElement(Timeline, { entries: thinking, running: true, actions: {} }))
+  const head = view.getByRole('button', { name: 'Thinking' })
+  expect(head.getAttribute('aria-expanded')).toBe('true')
+  expect(view.getByText('Weighing the two options.')).toBeTruthy()
+
+  const answered = applyStream(thinking, { type: 'message_delta', id: 'm1', delta: 'Take the first.' })
+  view.rerender(createElement(Timeline, { entries: answered, running: true, actions: {} }))
+  const folded = view.getByRole('button', { name: /^Thought/ })
+  expect(folded.getAttribute('aria-expanded')).toBe('false')
+  expect(view.queryByText('Weighing the two options.')).toBeNull()
+  fireEvent.click(folded)
+  expect(view.getByText('Weighing the two options.')).toBeTruthy()
+})
+
+it('labels a finished thought with how long it took', () => {
+  const entry: Entry = {
+    kind: 'agent', id: 'agent-t', turn: 1, status: 'done',
+    summary: { text: 'Take the first.', sourceMessageId: 'answer' },
+    blocks: [
+      { kind: 'reasoning', id: 'reasoning-answer', text: 'Weighing the two options.', durationMs: 8000 },
+      { kind: 'text', id: 'answer', text: 'Take the first.' },
+    ],
+  }
+  const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
+  expect(view.getByRole('button', { name: 'Thought for 8.0s' }).getAttribute('aria-expanded')).toBe('false')
+  expect(view.queryByRole('button', { name: /Show details|Used/ })).toBeNull()
+})

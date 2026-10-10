@@ -89,6 +89,10 @@ export type SessionEvent =
   | EventBase<'user/message', { content: string; name?: string; attachments?: ImageAttachment[] }>
   | EventBase<'assistant/message', {
       content: string
+      /** Reasoning the provider exposed for this response. */
+      reasoning?: string
+      /** Committed stream chunks with their arrival times. */
+      stream?: Array<{ time: number; chunk: { type: string } }>
       name?: string
       interrupted?: boolean
       toolCalls?: ToolCallRef[]
@@ -381,6 +385,7 @@ export type StreamEvent =
   | { type: 'ptc/dispatch'; payload: Record<string, unknown> }
   | { type: 'message_start'; id: string; model?: string }
   | { type: 'message_delta'; id: string; delta: string }
+  | { type: 'reasoning_delta'; id: string; delta: string }
   | { type: 'message_stop'; id: string; finishReason: string }
   | { type: 'toolcall_start'; id: string; index: number; name: string }
   | { type: 'toolcall_end'; id: string; index: number; name: string; arguments: unknown }

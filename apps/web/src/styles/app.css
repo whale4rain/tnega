@@ -1891,6 +1891,49 @@ kbd {
   flex: 1;
 }
 
+/* --- thought (visible model reasoning) ---------------------------------- */
+
+/* A bare row like a single tool: muted, one line once the answer begins. */
+.thought-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-sm);
+  margin-left: -6px;
+  padding: 2px 6px;
+  border-radius: var(--radius-md);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  text-align: left;
+  transition: background var(--duration-fast);
+}
+
+.thought-head:hover {
+  background: var(--surface-hover);
+}
+
+.thought-title {
+  white-space: nowrap;
+}
+
+.thought-body {
+  margin: 2px 0 var(--space-2) 7px;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* While it streams, only the newest lines stay in view. */
+.thought-body.is-live {
+  max-height: calc(var(--text-sm) * 1.55 * 6);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
 /* --- tools --------------------------------------------------------------- */
 
 .tool-group {
