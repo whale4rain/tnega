@@ -1,7 +1,5 @@
 import {
-  Briefcase,
   ChevronRight,
-  Code2,
   FolderKanban,
   FolderPlus,
   GitBranch,
@@ -48,13 +46,15 @@ function readCollapsed(): Set<string> {
 }
 
 /**
- * The sidebar is organised by workspace: each workspace is a collapsible group
- * holding its projects first, then its sessions by recency. The current
- * workspace's lists come from the app (they stay live); other expanded
- * workspaces load their own lists when opened.
+ * The sidebar has two parts: Pinned, every project from every workspace, and
+ * below it one collapsible group of sessions per workspace, the most recently
+ * active workspace first. Rows carry only a dot and a title; the time and the
+ * workspace are in the tooltip. The current workspace's lists come from the
+ * app (they stay live); the others load their own lists.
  */
 export function Sidebar({
   workspaces,
+  defaultWorkspace,
   workspace,
   onAddWorkspace,
   onRemoveWorkspace,
@@ -78,6 +78,8 @@ export function Sidebar({
   updates,
 }: {
   workspaces: string[]
+  /** Where a new session starts when no folder is chosen; listed with the others. */
+  defaultWorkspace?: string | undefined
   workspace: string | undefined
   onAddWorkspace: () => void
   onRemoveWorkspace: (path: string) => void
@@ -137,8 +139,8 @@ export function Sidebar({
     }
   }
 
-  // Load each other expanded workspace once; reopening the sidebar refreshes them.
-  const pending = workspaces.filter(path => path !== workspace && !collapsed.has(path) && !others[path])
+  // Load each other workspace once, collapsed or not, so Pinned lists all projects; reopening the sidebar refreshes them.
+  const pending = workspaces.filter(path => path !== workspace && !others[path])
   useEffect(() => {
     for (const path of pending) load(path)
   }, [pending.join('\n')])
@@ -149,6 +151,23 @@ export function Sidebar({
 
   const q = query.trim().toLowerCase()
 
+  // Every project, from every workspace, is pinned above the sessions; archived ones wait behind "more".
+  const [showArchived, setShowArchived] = useState(false)
+  const pinned = workspaces
+    .flatMap(path => listsFor(path).projects.map(project => ({ path, project })))
+    .filter(({ project }) => !q || project.name.toLowerCase().includes(q))
+    .sort((a, b) => b.project.updatedAt - a.project.updatedAt)
+  const selectedPinned = (path: string, id: string) => path === workspace && mode === 'projects' && id === selectedProjectId
+  const archived = pinned.filter(({ path, project }) => project.archived && !selectedPinned(path, project.id))
+  const shownPinned = showArchived || q ? [...pinned.filter(item => !archived.includes(item)), ...archived] : pinned.filter(item => !archived.includes(item))
+
+  // Workspaces are ordered by their latest session, newest first; the list order breaks ties.
+  const latest = (path: string) => Math.max(0, ...listsFor(path).sessions.map(session => session.updatedAt))
+  const ordered = workspaces
+    .map((path, index) => ({ path, index, at: latest(path) }))
+    .sort((a, b) => b.at - a.at || a.index - b.index)
+    .map(item => item.path)
+
   return (
     <aside className="sidebar" aria-label="Workspaces">
       <div className="sidebar-top">
@@ -157,7 +176,7 @@ export function Sidebar({
           <span className="brand-name">tnega</span>
         </div>
         <span className="sidebar-top-actions">
-          <button type="button" className="icon-button" onClick={() => workspace && onNewSession(workspace)} disabled={!workspace} aria-label="New session" title="New session (Ctrl+Shift+O)">
+          <button type="button" className="icon-button" onClick={() => { const target = defaultWorkspace ?? workspace; if (target) onNewSession(target) }} disabled={!defaultWorkspace && !workspace} aria-label="New session" title="New session (Ctrl+Shift+O)">
             <SquarePen size={14} />
           </button>
           <button type="button" className="icon-button" onClick={onCollapse} aria-label="Hide sidebar" title="Hide sidebar (Ctrl+B)">
@@ -175,20 +194,50 @@ export function Sidebar({
       </label>
 
       <nav className="session-list workspace-tree">
+        {shownPinned.length > 0 && (
+          <section className="sidebar-section" aria-label="Pinned">
+            <h2 className="sidebar-section-title">Pinned</h2>
+            {shownPinned.map(({ path, project }) => {
+              const light = projectLight(project.threads)
+              const active = selectedPinned(path, project.id)
+              return (
+                <div key={`${path}\0${project.id}`} className={`session-item project-item${active ? ' active' : ''}${project.archived ? ' archived' : ''}`}>
+                  <button
+                    type="button"
+                    className="session-button"
+                    onClick={() => onSelectProject(path, project.id)}
+                    aria-current={active ? 'page' : undefined}
+                    title={[project.name, project.goal, `${folderName(path)} · ${relativeTime(project.updatedAt)}`].filter(Boolean).join('\n')}
+                  >
+                    <span className="session-title">
+                      <span className="session-mark">{light ? <StatusLight tone={light.tone} label={light.label} /> : <span className="session-dot" aria-hidden />}</span>
+                      <span>{project.name}</span>
+                    </span>
+                  </button>
+                </div>
+              )
+            })}
+            {archived.length > 0 && !q && (
+              <button type="button" className="workspace-more" onClick={() => setShowArchived(show => !show)}>
+                {showArchived ? 'Show less' : `${archived.length} archived`}
+              </button>
+            )}
+          </section>
+        )}
         {workspaces.length === 0 && <p className="sidebar-empty">Open a folder to start working in it.</p>}
-        {workspaces.map(path => (
+        {ordered.map(path => (
           <WorkspaceGroup
             key={path}
             path={path}
+            label={path === defaultWorkspace ? 'No folder' : undefined}
+            removable={path !== defaultWorkspace}
             current={path === workspace}
             open={!collapsed.has(path) || Boolean(q)}
             lists={listsFor(path)}
             query={q}
             selectedSession={path === workspace && mode === 'sessions' ? selectedId : undefined}
-            selectedProject={path === workspace && mode === 'projects' ? selectedProjectId : undefined}
             onToggle={() => toggle(path)}
             onSelectSession={id => onSelectSession(path, id)}
-            onSelectProject={id => onSelectProject(path, id)}
             onNewSession={() => onNewSession(path)}
             onNewProject={() => onNewProject(path)}
             onFork={id => onForkSession(path, id)}
@@ -216,15 +265,15 @@ export function Sidebar({
 
 function WorkspaceGroup({
   path,
+  label,
+  removable,
   current,
   open,
   lists,
   query,
   selectedSession,
-  selectedProject,
   onToggle,
   onSelectSession,
-  onSelectProject,
   onNewSession,
   onNewProject,
   onFork,
@@ -232,15 +281,16 @@ function WorkspaceGroup({
   onRemove,
 }: {
   path: string
+  /** Shown instead of the folder name. */
+  label: string | undefined
+  removable: boolean
   current: boolean
   open: boolean
   lists: WorkspaceLists
   query: string
   selectedSession: string | undefined
-  selectedProject: string | undefined
   onToggle: () => void
   onSelectSession: (id: string) => void
-  onSelectProject: (id: string) => void
   onNewSession: () => void
   onNewProject: () => void
   onFork: (id: string) => void
@@ -248,21 +298,15 @@ function WorkspaceGroup({
   onRemove: () => void
 }) {
   const [showAll, setShowAll] = useState(false)
-  const name = folderName(path)
-  const matching = useMemo(() => lists.projects
-    .filter(project => !query || project.name.toLowerCase().includes(query))
-    .sort((a, b) => b.updatedAt - a.updatedAt), [lists.projects, query])
-  // Archived projects stay reachable behind "N more", after the live ones.
-  const archived = matching.filter(project => project.archived && project.id !== selectedProject)
-  const projects = showAll || query ? [...matching.filter(p => !archived.includes(p)), ...archived] : matching.filter(p => !archived.includes(p))
+  const name = label ?? folderName(path)
   const sessions = useMemo(() => lists.sessions
     .filter(session => !query || (session.title || 'untitled').toLowerCase().includes(query))
     .sort((a, b) => b.updatedAt - a.updatedAt), [lists.sessions, query])
   // Keep the open session visible even when it is older than the first few.
   const selectedIndex = selectedSession ? sessions.findIndex(session => session.id === selectedSession) : -1
   const limit = showAll || query ? sessions.length : Math.max(VISIBLE_SESSIONS, selectedIndex + 1)
-  const hidden = Math.max(0, sessions.length - limit) + (showAll || query ? 0 : archived.length)
-  if (query && projects.length === 0 && sessions.length === 0) return null
+  const hidden = Math.max(0, sessions.length - limit)
+  if (query && sessions.length === 0) return null
 
   return (
     <section className={`workspace-group${open ? ' open' : ''}${current ? ' current' : ''}`}>
@@ -279,45 +323,26 @@ function WorkspaceGroup({
           <button type="button" className="icon-button tiny" onClick={onNewSession} aria-label={`New session in ${name}`} title="New session">
             <SquarePen size={12} />
           </button>
-          <Menu
-            label={`${name} options`}
-            align="end"
-            className="icon-button tiny"
-            trigger={<MoreHorizontal size={12} />}
-            items={[{ key: 'remove', label: 'Remove from list', icon: <X size={14} />, onSelect: onRemove }]}
-          />
+          {removable && (
+            <Menu
+              label={`${name} options`}
+              align="end"
+              className="icon-button tiny"
+              trigger={<MoreHorizontal size={12} />}
+              items={[{ key: 'remove', label: 'Remove from list', icon: <X size={14} />, onSelect: onRemove }]}
+            />
+          )}
         </span>
       </div>
 
       {open && (
         <div className="workspace-items">
-          {lists.loading && sessions.length === 0 && projects.length === 0 && (
+          {lists.loading && sessions.length === 0 && (
             <div className="session-skeleton"><i /><i /></div>
           )}
-          {!lists.loading && !query && sessions.length === 0 && projects.length === 0 && (
+          {!lists.loading && !query && sessions.length === 0 && (
             <p className="sidebar-empty">No sessions yet.</p>
           )}
-          {projects.map(project => {
-            const light = projectLight(project.threads)
-            return (
-            <div key={project.id} className={`session-item project-item${project.id === selectedProject ? ' active' : ''}${project.archived ? ' archived' : ''}`}>
-              <button
-                type="button"
-                className="session-button"
-                onClick={() => onSelectProject(project.id)}
-                aria-current={project.id === selectedProject ? 'page' : undefined}
-                title={project.goal ? `${project.name} — ${project.goal}` : project.name}
-              >
-                <span className="session-title">
-                  <FolderKanban size={12} className="session-glyph project-glyph" />
-                  <span>{project.name}</span>
-                </span>
-                {light && <StatusLight tone={light.tone} label={light.label} />}
-                <span className="session-time">{relativeTime(project.updatedAt)}</span>
-              </button>
-            </div>
-            )
-          })}
           {sessions.slice(0, limit).map(session => (
             <div key={session.id} className={`session-item${session.id === selectedSession ? ' active' : ''}`}>
               <button
@@ -325,17 +350,12 @@ function WorkspaceGroup({
                 className="session-button"
                 onClick={() => onSelectSession(session.id)}
                 aria-current={session.id === selectedSession ? 'page' : undefined}
-                title={session.title || 'Untitled session'}
+                title={`${session.title || 'Untitled session'}\n${session.parentSessionId ? 'Forked · ' : ''}${relativeTime(session.updatedAt)}`}
               >
                 <span className="session-title">
-                  {session.parentSessionId
-                    ? <GitBranch size={12} className="session-glyph" />
-                    : session.agentType === 'work'
-                      ? <Briefcase size={12} className="session-glyph" />
-                      : <Code2 size={12} className="session-glyph" />}
+                  <span className="session-mark"><span className="session-dot" aria-hidden /></span>
                   <span>{session.title || 'Untitled session'}</span>
                 </span>
-                <span className="session-time">{relativeTime(session.updatedAt)}</span>
               </button>
               <Menu
                 label="Session options"
@@ -352,7 +372,7 @@ function WorkspaceGroup({
           {hidden > 0 && (
             <button type="button" className="workspace-more" onClick={() => setShowAll(true)}>{hidden} more</button>
           )}
-          {showAll && !query && (sessions.length > VISIBLE_SESSIONS || archived.length > 0) && (
+          {showAll && !query && sessions.length > VISIBLE_SESSIONS && (
             <button type="button" className="workspace-more" onClick={() => setShowAll(false)}>Show less</button>
           )}
         </div>

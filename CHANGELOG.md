@@ -48,6 +48,12 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- The sidebar is calmer: each row is a dot and a title, with the time, fork and workspace moved into the tooltip. Projects from every workspace are pinned at the top without their workspace, and workspace groups are ordered by their most recent session.
+- New sessions start in a scratch folder in the tnega home (`~/.tnega/scratch`, shown as "No folder") instead of requiring a workspace. The sidebar's New session button and `Ctrl+Shift+O` use it; each workspace's own button still starts a session there. The server reports the folder as `defaultWorkspace` from `GET /api/workspaces`.
+- On the desktop, the Workbench tabs (Board, Library, Files, Terminal and the rest) sit in a row under the window controls and get the panel's full width. The session header's controls no longer sit in pill outlines.
+
 ## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
 
 ### Features

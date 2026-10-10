@@ -159,7 +159,8 @@ export const api = {
     return saved
   },
 
-  workspaces: () => call<{ workspaces: string[] }>('/api/workspaces'),
+  /** `defaultWorkspace` is where a session starts when no folder is chosen (a scratch folder in the tnega home). */
+  workspaces: () => call<{ workspaces: string[]; defaultWorkspace?: string }>('/api/workspaces'),
   addWorkspace: (path: string) =>
     call<{ path: string; workspaces: string[] }>('/api/workspaces', { method: 'POST', body: { path } }),
   removeWorkspace: (path: string) =>

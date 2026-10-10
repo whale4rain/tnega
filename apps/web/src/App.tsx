@@ -53,7 +53,10 @@ export function App() {
   const [display, setDisplay] = useDisplay()
   const updates = useDesktopUpdates()
   const [config, setConfig] = useState<ConfigSnapshot | undefined>()
-  const [workspaces, setWorkspaces] = useState<string[] | undefined>()
+  const [savedWorkspaces, setWorkspaces] = useState<string[] | undefined>()
+  // Sessions without a chosen folder start here; it is listed after the folders you added.
+  const [defaultWorkspace, setDefaultWorkspace] = useState<string | undefined>()
+  const workspaces = savedWorkspaces && (defaultWorkspace && !savedWorkspaces.includes(defaultWorkspace) ? [...savedWorkspaces, defaultWorkspace] : savedWorkspaces)
   const [workspace, setWorkspace] = useStoredState<string>('tnega.workspace', '')
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
@@ -144,8 +147,9 @@ export function App() {
   useEffect(() => {
     api.config().then(setConfig, reason => setFatal(errorText(reason)))
     api.workspaces().then(result => {
+      setDefaultWorkspace(result.defaultWorkspace)
       setWorkspaces(result.workspaces)
-      if (!result.workspaces.includes(workspace)) setWorkspace(result.workspaces[0] ?? '')
+      if (!result.workspaces.includes(workspace) && workspace !== result.defaultWorkspace) setWorkspace(result.defaultWorkspace ?? result.workspaces[0] ?? '')
     }, reason => setFatal(errorText(reason)))
     // `workspace` is only consulted once, to validate the stored choice.
   }, [])
@@ -258,7 +262,11 @@ export function App() {
       if (mod && event.shiftKey && event.key.toLowerCase() === 'o') {
         event.preventDefault()
         if (mode === 'projects') setNewProject(true)
-        else select(undefined)
+        else {
+          // A new session starts in the default folder, like the sidebar's New session button.
+          if (defaultWorkspace) setWorkspace(defaultWorkspace)
+          select(undefined)
+        }
       } else if (mod && !event.shiftKey && event.key.toLowerCase() === 'b') {
         event.preventDefault()
         setSidebarOpen(open => !open)
@@ -266,7 +274,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [select, mode])
+  }, [select, mode, defaultWorkspace, setWorkspace])
 
   // --- actions ---------------------------------------------------------------
 
@@ -282,7 +290,7 @@ export function App() {
       const result = await api.removeWorkspace(path)
       setWorkspaces(result.workspaces)
       if (path === workspace) {
-        setWorkspace(result.workspaces[0] ?? '')
+        setWorkspace(defaultWorkspace ?? result.workspaces[0] ?? '')
         select(undefined)
       }
     } catch (reason) {
@@ -353,6 +361,7 @@ export function App() {
         <Sidebar
           updates={updates}
           workspaces={workspaces}
+          defaultWorkspace={defaultWorkspace}
           workspace={workspace || undefined}
           onAddWorkspace={() => setDialog('workspace')}
           onRemoveWorkspace={path => void removeWorkspace(path)}

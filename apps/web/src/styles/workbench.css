@@ -50,6 +50,11 @@
   background: var(--accent);
 }
 
+/* On the desktop the native window controls own the panel's top line: the tabs move to a row under them
+   and get the panel's full width. The strip is a drag area; with the 6px gap it is exactly --header-h. */
+.wb-titlebar { display: none; }
+.desktop-chrome .wb-titlebar { display: block; flex: none; height: calc(var(--header-h) - 6px); }
+
 /* Tab rail: tools first, then documents opened from the conversation. */
 .wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; height: var(--header-h); }
 /* Overflowing tabs scroll with the wheel or trackpad and the active one scrolls into view; no scrollbar,
