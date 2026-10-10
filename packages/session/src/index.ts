@@ -3,6 +3,9 @@ import { appendFile, copyFile, mkdir, open, readFile, rename, truncate } from 'n
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
+import { holdSessionLock, releaseSessionLock, sessionLockHolder } from './lock.js'
+
+export { SessionLockedError, sessionLockHolder, sessionLockPath, type SessionLockHolder } from './lock.js'
 
 /**
  * v7 derives model-visible messages from the *folded surface* instead of from
@@ -1446,6 +1449,7 @@ export class SessionLog {
         }
       } catch (error) {
         if (liveSessions.get(key) === this) liveSessions.delete(key)
+        await releaseSessionLock(key, this)
         throw error
       }
     })
@@ -1477,6 +1481,8 @@ export class SessionLog {
   append(type: SessionEventType, payload: SessionEvent['payload']): Promise<SessionEvent> {
     return this._run(async () => {
       await this._ensureLoaded()
+      // One process writes a Session at a time; a second one fails here.
+      await holdSessionLock(sessionFileKey(this.file), this)
       const event = this._buildEvent(type, payload)
       this._commitEvent(event)
       return event
@@ -1776,6 +1782,7 @@ export class SessionLog {
         ? { start: shadowed[0]!.seq, end: shadowed[shadowed.length - 1]!.seq }
         : undefined
       const boundary = split
+      await holdSessionLock(sessionFileKey(this.file), this)
       this._commitEvent(this._buildEvent('compaction/start', {
         ...(boundary > 0 ? { boundary } : {}),
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
@@ -1806,6 +1813,7 @@ export class SessionLog {
       }
       const key = sessionFileKey(this.file)
       if (liveSessions.get(key) === this) liveSessions.delete(key)
+      await releaseSessionLock(key, this)
     })
   }
 
@@ -1877,10 +1885,13 @@ export class SessionLog {
       return { existing: true, events }
     }
 
+    // Another process is writing this log: its turn is live, not crashed.
+    if (await sessionLockHolder(key)) return { existing: true, events }
     const synthetic = repairUnclosed(events)
     const missingNewline = scan.validEnd > 0 && buffer[scan.validEnd - 1] !== 0x0a
     if (scan.tornAt === undefined && !synthetic.length && !missingNewline) return { existing: true, events }
 
+    await holdSessionLock(key, this)
     // Repair never rewrites history: an unreadable tail is cut at the end of
     // the last valid line and the closers are appended after it, so a crash
     // during repair leaves either the old file or a valid prefix of the new one.

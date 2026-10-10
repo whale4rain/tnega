@@ -117,9 +117,14 @@ Tools 可声明 `interruption: 'fail' | 'retry' | 'confirm'`（默认 `fail`）�
 新建日志经同步过的临时文件 rename 落地。`runInvariants()` 断言已加载
 日志的 turn/step/tool-call 成对闭合且 seq 单调。
 
+跨进程：第一次写入（append、compaction 或加载时的修复）在 `<file>.lock` 取得该进程的写锁，
+同进程的多个写入者共用；最后一个写入者 `close()` 时释放，进程退出时也会清理。持有期间每 5 秒刷新
+mtime；锁的进程已退出（同主机）或 30 秒未刷新即视为遗弃并被接管。另一进程持锁时写入抛
+`SessionLockedError`，加载也不对其活跃 turn 补写闭合事件。
+
 同进程内，提交事件的 `SessionLog` 接管该文件的 live owner 登记；临时读取对象
 即使先初始化，其关闭也不会移除正在写入的对象。后续读取从 live owner 取得
-快照，不对运行中的 call、step 或 turn 补写中断事件。该登记不提供跨进程文件锁。
+快照，不对运行中的 call、step 或 turn 补写中断事件。跨进程互斥由上面的写锁负责。
 
 `forkAt()` / `lineage()` 基于事件 id 与 `parentId` 构造可复用的 fork 前缀，
 不依赖全量 raw 顺序。
