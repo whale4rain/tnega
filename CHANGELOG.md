@@ -56,6 +56,7 @@ compare links provide a convenient browser view of the boundaries.
 - Opening a Project artifact shows it as a page on a near full-window sheet beside its Thread: one header with type, size, version and author, quote and download actions, and no repeated outputs strip.
 - What the coordinator sends a thread now appears in that thread's chat as a dashed bubble on the user side, labelled with the sender; it replaces the folded brief when it carries it.
 - A session whose run was cut off by a crash or restart picks up where it stopped when you open it, as long as no interrupted tool call may already have taken effect. Otherwise a notice names the uncertain tools and offers Resume; the agent then checks their results before repeating anything.
+- Project threads a crash cut off no longer stay "working" forever after a restart. A thread that can safely continue picks its run up again and reports to its parent as usual. One with a tool call that may already have taken effect turns blocked, and its parent is told once.
 
 ### Fixes
 

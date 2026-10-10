@@ -9,6 +9,8 @@ export const RECOVERY_NUDGE = 'The previous run was interrupted before it finish
 /** A turn that a crash closed, as crash repair left it in the durable log. */
 export interface InterruptedTurn {
   turn: number
+  /** Id of the `turn/end` crash repair wrote. */
+  endId: string
   /**
    * Whether continuing is safe without asking: every cut-off tool call either
    * never started or is declared safe to repeat, and this turn was not itself
@@ -58,7 +60,7 @@ export function findInterruptedTurn(events: readonly SessionEvent[]): Interrupte
     if (policies.get(event.payload.toolCallId) === 'retry') continue
     uncertainCalls.push(event.payload.name)
   }
-  return { turn: payload.turn, safe: !fromRecovery && !uncertainCalls.length, uncertainCalls }
+  return { turn: payload.turn, endId: end.id, safe: !fromRecovery && !uncertainCalls.length, uncertainCalls }
 }
 
 /**
