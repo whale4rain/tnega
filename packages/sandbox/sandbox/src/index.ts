@@ -88,6 +88,7 @@ export abstract class SandboxService extends Service {
    *   `SANDBOX_INVALID_ARGV` / `SANDBOX_INVALID_RESULT`）。
    */
   async confine(request: SandboxConfineRequest): Promise<ConfinedArgv> {
+    if (request.signal?.aborted) throw new SandboxCancelledError()
     const startedAt = Date.now()
     const policy = assertPolicy(request.policy)
     const argv = assertArgv(request.argv)
@@ -105,12 +106,12 @@ export abstract class SandboxService extends Service {
         )
       }
       active = { op: rewritten.op, argv: rewritten.argv, policy: rewritten.policy }
-      const confined = assertConfinedArgv(await this.runConfine({
+      const confined = assertConfinedArgv(await untilAborted(Promise.resolve(this.runConfine({
         op: active.op,
         argv: active.argv,
         policy: active.policy,
         ...(request.signal ? { signal: request.signal } : {}),
-      }))
+      })), request.signal))
       await notifyConfined(this.ctx, {
         op: active.op,
         argv: active.argv,
@@ -123,6 +124,8 @@ export abstract class SandboxService extends Service {
       })
       return confined
     } catch (error) {
+      // A stopped call is not a sandbox failure.
+      if (error instanceof SandboxCancelledError) throw error
       const failure = normalizeError(error)
       const code = sandboxErrorCode(failure)
       await notifyError(this.ctx, {
@@ -136,6 +139,34 @@ export abstract class SandboxService extends Service {
       throw error
     }
   }
+}
+
+/** The caller stopped the call while its confinement was still being prepared. */
+export class SandboxCancelledError extends Error {
+  override name = 'AbortError'
+
+  constructor() {
+    super('sandbox preparation cancelled')
+  }
+}
+
+/**
+ * Stop waiting for `work` once `signal` aborts. Preparation such as the first
+ * Windows ACL grant on a large workspace can run for minutes; it keeps going
+ * in the background so the next command reuses it, but the stopped call
+ * returns now instead of after it.
+ */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new SandboxCancelledError())
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      value => { signal.removeEventListener('abort', onAbort); resolve(value) },
+      (error: unknown) => { signal.removeEventListener('abort', onAbort); reject(error) },
+    )
+  })
 }
 
 /** 策略必须是自洽的**受限**策略：`bypass` 与相对根都在这里被挡住。 */

@@ -18,6 +18,7 @@ import type {
   ToolsService,
 } from './index.js'
 import { evaluateExpression } from './calc.js'
+import { ToolAbortError } from './errors.js'
 import { resolveInside } from './path.js'
 import { ESCALATE_HINT, ESCALATE_PROPERTIES, escalated } from './escalation.js'
 import { ProcessRegistry, type ProcessEntry } from './processes.js'
@@ -475,19 +476,6 @@ function toEntry(cwd: string, dir: string, entry: { name: string; isDirectory():
     name: entry.name,
     path: displayPath(cwd, join(dir, entry.name)),
     type: entry.isDirectory() ? 'directory' : 'file',
-  }
-}
-
-/**
- * Raised when a tool notices the caller's abort mid-walk. The agent loop reads
- * the abort from its own signal and settles the turn as cancelled; the error
- * only has to be honest about why the result is incomplete.
- */
-export class ToolAbortError extends Error {
-  override name = 'AbortError'
-
-  constructor() {
-    super('tool call aborted')
   }
 }
 

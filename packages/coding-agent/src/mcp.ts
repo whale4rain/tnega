@@ -97,14 +97,15 @@ export async function connectMcpServers(
         }
         const tool: ToolDefinition = {
           schema,
-          execute: async (input) => {
+          execute: async (input, options) => {
             if (!active.has(connection)) {
               throw new Error(`mcp server closed: ${name}`)
             }
+            // The signal makes the client send notifications/cancelled and stop waiting.
             const result = await mcpClient.callTool({
               name: mcpTool.name,
               arguments: input as Record<string, unknown>,
-            })
+            }, undefined, options.signal ? { signal: options.signal } : undefined)
             const parts: string[] = []
             const blocks = result.content as Array<Record<string, unknown>>
             for (const block of blocks) {
