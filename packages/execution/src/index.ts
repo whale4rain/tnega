@@ -205,6 +205,17 @@ async function killProcessTree(child: ExecutionChild): Promise<void> {
   }
 }
 
+/**
+ * Longest a cut-short run waits for its tree to die before reporting. On
+ * Windows `taskkill` plus the orphan sweep can take seconds; the kill carries
+ * on behind the report instead of holding the stop button.
+ */
+const KILL_SETTLE_MS = 1_000
+
+function killSettleDelay(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, KILL_SETTLE_MS).unref())
+}
+
 interface CapturedOutput {
   exitCode: number
   stdout: string
@@ -314,7 +325,7 @@ function runChild(spawnChild: () => ExecutionChild, options: RunOptions): Promis
     }
     const fail = (message: string): void => {
       finish(() => {
-        void killProcessTree(child).finally(() => reject(new Error(message)))
+        void Promise.race([killProcessTree(child), killSettleDelay()]).finally(() => reject(new Error(message)))
       })
     }
     onAbort = () => fail(`${label} cancelled`)

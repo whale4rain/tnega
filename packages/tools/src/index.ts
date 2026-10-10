@@ -1,6 +1,6 @@
 import type { Context, Disposable } from '@tnega/core'
 import { Service } from '@tnega/core'
-import { closestToolNames, toToolError } from './errors.js'
+import { closestToolNames, ToolAbortError, toToolError } from './errors.js'
 import { ToolAuthorizationError, validateToolInput } from './policy.js'
 import type {
   ToolAuthorizer,
@@ -13,7 +13,7 @@ export * from './builtins.js'
 export * from './processes.js'
 export * from './calc.js'
 export * from './path.js'
-export { closestToolNames, describeError, describeParameters, toToolError } from './errors.js'
+export { closestToolNames, describeError, describeParameters, ToolAbortError, toToolError } from './errors.js'
 export * from '@tnega/execution'
 export {
   ToolAuthorizationError,
@@ -151,7 +151,48 @@ export interface ToolStagePayload {
 }
 
 export interface ToolsConfig extends ToolPolicy {
+  /**
+   * How long a call may keep running after its signal aborts before the
+   * registry settles it as aborted without the tool. Defaults to
+   * {@link TOOL_ABORT_GRACE_MS}.
+   */
+  abortGraceMs?: number
   [key: string]: unknown
+}
+
+/**
+ * Time a cancelled call gets to report its own cancellation. A tool that
+ * ignores its signal (an MCP server that never answers, a plugin awaiting
+ * something unrelated) is settled after it, so a stop never waits on the tool.
+ */
+export const TOOL_ABORT_GRACE_MS = 2_000
+
+/**
+ * Settle with `work`, or with a {@link ToolAbortError} once `signal` has been
+ * aborted for `graceMs` and `work` still has not settled. The abandoned work
+ * keeps running; its eventual outcome is dropped.
+ */
+function settleOnAbort<T>(work: Promise<T>, signal: AbortSignal | undefined, graceMs: number): Promise<T> {
+  if (!signal) return work
+  return new Promise<T>((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined
+    const onAbort = (): void => {
+      timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort)
+        reject(new ToolAbortError(`tool call did not stop within ${graceMs}ms of cancellation and was abandoned`))
+      }, graceMs)
+    }
+    const release = (): void => {
+      if (timer) clearTimeout(timer)
+      signal.removeEventListener('abort', onAbort)
+    }
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      value => { release(); resolve(value) },
+      (error: unknown) => { release(); reject(error) },
+    )
+  })
 }
 
 /**
@@ -211,6 +252,7 @@ export class ToolsService extends Service<never> {
     authorizer?: ToolAuthorizer
     truncator?: ToolResultTruncator
   }
+  private readonly _abortGraceMs: number
 
   constructor(ctx: Context, config: ToolsConfig = {}) {
     super(ctx, 'tools')
@@ -219,6 +261,7 @@ export class ToolsService extends Service<never> {
     }
     if (config.authorizer !== undefined) this._policy.authorizer = config.authorizer
     if (config.truncator !== undefined) this._policy.truncator = config.truncator
+    this._abortGraceMs = config.abortGraceMs ?? TOOL_ABORT_GRACE_MS
   }
 
   register(definition: ToolDefinition): Disposable {
@@ -313,13 +356,17 @@ export class ToolsService extends Service<never> {
     let result: ToolResult | undefined
     try {
       if (!preError) {
-        result = await this.ctx.waterfallAsync(
-          'tools/execute',
-          request,
-          async (payload: ToolRequest) => {
-            const output = await payload.tool.execute(payload.input, payload.options)
-            return this._success(payload, output)
-          },
+        result = await settleOnAbort(
+          this.ctx.waterfallAsync(
+            'tools/execute',
+            request,
+            async (payload: ToolRequest) => {
+              const output = await payload.tool.execute(payload.input, payload.options)
+              return this._success(payload, output)
+            },
+          ),
+          request.options.signal,
+          this._abortGraceMs,
         )
       }
     } catch (error) {

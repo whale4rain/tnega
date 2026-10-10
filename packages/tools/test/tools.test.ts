@@ -490,3 +490,55 @@ describe('ToolsService tool timeout', () => {
     expect(result.error?.message).toContain('aborted')
   })
 })
+
+describe('ToolsService cancellation', () => {
+  /** A tool that never settles and never looks at its signal. */
+  function deafTool(name: string, timeoutMs?: number): ToolDefinition {
+    const tool: ToolDefinition = {
+      schema: { name, description: 'ignores its signal' },
+      execute: () => new Promise(() => {}),
+    }
+    if (timeoutMs !== undefined) tool.timeoutMs = timeoutMs
+    return tool
+  }
+
+  async function serviceWith(abortGraceMs: number, ...definitions: ToolDefinition[]): Promise<ToolsService> {
+    const root = new Context()
+    await root.plugin(tools, { abortGraceMs })
+    const service = dynamic(root).tools as ToolsService
+    for (const definition of definitions) service.register(definition)
+    return service
+  }
+
+  it('settles a call that ignores the stop once the grace period passes', async () => {
+    const service = await serviceWith(20, deafTool('deaf'))
+
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 10)
+    const result = await service.execute('deaf', {}, { signal: controller.signal })
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).toBe('AbortError')
+    expect(result.error?.message).toContain('did not stop within 20ms')
+  })
+
+  it('reports a deaf call past its own budget as a timeout', async () => {
+    const service = await serviceWith(20, deafTool('deaf', 30))
+
+    const result = await service.execute('deaf', {})
+    expect(result.ok).toBe(false)
+    expect(result.error?.name).toBe('ToolTimeoutError')
+  })
+
+  it('keeps the result of a tool that stops on its own within the grace period', async () => {
+    const service = await serviceWith(1_000, {
+      schema: { name: 'polite', description: 'finishes briefly after abort' },
+      execute: (_input, options) => new Promise((resolve) => {
+        options.signal?.addEventListener('abort', () => setTimeout(() => resolve('partial'), 20), { once: true })
+      }),
+    })
+
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 10)
+    expect(await service.execute('polite', {}, { signal: controller.signal })).toMatchObject({ ok: true, output: 'partial' })
+  })
+})
