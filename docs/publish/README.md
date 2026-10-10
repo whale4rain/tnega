@@ -404,6 +404,9 @@ authorized automatic path.
   runner discovery, a successful read-only command, a rejected write, and
   unchanged host environment. Source-checkout tests alone do not cover this.
   Ship the correction in a new patch; do not replace published 0.4.7 assets.
+  The same applies to `sandbox-windows-acl-grant.js`, the helper that applies
+  the workspace ACE out of process: it must sit beside the main bundle, or the
+  grant silently falls back to running on the Electron main thread.
 - **Bad release:** do not delete the tag clients already downloaded. Fix
   forward with a new patch version; the updater only moves forward.
 - **Code signing:** builds are unsigned, so Windows SmartScreen warns on a

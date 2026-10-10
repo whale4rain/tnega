@@ -11,13 +11,16 @@
  * fail-closed：`add` 的任何失败都抛出，调用方随后 `dispose()` 以撤销已经授予的路径；
  * `dispose()` 撤销全部可撤销路径、释放 SID，并汇报每一次清理失败。
  *
- * 方法签名是 async 的（与 {@link AclWriteGrant.create} 保持一致，并给未来的异步清理留
- * 位置），内部工作是同步的 Win32 调用。
+ * 授予/撤销默认是调用线程里的同步 Win32 调用。在一棵还没有该 ACE 的大树上，
+ * SetNamedSecurityInfoW 的继承传播能跑几十分钟，所以 Provider 应当传入
+ * {@link AclWriteGrantCreateOptions.operate}，把它交给 helper 进程（见 `src/grant-command.ts`）——
+ * 桌面端的调用线程就是 Electron 主进程。
  */
 
 import { grantWrite, revokeWrite } from './acl.js'
 import { isNullPtr, throwLastError, throwWin32, win32 } from './ffi.js'
 import type { NativePtr, Win32Api } from './ffi.js'
+import type { AclOperation, AclOperationRunner } from './grant-command.js'
 
 /** {@link AclWriteGrant.add} 的选项。 */
 export interface AclWriteGrantAddOptions {
@@ -27,6 +30,16 @@ export interface AclWriteGrantAddOptions {
    * 默认 false（常驻）—— workspace 的复用缓存语义；私有 temp 目录必须传 true。
    */
   revocable?: boolean
+}
+
+/** {@link AclWriteGrant.create} 的选项。 */
+export interface AclWriteGrantCreateOptions {
+  /**
+   * 执行每一次授予/撤销的函数，例如在 helper 进程里运行（见 `src/grant-command.ts`）。
+   *
+   * 省略时在调用线程内同步执行。
+   */
+  operate?: AclOperationRunner
 }
 
 /** 从数组里删掉某个路径的全部出现。 */
@@ -45,14 +58,16 @@ export class AclWriteGrant {
   readonly writeSid: string
   private readonly api: Win32Api
   private readonly sidPtr: NativePtr
+  private readonly operate: AclOperationRunner | undefined
   private readonly revocablePaths: string[] = []
   private readonly standingPaths: string[] = []
   private disposed = false
 
-  private constructor(api: Win32Api, sidPtr: NativePtr, writeSid: string) {
+  private constructor(api: Win32Api, sidPtr: NativePtr, writeSid: string, operate: AclOperationRunner | undefined) {
     this.api = api
     this.sidPtr = sidPtr
     this.writeSid = writeSid
+    this.operate = operate
   }
 
   /**
@@ -60,9 +75,10 @@ export class AclWriteGrant {
    *
    * fail-closed：任何失败都抛出，此时还没有授予任何 ACE。
    * @param writeSid - workspace（`S-1-4-x-y`）或 temp（`S-1-4-x-y-1`）的能力 SID 字符串。
+   * @param options - 可选的操作执行者。
    * @returns 就绪的授予物（尚无 ACE）。
    */
-  static async create(writeSid: string): Promise<AclWriteGrant> {
+  static async create(writeSid: string, options: AclWriteGrantCreateOptions = {}): Promise<AclWriteGrant> {
     const api = await win32()
     const sidSlot = api.allocPtrSlot()
     if (api.convertStringSidToSidW(writeSid, sidSlot) === 0) {
@@ -70,7 +86,17 @@ export class AclWriteGrant {
     }
     const sidPtr = api.decodePtr(sidSlot)
     if (sidPtr === null) throwWin32(api, 'ConvertStringSidToSidW', api.getLastError(), `null SID for ${writeSid}`)
-    return new AclWriteGrant(api, sidPtr, writeSid)
+    return new AclWriteGrant(api, sidPtr, writeSid, options.operate)
+  }
+
+  /** 执行一次授予/撤销：交给注入的执行者，否则在调用线程内执行。 */
+  private async perform(kind: AclOperation['kind'], path: string): Promise<boolean> {
+    if (this.operate !== undefined) return this.operate({ kind, path, writeSid: this.writeSid })
+    if (kind === 'grant') {
+      grantWrite(this.api, path, this.sidPtr)
+      return true
+    }
+    return revokeWrite(this.api, path, this.sidPtr)
   }
 
   /**
@@ -86,7 +112,7 @@ export class AclWriteGrant {
     if (this.disposed) throw new Error('AclWriteGrant is already disposed')
     const target = (options?.revocable ?? false) ? this.revocablePaths : this.standingPaths
     target.push(path)
-    grantWrite(this.api, path, this.sidPtr)
+    await this.perform('grant', path)
   }
 
   /**
@@ -95,7 +121,7 @@ export class AclWriteGrant {
    */
   async revoke(path: string): Promise<void> {
     if (this.disposed) throw new Error('AclWriteGrant is already disposed')
-    revokeWrite(this.api, path, this.sidPtr)
+    await this.perform('revoke', path)
     dropPath(this.revocablePaths, path)
     dropPath(this.standingPaths, path)
   }
@@ -116,7 +142,7 @@ export class AclWriteGrant {
     const failures: unknown[] = []
     for (const path of this.revocablePaths) {
       try {
-        revokeWrite(this.api, path, this.sidPtr)
+        await this.perform('revoke', path)
       } catch (error) {
         failures.push(error)
       }

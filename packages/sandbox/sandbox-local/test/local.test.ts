@@ -1,6 +1,10 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import {
+  canonicalPath,
   SandboxError,
   SandboxUnavailableError,
   type SandboxPolicy,
@@ -11,6 +15,9 @@ import {
   type SandboxRunnerName,
 } from '../src/index.js'
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from '../src/profiles.js'
+import { __setWin32BindingsForTest } from '../../sandbox-windows-acl/src/ffi.js'
+import { workspaceWriteSid } from '../../sandbox-windows-acl/src/workspace-sid.js'
+import { createFakeWin32 } from '../../sandbox-windows-acl/test/support/fake-win32.js'
 
 const WS = process.platform === 'win32' ? 'C:\\work' : '/work'
 const SHELL = process.platform === 'win32'
@@ -52,6 +59,37 @@ it('sets Node mode only for the Electron executable running the ACL runner', asy
   } finally {
     if (descriptor) Object.defineProperty(process.versions, 'electron', descriptor)
     else Reflect.deleteProperty(process.versions, 'electron')
+  }
+})
+
+it('shares one in-flight standing ACL grant between concurrent workspace-write commands', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'tnega-acl-ws-'))
+  const tempRoot = mkdtempSync(join(tmpdir(), 'tnega-acl-tmp-'))
+  const fake = createFakeWin32()
+  const sids: string[] = []
+  __setWin32BindingsForTest({
+    ...fake.bindings,
+    convertStringSidToSidW: (sid, slot) => {
+      sids.push(sid)
+      return fake.bindings.convertStringSidToSidW(sid, slot)
+    },
+  })
+  try {
+    const service = mount({
+      windowsAclRunnerCommand: ['node', 'runner.js'],
+      internals: { platform: 'win32', chain: ['windows-acl'], probe: () => 'partial' },
+    })
+    const request = (sessionId: string) => ({ op: 'shell' as const, argv: SHELL,
+      policy: { mode: 'workspace-write' as const, workspaceRoot: workspace, tempRoot, sessionId },
+    })
+    await Promise.all([service.confine(request('a')), service.confine(request('b')), service.confine(request('c'))])
+    await service.confine(request('d'))
+    const workspaceSid = workspaceWriteSid(canonicalPath(workspace))
+    expect(sids.filter(sid => sid === workspaceSid)).toHaveLength(1)
+  } finally {
+    __setWin32BindingsForTest(undefined)
+    rmSync(workspace, { recursive: true, force: true })
+    rmSync(tempRoot, { recursive: true, force: true })
   }
 })
 

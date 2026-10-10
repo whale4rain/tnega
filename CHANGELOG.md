@@ -48,6 +48,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
+
 ### Features
 
 - The interface now uses Nunito, a rounded, open typeface bundled with the app so every system renders it the same; the type ramp sits half a step larger to match.
@@ -55,6 +57,11 @@ compare links provide a convenient browser view of the boundaries.
 - The Workbench opens about as wide as the conversation (default `clamp(420px, 40vw, 760px)`, minimum 420px) and shares its background. Project panels (Thread, Agent messages, Board, Library, Routines, settings) run edge to edge instead of sitting in a second framed card, with clearer headings, the conversation's own text size and a project title on the Board.
 - Opening a Project artifact shows it as a page on a near full-window sheet beside its Thread: one header with type, size, version and author, quote and download actions, and no repeated outputs strip.
 - What the coordinator sends a thread now appears in that thread's chat as a dashed bubble on the user side, labelled with the sender; it replaces the folded brief when it carries it.
+
+### Fixes
+
+- Windows desktop no longer freezes ("Not Responding") the first time a workspace is sandboxed for writes. Granting the sandbox's write ACE propagates it across the whole workspace tree, which can take many minutes on a large repository; it now runs in a separate helper process (`sandbox-windows-acl-grant.js`, shipped beside the runner) so the window and local server stay responsive. Concurrent commands share one grant instead of each waiting to redo it.
+- The Windows ACL per-path lock no longer waits forever: if another process holds it for more than 5 minutes the grant fails closed with a `LockFileEx` error instead of hanging.
 
 ## [0.4.25-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.1) — 2026-10-09
 
