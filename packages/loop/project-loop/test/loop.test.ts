@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { agents, type LLMAdapter } from '@tnega/agent'
 import { USER_ADDRESS, agentAddress, type BoxEnvelope } from '@tnega/box'
 import { Context } from '@tnega/core'
+import { SessionLog } from '@tnega/session'
 import { tools } from '../../../tools/src/index.js'
 import { blackboardLocal } from '../../../project/blackboard-local/src/index.js'
 import { boxBlackboard } from '../../../project/box-blackboard/src/index.js'
@@ -663,4 +664,56 @@ it('tells the reader who is speaking and what a reply answers', async () => {
     .toBe('[In reply to your message: "Ship Friday or Monday?"]\n\nMonday.')
   expect(renderEnvelope({ ...base, sender: agentAddress(project.coordinatorId), placement: { kind: 'main' }, kind: 'dispatch', text: 'Brief.' }, { label }))
     .toBe('Brief.')
+})
+
+/** A child Thread whose second Run the previous process lost mid-tool. */
+async function crashedChild(root: string, call: { name: string; interruption: 'retry' | 'confirm' }) {
+  const ctx = await mount(root, { loop: false })
+  const parent = await ctx.threads.ensureRoot(project)
+  const child = await ctx.threads.spawn({ parentId: parent.id, goal: 'Check service' })
+  const agent = await ctx.threads.activate(child.id)
+  await agent.followup({ text: 'First' })
+  await agent.whenIdle()
+  const file = ctx.threads.sessionFile(child.id)
+  await ctx.threads.setState(child.id, 'working')
+  await ctx.fiber.dispose()
+  const log = new SessionLog(file)
+  await log.init()
+  await log.append('turn/start', { turn: 99, input: 'Second', reason: 'user' })
+  await log.append('step/start', { turn: 99, step: 0 })
+  await log.append('user/message', { content: 'Second' })
+  await log.append('assistant/message', { content: '', toolCalls: [{ id: 'cut', name: call.name, arguments: {} }] })
+  await log.append('tool/call', { id: 'cut', name: call.name, arguments: {}, interruption: call.interruption })
+  await log.close()
+  return { parentId: parent.id, childId: child.id }
+}
+
+it('continues a Thread a crash cut off and reports it to its parent', async () => {
+  const root = await workspace()
+  const { parentId, childId } = await crashedChild(root, { name: 'read_file', interruption: 'retry' })
+  const recovered = await mount(root, { llm: { complete: async () => ({ finishReason: 'stop', content: 'Recovered answer' }) } })
+  try {
+    const report = await waitFor(async () => (await timeline(recovered)).find(entry => entry.kind === 'complete' && entry.text.includes('Recovered answer')), 'recovered report')
+    expect(report).toMatchObject({ sender: agentAddress(childId), recipients: [agentAddress(parentId)] })
+    await expect.poll(async () => (await recovered.threads.get(childId))?.state).toBe('done')
+  } finally {
+    await recovered.fiber.dispose()
+  }
+})
+
+it('blocks a Thread whose cut-off call may already have run, and tells its parent once', async () => {
+  const root = await workspace()
+  const { parentId, childId } = await crashedChild(root, { name: 'shell', interruption: 'confirm' })
+  for (let restart = 0; restart < 2; restart += 1) {
+    const recovered = await mount(root)
+    try {
+      await expect.poll(async () => (await recovered.threads.get(childId))?.state).toBe('blocked')
+      const blocked = await waitFor(async () => (await timeline(recovered)).find(entry => entry.kind === 'blocked'), 'blocked report')
+      expect(blocked).toMatchObject({ sender: agentAddress(childId), recipients: [agentAddress(parentId)] })
+      expect(blocked.text).toContain('shell may already have taken effect')
+      expect((await timeline(recovered)).filter(entry => entry.kind === 'blocked')).toHaveLength(1)
+    } finally {
+      await recovered.fiber.dispose()
+    }
+  }
 })

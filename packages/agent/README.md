@@ -23,6 +23,16 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
   `agent/inbox/inserted.target` 对新消息是 API intent（`followup`、`steer` 或 `inject`）；
   replacement 则保留原消息的 durable target（`next-turn` 或 `next-step`）。
 
+## 崩溃后的续跑
+
+崩溃修复把被切断的 turn 关成 `finishReason: 'interrupted'`（无 error / reason / cancelCause）。
+`findInterruptedTurn(events)` 识别这样一个之后还没有新输入的 turn，并判断能否不经确认续跑：
+被切断的工具调用要么从未开始（`TOOL_NOT_STARTED`），要么声明为 `interruption: 'retry'`；
+且该 turn 本身不是一次自动续跑（防止崩溃循环）。`recoverInterruptedTurn(agent)` 持久写入一条
+`plugin:recover` 的 followup，下一个 turn 据此继续；写入本身就标记该 turn 已处理，重复调用返回 false。
+`AgentCreationOptions.autoRecover` 让 resume 在安全时自动这样做（inbox 已有待处理输入时不插入）。
+续跑从不重放工具副作用：模型读到中断结果后自行决定。
+
 ## 三层组件
 
 | 文件 | 角色 |

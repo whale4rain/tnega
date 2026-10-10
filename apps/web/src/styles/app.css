@@ -1883,6 +1883,14 @@ kbd {
   color: var(--danger);
 }
 
+.recovery-notice {
+  align-items: center;
+}
+
+.recovery-notice > span {
+  flex: 1;
+}
+
 /* --- tools --------------------------------------------------------------- */
 
 .tool-group {

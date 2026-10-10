@@ -57,6 +57,16 @@ compare links provide a convenient browser view of the boundaries.
 - The Workbench opens about as wide as the conversation (default `clamp(420px, 40vw, 760px)`, minimum 420px) and shares its background. Project panels (Thread, Agent messages, Board, Library, Routines, settings) run edge to edge instead of sitting in a second framed card, with clearer headings, the conversation's own text size and a project title on the Board.
 - Opening a Project artifact shows it as a page on a near full-window sheet beside its Thread: one header with type, size, version and author, quote and download actions, and no repeated outputs strip.
 - What the coordinator sends a thread now appears in that thread's chat as a dashed bubble on the user side, labelled with the sender; it replaces the folded brief when it carries it.
+- A session whose run was cut off by a crash or restart picks up where it stopped when you open it, as long as no interrupted tool call may already have taken effect. Otherwise a notice names the uncertain tools and offers Resume; the agent then checks their results before repeating anything.
+- Project threads a crash cut off no longer stay "working" forever after a restart. A thread that can safely continue picks its run up again and reports to its parent as usual. One with a tool call that may already have taken effect turns blocked, and its parent is told once.
+- Only one process writes a session at a time. A second process (say the CLI while the desktop app is running the same session) gets a clear error instead of interleaving writes, and it no longer "repairs" the other process's live turn. The lock (`<session>.jsonl.lock`) is refreshed while held. If its process has exited, or it hasn't been refreshed for 30 seconds, the next writer takes it over.
+- A `shell` command that a crash interrupts now reports what it had printed. While a call runs, the last 2,000 characters of its output are saved every 2 seconds, and the interrupted result quotes them so the model can tell how far it got.
+- Sending a message is safe to retry. The Web client tags each message and steer with an id, and a repeat with the same id (after a dropped connection or a restart) is queued once, not twice.
+
+### Fixes
+
+- Reopening a crashed session no longer rewrites the whole log: repair cuts only a torn tail and appends the closing events, so a second crash during repair cannot empty the session. A log damaged in the middle keeps a `.corrupt-<time>` copy beside it, and `flush()` now syncs the file to disk.
+- After a crash, the model is told whether an interrupted tool call never started (safe to call again) or may already have taken effect. Built-in read-only tools (file reads, listings, `glob`, `grep`, `http_get`, browser observation) are marked safe to repeat; `write_file`, `shell` and browser actions ask the model to check the current state first.
 
 ### Fixes
 

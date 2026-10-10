@@ -112,6 +112,8 @@ export function browserTools(browser: BrowserService, config: ToolBrowserConfig 
     schema: { name, description, parameters: { type: 'object', properties, ...(required.length ? { required } : {}) } },
     timeoutMs,
     metadata: { browser: BROWSER_OBSERVE_TOOLS.includes(name) ? 'observe' : 'act' },
+    // Looking is safe to repeat after a restart; an action may already have happened.
+    interruption: BROWSER_OBSERVE_TOOLS.includes(name) ? 'retry' : 'confirm',
     execute: (input, options) => execute(args(input), options),
   })
 

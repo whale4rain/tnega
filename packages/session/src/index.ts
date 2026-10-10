@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, open, readFile, rename, truncate } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
+import { holdSessionLock, releaseSessionLock, sessionLockHolder } from './lock.js'
+
+export { SessionLockedError, sessionLockHolder, sessionLockPath, type SessionLockHolder } from './lock.js'
 
 /**
  * v7 derives model-visible messages from the *folded surface* instead of from
@@ -55,6 +58,86 @@ const liveSessions = new Map<string, SessionLog>()
 
 function sessionFileKey(file: string): string {
   return resolve(file)
+}
+
+interface SessionLineScan {
+  events: SessionEvent[]
+  /** Byte offset just past the last valid record (and its newline, if any). */
+  validEnd: number
+  /** Byte offset of the first unreadable record, if any. */
+  tornAt?: number
+  /** A valid record follows the first unreadable one: damage, not a torn tail. */
+  validAfterTorn: boolean
+}
+
+function scanSessionLines(buffer: Buffer): SessionLineScan {
+  const events: SessionEvent[] = []
+  let validEnd = 0
+  let tornAt: number | undefined
+  let validAfterTorn = false
+  let offset = 0
+  while (offset < buffer.length) {
+    const newline = buffer.indexOf(0x0a, offset)
+    const lineEnd = newline < 0 ? buffer.length : newline
+    const next = newline < 0 ? buffer.length : newline + 1
+    const line = buffer.subarray(offset, lineEnd).toString('utf8')
+    if (line.trim()) {
+      const event = parseSessionLine(line)
+      if (tornAt !== undefined) {
+        if (event) validAfterTorn = true
+      } else if (event) {
+        events.push(event)
+        validEnd = next
+      } else {
+        tornAt = offset
+      }
+    } else if (tornAt === undefined) {
+      validEnd = next
+    }
+    offset = next
+  }
+  return { events, validEnd, ...(tornAt !== undefined ? { tornAt } : {}), validAfterTorn }
+}
+
+function parseSessionLine(line: string): SessionEvent | undefined {
+  try {
+    const parsed: unknown = JSON.parse(line)
+    return isSessionEvent(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function syncFile(file: string): Promise<void> {
+  const handle = await open(file, 'r+')
+  try {
+    await handle.datasync()
+  } finally {
+    await handle.close()
+  }
+}
+
+async function appendDurably(file: string, text: string): Promise<void> {
+  const handle = await open(file, 'a')
+  try {
+    if (text) await handle.appendFile(text, 'utf8')
+    await handle.datasync()
+  } finally {
+    await handle.close()
+  }
+}
+
+/** Write a whole file through a synced temporary, so readers never see half of it. */
+async function writeFileDurably(file: string, text: string): Promise<void> {
+  const temporary = `${file}.${randomUUID()}.tmp`
+  const handle = await open(temporary, 'w')
+  try {
+    await handle.writeFile(text, 'utf8')
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  await rename(temporary, file)
 }
 
 export type ModelRole = 'system' | 'user' | 'assistant' | 'tool'
@@ -1172,6 +1255,41 @@ export function safeCompactSplit(
   return index
 }
 
+/**
+ * `meta` kind of a running tool's latest output tail (`{ toolCallId, output,
+ * truncated? }`). Log-only; crash repair quotes it in the interrupted result.
+ */
+export const TOOL_OUTPUT_META_KIND = 'tool/output'
+
+/** The session stopped before this tool call started; it never ran. */
+export const TOOL_NOT_STARTED = 'TOOL_NOT_STARTED'
+/** The call was recorded as started, but its outcome never was. */
+export const TOOL_OUTCOME_UNKNOWN = 'TOOL_OUTCOME_UNKNOWN'
+
+/**
+ * Model-visible text of an interrupted call's synthetic result. A call that
+ * never started is plainly safe to issue again; one that started may already
+ * have had its effect, so its declared disposition decides the advice.
+ */
+export function interruptedToolMessage(
+  notStarted: boolean,
+  interruption: 'fail' | 'retry' | 'confirm' | undefined,
+  partial?: { output: string; truncated?: boolean },
+): string {
+  if (notStarted) {
+    return `${TOOL_NOT_STARTED}: the session was interrupted before this tool call started, so it never ran. Call it again if it is still needed.`
+  }
+  const advice = interruption === 'retry'
+    ? 'This tool is safe to repeat; call it again if the result is still needed.'
+    : interruption === 'confirm'
+      ? 'It may already have taken effect. Check the current state (or ask the user) before calling it again.'
+      : 'It may already have taken effect and was not replayed. Retry only if the operation is read-only or idempotent; otherwise verify the current state first.'
+  const printed = partial?.output
+    ? `\n\nOutput before the interruption${partial.truncated ? ' (last part only)' : ''}:\n${partial.output}`
+    : ''
+  return `${TOOL_OUTCOME_UNKNOWN}: the session was interrupted while this tool call was running, and its result was not recorded. ${advice}${printed}`
+}
+
 export function repairUnclosed(
   events: readonly SessionEvent[],
 ): SessionEvent[] {
@@ -1179,8 +1297,16 @@ export function repairUnclosed(
   const declaredCalls = new Map<string, ModelToolCall>()
   const openSteps: Extract<SessionEvent, { type: 'step/start' }>[] = []
   const openTurns: Extract<SessionEvent, { type: 'turn/start' }>[] = []
+  const partials = new Map<string, { output: string; truncated?: boolean }>()
   for (const event of events) {
     switch (event.type) {
+      case 'meta': {
+        const { kind, toolCallId, output, truncated } = event.payload as Record<string, unknown>
+        if (kind === TOOL_OUTPUT_META_KIND && typeof toolCallId === 'string' && typeof output === 'string') {
+          partials.set(toolCallId, { output, ...(truncated === true ? { truncated: true } : {}) })
+        }
+        break
+      }
       case 'assistant/message':
         for (const call of event.payload.toolCalls ?? []) declaredCalls.set(call.id, call)
         break
@@ -1227,11 +1353,13 @@ export function repairUnclosed(
     nextTs += 1
   }
 
+  const notStarted = new Set<string>()
   for (const call of declaredCalls.values()) {
     if (openCalls.some(open => open.payload.id === call.id)) continue
     const payload: ToolCallPayload = { id: call.id, name: call.name, arguments: call.arguments, interruption: call.interruption ?? 'fail' }
     push('tool/call', payload)
     openCalls.push({ id: '', seq: 0, ts: 0, type: 'tool/call', payload })
+    notStarted.add(call.id)
   }
   for (const call of openCalls) {
     push('tool/result', {
@@ -1241,10 +1369,7 @@ export function repairUnclosed(
       ok: false,
       error: {
         name: 'SessionInterruptedError',
-        message: 'session interrupted before tool result was recorded; '
-          + (call.payload.interruption === 'retry' ? 'a new call may retry this tool'
-            : call.payload.interruption === 'confirm' ? 'confirm the prior effect with the user before retrying'
-              : 'the call failed and was not replayed'),
+        message: interruptedToolMessage(notStarted.has(call.payload.id), call.payload.interruption, partials.get(call.payload.id)),
       },
     })
   }
@@ -1342,6 +1467,7 @@ export class SessionLog {
         }
       } catch (error) {
         if (liveSessions.get(key) === this) liveSessions.delete(key)
+        await releaseSessionLock(key, this)
         throw error
       }
     })
@@ -1373,6 +1499,8 @@ export class SessionLog {
   append(type: SessionEventType, payload: SessionEvent['payload']): Promise<SessionEvent> {
     return this._run(async () => {
       await this._ensureLoaded()
+      // One process writes a Session at a time; a second one fails here.
+      await holdSessionLock(sessionFileKey(this.file), this)
       const event = this._buildEvent(type, payload)
       this._commitEvent(event)
       return event
@@ -1470,6 +1598,8 @@ export class SessionLog {
         this._writeError = undefined
         throw error
       }
+      // flush() is the durability barrier: the appended batches reach the disk.
+      await syncFile(this.file)
       const seq = this._nextSeq - 1
       this._broadcast?.('flush', { file: this.file, seq })
       return seq
@@ -1670,6 +1800,7 @@ export class SessionLog {
         ? { start: shadowed[0]!.seq, end: shadowed[shadowed.length - 1]!.seq }
         : undefined
       const boundary = split
+      await holdSessionLock(sessionFileKey(this.file), this)
       this._commitEvent(this._buildEvent('compaction/start', {
         ...(boundary > 0 ? { boundary } : {}),
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
@@ -1700,6 +1831,7 @@ export class SessionLog {
       }
       const key = sessionFileKey(this.file)
       if (liveSessions.get(key) === this) liveSessions.delete(key)
+      await releaseSessionLock(key, this)
     })
   }
 
@@ -1733,7 +1865,7 @@ export class SessionLog {
         type: 'meta',
         payload: { formatVersion: SESSION_FORMAT_VERSION },
       }
-      await writeFile(this.file, `${JSON.stringify(meta)}\n`, 'utf8')
+      await writeFileDurably(this.file, `${JSON.stringify(meta)}\n`)
       this._events = [meta]
       this._refreshSurface()
       this._nextSeq = 2
@@ -1749,37 +1881,19 @@ export class SessionLog {
   }
 
   private async _read(): Promise<{ existing: boolean; events: SessionEvent[] }> {
-    let text: string
+    let buffer: Buffer
     try {
-      text = await readFile(this.file, 'utf8')
+      buffer = await readFile(this.file)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return { existing: false, events: [] }
       }
       throw error
     }
-    if (!text.trim()) return { existing: false, events: [] }
+    if (!buffer.toString('utf8').trim()) return { existing: false, events: [] }
 
-    const lines = text.split('\n')
-    const events: SessionEvent[] = []
-    let torn = false
-    for (const line of lines) {
-      if (!line.trim()) continue
-      if (torn) continue
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(line)
-      } catch {
-        torn = true
-        continue
-      }
-      if (!isSessionEvent(parsed)) {
-        torn = true
-        continue
-      }
-      events.push(parsed)
-    }
-
+    const scan = scanSessionLines(buffer)
+    const events = scan.events
     this._assertFormat(events)
 
     const key = sessionFileKey(this.file)
@@ -1789,16 +1903,29 @@ export class SessionLog {
       return { existing: true, events }
     }
 
+    // Another process is writing this log: its turn is live, not crashed.
+    if (await sessionLockHolder(key)) return { existing: true, events }
     const synthetic = repairUnclosed(events)
-    if (!torn && !synthetic.length) return { existing: true, events }
+    const missingNewline = scan.validEnd > 0 && buffer[scan.validEnd - 1] !== 0x0a
+    if (scan.tornAt === undefined && !synthetic.length && !missingNewline) return { existing: true, events }
 
-    const repaired = [...events, ...synthetic]
-    await writeFile(
+    await holdSessionLock(key, this)
+    // Repair never rewrites history: an unreadable tail is cut at the end of
+    // the last valid line and the closers are appended after it, so a crash
+    // during repair leaves either the old file or a valid prefix of the new one.
+    if (scan.tornAt !== undefined) {
+      if (scan.validAfterTorn) {
+        // Valid records after an unreadable line mean the file was damaged in
+        // the middle, not torn at the tail. Keep the original beside it.
+        await copyFile(this.file, `${this.file}.corrupt-${Date.now()}`)
+      }
+      await truncate(this.file, scan.validEnd)
+    }
+    await appendDurably(
       this.file,
-      `${repaired.map(event => JSON.stringify(event)).join('\n')}\n`,
-      'utf8',
+      `${missingNewline ? '\n' : ''}${synthetic.map(event => `${JSON.stringify(event)}\n`).join('')}`,
     )
-    return { existing: true, events: repaired }
+    return { existing: true, events: [...events, ...synthetic] }
   }
 
   private _assertFormat(events: readonly SessionEvent[]): void {

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { stat } from 'node:fs/promises'
-import type { AgentRegistry, LiveAgent } from '@tnega/agent'
+import { findInterruptedTurn, recoverInterruptedTurn, type AgentRegistry, type InterruptedTurn, type LiveAgent } from '@tnega/agent'
 import { USER_ADDRESS, type BoxEnvelope, type BoxService } from '@tnega/box'
 import type { Context, Plugin } from '@tnega/core'
 import { SessionLog, type SessionEvent } from '@tnega/session'
@@ -315,7 +315,10 @@ export class ProjectLoopRuntime {
       if (event.status === 'idle') this.queueStatus(event.id, event.status)
     })
     this.ctx.on('project/resumed', (event: { projectId: string }) => {
-      if (event.projectId === this.projectId) this.schedule()
+      if (event.projectId !== this.projectId) return
+      // Threads a crash cut off while the Project was paused continue now.
+      void this.recoverInterrupted().catch(error => this.fail(error))
+      this.schedule()
     })
     for (const agent of this.registry.list()) this.attach(agent.id, agent)
 
@@ -339,7 +342,41 @@ export class ProjectLoopRuntime {
         await this.queueTurnEnd(thread.id, latest, true)
       }
     }
+    await this.recoverInterrupted()
     this.schedule()
+  }
+
+  /**
+   * A Thread whose Run a crash cut off still reads `working`, and its parent
+   * would wait for a report that never comes. Continue it when nothing it did
+   * may need checking; otherwise mark it blocked and tell its parent.
+   */
+  private async recoverInterrupted(): Promise<void> {
+    if (this.isPaused()) return
+    for (const thread of [...this.known.values()]) {
+      if (this.disposed) return
+      if (thread.state !== 'working' || this.registry.get(thread.id)?.status === 'running') continue
+      const interrupted = findInterruptedTurn(await this.readSession(thread.id))
+      if (!interrupted) continue
+      await this.recoverThread(thread, interrupted).catch(error => this.fail(error))
+    }
+  }
+
+  private async recoverThread(thread: ThreadRecord, interrupted: InterruptedTurn): Promise<void> {
+    if (interrupted.safe) {
+      await recoverInterruptedTurn(await this.threads.activate(thread.id))
+      return
+    }
+    const text = `Stopped when the app closed. ${interrupted.uncertainCalls.join(', ')} may already have taken effect; send a message to continue once its result is checked.`
+    await this.setStateSafely(thread.id, 'blocked', text)
+    if (!thread.parentId) return
+    const recipient = { kind: 'agent' as const, id: thread.parentId }
+    const messageId = publishedMessageId(this.projectId, thread.id, `recovery ${interrupted.endId}`)
+    if (await this.box.delivery(messageId, recipient)) return
+    await this.box.send({
+      sender: { kind: 'agent', id: thread.id }, recipients: [recipient],
+      placement: { kind: 'thread', threadId: thread.id }, kind: 'blocked', text, messageId,
+    })
   }
 
   dispose(): void {

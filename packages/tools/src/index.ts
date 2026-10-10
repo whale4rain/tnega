@@ -45,6 +45,11 @@ export interface ToolExecuteOptions {
   agentId?: string
   /** Runtime opt-in: mark a successful result as concluding the agent turn. */
   concludesTurn?: boolean
+  /**
+   * Output the call has produced so far, one piece at a time. The host keeps
+   * its tail durably, so a call a crash cuts off can still say what it printed.
+   */
+  progress?: (output: string) => void
   [key: string]: unknown
 }
 

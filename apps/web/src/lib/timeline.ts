@@ -73,6 +73,8 @@ const STARTED = /^Started subagent ([0-9a-f-]{36})\b/i
 const SPAWN_TOOL = 'spawn_subagent'
 /** Author of the harness's "finish the task" nudge (`CONTINUATION_NUDGE_NAME` in @tnega/agent). */
 const CONTINUATION_NAME = 'plugin:continue'
+/** Author of the input that continues a run the app stopped (`RECOVERY_NUDGE_NAME` in @tnega/agent). */
+const RECOVERY_NAME = 'plugin:recover'
 
 // ---------------------------------------------------------------------------
 // Durable events → Timeline
@@ -108,6 +110,10 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         if (name === CONTINUATION_NAME) {
           // The harness nudging a model that stopped mid-task; part of the process, not a message.
           agent(event.id).blocks.push({ kind: 'notice', id: event.id, tone: 'info', process: true, text: 'Reminded the agent to finish the task' })
+          break
+        }
+        if (name === RECOVERY_NAME) {
+          agent(event.id).blocks.push({ kind: 'notice', id: event.id, tone: 'info', text: 'Continued the run that stopped when the app closed' })
           break
         }
         const agentId = name?.match(AGENT_NAME)?.[1] ?? content.match(TERMINAL_REPLY)?.[1]

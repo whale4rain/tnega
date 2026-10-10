@@ -586,6 +586,15 @@ function httpGetTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   )
 }
 
+/** Decode each stream incrementally, so a character split across chunks arrives whole. */
+function progressDecoder(progress: (output: string) => void): (chunk: Buffer, stream: 'stdout' | 'stderr') => void {
+  const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() }
+  return (chunk, stream) => {
+    const text = decoders[stream].decode(chunk, { stream: true })
+    if (text) progress(text)
+  }
+}
+
 function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   return definition(
     'shell',
@@ -615,6 +624,7 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
         timeoutMs,
         maxBuffer: config.maxWriteBytes,
         ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.progress ? { onOutput: progressDecoder(options.progress) } : {}),
         ...(escalated(args, options) ? { unsandboxed: true } : {}),
       })
       return {
@@ -660,7 +670,26 @@ export function createBuiltinToolDefinitions(
     if (normalized.processes && normalized.execution.startShell) shell.metadata = { ...shell.metadata, backgroundProcess: true }
     definitions.push(shell)
   }
+  for (const definition of definitions) {
+    definition.interruption ??= BUILTIN_INTERRUPTION[definition.schema.name] ?? 'fail'
+  }
   return definitions
+}
+
+/**
+ * What a call cut off by a restart may do next. Read-only tools may simply run
+ * again; tools whose effect may already have happened ask for confirmation.
+ */
+const BUILTIN_INTERRUPTION: Readonly<Record<string, 'retry' | 'confirm'>> = {
+  echo: 'retry',
+  now: 'retry',
+  calculator: 'retry',
+  json: 'retry',
+  read_file: 'retry',
+  list_dir: 'retry',
+  http_get: 'retry',
+  write_file: 'confirm',
+  shell: 'confirm',
 }
 
 export const builtinTools = {

@@ -203,11 +203,14 @@ export const api = {
     }),
   compact: (workspace: string, id: string) =>
     call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}/compact`, workspace), { method: 'POST', body: {} }),
+  /** Queue the continuation of a run the app stopped mid-turn; a resumed run then drains it. */
+  recover: (workspace: string, id: string) =>
+    call<{ resumeQueued: boolean }>(scoped(`/api/sessions/${id}/recover`, workspace), { method: 'POST', body: {} }),
   stop: (workspace: string, id: string) =>
     call<{ stopped: boolean }>(scoped(`/api/sessions/${id}/stop`, workspace), { method: 'POST', body: {} }),
-  steer: (workspace: string, id: string, prompt: string, attachments: readonly ImageAttachment[] = []) =>
+  steer: (workspace: string, id: string, prompt: string, attachments: readonly ImageAttachment[] = [], requestId: string = crypto.randomUUID()) =>
     call<{ accepted: boolean }>(scoped(`/api/sessions/${id}/steer`, workspace), {
-      method: 'POST', body: { prompt, ...(attachments.length ? { attachments } : {}) },
+      method: 'POST', body: { prompt, requestId, ...(attachments.length ? { attachments } : {}) },
     }),
   approve: (workspace: string, id: string, approvalId: string, allow: boolean) =>
     call<{ accepted: boolean }>(scoped(`/api/sessions/${id}/approvals/${approvalId}`, workspace), {
@@ -280,6 +283,8 @@ export async function streamRun(
   signal: AbortSignal,
   resumeQueued = false,
   attachments: readonly ImageAttachment[] = [],
+  /** Same id on every retry of one submission, so the server admits it once. */
+  requestId?: string,
 ): Promise<void> {
   const response = await fetch(scoped(`/api/sessions/${id}/runs`, workspace), {
     method: 'POST',
@@ -290,7 +295,7 @@ export async function streamRun(
     },
     body: JSON.stringify(resumeQueued
       ? { resumeQueued: true }
-      : { prompt, ...(attachments.length ? { attachments } : {}) }),
+      : { prompt, ...(attachments.length ? { attachments } : {}), ...(requestId ? { requestId } : {}) }),
     signal,
   })
   if (!response.ok) throw await errorFrom(response)

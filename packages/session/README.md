@@ -106,17 +106,29 @@ provider/model/contextWindow。它们都是 log-only 事件（不产生 LLM 消�
 恢复同时扫描 `assistant/message.toolCalls`，未开始的调用补写调用意图与失败结果。
 Tools 可声明 `interruption: 'fail' | 'retry' | 'confirm'`（默认 `fail`）；Agent 将处置
 写入声明与调用记录。恢复总是闭合为失败，retry/confirm 只提供后续重试指导，绝不自动重放副作用。
+补写的结果区分 `TOOL_NOT_STARTED`（从未开始，可直接再调）与 `TOOL_OUTCOME_UNKNOWN`（可能已生效）。
+运行中的工具可经 `ToolExecuteOptions.progress` 报告输出；Agent 每 2 秒把最近 2000 字符写成
+log-only 的 `meta { kind: 'tool/output', toolCallId, output, truncated? }`（`TOOL_OUTPUT_META_KIND`），
+修复时把最后一条引用进中断结果。
 该可选元数据兼容现有 v10 日志，无需迁移。
 
 `SessionLog` 是内存事实层：`append()` 同步提交并广播 `session/event`，
-底层异步批量写入 JSONL（`flush()` 冲刷）。`repairUnclosed()` 在加载时
+底层异步批量写入 JSONL；`flush()` 冲刷并 `fsync`，是持久化屏障。`repairUnclosed()` 在加载时
 为撕裂的 `tool/call`/`step/start`/`turn/start` 补写失败闭合事件，保证
-一个崩溃后的日志仍能重建出一个关闭的 turn。`runInvariants()` 断言已加载
+一个崩溃后的日志仍能重建出一个关闭的 turn。修复从不整写文件：只把撕裂的尾部截断到最后
+一条有效记录之后，再追加闭合事件并 `fsync`；修复中途再次崩溃时文件仍是有效前缀。若无效行之后
+还有有效记录（文件中部损坏而非尾部撕裂），截断前先在旁边保留 `<file>.corrupt-<time>` 原样副本。
+新建日志经同步过的临时文件 rename 落地。`runInvariants()` 断言已加载
 日志的 turn/step/tool-call 成对闭合且 seq 单调。
+
+跨进程：第一次写入（append、compaction 或加载时的修复）在 `<file>.lock` 取得该进程的写锁，
+同进程的多个写入者共用；最后一个写入者 `close()` 时释放，进程退出时也会清理。持有期间每 5 秒刷新
+mtime；锁的进程已退出（同主机）或 30 秒未刷新即视为遗弃并被接管。另一进程持锁时写入抛
+`SessionLockedError`，加载也不对其活跃 turn 补写闭合事件。
 
 同进程内，提交事件的 `SessionLog` 接管该文件的 live owner 登记；临时读取对象
 即使先初始化，其关闭也不会移除正在写入的对象。后续读取从 live owner 取得
-快照，不对运行中的 call、step 或 turn 补写中断事件。该登记不提供跨进程文件锁。
+快照，不对运行中的 call、step 或 turn 补写中断事件。跨进程互斥由上面的写锁负责。
 
 `forkAt()` / `lineage()` 基于事件 id 与 `parentId` 构造可复用的 fork 前缀，
 不依赖全量 raw 顺序。
