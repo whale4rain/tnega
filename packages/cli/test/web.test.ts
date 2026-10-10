@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startWebServer, type WebServer } from '../src/server.js'
 
 const dirs: string[] = []
@@ -225,6 +225,7 @@ describe('web server', () => {
   it('adds workspaces and manages sessions with rename and fork', async () => {
     const dir = await tempDir('tnega-web-store-')
     const workspace = await mkdir(dir, 'workspace')
+    vi.stubEnv('TNEGA_HOME', join(dir, 'home'))
     const configFile = join(dir, 'config.json')
     const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
     servers.push(server)
@@ -236,6 +237,9 @@ describe('web server', () => {
     expect(add.status).toBe(200)
     const workspaces = await apiFetch(server.url, '/api/workspaces').then(r => r.json())
     expect(workspaces).toMatchObject({ workspaces: [workspace] })
+    // Sessions without a chosen folder start in a scratch folder inside the tnega home.
+    expect(workspaces).toMatchObject({ defaultWorkspace: join(dir, 'home', 'scratch') })
+    vi.unstubAllEnvs()
 
     const created = await apiFetch(
       server.url,

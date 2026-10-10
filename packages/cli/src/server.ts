@@ -85,6 +85,7 @@ import { builtinTools, createBuiltinToolDefinitions, ProcessRegistry, tools, typ
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { ProjectHost } from './project-host.js'
 import { workspaceSubagentRoot } from './state-storage.js'
+import { defaultWorkspace } from './home-paths.js'
 import { handleProjectApi } from './project-routes.js'
 import { pickSystemFolder } from './folder-picker.js'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from './file-edits.js'
@@ -604,7 +605,9 @@ async function handleApi(
 
   if (url.pathname === '/api/workspaces' && req.method === 'GET') {
     const config = await readSystemConfig(context.configFile)
-    sendJson(res, 200, { workspaces: config.workspaces ?? [] })
+    const fallback = defaultWorkspace()
+    await mkdir(fallback, { recursive: true })
+    sendJson(res, 200, { workspaces: config.workspaces ?? [], defaultWorkspace: await ensureWorkspace(fallback) })
     return
   }
 

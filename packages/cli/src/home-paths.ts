@@ -15,6 +15,15 @@ export function workspaceSessionDir(workspace: string): string {
   return join(resolveTnegaHome(), 'sessions', workspaceStorageKey(workspace))
 }
 
+/**
+ * Where a session starts when you have not chosen a folder. A folder inside
+ * the tnega home rather than the home itself, which holds credentials and
+ * config that a workspace-scoped agent must not see or write.
+ */
+export function defaultWorkspace(): string {
+  return join(resolveTnegaHome(), 'scratch')
+}
+
 export function workspaceStateDir(workspace: string): string {
   return join(resolveTnegaHome(), 'workspaces', workspaceStorageKey(workspace))
 }

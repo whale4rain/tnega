@@ -756,8 +756,10 @@ kbd {
   opacity: 1;
 }
 
-.workspace-items .session-button {
-  padding-left: 24px;
+/* The dot sits under the group's chevron, so titles line up with the workspace name. */
+.workspace-items .session-button,
+.sidebar .session-title {
+  gap: 6px;
 }
 
 .workspace-items .sidebar-empty {
@@ -765,8 +767,28 @@ kbd {
   margin: 0;
 }
 
-.project-glyph {
-  color: var(--accent-text);
+/* Pinned: every project, above the workspace groups, without its workspace. */
+.sidebar-section {
+  margin-bottom: 10px;
+}
+
+.sidebar-section-title {
+  display: flex;
+  align-items: center;
+  height: var(--control);
+  margin: 0;
+  padding: 0 6px;
+  color: var(--text-2);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.sidebar-section .session-button {
+  padding-left: 6px;
+}
+
+.sidebar-section .workspace-more {
+  padding-left: 24px;
 }
 
 .project-item.archived .session-title {
@@ -884,16 +906,23 @@ kbd {
   white-space: nowrap;
 }
 
-.session-glyph {
+/* A row is a dot and a title: the project's status light, or a quiet dot for a session. */
+.session-mark {
+  display: grid;
+  place-items: center;
   flex: none;
-  color: var(--text-3);
+  width: 12px;
 }
 
-.session-time {
-  flex: none;
-  font-size: var(--text-xs);
-  color: var(--text-3);
-  transition: opacity var(--duration-fast);
+.session-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+}
+
+.session-item.active .session-dot {
+  background: var(--accent);
 }
 
 .session-more {
@@ -907,10 +936,6 @@ kbd {
 .session-more[aria-expanded="true"],
 .session-more:focus-visible {
   opacity: 1;
-}
-
-.session-item:hover .session-time {
-  opacity: 0;
 }
 
 .session-item .menu-root {
@@ -1002,7 +1027,6 @@ kbd {
 }
 
 /* Sidebar icons are a size up from the rest of the chrome (lucide's size prop only sets the default). */
-.sidebar .session-glyph,
 .sidebar .sidebar-search > svg,
 .sidebar-top-actions svg,
 .sidebar-footer svg {
@@ -1201,16 +1225,13 @@ kbd {
   flex: none;
 }
 
-/* Header controls sit in two quiet pills: run settings, then session tools. */
+/* Header controls form two groups, run settings then session tools, set apart by space alone:
+   no pill outline around them (2026-10-10), so the icons read as one quiet row. */
 .header-group {
   display: flex;
   align-items: center;
   gap: 2px;
   height: var(--control);
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--surface);
 }
 
 .header-group .session-controls { gap: 0; }
@@ -3664,7 +3685,9 @@ kbd {
 
 /* ==========================================================================
    Desktop window controls
-   Integrate native controls into existing headers, without an extra row.
+   Integrate native controls into existing headers. The one exception is the
+   Workbench: its tabs sit in their own row under the controls, so the panel's
+   top line is a plain title bar (tnega-design §5.3).
    ========================================================================== */
 
 .desktop-chrome {
@@ -3677,6 +3700,7 @@ kbd {
 
 .desktop-chrome .sidebar-top,
 .desktop-chrome .conv-header,
+.desktop-chrome .wb-titlebar,
 .desktop-chrome .wb-header,
 .desktop-chrome .wb-rail-fill {
   -webkit-app-region: drag;
