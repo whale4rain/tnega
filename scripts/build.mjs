@@ -129,6 +129,7 @@ const libraryEntries = {
   'sandbox-local': `${packageDir('sandbox-local')}/src/index.ts`,
   'sandbox-windows-acl': `${packageDir('sandbox-windows-acl')}/src/index.ts`,
   'sandbox-windows-acl-runner': `${packageDir('sandbox-windows-acl')}/src/runner.ts`,
+  'sandbox-windows-acl-grant': `${packageDir('sandbox-windows-acl')}/src/grant-entry.ts`,
   'fs-sandbox': `${packageDir('fs-sandbox')}/src/index.ts`,
   'execution-sandbox': `${packageDir('execution-sandbox')}/src/index.ts`,
   'cli-runtime': 'packages/cli/src/index.ts',

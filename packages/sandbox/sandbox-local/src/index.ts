@@ -77,6 +77,8 @@ interface AclGrant {
   dispose(): Promise<void>
 }
 
+type AclGrantOptions = Parameters<WindowsAclModule['AclWriteGrant']['create']>[1]
+
 interface TempGrant {
   dir: string
   sid: string
@@ -146,6 +148,8 @@ export class LocalSandboxService extends SandboxService {
   private selection: Selection | undefined
   private probeFailure: string | undefined
   private readonly standingGrants = new Map<string, AclGrant>()
+  /** 进行中的常驻授予：并发的命令共用同一次整树传播，而不是排队各做一遍。 */
+  private readonly pendingStandingGrants = new Map<string, Promise<void>>()
   private readonly tempGrants = new Map<string, TempGrant>()
 
   constructor(ctx: Context, config: Config = {}) {
@@ -283,7 +287,7 @@ export class LocalSandboxService extends SandboxService {
         // 授权，而私有 temp 恰恰建在它下面 —— 拿 `writableRoots`（含 tmpdir）来比会把
         // 每一次 workspace-write 都判成冲突。
         acl.assertPrivateTempDisjoint(dir, [workspaceRoot])
-        const grant = await acl.AclWriteGrant.create(sid)
+        const grant = await acl.AclWriteGrant.create(sid, this.aclGrantOptions(acl))
         try {
           await grant.add(dir, { revocable: true })
         } catch (error) {
@@ -314,9 +318,54 @@ export class LocalSandboxService extends SandboxService {
     workspaceSid: string,
   ): Promise<void> {
     if (this.standingGrants.has(workspaceRoot)) return
-    const grant = await acl.AclWriteGrant.create(workspaceSid)
-    await grant.add(workspaceRoot, { revocable: false })
-    this.standingGrants.set(workspaceRoot, grant)
+    let pending = this.pendingStandingGrants.get(workspaceRoot)
+    if (pending === undefined) {
+      pending = this.createStandingGrant(acl, workspaceRoot, workspaceSid)
+        .then(grant => { this.standingGrants.set(workspaceRoot, grant) })
+        // 失败的授予不留下记录：下一次命令重新尝试。
+        .finally(() => this.pendingStandingGrants.delete(workspaceRoot))
+      this.pendingStandingGrants.set(workspaceRoot, pending)
+    }
+    await pending
+  }
+
+  private async createStandingGrant(
+    acl: WindowsAclModule,
+    workspaceRoot: string,
+    workspaceSid: string,
+  ): Promise<AclGrant> {
+    const grant = await acl.AclWriteGrant.create(workspaceSid, this.aclGrantOptions(acl))
+    try {
+      await grant.add(workspaceRoot, { revocable: false })
+    } catch (error) {
+      await grant.dispose().catch(() => undefined)
+      throw error
+    }
+    return grant
+  }
+
+  /**
+   * 授予/撤销交给 helper 进程：首次授予要把可继承 ACE 同步传播到整棵 workspace 树，大仓库
+   * 上能跑几十分钟。桌面端的 Runtime 跑在 Electron 主进程里，在本进程内做这件事会冻结 UI 与
+   * 本地 server。helper 与 runner 一样以 Node 模式启动（桌面端经 utility process 承载）；不设
+   * 超时——中途杀掉会留下一棵只传播了一半的树。仓库内 dev 形态没有 helper 产物，退回进程内执行。
+   */
+  private aclGrantOptions(acl: WindowsAclModule): AclGrantOptions {
+    const command = acl.resolveGrantCommand()
+    if (command === undefined) return {}
+    const electronNode = Boolean(process.versions.electron) && command[0] === process.execPath
+    return {
+      operate: async (operation) => {
+        const result = await localExecutionProvider.runProcess({
+          argv: [...command, ...acl.grantCommandArgs(operation)],
+          cwd: tmpdir(),
+          timeoutMs: 0,
+          maxBuffer: 64 * 1024,
+          ...(electronNode ? { env: { ELECTRON_RUN_AS_NODE: '1', TNEGA_DESKTOP_ACL_RUNNER: '1' } } : {}),
+        })
+        return acl.parseGrantReply(result, operation)
+      },
+    }
   }
 
   private tempBase(policy: SandboxPolicy): string {
@@ -476,6 +525,7 @@ export class LocalSandboxService extends SandboxService {
         .catch((error: unknown) => failures.push(error))
     }
     this.tempGrants.clear()
+    // 仍在传播中的常驻授予不等：常驻 ACE 本来就不撤销，dispose 只释放 SID。
     for (const grant of this.standingGrants.values()) {
       await grant.dispose().catch((error: unknown) => failures.push(error))
     }

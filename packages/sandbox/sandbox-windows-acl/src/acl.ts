@@ -54,19 +54,43 @@ export function lockFilePath(api: Win32Api, path: string): string {
   return join(getTempPath(api), 'tnega-acl-locks', `${digest}.lock`)
 }
 
+/** 每路径锁的默认等待上限：5 分钟。超过即失败（fail closed），绝不无限期挂起。 */
+export const DEFAULT_LOCK_TIMEOUT_MS = 5 * 60_000
+/** 锁被占用时两次尝试之间的间隔。 */
+const LOCK_POLL_MS = 100
+
+/** {@link withPathLock}、{@link grantWrite}、{@link revokeWrite} 的锁等待选项。 */
+export interface PathLockOptions {
+  /** 等锁的上限（毫秒），默认 {@link DEFAULT_LOCK_TIMEOUT_MS}；0 表示只试一次。 */
+  lockTimeoutMs?: number
+  /** 锁被占用时的重试间隔（毫秒），默认 100。 */
+  lockPollMs?: number
+}
+
+/** 同步睡眠：锁序列本身是同步的（发布形态里跑在 helper 进程中，见 `src/grant-command.ts`）。 */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 /**
  * 持有每路径独占锁执行 `action`。
  *
  * CreateFileW 用 OPEN_ALWAYS + 共享读写但**不共享删除**：可被删除的锁文件能够在持有者
  * 脚下被删掉重建，从而让两个进程同时「持有」同一把锁。随后在同步句柄上锁一个字节
- * （LOCKFILE_EXCLUSIVE_LOCK，置零的 OVERLAPPED 表示从偏移 0 开始）。失败一律抛出；即使
- * `action` 抛错也尽力解锁，且不覆盖原始错误。
+ * （LOCKFILE_EXCLUSIVE_LOCK，置零的 OVERLAPPED 表示从偏移 0 开始）。
+ *
+ * 等锁有上限：用 LOCKFILE_FAIL_IMMEDIATELY 轮询，锁被占用（ERROR_LOCK_VIOLATION）时重试，
+ * 超过 `lockTimeoutMs` 就以 LockFileEx 错误失败。不带 FAIL_IMMEDIATELY 的 LockFileEx 会在
+ * 持有者挂住时永远阻塞调用线程。失败一律抛出；即使 `action` 抛错也尽力解锁，且不覆盖原始错误。
  * @param api - 绑定表。
  * @param path - 被保护的目录（绝对路径）。
  * @param action - 需要串行化的「读-合并-写」序列。
+ * @param options - 等锁上限与重试间隔。
  * @returns `action` 的结果。
  */
-export function withPathLock<T>(api: Win32Api, path: string, action: () => T): T {
+export function withPathLock<T>(api: Win32Api, path: string, action: () => T, options: PathLockOptions = {}): T {
+  const timeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS
+  const pollMs = options.lockPollMs ?? LOCK_POLL_MS
   const lockPath = lockFilePath(api, path)
   mkdirSync(dirname(lockPath), { recursive: true })
   const handle = api.createFileW(
@@ -80,10 +104,24 @@ export function withPathLock<T>(api: Win32Api, path: string, action: () => T): T
   )
   if (isInvalidHandle(handle)) throwLastError(api, 'CreateFileW', lockPath)
   const overlapped = api.allocOverlapped() // 保持置零：偏移 0、hEvent NULL
-  if (api.lockFileEx(handle, abi.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, overlapped) === 0) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (api.lockFileEx(handle, abi.LOCKFILE_EXCLUSIVE_LOCK | abi.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, overlapped) !== 0) break
     const win32Code = api.getLastError()
+    const remaining = deadline - Date.now()
+    if (win32Code === abi.ERROR_LOCK_VIOLATION && remaining > 0) {
+      sleepSync(Math.min(pollMs, remaining))
+      continue
+    }
     api.closeHandle(handle) // 锁失败路径上的尽力清理
-    throwWin32(api, 'LockFileEx', win32Code, lockPath)
+    throwWin32(
+      api,
+      'LockFileEx',
+      win32Code,
+      win32Code === abi.ERROR_LOCK_VIOLATION
+        ? `${lockPath} still held by another process after ${timeoutMs} ms`
+        : lockPath,
+    )
   }
 
   let result: T
@@ -237,8 +275,9 @@ function hasExactGrant(api: Win32Api, oldAcl: NativePtr, sidPtr: NativePtr): boo
  * @param api - 绑定表。
  * @param path - 要授予的目录（workspace 或私有 temp 根）。
  * @param sidPtr - ACE 指向的能力 SID。
+ * @param options - 等锁选项，见 {@link withPathLock}。
  */
-export function grantWrite(api: Win32Api, path: string, sidPtr: NativePtr): void {
+export function grantWrite(api: Win32Api, path: string, sidPtr: NativePtr, options?: PathLockOptions): void {
   withPathLock(api, path, () => {
     const { oldAcl, descriptor } = readCurrentDacl(api, path)
     if (oldAcl !== null && hasExactGrant(api, oldAcl, sidPtr)) {
@@ -247,7 +286,7 @@ export function grantWrite(api: Win32Api, path: string, sidPtr: NativePtr): void
       return
     }
     mergeAndApply(api, path, buildExplicitAccess(api, sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK), oldAcl, descriptor, 'grantWrite')
-  })
+  }, options)
 }
 
 /**
@@ -257,9 +296,10 @@ export function grantWrite(api: Win32Api, path: string, sidPtr: NativePtr): void
  * @param api - 绑定表。
  * @param path - 要撤销的目录。
  * @param sidPtr - 要移除 ACE 的能力 SID。
+ * @param options - 等锁选项，见 {@link withPathLock}。
  * @returns 是否真的尝试了删除（目录完全没有 DACL 时为 false）。
  */
-export function revokeWrite(api: Win32Api, path: string, sidPtr: NativePtr): boolean {
+export function revokeWrite(api: Win32Api, path: string, sidPtr: NativePtr, options?: PathLockOptions): boolean {
   return withPathLock(api, path, () => {
     const { oldAcl, descriptor } = readCurrentDacl(api, path)
     if (oldAcl === null) {
@@ -268,5 +308,5 @@ export function revokeWrite(api: Win32Api, path: string, sidPtr: NativePtr): boo
     }
     mergeAndApply(api, path, buildExplicitAccess(api, sidPtr, abi.REVOKE_ACCESS, 0), oldAcl, descriptor, 'revokeWrite')
     return true
-  })
+  }, options)
 }

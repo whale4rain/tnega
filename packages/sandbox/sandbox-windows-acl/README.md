@@ -97,7 +97,7 @@ function tempWriteSid(tempDir: string): string // S-1-4-x-y-1
 
 class AclWriteGrant {
   readonly writeSid: string
-  static create(writeSid: string): Promise<AclWriteGrant>
+  static create(writeSid: string, options?: { operate?: AclOperationRunner }): Promise<AclWriteGrant>
   add(path: string, options?: { revocable?: boolean }): Promise<void>
   revoke(path: string): Promise<void>
   dispose(): Promise<void> // 撤销 revocable 路径 + 释放 SID；常驻路径保留
@@ -110,6 +110,9 @@ function resolveRunnerCommand(options?: {
   runnerCommand?: readonly string[]
   moduleUrl?: string | URL // 仅测试用：解析锚点，默认 import.meta.url
 }): readonly string[]
+function resolveGrantCommand(options?: { moduleUrl?: string | URL }): readonly string[] | undefined
+function grantCommandArgs(operation: AclOperation): string[]
+function parseGrantReply(result: GrantProcessResult, operation: AclOperation): boolean
 function isWindowsAclAvailable(): Promise<boolean> // 探测用，不抛
 class Win32Error extends Error { readonly api: string; readonly win32Code: number }
 ```
@@ -135,7 +138,25 @@ ACE 是**真实目录上的持久变更**，不是进程内的开关，所以两
 
 授予是「读当前 DACL → 合并 → 写回」，整段跑在每路径独占的 `LockFileEx` 锁下，因此并发的
 Provider 实例不会互相覆盖 ACE；命中完全一致的 ACE 时跳过 `SetNamedSecurityInfoW`（大树上这是
-「重新传播整棵树」与「读一次 DACL」的差别）。
+「重新传播整棵树」与「读一次 DACL」的差别）。等锁有上限：以 `LOCKFILE_FAIL_IMMEDIATELY` 轮询，
+默认 5 分钟后以 `LockFileEx` 错误失败（fail closed），持有者挂住时不会把调用线程永远阻塞。
+
+## 授予在 helper 进程里执行
+
+首次授予时 `SetNamedSecurityInfoW` 要把可继承 ACE 同步传播到整棵 workspace 树，大仓库上能跑
+几十分钟。桌面端把 Agent Runtime 跑在 Electron 主进程里，在进程内做这件事会让窗口「未响应」。
+所以 `AclWriteGrant.create(sid, { operate })` 接受一个执行者，Provider 用它把每一次授予/撤销交给
+一次性的 helper 进程：
+
+```text
+[node, <sandbox-windows-acl-grant.js>, <grant|revoke>, <目录>, <能力 SID>]
+```
+
+helper（`src/grant-entry.ts`）在 stdout 写一行 JSON 回传，成功退出 0、失败退出 1；
+`parseGrantReply` 把失败还原成 `Win32Error`，没有回传的退出一律抛出。helper 只有发布形态
+（根包 `dist/`、桌面端 `out/`，都与包入口同目录）；仓库内 dev/vitest 形态
+`resolveGrantCommand()` 返回 `undefined`，授予退回进程内执行。Provider 不给 helper 设超时：
+中途杀掉会留下一棵只传播了一半的树。
 
 ## 限制
 

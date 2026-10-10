@@ -278,6 +278,7 @@ describe('packed artifact', () => {
       'sandbox-local',
       'sandbox-windows-acl',
       'sandbox-windows-acl-runner',
+      'sandbox-windows-acl-grant',
       'fs-sandbox',
       'execution-sandbox',
       'search',

@@ -134,10 +134,43 @@ describe('grantWrite/revokeWrite failure paths', () => {
   it('reports LockFileEx (with the exact code) and closes the lock handle', () => {
     const fake = createFakeWin32({
       lockFileEx: () => 0,
+      getLastError: () => 5,
+    })
+    expect(() => grantWrite(fake.bindings, 'C:\\fake', 1n)).toThrow(/LockFileEx failed \(Win32 5\)/u)
+    expect(fake.calls).toContain('closeHandle')
+  })
+
+  it('never waits on the lock without a bound', () => {
+    const flags: number[] = []
+    const fake = createFakeWin32({
+      lockFileEx: (_file, lockFlags) => {
+        flags.push(lockFlags)
+        return 0
+      },
       getLastError: () => abi.ERROR_LOCK_VIOLATION,
     })
-    expect(() => grantWrite(fake.bindings, 'C:\\fake', 1n)).toThrow(/LockFileEx failed \(Win32 33\)/u)
+    const started = Date.now()
+    expect(() => grantWrite(fake.bindings, 'C:\\fake', 1n, { lockTimeoutMs: 50, lockPollMs: 10 }))
+      .toThrow(/LockFileEx failed \(Win32 33\): .* still held by another process after 50 ms/u)
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(flags.length).toBeGreaterThan(1)
+    expect(flags.every(value => value === (abi.LOCKFILE_EXCLUSIVE_LOCK | abi.LOCKFILE_FAIL_IMMEDIATELY))).toBe(true)
     expect(fake.calls).toContain('closeHandle')
+    expect(fake.calls).not.toContain('getNamedSecurityInfoW')
+  })
+
+  it('takes the lock once the other holder releases it', () => {
+    let attempts = 0
+    const fake = createFakeWin32({
+      lockFileEx: () => {
+        attempts += 1
+        return attempts < 3 ? 0 : 1
+      },
+      getLastError: () => abi.ERROR_LOCK_VIOLATION,
+    })
+    grantWrite(fake.bindings, 'C:\\fake', 1n, { lockTimeoutMs: 5_000, lockPollMs: 1 })
+    expect(attempts).toBe(3)
+    expect(fake.calls).toContain('setNamedSecurityInfoW')
   })
 
   it('reports GetNamedSecurityInfoW when the DACL cannot be read', () => {

@@ -48,6 +48,8 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
+
 ### Features
 
 - The interface now uses Nunito, a rounded, open typeface bundled with the app so every system renders it the same; the type ramp sits half a step larger to match.
@@ -63,6 +65,11 @@ compare links provide a convenient browser view of the boundaries.
 
 - Reopening a crashed session no longer rewrites the whole log: repair cuts only a torn tail and appends the closing events, so a second crash during repair cannot empty the session. A log damaged in the middle keeps a `.corrupt-<time>` copy beside it, and `flush()` now syncs the file to disk.
 - After a crash, the model is told whether an interrupted tool call never started (safe to call again) or may already have taken effect. Built-in read-only tools (file reads, listings, `glob`, `grep`, `http_get`, browser observation) are marked safe to repeat; `write_file`, `shell` and browser actions ask the model to check the current state first.
+
+### Fixes
+
+- Windows desktop no longer freezes ("Not Responding") the first time a workspace is sandboxed for writes. Granting the sandbox's write ACE propagates it across the whole workspace tree, which can take many minutes on a large repository; it now runs in a separate helper process (`sandbox-windows-acl-grant.js`, shipped beside the runner) so the window and local server stay responsive. Concurrent commands share one grant instead of each waiting to redo it.
+- The Windows ACL per-path lock no longer waits forever: if another process holds it for more than 5 minutes the grant fails closed with a `LockFileEx` error instead of hanging.
 
 ## [0.4.25-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.1) — 2026-10-09
 

@@ -25,6 +25,12 @@ await Promise.all([
   }),
   build({
     ...shared,
+    // The ACL grant helper keeps whole-tree DACL propagation off the main process.
+    entryPoints: [fileURLToPath(new URL('../../../packages/sandbox/sandbox-windows-acl/src/grant-entry.ts', import.meta.url))],
+    outfile: fileURLToPath(new URL('../out/sandbox-windows-acl-grant.js', import.meta.url)),
+  }),
+  build({
+    ...shared,
     banner: {
       js: "import { createRequire as __tnegaCreateRequire } from 'node:module'; const require = __tnegaCreateRequire(import.meta.url);",
     },
