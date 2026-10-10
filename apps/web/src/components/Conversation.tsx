@@ -339,13 +339,15 @@ export function Conversation({
     setRunning(true)
     setError(undefined)
     setEntries(resumeQueued ? base : beginRun(base, prompt, Date.now(), images))
+    // One id for every attempt below: a retry never queues the same message twice.
+    const requestId = resumeQueued ? undefined : crypto.randomUUID()
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
           await streamRun(workspace, id, prompt, event => {
             notifyCompletion(event)
             onStreamEvent(event)
-          }, controller.signal, resumeQueued, images)
+          }, controller.signal, resumeQueued, images, requestId)
           break
         } catch (reason) {
           // A previous run can take a moment to release the session.

@@ -119,6 +119,11 @@ export interface LLMAdapter {
 }
 
 export interface AgentInput {
+  /**
+   * Caller's stable id for this submission. A retried submission with the
+   * same id is admitted once: the inbox keeps it as the message id.
+   */
+  requestId?: string
   text?: string
   /** Images sent with `text` as one user message. */
   attachments?: ModelAttachment[]

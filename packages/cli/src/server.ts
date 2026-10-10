@@ -1080,7 +1080,8 @@ async function handleApi(
         sendError(res, 409, 'session has no active run to steer')
         return
       }
-      if (entry) await entry.agent.steer({ text: prompt, attachments })
+      const requestId = submissionId(body.requestId)
+      if (entry) await entry.agent.steer({ text: prompt, attachments, ...(requestId ? { requestId } : {}) })
       else if (inbox) await inbox.steer({ text: prompt, ...(attachments.length ? { content: [userMessage(prompt, attachments)] } : {}) })
       sendJson(res, 200, { accepted: true })
       return
@@ -1217,6 +1218,7 @@ async function handleRun(
     return
   }
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+  const requestId = submissionId(body.requestId)
   const summary = await readSessionSummary(workspace, id)
   const permission: PermissionMode = summary.permission ?? 'read-only'
   const agentType = summary.agentType ?? 'general'
@@ -1258,6 +1260,7 @@ async function handleRun(
       config,
       resumeQueued,
       attachments,
+      ...(requestId ? { requestId } : {}),
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ...(context.browser ? { browser: context.browser } : {}),
       processes: processesFor(context, workspace),
@@ -1459,6 +1462,8 @@ async function handleRun(
 interface ResidentRunRequest {
   ptcRuntime?: PtcRuntimeQuickjsConfig
   resumeQueued?: boolean
+  /** The client's id for this submission; a retry with the same id is admitted once. */
+  requestId?: string
   attachments?: ModelAttachment[]
   browser?: PlaywrightBrowserHost
   processes?: ProcessRegistry
@@ -1707,6 +1712,11 @@ async function deliverQuestionSteer(
   await session.flush()
 }
 
+/** A client-chosen submission id: opaque, but short and plain enough to be a message id. */
+function submissionId(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(value) ? value : undefined
+}
+
 /** A turn a crash cut off, for the client to continue or offer to continue. */
 function recoveryField(events: readonly SessionEvent[]): { recovery?: { safe: boolean; uncertainCalls: string[] } } {
   const interrupted = findInterruptedTurn(events)
@@ -1852,6 +1862,7 @@ async function runResidentTurn(
       await agent.followup({
         text: req.prompt,
         ...(req.attachments?.length ? { attachments: req.attachments } : {}),
+        ...(req.requestId ? { requestId: req.requestId } : {}),
       })
     }
     while (true) {

@@ -12,7 +12,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 
-it('reports a crash-cut turn and continues it through a resumed run', async () => {
+async function setup() {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-recovery-web-'))
   cleanup.push(() => rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))
   const requests: Array<{ messages: Array<{ role: string; content?: string }> }> = []
@@ -20,7 +20,7 @@ it('reports a crash-cut turn and continues it through a resumed run', async () =
     let body = ''
     req.on('data', chunk => { body += String(chunk) })
     req.on('end', () => {
-      requests.push(JSON.parse(body))
+      if (!body.includes('Name this Session')) requests.push(JSON.parse(body))
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'picked up' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`)
     })
@@ -38,6 +38,11 @@ it('reports a crash-cut turn and continues it through a resumed run', async () =
     headers: { 'x-tnega-client': '1', 'content-type': 'application/json' },
   })
   const { session } = await (await call('/api/sessions', {})).json() as { session: { id: string } }
+  return { workspace, requests, call, session }
+}
+
+it('reports a crash-cut turn and continues it through a resumed run', async () => {
+  const { workspace, requests, call, session } = await setup()
 
   // A previous process died while read_file was running.
   const log = new SessionLog(sessionFile(workspace, session.id))
@@ -63,4 +68,14 @@ it('reports a crash-cut turn and continues it through a resumed run', async () =
   const after = await (await call(`/api/sessions/${session.id}`)).json() as { recovery?: unknown }
   expect(after.recovery).toBeUndefined()
   expect(await (await call(`/api/sessions/${session.id}/recover`, {})).json()).toEqual({ resumeQueued: false })
+})
+
+it('admits a resubmitted prompt once', async () => {
+  const { requests, call, session } = await setup()
+  const submit = () => call(`/api/sessions/${session.id}/runs`, { prompt: 'deploy the site', requestId: 'request-0001' })
+  expect(await (await submit()).text()).toContain('picked up')
+  await (await submit()).text()
+  expect(requests).toHaveLength(1)
+  const detail = await (await call(`/api/sessions/${session.id}`)).json() as { events: Array<{ type: string; payload: { content?: string } }> }
+  expect(detail.events.filter(event => event.type === 'user/message' && event.payload.content === 'deploy the site')).toHaveLength(1)
 })

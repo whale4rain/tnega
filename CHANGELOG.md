@@ -61,6 +61,7 @@ compare links provide a convenient browser view of the boundaries.
 - Project threads a crash cut off no longer stay "working" forever after a restart. A thread that can safely continue picks its run up again and reports to its parent as usual. One with a tool call that may already have taken effect turns blocked, and its parent is told once.
 - Only one process writes a session at a time. A second process (say the CLI while the desktop app is running the same session) gets a clear error instead of interleaving writes, and it no longer "repairs" the other process's live turn. The lock (`<session>.jsonl.lock`) is refreshed while held. If its process has exited, or it hasn't been refreshed for 30 seconds, the next writer takes it over.
 - A `shell` command that a crash interrupts now reports what it had printed. While a call runs, the last 2,000 characters of its output are saved every 2 seconds, and the interrupted result quotes them so the model can tell how far it got.
+- Sending a message is safe to retry. The Web client tags each message and steer with an id, and a repeat with the same id (after a dropped connection or a restart) is queued once, not twice.
 
 ### Fixes
 

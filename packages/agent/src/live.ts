@@ -367,13 +367,20 @@ class LiveAgentImpl implements LiveAgent {
     const content = inboxContent(input)
     const steeredAfterAbort = target === 'steer' && this._controller?.signal.aborted === true
     return this._mutatePending(async () => {
+      // A resubmission (a client retry after a dropped connection or restart) is already in the log.
+      if (input.requestId !== undefined && this._durable.admitted(input.requestId)) return
+      const fields = {
+        ...(input.requestId !== undefined ? { id: input.requestId } : {}),
+        text,
+        ...(content !== undefined ? { content } : {}),
+      }
       const message = target === 'followup'
-        ? await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
+        ? await this._durable.insert(fields)
         : target === 'steer'
         ? steeredAfterAbort
-          ? await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) })
-          : await this._durable.steer({ text, ...(content !== undefined ? { content } : {}) })
-        : await this._durable.insert({ text, ...(content !== undefined ? { content } : {}) }, 'next-step')
+          ? await this._durable.insert(fields)
+          : await this._durable.steer(fields)
+        : await this._durable.insert(fields, 'next-step')
       // The durable correction is ready before cancellation releases the old
       // Run. No queued older input can restart it without seeing this message.
       if (interrupt) this.cancel({ type: 'user' }, { keepInbox: true })

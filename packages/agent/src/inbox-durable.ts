@@ -21,17 +21,24 @@ export class DurableInbox {
   private _nextTurn: DurableInboxMessage[] = []
   private _nextStep: DurableInboxMessage[] = []
   private _operationTail: Promise<void> = Promise.resolve()
+  /** Every message id ever inserted, so a resubmitted request is admitted once. */
+  private _admitted = new Set<string>()
 
   constructor(private _session: SessionLog) {}
+
+  /** Whether a message with this id was ever inserted into this Session's inbox. */
+  admitted(id: string): boolean {
+    return this._admitted.has(id)
+  }
 
   get size(): number {
     return this._nextTurn.length + this._nextStep.length
   }
 
-  async insert(input: { text?: string; content?: unknown }, target: DurableTarget = 'next-turn'): Promise<DurableInboxMessage> {
+  async insert(input: { id?: string; text?: string; content?: unknown }, target: DurableTarget = 'next-turn'): Promise<DurableInboxMessage> {
     return this._run(async () => {
       const message: DurableInboxMessage = {
-        id: randomUUID(),
+        id: input.id ?? randomUUID(),
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.content !== undefined ? { content: input.content } : {}),
       }
@@ -47,14 +54,15 @@ export class DurableInbox {
         }],
       })
       list.push(message)
+      this._admitted.add(message.id)
       return message
     })
   }
 
-  async steer(input: { text?: string; content?: unknown }): Promise<DurableInboxMessage> {
+  async steer(input: { id?: string; text?: string; content?: unknown }): Promise<DurableInboxMessage> {
     return this._run(async () => {
       const message: DurableInboxMessage = {
-        id: randomUUID(),
+        id: input.id ?? randomUUID(),
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.content !== undefined ? { content: input.content } : {}),
       }
@@ -69,6 +77,7 @@ export class DurableInbox {
         }],
       })
       this._nextStep.push(message)
+      this._admitted.add(message.id)
       return message
     })
   }
@@ -170,6 +179,7 @@ export class DurableInbox {
         }],
       })
       list.splice(safeIndex, 0, message)
+      this._admitted.add(message.id)
       return message
     })
   }
@@ -280,6 +290,7 @@ export class DurableInbox {
       }
       let insertedOffset = 0
       for (const item of payload.inserted ?? []) {
+        this._admitted.add(item.id)
         const message: DurableInboxMessage = {
           id: item.id,
           ...(item.content !== undefined ? { text: item.content } : {}),
