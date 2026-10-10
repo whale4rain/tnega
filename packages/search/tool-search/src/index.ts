@@ -74,6 +74,8 @@ function globTool(service: SearchService, config: ResolvedConfig): ToolDefinitio
       },
     },
     timeoutMs: config.searchTimeoutMs,
+    // Read-only: a call cut off by a restart is safe to issue again.
+    interruption: 'retry',
     async execute(input, options: ToolExecuteOptions) {
       const args = record(input)
       const pattern = stringField(args.pattern, 'pattern')
@@ -108,6 +110,8 @@ function grepTool(service: SearchService, config: ResolvedConfig): ToolDefinitio
       },
     },
     timeoutMs: config.searchTimeoutMs,
+    // Read-only: a call cut off by a restart is safe to issue again.
+    interruption: 'retry',
     async execute(input, options: ToolExecuteOptions) {
       const args = record(input)
       const root = await searchRoot(config, optionalString(args.path, 'path'))

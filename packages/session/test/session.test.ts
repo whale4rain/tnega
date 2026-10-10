@@ -742,7 +742,11 @@ describe('SessionLog lifecycle and repair', () => {
     const results = events.filter(event => event.type === 'tool/result')
     expect(results.map(event => event.payload.toolCallId)).toEqual(['done', 'running', 'pending'])
     expect(results.slice(1).every(event => !event.payload.ok && event.payload.error?.name === 'SessionInterruptedError')).toBe(true)
-    expect(results[2]?.payload.error?.message).toContain('confirm the prior effect')
+    // A started call's outcome is unknown; a declared call that never started is safe to repeat.
+    expect(results[1]?.payload.error?.message).toContain('TOOL_OUTCOME_UNKNOWN')
+    expect(results[1]?.payload.error?.message).toContain('may already have taken effect')
+    expect(results[2]?.payload.error?.message).toContain('TOOL_NOT_STARTED')
+    expect(results[2]?.payload.error?.message).toContain('never ran')
     expect(await reopened.deriveMessages()).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'tool', tool_call_id: 'pending' }),
     ]))

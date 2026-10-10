@@ -1252,6 +1252,31 @@ export function safeCompactSplit(
   return index
 }
 
+/** The session stopped before this tool call started; it never ran. */
+export const TOOL_NOT_STARTED = 'TOOL_NOT_STARTED'
+/** The call was recorded as started, but its outcome never was. */
+export const TOOL_OUTCOME_UNKNOWN = 'TOOL_OUTCOME_UNKNOWN'
+
+/**
+ * Model-visible text of an interrupted call's synthetic result. A call that
+ * never started is plainly safe to issue again; one that started may already
+ * have had its effect, so its declared disposition decides the advice.
+ */
+export function interruptedToolMessage(
+  notStarted: boolean,
+  interruption: 'fail' | 'retry' | 'confirm' | undefined,
+): string {
+  if (notStarted) {
+    return `${TOOL_NOT_STARTED}: the session was interrupted before this tool call started, so it never ran. Call it again if it is still needed.`
+  }
+  const advice = interruption === 'retry'
+    ? 'This tool is safe to repeat; call it again if the result is still needed.'
+    : interruption === 'confirm'
+      ? 'It may already have taken effect. Check the current state (or ask the user) before calling it again.'
+      : 'It may already have taken effect and was not replayed. Retry only if the operation is read-only or idempotent; otherwise verify the current state first.'
+  return `${TOOL_OUTCOME_UNKNOWN}: the session was interrupted while this tool call was running, and its result was not recorded. ${advice}`
+}
+
 export function repairUnclosed(
   events: readonly SessionEvent[],
 ): SessionEvent[] {
@@ -1307,11 +1332,13 @@ export function repairUnclosed(
     nextTs += 1
   }
 
+  const notStarted = new Set<string>()
   for (const call of declaredCalls.values()) {
     if (openCalls.some(open => open.payload.id === call.id)) continue
     const payload: ToolCallPayload = { id: call.id, name: call.name, arguments: call.arguments, interruption: call.interruption ?? 'fail' }
     push('tool/call', payload)
     openCalls.push({ id: '', seq: 0, ts: 0, type: 'tool/call', payload })
+    notStarted.add(call.id)
   }
   for (const call of openCalls) {
     push('tool/result', {
@@ -1321,10 +1348,7 @@ export function repairUnclosed(
       ok: false,
       error: {
         name: 'SessionInterruptedError',
-        message: 'session interrupted before tool result was recorded; '
-          + (call.payload.interruption === 'retry' ? 'a new call may retry this tool'
-            : call.payload.interruption === 'confirm' ? 'confirm the prior effect with the user before retrying'
-              : 'the call failed and was not replayed'),
+        message: interruptedToolMessage(notStarted.has(call.payload.id), call.payload.interruption),
       },
     })
   }

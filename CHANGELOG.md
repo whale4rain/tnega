@@ -59,6 +59,7 @@ compare links provide a convenient browser view of the boundaries.
 ### Fixes
 
 - Reopening a crashed session no longer rewrites the whole log: repair cuts only a torn tail and appends the closing events, so a second crash during repair cannot empty the session. A log damaged in the middle keeps a `.corrupt-<time>` copy beside it, and `flush()` now syncs the file to disk.
+- After a crash, the model is told whether an interrupted tool call never started (safe to call again) or may already have taken effect. Built-in read-only tools (file reads, listings, `glob`, `grep`, `http_get`, browser observation) are marked safe to repeat; `write_file`, `shell` and browser actions ask the model to check the current state first.
 
 ## [0.4.25-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.1) — 2026-10-09
 
