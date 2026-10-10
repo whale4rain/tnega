@@ -56,6 +56,11 @@ compare links provide a convenient browser view of the boundaries.
 - Opening a Project artifact shows it as a page on a near full-window sheet beside its Thread: one header with type, size, version and author, quote and download actions, and no repeated outputs strip.
 - What the coordinator sends a thread now appears in that thread's chat as a dashed bubble on the user side, labelled with the sender; it replaces the folded brief when it carries it.
 
+### Fixes
+
+- Windows desktop no longer freezes ("Not Responding") the first time a workspace is sandboxed for writes. Granting the sandbox's write ACE propagates it across the whole workspace tree, which can take many minutes on a large repository; it now runs in a separate helper process (`sandbox-windows-acl-grant.js`, shipped beside the runner) so the window and local server stay responsive. Concurrent commands share one grant instead of each waiting to redo it.
+- The Windows ACL per-path lock no longer waits forever: if another process holds it for more than 5 minutes the grant fails closed with a `LockFileEx` error instead of hanging.
+
 ## [0.4.25-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.1) — 2026-10-09
 
 ### Other

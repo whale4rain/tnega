@@ -72,8 +72,10 @@ export const DENIAL_SIGNATURES: readonly string[] = [
 ]
 
 export { AclWriteGrant } from './grant.js'
-export type { AclWriteGrantAddOptions } from './grant.js'
+export type { AclWriteGrantAddOptions, AclWriteGrantCreateOptions } from './grant.js'
 export { isWindowsAclAvailable, Win32Error } from './ffi.js'
+export { grantCommandArgs, parseGrantReply, resolveGrantCommand } from './grant-command.js'
+export type { AclOperation, AclOperationRunner, GrantProcessResult, ResolveGrantCommandOptions } from './grant-command.js'
 export { assertPrivateTempDisjoint, assertTempRootOutsideWorkspace } from './path-boundary.js'
 export { resolveRunnerCommand } from './runner-command.js'
 export type { ResolveRunnerCommandOptions } from './runner-command.js'
