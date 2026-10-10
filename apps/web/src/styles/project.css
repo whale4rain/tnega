@@ -1417,6 +1417,48 @@
   container-type: inline-size;
 }
 
+/* One segment per thread, coloured like its light; resolved work fills from the left. */
+.board-shape {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.board-shape-bar {
+  display: flex;
+  flex: 1;
+  gap: 3px;
+  height: 8px;
+  min-width: 0;
+}
+
+.board-shape-seg {
+  flex: 1;
+  min-width: 3px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+  transition: background-color var(--duration-fast);
+}
+
+.board-shape-seg.seg-resolved { background: var(--text-3); }
+.board-shape-seg.seg-ready { background: var(--success); }
+.board-shape-seg.seg-working { background: var(--accent); animation: status-light-pulse 1.6s var(--ease-out) infinite; }
+.board-shape-seg.seg-needs { background: var(--warn); }
+.board-shape-seg.seg-failed { background: var(--danger); }
+
+.board-shape-count {
+  flex: none;
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.board-shape-count strong {
+  color: var(--text);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The Board opens with the project's name and one sentence on how it stands, like a page title. */
 .board-intro {
   display: flex;
@@ -1444,16 +1486,11 @@
 
 .board-today {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  min-height: var(--control-lg);
-  padding: 6px 12px;
-  margin-bottom: 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  font-size: var(--text-md);
+  gap: 2px 12px;
+  margin: 0 0 18px;
+  font-size: var(--text-sm);
   color: var(--text-3);
 }
 
@@ -1559,6 +1596,10 @@
 
 .board-card {
   position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
   border-radius: var(--radius-md);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1570,34 +1611,48 @@
   box-shadow: var(--shadow-sm);
 }
 
+.board-card:has(.board-card-open:focus-visible) {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
 .board-card.col-needs {
   border-color: var(--warn);
 }
 
-.board-card-open {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 12px;
-  text-align: left;
+.board-card > .status-light {
+  margin-top: 6px;
 }
 
 .board-card-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   flex: 1;
   min-width: 0;
 }
 
-.board-card-title {
+/* The title opens the thread; its hit area stretches over the whole card. */
+.board-card-open {
   font-size: var(--text-lg);
   font-weight: 650;
+  color: var(--text);
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-right: 44px;
+}
+
+.board-card-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.board-card-open:focus-visible {
+  outline: none;
 }
 
 .board-card-activity {
@@ -1607,6 +1662,11 @@
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* A question waiting on you gets two lines: it is what you came to read. */
+.col-needs .board-card-activity {
+  -webkit-line-clamp: 2;
 }
 
 .board-progress {
@@ -1629,6 +1689,36 @@
   border-radius: inherit;
   background: var(--accent);
   transition: width 400ms var(--ease-out);
+}
+
+.board-steps {
+  display: flex;
+  flex: 1;
+  gap: 3px;
+}
+
+.board-step {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+}
+
+.board-step.step-done { background: var(--accent); }
+
+.board-step.step-active {
+  background: var(--accent);
+  opacity: 0.3;
+  animation: board-step-breathe 1.6s var(--ease-out) infinite alternate;
+}
+
+@keyframes board-step-breathe {
+  to { opacity: 0.6; }
+}
+
+/* Only a thread that is running breathes; a paused checklist holds still. */
+.board-card:not(.col-working) .board-step.step-active {
+  animation: none;
 }
 
 .board-progress-count {
@@ -1656,13 +1746,40 @@
   font-size: var(--text-xs);
 }
 
-button.board-chip {
+.board-output {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  height: 22px;
+  border: 1px solid transparent;
+  color: var(--text-2);
+  text-decoration: none;
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.board-output:is(button, a):hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.board-output.tone-danger {
+  color: var(--danger);
+}
+
+.board-output-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.board-chip:not(.board-output) {
   height: 24px;
   padding: 0 10px;
   border: 1px solid transparent;
 }
 
-button.board-chip:hover {
+button.board-chip:not(.board-output):hover {
   border-color: var(--border-strong);
 }
 
@@ -1681,6 +1798,7 @@ button.board-chip.active {
 
 .board-card-actions {
   position: absolute;
+  z-index: 1;
   top: 6px;
   right: 6px;
   display: flex;
@@ -1722,6 +1840,79 @@ button.board-chip.active {
 
 .board-resolved .board-card {
   opacity: 0.75;
+}
+
+/* The last few things threads did: one quiet line each, newest first. */
+.board-feed {
+  margin-top: 20px;
+}
+
+.board-feed-head {
+  margin: 0 0 6px;
+  font-size: var(--text-md);
+  font-weight: 650;
+  color: var(--text);
+}
+
+.board-feed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-feed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--row-h);
+  padding: 2px 6px;
+  margin: 0 -6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  color: var(--text-2);
+  text-align: left;
+}
+
+.board-feed-row:hover {
+  background: var(--surface-hover);
+}
+
+.board-feed-icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.board-feed-icon.tone-success { color: var(--success); }
+.board-feed-icon.tone-warn { color: var(--warn); }
+.board-feed-icon.tone-danger { color: var(--danger); }
+
+.board-feed-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-feed-text strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.board-feed-detail {
+  color: var(--text-3);
+}
+
+.board-feed-time {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-shape-seg.seg-working,
+  .board-step.step-active { animation: none; }
 }
 
 /* --- routines ------------------------------------------------------------ */
@@ -1851,10 +2042,6 @@ button.board-chip.active {
 
 .thread-link .status-light {
   align-self: center;
-}
-
-.board-card-open > .status-light {
-  margin-top: 5px;
 }
 
 /* --- pushes and pull requests -------------------------------------------- */

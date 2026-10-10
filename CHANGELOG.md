@@ -48,6 +48,10 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Features
+
+- The Project Board reads at a glance: a strip with one segment per thread, coloured like its status light, shows how much is done and what needs you; each checklist shows one segment per step; a card's outputs, pushes and pull requests open straight from the card; and a short "Recently" list says what threads last did.
+
 ## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
 
 ### Features
