@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.25-beta.3 | [`v0.4.25-beta.2...v0.4.25-beta.3`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.2...v0.4.25-beta.3) | 25 |
 | 0.4.25-beta.2 | [`v0.4.25-beta.1...v0.4.25-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.1...v0.4.25-beta.2) | 5 |
 | 0.4.25-beta.1 | [`v0.4.24-beta.1...v0.4.25-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.24-beta.1...v0.4.25-beta.1) | 3 |
 | 0.4.24-beta.1 | [`v0.4.24...v0.4.24-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.24...v0.4.24-beta.1) | 7 |
@@ -51,6 +52,8 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.4.25-beta.3](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.3) — 2026-10-11
 
 ### Features
 
