@@ -2,7 +2,8 @@
 
 Problems we know about and directions we intend to take, with what is in
 place today. Each entry links to the research or design that backs it. When
-an item ships, move it to the CHANGELOG and delete it here.
+an item ships, delete it here; the release-prep pull request records it in the
+CHANGELOG.
 
 ## Open problems
 
