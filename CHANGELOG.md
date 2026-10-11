@@ -54,6 +54,11 @@ compare links provide a convenient browser view of the boundaries.
 - New sessions start in a scratch folder in the tnega home (`~/.tnega/scratch`, shown as "No folder") instead of requiring a workspace. The sidebar's New session button and `Ctrl+Shift+O` use it; each workspace's own button still starts a session there. The server reports the folder as `defaultWorkspace` from `GET /api/workspaces`.
 - On the desktop, the Workbench tabs (Board, Library, Files, Terminal and the rest) sit in a row under the window controls and get the panel's full width. The session header's controls no longer sit in pill outlines.
 
+### Fixes
+
+- Stop now ends a running tool call promptly. A tool that ignores cancellation, such as an MCP server that never answers, is settled as aborted 2 seconds after Stop instead of holding the run. MCP calls are cancelled on the server too.
+- On Windows, Stop no longer waits for the sandbox to finish its first-time permission setup on a large workspace (the setup keeps going in the background for the next command), and a stopped command reports within a second instead of waiting for the whole process tree sweep.
+
 ## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
 
 ### Features

@@ -140,3 +140,17 @@ export function describeUnparsedArguments(input: string): string | undefined {
     return `the arguments were not valid JSON (${reason})`
   }
 }
+
+/**
+ * Raised when a tool notices the caller's abort mid-walk, or by the registry
+ * when a cancelled tool never settles on its own. The agent loop reads
+ * the abort from its own signal and settles the turn as cancelled; the error
+ * only has to be honest about why the result is incomplete.
+ */
+export class ToolAbortError extends Error {
+  override name = 'AbortError'
+
+  constructor(message = 'tool call aborted') {
+    super(message)
+  }
+}

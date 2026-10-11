@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import {
+  SandboxCancelledError,
   SandboxService,
   SandboxUnavailableError,
   resolveSandboxPolicy,
@@ -189,6 +190,42 @@ describe('SandboxService.confine', () => {
     await expect(service.confine(request())).rejects.toThrowError('runner exploded')
     expect(errors).toHaveLength(1)
     expect(errors[0]?.code).toBeUndefined()
+  })
+
+  it('stops waiting for a slow preparation when the call is cancelled', async () => {
+    const root = new Context()
+    let finishPreparation: (() => void) | undefined
+    const result = new StubSandbox(new Context()).result
+    class SlowSandbox extends SandboxService {
+      protected override runConfine(): Promise<ConfinedArgv> {
+        return new Promise(resolve => { finishPreparation = () => resolve(result) })
+      }
+
+      override async status(): Promise<SandboxBackendStatus> {
+        return { available: true, runner: 'slow', enforcement: 'full' }
+      }
+    }
+    const service = new SlowSandbox(root)
+    const errors: SandboxErrorEvent[] = []
+    root.on('sandbox/error', (event: SandboxErrorEvent) => {
+      errors.push(event)
+    })
+
+    const controller = new AbortController()
+    const confining = service.confine(request({ signal: controller.signal }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    controller.abort()
+
+    await expect(confining).rejects.toBeInstanceOf(SandboxCancelledError)
+    expect(errors).toHaveLength(0)
+    finishPreparation?.()
+  })
+
+  it('does not start preparing a call that was already cancelled', async () => {
+    const { service, stub } = harness()
+    await expect(service.confine(request({ signal: AbortSignal.abort() })))
+      .rejects.toMatchObject({ name: 'AbortError' })
+    expect(stub.seen).toHaveLength(0)
   })
 
   it('keeps the authoritative result when an observer throws', async () => {
