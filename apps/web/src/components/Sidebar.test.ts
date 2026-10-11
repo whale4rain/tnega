@@ -44,33 +44,50 @@ function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   return { props, view: render(createElement(Sidebar, props)) }
 }
 
-it('groups projects and sessions under their workspace and opens items with that workspace', async () => {
+it('pins every project above workspace groups ordered by their latest session', async () => {
   vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [session('b1', '/b', 5)] })
-  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [project('pb', 9)] })
   const { props, view } = renderSidebar()
 
-  const groups = view.container.querySelectorAll('.workspace-group')
-  expect([...groups].map(group => group.querySelector('.workspace-name')?.textContent)).toEqual(['a', 'b'])
-  // Projects come before sessions in the current workspace.
-  expect([...groups[0]!.querySelectorAll('.session-title > span:last-child')].map(node => node.textContent))
-    .toEqual(['Project p1', 'Session a1', 'Session a2'])
+  // Projects from every workspace are pinned, newest first, without their workspace.
+  await waitFor(() => expect(view.getByText('Project pb')).toBeTruthy())
+  const pinned = view.getByRole('region', { name: 'Pinned' })
+  expect([...pinned.querySelectorAll('.session-title > span:last-child')].map(node => node.textContent)).toEqual(['Project pb', 'Project p1'])
 
-  // Another workspace loads its own sessions; opening one names that workspace.
-  await waitFor(() => expect(view.getByText('Session b1')).toBeTruthy())
+  // Rows carry only a dot and a title; the time is in the tooltip.
+  expect(view.container.querySelector('.session-time')).toBeNull()
+  // The workspace with the newest session comes first; groups hold sessions only.
+  const groups = view.container.querySelectorAll('.workspace-group')
+  expect([...groups].map(group => group.querySelector('.workspace-name')?.textContent)).toEqual(['b', 'a'])
+  expect([...groups[1]!.querySelectorAll('.session-title > span:last-child')].map(node => node.textContent))
+    .toEqual(['Session a1', 'Session a2'])
+
   expect(api.sessions).toHaveBeenCalledWith('/b')
   fireEvent.click(view.getByText('Session b1'))
   expect(props.onSelectSession).toHaveBeenCalledWith('/b', 'b1')
-  fireEvent.click(view.getByText('Project p1'))
-  expect(props.onSelectProject).toHaveBeenCalledWith('/a', 'p1')
+  fireEvent.click(view.getByText('Project pb'))
+  expect(props.onSelectProject).toHaveBeenCalledWith('/b', 'pb')
 })
 
-it('remembers collapsed workspaces and keeps archived projects behind "more"', async () => {
+it('starts a new session in the default folder and names it plainly', () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const { props, view } = renderSidebar({ workspaces: ['/a', '/home/.tnega/scratch'], defaultWorkspace: '/home/.tnega/scratch' })
+
+  fireEvent.click(view.getByRole('button', { name: 'New session' }))
+  expect(props.onNewSession).toHaveBeenCalledWith('/home/.tnega/scratch')
+  expect(view.getByText('No folder')).toBeTruthy()
+  // The default folder can't be removed from the list.
+  expect(view.queryByRole('button', { name: 'No folder options' })).toBeNull()
+})
+
+it('remembers collapsed workspaces and keeps archived projects behind "archived"', async () => {
   vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
   vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
   const { view } = renderSidebar({ projects: [project('live', 2), project('old', 1, true)] })
 
   expect(view.queryByText('Project old')).toBeNull()
-  fireEvent.click(view.getByText('1 more'))
+  fireEvent.click(view.getByText('1 archived'))
   expect(view.getByText('Project old')).toBeTruthy()
 
   const toggle = view.getAllByRole('button', { expanded: true }).find(button => button.textContent === 'b')!
