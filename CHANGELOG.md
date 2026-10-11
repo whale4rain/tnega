@@ -10,11 +10,15 @@ next actual tag's range; missing tags alone do not prove no package was publishe
 
 Each release covers all commits reachable from its tag but not the preceding
 actual tag, including merged branches. Entries summarize user-visible changes
-and compatibility, rather than repeat every commit. Update Unreleased as each
-feature or fix lands, and move entries into a version only when it ships.
+and compatibility, rather than repeat every commit. Feature pull requests do not
+edit this file; the release-prep pull request writes Unreleased from the merged
+pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.4.25-beta.2 | [`v0.4.25-beta.1...v0.4.25-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.1...v0.4.25-beta.2) | 5 |
+| 0.4.25-beta.1 | [`v0.4.24-beta.1...v0.4.25-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.24-beta.1...v0.4.25-beta.1) | 3 |
+| 0.4.24-beta.1 | [`v0.4.24...v0.4.24-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.24...v0.4.24-beta.1) | 7 |
 | 0.4.24 | [`v0.4.23...v0.4.24`](https://github.com/whale4rain/tnega/compare/v0.4.23...v0.4.24) | 10 |
 | 0.4.23 | [`v0.4.22...v0.4.23`](https://github.com/whale4rain/tnega/compare/v0.4.22...v0.4.23) | 7 |
 | 0.4.22 | [`v0.4.21...v0.4.22`](https://github.com/whale4rain/tnega/compare/v0.4.21...v0.4.22) | 9 |
@@ -54,13 +58,26 @@ compare links provide a convenient browser view of the boundaries.
 - New sessions start in a scratch folder in the tnega home (`~/.tnega/scratch`, shown as "No folder") instead of requiring a workspace. The sidebar's New session button and `Ctrl+Shift+O` use it; each workspace's own button still starts a session there. The server reports the folder as `defaultWorkspace` from `GET /api/workspaces`.
 - On the desktop, the Workbench tabs (Board, Library, Files, Terminal and the rest) sit in a row under the window controls and get the panel's full width. The session header's controls no longer sit in pill outlines.
 - The Project Board reads at a glance: a strip with one segment per thread, coloured like its status light, shows how much is done and what needs you; each checklist shows one segment per step; a card's outputs, pushes and pull requests open straight from the card; and a short "Recently" list says what threads last did.
+- A session whose run was cut off by a crash or restart picks up where it stopped when you open it, as long as no interrupted tool call may already have taken effect. Otherwise a notice names the uncertain tools and offers Resume; the agent then checks their results before repeating anything.
+- Project threads a crash cut off no longer stay "working" forever after a restart. A thread that can safely continue picks its run up again and reports to its parent as usual. One with a tool call that may already have taken effect turns blocked, and its parent is told once.
+- Only one process writes a session at a time. A second process (say the CLI while the desktop app is running the same session) gets a clear error instead of interleaving writes, and it no longer "repairs" the other process's live turn. The lock (`<session>.jsonl.lock`) is refreshed while held. If its process has exited, or it hasn't been refreshed for 30 seconds, the next writer takes it over.
+- A `shell` command that a crash interrupts now reports what it had printed. While a call runs, the last 2,000 characters of its output are saved every 2 seconds, and the interrupted result quotes them so the model can tell how far it got.
+- Sending a message is safe to retry. The Web client tags each message and steer with an id, and a repeat with the same id (after a dropped connection or a restart) is queued once, not twice.
+- The model's thinking shows as a muted "Thought" row in the conversation: it streams open while the model reasons and folds away when the answer starts.
 
 ### Fixes
 
+- Reopening a crashed session no longer rewrites the whole log: repair cuts only a torn tail and appends the closing events, so a second crash during repair cannot empty the session. A log damaged in the middle keeps a `.corrupt-<time>` copy beside it, and `flush()` now syncs the file to disk.
+- After a crash, the model is told whether an interrupted tool call never started (safe to call again) or may already have taken effect. Built-in read-only tools (file reads, listings, `glob`, `grep`, `http_get`, browser observation) are marked safe to repeat; `write_file`, `shell` and browser actions ask the model to check the current state first.
 - Stop now ends a running tool call promptly. A tool that ignores cancellation, such as an MCP server that never answers, is settled as aborted 2 seconds after Stop instead of holding the run. MCP calls are cancelled on the server too.
+- DeepSeek in thinking mode no longer rejects tool loops with a 400 error: the model's reasoning is sent back with its earlier tool-calling turns, as the API requires.
 - On Windows desktop, a sandboxed command no longer hangs forever the first time it runs in a workspace. The helper that sets up the sandbox's folder permissions now exits when it is done, so the command runs or fails instead of waiting on it.
 - When the Windows sandbox is not allowed to change a workspace folder's permissions (usually because another account, such as an administrator, owns the folder), the command fails with that reason and how to fix it, instead of a bare `Win32 5` error.
 - On Windows, Stop no longer waits for the sandbox to finish its first-time permission setup on a large workspace (the setup keeps going in the background for the next command), and a stopped command reports within a second instead of waiting for the whole process tree sweep.
+
+### Other
+
+- Sessions now store the model's reasoning. A session written by this version can't be opened by an older build.
 
 ## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
 
@@ -71,16 +88,6 @@ compare links provide a convenient browser view of the boundaries.
 - The Workbench opens about as wide as the conversation (default `clamp(420px, 40vw, 760px)`, minimum 420px) and shares its background. Project panels (Thread, Agent messages, Board, Library, Routines, settings) run edge to edge instead of sitting in a second framed card, with clearer headings, the conversation's own text size and a project title on the Board.
 - Opening a Project artifact shows it as a page on a near full-window sheet beside its Thread: one header with type, size, version and author, quote and download actions, and no repeated outputs strip.
 - What the coordinator sends a thread now appears in that thread's chat as a dashed bubble on the user side, labelled with the sender; it replaces the folded brief when it carries it.
-- A session whose run was cut off by a crash or restart picks up where it stopped when you open it, as long as no interrupted tool call may already have taken effect. Otherwise a notice names the uncertain tools and offers Resume; the agent then checks their results before repeating anything.
-- Project threads a crash cut off no longer stay "working" forever after a restart. A thread that can safely continue picks its run up again and reports to its parent as usual. One with a tool call that may already have taken effect turns blocked, and its parent is told once.
-- Only one process writes a session at a time. A second process (say the CLI while the desktop app is running the same session) gets a clear error instead of interleaving writes, and it no longer "repairs" the other process's live turn. The lock (`<session>.jsonl.lock`) is refreshed while held. If its process has exited, or it hasn't been refreshed for 30 seconds, the next writer takes it over.
-- A `shell` command that a crash interrupts now reports what it had printed. While a call runs, the last 2,000 characters of its output are saved every 2 seconds, and the interrupted result quotes them so the model can tell how far it got.
-- Sending a message is safe to retry. The Web client tags each message and steer with an id, and a repeat with the same id (after a dropped connection or a restart) is queued once, not twice.
-
-### Fixes
-
-- Reopening a crashed session no longer rewrites the whole log: repair cuts only a torn tail and appends the closing events, so a second crash during repair cannot empty the session. A log damaged in the middle keeps a `.corrupt-<time>` copy beside it, and `flush()` now syncs the file to disk.
-- After a crash, the model is told whether an interrupted tool call never started (safe to call again) or may already have taken effect. Built-in read-only tools (file reads, listings, `glob`, `grep`, `http_get`, browser observation) are marked safe to repeat; `write_file`, `shell` and browser actions ask the model to check the current state first.
 
 ### Fixes
 

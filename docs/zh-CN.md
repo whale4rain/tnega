@@ -96,8 +96,8 @@ pnpm --filter @tnega/web dev
 
 ## 开发与版本规范
 
-每项用户可见功能、修复或兼容性变化，都在同次改动中及时更新 `CHANGELOG.md` 的
-Unreleased；发布时按上一个实际 Git tag 核对完整差集，包含合并分支与跳号期间的更新。
+功能与修复 PR 不改 `CHANGELOG.md`，避免并行 PR 互相冲突；由发布准备 PR 根据已合并的 PR
+写入 Unreleased，并按上一个实际 Git tag 核对完整差集，包含合并分支与跳号期间的更新。
 
 可独立验收的改动用 Conventional Commits 自主提交。版本发布的颗粒度大于 commit：
 多个新功能稳定并通过必要验证后，才形成一个发布批次，不为每个提交涨版本。

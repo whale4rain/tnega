@@ -22,9 +22,11 @@ configuration, custom Workspace skills, memory and artifacts in the Workspace.
 Bundled skills install offline into `~/.tnega/skills` on startup; existing user
 files are preserved, so upgrades only add missing instructions.
 
-- Update root `CHANGELOG.md` / Unreleased with each user-visible feature, fix or
-  compatibility change, in the same commit. Describe behavior and migration,
-  not internal refactors with no user effect.
+- Feature and fix pull requests do not edit root `CHANGELOG.md`; parallel PRs
+  kept conflicting on it. The release-prep pull request writes Unreleased (and
+  then the version section) from the merged pull requests since the previous
+  actual tag, covering every user-visible feature, fix or compatibility change.
+  Describe behavior and migration, not internal refactors with no user effect.
 - Group Unreleased and version sections consistently under **Features**, **Fixes**,
   and **Other**, omitting empty groups. Features introduce user capabilities or
   deliberate behavior changes; Fixes correct failures or regressions; Other covers
