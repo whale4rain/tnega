@@ -339,7 +339,7 @@ export class LocalSandboxService extends SandboxService {
       await grant.add(workspaceRoot, { revocable: false })
     } catch (error) {
       await grant.dispose().catch(() => undefined)
-      throw error
+      throw explainGrantDenied(acl, workspaceRoot, error)
     }
     return grant
   }
@@ -569,6 +569,26 @@ function runnerFailureRules(runner: SandboxRunnerName, config: Config): readonly
     return [{ fatalSignatures: signatures }]
   }
   return RUNNER_FAILURE_RULES[runner]
+}
+
+/** Win32 `ERROR_ACCESS_DENIED`. */
+const ERROR_ACCESS_DENIED = 5
+
+/**
+ * The workspace grant edits the root folder's DACL, which needs the caller to
+ * own the folder (or hold WRITE_DAC on it). A folder owned by another account,
+ * for example one created from an administrator prompt, refuses that; say so
+ * and what to do, instead of a bare Win32 code. The command still does not run.
+ */
+function explainGrantDenied(acl: WindowsAclModule, workspaceRoot: string, error: unknown): unknown {
+  if (!(error instanceof acl.Win32Error) || error.win32Code !== ERROR_ACCESS_DENIED) return error
+  return new Error(
+    `cannot sandbox commands in ${workspaceRoot}: your account is not allowed to change this folder's permissions, `
+    + 'which the Windows sandbox needs to let commands write here. The folder is usually owned by another account '
+    + `(for example, it was created from an administrator prompt). Make your account its owner (takeown /f "${workspaceRoot}" /r /d y), `
+    + `or run this session with Full access. (${error.message})`,
+    { cause: error },
+  )
 }
 
 export const name = '@tnega/sandbox-local'

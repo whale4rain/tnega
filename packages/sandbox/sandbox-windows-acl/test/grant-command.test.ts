@@ -158,4 +158,29 @@ describe.skipIf(process.platform === 'win32')('the bundled helper', () => {
     expect(usage.exitCode).toBe(1)
     expect(() => parseGrantReply(usage, grant)).toThrow(/usage: <grant\|revoke>/u)
   }, 30_000)
+
+  it('exits by itself inside an Electron utility process', async () => {
+    const dir = scratchDir()
+    const outfile = join(dir, 'sandbox-windows-acl-grant.js')
+    await build({
+      entryPoints: [fileURLToPath(new URL('../src/grant-entry.ts', import.meta.url))],
+      outfile,
+      bundle: true,
+      format: 'esm',
+      platform: 'node',
+      target: 'node22',
+      external: ['koffi'],
+      logLevel: 'silent',
+    })
+    // A utility process keeps its IPC channel open, so setting exitCode alone never ends it.
+    const utility = join(dir, 'utility.cjs')
+    writeFileSync(utility, "Object.defineProperty(process, 'type', { value: 'utility' }); setInterval(() => {}, 1000)\n")
+    const result = await new Promise<GrantProcessResult>((resolve) => {
+      execFile(process.execPath, ['--require', utility, outfile, ...grantCommandArgs(grant)], { timeout: 20_000 }, (error, stdout, stderr) => {
+        resolve({ exitCode: error === null ? 0 : typeof error.code === 'number' ? error.code : -1, stdout, stderr })
+      })
+    })
+    expect(result.exitCode).toBe(1)
+    expect(() => parseGrantReply(result, grant)).toThrow(/only available on win32 hosts/u)
+  }, 30_000)
 })

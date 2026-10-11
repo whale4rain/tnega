@@ -93,6 +93,33 @@ it('shares one in-flight standing ACL grant between concurrent workspace-write c
   }
 })
 
+it('explains a workspace whose permissions this account cannot change, and runs nothing', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'tnega-acl-ws-'))
+  const tempRoot = mkdtempSync(join(tmpdir(), 'tnega-acl-tmp-'))
+  const fake = createFakeWin32()
+  let denied = true
+  __setWin32BindingsForTest({ ...fake.bindings, setNamedSecurityInfoW: (...args) => denied ? 5 : fake.bindings.setNamedSecurityInfoW(...args) })
+  try {
+    const service = mount({
+      windowsAclRunnerCommand: ['node', 'runner.js'],
+      internals: { platform: 'win32', chain: ['windows-acl'], probe: () => 'partial' },
+    })
+    const request = { op: 'shell' as const, argv: SHELL,
+      policy: { mode: 'workspace-write' as const, workspaceRoot: workspace, tempRoot, sessionId: 's' },
+    }
+    const failure = service.confine(request)
+    await expect(failure).rejects.toThrow(/not allowed to change this folder's permissions/u)
+    await expect(failure).rejects.toThrow(/takeown \/f .* \/r \/d y.*Full access.*Win32 5/u)
+    // A failed grant is not remembered: once the folder is fixed, the next command succeeds.
+    denied = false
+    await expect(service.confine(request)).resolves.toMatchObject({ runner: 'windows-acl' })
+  } finally {
+    __setWin32BindingsForTest(undefined)
+    rmSync(workspace, { recursive: true, force: true })
+    rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+
 async function confinedArgv(
   service: LocalSandboxService,
   mode: 'read-only' | 'workspace-write' = 'workspace-write',
