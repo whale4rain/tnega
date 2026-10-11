@@ -209,7 +209,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **Changes**：相对 HEAD 的改动，状态字母（M 警告色、A/U 成功色、D 危险色、R 强调色）与 `+n −n`；diff 用 `@codemirror/merge`，可切换合并 / 并排视图，长段未改动内容折叠；增删着色只用 `--success-soft` / `--danger-soft`。可见时每 5 秒刷新，Agent 的改动随写随现。非 git 工作区给出说明而不是空白。
 - **Terminal**：你自己的 shell（Windows 上优先 PowerShell 7），跑在真实 PTY 上（node-pty + xterm.js），不经沙箱、不是 Agent 工具。切换标签不会断开，重新连接时回放最近的输出。终端配色从 token 读取，随深浅主题切换。
 - **Browser**：见 5.4。
-- **标签栏就是标题栏那一行**：高 `--header-h`，与会话顶栏、侧栏顶部和桌面端原生窗口按钮在同一条中线上；工作台顶部不留内边距。标签多到放不下时用滚轮或触控板横向滚动，选中的标签自动滚入视野；**不显示滚动条**（Windows 上的原生横向滚动条会撑高这一行，把标签挤离中线）。
+- **标签栏与标题栏**：网页端标签栏就是标题栏那一行，高 `--header-h`，与会话顶栏、侧栏顶部在同一条中线上；工作台顶部不留内边距。**桌面端**（2026-10-10 起）工作台最上面一行让给原生窗口按钮（最小化 / 最大化 / 关闭），是一条空的可拖动标题栏（`.wb-titlebar`），标签栏放在它**下面**一行，拿到面板的全部宽度，不再挤在窗口按钮左边。这是「原生按钮融进已有顶栏、不加额外一行」的唯一例外。标签多到放不下时用滚轮或触控板横向滚动，选中的标签自动滚入视野；**不显示滚动条**（Windows 上的原生横向滚动条会撑高这一行，把标签挤离中线）。
 - **记忆与宽度**：开关状态与当前工具在重载后保留，文档标签不保留。左边缘可拖动调整宽度并被记住（最窄 420px，最宽为窗口的 72%，默认 `--workbench-default` = `clamp(420px, 40vw, 760px)`，在 1920px 宽的窗口里和对话列差不多宽；旧版本保存的更窄宽度在读取时抬到 420px）；工具标签只显示图标，选中的那个显示名称（见 5.5）；窗口窄于 1100px 时工作台浮在对话之上。
 
 ### 5.4 Agent 浏览器
@@ -237,13 +237,16 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - 图标是 lucide 细线（描边 1.75），静止时用三级文字色，颜色只表达状态；工具行图标不再垫底色方块。
 - 头像：对话回合 18px；Project 不画头像（§2）。
 - 顶栏只有一行：标题 · 工作区。顶栏贴着窗口右上角时用 `.window-controls-header` 给原生按钮让位。
+- 顶栏右侧的控件分两组（运行设置、会话工具），组与组之间只靠间距分开，**不画胶囊外框**（2026-10-10 起）：外框把一排图标切成几块，显得拥挤。
 - 工作台的工具标签只显示图标，选中的那个显示名称；名称始终在提示和无障碍标签里。
 
 ### 5.6 侧栏：按工作区组织
 
-- 侧栏宽 `--sidebar-width` = 264px，是一眼扫过的导航，所以比其他界面大一号（2026-10-09 起）：行高 `--nav-row-h`，图标 `--nav-icon`（lucide 的 `size` 只是默认值，尺寸由 CSS 统一设定），会话与项目标题用 `--text-lg`，当前项 600；工作区分组名 `--text-md` + 650；时间 `--text-xs` + `--text-3`。搜索框与底部按钮高 `--control-lg`。
+- 侧栏宽 `--sidebar-width` = 264px，是一眼扫过的导航，所以比其他界面大一号（2026-10-09 起）：行高 `--nav-row-h`，图标 `--nav-icon`（lucide 的 `size` 只是默认值，尺寸由 CSS 统一设定），会话与项目标题用 `--text-lg`，当前项 600；分组名 `--text-md` + 650。搜索框与底部按钮高 `--control-lg`。
+- **一行只放一个点和一个标题**（2026-10-10 起）：字号已经够大，拥挤来自每行塞的东西太多，所以减少每行的内容，而不是缩小字号。会话行是一个安静的小圆点（`--border-strong`，当前项 `--accent`）加标题；项目行是它的状态灯（§5.7，没有要说的状态时也是小圆点）加名字。不显示时间、类型图标、分叉图标；时间、分叉与项目所在的工作区都在提示里。
 
-- 侧栏是工作区树：每个工作区一个可折叠分组，组内先列项目（看板图标，强调色），再按最近时间列会话；默认显示 8 条会话，其余与已归档项目收在 “N more” 里。折叠状态存在 `tnega.sidebar.collapsed`。
+- 侧栏分两部分：最上面是 **Pinned**，列出所有工作区的全部项目（按最近更新），不显示项目所属的工作区，已归档的收在 “N archived” 里；下面是工作区树：每个工作区一个可折叠分组，只放会话，按最近时间排列；默认显示 8 条，其余收在 “N more” 里。**分组按各自最新会话的时间排列**，最近用过的工作区在最上面，不按添加顺序或字母顺序。折叠状态存在 `tnega.sidebar.collapsed`。
+- **没有选文件夹时的默认位置**：服务端在 tnega 主目录里准备一个 `scratch` 文件夹（`~/.tnega/scratch`，`GET /api/workspaces` 的 `defaultWorkspace`），侧栏把它显示为 “No folder” 分组，不能移出列表。侧栏顶部的新建会话按钮与 `Ctrl+Shift+O` 都在这里开新会话；要在某个工作区里开，用该分组悬停时的按钮。用子文件夹而不是 `~/.tnega` 本身，是因为主目录里有配置与登录凭据，Agent 的工作区不能包含它们。
 - 没有工作区切换卡片，也没有 Sessions / Projects 切换：点开任何分组里的会话或项目，就切到它所在的工作区并打开它。当前工作区的列表来自应用本身（实时）；其他展开的工作区在打开时各自加载。
 - 工作区行悬停时出现“新建项目 / 新建会话 / 更多（移出列表）”；“Add workspace”在侧栏底部，与设置、主题并排，只显示图标（名称在提示与无障碍标签里），侧栏再窄也不会压到主题切换。
 - 搜索同时过滤所有工作区的项目与会话，搜索时折叠的分组也会展开。
@@ -254,7 +257,8 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **状态灯**（`components/StatusLight.tsx`，`threadLight` / `projectLight`）是天气的最小形态，一种颜色只有一个含义：等你或被阻塞（雪）= `--warn` 带光晕；出错（雷暴）= `--danger` 带光晕；工作中（雨）= `--accent` 缓慢明灭（减弱动效时静止）；有你还没打开的结果 = `--success`；其余为 `--border-strong` 的灰点。灯总带文字（无障碍名称与提示）。用在：房间的 Thread 卡、正文里的 Thread 链接、Board 卡片与 Today 行、侧栏的项目行——侧栏只在有 Thread 等你、失败或工作中时亮灯（优先级同 §4），数据来自 `GET /api/projects` 的 `threads` 摘要。
 - **推送与 PR 卡**（`project/GitCard.tsx`）：Thread 用 shell 执行 `git push` 或 `gh pr create` 后，服务端按命令输出记一条带 `git` 的 Library 资源，界面画成一行卡片：图标（分支 / PR）· 标题（“Pushed feature-x”“Pull request #12”）· 仓库 · Thread · 时间 · 状态胶囊（Pushed / Opened 成功色，Up to date 中性，Rejected / Failed 危险色，失败时元数据换成错误行）· 「Open」在浏览器打开（PR、建 PR 的页面或分支页；本地或代理远端没有网页就不显示）。同一分支再推送更新同一张卡。卡片出现在主对话里（按最近变化的时间）、该 Thread 的产物区与 Library 的「Pushes and pull requests」。状态只反映命令本身的结果，不查询代码托管平台。
 - 协调者与 Thread 的消息完整显示，不使用 “Show more” 或行数裁切；简洁表达由 Agent 的沟通指令负责，不由界面隐藏消息。
-- Board 顶部是一行 Today：项目状态灯 · started · finished · outputs · tokens。泳道只有 Needs you / Working / Ready，标题前带状态点（警示色 / 强调色 / 成功色）；Idle 与 Resolved 收成泳道下面的一行，点开一起显示。卡片：标题一行、进展一行、3px 进度条 `n/m`、产物 chip、底部 `时间 · 活跃时长 · tokens`。
+- Board（2026-10-10 起，`project/Board.tsx`）从上到下：项目名与一句天气 → **形状条**（每个 Thread 一段，颜色同它的状态灯：Resolved `--text-3`、Idle `--border-strong`、Ready `--success`、Working `--accent` 缓慢明灭、Needs you `--warn`，失败 `--danger`；已完成的从左边填起，右侧写 `n of m done`）→ 一行无边框的 Today：started · finished · outputs · tokens → 泳道 Needs you / Working / Ready（标题前带状态点；宽面板并排时空泳道写一句“Nothing waiting on you / No thread running / No new results”）→ Idle 与 Resolved 收成一行，点开一起显示 → **Recently**：最近 4 件事（started / reported / finished / asked / got blocked / failed / added / pushed / opened pull request），一行一件，图标 + Thread 名 + 动词 + 灰色摘要 + 时间，点击打开该 Thread。
+- Board 卡片：状态灯 · 标题（整张卡的点击区）· 进展一行（Needs you 的问题或失败原因给两行，其他一行）· **分段清单**（每步一段：完成为强调色、当前步淡强调色且只在 Working 时明灭、未做为凹陷色；超过 12 步退回一条进度条）`n/m` · **产物 chip**（最新 3 个，含推送与 PR；产物点开预览，推送 / PR 在浏览器打开，其余收成 `+N` 打开 Thread）· 底部 `动词 + 时间`（Asked / Failed / Updated / Reported / Resolved）· 活跃时长 · tokens。不加头像、不加新的状态色。
 
 ## 6. 字号与信息显示偏好
 

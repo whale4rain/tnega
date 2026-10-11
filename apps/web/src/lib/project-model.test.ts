@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artifactsFor, board, exchangeMessages, fromSnapshot, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
+import { artifactsFor, board, boardFeed, exchangeMessages, fromSnapshot, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
 import type { BoxEnvelope, ProjectSnapshot, ThreadRecord } from './project-types'
 
 const COORD = 'c0000000-0000-4000-8000-000000000000'
@@ -303,6 +303,32 @@ describe('the Board', () => {
     expect(projectWeather(fromSnapshot(snapshot({ threads: [...base, thread(T1, { state: 'working' }), thread(T2, { state: 'working' })] })))).toBe('rain')
     expect(projectWeather(fromSnapshot(snapshot({ threads: [...base, thread(T1, { state: 'working' }), thread(T2, { state: 'waiting' })] })))).toBe('snow')
     expect(projectWeather(fromSnapshot(snapshot({ threads: [...base, thread(T1, { state: 'failed' }), thread(T2, { state: 'waiting' })] })))).toBe('storm')
+  })
+
+  it('tells what threads did lately, newest first, and leaves the coordinator out', () => {
+    const state = fromSnapshot(snapshot({
+      threads: [thread(COORD, { depth: 0 }), thread(T1, { label: 'Writer', goal: 'Write the guide.', createdAt: 10 }), thread(T2, { label: 'Research', createdAt: 20 })],
+      inboxMessages: [
+        envelope({ kind: 'request', sender: { kind: 'agent', id: T2 }, text: 'Should we cover **hardware**?', createdAt: 40 }),
+        envelope({ kind: 'complete', sender: { kind: 'agent', id: T1 }, text: 'Draft ready.', createdAt: 50 }),
+        envelope({ kind: 'dispatch', sender: { kind: 'agent', id: COORD }, text: 'Go.', createdAt: 60 }),
+      ],
+      library: {
+        artifacts: [{ kind: 'artifact', id: 'a1', seq: 1, version: 1, author: T1, source: {}, createdAt: 45, updatedAt: 45, deleted: false,
+          data: { title: 'Guide', hash: 'h', size: 1, mediaType: 'text/markdown' } }],
+        resources: [{ kind: 'resource', id: 'r1', seq: 2, version: 1, author: T1, source: {}, createdAt: 55, updatedAt: 55, deleted: false,
+          data: { title: 'Pull request #12', uri: 'https://example.com/pr/12', git: { kind: 'pull-request', status: 'opened', number: 12 } } }],
+      },
+    }))
+    expect(boardFeed(state, 10).map(event => [event.kind, event.label, event.text])).toEqual([
+      ['pull-request', 'Writer', '#12'],
+      ['finished', 'Writer', 'Draft ready.'],
+      ['output', 'Writer', 'Guide'],
+      ['asked', 'Research', 'Should we cover hardware?'],
+      ['started', 'Research', 'do it'],
+      ['started', 'Writer', 'Write the guide.'],
+    ])
+    expect(boardFeed(state)).toHaveLength(4)
   })
 
   it('counts today from midnight', () => {
