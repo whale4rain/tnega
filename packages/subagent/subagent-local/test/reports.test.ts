@@ -87,6 +87,8 @@ it('keeps long Unicode final results recoverable through bounded parent-only pag
   expect(tail.output).toBe('🧭TAIL evidence')
   expect(tail.nextOffset).toBeNull()
   await expect(service.readResult('stranger', child.id)).rejects.toThrow('owning parent')
+  // The report reaches the parent's inbox after the child's Session is flushed.
+  await expect.poll(() => deliveredReport(parent)).toContain('completed')
   const reports = parent.inbox.snapshot().nextStep
   expect(reports).toHaveLength(1)
   const report = deliveredReport(parent)
