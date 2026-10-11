@@ -48,6 +48,11 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+### Fixes
+
+- Stop now ends a running tool call promptly. A tool that ignores cancellation, such as an MCP server that never answers, is settled as aborted 2 seconds after Stop instead of holding the run. MCP calls are cancelled on the server too.
+- On Windows, Stop no longer waits for the sandbox to finish its first-time permission setup on a large workspace (the setup keeps going in the background for the next command), and a stopped command reports within a second instead of waiting for the whole process tree sweep.
+
 ## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
 
 ### Features
