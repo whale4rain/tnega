@@ -7,6 +7,7 @@ import type {
   ArtifactFact,
   ArtifactRef,
   BoxEnvelope,
+  BoxMessageKind,
   MemoryFact,
   ProjectRecord,
   ProjectSnapshot,
@@ -492,6 +493,60 @@ export function today(state: ProjectState, now: number, usage?: ProjectUsage): T
   }
   if (usage?.since) result.tokens = usage.since.promptTokens + usage.since.completionTokens
   return result
+}
+
+/** What a line of the Board's "Recently" says a thread did. */
+export type BoardEventKind = 'started' | 'reported' | 'finished' | 'asked' | 'blocked' | 'failed' | 'output' | 'pushed' | 'pull-request'
+
+export interface BoardEvent {
+  id: string
+  kind: BoardEventKind
+  threadId: string
+  /** The thread's title. */
+  label: string
+  /** A few words on what happened: the report's first line, the output's title, the branch. */
+  text: string
+  at: number
+}
+
+const REPORT_EVENT: Partial<Record<BoxMessageKind, BoardEventKind>> = {
+  progress: 'reported',
+  complete: 'finished',
+  request: 'asked',
+  blocked: 'blocked',
+  failed: 'failed',
+}
+
+/**
+ * The Board's "Recently": the latest things threads did — started, reported,
+ * asked, published an output, pushed — newest first.
+ */
+export function boardFeed(state: ProjectState, limit = 4): BoardEvent[] {
+  const threads = new Map(workerThreads(state).map(thread => [thread.id, thread]))
+  const events: BoardEvent[] = []
+  const add = (event: Omit<BoardEvent, 'label'>) => {
+    const thread = threads.get(event.threadId)
+    if (thread) events.push({ ...event, label: thread.label })
+  }
+  for (const thread of threads.values()) {
+    add({ id: `start:${thread.id}`, kind: 'started', threadId: thread.id, text: plainPreview(thread.goal, 90), at: thread.createdAt })
+  }
+  for (const report of state.reports) {
+    const kind = REPORT_EVENT[report.kind]
+    if (!kind || report.sender.kind !== 'agent') continue
+    add({ id: report.messageId, kind, threadId: report.sender.id, text: plainPreview(report.text, 90), at: report.createdAt })
+  }
+  for (const artifact of state.artifacts) {
+    add({ id: artifact.id, kind: 'output', threadId: artifact.author, text: artifact.data.title, at: artifact.createdAt })
+  }
+  for (const resource of state.resources) {
+    const git = resource.data.git
+    if (!git) continue
+    const pr = git.kind === 'pull-request'
+    const text = pr && git.number !== undefined ? `#${git.number}` : git.branch ?? resource.data.title
+    add({ id: resource.id, kind: pr ? 'pull-request' : 'pushed', threadId: resource.author, text, at: resource.updatedAt })
+  }
+  return events.sort((a, b) => b.at - a.at).slice(0, limit)
 }
 
 /**
