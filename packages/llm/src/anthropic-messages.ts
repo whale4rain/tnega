@@ -36,6 +36,7 @@ interface AnthropicContentBlock {
   id?: unknown
   name?: unknown
   text?: unknown
+  thinking?: unknown
   input?: unknown
   partial_json?: unknown
   tool_use_id?: unknown
@@ -334,6 +335,10 @@ function parseCompletion(payload: unknown): LLMCompletion {
     .filter(block => block.type === 'text' && typeof block.text === 'string')
     .map(block => block.text as string)
     .join('')
+  const thinking = blocks
+    .filter(block => block.type === 'thinking' && typeof block.thinking === 'string')
+    .map(block => block.thinking as string)
+    .join('\n\n')
   const toolCalls = parseToolCalls(blocks)
   const finishReason = toFinishReason(
     record?.stop_reason,
@@ -342,6 +347,7 @@ function parseCompletion(payload: unknown): LLMCompletion {
   )
   const completion: LLMCompletion = { finishReason }
   if (text) completion.content = text
+  if (thinking) completion.reasoning = thinking
   if (toolCalls.length) completion.toolCalls = toolCalls
   const usage = toModelUsage(parseAnthropicUsage(record?.usage))
   if (usage) completion.usage = usage
@@ -509,6 +515,10 @@ async function* parseAnthropicStream(
                 text += block.text
                 yield { type: 'message_delta', id: messageId, delta: block.text }
               }
+            } else if (block?.type === 'thinking') {
+              if (typeof block.thinking === 'string' && block.thinking) {
+                yield { type: 'reasoning_delta', id: messageId, delta: block.thinking }
+              }
             } else if (block?.type === 'tool_use') {
               const call = calls.get(index) ?? {
                 index,
@@ -542,6 +552,8 @@ async function* parseAnthropicStream(
                 text += block.text
                 yield { type: 'message_delta', id: messageId, delta: block.text }
               }
+            } else if (block?.type === 'thinking_delta' && typeof block.thinking === 'string') {
+              if (block.thinking) yield { type: 'reasoning_delta', id: messageId, delta: block.thinking }
             } else if (block?.type === 'input_json_delta') {
               const call = calls.get(index)
               if (call && typeof block.partial_json === 'string') {

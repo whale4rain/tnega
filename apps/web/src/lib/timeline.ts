@@ -44,6 +44,8 @@ export interface EditedFile {
 
 export type Block =
   | { kind: 'text'; id: string; text: string; streaming?: boolean }
+  /** The model's visible reasoning; `startedAt` times a live block until its answer begins. */
+  | { kind: 'reasoning'; id: string; text: string; streaming?: boolean; startedAt?: number; durationMs?: number }
   | { kind: 'tool'; id: string; tool: ToolView }
   | { kind: 'subagent'; id: string; agent: SubagentView }
   | { kind: 'files'; id: string; files: EditedFile[] }
@@ -123,7 +125,14 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
       }
       case 'assistant/message': {
         const target = agent(event.id)
-        const { content, toolCalls, interrupted } = event.payload
+        const { content, reasoning, toolCalls, interrupted } = event.payload
+        if (reasoning?.trim()) {
+          const durationMs = reasoningDuration(event.payload.stream)
+          target.blocks.push({
+            kind: 'reasoning', id: `reasoning-${event.id}`, text: reasoning.trim(),
+            ...(durationMs !== undefined ? { durationMs } : {}),
+          })
+        }
         if (content) target.blocks.push({ kind: 'text', id: event.id, text: content })
         target.forkId = event.id
         for (const call of toolCalls ?? []) addToolCall(target, call.id, call.name, call.arguments)
@@ -235,6 +244,9 @@ export function presentRun(entry: AgentEntry): { process: Block[]; visible: Bloc
   for (const block of entry.blocks) {
     if (block.kind === 'text' && block.id === summary.sourceMessageId) {
       visible.push({ ...block, text: summary.text })
+    } else if (block.kind === 'reasoning' && block.id === `reasoning-${summary.sourceMessageId}`) {
+      // The thought behind the answer stays beside it, folded to one line.
+      visible.push(block)
     } else if (block.kind === 'files' || (block.kind === 'notice' && !block.process)
       || (block.kind === 'tool' && (block.tool.status === 'running' || needsAttention(block.tool)))
       || (block.kind === 'subagent' && block.agent.status !== 'ready')) {
@@ -264,16 +276,21 @@ export function presentLive(entry: AgentEntry): { process: Block[]; visible: Blo
  */
 export function presentOutcome(entry: AgentEntry, live: boolean): { process: Block[]; visible: Block[] } {
   let answer: Block | undefined
+  let thought: Block | undefined
   if (!live) {
     for (let i = entry.blocks.length - 1; i >= 0 && !answer; i -= 1) {
       const block = entry.blocks[i]!
-      if (block.kind === 'text' && block.text.trim()) answer = block
+      if (block.kind === 'text' && block.text.trim()) {
+        answer = block
+        if (entry.blocks[i - 1]?.kind === 'reasoning') thought = entry.blocks[i - 1]
+      }
     }
   }
   const process: Block[] = []
   const visible: Block[] = []
   for (const block of entry.blocks) {
     const shown = block === answer
+      || block === thought
       || block.kind === 'files'
       || (block.kind === 'notice' && !block.process && block.tone !== 'info')
       || (!live && block.kind === 'tool' && needsAttention(block.tool))
@@ -486,19 +503,33 @@ function applyToAgent(entry: AgentEntry, event: StreamEvent): AgentEntry {
     }
     case 'message_start':
       return { ...entry, blocks: [...blocks, { kind: 'text', id: `live-${event.id}`, text: '', streaming: true }] }
-    case 'message_delta': {
-      const index = findLastIndex(blocks, b => b.kind === 'text' && b.id === `live-${event.id}`)
-      if (index < 0) {
-        return { ...entry, blocks: [...blocks, { kind: 'text', id: `live-${event.id}`, text: event.delta, streaming: true }] }
+    case 'reasoning_delta': {
+      const index = findLastIndex(blocks, b => b.kind === 'reasoning' && b.id === `live-reasoning-${event.id}`)
+      if (index >= 0) {
+        const block = blocks[index] as Extract<Block, { kind: 'reasoning' }>
+        return { ...entry, blocks: replaceAt(blocks, index, { ...block, text: block.text + event.delta }) }
       }
-      const block = blocks[index] as Extract<Block, { kind: 'text' }>
-      return { ...entry, blocks: replaceAt(blocks, index, { ...block, text: block.text + event.delta }) }
+      // Reasoning comes before the answer it leads to, ahead of that message's text block.
+      const created: Block = { kind: 'reasoning', id: `live-reasoning-${event.id}`, text: event.delta, streaming: true, startedAt: Date.now() }
+      const text = findLastIndex(blocks, b => b.kind === 'text' && b.id === `live-${event.id}`)
+      const at = text < 0 ? blocks.length : text
+      return { ...entry, blocks: [...blocks.slice(0, at), created, ...blocks.slice(at)] }
+    }
+    case 'message_delta': {
+      const settled = settleReasoning(blocks, event.id)
+      const index = findLastIndex(settled, b => b.kind === 'text' && b.id === `live-${event.id}`)
+      if (index < 0) {
+        return { ...entry, blocks: [...settled, { kind: 'text', id: `live-${event.id}`, text: event.delta, streaming: true }] }
+      }
+      const block = settled[index] as Extract<Block, { kind: 'text' }>
+      return { ...entry, blocks: replaceAt(settled, index, { ...block, text: block.text + event.delta }) }
     }
     case 'message_stop': {
       const id = `live-${event.id}`
       return {
         ...entry,
-        blocks: blocks.flatMap(b => {
+        blocks: settleReasoning(blocks, event.id).flatMap(b => {
+          if (b.kind === 'reasoning' && b.id === `live-reasoning-${event.id}`) return b.text.trim() ? [b] : []
           if (b.kind !== 'text' || b.id !== id) return [b]
           return b.text.trim() ? [{ ...b, streaming: false }] : []
         }),
@@ -558,6 +589,35 @@ function applyToAgent(entry: AgentEntry, event: StreamEvent): AgentEntry {
     default:
       return entry
   }
+}
+
+/** Close a message's live reasoning once its answer (or the message) begins to settle. */
+function settleReasoning(blocks: readonly Block[], messageId: string): readonly Block[] {
+  const index = findLastIndex(blocks, b => b.kind === 'reasoning' && b.id === `live-reasoning-${messageId}`)
+  const block = blocks[index]
+  if (block?.kind !== 'reasoning' || !block.streaming) return blocks
+  const { startedAt, ...rest } = block
+  return replaceAt(blocks, index, {
+    ...rest,
+    streaming: false,
+    ...(startedAt !== undefined ? { durationMs: Math.max(0, Date.now() - startedAt) } : {}),
+  })
+}
+
+/** How long the model reasoned: from its first reasoning chunk to the first chunk of anything else. */
+function reasoningDuration(stream: ReadonlyArray<{ time: number; chunk: { type: string } }> | undefined): number | undefined {
+  let start: number | undefined
+  let end: number | undefined
+  for (const record of stream ?? []) {
+    if (record.chunk.type === 'reasoning_delta') {
+      start ??= record.time
+      end = record.time
+    } else if (start !== undefined && record.chunk.type !== 'message_start') {
+      end = record.time
+      break
+    }
+  }
+  return start !== undefined && end !== undefined ? end - start : undefined
 }
 
 function findLastIndex<T>(items: readonly T[], predicate: (item: T) => boolean): number {

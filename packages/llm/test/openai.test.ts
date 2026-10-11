@@ -753,3 +753,49 @@ describe('request accounting', () => {
     })
   })
 })
+
+describe('reasoning', () => {
+  it('streams reasoning_content as reasoning deltas ahead of the answer', async () => {
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"id":"m1","choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":null,"reasoning_content":"Add them."}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"5"}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ])) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events = await collectStream(openaiCompatAdapter({ apiKey: 'test-key' }), [{ role: 'user', content: '2+3?' }])
+    expect(events.map(event => event.type)).toEqual(['message_start', 'reasoning_delta', 'message_delta', 'message_stop'])
+    expect(events[1]).toEqual({ type: 'reasoning_delta', id: 'm1', delta: 'Add them.' })
+  })
+
+  it('reads reasoning from a buffered completion', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: '5', reasoning_content: 'Add them.' }, finish_reason: 'stop' }],
+    })) as FetchMock)
+
+    const completion = await openaiCompatAdapter({ apiKey: 'test-key' }).complete([{ role: 'user', content: '2+3?' }], [], {})
+    expect(completion).toMatchObject({ content: '5', reasoning: 'Add them.' })
+  })
+
+  it('sends reasoning back only for the current tool loop', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: 'done' }, finish_reason: 'stop' }],
+    })) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+
+    await openaiCompatAdapter({ apiKey: 'test-key' }).complete([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'earlier', reasoning: 'old thought' },
+      { role: 'user', content: 'add 2 and 3' },
+      { role: 'assistant', content: '', reasoning: 'Use the tool.', tool_calls: [{ id: 'c1', name: 'add', arguments: { a: 2, b: 3 } }] },
+      { role: 'tool', content: '5', tool_call_id: 'c1', name: 'add' },
+    ], [addTool], {})
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as { messages: Array<Record<string, unknown>> }
+    expect(body.messages[1]).not.toHaveProperty('reasoning_content')
+    expect(body.messages[3]).toMatchObject({ role: 'assistant', reasoning_content: 'Use the tool.' })
+    expect(body.messages.some(message => 'reasoning' in message)).toBe(false)
+  })
+})

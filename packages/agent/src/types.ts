@@ -28,6 +28,8 @@ export interface LLMToolCall {
 
 export interface LLMCompletion {
   content?: string
+  /** Reasoning text the provider exposed alongside the answer, when it exposed any. */
+  reasoning?: string
   toolCalls?: LLMToolCall[]
   finishReason: AgentFinishReason
   /** Cost the provider reported for this response, when it reported any. */
@@ -68,6 +70,13 @@ export interface LLMMessageDeltaEvent {
   delta: string
 }
 
+/** Visible reasoning ("thinking") text, streamed before or between answer text. */
+export interface LLMReasoningDeltaEvent {
+  type: 'reasoning_delta'
+  id: string
+  delta: string
+}
+
 export interface LLMToolCallStartEvent {
   type: 'toolcall_start'
   id: string
@@ -94,6 +103,7 @@ export interface LLMMessageStopEvent {
 export type LLMStreamEvent =
   | LLMMessageStartEvent
   | LLMMessageDeltaEvent
+  | LLMReasoningDeltaEvent
   | LLMToolCallStartEvent
   | LLMToolCallEndEvent
   | LLMMessageStopEvent

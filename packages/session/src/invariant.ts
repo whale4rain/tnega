@@ -178,6 +178,7 @@ function isStreamRecord(value: unknown): boolean {
     case 'message_start':
       return chunk.model === undefined || typeof chunk.model === 'string'
     case 'message_delta':
+    case 'reasoning_delta':
       return typeof chunk.delta === 'string'
     case 'toolcall_start':
     case 'toolcall_end':

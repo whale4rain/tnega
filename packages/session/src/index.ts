@@ -185,6 +185,12 @@ export function isModelAttachment(value: unknown): value is ModelAttachment {
 export interface ModelMessage {
   role: ModelRole
   content: string
+  /**
+   * Assistant reasoning the provider streamed with this turn. Adapters whose
+   * protocol asks for it back (DeepSeek's `reasoning_content` during a tool
+   * loop) send it; others ignore it.
+   */
+  reasoning?: string
   /** Images for user and tool messages; adapters render them as native image parts. */
   attachments?: ModelAttachment[]
   name?: string
@@ -203,6 +209,8 @@ export interface UserMessagePayload {
 
 export interface AssistantMessagePayload {
   content: string
+  /** Reasoning text the provider exposed for this response, when it exposed any. */
+  reasoning?: string
   /** Committed normalized stream for reconnect consumers; not model history. */
   stream?: AssistantStreamRecord[]
   name?: string
@@ -246,6 +254,7 @@ export interface ModelUsage {
 export type AssistantStreamChunk =
   | { type: 'message_start'; id: string; model?: string }
   | { type: 'message_delta'; id: string; delta: string }
+  | { type: 'reasoning_delta'; id: string; delta: string }
   | { type: 'toolcall_start'; id: string; index: number; name: string }
   | { type: 'toolcall_end'; id: string; index: number; name: string; arguments: unknown }
   | {
@@ -802,6 +811,7 @@ export function deriveEventMessage(event: SessionEvent): ModelMessage | null {
       const toolCalls = event.payload.toolCalls
       if (!event.payload.content && !(toolCalls && toolCalls.length)) return null
       const message: ModelMessage = { role: 'assistant', content: event.payload.content }
+      if (event.payload.reasoning) message.reasoning = event.payload.reasoning
       if (event.payload.name) message.name = event.payload.name
       if (toolCalls?.length) message.tool_calls = toolCalls.map(call => ({
         id: call.id, name: call.name, arguments: clone(call.arguments),
