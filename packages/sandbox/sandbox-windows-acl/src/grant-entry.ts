@@ -39,8 +39,13 @@ async function perform(operation: AclOperation): Promise<boolean> {
 
 /** 写回传并设置退出码。 */
 function report(reply: AclOperationReply): void {
-  process.stdout.write(`${JSON.stringify(reply)}\n`)
-  process.exitCode = reply.ok ? 0 : 1
+  const exitCode = reply.ok ? 0 : 1
+  process.exitCode = exitCode
+  process.stdout.write(`${JSON.stringify(reply)}\n`, () => {
+    // Electron utility services stay alive for their IPC channel; like the
+    // runner, the helper must exit itself or the command waiting on it hangs.
+    if ('type' in process && process.type === 'utility') process.exit(exitCode)
+  })
 }
 
 const operation = parseGrantCommandArgs(process.argv.slice(2))

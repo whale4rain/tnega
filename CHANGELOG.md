@@ -58,6 +58,8 @@ compare links provide a convenient browser view of the boundaries.
 ### Fixes
 
 - Stop now ends a running tool call promptly. A tool that ignores cancellation, such as an MCP server that never answers, is settled as aborted 2 seconds after Stop instead of holding the run. MCP calls are cancelled on the server too.
+- On Windows desktop, a sandboxed command no longer hangs forever the first time it runs in a workspace. The helper that sets up the sandbox's folder permissions now exits when it is done, so the command runs or fails instead of waiting on it.
+- When the Windows sandbox is not allowed to change a workspace folder's permissions (usually because another account, such as an administrator, owns the folder), the command fails with that reason and how to fix it, instead of a bare `Win32 5` error.
 - On Windows, Stop no longer waits for the sandbox to finish its first-time permission setup on a large workspace (the setup keeps going in the background for the next command), and a stopped command reports within a second instead of waiting for the whole process tree sweep.
 
 ## [0.4.25-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.2) — 2026-10-10
