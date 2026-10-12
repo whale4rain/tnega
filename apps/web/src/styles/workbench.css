@@ -16,16 +16,27 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
   min-width: 0;
   min-height: 0;
-  /* No top padding: the tab rail is the title-bar row, level with the conversation header and the window controls. */
-  padding: 0 8px 8px;
-  /* The conversation's own background: the panel continues the page instead of sitting in a grey gutter. */
+  /* A small gap to the window's edges; the conversation side has none, the card's border is the divide. */
+  padding: 6px 6px 6px 0;
   background: var(--bg);
-  border-left: 1px solid var(--border);
   animation: slide-in 240ms var(--ease-out);
   container: workbench / inline-size;
+}
+
+/* The panel is a card like Claude's side panel: its own surface colour, a hairline border and round corners. */
+.wb-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  padding: 0 8px 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
 }
 
 .wb-resize {
@@ -50,36 +61,18 @@
   background: var(--accent);
 }
 
-/* On the desktop the native window controls own the panel's top line: the tabs move to a row under them
-   and get the panel's full width. The strip is a drag area that holds the conversation's header actions,
-   right-aligned beside the controls. */
+/* On the desktop the native window controls own the window's top line: the panel card starts under it.
+   The strip beside the controls is a drag area that holds the conversation's header actions, right-aligned
+   next to the controls and on their centre line. */
 .wb-titlebar { display: none; }
+.desktop-chrome .workbench { padding-top: 0; }
 .desktop-chrome .wb-titlebar {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   flex: none;
-  /* As tall as the native controls so the actions share their centre line; the panel's 6px gap is taken back.
-     It spans the panel's full width (over its padding and left border) and ends in a line that meets the
-     panel's divider at the corner: like Claude's side panel, the panel's frame starts below the title bar,
-     and the line stays over the panel only, never under the conversation. */
   height: var(--header-h);
-  margin: 0 -8px -6px -9px;
-  padding: 0 calc(var(--window-controls-width) + 8px) 0 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-/* The panel's divider starts under the title-bar row instead of running up through it. */
-.desktop-chrome .workbench { border-left-color: transparent; }
-.desktop-chrome .workbench::before {
-  content: "";
-  position: absolute;
-  top: var(--header-h);
-  bottom: 0;
-  left: -1px;
-  width: 1px;
-  background: var(--border);
-  pointer-events: none;
+  padding-right: calc(var(--window-controls-width) + 2px);
 }
 
 /* Tab rail: tools first, then documents opened from the conversation. */
@@ -124,9 +117,8 @@
 }
 
 .wb-tab.active {
-  background: var(--surface);
+  background: var(--surface-active);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 
 .wb-tab.doc {
@@ -373,7 +365,7 @@
   border: 0;
   border-top: 1px solid var(--border);
   border-radius: 0;
-  background: var(--bg);
+  background: var(--surface);
 }
 
 .wb-card.wb-flow.wb-scroll {
@@ -582,7 +574,7 @@
 }
 
 .subagent-card {
-  background: var(--bg);
+  background: var(--surface);
 }
 
 .office-file-icon.small {

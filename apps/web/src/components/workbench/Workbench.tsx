@@ -92,6 +92,8 @@ export function Workbench({
       {/* Desktop only (CSS): the title-bar row beside the native window controls. The view on the left
           portals its header actions here, so they sit next to – ☐ ✕ and the tabs get the row below. */}
       <div className="wb-titlebar" ref={titleSlot} />
+      {/* The panel itself: a rounded card inset from the window edges, so it reads as its own surface. */}
+      <div className="wb-frame">
       <div className="wb-header">
       <div className="wb-rail" ref={rail} role="tablist" aria-label="Workbench" onWheel={event => {
         if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY
@@ -159,6 +161,7 @@ export function Workbench({
             <SubagentView workspace={workspace} id={doc.id} label={doc.label} onOpenSubagent={(id, label) => onChange(current => openDoc(current, { kind: 'subagent', id, label }))} />
           </div>
         )}
+      </div>
       </div>
     </aside>
   )

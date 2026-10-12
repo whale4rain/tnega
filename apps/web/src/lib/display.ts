@@ -9,7 +9,7 @@ import { useStoredState } from './hooks'
  * stored values before first paint.
  */
 export const PALETTES = [
-  { id: 'carbon', label: 'Carbon', description: 'Neutral dark grey, white text, a clear blue accent' },
+  { id: 'carbon', label: 'Carbon', description: 'Calm neutral greys with an ink accent, no tint' },
   { id: 'sky', label: 'Sky', description: 'Cool blue-grey with a clear-sky accent' },
   { id: 'sand', label: 'Sand', description: 'Warm paper and ink, terracotta accent' },
   { id: 'forest', label: 'Forest', description: 'Green-grey neutrals, deep teal accent' },
