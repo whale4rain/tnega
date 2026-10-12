@@ -2087,7 +2087,7 @@ button.board-chip.active {
 .artifact-dialog-frame .dialog-title {
   overflow: hidden;
   font-size: var(--text-lg);
-  font-weight: 700;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -193,6 +193,11 @@ try {
         await page.getByRole('dialog').waitFor({ state: 'detached' })
         await page.getByRole('complementary', { name: 'Workspaces', exact: true }).getByText('workspace', { exact: true }).waitFor()
         assert.equal(await page.evaluate(() => localStorage.getItem('tnega.workspace')), workspace)
+        // A new session greets in the display serif, like the Board.
+        const greeting = page.locator('.empty-state h2')
+        await greeting.waitFor()
+        assert.match(await greeting.evaluate(element => getComputedStyle(element).fontFamily), /Fraunces/)
+        await page.screenshot({ path: resolve(artifacts, `new-session-${theme}.png`) })
       })
 
       await check(`${theme}: a live run keeps long tool commands inside the row`, async () => {

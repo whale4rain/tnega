@@ -287,7 +287,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 **界面字体是 Geist + Noto Sans SC，代码用 JetBrains Mono**（2026-10-12 起；三者都由 `@fontsource-variable/*` 随应用打包，桌面端离线与各操作系统显示一致）。`--font-sans` 里 Geist 在前：拉丁字母、数字和标点总由 Geist 显示；Geist 没有中文字形，中文落到 Noto Sans SC，两者不会争同一个字符，混排不会忽大忽小或换来换去。Noto Sans SC 按 unicode-range 分片，只有出现中文时才加载需要的分片。`body` 字重 400。
 
-**展示衬线 `--font-display` = Fraunces**（2026-10-12 起，`@fontsource-variable/fraunces` 的 opsz 轴：大字号时自动变成高对比衬线）。它只给几句表达情绪的字：Board 的问候语与首次打开的欢迎标题，`--text-2xl`、500 字重；正文、标题栏、按钮与列表永远不用它。中文落到 Noto Sans SC。
+**展示衬线 `--font-display` = Fraunces**（2026-10-12 起，`@fontsource-variable/fraunces` 的 opsz 轴：大字号时自动变成高对比衬线）。它只给几句表达情绪的字：Board 的问候语、新会话空白页的问候语（“Good afternoon. What are we building?”）与首次打开的欢迎标题，`--text-2xl`、500 字重；正文、标题栏、按钮与列表永远不用它。中文落到 Noto Sans SC。
 
 字重以 400 / 500 / 600 为主；700 只留给极小的徽标数字。等宽字体（`--font-mono`）只给代码、路径、命令、哈希与对齐的数字列。
 
