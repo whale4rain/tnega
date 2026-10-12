@@ -131,7 +131,10 @@ jobs:
       - name: Smoke-test the packaged app
         run: |
           if [ "$RUNNER_OS" = macOS ]; then
-            node apps/desktop/scripts/smoke-packaged.mjs "$(ls -d apps/desktop/release/mac*/Tnega.app)/Contents/MacOS/Tnega"
+            app=$(ls -d apps/desktop/release/mac*/Tnega.app)
+            # A broken signature is what macOS reports as "damaged".
+            codesign --verify --deep --strict --verbose=2 "$app"
+            node apps/desktop/scripts/smoke-packaged.mjs "$app/Contents/MacOS/Tnega"
           else
             sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
             xvfb-run -a node apps/desktop/scripts/smoke-packaged.mjs apps/desktop/release/linux-unpacked/tnega-desktop -- --no-sandbox

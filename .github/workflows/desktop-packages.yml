@@ -58,6 +58,11 @@ jobs:
         run: pnpm --filter @tnega/desktop exec electron-builder ${{ matrix.builder }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # electron-builder skips all signing on pull requests to protect
+          # certificates. This signing is ad hoc and reads no secret, and an
+          # unsigned build would not match what a tag publishes (macOS calls
+          # it damaged), so sign here too.
+          CSC_FOR_PULL_REQUEST: 'true'
       - name: Check the files a release would ship
         run: |
           version=$(node -p "require('./apps/desktop/package.json').version")
