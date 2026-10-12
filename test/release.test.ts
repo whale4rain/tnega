@@ -5,6 +5,12 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, test } from 'vitest'
 
+/** The feed each platform's client reads, named after the Windows one. */
+function releaseFeeds(feed: string) {
+  const channel = feed.replace('.yml', '')
+  return { windows: feed, mac: `${channel}-mac.yml`, linux: `${channel}-linux.yml` }
+}
+
 test.each([
   { version: '0.4.7-beta.1', feed: 'beta.yml', tag: 'preview' },
   { version: '0.4.7', feed: 'latest.yml', tag: 'latest' },
@@ -33,7 +39,10 @@ test.each([
     const writeFetchFixture = (prerelease: boolean) => writeFileSync(fetchFixture, `
       globalThis.fetch = async input => {
         const url = String(input)
-        if (url.endsWith('/${feed}')) return new Response(${JSON.stringify(text)})
+        // Every platform's feed is checked; the Mac and Linux ones reuse the Windows fixture.
+        for (const name of ${JSON.stringify(Object.values(releaseFeeds(feed)))}) {
+          if (url.endsWith('/' + name)) return new Response(${JSON.stringify(text)})
+        }
         if (url.endsWith('.exe')) return new Response(null, { headers: { 'content-length': '17' } })
         if (url.includes('api.github.com')) return Response.json({ draft: false, prerelease: ${prerelease} })
         if (url.endsWith('/latest')) return new Response(null, { status: 302, headers: { location: 'https://github.com/whale4rain/tnega/releases/tag/v${version}' } })
