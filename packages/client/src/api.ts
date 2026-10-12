@@ -115,6 +115,36 @@ export interface TextFile {
   mtimeMs: number
 }
 
+export type ChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
+
+/** One file that differs from the last commit (`GET /api/changes`). */
+export interface ChangedFile {
+  path: string
+  status: ChangeStatus
+  previousPath?: string
+  additions?: number
+  deletions?: number
+  binary?: boolean
+}
+
+export interface ChangeSummary {
+  git: boolean
+  branch?: string
+  files: ChangedFile[]
+  truncated?: boolean
+}
+
+/** Both sides of one changed file (`GET /api/changes/file`). */
+export interface FileDiff {
+  path: string
+  status: ChangeStatus
+  /** `null` when the file is new; absent for binary or oversized files. */
+  original?: string | null
+  /** `null` when the file was deleted. */
+  modified?: string | null
+  reason?: 'binary' | 'too-large'
+}
+
 export interface ClientOptions {
   /** Origin of the server, e.g. `http://127.0.0.1:4317`; empty for same-origin requests. */
   baseUrl?: string
@@ -263,6 +293,11 @@ export function createClient(options: ClientOptions = {}) {
       }),
     searchFiles: (workspace: string, query: string, signal?: AbortSignal) =>
       call<{ files: string[] }>(scoped('/api/files/search', workspace, { q: query, limit: '30' }), { signal }),
+    /** What differs in the workspace from the last commit. */
+    changes: (workspace: string, signal?: AbortSignal) =>
+      call<ChangeSummary>(scoped('/api/changes', workspace), { signal }),
+    fileDiff: (workspace: string, path: string, signal?: AbortSignal) =>
+      call<FileDiff>(scoped('/api/changes/file', workspace, { path }), { signal }),
     runSlash: (workspace: string, id: string, name: string, args: string[]) =>
       call<{ result: SlashResult; mode: SessionMode }>(scoped(`/api/sessions/${id}/coding/slash`, workspace), {
         method: 'POST',

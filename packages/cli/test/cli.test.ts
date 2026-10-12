@@ -12,6 +12,7 @@ import {
   runAgentCommand,
 } from '../src/index.js'
 import { defaultRunSessionFile } from '../src/home-paths.js'
+import { main as runExecutable } from '../src/entry.js'
 
 type FetchMock = Mock<(...args: [unknown, RequestInit]) => Promise<Response>>
 
@@ -366,6 +367,25 @@ describe('agent run command', () => {
   })
 })
 
+
+describe('tnega tui', () => {
+  it('refuses to start without an interactive terminal and points to run', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      // `--url` attaches to a server instead of starting one, so nothing is left running.
+      expect(await runExecutable(['tui', '--url', 'http://127.0.0.1:9'])).toBe(2)
+      expect(String(stderr.mock.calls[0]?.[0])).toContain('needs an interactive terminal')
+    } finally {
+      stderr.mockRestore()
+    }
+  })
+
+  it('rejects unknown options', async () => {
+    const output = captureStdout()
+    expect(await runExecutable(['tui', '--bogus'])).toBe(2)
+    expect(output()).toContain('unknown option: --bogus')
+  })
+})
 
 describe('CLI errors', () => {
   it('returns error code for unknown commands, including the removed eval and evolve', async () => {

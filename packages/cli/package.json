@@ -60,6 +60,7 @@
     "@tnega/tool-subagent": "workspace:*",
     "@tnega/tool-thread": "workspace:*",
     "@tnega/tools": "workspace:*",
+    "@tnega/tui": "workspace:*",
     "@tnega/user-questions": "workspace:*",
     "chokidar": "^4.0.3"
   }
