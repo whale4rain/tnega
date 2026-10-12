@@ -3741,8 +3741,9 @@ kbd {
 
 /* ==========================================================================
    Desktop window controls
-   Integrate native controls into existing headers, the Workbench tab rail
-   included: its tabs share the row with the controls (tnega-design §5.3).
+   Integrate native controls into existing headers. The one exception is the
+   Workbench: its tabs sit in their own row under the controls, and the
+   conversation's header actions move up beside the controls (tnega-design §5.3).
    ========================================================================== */
 
 .desktop-chrome {
@@ -3755,6 +3756,7 @@ kbd {
 
 .desktop-chrome .sidebar-top,
 .desktop-chrome .conv-header,
+.desktop-chrome .wb-titlebar,
 .desktop-chrome .wb-header,
 .desktop-chrome .wb-rail-fill {
   -webkit-app-region: drag;
@@ -3762,6 +3764,7 @@ kbd {
 
 .desktop-chrome .sidebar-top button,
 .desktop-chrome .conv-header-actions,
+.desktop-chrome .wb-titlebar button,
 .desktop-chrome .conv-title,
 .desktop-chrome .conv-subtitle,
 .desktop-chrome .wb-rail,

@@ -50,6 +50,21 @@
   background: var(--accent);
 }
 
+/* On the desktop the native window controls own the panel's top line: the tabs move to a row under them
+   and get the panel's full width. The strip is a drag area that holds the conversation's header actions,
+   right-aligned beside the controls. */
+.wb-titlebar { display: none; }
+.desktop-chrome .wb-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  /* As tall as the native controls so the actions share their centre line; the panel's 6px gap is taken back. */
+  height: var(--header-h);
+  margin-bottom: -6px;
+  padding-right: var(--window-controls-width);
+}
+
 /* Tab rail: tools first, then documents opened from the conversation. */
 .wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; height: var(--header-h); }
 /* Overflowing tabs scroll with the wheel or trackpad and the active one scrolls into view; no scrollbar,

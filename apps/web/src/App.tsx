@@ -15,7 +15,7 @@ import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
 import { useDisplay } from './lib/display'
-import { useDesktopChrome } from './lib/desktop-chrome'
+import { isDesktopChrome, useDesktopChrome } from './lib/desktop-chrome'
 import { useDesktopUpdates } from './lib/desktop-updates'
 import { UpdatingOverlay } from './components/UpdateButton'
 import { projectApi } from './lib/project-api'
@@ -220,6 +220,9 @@ export function App() {
   // A project screen puts its own tabs (Board, Library, Routines, threads) at the
   // front of the same Workbench a session uses, and renders them into a slot.
   const [projectSlot, setProjectSlot] = useState<HTMLDivElement | null>(null)
+  // In the desktop app the open Workbench's top row sits beside the window controls; the header actions go there.
+  const [titleBar, setTitleBar] = useState<HTMLDivElement | null>(null)
+  const titleSlot = isDesktopChrome() && workbench.open && workspace ? titleBar : null
   const [projectTabs, setProjectTabs] = useState<WorkbenchProject['tabs']>([])
   const activeProject = mode === 'projects' && workspace ? projectRoute.id : undefined
   // Adjusted while rendering rather than in an effect, so a double render (StrictMode)
@@ -447,6 +450,7 @@ export function App() {
             onWorkbench={setWorkbench}
             panelSlot={projectSlot}
             onPanelTabs={setProjectTabs}
+            titleSlot={titleSlot}
           />
         )
         : (
@@ -489,6 +493,7 @@ export function App() {
             changeCount={changeCount}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
+            titleSlot={titleSlot}
           />
         )
         : (
@@ -515,6 +520,7 @@ export function App() {
           changeCount={changeCount}
           onChangeCount={setChangeCount}
           project={activeProject ? { tabs: projectTabs, slot: setProjectSlot } : undefined}
+          titleSlot={setTitleBar}
         />
       )}
 

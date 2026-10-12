@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { errorText } from '../../lib/hooks'
+import { inTitleBar } from '../../lib/desktop-chrome'
 import { followProject, isUnsupported, localReplies, projectApi } from '../../lib/project-api'
 import { notifyDesktopThread } from '../../lib/desktop-completion'
 import {
@@ -91,6 +92,7 @@ export function ProjectView({
   onWorkbench,
   panelSlot,
   onPanelTabs,
+  titleSlot,
 }: {
   workspace: string
   projectId: string
@@ -106,6 +108,8 @@ export function ProjectView({
   onWorkbench: (update: (state: WorkbenchState) => WorkbenchState) => void
   panelSlot: HTMLDivElement | null
   onPanelTabs: (tabs: WorkbenchProject['tabs']) => void
+  /** The desktop title-bar row over the open Workbench: the header actions move there. */
+  titleSlot?: HTMLElement | null | undefined
 }) {
   const [state, setState] = useState<ProjectState | undefined>(() => recent.get(recentKey(workspace, projectId)))
   useEffect(() => {
@@ -426,7 +430,7 @@ export function ProjectView({
               {!connected && <span className="conv-workspace"><WifiOff size={12} /> Reconnecting…</span>}
             </div>
           </div>
-          <div className="conv-header-actions">
+          {inTitleBar(titleSlot, <div className="conv-header-actions">
             <BackgroundJobs workspace={workspace} onOpenBrowser={() => onWorkbench(current => openTool(current, 'browser'))} />
             <button
               type="button"
@@ -454,7 +458,7 @@ export function ProjectView({
             >
               {workbench.open ? <PanelRightClose size={14} /> : <PanelRight size={14} />}
             </button>
-          </div>
+          </div>)}
         </header>
 
         <div className="conv-scroll" ref={scroller} onScroll={() => {

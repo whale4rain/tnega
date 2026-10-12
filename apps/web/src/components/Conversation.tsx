@@ -30,6 +30,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
 import { errorText, folderName } from '../lib/hooks'
+import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
 import { applyStream, beginRun, formatTokens, fromEvents, type Entry } from '../lib/timeline'
 import type {
@@ -89,6 +90,7 @@ export function Conversation({
   onBrowserActivity,
   sidebarOpen,
   onToggleSidebar,
+  titleSlot,
 }: {
   workspace: string
   sessionId: string | undefined
@@ -115,6 +117,8 @@ export function Conversation({
   onBrowserActivity?: () => void
   sidebarOpen: boolean
   onToggleSidebar: () => void
+  /** The desktop title-bar row over the open Workbench: the header actions move there. */
+  titleSlot?: HTMLElement | null | undefined
 }) {
   const [summary, setSummary] = useState<SessionSummary | undefined>()
   const [entries, setEntries] = useState<readonly Entry[]>([])
@@ -664,7 +668,7 @@ export function Conversation({
             {goal && <GoalPill goal={goal} />}
           </div>
         </div>
-        <div className="conv-header-actions">
+        {inTitleBar(titleSlot, <div className="conv-header-actions">
           <div className="header-group">
             <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} />
           </div>
@@ -699,7 +703,7 @@ export function Conversation({
             />
           )}
           </div>
-        </div>
+        </div>)}
       </header>
 
       <div className="conv-scroll" ref={scroller} onScroll={onScroll}>
