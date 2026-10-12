@@ -1,0 +1,58 @@
+import type { UsageResponse, UsageTotals } from './types.js'
+
+const SYMBOL: Record<string, string> = { USD: '$', CNY: '¥', EUR: '€', GBP: '£', JPY: '¥' }
+
+/** `$0.42`, `¥1.30`, or `0.42 CHF`; several currencies join with ` + `. */
+export function formatCost(cost: UsageTotals['cost']): string | undefined {
+  if (!cost?.length) return undefined
+  return cost.map(({ amount, currency }) => {
+    const digits = amount !== 0 && amount < 0.01 ? 4 : 2
+    const value = amount.toFixed(digits)
+    const symbol = SYMBOL[currency]
+    return symbol ? `${symbol}${value}` : `${value} ${currency}`
+  }).join(' + ')
+}
+
+export function formatRate(rate: number | undefined): string | undefined {
+  return rate === undefined ? undefined : `${Math.round(rate * 100)}%`
+}
+
+export function localUsageDate(timestamp: number): string {
+  const date = new Date(timestamp)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+export function dailyUsageTotals(responses: readonly UsageResponse[]): UsageTotals {
+  const sum: UsageTotals = { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0 }
+  const costs = new Map<string, number>()
+  for (const response of responses) {
+    sum.responses += response.responses
+    sum.promptTokens += response.promptTokens
+    sum.completionTokens += response.completionTokens
+    sum.cachedTokens += response.cachedTokens
+    sum.reasoningTokens += response.reasoningTokens
+    for (const cost of response.cost ?? []) costs.set(cost.currency, (costs.get(cost.currency) ?? 0) + cost.amount)
+  }
+  if (costs.size) sum.cost = [...costs].map(([currency, amount]) => ({ currency, amount }))
+  return sum
+}
+
+/** Calendar arithmetic uses setDate so DST days still occupy one cell. */
+export function usageCalendar(responses: readonly UsageResponse[], now = Date.now()) {
+  const grouped = new Map<string, UsageResponse[]>()
+  for (const response of responses) {
+    const date = localUsageDate(response.timestamp)
+    const entries = grouped.get(date) ?? []
+    entries.push(response)
+    grouped.set(date, entries)
+  }
+  const days = Array.from({ length: 371 }, (_, index) => {
+    const at = new Date(now)
+    at.setDate(at.getDate() - 370 + index)
+    const date = localUsageDate(at.getTime())
+    const entries = grouped.get(date) ?? []
+    return { date, weekday: at.getDay(), responses: entries, tokens: entries.reduce((sum, entry) => sum + entry.promptTokens + entry.completionTokens, 0) }
+  })
+  const max = Math.max(1, ...days.map(day => day.tokens))
+  return days.map(day => ({ ...day, level: day.tokens === 0 ? 0 : Math.min(4, Math.ceil(day.tokens / max * 4)) }))
+}

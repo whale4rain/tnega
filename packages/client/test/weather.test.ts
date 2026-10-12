@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Entry } from './timeline'
-import { sessionWeather, turnWeather } from './weather'
+import type { Entry } from '../src/timeline.js'
+import { sessionWeather, turnWeather } from '../src/weather.js'
 
 type AgentEntry = Extract<Entry, { kind: 'agent' }>
 

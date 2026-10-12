@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyCompletion, detectTrigger, mergeCommands, parseCommand, rankCommands } from './completion'
+import { applyCompletion, detectTrigger, mergeCommands, parseCommand, rankCommands } from '../src/completion.js'
 
 describe('detectTrigger', () => {
   it('recognises commands, their first argument and file mentions at the caret', () => {
