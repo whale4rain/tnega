@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artifactsFor, board, boardFeed, exchangeMessages, fromSnapshot, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
+import { type BoardColumn, artifactsFor, board, boardFeed, exchangeMessages, fromSnapshot, greeting, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
 import type { BoxEnvelope, ProjectSnapshot, ThreadRecord } from './project-types'
 
 const COORD = 'c0000000-0000-4000-8000-000000000000'
@@ -341,5 +341,45 @@ describe('the Board', () => {
     expect(today(state, now)).toEqual({ started: 1, finished: 1, artifacts: 0 })
     const usage = { total: { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0 }, since: { responses: 2, promptTokens: 900, completionTokens: 100, cachedTokens: 0 }, byThread: [] }
     expect(today(state, now, usage).tokens).toBe(1000)
+  })
+
+  describe('greeting', () => {
+    const lanes = (lanes: Partial<Record<BoardColumn['key'], ThreadRecord[]>>): BoardColumn[] =>
+      (['needs', 'working', 'ready', 'idle', 'resolved'] as const).map(key => ({ key, label: key, hint: '', threads: lanes[key] ?? [] }))
+    const writer = thread(T1, { label: 'Writer' })
+    const research = thread(T2, { label: 'Research' })
+
+    it('says who needs you and recaps yesterday in the morning', () => {
+      const now = new Date(2026, 9, 4, 9, 0).getTime()
+      const yesterday = new Date(2026, 9, 3, 16, 0).getTime()
+      const state = fromSnapshot(snapshot({
+        threads: [thread(COORD, { depth: 0 }), { ...writer, createdAt: yesterday, updatedAt: yesterday, state: 'done' }, research],
+      }))
+      expect(greeting(lanes({ needs: [research], ready: [writer] }), state, now)).toEqual({
+        title: 'Good morning.',
+        now: 'Research is waiting on you. Writer has a result ready.',
+        recap: 'Yesterday, 1 thread finished.',
+      })
+    })
+
+    it('suggests lunch when nothing needs you at midday', () => {
+      const now = new Date(2026, 9, 4, 12, 30).getTime()
+      const state = fromSnapshot(snapshot())
+      expect(greeting(lanes({}), state, now)).toEqual({ title: 'Lunchtime.', now: 'Nothing needs you, so go and eat.' })
+      expect(greeting(lanes({ working: [writer, research] }), state, now).now)
+        .toBe('Writer and Research are still working, so there is nothing to do but wait. A good moment for lunch.')
+    })
+
+    it('recaps today so far in the afternoon, with tokens', () => {
+      const now = new Date(2026, 9, 4, 15, 0).getTime()
+      const morning = new Date(2026, 9, 4, 10, 0).getTime()
+      const state = fromSnapshot(snapshot({ threads: [thread(COORD, { depth: 0 }), { ...writer, createdAt: morning, updatedAt: morning, state: 'done' }] }))
+      const usage = { total: { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0 }, since: { responses: 2, promptTokens: 12_000, completionTokens: 400, cachedTokens: 0 }, byThread: [] }
+      expect(greeting(lanes({ idle: [writer] }), state, now, usage)).toEqual({
+        title: 'Good afternoon.',
+        now: 'Nothing needs you right now.',
+        recap: 'So far today, 1 thread finished, using 12k tokens.',
+      })
+    })
   })
 })

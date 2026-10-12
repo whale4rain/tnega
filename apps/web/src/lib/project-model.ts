@@ -483,18 +483,88 @@ export interface Today {
   tokens?: number
 }
 
-/** The Board's "Today" strip. */
-export function today(state: ProjectState, now: number, usage?: ProjectUsage): Today {
-  const since = startOfDay(now)
+/** What threads did between `from` and `to`. */
+export function activity(state: ProjectState, from: number, to = Infinity): Today {
+  const within = (at: number) => at >= from && at < to
   const threads = workerThreads(state)
-  const result: Today = {
-    started: threads.filter(thread => thread.createdAt >= since).length,
-    finished: threads.filter(thread => thread.updatedAt >= since
+  return {
+    started: threads.filter(thread => within(thread.createdAt)).length,
+    finished: threads.filter(thread => within(thread.updatedAt)
       && (thread.state === 'done' || thread.state === 'resolved')).length,
-    artifacts: state.artifacts.filter(artifact => artifact.createdAt >= since).length,
+    artifacts: state.artifacts.filter(artifact => within(artifact.createdAt)).length,
   }
+}
+
+/** What threads did since midnight, with tokens when the server reports usage. */
+export function today(state: ProjectState, now: number, usage?: ProjectUsage): Today {
+  const result = activity(state, startOfDay(now))
   if (usage?.since) result.tokens = usage.since.promptTokens + usage.since.completionTokens
   return result
+}
+
+export interface Greeting {
+  /** A few words for the time of day, set in the display serif. */
+  title: string
+  /** How things stand now, in a sentence or two. */
+  now: string
+  /** A short recap of yesterday (mornings) or today so far, when anything happened. */
+  recap?: string
+}
+
+/** "Research", "Research and Writer", "3 threads". */
+function threadNames(threads: readonly ThreadRecord[]): string {
+  if (threads.length > 2) return `${threads.length} threads`
+  return threads.map(thread => thread.label).join(' and ')
+}
+
+function recapLine(day: Today): string | undefined {
+  const parts = [
+    day.finished ? `${day.finished} ${day.finished === 1 ? 'thread' : 'threads'} finished` : '',
+    day.artifacts ? `${day.artifacts} ${day.artifacts === 1 ? 'output was' : 'outputs were'} added` : '',
+    !day.finished && day.started ? `${day.started} ${day.started === 1 ? 'thread' : 'threads'} started` : '',
+  ].filter(Boolean)
+  if (parts.length === 0) return undefined
+  const sentence = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
+  return day.tokens ? `${sentence}, using ${formatCount(day.tokens)} tokens` : sentence
+}
+
+/**
+ * The Board's opening words: a greeting for the time of day, how the work
+ * stands in plain words, and a one-line recap — yesterday's in the morning,
+ * today's so far later on. Words instead of a chart (tnega-design §5.7).
+ */
+export function greeting(columns: readonly BoardColumn[], state: ProjectState, now: number, usage?: ProjectUsage): Greeting {
+  const lane = (key: BoardColumnKey) => columns.find(column => column.key === key)?.threads ?? []
+  const needs = lane('needs')
+  const working = lane('working')
+  const ready = lane('ready')
+  const hour = new Date(now).getHours()
+  const quiet = needs.length === 0
+  const title = hour < 5 ? 'Working late.'
+    : hour < 12 ? 'Good morning.'
+      : hour < 14 ? (quiet ? 'Lunchtime.' : 'Good afternoon.')
+        : hour < 18 ? 'Good afternoon.'
+          : hour < 22 ? 'Good evening.' : 'Working late.'
+
+  const sentences: string[] = []
+  if (needs.length) {
+    const failed = needs.filter(thread => threadState(state, thread) === 'failed')
+    const waiting = needs.filter(thread => threadState(state, thread) !== 'failed')
+    if (waiting.length) sentences.push(`${threadNames(waiting)} ${waiting.length === 1 ? 'is' : 'are'} waiting on you.`)
+    if (failed.length) sentences.push(`${threadNames(failed)} failed and could use a look.`)
+  }
+  if (ready.length) sentences.push(ready.length === 1 ? `${ready[0]?.label} has a result ready.` : `${ready.length} results are ready.`)
+  if (working.length) sentences.push(`${threadNames(working)} ${working.length === 1 ? 'is' : 'are'} still working${quiet ? ', so there is nothing to do but wait' : ''}.`)
+  if (sentences.length === 0) sentences.push(hour >= 12 && hour < 14 ? 'Nothing needs you, so go and eat.' : 'Nothing needs you right now.')
+  else if (quiet && hour >= 12 && hour < 14 && !ready.length) sentences.push('A good moment for lunch.')
+
+  const midnight = startOfDay(now)
+  const yesterday = recapLine(activity(state, startOfDay(midnight - 1), midnight))
+  const sofar = recapLine(today(state, now, usage))
+  const recap = hour < 12
+    ? (yesterday ? `Yesterday, ${yesterday}.` : sofar && `So far today, ${sofar}.`)
+    : (sofar ? `So far today, ${sofar}.` : yesterday && `Yesterday, ${yesterday}.`)
+  return { title, now: sentences.join(' '), ...(recap ? { recap } : {}) }
 }
 
 /** What a line of the Board's "Recently" says a thread did. */

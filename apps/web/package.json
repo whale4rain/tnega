@@ -18,6 +18,7 @@
     "@codemirror/merge": "^6.12.2",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
+    "@fontsource-variable/fraunces": "5.2.8",
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@fontsource-variable/noto-sans-sc": "5.3.1",

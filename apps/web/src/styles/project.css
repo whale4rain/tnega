@@ -1409,102 +1409,44 @@
   color: var(--warn);
 }
 
-.board-forecast {
-  font-size: var(--text-xs);
-  color: var(--text-3);
-  padding-right: 4px;
-}
-
 .board-scroll {
   container-type: inline-size;
 }
 
 /* One segment per thread, coloured like its light; resolved work fills from the left. */
-.board-shape {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.board-shape-bar {
-  display: flex;
-  flex: 1;
-  gap: 3px;
-  height: 8px;
-  min-width: 0;
-}
-
-.board-shape-seg {
-  flex: 1;
-  min-width: 3px;
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
-  transition: background-color var(--duration-fast);
-}
-
-.board-shape-seg.seg-resolved { background: var(--text-3); }
-.board-shape-seg.seg-ready { background: var(--success); }
-.board-shape-seg.seg-working { background: var(--accent); animation: status-light-pulse 1.6s var(--ease-out) infinite; }
-.board-shape-seg.seg-needs { background: var(--warn); }
-.board-shape-seg.seg-failed { background: var(--danger); }
-
-.board-shape-count {
-  flex: none;
-  font-size: var(--text-sm);
-  color: var(--text-3);
-}
-
-.board-shape-count strong {
-  color: var(--text);
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The Board opens with the project's name and one sentence on how it stands, like a page title. */
+/* The Board opens with a few words, not a chart: a greeting in the display serif, how things stand,
+   and a short recap, with room to breathe around them (tnega-design §5.7). */
 .board-intro {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+  gap: 6px;
+  margin: 8px 0 28px;
+  max-width: 60ch;
 }
 
-.board-title {
-  margin: 0;
-  font-size: var(--text-xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+.board-greeting {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
   color: var(--text);
 }
 
-.board-forecast-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.board-now,
+.board-recap {
   margin: 0;
   font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+.board-now {
   color: var(--text-2);
 }
 
-.board-today {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 2px 12px;
-  margin: 0 0 18px;
-  font-size: var(--text-sm);
+.board-recap {
   color: var(--text-3);
-}
-
-.board-today-label {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.board-stat strong {
-  color: var(--text);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
 }
 
 .board-empty {
