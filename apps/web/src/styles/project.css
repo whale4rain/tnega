@@ -94,19 +94,20 @@
 .thread-stack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .thread-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
-  width: 100%;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
-  min-height: 30px;
-  padding: 4px 8px;
-  border-radius: var(--radius-md);
+  min-height: 36px;
+  padding: 6px 10px 6px 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid var(--border);
   text-align: left;
@@ -128,9 +129,9 @@
 }
 
 .thread-card-label {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  font-weight: 600;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1378,6 +1379,7 @@
 
 .thread-card-wrap {
   position: relative;
+  max-width: 100%;
 }
 
 /* Reply takes the chevron's place at the card's right end while the card is hovered. */
@@ -1470,7 +1472,7 @@
 .board-title {
   margin: 0;
   font-size: var(--text-xl);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text);
 }
@@ -1501,7 +1503,7 @@
 
 .board-stat strong {
   color: var(--text);
-  font-weight: 650;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1537,9 +1539,7 @@
   }
 
   .board-lane {
-    padding: 8px;
-    border-radius: var(--radius-lg);
-    background: var(--surface-sunken);
+    min-width: 0;
   }
 }
 
@@ -1550,24 +1550,28 @@
   }
 }
 
-.board-lane-head {
+/* A section head is a soft band, like Claude's; the cards under it stay flat (tnega-design §5.7). */
+.board-lane-head,
+.board-resolved-head,
+.board-feed-head {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin: 0 0 8px;
-  font-size: var(--text-md);
-  font-weight: 650;
-  color: var(--text);
-}
-
-.board-lane-head .count {
+  gap: 8px;
+  width: 100%;
+  min-height: var(--control);
+  margin: 0 0 4px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  background: var(--surface-hover);
   font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
-.lane-needs .board-lane-head {
-  color: var(--warn);
+.board-lane-head .count,
+.board-resolved-head .count {
+  font-weight: 400;
+  color: var(--text-3);
 }
 
 .lane-dot {
@@ -1599,16 +1603,13 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px;
   border-radius: var(--radius-md);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  transition: background var(--duration-fast);
 }
 
 .board-card:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  background: var(--surface-hover);
 }
 
 .board-card:has(.board-card-open:focus-visible) {
@@ -1616,12 +1617,8 @@
   outline-offset: 1px;
 }
 
-.board-card.col-needs {
-  border-color: var(--warn);
-}
-
 .board-card > .status-light {
-  margin-top: 6px;
+  margin-top: 5px;
 }
 
 .board-card-body {
@@ -1634,8 +1631,8 @@
 
 /* The title opens the thread; its hit area stretches over the whole card. */
 .board-card-open {
-  font-size: var(--text-lg);
-  font-weight: 650;
+  font-size: var(--text-md);
+  font-weight: 500;
   color: var(--text);
   text-align: left;
   overflow: hidden;
@@ -1656,7 +1653,7 @@
 }
 
 .board-card-activity {
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   color: var(--text-2);
   display: -webkit-box;
   -webkit-line-clamp: 1;
@@ -1741,7 +1738,7 @@
   height: 20px;
   padding: 0 7px;
   border-radius: var(--radius-full);
-  background: var(--surface-sunken);
+  background: var(--surface-hover);
   color: var(--text-2);
   font-size: var(--text-xs);
 }
@@ -1816,16 +1813,6 @@ button.board-chip.active {
   margin-top: 12px;
 }
 
-.board-resolved-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-2);
-}
-
 .board-resolved-head .sep {
   margin-right: 6px;
 }
@@ -1838,6 +1825,10 @@ button.board-chip.active {
   transform: rotate(90deg);
 }
 
+.board-resolved-head:hover {
+  color: var(--text);
+}
+
 .board-resolved .board-card {
   opacity: 0.75;
 }
@@ -1848,10 +1839,7 @@ button.board-chip.active {
 }
 
 .board-feed-head {
-  margin: 0 0 6px;
-  font-size: var(--text-md);
-  font-weight: 650;
-  color: var(--text);
+  margin-bottom: 6px;
 }
 
 .board-feed-list {
@@ -1896,7 +1884,7 @@ button.board-chip.active {
 }
 
 .board-feed-text strong {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 
@@ -2049,12 +2037,13 @@ button.board-chip.active {
 .git-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 6px 4px 10px;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 4px 6px 4px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--surface);
   animation: fade-up 260ms var(--ease-out);
 }
@@ -2072,7 +2061,7 @@ button.board-chip.active {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -2080,7 +2069,7 @@ button.board-chip.active {
   flex: none;
   max-width: 60%;
   overflow: hidden;
-  font-weight: 600;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2122,6 +2111,7 @@ button.board-chip.active {
 .git-stack {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
 }
 
