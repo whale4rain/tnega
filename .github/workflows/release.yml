@@ -126,6 +126,16 @@ jobs:
         run: pnpm --filter @tnega/desktop exec electron-builder ${{ matrix.builder }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # The same launch check as desktop-packages.yml, on the unpacked build:
+      # a package that does not start must not be published.
+      - name: Smoke-test the packaged app
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            node apps/desktop/scripts/smoke-packaged.mjs "$(ls -d apps/desktop/release/mac*/Tnega.app)/Contents/MacOS/Tnega"
+          else
+            sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+            xvfb-run -a node apps/desktop/scripts/smoke-packaged.mjs apps/desktop/release/linux-unpacked/tnega-desktop -- --no-sandbox
+          fi
       - run: node scripts/release-ci.mjs stage ${{ matrix.platform }} "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

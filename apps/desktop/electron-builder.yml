@@ -42,8 +42,8 @@ dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
   icon: build/icon.png
-  # The scoped package name is not a valid file name for the binary.
-  executableName: tnega
+  # The scoped package name is not a valid file name, and `tnega` is the npm CLI.
+  executableName: tnega-desktop
   category: Development
   synopsis: Local agent workspace
   description: Tnega desktop, a local agent workspace.

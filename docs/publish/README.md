@@ -147,7 +147,17 @@ on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://d
    In parallel, the `desktop` jobs package the same commit on macOS 15 Apple
    silicon, macOS 15 Intel and Ubuntu 24.04 runners (native modules such as
    node-pty and koffi only install for the runner's own architecture). They do
-   not rerun the suite; Windows is the test gate.
+   not rerun the suite; Windows is the test gate. Each one launches its
+   packaged app (`apps/desktop/scripts/smoke-packaged.mjs`) before staging, so
+   a build that does not start is never published.
+
+   Before tagging, prove the Mac and Linux packages without a release: the
+   [Desktop packages](../../.github/workflows/desktop-packages.yml) workflow
+   runs on every pull request that touches the desktop app or release scripts,
+   and from the Actions tab (**Run workflow**). It installs the `.dmg` and the
+   `.deb` the way a user would, launches them (and the AppImage), checks the
+   window loads, the window buttons are on the right side and a terminal
+   works, and keeps the packages and screenshots as run artifacts.
 4. A `bundle` job collects every platform's files, joins the two Mac feed
    halves into one `latest-mac.yml` / `beta-mac.yml`, checks that every feed
    names its installers' exact sizes and SHA512, and retains the fixed

@@ -1,0 +1,131 @@
+name: Desktop packages
+
+# Builds the macOS and Linux desktop packages without a tag and proves them on
+# real runners: the app installs, starts, loads its UI and runs a terminal.
+# Nobody on the team has a Mac or Linux machine, so this is where those builds
+# are checked before a release. Run it from the Actions tab (Run workflow) or
+# let a pull request that touches the desktop app or release scripts start it.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - apps/web/src/lib/desktop-*.ts
+      - scripts/release*.mjs
+      - pnpm-lock.yaml
+      - .github/workflows/desktop-packages.yml
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mac-arm64
+            runner: macos-15
+            builder: --mac --arm64
+          - platform: mac-x64
+            runner: macos-15-intel
+            builder: --mac --x64
+          - platform: linux
+            runner: ubuntu-24.04
+            builder: --linux --x64
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @tnega/desktop typecheck
+      - run: pnpm --filter @tnega/desktop build
+      - name: Package ${{ matrix.platform }}
+        run: pnpm --filter @tnega/desktop exec electron-builder ${{ matrix.builder }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Check the files a release would ship
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          ls -la apps/desktop/release
+          case "${{ matrix.platform }}" in
+            mac-*) arch=${{ matrix.platform }}; arch=${arch#mac-}
+                   files="Tnega-$version-$arch.dmg Tnega-$version-mac-$arch.zip Tnega-$version-mac-$arch.zip.blockmap latest-mac.yml" ;;
+            linux) files="Tnega-$version-x86_64.AppImage Tnega-$version-amd64.deb latest-linux.yml" ;;
+          esac
+          for file in $files; do test -s "apps/desktop/release/$file" || { echo "missing $file"; exit 1; }; done
+
+      # macOS: open the disk image the way a user does, check the ad-hoc
+      # signature, copy the app out and run it from there.
+      - name: Install from the disk image (macOS)
+        if: startsWith(matrix.platform, 'mac-')
+        run: |
+          dmg=$(ls apps/desktop/release/Tnega-*.dmg)
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint /tmp/tnega-dmg
+          codesign --verify --deep --strict --verbose=2 /tmp/tnega-dmg/Tnega.app
+          codesign -dv /tmp/tnega-dmg/Tnega.app 2>&1 | grep -E 'Signature|Identifier|Format'
+          lipo -archs /tmp/tnega-dmg/Tnega.app/Contents/MacOS/Tnega
+          ditto /tmp/tnega-dmg/Tnega.app "$RUNNER_TEMP/Tnega.app"
+          hdiutil detach /tmp/tnega-dmg
+      - name: Smoke-test the installed app (macOS)
+        if: startsWith(matrix.platform, 'mac-')
+        run: node apps/desktop/scripts/smoke-packaged.mjs "$RUNNER_TEMP/Tnega.app/Contents/MacOS/Tnega" --screenshot "$RUNNER_TEMP/screens/${{ matrix.platform }}.png"
+
+      # Linux: install the .deb with apt (its AppArmor profile lets Chromium's
+      # sandbox run on Ubuntu 24.04), then also start the AppImage.
+      - name: Install the .deb and a virtual display (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb imagemagick
+          sudo apt-get install -y -qq ./apps/desktop/release/Tnega-*-amd64.deb
+          dpkg -L tnega | grep -E 'bin/|\.desktop$'
+      - name: Smoke-test the installed .deb (Linux)
+        if: matrix.platform == 'linux'
+        run: xvfb-run -a -s '-screen 0 1440x900x24' node apps/desktop/scripts/smoke-packaged.mjs /opt/Tnega/tnega-desktop --screenshot "$RUNNER_TEMP/screens/linux-deb.png"
+      - name: Smoke-test the AppImage (Linux)
+        if: matrix.platform == 'linux'
+        env:
+          # Runners have no FUSE; this is what users without FUSE do too.
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          appimage=$(ls apps/desktop/release/Tnega-*-x86_64.AppImage)
+          chmod +x "$appimage"
+          # Without the .deb's AppArmor profile, Ubuntu 24.04 blocks Chromium's
+          # sandbox; the release notes point those users to the .deb.
+          xvfb-run -a -s '-screen 0 1440x900x24' node apps/desktop/scripts/smoke-packaged.mjs "$appimage" --screenshot "$RUNNER_TEMP/screens/linux-appimage.png" -- --no-sandbox
+
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: screenshots-${{ matrix.platform }}
+          path: ${{ runner.temp }}/screens/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Keep the packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-${{ matrix.platform }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.yml
+          if-no-files-found: error
+          retention-days: 14
