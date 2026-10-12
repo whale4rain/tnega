@@ -16,7 +16,8 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.4.25-beta.3 | [`v0.4.25-beta.2...v0.4.25-beta.3`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.2...v0.4.25-beta.3) | 25 |
+| 0.4.25-beta.4 | [`v0.4.25-beta.3...v0.4.25-beta.4`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.3...v0.4.25-beta.4) | 10 |
+| 0.4.25-beta.3 | [`v0.4.25-beta.2...v0.4.25-beta.3`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.2...v0.4.25-beta.3) | 29 |
 | 0.4.25-beta.2 | [`v0.4.25-beta.1...v0.4.25-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.1...v0.4.25-beta.2) | 5 |
 | 0.4.25-beta.1 | [`v0.4.24-beta.1...v0.4.25-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.24-beta.1...v0.4.25-beta.1) | 3 |
 | 0.4.24-beta.1 | [`v0.4.24...v0.4.24-beta.1`](https://github.com/whale4rain/tnega/compare/v0.4.24...v0.4.24-beta.1) | 7 |
@@ -52,6 +53,24 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.4.25-beta.4](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.4) — 2026-10-12
+
+### Features
+
+- On the desktop, while the right panel is open, the conversation and project header actions sit in the top row beside the window controls; the panel's tabs stay on the row below. The line under that row runs over the panel only.
+- Project rows in the sidebar show a project icon, then the status light and a pull-request mark coloured by its current state (open, draft, merged or closed). Pull request state is read with the user's own `gh` login and cached; without `gh` the recorded state is shown. Git cards and Board chips show the current state too.
+- Pinned folds like a workspace group and shows 8 projects plus "N more"; the open project and any project waiting on you or failed always stay visible. The project row's "…" menu can archive, restore or delete a project, and Delete asks first.
+- A new default theme, Carbon: calm neutral greys with an ink accent and no blue, in light and dark. A palette chosen earlier is kept, and Sky, Sand, Forest and Graphite stay selectable. The app icon is a white cloud on a dark tile.
+- The Workbench is a rounded card inset from the window edges.
+- New fonts, bundled with the app: Geist and Noto Sans SC for the interface, JetBrains Mono for code, and a Fraunces serif for greetings.
+- The Project Board opens with a greeting, a plain-sentence status and a one-line recap of yesterday or today, instead of the colour bar and stat row. Thread and pull request cards fit their content, and Board sections use soft headings over flat rows.
+
+### Fixes
+
+- Switching workspaces keeps the sidebar's lists on screen until the new ones arrive, and reopening a project shows its last state while the fresh one loads, instead of blanking.
+- Collapsed workspace groups no longer show counts.
+- A pull request opened with `gh pr create --draft` is recorded as a draft instead of "Opened".
 
 ## [0.4.25-beta.3](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.3) — 2026-10-11
 
