@@ -273,10 +273,11 @@ describe('applyStream', () => {
     expect(live.blocks.map(block => block.kind)).toEqual(['reasoning', 'text'])
     expect(live.blocks[0]).toMatchObject({ text: 'Add them.', streaming: true })
 
-    const answered = [
+    const rest: StreamEvent[] = [
       { type: 'message_delta', id: 'm1', delta: '5' },
       { type: 'message_stop', id: 'm1', finishReason: 'stop' },
-    ].reduce(applyStream, thinking) as Entry[]
+    ]
+    const answered = rest.reduce(applyStream, thinking)
     const agent = answered[1] as Extract<Entry, { kind: 'agent' }>
     expect(agent.blocks[0]).toMatchObject({ kind: 'reasoning', text: 'Add them.', streaming: false, durationMs: expect.any(Number) })
     expect(agent.blocks[0]).not.toHaveProperty('startedAt')

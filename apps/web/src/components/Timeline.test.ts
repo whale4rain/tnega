@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Block, Entry, ToolView } from '../lib/timeline'
+import type { StreamEvent } from '../lib/types'
 import { applyStream, beginRun } from '../lib/timeline'
 import { Timeline } from './Timeline'
 import { LinkContext } from '../lib/links'
@@ -193,10 +194,11 @@ it('offers a visible fork from each finished reply, keyed to its assistant messa
 })
 
 it('streams the thought while the model reasons and folds it once the answer starts', () => {
-  const thinking = [
+  const events: StreamEvent[] = [
     { type: 'message_start', id: 'm1' },
     { type: 'reasoning_delta', id: 'm1', delta: 'Weighing the two options.' },
-  ].reduce(applyStream, beginRun([], 'Which one?', 1))
+  ]
+  const thinking = events.reduce(applyStream, beginRun([], 'Which one?', 1))
   const view = render(createElement(Timeline, { entries: thinking, running: true, actions: {} }))
   const head = view.getByRole('button', { name: 'Thinking' })
   expect(head.getAttribute('aria-expanded')).toBe('true')
