@@ -95,15 +95,18 @@ async function run() {
   step(`window loaded ${server}`)
 
   const chrome = await until('the renderer to mark the window controls', async observe => {
-    const value = await evaluate(page.webSocketDebuggerUrl, `({
+    const value = await evaluate(page.webSocketDebuggerUrl, `(async () => ({
       size: [innerWidth, innerHeight],
+      visibility: document.visibilityState,
+      focus: document.hasFocus(),
+      timer: await Promise.race([new Promise(resolve => setTimeout(() => resolve('fired'), 0)), new Promise(resolve => setTimeout(() => resolve('slow'), 3000))]),
       headers: [...document.querySelectorAll('.sidebar-top, .conv-header')].map(header => header.className + ' ' + JSON.stringify(header.getBoundingClientRect())),
       platform: window.tnegaDesktop?.platform,
       desktop: document.documentElement.classList.contains('desktop-chrome'),
       left: document.documentElement.classList.contains('window-controls-left'),
       clearedLeft: document.querySelectorAll('.window-controls-header-start').length,
       clearedRight: document.querySelectorAll('.window-controls-header').length,
-    })`)
+    }))()`)
     observe(value)
     return value?.desktop && value.clearedLeft + value.clearedRight > 0 ? value : undefined
   })
