@@ -14,7 +14,7 @@ export const TITLE_BAR_HEIGHT = 32
 
 /**
  * macOS draws its traffic lights itself, at the top-left: centred in the
- * 32px bar, inside the 78px the renderer keeps clear (`.window-controls-header-start`).
+ * 32px bar, inside the 72px the renderer keeps clear (`.window-controls-header-start`).
  */
 export const TRAFFIC_LIGHTS = { x: 14, y: 10 } as const
 

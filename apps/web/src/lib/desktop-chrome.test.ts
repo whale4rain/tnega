@@ -31,8 +31,9 @@ it('keeps the top-left header clear of the macOS traffic lights instead', () => 
   root.innerHTML = '<div class="sidebar-top"></div><header class="conv-header"></header>'
   const [sidebar, conversation] = [...root.children]
   if (!sidebar || !conversation) throw new Error('missing headers')
-  sidebar.getBoundingClientRect = () => new DOMRect(0, 0, 260, 32)
-  conversation.getBoundingClientRect = () => new DOMRect(260, 0, 1020, 32)
+  // The sidebar is a card inset 10px from the window edge, still under the lights.
+  sidebar.getBoundingClientRect = () => new DOMRect(10, 0, 243, 32)
+  conversation.getBoundingClientRect = () => new DOMRect(264, 0, 760, 32)
   markWindowControls(root, 1280, 'left')
   expect(sidebar.classList.contains('window-controls-header-start')).toBe(true)
   expect(conversation.classList.contains('window-controls-header-start')).toBe(false)
