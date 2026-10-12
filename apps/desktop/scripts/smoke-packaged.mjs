@@ -99,16 +99,6 @@ async function run() {
       size: [innerWidth, innerHeight],
       visibility: document.visibilityState,
       focus: document.hasFocus(),
-      // Does a class put on the sidebar header by hand survive a moment?
-      sticks: await (async () => {
-        const header = document.querySelector('.sidebar-top')
-        if (!header || header.classList.contains('window-controls-header-start')) return 'n/a'
-        header.classList.add('smoke-probe', 'window-controls-header-start')
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        const kept = [header.classList.contains('smoke-probe'), header.classList.contains('window-controls-header-start'), header.isConnected]
-        header.classList.remove('smoke-probe', 'window-controls-header-start')
-        return kept
-      })(),
       scripts: [...document.scripts].map(script => script.src),
       headers: [...document.querySelectorAll('.sidebar-top, .conv-header')].map(header => header.className + ' ' + JSON.stringify(header.getBoundingClientRect())),
       platform: window.tnegaDesktop?.platform,
@@ -119,6 +109,14 @@ async function run() {
     }))()`)
     observe(value)
     return value?.desktop && value.clearedLeft + value.clearedRight > 0 ? value : undefined
+  }).catch(async error => {
+    // Tell "the sync never ran with this layout" apart from "the sync gets it wrong".
+    const afterResize = await evaluate(page.webSocketDebuggerUrl, `(async () => {
+      dispatchEvent(new Event('resize'))
+      await new Promise(resolve => setTimeout(resolve, 500))
+      return document.querySelectorAll('.window-controls-header, .window-controls-header-start').length
+    })()`).catch(probe => probe.message)
+    throw new Error(`${error.message}; marked after a resize: ${JSON.stringify(afterResize)}`)
   })
   const mac = process.platform === 'darwin'
   if (chrome.platform !== process.platform || chrome.left !== mac || (mac ? chrome.clearedLeft < 1 || chrome.clearedRight > 0 : chrome.clearedLeft > 0)) {
