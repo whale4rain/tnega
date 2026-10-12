@@ -482,7 +482,7 @@ function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
   return (
     <div className={`tool-group${open ? ' open' : ''}${current ? ' is-live' : ''}`}>
       <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open}
-        title={step?.target ? `${step.verb} ${step.target}` : undefined}>
+        title={step?.target ? `${step.verb} ${step.fullTarget ?? step.target}` : undefined}>
         <span className="tool-icon"><Icon size={14} /></span>
         <span className={`tool-group-title${current ? ' shimmer' : ''}`}>
           {step ? step.verb : `${running ? 'Working through' : 'Used'} ${tools.length} steps`}
@@ -506,7 +506,7 @@ function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
 function ToolRow({ tool }: { tool: ToolView }) {
   const [open, setOpen] = useState<boolean | undefined>(undefined)
   const expanded = open ?? (tool.name === 'run_code' && tool.status === 'running')
-  const { family, verb, target } = presentTool(tool)
+  const { family, verb, target, fullTarget } = presentTool(tool)
   const children = tool.children ?? []
   const running = children.filter(child => child.status === 'running').length
   const failed = children.filter(needsAttention).length
@@ -518,7 +518,7 @@ function ToolRow({ tool }: { tool: ToolView }) {
   return (
     <div className={`tool-row status-${status}${expanded ? ' open' : ''}`}>
       <button type="button" className="tool-row-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded}
-        title={target ? `${verb} ${target}` : undefined} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : attention ? ', Failed' : status === 'note' ? ', Returned an error to the agent' : ''}`}>
+        title={target ? `${verb} ${fullTarget ?? target}` : undefined} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : attention ? ', Failed' : status === 'note' ? ', Returned an error to the agent' : ''}`}>
         <span className="tool-icon"><Icon size={14} /></span>
         <span className="tool-verb">{verb}</span>
         {target && <span className="tool-target">{target}</span>}
