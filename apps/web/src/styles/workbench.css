@@ -60,8 +60,9 @@
   justify-content: flex-end;
   flex: none;
   /* As tall as the native controls so the actions share their centre line; the panel's 6px gap is taken back.
-     It spans the panel's full width (over its padding and left border) and ends in a line, so the row reads
-     as part of the window's title bar, not of the panel. */
+     It spans the panel's full width (over its padding and left border) and ends in a line that meets the
+     panel's divider at the corner: like Claude's side panel, the panel's frame starts below the title bar,
+     and the line stays over the panel only, never under the conversation. */
   height: var(--header-h);
   margin: 0 -8px -6px -9px;
   padding: 0 calc(var(--window-controls-width) + 8px) 0 8px;
@@ -80,9 +81,6 @@
   background: var(--border);
   pointer-events: none;
 }
-
-/* The conversation's header shares that row, so the line continues under it. */
-.desktop-chrome .app.workbench-open .conv-header { border-bottom-color: var(--border); }
 
 /* Tab rail: tools first, then documents opened from the conversation. */
 .wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; height: var(--header-h); }

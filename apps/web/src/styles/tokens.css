@@ -474,6 +474,91 @@
   --syntax-property: #80d0e8;
 }
 
+/* Carbon (default since 2026-10-12): neutral greys with no blue cast, white ink, one clear blue accent. */
+[data-palette="carbon"][data-theme="light"] {
+  --bg: #f6f7f8;
+  --bg-sidebar: #eeeff1;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eff0f2;
+  --surface-hover: rgba(0, 0, 0, 0.05);
+  --surface-active: rgba(0, 0, 0, 0.085);
+  --border: #dddfe3;
+  --border-strong: #b4b8bf;
+  --border-focus: #1f63e0;
+
+  --text: #111214;
+  --text-2: #3c3f45;
+  --text-3: #555961;
+  --text-inverse: #fafafa;
+
+  --accent: #1f63e0;
+  --accent-hover: #1a52bb;
+  --accent-soft: #e6eefd;
+  --accent-text: #1a56c7;
+
+  --success: #24713f;
+  --success-soft: #e0f0e5;
+  --warn: #855400;
+  --warn-soft: #f6ead3;
+  --danger: #b5302b;
+  --danger-soft: #f8e1e0;
+
+  --code-bg: #f2f3f5;
+  --code-border: #dddfe3;
+  --selection: rgba(31, 99, 224, 0.18);
+
+  --syntax-keyword: #6f34a8;
+  --syntax-string: #24713f;
+  --syntax-number: #855400;
+  --syntax-comment: #555961;
+  --syntax-function: #1a56c7;
+  --syntax-type: #9a2f5c;
+  --syntax-property: #155e78;
+}
+
+[data-palette="carbon"][data-theme="dark"] {
+  --bg: #1a1b1e;
+  --bg-sidebar: #141517;
+  --surface: #232428;
+  --surface-raised: #2c2d32;
+  --surface-sunken: #17181b;
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --surface-active: rgba(255, 255, 255, 0.1);
+  --border: #33353a;
+  --border-strong: #4a4d54;
+  --border-focus: #6aa1ff;
+
+  --text: #f4f5f7;
+  --text-2: #c4c7cd;
+  --text-3: #a0a4ac;
+  --text-inverse: #0e0f12;
+
+  --accent: #6aa1ff;
+  --accent-hover: #8ab6ff;
+  --accent-soft: rgba(106, 161, 255, 0.15);
+  --accent-text: #8db8ff;
+
+  --success: #7dd3a0;
+  --success-soft: rgba(125, 211, 160, 0.13);
+  --warn: #ecbe6e;
+  --warn-soft: rgba(236, 190, 110, 0.13);
+  --danger: #f58e86;
+  --danger-soft: rgba(245, 142, 134, 0.13);
+
+  --code-bg: #17181b;
+  --code-border: #33353a;
+  --selection: rgba(106, 161, 255, 0.28);
+
+  --syntax-keyword: #d0a8f5;
+  --syntax-string: #7dd3a0;
+  --syntax-number: #ecbe6e;
+  --syntax-comment: #a0a4ac;
+  --syntax-function: #8db8ff;
+  --syntax-type: #f5a3c4;
+  --syntax-property: #80d0e8;
+}
+
 /*
  * Information display (Settings → Appearance). Density loosens rows and
  * controls; the header keeps its height so desktop window controls still fit.

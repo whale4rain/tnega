@@ -13,6 +13,7 @@
         var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.dataset.theme = dark ? 'dark' : 'light'
         // Display preferences from Settings → Appearance (lib/display.ts).
+        document.documentElement.dataset.palette = 'carbon'
         var display = { palette: 'tnega.palette', density: 'tnega.density', textSize: 'tnega.textSize', reading: 'tnega.readingWidth' }
         for (var attribute in display) {
           var value = localStorage.getItem(display[attribute])
