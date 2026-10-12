@@ -120,8 +120,10 @@
   background: var(--surface-hover);
 }
 
+/* The thread showing in the panel: a firmer hairline and a soft fill, never an --accent ring (ink on Carbon). */
 .thread-card.active {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
 }
 
 .thread-card.pending {
@@ -2070,6 +2072,10 @@ button.board-chip.active {
   height: calc(100vh - 40px);
   background: var(--bg);
   overflow: hidden;
+}
+
+.desktop-chrome .dialog.artifact-dialog-frame {
+  height: calc(100vh - env(titlebar-area-height, 32px) - 28px);
 }
 
 .artifact-dialog-frame .dialog-header {

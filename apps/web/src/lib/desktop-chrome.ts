@@ -29,21 +29,48 @@ export function inTitleBar(slot: HTMLElement | null | undefined, actions: ReactN
   return slot ? createPortal(actions, slot) : actions
 }
 
-/** `rgb(1, 2, 3)` / `rgba(1, 2, 3, 0.5)` → `#010203`; fully transparent colours give `undefined`. */
-export function cssColorToHex(color: string): string | undefined {
-  const match = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(color.trim())
-  if (!match) return /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim().toLowerCase() : undefined
-  if (match[4] !== undefined && Number(match[4]) === 0) return undefined
-  return `#${[match[1], match[2], match[3]].map(channel => Number(channel).toString(16).padStart(2, '0')).join('')}`
+type Rgba = [number, number, number, number]
+
+/** Computed colours as channels: `rgb()` / `rgba()` from plain colours, `color(srgb …)` from `color-mix()`. */
+function parseColor(color: string): Rgba | undefined {
+  const value = color.trim()
+  const rgb = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(value)
+  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])]
+  const srgb = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)$/.exec(value)
+  if (srgb) return [Number(srgb[1]) * 255, Number(srgb[2]) * 255, Number(srgb[3]) * 255, srgb[4] === undefined ? 1 : Number(srgb[4])]
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(value)
+  return hex ? [parseInt(hex[1] ?? '0', 16), parseInt(hex[2] ?? '0', 16), parseInt(hex[3] ?? '0', 16), 1] : undefined
 }
 
-/** The first opaque background at or above `element`. */
+function toHex([red, green, blue]: Rgba): string {
+  return `#${[red, green, blue].map(channel => Math.round(channel).toString(16).padStart(2, '0')).join('')}`
+}
+
+/** `rgb(1, 2, 3)` / `rgba(1, 2, 3, 0.5)` → `#010203`; fully transparent colours give `undefined`. */
+export function cssColorToHex(color: string): string | undefined {
+  const parsed = parseColor(color)
+  return parsed && parsed[3] > 0 ? toHex(parsed) : undefined
+}
+
+/**
+ * The colour seen at `element`: the first opaque background at or above it, with any translucent
+ * layers in between (a dialog's scrim) mixed over it, so the native controls dim along with the page.
+ */
 export function backgroundBehind(element: Element | null, fallback: string): string {
-  for (let node = element; node; node = node.parentElement) {
-    const hex = cssColorToHex(getComputedStyle(node).backgroundColor)
-    if (hex) return hex
+  const layers: Rgba[] = []
+  let base: Rgba | undefined
+  for (let node = element; node && !base; node = node.parentElement) {
+    const color = parseColor(getComputedStyle(node).backgroundColor)
+    if (!color || color[3] === 0) continue
+    if (color[3] >= 1) base = color
+    else layers.push(color)
   }
-  return fallback
+  if (!base && !layers.length) return fallback
+  base ??= parseColor(fallback) ?? [255, 255, 255, 1]
+  const mixed = layers.reduceRight<Rgba>((under, [red, green, blue, alpha]) => [
+    red * alpha + under[0] * (1 - alpha), green * alpha + under[1] * (1 - alpha), blue * alpha + under[2] * (1 - alpha), 1,
+  ], base)
+  return toHex(mixed)
 }
 
 /** Only the bar touching the native controls needs horizontal clearance. */

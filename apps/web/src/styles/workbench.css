@@ -50,15 +50,27 @@
 .wb-resize::after {
   content: "";
   position: absolute;
-  inset: 0 3px;
+  inset: 6px 3px;
   border-radius: 2px;
   background: transparent;
   transition: background var(--duration-fast);
 }
 
-.wb-resize:hover::after,
+/* A quiet hairline, not the accent: on Carbon dark the accent is near-white and read as a bold bar over
+   the card. It shows after a short pause so crossing the edge doesn't flash it. */
+.wb-resize:hover::after {
+  background: var(--border-strong);
+  transition-delay: 150ms;
+}
+
 .wb-resize.is-dragging::after {
-  background: var(--accent);
+  background: var(--border-strong);
+  transition-delay: 0s;
+}
+
+/* Under the desktop title-bar row the line starts where the card does. */
+.desktop-chrome .wb-resize::after {
+  top: var(--header-h);
 }
 
 /* On the desktop the native window controls own the window's top line: the panel card starts under it.

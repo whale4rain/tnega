@@ -481,11 +481,14 @@ function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
 
   return (
     <div className={`tool-group${open ? ' open' : ''}${current ? ' is-live' : ''}`}>
-      <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+      <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open}
+        title={step?.target ? `${step.verb} ${step.target}` : undefined}>
         <span className="tool-icon"><Icon size={14} /></span>
         <span className={`tool-group-title${current ? ' shimmer' : ''}`}>
-          {step ? `${step.verb}${step.target ? ` ${step.target}` : ''}` : `${running ? 'Working through' : 'Used'} ${tools.length} steps`}
+          {step ? step.verb : `${running ? 'Working through' : 'Used'} ${tools.length} steps`}
         </span>
+        {/* A long command shrinks to an ellipsis instead of pushing past the card. */}
+        {step?.target && <span className="tool-target">{step.target}</span>}
         <span className="tool-group-summary">{step ? `${tools.length} steps` : summary}</span>
         {failed > 0 && <span className="pill pill-danger">{failed} failed</span>}
         {running ? <span className="spinner" aria-label="Running" /> : null}
@@ -514,7 +517,8 @@ function ToolRow({ tool }: { tool: ToolView }) {
   const Icon = FAMILY_ICON[family]
   return (
     <div className={`tool-row status-${status}${expanded ? ' open' : ''}`}>
-      <button type="button" className="tool-row-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : attention ? ', Failed' : status === 'note' ? ', Returned an error to the agent' : ''}`}>
+      <button type="button" className="tool-row-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded}
+        title={target ? `${verb} ${target}` : undefined} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : attention ? ', Failed' : status === 'note' ? ', Returned an error to the agent' : ''}`}>
         <span className="tool-icon"><Icon size={14} /></span>
         <span className="tool-verb">{verb}</span>
         {target && <span className="tool-target">{target}</span>}

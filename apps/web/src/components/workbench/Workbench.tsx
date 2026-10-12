@@ -215,6 +215,9 @@ function ResizeHandle({ onResize }: { onResize: (width: number) => void }) {
         event.currentTarget.releasePointerCapture(event.pointerId)
         setDragging(false)
       }}
+      // The window can lose the pointer mid-drag (focus change, a native dialog): never leave the line stuck on.
+      onLostPointerCapture={() => setDragging(false)}
+      onPointerCancel={() => setDragging(false)}
     />
   )
 }
