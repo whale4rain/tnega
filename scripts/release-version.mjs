@@ -4,5 +4,8 @@ export function releaseVersion(version) {
     throw new Error('version must be x.y.z or x.y.z-beta.N (N starts at 1)')
   }
   const preview = version.includes('-beta.')
-  return { version, preview, feed: preview ? 'beta.yml' : 'latest.yml', npmTag: preview ? 'preview' : 'latest', releaseType: preview ? 'prerelease' : 'release' }
+  const channel = preview ? 'beta' : 'latest'
+  // electron-updater asks for `<channel>.yml` on Windows, `<channel>-mac.yml` and `<channel>-linux.yml` elsewhere.
+  const feeds = { windows: `${channel}.yml`, mac: `${channel}-mac.yml`, linux: `${channel}-linux.yml` }
+  return { version, preview, feed: feeds.windows, feeds, npmTag: preview ? 'preview' : 'latest', releaseType: preview ? 'prerelease' : 'release' }
 }

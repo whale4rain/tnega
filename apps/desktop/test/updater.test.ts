@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, test, vi } from 'vitest'
-import { summarizeUpdateError, UpdateController, type UpdaterLike, type UpdateState } from '../src/updater.js'
+import { releasePage, summarizeUpdateError, UpdateController, type UpdaterLike, type UpdateState } from '../src/updater.js'
 
 class FakeUpdater extends EventEmitter implements UpdaterLike {
   channel = 'latest'
@@ -23,6 +23,23 @@ class FakeUpdater extends EventEmitter implements UpdaterLike {
 }
 
 describe('desktop self-update', () => {
+  test('a build that cannot replace itself reports new releases without downloading them', async () => {
+    const updater = new FakeUpdater()
+    updater.autoDownload = true
+    const controller = new UpdateController({ version: '0.5.0', updater, manualInstall: true })
+    expect(updater.autoDownload).toBe(false)
+    updater.next = () => updater.emit('update-available', { version: '0.5.1' })
+    expect(await controller.check()).toEqual({ status: 'available', version: '0.5.0', next: '0.5.1', channel: 'stable' })
+    expect(controller.beginInstall()).toBe(false)
+    expect(controller.installOnExit()).toBe(false)
+    expect(updater.installs).toEqual([])
+    // A later check still runs, so the notice follows newer releases.
+    updater.next = () => updater.emit('update-available', { version: '0.5.2' })
+    expect(await controller.check()).toMatchObject({ status: 'available', next: '0.5.2' })
+    expect(releasePage('0.5.2')).toBe('https://github.com/whale4rain/tnega/releases/tag/v0.5.2')
+    expect(releasePage('1/../x')).toBe('https://github.com/whale4rain/tnega/releases/tag/v1%2F..%2Fx')
+  })
+
   test('defaults to stable even when the installed version is a preview', () => {
     const updater = new FakeUpdater()
     updater.allowPrerelease = true

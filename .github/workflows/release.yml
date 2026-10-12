@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   build:
+    name: build (windows, full test gate)
     runs-on: windows-2022
     timeout-minutes: 45
     defaults:
@@ -75,7 +76,84 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force .tnega/release-ci | Out-Null
           npm pack --ignore-scripts --pack-destination .tnega/release-ci
-      - run: node scripts/release-ci.mjs bundle $env:GITHUB_REF_NAME
+      - run: node scripts/release-ci.mjs stage windows $env:GITHUB_REF_NAME
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: platform-windows-${{ github.run_id }}
+          path: .tnega/release-ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: false
+
+  # The Windows job above runs the full test gate; these jobs only package the
+  # same tagged commit on each platform's own runner, so native modules
+  # (node-pty, koffi) match the architecture they ship for.
+  desktop:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: mac-arm64
+            runner: macos-15
+            builder: --mac --arm64
+          - platform: mac-x64
+            runner: macos-15-intel
+            builder: --mac --x64
+          - platform: linux
+            runner: ubuntu-24.04
+            builder: --linux --x64
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Check tag, versions, notes and main ancestry
+        run: node scripts/release-ci.mjs check "$GITHUB_REF_NAME"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @tnega/desktop typecheck
+      - run: pnpm --filter @tnega/desktop build
+      # macOS signing is ad hoc (electron-builder.yml); no certificate is read.
+      - name: Package ${{ matrix.platform }} without publishing
+        run: pnpm --filter @tnega/desktop exec electron-builder ${{ matrix.builder }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: node scripts/release-ci.mjs stage ${{ matrix.platform }} "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: platform-${{ matrix.platform }}-${{ github.run_id }}
+          path: .tnega/release-ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: false
+
+  bundle:
+    needs: [build, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: platform-*-${{ github.run_id }}
+          merge-multiple: true
+          path: .tnega/release-ci
+      - run: node scripts/release-ci.mjs bundle "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ github.run_id }}
@@ -87,7 +165,7 @@ jobs:
           overwrite: false
 
   publish:
-    needs: build
+    needs: bundle
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

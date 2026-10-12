@@ -1,7 +1,8 @@
 # Publishing a release
 
 The default release path is GitHub Actions: push a new version tag to publish
-the npm package (`tnega` CLI) and the Windows desktop installer/update feed.
+the npm package (`tnega` CLI) and the Windows, macOS and Linux desktop
+installers with their update feeds.
 Prepare the version and notes first; no local packaging or OTP is needed after
 the one-time npm Trusted Publisher configuration below.
 
@@ -58,9 +59,12 @@ files are preserved, so upgrades only add missing instructions.
 | Artifact | Destination | Consumers |
 | --- | --- | --- |
 | `tnega` npm package (`dist/`) | npm registry | `npm install -g tnega` |
-| `Tnega-Setup-<v>.exe` + `.blockmap` | GitHub release `v<v>` on `whale4rain/tnega` | new installs |
-| `latest.yml` | same GitHub release | installed clients: `electron-updater` reads it to find, download and verify the new installer |
-| `beta.yml` | GitHub prerelease `v<x.y.z-beta.N>` | clients that selected Preview (pre) |
+| `Tnega-Setup-<v>.exe` + `.blockmap` | GitHub release `v<v>` on `whale4rain/tnega` | new Windows installs |
+| `Tnega-<v>-arm64.dmg`, `Tnega-<v>-x64.dmg` | same GitHub release | new macOS installs (Apple silicon, Intel) |
+| `Tnega-<v>-mac-arm64.zip`, `Tnega-<v>-mac-x64.zip` + `.blockmap` | same GitHub release | the macOS update check (listed in the Mac feed) |
+| `Tnega-<v>-x86_64.AppImage`, `Tnega-<v>-amd64.deb` | same GitHub release | new Linux installs; installed Linux clients update from them |
+| `latest.yml`, `latest-mac.yml`, `latest-linux.yml` | same GitHub release | installed clients: `electron-updater` reads its platform's feed to find, download and verify the new installer |
+| `beta.yml`, `beta-mac.yml`, `beta-linux.yml` | GitHub prerelease `v<x.y.z-beta.N>` | clients that selected Preview (pre) |
 
 The update feed is configured once in `apps/desktop/electron-builder.yml`
 (`publish: github whale4rain/tnega`). electron-builder bakes `app-update.yml`
@@ -69,6 +73,12 @@ four hours, downloads in the background, and shows **Update** in the sidebar
 footer when it is ready. Clicking it shuts the runtime down, runs the installer
 silently and relaunches; quitting with an update downloaded installs it without
 relaunching. Settings shows the version and a **Check for updates** button.
+
+Windows and Linux (AppImage and deb) update themselves this way. The macOS
+build is only ad-hoc signed, and macOS will not let an app replace itself
+without a Developer ID signature, so the Mac app checks the same way but shows
+**Download** instead of **Update**; it opens the release page, and the user
+drags the new app over the old one.
 
 A client only sees a release that is **published** (not draft) and contains
 its channel's feed. Stable requires `latest.yml` on a non-prerelease;
@@ -134,7 +144,14 @@ on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://d
    or failed package check blocks packaging. The desktop is built separately
    and packaged with `--publish never`; its feed is generated from the exact
    installer, and npm is packed with `--ignore-scripts` from the checked build.
-4. The job retains fixed tarball/installer/blockmap/feed bytes with a manifest
+   In parallel, the `desktop` jobs package the same commit on macOS 15 Apple
+   silicon, macOS 15 Intel and Ubuntu 24.04 runners (native modules such as
+   node-pty and koffi only install for the runner's own architecture). They do
+   not rerun the suite; Windows is the test gate.
+4. A `bundle` job collects every platform's files, joins the two Mac feed
+   halves into one `latest-mac.yml` / `beta-mac.yml`, checks that every feed
+   names its installers' exact sizes and SHA512, and retains the fixed
+   tarball/installer/blockmap/feed bytes with a manifest
    containing the tag commit, sizes, SHA256 and npm SHA512 integrity. The
    isolated Ubuntu job verifies them, creates/reuses one GitHub **draft**, and
    verifies every uploaded desktop asset's size and SHA256 digest. It then
@@ -414,3 +431,17 @@ authorized automatic path.
 - **Code signing:** builds are unsigned, so Windows SmartScreen warns on a
   fresh install. Updates still apply because `electron-updater` only verifies
   signatures when `publisherName` is set.
+- **macOS first open:** the Mac app is ad-hoc signed and not notarized. On
+  first open macOS says it cannot verify the app; open **System Settings →
+  Privacy & Security** and choose **Open Anyway** (or run
+  `xattr -dr com.apple.quarantine /Applications/Tnega.app`). To ship a signed,
+  notarized app that also updates itself: join the Apple Developer Program,
+  export a *Developer ID Application* certificate as `.p12`, add it as the
+  repository secrets `CSC_LINK` (base64) and `CSC_KEY_PASSWORD`, add
+  `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for
+  notarization, pass them to the Mac package step, remove `identity: '-'` and
+  `hardenedRuntime: false` from `electron-builder.yml`, set `notarize: true`,
+  and drop `manualInstall` in `apps/desktop/src/main.ts`.
+- **Linux sandbox:** the `.deb` installs an AppArmor profile so Chromium's
+  sandbox works on Ubuntu 24.04 and later. The AppImage has no such profile;
+  if it exits with a sandbox error there, install the `.deb` instead.

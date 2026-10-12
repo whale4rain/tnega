@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { backgroundBehind, cssColorToHex, markWindowControls } from './desktop-chrome'
+import { backgroundBehind, cssColorToHex, markWindowControls, windowControlsSide } from './desktop-chrome'
 
 it('reserves native controls only in the header at the top-right edge', () => {
   const root = document.createElement('div')
@@ -21,6 +21,28 @@ it('reserves native controls only in the header at the top-right edge', () => {
   markWindowControls(root, 1280)
   expect(conversation.classList.contains('window-controls-header')).toBe(true)
   expect(drawer.classList.contains('window-controls-header')).toBe(false)
+})
+
+it('keeps the top-left header clear of the macOS traffic lights instead', () => {
+  expect(windowControlsSide('darwin')).toBe('left')
+  expect(windowControlsSide('win32')).toBe('right')
+  expect(windowControlsSide('linux')).toBe('right')
+  const root = document.createElement('div')
+  root.innerHTML = '<div class="sidebar-top"></div><header class="conv-header"></header>'
+  const [sidebar, conversation] = [...root.children]
+  if (!sidebar || !conversation) throw new Error('missing headers')
+  sidebar.getBoundingClientRect = () => new DOMRect(0, 0, 260, 32)
+  conversation.getBoundingClientRect = () => new DOMRect(260, 0, 1020, 32)
+  markWindowControls(root, 1280, 'left')
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(true)
+  expect(conversation.classList.contains('window-controls-header-start')).toBe(false)
+  expect(conversation.classList.contains('window-controls-header')).toBe(false)
+  // With the sidebar collapsed, the conversation header reaches the corner.
+  sidebar.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
+  conversation.getBoundingClientRect = () => new DOMRect(0, 0, 1280, 32)
+  markWindowControls(root, 1280, 'left')
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(false)
+  expect(conversation.classList.contains('window-controls-header-start')).toBe(true)
 })
 
 describe('cssColorToHex', () => {

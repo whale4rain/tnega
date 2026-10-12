@@ -31,7 +31,7 @@ vi.mock('electron', () => ({
   }),
   BrowserWindow: Window,
   dialog: {}, ipcMain: { handle: vi.fn(), on: vi.fn() },
-  Menu: { setApplicationMenu: vi.fn() }, nativeImage: { createFromPath: vi.fn() },
+  Menu: { setApplicationMenu: vi.fn() }, nativeImage: { createFromPath: vi.fn(() => ({ resize: vi.fn() })) },
   nativeTheme: { shouldUseDarkColors: false }, net: {}, shell: {},
   utilityProcess: { fork: vi.fn() },
 }))

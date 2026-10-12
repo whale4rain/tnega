@@ -25,6 +25,14 @@ export function UpdateButton({ updates }: { updates: DesktopUpdates | undefined 
       </span>
     )
   }
+  if (state.status === 'available') {
+    return (
+      <button type="button" className="update-pill ready" onClick={updates.install} title={describeUpdate(state)}>
+        <ArrowDownToLine size={12} />
+        <span>Download</span>
+      </button>
+    )
+  }
   if (state.status !== 'ready') return null
   return (
     <button type="button" className="update-pill ready" onClick={updates.install} title={`Restart into Tnega ${state.next}`}>
@@ -66,7 +74,9 @@ export function UpdateSettings({ updates }: { updates: DesktopUpdates | undefine
         )}
         {channelError && <p className="notice-error small" role="alert">{channelError}</p>}
       </div>
-      {state.status === 'ready' || state.status === 'installing'
+      {state.status === 'available'
+        ? <button type="button" className="button primary small" onClick={updates.install}>Download {state.next}</button>
+        : state.status === 'ready' || state.status === 'installing'
         ? <button type="button" className="button primary small" onClick={updates.install} disabled={state.status === 'installing'}>{state.status === 'installing' ? 'Restarting…' : 'Restart to update'}</button>
         : state.status !== 'unsupported' && (
           <button type="button" className="button ghost small" onClick={updates.check} disabled={busy}>

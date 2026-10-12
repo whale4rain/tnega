@@ -25,16 +25,34 @@ win:
       arch:
         - x64
 mac:
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+  # No Apple Developer ID yet: sign ad hoc, since Apple silicon will not run
+  # unsigned code, and leave out the hardened runtime, which only notarization
+  # needs and which would block ad-hoc signed native modules. To ship a signed,
+  # notarized build, see docs/publish/README.md. The zip is what the update
+  # check reads.
+  identity: '-'
+  hardenedRuntime: false
   target:
-    - target: dmg
-      arch:
-        - arm64
-        - x64
+    - dmg
+    - zip
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
+  icon: build/icon.png
+  # The scoped package name is not a valid file name for the binary.
+  executableName: tnega
+  category: Development
+  synopsis: Local agent workspace
+  description: Tnega desktop, a local agent workspace.
+  maintainer: whale4rain <153174302+whale4rain@users.noreply.github.com>
+  vendor: Tnega
   target:
-    - target: AppImage
-      arch:
-        - x64
+    - AppImage
+    - deb
+  artifactName: ${productName}-${version}-${arch}.${ext}
 nsis:
   # No spaces: the file on disk, on the release and in latest.yml share one name.
   artifactName: ${productName}-Setup-${version}.${ext}

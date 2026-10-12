@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom'
 
 /**
  * In the desktop app the native minimise / maximise / close buttons float over
- * the top-right corner. This marks the page so CSS can keep content clear of
- * them, and recolours them to match whatever the page draws underneath.
+ * the top-right corner (the traffic lights over the top-left on macOS). This
+ * marks the page so CSS can keep content clear of them, and recolours them to
+ * match whatever the page draws underneath.
  */
 
 interface DesktopBridge {
   setTitleBarColors?: (colors: { background: string, foreground: string }) => void
+  platform?: string
 }
 
 function bridge(): DesktopBridge | undefined {
@@ -46,12 +48,19 @@ export function backgroundBehind(element: Element | null, fallback: string): str
   return fallback
 }
 
+/** Which top corner the native window controls occupy. */
+export function windowControlsSide(platform = bridge()?.platform): 'left' | 'right' {
+  return platform === 'darwin' ? 'left' : 'right'
+}
+
 /** Only the bar touching the native controls needs horizontal clearance. */
-export function markWindowControls(root: ParentNode, width: number): void {
-  for (const header of root.querySelectorAll('.conv-header, .wb-header, .project-side .side-tabs, .project-side .side-header')) {
+export function markWindowControls(root: ParentNode, width: number, side: 'left' | 'right' = 'right'): void {
+  for (const header of root.querySelectorAll('.sidebar-top, .conv-header, .wb-header, .project-side .side-tabs, .project-side .side-header')) {
     const rect = header.getBoundingClientRect()
     const edge = header.matches('.wb-header') ? header.closest('.workbench')?.getBoundingClientRect() ?? rect : rect
-    header.classList.toggle('window-controls-header', rect.width > 0 && rect.top < 32 && rect.bottom > 0 && edge.right >= width - 1)
+    const atTop = rect.width > 0 && rect.top < 32 && rect.bottom > 0
+    header.classList.toggle('window-controls-header', side === 'right' && atTop && edge.right >= width - 1)
+    header.classList.toggle('window-controls-header-start', side === 'left' && atTop && edge.left <= 1)
   }
 }
 
@@ -60,7 +69,9 @@ export function useDesktopChrome(layoutKey: string): void {
     const desktop = bridge()
     if (!desktop?.setTitleBarColors) return
     const root = document.documentElement
+    const side = windowControlsSide(desktop.platform)
     root.classList.add('desktop-chrome')
+    root.classList.toggle('window-controls-left', side === 'left')
     let last = ''
     let timer: ReturnType<typeof setTimeout> | undefined
     // A timer rather than an animation frame: frames stop while the window is hidden or minimised,
@@ -68,7 +79,9 @@ export function useDesktopChrome(layoutKey: string): void {
     const sync = () => {
       clearTimeout(timer)
       timer = setTimeout(() => {
-        markWindowControls(document, innerWidth)
+        markWindowControls(document, innerWidth, side)
+        // macOS draws its traffic lights itself; there is nothing to recolour.
+        if (side === 'left') return
         const styles = getComputedStyle(root)
         const fallback = cssColorToHex(styles.getPropertyValue('--bg')) ?? '#f4f6f8'
         const background = backgroundBehind(document.elementFromPoint(innerWidth - 4, 4), fallback)
@@ -94,8 +107,8 @@ export function useDesktopChrome(layoutKey: string): void {
       layoutObserver.disconnect()
       removeEventListener('resize', sync)
       removeEventListener('click', sync)
-      root.classList.remove('desktop-chrome')
-      document.querySelectorAll('.window-controls-header').forEach(header => header.classList.remove('window-controls-header'))
+      root.classList.remove('desktop-chrome', 'window-controls-left')
+      document.querySelectorAll('.window-controls-header, .window-controls-header-start').forEach(header => header.classList.remove('window-controls-header', 'window-controls-header-start'))
     }
   }, [layoutKey])
 }
