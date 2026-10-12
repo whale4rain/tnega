@@ -47,15 +47,16 @@ for (const stream of [child.stdout, child.stderr]) {
 
 function step(message) { console.log(`smoke: ${message}`) }
 async function until(what, probe) {
+  let last
   while (Date.now() < deadline) {
     if (exited) throw new Error(`the app exited (${JSON.stringify(exited)}) while waiting for ${what}`)
     try {
-      const value = await probe()
+      const value = await probe(observed => { last = observed })
       if (value) return value
-    } catch { /* not ready yet */ }
+    } catch (error) { last = error instanceof Error ? error.message : error }
     await sleep(500)
   }
-  throw new Error(`timed out waiting for ${what}`)
+  throw new Error(`timed out waiting for ${what}; last seen: ${JSON.stringify(last)}`)
 }
 
 /** Evaluate an expression in the page over the DevTools protocol. */
@@ -93,14 +94,17 @@ async function run() {
   if (!index.ok || !(await index.text()).includes('<div id="root"')) throw new Error(`${server} did not serve the web UI (${index.status})`)
   step(`window loaded ${server}`)
 
-  const chrome = await until('the renderer to mark the window controls', async () => {
+  const chrome = await until('the renderer to mark the window controls', async observe => {
     const value = await evaluate(page.webSocketDebuggerUrl, `({
+      size: [innerWidth, innerHeight],
+      headers: [...document.querySelectorAll('.sidebar-top, .conv-header')].map(header => header.className + ' ' + JSON.stringify(header.getBoundingClientRect())),
       platform: window.tnegaDesktop?.platform,
       desktop: document.documentElement.classList.contains('desktop-chrome'),
       left: document.documentElement.classList.contains('window-controls-left'),
       clearedLeft: document.querySelectorAll('.window-controls-header-start').length,
       clearedRight: document.querySelectorAll('.window-controls-header').length,
     })`)
+    observe(value)
     return value?.desktop && value.clearedLeft + value.clearedRight > 0 ? value : undefined
   })
   const mac = process.platform === 'darwin'
@@ -131,20 +135,25 @@ async function run() {
   await api(`/terminals/${terminal.id}`, { method: 'DELETE' })
   step(`terminal (node-pty) ran ${terminal.shell}`)
 
-  if (screenshot) {
-    // Give fonts and the greeting a moment, then capture the whole screen,
-    // native window buttons included. A missing capture tool is not a failure.
-    await sleep(3_000)
-    mkdirSync(dirname(screenshot), { recursive: true })
-    const capture = mac
-      ? spawnSync('screencapture', ['-x', screenshot])
-      : spawnSync('import', ['-window', 'root', screenshot])
-    step(capture.status === 0 ? `screenshot saved to ${screenshot}` : `screenshot skipped (${capture.error?.message ?? capture.stderr})`)
-  }
+}
+
+/** The whole screen, native window buttons included; a missing capture tool is not a failure. */
+function capture() {
+  if (!screenshot || exited) return
+  mkdirSync(dirname(screenshot), { recursive: true })
+  const result = process.platform === 'darwin'
+    ? spawnSync('screencapture', ['-x', screenshot])
+    : spawnSync('import', ['-window', 'root', screenshot])
+  step(result.status === 0 ? `screenshot saved to ${screenshot}` : `screenshot skipped (${result.error?.message ?? result.stderr})`)
 }
 
 let failure
-try { await run() } catch (error) { failure = error }
+try {
+  await run()
+  // Give fonts and the greeting a moment before the picture.
+  await sleep(3_000)
+} catch (error) { failure = error }
+capture()
 if (!exited) {
   try { process.kill(process.platform === 'win32' ? child.pid : -child.pid, 'SIGTERM') } catch { /* already gone */ }
   for (let i = 0; i < 20 && !exited; i++) await sleep(500)
