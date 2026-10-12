@@ -56,9 +56,11 @@ export function windowControlsSide(platform = bridge()?.platform): 'left' | 'rig
   return platform === 'darwin' ? 'left' : 'right'
 }
 
+const HEADERS = '.sidebar-top, .conv-header, .wb-header, .project-side .side-tabs, .project-side .side-header'
+
 /** Only the bar touching the native controls needs horizontal clearance. */
 export function markWindowControls(root: ParentNode, width: number, side: 'left' | 'right' = 'right'): void {
-  for (const header of root.querySelectorAll('.sidebar-top, .conv-header, .wb-header, .project-side .side-tabs, .project-side .side-header')) {
+  for (const header of root.querySelectorAll(HEADERS)) {
     const rect = header.getBoundingClientRect()
     const edge = header.matches('.wb-header') ? header.closest('.workbench')?.getBoundingClientRect() ?? rect : rect
     const atTop = rect.width > 0 && rect.top < 32 && rect.bottom > 0
@@ -85,6 +87,7 @@ export function useDesktopChrome(layoutKey: string): void {
       clearTimeout(timer)
       timer = setTimeout(() => {
         markWindowControls(document, innerWidth, side)
+        for (const header of document.querySelectorAll(HEADERS)) sizeObserver?.observe(header)
         // macOS draws its traffic lights itself; there is nothing to recolour.
         if (side === 'left') return
         const styles = getComputedStyle(root)
@@ -97,6 +100,9 @@ export function useDesktopChrome(layoutKey: string): void {
         desktop.setTitleBarColors?.({ background, foreground })
       }, 0)
     }
+    // Panels settle their size after mounting (transitions, late styles) without any
+    // DOM change or window resize; macOS starts with nothing else to trigger a sync.
+    const sizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(sync) : undefined
     sync()
     const themeObserver = new MutationObserver(sync)
     themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme', 'data-palette'] })
@@ -108,6 +114,7 @@ export function useDesktopChrome(layoutKey: string): void {
     addEventListener('click', sync, { passive: true })
     return () => {
       clearTimeout(timer)
+      sizeObserver?.disconnect()
       themeObserver.disconnect()
       layoutObserver.disconnect()
       removeEventListener('resize', sync)

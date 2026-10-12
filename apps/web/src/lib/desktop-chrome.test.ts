@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import { backgroundBehind, cssColorToHex, markWindowControls, windowControlsSide } from './desktop-chrome'
+import { cleanup, renderHook } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { backgroundBehind, cssColorToHex, markWindowControls, useDesktopChrome, windowControlsSide } from './desktop-chrome'
 
 it('reserves native controls only in the header at the top-right edge', () => {
   const root = document.createElement('div')
@@ -44,6 +45,28 @@ it('keeps the top-left header clear of the macOS traffic lights instead', () => 
   markWindowControls(root, 1280, 'left')
   expect(sidebar.classList.contains('window-controls-header-start')).toBe(false)
   expect(conversation.classList.contains('window-controls-header-start')).toBe(true)
+})
+
+it('marks a header again when its size settles after mounting', async () => {
+  const resized: Array<() => void> = []
+  vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { resized.push(callback) } observe() {} disconnect() {} })
+  vi.stubGlobal('tnegaDesktop', { setTitleBarColors: () => {}, platform: 'darwin' })
+  document.body.innerHTML = '<div class="sidebar-top"></div>'
+  const sidebar = document.querySelector('.sidebar-top')
+  if (!sidebar) throw new Error('missing header')
+  // Mounted before its panel has a size: nothing to clear yet.
+  sidebar.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
+  renderHook(() => useDesktopChrome('sessions'))
+  await new Promise(resolve => setTimeout(resolve, 5))
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(false)
+  // The panel settles with no DOM change and no window resize.
+  sidebar.getBoundingClientRect = () => new DOMRect(10, 0, 243, 32)
+  for (const callback of resized) callback()
+  await new Promise(resolve => setTimeout(resolve, 5))
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(true)
+  cleanup()
+  vi.unstubAllGlobals()
+  document.body.innerHTML = ''
 })
 
 describe('cssColorToHex', () => {
