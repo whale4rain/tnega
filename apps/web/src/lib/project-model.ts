@@ -4,6 +4,8 @@
  * Agent's Session. `reduceProject` folds the live stream into a snapshot.
  */
 import type {
+  ProjectPullRequest,
+  PullRequestState,
   ArtifactFact,
   ArtifactRef,
   BoxEnvelope,
@@ -659,6 +661,26 @@ export function projectLight(summary: ProjectThreadSummary | undefined): { tone:
   if (summary.failed > 0) return { tone: 'failed', label: `${threads(summary.failed)} failed` }
   if (summary.working > 0) return { tone: 'working', label: `${threads(summary.working)} working` }
   return undefined
+}
+
+export const PULL_REQUEST_LABEL: Record<PullRequestState, string> = {
+  open: 'Open',
+  draft: 'Draft',
+  merged: 'Merged',
+  closed: 'Closed',
+}
+
+/**
+ * One mark for a project's pull requests: the state that most needs a look
+ * (open, then draft), otherwise the newest one's. The label names each.
+ */
+export function pullRequestMark(pullRequests: readonly ProjectPullRequest[] | undefined): { state: PullRequestState; label: string } | undefined {
+  if (!pullRequests?.length) return undefined
+  const state = (['open', 'draft'] as const).find(candidate => pullRequests.some(pr => pr.state === candidate)) ?? pullRequests[0]?.state ?? 'open'
+  const label = pullRequests
+    .map(pr => `${pr.number !== undefined ? `PR #${pr.number}` : 'Pull request'}: ${PULL_REQUEST_LABEL[pr.state].toLowerCase()}`)
+    .join('\n')
+  return { state, label }
 }
 
 /** Effective state: the live run flag wins over a stale record. */

@@ -2109,6 +2109,11 @@ button.board-chip.active {
   background: var(--danger-soft);
 }
 
+.git-card-status.tone-accent {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
 .git-card-open {
   flex: none;
   text-decoration: none;

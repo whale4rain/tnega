@@ -42,8 +42,9 @@ it('reads an update, an up-to-date push and a rejection', () => {
 
 it('reads an opened pull request and ignores commands that are neither', () => {
   expect(gitOutcome('gh pr create --fill', { exitCode: 0, stdout: 'https://github.com/o/r/pull/12\n' })).toEqual({
-    kind: 'pull-request', status: 'opened', title: 'Pull request #12', url: 'https://github.com/o/r/pull/12', repo: 'o/r', number: 12,
+    kind: 'pull-request', status: 'opened', title: 'Pull request #12', url: 'https://github.com/o/r/pull/12', repo: 'o/r', number: 12, state: 'open',
   })
+  expect(gitOutcome('cd site && gh pr create --draft --fill', { exitCode: 0, stdout: 'https://github.com/o/r/pull/13\n' })).toMatchObject({ number: 13, state: 'draft' })
   expect(gitOutcome('gh pr create', { exitCode: 1, stderr: 'GraphQL: No commits between main and main\n' })).toMatchObject({ status: 'failed', detail: 'GraphQL: No commits between main and main' })
   expect(gitOutcome('git status', { exitCode: 0, stdout: 'To be pushed' })).toBeUndefined()
   expect(gitOutcome('echo "git pushes"', { exitCode: 0 })).toBeUndefined()

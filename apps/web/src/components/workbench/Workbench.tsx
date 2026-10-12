@@ -86,8 +86,6 @@ export function Workbench({
   return (
     <aside className="workbench" aria-label="Workbench">
       <ResizeHandle onResize={onResize} />
-      {/* Desktop only (CSS): the title-bar line under the native window controls; the tabs sit below it. */}
-      <div className="wb-titlebar" aria-hidden />
       <div className="wb-header">
       <div className="wb-rail" ref={rail} role="tablist" aria-label="Workbench" onWheel={event => {
         if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY

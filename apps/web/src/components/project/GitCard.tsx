@@ -1,14 +1,21 @@
 import { ExternalLink, GitBranch, GitPullRequest } from 'lucide-react'
 import { relativeTime } from '../../lib/hooks'
-import type { GitInfo, ResourceFact } from '../../lib/project-types'
+import { PULL_REQUEST_LABEL } from '../../lib/project-model'
+import type { GitInfo, PullRequestState, ResourceFact } from '../../lib/project-types'
+import { PULL_REQUEST_ICON } from '../PullRequestMark'
 
-const STATUS: Record<GitInfo['status'], { label: string; tone: 'success' | 'neutral' | 'danger' }> = {
+type Tone = 'success' | 'neutral' | 'danger' | 'accent'
+
+const STATUS: Record<GitInfo['status'], { label: string; tone: Tone }> = {
   pushed: { label: 'Pushed', tone: 'success' },
   opened: { label: 'Opened', tone: 'success' },
   'up-to-date': { label: 'Up to date', tone: 'neutral' },
   rejected: { label: 'Rejected', tone: 'danger' },
   failed: { label: 'Failed', tone: 'danger' },
 }
+
+/** An opened pull request shows where it stands now, when the server knows. */
+const PR_TONE: Record<PullRequestState, Tone> = { open: 'success', draft: 'neutral', merged: 'accent', closed: 'danger' }
 
 /** Only web pages open from a card; a remote on disk or behind a local proxy has none. */
 function webUrl(uri: string): string | undefined {
@@ -23,9 +30,10 @@ function webUrl(uri: string): string | undefined {
 export function GitCard({ resource, author }: { resource: ResourceFact; author?: string | undefined }) {
   const git = resource.data.git
   if (!git) return null
-  const status = STATUS[git.status]
+  const live = git.kind === 'pull-request' && git.status === 'opened' && git.state ? git.state : undefined
+  const status = live ? { label: PULL_REQUEST_LABEL[live], tone: PR_TONE[live] } : STATUS[git.status]
   const url = webUrl(resource.data.uri)
-  const Icon = git.kind === 'pull-request' ? GitPullRequest : GitBranch
+  const Icon = live ? PULL_REQUEST_ICON[live] : git.kind === 'pull-request' ? GitPullRequest : GitBranch
   const meta = [git.repo, author, relativeTime(resource.updatedAt)].filter(Boolean).join(' · ')
   return (
     <div className={`git-card tone-${status.tone}`} role="group" aria-label={`${resource.data.title}: ${status.label}`}>

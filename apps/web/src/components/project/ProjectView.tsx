@@ -53,6 +53,24 @@ import { GitCard } from './GitCard'
 import { ChatRun as Run } from './ChatRun'
 
 /**
+ * The last state of recently opened projects. Coming back to one shows it at
+ * once while the fresh snapshot loads, instead of a blank skeleton each time
+ * a project is clicked in the sidebar.
+ */
+const recent = new Map<string, ProjectState>()
+const RECENT_LIMIT = 8
+const recentKey = (workspace: string, projectId: string) => `${workspace}\0${projectId}`
+
+function remember(key: string, state: ProjectState): void {
+  recent.delete(key)
+  recent.set(key, state)
+  for (const oldest of recent.keys()) {
+    if (recent.size <= RECENT_LIMIT) break
+    recent.delete(oldest)
+  }
+}
+
+/**
  * A project screen: the room on the left, and the project's own tabs (Board,
  * Library, Routines, opened threads, settings) in the same Workbench a
  * session uses. The tabs render here and are portalled into the Workbench's
@@ -89,7 +107,10 @@ export function ProjectView({
   panelSlot: HTMLDivElement | null
   onPanelTabs: (tabs: WorkbenchProject['tabs']) => void
 }) {
-  const [state, setState] = useState<ProjectState | undefined>()
+  const [state, setState] = useState<ProjectState | undefined>(() => recent.get(recentKey(workspace, projectId)))
+  useEffect(() => {
+    if (state && state.project.id === projectId) remember(recentKey(workspace, projectId), state)
+  }, [state, workspace, projectId])
   const [error, setError] = useState<string | undefined>()
   const [connected, setConnected] = useState(true)
   const [notice, setNotice] = useState<string | undefined>()
@@ -128,7 +149,7 @@ export function ProjectView({
   // Snapshot first, then follow the change stream from its cursor.
   useEffect(() => {
     setOpenedArtifact(undefined)
-    setState(undefined)
+    setState(recent.get(recentKey(workspace, projectId)))
     setError(undefined)
     let stop: (() => void) | undefined
     let cancelled = false

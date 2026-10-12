@@ -19,6 +19,8 @@ export interface GitOutcome {
   repo?: string
   branch?: string
   number?: number
+  /** An opened pull request: whether `gh pr create` made it a draft. The host keeps it current (`project-pr-state.ts`). */
+  state?: 'open' | 'draft'
   /** The command's last error line when it failed. */
   detail?: string
 }
@@ -33,6 +35,7 @@ export interface GitResourceData extends Record<string, unknown> {
 
 const PUSH = /(?:^|[\s;&|(])git(?:\s+-[cC]\s+\S+)*\s+push\b/
 const PR_CREATE = /(?:^|[\s;&|(])gh\s+pr\s+create\b/
+const PR_DRAFT = /(?:^|[\s;&|(])gh\s+pr\s+create\b[^;&|]*\s(?:--draft|-d)\b/
 const PR_URL = /https?:\/\/[^\s'"<>)]+\/(?:pull|merge_requests)\/(\d+)\b/
 const PR_NEW_URL = /https?:\/\/[^\s'"<>)]+\/(?:pull\/new|merge_requests\/new)[^\s'"<>)]*/
 const TO_REMOTE = /^To\s+(\S+)/m
@@ -79,7 +82,8 @@ export function gitOutcome(command: string, output: { exitCode?: number; stdout?
       const number = Number(match[1])
       const url = match[0]
       const repo = new URL(url).pathname.split('/').slice(1, 3).join('/')
-      return { kind: 'pull-request', status: 'opened', title: `Pull request #${number}`, url, repo, number }
+      const state = PR_DRAFT.test(command) ? 'draft' : 'open'
+      return { kind: 'pull-request', status: 'opened', title: `Pull request #${number}`, url, repo, number, state }
     }
     if (ok) return undefined
     const detail = lastErrorLine(text)

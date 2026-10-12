@@ -32,12 +32,14 @@ import {
   threadState,
   today,
   LIGHT_LABEL,
+  PULL_REQUEST_LABEL,
   type BoardColumn,
   type BoardEvent,
   type BoardEventKind,
   type LightTone,
   type ProjectState,
 } from '../../lib/project-model'
+import { PULL_REQUEST_ICON } from '../PullRequestMark'
 import type { ArtifactFact, ProjectUsage, ResourceFact, ThreadRecord, ThreadState } from '../../lib/project-types'
 import type { Weather } from '../../lib/weather'
 import { StatusLight } from '../StatusLight'
@@ -406,14 +408,17 @@ function GitChip({ resource }: { resource: ResourceFact }) {
   const git = resource.data.git
   if (!git) return null
   const pr = git.kind === 'pull-request'
-  const Icon = pr ? GitPullRequest : GitBranch
+  // An opened pull request shows where it stands now: its icon and colour follow the state.
+  const live = pr && git.status === 'opened' ? git.state : undefined
+  const Icon = live ? PULL_REQUEST_ICON[live] : pr ? GitPullRequest : GitBranch
   const name = pr && git.number !== undefined ? `PR #${git.number}` : git.branch ?? resource.data.title
   const failed = git.status === 'rejected' || git.status === 'failed'
-  const body = <><Icon size={12} aria-hidden /><span className="board-output-name">{name}</span></>
+  const body = <><Icon size={12} className={live ? `pr-mark pr-${live}` : undefined} aria-hidden /><span className="board-output-name">{name}</span></>
   const className = `board-chip board-output${failed ? ' tone-danger' : ''}`
+  const title = `${resource.data.title}${live ? ` (${PULL_REQUEST_LABEL[live].toLowerCase()})` : ''}`
   return /^https?:\/\//i.test(resource.data.uri)
-    ? <a className={className} href={resource.data.uri} target="_blank" rel="noreferrer noopener" title={`${resource.data.title}: open in the browser`}>{body}</a>
-    : <span className={className} title={resource.data.title}>{body}</span>
+    ? <a className={className} href={resource.data.uri} target="_blank" rel="noreferrer noopener" title={`${title}: open in the browser`}>{body}</a>
+    : <span className={className} title={title}>{body}</span>
 }
 
 /** Usage refreshes when a thread starts or settles, not on every streamed token. */

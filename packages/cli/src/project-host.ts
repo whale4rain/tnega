@@ -53,6 +53,7 @@ import { describeToolCall } from './project-activity.js'
 import { mountProjectMemory } from './project-memory.js'
 import { ProjectWorktrees } from './project-worktrees.js'
 import { gitResourceData, gitResourceId, trackGitOutcomes } from './project-git.js'
+import { PullRequestStates, type ProjectPullRequest, type PullRequestLookup } from './project-pr-state.js'
 import { PROJECT_DISABLED_BUILTINS, projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 import { DEFAULT_THREAD_LIMITS } from '@tnega/thread'
 import { mountThreadApprovals } from './thread-approval.js'
@@ -71,6 +72,8 @@ export interface ProjectHostOptions {
   builtinTools?: BuiltinToolsConfig | false
   maxDepth?: number
   maxChildren?: number
+  /** Where pull requests stand now; defaults to asking the GitHub CLI. */
+  pullRequestLookup?: PullRequestLookup
 }
 
 /** 一个打开着的 Project：它的作用域与其中的服务。 */
@@ -153,7 +156,13 @@ export interface ProjectThreadSummary {
   working: number
 }
 
-export type ProjectListEntry = ProjectRecord & { threads: ProjectThreadSummary }
+/** A project in the list: where its threads stand and the pull requests they opened. */
+export type ProjectListEntry = ProjectRecord & { threads: ProjectThreadSummary; pullRequests: ProjectPullRequest[] }
+
+interface IdleStatus {
+  threads: ProjectThreadSummary
+  resources: FactRecord[]
+}
 
 /** Count thread states; `running` overrides a stale stored state the way the UI does. */
 export function summarizeThreads(
@@ -224,7 +233,8 @@ export class ProjectHost {
   private readonly permissions = new Map<string, PermissionMode>()
   private readonly roles = new Map<string, ProjectAgentRole>()
   /** Summaries of projects that are not mounted: nothing changes them until they are. */
-  private readonly idleSummaries = new Map<string, ProjectThreadSummary>()
+  private readonly idleSummaries = new Map<string, IdleStatus>()
+  private readonly pullRequests: PullRequestStates
   private indexScope: Promise<IndexScope> | undefined
 
   constructor(options: ProjectHostOptions) {
@@ -232,6 +242,7 @@ export class ProjectHost {
       throw new Error('project host requires a workspace')
     }
     this.options = options
+    this.pullRequests = new PullRequestStates(options.pullRequestLookup)
     this.workspace = resolve(options.workspace)
     this.tnegaRoot = workspaceProjectStateRoot(this.workspace)
   }
@@ -246,13 +257,17 @@ export class ProjectHost {
     return await (await this.projects()).list()
   }
 
-  /** The project list with each project's thread summary, so the sidebar can light up projects that need the user. */
+  /**
+   * The project list with each project's thread summary and pull requests, so
+   * the sidebar can light up projects that need the user and show where their
+   * pull requests stand.
+   */
   async listWithStatus(): Promise<ProjectListEntry[]> {
     const records = await this.list()
-    return await Promise.all(records.map(async record => ({
-      ...record,
-      threads: await this.threadSummary(record).catch(() => ({ waiting: 0, failed: 0, working: 0 })),
-    })))
+    return await Promise.all(records.map(async record => {
+      const status = await this.status(record).catch((): IdleStatus => ({ threads: { waiting: 0, failed: 0, working: 0 }, resources: [] }))
+      return { ...record, threads: status.threads, pullRequests: this.pullRequests.summarize(status.resources) }
+    }))
   }
 
   /**
@@ -261,12 +276,15 @@ export class ProjectHost {
    * Blackboard (without mounting it, which would start its Agents) and cached
    * until it is mounted.
    */
-  private async threadSummary(record: ProjectRecord): Promise<ProjectThreadSummary> {
+  private async status(record: ProjectRecord): Promise<IdleStatus> {
     const mounted = this.open.get(record.id)
     if (mounted) {
       const project = await mounted
-      return summarizeThreads(await project.threads.list(), record.coordinatorId,
-        id => project.registry.get(id)?.status === 'running')
+      return {
+        threads: summarizeThreads(await project.threads.list(), record.coordinatorId,
+          id => project.registry.get(id)?.status === 'running'),
+        resources: await project.blackboard.list('resource'),
+      }
     }
     const cached = this.idleSummaries.get(record.id)
     if (cached) return cached
@@ -279,7 +297,7 @@ export class ProjectHost {
         return typeof state === 'string' ? [{ id: fact.id, state }] : []
       })
       // Stored "working" is stale here: nothing runs in a project that is not mounted.
-      const summary = summarizeThreads(threads, record.coordinatorId)
+      const summary = { threads: summarizeThreads(threads, record.coordinatorId), resources: await board.list('resource') }
       if (!this.open.has(record.id)) this.idleSummaries.set(record.id, summary)
       return summary
     } finally {
@@ -357,7 +375,7 @@ export class ProjectHost {
       memory: await project.blackboard.list('memory'),
       library: {
         artifacts: await project.blackboard.list('artifact'),
-        resources: await project.blackboard.list('resource'),
+        resources: this.pullRequests.decorate(await project.blackboard.list('resource')),
       },
       routines: (await project.blackboard.list('routine')).filter(fact => !fact.deleted),
     }

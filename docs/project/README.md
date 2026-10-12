@@ -29,7 +29,7 @@ Projects 产品设计（最新）：[Projects: a room where people and agents wo
 
 | 方法与路径 | 语义 |
 | --- | --- |
-| `GET /api/projects` | 列出该 workspace 的 Project；每项带 `threads: { waiting, failed, working }` 摘要（等你或阻塞、失败、工作中的 Thread 数，不含协调者），侧栏据此亮状态灯。未挂载的 Project 只读其 Blackboard 上的 Thread 记录，不会因此启动 Agent |
+| `GET /api/projects` | 列出该 workspace 的 Project；每项带 `threads: { waiting, failed, working }` 摘要（等你或阻塞、失败、工作中的 Thread 数，不含协调者），侧栏据此亮状态灯。另带 `pullRequests`：Thread 开过的拉取请求（`url`、`number`、`repo`、`threadId`、`state` = open / draft / merged / closed），状态由服务端用 `gh pr view` 查询并缓存（打开中的 60 秒内复用，合并或关闭后不再查；没有 `gh` 或未登录时退回到记录的状态，10 分钟内不再尝试），快照里的 git 资源也带同一个 `state`。未挂载的 Project 只读其 Blackboard 上的 Thread 记录与资源，不会因此启动 Agent |
 | `POST /api/projects` | 建 Project：`{ name, goal? }`；`?workspace=<文件夹>` 就是它的工作位置，不存在时创建 |
 | `GET /api/projects/:id` | 快照：Project、协调者 ID、游标、Thread、主对话、记忆、Library |
 | `POST /api/projects/:id/messages` | 主对话发言：`{ text, replyTo? }`；`replyTo` 存为信封的 `causationId`；回执表示信封落盘，不是模型回复 |
