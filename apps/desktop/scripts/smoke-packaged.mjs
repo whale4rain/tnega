@@ -99,7 +99,17 @@ async function run() {
       size: [innerWidth, innerHeight],
       visibility: document.visibilityState,
       focus: document.hasFocus(),
-      timer: await Promise.race([new Promise(resolve => setTimeout(() => resolve('fired'), 0)), new Promise(resolve => setTimeout(() => resolve('slow'), 3000))]),
+      // Does a class put on the sidebar header by hand survive a moment?
+      sticks: await (async () => {
+        const header = document.querySelector('.sidebar-top')
+        if (!header || header.classList.contains('window-controls-header-start')) return 'n/a'
+        header.classList.add('smoke-probe', 'window-controls-header-start')
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        const kept = [header.classList.contains('smoke-probe'), header.classList.contains('window-controls-header-start'), header.isConnected]
+        header.classList.remove('smoke-probe', 'window-controls-header-start')
+        return kept
+      })(),
+      scripts: [...document.scripts].map(script => script.src),
       headers: [...document.querySelectorAll('.sidebar-top, .conv-header')].map(header => header.className + ' ' + JSON.stringify(header.getBoundingClientRect())),
       platform: window.tnegaDesktop?.platform,
       desktop: document.documentElement.classList.contains('desktop-chrome'),
