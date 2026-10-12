@@ -15,7 +15,7 @@ import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
 import { useDisplay } from './lib/display'
-import { useDesktopChrome } from './lib/desktop-chrome'
+import { isDesktopChrome, useDesktopChrome } from './lib/desktop-chrome'
 import { useDesktopUpdates } from './lib/desktop-updates'
 import { UpdatingOverlay } from './components/UpdateButton'
 import { projectApi } from './lib/project-api'
@@ -60,6 +60,9 @@ export function App() {
   const [workspace, setWorkspace] = useStoredState<string>('tnega.workspace', '')
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  // Which workspace the live lists were loaded for: right after a switch they still hold the last one's.
+  const [sessionsFor, setSessionsFor] = useState<string | undefined>()
+  const [projectsFor, setProjectsFor] = useState<string | undefined>()
   const [selectedId, setSelectedId] = useState<string | undefined>(sessionFromHash)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 860)
   const [dialog, setDialog] = useState<'settings' | 'workspace' | undefined>()
@@ -168,6 +171,7 @@ export function App() {
       .then(result => {
         if (cancelled) return
         setSessions(result.sessions)
+        setSessionsFor(workspace)
         // A linked session from another workspace can't be opened here.
         const linked = sessionFromHash()
         if (linked && !result.sessions.some(s => s.id === linked)) {
@@ -193,7 +197,11 @@ export function App() {
     setProjectsLoading(true)
     let cancelled = false
     projectApi.list(workspace)
-      .then(result => !cancelled && setProjects(result.projects), () => {})
+      .then(result => {
+        if (cancelled) return
+        setProjects(result.projects)
+        setProjectsFor(workspace)
+      }, () => {})
       .finally(() => !cancelled && setProjectsLoading(false))
     return () => {
       cancelled = true
@@ -212,6 +220,9 @@ export function App() {
   // A project screen puts its own tabs (Board, Library, Routines, threads) at the
   // front of the same Workbench a session uses, and renders them into a slot.
   const [projectSlot, setProjectSlot] = useState<HTMLDivElement | null>(null)
+  // In the desktop app the open Workbench's top row sits beside the window controls; the header actions go there.
+  const [titleBar, setTitleBar] = useState<HTMLDivElement | null>(null)
+  const titleSlot = isDesktopChrome() && workbench.open && workspace ? titleBar : null
   const [projectTabs, setProjectTabs] = useState<WorkbenchProject['tabs']>([])
   const activeProject = mode === 'projects' && workspace ? projectRoute.id : undefined
   // Adjusted while rendering rather than in an effect, so a double render (StrictMode)
@@ -333,6 +344,36 @@ export function App() {
     }
   }
 
+  const archiveProject = async (path: string, project: ProjectRecord): Promise<boolean> => {
+    try {
+      const { project: updated } = await projectApi.archive(path, project.id, !project.archived)
+      if (path === workspace) setProjects(list => list.map(item => item.id === updated.id ? { ...item, ...updated } : item))
+      return true
+    } catch (reason) {
+      void noticeDialog('Something went wrong', errorText(reason))
+      return false
+    }
+  }
+
+  const deleteProject = async (path: string, project: ProjectRecord): Promise<boolean> => {
+    if (!await confirmDialog({
+      title: 'Delete project?',
+      message: `“${project.name}” will be deleted with all of its threads, memory and library. This can't be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return false
+    try {
+      await projectApi.remove(path, project.id)
+      if (path !== workspace) return true
+      setProjects(list => list.filter(item => item.id !== project.id))
+      if (mode === 'projects' && projectRoute.id === project.id) openProject(undefined)
+      return true
+    } catch (reason) {
+      void noticeDialog('Something went wrong', errorText(reason))
+      return false
+    }
+  }
+
   // --- render -----------------------------------------------------------------
 
   if (fatal && !workspaces) {
@@ -379,6 +420,9 @@ export function App() {
           mode={mode}
           projects={projects}
           projectsLoading={projectsLoading}
+          listsReady={sessionsFor === workspace && projectsFor === workspace}
+          onArchiveProject={archiveProject}
+          onDeleteProject={deleteProject}
           selectedProjectId={projectRoute.id}
           onSelectProject={(path, id) => { enterWorkspace(path); openProject(id) }}
           onNewProject={path => { enterWorkspace(path); setNewProject(true) }}
@@ -406,6 +450,7 @@ export function App() {
             onWorkbench={setWorkbench}
             panelSlot={projectSlot}
             onPanelTabs={setProjectTabs}
+            titleSlot={titleSlot}
           />
         )
         : (
@@ -448,6 +493,7 @@ export function App() {
             changeCount={changeCount}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
+            titleSlot={titleSlot}
           />
         )
         : (
@@ -474,6 +520,7 @@ export function App() {
           changeCount={changeCount}
           onChangeCount={setChangeCount}
           project={activeProject ? { tabs: projectTabs, slot: setProjectSlot } : undefined}
+          titleSlot={setTitleBar}
         />
       )}
 

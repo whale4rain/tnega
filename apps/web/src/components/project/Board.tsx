@@ -24,44 +24,26 @@ import {
   formatActive,
   formatCount,
   gitResources,
-  projectWeather,
   startOfDay,
   threadActivity,
   threadArtifacts,
   threadLight,
   threadState,
-  today,
+  greeting,
   LIGHT_LABEL,
+  PULL_REQUEST_LABEL,
   type BoardColumn,
   type BoardEvent,
   type BoardEventKind,
-  type LightTone,
   type ProjectState,
 } from '../../lib/project-model'
+import { PULL_REQUEST_ICON } from '../PullRequestMark'
 import type { ArtifactFact, ProjectUsage, ResourceFact, ThreadRecord, ThreadState } from '../../lib/project-types'
-import type { Weather } from '../../lib/weather'
 import { StatusLight } from '../StatusLight'
 import { ArtifactContext, ArtifactIcon } from './Artifacts'
 
 /** Lanes with nothing for you to do fold into one line. */
 const FOLDED: ReadonlySet<BoardColumn['key']> = new Set(['idle', 'resolved'])
-
-/** The project's forecast as one light, the same colours a thread's light uses. */
-const FORECAST_LIGHT: Partial<Record<Weather, LightTone>> = {
-  storm: 'failed',
-  snow: 'waiting',
-  rain: 'working',
-  drizzle: 'working',
-  clear: 'idle',
-}
-
-const FORECAST: Partial<Record<Weather, string>> = {
-  storm: 'Something failed',
-  snow: 'Waiting on you',
-  rain: 'Several threads working',
-  drizzle: 'One thread working',
-  clear: 'All quiet',
-}
 
 /** What an empty lane says in the side-by-side kanban. */
 const EMPTY_LANE: Partial<Record<BoardColumn['key'], string>> = {
@@ -92,8 +74,7 @@ export function BoardPanel({
   const usage = useUsage(workspace, state)
   const columns = useMemo(() => board(state, seen), [state, seen])
   const feed = useMemo(() => boardFeed(state), [state])
-  const day = today(state, Date.now(), usage)
-  const weather = projectWeather(state)
+  const hello = greeting(columns, state, Date.now(), usage)
   const usageOf = (id: string) => usage?.byThread.find(entry => entry.threadId === id)
   const total = columns.reduce((sum, column) => sum + column.threads.length, 0)
   const [error, setError] = useState<string | undefined>()
@@ -114,21 +95,11 @@ export function BoardPanel({
         <span className="wb-toolbar-title">Board</span>
       </div>
       <div className="wb-card wb-flow wb-scroll board-scroll">
-        <header className="board-intro">
-          <h2 className="board-title">{state.project.name}</h2>
-          <p className="board-forecast-line">
-            <StatusLight tone={FORECAST_LIGHT[weather] ?? 'idle'} label={FORECAST[weather] ?? 'All quiet'} />
-            <span className="board-forecast">{FORECAST[weather] ?? 'All quiet'}</span>
-          </p>
+        <header className="board-intro" aria-label="Greeting">
+          <h2 className="board-greeting">{hello.title}</h2>
+          <p className="board-now">{hello.now}</p>
+          {hello.recap && <p className="board-recap">{hello.recap}</p>}
         </header>
-        {total > 0 && <Shape state={state} columns={columns} />}
-        <p className="board-today" aria-label="Today">
-          <span className="board-today-label">Today</span>
-          <Stat value={day.started} label="started" />
-          <Stat value={day.finished} label="finished" />
-          <Stat value={day.artifacts} label={day.artifacts === 1 ? 'output' : 'outputs'} />
-          {day.tokens !== undefined && <Stat value={day.tokens} label="tokens" />}
-        </p>
         {error && <div className="notice notice-error"><span>{error}</span></div>}
         {total === 0
           ? (
@@ -147,36 +118,6 @@ export function BoardPanel({
         <Folded columns={columns.filter(column => FOLDED.has(column.key))} state={state} usageOf={usageOf} actions={actions} />
         {feed.length > 0 && <Recently feed={feed} onOpenThread={onOpenThread} />}
       </div>
-    </div>
-  )
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return <span className="board-stat"><strong>{formatCount(value)}</strong> {label}</span>
-}
-
-/** Left to right: what is behind you, then what is moving, then what needs you. */
-const SHAPE_ORDER: ReadonlyArray<BoardColumn['key']> = ['resolved', 'idle', 'ready', 'working', 'needs']
-
-/**
- * The project at a glance: one segment per thread, coloured like its light,
- * with resolved work filling from the left. Hovering a segment names it.
- */
-function Shape({ state, columns }: { state: ProjectState; columns: BoardColumn[] }) {
-  const lanes = SHAPE_ORDER.flatMap(key => columns.filter(column => column.key === key))
-  const total = lanes.reduce((sum, column) => sum + column.threads.length, 0)
-  const finished = Object.values(state.threads).filter(thread => thread.id !== state.coordinatorId
-    && (threadState(state, thread) === 'done' || threadState(state, thread) === 'resolved')).length
-  const summary = lanes.filter(column => column.threads.length > 0).map(column => `${column.threads.length} ${column.label.toLowerCase()}`).join(', ')
-  return (
-    <div className="board-shape">
-      <div className="board-shape-bar" role="img" aria-label={`${total} threads: ${summary}`}>
-        {lanes.flatMap(column => column.threads.map(thread => {
-          const tone = column.key === 'needs' && threadState(state, thread) === 'failed' ? 'failed' : column.key
-          return <span key={thread.id} className={`board-shape-seg seg-${tone}`} title={`${thread.label}: ${column.label}`} />
-        }))}
-      </div>
-      <span className="board-shape-count"><strong>{finished}</strong> of {total} done</span>
     </div>
   )
 }
@@ -406,14 +347,17 @@ function GitChip({ resource }: { resource: ResourceFact }) {
   const git = resource.data.git
   if (!git) return null
   const pr = git.kind === 'pull-request'
-  const Icon = pr ? GitPullRequest : GitBranch
+  // An opened pull request shows where it stands now: its icon and colour follow the state.
+  const live = pr && git.status === 'opened' ? git.state : undefined
+  const Icon = live ? PULL_REQUEST_ICON[live] : pr ? GitPullRequest : GitBranch
   const name = pr && git.number !== undefined ? `PR #${git.number}` : git.branch ?? resource.data.title
   const failed = git.status === 'rejected' || git.status === 'failed'
-  const body = <><Icon size={12} aria-hidden /><span className="board-output-name">{name}</span></>
+  const body = <><Icon size={12} className={live ? `pr-mark pr-${live}` : undefined} aria-hidden /><span className="board-output-name">{name}</span></>
   const className = `board-chip board-output${failed ? ' tone-danger' : ''}`
+  const title = `${resource.data.title}${live ? ` (${PULL_REQUEST_LABEL[live].toLowerCase()})` : ''}`
   return /^https?:\/\//i.test(resource.data.uri)
-    ? <a className={className} href={resource.data.uri} target="_blank" rel="noreferrer noopener" title={`${resource.data.title}: open in the browser`}>{body}</a>
-    : <span className={className} title={resource.data.title}>{body}</span>
+    ? <a className={className} href={resource.data.uri} target="_blank" rel="noreferrer noopener" title={`${title}: open in the browser`}>{body}</a>
+    : <span className={className} title={title}>{body}</span>
 }
 
 /** Usage refreshes when a thread starts or settles, not on every streamed token. */

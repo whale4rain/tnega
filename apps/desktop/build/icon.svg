@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- The Tnega cloud: the agent itself, the same cloud the coordinator avatar draws. -->
-  <g fill="#4a8cec">
-    <circle cx="32" cy="23" r="16"/>
-    <circle cx="18" cy="34" r="14"/>
-    <circle cx="46" cy="34" r="14"/>
-    <circle cx="24" cy="46" r="13"/>
-    <circle cx="40" cy="46" r="13"/>
-  </g>
-  <g fill="#fff">
-    <rect x="20.8" y="23.5" width="8.4" height="17" rx="4.2"/>
-    <rect x="34.8" y="23.5" width="8.4" height="17" rx="4.2"/>
+  <!-- The Tnega cloud: the agent itself, the same cloud the coordinator avatar draws. A white cloud on a dark
+       tile reads on light and dark taskbars alike; the eyes are the tile showing through. -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#1d1d1c"/>
+  <g transform="translate(32 33) scale(0.78) translate(-32 -34.5)">
+    <g fill="#f4f4f2">
+      <circle cx="32" cy="23" r="16"/>
+      <circle cx="18" cy="34" r="14"/>
+      <circle cx="46" cy="34" r="14"/>
+      <circle cx="24" cy="46" r="13"/>
+      <circle cx="40" cy="46" r="13"/>
+    </g>
+    <g fill="#1d1d1c">
+      <rect x="20.8" y="23.5" width="8.4" height="17" rx="4.2"/>
+      <rect x="34.8" y="23.5" width="8.4" height="17" rx="4.2"/>
+    </g>
   </g>
 </svg>

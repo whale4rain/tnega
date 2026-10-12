@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 /**
  * In the desktop app the native minimise / maximise / close buttons float over
@@ -13,6 +14,19 @@ interface DesktopBridge {
 function bridge(): DesktopBridge | undefined {
   const candidate: unknown = Reflect.get(globalThis, 'tnegaDesktop')
   return candidate && typeof candidate === 'object' ? candidate : undefined
+}
+
+/** True inside the desktop app, where native window controls float over the top-right corner. */
+export function isDesktopChrome(): boolean {
+  return Boolean(bridge()?.setTitleBarColors)
+}
+
+/**
+ * A header's actions, rendered in place or, when the Workbench is open in the
+ * desktop app, in its title-bar row beside the window controls.
+ */
+export function inTitleBar(slot: HTMLElement | null | undefined, actions: ReactNode): ReactNode {
+  return slot ? createPortal(actions, slot) : actions
 }
 
 /** `rgb(1, 2, 3)` / `rgba(1, 2, 3, 0.5)` → `#010203`; fully transparent colours give `undefined`. */

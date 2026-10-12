@@ -130,7 +130,7 @@ it('applies colour palette and display choices without saving the config', () =>
     display: { palette: 'sky', density: 'compact', textSize: 'default', readingWidth: 'standard' }, onDisplayChange,
   }))
   const palettes = view.getByRole('radiogroup', { name: 'Colour palette' })
-  expect([...palettes.querySelectorAll('[role="radio"] .palette-name')].map(name => name.textContent)).toEqual(['Sky', 'Sand', 'Forest', 'Graphite'])
+  expect([...palettes.querySelectorAll('[role="radio"] .palette-name')].map(name => name.textContent)).toEqual(['Carbon', 'Sky', 'Sand', 'Forest', 'Graphite'])
   expect(view.getByRole('radio', { name: /^Sky/ }).getAttribute('aria-checked')).toBe('true')
   fireEvent.click(view.getByRole('radio', { name: /^Graphite/ }))
   fireEvent.click(view.getByRole('radio', { name: 'Comfortable' }))

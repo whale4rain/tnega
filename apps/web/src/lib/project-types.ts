@@ -24,6 +24,19 @@ export interface ProjectRecord {
   settings?: ProjectSettings
   /** In the project list only: where its threads stand. Older servers omit it. */
   threads?: ProjectThreadSummary
+  /** In the project list only: pull requests its threads opened, newest change first. Older servers omit it. */
+  pullRequests?: ProjectPullRequest[]
+}
+
+/** Where a pull request stands on the forge; the server asks `gh` and falls back to what was recorded. */
+export type PullRequestState = 'open' | 'draft' | 'merged' | 'closed'
+
+export interface ProjectPullRequest {
+  url: string
+  number?: number
+  repo?: string
+  threadId: string
+  state: PullRequestState
 }
 
 /** Threads waiting on the user (or blocked), failed, and working now. */
@@ -167,6 +180,8 @@ export interface GitInfo {
   repo?: string
   branch?: string
   number?: number
+  /** An opened pull request's current state; older servers omit it. */
+  state?: PullRequestState
   detail?: string
 }
 

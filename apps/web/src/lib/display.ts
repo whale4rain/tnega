@@ -9,6 +9,7 @@ import { useStoredState } from './hooks'
  * stored values before first paint.
  */
 export const PALETTES = [
+  { id: 'carbon', label: 'Carbon', description: 'Calm neutral greys with an ink accent, no tint' },
   { id: 'sky', label: 'Sky', description: 'Cool blue-grey with a clear-sky accent' },
   { id: 'sand', label: 'Sand', description: 'Warm paper and ink, terracotta accent' },
   { id: 'forest', label: 'Forest', description: 'Green-grey neutrals, deep teal accent' },
@@ -34,7 +35,7 @@ export const DISPLAY_OPTIONS = {
   readingWidth: ['narrow', 'standard', 'wide', 'full'],
 } as const satisfies { [K in keyof DisplayPreferences]: readonly DisplayPreferences[K][] }
 
-export const DISPLAY_DEFAULTS: DisplayPreferences = { palette: 'sky', density: 'compact', textSize: 'default', readingWidth: 'standard' }
+export const DISPLAY_DEFAULTS: DisplayPreferences = { palette: 'carbon', density: 'compact', textSize: 'default', readingWidth: 'standard' }
 
 /** Storage key and root attribute of each preference; index.html mirrors these. */
 export const DISPLAY_KEYS = {

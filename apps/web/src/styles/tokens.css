@@ -11,17 +11,20 @@
  * is the sun, danger is the storm.
  */
 :root {
-  --font-sans: "Nunito Variable", "Nunito", "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, "Microsoft YaHei Mono", monospace;
+  /* Geist first so Latin, digits and punctuation always come from it; Noto Sans SC covers CJK (Geist has no
+     CJK glyphs, so the two never compete for a character). System faces are only a fallback while loading. */
+  --font-sans: "Geist Variable", "Geist", "Noto Sans SC Variable", "Noto Sans SC", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Noto Sans SC Variable", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* High-contrast serif for a few words of mood (the Board greeting, the welcome); never body text. */
+  --font-display: "Fraunces Variable", "Fraunces", "Noto Sans SC Variable", Georgia, "Times New Roman", serif;
 
-  /* Nunito sets a little smaller than Inter at the same size, so the ramp sits half a step higher. */
-  --text-xs: 11.5px;
-  --text-sm: 12.5px;
-  --text-md: 13.5px;
-  --text-lg: 14.5px;
-  --text-xl: 19px;
-  --text-2xl: 25px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
+  --text-xl: 18.5px;
+  --text-2xl: 24px;
 
   --radius-xs: 3px;
   --radius-sm: 4px;
@@ -474,6 +477,93 @@
   --syntax-property: #80d0e8;
 }
 
+/* Carbon (default since 2026-10-12): calm neutral greys and nothing else. The accent is ink (near black in light,
+   near white in dark), so primary buttons, the brand mark and the active row read as the strongest neutral;
+   only status (green, amber, red) carries colour. */
+[data-palette="carbon"][data-theme="light"] {
+  --bg: #f7f7f6;
+  --bg-sidebar: #efefee;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f1f1f0;
+  --surface-hover: rgba(0, 0, 0, 0.045);
+  --surface-active: rgba(0, 0, 0, 0.075);
+  --border: #e3e3e1;
+  --border-strong: #bdbdba;
+  --border-focus: #5c5c5a;
+
+  --text: #161616;
+  --text-2: #3f3f3e;
+  --text-3: #5e5e5c;
+  --text-inverse: #fafafa;
+
+  --accent: #1d1d1c;
+  --accent-hover: #000000;
+  --accent-soft: #ececeb;
+  --accent-text: #2a2a29;
+
+  --success: #24713f;
+  --success-soft: #e0f0e5;
+  --warn: #855400;
+  --warn-soft: #f6ead3;
+  --danger: #b5302b;
+  --danger-soft: #f8e1e0;
+
+  --code-bg: #f3f3f2;
+  --code-border: #e3e3e1;
+  --selection: rgba(0, 0, 0, 0.12);
+
+  --syntax-keyword: #8a3b7a;
+  --syntax-string: #24713f;
+  --syntax-number: #855400;
+  --syntax-comment: #5e5e5c;
+  --syntax-function: #2d5c8a;
+  --syntax-type: #9a2f5c;
+  --syntax-property: #155e78;
+}
+
+[data-palette="carbon"][data-theme="dark"] {
+  --bg: #191919;
+  --bg-sidebar: #141414;
+  --surface: #212121;
+  --surface-raised: #2a2a2a;
+  --surface-sunken: #161616;
+  --surface-hover: rgba(255, 255, 255, 0.055);
+  --surface-active: rgba(255, 255, 255, 0.09);
+  --border: #363636;
+  --border-strong: #474747;
+  --border-focus: #a8a8a8;
+
+  --text: #ededec;
+  --text-2: #bdbdbb;
+  --text-3: #9c9c9a;
+  --text-inverse: #141414;
+
+  --accent: #e8e8e6;
+  --accent-hover: #ffffff;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --accent-text: #dededc;
+
+  --success: #84d4a2;
+  --success-soft: rgba(132, 212, 162, 0.12);
+  --warn: #eec070;
+  --warn-soft: rgba(238, 192, 112, 0.12);
+  --danger: #f58e86;
+  --danger-soft: rgba(245, 142, 134, 0.12);
+
+  --code-bg: #161616;
+  --code-border: #363636;
+  --selection: rgba(255, 255, 255, 0.16);
+
+  --syntax-keyword: #d6a8e8;
+  --syntax-string: #84d4a2;
+  --syntax-number: #eec070;
+  --syntax-comment: #9c9c9a;
+  --syntax-function: #a9c7e8;
+  --syntax-type: #f5a3c4;
+  --syntax-property: #80d0e8;
+}
+
 /*
  * Information display (Settings → Appearance). Density loosens rows and
  * controls; the header keeps its height so desktop window controls still fit.
@@ -491,19 +581,19 @@
 }
 
 [data-text-size="small"] {
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 12.5px;
-  --text-lg: 13.5px;
+  --text-xs: 10.5px;
+  --text-sm: 11.5px;
+  --text-md: 12px;
+  --text-lg: 13px;
 }
 
 [data-text-size="large"] {
-  --text-xs: 12.5px;
-  --text-sm: 13.5px;
-  --text-md: 15px;
-  --text-lg: 16px;
-  --text-xl: 21px;
-  --text-2xl: 27px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14.5px;
+  --text-lg: 15.5px;
+  --text-xl: 20.5px;
+  --text-2xl: 26.5px;
 }
 
 [data-reading="narrow"] { --reading-width: 660px; }

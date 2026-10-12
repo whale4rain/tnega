@@ -53,6 +53,7 @@ export function Workbench({
   changeCount,
   onChangeCount,
   project,
+  titleSlot,
 }: {
   workspace: string
   state: WorkbenchState
@@ -65,6 +66,8 @@ export function Workbench({
   onChangeCount: (count: number) => void
   /** Present on a project screen: its tabs lead the rail. */
   project?: WorkbenchProject | undefined
+  /** Receives the desktop title-bar row, where the conversation's header actions go. */
+  titleSlot?: ((element: HTMLDivElement | null) => void) | undefined
 }) {
   const [visited, setVisited] = useState<ReadonlySet<ToolId>>(() => new Set(isTool(state.active) ? [state.active] : []))
   // Outside a project its tabs do not exist; show the first tool instead.
@@ -86,8 +89,11 @@ export function Workbench({
   return (
     <aside className="workbench" aria-label="Workbench">
       <ResizeHandle onResize={onResize} />
-      {/* Desktop only (CSS): the title-bar line under the native window controls; the tabs sit below it. */}
-      <div className="wb-titlebar" aria-hidden />
+      {/* Desktop only (CSS): the title-bar row beside the native window controls. The view on the left
+          portals its header actions here, so they sit next to – ☐ ✕ and the tabs get the row below. */}
+      <div className="wb-titlebar" ref={titleSlot} />
+      {/* The panel itself: a rounded card inset from the window edges, so it reads as its own surface. */}
+      <div className="wb-frame">
       <div className="wb-header">
       <div className="wb-rail" ref={rail} role="tablist" aria-label="Workbench" onWheel={event => {
         if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY
@@ -155,6 +161,7 @@ export function Workbench({
             <SubagentView workspace={workspace} id={doc.id} label={doc.label} onOpenSubagent={(id, label) => onChange(current => openDoc(current, { kind: 'subagent', id, label }))} />
           </div>
         )}
+      </div>
       </div>
     </aside>
   )

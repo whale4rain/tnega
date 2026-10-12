@@ -28,7 +28,7 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 - 2026-10-05 起取代原先「方块上歇着一朵云」：方块加云在任务栏上与天气角标叠成了两朵云，也不如单独的云可爱。
 - 任务栏角标（`apps/desktop/build/completion-*.png`，由 `scripts/render-completion-icons.mjs` 生成）只画天气本身——雨滴、闪电、雪花，放在小深色圆片上——不再画云，任务栏上始终只有一朵云。桌面通知不闪烁任务栏按钮（Windows 把它画成橙红色，像警报），提示音是应用自己合成的两声轻音，不用系统提示音。
 - 来源：
-  - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-eyes`（白眼睛），云用当前调色板的 `--accent` 填色；favicon 与安装包图标保持 Sky 蓝。
+  - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-eyes`（眼睛），云用当前调色板的 `--accent` 填色，眼睛从云上镂空（`mask-composite: exclude`），露出背后的底色，所以在任何调色板和明暗下都看得见；favicon 与安装包图标（2026-10-12 起）是深色圆角方块上的白云，眼睛同样是方块的底色。
   - favicon：`apps/web/index.html`。
   - 安装包图标：`apps/desktop/build/icon.svg`，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
 - 会话主 Agent 画成强调色的云；会话里的子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于区分。
@@ -43,9 +43,9 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 | 轴 | 根元素属性 | 取值 | 谁决定 |
 | --- | --- | --- | --- |
 | 模式 | `data-theme` | `light` / `dark` | 设置里的 System / Light / Dark；System 跟随 `prefers-color-scheme`（`useTheme`，`lib/hooks.ts`） |
-| 调色板 | `data-palette` | `sky`（默认）/ `sand` / `forest` / `graphite` | 设置 → Appearance → Colour palette（`useDisplay`，`lib/display.ts`） |
+| 调色板 | `data-palette` | `carbon`（默认，2026-10-12 起）/ `sky` / `sand` / `forest` / `graphite` | 设置 → Appearance → Colour palette（`useDisplay`，`lib/display.ts`） |
 
-- 模式决定明暗，调色板在该模式内换**中性色、强调色、状态色与语法色**。两者自由组合，共 8 种外观，每一种都必须通过 [§3.6](#contrast) 的底线。
+- 模式决定明暗，调色板在该模式内换**中性色、强调色、状态色与语法色**。两者自由组合，共 10 种外观，每一种都必须通过 [§3.6](#contrast) 的底线。
 - 选择器写法：Sky 是 `:root, [data-theme="light"]` 与 `[data-theme="dark"]`；其他调色板是 `[data-palette="x"][data-theme="light|dark"]`，特异度更高，所以只需覆盖颜色 token。
 - 这些属性可以挂在**任何元素**上，属性下的子树就用那套颜色——设置里的调色板色样正是这样画的（每半块各自带 `data-palette` 与 `data-theme`）。需要预览某种外观时用这个办法，不要在 JS 里复制色值。
 - `index.html` 在首帧前从 localStorage 套用模式与全部显示偏好，页面不会闪。新增根属性时同步改那段脚本。
@@ -81,7 +81,9 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 - 需要中间色时用 `color-mix(in srgb, var(--a) N%, var(--b))`，两端都必须是 token；`--usage-*` 就是这样派生的，它们会自动跟随调色板。
 - 阴影（`--shadow-sm/md/lg`）只给浮层；深色模式下层级靠明度（§3.5）。
 
-### 3.3 Sky（默认调色板）
+### 3.3 Sky（基础调色板）
+
+Sky 写在基础选择器里，是其他调色板覆盖的底；2026-10-12 起默认调色板是 Carbon（见 3.4），没有存过选择的设备在首次绘制前（`index.html`）就用 Carbon。
 
 浅色是白昼的天，深色是同一片天的夜晚。
 
@@ -108,7 +110,8 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 
 | 调色板 | 用途 | 中性色 | 强调色（浅 / 深） |
 | --- | --- | --- | --- |
-| Sky | 默认；清爽、通用 | 冷蓝灰 | `#2f6fd0` / `#8ab4f8` |
+| Carbon | 默认；安静、现代：纯中性灰，没有任何色偏，强调色就是墨色（浅色近黑、深色近白），只有状态（绿 / 琥珀 / 红）带颜色 | 中性灰（深色 `#191919` 底、`#ededec` 正文） | 墨 `#1d1d1c` / `#e8e8e6` |
+| Sky | 清爽、通用，带一点天蓝的中性色 | 冷蓝灰 | `#2f6fd0` / `#8ab4f8` |
 | Sand | 长时间阅读；暖、低眩光 | 暖纸色与墨色 | 赤陶 `#a84f28` / `#e9a47e` |
 | Forest | 偏好绿色系、与蓝色工具区分 | 绿灰 | 深青 `#146b64` / `#6fd2c0` |
 | Graphite | 信息最密、对比最强 | 纯中性灰（`#111111` 正文） | 靛紫 `#4a44c2` / `#aaa6ff` |
@@ -117,6 +120,8 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 
 | 调色板 · 模式 | `--bg` | `--surface` | `--text` | `--text-3` | `--accent-text` | `--success` / `--warn` / `--danger` |
 | --- | --- | --- | --- | --- | --- | --- |
+| Carbon 浅 | `#f7f7f6` | `#ffffff` | `#161616` | `#5e5e5c` | `#2a2a29` | `#24713f` / `#855400` / `#b5302b` |
+| Carbon 深 | `#191919` | `#212121` | `#ededec` | `#9c9c9a` | `#dededc` | `#84d4a2` / `#eec070` / `#f58e86` |
 | Sand 浅 | `#f6f3ee` | `#fffdf9` | `#27221b` | `#6a6155` | `#93441f` | `#3b7340` / `#8a5a0c` / `#b2382f` |
 | Sand 深 | `#15130f` | `#1e1b16` | `#eee8de` | `#a29788` | `#efb593` | `#9fcf8a` / `#e7c06e` / `#f2907f` |
 | Forest 浅 | `#f2f5f2` | `#ffffff` | `#17231b` | `#5a6a5f` | `#0f5f58` | `#3a7326` / `#8d5b08` / `#b33a37` |
@@ -183,7 +188,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - 进行中的回合保留 Agent 的叙述文字，连续的工具调用折叠成一行，行上写当前步骤（"Reading c.ts · 3 steps"），点开才看每一步。
 - 回合结束后，最终答复之前的过程（叙述与工具）一起折叠成一行（"Used 4 tools"），只留最终答复、改动文件与需要你处理的警告。
 - **思考**（模型暴露的推理文本，2026-10-10 起）：画成一行无框的弱化行（灯泡图标 · "Thinking" / "Thought for 6.4s" · 箭头），不加卡片和底色。模型思考时它展开，正文用 `--text-3`、`--text-sm`、左侧 2px `--border` 竖线，只保留最新约 6 行；答复一开始就自动收成一行，点开才看全文，展开状态不跨重载保留。最终答复的思考留在答复上方；中间工具步骤的思考随过程一起折叠。不另造“思考中”的天气，沿用多云。
-- 全应用使用同一字号阶梯（§6.1）：常规界面 13.5px，对话正文与输入 14.5px、1.6 行高，工具详情 12.5px，元数据 11.5px；标题 19 / 25px。Project、Session 和工作台沿用同一套 token：工作台里的 Thread 与 Agent 通信用和主对话**相同**的正文字号，不再缩小一号。
+- 全应用使用同一字号阶梯（§6.1）：常规界面 13px，对话正文与输入 14px、1.6 行高，工具详情 12px，元数据 11px；标题 18.5 / 24px。Project、Session 和工作台沿用同一套 token：工作台里的 Thread 与 Agent 通信用和主对话**相同**的正文字号，不再缩小一号。
 - **转派气泡**（2026-10-09 起）：Thread 对话与「Messages with …」里，启动这个 Thread 的 Agent（通常是协调者）发给它的消息画在**用户一侧**：靠右、`--border-strong` **虚线**描边、无底色、文字 `--text-2`，上方一行是发送者名字与时间（`ChatRun` 的 `side="relay"`）。它和你的消息一样是给 Thread 的指令，但不是你写的，所以用虚线而不是实心气泡区分。派工消息本身就是 Brief，显示了派工气泡时不再另放折叠的 Brief；Thread 发给协调者的汇报仍只在「Messages with …」里。
 - Project 主对话里，协调者把工作交给 Thread（或 Thread 第一次回话）的地方是一张 **Thread 链接卡**：状态灯 · 标题 · 状态 · 箭头，点开在工作台打开该 Thread；每个 Thread 只在它第一次出现的地方放一张卡，卡上的状态是实时的。协调者在正文里提到 Thread 时写成 `[标题](#thread:<id>)`，渲染为带状态灯的链接，同样打开 Thread。Thread 与协调者之间的往来在 Thread 工具栏的「Messages with …」里查看（工作台的通信标签，按发送者分组，只有名字没有头像）；文档标签不跨重载保留，通信内容从 Box 快照恢复。
 - 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台；文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文。
@@ -203,13 +208,13 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **Project 产物例外**：从消息或 Library 打开的产物保留弹窗预览，左侧产物、右侧生成它的 Thread，复用现有预览与 ThreadPanel。弹窗几乎占满窗口：标题行只出现一次（类型图标 · 标题 · `类型 · 大小 · v版本 · Thread`），整件产物的动作放在标题行右侧（引用选中文字、查看最新版本、下载）；左侧是 `--surface-sunken` 的舞台，文档画成居中的「纸」（`--surface`、`--reading-width`、正文 `--text-lg`），页面类产物铺满舞台并可切换「Page preview / Select from source」；右侧 Thread 栏宽 `clamp(360px, 32%, 520px)`，不再重复显示产物条。一个 Thread 可以维护多个产物；修订沿用产物身份和归属。打开不触发模型请求。两侧独立滚动，关闭恢复焦点。文本、Markdown、代码可以引用实际选中的原文；HTML 可切换源码引用，不扩大 iframe 权限。引用可取消，仅在用户发送时连同所见版本提交。
 - **入口**：会话顶栏只有一个工作台按钮（面板图标），角标是相对上次提交改动的文件数。`Ctrl+J` 开关工作台，`` Ctrl+` `` 直接打开终端。Agent 开始用浏览器时自动切到 Browser；对话里"N files changed"卡片上的每个文件点开即是它的 diff；Office 文件卡片点开是预览标签。
 - **一种形状**：每个视图都是 **标签栏 → 工具栏行 → 圆角卡片**。标签栏先是固定的工具（Files · Changes · Terminal · Browser），竖线之后是可关闭的文档标签（文件预览、子 Agent 记录），同一文档不会开两次。工具栏行左边是上下文（路径、分支、会话），右边是动作；工具内部的多实例（浏览器页面、多个终端）用同一种**子标签胶囊**。内容一律放进圆角卡片：代码、终端与 diff 用 `--code-bg`，文档与页面用 `--surface`。**Project 的面板是阅读面**（Thread、Agent 通信、Board、Library、Routines、Project 设置）：内容用 `.wb-card.wb-flow` 从工具栏下的一条分隔线开始铺满面板，底色 `--bg`，不再套第二层带边框的卡片——和旁边的对话连成一片（2026-10-09 起）。
-- **底色与层级**：工作台外框用和对话相同的 `--bg`（不是侧栏灰），与对话之间只有一条 `--border` 竖线。工具栏标题是 `--text` + 600（Thread 名用 `--text-lg` + 650）；面板内的区块标题是句首大写的 `--text-md` + 650 + `--text`，数量跟在后面用 `--text-3`，**不用全大写的小号灰字**；Board 以项目名（`--text-xl` + 700）和一句天气（带状态灯）开头。
+- **底色与层级**（2026-10-12 起，参照 Claude 的侧边面板）：工作台是一张**卡片**（`.wb-frame`）：`--surface` 底、`--border` 细边、`--radius-xl` 圆角，与窗口右、下边缘留 6px 空隙（网页端顶部也留 6px），和对话之间不再画竖线，卡片的边框就是分界；卡片里的阅读面（`.wb-flow`）同样用 `--surface`，选中的标签用 `--surface-active`。工具栏标题是 `--text` + 600（Thread 名用 `--text-lg` + 650）；面板内的区块标题是句首大写的 `--text-md` + 650 + `--text`，数量跟在后面用 `--text-3`，**不用全大写的小号灰字**；Board 以项目名（`--text-xl` + 700）和一句天气（带状态灯）开头。
 - **左右分栏**：Files 与 Changes 用同一种布局——左边列表（目录树 / 改动文件），右边详情（编辑器 / diff），选中项用 `--accent-soft`。
 - **Files**：懒加载目录树（headless-tree）+ CodeMirror 6 编辑器，`Ctrl+S` 保存；磁盘上的文件在打开后被改过（比如 Agent 改了）时拒绝覆盖。
 - **Changes**：相对 HEAD 的改动，状态字母（M 警告色、A/U 成功色、D 危险色、R 强调色）与 `+n −n`；diff 用 `@codemirror/merge`，可切换合并 / 并排视图，长段未改动内容折叠；增删着色只用 `--success-soft` / `--danger-soft`。可见时每 5 秒刷新，Agent 的改动随写随现。非 git 工作区给出说明而不是空白。
 - **Terminal**：你自己的 shell（Windows 上优先 PowerShell 7），跑在真实 PTY 上（node-pty + xterm.js），不经沙箱、不是 Agent 工具。切换标签不会断开，重新连接时回放最近的输出。终端配色从 token 读取，随深浅主题切换。
 - **Browser**：见 5.4。
-- **标签栏与标题栏**：网页端标签栏就是标题栏那一行，高 `--header-h`，与会话顶栏、侧栏顶部在同一条中线上；工作台顶部不留内边距。**桌面端**（2026-10-10 起）工作台最上面一行让给原生窗口按钮（最小化 / 最大化 / 关闭），是一条空的可拖动标题栏（`.wb-titlebar`），标签栏放在它**下面**一行，拿到面板的全部宽度，不再挤在窗口按钮左边。这是「原生按钮融进已有顶栏、不加额外一行」的唯一例外。标签多到放不下时用滚轮或触控板横向滚动，选中的标签自动滚入视野；**不显示滚动条**（Windows 上的原生横向滚动条会撑高这一行，把标签挤离中线）。
+- **标签栏与标题栏**：网页端标签栏是卡片的第一行，高 `--header-h`。**桌面端**（2026-10-10 起）工作台最上面一行让给原生窗口按钮（最小化 / 最大化 / 关闭），是一条可拖动的标题栏（`.wb-titlebar`），标签栏放在它**下面**一行，拿到面板的全部宽度。工作台打开时，左边会话或项目顶栏右侧的动作按钮（`.conv-header-actions`）移到这条标题栏里，右对齐、紧挨窗口按钮左边（2026-10-12 起），这一行就不再是空的。这一行算窗口标题栏而不是面板的一部分，工作台卡片从它下面开始，卡片的圆角边框就是分界；工作台关闭时按钮回到顶栏，顶栏照常给窗口按钮让位。这是「原生按钮融进已有顶栏、不加额外一行」的唯一例外。标签多到放不下时用滚轮或触控板横向滚动，选中的标签自动滚入视野；**不显示滚动条**（Windows 上的原生横向滚动条会撑高这一行，把标签挤离中线）。
 - **记忆与宽度**：开关状态与当前工具在重载后保留，文档标签不保留。左边缘可拖动调整宽度并被记住（最窄 420px，最宽为窗口的 72%，默认 `--workbench-default` = `clamp(420px, 40vw, 760px)`，在 1920px 宽的窗口里和对话列差不多宽；旧版本保存的更窄宽度在读取时抬到 420px）；工具标签只显示图标，选中的那个显示名称（见 5.5）；窗口窄于 1100px 时工作台浮在对话之上。
 
 ### 5.4 Agent 浏览器
@@ -243,9 +248,11 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 ### 5.6 侧栏：按工作区组织
 
 - 侧栏宽 `--sidebar-width` = 264px，是一眼扫过的导航，所以比其他界面大一号（2026-10-09 起）：行高 `--nav-row-h`，图标 `--nav-icon`（lucide 的 `size` 只是默认值，尺寸由 CSS 统一设定），会话与项目标题用 `--text-lg`，当前项 600；分组名 `--text-md` + 650。搜索框与底部按钮高 `--control-lg`。
-- **一行只放一个点和一个标题**（2026-10-10 起）：字号已经够大，拥挤来自每行塞的东西太多，所以减少每行的内容，而不是缩小字号。会话行是一个安静的小圆点（`--border-strong`，当前项 `--accent`）加标题；项目行是它的状态灯（§5.7，没有要说的状态时也是小圆点）加名字。不显示时间、类型图标、分叉图标；时间、分叉与项目所在的工作区都在提示里。
+- **一行只放一个点和一个标题**（2026-10-10 起）：字号已经够大，拥挤来自每行塞的东西太多，所以减少每行的内容，而不是缩小字号。会话行是一个安静的小圆点（`--border-strong`，当前项 `--accent`）加标题；项目行（2026-10-12 起）在同一位置放项目图标（`FolderKanban`，`--text-3`，当前项 `--accent`），一眼就能和会话分开，行尾只在有话要说时放状态灯（§5.7）和拉取请求标记（见下）。不显示时间、数量、分叉图标；时间、分叉与项目所在的工作区都在提示里。
 
-- 侧栏分两部分：最上面是 **Pinned**，列出所有工作区的全部项目（按最近更新），不显示项目所属的工作区，已归档的收在 “N archived” 里；下面是工作区树：每个工作区一个可折叠分组，只放会话，按最近时间排列；默认显示 8 条，其余收在 “N more” 里。**分组按各自最新会话的时间排列**，最近用过的工作区在最上面，不按添加顺序或字母顺序。折叠状态存在 `tnega.sidebar.collapsed`。
+- 侧栏分两部分：最上面是 **Pinned**，列出所有工作区的全部项目（按最近更新），不显示项目所属的工作区；它和工作区分组一样可以折叠，默认显示 8 个，其余收在 “N more” 里（打开着的项目与有 Thread 等你或失败的项目总在视野内），已归档的收在 “N archived” 里。项目行悬停时的「更多」菜单里有归档 / 恢复与删除（删除先确认）。下面是工作区树：每个工作区一个可折叠分组，只放会话，按最近时间排列；默认显示 8 条，其余收在 “N more” 里；折叠后也不显示条数。**分组按各自最新会话的时间排列**，最近用过的工作区在最上面，不按添加顺序或字母顺序。折叠状态存在 `tnega.sidebar.collapsed`（Pinned 用一个不会是路径的键）。
+- **拉取请求标记**（2026-10-12 起）：项目的 Thread 开过拉取请求时，项目行尾显示一个 12px 的 git 图标，图标与颜色跟随状态：打开 `--success`、草稿 `--text-3`、已合并 `--accent`、已关闭 `--danger`；有打开或草稿的就显示它，否则显示最新那个的状态，提示里逐个列出。数据来自 `GET /api/projects` 的 `pullRequests`：服务端用用户自己的 `gh` 查询状态并缓存，查不到时退回到开 PR 时记录的状态。Board 的输出小片与 git 卡片用同一套图标与颜色。
+- **切换不闪**：点开别的工作区里的项目时，侧栏继续显示已有的列表直到新列表到达，不清空重排；重新打开看过的项目先显示上次的内容，再换成最新快照。
 - **没有选文件夹时的默认位置**：服务端在 tnega 主目录里准备一个 `scratch` 文件夹（`~/.tnega/scratch`，`GET /api/workspaces` 的 `defaultWorkspace`），侧栏把它显示为 “No folder” 分组，不能移出列表。侧栏顶部的新建会话按钮与 `Ctrl+Shift+O` 都在这里开新会话；要在某个工作区里开，用该分组悬停时的按钮。用子文件夹而不是 `~/.tnega` 本身，是因为主目录里有配置与登录凭据，Agent 的工作区不能包含它们。
 - 没有工作区切换卡片，也没有 Sessions / Projects 切换：点开任何分组里的会话或项目，就切到它所在的工作区并打开它。当前工作区的列表来自应用本身（实时）；其他展开的工作区在打开时各自加载。
 - 工作区行悬停时出现“新建项目 / 新建会话 / 更多（移出列表）”；“Add workspace”在侧栏底部，与设置、主题并排，只显示图标（名称在提示与无障碍标签里），侧栏再窄也不会压到主题切换。
@@ -253,12 +260,13 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 ### 5.7 Project 屏幕的密度
 
-- 房间里的 Thread 卡片是一行（约 30px）：状态灯 · 标题 · 状态 / 当前步骤 · 箭头，悬停在卡片右侧出现「回复」。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
+- 房间里的 Thread 卡片是一行（约 36px）：状态灯 · 标题 · 状态 / 当前步骤 · 箭头，悬停在卡片右侧出现「回复」。
+- **对话里的卡片照 Claude 的样子**（2026-10-12 起）：Thread 卡与推送 / PR 卡按内容收窄（`width: fit-content`，不铺满对话列），`--radius-lg` 圆角、`--surface` 底、1px `--border`；标题 500 字重，状态文字 500 字重、`--text-3`（等你与失败仍用状态色）。多张卡纵向叠放、左对齐、间距 6px。当前步骤优先取 Thread 的清单；没有清单时用它最近一次工具调用的几个字（“Editing count.mjs”“Running node --test”）。
 - **状态灯**（`components/StatusLight.tsx`，`threadLight` / `projectLight`）是天气的最小形态，一种颜色只有一个含义：等你或被阻塞（雪）= `--warn` 带光晕；出错（雷暴）= `--danger` 带光晕；工作中（雨）= `--accent` 缓慢明灭（减弱动效时静止）；有你还没打开的结果 = `--success`；其余为 `--border-strong` 的灰点。灯总带文字（无障碍名称与提示）。用在：房间的 Thread 卡、正文里的 Thread 链接、Board 卡片与 Today 行、侧栏的项目行——侧栏只在有 Thread 等你、失败或工作中时亮灯（优先级同 §4），数据来自 `GET /api/projects` 的 `threads` 摘要。
 - **推送与 PR 卡**（`project/GitCard.tsx`）：Thread 用 shell 执行 `git push` 或 `gh pr create` 后，服务端按命令输出记一条带 `git` 的 Library 资源，界面画成一行卡片：图标（分支 / PR）· 标题（“Pushed feature-x”“Pull request #12”）· 仓库 · Thread · 时间 · 状态胶囊（Pushed / Opened 成功色，Up to date 中性，Rejected / Failed 危险色，失败时元数据换成错误行）· 「Open」在浏览器打开（PR、建 PR 的页面或分支页；本地或代理远端没有网页就不显示）。同一分支再推送更新同一张卡。卡片出现在主对话里（按最近变化的时间）、该 Thread 的产物区与 Library 的「Pushes and pull requests」。状态只反映命令本身的结果，不查询代码托管平台。
 - 协调者与 Thread 的消息完整显示，不使用 “Show more” 或行数裁切；简洁表达由 Agent 的沟通指令负责，不由界面隐藏消息。
-- Board（2026-10-10 起，`project/Board.tsx`）从上到下：项目名与一句天气 → **形状条**（每个 Thread 一段，颜色同它的状态灯：Resolved `--text-3`、Idle `--border-strong`、Ready `--success`、Working `--accent` 缓慢明灭、Needs you `--warn`，失败 `--danger`；已完成的从左边填起，右侧写 `n of m done`）→ 一行无边框的 Today：started · finished · outputs · tokens → 泳道 Needs you / Working / Ready（标题前带状态点；宽面板并排时空泳道写一句“Nothing waiting on you / No thread running / No new results”）→ Idle 与 Resolved 收成一行，点开一起显示 → **Recently**：最近 4 件事（started / reported / finished / asked / got blocked / failed / added / pushed / opened pull request），一行一件，图标 + Thread 名 + 动词 + 灰色摘要 + 时间，点击打开该 Thread。
-- Board 卡片：状态灯 · 标题（整张卡的点击区）· 进展一行（Needs you 的问题或失败原因给两行，其他一行）· **分段清单**（每步一段：完成为强调色、当前步淡强调色且只在 Working 时明灭、未做为凹陷色；超过 12 步退回一条进度条）`n/m` · **产物 chip**（最新 3 个，含推送与 PR；产物点开预览，推送 / PR 在浏览器打开，其余收成 `+N` 打开 Thread）· 底部 `动词 + 时间`（Asked / Failed / Updated / Reported / Resolved）· 活跃时长 · tokens。不加头像、不加新的状态色。
+- Board（2026-10-10 起，`project/Board.tsx`）从上到下：**问候**（2026-10-12 起取代项目名、天气行、彩色形状条与 Today 统计行：大块颜色和图案是陷阱，留白更重要）——`greeting()` 生成一句按时间的问候（Good morning / Lunchtime（午间且没有等你的事）/ Good afternoon / Good evening / Working late），用 `--font-display`；下面一句人话说现在的情况（谁在等你、谁有结果、谁还在做；什么都没有就说 Nothing needs you，午间说可以去吃饭），再一句 `--text-3` 的简短回顾（上午回顾昨天，之后回顾今天到目前为止：完成、产物、tokens），没有发生什么就不写 → 泳道 Needs you / Working / Ready（**段头是一条柔和的色带**：`--surface-hover` 底、`--radius-md`、`--text-sm` 500 字重 `--text-2`，前面的状态点带颜色，数字 `--text-3`；Idle / Resolved 折叠行与 Recently 用同一种段头；宽面板并排时空泳道写一句“Nothing waiting on you / No thread running / No new results”）→ Idle 与 Resolved 收成一行，点开一起显示 → **Recently**：最近 4 件事（started / reported / finished / asked / got blocked / failed / added / pushed / opened pull request），一行一件，图标 + Thread 名 + 动词 + 灰色摘要 + 时间，点击打开该 Thread。
+- Board 卡片是段头下的**平铺行**（2026-10-12 起）：无边框、无底色，悬停才铺 `--surface-hover`；Needs you 不再加琥珀描边，靠状态灯与段头的点表达；标题 `--text-md` 500 字重，进展 `--text-sm`，产物 chip 底色 `--surface-hover`。内容：状态灯 · 标题（整张卡的点击区）· 进展一行（Needs you 的问题或失败原因给两行，其他一行）· **分段清单**（每步一段：完成为强调色、当前步淡强调色且只在 Working 时明灭、未做为凹陷色；超过 12 步退回一条进度条）`n/m` · **产物 chip**（最新 3 个，含推送与 PR；产物点开预览，推送 / PR 在浏览器打开，其余收成 `+N` 打开 Thread）· 底部 `动词 + 时间`（Asked / Failed / Updated / Reported / Resolved）· 活跃时长 · tokens。不加头像、不加新的状态色。
 
 ## 6. 字号与信息显示偏好
 
@@ -268,16 +276,18 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 | token | Small | Default | Large | 用于 |
 | --- | --- | --- | --- | --- |
-| `--text-xs` | 11px | 11.5px | 12.5px | 元数据：时间、计数、徽标 |
-| `--text-sm` | 12px | 12.5px | 13.5px | 工具详情、表单说明、表格 |
-| `--text-md` | 12.5px | 13.5px | 15px | 常规界面：按钮、列表、菜单 |
-| `--text-lg` | 13.5px | 14.5px | 16px | 对话正文与输入（行高 1.6）、侧栏行 |
-| `--text-xl` | 19px | 19px | 21px | 区块标题 |
-| `--text-2xl` | 25px | 25px | 27px | 页面标题、欢迎页 |
+| `--text-xs` | 10.5px | 11px | 12px | 元数据：时间、计数、徽标 |
+| `--text-sm` | 11.5px | 12px | 13px | 工具详情、表单说明、表格 |
+| `--text-md` | 12px | 13px | 14.5px | 常规界面：按钮、列表、菜单 |
+| `--text-lg` | 13px | 14px | 15.5px | 对话正文与输入（行高 1.6）、侧栏行 |
+| `--text-xl` | 18.5px | 18.5px | 20.5px | 区块标题 |
+| `--text-2xl` | 24px | 24px | 26.5px | 页面标题、欢迎页 |
 
-**界面字体是 Nunito**（`--font-sans`，可变字重，由 `@fontsource-variable/nunito` 随应用打包，桌面端离线与各操作系统显示一致；中文回落到系统字体）。它是圆润、字怀开阔的无衬线体，小字号也好读；同字号下比 Inter 略小，所以 2026-10-09 起字号阶梯整体上调半档。Nunito 的常规字重在屏幕上偏细，`body` 用 450。
+**界面字体是 Geist + Noto Sans SC，代码用 JetBrains Mono**（2026-10-12 起；三者都由 `@fontsource-variable/*` 随应用打包，桌面端离线与各操作系统显示一致）。`--font-sans` 里 Geist 在前：拉丁字母、数字和标点总由 Geist 显示；Geist 没有中文字形，中文落到 Noto Sans SC，两者不会争同一个字符，混排不会忽大忽小或换来换去。Noto Sans SC 按 unicode-range 分片，只有出现中文时才加载需要的分片。`body` 字重 400。
 
-字重以 450 / 500 / 600 为主；700 只留给极小的徽标数字。等宽字体（`--font-mono`）只给代码、路径、命令、哈希与对齐的数字列。
+**展示衬线 `--font-display` = Fraunces**（2026-10-12 起，`@fontsource-variable/fraunces` 的 opsz 轴：大字号时自动变成高对比衬线）。它只给几句表达情绪的字：Board 的问候语与首次打开的欢迎标题，`--text-2xl`、500 字重；正文、标题栏、按钮与列表永远不用它。中文落到 Noto Sans SC。
+
+字重以 400 / 500 / 600 为主；700 只留给极小的徽标数字。等宽字体（`--font-mono`）只给代码、路径、命令、哈希与对齐的数字列。
 
 ### 6.2 显示偏好
 
@@ -285,7 +295,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 | 设置 | 属性 | 取值（默认加粗） | 改变的 token |
 | --- | --- | --- | --- |
-| Colour palette | `data-palette` | **sky** / sand / forest / graphite | 颜色（§3） |
+| Colour palette | `data-palette` | **carbon** / sky / sand / forest / graphite | 颜色（§3） |
 | Density | `data-density` | **compact** / comfortable | `--toolbar-h`、`--control*`、`--row-h`、`--icon` |
 | Text size | `data-text-size` | small / **default** / large | `--text-*` |
 | Conversation width | `data-reading` | narrow 660 / **standard 780** / wide 1000 / full | `--reading-width` |
