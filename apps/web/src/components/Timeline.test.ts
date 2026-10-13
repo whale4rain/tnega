@@ -115,9 +115,9 @@ it('folds tool calls behind one line that names the current step while a turn st
   expect(view.queryByRole('button', { name: /Read a.ts/ })).toBeNull()
   expect(view.getByRole('button', { name: /^Used 2 steps/ }).getAttribute('aria-expanded')).toBe('false')
   view.rerender(createElement(Timeline, { entries: [{ ...live, blocks: [...live.blocks, block('c', 'running')] }], running: true, actions: {} }))
-  expect(view.getByRole('button', { name: /^Reading c.ts\s*3 steps/ })).toBeTruthy()
+  expect(view.getByRole('button', { name: /^Reading\s*c.ts\s*3 steps/ })).toBeTruthy()
   expect(view.container.querySelectorAll('.tool-row')).toHaveLength(0)
-  fireEvent.click(view.getByRole('button', { name: /^Reading c.ts/ }))
+  fireEvent.click(view.getByRole('button', { name: /^Reading\s*c.ts/ }))
   expect(view.container.querySelectorAll('.tool-row')).toHaveLength(3)
   const answer: Block = { kind: 'text', id: 'answer', text: 'All three files agree.' }
   view.rerender(createElement(Timeline, { entries: [{ ...live, status: 'done', blocks: [...live.blocks, block('c', 'ok'), answer] }], running: false, actions: {} }))
