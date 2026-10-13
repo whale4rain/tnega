@@ -71,3 +71,16 @@ it('selects preview updates and disables switching during a download', async () 
   emit({ status: 'downloading', version: '0.4.6', next: '0.4.7-beta.1', percent: 5, channel: 'preview' })
   expect(Reflect.get(selector, 'disabled')).toBe(true)
 })
+
+it('offers the download page when the app cannot install updates itself', async () => {
+  const { bridge, emit } = stubBridge({ status: 'idle', version: '0.5.0' })
+  const view = render(createElement(Harness))
+  await view.findByText('Tnega 0.5.0')
+  emit({ status: 'available', version: '0.5.0', next: '0.5.1' })
+  expect(view.getByText('Version 0.5.1 is available. Download it from GitHub and replace this copy.')).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: 'Download' }))
+  fireEvent.click(view.getByRole('button', { name: 'Download 0.5.1' }))
+  expect(bridge.install).toHaveBeenCalledTimes(2)
+  // Opening a web page is not a restart.
+  expect(view.queryByRole('alertdialog')).toBeNull()
+})

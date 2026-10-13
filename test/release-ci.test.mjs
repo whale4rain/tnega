@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { setImmediate } from 'node:timers/promises'
-import { checkReport, compareVersions, verifyBundle, checkAssets } from '../scripts/release-ci.mjs'
+import { checkReport, compareVersions, verifyBundle, checkAssets, mergeFeeds, parseFeed, platformArtifacts, stagePlatform, verifyFeed } from '../scripts/release-ci.mjs'
+import { releaseVersion } from '../scripts/release-version.mjs'
 import { publishRelease } from '../scripts/release-publish.mjs'
 
 const root = '/checkout'
@@ -42,26 +43,82 @@ test('stable promotion and numeric beta ordering prevent channel downgrade', () 
   assert.equal(compareVersions('0.4.11', '0.4.12'), -1)
   assert.throws(() => compareVersions('v0.4.12', '0.4.12'))
 })
+const hash = (bytes, algorithm = 'sha256', encoding = 'hex') => createHash(algorithm).update(bytes).digest(encoding)
+const feedEntry = (name, bytes) => `  - url: ${name}\n    sha512: ${hash(bytes, 'sha512', 'base64')}\n    size: ${bytes.length}\n`
+const feedFor = (version, names) => `version: ${version}\nfiles:\n${names.map(([name, bytes]) => feedEntry(name, bytes)).join('')}` +
+  `path: ${names[0][0]}\nsha512: ${hash(names[0][1], 'sha512', 'base64')}\nreleaseDate: '2026-10-12T00:00:00.000Z'\n`
+
+/** A complete bundle for every platform, as `release-ci.mjs bundle` writes it. */
+function writeBundle(dir, version) {
+  const groups = platformArtifacts(version)
+  const { feeds } = releaseVersion(version)
+  const contents = new Map()
+  for (const name of Object.values(groups).flat()) contents.set(name, `bytes of ${name}`)
+  contents.set(feeds.windows, feedFor(version, [[groups.windows[0], contents.get(groups.windows[0])]]))
+  contents.set(feeds.linux, feedFor(version, groups.linux.slice(0, 2).map(name => [name, contents.get(name)])))
+  contents.set(feeds.mac, mergeFeeds(['arm64', 'x64'].map(arch => {
+    const [dmg, zip] = groups[`mac-${arch}`]
+    return feedFor(version, [[zip, contents.get(zip)], [dmg, contents.get(dmg)]])
+  })))
+  const files = [...contents].map(([name, bytes]) => {
+    writeFileSync(join(dir, name), bytes)
+    return { name, size: bytes.length, sha256: hash(bytes) }
+  })
+  const manifest = { version, commit: 'a'.repeat(40), files, npmIntegrity: `sha512-${hash(contents.get(groups.npm[0]), 'sha512', 'base64')}` }
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest))
+  return { manifest, groups, feeds, contents }
+}
+
 test('fixed bundle hashes and identity reject changed bytes and wrong tag', () => {
   const dir = mkdtempSync(join(tmpdir(), 'release-ci-'))
   try {
     const version = '0.4.12'
-    const names = [`tnega-${version}.tgz`, `Tnega-Setup-${version}.exe`, `Tnega-Setup-${version}.exe.blockmap`, 'latest.yml']
-    const hash = (bytes, algorithm = 'sha256', encoding = 'hex') => createHash(algorithm).update(bytes).digest(encoding)
-    const sha512 = hash('fixed bytes', 'sha512', 'base64')
-    const feed = `version: ${version}\nfiles:\n  - url: ${names[1]}\n    sha512: ${sha512}\n    size: 11\npath: ${names[1]}\nsha512: ${sha512}\n`
-    const files = names.map(name => {
-      const bytes = name.endsWith('.yml') ? feed : 'fixed bytes'
-      writeFileSync(join(dir, name), bytes)
-      return { name, size: bytes.length, sha256: hash(bytes) }
-    })
-    const manifest = { version, commit: 'a'.repeat(40), files, npmIntegrity: `sha512-${sha512}` }
-    writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest))
+    const { manifest, groups } = writeBundle(dir, version)
     assert.doesNotThrow(() => verifyBundle(dir, version, manifest.commit))
     assert.throws(() => verifyBundle(dir, version, 'b'.repeat(40)), /identity/)
-    writeFileSync(join(dir, names[0]), 'changed bytes')
+    writeFileSync(join(dir, groups.npm[0]), 'changed bytes')
     assert.throws(() => verifyBundle(dir, version, manifest.commit), /hash|size/)
   } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+test('every platform ships with a feed that names its exact installer bytes', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'release-ci-'))
+  try {
+    const version = '0.5.0-beta.1'
+    const { groups, feeds } = writeBundle(dir, version)
+    assert.deepEqual(feeds, { windows: 'beta.yml', mac: 'beta-mac.yml', linux: 'beta-linux.yml' })
+    assert.deepEqual(groups.linux, ['Tnega-0.5.0-beta.1-x86_64.AppImage', 'Tnega-0.5.0-beta.1-amd64.deb', 'beta-linux.yml'])
+    assert.doesNotThrow(() => verifyFeed(dir, feeds.mac, version, [groups['mac-arm64'][1], groups['mac-x64'][1]]))
+    const mac = parseFeed(readFileSync(join(dir, feeds.mac), 'utf8'))
+    assert.deepEqual(mac.entries.map(entry => entry.url), [groups['mac-arm64'][1], groups['mac-arm64'][0], groups['mac-x64'][1], groups['mac-x64'][0]])
+    assert.equal(mac.path, groups['mac-arm64'][1])
+    // A feed that leaves out an architecture, or points at other bytes, cannot ship.
+    assert.throws(() => verifyFeed(dir, feeds.mac, version, ['Tnega-0.5.0-beta.1-mac-universal.zip']), /does not list/)
+    writeFileSync(join(dir, groups.linux[1]), 'rebuilt deb')
+    assert.throws(() => verifyFeed(dir, feeds.linux, version, [groups.linux[0]]), /does not match/)
+    assert.throws(() => verifyFeed(dir, feeds.windows, '0.5.0', []), /does not describe/)
+    assert.throws(() => mergeFeeds([feedFor('0.5.0', [['a.zip', 'a']]), feedFor('0.5.1', [['b.zip', 'b']])]), /different versions/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+test('staging takes electron-builder\'s latest-* feed for either channel and keeps Mac halves apart', () => {
+  const from = mkdtempSync(join(tmpdir(), 'release-build-'))
+  const to = mkdtempSync(join(tmpdir(), 'release-stage-'))
+  try {
+    const version = '0.5.0-beta.1'
+    const groups = platformArtifacts(version)
+    for (const name of [...groups['mac-arm64'], ...groups.linux.slice(0, 2)]) writeFileSync(join(from, name), name)
+    writeFileSync(join(from, 'latest-mac.yml'), 'mac feed')
+    writeFileSync(join(from, 'latest-linux.yml'), 'linux feed')
+    stagePlatform('mac-arm64', version, from, to)
+    stagePlatform('linux', version, from, to)
+    assert.deepEqual(readdirSync(to).sort(), [...groups['mac-arm64'], ...groups.linux, 'beta-mac.yml.arm64.part'].sort())
+    assert.equal(readFileSync(join(to, 'beta-linux.yml'), 'utf8'), 'linux feed')
+    writeFileSync(join(from, 'beta-linux.yml'), 'second feed')
+    assert.throws(() => stagePlatform('linux', version, from, to), /one linux update feed/)
+    assert.throws(() => stagePlatform('npm', version, from, to), /Unknown platform/)
+  } finally {
+    rmSync(from, { recursive: true, force: true })
+    rmSync(to, { recursive: true, force: true })
+  }
 })
 
 function publisherFixture({ version = '0.4.12', published = false, existingNpm = false, wrongNpm = false, wrongAsset = false, channel = version } = {}) {

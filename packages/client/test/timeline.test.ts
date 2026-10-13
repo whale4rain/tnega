@@ -336,9 +336,17 @@ describe('parseSseFrame', () => {
 describe('tool presentation', () => {
   it('summarizes common tools with a verb and target', () => {
     expect(presentTool({ callId: '1', name: 'shell', args: { command: 'pnpm test\nmore' }, status: 'running' }))
-      .toEqual({ family: 'shell', verb: 'Running', target: 'pnpm test' })
+      .toEqual({ family: 'shell', verb: 'Running', target: 'pnpm test', fullTarget: 'pnpm test\nmore' })
     expect(presentTool({ callId: '2', name: 'custom_thing', args: { path: 'x' }, status: 'ok' }))
       .toEqual({ family: 'other', verb: 'Custom thing', target: 'x' })
+  })
+
+  it('keeps the whole of a long command for hover while the row shows one short line', () => {
+    const command = `Get-ChildItem -Recurse ${'-Filter README.md '.repeat(12)}`
+    const shown = presentTool({ callId: '3', name: 'shell', args: { command }, status: 'running' })
+    expect(shown.target).toHaveLength(140)
+    expect(shown.target?.endsWith('…')).toBe(true)
+    expect(shown.fullTarget).toBe(command.trim())
   })
 
   it('pulls stdout and stderr out of shell results', () => {

@@ -6,6 +6,8 @@ interface ToolPresentation {
   family: ToolFamily
   verb: string
   target?: string
+  /** The whole target when `target` is cut to one short line: shown on hover. */
+  fullTarget?: string
 }
 
 const FAMILY: Record<string, ToolFamily> = {
@@ -81,17 +83,18 @@ export function presentTool(tool: ToolView): ToolPresentation {
   const verb = verbs
     ? verbs[tool.status === 'running' ? 0 : 1]
     : humanize(tool.name)
-  const target = toolTarget(tool.args)
-  return { family, verb, ...(target ? { target } : {}) }
+  const full = toolTarget(tool.args)
+  const target = full === undefined ? undefined : oneLine(full)
+  return { family, verb, ...(target ? { target } : {}), ...(full && full.trim() !== target ? { fullTarget: full.trim().slice(0, 2000) } : {}) }
 }
 
 function toolTarget(args: unknown): string | undefined {
-  if (typeof args === 'string') return oneLine(args)
+  if (typeof args === 'string') return args
   if (!args || typeof args !== 'object') return undefined
   const record = args as Record<string, unknown>
   for (const key of TARGET_KEYS) {
     const value = record[key]
-    if (typeof value === 'string' && value.trim()) return key === 'path' && /^\.\/?$/.test(value.trim()) ? 'workspace root' : oneLine(value)
+    if (typeof value === 'string' && value.trim()) return key === 'path' && /^\.\/?$/.test(value.trim()) ? 'workspace root' : value
   }
   return undefined
 }

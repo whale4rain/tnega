@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, shell, utilityProcess, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, shell, utilityProcess, type NativeImage, type OpenDialogOptions } from 'electron'
 import { configureProcessLauncher } from '@tnega/execution'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -8,8 +8,8 @@ import { DesktopBrowser, enableBrowserDebugging } from './browser.js'
 import { closeDesktopRuntime, finishDesktopShutdown } from './shutdown.js'
 import { installTray } from './tray.js'
 import { installCompletionNotice } from './completion.js'
-import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, parseTitleBarColors } from './titlebar.js'
-import { UpdateController, type UpdaterLike } from './updater.js'
+import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS, parseTitleBarColors } from './titlebar.js'
+import { UpdateController, releasePage, type UpdaterLike } from './updater.js'
 import { readUpdateChannel, saveUpdateChannel } from './update-preferences.js'
 import { desktopPtcAssets } from './ptc-assets.js'
 import { desktopProcessLauncher } from './process-launcher.js'
@@ -22,6 +22,9 @@ let quitting = false
 let tray: ReturnType<typeof installTray> | undefined
 let updates: UpdateController | undefined
 let completion: ReturnType<typeof installCompletionNotice> | undefined
+let mainWindow: BrowserWindow | undefined
+
+const isMac = process.platform === 'darwin'
 
 /** Only an installed build has a release feed (`app-update.yml`) to follow. */
 function createUpdates(): UpdateController {
@@ -29,6 +32,8 @@ function createUpdates(): UpdateController {
   const preferences = join(app.getPath('userData'), 'update-preferences.json')
   const controller = new UpdateController({
     version: app.getVersion(), updater,
+    // The ad-hoc signed Mac app cannot replace itself; it points at the download instead.
+    manualInstall: isMac,
     channel: readUpdateChannel(preferences),
     saveChannel: channel => saveUpdateChannel(preferences, channel),
   })
@@ -90,7 +95,8 @@ function installDesktopHandlers(): void {
     await shell.openPath(path)
   })
   ipcMain.on('tnega:title-bar-colors', (event, value: unknown) => {
-    if (!isTrustedSender(event.senderFrame?.url ?? '')) return
+    // macOS has no overlay to recolour: its traffic lights follow the system.
+    if (isMac || !isTrustedSender(event.senderFrame?.url ?? '')) return
     const colors = parseTitleBarColors(value)
     if (!colors) return
     BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay({
@@ -110,8 +116,14 @@ function installDesktopHandlers(): void {
     if (!isTrustedSender(event.senderFrame?.url ?? '')) return undefined
     return updates?.check()
   })
-  ipcMain.handle('tnega:update-install', event => {
-    if (!isTrustedSender(event.senderFrame?.url ?? '') || !updates?.beginInstall()) return
+  ipcMain.handle('tnega:update-install', async event => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return
+    const state = updates?.state()
+    if (state?.status === 'available') {
+      await shell.openExternal(releasePage(state.next))
+      return
+    }
+    if (!updates?.beginInstall()) return
     void closeAndExit({ restartIntoUpdate: true })
   })
   ipcMain.handle('tnega:update-channel', (event, channel: unknown) => {
@@ -130,11 +142,15 @@ async function createWindow(): Promise<void> {
     minHeight: 640,
     backgroundColor: initial.background,
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: initial.background,
-      symbolColor: initial.foreground,
-      height: TITLE_BAR_HEIGHT,
-    },
+    ...(isMac
+      ? { trafficLightPosition: TRAFFIC_LIGHTS }
+      : {
+          titleBarOverlay: {
+            color: initial.background,
+            symbolColor: initial.foreground,
+            height: TITLE_BAR_HEIGHT,
+          },
+        }),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -155,8 +171,10 @@ async function createWindow(): Promise<void> {
   browser = new DesktopBrowser(window, event => isTrustedSender(event.senderFrame?.url ?? ''))
   server = await startWebServer({ host: '127.0.0.1', port: 0, webRoot: webRoot(), browser: browser.host, profile: defaultHotProfile(), ptcRuntime: desktopPtcAssets(appRoot()), fetch: systemProxyFetch })
   allowedOrigin = new URL(server.url).origin
-  tray = installTray(window, join(dirname(fileURLToPath(import.meta.url)), '../build/icon.png'), () => { void closeAndExit() })
+  tray = installTray(window, trayIcon(join(iconDirectory, 'icon.png')), () => { void closeAndExit() })
+  mainWindow = window
   window.on('closed', () => {
+    mainWindow = undefined
     completion?.dispose()
     completion = undefined
     tray?.dispose()
@@ -166,6 +184,21 @@ async function createWindow(): Promise<void> {
   })
   window.maximize()
   await window.loadURL(server.url)
+}
+
+/**
+ * Windows scales the tray icon itself. The macOS menu bar and Linux status
+ * areas draw the 1024px source at full size, so they get a small copy.
+ */
+function trayIcon(path: string): string | NativeImage {
+  if (process.platform === 'win32') return path
+  return nativeImage.createFromPath(path).resize({ width: isMac ? 18 : 24, quality: 'best' })
+}
+
+/** macOS keeps its standard app, Edit and Window menus: without them Cmd+C, Cmd+V and Cmd+Q do nothing. */
+function applicationMenu(): Menu | null {
+  if (!isMac) return null
+  return Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }])
 }
 
 async function closeAndExit(options: { restartIntoUpdate?: boolean } = {}): Promise<void> {
@@ -208,13 +241,21 @@ app.whenReady().then(async () => {
     const restoreLauncher = configureProcessLauncher(desktopProcessLauncher(utilityProcess.fork, process.execPath))
     app.once('will-quit', restoreLauncher)
   }
-  Menu.setApplicationMenu(null)
+  Menu.setApplicationMenu(applicationMenu())
   installDesktopHandlers()
   updates = createUpdates()
   await createWindow()
   updates.start()
+  // Clicking the Dock icon brings back a window that closing only hid.
   app.on('activate', () => {
-    if (!quitting && BrowserWindow.getAllWindows().length === 0) void createWindow()
+    if (quitting) return
+    if (!mainWindow) {
+      void createWindow()
+      return
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
   })
 }).catch(error => {
   console.error(error)

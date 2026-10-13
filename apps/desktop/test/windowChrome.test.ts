@@ -5,10 +5,13 @@ import { describe, expect, test } from 'vitest'
 const mainPath = resolve(import.meta.dirname, '../src/main.ts')
 
 describe('desktop window chrome', () => {
-  test('removes the native menu and starts the workspace maximized', async () => {
+  test('removes the native menu (keeping macOS edit shortcuts) and starts the workspace maximized', async () => {
     const main = await readFile(mainPath, 'utf8')
 
-    expect(main).toContain('Menu.setApplicationMenu(null)')
+    expect(main).toContain('Menu.setApplicationMenu(applicationMenu())')
+    expect(main).toContain("if (!isMac) return null")
+    expect(main).toContain("{ role: 'editMenu' }")
+    expect(main).toContain('trafficLightPosition: TRAFFIC_LIGHTS')
     expect(main).toContain("titleBarStyle: 'hidden'")
     expect(main).toContain('window.maximize()')
   })

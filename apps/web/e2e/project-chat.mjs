@@ -89,8 +89,11 @@ try {
         font: getComputedStyle(element).fontSize, body: getComputedStyle(document.body).fontSize,
         border: getComputedStyle(element.parentElement).borderTopWidth,
       }))
-      assert.equal(style.font, '14.5px')
-      assert.equal(style.body, '13.5px')
+      // The type scale (tnega-design §6.1): conversation text is --text-lg, ordinary UI --text-md.
+      const scale = await page.evaluate(() => ({ lg: getComputedStyle(document.documentElement).getPropertyValue('--text-lg').trim(),
+        md: getComputedStyle(document.documentElement).getPropertyValue('--text-md').trim() }))
+      assert.equal(style.font, scale.lg)
+      assert.equal(style.body, scale.md)
       assert.equal(style.border, '0px')
       const look = await page.evaluate(() => {
         const agent = document.querySelector('.room-run-agent .room-message')
@@ -213,14 +216,16 @@ try {
       await rail.hover()
       await page.mouse.wheel(0, 100000)
       await waitFor(() => rail.evaluate(element => element.scrollLeft > 0), 'ordinary wheel scrolls tabs')
-      // No scrollbar adds height to the rail: its tabs share the title-bar line with the conversation header.
+      // No scrollbar adds height to the rail: on the web it is the first row of the inset Workbench card (tnega-design §5.3).
       const line = await page.evaluate(() => {
         const center = element => { const box = element.getBoundingClientRect(); return box.top + box.height / 2 }
         const rail = document.querySelector('.wb-rail')
-        return { rail: center(rail), header: center(document.querySelector('.conv-header')), tab: center(rail.querySelector('.wb-tab')),
+        return { rail: center(rail), tab: center(rail.querySelector('.wb-tab')), railTop: rail.getBoundingClientRect().top,
+          frameTop: document.querySelector('.wb-frame').getBoundingClientRect().top,
           height: rail.getBoundingClientRect().height, inner: rail.clientHeight }
       })
-      assert(Math.abs(line.rail - line.header) < 1 && Math.abs(line.tab - line.header) < 1, `Tabs on the header line: ${JSON.stringify(line)}`)
+      assert(Math.abs(line.tab - line.rail) < 1, `Tabs centred in the rail: ${JSON.stringify(line)}`)
+      assert(line.railTop - line.frameTop < 8, `The rail is the card's first row: ${JSON.stringify(line)}`)
       assert.equal(line.inner, line.height, 'No horizontal scrollbar in the tab rail')
       await page.getByRole('tab', { name: 'Browser', exact: true }).click()
       await page.screenshot({ path: resolve(artifacts, `scroll-tabs-${theme}.png`), fullPage: true })
@@ -238,16 +243,18 @@ try {
     await check(`${theme}: ordinary Session has plain messages and opens user/Agent references`, async () => {
       await page.setViewportSize({ width: 1440, height: 1000 })
       if (!await page.getByRole('complementary', { name: 'Workspaces', exact: true }).isVisible()) await page.keyboard.press('Control+b')
-      await page.getByTitle('Short general chat', { exact: true }).click()
+      await page.locator('.session-button').filter({ hasText: 'Short general chat' }).click()
       assert.equal(new URL(page.url()).hash, '#session-fixture')
       const user = page.locator('.user-bubble')
       const agent = page.locator('.agent-body')
       await agent.getByText('Done. See', { exact: false }).waitFor()
       const style = await user.evaluate(element => ({ user: getComputedStyle(element).fontSize,
         body: getComputedStyle(document.body).fontSize, agent: getComputedStyle(document.querySelector('.agent-body .prose')).fontSize }))
-      assert.equal(style.body, '13.5px')
-      assert.equal(style.user, '14.5px')
-      assert.equal(style.agent, '14.5px')
+      const scale = await page.evaluate(() => ({ lg: getComputedStyle(document.documentElement).getPropertyValue('--text-lg').trim(),
+        md: getComputedStyle(document.documentElement).getPropertyValue('--text-md').trim() }))
+      assert.equal(style.body, scale.md)
+      assert.equal(style.user, scale.lg)
+      assert.equal(style.agent, scale.lg)
       for (const element of [user, agent.locator('.prose')]) {
         assert.equal(await element.evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', 'Ordinary messages have no bubble background')
       }

@@ -18,6 +18,7 @@ server 复用 CLI runtime。改动前阅读同目录 `README.md`，再阅读相�
 - 开发：`pnpm --filter @tnega/desktop dev`
 - 类型检查：`pnpm --filter @tnega/desktop typecheck`
 - 快速 Windows 解包验证：`pnpm --filter @tnega/desktop exec electron-builder --dir`
+- Linux 打包验证（AppImage + deb）：`pnpm --filter @tnega/desktop exec electron-builder --linux --x64 --publish never`；macOS 包只能在 Mac 上生成，发布时由 `release.yml` 的 `desktop` 矩阵在 Apple silicon / Intel runner 上分别打包（ad-hoc 签名，见 `docs/publish/README.md`）。没有 Mac / Linux 机器时，用 `.github/workflows/desktop-packages.yml`（PR 自动触发或手动 Run workflow）在 runner 上打包并用 `scripts/smoke-packaged.mjs` 启动验证。
 - 生成 Windows 安装包：从仓库根运行 `pnpm package:desktop`；安装包输出到
   `apps/desktop/release/`。
 - 发布并上传自动更新源：`pnpm release desktop`（需要 `GH_TOKEN`），完整流程见
