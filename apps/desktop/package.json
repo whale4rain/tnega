@@ -2,6 +2,10 @@
   "name": "@tnega/desktop",
   "version": "0.4.25-beta.4",
   "private": true,
+  "description": "Tnega desktop, a local agent workspace.",
+  "author": "whale4rain <153174302+whale4rain@users.noreply.github.com>",
+  "homepage": "https://github.com/whale4rain/tnega",
+  "desktopName": "tnega.desktop",
   "type": "module",
   "main": "out/main.js",
   "scripts": {

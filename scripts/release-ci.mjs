@@ -1,7 +1,7 @@
 // Read-only gates and fixed artifact preparation for the tag release workflow.
 import { spawnSync, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs'
 import { resolve, relative, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -46,10 +46,65 @@ export function checkReport(report, checkout, requirePackage = true) {
   return { total, packagePassed }
 }
 
-function artifactNames(version) {
-  const { feed } = releaseVersion(version)
-  return [`tnega-${version}.tgz`, `Tnega-Setup-${version}.exe`, `Tnega-Setup-${version}.exe.blockmap`, feed]
+/** Every file a release carries, by the job that builds it. */
+export function platformArtifacts(version) {
+  const { feeds } = releaseVersion(version)
+  const mac = arch => [`Tnega-${version}-${arch}.dmg`, `Tnega-${version}-mac-${arch}.zip`, `Tnega-${version}-mac-${arch}.zip.blockmap`]
+  return {
+    npm: [`tnega-${version}.tgz`],
+    windows: [`Tnega-Setup-${version}.exe`, `Tnega-Setup-${version}.exe.blockmap`, feeds.windows],
+    'mac-arm64': mac('arm64'),
+    'mac-x64': mac('x64'),
+    linux: [`Tnega-${version}-x86_64.AppImage`, `Tnega-${version}-amd64.deb`, feeds.linux],
+  }
 }
+function artifactNames(version) {
+  const { feeds } = releaseVersion(version)
+  const groups = platformArtifacts(version)
+  // Both Mac jobs write half of the Mac feed; `bundle` joins them into one.
+  return [...groups.npm, ...groups.windows, ...groups['mac-arm64'], ...groups['mac-x64'], feeds.mac, ...groups.linux]
+}
+const macPart = (feed, arch) => `${feed}.${arch}.part`
+
+/** The subset of electron-builder's update feed YAML that the release reads and writes. */
+export function parseFeed(text) {
+  const lines = text.replaceAll('\r\n', '\n').split('\n')
+  const start = lines.indexOf('files:')
+  if (start < 0) throw new Error('Update feed has no files')
+  let end = start + 1
+  while (end < lines.length && lines[end].startsWith('  ')) end++
+  const top = key => lines.find(line => line.startsWith(`${key}: `))?.slice(key.length + 2).trim()
+  const entries = lines.slice(start + 1, end).join('\n').split(/\n(?= {2}- )/).filter(Boolean).map(block => {
+    const field = key => new RegExp(`^(?:  - |    )${key}: (.+)$`, 'm').exec(block)?.[1]?.trim()
+    return { url: field('url'), sha512: field('sha512'), size: Number(field('size')), lines: block.split('\n') }
+  })
+  return { version: top('version'), path: top('path'), sha512: top('sha512'), entries, before: lines.slice(0, start), after: lines.slice(end) }
+}
+
+/** One Mac feed listing both architectures; the first part keeps its legacy top-level `path`. */
+export function mergeFeeds(texts) {
+  const feeds = texts.map(parseFeed)
+  if (!feeds.length || new Set(feeds.map(feed => feed.version)).size !== 1) throw new Error('Mac feed parts describe different versions')
+  const [first] = feeds
+  return [...first.before, 'files:', ...feeds.flatMap(feed => feed.entries.flatMap(entry => entry.lines)), ...first.after].join('\n')
+}
+
+/** Each file a feed names must be in the bundle with the bytes it declares. */
+export function verifyFeed(dir, name, version, required) {
+  const feed = parseFeed(readFileSync(join(dir, name), 'utf8'))
+  if (feed.version !== version) throw new Error(`${name} does not describe ${version}`)
+  for (const entry of feed.entries) {
+    if (!entry.url || entry.url.includes('/')) throw new Error(`${name} names an invalid file`)
+    const bytes = readFileSync(join(dir, entry.url))
+    if (bytes.length !== entry.size || digest(bytes, 'sha512', 'base64') !== entry.sha512) throw new Error(`${name} does not match ${entry.url}`)
+  }
+  for (const url of required) {
+    if (feed.entries.filter(entry => entry.url === url).length !== 1) throw new Error(`${name} does not list ${url}`)
+  }
+  const main = feed.entries.find(entry => entry.url === feed.path)
+  if (!main || main.sha512 !== feed.sha512) throw new Error(`${name} has an inconsistent top-level path`)
+}
+
 export function verifyBundle(dir, version, commit) {
   const manifest = readJson(join(dir, 'manifest.json'))
   if (manifest.version !== version || manifest.commit !== commit) throw new Error('Artifact identity does not match the tag')
@@ -61,15 +116,35 @@ export function verifyBundle(dir, version, commit) {
     const bytes = readFileSync(join(dir, file.name))
     if (bytes.length !== file.size || digest(bytes) !== file.sha256) throw new Error(`Artifact hash/size mismatch: ${file.name}`)
   }
-  const tar = readFileSync(join(dir, expected[0]))
+  const groups = platformArtifacts(version)
+  const { feeds } = releaseVersion(version)
+  const tar = readFileSync(join(dir, groups.npm[0]))
   if (`sha512-${digest(tar, 'sha512', 'base64')}` !== manifest.npmIntegrity) throw new Error('npm integrity mismatch')
-  const installer = readFileSync(join(dir, expected[1]))
-  const feed = readFileSync(join(dir, expected[3]), 'utf8')
-  const sha512 = digest(installer, 'sha512', 'base64')
-  if (!feed.includes(`version: ${version}\n`) || !feed.includes(`path: ${expected[1]}\n`) ||
-      !feed.includes(`  - url: ${expected[1]}\n`) || !feed.includes(`    size: ${installer.length}\n`) ||
-      !feed.includes(`    sha512: ${sha512}\n`) || !feed.includes(`\nsha512: ${sha512}\n`)) throw new Error('Update feed does not match the installer')
+  verifyFeed(dir, feeds.windows, version, [groups.windows[0]])
+  verifyFeed(dir, feeds.mac, version, [groups['mac-arm64'][1], groups['mac-x64'][1]])
+  verifyFeed(dir, feeds.linux, version, [groups.linux[0], groups.linux[1]])
   return manifest
+}
+
+/**
+ * Copy one build job's files from `apps/desktop/release` into the bundle
+ * directory. electron-builder names its feed `latest-*` whatever the channel.
+ */
+export function stagePlatform(platform, version, from, to) {
+  const groups = platformArtifacts(version)
+  const { feeds } = releaseVersion(version)
+  if (!(platform in groups) || platform === 'npm') throw new Error(`Unknown platform ${platform}`)
+  mkdirSync(to, { recursive: true })
+  const builderFeed = kind => {
+    const found = [`latest-${kind}.yml`, `beta-${kind}.yml`].filter(name => existsSync(join(from, name)))
+    if (found.length !== 1) throw new Error(`Expected one ${kind} update feed in ${from}`)
+    return join(from, found[0])
+  }
+  for (const name of groups[platform]) {
+    const source = platform === 'linux' && name === feeds.linux ? builderFeed('linux') : join(from, name)
+    copyFileSync(source, join(to, name))
+  }
+  if (platform.startsWith('mac-')) copyFileSync(builderFeed('mac'), join(to, macPart(feeds.mac, platform.slice(4))))
 }
 
 export function checkAssets(assets, manifest) {
@@ -113,12 +188,18 @@ async function main() {
   } else if (command === 'check') {
     const metadata = checkTag(argument)
     console.log(`Tag v${metadata.version} is ready for CI`)
+  } else if (command === 'stage') {
+    // Usage: stage <windows|mac-arm64|mac-x64|linux> v<version>
+    const { version } = checkTag(process.argv[4])
+    stagePlatform(argument, version, join(root, 'apps/desktop/release'), join(root, '.tnega/release-ci'))
+    console.log(`Staged ${argument} artifacts for v${version}`)
   } else if (command === 'bundle') {
-    const { version } = checkTag(argument)
+    const { version, feeds } = checkTag(argument)
     const dir = join(root, '.tnega/release-ci')
-    mkdirSync(dir, { recursive: true })
+    const parts = ['arm64', 'x64'].map(arch => join(dir, macPart(feeds.mac, arch)))
+    writeFileSync(join(dir, feeds.mac), mergeFeeds(parts.map(part => readFileSync(part, 'utf8'))))
+    for (const part of parts) rmSync(part)
     const files = artifactNames(version).map(name => {
-      if (!name.endsWith('.tgz')) copyFileSync(join(root, 'apps/desktop/release', name), join(dir, name))
       const bytes = readFileSync(join(dir, name))
       return { name, size: bytes.length, sha256: digest(bytes) }
     })
@@ -128,6 +209,6 @@ async function main() {
   } else if (command === 'verify') {
     const { version } = checkTag(argument)
     verifyBundle(join(root, '.tnega/release-ci'), version, git('rev-parse', 'HEAD'))
-  } else throw new Error('Usage: release-ci.mjs <check|test|bundle|verify> [v<version>]')
+  } else throw new Error('Usage: release-ci.mjs <check|test|stage|bundle|verify> [platform] [v<version>]')
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()

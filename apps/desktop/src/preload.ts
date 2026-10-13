@@ -5,6 +5,8 @@ const desktopApi = Object.freeze({
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke('tnega:pick-folder') as Promise<string | undefined>,
   revealWorkspace: (path: string): Promise<void> => ipcRenderer.invoke('tnega:reveal-workspace', path) as Promise<void>,
   version: (): string => ipcRenderer.sendSync('tnega:version') as string,
+  /** Where the native window controls sit: top-left on macOS, top-right elsewhere. */
+  platform: process.platform,
   updates: Object.freeze({
     state: (): Promise<unknown> => ipcRenderer.invoke('tnega:update-state'),
     check: (): Promise<unknown> => ipcRenderer.invoke('tnega:update-check'),

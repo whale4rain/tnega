@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import { backgroundBehind, cssColorToHex, markWindowControls } from './desktop-chrome'
+import { cleanup, renderHook } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { backgroundBehind, cssColorToHex, markWindowControls, useDesktopChrome, windowControlsSide } from './desktop-chrome'
 
 it('reserves native controls only in the header at the top-right edge', () => {
   const root = document.createElement('div')
@@ -21,6 +22,51 @@ it('reserves native controls only in the header at the top-right edge', () => {
   markWindowControls(root, 1280)
   expect(conversation.classList.contains('window-controls-header')).toBe(true)
   expect(drawer.classList.contains('window-controls-header')).toBe(false)
+})
+
+it('keeps the top-left header clear of the macOS traffic lights instead', () => {
+  expect(windowControlsSide('darwin')).toBe('left')
+  expect(windowControlsSide('win32')).toBe('right')
+  expect(windowControlsSide('linux')).toBe('right')
+  const root = document.createElement('div')
+  root.innerHTML = '<div class="sidebar-top"></div><header class="conv-header"></header>'
+  const [sidebar, conversation] = [...root.children]
+  if (!sidebar || !conversation) throw new Error('missing headers')
+  // The sidebar is a card inset 10px from the window edge, still under the lights.
+  sidebar.getBoundingClientRect = () => new DOMRect(10, 0, 243, 32)
+  conversation.getBoundingClientRect = () => new DOMRect(264, 0, 760, 32)
+  markWindowControls(root, 1280, 'left')
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(true)
+  expect(conversation.classList.contains('window-controls-header-start')).toBe(false)
+  expect(conversation.classList.contains('window-controls-header')).toBe(false)
+  // With the sidebar collapsed, the conversation header reaches the corner.
+  sidebar.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
+  conversation.getBoundingClientRect = () => new DOMRect(0, 0, 1280, 32)
+  markWindowControls(root, 1280, 'left')
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(false)
+  expect(conversation.classList.contains('window-controls-header-start')).toBe(true)
+})
+
+it('marks a header again when its size settles after mounting', async () => {
+  const resized: Array<() => void> = []
+  vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { resized.push(callback) } observe() {} disconnect() {} })
+  vi.stubGlobal('tnegaDesktop', { setTitleBarColors: () => {}, platform: 'darwin' })
+  document.body.innerHTML = '<div class="sidebar-top"></div>'
+  const sidebar = document.querySelector('.sidebar-top')
+  if (!sidebar) throw new Error('missing header')
+  // Mounted before its panel has a size: nothing to clear yet.
+  sidebar.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
+  renderHook(() => useDesktopChrome('sessions'))
+  await new Promise(resolve => setTimeout(resolve, 5))
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(false)
+  // The panel settles with no DOM change and no window resize.
+  sidebar.getBoundingClientRect = () => new DOMRect(10, 0, 243, 32)
+  for (const callback of resized) callback()
+  await new Promise(resolve => setTimeout(resolve, 5))
+  expect(sidebar.classList.contains('window-controls-header-start')).toBe(true)
+  cleanup()
+  vi.unstubAllGlobals()
+  document.body.innerHTML = ''
 })
 
 describe('cssColorToHex', () => {

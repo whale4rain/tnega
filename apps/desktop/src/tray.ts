@@ -1,4 +1,4 @@
-import { Menu, Tray } from 'electron'
+import { Menu, Tray, type NativeImage } from 'electron'
 
 interface TrayWindow {
   on(event: 'close', listener: (event: { preventDefault(): void }) => void): unknown
@@ -10,7 +10,7 @@ interface TrayWindow {
   isMinimized(): boolean
 }
 
-export function installTray(window: TrayWindow, icon: string, quit: () => void) {
+export function installTray(window: TrayWindow, icon: string | NativeImage, quit: () => void) {
   const tray = new Tray(icon)
   const hide = (event: { preventDefault(): void }) => {
     event.preventDefault()

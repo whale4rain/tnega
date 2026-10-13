@@ -3755,6 +3755,15 @@ kbd {
   padding-right: calc(var(--window-controls-width) + 16px);
 }
 
+/* macOS: the traffic lights sit at the top-left (TRAFFIC_LIGHTS in apps/desktop/src/titlebar.ts). */
+.desktop-chrome.window-controls-left {
+  --window-controls-width: 0px;
+}
+
+.desktop-chrome .window-controls-header-start {
+  padding-left: 72px;
+}
+
 .desktop-chrome .sidebar-top,
 .desktop-chrome .conv-header,
 .desktop-chrome .wb-titlebar,
