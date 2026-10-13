@@ -11,7 +11,7 @@ import { blackboardLocal } from '../../../project/blackboard-local/src/index.js'
 import { boxBlackboard } from '../../../project/box-blackboard/src/index.js'
 import { threadLocal } from '../../../project/thread-local/src/index.js'
 import { toolThread } from '../../../project/tool-thread/src/index.js'
-import { projectLoop } from '../src/index.js'
+import { REPORT_REMINDER, projectLoop } from '../src/index.js'
 
 const directories: string[] = []
 afterEach(async () => {
@@ -303,6 +303,10 @@ it('keeps a finished thread result in its thread and out of the main conversatio
       'the thread reply in its own thread',
     )
     expect(own.placement).toEqual({ kind: 'thread', threadId: child.id })
+    // The brief reaches the thread with a reminder to report like a colleague; the Box copy stays as sent.
+    const brief = (await (await ctx.threads.activate(child.id)).session.read()).find(event => event.type === 'user/message')
+    expect(brief?.type === 'user/message' && typeof brief.payload.content === 'string' ? brief.payload.content : '')
+      .toBe(`Summarise section 2 and report back.\n\n${REPORT_REMINDER}`)
     await waitFor(
       async () => (await ctx.box.delivery(report.messageId, agentAddress(coordinator.id)))?.status === 'acked'
         ? true

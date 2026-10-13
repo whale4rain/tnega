@@ -1,6 +1,8 @@
 import { ApiError, parseSseFrame } from './api'
 import type {
   ArtifactFact,
+  BoxReaction,
+  ReactionEmoji,
   FactRecord,
   MemoryFact,
   ProjectRecord,
@@ -76,6 +78,9 @@ export const projectApi = {
   create: (workspace: string, input: { name: string; goal?: string }) =>
     call<{ project: ProjectRecord }>('/api/projects', workspace, { method: 'POST', body: input }),
   snapshot: (workspace: string, id: string) => call<ProjectSnapshot>(base(id), workspace),
+  /** Add (`on`) or take back your emoji on a message. */
+  react: (workspace: string, id: string, messageId: string, emoji: ReactionEmoji, on: boolean) =>
+    call<{ reaction: BoxReaction | null }>(`${base(id)}/messages/${encodeURIComponent(messageId)}/reactions`, workspace, { method: 'POST', body: { emoji, on } }),
   archive: (workspace: string, id: string, archived: boolean) =>
     call<{ project: ProjectRecord }>(base(id), workspace, { method: 'PATCH', body: { archived } }),
   remove: (workspace: string, id: string) => call<{ deleted: boolean }>(base(id), workspace, { method: 'DELETE' }),

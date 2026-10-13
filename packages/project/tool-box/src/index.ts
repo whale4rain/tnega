@@ -1,4 +1,4 @@
-import { USER_ADDRESS, agentAddress, type BoxService } from '@tnega/box'
+import { REACTIONS, USER_ADDRESS, agentAddress, type BoxService } from '@tnega/box'
 import type { Context } from '@tnega/core'
 import type { ThreadService } from '@tnega/thread'
 import type { ToolsService } from '@tnega/tools'
@@ -69,6 +69,33 @@ export const toolBox = {
           text: value.message,
         })
         return 'Message delivered to the user.'
+      },
+    })
+
+    tools.register({
+      schema: {
+        name: 'react_to_message',
+        description: `React with one emoji to the user's latest message to you, the way a teammate would in chat: ${Object.keys(REACTIONS).join(' ')}. A reaction is shown under that message and notifies no one. Use it when a short acknowledgement is all the message needs (then end your turn without text), or alongside your answer for a real win. Use it occasionally, never for routine work.`,
+        parameters: {
+          type: 'object',
+          properties: {
+            emoji: { type: 'string', enum: Object.keys(REACTIONS), description: 'The reaction.' },
+          },
+          required: ['emoji'],
+        },
+      },
+      async execute(input, options) {
+        const value = fields(input)
+        const agentId = options.agentId
+        if (!agentId) throw new Error('box tools require a live Agent identity')
+        // The target is what this Agent actually received: the newest user message in its own Session.
+        const agent = await threads.activate(agentId)
+        const received = new Set((await agent.session.read()).flatMap(event => event.type === 'user/message'
+          && typeof event.payload.name === 'string' && event.payload.name.startsWith('box:') ? [event.payload.name.slice(4)] : []))
+        const target = (await box.timeline()).findLast(envelope => (envelope.kind === 'user-message' || envelope.kind === 'user-thread') && received.has(envelope.messageId))
+        if (!target) throw new Error('There is no message from the user to react to yet.')
+        await box.react({ messageId: target.messageId, emoji: String(value.emoji ?? ''), by: agentAddress(agentId) })
+        return `Reacted ${String(value.emoji)} to the user's message.`
       },
     })
   },

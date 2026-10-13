@@ -22,6 +22,7 @@ const COORDINATOR_TOOLS: ReadonlySet<string> = new Set([
   'list_threads',
   'send_thread_message',
   'send_project_message',
+  'react_to_message',
   'decide_thread_approval',
   'create_routine',
   'update_routine',

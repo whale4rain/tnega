@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type BoardColumn, artifactsFor, board, boardFeed, exchangeMessages, fromSnapshot, greeting, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
+import { type BoardColumn, artifactsFor, board, reactionKey, reactionsOf, boardFeed, exchangeMessages, fromSnapshot, greeting, isUnread, latestReport, mainTimeline, projectWeather, reduceProject, threadActivity, threadState, threadStatusLine, today } from './project-model'
 import type { BoxEnvelope, ProjectSnapshot, ThreadRecord } from './project-types'
 
 const COORD = 'c0000000-0000-4000-8000-000000000000'
@@ -381,5 +381,18 @@ describe('the Board', () => {
         recap: 'So far today, 1 thread finished, using 12k tokens.',
       })
     })
+  })
+})
+
+describe('reactions', () => {
+  it('groups a message’s reactions by emoji and follows live commits, including take-backs', () => {
+    const message = envelope({ kind: 'agent-reply', sender: { kind: 'agent', id: COORD }, text: 'Shipped.' })
+    let state = fromSnapshot(snapshot({ messages: [message], reactions: [{ messageId: message.messageId, emoji: '🎉', by: { kind: 'agent', id: COORD }, createdAt: 1 }] }))
+    const id = reactionKey(message.messageId, { kind: 'user', id: 'user' }, '🎉')
+    expect(id).toBe(`${message.messageId}:user:tada`)
+    state = reduceProject(state, { type: 'commit', kind: 'reaction', id, seq: 5, deleted: false, data: { messageId: message.messageId, emoji: '🎉', by: { kind: 'user', id: 'user' }, createdAt: 2 } })
+    expect(reactionsOf(state, message.messageId)).toEqual([{ emoji: '🎉', count: 2, mine: true, names: ['Coordinator', 'You'] }])
+    state = reduceProject(state, { type: 'commit', kind: 'reaction', id, seq: 6, deleted: true, data: { messageId: message.messageId, emoji: '🎉', by: { kind: 'user', id: 'user' }, createdAt: 2 } })
+    expect(reactionsOf(state, message.messageId)).toEqual([{ emoji: '🎉', count: 1, mine: false, names: ['Coordinator'] }])
   })
 })

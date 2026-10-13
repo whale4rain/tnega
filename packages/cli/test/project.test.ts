@@ -176,6 +176,18 @@ it('creates a project, runs the main conversation and takes thread notes', async
   expect(existsSync(join(projectSessionRoot(workspace, project.id), 'agents', settled.coordinatorId, 'session.jsonl'))).toBe(true)
   expect(existsSync(join(workspace, '.tnega', 'projects', project.id, 'agents', settled.coordinatorId, 'session.jsonl'))).toBe(false)
 
+  // 表情回应：落成快照里的事实，可撤回；不认识的表情与不存在的消息被拒绝，也不唤醒协调者。
+  const replyId = settled.messages[1]!.messageId
+  const react = (body: unknown, id = replyId) => apiFetch(server.url, `/api/projects/${project.id}/messages/${id}/reactions${query}`, { method: 'POST', body: JSON.stringify(body) })
+  expect((await react({ emoji: '🎉' })).status).toBe(200)
+  const reacted = await apiFetch(server.url, `/api/projects/${project.id}${query}`).then(r => r.json()) as { reactions: Array<{ messageId: string; emoji: string; by: { kind: string } }> }
+  expect(reacted.reactions).toEqual([expect.objectContaining({ messageId: replyId, emoji: '🎉', by: { kind: 'user', id: 'user' } })])
+  expect((await react({ emoji: '🎉', on: false })).status).toBe(200)
+  expect((await apiFetch(server.url, `/api/projects/${project.id}${query}`).then(r => r.json()) as { reactions: unknown[] }).reactions).toEqual([])
+  expect((await react({ emoji: '🐍' })).status).toBe(400)
+  expect((await react({ emoji: '👍' }, 'missing')).status).toBe(404)
+  expect(requests).toHaveLength(1)
+
   // 用户直接给协调者 Thread 留言：进入它的 Session，而不是又起一条主对话分支。
   await apiFetch(server.url, `/api/workspace-prompt${query}`, { method: 'PUT', body: JSON.stringify({ prompt: '' }) })
   const noted = await apiFetch(

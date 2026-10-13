@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { BlackboardError } from '@tnega/blackboard'
+import { BoxError } from '@tnega/box'
 import { PROJECT_ID_PATTERN } from '@tnega/project'
 import type { ProjectHost } from './project-host.js'
 import { RoutineError } from './project-routines.js'
@@ -130,6 +131,26 @@ export async function handleProjectApi(
     )
     // 发送成功的判据是信封落盘，不是模型回复。
     context.sendJson(res, 200, { messageId: envelope.messageId, createdAt: envelope.createdAt })
+    return
+  }
+
+  const reaction = /^\/messages\/([^/]+)\/reactions$/.exec(rest)
+  if (reaction && req.method === 'POST') {
+    const body = await context.readJsonBody(req)
+    if (body.on !== undefined && typeof body.on !== 'boolean') {
+      context.sendError(res, 400, 'on must be a boolean')
+      return
+    }
+    try {
+      const result = await host.react(projectId, decodeURIComponent(reaction[1]!), String(body.emoji ?? ''), body.on !== false)
+      context.sendJson(res, 200, { reaction: result ?? null })
+    } catch (error) {
+      if (error instanceof BoxError) {
+        context.sendError(res, error.code === 'BOX_NOT_FOUND' ? 404 : 400, error.message)
+        return
+      }
+      throw error
+    }
     return
   }
 
