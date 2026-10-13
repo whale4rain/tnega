@@ -85,7 +85,7 @@ if (command === 'version') {
   writeVersion(desktopPackage, argument)
   const notes = resolve(root, `docs/releases/v${argument}.md`)
   if (!existsSync(notes)) {
-    writeFileSync(notes, `# Tnega v${argument}\n\n## Features\n\n- \n\n## Fixes\n\n- \n\n## Other\n\n- \n\n## Install\n\n\`\`\`bash\nnpm install -g tnega@${argument}\n\`\`\`\n\nWindows: download **Tnega-Setup-${argument}.exe** from this release, or let an installed client update itself (Settings → Check for updates).\n`)
+    writeFileSync(notes, `# Tnega v${argument}\n\n## Features\n\n- \n\n## Fixes\n\n- \n\n## Other\n\n- \n\n## Install\n\n\`\`\`bash\nnpm install -g tnega@${argument}\n\`\`\`\n\nDesktop: download **Tnega-Setup-${argument}.exe** (Windows), **Tnega-${argument}-arm64.dmg** / **Tnega-${argument}-x64.dmg** (macOS, Apple silicon / Intel) or **Tnega-${argument}-x86_64.AppImage** / **Tnega-${argument}-amd64.deb** (Linux) from this release. Installed Windows and Linux clients update themselves (Settings → Check for updates); macOS builds are unsigned, so they point to the new download instead.\n`)
   }
   console.log(`version ${argument}; write the notes in docs/releases/v${argument}.md`)
   console.log(`publish CLI with: npm publish --tag ${metadata.npmTag}`)
@@ -141,16 +141,20 @@ if (command === 'version') {
   const version = argument ?? readJson(desktopPackage).version
   const metadata = releaseVersion(version)
   const base = `https://github.com/${REPO}/releases`
-  const feed = await fetch(`${base}/download/v${version}/${metadata.feed}`)
-  if (!feed.ok) fail(`v${version} has no ${metadata.feed} (${feed.status}); clients cannot update. Run \`pnpm release feed\` and upload it.`)
-  const text = await feed.text()
-  const url = /^path: (.+)$/m.exec(text)?.[1]?.trim()
-  const declared = Number(/^\s+size: (\d+)$/m.exec(text)?.[1])
-  if (!text.split(/\r?\n/).includes(`version: ${version}`) || !url) fail(`${metadata.feed} on v${version} does not describe ${version}:\n${text}`)
-  const asset = await fetch(`${base}/download/v${version}/${url}`, { method: 'HEAD', redirect: 'follow' })
-  if (!asset.ok) fail(`${metadata.feed} points at ${url}, which is not on the release (${asset.status})`)
-  const size = Number(asset.headers.get('content-length'))
-  if (size && declared && size !== declared) fail(`${url} is ${size} bytes but ${metadata.feed} says ${declared}`)
+  // Every platform's client reads its own feed; each must point at a downloadable file.
+  for (const feedName of Object.values(metadata.feeds)) {
+    const feed = await fetch(`${base}/download/v${version}/${feedName}`)
+    if (!feed.ok) fail(`v${version} has no ${feedName} (${feed.status}); clients cannot update. Run \`pnpm release feed\` and upload it.`)
+    const text = await feed.text()
+    const url = /^path: (.+)$/m.exec(text)?.[1]?.trim()
+    const declared = Number(/^\s+size: (\d+)$/m.exec(text)?.[1])
+    if (!text.split(/\r?\n/).includes(`version: ${version}`) || !url) fail(`${feedName} on v${version} does not describe ${version}:\n${text}`)
+    const asset = await fetch(`${base}/download/v${version}/${url}`, { method: 'HEAD', redirect: 'follow' })
+    if (!asset.ok) fail(`${feedName} points at ${url}, which is not on the release (${asset.status})`)
+    const size = Number(asset.headers.get('content-length'))
+    if (size && declared && size !== declared) fail(`${url} is ${size} bytes but ${feedName} says ${declared}`)
+    console.log(`v${version}: ${feedName} → ${url} (${declared} bytes) is published and downloadable`)
+  }
   const release = await fetch(`https://api.github.com/repos/${REPO}/releases/tags/v${version}`)
   if (!release.ok) fail(`cannot verify GitHub release metadata (${release.status})`)
   const info = await release.json()
@@ -160,7 +164,6 @@ if (command === 'version') {
     const location = latest.headers.get('location') ?? ''
     if (!location.endsWith(`/v${version}`)) console.warn(`note: the latest stable release is ${location || 'unknown'}, not v${version}`)
   }
-  console.log(`v${version}: ${metadata.feed} → ${url} (${declared} bytes) is published and downloadable`)
 } else {
   fail('usage: release.mjs <version x.y.z | check | desktop | feed | verify [x.y.z]>')
 }

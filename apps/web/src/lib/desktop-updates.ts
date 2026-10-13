@@ -11,6 +11,8 @@ export type UpdateState = { channel?: UpdateChannel } & (
   | { status: 'idle'; version: string; checkedAt?: number }
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
+  /** A newer release to download by hand (the unsigned macOS app cannot replace itself). */
+  | { status: 'available'; version: string; next: string }
   | { status: 'ready'; version: string; next: string }
   /** Restarting into the update: the app closes, installs and reopens. */
   | { status: 'installing'; version: string; next: string }
@@ -34,7 +36,7 @@ function bridge(): UpdatesBridge | undefined {
   return methods.every(name => typeof Reflect.get(updates, name) === 'function') ? updates as UpdatesBridge : undefined
 }
 
-const STATUSES = new Set(['unsupported', 'idle', 'checking', 'downloading', 'ready', 'installing', 'error'])
+const STATUSES = new Set(['unsupported', 'idle', 'checking', 'downloading', 'available', 'ready', 'installing', 'error'])
 
 export function parseUpdateState(value: unknown): UpdateState | undefined {
   if (!value || typeof value !== 'object') return undefined
@@ -96,6 +98,7 @@ export function describeUpdate(state: UpdateState): string {
     case 'unsupported': return 'Development build — updates come from installed releases.'
     case 'checking': return 'Checking for updates…'
     case 'downloading': return `Downloading ${state.next}… ${state.percent}%`
+    case 'available': return `Version ${state.next} is available. Download it from GitHub and replace this copy.`
     case 'ready': return `Version ${state.next} is ready. Restart to update.`
     case 'installing': return `Updating to ${state.next}. Tnega will reopen by itself.`
     case 'error': return `Update check failed: ${state.message}`

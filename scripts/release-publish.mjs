@@ -67,7 +67,7 @@ export async function publishRelease(manifest, dir, deps = {}) {
   const final = json(['api', `repos/${repo}/releases/${release.id}`])
   if (final.draft || final.prerelease !== metadata.preview) throw new Error('Release was not published on the expected channel')
   checkAssets(final.assets, manifest)
-  console.log(`Published desktop ${tag}: installer, blockmap and ${metadata.feed}`)
+  console.log(`Published desktop ${tag}: Windows, macOS and Linux installers with their update feeds`)
 
   const packageInfo = await npm('tnega')
   const channel = packageInfo?.['dist-tags']?.[metadata.npmTag]

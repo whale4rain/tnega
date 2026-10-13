@@ -2,6 +2,8 @@ export interface TnegaDesktopApi {
   pickFolder(): Promise<string | undefined>
   revealWorkspace(path: string): Promise<void>
   version(): string
+  /** `process.platform` of the host; the renderer keeps clear of the native window controls with it. */
+  platform?: string
   /** Recolour the native window controls to match what the renderer draws behind them. */
   setTitleBarColors?(colors: { background: string, foreground: string }): void
   /** The agent's in-app browser, positioned over the renderer's Browser panel. */
@@ -15,6 +17,7 @@ export type TnegaDesktopUpdateState = { channel: 'stable' | 'preview' } & (
   | { status: 'idle'; version: string; checkedAt?: number }
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
+  | { status: 'available'; version: string; next: string }
   | { status: 'ready'; version: string; next: string }
   | { status: 'installing'; version: string; next: string }
   | { status: 'error'; version: string; message: string; checkedAt?: number }
@@ -24,7 +27,7 @@ export interface TnegaDesktopUpdatesApi {
   state(): Promise<TnegaDesktopUpdateState | undefined>
   check(): Promise<TnegaDesktopUpdateState | undefined>
   setChannel(channel: 'stable' | 'preview'): Promise<TnegaDesktopUpdateState | undefined>
-  /** Shut the runtime down, install the downloaded version and relaunch. */
+  /** Shut the runtime down, install the downloaded version and relaunch; for an `available` update, open its download page. */
   install(): Promise<void>
   onState(listener: (state: TnegaDesktopUpdateState) => void): () => void
 }

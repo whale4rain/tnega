@@ -5,6 +5,10 @@
  * GitHub release (`latest.yml`), downloads the new installer in the background
  * and runs it on restart. This module turns its events into one small state the
  * renderer can draw, and keeps the restart behind an explicit user action.
+ *
+ * A build that cannot replace itself (the ad-hoc signed macOS app, which
+ * Squirrel.Mac refuses to install over) still checks the feed, but only
+ * reports the new version so the user can download it.
  */
 
 export type UpdateChannel = 'stable' | 'preview'
@@ -15,6 +19,8 @@ export type UpdateState = { channel: UpdateChannel } & (
   | { status: 'idle'; version: string; checkedAt?: number }
   | { status: 'checking'; version: string }
   | { status: 'downloading'; version: string; next: string; percent: number }
+  /** A newer release exists, to download by hand (`manualInstall`). */
+  | { status: 'available'; version: string; next: string }
   | { status: 'ready'; version: string; next: string }
   /** The user chose to restart: the app is closing to run the installer. */
   | { status: 'installing'; version: string; next: string }
@@ -44,6 +50,8 @@ export interface UpdateControllerOptions {
   saveChannel?: (channel: UpdateChannel) => void
   /** `undefined` when the build cannot update itself (not packaged). */
   updater: UpdaterLike | undefined
+  /** Report new releases instead of downloading and installing them. */
+  manualInstall?: boolean
   /** How often to look for a new release while the app runs. Defaults to 4 hours. */
   intervalMs?: number
   now?: () => number
@@ -69,14 +77,16 @@ export class UpdateController {
     const updater = this.updater
     if (!updater) return
     this.configureChannel()
-    updater.autoDownload = true
+    updater.autoDownload = !options.manualInstall
     // The app exits through `app.exit()`, which skips the quit hook this relies
     // on; `installOnExit()` covers that path instead.
     updater.autoInstallOnAppQuit = false
     updater.on('checking-for-update', () => {
       if (this.current.status !== 'ready' && this.current.status !== 'downloading') this.set({ status: 'checking', version: this.version, channel: this.channel })
     })
-    updater.on('update-available', info => this.set({ status: 'downloading', version: this.version, channel: this.channel, next: info.version, percent: 0 }))
+    updater.on('update-available', info => this.set(options.manualInstall
+      ? { status: 'available', version: this.version, channel: this.channel, next: info.version }
+      : { status: 'downloading', version: this.version, channel: this.channel, next: info.version, percent: 0 }))
     updater.on('update-not-available', () => this.set({ status: 'idle', version: this.version, channel: this.channel, checkedAt: this.now() }))
     updater.on('download-progress', progress => {
       if (this.current.status !== 'downloading') return
@@ -199,4 +209,9 @@ export function summarizeUpdateError(error: unknown): string {
   }
   const first = text.split('\n')[0]?.trim() || 'Unknown error'
   return first.length > 160 ? `${first.slice(0, 157)}…` : first
+}
+
+/** Where a manually installed build downloads `version`. */
+export function releasePage(version: string): string {
+  return `https://github.com/whale4rain/tnega/releases/tag/v${encodeURIComponent(version)}`
 }

@@ -68,7 +68,14 @@ checks/downloads.
 pnpm --filter @tnega/desktop package
 ```
 
-`electron-builder` is configured for Windows NSIS, macOS DMG, and Linux AppImage.
+`electron-builder` is configured for Windows NSIS, macOS DMG + zip (Apple
+silicon and Intel, ad-hoc signed), and Linux AppImage + deb. Tag releases
+build each on its own GitHub runner; see [docs/publish](../../docs/publish/README.md).
+On macOS the traffic lights sit at the top-left of the shared header, the app
+keeps the standard app, Edit and Window menus (so Cmd+C / Cmd+V / Cmd+Q work),
+clicking the Dock icon reopens a closed window, and updates show **Download**
+rather than restarting into a new build, because an ad-hoc signed app cannot
+replace itself.
 The desktop build ships the Windows ACL runner beside `out/main.js`, with
 `koffi` retained as a native runtime dependency. The sandbox launches the runner
 using Electron's Node mode without changing the application's environment.
