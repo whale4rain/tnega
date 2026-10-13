@@ -78,7 +78,7 @@ export function main(argv: readonly string[]): Promise<number> {
       return new Promise<number>(() => {})
     }
 
-    throw new CliError(`unknown command: ${command ?? '<empty>'}`)
+    throw new CliError(`unknown command: ${command ?? '<empty>'}. Run tnega --help for the commands.`)
   })().catch((error: unknown) => {
     if (error instanceof CliError) return emit(`error: ${error.message}`, 2)
     return emit(`error: ${error instanceof Error ? error.message : String(error)}`, 2)

@@ -16,10 +16,17 @@ export interface TuiOptions {
   openUrl?: (url: string) => boolean
 }
 
+/** Why the TUI cannot run in this process, or undefined when it can. */
+export function terminalProblem(): string | undefined {
+  if (process.stdin.isTTY && process.stdout.isTTY) return undefined
+  return 'tnega tui needs an interactive terminal. Use `tnega run "<prompt>"` in scripts.'
+}
+
 /** Run the TUI until the user quits; resolves with the process exit code. */
 export async function runTui(options: TuiOptions): Promise<number> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    process.stderr.write('tnega tui needs an interactive terminal. Use `tnega run "<prompt>"` in scripts.\n')
+  const problem = terminalProblem()
+  if (problem) {
+    process.stderr.write(`${problem}\n`)
     return 2
   }
   const client = createClient({ baseUrl: options.baseUrl })

@@ -387,6 +387,50 @@ describe('tnega tui', () => {
   })
 })
 
+describe('tnega help and version', () => {
+  it('lists every command, tui included', async () => {
+    for (const argv of [['--help'], ['-h'], ['help']]) {
+      const output = captureStdout()
+      expect(await runExecutable(argv)).toBe(0)
+      const text = output()
+      expect(text).toContain('tnega tui [options]')
+      expect(text).toContain('tnega run "<prompt>"')
+    }
+  })
+
+  it('prints each command’s own options', async () => {
+    const tui = captureStdout()
+    expect(await runExecutable(['tui', '--help'])).toBe(0)
+    expect(tui()).toContain('-c, --continue')
+    const run = captureStdout()
+    expect(await runExecutable(['help', 'run'])).toBe(0)
+    expect(run()).toContain('--allow-shell')
+  })
+
+  it('prints the package version', async () => {
+    const output = captureStdout()
+    expect(await runExecutable(['--version'])).toBe(0)
+    expect(output().trim()).toMatch(/^\d+\.\d+\.\d+/)
+  })
+
+  it('prints help for a bare tnega outside a terminal', async () => {
+    const output = captureStdout()
+    expect(await runExecutable([], { interactive: false })).toBe(2)
+    expect(output()).toContain('tnega tui [options]')
+  })
+
+  it('opens the terminal client for a bare tnega in a terminal', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      // The test runner has no TTY, so the client itself declines; reaching it is the point.
+      expect(await runExecutable([], { interactive: true })).toBe(2)
+      expect(String(stderr.mock.calls[0]?.[0])).toContain('needs an interactive terminal')
+    } finally {
+      stderr.mockRestore()
+    }
+  })
+})
+
 describe('CLI errors', () => {
   it('returns error code for unknown commands, including the removed eval and evolve', async () => {
     const output = captureStdout()

@@ -13,6 +13,14 @@ import { startWebServer } from './server.js'
  */
 export async function runTuiCommand(args: readonly string[]): Promise<number> {
   const parsed = parseTuiArgs(args)
+  // Loaded on demand: other commands never pay for React and Ink.
+  const { runTui, terminalProblem } = await import('@tnega/tui')
+  // Checked before the server starts, so a pipe or a script gets the hint at once.
+  const problem = terminalProblem()
+  if (problem) {
+    process.stderr.write(`${problem}\n`)
+    return 2
+  }
   const server = parsed.url
     ? undefined
     : await startWebServer({
@@ -23,8 +31,6 @@ export async function runTuiCommand(args: readonly string[]): Promise<number> {
         ...(parsed.profile !== false ? { profile: parsed.profile ?? defaultHotProfile() } : {}),
       })
   try {
-    // Loaded on demand: other commands never pay for React and Ink.
-    const { runTui } = await import('@tnega/tui')
     return await runTui({
       baseUrl: parsed.url ?? server!.url,
       workspace: resolve(parsed.cwd ?? process.cwd()),
