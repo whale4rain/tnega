@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { formatCost, formatRate, usageCalendar, dailyUsageTotals } from './usage'
+import { formatCost, formatRate, usageCalendar, dailyUsageTotals } from '../src/usage.js'
 
 it('formats spend in the route currency, keeping small amounts readable', () => {
   expect(formatCost([{ amount: 1.234, currency: 'USD' }])).toBe('$1.23')

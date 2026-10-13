@@ -43,7 +43,13 @@ Background Tasks 同时展示 Session 的 Job 与 Workspace 共享的长驻进�
 ```
 tnega run "prompt"                       # 一次 agent 会话
 tnega web                                # 本地 web UI（HTTP + SSE，127.0.0.1:3080）
+tnega tui                                # 终端界面（进程内服务端，随机本地端口）
 ```
+
+`tui` 选项：`--cwd <dir>`（工作区，默认当前目录）、`--continue` / `-c`（打开最近的会话）、
+`--session <id>`、`--url <http://127.0.0.1:3080>`（连到已运行的 `tnega web` 或桌面端，而不是自己启动）、
+`--port`、`--config`、`--profile <file>` / `--no-plugins`（与 `web` 相同）。界面与按键见
+[`packages/tui`](../tui/README.md)。
 
 `run` 选项含 `--model / --base-url / --max-tokens / --temperature / --cwd / --session /
 --timeout-ms / --max-retries / --retry-delay-ms / --allow-network / --allow-shell`。
