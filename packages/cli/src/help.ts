@@ -13,7 +13,7 @@ function section(title: string, rows: readonly Row[]): string {
 }
 
 const COMMANDS: readonly Row[] = [
-  ['tnega', 'open the terminal client here (same as tnega tui)'],
+  ['tnega [options]', 'open the terminal client here (same as tnega tui)'],
   ['tnega tui [options]', 'terminal client for this folder'],
   ['tnega web [options]', 'start the local web app'],
   ['tnega run "<prompt>"', 'run one prompt and print the answer'],

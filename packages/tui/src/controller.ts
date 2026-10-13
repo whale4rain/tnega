@@ -89,6 +89,8 @@ export interface TuiState {
   epoch: number
   /** The last run settled at this time; the weather shows a brief rainbow. */
   finishedAt?: number | undefined
+  /** Messages held back until the current run ends, oldest first. */
+  queued: string[]
 }
 
 export interface ControllerOptions {
@@ -128,6 +130,7 @@ export class TuiController {
   private readonly answered = new Set<string>()
   private readonly autoRecovered = new Set<string>()
   private disposed = false
+  private stopRequested = false
 
   constructor(private readonly client: Client, workspace: string, options: ControllerOptions = {}) {
     this.flushMs = options.flushMs ?? 33
@@ -144,6 +147,7 @@ export class TuiController {
       serverCommands: [],
       draft: { ...DEFAULT_DRAFT, ...options.draft },
       epoch: 0,
+      queued: [],
     }
   }
 
@@ -312,6 +316,7 @@ export class TuiController {
       metrics: undefined,
       usage: undefined,
       finishedAt: undefined,
+      queued: [],
     })
   }
 
@@ -433,6 +438,7 @@ export class TuiController {
     // One id for every attempt below: a retry never queues the same message twice.
     const requestId = resumeQueued ? undefined : crypto.randomUUID()
     let failed = false
+    this.stopRequested = false
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
@@ -466,7 +472,50 @@ export class TuiController {
       }
       this.set({ running: false, ...(failed ? {} : { finishedAt: Date.now() }) })
       void this.refreshSessions()
+      if (this.state.queued.length) {
+        // A run that ended on its own takes the queue as the next prompt; a stopped
+        // or failed one leaves it waiting, since what was queued may no longer apply.
+        if (failed || this.stopRequested) this.info('Your queued message is still waiting: Enter sends it, ↑ edits it.')
+        else void this.sendQueued()
+      }
     }
+  }
+
+  /** Hold a message until the current run ends; with nothing running, send it now. */
+  async enqueue(text: string): Promise<boolean> {
+    const trimmed = text.trim()
+    if (!trimmed) return false
+    if (!this.state.running) return this.send(trimmed)
+    this.set({ queued: [...this.state.queued, trimmed], notice: undefined })
+    return true
+  }
+
+  /** Take the newest queued message back, e.g. to edit it. */
+  unqueue(): string | undefined {
+    const last = this.state.queued.at(-1)
+    if (last !== undefined) this.set({ queued: this.state.queued.slice(0, -1) })
+    return last
+  }
+
+  /** Send everything queued as one prompt. */
+  async sendQueued(): Promise<boolean> {
+    const queued = this.state.queued
+    if (!queued.length || this.live) return false
+    this.set({ queued: [] })
+    const sent = await this.send(queued.join('\n\n'))
+    if (!sent) this.set({ queued: [...queued, ...this.state.queued] })
+    return sent
+  }
+
+  /** Auto → Plan → Goal → Auto, as /plan, /goal and /auto. */
+  async cycleMode(): Promise<void> {
+    if (this.live) {
+      this.set({ notice: { tone: 'warn', text: 'Change the mode once this run ends.' } })
+      return
+    }
+    const order: SessionMode[] = ['auto', 'plan', 'goal']
+    const next = order[(order.indexOf(this.settings.mode) + 1) % order.length]!
+    await this.changeSettings({ mode: next })
   }
 
   private async resumeInterrupted(id: string): Promise<void> {
@@ -606,6 +655,7 @@ export class TuiController {
   async stop(): Promise<void> {
     const id = this.streamingFor ?? this.state.session?.id
     if (!id || !this.live) return
+    this.stopRequested = true
     const controller = this.abort
     try {
       await this.api.stop(this.state.workspace, id)

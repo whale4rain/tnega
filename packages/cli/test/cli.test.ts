@@ -413,6 +413,12 @@ describe('tnega help and version', () => {
     expect(output().trim()).toMatch(/^\d+\.\d+\.\d+/)
   })
 
+  it('treats options without a command as the terminal client’s', async () => {
+    const output = captureStdout()
+    expect(await runExecutable(['--bogus'])).toBe(2)
+    expect(output()).toContain('unknown option: --bogus')
+  })
+
   it('prints help for a bare tnega outside a terminal', async () => {
     const output = captureStdout()
     expect(await runExecutable([], { interactive: false })).toBe(2)

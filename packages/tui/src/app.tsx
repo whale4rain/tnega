@@ -1,14 +1,16 @@
 /**
  * The terminal UI. Layout, top to bottom: the scrollback (a banner, then
  * every finished entry, printed once with `<Static>` so long transcripts
- * cost nothing to redraw), the running turn, what is waiting on you, the
- * composer, and one status line with the weather.
+ * cost nothing to redraw), the running turn, what is waiting on you, any
+ * queued messages, the composer with a row of key hints, and one status line
+ * with the weather.
  */
 import {
   applyCompletion,
   detectTrigger,
   formatCost,
   parseCommand,
+  presentRun,
   rankCommands,
   turnWeather,
   WEATHER_LABEL,
@@ -22,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Composer } from './composer.js'
 import { TUI_COMMANDS, type TuiController, type TuiState } from './controller.js'
 import { EMPTY, History, type EditorState } from './editor.js'
+import { KeyHints, KeySheet } from './hints.js'
 import { Picker, type PickerItem } from './picker.js'
 import { ApprovalPanel, QuestionPanel } from './prompts.js'
 import { Spinner } from './spinner.js'
@@ -41,13 +44,15 @@ export interface AppProps {
   webUrl: string
   /** Open a URL in the system browser; returns false when nothing could. */
   openUrl: (url: string) => boolean
+  /** The terminal reports Shift+Enter apart from Enter (kitty keyboard protocol). */
+  shiftEnter?: boolean
 }
 
 type StaticItem =
   | { key: string; kind: 'banner'; hidden: number }
   | { key: string; kind: 'entry'; entry: Entry }
 
-export function App({ controller, webUrl, openUrl }: AppProps) {
+export function App({ controller, webUrl, openUrl, shiftEnter = false }: AppProps) {
   const state = useSyncExternalStore(
     useCallback(listener => controller.subscribe(listener), [controller]),
     () => controller.state,
@@ -60,6 +65,7 @@ export function App({ controller, webUrl, openUrl }: AppProps) {
   const [overlay, setOverlay] = useState<Overlay>()
   const [verbose, setVerbose] = useState(false)
   const [quitArmed, setQuitArmed] = useState(false)
+  const [showKeys, setShowKeys] = useState(false)
   const history = useRef(new History())
   const composerBox = useRef<DOMElement>(null)
 
@@ -189,6 +195,11 @@ export function App({ controller, webUrl, openUrl }: AppProps) {
     }
     if (key.ctrl && input === 'd' && !editor.text) return exit()
     if (key.ctrl && input === 'o') return setVerbose(value => !value)
+    if (key.ctrl && input === 'x' && state.queued.length) {
+      controller.unqueue()
+      return
+    }
+    if (key.escape && showKeys) return setShowKeys(false)
     if (key.escape && !completing && !overlay && !waiting) {
       if (live) void controller.stop()
       else controller.clearNotice()
@@ -212,7 +223,7 @@ export function App({ controller, webUrl, openUrl }: AppProps) {
   // --- layout ------------------------------------------------------------------
 
   const composerRows = editor.text.split('\n').length + 2
-  const reserved = composerRows + 4 + (state.notice ? 1 : 0) + (state.busy ? 1 : 0) + (completing ? Math.min(6, suggestions.length) : 0)
+  const reserved = composerRows + 5 + state.queued.length + (state.notice ? 1 : 0) + (state.busy ? 1 : 0) + (completing ? Math.min(6, suggestions.length) : 0)
   const liveRows = Math.max(4, rows - reserved - 2)
   const overlayRows = Math.max(5, rows - 6)
   const approval = state.approvals[0]
@@ -236,6 +247,7 @@ export function App({ controller, webUrl, openUrl }: AppProps) {
             ? <OverlayView overlay={overlay} controller={controller} state={state} width={width} rows={overlayRows} onClose={() => setOverlay(undefined)} />
             : (
                 <Box ref={composerBox} flexDirection="column" marginTop={1}>
+                  <QueuedRows queued={state.queued} width={width} />
                   <Composer
                     value={editor}
                     onChange={next => {
@@ -243,19 +255,40 @@ export function App({ controller, webUrl, openUrl }: AppProps) {
                       if (dismissed !== undefined && dismissed !== next.text) setDismissed(undefined)
                     }}
                     onSubmit={submit}
-                    onHistory={(direction, current) => direction < 0 ? history.current.previous(current) : history.current.next()}
+                    onHistory={(direction, current) => {
+                      // Up on an empty box takes a queued message back first.
+                      if (direction < 0 && !current && state.queued.length) return controller.unqueue()
+                      return direction < 0 ? history.current.previous(current) : history.current.next()
+                    }}
                     active={!state.busy}
-                    placeholder={live ? 'Steer the agent, or Esc to stop' : state.session ? 'Reply…' : 'Ask tnega to do something · / for commands'}
+                    placeholder={live ? 'Steer the agent' : state.session ? 'Reply…' : 'Ask tnega to do something'}
                     width={width}
                     origin={composerBox}
+                    label={composerLabel(editor, controller.settings.mode)}
                     keys={{
                       completing,
                       onCompletionMove: delta => setSelection(index => Math.max(0, Math.min(suggestions.length - 1, index + delta))),
                       onCompletionAccept: accept,
                       onCompletionClose: () => setDismissed(editor.text),
+                      onQueue: state.running ? text => void controller.enqueue(text) : undefined,
+                      onCycleMode: () => void controller.cycleMode(),
+                      onEmptyKey: input => {
+                        if (input !== '?') return false
+                        setShowKeys(value => !value)
+                        return true
+                      },
+                      onSubmitEmpty: () => void controller.sendQueued(),
                     }}
                   />
                   {completing && <Suggestions items={suggestions} selected={selection} width={width} />}
+                  {showKeys && !editor.text
+                    ? <KeySheet shiftEnter={shiftEnter} width={width} />
+                    : (
+                        <KeyHints
+                          width={width}
+                          context={{ completing, live, empty: !editor.text, shiftEnter, verbose, foldedSteps: foldedSteps(state.entries) }}
+                        />
+                      )}
                 </Box>
               )}
       {state.notice && <Text {...tint(state.notice.tone === 'error' ? color.danger : state.notice.tone === 'warn' ? color.warn : undefined)} dimColor={state.notice.tone === 'info'}>{truncate(state.notice.text, width * 3)}</Text>}
@@ -301,14 +334,26 @@ function StatusLine({ state, controller, width }: { state: TuiState; controller:
   const mark = weatherSpins(weather) ? <Spinner color={weatherColor(weather)} /> : <Text {...(weatherColor(weather) ? { color: weatherColor(weather)! } : { dimColor: true })}>{weatherMark(weather)}</Text>
   const ratio = state.context && state.context.limit > 0 ? state.context.ratio : undefined
   const cost = formatCost(state.usage?.cost)
-  const left = [model?.name, settings.agentType, settings.mode !== 'auto' ? settings.mode : undefined, settings.permission, settings.approvalMode === 'auto' ? 'auto-approve' : undefined]
-    .filter(Boolean).join(` ${glyph.bullet} `)
   const right = [ratio !== undefined ? `${Math.round(ratio * 100)}% context` : undefined, cost].filter(Boolean).join(` ${glyph.bullet} `)
+  const mode = settings.mode !== 'auto' ? settings.mode : undefined
+  const left = [model?.name, settings.agentType, mode, settings.permission, settings.approvalMode === 'auto' ? 'auto-approve' : undefined]
+    .filter(Boolean).join(` ${glyph.bullet} `)
+  const shown = truncate(left, Math.max(10, width - 20 - right.length))
+  // A non-default mode changes what Enter does, so it stands out from the rest.
+  const modeAt = mode ? shown.indexOf(` ${glyph.bullet} ${mode}`) : -1
   return (
     <Box width={width} justifyContent="space-between">
       <Text>
         {mark} <Text {...(weatherColor(weather) ? { color: weatherColor(weather)! } : {})}>{WEATHER_LABEL[weather]}</Text>
-        <Text dimColor>  {truncate(left, Math.max(10, width - 20 - right.length))}</Text>
+        {modeAt < 0
+          ? <Text dimColor>  {shown}</Text>
+          : (
+              <>
+                <Text dimColor>  {shown.slice(0, modeAt + 3)}</Text>
+                <Text bold>{mode}</Text>
+                <Text dimColor>{shown.slice(modeAt + 3 + (mode ?? '').length)}</Text>
+              </>
+            )}
       </Text>
       <Text dimColor>{right}</Text>
     </Box>
@@ -449,6 +494,44 @@ function Suggestions({ items, selected, width }: { items: readonly Suggestion[];
           {item.detail ? <Text dimColor={index !== selected}>{truncate(item.detail, Math.max(0, width - column - 4))}</Text> : null}
         </Text>
       ))}
+    </Box>
+  )
+}
+
+/** The composer's border label: the line count and a non-default mode. */
+export function composerLabel(editor: EditorState, mode: string): string | undefined {
+  const lines = editor.text ? editor.text.split('\n').length : 1
+  const parts = [lines > 1 ? `${lines} lines` : undefined, mode !== 'auto' ? mode : undefined].filter(Boolean)
+  return parts.length ? parts.join(` ${glyph.bullet} `) : undefined
+}
+
+/** Tool steps folded away in the last finished turn, for the Ctrl+O hint. */
+export function foldedSteps(entries: readonly Entry[]): number {
+  const last = entries.findLast(entry => entry.kind === 'agent')
+  if (last?.kind !== 'agent' || last.status === 'running') return 0
+  // Counted as the transcript counts its "Used N tools" line.
+  return presentRun(last).process.filter(block => block.kind === 'tool' || block.kind === 'subagent').length
+}
+
+/** Messages waiting for the run to end, newest last, with how to change them. */
+function QueuedRows({ queued, width }: { queued: readonly string[]; width: number }) {
+  if (!queued.length) return null
+  const actions = `↑ edit ${glyph.bullet} ctrl+x drop`
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {queued.map((text, index) => {
+        const last = index === queued.length - 1
+        const room = width - 12 - (last ? stringWidth(actions) + 2 : 0)
+        return (
+          <Box key={index} width={width} justifyContent="space-between">
+            <Text>
+              <Text dimColor>{'  '}queued  </Text>
+              {truncate(text.replace(/\s+/g, ' '), Math.max(8, room))}
+            </Text>
+            {last ? <Text dimColor>{actions}</Text> : null}
+          </Box>
+        )
+      })}
     </Box>
   )
 }

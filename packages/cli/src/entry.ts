@@ -25,6 +25,8 @@ export async function main(argv: readonly string[], options: EntryOptions = {}):
   if (command === 'help') return print(hasCommandHelp(rest[0]) ? commandHelp(rest[0]!) : mainHelp(), 0)
   if (hasCommandHelp(command) && rest.some(isHelpFlag)) return print(commandHelp(command), 0)
   if (command === 'tui') return runTui(rest)
+  // `tnega --continue`, `tnega --cwd x`: options without a command are the TUI's.
+  if (command.startsWith('-')) return runTui(argv)
   return runCommand(argv)
 }
 

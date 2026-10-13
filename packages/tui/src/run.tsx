@@ -2,6 +2,7 @@ import { createClient } from '@tnega/client'
 import { render } from 'ink'
 import { App } from './app.js'
 import { TuiController, type RunSettings } from './controller.js'
+import { supportsKittyKeyboard } from './terminal.js'
 
 export interface TuiOptions {
   /** Origin of the tnega server the TUI talks to. */
@@ -31,12 +32,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
   }
   const client = createClient({ baseUrl: options.baseUrl })
   const controller = new TuiController(client, options.workspace, options.draft ? { draft: options.draft } : {})
+  // Shift+Enter is only distinguishable from Enter under the kitty protocol;
+  // knowing up front lets the key hints name the newline key that works.
+  const kitty = await supportsKittyKeyboard()
   const instance = render(
-    <App controller={controller} webUrl={options.baseUrl} openUrl={options.openUrl ?? (() => false)} />,
+    <App controller={controller} webUrl={options.baseUrl} openUrl={options.openUrl ?? (() => false)} shiftEnter={kitty} />,
     {
       exitOnCtrlC: false,
-      // Shift+Enter is only distinguishable from Enter under the kitty protocol.
-      kittyKeyboard: { mode: 'auto', flags: ['disambiguateEscapeCodes'] },
+      kittyKeyboard: { mode: kitty ? 'enabled' : 'disabled', flags: ['disambiguateEscapeCodes'] },
     },
   )
   void controller.start(options.session)
