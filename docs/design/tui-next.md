@@ -1,6 +1,6 @@
 # 终端界面下一阶段（设计稿）
 
-状态：**设计稿，待确认**。确认后按「路线图」逐个 PR 实现；每个 PR 先把定稿的规则写进 `tnega-design.md` §5.8，再改代码。本文不改变现有行为。
+状态：**已确认方向，逐步实现中**（见 §6）。按「路线图」逐个 PR 实现；每个 PR 先把定稿的规则写进 `tnega-design.md` §5.8，再改代码。本文不改变现有行为。
 
 ## 1. 现状与目标
 
@@ -13,7 +13,7 @@ v0.5.0 的 `tnega tui`（`packages/tui`）已经覆盖日常对话：会话列�
 3. **改动只看到文件名**：结束的回合已经列出 `Changed N files` 和每个文件的加删行数，但没有总数，也不提示 `/diff`；`Ctrl+O` 展开后编辑工具行也看不到改了哪几行。
 4. **回看困难**：滚动区只追加，`Ctrl+O` 只能整屏重印；打开旧会话只印最近 80 条，更早的要去 Web。
 5. **后台工作不可见**：后台 shell、job 与子 Agent 在 TUI 里没有入口，也停不掉。
-6. **输入还差几样**：模式要敲 `/plan` `/auto` 切换；历史只能逐条翻；不能附图；长文不能交给 `$EDITOR`。
+6. **输入区按键全靠记**：框下面没有任何提示，Enter、Ctrl+O、Esc 能做什么要看 `/help`；模式要敲 `/plan` `/auto` 切换；历史只能逐条翻；不能附图；长文不能交给 `$EDITOR`。
 7. **不能回退**：Web 能从某条消息分叉或重发，TUI 不能。
 8. **离开终端就不知道它在等你**：没有铃声或系统通知。
 
@@ -53,7 +53,7 @@ Common options
   -v, --version             print the version
 ```
 
-**裸 `tnega`**：在交互终端里等同 `tnega tui`（与 Claude Code、Codex 一致）；stdin / stdout 不是 TTY 时打印帮助并返回 2。见「待你决定」第 1 条。
+**裸 `tnega`**（已定）：在交互终端里等同 `tnega tui`（与 Claude Code、Codex 一致）；stdin / stdout 不是 TTY 时打印帮助并返回 2。
 
 ### 3.2 第一次打开：连接模型
 
@@ -195,7 +195,81 @@ Files the agent changed after this point stay as they are; /diff shows them.
 - `f`：用 `forkSession` 从这条消息分叉出新会话并切过去，原会话不变。
 - 末行说明：回退不撤销文件改动（与 Web 一致）。
 
-### 3.7 输入框
+### 3.7 输入区
+
+输入区是最常看的地方，现在只有一个框和一行状态，按键全靠记。改为四层，从上到下：排队行（有排队时）、输入框、**按键提示行**、状态行。
+
+```
+(1) new session, empty
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ›  Ask tnega to do something                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  enter send · shift+enter new line · / commands · @ files · ? all keys
+○ Ready  deepseek-chat · coding · read-only                           0% context
+
+(2) typing after a turn
+╭──────────────────────────────────────────────────────────────────── 2 lines ─╮
+│ ›  Also add a test for the empty id case,                                    │
+│    and run the suite once more.▏                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  enter send · shift+enter new line · ctrl+o show the last 6 steps · ? all keys
+○ Ready  deepseek-chat · coding · read-only                  18% context · $0.01
+
+(3) while the agent works, in plan mode, one message queued
+  ⠋ Running pnpm test · 4 steps
+
+  queued  also run lint afterwards                          ↑ edit · ctrl+x drop
+╭─────────────────────────────────────────────────────────────────────── plan ─╮
+│ ›  Steer the agent                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  esc stop · enter steer now · alt+enter queue for later · ctrl+t transcript
+⠙ Working  deepseek-chat · coding · plan                     41% context · $0.03
+```
+
+- **按键提示行**（新）：输入框下面一行 `dim` 文字，只列此刻最有用的 4–5 个键，随状态变化：
+  - 空闲且为空：`enter send · shift+enter new line · / commands · @ files · ? all keys`
+  - 正在输入：把 `/` `@` 换成与上一回合有关的键，例如 `ctrl+o show the last 6 steps`（数字取自上一回合折叠的步数）
+  - 运行中：`esc stop · enter steer now · alt+enter queue for later · ctrl+t transcript`
+  - 补全列表打开：`↑↓ choose · tab complete · enter run · esc close`
+  - 等你（审批、问题）：提示行由面板自己的末行取代，不重复
+  - 终端窄时从右往左丢项，`? all keys` 最后丢。
+- **占位文字**说清此刻 Enter 会做什么：新会话 `Ask tnega to do something`，回复中 `Reply…`，运行中 `Steer the agent`。
+- **框的右上角**写 `dim` 的状态标签，只在非默认时出现：多行时 `2 lines`，非默认模式 `plan` / `auto`，有附图时 `1 image`；多个用 ` · ` 连接。框最多长到 8 行，再多在框内滚动。
+- **`?`**（输入框为空时）把提示行展开成完整按键表，`?` 或 `Esc` 收起；`/help` 仍列命令。
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ›  Ask tnega to do something                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  Keys
+  enter         send; steer while it runs       ctrl+o    fold or show steps
+  shift+enter   new line (also ctrl+j)          ctrl+t    transcript viewer
+  alt+enter     queue while it runs             esc       stop · close
+  shift+tab     default · plan · auto           esc esc   rewind or fork
+  ctrl+r        search earlier prompts          ctrl+l    redraw
+  ctrl+g        write in $EDITOR                ctrl+c    clear · twice quits
+  /  @          commands · files                /help     commands
+  ? or esc to close
+○ Ready  deepseek-chat · coding · read-only                           0% context
+```
+
+- **补全列表**紧贴输入框下方，选中项反色，右侧 `dim` 写说明；不需要参数的命令 Enter 直接执行（不变）。
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ›  /co▏                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  › /compact      summarise the conversation to free context
+    /codemode     on · off
+    /continue     resume a run that stopped mid-turn
+  ↑↓ choose · tab complete · enter run · esc close
+○ Ready  deepseek-chat · coding · read-only                          18% context
+```
+
+- **`Shift+Tab` 切换模式**：默认 → plan → auto → 默认，状态行里非默认的模式加粗，框右上角同时显示；与 `/plan` `/auto` 同一个设置。
+- **排队（`Alt+Enter`，已定）**：运行中 Enter 仍是立即改向；`Alt+Enter` 把消息排到本轮结束后自动发送。排队的消息显示在输入框上方（`dim` 的 `queued` 加正文，右侧 `↑ edit · ctrl+x drop`），可以 `↑` 取回修改、`Ctrl+X` 丢弃。空闲时 `Alt+Enter` 仍是换行。
+- **`Ctrl+R` 搜索历史**：输入框换成 `history›` 行，边打边匹配，`Ctrl+R` 找更早的，`Enter` 采用，`Esc` 取消。
 
 ```
 › Run the tests and fix any failures.
@@ -214,11 +288,8 @@ Files the agent changed after this point stay as they are; /diff shows them.
 ctrl+r older match · enter use · esc cancel
 ```
 
-- **`Shift+Tab` 切换模式**：默认 → plan → auto → 默认，状态行里非默认的模式加粗；与 `/plan` `/auto` 同一个设置。
-- **`Ctrl+R` 搜索历史**：输入框换成 `history›` 行，边打边匹配，`Ctrl+R` 找更早的，`Enter` 采用，`Esc` 取消。
 - **附图**：`@` 补全到图片文件（png / jpg / gif / webp）时，发送前读成 `attachments`，输入框下面写一行 `dim` 的 `[image] 名称 尺寸`；也接受从文件管理器拖进终端的路径。超过服务端限制时在提示行说明，不发送。
 - **`Ctrl+G` 用 `$EDITOR` 写长文**：退出编辑器后内容回到输入框，不自动发送。
-- **排队**：运行中输入默认仍是改向（Enter）；`Alt+Enter` 改为「等这一轮结束再发」，排队的消息在输入框上方 `dim` 显示，可 `↑` 取回修改。见「待你决定」第 3 条。
 
 ### 3.8 通知与细节
 
@@ -237,6 +308,8 @@ ctrl+r older match · enter use · esc cancel
 | 输入框 | ★ Ctrl+R | 搜索历史 |
 | 输入框 | ★ Ctrl+G | 用 `$EDITOR` 编辑 |
 | 输入框 | ★ Esc Esc（空且空闲） | 回退 / 分叉 |
+| 输入框 | ★ ?（空时） | 完整按键表 |
+| 排队行 | ★ ↑ / Ctrl+X | 取回修改 / 丢弃 |
 | 全局 | Esc | 停止运行；关闭面板（不变） |
 | 全局 | Ctrl+O | 展开 / 折叠全部（不变） |
 | 全局 | ★ Ctrl+T | 全屏查看器 |
@@ -253,22 +326,24 @@ ctrl+r older match · enter use · esc cancel
 
 | # | PR | 内容 | 验收 |
 | --- | --- | --- | --- |
-| 1 | `feat(cli): help and version` | 3.1；裸 `tnega` 的行为按决定实现；README 与 `packages/cli/README.md` 同步 | `tnega --help` 列出 tui；各命令 `--help`；未知命令退出码 2 |
-| 2 | `feat(tui): connect a model on first run` | 3.2 与 `/settings` 的 Model routes | 空配置启动能配好 DeepSeek 并直接对话；坏密钥停在第二步并说明 |
-| 3 | `feat(tui): inline edit diffs` | 3.3：改动列表的总数与提示、Ctrl+O 下的行内 diff | 编辑 3 个文件的回合显示总数；Ctrl+O 显示每次编辑的 diff |
-| 4 | `feat(tui): full-screen transcript viewer` | 3.4；打开旧会话不再提示去 Web | 200 条的会话可翻到开头；搜索、展开、`$PAGER`；退出后滚动区不乱 |
-| 5 | `feat(tui): background tasks and subagents` | 3.5；`mergeTasks` 等挪进 `@tnega/client`，Web 改为 re-export | 后台 dev server 可看输出、可停止；子 Agent 过程可看 |
-| 6 | `feat(tui): composer modes, history search, images, $EDITOR` | 3.7（排队按决定） | Shift+Tab 三态；Ctrl+R；附一张 png 并被模型看到 |
-| 7 | `feat(tui): rewind and fork` | 3.6 | 回退后重发生效；分叉后两个会话都在列表里 |
-| 8 | `feat(tui): notifications and small terminals` | 3.8；Windows Terminal / conhost、macOS Terminal、iTerm2、kitty 手测清单写进 `packages/tui/README.md` | 失焦时等你能收到通知；`NO_COLOR` 与 50 列下可用 |
+| 1 | `feat(cli): help, version and bare tnega` | 3.1；README 与 `packages/cli/README.md` 同步 | `tnega --help` 列出 tui；各命令 `--help`；裸 `tnega` 在终端里打开 TUI，管道里打印帮助；未知命令退出码 2 |
+| 2 | `feat(tui): input area with key hints` | 3.7 的提示行、占位文字、框标签、`?` 按键表、`Shift+Tab`、`Alt+Enter` 排队 | 各状态的提示行正确；`?` 开合；三种模式循环；排队消息在本轮后发出，可取回、可丢弃 |
+| 3 | `feat(tui): connect a model on first run` | 3.2 与 `/settings` 的 Model routes | 空配置启动能配好 DeepSeek 并直接对话；坏密钥停在第二步并说明 |
+| 4 | `feat(tui): inline edit diffs` | 3.3：改动列表的总数与提示、Ctrl+O 下的行内 diff | 编辑 3 个文件的回合显示总数；Ctrl+O 显示每次编辑的 diff |
+| 5 | `feat(tui): full-screen transcript viewer` | 3.4；打开旧会话不再提示去 Web | 200 条的会话可翻到开头；搜索、展开、`$PAGER`；退出后滚动区不乱 |
+| 6 | `feat(tui): background tasks and subagents` | 3.5；`mergeTasks` 等挪进 `@tnega/client`，Web 改为 re-export | 后台 dev server 可看输出、可停止；子 Agent 过程可看 |
+| 7 | `feat(tui): history search, images, $EDITOR` | 3.7 余下三项 | Ctrl+R；附一张 png 并被模型看到；Ctrl+G 往返 |
+| 8 | `feat(tui): rewind and fork` | 3.6 | 回退后重发生效；分叉后两个会话都在列表里 |
+| 9 | `feat(tui): notifications and small terminals` | 3.8；Windows Terminal / conhost、macOS Terminal、iTerm2、kitty 手测清单写进 `packages/tui/README.md` | 失焦时等你能收到通知；`NO_COLOR` 与 50 列下可用 |
 
-1 很小，可以马上做；2、3 收益最大；4、5 共用查看器，4 先做；6、7、8 相互独立。
+1、2 先做（入口与输入区天天用到）；3、4 收益其次；5、6 共用查看器，5 先做；7、8、9 相互独立。
 
-## 6. 待你决定
+## 6. 已定（2026-10-13）
 
-1. **裸 `tnega` 是否打开 TUI**。推荐：是（交互终端里），非 TTY 打印帮助。另一选择：永远打印帮助。
-2. **第一次运行的引导放在 TUI 还是只指向 `/web`**。推荐：在 TUI 里做两步面板（3.2），高级字段仍去 Web。
-3. **运行中的 `Alt+Enter` 改为排队**。推荐：改；不想多一种行为就不做排队，3.7 的最后一条删掉。
+1. 裸 `tnega` 在交互终端里打开 TUI；非 TTY 打印帮助。
+2. 没有可用模型时，在 TUI 里显示「Connect a model」两步面板（3.2）；已配置时不出现。
+3. 运行中 `Alt+Enter` 排队到本轮结束后发送（3.7）。
+4. 输入区加按键提示行与 `?` 按键表（3.7），作为第 2 步先做。
 
 ## 7. 不做
 
