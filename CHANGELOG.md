@@ -16,7 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.5.0 | [`v0.4.25-beta.4...v0.5.0`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.4...v0.5.0) | 26 |
+| 0.5.0 | [`v0.4.25-beta.4...v0.5.0`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.4...v0.5.0) | 28 |
 | 0.4.25-beta.4 | [`v0.4.25-beta.3...v0.4.25-beta.4`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.3...v0.4.25-beta.4) | 10 |
 | 0.4.25-beta.3 | [`v0.4.25-beta.2...v0.4.25-beta.3`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.2...v0.4.25-beta.3) | 29 |
 | 0.4.25-beta.2 | [`v0.4.25-beta.1...v0.4.25-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.1...v0.4.25-beta.2) | 5 |

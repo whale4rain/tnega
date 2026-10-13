@@ -482,7 +482,8 @@ function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
   return (
     <div className={`tool-group${open ? ' open' : ''}${current ? ' is-live' : ''}`}>
       <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open}
-        title={step?.target ? `${step.verb} ${step.fullTarget ?? step.target}` : undefined}>
+        title={step?.target ? `${step.verb} ${step.fullTarget ?? step.target}` : undefined}
+        aria-label={`${step ? `${step.verb}${step.target ? ` ${step.target}` : ''}, ${tools.length} steps` : `${running ? 'Working through' : 'Used'} ${tools.length} steps${summary ? `: ${summary}` : ''}`}${failed > 0 ? `, ${failed} failed` : ''}${running ? ', Running' : ''}`}>
         <span className="tool-icon"><Icon size={14} /></span>
         <span className={`tool-group-title${current ? ' shimmer' : ''}`}>
           {step ? step.verb : `${running ? 'Working through' : 'Used'} ${tools.length} steps`}
