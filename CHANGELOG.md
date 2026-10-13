@@ -16,7 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.5.0 | [`v0.4.25-beta.4...v0.5.0`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.4...v0.5.0) | 20 |
+| 0.5.0 | [`v0.4.25-beta.4...v0.5.0`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.4...v0.5.0) | 26 |
 | 0.4.25-beta.4 | [`v0.4.25-beta.3...v0.4.25-beta.4`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.3...v0.4.25-beta.4) | 10 |
 | 0.4.25-beta.3 | [`v0.4.25-beta.2...v0.4.25-beta.3`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.2...v0.4.25-beta.3) | 29 |
 | 0.4.25-beta.2 | [`v0.4.25-beta.1...v0.4.25-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.1...v0.4.25-beta.2) | 5 |
@@ -60,6 +60,7 @@ compare links provide a convenient browser view of the boundaries.
 ### Features
 
 - Desktop builds for macOS (Apple silicon and Intel `.dmg`) and Linux (`.AppImage` and `.deb`) ship from the same release as Windows. On macOS the app keeps the app, Edit and Window menus, places the window controls in the top-left header, reopens from the Dock and sizes its menu-bar icon. The Mac build is ad-hoc signed, so instead of updating itself it shows **Download**, which opens the release page; Windows and Linux update in place.
+- `tnega tui`, a terminal client for sessions. It starts the server in the same process (or attaches to a running one with `--url`), so its sessions also open in the web and desktop apps. It streams replies with folded tool steps, has a multi-line composer with slash and `@file` completion, stop and steer, tool approvals, questions, the model picker, settings, usage and diffs, and wraps Chinese text by terminal cell. Projects stay in the web app; `/web` opens it.
 - New sessions greet you in the display serif.
 
 ### Fixes
