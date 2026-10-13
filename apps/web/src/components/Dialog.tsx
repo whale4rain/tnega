@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 export function Dialog({
   title,
@@ -38,7 +39,9 @@ export function Dialog({
       previous?.focus?.()
     }
   }, [onClose])
-  return (
+  // Rendered last in <body>: above every header, and after the desktop title bar's drag regions so its
+  // no-drag area wins and the buttons under the window controls' row stay clickable.
+  return createPortal(
     <div className="dialog-scrim" onPointerDown={event => event.target === event.currentTarget && onClose()}>
       <div className={`dialog${className ? ` ${className}` : ''}`} role="dialog" aria-modal="true" aria-label={title} ref={panel} style={{ maxWidth: width }}>
         <header className="dialog-header">
@@ -55,6 +58,7 @@ export function Dialog({
         <div className="dialog-body">{children}</div>
         {footer && <footer className="dialog-footer">{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -259,7 +259,7 @@
     "test": "vitest run",
     "test:package": "pnpm build && vitest run test/publish.test.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p apps/web/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "prepublishOnly": "pnpm test:package"
   },

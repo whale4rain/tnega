@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
@@ -17,5 +17,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // This test starts the real CLI server, which pulls every Node package into a DOM program. Vitest still runs it.
+  "exclude": ["src/lib/chatgpt-api.test.ts"]
 }

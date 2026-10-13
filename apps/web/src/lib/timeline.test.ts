@@ -273,10 +273,11 @@ describe('applyStream', () => {
     expect(live.blocks.map(block => block.kind)).toEqual(['reasoning', 'text'])
     expect(live.blocks[0]).toMatchObject({ text: 'Add them.', streaming: true })
 
-    const answered = [
+    const rest: StreamEvent[] = [
       { type: 'message_delta', id: 'm1', delta: '5' },
       { type: 'message_stop', id: 'm1', finishReason: 'stop' },
-    ].reduce(applyStream, thinking) as Entry[]
+    ]
+    const answered = rest.reduce(applyStream, thinking)
     const agent = answered[1] as Extract<Entry, { kind: 'agent' }>
     expect(agent.blocks[0]).toMatchObject({ kind: 'reasoning', text: 'Add them.', streaming: false, durationMs: expect.any(Number) })
     expect(agent.blocks[0]).not.toHaveProperty('startedAt')
@@ -336,9 +337,17 @@ describe('parseSseFrame', () => {
 describe('tool presentation', () => {
   it('summarizes common tools with a verb and target', () => {
     expect(presentTool({ callId: '1', name: 'shell', args: { command: 'pnpm test\nmore' }, status: 'running' }))
-      .toEqual({ family: 'shell', verb: 'Running', target: 'pnpm test' })
+      .toEqual({ family: 'shell', verb: 'Running', target: 'pnpm test', fullTarget: 'pnpm test\nmore' })
     expect(presentTool({ callId: '2', name: 'custom_thing', args: { path: 'x' }, status: 'ok' }))
       .toEqual({ family: 'other', verb: 'Custom thing', target: 'x' })
+  })
+
+  it('keeps the whole of a long command for hover while the row shows one short line', () => {
+    const command = `Get-ChildItem -Recurse ${'-Filter README.md '.repeat(12)}`
+    const shown = presentTool({ callId: '3', name: 'shell', args: { command }, status: 'running' })
+    expect(shown.target).toHaveLength(140)
+    expect(shown.target?.endsWith('…')).toBe(true)
+    expect(shown.fullTarget).toBe(command.trim())
   })
 
   it('pulls stdout and stderr out of shell results', () => {

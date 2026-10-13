@@ -90,3 +90,16 @@ describe('backgroundBehind', () => {
     expect(backgroundBehind(null, '#ffffff')).toBe('#ffffff')
   })
 })
+
+describe('backgroundBehind with an overlay', () => {
+  it('mixes a translucent scrim over the page so the window controls dim with it', () => {
+    const page = document.createElement('div')
+    page.style.backgroundColor = 'rgb(200, 200, 200)'
+    const scrim = document.createElement('div')
+    scrim.style.backgroundColor = 'rgba(0, 0, 0, 0.5)'
+    page.appendChild(scrim)
+    document.body.appendChild(page)
+    expect(backgroundBehind(scrim, '#ffffff')).toBe('#646464')
+    expect(cssColorToHex('color(srgb 0 0 0 / 0.72)')).toBe('#000000')
+  })
+})

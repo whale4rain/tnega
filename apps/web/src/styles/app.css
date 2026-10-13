@@ -1122,7 +1122,7 @@ kbd {
   padding: 1px 7px; border: 1px solid var(--border); border-radius: var(--radius-full);
   background: var(--surface); color: var(--accent-text); font: 11.5px/1.6 var(--font-mono); cursor: pointer;
 }
-.bg-task-link:hover { border-color: var(--accent); }
+.bg-task-link:hover { border-color: var(--border-strong); }
 .bg-task-output {
   max-height: 220px; margin: 0 6px 6px; padding: 8px 10px; overflow: auto;
   border-radius: var(--radius-xs); background: var(--code-bg); color: var(--text-2);
@@ -1509,11 +1509,13 @@ kbd {
   animation: fade-up 400ms var(--ease-out);
 }
 
+/* A greeting, so the display serif at a light weight, like the Board's (tnega-design §6.1). */
 .empty-state h2 {
   margin: 18px 0 6px;
+  font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-weight: 650;
-  letter-spacing: -0.025em;
+  font-weight: 500;
+  letter-spacing: -0.005em;
   line-height: 1.2;
 }
 
@@ -2019,9 +2021,15 @@ kbd {
 }
 
 .tool-group-title {
-  font-weight: 600;
+  flex: none;
+  font-weight: 550;
   color: var(--text);
   white-space: nowrap;
+}
+
+/* With a command beside it, the step count keeps its size and the command ellipsizes. */
+.tool-target + .tool-group-summary {
+  flex: none;
 }
 
 .tool-group-summary {
@@ -2128,6 +2136,12 @@ kbd {
 
 .tool-detail .code-block {
   margin: 0;
+}
+
+/* The expanded call shows the whole command, wrapped, rather than a sideways scroll. */
+.tool-detail .code-block pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tool-output {
@@ -3197,7 +3211,7 @@ kbd {
 }
 
 .settings-choice.active {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
   background: var(--accent-soft);
   color: var(--accent-text);
 }
@@ -3225,8 +3239,8 @@ kbd {
 }
 
 .palette-card.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
 }
 
 .palette-swatch {
@@ -3508,7 +3522,7 @@ kbd {
 .question-options { display: grid; gap: 6px; margin-bottom: 8px; }
 .question-option { display: flex; gap: 9px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-sm); }
 .question-option:hover { background: var(--surface-hover); }
-.question-option.selected { border-color: var(--accent); background: var(--accent-soft); }
+.question-option.selected { border-color: var(--border-strong); background: var(--accent-soft); }
 .question-option input { accent-color: var(--accent); margin-top: 3px; }
 .question-description { display: block; margin-top: 3px; color: var(--text-2); line-height: 1.5; }
 .question-clear { margin-bottom: 8px; }
@@ -3770,6 +3784,30 @@ kbd {
 .desktop-chrome .wb-header,
 .desktop-chrome .wb-rail-fill {
   -webkit-app-region: drag;
+}
+
+/* Overlays sit above the title bar's drag regions, which would otherwise swallow their clicks; they also
+   start below the native controls so their own close buttons never sit beside – ☐ ✕. */
+.desktop-chrome .dialog-scrim,
+.desktop-chrome .image-viewer,
+.desktop-chrome .menu-popover {
+  -webkit-app-region: no-drag;
+}
+
+.desktop-chrome .dialog-scrim {
+  padding-top: calc(env(titlebar-area-height, 32px) + 8px);
+}
+
+.desktop-chrome .dialog {
+  max-height: calc(100vh - env(titlebar-area-height, 32px) - 28px);
+}
+
+.desktop-chrome .image-viewer {
+  padding-top: calc(env(titlebar-area-height, 32px) + 16px);
+}
+
+.desktop-chrome .image-viewer-close {
+  top: calc(env(titlebar-area-height, 32px) + 8px);
 }
 
 .desktop-chrome .sidebar-top button,
@@ -4229,8 +4267,10 @@ kbd {
   background: var(--surface);
 }
 
+/* Selected, not shouted: a firmer hairline and a soft fill. An --accent ring is ink on Carbon and reads as a bold frame. */
 .model-route.is-default {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
 }
 
 .model-route-main {
