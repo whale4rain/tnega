@@ -90,7 +90,7 @@ it('shows tool-published Thread messages after loading a snapshot', async () => 
   expect(view.getByText('Check the parser').closest('.room-run')?.classList.contains('room-run-user')).toBe(true)
 })
 
-it('shows what the coordinator sent a thread as dashed relays on the user side, replacing the folded brief', async () => {
+it('folds what the coordinator sent a thread into one-line notes that open on click', async () => {
   const initial = snapshot()
   const worker = initial.threads[1]!
   initial.agentMessages = [
@@ -100,12 +100,35 @@ it('shows what the coordinator sent a thread as dashed relays on the user side, 
   ]
   vi.spyOn(projectApi, 'thread').mockResolvedValue({ thread: worker, events: [] })
   const view = render(createElement(ThreadPanel, { workspace: 'workspace', state: fromSnapshot(initial), threadId: 'worker', onBack: vi.fn() }))
-  const relay = (await view.findByText('Keep the patch small.')).closest('.room-run')
-  expect(relay?.classList.contains('room-run-relay')).toBe(true)
-  expect(relay?.querySelector('.room-author')?.textContent).toBe('Coordinator')
-  expect(view.queryByText('Report for the coordinator only.')).toBeNull()
-  // The dispatch already shows the brief, so the folded copy is gone.
+  const note = await view.findByRole('button', { name: 'Message from Coordinator' })
+  expect(note.getAttribute('aria-expanded')).toBe('false')
+  expect(view.queryByText('Keep the patch small.')).toBeNull()
+  fireEvent.click(note)
+  expect(note.getAttribute('aria-expanded')).toBe('true')
+  expect(view.getByText('Keep the patch small.').closest('.relay-note-body')).toBeTruthy()
+  // The dispatch is the brief: one folded note named for it, and no second folded copy.
+  expect(view.getByRole('button', { name: 'Brief from Coordinator' })).toBeTruthy()
   expect(view.queryByRole('button', { name: 'Brief' })).toBeNull()
+  expect(view.queryByText('Report for the coordinator only.')).toBeNull()
+})
+
+it('shows reactions under thread messages and toggles yours', async () => {
+  const initial = snapshot()
+  initial.threadMessages = [
+    { messageId: 'thread-user', projectId: 'project', sender: { kind: 'user', id: 'user' }, recipients: [{ kind: 'agent', id: 'worker' }], placement: { kind: 'thread', threadId: 'worker' }, kind: 'user-thread', text: 'Thanks, looks good', refs: [], createdAt: 2 },
+    { messageId: 'thread-note', projectId: 'project', sender: { kind: 'agent', id: 'worker' }, recipients: [{ kind: 'user', id: 'user' }], placement: { kind: 'thread', threadId: 'worker' }, kind: 'agent-reply', text: 'The fix is merged.', refs: [], createdAt: 3 },
+  ]
+  initial.reactions = [{ messageId: 'thread-user', emoji: '👍', by: { kind: 'agent', id: 'worker' }, createdAt: 4 }]
+  vi.spyOn(projectApi, 'thread').mockResolvedValue({ thread: initial.threads[1]!, events: [] })
+  const react = vi.spyOn(projectApi, 'react').mockResolvedValue({ reaction: null })
+  const view = render(createElement(ThreadPanel, { workspace: 'workspace', state: fromSnapshot(initial), threadId: 'worker', onBack: vi.fn() }))
+  const chip = await view.findByRole('button', { name: '👍 1: worker' })
+  expect(chip.getAttribute('aria-pressed')).toBe('false')
+  const report = view.getByText('The fix is merged.').closest('.room-message')!
+  fireEvent.click(report.querySelector('button[aria-label="Add reaction"]')!)
+  await act(async () => { fireEvent.click(view.getByRole('menuitem', { name: 'React 🎉' })) })
+  expect(react).toHaveBeenLastCalledWith('workspace', 'project', 'thread-note', '🎉', true)
+  expect(view.getByRole('button', { name: '🎉 1: You' }).getAttribute('aria-pressed')).toBe('true')
 })
 
 it('stops and corrects the coordinator, then redirects controls to a thread reply', async () => {

@@ -36,7 +36,10 @@ export const snapshot = { project, coordinatorId: 'coordinator', cursor: 10, thr
     kind: 'resource', id: 'git-push', seq: 3, version: 1, author: 'writer', source: { agentId: 'writer' }, createdAt: at + 6500, updatedAt: at + 6500, deleted: false,
     data: { title: 'Pushed guide-headings', uri: 'https://github.com/example/site/pull/new/guide-headings',
       git: { kind: 'push', status: 'pushed', repo: 'example/site', branch: 'guide-headings' } },
-  }] }, routines: [] }
+  }] }, routines: [], reactions: [
+    { messageId: 'user-1', emoji: '👀', by: { kind: 'agent', id: 'coordinator' }, createdAt: at + 500 },
+    { messageId: 'thread-user', emoji: '👍', by: { kind: 'agent', id: 'writer' }, createdAt: at + 10500 },
+  ] }
 export const totals = { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, activeMs: 0 }
 export const config = { effective: { baseUrl: '', model: 'fixture', modelId: 'fixture' },
   config: { apiKeySet: true, path: 'fixture.json', models: [] }, env: { apiKeySet: false }, models: [], apiKeySet: true }
@@ -52,6 +55,7 @@ export async function installFixtures(context) {
   const unexpected = []
   const navigation = []
   const streamCursors = []
+  const reactions = []
   let deliverLate = false
   let delivered = false
   let longHistory = false
@@ -70,6 +74,8 @@ export async function installFixtures(context) {
     if (path === '/api/browser/live' && method === 'GET') return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"tabs","tabs":[]}\n\n' })
     if (path === '/api/browser/navigate' && method === 'POST') { navigation.push(request.postDataJSON().url); return json({}) }
     if (path === '/api/browser/viewport' && method === 'POST') return json({})
+    const reaction = /^\/api\/projects\/project\/messages\/([^/]+)\/reactions$/.exec(path)
+    if (reaction && method === 'POST') { reactions.push({ messageId: reaction[1], ...request.postDataJSON() }); return json({ reaction: null }) }
     if (method === 'GET') {
       if (path === '/api/config') return json(config)
       if (path === '/api/workspaces') return json({ workspaces: [workspace] })
@@ -101,5 +107,5 @@ export async function installFixtures(context) {
     unexpected.push(`${method} ${path}${url.search}`)
     return route.fulfill({ status: 501, contentType: 'application/json', body: JSON.stringify({ error: `Missing E2E fixture: ${method} ${path}` }) })
   })
-  return { unexpected, navigation, streamCursors, releaseLate: () => { deliverLate = true }, expandHistory: () => { longHistory = true } }
+  return { unexpected, navigation, streamCursors, reactions, releaseLate: () => { deliverLate = true }, expandHistory: () => { longHistory = true } }
 }

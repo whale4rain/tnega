@@ -42,6 +42,12 @@ describe('project prompts', () => {
     expect(THREAD_SYSTEM_PROMPT).toContain('Do not also send it with send_thread_message')
   })
 
+  it('asks threads for a short report like a colleague, not a log of the session', () => {
+    expect(THREAD_SYSTEM_PROMPT).toMatch(/final answer is your report/u)
+    expect(THREAD_SYSTEM_PROMPT).toMatch(/not as a log of the session/u)
+    expect(THREAD_SYSTEM_PROMPT).toMatch(/Leave out the steps you took/u)
+  })
+
   it('tells the coordinator how to answer a waiting or blocked thread', () => {
     expect(COORDINATOR_SYSTEM_PROMPT).toMatch(/request or blocked message stops that thread/u)
     expect(COORDINATOR_SYSTEM_PROMPT).toContain('kind dispatch')

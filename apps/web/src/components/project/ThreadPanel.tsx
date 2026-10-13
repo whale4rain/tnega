@@ -165,7 +165,7 @@ export function ThreadPanel({
         {error && <div className="error-banner">{error}</div>}
         {!events && !error && <div className="skeleton"><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div>}
         {events && events.length === 0 && <p className="muted small">Starting up…</p>}
-        <ThreadMessages messages={messages} label={thread.label} running={working} threadId={threadId} authorOf={authorOf} />
+        <ThreadMessages messages={messages} label={thread.label} running={working} threadId={threadId} goal={thread.goal} authorOf={authorOf} workspace={workspace} state={state} />
         <details className="thread-execution">
           <summary>Execution details</summary>
           <Timeline entries={entries} running={working} actions={{}} agent={{ id: threadId }} outcomeFirst />

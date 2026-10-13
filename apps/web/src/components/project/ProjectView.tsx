@@ -52,6 +52,7 @@ import { ThreadPanel } from './ThreadPanel'
 import { ThreadCard } from './ThreadCard'
 import { GitCard } from './GitCard'
 import { ChatRun as Run } from './ChatRun'
+import { Reactions } from './Reactions'
 
 /**
  * The last state of recently opened projects. Coming back to one shows it at
@@ -621,9 +622,12 @@ function Room({
             day,
             <Run key={entry.id} side="user" at={entry.at}>
               {entry.items.map(item => (
-                <div key={item.id} id={`msg-${item.id}`} className="room-message">
-                  {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
-                  <Markdown text={item.text} />
+                <div key={item.id} className="room-bubble reactable">
+                  <div id={`msg-${item.id}`} className="room-message">
+                    {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
+                    <Markdown text={item.text} />
+                  </div>
+                  <Reactions workspace={workspace} state={state} messageId={item.id} align="end" />
                 </div>
               ))}
             </Run>,
@@ -636,10 +640,11 @@ function Room({
               switch (item.kind) {
                 case 'coordinator':
                   return (
-                    <div key={item.id} id={`msg-${item.id}`} className="room-message main-message">
+                    <div key={item.id} id={`msg-${item.id}`} className="room-message main-message reactable">
                       {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
                       {item.text.trim() && <Markdown text={item.text} />}
                       <ArtifactCards workspace={workspace} projectId={state.project.id} artifacts={artifactsFor(state, item.refs)} />
+                      <Reactions workspace={workspace} state={state} messageId={item.id} />
                       <div className="turn-actions">
                         <button
                           type="button"

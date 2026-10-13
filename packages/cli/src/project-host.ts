@@ -13,6 +13,7 @@ import {
   USER_ADDRESS,
   agentAddress,
   type BoxEnvelope,
+  type BoxReaction,
   type BoxService,
 } from '@tnega/box'
 import { boxBlackboard } from '@tnega/box-blackboard'
@@ -198,6 +199,8 @@ export interface ProjectSnapshot {
   memory: FactRecord[]
   library: { artifacts: FactRecord[]; resources: FactRecord[] }
   routines: FactRecord[]
+  /** Emoji reactions on messages, oldest first. */
+  reactions: BoxReaction[]
 }
 
 export interface ProjectThreadDetail {
@@ -378,6 +381,7 @@ export class ProjectHost {
         resources: this.pullRequests.decorate(await project.blackboard.list('resource')),
       },
       routines: (await project.blackboard.list('routine')).filter(fact => !fact.deleted),
+      reactions: await project.box.reactions(),
     }
   }
 
@@ -397,6 +401,12 @@ export class ProjectHost {
       text,
       ...(source ? { causationId: source.messageId } : {}),
     })
+  }
+
+  /** 用户给一条消息加上或撤回一个表情回应；只是显示，不唤醒任何 Agent。 */
+  async react(projectId: string, messageId: string, emoji: string, on: boolean): Promise<BoxReaction | undefined> {
+    const project = await this.mount(projectId)
+    return await project.box.react({ messageId, emoji, by: USER_ADDRESS, on })
   }
 
   /**
