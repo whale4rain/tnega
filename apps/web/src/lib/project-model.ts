@@ -10,6 +10,8 @@ import type {
   ArtifactRef,
   BoxEnvelope,
   BoxMessageKind,
+  BoxReaction,
+  ReactionEmoji,
   MemoryFact,
   ProjectRecord,
   ProjectSnapshot,
@@ -21,6 +23,7 @@ import type {
   ThreadRecord,
   ThreadState,
 } from './project-types'
+import { REACTIONS, isReactionEmoji } from './project-types'
 import type { Weather } from './weather'
 
 export interface Approval {
@@ -50,6 +53,49 @@ export interface ProjectState {
   approvals: Approval[]
   /** Every envelope seen, by id, so replies can point at their source. */
   envelopes: Record<string, BoxEnvelope>
+  /** Emoji reactions by record id (see `reactionKey`). */
+  reactions: Record<string, BoxReaction>
+}
+
+/** The record id the server gives a reaction: message · who · emoji name. */
+export function reactionKey(messageId: string, by: BoxReaction['by'], emoji: ReactionEmoji): string {
+  return `${messageId}:${by.kind === 'user' ? 'user' : `agent:${by.id}`}:${REACTIONS[emoji]}`
+}
+
+function reactionFrom(data: unknown): BoxReaction | undefined {
+  if (!data || typeof data !== 'object') return undefined
+  const { messageId, emoji, by, createdAt } = data as Record<string, unknown>
+  if (typeof messageId !== 'string' || !isReactionEmoji(emoji) || !by || typeof by !== 'object') return undefined
+  const address = by as Record<string, unknown>
+  const who: BoxReaction['by'] | undefined = address.kind === 'user' ? { kind: 'user', id: 'user' }
+    : address.kind === 'agent' && typeof address.id === 'string' ? { kind: 'agent', id: address.id } : undefined
+  return who ? { messageId, emoji, by: who, createdAt: typeof createdAt === 'number' ? createdAt : 0 } : undefined
+}
+
+/** One emoji on one message: how many, whether you are among them, and who. */
+export interface ReactionGroup {
+  emoji: ReactionEmoji
+  count: number
+  mine: boolean
+  names: string[]
+}
+
+/** A message's reactions grouped by emoji, in the order they were first given. */
+export function reactionsOf(state: ProjectState, messageId: string): ReactionGroup[] {
+  const groups: ReactionGroup[] = []
+  const list = Object.values(state.reactions).filter(reaction => reaction.messageId === messageId)
+    .sort((a, b) => a.createdAt - b.createdAt)
+  for (const reaction of list) {
+    let group = groups.find(item => item.emoji === reaction.emoji)
+    if (!group) {
+      group = { emoji: reaction.emoji, count: 0, mine: false, names: [] }
+      groups.push(group)
+    }
+    group.count += 1
+    if (reaction.by.kind === 'user') group.mine = true
+    group.names.push(reaction.by.kind === 'user' ? 'You' : agentLabel(state, reaction.by.id))
+  }
+  return groups
 }
 
 /**
@@ -74,8 +120,13 @@ export function fromSnapshot(snapshot: ProjectSnapshot, localReplies: Record<str
   const messages = snapshot.messages.map(withLocal)
   const envelopes: Record<string, BoxEnvelope> = {}
   for (const envelope of [...messages, ...snapshot.inboxMessages, ...(snapshot.threadMessages ?? []), ...(snapshot.agentMessages ?? [])]) envelopes[envelope.messageId] = envelope
+  const reactions: Record<string, BoxReaction> = {}
+  for (const reaction of snapshot.reactions ?? []) {
+    if (isReactionEmoji(reaction.emoji)) reactions[reactionKey(reaction.messageId, reaction.by, reaction.emoji)] = reaction
+  }
   return {
     envelopes,
+    reactions,
     project: snapshot.project,
     coordinatorId: snapshot.coordinatorId,
     cursor: snapshot.cursor,
@@ -168,6 +219,13 @@ export function reduceProject(state: ProjectState, event: ProjectStreamEvent): P
         if (!event.deleted && !isRoutineData(fact.data)) return state
         const routine: RoutineFact = { ...fact, data: fact.data as unknown as RoutineFact['data'] }
         return { ...state, routines: upsert(state.routines, routine, event.deleted) }
+      }
+      if (event.kind === 'reaction') {
+        const reactions = { ...state.reactions }
+        const reaction = reactionFrom(event.data)
+        if (event.deleted || !reaction) delete reactions[event.id]
+        else reactions[event.id] = reaction
+        return { ...state, reactions }
       }
       if (event.kind === 'project' && event.id === state.project.id && event.data && typeof event.data === 'object') {
         return { ...state, project: { ...state.project, ...(event.data as Partial<ProjectRecord>) } }

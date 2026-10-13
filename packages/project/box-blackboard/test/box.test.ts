@@ -150,3 +150,28 @@ it('rejects malformed sends before touching the store', async () => {
     await root.fiber.dispose()
   }
 })
+
+it('keeps one reaction per person, emoji and message, and lets it be taken back', async () => {
+  const root = await mount()
+  try {
+    const envelope = await root.box.send({
+      sender: coordinator, recipients: [USER_ADDRESS], placement: { kind: 'main' },
+      kind: 'agent-reply', text: 'Shipped.',
+    })
+    await root.box.react({ messageId: envelope.messageId, emoji: '🎉', by: USER_ADDRESS })
+    await root.box.react({ messageId: envelope.messageId, emoji: '🎉', by: USER_ADDRESS })
+    await root.box.react({ messageId: envelope.messageId, emoji: '🎉', by: coordinator })
+    expect((await root.box.reactions()).map(reaction => [reaction.emoji, reaction.by.kind]))
+      .toEqual([['🎉', 'user'], ['🎉', 'agent']])
+    await root.box.react({ messageId: envelope.messageId, emoji: '🎉', by: USER_ADDRESS, on: false })
+    expect((await root.box.reactions()).map(reaction => reaction.by)).toEqual([coordinator])
+    // A reaction is display only: nobody gets a delivery for it.
+    expect(await root.box.inbox(coordinator)).toEqual([])
+    await expect(root.box.react({ messageId: envelope.messageId, emoji: '💩', by: USER_ADDRESS }))
+      .rejects.toMatchObject({ code: 'BOX_INVALID' })
+    await expect(root.box.react({ messageId: 'missing', emoji: '👍', by: USER_ADDRESS }))
+      .rejects.toMatchObject({ code: 'BOX_NOT_FOUND' })
+  } finally {
+    await root.fiber.dispose()
+  }
+})

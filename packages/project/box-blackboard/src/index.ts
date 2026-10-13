@@ -10,13 +10,17 @@ import {
   BoxService,
   addressKey,
   deliveryId,
+  isReactionEmoji,
   normalizeAddress,
+  reactionId,
   sameAddress,
   type BoxAddress,
   type BoxEnvelope,
+  type BoxReaction,
   type BoxTimelineOptions,
   type DeliveryRecord,
   type NormalizedBoxSend,
+  type ReactionEmoji,
 } from '@tnega/box'
 import type { Context } from '@tnega/core'
 
@@ -72,6 +76,16 @@ function toDelivery(fact: FactRecord): DeliveryRecord {
     status: data.status as DeliveryRecord['status'],
     attempts: Number(data.attempts ?? 0),
     updatedAt: fact.updatedAt,
+  }
+}
+
+function toReaction(fact: FactRecord): BoxReaction | undefined {
+  const data = fact.data
+  if (!isRecord(data) || typeof data.messageId !== 'string' || !isReactionEmoji(data.emoji)) return undefined
+  try {
+    return { messageId: data.messageId, emoji: data.emoji, by: normalizeAddress(data.by), createdAt: Number(data.createdAt ?? fact.createdAt) }
+  } catch {
+    return undefined
   }
 }
 
@@ -204,6 +218,43 @@ export class BoxBlackboardService extends BoxService {
     const fact = await this.board.read('delivery', deliveryId(messageId, normalizeAddress(recipient)))
     if (!fact || fact.deleted) return undefined
     return toDelivery(fact)
+  }
+
+  override async reactions(): Promise<BoxReaction[]> {
+    return (await this.board.list('reaction'))
+      .filter(fact => !fact.deleted)
+      .flatMap(fact => toReaction(fact) ?? [])
+      .sort((a, b) => a.createdAt - b.createdAt)
+  }
+
+  /** 回应是一条以「消息 · 回应者 · 表情」为 ID 的事实；撤回写一条 `deleted` 的新版本。 */
+  protected override async runReact(input: { messageId: string; emoji: ReactionEmoji; by: BoxAddress; on: boolean }): Promise<BoxReaction | undefined> {
+    const message = await this.board.read('message', input.messageId)
+    if (!message || message.deleted) throw new BoxError(`message not found: ${input.messageId}`, 'BOX_NOT_FOUND')
+    const id = reactionId(input.messageId, input.by, input.emoji)
+    const current = await this.board.read('reaction', id)
+    const active = current && !current.deleted ? toReaction(current) : undefined
+    if (input.on === Boolean(active)) return active
+    const reaction: BoxReaction = { messageId: input.messageId, emoji: input.emoji, by: input.by, createdAt: Date.now() }
+    try {
+      await this.board.commit({
+        kind: 'reaction',
+        id,
+        data: reaction,
+        author: addressKey(input.by),
+        source: { messageId: input.messageId, ...(input.by.kind === 'agent' ? { agentId: input.by.id } : {}) },
+        expectedVersion: current?.version ?? null,
+        ...(input.on ? {} : { deleted: true }),
+      })
+    } catch (error) {
+      // 同一个人同时点了两次：另一次已经落定了同样的结果。
+      if (error instanceof BlackboardError && error.code === 'BLACKBOARD_CONFLICT') {
+        const raced = await this.board.read('reaction', id)
+        return raced && !raced.deleted ? toReaction(raced) : undefined
+      }
+      throw error
+    }
+    return input.on ? reaction : undefined
   }
 
   /**

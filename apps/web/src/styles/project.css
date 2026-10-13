@@ -2261,3 +2261,200 @@ button.board-chip.active {
     padding: 24px 20px 32px;
   }
 }
+
+/* ==========================================================================
+   Reactions (tnega-design §5.7): small emoji chips under a message, and a
+   button that appears on hover to add one. Yours are outlined in the accent.
+   ========================================================================== */
+
+.reactable {
+  position: relative;
+}
+
+/* Your bubble and its reactions, on the right. */
+.room-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 85%;
+  min-width: 0;
+}
+
+.room-run-user .room-bubble > .room-message {
+  max-width: 100%;
+}
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reactions.align-end {
+  justify-content: flex-end;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--control-sm);
+  padding: 0 8px 0 6px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.reaction-chip:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.reaction-chip.mine {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.reaction-emoji {
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.reaction-picker {
+  position: absolute;
+  z-index: 5;
+  top: -10px;
+  right: 0;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+/* Beside your bubble, on its outer side. */
+.reaction-picker.align-end {
+  top: 4px;
+  right: calc(100% + 4px);
+}
+
+.reactable:hover > .reaction-picker,
+.reaction-picker:focus-within,
+.reaction-picker.open {
+  opacity: 1;
+}
+
+.reaction-picker > .icon-button {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-3);
+}
+
+.reaction-picker > .icon-button:hover {
+  color: var(--text);
+}
+
+.reaction-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  animation: pop-in var(--duration-med) var(--ease-out);
+}
+
+.reaction-option {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  line-height: 1;
+  transition: background var(--duration-fast);
+}
+
+.reaction-option:hover,
+.reaction-option:focus-visible {
+  background: var(--surface-hover);
+}
+
+/* ==========================================================================
+   Notes from the Agent that started a thread (tnega-design §5.1): one quiet
+   line that opens to the note, so the thread reads as your talk with it.
+   ========================================================================== */
+
+.relay-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.relay-note-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  transition: color var(--duration-fast);
+}
+
+.relay-note-head:hover {
+  color: var(--text-2);
+}
+
+.relay-note-chevron {
+  transition: transform var(--duration-fast);
+}
+
+.relay-note.open .relay-note-chevron {
+  transform: rotate(180deg);
+}
+
+.relay-note-time {
+  margin-left: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.relay-note-body {
+  align-self: stretch;
+  margin-left: 12px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.relay-note-author {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .relay-note-chevron,
+  .reaction-picker {
+    transition: none;
+  }
+}
+
+.room-message > .reactions {
+  margin-top: 6px;
+}

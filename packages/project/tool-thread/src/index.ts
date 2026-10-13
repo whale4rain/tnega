@@ -53,7 +53,7 @@ export const toolThread = {
           properties: {
             goal: { type: 'string', description: 'What this thread is for, including scope and what "done" means.' },
             label: { type: 'string', description: 'Short name shown on the thread card.' },
-            expect: { type: 'string', description: 'What the thread should report back, and in what form.' },
+            expect: { type: 'string', description: 'Optional: the result that counts as done, in a few words (for example "the PR link" or "the item count"). The thread reports back in a few sentences like a colleague; never ask for logs, raw command output or a full evidence write-up in the report. When long evidence is needed, ask for it as an artifact.' },
             permission: {
               type: 'string',
               enum: ['read-only', 'workspace-write', 'bypass'],
@@ -61,7 +61,7 @@ export const toolThread = {
             },
             on_report: {
               type: 'string',
-              description: 'Omit for ordinary work: the user reads the result in the thread. Only when you have a concrete next step that needs this result, name it (for example "dispatch the UI thread with the API shape"); the report then starts a new turn for you.',
+              description: 'Omit for ordinary work: the user reads the result in the thread. Only when you have a concrete next step that needs this result, name it (for example "dispatch the UI thread with the API shape"); the report then starts a new turn for you. Never use it to relay or summarize results to the user.',
             },
           },
           required: ['goal'],

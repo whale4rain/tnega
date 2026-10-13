@@ -17,6 +17,7 @@ declare module '@tnega/core' {
  * | `delivery` | `DeliveryRecord` | `@tnega/box` |
  * | `memory` / `decision` / `resource` / `artifact` | 见 `@tnega/tool-blackboard` | Blackboard |
  * | `dependency` | Thread 之间的依赖 | `@tnega/thread` |
+ * | `reaction` | `BoxReaction` | `@tnega/box` |
  */
 export type FactKind =
   | 'project'
@@ -30,6 +31,8 @@ export type FactKind =
   | 'dependency'
   /** 定时工作：一条带日程的指令，每次运行交给它自己的 Thread。 */
   | 'routine'
+  /** 对一条消息的表情回应；撤回是一条 `deleted` 的新版本。 */
+  | 'reaction'
 
 export const FACT_KINDS: readonly FactKind[] = [
   'project',
@@ -42,6 +45,7 @@ export const FACT_KINDS: readonly FactKind[] = [
   'artifact',
   'dependency',
   'routine',
+  'reaction',
 ]
 
 export type BlackboardErrorCode =

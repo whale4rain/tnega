@@ -110,6 +110,32 @@ export type BoxMessageKind =
   | 'failed'
   | 'notice'
 
+/** The reactions a message can get; mirrors `REACTIONS` in `@tnega/box`. The name is part of the record id. */
+export const REACTIONS = {
+  '👍': 'thumbs-up',
+  '👀': 'eyes',
+  '🎉': 'tada',
+  '❤️': 'heart',
+  '🙏': 'thanks',
+  '😄': 'smile',
+  '✅': 'done',
+  '🤔': 'thinking',
+} as const
+
+export type ReactionEmoji = keyof typeof REACTIONS
+
+export function isReactionEmoji(value: unknown): value is ReactionEmoji {
+  return typeof value === 'string' && Object.hasOwn(REACTIONS, value)
+}
+
+/** One person's or Agent's emoji on one message. */
+export interface BoxReaction {
+  messageId: string
+  emoji: ReactionEmoji
+  by: BoxAddress
+  createdAt: number
+}
+
 export interface ArtifactRef {
   artifactId?: string
   hash: string
@@ -204,6 +230,8 @@ export interface ProjectSnapshot {
   library: { artifacts: ArtifactFact[]; resources: ResourceFact[] }
   /** Older servers omit routines. */
   routines?: RoutineFact[]
+  /** Older servers omit reactions. */
+  reactions?: BoxReaction[]
 }
 
 export interface ThreadDetail {

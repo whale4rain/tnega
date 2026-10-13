@@ -26,7 +26,7 @@ const ALWAYS_ALLOWED = new Set([
   'get_goal', 'update_goal', 'list_subagent', 'send_agent_message',
   'read_project', 'list_threads', 'read_artifact', 'office_inspect', 'office_read',
   // Project 内部
-  'spawn_thread', 'send_thread_message', 'send_project_message', 'update_checklist', 'decide_thread_approval',
+  'spawn_thread', 'send_thread_message', 'send_project_message', 'react_to_message', 'update_checklist', 'decide_thread_approval',
   'create_routine', 'list_routines', 'update_routine',
   'write_memory', 'publish_artifact', 'index_resource',
   // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。

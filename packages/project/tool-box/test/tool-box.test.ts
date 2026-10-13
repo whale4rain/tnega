@@ -27,3 +27,34 @@ describe('send_project_message', () => {
     expect(sent).toHaveLength(0)
   })
 })
+
+describe('react_to_message', () => {
+  function reacting(timeline: Array<{ messageId: string; kind: string }>, received: string[]) {
+    const reactions: unknown[] = []
+    const registered: Array<{ schema: { name: string }; execute: (input: unknown, options: { agentId?: string }) => Promise<unknown> }> = []
+    const services: Record<string, unknown> = {
+      box: { timeline: async () => timeline, react: async (input: unknown) => { reactions.push(input) } },
+      threads: { activate: async () => ({ session: { read: async () => received.map(id => ({ type: 'user/message', payload: { name: `box:${id}` } })) } }) },
+      tools: { register: (tool: (typeof registered)[number]) => { registered.push(tool) } },
+    }
+    toolBox.apply({ get: (name: string) => services[name] } as never)
+    return { reactions, tool: registered.find(tool => tool.schema.name === 'react_to_message')! }
+  }
+
+  it('reacts to the newest user message this Agent received', async () => {
+    const { reactions, tool } = reacting([
+      { messageId: 'old', kind: 'user-message' },
+      { messageId: 'brief', kind: 'dispatch' },
+      { messageId: 'new', kind: 'user-thread' },
+      { messageId: 'elsewhere', kind: 'user-message' },
+    ], ['old', 'brief', 'new'])
+    await tool.execute({ emoji: '👍' }, { agentId: 'worker' })
+    expect(reactions).toEqual([{ messageId: 'new', emoji: '👍', by: { kind: 'agent', id: 'worker' } }])
+  })
+
+  it('says so when the user has not written to it yet', async () => {
+    const { reactions, tool } = reacting([{ messageId: 'brief', kind: 'dispatch' }], ['brief'])
+    await expect(tool.execute({ emoji: '👍' }, { agentId: 'worker' })).rejects.toThrow(/no message from the user/u)
+    expect(reactions).toEqual([])
+  })
+})

@@ -173,6 +173,48 @@ function normalizeRefs(value: unknown): ArtifactRef[] {
   })
 }
 
+/**
+ * 可用的表情回应：一小组安静的、意思明确的表情，而不是整张表情键盘。
+ * 名字用作记录 ID 的一部分，表情本身只用于显示。
+ */
+export const REACTIONS = {
+  '👍': 'thumbs-up',
+  '👀': 'eyes',
+  '🎉': 'tada',
+  '❤️': 'heart',
+  '🙏': 'thanks',
+  '😄': 'smile',
+  '✅': 'done',
+  '🤔': 'thinking',
+} as const
+
+export type ReactionEmoji = keyof typeof REACTIONS
+
+export function isReactionEmoji(value: unknown): value is ReactionEmoji {
+  return typeof value === 'string' && Object.hasOwn(REACTIONS, value)
+}
+
+/** 某个地址对某条消息的一个表情回应。同一地址对同一消息的同一表情只有一条。 */
+export interface BoxReaction {
+  messageId: string
+  emoji: ReactionEmoji
+  by: BoxAddress
+  createdAt: number
+}
+
+export interface BoxReactInput {
+  messageId: string
+  emoji: string
+  /** 可信回应者：由宿主或 Agent 作用域绑定。 */
+  by: BoxAddress
+  /** `false` 撤回；缺省为加上。 */
+  on?: boolean
+}
+
+export function reactionId(messageId: string, by: BoxAddress, emoji: ReactionEmoji): string {
+  return `${messageId}:${addressKey(by)}:${REACTIONS[emoji]}`
+}
+
 /** `send` 的输入经校验后交给 Provider 的形状。 */
 export interface NormalizedBoxSend {
   sender: BoxAddress
@@ -284,6 +326,25 @@ export abstract class BoxService extends Service {
   abstract ack(messageId: string, recipient: BoxAddress): Promise<void>
 
   abstract delivery(messageId: string, recipient: BoxAddress): Promise<DeliveryRecord | undefined>
+
+  /**
+   * 给一条已有消息加上或撤回一个表情回应。回应只是显示用的事实：它不投递、不唤醒任何
+   * Agent，也不进入谁的 Session。重复加上或撤回是空操作。
+   */
+  async react(input: BoxReactInput): Promise<BoxReaction | undefined> {
+    if (!isRecord(input) || typeof input.messageId !== 'string' || !input.messageId.trim()) {
+      throw new BoxError('reaction requires a messageId', 'BOX_INVALID')
+    }
+    if (!isReactionEmoji(input.emoji)) {
+      throw new BoxError(`unsupported reaction: ${String(input.emoji)}; use one of ${Object.keys(REACTIONS).join(' ')}`, 'BOX_INVALID')
+    }
+    return await this.runReact({ messageId: input.messageId.trim(), emoji: input.emoji, by: normalizeAddress(input.by), on: input.on !== false })
+  }
+
+  /** 当前有效的回应，按加上的先后排列。 */
+  abstract reactions(): Promise<BoxReaction[]>
+
+  protected abstract runReact(input: { messageId: string; emoji: ReactionEmoji; by: BoxAddress; on: boolean }): Promise<BoxReaction | undefined>
 
   protected abstract runSend(input: NormalizedBoxSend): Promise<BoxEnvelope>
 
