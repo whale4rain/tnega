@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.0 | [`v0.4.25-beta.4...v0.5.0`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.4...v0.5.0) | 20 |
 | 0.4.25-beta.4 | [`v0.4.25-beta.3...v0.4.25-beta.4`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.3...v0.4.25-beta.4) | 10 |
 | 0.4.25-beta.3 | [`v0.4.25-beta.2...v0.4.25-beta.3`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.2...v0.4.25-beta.3) | 29 |
 | 0.4.25-beta.2 | [`v0.4.25-beta.1...v0.4.25-beta.2`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.1...v0.4.25-beta.2) | 5 |
@@ -53,6 +54,27 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.0](https://github.com/whale4rain/tnega/releases/tag/v0.5.0) — 2026-10-13
+
+### Features
+
+- Desktop builds for macOS (Apple silicon and Intel `.dmg`) and Linux (`.AppImage` and `.deb`) ship from the same release as Windows. On macOS the app keeps the app, Edit and Window menus, places the window controls in the top-left header, reopens from the Dock and sizes its menu-bar icon. The Mac build is ad-hoc signed, so instead of updating itself it shows **Download**, which opens the release page; Windows and Linux update in place.
+- New sessions greet you in the display serif.
+
+### Fixes
+
+- Tool steps shorten a long command to one line and show it in full on hover and when expanded, instead of cutting it off at the edge.
+- Selected cards and the Workbench resize line use a soft border instead of the Carbon ink accent, which read as a bold white frame in dark mode.
+- Dialogs open above everything, start below the desktop window controls and take clicks on the desktop; their close button works again. The window controls dim with the dialog backdrop.
+- On macOS the sidebar header clears the window controls once panels settle, not only after a resize.
+
+### Other
+
+- The Linux desktop executable is `tnega-desktop`, so the `.deb` does not shadow the npm `tnega` CLI.
+- Every release builds and launches the Mac and Linux packages before publishing; a package that does not start blocks the whole release. A Desktop packages workflow runs the same check on pull requests without a tag.
+- A release-readiness browser suite walks the main flows in both themes, and `pnpm typecheck` now also checks the web app.
+- This stable release promotes the 0.4.25 previews (beta.1 to beta.4). npm publishes it to `latest`; desktop clients on the Stable channel update from `latest.yml`.
 
 ## [0.4.25-beta.4](https://github.com/whale4rain/tnega/releases/tag/v0.4.25-beta.4) — 2026-10-12
 
