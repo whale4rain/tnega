@@ -74,6 +74,13 @@ tnega web
 # Open http://127.0.0.1:3080 and configure your model in Settings.
 ```
 
+Work in the terminal instead, in the folder you want the agent to work on:
+
+```bash
+tnega tui              # sessions, streaming replies, approvals and diffs
+tnega tui --continue   # reopen the latest session in this folder
+```
+
 Run a single task headlessly:
 
 ```bash

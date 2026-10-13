@@ -54,6 +54,13 @@ tnega web
 # 浏览器打开 http://127.0.0.1:3080，在 Settings 配置模型。
 ```
 
+也可以在终端里工作（在要让 Agent 处理的文件夹里运行）：
+
+```bash
+tnega tui              # 会话、流式回复、审批与改动
+tnega tui --continue   # 打开这个文件夹最近的会话
+```
+
 无界面的单次执行：
 
 ```bash

@@ -15,6 +15,7 @@
 | 新的列表、卡片、表格、数字、时间、空态 | §7 信息显示原则 |
 | 新按钮、菜单、对话框、表单 | §8 组件与样式复用 |
 | 新的设置项 | §9 设置 |
+| 改终端界面（`packages/tui`） | §5.8 终端界面 |
 
 规则里写“必须 / 不得”的是硬性要求（大多有测试守着）；写“优先 / 默认”的是可以有理由偏离的默认做法，偏离时在代码注释里写理由。
 
@@ -269,6 +270,19 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - 协调者与 Thread 的消息完整显示，不使用 “Show more” 或行数裁切；简洁表达由 Agent 的沟通指令负责，不由界面隐藏消息。
 - Board（2026-10-10 起，`project/Board.tsx`）从上到下：**问候**（2026-10-12 起取代项目名、天气行、彩色形状条与 Today 统计行：大块颜色和图案是陷阱，留白更重要）——`greeting()` 生成一句按时间的问候（Good morning / Lunchtime（午间且没有等你的事）/ Good afternoon / Good evening / Working late），用 `--font-display`；下面一句人话说现在的情况（谁在等你、谁有结果、谁还在做；什么都没有就说 Nothing needs you，午间说可以去吃饭），再一句 `--text-3` 的简短回顾（上午回顾昨天，之后回顾今天到目前为止：完成、产物、tokens），没有发生什么就不写 → 泳道 Needs you / Working / Ready（**段头是一条柔和的色带**：`--surface-hover` 底、`--radius-md`、`--text-sm` 500 字重 `--text-2`，前面的状态点带颜色，数字 `--text-3`；Idle / Resolved 折叠行与 Recently 用同一种段头；宽面板并排时空泳道写一句“Nothing waiting on you / No thread running / No new results”）→ Idle 与 Resolved 收成一行，点开一起显示 → **Recently**：最近 4 件事（started / reported / finished / asked / got blocked / failed / added / pushed / opened pull request），一行一件，图标 + Thread 名 + 动词 + 灰色摘要 + 时间，点击打开该 Thread。
 - Board 卡片是段头下的**平铺行**（2026-10-12 起）：无边框、无底色，悬停才铺 `--surface-hover`；Needs you 不再加琥珀描边，靠状态灯与段头的点表达；标题 `--text-md` 500 字重，进展 `--text-sm`，产物 chip 底色 `--surface-hover`。内容：状态灯 · 标题（整张卡的点击区）· 进展一行（Needs you 的问题或失败原因给两行，其他一行）· **分段清单**（每步一段：完成为强调色、当前步淡强调色且只在 Working 时明灭、未做为凹陷色；超过 12 步退回一条进度条）`n/m` · **产物 chip**（最新 3 个，含推送与 PR；产物点开预览，推送 / PR 在浏览器打开，其余收成 `+N` 打开 Thread）· 底部 `动词 + 时间`（Asked / Failed / Updated / Reported / Resolved）· 活跃时长 · tokens。不加头像、不加新的状态色。
+
+### 5.8 终端界面（TUI）
+
+`tnega tui`（`packages/tui`，Ink）是同一个服务端的又一个客户端：在进程内启动服务端（`--url` 可接到已运行的），用 `@tnega/client` 的 API、Timeline 与天气规则，所以状态、折叠与命名和 Web 一致。Project 不在 TUI 里实现；终端放不下的（浏览器 screencast、图片与 Office 预览、模型路由与网络设置的编辑）用 `/web` 打开 Web 界面。
+
+- **颜色只表达状态**：正文与背景用终端自己的前景、背景，元数据用 `dim`，结构靠字重与留白，不加色块、不加彩色边框；状态色只有命名 ANSI 色——绿（完成、新增行）、黄（等你：审批与问题的圆角框、雪）、红（失败、删除行）——跟随用户终端的明暗主题，不探测、不写 RGB。不用蓝色，不画 logo 图形。
+- **滚动区只追加**：会话开头一行 `tnega` + 文件夹 + 会话标题，之后每个结束的条目用 `<Static>` 打印一次进终端的滚动区，长对话不重绘（打开会话时只打印最近 80 条，更早的用 `/web` 看）。只有进行中的回合、等你的面板、输入框与状态行是活动区，活动区的高度不超过终端：回复太长时只显示末尾若干行，结束后完整写入滚动区。
+- **折叠同 §5.1**：进行中的回合保留叙述，连续工具调用折成一行写当前步骤（`Reading a.ts · 3 steps`，前面是转圈）；结束的回合只留答复、改动文件与需要处理的失败，过程折成 `Used N tools · Ctrl+O to show`。`Ctrl+O` 清屏后按全部展开或折叠重新打印（终端里已打印的内容收不回，所以是整屏重绘而不是就地展开）。思考同 §5.1：进行中是 `dim` 斜体、左侧竖线、最近 6 行；结束后一行 `Thought for 6.4s`。
+- **用户消息** 前面是 `dim` 的 `›`，正文加粗；不画气泡。条目之间空一行，回合内的块之间空一行。
+- **输入框** 是一个 `dim` 圆角框，`›` 提示符，可多行：Enter 发送（运行中则作为改向消息），Shift+Enter（支持 kitty 键盘协议的终端）/ Alt+Enter / Ctrl+J / 行尾 `\` 换行；运行中 Esc 停止。终端光标停在插入点，中文输入法的候选框跟着光标；编辑按字素进行，宽字符按两格计算换行与光标位置（`string-width`）。`/` 补全命令（与 Web 共用 `CLIENT_COMMANDS` 加 TUI 的 `/new` `/sessions` `/usage` `/diff` `/settings` `/web` `/help` `/quit`），`@` 补全文件；不需要参数的命令在列表里按 Enter 直接执行。
+- **等你** 的审批与问题替换输入框，黄色圆角框首行写 “Waiting for you”，状态行同时是雪；审批只认 `y` / `n`（Esc 也拒绝），回车不批准，避免把给输入框的回车误当成同意。
+- **状态行** 在最底一行：天气（活动天气用 braille 转圈，其余用静态符号，旁边总有 `WEATHER_LABEL` 文字）· 模型 · Agent 类型 · 非默认的模式与权限；右侧是上下文占比与花费。`TNEGA_REDUCED_MOTION=1` 让转圈静止（终端没有 `prefers-reduced-motion`）。
+- 列表类面板（会话、模型、改动文件）共用 `Picker`：标题一行、可输入过滤、`›` 与反色标出选中项、当前项前有 `•`，末行是按键提示；面板高度受终端行数限制，超出时滚动。
 
 ## 6. 字号与信息显示偏好
 

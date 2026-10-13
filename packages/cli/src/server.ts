@@ -2608,12 +2608,11 @@ class HttpError extends Error {
 }
 
 function logHotPluginEvent(event: HotPluginEvent): void {
+  // console rather than raw stderr: the TUI reroutes console output above its frame.
   if (event.type === 'loaded') {
-    if (event.generation > 1) process.stderr.write(`[tnega] plugins reloaded (generation ${event.generation}, ${event.plugins} plugin(s))
-`)
+    if (event.generation > 1) console.error(`[tnega] plugins reloaded (generation ${event.generation}, ${event.plugins} plugin(s))`)
   } else {
-    process.stderr.write(`[tnega] plugin reload failed: ${errorMessage(event.error)}
-`)
+    console.error(`[tnega] plugin reload failed: ${errorMessage(event.error)}`)
   }
 }
 

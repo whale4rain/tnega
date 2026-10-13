@@ -14,12 +14,14 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react-jsx"
   },
   "include": [
     "scripts/**/*.ts",
     "src/**/*.ts",
     "packages/**/*.ts",
+    "packages/**/*.tsx",
     "test/**/*.ts",
     "vitest.config.ts"
   ]

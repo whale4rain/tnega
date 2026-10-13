@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { parseSseFrame } from './api'
-import { applyStream, beginRun, fromEvents, presentOutcome, presentRun, type Entry } from './timeline'
-import { presentTool, readableOutput } from './tools'
-import type { SessionEvent, StreamEvent } from './types'
+import { parseSseFrame } from '../src/api.js'
+import { applyStream, beginRun, fromEvents, presentOutcome, presentRun, type Entry } from '../src/timeline.js'
+import { presentTool, readableOutput } from '../src/tools.js'
+import type { SessionEvent, StreamEvent } from '../src/types.js'
 
 let seq = 0
 function ev<T extends SessionEvent['type']>(type: T, payload: Extract<SessionEvent, { type: T }>['payload'], id = `e${++seq}`): SessionEvent {
@@ -273,11 +273,10 @@ describe('applyStream', () => {
     expect(live.blocks.map(block => block.kind)).toEqual(['reasoning', 'text'])
     expect(live.blocks[0]).toMatchObject({ text: 'Add them.', streaming: true })
 
-    const rest: StreamEvent[] = [
+    const answered = ([
       { type: 'message_delta', id: 'm1', delta: '5' },
       { type: 'message_stop', id: 'm1', finishReason: 'stop' },
-    ]
-    const answered = rest.reduce(applyStream, thinking)
+    ] satisfies StreamEvent[]).reduce(applyStream, thinking)
     const agent = answered[1] as Extract<Entry, { kind: 'agent' }>
     expect(agent.blocks[0]).toMatchObject({ kind: 'reasoning', text: 'Add them.', streaming: false, durationMs: expect.any(Number) })
     expect(agent.blocks[0]).not.toHaveProperty('startedAt')

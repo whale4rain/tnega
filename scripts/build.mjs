@@ -26,9 +26,26 @@ const common = {
   // @lydell/node-pty 是 Workbench 终端的原生 PTY（预编译二进制），同样只能在运行期解析。
   // undici（HTTP 工具走代理时才动态加载）是运行期依赖：不必在每个入口 bundle 里各打一份。
   external: ['koffi', 'playwright-core', '@lydell/node-pty', 'undici'],
+  plugins: [inkDevtoolsStub()],
   banner: {
     js: "import { createRequire as __tnegaCreateRequire } from 'node:module'; const require = __tnegaCreateRequire(import.meta.url);",
   },
+}
+
+/**
+ * Ink（TUI）只在 DEV=true 且装了 react-devtools-core 时才加载 `./devtools.js`；
+ * 打包会把它的静态 import 提到顶层，所以换成空模块，发布产物不依赖调试工具。
+ */
+function inkDevtoolsStub() {
+  return {
+    name: 'ink-devtools-stub',
+    setup(build) {
+      build.onResolve({ filter: /^\.\/devtools\.js$/ }, args => (
+        /[\\/]ink[\\/]build[\\/]/.test(args.importer) ? { path: 'ink-devtools', namespace: 'ink-devtools-stub' } : undefined
+      ))
+      build.onLoad({ filter: /.*/, namespace: 'ink-devtools-stub' }, () => ({ contents: '', loader: 'js' }))
+    },
+  }
 }
 
 /**
