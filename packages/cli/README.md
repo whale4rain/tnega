@@ -132,8 +132,27 @@ profile 应只引用信任的代码；工具沙箱不会隔离插件本身。
 - `host.plugin` 是一个载体插件：挂到任意 runtime（Web 每次运行的 runtime 与常驻 Agent
   都挂了），它把当前一代插件挂成子 Fiber；重载时按逆序 dispose 旧一代，再挂新一代。
   新一代挂载失败时回滚到旧一代；读取或导入失败时旧一代继续运行。
-- `GET /api/plugins` 返回 `{enabled, file, generation, plugins, error?}`，
+- `GET /api/plugins` 返回 `{enabled, file, generation, plugins, error?, dev}`（`dev` 为插件开发模式的状态），
   `POST /api/plugins/reload` 立即重载。旧一代模块留在内存中，适合开发期迭代。
+
+### 插件开发模式（`--plugin-dev`）
+
+`tnega web --plugin-dev`、`tnega tui --plugin-dev`（或宿主未指定时的环境变量
+`TNEGA_PLUGIN_DEV=1`）让 Agent 自己写插件并当场挂进自己。默认关闭。实现见
+`plugin-dev.ts`，它复用上面的热重载宿主：
+
+- 插件目录 `<config>/tnega/dev-plugins/`（与 `profiles/` 同级），每个插件一个
+  `<name>.mjs`，`profile.json` 由目录内容生成。启动时已有的插件照常加载。
+- 工具：`plugin_write {name, source}` 写入并重载，返回 `ok`、`toolsAdded` /
+  `toolsRemoved` 与错误；新工具在同一次运行的下一步就能调用。`plugin_read`、
+  `plugin_list`、`plugin_remove` 用于查看、修改与卸载。
+- 插件只用传入的 `ctx`：`ctx.get('tools').register({schema, execute})`、`ctx.on`、
+  `ctx.effect`；替换或删除时按 Fiber 逆序撤销它注册的一切。
+- 护栏：插件在宿主进程中执行，不受工具沙箱约束，所以 `plugin_write` /
+  `plugin_remove` 在 bypass 以外始终需要批准，插件注册的新工具也按未知工具走批准；
+  名称限定为 `[a-z][a-z0-9-]*`，写入只落在插件目录，源码上限 64 KiB。导入或挂载
+  失败时文件回滚到上一版本，运行中的一代始终是能加载的那一代。插件目录不受监听，
+  手改文件后调用一次 `plugin_write` 或重启宿主。
 
 ## web server（server.ts）
 

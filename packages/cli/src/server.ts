@@ -94,6 +94,7 @@ import { listDirectory, MAX_TEXT_FILE_BYTES, readTextFile, writeTextFile } from 
 import { fileDiff, listChanges } from './changes.js'
 import { TerminalError, TerminalManager, type TerminalEvent } from './terminals.js'
 import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from './plugin-hmr.js'
+import { createPluginWorkshop, type PluginWorkshop } from './plugin-dev.js'
 import {
   createAgentRuntime,
   resolveLlmEnv,
@@ -189,6 +190,13 @@ export interface WebServerOptions {
    * `tnega web` and the desktop app pass `defaultHotProfile()`.
    */
   profile?: string
+  /**
+   * Plugin dev mode: the agent gets `plugin_*` tools that write plugins into
+   * this directory and patch them into the running agent (see `plugin-dev.ts`).
+   * `true` uses `defaultPluginDevDir()`. Off by default; `TNEGA_PLUGIN_DEV=1`
+   * turns it on when the host passes nothing.
+   */
+  pluginDev?: string | boolean
 }
 
 export interface WebServer {
@@ -235,6 +243,10 @@ export async function startWebServer(
   const hotPlugins = options.profile
     ? await createHotPluginHost(options.profile, { onEvent: logHotPluginEvent })
     : undefined
+  const pluginDev = options.pluginDev ?? process.env.TNEGA_PLUGIN_DEV === '1'
+  const pluginWorkshop = pluginDev
+    ? await createPluginWorkshop(...(typeof pluginDev === 'string' ? [pluginDev] : []))
+    : undefined
   const context: ServerContext = {
     ...(options.fetch ? { hostFetch: options.fetch } : {}),
     webRoot,
@@ -252,6 +264,7 @@ export async function startWebServer(
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),
     ...(hotPlugins ? { hotPlugins } : {}),
+    ...(pluginWorkshop ? { pluginWorkshop } : {}),
     processes: new Map(),
     terminals: new TerminalManager(),
   }
@@ -286,6 +299,7 @@ export async function startWebServer(
       context.terminals.dispose()
       await context.chatgptLogin?.stop()
       await hotPlugins?.close()
+      await pluginWorkshop?.close()
       await ownedBrowser?.close()
       const registries = [...context.processes.values()]
       context.processes.clear()
@@ -316,6 +330,7 @@ interface ServerContext {
   /** Background processes per workspace; they outlive the runs that start them. */
   processes: Map<string, ProcessRegistry>
   hotPlugins?: HotPluginHost
+  pluginWorkshop?: PluginWorkshop
   terminals: TerminalManager
 }
 
@@ -393,7 +408,13 @@ async function handleApi(
   }
 
   if (url.pathname === '/api/plugins' && req.method === 'GET') {
-    sendJson(res, 200, context.hotPlugins ? { enabled: true, ...context.hotPlugins.status() } : { enabled: false })
+    const workshop = context.pluginWorkshop
+    sendJson(res, 200, {
+      ...(context.hotPlugins ? { enabled: true, ...context.hotPlugins.status() } : { enabled: false }),
+      dev: workshop
+        ? { enabled: true, dir: workshop.dir, ...workshop.host.status(), plugins: (await workshop.list()).map(plugin => plugin.name) }
+        : { enabled: false },
+    })
     return
   }
 
@@ -1267,7 +1288,7 @@ async function handleRun(
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ...(context.browser ? { browser: context.browser } : {}),
       processes: processesFor(context, workspace),
-      ...(context.hotPlugins ? { hotPlugins: context.hotPlugins.plugin } : {}),
+      hostPlugins: hostPlugins(context),
     })
     return
   }
@@ -1300,7 +1321,7 @@ async function handleRun(
       },
       plugins: [
         ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false })] : []),
-        ...(context.hotPlugins ? [context.hotPlugins.plugin] : []),
+        ...hostPlugins(context),
       ],
     })
     const toolService = runtime.root.get('tools') as ToolsService
@@ -1470,8 +1491,8 @@ interface ResidentRunRequest {
   attachments?: ModelAttachment[]
   browser?: PlaywrightBrowserHost
   processes?: ProcessRegistry
-  /** Carrier for the hot-reloaded profile plugins (see `plugin-hmr.ts`). */
-  hotPlugins?: Plugin
+  /** Host-level plugins: the hot profile carrier and the plugin dev workshop. */
+  hostPlugins?: readonly Plugin[]
   config: SystemConfig
   prompt: string
   permission: PermissionMode
@@ -1597,7 +1618,7 @@ async function createResidentRuntime(
     permission: req.permission,
   }))
   fibers.push(await root.plugin(toolSubagent))
-  if (req.hotPlugins) fibers.push(await root.plugin(req.hotPlugins))
+  for (const plugin of req.hostPlugins ?? []) fibers.push(await root.plugin(plugin))
   return {
     root,
     dispose: async () => {
@@ -2605,6 +2626,14 @@ class HttpError extends Error {
   ) {
     super(message)
   }
+}
+
+/** Plugins every agent runtime mounts: the hot profile and, in plugin dev mode, the workshop. */
+function hostPlugins(context: ServerContext): Plugin[] {
+  return [
+    ...(context.hotPlugins ? [context.hotPlugins.plugin] : []),
+    ...(context.pluginWorkshop ? [context.pluginWorkshop.plugin] : []),
+  ]
 }
 
 function logHotPluginEvent(event: HotPluginEvent): void {

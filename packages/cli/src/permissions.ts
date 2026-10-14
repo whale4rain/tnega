@@ -23,6 +23,8 @@ const ALWAYS_ALLOWED = new Set([
   // 只读
   'echo', 'now', 'calculator', 'json', 'read_file', 'list_dir',
   'glob', 'grep', 'http_get', 'web_search', 'skills_list', 'skill_read',
+  // 插件开发模式的只读入口；plugin_write / plugin_remove 在宿主进程里执行代码，始终要批准。
+  'plugin_list', 'plugin_read',
   'get_goal', 'update_goal', 'list_subagent', 'send_agent_message',
   'read_project', 'list_threads', 'read_artifact', 'office_inspect', 'office_read',
   // Project 内部
