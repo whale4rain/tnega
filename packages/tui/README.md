@@ -16,6 +16,9 @@ Built with [Ink](https://github.com/vadimdemedes/ink). Layout and colours follow
 | --- | --- |
 | Enter | Send; while the agent runs, the text steers it |
 | Shift+Enter, Alt+Enter, Ctrl+J, trailing `\` | New line |
+| Tab, Alt+Enter (while it runs) | Queue the text for after this run; ↑ takes it back, Ctrl+X drops it |
+| Shift+Tab | Mode: auto → plan → goal |
+| ? (empty prompt) | Every key |
 | Esc | Stop the run; close a panel |
 | Ctrl+O | Show every step of the transcript, or fold it again |
 | ↑ ↓ | Earlier prompts (on the first or last line) |
@@ -41,5 +44,10 @@ and MCP commands. The TUI adds `/new`, `/sessions`, `/continue`, `/usage`,
   cursor.
 - `transcript.tsx`, `markdown.tsx`: entries and Markdown as Ink elements.
 - `views.tsx`, `picker.tsx`, `prompts.tsx`: panels, lists, approvals, questions.
+- `hints.tsx`, `terminal.ts`: the key hint row, the `?` key sheet, and the kitty keyboard check.
+
+The row under the prompt names the keys that matter right now (`hints.tsx`).
+Shift+Enter only works where the terminal speaks the kitty keyboard protocol;
+the TUI asks once at start (`terminal.ts`) and names Ctrl+J instead elsewhere.
 
 `TNEGA_REDUCED_MOTION=1` stills the spinners.

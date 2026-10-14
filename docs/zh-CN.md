@@ -57,8 +57,9 @@ tnega web
 也可以在终端里工作（在要让 Agent 处理的文件夹里运行）：
 
 ```bash
-tnega tui              # 会话、流式回复、审批与改动
+tnega                  # 终端界面（同 tnega tui）
 tnega tui --continue   # 打开这个文件夹最近的会话
+tnega --help           # 所有命令与选项
 ```
 
 无界面的单次执行：

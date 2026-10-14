@@ -82,4 +82,41 @@ describe('App', () => {
     release.resolve()
     await until(() => !controller.state.running)
   })
+
+  it('shows key hints under the composer and every key on ?', async () => {
+    const { type, frame } = await mount()
+    expect(frame()).toContain('enter send')
+    expect(frame()).toContain('? all keys')
+    await type('?')
+    expect(frame()).toContain('Keys')
+    expect(frame()).toContain('drop a queued message')
+    await type('?')
+    expect(frame()).not.toContain('drop a queued message')
+  })
+
+  it('labels a multi-line prompt and a non-default mode on the box', async () => {
+    const { type, frame } = await mount()
+    await type('one')
+    await type('\n')
+    await type('two')
+    expect(frame()).toContain('2 lines')
+    await type('\u001B[Z')
+    await until(() => frame().includes('2 lines · plan'))
+  })
+
+  it('queues with Tab while the agent works and shows it above the box', async () => {
+    const { server, type, frame, controller } = await mount()
+    const release = deferred()
+    server.state.release = release.promise
+    await type('first')
+    await type('\r')
+    await until(() => controller.state.running)
+    expect(frame()).toContain('tab queue for later')
+    await type('also lint')
+    await type('\t')
+    await until(() => frame().includes('queued  also lint'))
+    expect(frame()).toContain('ctrl+x drop')
+    release.resolve()
+    await until(() => !frame().includes('queued  also lint'))
+  })
 })

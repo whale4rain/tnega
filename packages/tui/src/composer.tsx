@@ -1,6 +1,7 @@
 /**
  * The multi-line prompt box. Enter sends; Shift+Enter (where the terminal
- * reports it), Alt+Enter, Ctrl+J or a trailing `\` add a line. The real
+ * reports it), Alt+Enter, Ctrl+J or a trailing `\` add a line. While a run
+ * goes, Tab or Alt+Enter queue the text for after it instead. The real
  * terminal cursor sits on the caret so an IME composes Chinese in place.
  */
 import { Box, Text, useCursor, useInput, usePaste, type DOMElement } from 'ink'
@@ -8,6 +9,7 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import * as edit from './editor.js'
 import type { EditorState } from './editor.js'
 import { glyph } from './theme.js'
+import { stringWidth } from './width.js'
 
 export interface ComposerKeys {
   /** Up/Down/Tab/Enter/Esc go to the completion list instead of the text. */
@@ -16,6 +18,14 @@ export interface ComposerKeys {
   /** `submit` is true for Enter: a command that needs nothing more runs at once. */
   onCompletionAccept: (submit: boolean) => void
   onCompletionClose: () => void
+  /** While a run goes: hold the text until it ends (Tab, Alt+Enter). */
+  onQueue?: ((text: string) => void) | undefined
+  /** Shift+Tab. */
+  onCycleMode?: (() => void) | undefined
+  /** A key pressed on an empty box (e.g. `?`); return true when handled. */
+  onEmptyKey?: ((input: string) => boolean) | undefined
+  /** Enter on an empty box. */
+  onSubmitEmpty?: (() => void) | undefined
 }
 
 export function Composer({
@@ -28,6 +38,7 @@ export function Composer({
   width,
   keys,
   origin,
+  label,
 }: {
   value: EditorState
   onChange: (next: EditorState) => void
@@ -40,6 +51,8 @@ export function Composer({
   keys: ComposerKeys
   /** The composer's top row within Ink's live output, for placing the terminal cursor. */
   origin: RefObject<DOMElement | null>
+  /** Shown in the top border's right end: line count, a non-default mode. */
+  label?: string | undefined
 }) {
   const latest = useRef(value)
   latest.current = value
@@ -59,6 +72,14 @@ export function Composer({
       if (key.return && !key.shift && !key.meta) return keys.onCompletionAccept(true)
       if (key.escape) return keys.onCompletionClose()
     }
+    if (key.tab && key.shift) return keys.onCycleMode?.()
+    if (keys.onQueue && (key.tab || (key.return && key.meta))) {
+      if (state.text.trim()) {
+        keys.onQueue(state.text)
+        set(edit.EMPTY)
+      }
+      return
+    }
     if (key.return && (key.shift || key.meta)) return set(edit.insert(state, '\n'))
     if (input === '\n' || (key.ctrl && input === 'j')) return set(edit.insert(state, '\n'))
     if (key.return) {
@@ -66,6 +87,7 @@ export function Composer({
         return set(edit.insert(edit.backspace(state), '\n'))
       }
       if (state.text.trim()) onSubmit(state.text)
+      else keys.onSubmitEmpty?.()
       return
     }
     if (key.backspace) return set(key.meta ? edit.deleteWord(state) : edit.backspace(state))
@@ -93,6 +115,7 @@ export function Composer({
     if (key.ctrl && input === 'w') return set(edit.deleteWord(state))
     if (key.ctrl || key.meta || key.escape || key.tab || key.pageUp || key.pageDown) return
     if (!input) return
+    if (!state.text && keys.onEmptyKey?.(input)) return
     // Without bracketed paste, typed-ahead text and its Enter can arrive in one chunk.
     if (input.length > 1 && input.endsWith('\r') && !input.slice(0, -1).includes('\r')) {
       const next = edit.insert(state, input.slice(0, -1))
@@ -122,20 +145,26 @@ export function Composer({
 
   const empty = !value.text
   const { before, at, after } = edit.splitAtCaret(value)
+  // The top border is drawn here so it can carry the label at its right end.
+  const tail = label ? ` ${label} ─╮` : '╮'
+  const top = `╭${'─'.repeat(Math.max(0, width - 1 - stringWidth(tail)))}${tail}`
   return (
-    <Box borderStyle="round" borderDimColor paddingX={1} width={width} flexDirection="row">
-      <Box width={2} flexShrink={0}><Text dimColor={!active}>{glyph.prompt}</Text></Box>
-      <Box flexGrow={1} width={inner}>
-        {empty
-          ? <Text dimColor>{active ? <Text inverse> </Text> : null}{placeholder}</Text>
-          : (
-              <Text>
-                {before}
-                {active ? <Text inverse>{at === '\n' || !at ? ' ' : at}</Text> : at === '\n' ? '' : at}
-                {at === '\n' ? '\n' : ''}
-                {after}
-              </Text>
-            )}
+    <Box flexDirection="column" width={width}>
+      <Text dimColor>{top}</Text>
+      <Box borderStyle="round" borderTop={false} borderDimColor paddingX={1} width={width} flexDirection="row">
+        <Box width={2} flexShrink={0}><Text dimColor={!active}>{glyph.prompt}</Text></Box>
+        <Box flexGrow={1} width={inner}>
+          {empty
+            ? <Text dimColor>{active ? <Text inverse> </Text> : null}{placeholder}</Text>
+            : (
+                <Text>
+                  {before}
+                  {active ? <Text inverse>{at === '\n' || !at ? ' ' : at}</Text> : at === '\n' ? '' : at}
+                  {at === '\n' ? '\n' : ''}
+                  {after}
+                </Text>
+              )}
+        </Box>
       </Box>
     </Box>
   )

@@ -44,6 +44,8 @@ Background Tasks 同时展示 Session 的 Job 与 Workspace 共享的长驻进�
 tnega run "prompt"                       # 一次 agent 会话
 tnega web                                # 本地 web UI（HTTP + SSE，127.0.0.1:3080）
 tnega tui                                # 终端界面（进程内服务端，随机本地端口）
+tnega                                    # 交互终端里同 tnega tui；管道或脚本里打印帮助并返回 2
+tnega --help | -v                        # 帮助 / 版本；tnega <命令> --help 或 tnega help <命令> 列出该命令的选项
 ```
 
 `tui` 选项：`--cwd <dir>`（工作区，默认当前目录）、`--continue` / `-c`（打开最近的会话）、

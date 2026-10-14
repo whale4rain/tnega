@@ -77,8 +77,9 @@ tnega web
 Work in the terminal instead, in the folder you want the agent to work on:
 
 ```bash
-tnega tui              # sessions, streaming replies, approvals and diffs
+tnega                  # the terminal client (same as tnega tui)
 tnega tui --continue   # reopen the latest session in this folder
+tnega --help           # every command and option
 ```
 
 Run a single task headlessly:
