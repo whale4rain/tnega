@@ -29,6 +29,7 @@ export async function runTuiCommand(args: readonly string[]): Promise<number> {
         port: parsed.port ?? 0,
         ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
         ...(parsed.profile !== false ? { profile: parsed.profile ?? defaultHotProfile() } : {}),
+        ...(parsed.pluginDev ? { pluginDev: true } : {}),
       })
   try {
     return await runTui({
@@ -51,6 +52,8 @@ interface ParsedTuiArgs {
   /** A session id, or `last` from `--continue`. */
   session?: string
   profile?: string | false
+  /** `--plugin-dev`: the agent may write plugins and patch them into itself. */
+  pluginDev?: boolean
 }
 
 const VALUE_OPTIONS = ['--url', '--port', '--cwd', '--config', '--config-file', '--session', '--profile']
@@ -62,6 +65,11 @@ export function parseTuiArgs(args: readonly string[]): ParsedTuiArgs {
     const arg = args[cursor]!
     if (arg === '--no-plugins') {
       parsed.profile = false
+      cursor += 1
+      continue
+    }
+    if (arg === '--plugin-dev') {
+      parsed.pluginDev = true
       cursor += 1
       continue
     }

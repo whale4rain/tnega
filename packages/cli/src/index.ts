@@ -73,6 +73,7 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.port !== undefined ? { port: parsed.port } : {}),
         ...(parsed.configFile ? { configFile: parsed.configFile } : {}),
         ...(parsed.profile !== false ? { profile: parsed.profile ?? defaultHotProfile() } : {}),
+        ...(parsed.pluginDev ? { pluginDev: true } : {}),
       })
       process.stdout.write(`tnega web listening on ${server.url}\n`)
       return new Promise<number>(() => {})
@@ -110,6 +111,8 @@ interface ParsedWebArgs {
   configFile?: string
   /** Hot-reloaded plugin profile; `false` from `--no-plugins`. */
   profile?: string | false
+  /** `--plugin-dev`: the agent may write plugins and patch them into itself. */
+  pluginDev?: boolean
 }
 
 function parseRunAgentArgs(args: readonly string[]): ParsedRunAgentArgs {
@@ -218,6 +221,11 @@ function parseWebArgs(args: readonly string[]): ParsedWebArgs {
     const arg = args[cursor]!
     if (arg === '--no-plugins') {
       parsed.profile = false
+      cursor += 1
+      continue
+    }
+    if (arg === '--plugin-dev') {
+      parsed.pluginDev = true
       cursor += 1
       continue
     }

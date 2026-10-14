@@ -22,6 +22,7 @@ const COMMANDS: readonly Row[] = [
 const CONFIG: Row = ['--config <file>', 'config file (default: ~/.tnega/config.json)']
 const PROFILE: Row = ['--profile <name|file>', 'plugin profile to load']
 const NO_PLUGINS: Row = ['--no-plugins', 'load no plugin profile']
+const PLUGIN_DEV: Row = ['--plugin-dev', 'let the agent write plugins and patch them in live']
 const HELP: Row = ['-h, --help', 'show this help']
 
 const COMMAND_HELP: Record<string, { usage: string; summary: string; options: readonly Row[] }> = {
@@ -37,6 +38,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       CONFIG,
       PROFILE,
       NO_PLUGINS,
+      PLUGIN_DEV,
       HELP,
     ],
   },
@@ -49,6 +51,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       CONFIG,
       PROFILE,
       NO_PLUGINS,
+      PLUGIN_DEV,
       HELP,
     ],
   },
