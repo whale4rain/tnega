@@ -30,7 +30,7 @@ Bypass explicitly runs without a sandbox. See the
 
 ## Interface
 
-Light, dark and system themes share the sky palette; weather
+Light, dark and system themes default to Carbon, a neutral grey palette; weather
 symbols communicate agent state. `Ctrl+J` toggles the Workbench and
 `` Ctrl+` `` opens the terminal. The desktop app shares the Web host's config and
 Session data and keeps running in the system tray when its window is closed.
