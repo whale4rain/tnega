@@ -28,7 +28,8 @@ import { KeyHints, KeySheet } from './hints.js'
 import { Picker, type PickerItem } from './picker.js'
 import { ApprovalPanel, QuestionPanel } from './prompts.js'
 import { Spinner } from './spinner.js'
-import { color, glyph, tint, weatherColor, weatherMark, weatherSpins } from './theme.js'
+import { color, glyph, tint } from './theme.js'
+import { CLOUD_WIDTH, HeaderCloud, STRIP_WIDTH, WeatherStrip, weatherTone } from './weather.js'
 import { AgentTurn, EntryView } from './transcript.js'
 import { ChangesView, HelpView, SettingsView, UsageView } from './views.js'
 import { padEnd, stringWidth, truncate } from './width.js'
@@ -305,13 +306,20 @@ function liveEntryIndex(state: TuiState): number | undefined {
 }
 
 function Banner({ state, hidden, width }: { state: TuiState; hidden: number; width: number }) {
-  return (
-    <Box flexDirection="column" width={width}>
+  const showCloud = width >= CLOUD_WIDTH + 30
+  const textWidth = showCloud ? width - CLOUD_WIDTH : width
+  const lines = (
+    <>
       <Text>
         <Text bold>tnega</Text>
-        <Text dimColor>  {truncate(state.workspace, Math.max(10, width - 8))}</Text>
+        <Text dimColor>  {truncate(state.workspace, Math.max(10, textWidth - 8))}</Text>
       </Text>
-      <Text dimColor>{state.session ? truncate(state.session.title || 'Untitled session', width) : 'New session · /help for keys and commands'}</Text>
+      <Text dimColor>{state.session ? truncate(state.session.title || 'Untitled session', textWidth) : 'New session · ? for keys'}</Text>
+    </>
+  )
+  return (
+    <Box flexDirection="column" width={width}>
+      {showCloud ? <HeaderCloud lines={lines} /> : lines}
       {hidden > 0 && <Text dimColor>{hidden} earlier entries are not shown here; /web shows the whole session.</Text>}
     </Box>
   )
@@ -331,20 +339,20 @@ function StatusLine({ state, controller, width }: { state: TuiState; controller:
   const weather = currentWeather(state)
   const settings = controller.settings
   const model = controller.model
-  const mark = weatherSpins(weather) ? <Spinner color={weatherColor(weather)} /> : <Text {...(weatherColor(weather) ? { color: weatherColor(weather)! } : { dimColor: true })}>{weatherMark(weather)}</Text>
+  const tone = weatherTone(weather)
   const ratio = state.context && state.context.limit > 0 ? state.context.ratio : undefined
   const cost = formatCost(state.usage?.cost)
   const right = [ratio !== undefined ? `${Math.round(ratio * 100)}% context` : undefined, cost].filter(Boolean).join(` ${glyph.bullet} `)
   const mode = settings.mode !== 'auto' ? settings.mode : undefined
   const left = [model?.name, settings.agentType, mode, settings.permission, settings.approvalMode === 'auto' ? 'auto-approve' : undefined]
     .filter(Boolean).join(` ${glyph.bullet} `)
-  const shown = truncate(left, Math.max(10, width - 20 - right.length))
+  const shown = truncate(left, Math.max(10, width - 20 - STRIP_WIDTH - right.length))
   // A non-default mode changes what Enter does, so it stands out from the rest.
   const modeAt = mode ? shown.indexOf(` ${glyph.bullet} ${mode}`) : -1
   return (
     <Box width={width} justifyContent="space-between">
       <Text>
-        {mark} <Text {...(weatherColor(weather) ? { color: weatherColor(weather)! } : {})}>{WEATHER_LABEL[weather]}</Text>
+        <WeatherStrip weather={weather} /> <Text {...tint(tone)}>{WEATHER_LABEL[weather]}</Text>
         {modeAt < 0
           ? <Text dimColor>  {shown}</Text>
           : (
