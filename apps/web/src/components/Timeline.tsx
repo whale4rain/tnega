@@ -21,6 +21,7 @@ import {
   SquareMousePointer,
 } from 'lucide-react'
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Choice, type ChoiceOption } from './Menu'
 import { turnWeather } from '../lib/weather'
 import { useCopy } from '../lib/hooks'
 import type { ProcessView } from '../lib/process-view'
@@ -58,7 +59,7 @@ export interface TimelineSky {
   contextRatio?: number
 }
 
-export function Timeline({ entries, running, actions, agent, sky, outcomeFirst = false, processView = 'steps' }: {
+export function Timeline({ entries, running, actions, agent, sky, outcomeFirst = false, processView = 'steps', onProcessViewChange }: {
   entries: readonly Entry[]
   running: boolean
   actions: TimelineActions
@@ -68,6 +69,8 @@ export function Timeline({ entries, running, actions, agent, sky, outcomeFirst =
   outcomeFirst?: boolean
   /** While a turn streams: every step as it happens, or one progress line until the answer. */
   processView?: ProcessView
+  /** Present when the live turn offers the switch at its foot. */
+  onProcessViewChange?: ((value: ProcessView) => void) | undefined
 }) {
   const lastAgent = findLastAgent(entries)
   // Tracked here, not per turn: the finished turn is re-keyed when durable events reload.
@@ -88,7 +91,7 @@ export function Timeline({ entries, running, actions, agent, sky, outcomeFirst =
               />
             )
           case 'agent':
-            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} processView={processView} />
+            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} processView={processView} onProcessViewChange={onProcessViewChange} />
           case 'compaction':
             return <CompactionMarker key={entry.id} summary={entry.summary} tokensBefore={entry.tokensBefore} />
           case 'slash':
@@ -262,6 +265,7 @@ const AgentTurn = memo(function AgentTurn({
   justFinished = false,
   outcomeFirst = false,
   processView = 'steps',
+  onProcessViewChange,
 }: {
   entry: Extract<Entry, { kind: 'agent' }>
   live: boolean
@@ -274,6 +278,7 @@ const AgentTurn = memo(function AgentTurn({
   outcomeFirst?: boolean
   /** While the turn streams: every step, or one progress line (see `Timeline`). */
   processView?: ProcessView
+  onProcessViewChange?: ((value: ProcessView) => void) | undefined
 }) {
   const weather = sky || live || justFinished || entry.status === 'error'
     ? turnWeather(entry, { live, justFinished, ...(sky?.waiting ? { waiting: true } : {}), ...(sky?.contextRatio !== undefined ? { contextRatio: sky.contextRatio } : {}) })
@@ -330,6 +335,19 @@ const AgentTurn = memo(function AgentTurn({
         {segments.map(renderSegment)}
         {files.length > 0 && <OfficeFiles files={files} onOpen={actions.onOpenFile} />}
         {thinking && <ThinkingLine hasContent={entry.blocks.length > 0} />}
+        {live && onProcessViewChange && (
+          <div className="turn-process">
+            <span className="turn-process-label">Process output</span>
+            <Choice
+              label="Process output"
+              value={processView}
+              options={PROCESS_VIEW_OPTIONS}
+              onChange={onProcessViewChange}
+              icon={<Layers size={12} />}
+              side="top"
+            />
+          </div>
+        )}
         {!live && (text || entry.forkId) && (
           <div className="turn-actions">
             {text && (
@@ -401,6 +419,16 @@ function ProcessHead({ blocks, live, open, onToggle }: { blocks: readonly Block[
     </button>
   )
 }
+
+/**
+ * The live turn's output switch. Steps is what the timeline does by default:
+ * narration, thoughts and tool calls stream in as they happen. Answer only
+ * keeps the one progress line and shows the answer once the turn ends.
+ */
+const PROCESS_VIEW_OPTIONS: ReadonlyArray<ChoiceOption<ProcessView>> = [
+  { value: 'steps', label: 'Steps', description: 'Stream every step and thought as the agent works' },
+  { value: 'answer', label: 'Answer only', description: 'Keep one progress line; the answer appears when the turn ends' },
+]
 
 /**
  * The model's visible reasoning. It reads as it is written, then folds to one

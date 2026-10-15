@@ -35,7 +35,7 @@ function mount() {
   }))
 }
 
-it('hides the streaming steps on request and keeps the choice for the next run', async () => {
+it('offers the switch at the foot of the streaming reply and keeps the choice', async () => {
   const view = mount()
   await view.findByText('Test session')
   expect(view.queryByRole('button', { name: /^Process output/ })).toBeNull()
@@ -44,7 +44,12 @@ it('hides the streaming steps on request and keeps the choice for the next run',
   fireEvent.keyDown(input, { key: 'Enter' })
   // Default: the process streams in as it happens.
   expect(await view.findByText('Reading the sources first.')).toBeTruthy()
-  fireEvent.click(view.getByRole('button', { name: 'Process output: Steps' }))
+  const turn = view.container.querySelector('.agent-turn.is-live')!
+  const chip = view.getByRole('button', { name: 'Process output: Steps' })
+  // It belongs to the streaming turn, not to the composer's dock.
+  expect(turn.contains(chip)).toBe(true)
+  expect(view.container.querySelector('.conv-dock')!.contains(chip)).toBe(false)
+  fireEvent.click(chip)
   fireEvent.click(view.getByRole('option', { name: /Answer only/ }))
   await waitFor(() => expect(view.queryByText('Reading the sources first.')).toBeNull())
   expect(view.getByRole('button', { name: 'Process output: Answer only' })).toBeTruthy()

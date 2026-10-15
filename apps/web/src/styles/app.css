@@ -1477,15 +1477,15 @@ kbd {
   color: var(--text);
 }
 
-/* The live turn's output switch, above the composer only while a run streams. */
-.process-view {
+/* The live turn's output switch, at the foot of the reply that is streaming. */
+.turn-process {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 2px;
+  margin: 2px 0 0 -2px;
 }
 
-.process-view-label {
+.turn-process-label {
   color: var(--text-3);
   font-size: var(--text-sm);
 }
