@@ -226,3 +226,21 @@ it('labels a finished thought with how long it took', () => {
   expect(view.getByRole('button', { name: 'Thought for 8.0s' }).getAttribute('aria-expanded')).toBe('false')
   expect(view.queryByRole('button', { name: /Show details|Used/ })).toBeNull()
 })
+it('folds an entire streaming turn into one line when the reader hides the process', () => {
+  const block = (callId: string, status: ToolView['status']): Block => ({
+    kind: 'tool', id: callId, tool: { callId, name: 'read_file', args: { path: `${callId}.ts` }, status },
+  })
+  const say: Block = { kind: 'text', id: 'say', text: 'Reading the sources first.' }
+  const live: Entry = { kind: 'agent', id: 'live', status: 'running', blocks: [say, block('a', 'running')] }
+  const view = render(createElement(Timeline, { entries: [live], running: true, actions: {}, processView: 'answer' }))
+  expect(view.queryByText('Reading the sources first.')).toBeNull()
+  expect(view.container.querySelectorAll('.tool-row')).toHaveLength(0)
+  const head = view.getByRole('button', { name: /^Working:/ })
+  expect(head.getAttribute('aria-expanded')).toBe('false')
+  // The line still opens on demand, so the hidden process is one click away.
+  fireEvent.click(head)
+  expect(view.getByText('Reading the sources first.')).toBeTruthy()
+  // Only the live feed is quiet: a finished turn keeps its answer in view.
+  view.rerender(createElement(Timeline, { entries: [completed], running: false, actions: {}, processView: 'answer' }))
+  expect(view.getByText('Finished the work.')).toBeTruthy()
+})

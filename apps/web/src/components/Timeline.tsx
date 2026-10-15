@@ -23,6 +23,7 @@ import {
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { turnWeather } from '../lib/weather'
 import { useCopy } from '../lib/hooks'
+import type { ProcessView } from '../lib/process-view'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentLive, presentOutcome, presentRun, stringify } from '../lib/timeline'
 import { officeFiles } from '../lib/office'
@@ -57,7 +58,7 @@ export interface TimelineSky {
   contextRatio?: number
 }
 
-export function Timeline({ entries, running, actions, agent, sky, outcomeFirst = false }: {
+export function Timeline({ entries, running, actions, agent, sky, outcomeFirst = false, processView = 'steps' }: {
   entries: readonly Entry[]
   running: boolean
   actions: TimelineActions
@@ -65,6 +66,8 @@ export function Timeline({ entries, running, actions, agent, sky, outcomeFirst =
   sky?: TimelineSky | undefined
   /** Show each turn's answer and fold its steps (project threads). */
   outcomeFirst?: boolean
+  /** While a turn streams: every step as it happens, or one progress line until the answer. */
+  processView?: ProcessView
 }) {
   const lastAgent = findLastAgent(entries)
   // Tracked here, not per turn: the finished turn is re-keyed when durable events reload.
@@ -85,7 +88,7 @@ export function Timeline({ entries, running, actions, agent, sky, outcomeFirst =
               />
             )
           case 'agent':
-            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} />
+            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} processView={processView} />
           case 'compaction':
             return <CompactionMarker key={entry.id} summary={entry.summary} tokensBefore={entry.tokensBefore} />
           case 'slash':
@@ -258,6 +261,7 @@ const AgentTurn = memo(function AgentTurn({
   latest = false,
   justFinished = false,
   outcomeFirst = false,
+  processView = 'steps',
 }: {
   entry: Extract<Entry, { kind: 'agent' }>
   live: boolean
@@ -268,11 +272,13 @@ const AgentTurn = memo(function AgentTurn({
   latest?: boolean
   justFinished?: boolean
   outcomeFirst?: boolean
+  /** While the turn streams: every step, or one progress line (see `Timeline`). */
+  processView?: ProcessView
 }) {
   const weather = sky || live || justFinished || entry.status === 'error'
     ? turnWeather(entry, { live, justFinished, ...(sky?.waiting ? { waiting: true } : {}), ...(sky?.contextRatio !== undefined ? { contextRatio: sky.contextRatio } : {}) })
     : undefined
-  const presentation = present(entry, live, outcomeFirst)
+  const presentation = present(entry, live, outcomeFirst, processView)
   const segments = segment(presentation.visible)
   const [processOpen, setProcessOpen] = useState(false)
   const [copied, copy] = useCopy()
@@ -348,10 +354,14 @@ const AgentTurn = memo(function AgentTurn({
   )
 })
 
-/** Finished turns with a run summary keep it; everything else folds outcome-first. */
-function present(entry: Extract<Entry, { kind: 'agent' }>, live: boolean, outcomeFirst: boolean): { process: Block[]; visible: Block[] } {
+/**
+ * Finished turns with a run summary keep it; everything else folds outcome-first.
+ * A streaming turn shows its steps, unless the reader asked for the quiet live
+ * view: then only the one progress line and the answer's arrival stay in view.
+ */
+function present(entry: Extract<Entry, { kind: 'agent' }>, live: boolean, outcomeFirst: boolean, processView: ProcessView): { process: Block[]; visible: Block[] } {
   if (outcomeFirst) return presentOutcome(entry, live)
-  if (live) return presentLive(entry)
+  if (live) return processView === 'answer' ? presentOutcome(entry, true) : presentLive(entry)
   const run = presentRun(entry)
   return run.process.length ? run : presentOutcome(entry, false)
 }

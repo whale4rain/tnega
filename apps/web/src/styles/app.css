@@ -1477,6 +1477,19 @@ kbd {
   color: var(--text);
 }
 
+/* The live turn's output switch, above the composer only while a run streams. */
+.process-view {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 2px;
+}
+
+.process-view-label {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
 .error-banner {
   display: flex;
   align-items: center;

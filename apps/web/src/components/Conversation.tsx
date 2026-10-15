@@ -5,6 +5,7 @@ import {
   ChevronDown,
   CircleDashed,
   GitBranch,
+  Layers,
   ListChecks,
   MoreHorizontal,
   Pencil,
@@ -51,9 +52,10 @@ import type {
   ImageAttachment,
 } from '../lib/types'
 import { CLIENT_COMMANDS, mergeCommands, parseCommand } from '../lib/completion'
+import { useProcessView, type ProcessView } from '../lib/process-view'
 import { Composer, SessionControls, type RunSettings } from './Composer'
 import type { ArgumentSuggestion } from './PromptBox'
-import { Menu } from './Menu'
+import { Choice, Menu, type ChoiceOption } from './Menu'
 import { Timeline } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
 import { BackgroundJobs } from './BackgroundJobs'
@@ -136,6 +138,7 @@ export function Conversation({
   const [commandNotice, setCommandNotice] = useState<string>()
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [resumeVersion, setResumeVersion] = useState(0)
+  const [processView, setProcessView] = useProcessView()
   const pendingResume = useRef<string | undefined>(undefined)
   const [recovery, setRecovery] = useState<SessionRecovery | undefined>()
   /** Sessions this view already continued on its own, so a failure is not retried in a loop. */
@@ -731,6 +734,7 @@ export function Conversation({
               ...(onOpenChange ? { onOpenChange } : {}),
             }}
             agent={{ id: summary?.id ?? streamingFor.current ?? 'draft', role: 'coordinator' }}
+            processView={processView}
             sky={{
               waiting: approvals.length > 0,
               ...(context && context.limit > 0 ? { contextRatio: context.ratio } : {}),
@@ -774,6 +778,19 @@ export function Conversation({
           ))}
           {sessionId && <QuestionPanel key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} running={live} onResumeQueued={() => { pendingResume.current = sessionId; setResumeVersion(version => version + 1) }} />}
           {plan && (plan.items.length > 0 || plan.status === 'pending') && <PlanPanel plan={plan} />}
+          {live && (
+            <div className="process-view">
+              <span className="process-view-label">Process output</span>
+              <Choice
+                label="Process output"
+                value={processView}
+                options={PROCESS_VIEW_OPTIONS}
+                onChange={setProcessView}
+                icon={<Layers size={12} />}
+                side="top"
+              />
+            </div>
+          )}
           <Composer
             settings={settings}
             onSettingsChange={patch => void changeSettings(patch)}
@@ -808,6 +825,16 @@ function latestPlan(events: readonly SessionEvent[]): PlanPayload | undefined {
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * The live run's output switch. Steps is what the timeline does by default:
+ * narration, thoughts and tool calls stream in as they happen. Answer only
+ * keeps the one progress line and shows the answer once the turn ends.
+ */
+const PROCESS_VIEW_OPTIONS: ReadonlyArray<ChoiceOption<ProcessView>> = [
+  { value: 'steps', label: 'Steps', description: 'Stream every step and thought as the agent works' },
+  { value: 'answer', label: 'Answer only', description: 'Keep one progress line; the answer appears when the turn ends' },
+]
 
 function EditableTitle({ value, onSave }: { value: string; onSave: (value: string) => void }) {
   const [editing, setEditing] = useState(false)
