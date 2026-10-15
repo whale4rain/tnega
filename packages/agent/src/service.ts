@@ -538,6 +538,8 @@ export class AgentService {
     // Whether this run was judged near its end when it crossed the compact ratio.
     const budgetState: { nearEnd?: boolean } = {}
     let finalTurnGranted = false
+    // Whether the step budget already handed the plugins one extra step.
+    let budgetGranted = false
     let currentStepIndex: number | undefined
     let turnError: unknown
     try {
@@ -547,8 +549,26 @@ export class AgentService {
         break
       }
       if (steps.length >= maxSteps) {
-        finishReason = 'max_steps'
-        break
+        // Out of steps while the model was still working. Ask exactly as a
+        // stopping step does: a plugin may steer one last step out of it (the
+        // continuation nudge does), so a run that was cut mid-task reports
+        // instead of ending on tool results nobody read.
+        const continued = budgetGranted ? undefined : await this._requestContinuation({
+          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+          index,
+          turn,
+          steps: copySteps(steps),
+          finishReason: 'max_steps',
+        })
+        if (!continued) {
+          finishReason = 'max_steps'
+          break
+        }
+        budgetGranted = true
+        if (continued.length) {
+          messages = [...messages, ...continued]
+          claimedMessages = continued.filter(message => message.role === 'user')
+        }
       }
       if (contextBudget) {
         messages = await this._enforceContextBudget(session, contextBudget, messages, llm, index, budgetState)
@@ -888,17 +908,15 @@ export class AgentService {
           : completion.finishReason === 'error'
             ? 'error'
             : 'stop'
-        const keepGoing = await this.ctx.serial('agent/turn-stopping', {
+        const continued = await this._requestContinuation({
           ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
           index,
           turn,
           steps: copySteps(steps),
           finishReason,
-        } satisfies AgentTurnStoppingEvent) as unknown
-        if (!keepGoing) {
-          nextStepMessages = await this._claimNextStepMessages()
-          if (nextStepMessages.length === 0) break
-        }
+        })
+        if (!continued) break
+        nextStepMessages = continued
       }
       if (index + 1 >= maxTurns && !finalTurnGranted) {
         finalTurnGranted = true
@@ -1206,6 +1224,19 @@ export class AgentService {
     ) {
       throw new AgentError('request envelope is not reconstructable from session log')
     }
+  }
+
+  /**
+   * Give plugins the last word before a turn stops: one may steer the model on
+   * (the continuation nudge does), and whatever it queued is claimed here.
+   * Returns the messages to continue with — empty when a listener only said to
+   * keep going — or undefined when the turn really stops.
+   */
+  private async _requestContinuation(payload: AgentTurnStoppingEvent): Promise<ModelMessage[] | undefined> {
+    const keepGoing = await this.ctx.serial('agent/turn-stopping', payload) as unknown
+    if (keepGoing) return []
+    const claimed = await this._claimNextStepMessages()
+    return claimed.length ? claimed : undefined
   }
 
   private async _claimNextStepMessages(): Promise<ModelMessage[]> {

@@ -33,6 +33,20 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
 `AgentCreationOptions.autoRecover` 让 resume 在安全时自动这样做（inbox 已有待处理输入时不插入）。
 续跑从不重放工具副作用：模型读到中断结果后自行决定。
 
+## 运行中被打断的回合（continuation nudge）
+
+模型有时在一句话里宣布“接下来我要……”就停住，或者把 turn 的 step 预算花在工具调用上——
+后者意味着它还没读到那一步的工具结果，答案也就没有出现。`continuationNudge` 插件在
+`agent/turn-stopping` 里用 `looksUnfinished` 判断最后一条 completion 是否“看起来没做完”：
+turn 或 step 因 `length` 被截断、turn 的 step 预算用尽（`max_steps`）、内容为空、以冒号结尾、
+以“让我 / 接下来 / Let me / I'll”宣布动作，或者在没有句末标点的情况下停在引导词上（“…… Now”、
+“…… 然后”）。判定为没做完就 `steer` 一条 `plugin:continue` 的消息，把同一 turn 拉回工作，
+每 turn 最多 2 次。
+
+“停在工具调用上”是其中一种：turn 的 step 预算用尽时循环也会问一次同样的 `agent/turn-stopping`，
+插件据此换来**额外一步**（每 turn 一次），让模型读到结果并给出结论，而不是带着没人读过的工具结果
+结束。回答用户的问题、或者用 concluding 工具主动收尾，都算有意停止，不会被拉回。
+
 ## 三层组件
 
 | 文件 | 角色 |
@@ -50,7 +64,7 @@ Agent 循环与活体 agent 生命周期。对应 DSH 的 `core/agent`（接口 
 - `agent/request` — 决定最终请求（messages/tools/options）
 - `llm/stream` — 调 adapter，可包装/短路
 - `agent/request-error` — 请求失败恢复缝（重试决策 `{ kind: 'retry' }`）
-- `agent/turn-stopping` — serial：依序问"要停吗"，首个 bail 出"不停"就继续
+- `agent/turn-stopping` — serial：依序问"要停吗"，首个 bail 出"不停"就继续；turn 因 step 预算用尽（`max_steps`）时也问一次，监听器可换来额外一步
 - inbox 系列：`agent/inbox/inserted` / `claimed` / `discarded` / `spliced`
 
 `agent/pre-step` 与 `agent/request` 使用异步 waterfall：监听器可以先 `await` 再改写
