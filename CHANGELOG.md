@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.1 | [`v0.5.0...v0.5.1`](https://github.com/whale4rain/tnega/compare/v0.5.0...v0.5.1) | 18 |
 | 0.5.0 | [`v0.4.25-beta.4...v0.5.0`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.4...v0.5.0) | 26 |
 | 0.4.25-beta.4 | [`v0.4.25-beta.3...v0.4.25-beta.4`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.3...v0.4.25-beta.4) | 10 |
 | 0.4.25-beta.3 | [`v0.4.25-beta.2...v0.4.25-beta.3`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.2...v0.4.25-beta.3) | 29 |
@@ -54,6 +55,26 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.1) — 2026-10-15
+
+### Features
+
+- While a turn runs, the reply ends with a **Process output** switch: **Steps** (the default) streams the narration, the model's thinking and every tool step as they happen, and **Answer only** keeps one progress line until the turn ends and the answer arrives. The folded steps stay one click away, and the choice is remembered on this device.
+- `tnega --help`, `-h` and `help` list every command, each command takes `--help`, `-v` prints the version, and a bare `tnega` opens the terminal client (printing help with exit code 2 when its output is piped). Unknown commands point to `--help`, and options without a command (`tnega -c`) go to the TUI.
+- In the terminal client a hint row under the prompt names the keys that matter right now and `?` on an empty prompt lists them all. While a run goes, `Tab` or `Alt+Enter` queues a message for after it (queued messages sit above the box, `Up` takes the newest back, `Ctrl+X` drops it), and `Shift+Tab` cycles auto, plan and goal. The box's top border shows the line count and a non-default mode, and the TUI asks the terminal for the kitty keyboard protocol so the hints name `Shift+Enter` only where it works.
+- The terminal client opens a session with the brand cloud and carries a coloured weather strip in its status line; `TNEGA_REDUCED_MOTION=1` stills the spinners and the strip.
+- Threads in a Project report back like a colleague: the thread prompt, the reminder appended to dispatches and the coordinator's brief rules ask for a short paragraph with links, leaving steps, commands and raw output to the checklist, execution details or an artifact. The coordinator's brief to a thread folds to one "Message from Coordinator" line that opens on click.
+- Messages in a Project room and in threads take emoji reactions from the user (a hover button and chips) and from Agents (`react_to_message`). Reactions are Blackboard facts owned by the Box seam and never wake an Agent.
+- Plugin dev mode (`tnega web --plugin-dev`, `tnega tui --plugin-dev`, or `TNEGA_PLUGIN_DEV=1` when the host does not say) lets an agent write plugins into `~/.tnega/dev-plugins` and patch them into itself: `plugin_write` puts a single-file plugin live in the next step of the same run, with `plugin_read`, `plugin_list` and `plugin_remove` beside it. It is off by default; plugins run in the host process without the tool sandbox, so writing and removing them needs approval outside bypass, names are limited to `[a-z][a-z0-9-]*`, sources to 64 KiB, and a plugin that fails to import rolls back to the previous generation.
+
+### Fixes
+
+- The agent finishes more of what it starts instead of handing a half-done job back. A turn that stops on a message trailing off without closing punctuation ("… and now", "…, then", "接下来") is read as cut short and the model is asked to continue, and a turn whose step budget runs out right after a tool call gets one last step to read those results and report. Markdown emphasis, code and emoji count as closing a message, so a finished reply is left alone.
+
+### Other
+
+- The README and its Chinese translation now describe the desktop installers for Windows, macOS and Linux, the terminal client, task-driven Projects and the Carbon look, with new screenshots taken from a real session.
 
 ## [0.5.0](https://github.com/whale4rain/tnega/releases/tag/v0.5.0) — 2026-10-13
 
