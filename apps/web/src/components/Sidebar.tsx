@@ -16,10 +16,10 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PullRequestMark } from './PullRequestMark'
 import { api } from '../lib/api'
-import { folderName, relativeTime, type ThemePreference } from '../lib/hooks'
+import { folderName, relativeTime, useScrollFade, type ThemePreference } from '../lib/hooks'
 import { projectApi } from '../lib/project-api'
 import { projectLight } from '../lib/project-model'
 import { StatusLight } from './StatusLight'
@@ -199,6 +199,11 @@ export function Sidebar({
     .sort((a, b) => b.at - a.at || a.index - b.index)
     .map(item => item.path)
 
+  // The list ends on a hard line under the footer: fade it out instead. The top
+  // edge keeps its hard cut because the group labels stick to it while scrolling.
+  const sessionList = useRef<HTMLElement>(null)
+  useScrollFade(sessionList, 'bottom')
+
   return (
     <aside className="sidebar" aria-label="Workspaces">
       <div className="sidebar-top">
@@ -224,7 +229,7 @@ export function Sidebar({
         )}
       </label>
 
-      <nav className="session-list workspace-tree">
+      <nav className="session-list workspace-tree scroll-fade" ref={sessionList}>
         {shownPinned.length > 0 && (
           <section className={`sidebar-section${pinnedOpen ? ' open' : ''}`} aria-label="Pinned">
             <div className="workspace-head">

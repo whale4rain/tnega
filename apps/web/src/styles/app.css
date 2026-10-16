@@ -142,6 +142,74 @@ kbd {
   background-color: var(--border-strong);
 }
 
+/* ==========================================================================
+   Glass
+   ========================================================================== */
+/*
+ * Floating shells are glass: the raised surface at --glass-alpha over a blurred and
+ * saturated backdrop, so what is behind them reads as depth instead of detail at 0.8
+ * instead of passing unnoticed. The floors it must still hold, and what it costs over
+ * a photo or the browser view, are in docs/design/tnega-design.md §3.2. This block is
+ * the inventory of glass: keep it in step with the components and with that section.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  .menu-popover,
+  .slash-menu,
+  .context-pop,
+  .reaction-menu {
+    background: var(--surface-raised);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .dialog-scrim {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ==========================================================================
+   Scroll edges
+   ========================================================================== */
+/*
+ * A list that scrolls out of view ends on a hard line. .scroll-fade replaces it
+ * with a fade drawn as a mask; lib/scroll.ts decides which edges fade (is-fading
+ * is only set while an edge is scrolled away from its end, so a container that
+ * cannot fade paints exactly as before). The stops are mask opacities, not
+ * colours, so they are the same in both themes and every palette: an even
+ * transparent-to-opaque gradient bands visibly on a high-density screen, which is
+ * what the extra stops are for. --scroll-fade is the fade distance.
+ */
+.scroll-fade {
+  --fade-top: 0px;
+  --fade-bottom: 0px;
+}
+
+.scroll-fade.is-fading-top { --fade-top: var(--scroll-fade); }
+.scroll-fade.is-fading-bottom { --fade-bottom: var(--scroll-fade); }
+
+.scroll-fade.is-fading {
+  --fade-mask: linear-gradient(to bottom,
+    transparent,
+    #0000000d calc(var(--fade-top) * 0.15),
+    #00000026 calc(var(--fade-top) * 0.3),
+    #0000004d calc(var(--fade-top) * 0.45),
+    #00000080 calc(var(--fade-top) * 0.6),
+    #000000b3 calc(var(--fade-top) * 0.75),
+    #000000d9 calc(var(--fade-top) * 0.87),
+    #000 var(--fade-top),
+    #000 calc(100% - var(--fade-bottom)),
+    #000000d9 calc(100% - var(--fade-bottom) * 0.87),
+    #000000b3 calc(100% - var(--fade-bottom) * 0.75),
+    #00000080 calc(100% - var(--fade-bottom) * 0.6),
+    #0000004d calc(100% - var(--fade-bottom) * 0.45),
+    #00000026 calc(100% - var(--fade-bottom) * 0.3),
+    #0000000d calc(100% - var(--fade-bottom) * 0.15),
+    transparent);
+  -webkit-mask-image: var(--fade-mask);
+  mask-image: var(--fade-mask);
+}
+
 .muted {
   color: var(--text-3);
 }
@@ -457,9 +525,11 @@ kbd {
   min-width: 184px;
   padding: 5px;
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  background: var(--glass-surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   animation: pop-in var(--duration-med) var(--ease-out);
 }
 
@@ -1364,9 +1434,11 @@ kbd {
   width: 250px;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  background: var(--glass-surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   opacity: 0;
   visibility: hidden;
   transform: translateY(-2px);
@@ -2786,9 +2858,11 @@ kbd {
   z-index: 20;
   padding: 5px;
   border-radius: var(--radius-lg);
-  background: var(--surface-raised);
+  background: var(--glass-surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   animation: pop-in var(--duration-med) var(--ease-out);
 }
 
@@ -2806,6 +2880,7 @@ kbd {
   margin: -5px -5px 4px;
   padding: 7px 12px;
   border-bottom: 1px solid var(--border);
+  /* Opaque, unlike the glass it sits in: rows scroll under this bar. */
   background: var(--surface-raised);
   font-size: 12px;
   font-weight: 600;
@@ -3020,7 +3095,10 @@ kbd {
   place-items: center;
   padding: 20px;
   background: var(--scrim);
-  backdrop-filter: blur(3px);
+  /* No text ever sits on the scrim, so the blur is actually visible here: what is
+     behind a dialog softens like frosted glass. */
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   animation: fade-in var(--duration-med) ease-out;
 }
 

@@ -63,10 +63,25 @@
   --reading-width: 780px;
   /* The Workbench opens about as wide as the conversation it sits beside, until it is dragged. */
   --workbench-default: clamp(420px, 40vw, 760px);
+  /* How far the edge fade of a long list reaches (.scroll-fade in app.css). */
+  --scroll-fade: 28px;
 
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --duration-fast: 120ms;
   --duration-med: 200ms;
+
+  /*
+   * Glass: floating shells are the raised surface at --glass-alpha over whatever they
+   * cover, blurred and saturated by the --glass-* values. The alpha is the whole
+   * trade-off: at 0.8 the material is plainly visible, and every text role still clears
+   * its floor against any surface this app draws behind a popover (the floors are
+   * checked in styles/glass.test.ts). Against a photo, the browser view or another
+   * window, body text can fall to about 6.5:1 and --text-3 to about 2.7:1: that is
+   * the accepted cost of the material, not an oversight.
+   */
+  --glass-blur: 12px;
+  --glass-saturate: 1.4;
+  --glass-surface: color-mix(in srgb, var(--surface-raised) calc(var(--glass-alpha) * 100%), transparent);
 }
 
 :root,
@@ -108,6 +123,7 @@
   --code-bg: #f1f4f7;
   --code-border: #e0e5eb;
   --selection: rgba(47, 111, 208, 0.18);
+  --glass-alpha: 0.8;
 
   /* Code editor syntax (Files panel); held to AA on code and panel surfaces. */
   --syntax-keyword: #7c3aad;
@@ -184,6 +200,7 @@
   --code-bg: #12161e;
   --code-border: #2a3240;
   --selection: rgba(138, 180, 248, 0.28);
+  --glass-alpha: 0.8;
 
   --syntax-keyword: #c4a7f5;
   --syntax-string: #7dcfa0;

@@ -2368,8 +2368,10 @@ button.board-chip.active {
   padding: 4px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: var(--glass-surface);
   box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   animation: pop-in var(--duration-med) var(--ease-out);
 }
 

@@ -82,6 +82,9 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 - **选中不描强调色**（2026-10-12 起）：选中的卡片或选项（打开中的 Thread 卡、默认模型路由、调色板、设置选项、问题选项）用 `--border-strong` 描边加 `--accent-soft` 底；工作台的拖动条悬停时是 `--border-strong` 细线。Carbon 的 `--accent` 是墨色（深色下近白），一圈强调色描边读作粗白框 / 粗黑框，压过了内容。焦点环仍用 `--border-focus`。
 - 需要中间色时用 `color-mix(in srgb, var(--a) N%, var(--b))`，两端都必须是 token；`--usage-*` 就是这样派生的，它们会自动跟随调色板。
 - 阴影（`--shadow-sm/md/lg`）只给浮层；深色模式下层级靠明度（§3.5）。
+- **浮层外壳是玻璃**（2026-10-16 起）：菜单、`/` 面板、上下文用量气泡、表情菜单，以及对话框遮罩，用 `--glass-surface`（`--surface-raised` 以 `--glass-alpha` = 0.8 叠在底下）+ `backdrop-filter: blur(12px) saturate(1.4)`（`--glass-blur` / `--glass-saturate`），背后的画面透上来但不挡住内容。α 就是这笔交易的价码：0.8 时材质一眼可见，而且**对着本应用自己会画在浮层后面的每一张面**（`bg`、`bg-sidebar`、`surface`、`surface-raised`、`surface-sunken`、`code-bg`）正文仍 ≥7:1、其余角色仍 ≥4.5:1，由 `apps/web/src/styles/glass.test.ts` 逐个调色板检查。代价写在这里不藏起来：浮层压在一张照片、浏览器视图或别的窗口上时，正文可能降到约 6.5:1、三级文字约 2.7:1。
+- 玻璃只用在**外壳**上：正文所在的卡片、对话、侧栏与工作台保持不透明（`glass.test.ts` 也检查这一点）；浮层里的滚动条与吸顶标头（如 `/` 面板的标题行）用不透明底，否则滚动的行会透过来。
+- 系统偏好 `prefers-reduced-transparency: reduce` 时全部玻璃退回不透明（`app.css` 的 Glass 段）。新增玻璃浮层要同时加进那份清单，否则 `glass.test.ts` 会失败。
 
 ### 3.3 Sky（基础调色板）
 
@@ -152,6 +155,7 @@ Sky 写在基础选择器里，是其他调色板覆盖的底；2026-10-12 起�
 - 语法色在 `code-bg`、`surface`、`surface-raised` 上 ≥ 4.5:1；
 - 强调色、危险色作按钮底时，反色文字 ≥ 4.5:1；
 - 分隔线 ≥ 1.25:1，强分隔线 ≥ 1.6:1；
+- 玻璃浮层另有一份底线（对着本应用自己的每一张面，正文 ≥7:1、其余角色 ≥4.5:1），由 `apps/web/src/styles/glass.test.ts` 检查，见 §3.2；
 - 深色层级：`surface` 对 `bg` ≥ 1.08:1，`raised` 对 `bg` ≥ 1.15:1。
 
 改颜色时先跑 `pnpm exec vitest run apps/web/src/styles/contrast.test.ts`。测试解析的是 `--token: #rrggbb;` 形式，调色板里需要被检查的颜色必须写成六位十六进制。
@@ -341,6 +345,8 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 
 - 过程默认折叠，结论默认展开：工具调用折成一行并写当前步骤，回合结束后过程折成 “Used N tools”（§5.1）；进行中的过程默认逐步流出，可用对话里的 **Process output** 收成一行进度（§5.1）；协调者与 Thread 消息始终完整显示（§5.7）。
 - 折叠行必须告诉人里面有什么（步骤名、数量），而不是只写 “Details”。展开状态不需要跨重载保留。
+- **跟随与停手**（2026-10-16 起）：对话视口在离底部 40px 内跟随新内容；用户一旦自己滚动（滚轮、触摸、方向键 / 翻页键，输入框里不算），150ms 内程序不再移动视口，往上滚一点点不会被流式输出拽回去（`lib/scroll.ts`，`useScrollPinning`）。离开底部超过容差时出现「跳到底部」按钮。
+- **滚动边缘渐隐**：长列表滚出视野的边缘不再硬切，用 7 档非线性不透明度遮罩渐隐（`.scroll-fade` + `--scroll-fade` 28px，`lib/scroll.ts` 决定哪个边渐隐；触顶 / 触底时该边归零，短列表不挂遮罩）。目前用在侧栏会话列表的**下**边缘；对话的上边缘不渐隐（吸顶元素会让遮罩下的标题发灰）。
 - 列表默认显示有限条数（侧栏 8 条），其余收进 “N more”；数量写在按钮上。
 
 ### 7.3 数字、时间与单位
@@ -399,6 +405,7 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 - 所有动效遵循 `prefers-reduced-motion`；过渡时长只用 `--duration-fast` / `--duration-med` 与 `--ease-out`。
 - 焦点必须可见：`--border-focus` 加 `--accent-soft` 光晕。
 - 颜色之外总有文字或形状区分状态。
+- 系统的「降低透明度」偏好开启时，浮层的毛玻璃退回不透明；上面的对比度底线不因此变化。
 - 在 Large 字号与 Comfortable 密度下界面不得出现文字重叠或被裁掉的控件；在 Small 字号下正文仍可读。
 
 ## 11. 改动前后清单 {#checklist}
@@ -415,5 +422,5 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 2. 在真实页面里至少看过：浅色与深色；Sky 与另一个调色板；Large 字号 + Comfortable 密度。截图与校准用 `/weather.html` 和真实页面，不用脱离实现的效果图。
 3. 新图形沿用扁平语言：实心色块、无描边、16px 可辨。
 4. 改标志时同步改 `--brand-cloud` / `--brand-eyes`、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
-5. 测试与源文件同目录，覆盖用户可见的行为；跑 `pnpm exec vitest run apps/web`。
+5. 测试与源文件同目录，覆盖用户可见的行为；跑 `pnpm exec vitest run apps/web`。改了颜色跑 `contrast.test.ts`，改了玻璃或新增浮层跑 `glass.test.ts`。
 6. 用户可见的变化写进 `CHANGELOG.md` 的 Unreleased；改变了设计规则的，同一次改动里更新本文。

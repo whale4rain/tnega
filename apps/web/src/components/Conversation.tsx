@@ -29,7 +29,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
-import { errorText, folderName } from '../lib/hooks'
+import { errorText, folderName, useScrollPinning } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
 import { applyStream, beginRun, formatTokens, fromEvents, type Entry } from '../lib/timeline'
@@ -611,30 +611,8 @@ export function Conversation({
 
   // --- scrolling ----------------------------------------------------------
 
-  const scroller = useRef<HTMLDivElement>(null)
-  const pinned = useRef(true)
-  const [showJump, setShowJump] = useState(false)
-  useEffect(() => {
-    pinned.current = true
-    setShowJump(false)
-  }, [sessionId])
-  useEffect(() => {
-    const el = scroller.current
-    if (el && pinned.current) el.scrollTop = el.scrollHeight
-  }, [entries, approvals, plan])
-  const onScroll = () => {
-    const el = scroller.current
-    if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-    pinned.current = atBottom
-    setShowJump(!atBottom)
-  }
-  const jump = () => {
-    const el = scroller.current
-    if (!el) return
-    pinned.current = true
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  }
+  const { scroller, showJump, onScroll, jump, pinToEnd } = useScrollPinning()
+  useEffect(() => { pinToEnd() }, [sessionId, pinToEnd])
 
   // --- render -------------------------------------------------------------
 
