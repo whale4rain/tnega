@@ -1,6 +1,6 @@
 {
   "name": "tnega",
-  "version": "0.5.1",
+  "version": "0.5.2-beta.1",
   "description": "A minimal agent harness with spacetime-composable plugin lifecycles.",
   "private": false,
   "license": "MIT",

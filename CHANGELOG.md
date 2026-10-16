@@ -56,6 +56,14 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.5.2-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.1) — 2026-10-16
+
+### Features
+
+- Floating layers are glass: menus, the `/` panel, the context popover, the reaction menu and the dialog scrim are the raised surface at 0.8 over a blurred, saturated backdrop, so what is behind them reads as depth instead of detail. Body text keeps its 7:1 floor against every surface the app itself draws behind a popover; over a photo or the browser view it can drop to about 6.5:1, and the system's reduced-transparency setting makes these layers opaque again.
+- A scrolling list no longer ends on a hard line: the sidebar's session list fades out at its bottom edge, and the fade returns to a hard edge at the end of the list.
+- The conversation stops following its own output for a moment after you scroll: it stays at the end within 40px and holds still for 150 ms after your wheel, touch or arrow keys, so reading back no longer fights the streamed reply.
+
 ## [0.5.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.1) — 2026-10-15
 
 ### Features
