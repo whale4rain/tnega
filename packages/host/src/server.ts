@@ -1,0 +1,2657 @@
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, stat } from 'node:fs/promises'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { extname, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  agents,
+  continuationNudge,
+  findInterruptedTurn,
+  recoverInterruptedTurn,
+  type DurableInbox,
+  type AgentCreationOptions,
+  type AgentHandle,
+  type AgentRegistry,
+  type AgentStreamEvent,
+  type LiveAgent,
+} from '@tnega/agent'
+import { Context, type Fiber, type Plugin } from '@tnega/core'
+import { observePtc } from './ptc-observation.js'
+import { observeCompaction } from '@tnega/compaction'
+import { sessionUsage } from '@tnega/usage'
+import { storedWorkspaceUsage } from '@tnega/usage'
+import { autoNameSession } from '@tnega/compaction'
+import { readWorkspacePrompt, writeWorkspacePrompt } from '@tnega/workspace-prompt'
+import { buildCompactionPrompt, SUMMARIZATION_SYSTEM_PROMPT } from '@tnega/compaction'
+import { autoContextBudget, SUMMARY_PREFIX } from '@tnega/compaction'
+import { ChatGptLogin, llmAuthOptions } from '@tnega/auth-chatgpt'
+import { discoverModels, ModelDiscoveryError, parseModelDiscoveryInput } from '@tnega/config'
+import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
+import { userQuestions, pendingQuestionsFromEvents, formatQuestionAnswer, UserQuestionError, type PendingQuestionRequest, type QuestionAnswers } from '@tnega/user-questions'
+import { toolQuestion } from '@tnega/tool-question'
+import { mountApprovalReview, reviewAutomaticApproval } from '@tnega/approval-host'
+import {
+  createCodingAgentPlugin,
+  installBuiltinSkills,
+  renderSkillIndex,
+  createSlashRegistry,
+  generatePlan,
+  type CodingService,
+  type Plan,
+  type SlashCommandResult,
+} from '@tnega/coding-agent'
+import { createLlmAdapter, modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
+import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from '@tnega/goal'
+import { personaFor } from '@tnega/persona'
+import { FileServeError, readWorkspaceFile, sendFile } from '@tnega/workspace-files'
+import { searchWorkspaceFiles } from '@tnega/workspace-files'
+import { memoryLocal } from '@tnega/memory-local'
+import {
+  isAgentType,
+  isModelAttachment,
+  session,
+  SessionLog,
+  type AgentType,
+  type ModelAttachment,
+  type ModelMessage,
+  type PlanPayload,
+  type SessionEvent,
+} from '@tnega/session'
+import { browserPlaywright, launchPageSource, parseLiveInput, PlaywrightBrowserHost } from '@tnega/browser-playwright'
+import { toolBrowser } from '@tnega/tool-browser'
+import { availableShells, configureNetwork, configureSystemShell, DEFAULT_ALLOWED_HOSTS, systemShell } from '@tnega/execution'
+import { listStoredSubagents, readSubagentEvents, subagentLocal } from '@tnega/subagent-local'
+import { SubagentError } from '@tnega/subagent'
+import { toolSubagent } from '@tnega/tool-subagent'
+import type { JobRegistry } from '@tnega/jobs'
+import { consolidateProjectMemory } from '@tnega/tool-memory'
+import { createBuiltinToolDefinitions, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
+import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
+import { ProjectHost } from '@tnega/project-host'
+import { runtimeCapabilities } from '@tnega/runtime'
+import { workspaceSubagentRoot } from '@tnega/home'
+import { defaultWorkspace } from '@tnega/home'
+import { handleProjectApi } from '@tnega/project-http'
+import { pickSystemFolder } from '@tnega/directory-picker'
+import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
+import { webSearchTool } from '@tnega/tool-web-search'
+import { listDirectory, MAX_TEXT_FILE_BYTES, readTextFile, writeTextFile } from '@tnega/workspace-files'
+import { fileDiff, listChanges } from '@tnega/workspace-files'
+import { TerminalError, TerminalManager, type TerminalEvent } from '@tnega/terminal'
+import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from '@tnega/plugin-host'
+import { createPluginWorkshop, type PluginWorkshop } from '@tnega/plugin-host'
+import { createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
+import { resolveLlmEnv } from '@tnega/config'
+import {
+  effectiveApiKey,
+  effectiveLlmConfig,
+  availableModels,
+  readSystemConfig,
+  SystemConfigError,
+  systemConfigPath,
+  systemConfigProblem,
+  updateSystemConfig,
+  normalizeApprovalReviewer,
+  normalizeProjectMemory,
+  PROJECT_MEMORY_DEFAULTS,
+  ModelRouteError,
+  parseModelRouteInput,
+  parseNetworkConfig,
+  removeModelRoute,
+  upsertModelRoute,
+  type EffectiveLlmConfig,
+  type SystemConfig,
+  type SystemConfigPatch,
+} from '@tnega/config'
+import {
+  compactSession,
+  createSession,
+  deleteSession,
+  ensureWorkspace,
+  forkSession,
+  isSessionId,
+  listSessions,
+  patchSessionMeta,
+  prepareSessionCompact,
+  readSessionMessages,
+  readSessionSnapshot,
+  readSessionSummary,
+  setSessionPermission,
+  setSessionApprovalMode,
+  type SessionSummary,
+  sessionFile,
+  truncateSessionAt,
+} from '@tnega/session-store'
+
+const DEFAULT_HOST = '127.0.0.1'
+const DEFAULT_PORT = 3080
+const MAX_BODY_BYTES = 1024 * 1024
+/** A run may carry a few downscaled images inline. */
+const MAX_RUN_BODY_BYTES = 24 * 1024 * 1024
+const MAX_RUN_ATTACHMENTS = 8
+// Independent of the automatic budget's retain ratio on purpose: a manual
+// compaction whose surface fits entirely under this budget falls back to
+// shadowing the whole surface (`keep` defaults to 0), so raising this value
+// past the surface size changes manual compaction from "keep the tail" to
+// "summarize everything". Keep it a deliberate choice, not a derived one.
+const KEEP_RECENT_TOKENS = 20_000
+/** The model a new ChatGPT sign-in route starts with; editable like any route. */
+const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
+
+
+export interface WebServerOptions {
+  /** Runtime assets for hosts which bundle the server away from its worker/WASM. */
+  ptcRuntime?: PtcRuntimeQuickjsConfig
+  port?: number
+  host?: string
+  webRoot?: string
+  configFile?: string
+  /** Run auto sessions through resident durable-inbox agents. Defaults to true. */
+  resident?: boolean
+  /**
+   * Project 作用域的授权上限。Project 里的每个 Thread 只能比它更窄；默认
+   * `workspace-write`：仓库内的读写直接放行，shell 与越界访问逐个请求用户批准。
+   */
+  projectPermission?: PermissionMode
+  /**
+   * The page the agent's `browser_*` tools drive. The desktop app passes its
+   * embedded view; by default the server launches the system Edge / Chrome on
+   * first use (see `browser` in System Config). `false` disables the tools.
+   */
+  browser?: PlaywrightBrowserHost | false
+  /**
+   * Fetch for the HTTP tools when no proxy is configured. The desktop app
+   * passes Electron's, which follows the system proxy settings.
+   */
+  fetch?: typeof fetch
+  /**
+   * Profile file whose plugins are mounted into every agent runtime and reloaded
+   * in place when the profile or a local plugin module changes. Off by default;
+   * `tnega web` and the desktop app pass `defaultHotProfile()`.
+   */
+  profile?: string
+  /**
+   * Plugin dev mode: the agent gets `plugin_*` tools that write plugins into
+   * this directory and patch them into the running agent (see `plugin-dev.ts`).
+   * `true` uses `defaultPluginDevDir()`. Off by default; `TNEGA_PLUGIN_DEV=1`
+   * turns it on when the host passes nothing.
+   */
+  pluginDev?: string | boolean
+}
+
+export interface WebServer {
+  url: string
+  port: number
+  close: () => Promise<void>
+}
+
+interface ResidentAgentEntry {
+  root: Context
+  agent: LiveAgent
+  registry: AgentRegistry
+  tools: ToolsService
+  dispose: () => Promise<void>
+  signature: string
+}
+
+interface ProjectHostEntry {
+  host: ProjectHost
+  signature: string
+}
+
+export async function startWebServer(
+  options: WebServerOptions = {},
+): Promise<WebServer> {
+  await installBuiltinSkills()
+  const host = options.host ?? DEFAULT_HOST
+  const port = options.port ?? DEFAULT_PORT
+  const webRoot = options.webRoot ?? defaultWebRoot()
+  const configFile = options.configFile
+  const startConfig = await readSystemConfig(configFile)
+  configureSystemShell(startConfig.shell)
+  applyNetwork(startConfig, options.fetch)
+  const activeRuns = new Map<string, AbortController>()
+  const approvals = new ApprovalBroker()
+  const residentAgents = new Map<string, ResidentAgentEntry>()
+  const projectHosts = new Map<string, ProjectHostEntry>()
+  let actualPort = port
+  // Nothing starts until the agent first uses the browser.
+  const ownedBrowser = options.browser === undefined
+    ? new PlaywrightBrowserHost(launchPageSource({ headless: true, ...(await readSystemConfig(configFile)).browser }))
+    : undefined
+  const browser = options.browser === false ? undefined : options.browser ?? ownedBrowser
+  const hotPlugins = options.profile
+    ? await createHotPluginHost(options.profile, { onEvent: logHotPluginEvent })
+    : undefined
+  const pluginDev = options.pluginDev ?? process.env.TNEGA_PLUGIN_DEV === '1'
+  const pluginWorkshop = pluginDev
+    ? await createPluginWorkshop(...(typeof pluginDev === 'string' ? [pluginDev] : []))
+    : undefined
+  const context: ServerContext = {
+    ...(options.fetch ? { hostFetch: options.fetch } : {}),
+    webRoot,
+    activeRuns,
+    approvals,
+    resident: options.resident !== false,
+    residentAgents,
+    projectHosts,
+    questionRoots: new Map(),
+    questionInboxes: new Map(),
+    steeringReady: new Map(),
+    residentCreation: new Map(),
+    projectPermission: options.projectPermission ?? 'workspace-write',
+    ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
+    ...(configFile ? { configFile } : {}),
+    ...(browser ? { browser } : {}),
+    ...(hotPlugins ? { hotPlugins } : {}),
+    ...(pluginWorkshop ? { pluginWorkshop } : {}),
+    processes: new Map(),
+    terminals: new TerminalManager(),
+  }
+
+  const server = createServer((req, res) => {
+    void handleRequest(req, res, context)
+  })
+
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once('error', rejectListen)
+    server.listen(port, host, () => {
+      server.removeListener('error', rejectListen)
+      const address = server.address()
+      if (address && typeof address === 'object') actualPort = address.port
+      resolveListen()
+    })
+  })
+
+  return {
+    url: `http://${host}:${actualPort}`,
+    port: actualPort,
+    close: async () => {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close(error => error ? rejectClose(error) : resolveClose())
+      })
+      const entries = [...residentAgents.values()]
+      residentAgents.clear()
+      await Promise.all(entries.map(entry => entry.dispose()))
+      const hosts = [...projectHosts.values()]
+      projectHosts.clear()
+      await Promise.all(hosts.map(entry => entry.host.dispose()))
+      context.terminals.dispose()
+      await context.chatgptLogin?.stop()
+      await hotPlugins?.close()
+      await pluginWorkshop?.close()
+      await ownedBrowser?.close()
+      const registries = [...context.processes.values()]
+      context.processes.clear()
+      await Promise.all(registries.map(registry => registry.dispose()))
+    },
+  }
+}
+
+interface ServerContext {
+  ptcRuntime?: PtcRuntimeQuickjsConfig
+  chatgptLogin?: ChatGptLogin
+  /** The host's fetch for the HTTP tools (see `WebServerOptions.fetch`). */
+  hostFetch?: typeof fetch
+  webRoot: string
+  configFile?: string
+  activeRuns: Map<string, AbortController>
+  approvals: ApprovalBroker
+  resident?: boolean
+  residentAgents?: Map<string, ResidentAgentEntry>
+  questionRoots?: Map<string, Context>
+  questionInboxes?: Map<string, DurableInbox>
+  /** Resident startup must persist its first prompt before accepting corrections. */
+  steeringReady: Map<string, Promise<boolean>>
+  residentCreation?: Map<string, Promise<ResidentAgentEntry>>
+  projectHosts?: Map<string, ProjectHostEntry>
+  projectPermission: PermissionMode
+  browser?: PlaywrightBrowserHost
+  /** Background processes per workspace; they outlive the runs that start them. */
+  processes: Map<string, ProcessRegistry>
+  hotPlugins?: HotPluginHost
+  pluginWorkshop?: PluginWorkshop
+  terminals: TerminalManager
+}
+
+function processesFor(context: ServerContext, workspace: string): ProcessRegistry {
+  const key = canonicalWorkspace(workspace)
+  let registry = context.processes.get(key)
+  if (!registry) {
+    registry = new ProcessRegistry()
+    context.processes.set(key, registry)
+  }
+  return registry
+}
+
+/** Mount the browser Provider over the shared host and the model-visible tools. */
+async function mountBrowser(root: Context, host: PlaywrightBrowserHost | undefined): Promise<Array<{ dispose: () => Promise<void> }>> {
+  if (!host) return []
+  return [await root.plugin(browserPlaywright, { host }), await root.plugin(toolBrowser)]
+}
+
+async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  context: ServerContext,
+): Promise<void> {
+  try {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if (url.pathname.startsWith('/api/')) {
+      await handleApi(req, res, url, context)
+    } else {
+      await handleStatic(req, res, url.pathname, context.webRoot)
+    }
+  } catch (error) {
+    if (error instanceof SystemConfigError) {
+      sendError(res, 409, error.message)
+      return
+    }
+    if (error instanceof HttpError) {
+      sendError(res, error.status, error.message)
+      return
+    }
+    if (!res.headersSent && !res.destroyed) {
+      sendError(res, 500, errorMessage(error))
+    } else if (!res.destroyed) {
+      writeSse(res, { type: 'error', message: errorMessage(error) })
+      res.end()
+    }
+  }
+}
+
+async function handleApi(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  context: ServerContext,
+): Promise<void> {
+  if (req.headers['x-tnega-client'] !== '1') {
+    sendError(res, 403, 'missing x-tnega-client header')
+    return
+  }
+  if (
+    req.method === 'POST'
+    || req.method === 'PUT'
+    || req.method === 'PATCH'
+  ) {
+    const contentType = req.headers['content-type'] ?? ''
+    if (!contentType.toLowerCase().startsWith('application/json')) {
+      sendError(res, 415, 'content-type must be application/json')
+      return
+    }
+  }
+
+  if (url.pathname === '/api/health') {
+    sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/api/plugins' && req.method === 'GET') {
+    const workshop = context.pluginWorkshop
+    sendJson(res, 200, {
+      ...(context.hotPlugins ? { enabled: true, ...context.hotPlugins.status() } : { enabled: false }),
+      dev: workshop
+        ? { enabled: true, dir: workshop.dir, ...workshop.host.status(), plugins: (await workshop.list()).map(plugin => plugin.name) }
+        : { enabled: false },
+    })
+    return
+  }
+
+  if (url.pathname === '/api/plugins/reload' && req.method === 'POST') {
+    if (!context.hotPlugins) {
+      sendError(res, 404, 'plugin profile is not enabled')
+      return
+    }
+    sendJson(res, 200, { enabled: true, ...await context.hotPlugins.reload() })
+    return
+  }
+
+  if (url.pathname === '/api/folder-picker' && req.method === 'POST') {
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      sendError(res, 403, 'folder picker is only available to local clients')
+      return
+    }
+    const path = await pickSystemFolder()
+    sendJson(res, 200, path ? { path } : {})
+    return
+  }
+
+  if (url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')) {
+    await handleProjectApi(req, res, url, {
+      host: workspace => projectHostFor(context, workspace),
+      sendJson,
+      sendError,
+      readJsonBody,
+      writeSse,
+      workspaceParam,
+    })
+    return
+  }
+
+  const approvalMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
+  if (approvalMatch && req.method === 'POST') {
+    const workspace = workspaceParam(url)
+    if (!workspace || !isSessionId(approvalMatch[1]!)) {
+      sendError(res, 400, 'valid workspace and session id are required')
+      return
+    }
+    const body = await readJsonBody(req)
+    if (typeof body.allow !== 'boolean') {
+      sendError(res, 400, 'allow must be a boolean')
+      return
+    }
+    const accepted = context.approvals.decide(approvalMatch[2]!, runKey(workspace, approvalMatch[1]!), body.allow)
+    if (!accepted) {
+      sendError(res, 404, 'approval request is no longer pending')
+      return
+    }
+    sendJson(res, 200, { accepted: true })
+    return
+  }
+
+  if (url.pathname === '/api/config' && req.method === 'GET') {
+    const config = await readSystemConfig(context.configFile)
+    const problem = await systemConfigProblem(context.configFile)
+    sendJson(res, 200, { ...configSnapshot(config, context.configFile), ...(problem ? { problem } : {}) })
+    return
+  }
+
+  if (url.pathname === '/api/config' && req.method === 'PUT') {
+    const body = await readJsonBody(req)
+    const patch: SystemConfigPatch = {}
+    if (body.codeMode !== undefined) {
+      if (typeof body.codeMode !== 'boolean') { sendError(res, 400, 'codeMode must be a boolean'); return }
+      patch.codeMode = body.codeMode
+    }
+    if (body.projectMemory !== undefined) {
+      const memory = normalizeProjectMemory(body.projectMemory)
+      if (!memory) { sendError(res, 400, 'Invalid project memory limits'); return }
+      const current = await readSystemConfig(context.configFile)
+      if (memory.coldModelId && !current.models?.some(route => route.id === memory.coldModelId)) {
+        sendError(res, 400, 'Project memory model must be a configured route'); return
+      }
+      patch.projectMemory = { ...current.projectMemory, ...memory }
+    }
+    if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
+    if (typeof body.shell === 'string') patch.shell = body.shell.trim()
+    if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
+    if (typeof body.model === 'string') patch.model = body.model
+    if (body.reasoningEffort === 'low' || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high'
+      || body.reasoningEffort === '') patch.reasoningEffort = body.reasoningEffort
+    if (body.protocol === 'anthropic' || body.protocol === 'openai' || body.protocol === '') {
+      patch.protocol = body.protocol
+    }
+    if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
+      patch.temperature = body.temperature
+    }
+    if (body.approvalReview !== undefined) {
+      const review = normalizeApprovalReviewer(body.approvalReview)
+      if (!review) { sendError(res, 400, 'invalid approval reviewer'); return }
+      const previous = (await readSystemConfig(context.configFile)).approvalReview
+      patch.approvalReview = { ...(previous?.provider === review.provider ? previous : {}), ...review }
+    }
+    if (body.network !== undefined) {
+      const network = parseNetworkConfig(body.network)
+      if (!network) { sendError(res, 400, 'network must be an object'); return }
+      patch.network = network.allowedHosts || network.proxy ? network : undefined
+    }
+    const config = await updateSystemConfig(patch, context.configFile)
+    configureSystemShell(config.shell)
+    applyNetwork(config, context.hostFetch)
+    sendJson(res, 200, configSnapshot(config, context.configFile))
+    return
+  }
+
+  if (url.pathname === '/api/config/models/discover' && req.method === 'POST') {
+    try {
+      const input = parseModelDiscoveryInput(await readJsonBody(req))
+      sendJson(res, 200, await discoverModels(input, await readSystemConfig(context.configFile)))
+    } catch (error) {
+      if (error instanceof ModelRouteError || error instanceof ModelDiscoveryError) {
+        sendError(res, error instanceof ModelDiscoveryError ? error.status : 400, error.message)
+        return
+      }
+      throw error
+    }
+    return
+  }
+
+  // Chat model routes: register several and choose one per session or as the default.
+  const modelRoute = /^\/api\/config\/models\/([^/]+)$/.exec(url.pathname)
+  if (modelRoute && (req.method === 'PUT' || req.method === 'DELETE')) {
+    const id = decodeURIComponent(modelRoute[1]!)
+    try {
+      const config = req.method === 'PUT'
+        ? await upsertModelRoute(id, parseModelRouteInput(await readJsonBody(req)), context.configFile)
+        : await removeModelRoute(id, context.configFile)
+      sendJson(res, 200, configSnapshot(config, context.configFile))
+    } catch (error) {
+      if (error instanceof ModelRouteError) {
+        sendError(res, 400, error.message)
+        return
+      }
+      throw error
+    }
+    return
+  }
+
+  if (url.pathname.startsWith('/api/browser')) {
+    await handleBrowser(req, res, url, context)
+    return
+  }
+
+  // ChatGPT sign-in: start opens the callback server and returns the URL to open.
+  if (url.pathname === '/api/auth/chatgpt') {
+    const login = context.chatgptLogin ??= new ChatGptLogin({
+      onSignedIn: async () => {
+        const config = await readSystemConfig(context.configFile)
+        if (!config.models?.some(route => route.auth === 'chatgpt')) {
+          await upsertModelRoute('chatgpt', { model: CHATGPT_DEFAULT_MODEL, name: `ChatGPT · ${CHATGPT_DEFAULT_MODEL}`, auth: 'chatgpt' }, context.configFile)
+        }
+      },
+    })
+    if (req.method === 'GET') { sendJson(res, 200, await login.state()); return }
+    if (req.method === 'POST') {
+      try {
+        sendJson(res, 200, await login.start())
+      } catch (error) {
+        sendError(res, 409, errorMessage(error))
+      }
+      return
+    }
+    if (req.method === 'DELETE') { await login.signOut(); sendJson(res, 200, await login.state()); return }
+  }
+
+  if (url.pathname === '/api/usage' && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+    sendJson(res, 200, await storedWorkspaceUsage(workspace, await readSystemConfig(context.configFile)))
+    return
+  }
+
+  if (url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT')) {
+    const workspace = workspaceParam(url)
+    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+    if (req.method === 'PUT') {
+      const body = await readJsonBody(req)
+      if (typeof body.prompt !== 'string' || body.prompt.length > 32000) {
+        sendError(res, 400, 'prompt must be a string of at most 32000 characters'); return
+      }
+      await writeWorkspacePrompt(workspace, body.prompt)
+    }
+    sendJson(res, 200, { prompt: await readWorkspacePrompt(workspace) })
+    return
+  }
+
+  if (url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST')) {
+    const workspace = workspaceParam(url)
+    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+    const registry = context.processes.get(canonicalWorkspace(workspace))
+    if (req.method === 'GET' && !url.searchParams.has('process_id')) {
+      sendJson(res, 200, { processes: registry?.list() ?? [] })
+      return
+    }
+    const body = req.method === 'POST' ? await readJsonBody(req) : undefined
+    if (body && (body.action !== 'stop' || typeof body.process_id !== 'string' || !body.process_id.trim())) {
+      sendError(res, 400, 'action=stop and process_id are required'); return
+    }
+    const id = body?.process_id ?? url.searchParams.get('process_id')
+    if (typeof id !== 'string' || !id.trim()) { sendError(res, 400, 'process_id is required'); return }
+    const result = body ? await registry?.stop(id) : registry?.read(id)
+    if (!result) { sendError(res, 404, 'background process not found'); return }
+    sendJson(res, 200, body ? { process: result } : result)
+    return
+  }
+
+  if (url.pathname === '/api/workspaces' && req.method === 'GET') {
+    const config = await readSystemConfig(context.configFile)
+    const fallback = defaultWorkspace()
+    await mkdir(fallback, { recursive: true })
+    sendJson(res, 200, { workspaces: config.workspaces ?? [], defaultWorkspace: await ensureWorkspace(fallback) })
+    return
+  }
+
+  if (url.pathname === '/api/workspaces' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (typeof body.path !== 'string' || !body.path.trim()) {
+      sendError(res, 400, 'path is required')
+      return
+    }
+    const workspace = await ensureWorkspace(body.path)
+    const config = await readSystemConfig(context.configFile)
+    const workspaces = dedupe([...(config.workspaces ?? []), workspace])
+    await updateSystemConfig({ workspaces }, context.configFile)
+    sendJson(res, 200, { path: workspace, workspaces })
+    return
+  }
+
+  if (url.pathname === '/api/workspaces' && req.method === 'DELETE') {
+    const body = await readJsonBody(req)
+    if (typeof body.path !== 'string') {
+      sendError(res, 400, 'path is required')
+      return
+    }
+    const config = await readSystemConfig(context.configFile)
+    const path = body.path
+    const workspaces = (config.workspaces ?? []).filter(
+      entry => entry !== path && entry !== resolve(path),
+    )
+    await updateSystemConfig({ workspaces }, context.configFile)
+    sendJson(res, 200, { workspaces })
+    return
+  }
+
+  if (url.pathname === '/api/files/search' && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    const limit = Number(url.searchParams.get('limit') ?? 30)
+    const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
+    sendJson(res, 200, { files })
+    return
+  }
+
+  if (url.pathname === '/api/changes' || url.pathname === '/api/changes/file') {
+    const workspace = workspaceParam(url)
+    if (!workspace || req.method !== 'GET') {
+      sendError(res, workspace ? 405 : 400, workspace ? 'method not allowed' : 'workspace query parameter is required')
+      return
+    }
+    try {
+      if (url.pathname === '/api/changes') {
+        sendJson(res, 200, await listChanges(workspace))
+      } else {
+        const path = url.searchParams.get('path')
+        if (!path) {
+          sendError(res, 400, 'path query parameter is required')
+          return
+        }
+        sendJson(res, 200, await fileDiff(workspace, path))
+      }
+    } catch (error) {
+      if (!(error instanceof FileServeError)) throw error
+      sendError(res, error.status, error.message)
+    }
+    return
+  }
+
+  const terminalMatch = url.pathname.match(/^\/api\/terminals(?:\/([^/]+)(?:\/(stream|input|resize))?)?$/)
+  if (terminalMatch) {
+    try {
+      await handleTerminal(req, res, url, context.terminals, terminalMatch[1], terminalMatch[2])
+    } catch (error) {
+      if (!(error instanceof TerminalError)) throw error
+      if (!res.headersSent) sendError(res, error.status, error.message)
+    }
+    return
+  }
+
+  if (url.pathname === '/api/files/tree' || url.pathname === '/api/files/text') {
+    const workspace = workspaceParam(url)
+    const path = url.searchParams.get('path') ?? ''
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    try {
+      if (url.pathname === '/api/files/tree' && req.method === 'GET') {
+        sendJson(res, 200, { path, entries: await listDirectory(workspace, path) })
+      } else if (url.pathname === '/api/files/text' && req.method === 'GET' && path) {
+        sendJson(res, 200, await readTextFile(workspace, path))
+      } else if (url.pathname === '/api/files/text' && req.method === 'PUT' && path) {
+        const body = await readJsonBody(req, MAX_TEXT_FILE_BYTES * 2)
+        if (typeof body.content !== 'string') {
+          sendError(res, 400, 'content must be a string')
+          return
+        }
+        const expected = typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined
+        sendJson(res, 200, await writeTextFile(workspace, path, body.content, expected))
+      } else {
+        sendError(res, path ? 405 : 400, path ? 'method not allowed' : 'path query parameter is required')
+      }
+    } catch (error) {
+      if (!(error instanceof FileServeError)) throw error
+      sendError(res, error.status, error.message)
+    }
+    return
+  }
+
+  if (url.pathname === '/api/files' && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    const path = url.searchParams.get('path')
+    if (!workspace || !path) {
+      sendError(res, 400, 'workspace and path query parameters are required')
+      return
+    }
+    try {
+      sendFile(res, await readWorkspaceFile(workspace, path))
+    } catch (error) {
+      if (!(error instanceof FileServeError)) throw error
+      sendError(res, error.status, error.message)
+    }
+    return
+  }
+
+  if (url.pathname === '/api/sessions' && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    const sessions = await listSessions(workspace)
+    sendJson(res, 200, { workspace, sessions })
+    return
+  }
+
+  if (url.pathname === '/api/sessions' && req.method === 'POST') {
+    const workspace = workspaceParam(url)
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    const body = await readJsonBody(req)
+    const title = typeof body.title === 'string' ? body.title : undefined
+    const agentType = isAgentType(body.agentType) ? body.agentType : undefined
+    const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal'
+      ? body.mode
+      : undefined
+    const session = await createSession(workspace, {
+      ...(title !== undefined ? { title } : {}),
+      ...(agentType ? { agentType } : {}),
+      ...(mode ? { mode } : {}),
+    })
+    sendJson(res, 201, { session })
+    return
+  }
+
+  const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash|slash-candidates)$/)
+  if (codingMatch) {
+    const id = codingMatch[1]!
+    const action = codingMatch[2]!
+    const workspace = workspaceParam(url)
+    if (!isSessionId(id)) {
+      sendError(res, 400, 'invalid session id')
+      return
+    }
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    if (action === 'commands' && req.method === 'GET') {
+      await handleCodingCommands(res, workspace, id)
+      return
+    }
+    if (action === 'slash' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      await evictResident(context, workspace, id)
+      await handleCodingSlash(req, res, workspace, id)
+      return
+    }
+    if (action === 'slash-candidates' && req.method === 'POST') {
+      await handleCodingSlashCandidates(req, res, workspace, id)
+      return
+    }
+    sendError(res, 405, 'method not allowed')
+    return
+  }
+
+  const subagentMatch = url.pathname.match(/^\/api\/subagents\/([^/]+)$/)
+  if (subagentMatch && req.method === 'GET') {
+    const workspace = workspaceParam(url)
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    const id = subagentMatch[1]!
+    if (!isSessionId(id)) {
+      sendError(res, 400, 'invalid subagent id')
+      return
+    }
+    const events = await readSubagentEvents(workspace, id, workspaceSubagentRoot(workspace)).catch(error => {
+      if (error instanceof SubagentError) return undefined
+      throw error
+    })
+    if (!events) {
+      sendError(res, 404, 'subagent not found')
+      return
+    }
+    sendJson(res, 200, { id, events })
+    return
+  }
+
+  const questionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/questions(?:\/([^/]+))?$/)
+  if (questionMatch) {
+    const id = questionMatch[1]!
+    const workspace = workspaceParam(url)
+    if (!workspace || !isSessionId(id)) {
+      sendError(res, 400, 'workspace and valid session id are required')
+      return
+    }
+    await readSessionSummary(workspace, id)
+    const key = runKey(workspace, id)
+    if (req.method === 'GET' && !questionMatch[2]) {
+      const log = new SessionLog(sessionFilePath(workspace, id))
+      try {
+        await log.init()
+        const questions = pendingQuestionsFromEvents(await log.read())
+          .filter(question => question.agentId === id && (question.mode === 'nonblocking' || isActive(context.activeRuns, workspace, id)))
+        sendJson(res, 200, { questions })
+      } finally { await log.close() }
+      return
+    }
+    if (req.method === 'POST' && questionMatch[2]) {
+      const body = await readJsonBody(req)
+      let entry = context.residentAgents?.get(key)
+      let root = entry?.root ?? context.questionRoots?.get(key)
+      if (!root) {
+        const request = await residentQuestionRequest(context, workspace, id)
+        entry = await ensureResidentAgent(context, workspace, id, request)
+        root = entry.root
+      }
+      try {
+        const answer = await root.userQuestions.answer(questionMatch[2], body.answers, { agentId: id })
+        let resumeQueued = false
+        if (answer.mode === 'nonblocking') {
+          if (entry) {
+            // A manual-streaming Agent needs the existing SSE/approval channel to drain idle work.
+            resumeQueued = entry.agent.status === 'idle' || !isActive(context.activeRuns, workspace, id)
+          } else {
+            resumeQueued = true
+          }
+        }
+        sendJson(res, 200, { accepted: true, resumeQueued })
+      } catch (error) {
+        if (!(error instanceof UserQuestionError)) throw error
+        sendError(res, error.code === 'QUESTION_ALREADY_SETTLED' ? 409 : 400, error.message)
+      }
+      return
+    }
+  }
+
+  const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
+  if (sessionMatch) {
+    const id = sessionMatch[1]!
+    const action = sessionMatch[2]
+    const workspace = workspaceParam(url)
+    if (!isSessionId(id)) {
+      sendError(res, 400, 'invalid session id')
+      return
+    }
+    if (!workspace) {
+      sendError(res, 400, 'workspace query parameter is required')
+      return
+    }
+    if (action === undefined && req.method === 'GET') {
+      // History is read asynchronously. If a run finishes during this read,
+      // this snapshot may not contain its final reply yet; let clients poll again.
+      const runningAtReadStart = isActive(context.activeRuns, workspace, id)
+      // One config read and one pass over the log: this used to read the session
+      // file five times and build an agent runtime just to see its events.
+      const config = await readSystemConfig(context.configFile)
+      const beforeSeq = optionalSeq(url.searchParams.get('beforeSeq'))
+      const maxMessages = optionalCount(url.searchParams.get('maxMessages'))
+      const snapshot = await readSessionSnapshot(workspace, id, model =>
+        effectiveLlmConfig(config, process.env, model).contextWindow, {
+        ...(beforeSeq !== undefined ? { beforeSeq } : {}),
+        ...(maxMessages !== undefined ? { maxMessages } : {}),
+      })
+      sendJson(res, 200, {
+        summary: snapshot.summary,
+        events: snapshot.events,
+        page: snapshot.page,
+        context: snapshot.context,
+        metrics: snapshot.metrics,
+        usage: sessionUsage(snapshot.log, config),
+        running: runningAtReadStart || isActive(context.activeRuns, workspace, id),
+        ...recoveryField(snapshot.log),
+      })
+      return
+    }
+    if (action === 'recover' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      const entry = context.residentAgents?.get(runKey(workspace, id))
+        ?? await ensureResidentAgent(context, workspace, id, await residentQuestionRequest(context, workspace, id))
+      // The queued input is durable: the client's resumed run drains it.
+      sendJson(res, 200, { resumeQueued: await recoverInterruptedTurn(entry.agent) })
+      return
+    }
+    if (action === 'subagents' && req.method === 'GET') {
+      const scope = url.searchParams.get('scope') === 'descendants' ? 'descendants' : 'children'
+      const registry = context.residentAgents?.get(runKey(workspace, id))?.registry
+      const children = await listStoredSubagents(workspace, id, scope, registry, workspaceSubagentRoot(workspace))
+      sendJson(res, 200, { subagents: children })
+      return
+    }
+    if (action === 'jobs' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!existsSync(sessionFilePath(workspace, id))) {
+        sendError(res, 404, 'session not found')
+        return
+      }
+      const entry = context.residentAgents?.get(runKey(workspace, id))
+      const jobs: JobRegistry | undefined = entry?.root.get('jobs')
+      if (req.method === 'GET' && !url.searchParams.has('job_id')) {
+        sendJson(res, 200, { jobs: jobs && entry ? jobs.list(entry.agent) : [] })
+        return
+      }
+      const body = req.method === 'POST' ? await readJsonBody(req) : undefined
+      if (body && (body.action !== 'stop' || typeof body.job_id !== 'string' || !body.job_id.trim())) {
+        sendError(res, 400, 'action=stop and job_id are required')
+        return
+      }
+      const jobId = body?.job_id ?? url.searchParams.get('job_id')
+      if (typeof jobId !== 'string' || !jobId.trim()) {
+        sendError(res, 400, 'job_id is required')
+        return
+      }
+      if (!jobs || !entry || !jobs.list(entry.agent).some(job => job.id === jobId)) {
+        sendError(res, 404, 'background job not found')
+        return
+      }
+      sendJson(res, 200, body
+        ? { job: jobs.kill(jobId, entry.agent, 'Stopped by user') }
+        : jobs.read(jobId, entry.agent))
+      return
+    }
+    if (action === 'goal' && req.method === 'GET') {
+      const log = new SessionLog(sessionFilePath(workspace, id))
+      await log.init()
+      try {
+        sendJson(res, 200, { goal: await readGoal(log) ?? null })
+      } finally {
+        await log.close()
+      }
+      return
+    }
+    if (action === undefined && req.method === 'PATCH') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      const body = await readJsonBody(req)
+      const patch: Parameters<typeof patchSessionMeta>[2] = {}
+      const permission = body.permission === 'workspace-write' || body.permission === 'bypass'
+        ? body.permission : body.permission === 'read-only' ? 'read-only' : undefined
+      const approvalMode = body.approvalMode === 'auto' || body.approvalMode === 'manual' ? body.approvalMode : undefined
+      if (typeof body.title === 'string') patch.title = body.title
+      if (isAgentType(body.agentType)) patch.agentType = body.agentType
+      if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal') {
+        patch.mode = body.mode
+      }
+      if (typeof body.model === 'string' && body.model.trim()) patch.model = body.model.trim()
+      if (body.reasoningEffort === 'default' || body.reasoningEffort === 'low'
+        || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high') {
+        patch.reasoningEffort = body.reasoningEffort
+      }
+      if (!Object.keys(patch).length && permission === undefined && approvalMode === undefined) {
+        sendError(res, 400, 'session metadata is required')
+        return
+      }
+      if (Object.keys(patch).length) await evictResident(context, workspace, id)
+      if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
+      if (approvalMode) await setSessionApprovalMode(workspace, id, approvalMode)
+      const summary = permission === undefined
+        ? await readSessionSummary(workspace, id)
+        : await setSessionPermission(workspace, id, permission)
+      sendJson(res, 200, { summary })
+      return
+    }
+    if (action === undefined && req.method === 'DELETE') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      await evictResident(context, workspace, id)
+      await deleteSession(workspace, id)
+      res.writeHead(204)
+      res.end()
+      return
+    }
+    if (action === 'fork' && req.method === 'POST') {
+      const body = await readJsonBody(req)
+      const summary = await forkSession(workspace, id, {
+        ...(typeof body.title === 'string' ? { title: body.title } : {}),
+        ...(typeof body.messageId === 'string' && body.messageId
+          ? { messageId: body.messageId }
+          : {}),
+      })
+      sendJson(res, 201, { session: summary })
+      return
+    }
+    if (action === 'truncate' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      await evictResident(context, workspace, id)
+      const body = await readJsonBody(req)
+      if (typeof body.messageId !== 'string' || !body.messageId) {
+        sendError(res, 400, 'messageId is required')
+        return
+      }
+      const summary = await truncateSessionAt(workspace, id, body.messageId)
+      sendJson(res, 200, { summary })
+      return
+    }
+    if (action === 'compact' && req.method === 'POST') {
+      if (isActive(context.activeRuns, workspace, id)) {
+        sendError(res, 409, 'session is running')
+        return
+      }
+      await evictResident(context, workspace, id)
+      const body = await readJsonBody(req)
+      const keep = typeof body.keep === 'number' && Number.isFinite(body.keep)
+        ? body.keep
+        : 0
+      const summary = await compactContext(context, workspace, id, keep)
+      sendJson(res, 200, { summary })
+      return
+    }
+    if (action === 'stop' && req.method === 'POST') {
+      await handleStopRun(context, workspace, id)
+      sendJson(res, 200, { stopped: true })
+      return
+    }
+    if (action === 'steer' && req.method === 'POST') {
+      const body = await readJsonBody(req, MAX_RUN_BODY_BYTES)
+      const attachments = parseRunAttachments(body.attachments)
+      if (typeof attachments === 'string') {
+        sendError(res, 400, attachments)
+        return
+      }
+      const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+      if (!prompt && !attachments.length) {
+        sendError(res, 400, 'prompt is required')
+        return
+      }
+      const key = runKey(workspace, id)
+      const ready = context.steeringReady.get(key)
+      if (ready && !await ready) {
+        sendError(res, 409, 'session failed to start')
+        return
+      }
+      const entry = context.residentAgents?.get(key)
+      const inbox = context.questionInboxes?.get(key)
+      if (!isActive(context.activeRuns, workspace, id) || (!entry && !inbox) || entry?.agent.status === 'idle') {
+        sendError(res, 409, 'session has no active run to steer')
+        return
+      }
+      const requestId = submissionId(body.requestId)
+      if (entry) await entry.agent.steer({ text: prompt, attachments, ...(requestId ? { requestId } : {}) })
+      else if (inbox) await inbox.steer({ text: prompt, ...(attachments.length ? { content: [userMessage(prompt, attachments)] } : {}) })
+      sendJson(res, 200, { accepted: true })
+      return
+    }
+    if (action === 'runs' && req.method === 'POST') {
+      await handleRun(req, res, context, workspace, id)
+      return
+    }
+  }
+
+  sendError(res, 404, 'not found')
+}
+
+function isLoopbackAddress(address: string | undefined): boolean {
+  return address === '::1' || address === '::ffff:127.0.0.1'
+    || address?.startsWith('127.') === true
+    || address?.startsWith('::ffff:127.') === true
+}
+
+async function compactContext(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+  keep: number,
+): Promise<SessionSummary> {
+  const sessionSummary = await readSessionSummary(workspace, id)
+  const config = await readSystemConfig(context.configFile)
+  const effective = effectiveLlmConfig(config, process.env, sessionSummary.model)
+  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
+    ?? modelCapabilities(effective.model, effective.protocol)
+  const selectedEffort = sessionSummary.reasoningEffort === 'default'
+    ? effective.reasoningEffort : sessionSummary.reasoningEffort ?? effective.reasoningEffort
+  if (selectedEffort && capabilities.reasoningEfforts.includes(selectedEffort)) {
+    effective.reasoningEffort = selectedEffort
+  } else {
+    delete effective.reasoningEffort
+  }
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
+  if (!effective.apiKeySet || !apiKey) {
+    throw new HttpError(400, 'API key is not configured')
+  }
+  const preparation = await prepareSessionCompact(workspace, id, KEEP_RECENT_TOKENS)
+  const hasPrefix = preparation.prefixMessages.length > 0
+  const messages = hasPrefix
+    ? preparation.prefixMessages
+    : await readSessionMessages(workspace, id)
+  const previousSummary = hasPrefix ? preparation.previousSummary : undefined
+  if (!messages.length) {
+    return compactSession(workspace, id, { keep })
+  }
+  const adapter = compactionAdapter(effective, apiKey)
+  const completion = await adapter.complete(
+    [
+      {
+        role: 'system',
+        content: SUMMARIZATION_SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: buildCompactionPrompt(messages, previousSummary),
+      },
+    ],
+    [],
+    {},
+  )
+  const summary = completion.content?.trim()
+  if (!summary) throw new HttpError(500, 'compression returned no summary')
+  const result = await compactSession(
+    workspace,
+    id,
+    {
+      ...(hasPrefix ? { keepTokens: KEEP_RECENT_TOKENS } : { keep }),
+      checkpointMessages: [
+        { role: 'system', content: `${SUMMARY_PREFIX}${summary}` },
+      ],
+      summary,
+      tokensBefore: preparation.tokensBefore,
+    },
+  )
+  const memoryRoot = new Context()
+  try {
+    await memoryRoot.plugin(memoryLocal, { cwd: workspace })
+    const memory = memoryRoot.get('memory')
+    try {
+      await consolidateProjectMemory(memory, adapter, summary, messages)
+    } catch (error) {
+      memoryRoot.logger.warn(`project memory update failed after compaction: ${errorMessage(error)}`)
+    }
+  } finally {
+    await memoryRoot.fiber.dispose()
+  }
+  return result
+}
+
+/** The session's model, set up to write a compaction summary. */
+function compactionAdapter(effective: EffectiveLlmConfig, apiKey: string): ReturnType<typeof createLlmAdapter> {
+  return createLlmAdapter({
+    apiKey,
+    baseUrl: effective.baseUrl,
+    model: effective.model,
+    ...(effective.protocol ? { protocol: effective.protocol } : {}),
+    // A thinking model bills its reasoning against this cap, so the budget has
+    // to cover the reasoning *plus* the summary it is the point of asking for.
+    maxTokens: 8192,
+    timeoutMs: 180_000,
+    ...(effective.temperature !== undefined
+      ? { temperature: effective.temperature }
+      : {}),
+    ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
+    ...llmAuthOptions(effective),
+  })
+}
+
+async function handleRun(
+  req: IncomingMessage,
+  res: ServerResponse,
+  context: ServerContext,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  if (isActive(context.activeRuns, workspace, id)) {
+    sendError(res, 409, 'session already has an active run')
+    return
+  }
+  const body = await readJsonBody(req, MAX_RUN_BODY_BYTES)
+  const resumeQueued = body.resumeQueued === true
+  const attachments = parseRunAttachments(body.attachments)
+  if (typeof attachments === 'string') {
+    sendError(res, 400, attachments)
+    return
+  }
+  if (!resumeQueued && !attachments.length && (typeof body.prompt !== 'string' || !body.prompt.trim())) {
+    sendError(res, 400, 'prompt is required')
+    return
+  }
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+  const requestId = submissionId(body.requestId)
+  const summary = await readSessionSummary(workspace, id)
+  const permission: PermissionMode = summary.permission ?? 'read-only'
+  const agentType = summary.agentType ?? 'general'
+  const coding = agentType === 'coding'
+  const persona = `${personaFor(agentType)}\n\n${await renderSkillIndex(workspace)}`
+  const mode = summary.mode ?? 'auto'
+
+  const config = await readSystemConfig(context.configFile)
+  const effective = effectiveLlmConfig(config, process.env, summary.model)
+  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
+    ?? modelCapabilities(effective.model, effective.protocol)
+  const selectedEffort = summary.reasoningEffort === 'default'
+    ? effective.reasoningEffort : summary.reasoningEffort ?? effective.reasoningEffort
+  if (selectedEffort && capabilities.reasoningEfforts.includes(selectedEffort)) {
+    effective.reasoningEffort = selectedEffort
+  } else {
+    delete effective.reasoningEffort
+  }
+  if (!effective.apiKeySet) {
+    sendError(res, 400, 'API key is not configured')
+    return
+  }
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
+  if (!apiKey) {
+    sendError(res, 400, 'API key is not configured')
+    return
+  }
+
+  if (resumeQueued || context.resident && (mode === 'auto' || mode === 'goal')) {
+    await runResidentTurn(context, res, workspace, id, {
+      prompt,
+      permission,
+      sessionId: id,
+      approvals: context.approvals,
+      agentType,
+      goalMode: mode === 'goal',
+      effective,
+      apiKey,
+      config,
+      resumeQueued,
+      attachments,
+      ...(requestId ? { requestId } : {}),
+      ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
+      ...(context.browser ? { browser: context.browser } : {}),
+      processes: processesFor(context, workspace),
+      hostPlugins: hostPlugins(context),
+    })
+    return
+  }
+
+  await evictResident(context, workspace, id)
+
+  const controller = new AbortController()
+  const adapter = adapterFromConfig(effective, apiKey)
+  let runtime: AgentRuntime | undefined
+  let approvalFiber: { dispose(): Promise<void> } | undefined
+  try {
+    runtime = await createAgentRuntime({
+      cwd: workspace,
+      sessionFile: sessionFilePath(workspace, id),
+      durableInbox: true,
+      ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
+      ptc: { mode: config.codeMode ? 'ptc' : 'native' },
+      llm: adapter,
+      ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
+      allowNetwork: true,
+      allowShell: true,
+      sandboxMode: permission,
+      builtinTools: {
+        cwd: workspace,
+        allowNetwork: true,
+        allowShell: true,
+        allowOutsideWorkspace: permission === 'bypass',
+        allowPrivateNetwork: permission === 'bypass',
+        processes: processesFor(context, workspace),
+      },
+      plugins: [
+        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false })] : []),
+        ...hostPlugins(context),
+      ],
+    })
+    const toolService = runtime.root.get('tools')
+    toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
+    await mountBrowser(runtime.root, context.browser)
+    approvalFiber = await mountApprovalReview(runtime.root, {
+      config, workspace, adapter, model: effective.model,
+      session: () => runtime?.root.get('session'),
+      mode: async () => (await readSessionSummary(workspace, id)).approvalMode ?? config.approvalReview?.defaultMode ?? 'manual',
+    })
+    const root = runtime.root
+    const questionInbox = runtime.inbox
+    if (!questionInbox) throw new Error('Durable question inbox is unavailable')
+    await root.plugin(userQuestions, {
+      resolveSession: () => root.get('session'),
+      deliverNonblocking: (request: PendingQuestionRequest, answers: QuestionAnswers) => deliverQuestionSteer(
+        root.get('session'), input => questionInbox.steer(input), request, answers,
+      ),
+    })
+    await root.plugin(toolQuestion, { agentId: id })
+    context.questionRoots?.set(runKey(workspace, id), root)
+    context.questionInboxes?.set(runKey(workspace, id), questionInbox)
+    toolService.guard(permissionGuard(permission, runKey(workspace, id), context.approvals, {
+      workspace,
+      review: request => reviewAutomaticApproval(root, request),
+      browserUrl: () => context.browser?.state().url,
+    }))
+  } catch (error) {
+    await approvalFiber?.dispose()
+    await runtime?.dispose()
+    sendError(res, 500, `failed to start agent: ${errorMessage(error)}`)
+    return
+  }
+
+  const key = runKey(workspace, id)
+  context.activeRuns.set(key, controller)
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  res.flushHeaders()
+  const detachApproval = context.approvals.attach(key, event => {
+    if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+  })
+  res.once('close', () => {
+    detachApproval()
+  })
+
+  let ptcObservation: Fiber | undefined
+  let compactionObservation: Fiber | undefined
+  let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
+
+  try {
+    ptcObservation = await observePtc(runtime.root, id, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
+    const sessionLog = runtime.root.get('session')
+    compactionObservation = await observeCompaction(runtime.root, sessionLog, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
+    editTracking = {
+      session: sessionLog,
+      startSeq: (await sessionLog.read()).at(-1)?.seq ?? 0,
+      baseline: await captureFileEditBaseline(workspace),
+    }
+    const editBaseline = editTracking.baseline
+    const toolService = runtime.root.get('tools')
+    toolService.guard(async request => {
+      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      return undefined
+    })
+    const history = await sessionLog.deriveMessages()
+    const emitSse = (event: Record<string, unknown>): void => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    }
+    let plan: Plan | undefined
+    if (mode === 'plan') {
+      plan = await ensurePlanForRun({
+        adapter,
+        session: sessionLog,
+        messages: [...history, userMessage(prompt, attachments)],
+        signal: controller.signal,
+        emit: emitSse,
+      })
+      await sessionLog.append('user/message', {
+        content: prompt,
+        ...(attachments.length ? { attachments } : {}),
+      })
+      await sessionLog.append('assistant/message', {
+        content: [plan.summary ?? 'Plan', ...plan.items.map((item, index) => `${index + 1}. ${item.title}`)].join('\n'),
+      })
+      await sessionLog.flush()
+      await autoNameSession(sessionLog, adapter)
+      await runtime.dispose()
+      runtime = undefined
+      if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
+      return
+    }
+    // A coding or work session's first run persists its persona as a durable
+    // system/message, so a resumed run's derived history already leads with it;
+    // prepending it again would duplicate the persona in the model input
+    // (and in the top-level system once Anthropic folds the messages).
+    const messages: ModelMessage[] = [
+      ...(persona && history[0]?.role !== 'system'
+        ? [{ role: 'system' as const, content: persona }]
+        : []),
+      ...history,
+      userMessage(prompt, attachments),
+    ]
+    const agent = runtime.root.get('agent') as {
+      runStream(
+        input: { text: string; messages: typeof messages },
+        options: { signal: AbortSignal },
+      ): AsyncGenerator<AgentStreamEvent, unknown, void>
+    }
+    const iterator = agent.runStream(
+      { text: prompt, messages },
+      { signal: controller.signal },
+    )
+    while (true) {
+      const next = await iterator.next()
+      if (next.done) break
+      try {
+        if (!res.destroyed && !res.writableEnded) writeSse(res, next.value)
+      } catch {
+        // The client may have disconnected; the run itself must continue.
+      }
+    }
+    // The model Run has closed; title generation is not a steering boundary.
+    context.questionInboxes?.delete(key)
+    await autoNameSession(sessionLog, adapter)
+    if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
+  } catch (error) {
+    if (!res.destroyed && !res.writableEnded) {
+      writeSse(res, { type: 'error', message: errorMessage(error) })
+    }
+  } finally {
+    await ptcObservation?.dispose()
+    await compactionObservation?.dispose()
+    if (runtime && editTracking) {
+      try {
+        const edited = await editedFiles(workspace, editTracking.baseline,
+          await editTracking.session.read(), editTracking.startSeq)
+        if (edited.length) await editTracking.session.append('meta', { kind: 'files/edited', files: edited })
+        await editTracking.session.flush()
+      } catch {
+        // A file summary must not prevent the run from closing.
+      }
+    }
+    detachApproval()
+    context.activeRuns.delete(key)
+    context.questionRoots?.delete(key)
+    context.questionInboxes?.delete(key)
+    await approvalFiber?.dispose()
+    if (runtime) await runtime.dispose()
+    if (!res.destroyed && !res.writableEnded) res.end()
+  }
+}
+
+interface ResidentRunRequest {
+  ptcRuntime?: PtcRuntimeQuickjsConfig
+  resumeQueued?: boolean
+  /** The client's id for this submission; a retry with the same id is admitted once. */
+  requestId?: string
+  attachments?: ModelAttachment[]
+  browser?: PlaywrightBrowserHost
+  processes?: ProcessRegistry
+  /** Host-level plugins: the hot profile carrier and the plugin dev workshop. */
+  hostPlugins?: readonly Plugin[]
+  config: SystemConfig
+  prompt: string
+  permission: PermissionMode
+  sessionId: string
+  approvals: ApprovalBroker
+  agentType: AgentType
+  goalMode: boolean
+  effective: EffectiveLlmConfig
+  apiKey: string
+}
+
+async function evictResident(context: ServerContext, workspace: string, id: string): Promise<void> {
+  const key = runKey(workspace, id)
+  const entry = context.residentAgents?.get(key)
+  if (!entry) return
+  context.residentAgents?.delete(key)
+  await entry.dispose()
+}
+
+/** A runtime for a resident agent: the capability slice plus the agent registry. */
+async function createResidentRuntime(
+  workspace: string,
+  req: ResidentRunRequest,
+): Promise<{ root: Context; dispose: () => Promise<void> }> {
+  const root = new Context()
+  const currentPermission = async (): Promise<PermissionMode> => {
+    return (await readSessionSummary(workspace, req.sessionId)).permission ?? 'read-only'
+  }
+  const sessionOf = (agentId?: string) => root.get('agents', false)?.get(agentId ?? req.sessionId)?.session
+
+  await root.plugin(runtimeCapabilities, {
+    workspace,
+    permission: currentPermission,
+    sessionId: req.sessionId,
+    builtin: {
+      allowNetwork: true,
+      allowShell: true,
+      allowOutsideWorkspace: async () => (await currentPermission()) === 'bypass',
+      allowPrivateNetwork: async () => (await currentPermission()) === 'bypass',
+      ...(req.processes ? { processes: req.processes } : {}),
+    },
+    memory: true,
+    summary: true,
+    jobs: { resolveSession: sessionOf },
+    ptc: {
+      mode: req.config.codeMode ? 'ptc' : 'native',
+      ...(req.ptcRuntime ? { runtime: req.ptcRuntime } : {}),
+      resolveSession: sessionOf,
+    },
+  })
+  if (req.agentType === 'coding') {
+    await root.plugin(createCodingAgentPlugin({
+      cwd: workspace,
+      mode: 'auto',
+      registerAgent: false,
+    }))
+  }
+  await root.plugin(agents)
+  const registry = root.get('agents')
+  // A turn that stops on "Let me run the tests:" is steered back to work.
+  await root.plugin(continuationNudge)
+  const toolService = root.get('tools')
+  await root.plugin(userQuestions, {
+    resolveSession: (agentId: string) => agentId === req.sessionId ? registry?.get(agentId)?.session : undefined,
+    deliverNonblocking: async (request: PendingQuestionRequest, answers: QuestionAnswers) => {
+      const agent = registry?.get(request.agentId)
+      if (!agent) throw new Error('Question Agent is unavailable')
+      await deliverQuestionSteer(agent.session, input => agent.steer(input), request, answers)
+    },
+  })
+  await root.plugin(toolQuestion)
+  await mountApprovalReview(root, {
+    config: req.config, workspace,
+    adapter: adapterFromConfig(req.effective, req.apiKey), model: req.effective.model,
+    session: agentId => registry?.get(agentId ?? req.sessionId)?.session,
+    mode: async () => (await readSessionSummary(workspace, req.sessionId)).approvalMode ?? req.config.approvalReview?.defaultMode ?? 'manual',
+  })
+  toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
+  await mountBrowser(root, req.browser)
+  toolService.guard(permissionGuard(currentPermission, runKey(workspace, req.sessionId), req.approvals, {
+    workspace,
+    review: request => reviewAutomaticApproval(root, request),
+    browserUrl: () => req.browser?.state().url,
+    agentMode: agentId => {
+      const meta = registry?.get(agentId)?.meta
+      if (!meta?.subagentMode) return undefined
+      return meta.subagentPermission ?? (meta.subagentAllowShell ? 'workspace-write' : 'read-only')
+    },
+  }))
+  await root.plugin(goalTools)
+  await root.plugin(subagentLocal, {
+    cwd: workspace,
+    storageRoot: workspaceSubagentRoot(workspace),
+    llm: adapterFromConfig(req.effective, req.apiKey),
+    ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
+    allowShell: req.permission !== 'read-only',
+    allowNetwork: true,
+    permission: req.permission,
+  })
+  await root.plugin(toolSubagent)
+  for (const plugin of req.hostPlugins ?? []) await root.plugin(plugin)
+  return {
+    root,
+    dispose: async () => {
+      await root.fiber.dispose()
+    },
+  }
+}
+
+async function ensureResidentAgent(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+  req: ResidentRunRequest,
+): Promise<ResidentAgentEntry> {
+  const key = runKey(workspace, id)
+  const pending = context.residentCreation?.get(key)
+  if (pending) return pending
+  const creation = createResidentAgent(context, workspace, id, req)
+  context.residentCreation?.set(key, creation)
+  try { return await creation }
+  finally { if (context.residentCreation?.get(key) === creation) context.residentCreation.delete(key) }
+}
+
+async function createResidentAgent(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+  req: ResidentRunRequest,
+): Promise<ResidentAgentEntry> {
+  const key = runKey(workspace, id)
+  const signature = [
+    req.effective.baseUrl,
+    req.effective.model,
+    req.apiKey,
+    req.effective.reasoningEffort ?? '',
+    req.effective.contextWindow ?? '',
+    req.effective.protocol ?? '',
+    req.effective.temperature ?? '',
+    JSON.stringify(req.config.approvalReview ?? {}),
+    req.config.codeMode ? 'ptc' : 'native',
+    req.agentType,
+    'auto',
+  ].join('|')
+  const existing = context.residentAgents?.get(key)
+  if (existing && existing.signature === signature) return existing
+  if (existing) {
+    await existing.dispose()
+    context.residentAgents?.delete(key)
+  }
+
+  const runtime = await createResidentRuntime(workspace, req)
+  let agent: LiveAgent
+  let disposeAgent: () => Promise<void>
+  try {
+    const registry = (runtime.root as unknown as { agents: AgentRegistry }).agents
+    const options: AgentCreationOptions = {
+      file: sessionFilePath(workspace, id),
+      sessionId: id,
+      id,
+      mode: 'auto',
+      llm: adapterFromConfig(req.effective, req.apiKey),
+      ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
+      // Long sessions compact themselves (see auto-compaction.ts).
+      contextBudget: autoContextBudget({
+        llm: () => compactionAdapter(req.effective, req.apiKey),
+        ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
+      }),
+      manualStreaming: true,
+    }
+    // General sessions stay untyped, as they always have been.
+    if (req.agentType !== 'general') options.agentType = req.agentType
+    let handle: AgentHandle
+    try {
+      handle = await registry.resume(options)
+    } catch (error) {
+      if (!isAgentMetaMissing(error)) throw error
+      handle = await registry.create(options)
+    }
+    agent = handle.agent
+    disposeAgent = handle.dispose
+  } catch (error) {
+    await runtime.dispose()
+    throw error
+  }
+
+  const entry: ResidentAgentEntry = {
+    root: runtime.root,
+    agent,
+    registry: (runtime.root as unknown as { agents: AgentRegistry }).agents,
+    tools: runtime.root.get('tools'),
+    signature,
+    dispose: async () => {
+      await disposeAgent().catch(() => undefined)
+      await runtime.dispose()
+    },
+  }
+  context.residentAgents?.set(key, entry)
+  return entry
+}
+
+function isAgentMetaMissing(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('no agent session meta found')
+}
+
+async function deliverQuestionSteer(
+  session: SessionLog,
+  steer: (input: { text: string }) => Promise<unknown>,
+  request: PendingQuestionRequest,
+  answers: QuestionAnswers,
+): Promise<void> {
+  const text = formatQuestionAnswer(request, answers)
+  const delivered = (await session.read()).some(event => event.type === 'agent/inbox/spliced'
+    && event.payload.target !== 'all' && event.payload.inserted?.some(message => message.content === text))
+  if (!delivered) await steer({ text })
+  await session.flush()
+}
+
+/** A client-chosen submission id: opaque, but short and plain enough to be a message id. */
+function submissionId(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(value) ? value : undefined
+}
+
+/** A turn a crash cut off, for the client to continue or offer to continue. */
+function recoveryField(events: readonly SessionEvent[]): { recovery?: { safe: boolean; uncertainCalls: string[] } } {
+  const interrupted = findInterruptedTurn(events)
+  return interrupted ? { recovery: { safe: interrupted.safe, uncertainCalls: interrupted.uncertainCalls } } : {}
+}
+
+async function residentQuestionRequest(context: ServerContext, workspace: string, id: string): Promise<ResidentRunRequest> {
+  const summary = await readSessionSummary(workspace, id)
+  const config = await readSystemConfig(context.configFile)
+  const effective = effectiveLlmConfig(config, process.env, summary.model)
+  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
+    ?? modelCapabilities(effective.model, effective.protocol)
+  const effort = summary.reasoningEffort === 'default' ? effective.reasoningEffort : summary.reasoningEffort ?? effective.reasoningEffort
+  if (effort && capabilities.reasoningEfforts.includes(effort)) effective.reasoningEffort = effort
+  else delete effective.reasoningEffort
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
+  if (!apiKey) throw new HttpError(400, 'API key is not configured')
+  return {
+    prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
+    approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
+    effective, apiKey, config, resumeQueued: true,
+    processes: processesFor(context, workspace),
+    ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
+  }
+}
+
+/**
+ * 每个 workspace 一个 Project Host。模型、密钥或 Project 授权变了就换一个：运行中的
+ * Thread 用的是装配时的配置，换配置等于换一个作用域，而不是让半个 Project 用旧模型。
+ */
+async function projectHostFor(
+  context: ServerContext,
+  workspace: string,
+): Promise<ProjectHost> {
+  // Project 的文件夹就是它的工作位置，可能是刚为它新建的，所以这里建而不是要求已存在。
+  const path = resolve(workspace)
+  await mkdir(path, { recursive: true })
+  const config = await readSystemConfig(context.configFile)
+  const effective = effectiveLlmConfig(config, process.env)
+  const apiKey = effectiveApiKey(config, process.env, effective.modelId) ?? ''
+  const signature = [
+    path,
+    effective.baseUrl,
+    effective.model,
+    apiKey,
+    effective.reasoningEffort ?? '',
+    context.projectPermission,
+    JSON.stringify(config.approvalReview ?? {}),
+    JSON.stringify(config.projectMemory ?? {}),
+    JSON.stringify(config.models ?? []),
+    config.codeMode ? 'ptc' : 'native',
+  ].join('|')
+  const existing = context.projectHosts?.get(path)
+  if (existing?.signature === signature) return existing.host
+  if (existing) {
+    context.projectHosts?.delete(path)
+    await existing.host.dispose()
+  }
+  const host = new ProjectHost({
+    ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
+    workspace: path,
+    llm: adapterFromConfig(effective, apiKey),
+    ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
+    permission: context.projectPermission,
+    approvals: context.approvals,
+    systemConfig: config,
+    builtinTools: {
+      cwd: path,
+      processes: processesFor(context, path),
+      allowNetwork: true,
+      allowShell: true,
+      allowOutsideWorkspace: context.projectPermission === 'bypass',
+      allowPrivateNetwork: context.projectPermission === 'bypass',
+    },
+  })
+  context.projectHosts?.set(path, { host, signature })
+  return host
+}
+
+async function runResidentTurn(
+  context: ServerContext,
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+  req: ResidentRunRequest,
+): Promise<void> {
+  const key = runKey(workspace, id)
+  let markReady: (ready: boolean) => void = () => undefined
+  const ready = new Promise<boolean>(resolveReady => { markReady = resolveReady })
+  context.steeringReady.set(key, ready)
+  const controller = new AbortController()
+  context.activeRuns.set(key, controller)
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  res.flushHeaders()
+  const detachApproval = context.approvals.attach(key, event => {
+    if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+  })
+  res.once('close', () => {
+    detachApproval()
+  })
+
+  let ptcObservation: Fiber | undefined
+  let compactionObservation: Fiber | undefined
+  let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
+  let releaseWriteCapture: ReturnType<ToolsService['guard']> | undefined
+
+  try {
+    const entry = await ensureResidentAgent(context, workspace, id, req)
+    ptcObservation = await observePtc(entry.root, id, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
+    const agent = entry.agent
+    compactionObservation = await observeCompaction(entry.root, agent.session, event => {
+      if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+    })
+    editTracking = {
+      session: agent.session,
+      startSeq: (await agent.session.read()).at(-1)?.seq ?? 0,
+      baseline: await captureFileEditBaseline(workspace),
+    }
+    const editBaseline = editTracking.baseline
+    releaseWriteCapture = entry.tools.guard(async request => {
+      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      return undefined
+    })
+    // A coding or work session keeps its persona as the durable leading system
+    // message, seeded once so every derived request begins with it.
+    const persona = `${personaFor(req.agentType)}\n\n${await renderSkillIndex(workspace)}`
+    if (persona) {
+      const history = await agent.session.deriveMessages()
+      if (!history.some(message => message.role === 'system')) {
+        await agent.session.append('system/message', { content: persona })
+      }
+    }
+    let goal = req.goalMode ? await readGoal(agent.session) : undefined
+    if (req.goalMode && !goal) goal = await createGoal(agent.session, req.prompt)
+    if (!req.resumeQueued) {
+      await agent.followup({
+        text: req.prompt,
+        ...(req.attachments?.length ? { attachments: req.attachments } : {}),
+        ...(req.requestId ? { requestId: req.requestId } : {}),
+      })
+    }
+    while (true) {
+      for await (const event of agent.runTurns(controller.signal)) {
+        markReady(true)
+        if (!res.destroyed && !res.writableEnded) writeSse(res, event)
+      }
+      if (!req.goalMode) break
+      goal = await readGoal(agent.session)
+      if (!goal || goal.status !== 'active') break
+      if (controller.signal.aborted) {
+        await changeGoal(agent.session, 'paused', 'Run cancelled by the user')
+        break
+      }
+      const lastTurn = [...await agent.session.read()].reverse()
+        .find(event => event.type === 'turn/end')
+      if (lastTurn?.type === 'turn/end' && lastTurn.payload.finishReason !== 'stop') {
+        await changeGoal(agent.session, 'blocked', `Agent turn ended: ${lastTurn.payload.finishReason ?? 'unknown'}`)
+        break
+      }
+      const rounds = goal.rounds + 1
+      if (rounds >= goal.maxRounds) {
+        await writeGoal(agent.session, { ...goal, rounds, status: 'blocked', detail: 'Automatic round limit reached' })
+        break
+      }
+      await writeGoal(agent.session, { ...goal, rounds })
+      await agent.followup({ text: `<goal_round>\nObjective: ${JSON.stringify(goal.objective)}\nRound ${rounds + 1}/${goal.maxRounds}. Continue toward the objective using the current Session and Workspace. Call update_goal when complete, paused, or blocked.\n</goal_round>` })
+    }
+    await agent.session.flush()
+    if (req.prompt) await autoNameSession(agent.session, adapterFromConfig(req.effective, req.apiKey))
+    if (!res.destroyed && !res.writableEnded) writeSse(res, { type: 'done' })
+  } catch (error) {
+    if (!res.destroyed && !res.writableEnded) {
+      writeSse(res, { type: 'error', message: errorMessage(error) })
+    }
+  } finally {
+    await ptcObservation?.dispose()
+    await compactionObservation?.dispose()
+    await releaseWriteCapture?.()
+    if (editTracking) {
+      try {
+        const edited = await editedFiles(workspace, editTracking.baseline,
+          await editTracking.session.read(), editTracking.startSeq)
+        if (edited.length) await editTracking.session.append('meta', { kind: 'files/edited', files: edited })
+        await editTracking.session.flush()
+      } catch {
+        // A file summary must not prevent the run from closing.
+      }
+    }
+    detachApproval()
+    context.activeRuns.delete(key)
+    markReady(false)
+    context.steeringReady.delete(key)
+    if (!res.destroyed && !res.writableEnded) res.end()
+  }
+}
+
+interface EnsurePlanForRunOptions {
+  adapter: ReturnType<typeof openaiCompatAdapter>
+  session: SessionLog
+  messages: readonly ModelMessage[]
+  signal?: AbortSignal
+  emit: (event: Record<string, unknown>) => void
+}
+
+async function ensurePlanForRun(options: EnsurePlanForRunOptions): Promise<Plan> {
+  options.emit({ type: 'plan/start' })
+  try {
+    const plan = await generatePlan(options.adapter, options.messages, options.signal)
+    await options.session.append('plan', planPayload(plan))
+    options.emit({ type: 'plan/items', plan })
+    for (const item of plan.items) {
+      options.emit({ type: 'plan/item', item })
+    }
+    options.emit({ type: 'plan/done', plan })
+    return plan
+  } catch (error) {
+    options.emit({ type: 'plan/error', message: errorMessage(error) })
+    throw error
+  }
+}
+
+function planPayload(plan: Plan): PlanPayload {
+  return {
+    items: plan.items.map(item => ({
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      ...(item.detail ? { detail: item.detail } : {}),
+    })),
+    status: plan.status,
+    ...(plan.summary ? { summary: plan.summary } : {}),
+  }
+}
+
+async function handleCodingCommands(
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const summary = await readSessionSummary(workspace, id)
+  sendJson(res, 200, {
+    commands: createSlashRegistry().list(),
+    agentType: summary.agentType ?? 'general',
+    mode: summary.mode ?? 'auto',
+  })
+}
+
+async function handleCodingSlash(
+  req: IncomingMessage,
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const summary = await readSessionSummary(workspace, id)
+  if (summary.agentType !== 'coding') {
+    sendError(res, 400, 'session is not a coding session')
+    return
+  }
+  const body = await readJsonBody(req)
+  const name = typeof body.name === 'string' && body.name.trim()
+    ? body.name.trim()
+    : ''
+  if (!name) {
+    sendError(res, 400, 'name is required')
+    return
+  }
+  const args = Array.isArray(body.args)
+    ? body.args.filter((arg): arg is string => typeof arg === 'string')
+    : []
+  if (name === '/skills' && (args[0] === 'create' || args[0] === 'install')
+    && (summary.permission ?? 'read-only') === 'read-only') {
+    sendError(res, 403, 'Skill creation and installation require workspace-write permission.')
+    return
+  }
+  if (name === '/plan') {
+    await patchSessionMeta(workspace, id, { mode: 'plan' })
+    const result: SlashCommandResult = { kind: 'text', text: 'Plan mode selected. Send a request to generate a plan.' }
+    await appendSlashMeta(workspace, id, name, args, result)
+    sendJson(res, 200, { result, mode: 'plan' })
+    return
+  }
+
+  if (name === '/goal') {
+    const result = await withCodingAgent(workspace, id, async (_coding, log): Promise<SlashCommandResult> => {
+      const action = args[0]?.toLowerCase()
+      if (!action) {
+        return { kind: 'json', value: await readGoal(log) ?? { status: 'none' } }
+      }
+      if (args.length === 1 && action === 'clear') {
+        await log.append('meta', { kind: 'goal/clear' })
+        await log.append('meta/patch', { fields: ['mode'], mode: 'auto' })
+        await log.flush()
+        return { kind: 'text', text: 'Goal cleared.' }
+      }
+      if (args.length === 1 && (action === 'pause' || action === 'resume')) {
+        const goal = await changeGoal(log, action === 'pause' ? 'paused' : 'active')
+        if (action === 'resume') {
+          await log.append('meta/patch', { fields: ['mode'], mode: 'goal' })
+          await log.flush()
+        }
+        return { kind: 'json', value: goal }
+      }
+      const goal = await createGoal(log, args.join(' '))
+      await log.append('meta/patch', { fields: ['mode'], mode: 'goal' })
+      await log.flush()
+      return { kind: 'json', value: goal }
+    })
+    await appendSlashMeta(workspace, id, name, args, result)
+    sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
+    return
+  }
+  const result = await withCodingAgent(workspace, id, async (coding, sessionLog) => {
+    const result: SlashCommandResult = await coding.runCommand(name, args)
+    await sessionLog.append('meta', {
+      kind: 'slash',
+      command: name,
+      args,
+      result,
+    })
+    return result
+  })
+  sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
+}
+
+async function handleCodingSlashCandidates(
+  req: IncomingMessage,
+  res: ServerResponse,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const summary = await readSessionSummary(workspace, id)
+  if (summary.agentType !== 'coding') {
+    sendError(res, 400, 'session is not a coding session')
+    return
+  }
+  const body = await readJsonBody(req)
+  const name = typeof body.name === 'string' && body.name.trim()
+    ? body.name.trim()
+    : ''
+  if (!name) {
+    sendError(res, 400, 'name is required')
+    return
+  }
+  const candidates = await withCodingAgent(workspace, id, coding => coding.suggestCommand(name))
+  sendJson(res, 200, { candidates })
+}
+
+async function withCodingAgent<T>(
+  workspace: string,
+  id: string,
+  run: (coding: CodingService, sessionLog: SessionLog) => Promise<T>,
+): Promise<T> {
+  const summary = await readSessionSummary(workspace, id)
+  const root = new Context()
+  let fiber: { dispose: () => Promise<void> } | undefined
+  try {
+    await root.plugin(session, { file: sessionFilePath(workspace, id) })
+    await root.plugin(tools)
+    const registry = root.get('tools')
+    registry.guard(permissionGuard(summary.permission ?? 'read-only', runKey(workspace, id), new ApprovalBroker(), { workspace }))
+    // A typed slash install URL is an explicit user request to read that source.
+    // Model calls only have http_get when their runtime enables network tools.
+    for (const tool of createBuiltinToolDefinitions({ cwd: workspace, allowNetwork: true,
+      disabled: ['echo', 'now', 'calculator', 'json', 'read_file', 'write_file', 'list_dir'],
+    })) registry.register(tool)
+    fiber = await root.plugin(createCodingAgentPlugin({
+      cwd: workspace,
+      skills: true,
+      mcp: true,
+      planTools: true,
+      ...(summary.mode ? { mode: summary.mode } : {}),
+      setMode: async (next) => {
+        const activeLog = root.get('session')
+        await activeLog.append('meta/patch', { fields: ['mode'], mode: next })
+        await activeLog.flush()
+      },
+    }))
+    const coding = root.get('coding')
+    const sessionLog = root.get('session')
+    return await run(coding, sessionLog)
+  } finally {
+    await fiber?.dispose()
+    await root.fiber.dispose()
+  }
+}
+
+async function handleStopRun(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+): Promise<void> {
+  const controller = context.activeRuns.get(runKey(workspace, id))
+  if (!controller) throw new HttpError(409, 'session is not running')
+  controller.abort({ type: 'user' })
+}
+
+function adapterFromConfig(
+  effective: EffectiveLlmConfig,
+  apiKey: string,
+): ReturnType<typeof openaiCompatAdapter> {
+  const options: {
+    apiKey: string
+    baseUrl: string
+    model: string
+    protocol?: 'anthropic' | 'openai'
+    apiKeyHeader?: 'x-api-key' | 'api-key'
+    temperature?: number
+    reasoningEffort?: 'low' | 'medium' | 'high'
+    vision?: boolean
+  } = {
+    apiKey,
+    baseUrl: effective.baseUrl,
+    model: effective.model,
+    vision: effective.vision,
+  }
+  if (effective.protocol) options.protocol = effective.protocol
+  if (effective.apiKeyHeader) options.apiKeyHeader = effective.apiKeyHeader
+  if (effective.temperature !== undefined) options.temperature = effective.temperature
+  if (effective.reasoningEffort) options.reasoningEffort = effective.reasoningEffort
+  return createLlmAdapter({ ...options, ...llmAuthOptions(effective) })
+}
+
+async function appendSlashMeta(
+  workspace: string, id: string, name: string, args: string[], result: SlashCommandResult,
+): Promise<void> {
+  const log = new SessionLog(sessionFilePath(workspace, id))
+  await log.init()
+  try {
+    await log.append('meta', { kind: 'slash', command: name, args, result })
+    await log.flush()
+  } finally {
+    await log.close()
+  }
+}
+
+function searchApiKey(effective: EffectiveLlmConfig, modelApiKey: string): string | undefined {
+  if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
+  try {
+    const host = new URL(effective.baseUrl).hostname.toLowerCase()
+    if (host === 'deepseek.com' || host.endsWith('.deepseek.com')) return modelApiKey
+  } catch {
+    // A non-URL model route cannot provide a DeepSeek search credential.
+  }
+  return undefined
+}
+
+function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record<string, unknown> {
+  const effective = effectiveLlmConfig(config)
+  const env = resolveLlmEnv(process.env)
+  return {
+    apiKeySet: effective.apiKeySet,
+    effective: {
+      baseUrl: effective.baseUrl,
+      model: effective.model,
+      modelId: effective.modelId,
+      ...(effective.protocol ? { protocol: effective.protocol } : {}),
+      ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
+      ...(effective.temperature !== undefined
+        ? { temperature: effective.temperature }
+        : {}),
+      ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
+    },
+    shell: {
+      active: systemShell().label,
+      available: availableShells().map(shell => ({ path: shell.path, label: shell.label, kind: shell.kind })),
+    },
+    network: {
+      allowedHosts: config.network?.allowedHosts ?? [],
+      proxy: config.network?.proxy ?? '',
+      defaultAllowedHosts: DEFAULT_ALLOWED_HOSTS,
+      ...(environmentProxy() ? { environmentProxy: environmentProxy() } : {}),
+    },
+    config: {
+      apiKeySet: Boolean(config.apiKey),
+      codeMode: config.codeMode ?? false,
+      projectMemory: { ...PROJECT_MEMORY_DEFAULTS, ...config.projectMemory },
+      shell: config.shell ?? '',
+      path,
+      approvalReview: {
+        provider: config.approvalReview?.provider ?? 'conversation',
+        defaultMode: config.approvalReview?.defaultMode ?? 'manual',
+        modelId: config.approvalReview?.modelId ?? '',
+        model: config.approvalReview?.model ?? '',
+        baseUrl: config.approvalReview?.baseUrl ?? '',
+        apiKeyEnv: config.approvalReview?.apiKeyEnv ?? '',
+        apiKeySet: Boolean(config.approvalReview?.apiKey || process.env[config.approvalReview?.apiKeyEnv || (config.approvalReview?.provider === 'jev' ? 'TYPESAFE_API_KEY' : 'OPENAI_API_KEY')]),
+      },
+      ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+      ...(config.model ? { model: config.model } : {}),
+      ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
+      ...(config.protocol ? { protocol: config.protocol } : {}),
+      ...(config.temperature !== undefined
+        ? { temperature: config.temperature }
+        : {}),
+      ...(config.contextWindow !== undefined ? { contextWindow: config.contextWindow } : {}),
+      models: config.models?.map(model => ({
+        id: model.id,
+        ...(model.model ? { model: model.model } : {}),
+        ...(model.name ? { name: model.name } : {}),
+        ...(model.baseUrl ? { baseUrl: model.baseUrl } : {}),
+        ...(model.protocol ? { protocol: model.protocol } : {}),
+        ...(model.apiKeyEnv ? { apiKeyEnv: model.apiKeyEnv } : {}),
+        apiKeySet: Boolean(model.apiKey || model.apiKeyEnv && process.env[model.apiKeyEnv]),
+        ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+        ...(model.vision !== undefined ? { vision: model.vision } : {}),
+        ...(model.pricing ? { pricing: model.pricing } : {}),
+        ...(model.auth ? { auth: model.auth } : {}),
+        ...(model.source ? { source: model.source } : {}),
+      })) ?? [],
+    },
+    env: {
+      apiKeySet: Boolean(env.apiKey),
+      ...(env.baseUrl ? { baseUrl: env.baseUrl } : {}),
+      ...(env.model ? { model: env.model } : {}),
+    },
+    models: availableModels(config),
+  }
+}
+
+/** The proxy the environment sets for the HTTP tools, without any credentials in it. */
+function environmentProxy(): string | undefined {
+  const raw = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? process.env.HTTP_PROXY ?? process.env.http_proxy ?? process.env.ALL_PROXY ?? process.env.all_proxy
+  if (!raw?.trim()) return undefined
+  try {
+    const url = new URL(raw.trim())
+    return `${url.protocol}//${url.host}`
+  } catch {
+    return undefined
+  }
+}
+
+/** Point the HTTP tools at the configured proxy and allowed hosts, keeping the host's fetch. */
+function applyNetwork(config: SystemConfig, hostFetch: typeof fetch | undefined): void {
+  configureNetwork({ ...config.network, ...(hostFetch ? { fetch: hostFetch } : {}) })
+}
+
+function workspaceParam(url: URL): string | undefined {
+  const value = url.searchParams.get('workspace')
+  return value === null || !value.trim() ? undefined : value
+}
+
+function canonicalWorkspace(workspace: string): string {
+  const resolved = resolve(workspace)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+/** A history cursor: a non-negative integer seq, or nothing when absent/invalid. */
+function optionalSeq(value: string | null): number | undefined {
+  if (value === null || !/^\d+$/.test(value)) return undefined
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) ? parsed : undefined
+}
+
+/** A requested page size, bounded so one request cannot ask for the whole log. */
+function optionalCount(value: string | null): number | undefined {
+  const parsed = optionalSeq(value)
+  if (parsed === undefined || parsed < 1) return undefined
+  return Math.min(parsed, 500)
+}
+
+function runKey(workspace: string, id: string): string {
+  return `${canonicalWorkspace(workspace)}\0${id}`
+}
+
+function isActive(
+  active: Map<string, AbortController>,
+  workspace: string,
+  id: string,
+): boolean {
+  return active.has(runKey(workspace, id))
+}
+
+function sessionFilePath(workspace: string, id: string): string {
+  return sessionFile(workspace, id)
+}
+
+function userMessage(prompt: string, attachments: readonly ModelAttachment[]): ModelMessage {
+  return {
+    role: 'user',
+    content: prompt,
+    ...(attachments.length ? { attachments: [...attachments] } : {}),
+  }
+}
+
+/** Validated run attachments, or an error message for a malformed field. */
+function parseRunAttachments(value: unknown): ModelAttachment[] | string {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return 'attachments must be an array'
+  if (value.length > MAX_RUN_ATTACHMENTS) return `at most ${MAX_RUN_ATTACHMENTS} attachments per message`
+  const result: ModelAttachment[] = []
+  for (const entry of value) {
+    if (!isModelAttachment(entry)) return 'attachments must be base64 png, jpeg, webp or gif images'
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(entry.data)) return 'attachment data must be base64 without a data: prefix'
+    result.push({
+      type: 'image',
+      mediaType: entry.mediaType,
+      data: entry.data,
+      ...(typeof entry.name === 'string' && entry.name ? { name: entry.name.slice(0, 200) } : {}),
+    })
+  }
+  return result
+}
+
+async function readJsonBody(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += buffer.byteLength
+    if (size > maxBytes) throw new HttpError(413, 'request body too large')
+    chunks.push(buffer)
+  }
+  const text = Buffer.concat(chunks).toString('utf8')
+  if (!text.trim()) return {}
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new HttpError(400, 'request body is not valid JSON')
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new HttpError(400, 'request body must be a JSON object')
+  }
+  return parsed as Record<string, unknown>
+}
+
+async function handleStatic(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  webRoot: string,
+): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    sendError(res, 405, 'method not allowed')
+    return
+  }
+  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
+  const filePath = resolve(webRoot, relative)
+  if (!filePath.startsWith(`${resolve(webRoot)}${sep}`) && filePath !== resolve(webRoot)) {
+    sendError(res, 403, 'forbidden')
+    return
+  }
+  let target = filePath
+  try {
+    const info = await stat(target)
+    if (info.isDirectory()) target = join(target, 'index.html')
+  } catch {
+    target = join(webRoot, 'index.html')
+  }
+  try {
+    const info = await stat(target)
+    if (!info.isFile()) {
+      sendError(res, 404, 'not found')
+      return
+    }
+    const body = await readFile(target)
+    res.writeHead(200, {
+      'content-type': contentType(target),
+      'content-length': body.byteLength,
+      'cache-control': target.endsWith('index.html')
+        ? 'no-cache'
+        : 'public, max-age=3600',
+    })
+    res.end(req.method === 'HEAD' ? undefined : body)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      sendError(res, 404, 'not found')
+    } else {
+      throw error
+    }
+  }
+}
+
+function contentType(file: string): string {
+  switch (extname(file).toLowerCase()) {
+    case '.html':
+      return 'text/html; charset=utf-8'
+    case '.js':
+      return 'text/javascript; charset=utf-8'
+    case '.css':
+      return 'text/css; charset=utf-8'
+    case '.json':
+      return 'application/json; charset=utf-8'
+    case '.svg':
+      return 'image/svg+xml'
+    case '.png':
+      return 'image/png'
+    case '.ico':
+      return 'image/x-icon'
+    case '.woff2':
+      return 'font/woff2'
+    case '.map':
+      return 'application/json; charset=utf-8'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+/**
+ * The agent browser as seen by the web UI: a live screencast plus the user's
+ * own input, navigation and history commands. Opening the stream starts the
+ * browser if the agent has not yet.
+ */
+async function handleBrowser(req: IncomingMessage, res: ServerResponse, url: URL, context: ServerContext): Promise<void> {
+  const browser = context.browser
+  if (url.pathname === '/api/browser' && req.method === 'GET') {
+    sendJson(res, 200, { available: Boolean(browser), state: browser?.state(), tabs: browser?.tabs() ?? [] })
+    return
+  }
+  if (!browser) {
+    sendError(res, 404, 'the agent browser is disabled')
+    return
+  }
+  if (url.pathname === '/api/browser/live' && req.method === 'GET') {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    })
+    writeSse(res, { type: 'state', ...browser.state() })
+    writeSse(res, { type: 'tabs', tabs: browser.tabs() })
+    let pending = false
+    const unsubscribe = browser.live.subscribe(event => {
+      if (res.destroyed || res.writableEnded) return
+      // Drop frames while the socket is still flushing the previous one.
+      if (event.type === 'frame' && pending) return
+      pending = !res.write(`event: ${event.type}
+data: ${JSON.stringify(event)}
+
+`)
+    }, { frames: url.searchParams.get('frames') !== '0' })
+    res.on('drain', () => { pending = false })
+    req.on('close', unsubscribe)
+    return
+  }
+  if (url.pathname === '/api/browser/input' && req.method === 'POST') {
+    const input = parseLiveInput(await readJsonBody(req))
+    if (!input) {
+      sendError(res, 400, 'invalid browser input')
+      return
+    }
+    await browser.live.input(input)
+    sendJson(res, 200, { ok: true })
+    return
+  }
+  if (url.pathname === '/api/browser/navigate' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (typeof body.url !== 'string' || !body.url.trim()) {
+      sendError(res, 400, 'url is required')
+      return
+    }
+    await browser.userNavigate(body.url)
+    sendJson(res, 200, browser.state())
+    return
+  }
+  if (url.pathname === '/api/browser/viewport' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    const width = Number(body.width)
+    const height = Number(body.height)
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1 || width > 8000 || height > 8000) {
+      sendError(res, 400, 'width and height must be positive numbers')
+      return
+    }
+    await browser.setViewport(width, height)
+    sendJson(res, 200, { ok: true })
+    return
+  }
+  if (url.pathname === '/api/browser/tabs' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    const id = typeof body.id === 'string' ? body.id : undefined
+    if (body.action === 'new') await browser.newTab(typeof body.url === 'string' && body.url.trim() ? body.url : undefined)
+    else if (body.action === 'select' && id) await browser.selectTab(id)
+    else if (body.action === 'close') await browser.closeTab(id)
+    else {
+      sendError(res, 400, 'action must be new, select (with id) or close')
+      return
+    }
+    sendJson(res, 200, { tabs: browser.tabs() })
+    return
+  }
+  if (url.pathname === '/api/browser/pick' && req.method === 'POST') {
+    const result = await browser.pick()
+    sendJson(res, 200, result ?? { cancelled: true })
+    return
+  }
+  if (url.pathname === '/api/browser/pick/cancel' && req.method === 'POST') {
+    await browser.cancelPick()
+    sendJson(res, 200, { ok: true })
+    return
+  }
+  if (url.pathname === '/api/browser/command' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (body.command !== 'back' && body.command !== 'forward' && body.command !== 'reload') {
+      sendError(res, 400, 'command must be back, forward or reload')
+      return
+    }
+    await browser.userCommand(body.command)
+    sendJson(res, 200, browser.state())
+    return
+  }
+  sendError(res, 404, 'not found')
+}
+
+function writeSse(res: ServerResponse, data: unknown): void {
+  const value = JSON.stringify(data)
+  const type = typeof data === 'object' && data !== null
+    ? (data as { type?: unknown }).type
+    : undefined
+  const lines = [
+    ...(typeof type === 'string' ? [`event: ${type}`] : []),
+    `data: ${value}`,
+    '',
+    '',
+  ]
+  res.write(lines.join('\n'))
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  if (res.headersSent || res.destroyed) return
+  const data = JSON.stringify(body)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'content-length': Buffer.byteLength(data),
+  })
+  res.end(data)
+}
+
+function sendError(res: ServerResponse, status: number, message: string): void {
+  sendJson(res, status, { error: message })
+}
+
+function dedupe(values: readonly string[]): string[] {
+  return [...new Set(values)]
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function defaultWebRoot(): string {
+  const candidates = [
+    // Bundled package layout: dist/bin.js serves dist/web.
+    new URL('../dist/web/', import.meta.url),
+    // Source checkout layout: packages/host/src/server.ts serves <repo>/dist/web.
+    new URL('../../../dist/web/', import.meta.url),
+  ]
+  for (const candidate of candidates) {
+    const path = fileURLToPath(candidate)
+    if (existsSync(path)) return path
+  }
+  return fileURLToPath(candidates[1]!)
+}
+
+class HttpError extends Error {
+  override name = 'HttpError'
+
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+/** Plugins every agent runtime mounts: the hot profile and, in plugin dev mode, the workshop. */
+function hostPlugins(context: ServerContext): Plugin[] {
+  return [
+    ...(context.hotPlugins ? [context.hotPlugins.plugin] : []),
+    ...(context.pluginWorkshop ? [context.pluginWorkshop.plugin] : []),
+  ]
+}
+
+function logHotPluginEvent(event: HotPluginEvent): void {
+  // console rather than raw stderr: the TUI reroutes console output above its frame.
+  if (event.type === 'loaded') {
+    if (event.generation > 1) console.error(`[tnega] plugins reloaded (generation ${event.generation}, ${event.plugins} plugin(s))`)
+  } else {
+    console.error(`[tnega] plugin reload failed: ${errorMessage(event.error)}`)
+  }
+}
+
+/** The Workbench terminal endpoints; see `terminals.ts`. */
+async function handleTerminal(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  terminals: TerminalManager,
+  id: string | undefined,
+  action: string | undefined,
+): Promise<void> {
+  if (!id) {
+    const workspace = workspaceParam(url)
+    if (req.method === 'GET') {
+      sendJson(res, 200, { terminals: terminals.list(workspace ?? undefined) })
+    } else if (req.method === 'POST') {
+      if (!workspace) {
+        sendError(res, 400, 'workspace query parameter is required')
+        return
+      }
+      const body = await readJsonBody(req)
+      sendJson(res, 200, await terminals.create(workspace, {
+        ...(typeof body.cols === 'number' ? { cols: body.cols } : {}),
+        ...(typeof body.rows === 'number' ? { rows: body.rows } : {}),
+      }))
+    } else {
+      sendError(res, 405, 'method not allowed')
+    }
+    return
+  }
+  if (!action && req.method === 'DELETE') {
+    terminals.close(id)
+    sendJson(res, 200, { ok: true })
+  } else if (action === 'stream' && req.method === 'GET') {
+    const events: TerminalEvent[] = []
+    // Attach first so an unknown id fails before the stream opens.
+    let open = false
+    const send = (event: TerminalEvent) => { if (!res.destroyed && !res.writableEnded) writeSse(res, event) }
+    const detach = terminals.attach(id, event => { if (open) send(event); else events.push(event) })
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    })
+    res.flushHeaders()
+    open = true
+    for (const event of events) send(event)
+    req.on('close', detach)
+  } else if (action === 'input' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (typeof body.data !== 'string') {
+      sendError(res, 400, 'data must be a string')
+      return
+    }
+    terminals.write(id, body.data)
+    sendJson(res, 200, { ok: true })
+  } else if (action === 'resize' && req.method === 'POST') {
+    const body = await readJsonBody(req)
+    if (typeof body.cols !== 'number' || typeof body.rows !== 'number') {
+      sendError(res, 400, 'cols and rows must be numbers')
+      return
+    }
+    terminals.resize(id, body.cols, body.rows)
+    sendJson(res, 200, { ok: true })
+  } else {
+    sendError(res, 405, 'method not allowed')
+  }
+}

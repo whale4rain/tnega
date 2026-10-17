@@ -689,7 +689,116 @@ importers:
 
   packages/home: {}
 
-  packages/host: {}
+  packages/host:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/approval-host':
+        specifier: workspace:*
+        version: link:../approval-host
+      '@tnega/auth-chatgpt':
+        specifier: workspace:*
+        version: link:../auth-chatgpt
+      '@tnega/browser-playwright':
+        specifier: workspace:*
+        version: link:../browser/browser-playwright
+      '@tnega/coding-agent':
+        specifier: workspace:*
+        version: link:../coding-agent
+      '@tnega/compaction':
+        specifier: workspace:*
+        version: link:../compaction
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/directory-picker':
+        specifier: workspace:*
+        version: link:../directory-picker
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@tnega/goal':
+        specifier: workspace:*
+        version: link:../goal
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
+      '@tnega/jobs':
+        specifier: workspace:*
+        version: link:../jobs/jobs
+      '@tnega/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@tnega/memory-local':
+        specifier: workspace:*
+        version: link:../memory/memory-local
+      '@tnega/persona':
+        specifier: workspace:*
+        version: link:../persona
+      '@tnega/plugin-host':
+        specifier: workspace:*
+        version: link:../plugin-host
+      '@tnega/project-host':
+        specifier: workspace:*
+        version: link:../project/host
+      '@tnega/project-http':
+        specifier: workspace:*
+        version: link:../project/http
+      '@tnega/ptc-runtime-quickjs':
+        specifier: workspace:*
+        version: link:../ptc-runtime-quickjs
+      '@tnega/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../session-store
+      '@tnega/subagent':
+        specifier: workspace:*
+        version: link:../subagent/subagent
+      '@tnega/subagent-local':
+        specifier: workspace:*
+        version: link:../subagent/subagent-local
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../terminal
+      '@tnega/tool-browser':
+        specifier: workspace:*
+        version: link:../browser/tool-browser
+      '@tnega/tool-memory':
+        specifier: workspace:*
+        version: link:../memory/tool-memory
+      '@tnega/tool-question':
+        specifier: workspace:*
+        version: link:../tool-question
+      '@tnega/tool-subagent':
+        specifier: workspace:*
+        version: link:../subagent/tool-subagent
+      '@tnega/tool-web-search':
+        specifier: workspace:*
+        version: link:../web/tool-web-search
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@tnega/usage':
+        specifier: workspace:*
+        version: link:../usage
+      '@tnega/user-questions':
+        specifier: workspace:*
+        version: link:../user-questions
+      '@tnega/workspace-files':
+        specifier: workspace:*
+        version: link:../workspace-files
+      '@tnega/workspace-prompt':
+        specifier: workspace:*
+        version: link:../workspace-prompt
 
   packages/jobs/jobs:
     dependencies:
