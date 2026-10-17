@@ -21,9 +21,26 @@ async function tempDir(prefix: string): Promise<string> {
   return dir
 }
 
+/**
+ * Windows keeps a directory busy for a moment after the process tree that used
+ * it as its cwd is killed; a plain rm would fail the test with EBUSY/EPERM.
+ */
+async function removeTempDir(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt >= 5 || (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY')) throw error
+      await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)))
+    }
+  }
+}
+
 afterEach(async () => {
   vi.unstubAllGlobals()
-  await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  await Promise.all(dirs.splice(0).map(dir => removeTempDir(dir)))
 })
 
 async function mount(config: BuiltinToolsConfig = {}): Promise<{
