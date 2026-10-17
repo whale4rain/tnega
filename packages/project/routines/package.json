@@ -5,5 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/blackboard": "workspace:*",
+    "@tnega/box": "workspace:*",
+    "@tnega/thread": "workspace:*",
+    "@tnega/tools": "workspace:*"
   }
 }

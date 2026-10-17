@@ -5,5 +5,18 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/auth-chatgpt": "workspace:*",
+    "@tnega/blackboard": "workspace:*",
+    "@tnega/config": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/llm": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/blackboard-local": "workspace:*"
   }
 }

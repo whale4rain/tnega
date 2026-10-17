@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadRecord } from '@tnega/thread'
 import type { ToolRequest } from '@tnega/tools'
-import { projectAgentRole, projectToolGuard, toolVisible } from '../src/project-tool-scope.js'
+import { projectAgentRole, projectToolGuard, toolVisible } from '../src/index.js'
 
 const base: ThreadRecord = {
   id: 'c', projectId: 'p', label: 'Project', goal: 'Coordinate', state: 'idle',

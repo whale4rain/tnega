@@ -908,11 +908,156 @@ importers:
         specifier: workspace:*
         version: link:../../core
 
-  packages/project/host: {}
+  packages/project/host:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../../agent
+      '@tnega/approval-host':
+        specifier: workspace:*
+        version: link:../../approval-host
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../../approval-review
+      '@tnega/artifact-local':
+        specifier: workspace:*
+        version: link:../artifact-local
+      '@tnega/artifact-store':
+        specifier: workspace:*
+        version: link:../artifact-store
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/blackboard-local':
+        specifier: workspace:*
+        version: link:../blackboard-local
+      '@tnega/box':
+        specifier: workspace:*
+        version: link:../box
+      '@tnega/box-blackboard':
+        specifier: workspace:*
+        version: link:../box-blackboard
+      '@tnega/coding-agent':
+        specifier: workspace:*
+        version: link:../../coding-agent
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../../home
+      '@tnega/jobs-local':
+        specifier: workspace:*
+        version: link:../../jobs/jobs-local
+      '@tnega/project':
+        specifier: workspace:*
+        version: link:../project
+      '@tnega/project-local':
+        specifier: workspace:*
+        version: link:../project-local
+      '@tnega/project-loop':
+        specifier: workspace:*
+        version: link:../../loop/project-loop
+      '@tnega/project-memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@tnega/project-routines':
+        specifier: workspace:*
+        version: link:../routines
+      '@tnega/project-worktrees':
+        specifier: workspace:*
+        version: link:../worktrees
+      '@tnega/ptc-runtime-quickjs':
+        specifier: workspace:*
+        version: link:../../ptc-runtime-quickjs
+      '@tnega/run-summary':
+        specifier: workspace:*
+        version: link:../../run-summary
+      '@tnega/runtime':
+        specifier: workspace:*
+        version: link:../../runtime
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/thread':
+        specifier: workspace:*
+        version: link:../thread
+      '@tnega/thread-local':
+        specifier: workspace:*
+        version: link:../thread-local
+      '@tnega/tool-blackboard':
+        specifier: workspace:*
+        version: link:../tool-blackboard
+      '@tnega/tool-box':
+        specifier: workspace:*
+        version: link:../tool-box
+      '@tnega/tool-jobs':
+        specifier: workspace:*
+        version: link:../../jobs/tool-jobs
+      '@tnega/tool-ptc':
+        specifier: workspace:*
+        version: link:../../tool-ptc
+      '@tnega/tool-thread':
+        specifier: workspace:*
+        version: link:../tool-thread
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
-  packages/project/http: {}
+  packages/project/http:
+    dependencies:
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/box':
+        specifier: workspace:*
+        version: link:../box
+      '@tnega/project':
+        specifier: workspace:*
+        version: link:../project
+      '@tnega/project-host':
+        specifier: workspace:*
+        version: link:../host
+      '@tnega/project-routines':
+        specifier: workspace:*
+        version: link:../routines
+      '@tnega/tool-blackboard':
+        specifier: workspace:*
+        version: link:../tool-blackboard
 
-  packages/project/memory: {}
+  packages/project/memory:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../../agent
+      '@tnega/auth-chatgpt':
+        specifier: workspace:*
+        version: link:../../auth-chatgpt
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/llm':
+        specifier: workspace:*
+        version: link:../../llm
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+    devDependencies:
+      '@tnega/blackboard-local':
+        specifier: workspace:*
+        version: link:../blackboard-local
 
   packages/project/project:
     dependencies:
@@ -932,7 +1077,20 @@ importers:
         specifier: workspace:*
         version: link:../project
 
-  packages/project/routines: {}
+  packages/project/routines:
+    dependencies:
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/box':
+        specifier: workspace:*
+        version: link:../box
+      '@tnega/thread':
+        specifier: workspace:*
+        version: link:../thread
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/project/thread:
     dependencies:

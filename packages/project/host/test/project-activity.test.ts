@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { describeToolCall } from '../src/project-activity.js'
+import { describeToolCall } from '../src/index.js'
 
 it('turns a tool call into a few words for the thread status line', () => {
   expect(describeToolCall('write_file', { path: '/repo/src/lib/count.mjs' })).toBe('Editing lib/count.mjs')

@@ -7,8 +7,8 @@ import { blackboardLocal } from '@tnega/blackboard-local'
 import { SessionLog, session as sessionPlugin } from '@tnega/session'
 import { agent, type AgentLoop, type LLMAdapter, type LLMStreamRequestEvent } from '@tnega/agent'
 import { tools } from '@tnega/tools'
-import { ProjectMemoryRunner, mountProjectMemory, projectMemoryAdapter } from '../src/project-memory.js'
-import { normalizeProjectMemory } from '../src/config.js'
+import { ProjectMemoryRunner, mountProjectMemory, projectMemoryAdapter } from '../src/index.js'
+import { normalizeProjectMemory } from '@tnega/config'
 
 const roots: string[] = []
 const contexts: Context[] = []
