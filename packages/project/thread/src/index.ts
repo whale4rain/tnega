@@ -2,7 +2,7 @@ import type { LiveAgent } from '@tnega/agent'
 import { Service, type Context } from '@tnega/core'
 
 declare module '@tnega/core' {
-  interface Context {
+  interface ServiceMap {
     threads: ThreadService
   }
 }

@@ -1,9 +1,14 @@
 import type { Context } from './context.js'
 import { FiberState } from './fiber.js'
+import type { ServiceMap } from './services.js'
 import { getTraceable, symbols, withProps, type Any, type AnyFunction, type Dict } from './utils.js'
 
 declare module './context.js' {
   interface Context {
+    // Service-keyed lookups stay typed; the untyped overload keeps dynamic
+    // names working. `strict: false` is the optional-service form.
+    get<K extends keyof ServiceMap>(name: K, strict: false): ServiceMap[K] | undefined
+    get<K extends keyof ServiceMap>(name: K, strict?: true): ServiceMap[K]
     get(name: string, strict?: boolean): Any
     set(name: string, value: Any): void
     provide(name: string, value?: Any, check?: () => boolean): () => Any

@@ -2,7 +2,7 @@ import type { ArtifactRef } from '@tnega/artifact-store'
 import { Service, type Context } from '@tnega/core'
 
 declare module '@tnega/core' {
-  interface Context {
+  interface ServiceMap {
     box: BoxService
   }
 }

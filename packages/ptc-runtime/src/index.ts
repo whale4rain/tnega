@@ -21,7 +21,7 @@ export interface PtcResult {
 }
 
 declare module '@tnega/core' {
-  interface Context {
+  interface ServiceMap {
     ptcRuntime: PtcRuntimeService
   }
 }

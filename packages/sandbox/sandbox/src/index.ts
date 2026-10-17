@@ -23,7 +23,7 @@ export * from './roots.js'
 export * from './events.js'
 
 declare module '@tnega/core' {
-  interface Context {
+  interface ServiceMap {
     sandbox: SandboxService
   }
 }

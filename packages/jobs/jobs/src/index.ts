@@ -55,7 +55,7 @@ export class JobOwnerDisposedError extends Error {
 export type JobDoneListener = (job: JobSnapshot, owner?: LiveAgent) => void | Promise<void>
 
 declare module '@tnega/core' {
-  interface Context { jobs: JobRegistry }
+  interface ServiceMap { jobs: JobRegistry }
   interface Events {
     'jobs/change': (job: JobSnapshot) => void
   }

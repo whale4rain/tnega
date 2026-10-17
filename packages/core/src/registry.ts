@@ -1,5 +1,6 @@
 import type { Context } from './context.js'
 import { Fiber } from './fiber.js'
+import type { ServiceName } from './services.js'
 import { buildOuterStack, DisposableList, symbols, withProps, type Any, type AnyFunction, type Dict } from './utils.js'
 
 declare module './context.js' {
@@ -13,7 +14,12 @@ function isApplicable(object: Plugin) {
   return object && typeof object === 'object' && typeof object.apply === 'function'
 }
 
-export type Inject = string[] | Dict<Any>
+/**
+ * What a plugin declares in `inject`. Array form is checked against
+ * {@link ServiceMap}, so a misspelled service is a compile error instead of a
+ * fiber that waits forever; object form carries per-service configuration.
+ */
+export type Inject = ServiceName[] | Dict<Any>
 export type InjectKey = string & keyof Context
 
 export function Inject(name: string, config?: Any) {

@@ -496,3 +496,9 @@ export const tools = {
 }
 
 export const name = '@tnega/tools'
+
+declare module '@tnega/core' {
+  interface ServiceMap {
+    tools: ToolsService
+  }
+}

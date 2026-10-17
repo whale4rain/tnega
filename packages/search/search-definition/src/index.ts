@@ -24,7 +24,7 @@ export * from './types.js'
 export * from './events.js'
 
 declare module '@tnega/core' {
-  interface Context {
+  interface ServiceMap {
     search: SearchService
   }
 }

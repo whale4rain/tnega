@@ -2002,3 +2002,9 @@ export const session = {
 export * from './invariant.js'
 
 export const name = '@tnega/session'
+
+declare module '@tnega/core' {
+  interface ServiceMap {
+    session: SessionLog
+  }
+}

@@ -18,7 +18,7 @@ import {
 export * from './types.js'
 
 declare module '@tnega/core' {
-  interface Context {
+  interface ServiceMap {
     browser: BrowserService
   }
 }

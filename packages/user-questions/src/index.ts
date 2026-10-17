@@ -37,7 +37,7 @@ export interface UserQuestionsConfig {
 export interface QuestionCaller { agentId: string; callId?: string; signal?: AbortSignal }
 
 declare module '@tnega/core' {
-  interface Context { userQuestions: UserQuestionsService }
+  interface ServiceMap { userQuestions: UserQuestionsService }
 }
 
 export class UserQuestionError extends Error {

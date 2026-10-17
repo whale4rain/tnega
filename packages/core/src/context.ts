@@ -4,9 +4,10 @@ import { Fiber } from './fiber.js'
 import { Logger, LoggerService } from './logger.js'
 import { ReflectService } from './reflect.js'
 import { RegistryService } from './registry.js'
+import type { ServiceMap } from './services.js'
 import { getTraceable, symbols, type Any, type Dict } from './utils.js'
 
-export interface Context {
+export interface Context extends ServiceMap {
   [symbols.isolate]: Dict<symbol | undefined>
   [symbols.intercept]: Dict<Any>
   root: this

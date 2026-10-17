@@ -1,7 +1,7 @@
 import { Service, type Context } from '@tnega/core'
 
 declare module '@tnega/core' {
-  interface Context { approvalReviewer: ApprovalReviewer }
+  interface ServiceMap { approvalReviewer: ApprovalReviewer }
 }
 
 export type ApprovalMode = 'manual' | 'auto'
