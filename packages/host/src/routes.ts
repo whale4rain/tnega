@@ -13,8 +13,6 @@ import { consolidateProjectMemory } from '@tnega/tool-memory'
 import { resolve } from 'node:path'
 import { recoverInterruptedTurn } from '@tnega/agent'
 import { sessionUsage } from '@tnega/usage'
-import { storedWorkspaceUsage } from '@tnega/usage'
-import { readWorkspacePrompt, writeWorkspacePrompt } from '@tnega/workspace-prompt'
 import { discoverModels, ModelDiscoveryError, parseModelDiscoveryInput } from '@tnega/config'
 import { pendingQuestionsFromEvents, UserQuestionError } from '@tnega/user-questions'
 import { readGoal } from '@tnega/goal'
@@ -26,7 +24,6 @@ import { JobRegistry } from '@tnega/jobs'
 import { ProjectHost } from '@tnega/project-host'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
-import { pickSystemFolder } from '@tnega/directory-picker'
 import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
@@ -43,52 +40,13 @@ export const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
  * never depend on that ordering. Migrating a domain means moving its entries
  * here (or into the owning package) and deleting them from `apiRoutes`.
  */
-export function registerApiRoutes(web: WebServerService, context: ServerContext): void {
+export function registerApiRoutes(web: WebServerService): void {
   web.register({
     kind: 'exact',
     method: 'GET',
     path: '/api/health',
     handler: (_req, res) => {
       sendJson(res, 200, { ok: true })
-    },
-  })
-  web.register({
-    kind: 'exact',
-    method: 'GET',
-    path: '/api/plugins',
-    handler: async (_req, res) => {
-      const workshop = context.pluginWorkshop
-      sendJson(res, 200, {
-        ...(context.hotPlugins ? { enabled: true, ...context.hotPlugins.status() } : { enabled: false }),
-        dev: workshop
-          ? { enabled: true, dir: workshop.dir, ...workshop.host.status(), plugins: (await workshop.list()).map(plugin => plugin.name) }
-          : { enabled: false },
-      })
-    },
-  })
-  web.register({
-    kind: 'exact',
-    method: 'POST',
-    path: '/api/plugins/reload',
-    handler: async (_req, res) => {
-      if (!context.hotPlugins) {
-        sendError(res, 404, 'plugin profile is not enabled')
-        return
-      }
-      sendJson(res, 200, { enabled: true, ...await context.hotPlugins.reload() })
-    },
-  })
-  web.register({
-    kind: 'exact',
-    method: 'POST',
-    path: '/api/folder-picker',
-    handler: async (req, res) => {
-      if (!isLoopbackAddress(req.socket.remoteAddress)) {
-        sendError(res, 403, 'folder picker is only available to local clients')
-        return
-      }
-      const path = await pickSystemFolder()
-      sendJson(res, 200, path ? { path } : {})
     },
   })
 }
@@ -243,33 +201,6 @@ const apiRoutes: ApiRoute[] = [
             }
             throw error
           }
-      return
-    },
-  },
-{
-    match: (req, url) => Boolean(url.pathname === '/api/usage' && req.method === 'GET'),
-    handle: async (req, res, url, context) => {
-      if (!(url.pathname === '/api/usage' && req.method === 'GET')) return
-      const workspace = workspaceParam(url)
-      if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
-      sendJson(res, 200, await storedWorkspaceUsage(workspace, await readSystemConfig(context.configFile)))
-      return
-    },
-  },
-{
-    match: (req, url) => Boolean(url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT')),
-    handle: async (req, res, url) => {
-      if (!(url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT'))) return
-      const workspace = workspaceParam(url)
-      if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
-      if (req.method === 'PUT') {
-            const body = await readJsonBody(req)
-            if (typeof body.prompt !== 'string' || body.prompt.length > 32000) {
-              sendError(res, 400, 'prompt must be a string of at most 32000 characters'); return
-            }
-            await writeWorkspacePrompt(workspace, body.prompt)
-          }
-      sendJson(res, 200, { prompt: await readWorkspacePrompt(workspace) })
       return
     },
   },
@@ -751,11 +682,7 @@ export async function handleApi(
 }
 
 
-export function isLoopbackAddress(address: string | undefined): boolean {
-  return address === '::1' || address === '::ffff:127.0.0.1'
-    || address?.startsWith('127.') === true
-    || address?.startsWith('::ffff:127.') === true
-}
+export { isLoopbackAddress } from '@tnega/web-kit'
 
 export async function projectHostFor(
   context: ServerContext,

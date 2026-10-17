@@ -9,7 +9,8 @@
   "dependencies": {
     "@tnega/agent": "workspace:*",
     "@tnega/core": "workspace:*",
-    "@tnega/home": "workspace:*"
+    "@tnega/home": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   },
   "devDependencies": {
     "@tnega/memory-local": "workspace:*",

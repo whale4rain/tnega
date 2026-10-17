@@ -12,6 +12,10 @@ import { createPluginWorkshop } from '@tnega/plugin-host'
 import { readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
 import { fileRoutes } from '@tnega/workspace-files'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
+import { folderPickerRoutes } from '@tnega/directory-picker'
+import { usageRoutes } from '@tnega/usage'
+import { workspacePromptRoutes } from '@tnega/workspace-prompt'
+import { pluginRoutes } from '@tnega/plugin-host'
 import { browserRoutes } from '@tnega/browser-playwright'
 import { projectApi } from '@tnega/project-http'
 import { terminalRoutes } from '@tnega/terminal'
@@ -126,6 +130,13 @@ export async function startWebServer(
   await root.plugin(fileRoutes)
   await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })
   await root.plugin(browserRoutes, { browser: () => browser })
+  await root.plugin(folderPickerRoutes)
+  await root.plugin(usageRoutes, { configFile })
+  await root.plugin(workspacePromptRoutes)
+  await root.plugin(pluginRoutes, {
+    profile: () => context.hotPlugins,
+    workshop: () => context.pluginWorkshop,
+  })
   await root.plugin(chatgptRoutes, {
     onSignedIn: async () => {
       const config = await readSystemConfig(configFile)
@@ -139,7 +150,7 @@ export async function startWebServer(
     },
   })
   await root.plugin(terminalRoutes, { terminals: context.terminals })
-  registerApiRoutes(context.web, context)
+  registerApiRoutes(context.web)
   context.web.register({
     kind: 'prefix',
     method: '*',

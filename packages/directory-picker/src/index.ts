@@ -117,3 +117,5 @@ function isMissingCommand(error: unknown): boolean {
 }
 
 export const name = '@tnega/directory-picker'
+
+export * from './routes.js'

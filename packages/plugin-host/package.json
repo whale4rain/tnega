@@ -10,6 +10,7 @@
     "@tnega/core": "workspace:*",
     "@tnega/profile": "workspace:*",
     "@tnega/tools": "workspace:*",
-    "chokidar": "^4.0.3"
+    "chokidar": "^4.0.3",
+    "@tnega/web-kit": "workspace:*"
   }
 }

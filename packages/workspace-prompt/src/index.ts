@@ -67,3 +67,5 @@ export const workspacePrompt = {
 }
 
 export const name = '@tnega/workspace-prompt'
+
+export * from './routes.js'

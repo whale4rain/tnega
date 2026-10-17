@@ -10,6 +10,8 @@
     "@tnega/config": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/session": "workspace:*",
-    "@tnega/session-store": "workspace:*"
+    "@tnega/session-store": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }

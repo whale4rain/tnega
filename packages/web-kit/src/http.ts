@@ -78,3 +78,10 @@ export function workspaceParam(url: URL): string | undefined {
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
+
+/** Whether the socket address is loopback (IPv4, IPv6 or a mapped form). */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  return address === '::1' || address === '::ffff:127.0.0.1'
+    || address?.startsWith('127.') === true
+    || address?.startsWith('::ffff:127.') === true
+}

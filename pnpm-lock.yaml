@@ -533,7 +533,14 @@ importers:
 
   packages/core: {}
 
-  packages/directory-picker: {}
+  packages/directory-picker:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
 
   packages/execution:
     dependencies:
@@ -819,6 +826,9 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -1539,6 +1549,9 @@ importers:
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
       '@tnega/home':
         specifier: workspace:*
         version: link:../home
@@ -1548,6 +1561,9 @@ importers:
       '@tnega/session-store':
         specifier: workspace:*
         version: link:../session-store
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
 
   packages/user-questions:
     dependencies:
@@ -1605,6 +1621,9 @@ importers:
       '@tnega/home':
         specifier: workspace:*
         version: link:../home
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
     devDependencies:
       '@tnega/memory-local':
         specifier: workspace:*
