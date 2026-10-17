@@ -1,5 +1,5 @@
 /**
- * Wire contract for Projects (`packages/cli/src/project-routes.ts`).
+ * Wire contract for Projects (`packages/project/http/src/index.ts`).
  *
  * Mirrors Claude Projects (2026-09-17): a coordinator conversation that
  * dispatches work to parallel Threads, which draw on a shared Memory and a
@@ -197,7 +197,7 @@ export type MemoryFact = FactRecord<{ text: string; tags?: string[]; status?: st
 export type ArtifactFact = FactRecord<{ title: string; hash: string; size: number; mediaType: string; threadId?: string }>
 /**
  * A push or pull request a thread made with its shell, recorded by the
- * server as a resource (`packages/cli/src/project-git.ts`). Older servers
+ * server as a resource (`packages/project/worktrees/src/index.ts`). Older servers
  * never write it.
  */
 export interface GitInfo {

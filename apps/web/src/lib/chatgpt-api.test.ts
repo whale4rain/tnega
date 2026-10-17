@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { api } from './api'
-import { startWebServer } from '../../../../packages/cli/src/server.js'
+import { startWebServer } from '@tnega/host'
 
 it('starts ChatGPT sign-in from the web client while preserving API request guards', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'tnega-chatgpt-web-'))
