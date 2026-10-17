@@ -134,7 +134,7 @@
 
 ## 进度
 
-已完成 Phase 0–4、6：
+已完成 Phase 0–6，以及路由结构的全部工作：
 
 - Phase 0 `c5663c1`：23 个目标包脚手架，`@tnega/runtime` 与 `@tnega/home` 先解开两个类型环。
 - Phase 1–2 `ecb8143`、`a8a5ed3`、`a69430c`、`f013a5a`：叶子包与数据层（goal、terminal、tool-web-search、directory-picker、home、compaction、persona、workspace-prompt、workspace-files、config、auth-chatgpt、session-store、usage、profile、plugin-host、approval-host）。
@@ -142,21 +142,23 @@
 - Phase 4 `33f0332`：Project 家族（host、http、routines、memory、worktrees）。
 - Phase 5 的机械部分 `20e32e4`：`server.ts` 与 `ptc-observation` 移入 `@tnega/host`。
 - Phase 6 `01dd3da`：删除全部 shim，`packages/cli` 只剩 6 个文件、711 行，依赖 79 → 13。
+- Phase 5 结构部分：`server.ts` 从 2,547 行降到 210 行（`c4bce20`、`f231e61`、`facec3a`、`fbcd1d5`），
+  现在是 `http.ts`（传输）、`support.ts`（会话工具）、`context.ts`（Host 上下文）、
+  `runs.ts`（两条 run 管线）、`routes.ts`（路由表与端点）、`web-server.ts`（路由注册表）。
+- 路由表（按 dsh 的 `WebServer` 形状）：`47aea53` 落地 exact / prefix / upgrade 与唯一
+  fallback 席位、固定匹配序、重复即抛错、注册返回 disposer；`/api` 传输策略提升为分发边界检查。
+- `handleApi` 的 25 个顶层分支全部改为有序 `apiRoutes` 表项（`4663ab7`），`handleApi` 只剩分发循环。
+- `WebServerService` 升级为 Cordis Service（`ctx.webServer`，`8012d1d`），注册绑在服务的 Fiber 上，
+  `startWebServer` 用一个根 Context 挂载它并在 `close()` 时 dispose；功能包从此可以注入
+  `webServer` 自行注册路由。
 
-待办：
+## 有意保留
 
-- Phase 5 的结构部分已完成：`server.ts` 从 2,547 行降到 193 行，只保留 Host 生命周期
-  （`startWebServer`、`handleRequest`、关闭流程）。其余按职责拆成
-  `http.ts`（传输，`c4bce20`）、`support.ts`（会话/路由小工具，`f231e61`）、
-  `context.ts` + `runs.ts`（Host 上下文与两条 run 管线，`facec3a`）、
-  `routes.ts`（路由面：`handleApi`、浏览器与终端端点、配置快照、压缩端点，`fbcd1d5`）。
-- 路由表（按 dsh 的 `WebServer` 形状）已落地：`web-server.ts` 提供 exact / prefix /
-  upgrade 三类具名路由与唯一 fallback 席位，匹配顺序固定为「精确 → 最长前缀 → 回退」，
-  重复路径与第二个 fallback 都直接抛错，注册返回 disposer；`handleRequest` 改走该表
-  （`47aea53`）。`/api` 的传输策略（`x-tnega-client`、JSON content-type）提升为分发边界检查，
-  `GET /api/health`、`GET /api/plugins`、`POST /api/plugins/reload`、
-  `POST /api/folder-picker` 已迁为表项作为样板。剩余工作：把 `handleApi` 其余域按同样形状
-  逐步注册（sessions/runs、files、config、browser、terminals、projects），每迁一域删除对应 if 块。
-- Phase 6 的发布收尾：根 `package.json` 的 `exports` 与 `scripts/build.mjs` 的 `libraryEntries`
-  是否需要为新的宿主/运行时包增加子路径（当前它们只被打进 `dist/bin.js` 与 `dist/cli-runtime.js`）。
+- **逐包注册路由**：`ctx.webServer` 已就绪，但把某一域真正搬进功能包还差一层共享的 HTTP 原语
+  （`sendJson` / `readJsonBody` / `writeSse` 现在在 `@tnega/host/src/http.ts`，功能包反向依赖
+  host 会破坏分层）。下一步是把这些原语抽成独立 seam（例如 `@tnega/web-kit`），再把
+  `apiRoutes` 的条目移交给 `@tnega/workspace-files`、`@tnega/config`、`@tnega/project/http` 等包。
+- **发布面**：`@tnega/host` 与 `@tnega/runtime` 不新增根 `exports` 子路径，它们只被打进
+  `dist/bin.js` 与 `dist/cli-runtime.js`；`./cli/runtime` 保持兼容。若未来要把宿主作为库发布，
+  再给 `scripts/build.mjs` 的 `libraryEntries` 加条目。
 
