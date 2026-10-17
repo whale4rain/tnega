@@ -286,9 +286,9 @@ export class ProjectLoopRuntime {
     if (!config?.projectId || typeof config.projectId !== 'string') {
       throw new Error('project-loop requires a projectId')
     }
-    const box = ctx.get('box') as BoxService | undefined
-    const threads = ctx.get('threads') as ThreadService | undefined
-    const registry = ctx.get('agents') as AgentRegistry | undefined
+    const box = ctx.get('box', false)
+    const threads = ctx.get('threads', false)
+    const registry = ctx.get('agents', false)
     if (!box || !threads || !registry) {
       throw new Error('project-loop requires box, threads and the live Agent registry')
     }
@@ -297,7 +297,7 @@ export class ProjectLoopRuntime {
     this.box = box
     this.threads = threads
     this.registry = registry
-    this.artifacts = ctx.get('blackboard') as ArtifactIndex | undefined
+    this.artifacts = ctx.get('blackboard', false)
   }
 
   /** 挂上事件面并做第一次扫描。 */

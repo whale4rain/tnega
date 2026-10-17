@@ -1,6 +1,5 @@
 import type { Context } from '@tnega/core'
 import type { AgentTurnStoppingEvent } from './types.js'
-import type { AgentRegistry } from './live.js'
 
 /** Author name of the nudge, so views can fold it away. */
 export const CONTINUATION_NUDGE_NAME = 'plugin:continue'
@@ -119,7 +118,7 @@ export const continuationNudge = {
       const key = `${event.agentId}:${event.turn ?? event.index}`
       const count = sent.get(key) ?? 0
       if (count >= max) return undefined
-      const registry: AgentRegistry | undefined = ctx.get('agents')
+      const registry = ctx.get('agents', false)
       const agent = registry?.get(event.agentId)
       if (!agent) return undefined
       sent.set(key, count + 1)

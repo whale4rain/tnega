@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentRegistry } from '@tnega/agent'
 import type { Context } from '@tnega/core'
 import type { SessionLog } from '@tnega/session'
-import type { ToolsService } from '@tnega/tools'
 
 export type GoalStatus = 'active' | 'paused' | 'complete' | 'blocked'
 
@@ -81,8 +79,8 @@ export const goalTools = {
   name: 'goal-tools',
   inject: ['agents', 'tools'],
   apply(ctx: Context): void {
-    const registry = ctx.get('agents') as AgentRegistry
-    const tools = ctx.get('tools') as ToolsService
+    const registry = ctx.agents
+    const tools = ctx.tools
     tools.register({
       schema: {
         name: 'get_goal',

@@ -15,7 +15,6 @@ import type {
   ToolExecutor,
   ToolParameterSchema,
   ToolSchema,
-  ToolsService,
 } from './index.js'
 import { evaluateExpression } from './calc.js'
 import { ToolAbortError } from './errors.js'
@@ -684,7 +683,7 @@ export const builtinTools = {
   name: 'builtinTools',
   inject: ['tools'],
   apply(ctx: Context, config: BuiltinToolsConfig = {}) {
-    const service = ctx.get('tools') as ToolsService
+    const service = ctx.tools
     // Without a shared registry, background processes die with this plugin.
     const owned = config.processes || !config.allowShell ? undefined : new ProcessRegistry()
     if (owned) ctx.fiber.effect(() => () => { void owned.dispose() }, 'builtinTools/processes')

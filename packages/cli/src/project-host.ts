@@ -294,7 +294,7 @@ export class ProjectHost {
     const ctx = new Context()
     try {
       await ctx.plugin(blackboardLocal, { root: join(this.tnegaRoot, 'projects', record.id, 'blackboard') })
-      const board = ctx.get('blackboard') as BlackboardService
+      const board = ctx.get('blackboard')
       const threads = (await board.list('agent')).flatMap(fact => {
         const state: unknown = typeof fact.data === 'object' && fact.data !== null ? Reflect.get(fact.data, 'state') : undefined
         return typeof state === 'string' ? [{ id: fact.id, state }] : []
@@ -686,7 +686,7 @@ export class ProjectHost {
       const ctx = new Context()
       await ctx.plugin(blackboardLocal, { root: join(this.tnegaRoot, 'blackboard') })
       await ctx.plugin(projectLocal, { root: join(this.tnegaRoot, 'projects') })
-      return { ctx, projects: ctx.get('projects') as ProjectsService }
+      return { ctx, projects: ctx.get('projects') }
     })()
     return (await this.indexScope).projects
   }
@@ -838,14 +838,14 @@ export class ProjectHost {
     await ctx.plugin(toolThread)
     await ctx.plugin(toolBox)
 
-    const registry = ctx.get('agents') as AgentRegistry
+    const registry = ctx.get('agents')
     // Pushes and pull requests a thread makes become Library cards with their status.
-    trackGitOutcomes(ctx, ctx.get('blackboard') as BlackboardService, registry.list().map(agent => ({ id: agent.id, ctx: agent.ctx })))
+    trackGitOutcomes(ctx, ctx.get('blackboard'), registry.list().map(agent => ({ id: agent.id, ctx: agent.ctx })))
     await ctx.plugin(jobsLocal)
     await ctx.plugin(toolJobs, { resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session })
     await ctx.plugin(continuationNudge)
-    const threads = ctx.get('threads') as ThreadService
-    const toolService = ctx.get('tools') as ToolsService
+    const threads = ctx.get('threads')
+    const toolService = ctx.get('tools')
     // Review first with trusted room evidence; an undecided call waits on its
     // direct parent, which can decide or forward the exact call to the user.
     const isThread = (agentId: string | undefined): boolean => agentId !== undefined && agentId !== record.coordinatorId
@@ -895,9 +895,9 @@ export class ProjectHost {
     mountProjectMemory(ctx, { directory, blackboard: ctx.blackboard, config: systemConfig })
     await ctx.plugin(projectLoop, { projectId: record.id, isPaused: () => record.paused === true })
     const routines = new RoutineRunner({
-      blackboard: ctx.get('blackboard') as BlackboardService,
+      blackboard: ctx.get('blackboard'),
       threads,
-      box: ctx.get('box') as BoxService,
+      box: ctx.get('box'),
       coordinatorId: record.coordinatorId,
       isPaused: () => record.paused === true,
     })
@@ -913,10 +913,10 @@ export class ProjectHost {
     return {
       record,
       ctx,
-      box: ctx.get('box') as BoxService,
+      box: ctx.get('box'),
       threads,
-      blackboard: ctx.get('blackboard') as BlackboardService,
-      artifacts: ctx.get('artifacts') as ArtifactStore,
+      blackboard: ctx.get('blackboard'),
+      artifacts: ctx.get('artifacts'),
       registry,
       tools: toolService,
       routines,

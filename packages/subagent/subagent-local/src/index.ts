@@ -4,7 +4,6 @@ import { join, resolve } from 'node:path'
 import { HUMAN_COMMUNICATION_PROMPT, type AgentHandle, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import type { Context } from '@tnega/core'
 import { projectEvents, SessionLog, type SessionEvent } from '@tnega/session'
-import type { ToolsService } from '@tnega/tools'
 import {
   SubagentError,
   SubagentService,
@@ -233,9 +232,7 @@ export class LocalSubagentService extends SubagentService {
     super(ctx)
     this.workspace = resolve(config.cwd)
     this.storageRoot = childRoot(this.workspace, config.storageRoot)
-    const agents = ctx.get('agents') as AgentRegistry | undefined
-    if (!agents) throw new SubagentError('subagents require the live Agent registry')
-    this.agents = agents
+    this.agents = ctx.agents
     this.llm = config.llm
     this.contextWindow = config.contextWindow
     this.maxConcurrent = config.maxConcurrent ?? 3
@@ -247,7 +244,7 @@ export class LocalSubagentService extends SubagentService {
       || !Number.isSafeInteger(this.maxDepth) || this.maxDepth < 1) {
       throw new SubagentError('subagent limits must be positive integers')
     }
-    const tools = ctx.get('tools') as ToolsService
+    const tools = ctx.tools
     tools.guard(async request => {
       const id = request.options.agentId
       if (!id || (request.name !== 'shell' && request.name !== 'http_get')) return undefined
@@ -435,7 +432,7 @@ export class LocalSubagentService extends SubagentService {
 
 export const subagentLocal = {
   name: 'subagent-local',
-  inject: ['agents'],
+  inject: ['agents', 'tools'],
   apply(ctx: Context, config: LocalSubagentConfig): void {
     const service = new LocalSubagentService(ctx, config)
     ctx.fiber.effect(() => () => service.dispose(), 'dispose subagents')

@@ -1,7 +1,6 @@
-import { ArtifactError, type ArtifactStore } from '@tnega/artifact-store'
+import { ArtifactError } from '@tnega/artifact-store'
 import {
   BlackboardError,
-  type BlackboardService,
   type FactKind,
   type FactRecord,
 } from '@tnega/blackboard'
@@ -9,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
 import type { Context } from '@tnega/core'
-import { resolveInside, type ToolsService } from '@tnega/tools'
+import { resolveInside } from '@tnega/tools'
 
 export interface ToolBlackboardConfig {
   /** Workspace root; enables publishing a workspace file (`path`) as an artifact. */
@@ -121,9 +120,9 @@ export const toolBlackboard = {
   name: 'tool-blackboard',
   inject: ['blackboard', 'artifacts', 'tools'],
   apply(ctx: Context, config: ToolBlackboardConfig = {}): void {
-    const board = ctx.get('blackboard') as BlackboardService
-    const artifacts = ctx.get('artifacts') as ArtifactStore
-    const tools = ctx.get('tools') as ToolsService
+    const board = ctx.blackboard
+    const artifacts = ctx.artifacts
+    const tools = ctx.tools
 
     tools.register({
       schema: {

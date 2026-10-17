@@ -4,7 +4,7 @@ import type { ApprovalDecision } from '@tnega/approval-review'
 import { agentAddress, type BoxService } from '@tnega/box'
 import type { Context } from '@tnega/core'
 import type { ThreadService } from '@tnega/thread'
-import type { ToolRequest, ToolsService } from '@tnega/tools'
+import type { ToolRequest } from '@tnega/tools'
 import type { ApprovalBroker } from './permissions.js'
 
 interface ThreadApprovalOptions {
@@ -157,9 +157,9 @@ class ThreadApprovals {
 }
 
 export function mountThreadApprovals(ctx: Context, options: ThreadApprovalOptions): ThreadApprovals {
-  const approvals = new ThreadApprovals(ctx.get('threads') as ThreadService, ctx.get('box') as BoxService, ctx.get('agents') as AgentRegistry, options)
+  const approvals = new ThreadApprovals(ctx.get('threads'), ctx.get('box'), ctx.get('agents'), options)
   ctx.fiber.effect(() => () => approvals.dispose(), 'cancel pending Thread approvals')
-  const tools = ctx.get('tools') as ToolsService
+  const tools = ctx.get('tools')
   tools.register({
     schema: {
       name: 'decide_thread_approval',

@@ -12,7 +12,6 @@ import {
   type AgentContextBudget,
   type AgentDefinition,
   type AgentInbox,
-  type AgentLoop,
   type AgentInput,
   type AgentRunOptions,
   type AgentRunResult,
@@ -221,7 +220,7 @@ export async function runAgentCommand(
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
   })
   try {
-    const loop = context.root.get('agentLoop') as AgentLoop
+    const loop = context.root.get('agentLoop')
     const runOptions: AgentRunOptions = {}
     if (options.maxTurns !== undefined) runOptions.maxTurns = options.maxTurns
     if (options.maxSteps !== undefined) runOptions.maxSteps = options.maxSteps
@@ -334,24 +333,8 @@ export async function createAgentRuntime(
   const promptFiber = await root.plugin(systemPrompt)
   fibers.push(promptFiber)
   fibers.push(await root.plugin(workspacePrompt, { workspace: merged.cwd }))
-  const promptService = root.get('systemPrompt') as {
-    registerTools(
-      provider: () => readonly {
-        name: string
-        description: string
-        parameters?: Record<string, unknown>
-      }[],
-    ): () => void
-  } | undefined
-  const toolRegistry = root.get('tools') as {
-    list(): ReadonlyArray<{
-      schema: {
-        name: string
-        description: string
-        parameters?: Record<string, unknown>
-      }
-    }>
-  } | undefined
+  const promptService = root.get('systemPrompt')
+  const toolRegistry = root.get('tools')
   let disposePromptTools: (() => void) | undefined
   if (promptService && toolRegistry) {
     disposePromptTools = promptService.registerTools(() => (

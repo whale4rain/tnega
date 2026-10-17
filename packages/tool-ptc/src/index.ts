@@ -3,7 +3,7 @@ import type { AgentRequestEvent } from '@tnega/agent'
 import type { Context } from '@tnega/core'
 import type { PtcBinding } from '@tnega/ptc-runtime'
 import { renderToolResult, type SessionLog } from '@tnega/session'
-import type { ToolsService, ToolExecuteOptions } from '@tnega/tools'
+import type { ToolExecuteOptions } from '@tnega/tools'
 
 export type PtcMode = 'native' | 'both' | 'ptc'
 export interface ToolPtcConfig {
@@ -34,7 +34,7 @@ export const toolPtc = {
     for (const [name, limit] of Object.entries({ maxCodeChars, maxResultChars })) {
       if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error(`${name} must be a positive integer`)
     }
-    const registry: ToolsService = ctx.get('tools')
+    const registry = ctx.tools
     registry.register({
       schema: {
         name: 'run_code',

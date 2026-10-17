@@ -111,7 +111,7 @@ export class BoxBlackboardService extends BoxService {
     if (!config?.projectId || typeof config.projectId !== 'string') {
       throw new BoxError('box-blackboard requires a projectId', 'BOX_INVALID')
     }
-    const board = ctx.get('blackboard') as BlackboardService | undefined
+    const board = ctx.get('blackboard', false)
     if (!board) {
       throw new BoxError(
         'box-blackboard requires a Blackboard provider in the same scope',

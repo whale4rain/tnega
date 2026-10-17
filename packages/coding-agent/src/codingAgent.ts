@@ -2,10 +2,10 @@ import type { Context, Plugin } from '@tnega/core'
 import { defineAgent, HUMAN_COMMUNICATION_PROMPT, type LLMAdapter } from '@tnega/agent'
 import type { ModelMessage, SessionMode } from '@tnega/session'
 import { resolve } from 'node:path'
-import type { ToolDefinition, ToolsService } from '@tnega/tools'
+import type { ToolDefinition } from '@tnega/tools'
 import { connectMcpServers, type McpRuntime } from './mcp.js'
 import { generatePlan } from './plan.js'
-import { skillTools, type SkillsService } from './skills.js'
+import { skillTools } from './skills.js'
 import { createSlashRegistry, type SlashCommandResult } from './slash.js'
 import type { CodingSurvey, Plan, SlashCommand, SlashSuggestion } from './types.js'
 
@@ -70,7 +70,7 @@ export function createCodingAgentPlugin(
       const service = dynamic(ctx)
       const tools: ToolDefinition[] = []
       if (skillsEnabled) {
-        const existing = ctx.get('skills') as SkillsService | undefined
+        const existing = ctx.get('skills', false)
         if (existing && existing.cwd !== resolve(cwd)) throw new Error('skills workspace mismatch')
         if (!existing) await ctx.plugin(skillTools, { cwd })
       }
@@ -105,7 +105,7 @@ export function createCodingAgentPlugin(
       const slashContext = (): Parameters<typeof slash.run>[2] => ({
         cwd,
         executeTool: async (name, input) => {
-          const registry = ctx.get('tools') as ToolsService
+          const registry = ctx.tools
           const result = await registry.execute(name, input)
           if (!result.ok) throw new Error(result.error?.message ?? `tool failed: ${name}`)
           return result.output

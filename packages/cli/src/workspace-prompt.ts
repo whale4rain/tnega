@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@tnega/core'
-import type { AgentPreStepEvent, SystemPromptService } from '@tnega/agent'
+import type { AgentPreStepEvent } from '@tnega/agent'
 import { workspaceStateDir } from './home-paths.js'
 
 export async function readWorkspacePrompt(workspace: string): Promise<string> {
@@ -28,7 +28,7 @@ export const workspacePrompt = {
   name: 'workspace-prompt',
   inject: ['systemPrompt'],
   apply(ctx: Context, { workspace }: { workspace: string }) {
-    const prompts: SystemPromptService = ctx.get('systemPrompt')
+    const prompts = ctx.systemPrompt
     const headers = new Map<string, string>()
     const wrap = (prompt: string) => prompt ? `<workspace-user-instructions>\n${JSON.stringify(prompt)}\n</workspace-user-instructions>` : ''
     ctx.effect(() => prompts.registerContext({

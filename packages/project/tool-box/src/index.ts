@@ -1,7 +1,5 @@
-import { REACTIONS, USER_ADDRESS, agentAddress, type BoxService } from '@tnega/box'
+import { REACTIONS, USER_ADDRESS, agentAddress } from '@tnega/box'
 import type { Context } from '@tnega/core'
-import type { ThreadService } from '@tnega/thread'
-import type { ToolsService } from '@tnega/tools'
 
 /**
  * A bubble is a chat line, not a report. Longer text is refused so the Agent
@@ -30,9 +28,9 @@ export const toolBox = {
   name: 'tool-box',
   inject: ['box', 'threads', 'tools'],
   apply(ctx: Context): void {
-    const box = ctx.get('box') as BoxService
-    const threads = ctx.get('threads') as ThreadService
-    const tools = ctx.get('tools') as ToolsService
+    const box = ctx.box
+    const threads = ctx.threads
+    const tools = ctx.tools
 
     tools.register({
       schema: {

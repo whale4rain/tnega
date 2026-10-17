@@ -231,11 +231,11 @@ export class LocalThreadService extends ThreadService {
     if (!config.root || typeof config.root !== 'string') {
       throw new ThreadError('thread-local requires a root directory', 'THREAD_INVALID')
     }
-    const registry = ctx.get('agents') as AgentRegistry | undefined
+    const registry = ctx.get('agents', false)
     if (!registry) {
       throw new ThreadError('thread-local requires the live Agent registry', 'THREAD_FAILED')
     }
-    const board = ctx.get('blackboard') as BlackboardService | undefined
+    const board = ctx.get('blackboard', false)
     if (!board) {
       throw new ThreadError(
         'thread-local requires a Blackboard provider in the same scope',

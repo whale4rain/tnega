@@ -1,8 +1,7 @@
 import type { Context } from '@tnega/core'
 import { DELEGATION_PROMPT } from '@tnega/agent'
 import { setTimeout as delay } from 'node:timers/promises'
-import type { SubagentEntry, SubagentService } from '@tnega/subagent'
-import type { ToolsService } from '@tnega/tools'
+import type { SubagentEntry } from '@tnega/subagent'
 
 function fields(input: unknown): Record<string, unknown> {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
@@ -24,9 +23,9 @@ export const toolSubagent = {
   name: 'tool-subagent',
   inject: ['subagents', 'tools'],
   apply(ctx: Context): void {
-    const subagents = ctx.get('subagents') as SubagentService
-    const tools = ctx.get('tools') as ToolsService
-    const prompts = ctx.get('systemPrompt')
+    const subagents = ctx.subagents
+    const tools = ctx.tools
+    const prompts = ctx.get('systemPrompt', false)
     if (prompts) ctx.fiber.effect(() => prompts.registerSection({ name: 'tool:subagents', order: 40, content: DELEGATION_PROMPT }))
     tools.register({
       schema: {

@@ -922,11 +922,11 @@ async function buildHandle(
     try {
       setupResult = await options.setup?.(agentCtx)
       for (const name of ['llm', 'systemPrompt']) {
-        if (agentCtx.reflect.get(name, false) !== undefined) continue
-        const inherited = ctx.reflect.get(name, false)
+        if (agentCtx.get(name, false) !== undefined) continue
+        const inherited = ctx.get(name, false)
         if (inherited !== undefined) agentCtx.provide(name, inherited)
       }
-      const loop = agentCtx.reflect.get('agentLoop', false) as AgentLoop | undefined
+      const loop = agentCtx.get('agentLoop', false)
       agent.setLoop(loop)
       setupResult?.commit()
     } catch (error) {

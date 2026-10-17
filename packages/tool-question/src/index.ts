@@ -1,5 +1,5 @@
 import type { Context } from '@tnega/core'
-import type { ToolDefinition, ToolsService } from '@tnega/tools'
+import type { ToolDefinition } from '@tnega/tools'
 import { parseQuestionInput, UserQuestionError } from '@tnega/user-questions'
 
 export interface ToolQuestionConfig { agentId?: string }
@@ -10,7 +10,7 @@ export const toolQuestion = {
   name: 'tool-question',
   inject: ['tools', 'userQuestions'],
   apply(ctx: Context, config: ToolQuestionConfig = {}): void {
-    const tools: ToolsService = ctx.get('tools')
+    const tools = ctx.tools
     const definition: ToolDefinition = {
       schema: {
         name: QUESTION_TOOL_NAME,

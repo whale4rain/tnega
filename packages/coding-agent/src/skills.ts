@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { link, lstat, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import type { ToolDefinition, ToolsService } from '@tnega/tools'
+import type { ToolDefinition } from '@tnega/tools'
 import type { Context } from '@tnega/core'
 import type { AgentRequestEvent, PromptAssembly } from '@tnega/agent'
 import { skillCreateTool, skillInstallTool } from './skill-management.js'
@@ -181,7 +181,7 @@ export const skillTools = {
   inject: ['tools'],
   async apply(ctx: Context, options: SkillsService): Promise<void> {
     await installBuiltinSkills()
-    const registry = ctx.get('tools') as ToolsService
+    const registry = ctx.tools
     registry.register(await skillTool(options.cwd))
     registry.register(await skillReadTool(options.cwd))
     registry.register(skillCreateTool())

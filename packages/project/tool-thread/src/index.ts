@@ -1,7 +1,6 @@
-import { agentAddress, type BoxMessageKind, type BoxService } from '@tnega/box'
+import { agentAddress, type BoxMessageKind } from '@tnega/box'
 import type { Context } from '@tnega/core'
-import { normalizeChecklist, type ThreadService, type ThreadState } from '@tnega/thread'
-import type { ToolsService } from '@tnega/tools'
+import { normalizeChecklist, type ThreadState } from '@tnega/thread'
 
 /** `send_thread_message` 允许的消息类型：回报结论，或给子 Thread 新的方向。 */
 const MESSAGE_KINDS: readonly BoxMessageKind[] = [
@@ -40,9 +39,9 @@ export const toolThread = {
   name: 'tool-thread',
   inject: ['threads', 'box', 'tools'],
   apply(ctx: Context): void {
-    const threads = ctx.get('threads') as ThreadService
-    const box = ctx.get('box') as BoxService
-    const tools = ctx.get('tools') as ToolsService
+    const threads = ctx.threads
+    const box = ctx.box
+    const tools = ctx.tools
 
     tools.register({
       schema: {

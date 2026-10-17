@@ -5,7 +5,7 @@ import {
   type BrowserConsoleEntry,
   type BrowserService,
 } from '@tnega/browser'
-import { withAttachments, type ToolDefinition, type ToolExecuteOptions, type ToolsService } from '@tnega/tools'
+import { withAttachments, type ToolDefinition, type ToolExecuteOptions } from '@tnega/tools'
 
 /** Tools that only observe the page. */
 export const BROWSER_OBSERVE_TOOLS: readonly string[] = [
@@ -253,7 +253,7 @@ export function browserTools(browser: BrowserService, config: ToolBrowserConfig 
 export const name = 'tool-browser'
 
 export function apply(ctx: Context, config: ToolBrowserConfig = {}): void {
-  const registry = ctx.get('tools') as ToolsService
+  const registry = ctx.tools
   const disabled = new Set(config.disabled ?? [])
   for (const definition of browserTools(ctx.browser, config)) {
     if (!disabled.has(definition.schema.name)) registry.register(definition)

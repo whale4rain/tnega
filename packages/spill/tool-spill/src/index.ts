@@ -159,7 +159,7 @@ export const name = 'tool-spill'
 
 export function apply(ctx: Context, config: ToolSpillConfig = {}): void {
   const resolved = resolveConfig(config)
-  const store = ctx.get('spillStore') as SpillStore
+  const store = ctx.spillStore
   ctx.on(
     'tools/post-execute',
     async (payload: ToolStagePayload, next: () => unknown) => {

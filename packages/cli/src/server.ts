@@ -50,7 +50,6 @@ import { personaFor } from './work.js'
 import { FileServeError, readWorkspaceFile, sendFile } from './files.js'
 import { searchWorkspaceFiles } from './file-search.js'
 import { memoryLocal } from '@tnega/memory-local'
-import type { MemoryService } from '@tnega/memory'
 import {
   isAgentType,
   isModelAttachment,
@@ -1185,7 +1184,7 @@ async function compactContext(
   const memoryRoot = new Context()
   try {
     await memoryRoot.plugin(memoryLocal, { cwd: workspace })
-    const memory = memoryRoot.get('memory') as MemoryService
+    const memory = memoryRoot.get('memory')
     try {
       await consolidateProjectMemory(memory, adapter, summary, messages)
     } catch (error) {
@@ -1321,7 +1320,7 @@ async function handleRun(
         ...hostPlugins(context),
       ],
     })
-    const toolService = runtime.root.get('tools') as ToolsService
+    const toolService = runtime.root.get('tools')
     toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
     await mountBrowser(runtime.root, context.browser)
     approvalFiber = await mountApprovalReview(runtime.root, {
@@ -1377,7 +1376,7 @@ async function handleRun(
     ptcObservation = await observePtc(runtime.root, id, event => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
     })
-    const sessionLog = runtime.root.get('session') as SessionLog
+    const sessionLog = runtime.root.get('session')
     compactionObservation = await observeCompaction(runtime.root, sessionLog, event => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
     })
@@ -1387,7 +1386,7 @@ async function handleRun(
       baseline: await captureFileEditBaseline(workspace),
     }
     const editBaseline = editTracking.baseline
-    const toolService = runtime.root.get('tools') as ToolsService
+    const toolService = runtime.root.get('tools')
     toolService.guard(async request => {
       if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
       return undefined
@@ -1566,8 +1565,8 @@ async function createResidentRuntime(
   fibers.push(await root.plugin(runSummary))
   // A turn that stops on "Let me run the tests:" is steered back to work.
   fibers.push(await root.plugin(continuationNudge))
-  const toolService = root.get('tools') as ToolsService
-  const registry = root.get('agents') as AgentRegistry
+  const toolService = root.get('tools')
+  const registry = root.get('agents')
   fibers.push(await root.plugin(jobsLocal))
   fibers.push(await root.plugin(toolJobs, {
     resolveSession: (agentId?: string) => registry.get(agentId ?? req.sessionId)?.session,
@@ -1705,7 +1704,7 @@ async function createResidentAgent(
     root: runtime.root,
     agent,
     registry: (runtime.root as unknown as { agents: AgentRegistry }).agents,
-    tools: runtime.root.get('tools') as ToolsService,
+    tools: runtime.root.get('tools'),
     signature,
     dispose: async () => {
       await disposeAgent().catch(() => undefined)
@@ -2103,7 +2102,7 @@ async function withCodingAgent<T>(
   try {
     await root.plugin(session, { file: sessionFilePath(workspace, id) })
     await root.plugin(tools)
-    const registry = root.get('tools') as ToolsService
+    const registry = root.get('tools')
     registry.guard(permissionGuard(summary.permission ?? 'read-only', runKey(workspace, id), new ApprovalBroker(), { workspace }))
     // A typed slash install URL is an explicit user request to read that source.
     // Model calls only have http_get when their runtime enables network tools.
@@ -2117,13 +2116,13 @@ async function withCodingAgent<T>(
       planTools: true,
       ...(summary.mode ? { mode: summary.mode } : {}),
       setMode: async (next) => {
-        const activeLog = root.get('session') as SessionLog
+        const activeLog = root.get('session')
         await activeLog.append('meta/patch', { fields: ['mode'], mode: next })
         await activeLog.flush()
       },
     }))
-    const coding = root.get('coding') as CodingService
-    const sessionLog = root.get('session') as SessionLog
+    const coding = root.get('coding')
+    const sessionLog = root.get('session')
     return await run(coding, sessionLog)
   } finally {
     await fiber?.dispose()

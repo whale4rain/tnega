@@ -81,7 +81,7 @@ export class LocalProjectsService extends ProjectsService {
     if (!config?.root || typeof config.root !== 'string') {
       throw new ProjectError('project-local requires a root directory', 'PROJECT_INVALID')
     }
-    const board = ctx.get('blackboard') as BlackboardService | undefined
+    const board = ctx.get('blackboard', false)
     if (!board) {
       throw new ProjectError(
         'project-local requires a Blackboard provider in the same scope',

@@ -1,8 +1,7 @@
-import type { AgentContextCompactedEvent, AgentPreStepEvent, AgentRegistry, AgentTurnStartEvent, LLMAdapter } from '@tnega/agent'
+import type { AgentContextCompactedEvent, AgentPreStepEvent, AgentTurnStartEvent, LLMAdapter } from '@tnega/agent'
 import type { Context } from '@tnega/core'
 import type { MemoryService } from '@tnega/memory'
 import type { ModelMessage } from '@tnega/session'
-import type { ToolsService } from '@tnega/tools'
 
 const NO_CHANGE = 'NO_CHANGE'
 const MAX_SOURCE_CHARS = 16_000
@@ -60,13 +59,13 @@ export const toolMemory = {
   name: 'tool-memory',
   inject: ['memory', 'tools'],
   apply(ctx: Context, config: ToolMemoryConfig = {}): void {
-    const memory = ctx.get('memory') as MemoryService
-    const tools = ctx.get('tools') as ToolsService
+    const memory = ctx.memory
+    const tools = ctx.tools
     const explicitGlobalRequests = new Map<string, boolean>()
     const runMemoryBlocks = new Map<string, string>()
     const injectedMemoryBlocks = new Map<string, string>()
     const isChild = (id: string): boolean => {
-      const registry = ctx.get('agents') as AgentRegistry | undefined
+      const registry = ctx.get('agents', false)
       return registry?.get(id)?.meta.subagentMode !== undefined
     }
 

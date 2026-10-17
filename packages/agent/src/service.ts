@@ -1,4 +1,4 @@
-import type { Context } from '@tnega/core'
+import type { Context, ServiceMap } from '@tnega/core'
 import { randomUUID } from 'node:crypto'
 
 import {
@@ -1144,12 +1144,8 @@ export class AgentService {
     if (request.options.contextWindow !== undefined) {
       nextContext.contextWindow = request.options.contextWindow
     }
-    const llmService = this.ctx.reflect.get('llm', false) as
-      | { routeCapacity(): unknown }
-      | undefined
-    const routeCapacity = llmService?.routeCapacity?.() as
-      | { provider?: string; model?: string; contextWindow?: number }
-      | undefined
+    const llmService = this.ctx.get('llm', false)
+    const routeCapacity = llmService?.routeCapacity()
     if (nextContext.contextWindow === undefined && routeCapacity?.contextWindow !== undefined) {
       nextContext.contextWindow = routeCapacity.contextWindow
     }
@@ -1255,9 +1251,7 @@ export class AgentService {
   }
 
   private async _initialMessages(input: AgentInput): Promise<ModelMessage[]> {
-    const promptService = this.ctx.reflect.get('systemPrompt', false) as
-      | { assemble(options?: object, ctx?: Context): Promise<{ text: string }> }
-      | undefined
+    const promptService = this.ctx.get('systemPrompt', false)
     const assembled = promptService
       ? (await promptService.assemble({}, this.ctx)).text.trim()
       : undefined
@@ -1329,16 +1323,29 @@ export class AgentService {
 
   private _session(): SessionLog {
     if (this.config.session) return this.config.session
-    const session = (this.ctx as unknown as { session?: SessionLog }).session
+    const session = this.ctx.get('session', false) ?? this._inherited('session')
     if (!session) throw new AgentError('session service is required')
     return session
   }
 
   private _tools(): ToolsService {
-    const scoped = this.ctx.reflect.get('tools', false) as ToolsService | undefined
-    const tools = scoped ?? (this.ctx as unknown as { tools?: ToolsService }).tools
+    const tools = this.ctx.get('tools', false) ?? this._inherited('tools')
     if (!tools) throw new AgentError('tools service is required')
     return tools
+  }
+
+  /**
+   * `ctx.get` answers from this context's exact isolate scope. The property form
+   * also walks the parent fiber chain, which is how a nested Agent context
+   * inherits the services of the runtime that created it. Both are needed, in
+   * that order.
+   */
+  private _inherited<K extends keyof ServiceMap>(name: K): ServiceMap[K] | undefined {
+    try {
+      return this.ctx[name]
+    } catch {
+      return undefined
+    }
   }
 
   private async _resolveAvailableTools(): Promise<readonly ToolDefinition[]> {
@@ -1347,9 +1354,7 @@ export class AgentService {
     // sees — but only to tools that are actually registered, so a declared
     // schema can never advertise an un-executable stub.
     const executable = this._tools().list()
-    const promptService = this.ctx.reflect.get('systemPrompt', false) as
-      | { toolSchemas(options?: object): Promise<readonly ToolSchemaSnapshot[]> }
-      | undefined
+    const promptService = this.ctx.get('systemPrompt', false)
     if (!promptService) return executable
     const schemas = await promptService.toolSchemas()
     if (!schemas.length) return executable
@@ -1361,9 +1366,7 @@ export class AgentService {
 
   private _llm(): LLMAdapter | undefined {
     if (this.config.llm) return this.config.llm
-    const service = this.ctx.reflect.get('llm', false) as
-      | { current(): LLMAdapter | undefined }
-      | undefined
+    const service = this.ctx.get('llm', false)
     return service?.current()
   }
 }

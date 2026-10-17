@@ -16,7 +16,7 @@ import {
   readPresentation,
   readRange,
 } from '@tnega/office'
-import { ToolInputError, resolveInside, type ToolDefinition, type ToolsService } from '@tnega/tools'
+import { ToolInputError, resolveInside, type ToolDefinition } from '@tnega/tools'
 import {
   documentOps,
   documentSpec,
@@ -290,7 +290,7 @@ export function apply(ctx: Context, config: ToolOfficeConfig = {}): void {
     maxReadBytes: config.maxReadBytes ?? DEFAULT_MAX_OFFICE_BYTES,
     disabled: new Set(config.disabled ?? []),
   }
-  const registry = ctx.get('tools') as ToolsService
+  const registry = ctx.tools
   const tools = [inspectTool(resolved), readTool(resolved), createTool(resolved), editTool(resolved)]
   for (const tool of tools) {
     if (!resolved.disabled.has(tool.schema.name)) registry.register(tool)

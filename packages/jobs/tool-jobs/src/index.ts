@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@tnega/core'
-import type { AgentRegistry, LiveAgent, SystemPromptService } from '@tnega/agent'
+import type { LiveAgent } from '@tnega/agent'
 import { JobOwnerDisposedError, type JobOutcome, type JobProgress, type JobRead } from '@tnega/jobs'
 import { renderToolResult, type SessionLog } from '@tnega/session'
 import {
   ADOPT_BACKGROUND_PROCESS, localUrls, processNotes, stripAnsi, ToolNotFoundError,
-  type AdoptedProcess, type ToolsService, type ToolExecuteOptions,
+  type AdoptedProcess, type ToolExecuteOptions,
 } from '@tnega/tools'
 import type { SubagentEntry, SubagentStartRequest } from '@tnega/subagent'
 
@@ -26,7 +26,7 @@ function required(value: unknown, name: string): string {
 }
 function ownerOf(ctx: Context, options: ToolExecuteOptions): LiveAgent | undefined {
   if (!options.agentId) return undefined
-  const registry: AgentRegistry | undefined = ctx.get('agents')
+  const registry = ctx.get('agents', false)
   const owner = registry?.get(options.agentId)
   if (!owner) throw new Error('background jobs require an active Agent identity')
   return owner
@@ -83,10 +83,10 @@ function describeProcessJob(
 
 async function runSubagent(ctx: Context, request: SubagentStartRequest, signal: AbortSignal, options: ToolExecuteOptions): Promise<JobOutcome> {
   signal.throwIfAborted()
-  const service = ctx.get('subagents')
-  const agents = ctx.get('agents')
+  const service = ctx.get('subagents', false)
+  const agents = ctx.get('agents', false)
   if (!service || !agents) throw new Error('background subagents require subagents and agents services')
-  const tools: ToolsService = ctx.get('tools')
+  const tools = ctx.tools
   let child: LiveAgent | undefined
   const cancel = (): void => child?.cancel({ type: 'user' })
   signal.addEventListener('abort', cancel, { once: true })
@@ -136,7 +136,7 @@ export const toolJobs = {
     }
     if (waitDefault > waitCap) throw new Error('job wait default exceeds maximum')
     const jobs = ctx.jobs
-    const tools: ToolsService = ctx.get('tools')
+    const tools = ctx.tools
     // Process jobs, and how much of each one's output the model has read.
     const processes = new Map<string, { adopted?: AdoptedProcess }>()
     const reads = new Map<string, number>()
@@ -147,7 +147,7 @@ export const toolJobs = {
       await owner.inject({ messages: [{ role: 'user', name: 'plugin:tool-jobs',
         content: `Background job ${job.id} (${job.label}) finished: ${job.status}. Collect its result with job_output.` }] })
     })
-    const prompt: SystemPromptService | undefined = ctx.get('systemPrompt')
+    const prompt = ctx.get('systemPrompt', false)
     if (prompt) ctx.effect(() => prompt.registerSection({
       name: 'tool:jobs', order: 45,
       content: 'Use job_start for independent long-running tools or Subagent tasks; for a command that keeps running (a dev server, a watcher) use job_start with tool=shell, since plain shell waits for the command to exit. Track job IDs, continue useful work, and collect relevant results with job_output before your final answer. Use wait only when blocked; job_kill cancels unnecessary work. Completion notices enter your inbox. Jobs survive Agent Runs but not runtime shutdown.',

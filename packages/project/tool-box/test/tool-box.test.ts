@@ -9,7 +9,7 @@ function harness() {
     threads: { get: async (id: string) => ({ id }) },
     tools: { register: (tool: { execute: (input: unknown, options: { agentId?: string }) => Promise<unknown> }) => { registered.push(tool) } },
   }
-  toolBox.apply({ get: (name: string) => services[name] } as never)
+  toolBox.apply({ get: (name: string) => services[name], ...services } as never)
   return { sent, tool: registered[0]! }
 }
 
@@ -37,7 +37,7 @@ describe('react_to_message', () => {
       threads: { activate: async () => ({ session: { read: async () => received.map(id => ({ type: 'user/message', payload: { name: `box:${id}` } })) } }) },
       tools: { register: (tool: (typeof registered)[number]) => { registered.push(tool) } },
     }
-    toolBox.apply({ get: (name: string) => services[name] } as never)
+    toolBox.apply({ get: (name: string) => services[name], ...services } as never)
     return { reactions, tool: registered.find(tool => tool.schema.name === 'react_to_message')! }
   }
 

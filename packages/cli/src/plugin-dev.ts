@@ -116,7 +116,7 @@ export async function createPluginWorkshop(
       name: 'tnega:plugin-workshop',
       async apply(ctx: Context) {
         await ctx.plugin(host.plugin)
-        const tools = ctx.get('tools', false) as ToolsService | undefined
+        const tools = ctx.get('tools', false)
         if (tools) registerWorkshopTools(tools, workshop)
       },
     },

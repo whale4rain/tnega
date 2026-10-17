@@ -9,7 +9,6 @@ import {
   resolveInside,
   type ToolDefinition,
   type ToolExecuteOptions,
-  type ToolsService,
 } from '@tnega/tools'
 import { optionalNumber, optionalString, record, stringField } from './input.js'
 
@@ -132,7 +131,7 @@ export const name = 'tool-search'
 
 export function apply(ctx: Context, config: ToolSearchConfig = {}): void {
   const resolved = normalizeConfig(config)
-  const registry = ctx.get('tools') as ToolsService
+  const registry = ctx.tools
   if (!resolved.disabled.has('glob')) registry.register(globTool(ctx.search, resolved))
   if (!resolved.disabled.has('grep')) registry.register(grepTool(ctx.search, resolved))
 }
