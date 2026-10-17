@@ -145,12 +145,14 @@
 
 待办：
 
-- Phase 5 的结构部分：`server.ts` 已从 2,547 行降到 1,322 行，现在拆成
+- Phase 5 的结构部分已完成：`server.ts` 从 2,547 行降到 193 行，只保留 Host 生命周期
+  （`startWebServer`、`handleRequest`、关闭流程）。其余按职责拆成
   `http.ts`（传输，`c4bce20`）、`support.ts`（会话/路由小工具，`f231e61`）、
-  `context.ts` 与 `runs.ts`（Host 上下文与两条 run 管线，本批）。剩余最后一块是把
-  `handleApi` 的 730 行按域拆成 `routes/{sessions,files,config,plugins,projects,browser,terminals}.ts`
-  并换上一张 `method + pattern → handler` 的表；`handleBrowser` / `handleTerminal`
-  可直接随域迁出。
+  `context.ts` + `runs.ts`（Host 上下文与两条 run 管线，`facec3a`）、
+  `routes.ts`（路由面：`handleApi`、浏览器与终端端点、配置快照、压缩端点，`fbcd1d5`）。
+  最后一项可选重构是在 `routes.ts` 内把 `handleApi` 的 if 链换成
+  `method + pattern → handler` 表，并按域拆成 `routes/*.ts`；它不改包边界，
+  风险集中在请求分发本身。
 - Phase 6 的发布收尾：根 `package.json` 的 `exports` 与 `scripts/build.mjs` 的 `libraryEntries`
   是否需要为新的宿主/运行时包增加子路径（当前它们只被打进 `dist/bin.js` 与 `dist/cli-runtime.js`）。
 
