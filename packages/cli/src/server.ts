@@ -5,7 +5,6 @@ import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   agents,
-  systemPrompt,
   continuationNudge,
   findInterruptedTurn,
   recoverInterruptedTurn,
@@ -22,21 +21,18 @@ import { observeCompaction } from './compaction-observation.js'
 import { sessionUsage } from './usage.js'
 import { storedWorkspaceUsage } from './usage-store.js'
 import { autoNameSession } from './session-title.js'
-import { readWorkspacePrompt, writeWorkspacePrompt, workspacePrompt } from './workspace-prompt.js'
+import { readWorkspacePrompt, writeWorkspacePrompt } from './workspace-prompt.js'
 import { buildCompactionPrompt, SUMMARIZATION_SYSTEM_PROMPT } from './compaction-prompt.js'
 import { autoContextBudget, SUMMARY_PREFIX } from './auto-compaction.js'
 import { ChatGptLogin, llmAuthOptions } from './chatgpt-auth.js'
 import { discoverModels, ModelDiscoveryError, parseModelDiscoveryInput } from './model-discovery.js'
-import { runSummary } from '@tnega/run-summary'
-import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
-import { toolPtc } from '@tnega/tool-ptc'
+import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { userQuestions, pendingQuestionsFromEvents, formatQuestionAnswer, UserQuestionError, type PendingQuestionRequest, type QuestionAnswers } from '@tnega/user-questions'
 import { toolQuestion } from '@tnega/tool-question'
 import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
 import {
   createCodingAgentPlugin,
   installBuiltinSkills,
-  skillTools,
   renderSkillIndex,
   createSlashRegistry,
   generatePlan,
@@ -61,27 +57,18 @@ import {
   type PlanPayload,
   type SessionEvent,
 } from '@tnega/session'
-import { searchRipgrep } from '@tnega/search-ripgrep'
 import { browserPlaywright, launchPageSource, parseLiveInput, PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { toolBrowser } from '@tnega/tool-browser'
-import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
-import { sandboxLocal } from '@tnega/sandbox-local'
-import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { availableShells, configureNetwork, configureSystemShell, DEFAULT_ALLOWED_HOSTS, systemShell } from '@tnega/execution'
-import { spillLocal } from '@tnega/spill-local'
 import { listStoredSubagents, readSubagentEvents, subagentLocal } from '@tnega/subagent-local'
 import { SubagentError } from '@tnega/subagent'
-import { toolSpill } from '@tnega/tool-spill'
-import { toolOffice } from '@tnega/tool-office'
-import { toolSearch } from '@tnega/tool-search'
 import { toolSubagent } from '@tnega/tool-subagent'
-import { jobsLocal } from '@tnega/jobs-local'
 import type { JobRegistry } from '@tnega/jobs'
-import { toolJobs } from '@tnega/tool-jobs'
-import { consolidateProjectMemory, toolMemory } from '@tnega/tool-memory'
-import { builtinTools, createBuiltinToolDefinitions, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
+import { consolidateProjectMemory } from '@tnega/tool-memory'
+import { createBuiltinToolDefinitions, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { ProjectHost } from './project-host.js'
+import { runtimeCapabilities } from './compose.js'
 import { workspaceSubagentRoot } from './state-storage.js'
 import { defaultWorkspace } from './home-paths.js'
 import { handleProjectApi } from './project-routes.js'
@@ -1508,103 +1495,78 @@ async function evictResident(context: ServerContext, workspace: string, id: stri
   await entry.dispose()
 }
 
-/** A minimal runtime for a resident agent: tools + builtins (+coding) + agents. */
+/** A runtime for a resident agent: the capability slice plus the agent registry. */
 async function createResidentRuntime(
   workspace: string,
   req: ResidentRunRequest,
 ): Promise<{ root: Context; dispose: () => Promise<void> }> {
   const root = new Context()
-  const fibers: Array<{ dispose: () => Promise<void> }> = []
-  fibers.push(await root.plugin(systemPrompt))
-  fibers.push(await root.plugin(workspacePrompt, { workspace }))
-  fibers.push(await root.plugin(tools))
-  fibers.push(await root.plugin(memoryLocal, { cwd: workspace }))
-  fibers.push(await root.plugin(toolMemory))
-  // 沙箱缝：Provider 由 composition 挑，Consumer（`sandboxedExecution`）只认识
-  // Service Definition。宿主上没有任何可用后端时 shell 会 fail closed。
-  fibers.push(await root.plugin(sandboxLocal, { workspaceRoot: canonicalPath(workspace) }))
   const currentPermission = async (): Promise<PermissionMode> => {
     return (await readSessionSummary(workspace, req.sessionId)).permission ?? 'read-only'
   }
-  fibers.push(await root.plugin(builtinTools, {
-    cwd: workspace,
-    allowNetwork: true,
-    allowShell: true,
-    allowOutsideWorkspace: async () => (await currentPermission()) === 'bypass',
-    allowPrivateNetwork: async () => (await currentPermission()) === 'bypass',
-    ...(req.processes ? { processes: req.processes } : {}),
-    execution: sandboxedExecution(root, {
-      policy: resolveSandboxPolicy({
-        mode: req.permission,
-        workspaceRoot: canonicalPath(workspace),
-        sessionId: req.sessionId,
-      }),
-      resolvePolicy: async () => resolveSandboxPolicy({
-        mode: await currentPermission(),
-        workspaceRoot: canonicalPath(workspace),
-        sessionId: req.sessionId,
-      }),
-    }),
-  }))
-  // 搜索与溢出是两条能力缝：composition 层挑 Provider，模型可见的工具只认识
-  // ctx.search，工具结果的上限只认识 ctx.spillStore。
-  fibers.push(await root.plugin(searchRipgrep, { cwd: workspace }))
-  fibers.push(await root.plugin(toolSearch, { cwd: workspace }))
-  fibers.push(await root.plugin(spillLocal, { cwd: workspace }))
-  fibers.push(await root.plugin(toolSpill))
-  fibers.push(await root.plugin(toolOffice, { cwd: workspace }))
-  fibers.push(await root.plugin(skillTools, { cwd: workspace }))
+  const sessionOf = (agentId?: string) => root.get('agents', false)?.get(agentId ?? req.sessionId)?.session
+
+  await root.plugin(runtimeCapabilities, {
+    workspace,
+    permission: currentPermission,
+    sessionId: req.sessionId,
+    builtin: {
+      allowNetwork: true,
+      allowShell: true,
+      allowOutsideWorkspace: async () => (await currentPermission()) === 'bypass',
+      allowPrivateNetwork: async () => (await currentPermission()) === 'bypass',
+      ...(req.processes ? { processes: req.processes } : {}),
+    },
+    memory: true,
+    summary: true,
+    jobs: { resolveSession: sessionOf },
+    ptc: {
+      mode: req.config.codeMode ? 'ptc' : 'native',
+      ...(req.ptcRuntime ? { runtime: req.ptcRuntime } : {}),
+      resolveSession: sessionOf,
+    },
+  })
   if (req.agentType === 'coding') {
-    fibers.push(await root.plugin(createCodingAgentPlugin({
+    await root.plugin(createCodingAgentPlugin({
       cwd: workspace,
       mode: 'auto',
       registerAgent: false,
-    })))
+    }))
   }
-  fibers.push(await root.plugin(agents))
-  fibers.push(await root.plugin(runSummary))
-  // A turn that stops on "Let me run the tests:" is steered back to work.
-  fibers.push(await root.plugin(continuationNudge))
-  const toolService = root.get('tools')
+  await root.plugin(agents)
   const registry = root.get('agents')
-  fibers.push(await root.plugin(jobsLocal))
-  fibers.push(await root.plugin(toolJobs, {
-    resolveSession: (agentId?: string) => registry.get(agentId ?? req.sessionId)?.session,
-  }))
-  fibers.push(await root.plugin(userQuestions, {
-    resolveSession: (agentId: string) => agentId === req.sessionId ? registry.get(agentId)?.session : undefined,
+  // A turn that stops on "Let me run the tests:" is steered back to work.
+  await root.plugin(continuationNudge)
+  const toolService = root.get('tools')
+  await root.plugin(userQuestions, {
+    resolveSession: (agentId: string) => agentId === req.sessionId ? registry?.get(agentId)?.session : undefined,
     deliverNonblocking: async (request: PendingQuestionRequest, answers: QuestionAnswers) => {
-      const agent = registry.get(request.agentId)
+      const agent = registry?.get(request.agentId)
       if (!agent) throw new Error('Question Agent is unavailable')
       await deliverQuestionSteer(agent.session, input => agent.steer(input), request, answers)
     },
-  }))
-  fibers.push(await root.plugin(toolQuestion))
-  fibers.push(await root.plugin(ptcRuntimeQuickjs, req.ptcRuntime))
-  fibers.push(await root.plugin(toolPtc, {
-    mode: req.config.codeMode ? 'ptc' : 'native',
-    resolveSession: (agentId?: string) => registry.get(agentId ?? req.sessionId)?.session,
-  }))
-  fibers.push(await mountApprovalReview(root, {
+  })
+  await root.plugin(toolQuestion)
+  await mountApprovalReview(root, {
     config: req.config, workspace,
     adapter: adapterFromConfig(req.effective, req.apiKey), model: req.effective.model,
-    session: agentId => registry.get(agentId ?? req.sessionId)?.session,
+    session: agentId => registry?.get(agentId ?? req.sessionId)?.session,
     mode: async () => (await readSessionSummary(workspace, req.sessionId)).approvalMode ?? req.config.approvalReview?.defaultMode ?? 'manual',
-  }))
+  })
   toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
-  fibers.push(...await mountBrowser(root, req.browser))
+  await mountBrowser(root, req.browser)
   toolService.guard(permissionGuard(currentPermission, runKey(workspace, req.sessionId), req.approvals, {
     workspace,
     review: request => reviewAutomaticApproval(root, request),
     browserUrl: () => req.browser?.state().url,
     agentMode: agentId => {
-      const meta = registry.get(agentId)?.meta
+      const meta = registry?.get(agentId)?.meta
       if (!meta?.subagentMode) return undefined
       return meta.subagentPermission ?? (meta.subagentAllowShell ? 'workspace-write' : 'read-only')
     },
   }))
-  fibers.push(await root.plugin(goalTools))
-  fibers.push(await root.plugin(subagentLocal, {
+  await root.plugin(goalTools)
+  await root.plugin(subagentLocal, {
     cwd: workspace,
     storageRoot: workspaceSubagentRoot(workspace),
     llm: adapterFromConfig(req.effective, req.apiKey),
@@ -1612,13 +1574,13 @@ async function createResidentRuntime(
     allowShell: req.permission !== 'read-only',
     allowNetwork: true,
     permission: req.permission,
-  }))
-  fibers.push(await root.plugin(toolSubagent))
-  for (const plugin of req.hostPlugins ?? []) fibers.push(await root.plugin(plugin))
+  })
+  await root.plugin(toolSubagent)
+  for (const plugin of req.hostPlugins ?? []) await root.plugin(plugin)
   return {
     root,
     dispose: async () => {
-      for (const fiber of [...fibers].reverse()) await fiber.dispose()
+      await root.fiber.dispose()
     },
   }
 }

@@ -1,10 +1,9 @@
-import { installBuiltinSkills, renderSkillIndex, skillTools } from '@tnega/coding-agent'
+import { installBuiltinSkills, renderSkillIndex } from '@tnega/coding-agent'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { agents, continuationNudge, systemPrompt, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
-import { workspacePrompt } from './workspace-prompt.js'
+import { agents, continuationNudge, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import { artifactLocal } from '@tnega/artifact-local'
 import type { ArtifactStore } from '@tnega/artifact-store'
 import { blackboardLocal } from '@tnega/blackboard-local'
@@ -19,36 +18,29 @@ import {
 import { boxBlackboard } from '@tnega/box-blackboard'
 import { Context } from '@tnega/core'
 import { runSummary } from '@tnega/run-summary'
-import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
+import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { projectSessionRoot, workspaceProjectStateRoot } from './state-storage.js'
 import { toolPtc } from '@tnega/tool-ptc'
 import { jobsLocal } from '@tnega/jobs-local'
 import { toolJobs } from '@tnega/tool-jobs'
 import { mountApprovalReview, reviewAutomaticApproval } from './approval.js'
+import { ptcCapability, runtimeCapabilities } from './compose.js'
 import type { SystemConfig } from './config.js'
 import { projectLoop } from '@tnega/project-loop'
 import { projectLocal } from '@tnega/project-local'
 import type { ProjectRecord, ProjectsService } from '@tnega/project'
-import { searchRipgrep } from '@tnega/search-ripgrep'
-import { canonicalPath, resolveSandboxPolicy } from '@tnega/sandbox'
-import { sandboxLocal } from '@tnega/sandbox-local'
-import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { SessionLog, foldUsage, type SessionEvent } from '@tnega/session'
 import { RoutineRunner, registerRoutineTools } from './project-routines.js'
 import { foldApprovalMode } from '@tnega/approval-review'
 
 /** How many of the user's latest room messages a thread's reviewer reads as authorization. */
 const ROOM_EVIDENCE_MESSAGES = 8
-import { spillLocal } from '@tnega/spill-local'
 import { COORDINATOR_SYSTEM_PROMPT, THREAD_SYSTEM_PROMPT, threadLocal } from '@tnega/thread-local'
 import type { ThreadRecord, ThreadService } from '@tnega/thread'
 import { toolBlackboard } from '@tnega/tool-blackboard'
 import { toolBox } from '@tnega/tool-box'
-import { toolSpill } from '@tnega/tool-spill'
-import { toolOffice } from '@tnega/tool-office'
-import { toolSearch } from '@tnega/tool-search'
 import { toolThread } from '@tnega/tool-thread'
-import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '@tnega/tools'
+import type { BuiltinToolsConfig, ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from './permissions.js'
 import { describeToolCall } from './project-activity.js'
 import { mountProjectMemory } from './project-memory.js'
@@ -693,9 +685,17 @@ export class ProjectHost {
 
   private async assemble(record: ProjectRecord, ctx: Context): Promise<OpenProject> {
     const directory = join(this.tnegaRoot, 'projects', record.id)
-    await ctx.plugin(tools)
-    await ctx.plugin(systemPrompt)
-    await ctx.plugin(workspacePrompt, { workspace: this.workspace })
+    const config = this.options.builtinTools
+    await ctx.plugin(runtimeCapabilities, {
+      workspace: this.workspace,
+      permission: this.options.permission,
+      sessionId: record.id,
+      builtin: config === false ? false : {
+        ...(config ?? {}),
+        disabled: [...new Set([...PROJECT_DISABLED_BUILTINS, ...(config?.disabled ?? [])])],
+      },
+      ptc: false,
+    })
     await ctx.plugin(blackboardLocal, { root: join(directory, 'blackboard') })
     await ctx.plugin(artifactLocal, { root: join(this.workspace, '.tnega', 'projects', record.id, 'artifacts') })
     await ctx.plugin(boxBlackboard, { projectId: record.id })
@@ -722,26 +722,19 @@ export class ProjectHost {
         this.roles.set(thread.id, projectAgentRole(thread, maxDepth))
         const cwd = thread.workspace?.cwd ?? this.workspace
         const local = agentCtx.isolate('search').isolate('spillStore').isolate('sandbox').isolate('skills')
-        await local.plugin(tools)
-        await local.plugin(systemPrompt)
-        await local.plugin(workspacePrompt, { workspace: this.workspace })
         const config = this.options.builtinTools
-        if (config !== false) {
-          await local.plugin(sandboxLocal, { workspaceRoot: canonicalPath(cwd) })
-          await local.plugin(builtinTools, {
-            ...(config ?? {}), cwd,
+        await local.plugin(runtimeCapabilities, {
+          workspace: cwd,
+          permission: thread.permission,
+          sessionId: thread.id,
+          promptWorkspace: this.workspace,
+          builtin: config === false ? false : {
+            ...(config ?? {}),
             disabled: [...new Set([...PROJECT_DISABLED_BUILTINS, ...(config?.disabled ?? [])])],
-            execution: sandboxedExecution(local, { policy: resolveSandboxPolicy({
-              mode: thread.permission, workspaceRoot: canonicalPath(cwd), sessionId: thread.id,
-            }) }),
-          })
-          await local.plugin(searchRipgrep, { cwd })
-          await local.plugin(toolSearch, { cwd })
-          await local.plugin(spillLocal, { cwd })
-          await local.plugin(toolSpill)
-          await local.plugin(toolOffice, { cwd })
-          await local.plugin(skillTools, { cwd })
-        }
+          },
+          // The PTC runtime is project-scoped; a thread mounts only its tool.
+          ptc: false,
+        })
         await local.plugin(toolBlackboard, { cwd })
         await local.plugin(toolJobs, { resolveSession: (id?: string) => registry.get(id ?? thread.id)?.session })
         await local.plugin(toolPtc, {
@@ -805,34 +798,6 @@ export class ProjectHost {
       ...(this.options.maxDepth !== undefined ? { maxDepth: this.options.maxDepth } : {}),
       ...(this.options.maxChildren !== undefined ? { maxChildren: this.options.maxChildren } : {}),
     })
-
-    const config = this.options.builtinTools
-    if (config !== false) {
-      const cwd = this.workspace
-      // 沙箱缝：Project 的授权是它的所有 Thread 的上限，所以策略取 Project 的
-      // permission；宿主上没有可用后端时 shell 会 fail closed。
-      await ctx.plugin(sandboxLocal, { workspaceRoot: canonicalPath(cwd) })
-      await ctx.plugin(builtinTools, {
-        cwd,
-        ...(config ?? {}),
-        disabled: [...new Set([...PROJECT_DISABLED_BUILTINS, ...(config?.disabled ?? [])])],
-        execution: sandboxedExecution(ctx, {
-          policy: resolveSandboxPolicy({
-            mode: this.options.permission,
-            workspaceRoot: canonicalPath(cwd),
-            sessionId: record.id,
-          }),
-        }),
-      })
-      // 搜索与溢出是两条能力缝：组合层挑 Provider，模型可见的工具只认识 ctx.search
-      // 与 ctx.spillStore。
-      await ctx.plugin(searchRipgrep, { cwd })
-      await ctx.plugin(toolSearch, { cwd })
-      await ctx.plugin(spillLocal, { cwd })
-      await ctx.plugin(toolSpill)
-      await ctx.plugin(toolOffice, { cwd })
-      await ctx.plugin(skillTools, { cwd })
-    }
 
     await ctx.plugin(toolBlackboard, { cwd: this.workspace })
     await ctx.plugin(toolThread)
@@ -904,9 +869,9 @@ export class ProjectHost {
     registerRoutineTools(toolService, routines)
     routines.start()
     ctx.fiber.effect(() => () => routines.dispose(), 'stop routines')
-    await ctx.plugin(ptcRuntimeQuickjs, this.options.ptcRuntime)
-    await ctx.plugin(toolPtc, {
+    await ctx.plugin(ptcCapability, {
       mode: this.options.systemConfig?.codeMode ? 'ptc' : 'native',
+      ...(this.options.ptcRuntime ? { runtime: this.options.ptcRuntime } : {}),
       resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session,
     })
 

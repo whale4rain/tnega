@@ -1,13 +1,10 @@
-import { skillTools } from '@tnega/coding-agent'
 import { resolve } from 'node:path'
-import { workspacePrompt } from './workspace-prompt.js'
 import { Context, type Plugin } from '@tnega/core'
 import type { AgentProfile } from './profile.js'
 import {
   agent,
   DurableInbox,
   defineAgent,
-  systemPrompt,
   type SystemPromptService,
   type AgentContextBudget,
   type AgentDefinition,
@@ -18,30 +15,13 @@ import {
   type LLMAdapter,
 } from '@tnega/agent'
 import { createLlmAdapter } from '@tnega/llm'
-import { memoryLocal } from '@tnega/memory-local'
-import { searchRipgrep } from '@tnega/search-ripgrep'
-import { canonicalPath, isSandboxMode, resolveSandboxPolicy, type SandboxMode } from '@tnega/sandbox'
-import { sandboxLocal } from '@tnega/sandbox-local'
-import { sandboxedExecution } from '@tnega/execution-sandbox'
+import { isSandboxMode, type SandboxMode } from '@tnega/sandbox'
 import { configureSystemShell } from '@tnega/execution'
 import { SESSION_FORMAT_VERSION, session, isModelAttachment } from '@tnega/session'
-import { spillLocal } from '@tnega/spill-local'
-import { toolSpill } from '@tnega/tool-spill'
-import { toolOffice } from '@tnega/tool-office'
-import { toolSearch } from '@tnega/tool-search'
-import { toolMemory } from '@tnega/tool-memory'
-import { runSummary } from '@tnega/run-summary'
-import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
-import { toolPtc } from '@tnega/tool-ptc'
-import { jobsLocal } from '@tnega/jobs-local'
-import { toolJobs } from '@tnega/tool-jobs'
 import { GENERAL_SYSTEM_PROMPT } from './work.js'
-import {
-  builtinTools,
-  tools,
-  type BuiltinToolsConfig,
-  type ToolPolicy,
-} from '@tnega/tools'
+import { runtimeCapabilities, ptcCapability } from './compose.js'
+import type { BuiltinToolsConfig, ToolPolicy } from '@tnega/tools'
+import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import {
   effectiveApiKey,
   readSystemConfig,
@@ -279,133 +259,94 @@ export async function createAgentRuntime(
     plugins: [...(options.profile?.bundles ?? []), ...(options.plugins ?? [])],
   }
   const root = new Context()
-  const fibers: Array<{ dispose: () => Promise<void> }> = []
-  const sessionFiber = await root.plugin(session, {
+  await root.plugin(session, {
     file: merged.sessionFile,
   })
-  fibers.push(sessionFiber)
   const durableInbox = merged.durableInbox ? await DurableInbox.restore(root.get('session')) : undefined
-  const toolsFiber = await root.plugin(tools, merged.toolPolicy ?? {})
-  const summaryFiber = await root.plugin(runSummary)
-  fibers.push(toolsFiber)
-  fibers.push(summaryFiber)
-  fibers.push(await root.plugin(memoryLocal, { cwd: merged.cwd }))
-  fibers.push(await root.plugin(toolMemory, { writeTool: merged.builtinTools !== false }))
-  if (merged.builtinTools !== false) {
-    // 沙箱缝：composition 层挑 Provider（`sandbox-local`），模型可见的 `shell` 只
-    // 认识它脚下的执行边界 —— `sandboxedExecution` 是这条缝的 Consumer，只 import
-    // Service Definition。
-    fibers.push(await root.plugin(sandboxLocal, { workspaceRoot: canonicalPath(resolve(merged.cwd)) }))
-    const sandboxMode: SandboxMode = merged.sandboxMode ?? (merged.allowShell ? 'workspace-write' : 'read-only')
-    const builtinConfig: BuiltinToolsConfig = {
-      cwd: merged.cwd,
-      execution: sandboxedExecution(root, {
-        policy: resolveSandboxPolicy({
-          mode: sandboxMode,
-          workspaceRoot: canonicalPath(resolve(merged.cwd)),
-          sessionId: merged.sessionFile,
-        }),
-      }),
-    }
-    if (merged.allowNetwork) builtinConfig.allowNetwork = true
-    if (merged.allowShell) builtinConfig.allowShell = true
-    if (merged.builtinTools && typeof merged.builtinTools === 'object') {
-      Object.assign(builtinConfig, merged.builtinTools)
-    }
-    const builtinToolsFiber = await root.plugin(builtinTools, builtinConfig)
-    fibers.push(builtinToolsFiber)
 
-    // 搜索与溢出是两条能力缝：composition 层挑 Provider，模型可见的工具只认识
-    // ctx.search，工具结果的上限只认识 ctx.spillStore。
-    fibers.push(await root.plugin(searchRipgrep, { cwd: merged.cwd }))
-    fibers.push(await root.plugin(toolSearch, { cwd: merged.cwd }))
-    fibers.push(await root.plugin(spillLocal, { cwd: merged.cwd }))
-    fibers.push(await root.plugin(toolSpill))
-    fibers.push(await root.plugin(toolOffice, { cwd: merged.cwd }))
-  }
-  if (merged.skills ?? (merged.builtinTools !== false)) {
-    fibers.push(await root.plugin(skillTools, { cwd: merged.cwd }))
-  }
-  // Wire the prompt-assembly seam into the default composition: the system
-  // prompt is assembled from registered sections and every executable tool is
-  // exposed as a schema provider, so `assemble().text`/`tools` are the single
-  // path the loop reads when a systemPrompt service is present.
-  const promptFiber = await root.plugin(systemPrompt)
-  fibers.push(promptFiber)
-  fibers.push(await root.plugin(workspacePrompt, { workspace: merged.cwd }))
-  const promptService = root.get('systemPrompt')
-  const toolRegistry = root.get('tools')
-  let disposePromptTools: (() => void) | undefined
-  if (promptService && toolRegistry) {
-    disposePromptTools = promptService.registerTools(() => (
-      toolRegistry.list().map(tool => tool.schema)
-    ))
-  }
-  if (merged.agent) {
-    const definitionFiber = await root.plugin(defineAgent(merged.agent), {
-      ...(merged.llm ? { llm: merged.llm } : {}),
-      ...(merged.contextWindow !== undefined ? { contextWindow: merged.contextWindow } : {}),
-      ...(merged.maxTurns !== undefined ? { maxTurns: merged.maxTurns } : {}),
-      ...(merged.maxSteps !== undefined ? { maxSteps: merged.maxSteps } : {}),
-      ...(merged.inbox ? { inbox: merged.inbox } : {}),
-      ...(merged.contextBudget ? { contextBudget: merged.contextBudget } : {}),
-    })
-    fibers.push(definitionFiber)
-  } else {
-    const agentConfig: {
-      llm?: LLMAdapter
-      contextWindow?: number
-      maxTurns?: number
-      maxSteps?: number
-      inbox?: AgentInbox
-      contextBudget?: AgentContextBudget
-      claimNextStep?: () => Promise<readonly AgentInput[]>
-    } = {}
-    if (merged.llm) agentConfig.llm = merged.llm
-    if (merged.contextWindow !== undefined) agentConfig.contextWindow = merged.contextWindow
-    if (merged.maxTurns !== undefined) agentConfig.maxTurns = merged.maxTurns
-    if (merged.maxSteps !== undefined) agentConfig.maxSteps = merged.maxSteps
-    if (merged.inbox) agentConfig.inbox = merged.inbox
-    if (merged.contextBudget) agentConfig.contextBudget = merged.contextBudget
-    if (durableInbox) agentConfig.claimNextStep = async () => (await durableInbox.claimNextStep()).map(message => {
-      const content: unknown = message.content
-      if (Array.isArray(content)) {
-        const messages = content.flatMap((entry: unknown) => {
-          if (!entry || typeof entry !== 'object' || !('role' in entry) || entry.role !== 'user'
-            || !('content' in entry) || typeof entry.content !== 'string') return []
-          const attachments = 'attachments' in entry && Array.isArray(entry.attachments)
-            ? entry.attachments.filter(isModelAttachment) : []
-          return [{ role: 'user' as const, content: entry.content, ...(attachments.length ? { attachments } : {}) }]
-        })
-        if (messages.length) return { messages }
-      }
-      return { text: message.text ?? '' }
-    })
-    const agentFiber = await root.plugin(agent, agentConfig)
-    fibers.push(agentFiber)
-  }
+  // One capability slice for every composition: sandbox + builtin tools,
+  // search, spill, office, skills, memory, jobs and PTC come from the bundle.
+  const builtinOn = merged.builtinTools !== false
+  const builtinConfig: BuiltinToolsConfig | false = builtinOn
+    ? {
+      ...(merged.allowNetwork ? { allowNetwork: true } : {}),
+      ...(merged.allowShell ? { allowShell: true } : {}),
+      ...(merged.builtinTools && typeof merged.builtinTools === 'object' ? merged.builtinTools : {}),
+    }
+    : false
   try {
-    if (merged.jobs ?? (merged.builtinTools !== false)) {
-      fibers.push(await root.plugin(jobsLocal))
-      fibers.push(await root.plugin(toolJobs, { resolveSession: () => root.get('session') }))
+    await root.plugin(runtimeCapabilities, {
+      workspace: merged.cwd,
+      permission: merged.sandboxMode ?? (merged.allowShell ? 'workspace-write' : 'read-only'),
+      sessionId: merged.sessionFile,
+      tools: merged.toolPolicy ?? {},
+      builtin: builtinConfig,
+      memory: true,
+      summary: true,
+      jobs: (merged.jobs ?? builtinOn)
+        ? { resolveSession: () => root.get('session', false) }
+        : false,
+      ptc: false,
+    })
+    if (merged.agent) {
+      await root.plugin(defineAgent(merged.agent), {
+        ...(merged.llm ? { llm: merged.llm } : {}),
+        ...(merged.contextWindow !== undefined ? { contextWindow: merged.contextWindow } : {}),
+        ...(merged.maxTurns !== undefined ? { maxTurns: merged.maxTurns } : {}),
+        ...(merged.maxSteps !== undefined ? { maxSteps: merged.maxSteps } : {}),
+        ...(merged.inbox ? { inbox: merged.inbox } : {}),
+        ...(merged.contextBudget ? { contextBudget: merged.contextBudget } : {}),
+      })
+    } else {
+      const agentConfig: {
+        llm?: LLMAdapter
+        contextWindow?: number
+        maxTurns?: number
+        maxSteps?: number
+        inbox?: AgentInbox
+        contextBudget?: AgentContextBudget
+        claimNextStep?: () => Promise<readonly AgentInput[]>
+      } = {}
+      if (merged.llm) agentConfig.llm = merged.llm
+      if (merged.contextWindow !== undefined) agentConfig.contextWindow = merged.contextWindow
+      if (merged.maxTurns !== undefined) agentConfig.maxTurns = merged.maxTurns
+      if (merged.maxSteps !== undefined) agentConfig.maxSteps = merged.maxSteps
+      if (merged.inbox) agentConfig.inbox = merged.inbox
+      if (merged.contextBudget) agentConfig.contextBudget = merged.contextBudget
+      if (durableInbox) agentConfig.claimNextStep = async () => (await durableInbox.claimNextStep()).map(message => {
+        const content: unknown = message.content
+        if (Array.isArray(content)) {
+          const messages = content.flatMap((entry: unknown) => {
+            if (!entry || typeof entry !== 'object' || !('role' in entry) || entry.role !== 'user'
+              || !('content' in entry) || typeof entry.content !== 'string') return []
+            const attachments = 'attachments' in entry && Array.isArray(entry.attachments)
+              ? entry.attachments.filter(isModelAttachment) : []
+            return [{ role: 'user' as const, content: entry.content, ...(attachments.length ? { attachments } : {}) }]
+          })
+          if (messages.length) return { messages }
+        }
+        return { text: message.text ?? '' }
+      })
+      await root.plugin(agent, agentConfig)
     }
-    for (const plugin of merged.plugins ?? []) {
-      const fiber = await root.plugin(plugin)
-      fibers.push(fiber)
-    }
-    if (!merged.agent && merged.builtinTools !== false && !root.get('agentDefinition')) {
+    for (const plugin of merged.plugins ?? []) await root.plugin(plugin)
+    if (!merged.agent && builtinOn && !root.get('agentDefinition')) {
       const prompts: SystemPromptService = root.get('systemPrompt')
       root.effect(() => prompts.registerSection({ name: 'default:persona', order: 0, content: GENERAL_SYSTEM_PROMPT }))
     }
-    fibers.push(await root.plugin(ptcRuntimeQuickjs, {
-      ...merged.ptcRuntime,
-      ...(merged.ptc?.timeoutMs !== undefined ? { timeoutMs: merged.ptc.timeoutMs } : {}),
-      ...(merged.ptc?.memoryLimitBytes !== undefined ? { memoryLimitBytes: merged.ptc.memoryLimitBytes } : {}),
-    }))
-    fibers.push(await root.plugin(toolPtc, {
+    // PTC mounts last: a profile plugin mounted above must still be unwound when
+    // the PTC runtime fails to start.
+    await root.plugin(ptcCapability, {
       mode: merged.ptc?.mode ?? 'native',
-      resolveSession: () => root.get('session'),
-    }))
+      runtime: {
+        ...merged.ptcRuntime,
+        ...(merged.ptc?.timeoutMs !== undefined ? { timeoutMs: merged.ptc.timeoutMs } : {}),
+        ...(merged.ptc?.memoryLimitBytes !== undefined
+          ? { memoryLimitBytes: merged.ptc.memoryLimitBytes }
+          : {}),
+      },
+      resolveSession: () => root.get('session', false),
+    })
   } catch (error) {
     await root.fiber.dispose()
     throw error
@@ -413,9 +354,8 @@ export async function createAgentRuntime(
   return {
     root,
     ...(durableInbox ? { inbox: durableInbox } : {}),
+    // More plugins may mount after construction (for example Web answerers).
     dispose: async () => {
-      disposePromptTools?.()
-      // The composition may mount more plugins after construction (for example Web answerers).
       await root.fiber.dispose()
     },
   }

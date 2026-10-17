@@ -72,6 +72,24 @@ CLI runtime 与 Web/桌面 resident runtime 使用相同组装；已有 Session 
   `builtinTools: false` / 自定义 `inbox` / `plugins`；`llm` 可选。默认组合会挂载
   prompt 组装 seam（`systemPrompt`）并把可执行工具注册为 schema 提供者。web / headless 两种产品形态复用同一工厂，差异全在组合与薄消费者代码。
 
+### 能力切片（compose.ts）
+
+沙箱、内建工具、搜索、溢出、Office、skills、memory、jobs 与 PTC 组成的“能力切片”
+只在 `compose.ts` 定义一次，以插件形式提供：
+
+- `capability:sandbox` 挂 `sandbox-local` + `builtinTools`，`capability:search` 挂
+  `search-ripgrep` + `tool-search`，其余同理——**Provider 与 Consumer 成对挂载**，
+  调用方不再逐个挑选。
+- `runtime:capabilities` 按 `RuntimeSpec` 组装整片：`builtin: false` 同时关掉
+  沙箱与依赖它的工具，`search` / `spill` / `office` / `skills` 可单独覆盖，
+  `memory`、`jobs`、`summary`、`ptc` 默认关闭。
+- CLI runtime、resident runtime、Project 与 Project Thread 都挂这一片，只保留
+  各自的角色插件（`agent` / `agents` / `threadLocal` / 审批 / subagent / browser）。
+  Project Thread 把它挂在 `agentCtx.isolate(...)` 上，因此 Provider 落在该 Thread
+  自己的作用域里。
+- `capability:ptc` 单独导出：CLI 需要先挂 profile 插件再挂 PTC，这样 PTC 启动失败
+  时前面的插件仍会被回收。
+
 profile 文件：`~/.tnega/profiles/<name>.json`（Windows）或
 `$XDG_CONFIG_HOME/tnega/profiles/<name>.json`，可引用内置 bundle 名或外部插件模块。
 
