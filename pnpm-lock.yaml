@@ -647,6 +647,9 @@ importers:
       '@tnega/user-questions':
         specifier: workspace:*
         version: link:../user-questions
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
       '@tnega/workspace-files':
         specifier: workspace:*
         version: link:../workspace-files
@@ -1418,7 +1421,14 @@ importers:
         specifier: workspace:*
         version: link:../../tools
 
-  packages/terminal: {}
+  packages/terminal:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
 
   packages/tool-office:
     dependencies:
@@ -1533,6 +1543,12 @@ importers:
         specifier: workspace:*
         version: link:../session
 
+  packages/web-kit:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/web/tool-web-search:
     dependencies:
       '@tnega/tools':
@@ -1541,6 +1557,9 @@ importers:
 
   packages/workspace-files:
     dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
       '@tnega/execution':
         specifier: workspace:*
         version: link:../execution
@@ -1556,6 +1575,9 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
 
   packages/workspace-prompt:
     dependencies:

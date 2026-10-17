@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import { WebServerService } from '../src/web-server.js'
+import { WebServerService } from '@tnega/web-kit'
 
 const handler = (name: string) => () => { void name }
 

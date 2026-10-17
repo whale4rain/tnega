@@ -1,5 +1,5 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
-import { HttpError, errorMessage, readJsonBody, sendError, sendJson, writeSse } from './http.js'
+import { HttpError, errorMessage, readJsonBody, sendError, sendJson, writeSse } from '@tnega/web-kit'
 import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, hostPlugins, isActive, mountBrowser, parseRunAttachments, processesFor, runKey, searchApiKey, sessionFilePath, userMessage } from './support.js'
 import type { ResidentAgentEntry, ServerContext } from './context.js'
 import { agents, continuationNudge, findInterruptedTurn, type AgentCreationOptions, type AgentHandle, type AgentRegistry, type AgentStreamEvent, type LiveAgent } from '@tnega/agent'

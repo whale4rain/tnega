@@ -1,3 +1,5 @@
+export { workspaceParam } from '@tnega/web-kit'
+
 import { browserPlaywright, type PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { llmAuthOptions } from '@tnega/auth-chatgpt'
 import type { EffectiveLlmConfig } from '@tnega/config'
@@ -81,11 +83,6 @@ export function searchApiKey(effective: EffectiveLlmConfig, modelApiKey: string)
     // A non-URL model route cannot provide a DeepSeek search credential.
   }
   return undefined
-}
-
-export function workspaceParam(url: URL): string | undefined {
-  const value = url.searchParams.get('workspace')
-  return value === null || !value.trim() ? undefined : value
 }
 
 export function canonicalWorkspace(workspace: string): string {

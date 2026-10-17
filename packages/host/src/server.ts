@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { HttpError, defaultWebRoot, errorMessage, handleStatic, sendError, writeSse } from './http.js'
+import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
+import { defaultWebRoot, handleStatic } from './static.js'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { installBuiltinSkills } from '@tnega/coding-agent'
 import { launchPageSource, PlaywrightBrowserHost } from '@tnega/browser-playwright'
@@ -9,10 +10,12 @@ import { TerminalManager } from '@tnega/terminal'
 import { createHotPluginHost, type HotPluginEvent } from '@tnega/plugin-host'
 import { createPluginWorkshop } from '@tnega/plugin-host'
 import { readSystemConfig, SystemConfigError } from '@tnega/config'
+import { fileRoutes } from '@tnega/workspace-files'
+import { terminalRoutes } from '@tnega/terminal'
 import { Context } from '@tnega/core'
 import type { ResidentAgentEntry, ProjectHostEntry, ServerContext } from './context.js'
 import { applyNetwork, handleApi, registerApiRoutes, rejectsApiRequest } from './routes.js'
-import { webServer } from './web-server.js'
+import { webServer } from '@tnega/web-kit'
 
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
@@ -117,6 +120,8 @@ export async function startWebServer(
     web,
   }
 
+  await root.plugin(fileRoutes)
+  await root.plugin(terminalRoutes, { terminals: context.terminals })
   registerApiRoutes(context.web, context)
   context.web.register({
     kind: 'prefix',

@@ -164,3 +164,5 @@ function clamp(value: number | undefined, min: number, max: number, fallback: nu
   return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback
 }
 export const name = '@tnega/terminal'
+
+export * from './routes.js'

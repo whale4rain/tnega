@@ -9,7 +9,7 @@ import { ProjectHost } from '@tnega/project-host'
 import { TerminalManager } from '@tnega/terminal'
 import type { HotPluginHost } from '@tnega/plugin-host'
 import type { PluginWorkshop } from '@tnega/plugin-host'
-import type { WebServerService } from './web-server.js'
+import type { WebServerService } from '@tnega/web-kit'
 
 export interface ResidentAgentEntry {
   root: Context

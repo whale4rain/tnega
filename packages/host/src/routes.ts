@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { IncomingMessage, ServerResponse } from 'node:http'
-import { dedupe, errorMessage, readJsonBody, sendError, sendJson, writeSse, HttpError } from './http.js'
+import { dedupe, errorMessage, readJsonBody, sendError, sendJson, writeSse, HttpError } from '@tnega/web-kit'
 import { KEEP_RECENT_TOKENS, MAX_RUN_BODY_BYTES, adapterFromConfig, canonicalWorkspace, compactionAdapter, isActive, optionalCount, optionalSeq, parseRunAttachments, processesFor, runKey, sessionFilePath, userMessage, workspaceParam } from './support.js'
 import { Context } from '@tnega/core'
 import { configureNetwork } from '@tnega/execution'
@@ -19,8 +19,6 @@ import { ChatGptLogin } from '@tnega/auth-chatgpt'
 import { discoverModels, ModelDiscoveryError, parseModelDiscoveryInput } from '@tnega/config'
 import { pendingQuestionsFromEvents, UserQuestionError } from '@tnega/user-questions'
 import { readGoal } from '@tnega/goal'
-import { FileServeError, readWorkspaceFile, sendFile } from '@tnega/workspace-files'
-import { searchWorkspaceFiles } from '@tnega/workspace-files'
 import { isAgentType, SessionLog } from '@tnega/session'
 import { parseLiveInput } from '@tnega/browser-playwright'
 import { availableShells, configureSystemShell, DEFAULT_ALLOWED_HOSTS, systemShell } from '@tnega/execution'
@@ -32,15 +30,12 @@ import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { handleProjectApi } from '@tnega/project-http'
 import { pickSystemFolder } from '@tnega/directory-picker'
-import { listDirectory, MAX_TEXT_FILE_BYTES, readTextFile, writeTextFile } from '@tnega/workspace-files'
-import { fileDiff, listChanges } from '@tnega/workspace-files'
-import { TerminalError, TerminalManager, type TerminalEvent } from '@tnega/terminal'
 import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun } from './runs.js'
-import type { WebServerService } from './web-server.js'
+import type { WebServerService } from '@tnega/web-kit'
 
 export const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
 
@@ -127,7 +122,7 @@ interface ApiRoute {
 }
 
 const apiRoutes: ApiRoute[] = [
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/'))) return
@@ -142,7 +137,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => {
       const approvalMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
       return Boolean(approvalMatch && req.method === 'POST')
@@ -169,7 +164,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/config' && req.method === 'GET'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/config' && req.method === 'GET')) return
@@ -179,7 +174,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/config' && req.method === 'PUT'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/config' && req.method === 'PUT')) return
@@ -228,7 +223,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/config/models/discover' && req.method === 'POST'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/config/models/discover' && req.method === 'POST')) return
@@ -245,7 +240,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => {
       const modelRoute = /^\/api\/config\/models\/([^/]+)$/.exec(url.pathname)
       return Boolean(modelRoute && (req.method === 'PUT' || req.method === 'DELETE'))
@@ -269,7 +264,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname.startsWith('/api/browser')),
     handle: async (req, res, url, context) => {
       if (!(url.pathname.startsWith('/api/browser'))) return
@@ -277,7 +272,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/auth/chatgpt'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/auth/chatgpt')) return
@@ -301,7 +296,7 @@ const apiRoutes: ApiRoute[] = [
       if (req.method === 'DELETE') { await login.signOut(); sendJson(res, 200, await login.state()); return }
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/usage' && req.method === 'GET'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/usage' && req.method === 'GET')) return
@@ -311,7 +306,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT')),
     handle: async (req, res, url) => {
       if (!(url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT'))) return
@@ -328,7 +323,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST')),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST'))) return
@@ -351,7 +346,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/workspaces' && req.method === 'GET'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/workspaces' && req.method === 'GET')) return
@@ -362,7 +357,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/workspaces' && req.method === 'POST'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/workspaces' && req.method === 'POST')) return
@@ -379,7 +374,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/workspaces' && req.method === 'DELETE'),
     handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/workspaces' && req.method === 'DELETE')) return
@@ -398,118 +393,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
-    match: (req, url) => Boolean(url.pathname === '/api/files/search' && req.method === 'GET'),
-    handle: async (req, res, url) => {
-      if (!(url.pathname === '/api/files/search' && req.method === 'GET')) return
-      const workspace = workspaceParam(url)
-      if (!workspace) {
-            sendError(res, 400, 'workspace query parameter is required')
-            return
-          }
-      const limit = Number(url.searchParams.get('limit') ?? 30)
-      const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
-      sendJson(res, 200, { files })
-      return
-    },
-  },
-  {
-    match: (req, url) => Boolean(url.pathname === '/api/changes' || url.pathname === '/api/changes/file'),
-    handle: async (req, res, url) => {
-      if (!(url.pathname === '/api/changes' || url.pathname === '/api/changes/file')) return
-      const workspace = workspaceParam(url)
-      if (!workspace || req.method !== 'GET') {
-            sendError(res, workspace ? 405 : 400, workspace ? 'method not allowed' : 'workspace query parameter is required')
-            return
-          }
-      try {
-            if (url.pathname === '/api/changes') {
-              sendJson(res, 200, await listChanges(workspace))
-            } else {
-              const path = url.searchParams.get('path')
-              if (!path) {
-                sendError(res, 400, 'path query parameter is required')
-                return
-              }
-              sendJson(res, 200, await fileDiff(workspace, path))
-            }
-          } catch (error) {
-            if (!(error instanceof FileServeError)) throw error
-            sendError(res, error.status, error.message)
-          }
-      return
-    },
-  },
-  {
-    match: (req, url) => {
-      const terminalMatch = url.pathname.match(/^\/api\/terminals(?:\/([^/]+)(?:\/(stream|input|resize))?)?$/)
-      return Boolean(terminalMatch)
-    },
-    handle: async (req, res, url, context) => {
-      const terminalMatch = url.pathname.match(/^\/api\/terminals(?:\/([^/]+)(?:\/(stream|input|resize))?)?$/)
-      if (!(terminalMatch)) return
-      try {
-            await handleTerminal(req, res, url, context.terminals, terminalMatch[1], terminalMatch[2])
-          } catch (error) {
-            if (!(error instanceof TerminalError)) throw error
-            if (!res.headersSent) sendError(res, error.status, error.message)
-          }
-      return
-    },
-  },
-  {
-    match: (req, url) => Boolean(url.pathname === '/api/files/tree' || url.pathname === '/api/files/text'),
-    handle: async (req, res, url) => {
-      if (!(url.pathname === '/api/files/tree' || url.pathname === '/api/files/text')) return
-      const workspace = workspaceParam(url)
-      const path = url.searchParams.get('path') ?? ''
-      if (!workspace) {
-            sendError(res, 400, 'workspace query parameter is required')
-            return
-          }
-      try {
-            if (url.pathname === '/api/files/tree' && req.method === 'GET') {
-              sendJson(res, 200, { path, entries: await listDirectory(workspace, path) })
-            } else if (url.pathname === '/api/files/text' && req.method === 'GET' && path) {
-              sendJson(res, 200, await readTextFile(workspace, path))
-            } else if (url.pathname === '/api/files/text' && req.method === 'PUT' && path) {
-              const body = await readJsonBody(req, MAX_TEXT_FILE_BYTES * 2)
-              if (typeof body.content !== 'string') {
-                sendError(res, 400, 'content must be a string')
-                return
-              }
-              const expected = typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined
-              sendJson(res, 200, await writeTextFile(workspace, path, body.content, expected))
-            } else {
-              sendError(res, path ? 405 : 400, path ? 'method not allowed' : 'path query parameter is required')
-            }
-          } catch (error) {
-            if (!(error instanceof FileServeError)) throw error
-            sendError(res, error.status, error.message)
-          }
-      return
-    },
-  },
-  {
-    match: (req, url) => Boolean(url.pathname === '/api/files' && req.method === 'GET'),
-    handle: async (req, res, url) => {
-      if (!(url.pathname === '/api/files' && req.method === 'GET')) return
-      const workspace = workspaceParam(url)
-      const path = url.searchParams.get('path')
-      if (!workspace || !path) {
-            sendError(res, 400, 'workspace and path query parameters are required')
-            return
-          }
-      try {
-            sendFile(res, await readWorkspaceFile(workspace, path))
-          } catch (error) {
-            if (!(error instanceof FileServeError)) throw error
-            sendError(res, error.status, error.message)
-          }
-      return
-    },
-  },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/sessions' && req.method === 'GET'),
     handle: async (req, res, url) => {
       if (!(url.pathname === '/api/sessions' && req.method === 'GET')) return
@@ -523,7 +407,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => Boolean(url.pathname === '/api/sessions' && req.method === 'POST'),
     handle: async (req, res, url) => {
       if (!(url.pathname === '/api/sessions' && req.method === 'POST')) return
@@ -547,7 +431,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => {
       const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash|slash-candidates)$/)
       return Boolean(codingMatch)
@@ -587,7 +471,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => {
       const subagentMatch = url.pathname.match(/^\/api\/subagents\/([^/]+)$/)
       return Boolean(subagentMatch && req.method === 'GET')
@@ -617,7 +501,7 @@ const apiRoutes: ApiRoute[] = [
       return
     },
   },
-  {
+{
     match: (req, url) => {
       const questionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/questions(?:\/([^/]+))?$/)
       return Boolean(questionMatch)
@@ -672,7 +556,7 @@ const apiRoutes: ApiRoute[] = [
           }
     },
   },
-  {
+{
     match: (req, url) => {
       const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
       return Boolean(sessionMatch)
@@ -1148,72 +1032,7 @@ data: ${JSON.stringify(event)}
   sendError(res, 404, 'not found')
 }
 
-export async function handleTerminal(
-  req: IncomingMessage,
-  res: ServerResponse,
-  url: URL,
-  terminals: TerminalManager,
-  id: string | undefined,
-  action: string | undefined,
-): Promise<void> {
-  if (!id) {
-    const workspace = workspaceParam(url)
-    if (req.method === 'GET') {
-      sendJson(res, 200, { terminals: terminals.list(workspace ?? undefined) })
-    } else if (req.method === 'POST') {
-      if (!workspace) {
-        sendError(res, 400, 'workspace query parameter is required')
-        return
-      }
-      const body = await readJsonBody(req)
-      sendJson(res, 200, await terminals.create(workspace, {
-        ...(typeof body.cols === 'number' ? { cols: body.cols } : {}),
-        ...(typeof body.rows === 'number' ? { rows: body.rows } : {}),
-      }))
-    } else {
-      sendError(res, 405, 'method not allowed')
-    }
-    return
-  }
-  if (!action && req.method === 'DELETE') {
-    terminals.close(id)
-    sendJson(res, 200, { ok: true })
-  } else if (action === 'stream' && req.method === 'GET') {
-    const events: TerminalEvent[] = []
-    // Attach first so an unknown id fails before the stream opens.
-    let open = false
-    const send = (event: TerminalEvent) => { if (!res.destroyed && !res.writableEnded) writeSse(res, event) }
-    const detach = terminals.attach(id, event => { if (open) send(event); else events.push(event) })
-    res.writeHead(200, {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive',
-      'x-accel-buffering': 'no',
-    })
-    res.flushHeaders()
-    open = true
-    for (const event of events) send(event)
-    req.on('close', detach)
-  } else if (action === 'input' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (typeof body.data !== 'string') {
-      sendError(res, 400, 'data must be a string')
-      return
-    }
-    terminals.write(id, body.data)
-    sendJson(res, 200, { ok: true })
-  } else if (action === 'resize' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (typeof body.cols !== 'number' || typeof body.rows !== 'number') {
-      sendError(res, 400, 'cols and rows must be numbers')
-      return
-    }
-    terminals.resize(id, body.cols, body.rows)
-    sendJson(res, 200, { ok: true })
-  } else {
-    sendError(res, 405, 'method not allowed')
-  }
-}
+
 
 export async function compactContext(
   context: ServerContext,

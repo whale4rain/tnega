@@ -42,6 +42,7 @@
     "@tnega/usage": "workspace:*",
     "@tnega/user-questions": "workspace:*",
     "@tnega/workspace-files": "workspace:*",
-    "@tnega/workspace-prompt": "workspace:*"
+    "@tnega/workspace-prompt": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }

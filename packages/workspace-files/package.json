@@ -11,6 +11,8 @@
     "@tnega/search": "workspace:*",
     "@tnega/search-ripgrep": "workspace:*",
     "@tnega/session": "workspace:*",
-    "@tnega/tools": "workspace:*"
+    "@tnega/tools": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }
