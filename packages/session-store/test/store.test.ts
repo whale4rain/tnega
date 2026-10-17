@@ -16,7 +16,7 @@ import {
   setSessionPermission,
   setSessionTitle,
   truncateSessionAt,
-} from '../src/store.js'
+} from '../src/index.js'
 
 const dirs: string[] = []
 

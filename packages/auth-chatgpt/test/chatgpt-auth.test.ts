@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configureNetwork } from '@tnega/execution'
 import { createLlmAdapter } from '@tnega/llm'
-import { authorizeUrl, chatgptHeaders, ChatGptLogin, CHATGPT_CLIENT_ID, jwtClaims, pkcePair, tokensFrom } from '../src/chatgpt-auth.js'
+import { authorizeUrl, chatgptHeaders, ChatGptLogin, CHATGPT_CLIENT_ID, jwtClaims, pkcePair, tokensFrom } from '../src/index.js'
 
 const dirs: string[] = []
 afterEach(async () => { configureNetwork({}); await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
@@ -20,7 +20,7 @@ async function tempFile(): Promise<string> {
 
 describe('ChatGPT sign-in', () => {
   it('omits global temperature from login requests without reasoning effort', async () => {
-    const { llmAuthOptions } = await import('../src/chatgpt-auth.js')
+    const { llmAuthOptions } = await import('../src/index.js')
     const transport: typeof fetch = vi.fn(async (_url, init) => {
       const body = JSON.parse(String(init?.body))
       expect(body).not.toHaveProperty('temperature')
@@ -46,7 +46,7 @@ describe('ChatGPT sign-in', () => {
     configureNetwork({ fetch: transport })
     expect((await chatgptHeaders({ file, now: () => 0 })()).authorization).toBe('Bearer fresh')
     expect(transport).toHaveBeenCalledOnce()
-    const { llmAuthOptions } = await import('../src/chatgpt-auth.js')
+    const { llmAuthOptions } = await import('../src/index.js')
     expect(llmAuthOptions({ auth: 'chatgpt' }).fetch).toBeTypeOf('function')
   })
   it('builds a PKCE authorize URL like the Codex CLI', () => {
@@ -122,8 +122,8 @@ describe('ChatGPT sign-in', () => {
 })
 
 it('routes a ChatGPT model to the Codex backend and counts the sign-in as its credential', async () => {
-  const { effectiveLlmConfig, effectiveApiKey } = await import('../src/config.js')
-  const { chatgptAuthFile, llmAuthOptions } = await import('../src/chatgpt-auth.js')
+  const { effectiveLlmConfig, effectiveApiKey } = await import('../../config/src/index.js')
+  const { chatgptAuthFile, llmAuthOptions } = await import('../src/index.js')
   const config = { model: 'chatgpt', models: [{ id: 'chatgpt', model: 'gpt-5-codex', auth: 'chatgpt' as const }] }
   await rm(chatgptAuthFile(), { force: true })
   expect(effectiveLlmConfig(config)).toMatchObject({ baseUrl: 'https://chatgpt.com/backend-api/codex', model: 'gpt-5-codex', auth: 'chatgpt', apiKeySet: false })

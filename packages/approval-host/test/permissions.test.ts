@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolRequest } from '@tnega/tools'
 
-import { ApprovalBroker, permissionGuard } from '../src/permissions.js'
+import { ApprovalBroker, permissionGuard } from '../src/index.js'
 
 function request(name: string, input: unknown): ToolRequest {
   return {

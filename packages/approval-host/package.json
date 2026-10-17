@@ -5,5 +5,23 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/approval-jev": "workspace:*",
+    "@tnega/approval-llm": "workspace:*",
+    "@tnega/approval-openai": "workspace:*",
+    "@tnega/approval-review": "workspace:*",
+    "@tnega/auth-chatgpt": "workspace:*",
+    "@tnega/auto-approval": "workspace:*",
+    "@tnega/box": "workspace:*",
+    "@tnega/browser": "workspace:*",
+    "@tnega/config": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/llm": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/thread": "workspace:*",
+    "@tnega/tool-browser": "workspace:*",
+    "@tnega/tools": "workspace:*"
   }
 }

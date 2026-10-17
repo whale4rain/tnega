@@ -5,5 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/approval-review": "workspace:*",
+    "@tnega/auth-chatgpt": "workspace:*",
+    "@tnega/execution": "workspace:*",
+    "@tnega/llm": "workspace:*"
   }
 }

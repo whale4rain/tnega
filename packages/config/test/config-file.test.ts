@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { availableModels, ModelRouteError, parseModelRouteInput, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/config.js'
+import { availableModels, ModelRouteError, parseModelRouteInput, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
 
 const dirs: string[] = []
 

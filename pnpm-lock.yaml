@@ -224,7 +224,56 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
-  packages/approval-host: {}
+  packages/approval-host:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/approval-jev':
+        specifier: workspace:*
+        version: link:../approval-jev
+      '@tnega/approval-llm':
+        specifier: workspace:*
+        version: link:../approval-llm
+      '@tnega/approval-openai':
+        specifier: workspace:*
+        version: link:../approval-openai
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
+      '@tnega/auth-chatgpt':
+        specifier: workspace:*
+        version: link:../auth-chatgpt
+      '@tnega/auto-approval':
+        specifier: workspace:*
+        version: link:../auto-approval
+      '@tnega/box':
+        specifier: workspace:*
+        version: link:../project/box
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../browser/browser
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/thread':
+        specifier: workspace:*
+        version: link:../project/thread
+      '@tnega/tool-browser':
+        specifier: workspace:*
+        version: link:../browser/tool-browser
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/approval-jev:
     dependencies:
@@ -262,7 +311,17 @@ importers:
         specifier: workspace:*
         version: link:../core
 
-  packages/auth-chatgpt: {}
+  packages/auth-chatgpt:
+    dependencies:
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
+      '@tnega/llm':
+        specifier: workspace:*
+        version: link:../llm
 
   packages/auto-approval:
     dependencies:
@@ -594,7 +653,20 @@ importers:
         specifier: workspace:*
         version: link:../session
 
-  packages/config: {}
+  packages/config:
+    dependencies:
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
+      '@tnega/auth-chatgpt':
+        specifier: workspace:*
+        version: link:../auth-chatgpt
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@tnega/llm':
+        specifier: workspace:*
+        version: link:../llm
 
   packages/core: {}
 
@@ -1053,7 +1125,17 @@ importers:
         specifier: workspace:*
         version: link:../core
 
-  packages/session-store: {}
+  packages/session-store:
+    dependencies:
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../approval-review
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
 
   packages/spill/spill:
     dependencies:
