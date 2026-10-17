@@ -149,15 +149,28 @@
   fallback 席位、固定匹配序、重复即抛错、注册返回 disposer；`/api` 传输策略提升为分发边界检查。
 - `handleApi` 的 25 个顶层分支全部改为有序 `apiRoutes` 表项（`4663ab7`），`handleApi` 只剩分发循环。
 - `WebServerService` 升级为 Cordis Service（`ctx.webServer`，`8012d1d`），注册绑在服务的 Fiber 上，
-  `startWebServer` 用一个根 Context 挂载它并在 `close()` 时 dispose；功能包从此可以注入
-  `webServer` 自行注册路由。
+  `startWebServer` 用一个根 Context 挂载它并在 `close()` 时 dispose。
+- 共享 seam `@tnega/web-kit`：路由注册表 + 传输原语（`sendJson`/`sendError`/`readJsonBody`/
+  `writeSse`/`HttpError`/`workspaceParam`/`isLoopbackAddress`）。路由所有权随后按域归还：
+
+  | 域 | 所属包 |
+  |---|---|
+  | `/api/files*`、`/api/changes*` | `@tnega/workspace-files` |
+  | `/api/terminals*`（含 SSE） | `@tnega/terminal` |
+  | `/api/projects*` | `@tnega/project-http` |
+  | `/api/browser*` | `@tnega/browser-playwright` |
+  | `/api/auth/chatgpt` | `@tnega/auth-chatgpt` |
+  | `/api/folder-picker` | `@tnega/directory-picker` |
+  | `/api/plugins*` | `@tnega/plugin-host` |
+  | `/api/usage` | `@tnega/usage` |
+  | `/api/workspace-prompt` | `@tnega/workspace-prompt` |
+  | `/api/health`、`/api/config*`、`/api/processes`、`/api/workspaces*`、`/api/sessions*`、questions、subagents、approvals | `@tnega/host` |
+
+  最后一行是宿主自己拥有的编排状态（会话、常驻 Agent、进程注册表、配置变更副作用），
+  不再继续外移：它们是 Host 的生命周期，而不是某个能力包的数据。
 
 ## 有意保留
 
-- **逐包注册路由**：`ctx.webServer` 已就绪，但把某一域真正搬进功能包还差一层共享的 HTTP 原语
-  （`sendJson` / `readJsonBody` / `writeSse` 现在在 `@tnega/host/src/http.ts`，功能包反向依赖
-  host 会破坏分层）。下一步是把这些原语抽成独立 seam（例如 `@tnega/web-kit`），再把
-  `apiRoutes` 的条目移交给 `@tnega/workspace-files`、`@tnega/config`、`@tnega/project/http` 等包。
 - **发布面**：`@tnega/host` 与 `@tnega/runtime` 不新增根 `exports` 子路径，它们只被打进
   `dist/bin.js` 与 `dist/cli-runtime.js`；`./cli/runtime` 保持兼容。若未来要把宿主作为库发布，
   再给 `scripts/build.mjs` 的 `libraryEntries` 加条目。
