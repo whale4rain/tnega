@@ -5,5 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/config": "workspace:*",
+    "@tnega/home": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/session-store": "workspace:*"
   }
 }

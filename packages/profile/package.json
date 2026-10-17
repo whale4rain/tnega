@@ -5,5 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/runtime": "workspace:*"
   }
 }

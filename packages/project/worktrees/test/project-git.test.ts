@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { blackboardLocal } from '@tnega/blackboard-local'
 import type { BlackboardService } from '@tnega/blackboard'
 import { Context } from '@tnega/core'
-import { gitOutcome, remoteWebUrl, trackGitOutcomes } from '../src/project-git.js'
+import { gitOutcome, remoteWebUrl, trackGitOutcomes } from '../src/index.js'
 
 const roots: string[] = []
 afterEach(async () => {

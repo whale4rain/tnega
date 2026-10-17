@@ -5,5 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/profile": "workspace:*",
+    "@tnega/tools": "workspace:*",
+    "chokidar": "^4.0.3"
   }
 }

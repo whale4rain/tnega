@@ -1,6 +1,6 @@
 import type { FactRecord } from '@tnega/blackboard'
 import { describe, expect, it } from 'vitest'
-import { PullRequestStates, parseGhState, type PullRequestState } from '../src/project-pr-state.js'
+import { PullRequestStates, parseGhState, type PullRequestState } from '../src/index.js'
 
 function resource(id: string, git: Record<string, unknown>, uri = `https://github.com/o/r/pull/${id}`, updatedAt = 1): FactRecord {
   return {

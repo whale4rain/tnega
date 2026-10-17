@@ -6,7 +6,7 @@ import { Context } from '@tnega/core'
 import { tools, type ToolsService } from '@tnega/tools'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createPluginWorkshop, type PluginWorkshop } from '../src/plugin-dev.js'
+import { createPluginWorkshop, type PluginWorkshop } from '../src/index.js'
 
 const dirs: string[] = []
 const workshops: PluginWorkshop[] = []

@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { SessionLog } from '@tnega/session'
-import { workspaceSessionDir, workspaceStateDir } from '../src/home-paths.js'
-import { createSession, sessionFile } from '../src/store.js'
-import { storedWorkspaceUsage } from '../src/usage-store.js'
+import { workspaceSessionDir, workspaceStateDir } from '@tnega/home'
+import { createSession, sessionFile } from '@tnega/session-store'
+import { storedWorkspaceUsage } from '../src/index.js'
 
 it('includes durable Project Thread responses with their identities', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-thread-usage-'))

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelUsage, SessionEvent } from '@tnega/session'
-import { parseModelRouteInput, ModelRouteError, type SystemConfig } from '../src/config.js'
-import { responseCost, sessionUsage, workspaceUsage } from '../src/usage.js'
+import { parseModelRouteInput, ModelRouteError, type SystemConfig } from '@tnega/config'
+import { responseCost, sessionUsage, workspaceUsage } from '../src/index.js'
 
 let seq = 0
 const reply = (usage: ModelUsage, ts: number): SessionEvent => ({ id: `a${++seq}`, seq, ts, type: 'assistant/message', payload: { content: 'ok', usage } } as SessionEvent)

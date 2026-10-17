@@ -833,9 +833,29 @@ importers:
         specifier: workspace:*
         version: link:../session
 
-  packages/plugin-host: {}
+  packages/plugin-host:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/profile':
+        specifier: workspace:*
+        version: link:../profile
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
+      chokidar:
+        specifier: ^4.0.3
+        version: 4.0.3
 
-  packages/profile: {}
+  packages/profile:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/project/artifact-local:
     dependencies:
@@ -983,7 +1003,24 @@ importers:
         specifier: workspace:*
         version: link:../../tools
 
-  packages/project/worktrees: {}
+  packages/project/worktrees:
+    dependencies:
+      '@tnega/blackboard':
+        specifier: workspace:*
+        version: link:../blackboard
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/thread':
+        specifier: workspace:*
+        version: link:../thread
+    devDependencies:
+      '@tnega/blackboard-local':
+        specifier: workspace:*
+        version: link:../blackboard-local
 
   packages/ptc-runtime:
     dependencies:
@@ -1297,7 +1334,20 @@ importers:
         specifier: 4.0.0
         version: 4.0.0(@types/react@19.3.0)
 
-  packages/usage: {}
+  packages/usage:
+    dependencies:
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../config
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../session-store
 
   packages/user-questions:
     dependencies:

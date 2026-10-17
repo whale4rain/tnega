@@ -5,5 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/blackboard": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/thread": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/blackboard-local": "workspace:*"
   }
 }
