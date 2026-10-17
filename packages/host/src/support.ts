@@ -1,8 +1,9 @@
 import { browserPlaywright, type PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { llmAuthOptions } from '@tnega/auth-chatgpt'
-import type { EffectiveLlmConfig } from '@tnega/config'
-import type { Context } from '@tnega/core'
+import type {  EffectiveLlmConfig  } from '@tnega/config'
+import type {  Context, Plugin  } from '@tnega/core'
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
+import type {  HotPluginHost, PluginWorkshop  } from '@tnega/plugin-host'
 import { isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
 import { sessionFile } from '@tnega/session-store'
 import { toolBrowser } from '@tnega/tool-browser'
@@ -10,6 +11,15 @@ import { ProcessRegistry } from '@tnega/tools'
 import { resolve } from 'node:path'
 
 export const MAX_RUN_ATTACHMENTS = 8
+export const MAX_RUN_BODY_BYTES = 24 * 1024 * 1024
+
+/** Host-level plugins the resident runtime mounts: the hot profile and the dev workshop. */
+export function hostPlugins(context: { hotPlugins?: HotPluginHost; pluginWorkshop?: PluginWorkshop }): Plugin[] {
+  return [
+    ...(context.hotPlugins ? [context.hotPlugins.plugin] : []),
+    ...(context.pluginWorkshop ? [context.pluginWorkshop.plugin] : []),
+  ]
+}
 
 export function processesFor(
   context: { processes: Map<string, ProcessRegistry> },
@@ -132,4 +142,22 @@ export function parseRunAttachments(value: unknown): ModelAttachment[] | string 
     })
   }
   return result
+}
+
+export function compactionAdapter(effective: EffectiveLlmConfig, apiKey: string): ReturnType<typeof createLlmAdapter> {
+  return createLlmAdapter({
+    apiKey,
+    baseUrl: effective.baseUrl,
+    model: effective.model,
+    ...(effective.protocol ? { protocol: effective.protocol } : {}),
+    // A thinking model bills its reasoning against this cap, so the budget has
+    // to cover the reasoning *plus* the summary it is the point of asking for.
+    maxTokens: 8192,
+    timeoutMs: 180_000,
+    ...(effective.temperature !== undefined
+      ? { temperature: effective.temperature }
+      : {}),
+    ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
+    ...llmAuthOptions(effective),
+  })
 }

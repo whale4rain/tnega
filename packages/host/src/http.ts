@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type {  IncomingMessage, ServerResponse  } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
