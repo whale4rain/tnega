@@ -131,3 +131,23 @@
 3. 公开导出兼容：桌面端依赖 `startWebServer` / `defaultHotProfile` / `WebServer`，根 `exports` 的
    `./cli/runtime` 继续可用一个版本。
 4. `permissions.ts` 对 `tool-browser` 的依赖、`home-paths` 对 `coding-agent` 的反向依赖，是拆包时顺手要修的层次问题。
+
+## 进度
+
+已完成 Phase 0–4、6：
+
+- Phase 0 `c5663c1`：23 个目标包脚手架，`@tnega/runtime` 与 `@tnega/home` 先解开两个类型环。
+- Phase 1–2 `ecb8143`、`a8a5ed3`、`a69430c`、`f013a5a`：叶子包与数据层（goal、terminal、tool-web-search、directory-picker、home、compaction、persona、workspace-prompt、workspace-files、config、auth-chatgpt、session-store、usage、profile、plugin-host、approval-host）。
+- Phase 3 `1f1f56f`：`@tnega/runtime` 接管 compose 与 `createAgentRuntime`。
+- Phase 4 `33f0332`：Project 家族（host、http、routines、memory、worktrees）。
+- Phase 5 的机械部分 `20e32e4`：`server.ts` 与 `ptc-observation` 移入 `@tnega/host`。
+- Phase 6 `01dd3da`：删除全部 shim，`packages/cli` 只剩 6 个文件、711 行，依赖 79 → 13。
+
+待办：
+
+- Phase 5 的结构部分：在 `@tnega/host` 内把 2,547 行的 `server.ts` 拆成 `http/router.ts`、
+  `http/{sse,static}.ts`、`routes/{sessions,files,config,plugins,projects,browser,terminals}.ts`、
+  `resident.ts`。
+- Phase 6 的发布收尾：根 `package.json` 的 `exports` 与 `scripts/build.mjs` 的 `libraryEntries`
+  是否需要为新的宿主/运行时包增加子路径（当前它们只被打进 `dist/bin.js` 与 `dist/cli-runtime.js`）。
+
