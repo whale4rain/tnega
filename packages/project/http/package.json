@@ -12,6 +12,8 @@
     "@tnega/project": "workspace:*",
     "@tnega/project-host": "workspace:*",
     "@tnega/project-routines": "workspace:*",
-    "@tnega/tool-blackboard": "workspace:*"
+    "@tnega/tool-blackboard": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }

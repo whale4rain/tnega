@@ -9,6 +9,8 @@
   "dependencies": {
     "@tnega/execution": "workspace:*",
     "@tnega/home": "workspace:*",
-    "@tnega/llm": "workspace:*"
+    "@tnega/llm": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }

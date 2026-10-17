@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { IncomingMessage, ServerResponse } from 'node:http'
-import { dedupe, errorMessage, readJsonBody, sendError, sendJson, writeSse, HttpError } from '@tnega/web-kit'
+import { dedupe, errorMessage, readJsonBody, sendError, sendJson, HttpError } from '@tnega/web-kit'
 import { KEEP_RECENT_TOKENS, MAX_RUN_BODY_BYTES, adapterFromConfig, canonicalWorkspace, compactionAdapter, isActive, optionalCount, optionalSeq, parseRunAttachments, processesFor, runKey, sessionFilePath, userMessage, workspaceParam } from './support.js'
 import { Context } from '@tnega/core'
 import { configureNetwork } from '@tnega/execution'
@@ -15,12 +15,10 @@ import { recoverInterruptedTurn } from '@tnega/agent'
 import { sessionUsage } from '@tnega/usage'
 import { storedWorkspaceUsage } from '@tnega/usage'
 import { readWorkspacePrompt, writeWorkspacePrompt } from '@tnega/workspace-prompt'
-import { ChatGptLogin } from '@tnega/auth-chatgpt'
 import { discoverModels, ModelDiscoveryError, parseModelDiscoveryInput } from '@tnega/config'
 import { pendingQuestionsFromEvents, UserQuestionError } from '@tnega/user-questions'
 import { readGoal } from '@tnega/goal'
 import { isAgentType, SessionLog } from '@tnega/session'
-import { parseLiveInput } from '@tnega/browser-playwright'
 import { availableShells, configureSystemShell, DEFAULT_ALLOWED_HOSTS, systemShell } from '@tnega/execution'
 import { listStoredSubagents, readSubagentEvents } from '@tnega/subagent-local'
 import { SubagentError } from '@tnega/subagent'
@@ -28,7 +26,6 @@ import { JobRegistry } from '@tnega/jobs'
 import { ProjectHost } from '@tnega/project-host'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
-import { handleProjectApi } from '@tnega/project-http'
 import { pickSystemFolder } from '@tnega/directory-picker'
 import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
@@ -122,21 +119,6 @@ interface ApiRoute {
 }
 
 const apiRoutes: ApiRoute[] = [
-{
-    match: (req, url) => Boolean(url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')),
-    handle: async (req, res, url, context) => {
-      if (!(url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/'))) return
-      await handleProjectApi(req, res, url, {
-            host: workspace => projectHostFor(context, workspace),
-            sendJson,
-            sendError,
-            readJsonBody,
-            writeSse,
-            workspaceParam,
-          })
-      return
-    },
-  },
 {
     match: (req, url) => {
       const approvalMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
@@ -262,38 +244,6 @@ const apiRoutes: ApiRoute[] = [
             throw error
           }
       return
-    },
-  },
-{
-    match: (req, url) => Boolean(url.pathname.startsWith('/api/browser')),
-    handle: async (req, res, url, context) => {
-      if (!(url.pathname.startsWith('/api/browser'))) return
-      await handleBrowser(req, res, url, context)
-      return
-    },
-  },
-{
-    match: (req, url) => Boolean(url.pathname === '/api/auth/chatgpt'),
-    handle: async (req, res, url, context) => {
-      if (!(url.pathname === '/api/auth/chatgpt')) return
-      const login = context.chatgptLogin ??= new ChatGptLogin({
-            onSignedIn: async () => {
-              const config = await readSystemConfig(context.configFile)
-              if (!config.models?.some(route => route.auth === 'chatgpt')) {
-                await upsertModelRoute('chatgpt', { model: CHATGPT_DEFAULT_MODEL, name: `ChatGPT · ${CHATGPT_DEFAULT_MODEL}`, auth: 'chatgpt' }, context.configFile)
-              }
-            },
-          })
-      if (req.method === 'GET') { sendJson(res, 200, await login.state()); return }
-      if (req.method === 'POST') {
-            try {
-              sendJson(res, 200, await login.start())
-            } catch (error) {
-              sendError(res, 409, errorMessage(error))
-            }
-            return
-          }
-      if (req.method === 'DELETE') { await login.signOut(); sendJson(res, 200, await login.state()); return }
     },
   },
 {
@@ -931,106 +881,7 @@ export function configSnapshot(config: SystemConfig, path = systemConfigPath()):
   }
 }
 
-export async function handleBrowser(req: IncomingMessage, res: ServerResponse, url: URL, context: ServerContext): Promise<void> {
-  const browser = context.browser
-  if (url.pathname === '/api/browser' && req.method === 'GET') {
-    sendJson(res, 200, { available: Boolean(browser), state: browser?.state(), tabs: browser?.tabs() ?? [] })
-    return
-  }
-  if (!browser) {
-    sendError(res, 404, 'the agent browser is disabled')
-    return
-  }
-  if (url.pathname === '/api/browser/live' && req.method === 'GET') {
-    res.writeHead(200, {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive',
-      'x-accel-buffering': 'no',
-    })
-    writeSse(res, { type: 'state', ...browser.state() })
-    writeSse(res, { type: 'tabs', tabs: browser.tabs() })
-    let pending = false
-    const unsubscribe = browser.live.subscribe(event => {
-      if (res.destroyed || res.writableEnded) return
-      // Drop frames while the socket is still flushing the previous one.
-      if (event.type === 'frame' && pending) return
-      pending = !res.write(`event: ${event.type}
-data: ${JSON.stringify(event)}
 
-`)
-    }, { frames: url.searchParams.get('frames') !== '0' })
-    res.on('drain', () => { pending = false })
-    req.on('close', unsubscribe)
-    return
-  }
-  if (url.pathname === '/api/browser/input' && req.method === 'POST') {
-    const input = parseLiveInput(await readJsonBody(req))
-    if (!input) {
-      sendError(res, 400, 'invalid browser input')
-      return
-    }
-    await browser.live.input(input)
-    sendJson(res, 200, { ok: true })
-    return
-  }
-  if (url.pathname === '/api/browser/navigate' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (typeof body.url !== 'string' || !body.url.trim()) {
-      sendError(res, 400, 'url is required')
-      return
-    }
-    await browser.userNavigate(body.url)
-    sendJson(res, 200, browser.state())
-    return
-  }
-  if (url.pathname === '/api/browser/viewport' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    const width = Number(body.width)
-    const height = Number(body.height)
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1 || width > 8000 || height > 8000) {
-      sendError(res, 400, 'width and height must be positive numbers')
-      return
-    }
-    await browser.setViewport(width, height)
-    sendJson(res, 200, { ok: true })
-    return
-  }
-  if (url.pathname === '/api/browser/tabs' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    const id = typeof body.id === 'string' ? body.id : undefined
-    if (body.action === 'new') await browser.newTab(typeof body.url === 'string' && body.url.trim() ? body.url : undefined)
-    else if (body.action === 'select' && id) await browser.selectTab(id)
-    else if (body.action === 'close') await browser.closeTab(id)
-    else {
-      sendError(res, 400, 'action must be new, select (with id) or close')
-      return
-    }
-    sendJson(res, 200, { tabs: browser.tabs() })
-    return
-  }
-  if (url.pathname === '/api/browser/pick' && req.method === 'POST') {
-    const result = await browser.pick()
-    sendJson(res, 200, result ?? { cancelled: true })
-    return
-  }
-  if (url.pathname === '/api/browser/pick/cancel' && req.method === 'POST') {
-    await browser.cancelPick()
-    sendJson(res, 200, { ok: true })
-    return
-  }
-  if (url.pathname === '/api/browser/command' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (body.command !== 'back' && body.command !== 'forward' && body.command !== 'reload') {
-      sendError(res, 400, 'command must be back, forward or reload')
-      return
-    }
-    await browser.userCommand(body.command)
-    sendJson(res, 200, browser.state())
-    return
-  }
-  sendError(res, 404, 'not found')
-}
 
 
 

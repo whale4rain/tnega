@@ -305,3 +305,5 @@ export function llmAuthOptions(effective: { auth?: 'chatgpt' }): Partial<LlmConf
   return { protocol: 'responses', temperature: undefined, fetch: chatgptFetch, requestHeaders: sharedHeaders, fallbackInstructions: codexInstructions }
 }
 export const name = '@tnega/auth-chatgpt'
+
+export * from './routes.js'

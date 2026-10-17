@@ -1,6 +1,5 @@
 import { DurableInbox, AgentRegistry, type LiveAgent } from '@tnega/agent'
 import { Context } from '@tnega/core'
-import { ChatGptLogin } from '@tnega/auth-chatgpt'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { ProcessRegistry, type ToolsService } from '@tnega/tools'
@@ -27,7 +26,6 @@ export interface ProjectHostEntry {
 
 export interface ServerContext {
   ptcRuntime?: PtcRuntimeQuickjsConfig
-  chatgptLogin?: ChatGptLogin
   /** The host's fetch for the HTTP tools (see `WebServerOptions.fetch`). */
   hostFetch?: typeof fetch
   webRoot: string

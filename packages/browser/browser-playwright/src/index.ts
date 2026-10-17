@@ -94,3 +94,5 @@ export const browserPlaywright = {
     if (owned) ctx.fiber.effect(() => () => { void owned.close() }, 'browser-playwright/close')
   },
 }
+
+export * from './routes.js'

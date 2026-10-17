@@ -9,7 +9,8 @@
   "dependencies": {
     "@tnega/browser": "workspace:*",
     "@tnega/core": "workspace:*",
-    "playwright-core": "1.63.0"
+    "playwright-core": "1.63.0",
+    "@tnega/web-kit": "workspace:*"
   },
   "devDependencies": {
     "@tnega/tool-browser": "workspace:*",

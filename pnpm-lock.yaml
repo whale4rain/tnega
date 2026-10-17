@@ -316,6 +316,9 @@ importers:
 
   packages/auth-chatgpt:
     dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
       '@tnega/execution':
         specifier: workspace:*
         version: link:../execution
@@ -325,6 +328,9 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
 
   packages/auto-approval:
     dependencies:
@@ -355,6 +361,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
@@ -981,6 +990,9 @@ importers:
       '@tnega/box':
         specifier: workspace:*
         version: link:../box
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
       '@tnega/project':
         specifier: workspace:*
         version: link:../project
@@ -993,6 +1005,9 @@ importers:
       '@tnega/tool-blackboard':
         specifier: workspace:*
         version: link:../tool-blackboard
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
 
   packages/project/memory:
     dependencies:

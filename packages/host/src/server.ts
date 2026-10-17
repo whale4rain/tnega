@@ -9,12 +9,15 @@ import { ApprovalBroker, type PermissionMode } from '@tnega/approval-host'
 import { TerminalManager } from '@tnega/terminal'
 import { createHotPluginHost, type HotPluginEvent } from '@tnega/plugin-host'
 import { createPluginWorkshop } from '@tnega/plugin-host'
-import { readSystemConfig, SystemConfigError } from '@tnega/config'
+import { readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
 import { fileRoutes } from '@tnega/workspace-files'
+import { chatgptRoutes } from '@tnega/auth-chatgpt'
+import { browserRoutes } from '@tnega/browser-playwright'
+import { projectApi } from '@tnega/project-http'
 import { terminalRoutes } from '@tnega/terminal'
 import { Context } from '@tnega/core'
 import type { ResidentAgentEntry, ProjectHostEntry, ServerContext } from './context.js'
-import { applyNetwork, handleApi, registerApiRoutes, rejectsApiRequest } from './routes.js'
+import { CHATGPT_DEFAULT_MODEL, applyNetwork, handleApi, projectHostFor, registerApiRoutes, rejectsApiRequest } from './routes.js'
 import { webServer } from '@tnega/web-kit'
 
 const DEFAULT_HOST = '127.0.0.1'
@@ -121,6 +124,20 @@ export async function startWebServer(
   }
 
   await root.plugin(fileRoutes)
+  await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })
+  await root.plugin(browserRoutes, { browser: () => browser })
+  await root.plugin(chatgptRoutes, {
+    onSignedIn: async () => {
+      const config = await readSystemConfig(configFile)
+      if (!config.models?.some(route => route.auth === 'chatgpt')) {
+        await upsertModelRoute(
+          'chatgpt',
+          { model: CHATGPT_DEFAULT_MODEL, name: `ChatGPT · ${CHATGPT_DEFAULT_MODEL}`, auth: 'chatgpt' },
+          configFile,
+        )
+      }
+    },
+  })
   await root.plugin(terminalRoutes, { terminals: context.terminals })
   registerApiRoutes(context.web, context)
   context.web.register({
@@ -160,7 +177,6 @@ export async function startWebServer(
       projectHosts.clear()
       await Promise.all(hosts.map(entry => entry.host.dispose()))
       context.terminals.dispose()
-      await context.chatgptLogin?.stop()
       await hotPlugins?.close()
       await pluginWorkshop?.close()
       await ownedBrowser?.close()
