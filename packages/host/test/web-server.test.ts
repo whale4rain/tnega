@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { Context } from '@tnega/core'
 import { WebServerService } from '../src/web-server.js'
 
 const handler = (name: string) => () => { void name }
 
 describe('web server route table', () => {
   it('matches an exact route before a prefix route', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     const prefix = handler('prefix')
     const exact = handler('exact')
     web.register({ kind: 'prefix', method: 'GET', path: '/api/', handler: prefix })
@@ -15,7 +16,7 @@ describe('web server route table', () => {
   })
 
   it('prefers the longest prefix regardless of registration order', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     const api = handler('api')
     const sessions = handler('sessions')
     web.register({ kind: 'prefix', method: 'GET', path: '/api/sessions/', handler: sessions })
@@ -25,7 +26,7 @@ describe('web server route table', () => {
   })
 
   it('treats the wildcard method as claiming every method', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     const any = handler('any')
     web.register({ kind: 'prefix', method: '*', path: '/api/', handler: any })
     expect(web.match('POST', '/api/sessions')).toEqual({ kind: 'route', handler: any })
@@ -33,7 +34,7 @@ describe('web server route table', () => {
   })
 
   it('reports a method mismatch when only other methods claim the path', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     web.register({ kind: 'exact', method: 'GET', path: '/api/health', handler: handler('health') })
     // Exact lookups for other methods fall through to the prefix table; a
     // prefix route for another method is what produces 405.
@@ -42,7 +43,7 @@ describe('web server route table', () => {
   })
 
   it('falls back once and refuses a second claimant', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     const fallback = handler('static')
     const dispose = web.registerFallback(fallback)
     expect(web.match('GET', '/index.html')).toEqual({ kind: 'fallback', handler: fallback })
@@ -52,7 +53,7 @@ describe('web server route table', () => {
   })
 
   it('rejects duplicate paths and lets a disposer withdraw a route', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     const first = handler('first')
     const dispose = web.register({ kind: 'exact', method: 'GET', path: '/api/health', handler: first })
     expect(() => web.register({ kind: 'exact', method: 'GET', path: '/api/health', handler: handler('second') }))
@@ -62,7 +63,7 @@ describe('web server route table', () => {
   })
 
   it('registers exact upgrade routes and returns them by pathname', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     const upgrade = () => {}
     const dispose = web.registerUpgrade('/api/remote.mux', upgrade)
     expect(web.upgrade('/api/remote.mux')).toBe(upgrade)
@@ -72,7 +73,7 @@ describe('web server route table', () => {
   })
 
   it('requires absolute paths', () => {
-    const web = new WebServerService()
+    const web = new WebServerService(new Context())
     expect(() => web.register({ kind: 'exact', method: 'GET', path: 'api', handler: handler('x') }))
       .toThrow(/must start with/)
   })

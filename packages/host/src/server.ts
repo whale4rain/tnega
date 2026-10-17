@@ -9,9 +9,10 @@ import { TerminalManager } from '@tnega/terminal'
 import { createHotPluginHost, type HotPluginEvent } from '@tnega/plugin-host'
 import { createPluginWorkshop } from '@tnega/plugin-host'
 import { readSystemConfig, SystemConfigError } from '@tnega/config'
+import { Context } from '@tnega/core'
 import type { ResidentAgentEntry, ProjectHostEntry, ServerContext } from './context.js'
 import { applyNetwork, handleApi, registerApiRoutes, rejectsApiRequest } from './routes.js'
-import { WebServerService } from './web-server.js'
+import { webServer } from './web-server.js'
 
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
@@ -90,6 +91,9 @@ export async function startWebServer(
   const pluginWorkshop = pluginDev
     ? await createPluginWorkshop(...(typeof pluginDev === 'string' ? [pluginDev] : []))
     : undefined
+  const root = new Context()
+  await root.plugin(webServer)
+  const web = root.get('webServer')
   const context: ServerContext = {
     ...(options.fetch ? { hostFetch: options.fetch } : {}),
     webRoot,
@@ -110,7 +114,7 @@ export async function startWebServer(
     ...(pluginWorkshop ? { pluginWorkshop } : {}),
     processes: new Map(),
     terminals: new TerminalManager(),
-    web: new WebServerService(),
+    web,
   }
 
   registerApiRoutes(context.web, context)
@@ -143,6 +147,7 @@ export async function startWebServer(
       await new Promise<void>((resolveClose, rejectClose) => {
         server.close(error => error ? rejectClose(error) : resolveClose())
       })
+      await root.fiber.dispose()
       const entries = [...residentAgents.values()]
       residentAgents.clear()
       await Promise.all(entries.map(entry => entry.dispose()))
