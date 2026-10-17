@@ -30,9 +30,15 @@ export interface LiveViewOptions {
   /** Frames are scaled down to fit this box. */
   maxWidth?: number
   maxHeight?: number
+  /** Frame rate cap for the UI. Animated pages (carousels, ads) repaint far
+   * faster than a viewer can read, and every frame costs a JPEG decode and a
+   * repaint on the client; defaults to 15. */
+  maxFps?: number
 }
 
 const clamp = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0))
+
+export const DEFAULT_MAX_FPS = 15
 
 export function parseLiveInput(value: unknown): BrowserLiveInput | undefined {
   if (!value || typeof value !== 'object') return undefined
@@ -67,6 +73,8 @@ export class LiveView {
   private _page: Page | undefined
   private _viewport = { width: 1280, height: 800 }
   private _starting: Promise<void> | undefined
+  private _pendingFrame: { data: string; width: number; height: number; sessionId: number } | undefined
+  private _frameTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly _acquire: () => Promise<Page>, private readonly _options: LiveViewOptions = {}) {}
 
@@ -156,18 +164,39 @@ export class LiveView {
     this._session = session
     const size = page.viewportSize() ?? await page.evaluate<{ width: number; height: number }>('({ width: innerWidth, height: innerHeight })')
     this._viewport = size
-    session.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
-      this._viewport = { width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight }
-      const event = { type: 'frame' as const, data: frame.data, width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight }
+    const interval = 1000 / Math.max(1, this._options.maxFps ?? DEFAULT_MAX_FPS)
+    let lastEmittedAt = 0
+    const flush = () => {
+      this._frameTimer = undefined
+      const frame = this._pendingFrame
+      this._pendingFrame = undefined
+      if (!frame) return
+      this._viewport = { width: frame.width, height: frame.height }
+      const event = { type: 'frame' as const, data: frame.data, width: frame.width, height: frame.height }
+      lastEmittedAt = Date.now()
       for (const listener of this._watchers) listener(event)
+      // Acknowledging is what asks Chromium for the next frame; holding the ack
+      // until this one is delivered keeps at most one frame in flight, so an
+      // animated page costs the UI the frame rate below instead of the page's.
       void session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => {})
+    }
+    session.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
+      this._pendingFrame = {
+        data: frame.data,
+        width: frame.metadata.deviceWidth,
+        height: frame.metadata.deviceHeight,
+        sessionId: frame.sessionId,
+      }
+      if (this._frameTimer) return
+      const wait = Math.max(0, interval - (Date.now() - lastEmittedAt))
+      this._frameTimer = setTimeout(flush, wait)
     })
     page.once('close', () => { if (this._page === page) void this._stop() })
     await session.send('Page.startScreencast', {
       format: 'jpeg',
-      quality: this._options.quality ?? 70,
-      maxWidth: this._options.maxWidth ?? 1600,
-      maxHeight: this._options.maxHeight ?? 1200,
+      quality: this._options.quality ?? 60,
+      maxWidth: this._options.maxWidth ?? 1280,
+      maxHeight: this._options.maxHeight ?? 800,
     })
     this._emit({ type: 'state', url: page.url(), title: await page.title().catch(() => '') })
     // The active tab may have changed while starting; follow it.
@@ -179,6 +208,11 @@ export class LiveView {
   }
 
   private async _stop(): Promise<void> {
+    if (this._frameTimer) {
+      clearTimeout(this._frameTimer)
+      this._frameTimer = undefined
+    }
+    this._pendingFrame = undefined
     const session = this._session
     this._session = undefined
     this._page = undefined

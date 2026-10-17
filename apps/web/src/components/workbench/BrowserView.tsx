@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, SquareMousePointer, X } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   browserCommand,
   browserTab,
@@ -52,10 +52,15 @@ export function BrowserView({ width }: { width?: number | undefined }) {
   const bridge = desktopBrowser()
   const [state, setState] = useState(EMPTY)
   const [tabs, setTabs] = useState<LiveTab[]>([])
-  const [frame, setFrame] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [picking, setPicking] = useState(false)
   const history = useRef<{ urls: string[]; index: number }>({ urls: [], index: -1 })
+  // The screencast is written straight into the image element: a frame every
+  // 66 ms through React state would re-render the tabs and toolbar on every
+  // repaint of an animated page (carousels, ads) and make the panel crawl.
+  const frameImage = useRef<HTMLImageElement>(null)
+  const sawFrame = useRef(false)
+  const [hasFrame, setHasFrame] = useState(false)
 
   // Tabs and page state come from the server in both hosts; frames only in the web app.
   useEffect(() => {
@@ -63,10 +68,18 @@ export function BrowserView({ width }: { width?: number | undefined }) {
     let retry: ReturnType<typeof setTimeout> | undefined
     const connect = () => {
       streamBrowserLive(event => {
-        setError(undefined)
         if (event.type === 'frame') {
-          setFrame(`data:image/jpeg;base64,${event.data}`)
-        } else if (event.type === 'tabs') {
+          const image = frameImage.current
+          if (!image) return
+          image.src = `data:image/jpeg;base64,${event.data}`
+          if (!sawFrame.current) {
+            sawFrame.current = true
+            setHasFrame(true)
+          }
+          return
+        }
+        setError(undefined)
+        if (event.type === 'tabs') {
           setTabs(event.tabs)
         } else if (!bridge) {
           // The headless page reports no history of its own; approximate it for the buttons.
@@ -154,7 +167,7 @@ export function BrowserView({ width }: { width?: number | undefined }) {
       <div className="browser-card">
         {bridge
           ? <NativeViewport bridge={bridge} url={state.url} />
-          : <LiveViewport frame={frame} error={error} width={width} />}
+          : <LiveViewport image={frameImage} hasFrame={hasFrame} error={error} width={width} />}
         {picking && <div className="browser-pick-hint">Click an element to add it to your message · Esc to cancel</div>}
       </div>
     </div>
@@ -303,9 +316,13 @@ function NativeViewport({ bridge, url }: { bridge: DesktopBrowserBridge; url: st
 }
 
 /** Web: render the page at the card's size and send the user's input back. */
-function LiveViewport({ frame, error, width }: { frame: string | undefined; error: string | undefined; width?: number | undefined }) {
+function LiveViewport({ image, hasFrame, error, width }: {
+  image: RefObject<HTMLImageElement | null>
+  hasFrame: boolean
+  error: string | undefined
+  width?: number | undefined
+}) {
   const viewport = useRef<HTMLDivElement>(null)
-  const image = useRef<HTMLImageElement>(null)
   const lastMove = useRef(0)
 
   const fit = useCallback(() => {
@@ -356,32 +373,29 @@ function LiveViewport({ frame, error, width }: { frame: string | undefined; erro
         send({ kind: 'text', text })
       }}
     >
-      {frame
-        ? (
-          <img
-            ref={image}
-            src={frame}
-            alt="Agent browser page"
-            draggable={false}
-            onMouseDown={event => event.preventDefault()}
-            onClick={event => {
-              event.currentTarget.parentElement?.focus()
-              send({ kind: 'click', ...at(event), clickCount: event.detail >= 2 ? 2 : 1 })
-            }}
-            onContextMenu={event => {
-              event.preventDefault()
-              send({ kind: 'click', ...at(event), button: 'right' })
-            }}
-            onMouseMove={event => {
-              const now = Date.now()
-              if (now - lastMove.current < 60) return
-              lastMove.current = now
-              send({ kind: 'move', ...at(event) })
-            }}
-            onWheel={event => send({ kind: 'wheel', ...at(event), deltaX: event.deltaX, deltaY: event.deltaY })}
-          />
-        )
-        : <EmptyPage>{error ? `Connecting to the browser… (${error})` : undefined}</EmptyPage>}
+      <img
+        ref={image}
+        alt="Agent browser page"
+        draggable={false}
+        style={hasFrame ? undefined : { visibility: 'hidden' }}
+        onMouseDown={event => event.preventDefault()}
+        onClick={event => {
+          event.currentTarget.parentElement?.focus()
+          send({ kind: 'click', ...at(event), clickCount: event.detail >= 2 ? 2 : 1 })
+        }}
+        onContextMenu={event => {
+          event.preventDefault()
+          send({ kind: 'click', ...at(event), button: 'right' })
+        }}
+        onMouseMove={event => {
+          const now = Date.now()
+          if (now - lastMove.current < 60) return
+          lastMove.current = now
+          send({ kind: 'move', ...at(event) })
+        }}
+        onWheel={event => send({ kind: 'wheel', ...at(event), deltaX: event.deltaX, deltaY: event.deltaY })}
+      />
+      {!hasFrame && <EmptyPage>{error ? `Connecting to the browser… (${error})` : undefined}</EmptyPage>}
     </div>
   )
 }
