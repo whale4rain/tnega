@@ -21,7 +21,6 @@ it('loads the human transcript and collapses completed runs even when model surf
   const detail: SessionDetail = {
     summary: { id: 'session', title: 'Test session', workspace: '/work', createdAt: 1, updatedAt: 6, eventCount: 6 },
     events,
-    surface: events.filter(event => event.type === 'user/message' || event.type === 'assistant/message'),
     context: { tokens: 0, limit: 0, ratio: 0 },
     metrics: { responses: 2, promptTokens: 0, completionTokens: 0, cachedTokens: 0 },
     running: false,

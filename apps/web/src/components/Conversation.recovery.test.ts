@@ -16,7 +16,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 function mount(recovery: SessionRecovery) {
   const detail: SessionDetail = {
     summary: { id: 'session', title: 'Crashed session', workspace: '/work', createdAt: 1, updatedAt: 1, eventCount: 0 },
-    events: [], surface: [], context: { tokens: 0, limit: 0, ratio: 0 },
+    events: [], context: { tokens: 0, limit: 0, ratio: 0 },
     metrics: { responses: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0 }, running: false,
     recovery,
   }

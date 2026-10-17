@@ -15,7 +15,7 @@ it('shows compaction progress without hiding the conversation being summarized',
     events: [
       { id: 'user', seq: 1, ts: 1, type: 'user/message', payload: { content: 'Keep this request visible' } },
       { id: 'answer', seq: 2, ts: 2, type: 'assistant/message', payload: { content: 'Keep this answer visible' } },
-    ], surface: [], running: false,
+    ], running: false,
     context: { tokens: 200, limit: 1000, ratio: 0.2 }, metrics: { responses: 1, promptTokens: 200, completionTokens: 20, cachedTokens: 0 },
   }
   vi.spyOn(api, 'session').mockResolvedValue(detail)

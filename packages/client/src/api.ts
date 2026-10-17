@@ -225,8 +225,12 @@ export function createClient(options: ClientOptions = {}) {
       call<{ sessions: SessionSummary[] }>(scoped('/api/sessions', workspace)),
     createSession: (workspace: string, init: { title?: string; agentType?: AgentType; mode?: SessionMode } = {}) =>
       call<{ session: SessionSummary }>(scoped('/api/sessions', workspace), { method: 'POST', body: init }),
-    session: (workspace: string, id: string) =>
-      call<SessionDetail>(scoped(`/api/sessions/${id}`, workspace)),
+    /** One history window: omit page for the newest one. */
+    session: (workspace: string, id: string, page: { beforeSeq?: number; maxMessages?: number } = {}) =>
+      call<SessionDetail>(scoped(`/api/sessions/${id}`, workspace, {
+        ...(page.beforeSeq !== undefined ? { beforeSeq: String(page.beforeSeq) } : {}),
+        ...(page.maxMessages !== undefined ? { maxMessages: String(page.maxMessages) } : {}),
+      })),
     jobs: (workspace: string, id: string, signal?: AbortSignal) =>
       call<{ jobs: BackgroundJob[] }>(scoped(`/api/sessions/${id}/jobs`, workspace), { signal }),
     jobOutput: (workspace: string, id: string, jobId: string, signal?: AbortSignal) =>

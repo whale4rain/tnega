@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startWebServer, type WebServer } from '../src/server.js'
+import { SessionLog } from '@tnega/session'
+import { sessionFile } from '../src/store.js'
 
 const dirs: string[] = []
 const servers: WebServer[] = []
@@ -1772,16 +1774,70 @@ describe('web server with resident agents', () => {
       `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
     ).then(r => r.json()) as {
       running: boolean
-      surface: Array<{ type: string; payload: { content?: string } }>
+      events: Array<{ type: string; payload: { content?: string } }>
     }
     expect(detail.running).toBe(false)
-    const users = detail.surface
+    const users = detail.events
       .filter(event => event.type === 'user/message')
       .map(event => event.payload.content)
     // The resident agent persisted each turn exactly once: no duplicated or
     // re-spliced history across the two runs.
     expect(users).toEqual(['first turn', 'second turn'])
     expect(mock.bodies().length).toBe(2)
+  })
+
+  it('serves a long history a page at a time so the newest turn opens without the whole log', async () => {
+    const dir = await tempDir('tnega-web-page-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    await writeFile(configFile, JSON.stringify({ apiKey: 'test-key', model: 'mock-model' }), 'utf8')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+    const created = await apiFetch(
+      server.url,
+      '/api/sessions?workspace=' + encodeURIComponent(workspace),
+      { method: 'POST', body: '{}' },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const writer = new SessionLog(sessionFile(workspace, id))
+    await writer.init()
+    for (let turn = 1; turn <= 12; turn += 1) {
+      await writer.append('turn/start', { turn })
+      await writer.append('user/message', { content: 'question ' + turn })
+      await writer.append('assistant/message', { content: 'answer ' + turn })
+      await writer.append('turn/end', { turn, finishReason: 'stop' })
+    }
+    await writer.close()
+
+    const base = '/api/sessions/' + id + '?workspace=' + encodeURIComponent(workspace)
+    const read = (page: string) => apiFetch(server.url, base + page).then(r => r.json()) as Promise<{
+      events: Array<{ type: string; seq: number; payload: { content?: string } }>
+      page: { hasMore: boolean; beforeSeq?: number }
+      surface?: unknown
+    }>
+
+    const newest = await read('&maxMessages=4')
+    expect(newest.events.filter(isMessageEvent).map(event => event.payload.content))
+      .toEqual(['question 11', 'answer 11', 'question 12', 'answer 12'])
+    expect(newest.page.hasMore).toBe(true)
+    // The model view is no longer duplicated on the wire: the browser renders
+    // the transcript, and that copy was the largest thing nobody read.
+    expect(newest.surface).toBeUndefined()
+
+    const older = await read('&maxMessages=4&beforeSeq=' + String(newest.page.beforeSeq))
+    expect(older.events.filter(isMessageEvent).map(event => event.payload.content))
+      .toEqual(['question 9', 'answer 9', 'question 10', 'answer 10'])
+    expect(older.page.hasMore).toBe(true)
+
+    const oldest = await read('&maxMessages=400&beforeSeq=' + String(older.page.beforeSeq))
+    expect(oldest.events.filter(isMessageEvent)).toHaveLength(16)
+    expect(oldest.page.hasMore).toBe(false)
+
+    // No page size means the whole transcript, as before paging existed.
+    const whole = await read('')
+    expect(whole.events.filter(isMessageEvent)).toHaveLength(24)
+    expect(whole.page.hasMore).toBe(false)
   })
 })
 

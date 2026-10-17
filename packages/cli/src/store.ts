@@ -17,6 +17,7 @@ import {
   estimateMessageTokens,
   foldUsage,
   foldSessionMeta,
+  transcriptEvents,
   foldSessionPermission,
   projectEvents,
   suffixStartIndexForTokens,
@@ -194,31 +195,35 @@ export async function listSessions(workspace: string): Promise<SessionSummary[]>
   return summaries.sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-export async function readSessionSummary(
-  workspace: string,
+/**
+ * Sessions only change by appending, so a summary is cached against the file's
+ * identity and recomputed when the file grows. Listing a workspace used to parse
+ * every session in full; fifty sessions meant a few seconds of JSON parsing.
+ */
+const summaryCache = new Map<string, { stamp: string; summary: SessionSummary }>()
+
+/** Folds a summary out of events that are already parsed. */
+function summaryFromEvents(
+  workspaceDir: string,
   id: string,
-): Promise<SessionSummary> {
-  const workspaceDir = resolve(workspace)
-  const file = sessionFile(workspaceDir, id)
-  const raw = await readEventLines(file)
-  const events = raw
-    .map(line => parseSessionEvent(line))
-    .filter((event): event is SessionEvent => event !== undefined)
-  const fileStat = await stat(file)
+  events: readonly SessionEvent[],
+  eventCount: number,
+  mtimeMs: number,
+): SessionSummary {
   const headMeta = events.find(event => event.type === 'meta')
   const headPayload = headMeta?.payload as Record<string, unknown> | undefined
   const createdAt = headPayload && typeof headPayload.createdAt === 'number'
     ? headPayload.createdAt
     : Date.now()
   const folded = foldSessionMeta(events)
-  const updatedAt = Math.max(createdAt, fileStat.mtimeMs)
+  const updatedAt = Math.max(createdAt, mtimeMs)
   const summary: SessionSummary = {
     id,
     title: folded.title ?? 'New session',
     workspace: workspaceDir,
     createdAt,
     updatedAt,
-    eventCount: raw.length,
+    eventCount,
   }
   if (folded.agentType) summary.agentType = folded.agentType
   if (folded.mode) summary.mode = folded.mode
@@ -234,6 +239,218 @@ export async function readSessionSummary(
     summary.forkedAtMessageId = headPayload.forkedAtMessageId
   }
   return summary
+}
+
+/**
+ * Only metadata events can change a summary, and they are a small fraction of a
+ * log: parsing a tool result (hundreds of bytes, most of the file) cannot affect
+ * title, mode, model, permission or approval mode.
+ */
+function parseMetaLines(lines: readonly string[]): SessionEvent[] {
+  const events: SessionEvent[] = []
+  for (const line of lines) {
+    if (!line.includes('"type":"meta') && !line.includes('"type":"permission/mode"')) continue
+    const event = parseSessionEvent(line)
+    if (event) events.push(event)
+  }
+  return events
+}
+
+export async function readSessionSummary(
+  workspace: string,
+  id: string,
+): Promise<SessionSummary> {
+  const workspaceDir = resolve(workspace)
+  const file = sessionFile(workspaceDir, id)
+  const fileStat = await stat(file).catch(() => undefined)
+  if (!fileStat) return summaryFromEvents(workspaceDir, id, [], 0, Date.now())
+  const stamp = `${fileStat.size}:${fileStat.mtimeMs}`
+  const cached = summaryCache.get(file)
+  if (cached && cached.stamp === stamp) return cached.summary
+  const raw = await readEventLines(file)
+  const summary = summaryFromEvents(workspaceDir, id, parseMetaLines(raw), raw.length, fileStat.mtimeMs)
+  summaryCache.set(file, { stamp, summary })
+  return summary
+}
+
+export interface SessionSnapshot {
+  summary: SessionSummary
+  /** The human transcript, with compaction markers in place. */
+  events: SessionEvent[]
+  /** The model view: shadowed messages removed. */
+  surface: SessionEvent[]
+  context: ContextUsage
+  metrics: SessionMetrics
+  /** Every event, for folds that need the whole history (usage, recovery). */
+  log: SessionEvent[]
+  /** Where the returned transcript starts: a long history is read a page at a time. */
+  page: SessionPageRange
+}
+
+/** One read of a history: the window returned and how to ask for the one before it. */
+export interface SessionPageRange {
+  /** Earlier events exist before the window. */
+  hasMore: boolean
+  /** Pass as beforeSeq for the next older page; absent once the log is covered. */
+  beforeSeq?: number
+}
+
+/** A request for one page of history, newest last. */
+export interface SessionPageOptions {
+  /** Return events strictly before this seq; omit for the newest page. */
+  beforeSeq?: number
+  /** Transcript messages per page; a page never splits a turn. */
+  maxMessages?: number
+}
+
+/** The context window the log itself recorded (a provider/limit change writes one). */
+function requestContextWindowOf(events: readonly SessionEvent[]): number | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!
+    if (event.type !== 'request/context') continue
+    const payload = event.payload as { contextWindow?: unknown }
+    return typeof payload.contextWindow === 'number' ? payload.contextWindow : undefined
+  }
+  return undefined
+}
+
+const PAGE_MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
+
+/**
+ * Cut the newest page of at most maxMessages transcript messages out of a log.
+ * The cut lands on a turn/start so a turn is never split: a page that began
+ * mid-turn would render a tool result without the call that produced it.
+ */
+function pageWindow(
+  events: readonly SessionEvent[],
+  options: SessionPageOptions,
+): { events: SessionEvent[]; page: SessionPageRange } {
+  const asked = options.beforeSeq
+  const end = asked === undefined
+    ? events.length
+    : Math.max(0, events.findIndex(event => event.seq >= asked))
+  const limit = options.maxMessages !== undefined && options.maxMessages > 0 ? options.maxMessages : undefined
+  // Without a page size the whole history up to the cursor is the window.
+  let start = 0
+  if (limit !== undefined) {
+    let count = 0
+    let cut = end
+    for (let index = end - 1; index >= 0; index -= 1) {
+      const event = events[index]!
+      if (PAGE_MESSAGE_TYPES.has(event.type)) {
+        count += 1
+        cut = index
+        if (count >= limit) break
+      }
+    }
+    if (count >= limit) {
+      // Keep the turn whole: back up to the turn/start that owns the cut message.
+      let turnStart = cut
+      for (let index = cut; index >= 0; index -= 1) {
+        if (events[index]!.type === 'turn/start') {
+          turnStart = index
+          break
+        }
+      }
+      start = turnStart
+    }
+  }
+  // The oldest page absorbs the session preamble (head meta and any durable
+  // system message); a page of nothing but preamble is not worth a request.
+  const firstTurn = events.findIndex(event => event.type === 'turn/start')
+  if (start > 0 && firstTurn >= 0 && start <= firstTurn) start = 0
+  const window = events.slice(start, end)
+  const hasMore = start > 0
+  const beforeSeq = window[0]?.seq
+  return {
+    events: window,
+    page: hasMore && beforeSeq !== undefined ? { hasMore, beforeSeq } : { hasMore },
+  }
+}
+
+/**
+ * A session log and its two folds, kept between views. Reopening a session the
+ * reader just left is the common case, and re-deriving it costs as much as the
+ * first open; the cache is keyed on the file identity so an appended turn
+ * misses it. Few entries: a long log is a few MB of parsed events.
+ */
+interface CachedSessionLog {
+  stamp: string
+  log: SessionEvent[]
+  surface: SessionEvent[]
+  messages: Awaited<ReturnType<SessionLog['deriveMessages']>>
+}
+
+const SESSION_LOG_CACHE_SIZE = 3
+const sessionLogCache = new Map<string, CachedSessionLog>()
+
+function rememberSessionLog(file: string, cached: CachedSessionLog): void {
+  sessionLogCache.delete(file)
+  sessionLogCache.set(file, cached)
+  while (sessionLogCache.size > SESSION_LOG_CACHE_SIZE) {
+    const oldest = sessionLogCache.keys().next().value
+    if (oldest === undefined) break
+    sessionLogCache.delete(oldest)
+  }
+}
+
+/**
+ * Everything one session view needs, from a single read of its log. The web
+ * server used to open the file five times per view and build a whole agent
+ * runtime just to read events; on a 5,600-event session that was about half a
+ * second of parsing per request, before the runtime.
+ *
+ * A long history is read a page at a time: the summary and the folds still see
+ * the whole log, but only the requested window is sent to the client.
+ */
+export async function readSessionSnapshot(
+  workspace: string,
+  id: string,
+  windowFor?: (model: string | undefined) => number | undefined,
+  pageOptions: SessionPageOptions = {},
+): Promise<SessionSnapshot> {
+  const workspaceDir = resolve(workspace)
+  const file = sessionFile(workspaceDir, id)
+  const fileStat = await stat(file).catch(() => undefined)
+  const mtimeMs = fileStat?.mtimeMs ?? Date.now()
+  const stamp = fileStat ? `${fileStat.size}:${fileStat.mtimeMs}` : undefined
+  const cached = stamp === undefined ? undefined : sessionLogCache.get(file)
+  const fold = cached && cached.stamp === stamp
+    ? cached
+    : await withSessionLog(file, async (log) => {
+      const fresh: CachedSessionLog = {
+        stamp: stamp ?? '',
+        log: await log.read(),
+        surface: await log.surfaceEvents(),
+        messages: await log.deriveMessages(),
+      }
+      if (stamp !== undefined) rememberSessionLog(file, fresh)
+      return fresh
+    })
+  const logEvents = fold.log
+  {
+    const summary = summaryFromEvents(workspaceDir, id, logEvents, logEvents.length, mtimeMs)
+    const surface = fold.surface
+    const limit = windowFor?.(summary.model) ?? requestContextWindowOf(logEvents)
+    const estimate = estimateSessionContextUsage(fold.messages, limit)
+    const latestSurfaceEvent = surface.reduce<SessionEvent | undefined>(
+      (latest, event) => !latest || event.seq > latest.seq ? event : latest,
+      undefined,
+    )
+    const context: ContextUsage = latestSurfaceEvent?.type === 'assistant/message' && latestSurfaceEvent.payload.usage
+      ? { ...estimate, tokens: latestSurfaceEvent.payload.usage.promptTokens, ratio: estimate.limit > 0 ? latestSurfaceEvent.payload.usage.promptTokens / estimate.limit : 0, source: 'provider' }
+      : { ...estimate, source: 'estimate' }
+    const window = pageWindow(logEvents, pageOptions)
+    return {
+      summary,
+      events: transcriptEvents(window.events),
+      surface,
+      context,
+      metrics: foldUsage(logEvents),
+      log: logEvents,
+      page: window.page,
+    }
+  }
 }
 
 export async function setSessionTitle(

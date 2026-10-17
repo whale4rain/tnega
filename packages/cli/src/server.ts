@@ -56,7 +56,6 @@ import {
   isModelAttachment,
   session,
   SessionLog,
-  transcriptEvents,
   type AgentType,
   type ModelAttachment,
   type ModelMessage,
@@ -126,15 +125,13 @@ import {
   createSession,
   deleteSession,
   ensureWorkspace,
-  estimateContextUsage,
   forkSession,
   isSessionId,
   listSessions,
   patchSessionMeta,
   prepareSessionCompact,
   readSessionMessages,
-  readSessionMetrics,
-  readSessionLog,
+  readSessionSnapshot,
   readSessionSummary,
   setSessionPermission,
   setSessionApprovalMode,
@@ -911,25 +908,25 @@ async function handleApi(
       // History is read asynchronously. If a run finishes during this read,
       // this snapshot may not contain its final reply yet; let clients poll again.
       const runningAtReadStart = isActive(context.activeRuns, workspace, id)
-      const summary = await readSessionSummary(workspace, id)
-      const detail = await readSessionEvents(workspace, id)
-      const configuredWindow = effectiveLlmConfig(
-        await readSystemConfig(context.configFile), process.env, summary.model,
-      ).contextWindow
-      const [contextUsage, metrics, log] = await Promise.all([
-        estimateContextUsage(workspace, id, configuredWindow),
-        readSessionMetrics(workspace, id),
-        readSessionLog(workspace, id),
-      ])
+      // One config read and one pass over the log: this used to read the session
+      // file five times and build an agent runtime just to see its events.
+      const config = await readSystemConfig(context.configFile)
+      const beforeSeq = optionalSeq(url.searchParams.get('beforeSeq'))
+      const maxMessages = optionalCount(url.searchParams.get('maxMessages'))
+      const snapshot = await readSessionSnapshot(workspace, id, model =>
+        effectiveLlmConfig(config, process.env, model).contextWindow, {
+        ...(beforeSeq !== undefined ? { beforeSeq } : {}),
+        ...(maxMessages !== undefined ? { maxMessages } : {}),
+      })
       sendJson(res, 200, {
-        summary,
-        events: detail.events,
-        surface: detail.surface,
-        context: contextUsage,
-        metrics,
-        usage: sessionUsage(log, await readSystemConfig(context.configFile)),
+        summary: snapshot.summary,
+        events: snapshot.events,
+        page: snapshot.page,
+        context: snapshot.context,
+        metrics: snapshot.metrics,
+        usage: sessionUsage(snapshot.log, config),
         running: runningAtReadStart || isActive(context.activeRuns, workspace, id),
-        ...recoveryField(log),
+        ...recoveryField(snapshot.log),
       })
       return
     }
@@ -2144,32 +2141,6 @@ async function handleStopRun(
   controller.abort({ type: 'user' })
 }
 
-async function readSessionEvents(
-  workspace: string,
-  id: string,
-): Promise<{ events: unknown[]; surface: unknown[] }> {
-  const runtime = await createAgentRuntime({
-    cwd: workspace,
-    sessionFile: sessionFilePath(workspace, id),
-    llm: openaiCompatAdapter(),
-  })
-  try {
-    const session = runtime.root.get('session') as SessionLog
-    // Two views of the same log:
-    //  - `events` is the human transcript (append history, compaction markers
-    //    at their place) — compaction never hides history from the reader;
-    //  - `surface` is the model view (shadowed messages removed).
-    const events = await session.read()
-    const surface = await session.surfaceEvents()
-    return {
-      events: JSON.parse(JSON.stringify(transcriptEvents(events))) as unknown[],
-      surface: JSON.parse(JSON.stringify(surface)) as unknown[],
-    }
-  } finally {
-    await runtime.dispose()
-  }
-}
-
 function adapterFromConfig(
   effective: EffectiveLlmConfig,
   apiKey: string,
@@ -2320,6 +2291,20 @@ function workspaceParam(url: URL): string | undefined {
 function canonicalWorkspace(workspace: string): string {
   const resolved = resolve(workspace)
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+/** A history cursor: a non-negative integer seq, or nothing when absent/invalid. */
+function optionalSeq(value: string | null): number | undefined {
+  if (value === null || !/^\d+$/.test(value)) return undefined
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) ? parsed : undefined
+}
+
+/** A requested page size, bounded so one request cannot ask for the whole log. */
+function optionalCount(value: string | null): number | undefined {
+  const parsed = optionalSeq(value)
+  if (parsed === undefined || parsed < 1) return undefined
+  return Math.min(parsed, 500)
 }
 
 function runKey(workspace: string, id: string): string {

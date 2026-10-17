@@ -10,6 +10,7 @@ import {
   createSession,
   forkSession,
   patchSessionMeta,
+  readSessionSnapshot,
   readSessionSummary,
   sessionFile,
   setSessionPermission,
@@ -229,5 +230,66 @@ describe('session metadata', () => {
     expect(events.map(event => event.type)).toEqual(['meta', 'meta/patch'])
     expect(await reopened.meta()).toMatchObject({ title: 'retitled' })
     await reopened.close()
+  })
+})
+
+describe('history paging', () => {
+  /** One user message and its answer, kept inside a turn so a cut can line up. */
+  async function seedTurns(workspace: string, id: string, turns: number): Promise<void> {
+    const writer = new SessionLog(sessionFile(workspace, id))
+    await writer.init()
+    for (let turn = 1; turn <= turns; turn += 1) {
+      await writer.append('turn/start', { turn })
+      await writer.append('user/message', { content: 'question ' + turn })
+      await writer.append('assistant/message', { content: 'answer ' + turn })
+      await writer.append('turn/end', { turn, finishReason: 'stop' })
+    }
+    await writer.close()
+  }
+
+  it('opens a long session at its newest page and pages back a turn at a time', async () => {
+    const workspace = await tempDir('tnega-store-page-')
+    const created = await createSession(workspace, { title: 'long' })
+    await seedTurns(workspace, created.id, 6)
+
+    const newest = await readSessionSnapshot(workspace, created.id, () => 1000, { maxMessages: 4 })
+    const newestQuestions = newest.events
+      .filter(event => event.type === 'user/message')
+      .map(event => event.payload.content)
+    // Two turns of four events: the page is cut on a turn boundary, so a turn
+    // never arrives half-rendered.
+    expect(newestQuestions).toEqual(['question 5', 'question 6'])
+    expect(newest.events[0]?.type).toBe('turn/start')
+    expect(newest.page.hasMore).toBe(true)
+    expect(newest.page.beforeSeq).toBe(newest.events[0]?.seq)
+
+    const older = await readSessionSnapshot(workspace, created.id, () => 1000, {
+      ...(newest.page.beforeSeq !== undefined ? { beforeSeq: newest.page.beforeSeq } : {}),
+      maxMessages: 4,
+    })
+    expect(older.events.filter(event => event.type === 'user/message').map(event => event.payload.content))
+      .toEqual(['question 3', 'question 4'])
+    expect(older.page.hasMore).toBe(true)
+
+    const oldest = await readSessionSnapshot(workspace, created.id, () => 1000, {
+      ...(older.page.beforeSeq !== undefined ? { beforeSeq: older.page.beforeSeq } : {}),
+      maxMessages: 4,
+    })
+    expect(oldest.events.filter(event => event.type === 'user/message').map(event => event.payload.content))
+      .toEqual(['question 1', 'question 2'])
+    // The head meta stays in the first page, so nothing is left above it.
+    expect(oldest.events[0]?.type).toBe('meta')
+    expect(oldest.page.hasMore).toBe(false)
+    expect(oldest.page.beforeSeq).toBeUndefined()
+  })
+
+  it('returns the whole transcript when no page size is asked for', async () => {
+    const workspace = await tempDir('tnega-store-page-all-')
+    const created = await createSession(workspace, { title: 'all' })
+    await seedTurns(workspace, created.id, 3)
+
+    const whole = await readSessionSnapshot(workspace, created.id, () => 1000)
+    expect(whole.events.filter(event => event.type === 'user/message')).toHaveLength(3)
+    expect(whole.page).toEqual({ hasMore: false })
   })
 })

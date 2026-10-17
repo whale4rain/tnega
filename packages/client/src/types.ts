@@ -195,13 +195,21 @@ export interface ModelPricing {
 export interface SessionDetail {
   summary: SessionSummary
   events: SessionEvent[]
-  surface: SessionEvent[]
+  /** Where this transcript window starts; a long history arrives a page at a time. */
+  page?: SessionPageRange
   context: ContextUsage
   metrics: SessionMetrics
   usage?: UsageTotals
   running: boolean
   /** The last turn was cut off by a crash or restart and nothing has continued it. */
   recovery?: SessionRecovery
+}
+
+export interface SessionPageRange {
+  /** Earlier events exist before the window. */
+  hasMore: boolean
+  /** Pass as beforeSeq for the next older page; absent once the log is covered. */
+  beforeSeq?: number
 }
 
 export interface SessionRecovery {
