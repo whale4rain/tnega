@@ -176,6 +176,10 @@ kbd {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+
+  [data-glass="full"] .conv-header::before {
+    content: none;
+  }
 }
 
 /*
@@ -197,19 +201,62 @@ kbd {
     radial-gradient(46% 46% at 78% 96%, var(--accent-soft), transparent 74%);
 }
 
+/*
+ * The shells are glass on the element itself, exactly as in floating mode. A
+ * blink of the browser makes that choice costly: an element with backdrop-filter
+ * is a backdrop root, so a popover rendered inside it (the header's Agent menu,
+ * the composer's model list) cannot blur what is behind and reads as a nearly
+ * transparent sheet over the transcript. Those popovers therefore fall back to a
+ * solid raised surface below, which stays readable over any content.
+ */
 [data-glass="full"] .sidebar,
-[data-glass="full"] .conv-header,
+[data-glass="full"] .sidebar,
 [data-glass="full"] .conv-dock,
 [data-glass="full"] .composer-box,
 [data-glass="full"] .wb-frame,
-[data-glass="full"] .dialog,
+[data-glass="full"] .dialog {
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/*
+ * The header keeps its glass on a pseudo-element. As a backdrop root it would
+ * both starve its own popovers of blur and composite them under the transcript's
+ * animated rows in Chrome, so the Agent menu drew beneath message text.
+ */
+[data-glass="full"] .conv-header {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-glass="full"] .conv-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* Solid where the blur cannot reach: popovers inside a glass shell. */
 [data-glass="full"] .menu-popover,
 [data-glass="full"] .slash-menu,
 [data-glass="full"] .context-pop,
 [data-glass="full"] .reaction-menu {
-  background: var(--glass-surface);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  background: var(--surface-raised);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* The tint behind the app is the mode's backdrop; an opaque reading surface
+ * would hide it and reduce Glass everywhere to a flat tint. */
+[data-glass="full"] .conversation {
+  background: transparent;
 }
 
 /* The dock stops fading into the transcript: it is a surface of its own now. */
@@ -1217,6 +1264,11 @@ kbd {
   flex: none;
   padding: 0 16px;
   border-bottom: 1px solid transparent;
+  /* Its popovers (Agent, Access, jobs) must paint above the transcript: with
+   * Glass everywhere the header is a stacking context, and a z-index:auto one
+   * loses to the transcript's animated rows. */
+  position: relative;
+  z-index: 1;
 }
 
 /* Title and workspace share one line so the header fits the 32px title bar. */
