@@ -145,10 +145,12 @@
 
 待办：
 
-- Phase 5 的结构部分：`server.ts` 已把传输层抽到 `http.ts`（`c4bce20`），剩下 `resident.ts`
-  （常驻 Agent 生命周期与 `runResidentTurn`）与 `routes/{sessions,files,config,plugins,projects,browser,terminals}.ts`。
-  两者共享的会话/路由小工具（`runKey`、`sessionFilePath`、`workspaceParam`、`adapterFromConfig` 等）
-  需要先抽到一个共享模块，避免 server 与 resident 互相 import。
+- Phase 5 的结构部分：`server.ts` 已从 2,547 行降到 1,322 行，现在拆成
+  `http.ts`（传输，`c4bce20`）、`support.ts`（会话/路由小工具，`f231e61`）、
+  `context.ts` 与 `runs.ts`（Host 上下文与两条 run 管线，本批）。剩余最后一块是把
+  `handleApi` 的 730 行按域拆成 `routes/{sessions,files,config,plugins,projects,browser,terminals}.ts`
+  并换上一张 `method + pattern → handler` 的表；`handleBrowser` / `handleTerminal`
+  可直接随域迁出。
 - Phase 6 的发布收尾：根 `package.json` 的 `exports` 与 `scripts/build.mjs` 的 `libraryEntries`
   是否需要为新的宿主/运行时包增加子路径（当前它们只被打进 `dist/bin.js` 与 `dist/cli-runtime.js`）。
 
