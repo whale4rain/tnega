@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api } from '../lib/api'
@@ -27,44 +27,56 @@ function detail(events: SessionEvent[], page: SessionDetail['page']): SessionDet
   }
 }
 
-it('opens the newest page of a long session and prepends older history on demand', async () => {
+function renderConversation() {
+  return render(createElement(Conversation, {
+    workspace: '/work', sessionId: 'session', config: undefined,
+    draftSettings: { agentType: 'general', mode: 'auto', permission: 'read-only', reasoningEffort: 'default' },
+    onDraftSettingsChange: vi.fn(), onSessionCreated: vi.fn(), onSessionsChanged: vi.fn(),
+    onSessionDeleted: vi.fn(), onOpenSettings: vi.fn(), onOpenSubagent: vi.fn(), onOpenFile: vi.fn(),
+    sidebarOpen: true, onToggleSidebar: vi.fn(),
+  }))
+}
+
+it('opens the newest page and prepends older history when the reader scrolls to the top', async () => {
   const newest = detail(turnEvents(3, 9), { hasMore: true, beforeSeq: 9 })
   const older = detail(turnEvents(1, 1), { hasMore: false })
   const session = vi.spyOn(api, 'session').mockImplementation(async (_workspace, _id, page = {}) =>
     page.beforeSeq === 9 ? older : newest)
   vi.spyOn(api, 'questions').mockResolvedValue({ questions: [] })
-  const view = render(createElement(Conversation, {
-    workspace: '/work', sessionId: 'session', config: undefined,
-    draftSettings: { agentType: 'general', mode: 'auto', permission: 'read-only', reasoningEffort: 'default' },
-    onDraftSettingsChange: vi.fn(), onSessionCreated: vi.fn(), onSessionsChanged: vi.fn(),
-    onSessionDeleted: vi.fn(), onOpenSettings: vi.fn(), onOpenSubagent: vi.fn(), onOpenFile: vi.fn(),
-    sidebarOpen: true, onToggleSidebar: vi.fn(),
-  }))
+  const view = renderConversation()
 
   expect(await view.findByText('answer 3')).toBeTruthy()
   // The first read asks for a page, not for the whole log.
   expect(session).toHaveBeenCalledWith('/work', 'session', { maxMessages: 50 })
   expect(view.queryByText('answer 1')).toBeNull()
+  // No pager button: reaching the top loads the older page.
+  expect(view.queryByRole('button', { name: 'Load older messages' })).toBeNull()
 
-  fireEvent.click(view.getByRole('button', { name: 'Load older messages' }))
+  fireEvent.scroll(view.container.querySelector('.conv-scroll')!)
   expect(await view.findByText('answer 1')).toBeTruthy()
   // Older history goes above what was already read, in its original order.
   const order = [...view.container.querySelectorAll('.timeline .prose')].map(node => node.textContent)
   expect(order).toEqual(['question 1', 'answer 1', 'question 3', 'answer 3'])
   expect(session).toHaveBeenCalledWith('/work', 'session', { beforeSeq: 9, maxMessages: 50 })
-  await waitFor(() => expect(view.queryByRole('button', { name: 'Load older messages' })).toBeNull())
+})
+
+it('does not fetch older history while the reader is away from the top', async () => {
+  const newest = detail(turnEvents(3, 9), { hasMore: true, beforeSeq: 9 })
+  const session = vi.spyOn(api, 'session').mockResolvedValue(newest)
+  vi.spyOn(api, 'questions').mockResolvedValue({ questions: [] })
+  const view = renderConversation()
+
+  expect(await view.findByText('answer 3')).toBeTruthy()
+  const scroller = view.container.querySelector('.conv-scroll') as HTMLElement
+  scroller.scrollTop = 400
+  fireEvent.scroll(scroller)
+  expect(session).toHaveBeenCalledTimes(1)
 })
 
 it('hides the pager when the whole history fits in one page', async () => {
   vi.spyOn(api, 'session').mockResolvedValue(detail(turnEvents(1, 1), { hasMore: false }))
   vi.spyOn(api, 'questions').mockResolvedValue({ questions: [] })
-  const view = render(createElement(Conversation, {
-    workspace: '/work', sessionId: 'session', config: undefined,
-    draftSettings: { agentType: 'general', mode: 'auto', permission: 'read-only', reasoningEffort: 'default' },
-    onDraftSettingsChange: vi.fn(), onSessionCreated: vi.fn(), onSessionsChanged: vi.fn(),
-    onSessionDeleted: vi.fn(), onOpenSettings: vi.fn(), onOpenSubagent: vi.fn(), onOpenFile: vi.fn(),
-    sidebarOpen: true, onToggleSidebar: vi.fn(),
-  }))
+  const view = renderConversation()
   expect(await view.findByText('answer 1')).toBeTruthy()
   expect(view.queryByRole('button', { name: 'Load older messages' })).toBeNull()
 })

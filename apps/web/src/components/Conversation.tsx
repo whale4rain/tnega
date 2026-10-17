@@ -689,6 +689,24 @@ export function Conversation({
   const { scroller, showJump, onScroll, jump, pinToEnd } = useScrollPinning()
   useEffect(() => { pinToEnd() }, [sessionId, pinToEnd])
 
+  // Older history loads when the reader reaches the top, not on a button. A page
+  // that does not fill the viewport has no scroll event to wait for, so it keeps
+  // filling until the transcript can scroll or the history ends.
+  const loadOlderRef = useRef(loadOlder)
+  loadOlderRef.current = loadOlder
+  useEffect(() => {
+    const element = scroller.current
+    if (!element || !page?.hasMore || loadingOlder) return
+    if (element.scrollHeight > 0 && element.scrollHeight <= element.clientHeight + 1) {
+      void loadOlderRef.current()
+    }
+  }, [entries.length, page, loadingOlder])
+
+  const onScrollWithPaging = (event: React.UIEvent<HTMLDivElement>) => {
+    onScroll()
+    if (event.currentTarget.scrollTop <= 96) void loadOlderRef.current()
+  }
+
   // --- render -------------------------------------------------------------
 
   const links = useMemo<LinkHandlers>(() => ({
@@ -760,7 +778,7 @@ export function Conversation({
         </div>)}
       </header>
 
-      <div className="conv-scroll" ref={scroller} onScroll={onScroll}>
+      <div className="conv-scroll" ref={scroller} onScroll={onScrollWithPaging}>
         <div className="conv-column">
           {loading && entries.length === 0 && <TimelineSkeleton />}
           {busy === 'Compacting context…' && <div className="notice notice-info" role="status">Compacting context…</div>}
@@ -772,12 +790,8 @@ export function Conversation({
               disabled={Boolean(disabledReason)}
             />
           )}
-          {page?.hasMore && (
-            <div className="load-older">
-              <button type="button" className="button small secondary" onClick={() => void loadOlder()} disabled={loadingOlder}>
-                {loadingOlder ? 'Loading…' : 'Load older messages'}
-              </button>
-            </div>
+          {loadingOlder && (
+            <div className="load-older" role="status">Loading older messages…</div>
           )}
           <LinkContext.Provider value={links}>
           <Timeline
