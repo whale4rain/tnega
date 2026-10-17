@@ -8,9 +8,27 @@
   },
   "dependencies": {
     "@tnega/agent": "workspace:*",
+    "@tnega/approval-host": "workspace:*",
+    "@tnega/coding-agent": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/execution-sandbox": "workspace:*",
+    "@tnega/jobs-local": "workspace:*",
+    "@tnega/memory-local": "workspace:*",
+    "@tnega/persona": "workspace:*",
     "@tnega/ptc-runtime-quickjs": "workspace:*",
+    "@tnega/run-summary": "workspace:*",
     "@tnega/sandbox": "workspace:*",
-    "@tnega/tools": "workspace:*"
+    "@tnega/sandbox-local": "workspace:*",
+    "@tnega/search-ripgrep": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/spill-local": "workspace:*",
+    "@tnega/tool-jobs": "workspace:*",
+    "@tnega/tool-memory": "workspace:*",
+    "@tnega/tool-office": "workspace:*",
+    "@tnega/tool-ptc": "workspace:*",
+    "@tnega/tool-search": "workspace:*",
+    "@tnega/tool-spill": "workspace:*",
+    "@tnega/tools": "workspace:*",
+    "@tnega/workspace-prompt": "workspace:*"
   }
 }

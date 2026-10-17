@@ -1061,18 +1061,72 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/approval-host':
+        specifier: workspace:*
+        version: link:../approval-host
+      '@tnega/coding-agent':
+        specifier: workspace:*
+        version: link:../coding-agent
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/execution-sandbox':
+        specifier: workspace:*
+        version: link:../sandbox/execution-sandbox
+      '@tnega/jobs-local':
+        specifier: workspace:*
+        version: link:../jobs/jobs-local
+      '@tnega/memory-local':
+        specifier: workspace:*
+        version: link:../memory/memory-local
+      '@tnega/persona':
+        specifier: workspace:*
+        version: link:../persona
       '@tnega/ptc-runtime-quickjs':
         specifier: workspace:*
         version: link:../ptc-runtime-quickjs
+      '@tnega/run-summary':
+        specifier: workspace:*
+        version: link:../run-summary
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox/sandbox
+      '@tnega/sandbox-local':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox-local
+      '@tnega/search-ripgrep':
+        specifier: workspace:*
+        version: link:../search/search-ripgrep
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/spill-local':
+        specifier: workspace:*
+        version: link:../spill/spill-local
+      '@tnega/tool-jobs':
+        specifier: workspace:*
+        version: link:../jobs/tool-jobs
+      '@tnega/tool-memory':
+        specifier: workspace:*
+        version: link:../memory/tool-memory
+      '@tnega/tool-office':
+        specifier: workspace:*
+        version: link:../tool-office
+      '@tnega/tool-ptc':
+        specifier: workspace:*
+        version: link:../tool-ptc
+      '@tnega/tool-search':
+        specifier: workspace:*
+        version: link:../search/tool-search
+      '@tnega/tool-spill':
+        specifier: workspace:*
+        version: link:../spill/tool-spill
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
+      '@tnega/workspace-prompt':
+        specifier: workspace:*
+        version: link:../workspace-prompt
 
   packages/sandbox/execution-sandbox:
     dependencies:
