@@ -119,693 +119,801 @@ export function rejectsApiRequest(req: IncomingMessage, res: ServerResponse): bo
   return false
 }
 
+interface ApiRoute {
+  match: (req: IncomingMessage, url: URL) => boolean
+  handle: (req: IncomingMessage, res: ServerResponse, url: URL, context: ServerContext) => Promise<void>
+}
+
+const apiRoutes: ApiRoute[] = [
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/'))) return
+      await handleProjectApi(req, res, url, {
+            host: workspace => projectHostFor(context, workspace),
+            sendJson,
+            sendError,
+            readJsonBody,
+            writeSse,
+            workspaceParam,
+          })
+      return
+    },
+  },
+  {
+    match: (req, url) => {
+      const approvalMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
+      return Boolean(approvalMatch && req.method === 'POST')
+    },
+    handle: async (req, res, url, context) => {
+      const approvalMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
+      if (!(approvalMatch && req.method === 'POST')) return
+      const workspace = workspaceParam(url)
+      if (!workspace || !isSessionId(approvalMatch[1]!)) {
+            sendError(res, 400, 'valid workspace and session id are required')
+            return
+          }
+      const body = await readJsonBody(req)
+      if (typeof body.allow !== 'boolean') {
+            sendError(res, 400, 'allow must be a boolean')
+            return
+          }
+      const accepted = context.approvals.decide(approvalMatch[2]!, runKey(workspace, approvalMatch[1]!), body.allow)
+      if (!accepted) {
+            sendError(res, 404, 'approval request is no longer pending')
+            return
+          }
+      sendJson(res, 200, { accepted: true })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/config' && req.method === 'GET'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/config' && req.method === 'GET')) return
+      const config = await readSystemConfig(context.configFile)
+      const problem = await systemConfigProblem(context.configFile)
+      sendJson(res, 200, { ...configSnapshot(config, context.configFile), ...(problem ? { problem } : {}) })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/config' && req.method === 'PUT'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/config' && req.method === 'PUT')) return
+      const body = await readJsonBody(req)
+      const patch: SystemConfigPatch = {}
+      if (body.codeMode !== undefined) {
+            if (typeof body.codeMode !== 'boolean') { sendError(res, 400, 'codeMode must be a boolean'); return }
+            patch.codeMode = body.codeMode
+          }
+      if (body.projectMemory !== undefined) {
+            const memory = normalizeProjectMemory(body.projectMemory)
+            if (!memory) { sendError(res, 400, 'Invalid project memory limits'); return }
+            const current = await readSystemConfig(context.configFile)
+            if (memory.coldModelId && !current.models?.some(route => route.id === memory.coldModelId)) {
+              sendError(res, 400, 'Project memory model must be a configured route'); return
+            }
+            patch.projectMemory = { ...current.projectMemory, ...memory }
+          }
+      if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
+      if (typeof body.shell === 'string') patch.shell = body.shell.trim()
+      if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
+      if (typeof body.model === 'string') patch.model = body.model
+      if (body.reasoningEffort === 'low' || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high'
+            || body.reasoningEffort === '') patch.reasoningEffort = body.reasoningEffort
+      if (body.protocol === 'anthropic' || body.protocol === 'openai' || body.protocol === '') {
+            patch.protocol = body.protocol
+          }
+      if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
+            patch.temperature = body.temperature
+          }
+      if (body.approvalReview !== undefined) {
+            const review = normalizeApprovalReviewer(body.approvalReview)
+            if (!review) { sendError(res, 400, 'invalid approval reviewer'); return }
+            const previous = (await readSystemConfig(context.configFile)).approvalReview
+            patch.approvalReview = { ...(previous?.provider === review.provider ? previous : {}), ...review }
+          }
+      if (body.network !== undefined) {
+            const network = parseNetworkConfig(body.network)
+            if (!network) { sendError(res, 400, 'network must be an object'); return }
+            patch.network = network.allowedHosts || network.proxy ? network : undefined
+          }
+      const config = await updateSystemConfig(patch, context.configFile)
+      configureSystemShell(config.shell)
+      applyNetwork(config, context.hostFetch)
+      sendJson(res, 200, configSnapshot(config, context.configFile))
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/config/models/discover' && req.method === 'POST'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/config/models/discover' && req.method === 'POST')) return
+      try {
+            const input = parseModelDiscoveryInput(await readJsonBody(req))
+            sendJson(res, 200, await discoverModels(input, await readSystemConfig(context.configFile)))
+          } catch (error) {
+            if (error instanceof ModelRouteError || error instanceof ModelDiscoveryError) {
+              sendError(res, error instanceof ModelDiscoveryError ? error.status : 400, error.message)
+              return
+            }
+            throw error
+          }
+      return
+    },
+  },
+  {
+    match: (req, url) => {
+      const modelRoute = /^\/api\/config\/models\/([^/]+)$/.exec(url.pathname)
+      return Boolean(modelRoute && (req.method === 'PUT' || req.method === 'DELETE'))
+    },
+    handle: async (req, res, url, context) => {
+      const modelRoute = /^\/api\/config\/models\/([^/]+)$/.exec(url.pathname)
+      if (!(modelRoute && (req.method === 'PUT' || req.method === 'DELETE'))) return
+      const id = decodeURIComponent(modelRoute[1]!)
+      try {
+            const config = req.method === 'PUT'
+              ? await upsertModelRoute(id, parseModelRouteInput(await readJsonBody(req)), context.configFile)
+              : await removeModelRoute(id, context.configFile)
+            sendJson(res, 200, configSnapshot(config, context.configFile))
+          } catch (error) {
+            if (error instanceof ModelRouteError) {
+              sendError(res, 400, error.message)
+              return
+            }
+            throw error
+          }
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname.startsWith('/api/browser')),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname.startsWith('/api/browser'))) return
+      await handleBrowser(req, res, url, context)
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/auth/chatgpt'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/auth/chatgpt')) return
+      const login = context.chatgptLogin ??= new ChatGptLogin({
+            onSignedIn: async () => {
+              const config = await readSystemConfig(context.configFile)
+              if (!config.models?.some(route => route.auth === 'chatgpt')) {
+                await upsertModelRoute('chatgpt', { model: CHATGPT_DEFAULT_MODEL, name: `ChatGPT · ${CHATGPT_DEFAULT_MODEL}`, auth: 'chatgpt' }, context.configFile)
+              }
+            },
+          })
+      if (req.method === 'GET') { sendJson(res, 200, await login.state()); return }
+      if (req.method === 'POST') {
+            try {
+              sendJson(res, 200, await login.start())
+            } catch (error) {
+              sendError(res, 409, errorMessage(error))
+            }
+            return
+          }
+      if (req.method === 'DELETE') { await login.signOut(); sendJson(res, 200, await login.state()); return }
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/usage' && req.method === 'GET'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/usage' && req.method === 'GET')) return
+      const workspace = workspaceParam(url)
+      if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+      sendJson(res, 200, await storedWorkspaceUsage(workspace, await readSystemConfig(context.configFile)))
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT')),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT'))) return
+      const workspace = workspaceParam(url)
+      if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+      if (req.method === 'PUT') {
+            const body = await readJsonBody(req)
+            if (typeof body.prompt !== 'string' || body.prompt.length > 32000) {
+              sendError(res, 400, 'prompt must be a string of at most 32000 characters'); return
+            }
+            await writeWorkspacePrompt(workspace, body.prompt)
+          }
+      sendJson(res, 200, { prompt: await readWorkspacePrompt(workspace) })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST')),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST'))) return
+      const workspace = workspaceParam(url)
+      if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
+      const registry = context.processes.get(canonicalWorkspace(workspace))
+      if (req.method === 'GET' && !url.searchParams.has('process_id')) {
+            sendJson(res, 200, { processes: registry?.list() ?? [] })
+            return
+          }
+      const body = req.method === 'POST' ? await readJsonBody(req) : undefined
+      if (body && (body.action !== 'stop' || typeof body.process_id !== 'string' || !body.process_id.trim())) {
+            sendError(res, 400, 'action=stop and process_id are required'); return
+          }
+      const id = body?.process_id ?? url.searchParams.get('process_id')
+      if (typeof id !== 'string' || !id.trim()) { sendError(res, 400, 'process_id is required'); return }
+      const result = body ? await registry?.stop(id) : registry?.read(id)
+      if (!result) { sendError(res, 404, 'background process not found'); return }
+      sendJson(res, 200, body ? { process: result } : result)
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/workspaces' && req.method === 'GET'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/workspaces' && req.method === 'GET')) return
+      const config = await readSystemConfig(context.configFile)
+      const fallback = defaultWorkspace()
+      await mkdir(fallback, { recursive: true })
+      sendJson(res, 200, { workspaces: config.workspaces ?? [], defaultWorkspace: await ensureWorkspace(fallback) })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/workspaces' && req.method === 'POST'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/workspaces' && req.method === 'POST')) return
+      const body = await readJsonBody(req)
+      if (typeof body.path !== 'string' || !body.path.trim()) {
+            sendError(res, 400, 'path is required')
+            return
+          }
+      const workspace = await ensureWorkspace(body.path)
+      const config = await readSystemConfig(context.configFile)
+      const workspaces = dedupe([...(config.workspaces ?? []), workspace])
+      await updateSystemConfig({ workspaces }, context.configFile)
+      sendJson(res, 200, { path: workspace, workspaces })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/workspaces' && req.method === 'DELETE'),
+    handle: async (req, res, url, context) => {
+      if (!(url.pathname === '/api/workspaces' && req.method === 'DELETE')) return
+      const body = await readJsonBody(req)
+      if (typeof body.path !== 'string') {
+            sendError(res, 400, 'path is required')
+            return
+          }
+      const config = await readSystemConfig(context.configFile)
+      const path = body.path
+      const workspaces = (config.workspaces ?? []).filter(
+            entry => entry !== path && entry !== resolve(path),
+          )
+      await updateSystemConfig({ workspaces }, context.configFile)
+      sendJson(res, 200, { workspaces })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/files/search' && req.method === 'GET'),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/files/search' && req.method === 'GET')) return
+      const workspace = workspaceParam(url)
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      const limit = Number(url.searchParams.get('limit') ?? 30)
+      const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
+      sendJson(res, 200, { files })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/changes' || url.pathname === '/api/changes/file'),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/changes' || url.pathname === '/api/changes/file')) return
+      const workspace = workspaceParam(url)
+      if (!workspace || req.method !== 'GET') {
+            sendError(res, workspace ? 405 : 400, workspace ? 'method not allowed' : 'workspace query parameter is required')
+            return
+          }
+      try {
+            if (url.pathname === '/api/changes') {
+              sendJson(res, 200, await listChanges(workspace))
+            } else {
+              const path = url.searchParams.get('path')
+              if (!path) {
+                sendError(res, 400, 'path query parameter is required')
+                return
+              }
+              sendJson(res, 200, await fileDiff(workspace, path))
+            }
+          } catch (error) {
+            if (!(error instanceof FileServeError)) throw error
+            sendError(res, error.status, error.message)
+          }
+      return
+    },
+  },
+  {
+    match: (req, url) => {
+      const terminalMatch = url.pathname.match(/^\/api\/terminals(?:\/([^/]+)(?:\/(stream|input|resize))?)?$/)
+      return Boolean(terminalMatch)
+    },
+    handle: async (req, res, url, context) => {
+      const terminalMatch = url.pathname.match(/^\/api\/terminals(?:\/([^/]+)(?:\/(stream|input|resize))?)?$/)
+      if (!(terminalMatch)) return
+      try {
+            await handleTerminal(req, res, url, context.terminals, terminalMatch[1], terminalMatch[2])
+          } catch (error) {
+            if (!(error instanceof TerminalError)) throw error
+            if (!res.headersSent) sendError(res, error.status, error.message)
+          }
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/files/tree' || url.pathname === '/api/files/text'),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/files/tree' || url.pathname === '/api/files/text')) return
+      const workspace = workspaceParam(url)
+      const path = url.searchParams.get('path') ?? ''
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      try {
+            if (url.pathname === '/api/files/tree' && req.method === 'GET') {
+              sendJson(res, 200, { path, entries: await listDirectory(workspace, path) })
+            } else if (url.pathname === '/api/files/text' && req.method === 'GET' && path) {
+              sendJson(res, 200, await readTextFile(workspace, path))
+            } else if (url.pathname === '/api/files/text' && req.method === 'PUT' && path) {
+              const body = await readJsonBody(req, MAX_TEXT_FILE_BYTES * 2)
+              if (typeof body.content !== 'string') {
+                sendError(res, 400, 'content must be a string')
+                return
+              }
+              const expected = typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined
+              sendJson(res, 200, await writeTextFile(workspace, path, body.content, expected))
+            } else {
+              sendError(res, path ? 405 : 400, path ? 'method not allowed' : 'path query parameter is required')
+            }
+          } catch (error) {
+            if (!(error instanceof FileServeError)) throw error
+            sendError(res, error.status, error.message)
+          }
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/files' && req.method === 'GET'),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/files' && req.method === 'GET')) return
+      const workspace = workspaceParam(url)
+      const path = url.searchParams.get('path')
+      if (!workspace || !path) {
+            sendError(res, 400, 'workspace and path query parameters are required')
+            return
+          }
+      try {
+            sendFile(res, await readWorkspaceFile(workspace, path))
+          } catch (error) {
+            if (!(error instanceof FileServeError)) throw error
+            sendError(res, error.status, error.message)
+          }
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/sessions' && req.method === 'GET'),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/sessions' && req.method === 'GET')) return
+      const workspace = workspaceParam(url)
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      const sessions = await listSessions(workspace)
+      sendJson(res, 200, { workspace, sessions })
+      return
+    },
+  },
+  {
+    match: (req, url) => Boolean(url.pathname === '/api/sessions' && req.method === 'POST'),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/sessions' && req.method === 'POST')) return
+      const workspace = workspaceParam(url)
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      const body = await readJsonBody(req)
+      const title = typeof body.title === 'string' ? body.title : undefined
+      const agentType = isAgentType(body.agentType) ? body.agentType : undefined
+      const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal'
+            ? body.mode
+            : undefined
+      const session = await createSession(workspace, {
+            ...(title !== undefined ? { title } : {}),
+            ...(agentType ? { agentType } : {}),
+            ...(mode ? { mode } : {}),
+          })
+      sendJson(res, 201, { session })
+      return
+    },
+  },
+  {
+    match: (req, url) => {
+      const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash|slash-candidates)$/)
+      return Boolean(codingMatch)
+    },
+    handle: async (req, res, url, context) => {
+      const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash|slash-candidates)$/)
+      if (!(codingMatch)) return
+      const id = codingMatch[1]!
+      const action = codingMatch[2]!
+      const workspace = workspaceParam(url)
+      if (!isSessionId(id)) {
+            sendError(res, 400, 'invalid session id')
+            return
+          }
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      if (action === 'commands' && req.method === 'GET') {
+            await handleCodingCommands(res, workspace, id)
+            return
+          }
+      if (action === 'slash' && req.method === 'POST') {
+            if (isActive(context.activeRuns, workspace, id)) {
+              sendError(res, 409, 'session is running')
+              return
+            }
+            await evictResident(context, workspace, id)
+            await handleCodingSlash(req, res, workspace, id)
+            return
+          }
+      if (action === 'slash-candidates' && req.method === 'POST') {
+            await handleCodingSlashCandidates(req, res, workspace, id)
+            return
+          }
+      sendError(res, 405, 'method not allowed')
+      return
+    },
+  },
+  {
+    match: (req, url) => {
+      const subagentMatch = url.pathname.match(/^\/api\/subagents\/([^/]+)$/)
+      return Boolean(subagentMatch && req.method === 'GET')
+    },
+    handle: async (req, res, url) => {
+      const subagentMatch = url.pathname.match(/^\/api\/subagents\/([^/]+)$/)
+      if (!(subagentMatch && req.method === 'GET')) return
+      const workspace = workspaceParam(url)
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      const id = subagentMatch[1]!
+      if (!isSessionId(id)) {
+            sendError(res, 400, 'invalid subagent id')
+            return
+          }
+      const events = await readSubagentEvents(workspace, id, workspaceSubagentRoot(workspace)).catch(error => {
+            if (error instanceof SubagentError) return undefined
+            throw error
+          })
+      if (!events) {
+            sendError(res, 404, 'subagent not found')
+            return
+          }
+      sendJson(res, 200, { id, events })
+      return
+    },
+  },
+  {
+    match: (req, url) => {
+      const questionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/questions(?:\/([^/]+))?$/)
+      return Boolean(questionMatch)
+    },
+    handle: async (req, res, url, context) => {
+      const questionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/questions(?:\/([^/]+))?$/)
+      if (!(questionMatch)) return
+      const id = questionMatch[1]!
+      const workspace = workspaceParam(url)
+      if (!workspace || !isSessionId(id)) {
+            sendError(res, 400, 'workspace and valid session id are required')
+            return
+          }
+      await readSessionSummary(workspace, id)
+      const key = runKey(workspace, id)
+      if (req.method === 'GET' && !questionMatch[2]) {
+            const log = new SessionLog(sessionFilePath(workspace, id))
+            try {
+              await log.init()
+              const questions = pendingQuestionsFromEvents(await log.read())
+                .filter(question => question.agentId === id && (question.mode === 'nonblocking' || isActive(context.activeRuns, workspace, id)))
+              sendJson(res, 200, { questions })
+            } finally { await log.close() }
+            return
+          }
+      if (req.method === 'POST' && questionMatch[2]) {
+            const body = await readJsonBody(req)
+            let entry = context.residentAgents?.get(key)
+            let root = entry?.root ?? context.questionRoots?.get(key)
+            if (!root) {
+              const request = await residentQuestionRequest(context, workspace, id)
+              entry = await ensureResidentAgent(context, workspace, id, request)
+              root = entry.root
+            }
+            try {
+              const answer = await root.userQuestions.answer(questionMatch[2], body.answers, { agentId: id })
+              let resumeQueued = false
+              if (answer.mode === 'nonblocking') {
+                if (entry) {
+                  // A manual-streaming Agent needs the existing SSE/approval channel to drain idle work.
+                  resumeQueued = entry.agent.status === 'idle' || !isActive(context.activeRuns, workspace, id)
+                } else {
+                  resumeQueued = true
+                }
+              }
+              sendJson(res, 200, { accepted: true, resumeQueued })
+            } catch (error) {
+              if (!(error instanceof UserQuestionError)) throw error
+              sendError(res, error.code === 'QUESTION_ALREADY_SETTLED' ? 409 : 400, error.message)
+            }
+            return
+          }
+    },
+  },
+  {
+    match: (req, url) => {
+      const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
+      return Boolean(sessionMatch)
+    },
+    handle: async (req, res, url, context) => {
+      const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
+      if (!(sessionMatch)) return
+      const id = sessionMatch[1]!
+      const action = sessionMatch[2]
+      const workspace = workspaceParam(url)
+      if (!isSessionId(id)) {
+            sendError(res, 400, 'invalid session id')
+            return
+          }
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      if (action === undefined && req.method === 'GET') {
+            // History is read asynchronously. If a run finishes during this read,
+            // this snapshot may not contain its final reply yet; let clients poll again.
+            const runningAtReadStart = isActive(context.activeRuns, workspace, id)
+            // One config read and one pass over the log: this used to read the session
+            // file five times and build an agent runtime just to see its events.
+            const config = await readSystemConfig(context.configFile)
+            const beforeSeq = optionalSeq(url.searchParams.get('beforeSeq'))
+            const maxMessages = optionalCount(url.searchParams.get('maxMessages'))
+            const snapshot = await readSessionSnapshot(workspace, id, model =>
+              effectiveLlmConfig(config, process.env, model).contextWindow, {
+              ...(beforeSeq !== undefined ? { beforeSeq } : {}),
+              ...(maxMessages !== undefined ? { maxMessages } : {}),
+            })
+            sendJson(res, 200, {
+              summary: snapshot.summary,
+              events: snapshot.events,
+              page: snapshot.page,
+              context: snapshot.context,
+              metrics: snapshot.metrics,
+              usage: sessionUsage(snapshot.log, config),
+              running: runningAtReadStart || isActive(context.activeRuns, workspace, id),
+              ...recoveryField(snapshot.log),
+            })
+            return
+          }
+      if (action === 'recover' && req.method === 'POST') {
+            if (isActive(context.activeRuns, workspace, id)) {
+              sendError(res, 409, 'session is running')
+              return
+            }
+            const entry = context.residentAgents?.get(runKey(workspace, id))
+              ?? await ensureResidentAgent(context, workspace, id, await residentQuestionRequest(context, workspace, id))
+            // The queued input is durable: the client's resumed run drains it.
+            sendJson(res, 200, { resumeQueued: await recoverInterruptedTurn(entry.agent) })
+            return
+          }
+      if (action === 'subagents' && req.method === 'GET') {
+            const scope = url.searchParams.get('scope') === 'descendants' ? 'descendants' : 'children'
+            const registry = context.residentAgents?.get(runKey(workspace, id))?.registry
+            const children = await listStoredSubagents(workspace, id, scope, registry, workspaceSubagentRoot(workspace))
+            sendJson(res, 200, { subagents: children })
+            return
+          }
+      if (action === 'jobs' && (req.method === 'GET' || req.method === 'POST')) {
+            if (!existsSync(sessionFilePath(workspace, id))) {
+              sendError(res, 404, 'session not found')
+              return
+            }
+            const entry = context.residentAgents?.get(runKey(workspace, id))
+            const jobs: JobRegistry | undefined = entry?.root.get('jobs')
+            if (req.method === 'GET' && !url.searchParams.has('job_id')) {
+              sendJson(res, 200, { jobs: jobs && entry ? jobs.list(entry.agent) : [] })
+              return
+            }
+            const body = req.method === 'POST' ? await readJsonBody(req) : undefined
+            if (body && (body.action !== 'stop' || typeof body.job_id !== 'string' || !body.job_id.trim())) {
+              sendError(res, 400, 'action=stop and job_id are required')
+              return
+            }
+            const jobId = body?.job_id ?? url.searchParams.get('job_id')
+            if (typeof jobId !== 'string' || !jobId.trim()) {
+              sendError(res, 400, 'job_id is required')
+              return
+            }
+            if (!jobs || !entry || !jobs.list(entry.agent).some(job => job.id === jobId)) {
+              sendError(res, 404, 'background job not found')
+              return
+            }
+            sendJson(res, 200, body
+              ? { job: jobs.kill(jobId, entry.agent, 'Stopped by user') }
+              : jobs.read(jobId, entry.agent))
+            return
+          }
+      if (action === 'goal' && req.method === 'GET') {
+            const log = new SessionLog(sessionFilePath(workspace, id))
+            await log.init()
+            try {
+              sendJson(res, 200, { goal: await readGoal(log) ?? null })
+            } finally {
+              await log.close()
+            }
+            return
+          }
+      if (action === undefined && req.method === 'PATCH') {
+            if (isActive(context.activeRuns, workspace, id)) {
+              sendError(res, 409, 'session is running')
+              return
+            }
+            const body = await readJsonBody(req)
+            const patch: Parameters<typeof patchSessionMeta>[2] = {}
+            const permission = body.permission === 'workspace-write' || body.permission === 'bypass'
+              ? body.permission : body.permission === 'read-only' ? 'read-only' : undefined
+            const approvalMode = body.approvalMode === 'auto' || body.approvalMode === 'manual' ? body.approvalMode : undefined
+            if (typeof body.title === 'string') patch.title = body.title
+            if (isAgentType(body.agentType)) patch.agentType = body.agentType
+            if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal') {
+              patch.mode = body.mode
+            }
+            if (typeof body.model === 'string' && body.model.trim()) patch.model = body.model.trim()
+            if (body.reasoningEffort === 'default' || body.reasoningEffort === 'low'
+              || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high') {
+              patch.reasoningEffort = body.reasoningEffort
+            }
+            if (!Object.keys(patch).length && permission === undefined && approvalMode === undefined) {
+              sendError(res, 400, 'session metadata is required')
+              return
+            }
+            if (Object.keys(patch).length) await evictResident(context, workspace, id)
+            if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
+            if (approvalMode) await setSessionApprovalMode(workspace, id, approvalMode)
+            const summary = permission === undefined
+              ? await readSessionSummary(workspace, id)
+              : await setSessionPermission(workspace, id, permission)
+            sendJson(res, 200, { summary })
+            return
+          }
+      if (action === undefined && req.method === 'DELETE') {
+            if (isActive(context.activeRuns, workspace, id)) {
+              sendError(res, 409, 'session is running')
+              return
+            }
+            await evictResident(context, workspace, id)
+            await deleteSession(workspace, id)
+            res.writeHead(204)
+            res.end()
+            return
+          }
+      if (action === 'fork' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const summary = await forkSession(workspace, id, {
+              ...(typeof body.title === 'string' ? { title: body.title } : {}),
+              ...(typeof body.messageId === 'string' && body.messageId
+                ? { messageId: body.messageId }
+                : {}),
+            })
+            sendJson(res, 201, { session: summary })
+            return
+          }
+      if (action === 'truncate' && req.method === 'POST') {
+            if (isActive(context.activeRuns, workspace, id)) {
+              sendError(res, 409, 'session is running')
+              return
+            }
+            await evictResident(context, workspace, id)
+            const body = await readJsonBody(req)
+            if (typeof body.messageId !== 'string' || !body.messageId) {
+              sendError(res, 400, 'messageId is required')
+              return
+            }
+            const summary = await truncateSessionAt(workspace, id, body.messageId)
+            sendJson(res, 200, { summary })
+            return
+          }
+      if (action === 'compact' && req.method === 'POST') {
+            if (isActive(context.activeRuns, workspace, id)) {
+              sendError(res, 409, 'session is running')
+              return
+            }
+            await evictResident(context, workspace, id)
+            const body = await readJsonBody(req)
+            const keep = typeof body.keep === 'number' && Number.isFinite(body.keep)
+              ? body.keep
+              : 0
+            const summary = await compactContext(context, workspace, id, keep)
+            sendJson(res, 200, { summary })
+            return
+          }
+      if (action === 'stop' && req.method === 'POST') {
+            await handleStopRun(context, workspace, id)
+            sendJson(res, 200, { stopped: true })
+            return
+          }
+      if (action === 'steer' && req.method === 'POST') {
+            const body = await readJsonBody(req, MAX_RUN_BODY_BYTES)
+            const attachments = parseRunAttachments(body.attachments)
+            if (typeof attachments === 'string') {
+              sendError(res, 400, attachments)
+              return
+            }
+            const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+            if (!prompt && !attachments.length) {
+              sendError(res, 400, 'prompt is required')
+              return
+            }
+            const key = runKey(workspace, id)
+            const ready = context.steeringReady.get(key)
+            if (ready && !await ready) {
+              sendError(res, 409, 'session failed to start')
+              return
+            }
+            const entry = context.residentAgents?.get(key)
+            const inbox = context.questionInboxes?.get(key)
+            if (!isActive(context.activeRuns, workspace, id) || (!entry && !inbox) || entry?.agent.status === 'idle') {
+              sendError(res, 409, 'session has no active run to steer')
+              return
+            }
+            const requestId = submissionId(body.requestId)
+            if (entry) await entry.agent.steer({ text: prompt, attachments, ...(requestId ? { requestId } : {}) })
+            else if (inbox) await inbox.steer({ text: prompt, ...(attachments.length ? { content: [userMessage(prompt, attachments)] } : {}) })
+            sendJson(res, 200, { accepted: true })
+            return
+          }
+      if (action === 'runs' && req.method === 'POST') {
+            await handleRun(req, res, context, workspace, id)
+            return
+          }
+    },
+  },
+]
+
 export async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
   context: ServerContext,
 ): Promise<void> {
-  if (url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')) {
-    await handleProjectApi(req, res, url, {
-      host: workspace => projectHostFor(context, workspace),
-      sendJson,
-      sendError,
-      readJsonBody,
-      writeSse,
-      workspaceParam,
-    })
+  for (const route of apiRoutes) {
+    if (!route.match(req, url)) continue
+    await route.handle(req, res, url, context)
     return
   }
-
-  const approvalMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
-  if (approvalMatch && req.method === 'POST') {
-    const workspace = workspaceParam(url)
-    if (!workspace || !isSessionId(approvalMatch[1]!)) {
-      sendError(res, 400, 'valid workspace and session id are required')
-      return
-    }
-    const body = await readJsonBody(req)
-    if (typeof body.allow !== 'boolean') {
-      sendError(res, 400, 'allow must be a boolean')
-      return
-    }
-    const accepted = context.approvals.decide(approvalMatch[2]!, runKey(workspace, approvalMatch[1]!), body.allow)
-    if (!accepted) {
-      sendError(res, 404, 'approval request is no longer pending')
-      return
-    }
-    sendJson(res, 200, { accepted: true })
-    return
-  }
-
-  if (url.pathname === '/api/config' && req.method === 'GET') {
-    const config = await readSystemConfig(context.configFile)
-    const problem = await systemConfigProblem(context.configFile)
-    sendJson(res, 200, { ...configSnapshot(config, context.configFile), ...(problem ? { problem } : {}) })
-    return
-  }
-
-  if (url.pathname === '/api/config' && req.method === 'PUT') {
-    const body = await readJsonBody(req)
-    const patch: SystemConfigPatch = {}
-    if (body.codeMode !== undefined) {
-      if (typeof body.codeMode !== 'boolean') { sendError(res, 400, 'codeMode must be a boolean'); return }
-      patch.codeMode = body.codeMode
-    }
-    if (body.projectMemory !== undefined) {
-      const memory = normalizeProjectMemory(body.projectMemory)
-      if (!memory) { sendError(res, 400, 'Invalid project memory limits'); return }
-      const current = await readSystemConfig(context.configFile)
-      if (memory.coldModelId && !current.models?.some(route => route.id === memory.coldModelId)) {
-        sendError(res, 400, 'Project memory model must be a configured route'); return
-      }
-      patch.projectMemory = { ...current.projectMemory, ...memory }
-    }
-    if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
-    if (typeof body.shell === 'string') patch.shell = body.shell.trim()
-    if (typeof body.baseUrl === 'string') patch.baseUrl = body.baseUrl
-    if (typeof body.model === 'string') patch.model = body.model
-    if (body.reasoningEffort === 'low' || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high'
-      || body.reasoningEffort === '') patch.reasoningEffort = body.reasoningEffort
-    if (body.protocol === 'anthropic' || body.protocol === 'openai' || body.protocol === '') {
-      patch.protocol = body.protocol
-    }
-    if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
-      patch.temperature = body.temperature
-    }
-    if (body.approvalReview !== undefined) {
-      const review = normalizeApprovalReviewer(body.approvalReview)
-      if (!review) { sendError(res, 400, 'invalid approval reviewer'); return }
-      const previous = (await readSystemConfig(context.configFile)).approvalReview
-      patch.approvalReview = { ...(previous?.provider === review.provider ? previous : {}), ...review }
-    }
-    if (body.network !== undefined) {
-      const network = parseNetworkConfig(body.network)
-      if (!network) { sendError(res, 400, 'network must be an object'); return }
-      patch.network = network.allowedHosts || network.proxy ? network : undefined
-    }
-    const config = await updateSystemConfig(patch, context.configFile)
-    configureSystemShell(config.shell)
-    applyNetwork(config, context.hostFetch)
-    sendJson(res, 200, configSnapshot(config, context.configFile))
-    return
-  }
-
-  if (url.pathname === '/api/config/models/discover' && req.method === 'POST') {
-    try {
-      const input = parseModelDiscoveryInput(await readJsonBody(req))
-      sendJson(res, 200, await discoverModels(input, await readSystemConfig(context.configFile)))
-    } catch (error) {
-      if (error instanceof ModelRouteError || error instanceof ModelDiscoveryError) {
-        sendError(res, error instanceof ModelDiscoveryError ? error.status : 400, error.message)
-        return
-      }
-      throw error
-    }
-    return
-  }
-
-  // Chat model routes: register several and choose one per session or as the default.
-  const modelRoute = /^\/api\/config\/models\/([^/]+)$/.exec(url.pathname)
-  if (modelRoute && (req.method === 'PUT' || req.method === 'DELETE')) {
-    const id = decodeURIComponent(modelRoute[1]!)
-    try {
-      const config = req.method === 'PUT'
-        ? await upsertModelRoute(id, parseModelRouteInput(await readJsonBody(req)), context.configFile)
-        : await removeModelRoute(id, context.configFile)
-      sendJson(res, 200, configSnapshot(config, context.configFile))
-    } catch (error) {
-      if (error instanceof ModelRouteError) {
-        sendError(res, 400, error.message)
-        return
-      }
-      throw error
-    }
-    return
-  }
-
-  if (url.pathname.startsWith('/api/browser')) {
-    await handleBrowser(req, res, url, context)
-    return
-  }
-
-  // ChatGPT sign-in: start opens the callback server and returns the URL to open.
-  if (url.pathname === '/api/auth/chatgpt') {
-    const login = context.chatgptLogin ??= new ChatGptLogin({
-      onSignedIn: async () => {
-        const config = await readSystemConfig(context.configFile)
-        if (!config.models?.some(route => route.auth === 'chatgpt')) {
-          await upsertModelRoute('chatgpt', { model: CHATGPT_DEFAULT_MODEL, name: `ChatGPT · ${CHATGPT_DEFAULT_MODEL}`, auth: 'chatgpt' }, context.configFile)
-        }
-      },
-    })
-    if (req.method === 'GET') { sendJson(res, 200, await login.state()); return }
-    if (req.method === 'POST') {
-      try {
-        sendJson(res, 200, await login.start())
-      } catch (error) {
-        sendError(res, 409, errorMessage(error))
-      }
-      return
-    }
-    if (req.method === 'DELETE') { await login.signOut(); sendJson(res, 200, await login.state()); return }
-  }
-
-  if (url.pathname === '/api/usage' && req.method === 'GET') {
-    const workspace = workspaceParam(url)
-    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
-    sendJson(res, 200, await storedWorkspaceUsage(workspace, await readSystemConfig(context.configFile)))
-    return
-  }
-
-  if (url.pathname === '/api/workspace-prompt' && (req.method === 'GET' || req.method === 'PUT')) {
-    const workspace = workspaceParam(url)
-    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
-    if (req.method === 'PUT') {
-      const body = await readJsonBody(req)
-      if (typeof body.prompt !== 'string' || body.prompt.length > 32000) {
-        sendError(res, 400, 'prompt must be a string of at most 32000 characters'); return
-      }
-      await writeWorkspacePrompt(workspace, body.prompt)
-    }
-    sendJson(res, 200, { prompt: await readWorkspacePrompt(workspace) })
-    return
-  }
-
-  if (url.pathname === '/api/processes' && (req.method === 'GET' || req.method === 'POST')) {
-    const workspace = workspaceParam(url)
-    if (!workspace) { sendError(res, 400, 'workspace query parameter is required'); return }
-    const registry = context.processes.get(canonicalWorkspace(workspace))
-    if (req.method === 'GET' && !url.searchParams.has('process_id')) {
-      sendJson(res, 200, { processes: registry?.list() ?? [] })
-      return
-    }
-    const body = req.method === 'POST' ? await readJsonBody(req) : undefined
-    if (body && (body.action !== 'stop' || typeof body.process_id !== 'string' || !body.process_id.trim())) {
-      sendError(res, 400, 'action=stop and process_id are required'); return
-    }
-    const id = body?.process_id ?? url.searchParams.get('process_id')
-    if (typeof id !== 'string' || !id.trim()) { sendError(res, 400, 'process_id is required'); return }
-    const result = body ? await registry?.stop(id) : registry?.read(id)
-    if (!result) { sendError(res, 404, 'background process not found'); return }
-    sendJson(res, 200, body ? { process: result } : result)
-    return
-  }
-
-  if (url.pathname === '/api/workspaces' && req.method === 'GET') {
-    const config = await readSystemConfig(context.configFile)
-    const fallback = defaultWorkspace()
-    await mkdir(fallback, { recursive: true })
-    sendJson(res, 200, { workspaces: config.workspaces ?? [], defaultWorkspace: await ensureWorkspace(fallback) })
-    return
-  }
-
-  if (url.pathname === '/api/workspaces' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (typeof body.path !== 'string' || !body.path.trim()) {
-      sendError(res, 400, 'path is required')
-      return
-    }
-    const workspace = await ensureWorkspace(body.path)
-    const config = await readSystemConfig(context.configFile)
-    const workspaces = dedupe([...(config.workspaces ?? []), workspace])
-    await updateSystemConfig({ workspaces }, context.configFile)
-    sendJson(res, 200, { path: workspace, workspaces })
-    return
-  }
-
-  if (url.pathname === '/api/workspaces' && req.method === 'DELETE') {
-    const body = await readJsonBody(req)
-    if (typeof body.path !== 'string') {
-      sendError(res, 400, 'path is required')
-      return
-    }
-    const config = await readSystemConfig(context.configFile)
-    const path = body.path
-    const workspaces = (config.workspaces ?? []).filter(
-      entry => entry !== path && entry !== resolve(path),
-    )
-    await updateSystemConfig({ workspaces }, context.configFile)
-    sendJson(res, 200, { workspaces })
-    return
-  }
-
-  if (url.pathname === '/api/files/search' && req.method === 'GET') {
-    const workspace = workspaceParam(url)
-    if (!workspace) {
-      sendError(res, 400, 'workspace query parameter is required')
-      return
-    }
-    const limit = Number(url.searchParams.get('limit') ?? 30)
-    const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
-    sendJson(res, 200, { files })
-    return
-  }
-
-  if (url.pathname === '/api/changes' || url.pathname === '/api/changes/file') {
-    const workspace = workspaceParam(url)
-    if (!workspace || req.method !== 'GET') {
-      sendError(res, workspace ? 405 : 400, workspace ? 'method not allowed' : 'workspace query parameter is required')
-      return
-    }
-    try {
-      if (url.pathname === '/api/changes') {
-        sendJson(res, 200, await listChanges(workspace))
-      } else {
-        const path = url.searchParams.get('path')
-        if (!path) {
-          sendError(res, 400, 'path query parameter is required')
-          return
-        }
-        sendJson(res, 200, await fileDiff(workspace, path))
-      }
-    } catch (error) {
-      if (!(error instanceof FileServeError)) throw error
-      sendError(res, error.status, error.message)
-    }
-    return
-  }
-
-  const terminalMatch = url.pathname.match(/^\/api\/terminals(?:\/([^/]+)(?:\/(stream|input|resize))?)?$/)
-  if (terminalMatch) {
-    try {
-      await handleTerminal(req, res, url, context.terminals, terminalMatch[1], terminalMatch[2])
-    } catch (error) {
-      if (!(error instanceof TerminalError)) throw error
-      if (!res.headersSent) sendError(res, error.status, error.message)
-    }
-    return
-  }
-
-  if (url.pathname === '/api/files/tree' || url.pathname === '/api/files/text') {
-    const workspace = workspaceParam(url)
-    const path = url.searchParams.get('path') ?? ''
-    if (!workspace) {
-      sendError(res, 400, 'workspace query parameter is required')
-      return
-    }
-    try {
-      if (url.pathname === '/api/files/tree' && req.method === 'GET') {
-        sendJson(res, 200, { path, entries: await listDirectory(workspace, path) })
-      } else if (url.pathname === '/api/files/text' && req.method === 'GET' && path) {
-        sendJson(res, 200, await readTextFile(workspace, path))
-      } else if (url.pathname === '/api/files/text' && req.method === 'PUT' && path) {
-        const body = await readJsonBody(req, MAX_TEXT_FILE_BYTES * 2)
-        if (typeof body.content !== 'string') {
-          sendError(res, 400, 'content must be a string')
-          return
-        }
-        const expected = typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined
-        sendJson(res, 200, await writeTextFile(workspace, path, body.content, expected))
-      } else {
-        sendError(res, path ? 405 : 400, path ? 'method not allowed' : 'path query parameter is required')
-      }
-    } catch (error) {
-      if (!(error instanceof FileServeError)) throw error
-      sendError(res, error.status, error.message)
-    }
-    return
-  }
-
-  if (url.pathname === '/api/files' && req.method === 'GET') {
-    const workspace = workspaceParam(url)
-    const path = url.searchParams.get('path')
-    if (!workspace || !path) {
-      sendError(res, 400, 'workspace and path query parameters are required')
-      return
-    }
-    try {
-      sendFile(res, await readWorkspaceFile(workspace, path))
-    } catch (error) {
-      if (!(error instanceof FileServeError)) throw error
-      sendError(res, error.status, error.message)
-    }
-    return
-  }
-
-  if (url.pathname === '/api/sessions' && req.method === 'GET') {
-    const workspace = workspaceParam(url)
-    if (!workspace) {
-      sendError(res, 400, 'workspace query parameter is required')
-      return
-    }
-    const sessions = await listSessions(workspace)
-    sendJson(res, 200, { workspace, sessions })
-    return
-  }
-
-  if (url.pathname === '/api/sessions' && req.method === 'POST') {
-    const workspace = workspaceParam(url)
-    if (!workspace) {
-      sendError(res, 400, 'workspace query parameter is required')
-      return
-    }
-    const body = await readJsonBody(req)
-    const title = typeof body.title === 'string' ? body.title : undefined
-    const agentType = isAgentType(body.agentType) ? body.agentType : undefined
-    const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal'
-      ? body.mode
-      : undefined
-    const session = await createSession(workspace, {
-      ...(title !== undefined ? { title } : {}),
-      ...(agentType ? { agentType } : {}),
-      ...(mode ? { mode } : {}),
-    })
-    sendJson(res, 201, { session })
-    return
-  }
-
-  const codingMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/coding\/(commands|slash|slash-candidates)$/)
-  if (codingMatch) {
-    const id = codingMatch[1]!
-    const action = codingMatch[2]!
-    const workspace = workspaceParam(url)
-    if (!isSessionId(id)) {
-      sendError(res, 400, 'invalid session id')
-      return
-    }
-    if (!workspace) {
-      sendError(res, 400, 'workspace query parameter is required')
-      return
-    }
-    if (action === 'commands' && req.method === 'GET') {
-      await handleCodingCommands(res, workspace, id)
-      return
-    }
-    if (action === 'slash' && req.method === 'POST') {
-      if (isActive(context.activeRuns, workspace, id)) {
-        sendError(res, 409, 'session is running')
-        return
-      }
-      await evictResident(context, workspace, id)
-      await handleCodingSlash(req, res, workspace, id)
-      return
-    }
-    if (action === 'slash-candidates' && req.method === 'POST') {
-      await handleCodingSlashCandidates(req, res, workspace, id)
-      return
-    }
-    sendError(res, 405, 'method not allowed')
-    return
-  }
-
-  const subagentMatch = url.pathname.match(/^\/api\/subagents\/([^/]+)$/)
-  if (subagentMatch && req.method === 'GET') {
-    const workspace = workspaceParam(url)
-    if (!workspace) {
-      sendError(res, 400, 'workspace query parameter is required')
-      return
-    }
-    const id = subagentMatch[1]!
-    if (!isSessionId(id)) {
-      sendError(res, 400, 'invalid subagent id')
-      return
-    }
-    const events = await readSubagentEvents(workspace, id, workspaceSubagentRoot(workspace)).catch(error => {
-      if (error instanceof SubagentError) return undefined
-      throw error
-    })
-    if (!events) {
-      sendError(res, 404, 'subagent not found')
-      return
-    }
-    sendJson(res, 200, { id, events })
-    return
-  }
-
-  const questionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/questions(?:\/([^/]+))?$/)
-  if (questionMatch) {
-    const id = questionMatch[1]!
-    const workspace = workspaceParam(url)
-    if (!workspace || !isSessionId(id)) {
-      sendError(res, 400, 'workspace and valid session id are required')
-      return
-    }
-    await readSessionSummary(workspace, id)
-    const key = runKey(workspace, id)
-    if (req.method === 'GET' && !questionMatch[2]) {
-      const log = new SessionLog(sessionFilePath(workspace, id))
-      try {
-        await log.init()
-        const questions = pendingQuestionsFromEvents(await log.read())
-          .filter(question => question.agentId === id && (question.mode === 'nonblocking' || isActive(context.activeRuns, workspace, id)))
-        sendJson(res, 200, { questions })
-      } finally { await log.close() }
-      return
-    }
-    if (req.method === 'POST' && questionMatch[2]) {
-      const body = await readJsonBody(req)
-      let entry = context.residentAgents?.get(key)
-      let root = entry?.root ?? context.questionRoots?.get(key)
-      if (!root) {
-        const request = await residentQuestionRequest(context, workspace, id)
-        entry = await ensureResidentAgent(context, workspace, id, request)
-        root = entry.root
-      }
-      try {
-        const answer = await root.userQuestions.answer(questionMatch[2], body.answers, { agentId: id })
-        let resumeQueued = false
-        if (answer.mode === 'nonblocking') {
-          if (entry) {
-            // A manual-streaming Agent needs the existing SSE/approval channel to drain idle work.
-            resumeQueued = entry.agent.status === 'idle' || !isActive(context.activeRuns, workspace, id)
-          } else {
-            resumeQueued = true
-          }
-        }
-        sendJson(res, 200, { accepted: true, resumeQueued })
-      } catch (error) {
-        if (!(error instanceof UserQuestionError)) throw error
-        sendError(res, error.code === 'QUESTION_ALREADY_SETTLED' ? 409 : 400, error.message)
-      }
-      return
-    }
-  }
-
-  const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
-  if (sessionMatch) {
-    const id = sessionMatch[1]!
-    const action = sessionMatch[2]
-    const workspace = workspaceParam(url)
-    if (!isSessionId(id)) {
-      sendError(res, 400, 'invalid session id')
-      return
-    }
-    if (!workspace) {
-      sendError(res, 400, 'workspace query parameter is required')
-      return
-    }
-    if (action === undefined && req.method === 'GET') {
-      // History is read asynchronously. If a run finishes during this read,
-      // this snapshot may not contain its final reply yet; let clients poll again.
-      const runningAtReadStart = isActive(context.activeRuns, workspace, id)
-      // One config read and one pass over the log: this used to read the session
-      // file five times and build an agent runtime just to see its events.
-      const config = await readSystemConfig(context.configFile)
-      const beforeSeq = optionalSeq(url.searchParams.get('beforeSeq'))
-      const maxMessages = optionalCount(url.searchParams.get('maxMessages'))
-      const snapshot = await readSessionSnapshot(workspace, id, model =>
-        effectiveLlmConfig(config, process.env, model).contextWindow, {
-        ...(beforeSeq !== undefined ? { beforeSeq } : {}),
-        ...(maxMessages !== undefined ? { maxMessages } : {}),
-      })
-      sendJson(res, 200, {
-        summary: snapshot.summary,
-        events: snapshot.events,
-        page: snapshot.page,
-        context: snapshot.context,
-        metrics: snapshot.metrics,
-        usage: sessionUsage(snapshot.log, config),
-        running: runningAtReadStart || isActive(context.activeRuns, workspace, id),
-        ...recoveryField(snapshot.log),
-      })
-      return
-    }
-    if (action === 'recover' && req.method === 'POST') {
-      if (isActive(context.activeRuns, workspace, id)) {
-        sendError(res, 409, 'session is running')
-        return
-      }
-      const entry = context.residentAgents?.get(runKey(workspace, id))
-        ?? await ensureResidentAgent(context, workspace, id, await residentQuestionRequest(context, workspace, id))
-      // The queued input is durable: the client's resumed run drains it.
-      sendJson(res, 200, { resumeQueued: await recoverInterruptedTurn(entry.agent) })
-      return
-    }
-    if (action === 'subagents' && req.method === 'GET') {
-      const scope = url.searchParams.get('scope') === 'descendants' ? 'descendants' : 'children'
-      const registry = context.residentAgents?.get(runKey(workspace, id))?.registry
-      const children = await listStoredSubagents(workspace, id, scope, registry, workspaceSubagentRoot(workspace))
-      sendJson(res, 200, { subagents: children })
-      return
-    }
-    if (action === 'jobs' && (req.method === 'GET' || req.method === 'POST')) {
-      if (!existsSync(sessionFilePath(workspace, id))) {
-        sendError(res, 404, 'session not found')
-        return
-      }
-      const entry = context.residentAgents?.get(runKey(workspace, id))
-      const jobs: JobRegistry | undefined = entry?.root.get('jobs')
-      if (req.method === 'GET' && !url.searchParams.has('job_id')) {
-        sendJson(res, 200, { jobs: jobs && entry ? jobs.list(entry.agent) : [] })
-        return
-      }
-      const body = req.method === 'POST' ? await readJsonBody(req) : undefined
-      if (body && (body.action !== 'stop' || typeof body.job_id !== 'string' || !body.job_id.trim())) {
-        sendError(res, 400, 'action=stop and job_id are required')
-        return
-      }
-      const jobId = body?.job_id ?? url.searchParams.get('job_id')
-      if (typeof jobId !== 'string' || !jobId.trim()) {
-        sendError(res, 400, 'job_id is required')
-        return
-      }
-      if (!jobs || !entry || !jobs.list(entry.agent).some(job => job.id === jobId)) {
-        sendError(res, 404, 'background job not found')
-        return
-      }
-      sendJson(res, 200, body
-        ? { job: jobs.kill(jobId, entry.agent, 'Stopped by user') }
-        : jobs.read(jobId, entry.agent))
-      return
-    }
-    if (action === 'goal' && req.method === 'GET') {
-      const log = new SessionLog(sessionFilePath(workspace, id))
-      await log.init()
-      try {
-        sendJson(res, 200, { goal: await readGoal(log) ?? null })
-      } finally {
-        await log.close()
-      }
-      return
-    }
-    if (action === undefined && req.method === 'PATCH') {
-      if (isActive(context.activeRuns, workspace, id)) {
-        sendError(res, 409, 'session is running')
-        return
-      }
-      const body = await readJsonBody(req)
-      const patch: Parameters<typeof patchSessionMeta>[2] = {}
-      const permission = body.permission === 'workspace-write' || body.permission === 'bypass'
-        ? body.permission : body.permission === 'read-only' ? 'read-only' : undefined
-      const approvalMode = body.approvalMode === 'auto' || body.approvalMode === 'manual' ? body.approvalMode : undefined
-      if (typeof body.title === 'string') patch.title = body.title
-      if (isAgentType(body.agentType)) patch.agentType = body.agentType
-      if (body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal') {
-        patch.mode = body.mode
-      }
-      if (typeof body.model === 'string' && body.model.trim()) patch.model = body.model.trim()
-      if (body.reasoningEffort === 'default' || body.reasoningEffort === 'low'
-        || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high') {
-        patch.reasoningEffort = body.reasoningEffort
-      }
-      if (!Object.keys(patch).length && permission === undefined && approvalMode === undefined) {
-        sendError(res, 400, 'session metadata is required')
-        return
-      }
-      if (Object.keys(patch).length) await evictResident(context, workspace, id)
-      if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
-      if (approvalMode) await setSessionApprovalMode(workspace, id, approvalMode)
-      const summary = permission === undefined
-        ? await readSessionSummary(workspace, id)
-        : await setSessionPermission(workspace, id, permission)
-      sendJson(res, 200, { summary })
-      return
-    }
-    if (action === undefined && req.method === 'DELETE') {
-      if (isActive(context.activeRuns, workspace, id)) {
-        sendError(res, 409, 'session is running')
-        return
-      }
-      await evictResident(context, workspace, id)
-      await deleteSession(workspace, id)
-      res.writeHead(204)
-      res.end()
-      return
-    }
-    if (action === 'fork' && req.method === 'POST') {
-      const body = await readJsonBody(req)
-      const summary = await forkSession(workspace, id, {
-        ...(typeof body.title === 'string' ? { title: body.title } : {}),
-        ...(typeof body.messageId === 'string' && body.messageId
-          ? { messageId: body.messageId }
-          : {}),
-      })
-      sendJson(res, 201, { session: summary })
-      return
-    }
-    if (action === 'truncate' && req.method === 'POST') {
-      if (isActive(context.activeRuns, workspace, id)) {
-        sendError(res, 409, 'session is running')
-        return
-      }
-      await evictResident(context, workspace, id)
-      const body = await readJsonBody(req)
-      if (typeof body.messageId !== 'string' || !body.messageId) {
-        sendError(res, 400, 'messageId is required')
-        return
-      }
-      const summary = await truncateSessionAt(workspace, id, body.messageId)
-      sendJson(res, 200, { summary })
-      return
-    }
-    if (action === 'compact' && req.method === 'POST') {
-      if (isActive(context.activeRuns, workspace, id)) {
-        sendError(res, 409, 'session is running')
-        return
-      }
-      await evictResident(context, workspace, id)
-      const body = await readJsonBody(req)
-      const keep = typeof body.keep === 'number' && Number.isFinite(body.keep)
-        ? body.keep
-        : 0
-      const summary = await compactContext(context, workspace, id, keep)
-      sendJson(res, 200, { summary })
-      return
-    }
-    if (action === 'stop' && req.method === 'POST') {
-      await handleStopRun(context, workspace, id)
-      sendJson(res, 200, { stopped: true })
-      return
-    }
-    if (action === 'steer' && req.method === 'POST') {
-      const body = await readJsonBody(req, MAX_RUN_BODY_BYTES)
-      const attachments = parseRunAttachments(body.attachments)
-      if (typeof attachments === 'string') {
-        sendError(res, 400, attachments)
-        return
-      }
-      const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
-      if (!prompt && !attachments.length) {
-        sendError(res, 400, 'prompt is required')
-        return
-      }
-      const key = runKey(workspace, id)
-      const ready = context.steeringReady.get(key)
-      if (ready && !await ready) {
-        sendError(res, 409, 'session failed to start')
-        return
-      }
-      const entry = context.residentAgents?.get(key)
-      const inbox = context.questionInboxes?.get(key)
-      if (!isActive(context.activeRuns, workspace, id) || (!entry && !inbox) || entry?.agent.status === 'idle') {
-        sendError(res, 409, 'session has no active run to steer')
-        return
-      }
-      const requestId = submissionId(body.requestId)
-      if (entry) await entry.agent.steer({ text: prompt, attachments, ...(requestId ? { requestId } : {}) })
-      else if (inbox) await inbox.steer({ text: prompt, ...(attachments.length ? { content: [userMessage(prompt, attachments)] } : {}) })
-      sendJson(res, 200, { accepted: true })
-      return
-    }
-    if (action === 'runs' && req.method === 'POST') {
-      await handleRun(req, res, context, workspace, id)
-      return
-    }
-  }
-
   sendError(res, 404, 'not found')
 }
+
 
 export function isLoopbackAddress(address: string | undefined): boolean {
   return address === '::1' || address === '::ffff:127.0.0.1'
