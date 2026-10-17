@@ -40,8 +40,84 @@ import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig,
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun } from './runs.js'
+import type { WebServerService } from './web-server.js'
 
 export const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
+
+/**
+ * Routes that no longer live in `handleApi`'s if-chain. Each one is registered
+ * by name, and the table's fixed matching order (exact before prefix) keeps
+ * them ahead of the `/api/` catch-all that still serves the untouched domains.
+ */
+export function registerApiRoutes(web: WebServerService, context: ServerContext): void {
+  web.register({
+    kind: 'exact',
+    method: 'GET',
+    path: '/api/health',
+    handler: (_req, res) => {
+      sendJson(res, 200, { ok: true })
+    },
+  })
+  web.register({
+    kind: 'exact',
+    method: 'GET',
+    path: '/api/plugins',
+    handler: async (_req, res) => {
+      const workshop = context.pluginWorkshop
+      sendJson(res, 200, {
+        ...(context.hotPlugins ? { enabled: true, ...context.hotPlugins.status() } : { enabled: false }),
+        dev: workshop
+          ? { enabled: true, dir: workshop.dir, ...workshop.host.status(), plugins: (await workshop.list()).map(plugin => plugin.name) }
+          : { enabled: false },
+      })
+    },
+  })
+  web.register({
+    kind: 'exact',
+    method: 'POST',
+    path: '/api/plugins/reload',
+    handler: async (_req, res) => {
+      if (!context.hotPlugins) {
+        sendError(res, 404, 'plugin profile is not enabled')
+        return
+      }
+      sendJson(res, 200, { enabled: true, ...await context.hotPlugins.reload() })
+    },
+  })
+  web.register({
+    kind: 'exact',
+    method: 'POST',
+    path: '/api/folder-picker',
+    handler: async (req, res) => {
+      if (!isLoopbackAddress(req.socket.remoteAddress)) {
+        sendError(res, 403, 'folder picker is only available to local clients')
+        return
+      }
+      const path = await pickSystemFolder()
+      sendJson(res, 200, path ? { path } : {})
+    },
+  })
+}
+
+/**
+ * Transport policy for the whole `/api` surface, applied once at the dispatch
+ * boundary instead of inside every route (dsh registers the same idea as a
+ * trusted-host interceptor on its shared `/api` handler).
+ */
+export function rejectsApiRequest(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.headers['x-tnega-client'] !== '1') {
+    sendError(res, 403, 'missing x-tnega-client header')
+    return true
+  }
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+    const contentType = req.headers['content-type'] ?? ''
+    if (!contentType.toLowerCase().startsWith('application/json')) {
+      sendError(res, 415, 'content-type must be application/json')
+      return true
+    }
+  }
+  return false
+}
 
 export async function handleApi(
   req: IncomingMessage,
@@ -49,57 +125,6 @@ export async function handleApi(
   url: URL,
   context: ServerContext,
 ): Promise<void> {
-  if (req.headers['x-tnega-client'] !== '1') {
-    sendError(res, 403, 'missing x-tnega-client header')
-    return
-  }
-  if (
-    req.method === 'POST'
-    || req.method === 'PUT'
-    || req.method === 'PATCH'
-  ) {
-    const contentType = req.headers['content-type'] ?? ''
-    if (!contentType.toLowerCase().startsWith('application/json')) {
-      sendError(res, 415, 'content-type must be application/json')
-      return
-    }
-  }
-
-  if (url.pathname === '/api/health') {
-    sendJson(res, 200, { ok: true })
-    return
-  }
-
-  if (url.pathname === '/api/plugins' && req.method === 'GET') {
-    const workshop = context.pluginWorkshop
-    sendJson(res, 200, {
-      ...(context.hotPlugins ? { enabled: true, ...context.hotPlugins.status() } : { enabled: false }),
-      dev: workshop
-        ? { enabled: true, dir: workshop.dir, ...workshop.host.status(), plugins: (await workshop.list()).map(plugin => plugin.name) }
-        : { enabled: false },
-    })
-    return
-  }
-
-  if (url.pathname === '/api/plugins/reload' && req.method === 'POST') {
-    if (!context.hotPlugins) {
-      sendError(res, 404, 'plugin profile is not enabled')
-      return
-    }
-    sendJson(res, 200, { enabled: true, ...await context.hotPlugins.reload() })
-    return
-  }
-
-  if (url.pathname === '/api/folder-picker' && req.method === 'POST') {
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
-      sendError(res, 403, 'folder picker is only available to local clients')
-      return
-    }
-    const path = await pickSystemFolder()
-    sendJson(res, 200, path ? { path } : {})
-    return
-  }
-
   if (url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')) {
     await handleProjectApi(req, res, url, {
       host: workspace => projectHostFor(context, workspace),

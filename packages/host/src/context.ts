@@ -9,6 +9,7 @@ import { ProjectHost } from '@tnega/project-host'
 import { TerminalManager } from '@tnega/terminal'
 import type { HotPluginHost } from '@tnega/plugin-host'
 import type { PluginWorkshop } from '@tnega/plugin-host'
+import type { WebServerService } from './web-server.js'
 
 export interface ResidentAgentEntry {
   root: Context
@@ -48,4 +49,6 @@ export interface ServerContext {
   hotPlugins?: HotPluginHost
   pluginWorkshop?: PluginWorkshop
   terminals: TerminalManager
+  /** The named-route table requests are dispatched through. */
+  web: WebServerService
 }

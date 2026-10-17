@@ -10,7 +10,8 @@ import { createHotPluginHost, type HotPluginEvent } from '@tnega/plugin-host'
 import { createPluginWorkshop } from '@tnega/plugin-host'
 import { readSystemConfig, SystemConfigError } from '@tnega/config'
 import type { ResidentAgentEntry, ProjectHostEntry, ServerContext } from './context.js'
-import { applyNetwork, handleApi } from './routes.js'
+import { applyNetwork, handleApi, registerApiRoutes, rejectsApiRequest } from './routes.js'
+import { WebServerService } from './web-server.js'
 
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
@@ -109,7 +110,17 @@ export async function startWebServer(
     ...(pluginWorkshop ? { pluginWorkshop } : {}),
     processes: new Map(),
     terminals: new TerminalManager(),
+    web: new WebServerService(),
   }
+
+  registerApiRoutes(context.web, context)
+  context.web.register({
+    kind: 'prefix',
+    method: '*',
+    path: '/api/',
+    handler: (req, res, url) => handleApi(req, res, url, context),
+  })
+  context.web.registerFallback((req, res, url) => handleStatic(req, res, url.pathname, webRoot))
 
   const server = createServer((req, res) => {
     void handleRequest(req, res, context)
@@ -157,11 +168,18 @@ async function handleRequest(
 ): Promise<void> {
   try {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    if (url.pathname.startsWith('/api/')) {
-      await handleApi(req, res, url, context)
-    } else {
-      await handleStatic(req, res, url.pathname, context.webRoot)
+    if (url.pathname.startsWith('/api/') && rejectsApiRequest(req, res)) return
+    const match = context.web.match(req.method ?? 'GET', url.pathname)
+    if (match.kind === 'route' || match.kind === 'fallback') {
+      await match.handler(req, res, url)
+      return
     }
+    if (match.kind === 'method-not-allowed') {
+      res.writeHead(405, { allow: match.allow.join(', ') })
+      res.end()
+      return
+    }
+    sendError(res, 404, 'not found')
   } catch (error) {
     if (error instanceof SystemConfigError) {
       sendError(res, 409, error.message)
