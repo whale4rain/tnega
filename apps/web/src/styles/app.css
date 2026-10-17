@@ -1549,6 +1549,13 @@ kbd {
   color: var(--text);
 }
 
+/* Above the transcript: the older page of a long session, on request. */
+.load-older {
+  display: flex;
+  justify-content: center;
+  padding: 0 0 18px;
+}
+
 /* The live turn's output switch, at the foot of the reply that is streaming. */
 .turn-process {
   display: flex;

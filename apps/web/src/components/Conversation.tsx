@@ -43,6 +43,7 @@ import type {
   SessionDetail,
   SessionEvent,
   SessionMetrics,
+  SessionPageRange,
   SessionRecovery,
   UsageTotals,
   SessionSummary,
@@ -61,6 +62,9 @@ import { BackgroundJobs } from './BackgroundJobs'
 import { LinkContext, type LinkHandlers } from '../lib/links'
 import { navigateBrowser } from '../lib/browser-live'
 import { formatCost, formatRate } from '../lib/usage'
+
+/** Transcript messages per history page; one page opens a long session. */
+const HISTORY_PAGE = 50
 
 export interface Approval {
   id: string
@@ -135,11 +139,15 @@ export function Conversation({
   const [busy, setBusy] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [commandNotice, setCommandNotice] = useState<string>()
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [resumeVersion, setResumeVersion] = useState(0)
   const [processView, setProcessView] = useProcessView()
   const pendingResume = useRef<string | undefined>(undefined)
   const [recovery, setRecovery] = useState<SessionRecovery | undefined>()
+  /** The newest transcript page: how much older history is left behind it. */
+  const [page, setPage] = useState<SessionPageRange | undefined>()
+  const [loadingOlder, setLoadingOlder] = useState(false)
   /** Sessions this view already continued on its own, so a failure is not retried in a loop. */
   const autoRecovered = useRef(new Set<string>())
 
@@ -148,23 +156,59 @@ export function Conversation({
   const abort = useRef<AbortController | undefined>(undefined)
   const queue = useRef<StreamEvent[]>([])
   const frame = useRef<number | undefined>(undefined)
+  /** The session the entries state belongs to: a switch must never show another session history. */
+  const entriesFor = useRef<string | undefined>(undefined)
+  /** What is on screen right now; a late response for another session must not land here. */
+  const shown = useRef<{ workspace: string; sessionId: string | undefined }>({ workspace, sessionId })
+  shown.current = { workspace, sessionId }
+
+  // A local run belongs to the session that started it. Another session is
+  // neither live nor stoppable, and must not receive that run stream frames.
+  const streamingHere = running && streamingFor.current === sessionId
+  const live = streamingHere || remoteRunning
+
+  /** Show a one-off confirmation; it clears itself so the transcript stays clean. */
+  const showNotice = useCallback((text: string, ms = 4000) => {
+    if (noticeTimer.current !== undefined) clearTimeout(noticeTimer.current)
+    setCommandNotice(text)
+    noticeTimer.current = setTimeout(() => {
+      noticeTimer.current = undefined
+      setCommandNotice(undefined)
+    }, ms)
+  }, [])
+
+  const clearNotice = useCallback(() => {
+    if (noticeTimer.current !== undefined) clearTimeout(noticeTimer.current)
+    noticeTimer.current = undefined
+    setCommandNotice(undefined)
+  }, [])
+
+  useEffect(() => () => {
+    if (noticeTimer.current !== undefined) clearTimeout(noticeTimer.current)
+  }, [])
 
   // --- loading ------------------------------------------------------------
 
-  const applyDetail = useCallback((detail: SessionDetail) => {
+  const applyDetail = useCallback((detail: SessionDetail): boolean => {
+    // A run finishing while the user reads another session reloads its own
+    // history; that answer must not replace the transcript on screen.
+    if (shown.current.sessionId !== detail.summary.id || shown.current.workspace !== workspace) return false
+    entriesFor.current = detail.summary.id
     setSummary(detail.summary)
     setEntries(fromEvents(detail.events))
+    setPage(detail.page)
     setContext(detail.context)
     setMetrics(detail.metrics)
     setUsage(detail.usage)
     setPlan(latestPlan(detail.events))
     setRemoteRunning(detail.running && streamingFor.current !== detail.summary.id)
     setRecovery(detail.recovery)
-  }, [])
+    return true
+  }, [workspace])
 
   const reload = useCallback(async (id: string) => {
-    const detail = await api.session(workspace, id)
-    applyDetail(detail)
+    const detail = await api.session(workspace, id, { maxMessages: HISTORY_PAGE })
+    if (!applyDetail(detail)) return detail
     if (detail.summary.mode === 'goal') {
       api.goal(workspace, id).then(result => setGoal(result.goal), () => setGoal(null))
     } else {
@@ -175,7 +219,7 @@ export function Conversation({
 
   useEffect(() => {
     setError(undefined)
-    setCommandNotice(undefined)
+    clearNotice()
     setApprovals([])
     if (pendingResume.current !== sessionId) pendingResume.current = undefined
     if (!sessionId) {
@@ -188,13 +232,16 @@ export function Conversation({
       setGoal(null)
       setRemoteRunning(false)
       setRecovery(undefined)
+      setPage(undefined)
       return
     }
-    // The session was just created by our own send; the live stream owns it.
-    if (streamingFor.current === sessionId) return
+    // This view already holds that session live transcript (our own send
+    // started it); there is nothing to load over it. A switch back does load,
+    // because the entries on screen belong to the session that was left.
+    if (streamingFor.current === sessionId && entriesFor.current === sessionId) return
     let cancelled = false
     setLoading(true)
-    api.session(workspace, sessionId)
+    api.session(workspace, sessionId, { maxMessages: HISTORY_PAGE })
       .then(detail => {
         if (cancelled) return
         applyDetail(detail)
@@ -206,7 +253,7 @@ export function Conversation({
     return () => {
       cancelled = true
     }
-  }, [workspace, sessionId, applyDetail])
+  }, [workspace, sessionId, applyDetail, clearNotice])
 
   // Poll while a run started elsewhere (another tab, the CLI) is still going.
   useEffect(() => {
@@ -298,6 +345,8 @@ export function Conversation({
     const events = queue.current
     if (!events.length) return
     queue.current = []
+    const owner = streamingFor.current
+    if (owner !== undefined && shown.current.sessionId !== undefined && shown.current.sessionId !== owner) return
     setEntries(current => events.reduce(applyStream, current))
   }, [])
 
@@ -344,6 +393,7 @@ export function Conversation({
     streamingFor.current = id
     setRunning(true)
     setError(undefined)
+    entriesFor.current = id
     setEntries(resumeQueued ? base : beginRun(base, prompt, Date.now(), images))
     // One id for every attempt below: a retry never queues the same message twice.
     const requestId = resumeQueued ? undefined : crypto.randomUUID()
@@ -393,17 +443,17 @@ export function Conversation({
   }, [workspace])
 
   useEffect(() => {
-    if (!sessionId || !recovery?.safe || running || remoteRunning || autoRecovered.current.has(sessionId)) return
+    if (!sessionId || !recovery?.safe || live || autoRecovered.current.has(sessionId)) return
     autoRecovered.current.add(sessionId)
-    setCommandNotice('Continuing the run that stopped when the app closed.')
+    showNotice('Continuing the run that stopped when the app closed.', 6000)
     void resumeInterrupted(sessionId)
-  }, [sessionId, recovery, running, remoteRunning, resumeInterrupted])
+  }, [sessionId, recovery, live, resumeInterrupted])
 
   useEffect(() => {
-    if (running || remoteRunning || streamingFor.current || pendingResume.current !== sessionId || !sessionId) return
+    if (live || streamingFor.current || pendingResume.current !== sessionId || !sessionId) return
     pendingResume.current = undefined
     void run(sessionId, '', entries, true)
-  }, [running, remoteRunning, sessionId, resumeVersion, entries, run])
+  }, [live, sessionId, resumeVersion, entries, run])
 
   /** Runs a command the UI handles itself; returns undefined when `text` is not one. */
   const runClientCommand = async (text: string): Promise<boolean | undefined> => {
@@ -421,7 +471,7 @@ export function Conversation({
         setBusy('Saving CodeMode…')
         const saved = await api.saveConfig({ codeMode: option !== 'off' })
         onConfigSaved?.(saved)
-        setCommandNotice(saved.config.codeMode ? 'CodeMode enabled (PTC).' : 'CodeMode disabled.')
+        showNotice(saved.config.codeMode ? 'CodeMode enabled (PTC).' : 'CodeMode disabled.')
         return true
       } catch (reason) {
         setError(errorText(reason))
@@ -465,12 +515,12 @@ export function Conversation({
 
   const send = async (text: string, images: ImageAttachment[] = []): Promise<boolean> => {
     setError(undefined)
-    if (running || remoteRunning) {
-      const id = streamingFor.current ?? sessionId
+    if (streamingHere || remoteRunning) {
+      const id = streamingHere ? streamingFor.current : sessionId
       if (!id) return false
       try {
         await api.steer(workspace, id, text, images)
-        setCommandNotice('Steering sent. The agent will read it at the next step.')
+        showNotice('Steering sent. The agent will read it at the next step.')
         return true
       } catch (reason) {
         setError(errorText(reason))
@@ -522,8 +572,8 @@ export function Conversation({
   }
 
   const stop = async () => {
-    if (!sessionId && !streamingFor.current) return
-    const id = streamingFor.current ?? sessionId!
+    const id = streamingHere ? streamingFor.current : sessionId
+    if (!id) return
     const controller = abort.current
     try {
       await api.stop(workspace, id)
@@ -535,7 +585,7 @@ export function Conversation({
   }
 
   const resend = async (entryId: string, text: string) => {
-    if (!sessionId || running) return
+    if (!sessionId || live) return
     try {
       setBusy('Rewinding…')
       await api.truncate(workspace, sessionId, entryId)
@@ -582,6 +632,31 @@ export function Conversation({
     }
   }
 
+  /** Prepend the page before the window on screen, holding the reader in place. */
+  const loadOlder = async () => {
+    if (!sessionId || !page?.hasMore || loadingOlder) return
+    const element = scroller.current
+    const heightBefore = element?.scrollHeight ?? 0
+    const id = sessionId
+    setLoadingOlder(true)
+    try {
+      const detail = await api.session(workspace, id, { beforeSeq: page.beforeSeq, maxMessages: HISTORY_PAGE })
+      // The reader may have switched sessions while the page was in flight.
+      if (shown.current.sessionId !== id) return
+      const older = fromEvents(detail.events)
+      setEntries(current => [...older, ...current])
+      setPage(detail.page)
+      // Keep what the reader was looking at where they left it.
+      requestAnimationFrame(() => {
+        if (element) element.scrollTop += element.scrollHeight - heightBefore
+      })
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
+
   const remove = async () => {
     if (!sessionId) return
     if (!await confirmDialog({
@@ -599,7 +674,7 @@ export function Conversation({
   }
 
   const answer = async (approval: Approval, allow: boolean) => {
-    const id = streamingFor.current ?? sessionId
+    const id = streamingHere ? streamingFor.current : sessionId
     if (!id) return
     setApprovals(list => list.filter(item => item.id !== approval.id))
     try {
@@ -616,7 +691,6 @@ export function Conversation({
 
   // --- render -------------------------------------------------------------
 
-  const live = running || remoteRunning
   const links = useMemo<LinkHandlers>(() => ({
     workspace,
     ...(onOpenPath ? { openPath: onOpenPath } : {}),
@@ -698,6 +772,13 @@ export function Conversation({
               disabled={Boolean(disabledReason)}
             />
           )}
+          {page?.hasMore && (
+            <div className="load-older">
+              <button type="button" className="button small secondary" onClick={() => void loadOlder()} disabled={loadingOlder}>
+                {loadingOlder ? 'Loading…' : 'Load older messages'}
+              </button>
+            </div>
+          )}
           <LinkContext.Provider value={links}>
           <Timeline
             entries={entries}
@@ -719,7 +800,7 @@ export function Conversation({
             }}
           />
           </LinkContext.Provider>
-          {remoteRunning && !running && (
+          {remoteRunning && !streamingHere && (
             <div className="notice notice-info remote-run">
               <CircleDashed size={14} className="spin-slow" />
               <span>This session is running elsewhere. Updates appear automatically.</span>
