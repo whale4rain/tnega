@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Context } from '@tnega/core'
 import { SessionLog } from '@tnega/session'
 import { expect, it } from 'vitest'
-import { observeCompaction } from '../src/compaction-observation.js'
+import { observeCompaction } from '../src/index.js'
 
 it.each([false, true])('forwards only the owned checkpoint and removes its observer (resident=%s)', async resident => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-compaction-observation-'))

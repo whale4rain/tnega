@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LLMAdapter } from '@tnega/agent'
 import type { ModelMessage } from '@tnega/session'
-import { autoContextBudget, splitSummary, SUMMARY_PREFIX } from '../src/auto-compaction.js'
+import { autoContextBudget, splitSummary, SUMMARY_PREFIX } from '../src/index.js'
 
 function recorder(reply: string): { llm: LLMAdapter; requests: Array<readonly ModelMessage[]> } {
   const requests: Array<readonly ModelMessage[]> = []

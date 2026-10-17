@@ -1,1 +1,5 @@
+export * from './auto-compaction.js'
+export * from './compaction-prompt.js'
+export * from './compaction-observation.js'
+export * from './session-title.js'
 export const name = '@tnega/compaction'

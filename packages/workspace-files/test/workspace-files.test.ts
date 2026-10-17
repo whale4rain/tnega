@@ -3,8 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { FileServeError } from '../src/files.js'
-import { listDirectory, readTextFile, writeTextFile } from '../src/workspace-files.js'
+import { FileServeError, listDirectory, readTextFile, writeTextFile } from '../src/index.js'
 
 const dirs: string[] = []
 

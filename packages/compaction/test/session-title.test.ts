@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { SessionLog, foldSessionMeta } from '@tnega/session'
 import type { LLMAdapter } from '@tnega/agent'
-import { autoNameSession } from '../src/session-title.js'
+import { autoNameSession } from '../src/index.js'
 
 it('persists an intent summary once and preserves a rename made during generation', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'tnega-title-'))

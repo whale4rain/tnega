@@ -1,1 +1,7 @@
+export * from './files.js'
+export * from './workspace-files.js'
+export * from './file-search.js'
+export * from './file-edits.js'
+export * from './changes.js'
+export * from './runtime-files.js'
 export const name = '@tnega/workspace-files'

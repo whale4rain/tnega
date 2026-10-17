@@ -5,5 +5,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/execution": "workspace:*",
+    "@tnega/search": "workspace:*",
+    "@tnega/search-ripgrep": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/tools": "workspace:*"
   }
 }

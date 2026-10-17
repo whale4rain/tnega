@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { rankFiles, searchWorkspaceFiles } from '../src/file-search.js'
+import { rankFiles, searchWorkspaceFiles } from '../src/index.js'
 
 const dirs: string[] = []
 afterEach(async () => {

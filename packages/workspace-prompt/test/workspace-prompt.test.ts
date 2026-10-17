@@ -8,7 +8,7 @@ import { memoryLocal } from '@tnega/memory-local'
 import { toolMemory } from '@tnega/tool-memory'
 import { SessionLog } from '@tnega/session'
 import { tools, type ToolsService } from '@tnega/tools'
-import { readWorkspacePrompt, writeWorkspacePrompt, workspacePrompt } from '../src/workspace-prompt.js'
+import { readWorkspacePrompt, writeWorkspacePrompt, workspacePrompt } from '../src/index.js'
 
 it('persists workspace instructions, refreshes assembly and can clear them', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-prompt-'))

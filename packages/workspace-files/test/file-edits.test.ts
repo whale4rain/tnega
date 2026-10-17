@@ -3,8 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { captureFileEditBaseline, editedFiles } from '../src/file-edits.js'
-import { listChanges } from '../src/changes.js'
+import { captureFileEditBaseline, editedFiles, listChanges } from '../src/index.js'
 import type { SessionEvent } from '@tnega/session'
 
 const dirs: string[] = []
