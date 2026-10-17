@@ -596,7 +596,14 @@ importers:
         specifier: 7.29.1
         version: 7.29.1
 
-  packages/goal: {}
+  packages/goal:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
 
   packages/home: {}
 
@@ -1199,7 +1206,11 @@ importers:
         specifier: workspace:*
         version: link:../session
 
-  packages/web/tool-web-search: {}
+  packages/web/tool-web-search:
+    dependencies:
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/workspace-files: {}
 
