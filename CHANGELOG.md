@@ -56,6 +56,17 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.5.2-beta.4](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.4) — 2026-10-17
+
+### Fixes
+
+- The Workbench's live browser view stays responsive on pages that repaint
+  continuously (carousels, ads, for example Baidu): screencast frames are
+  capped at 15 fps and delivered at 1280x800 JPEG q60, and each frame is
+  written straight into the page image instead of re-rendering the tabs and
+  toolbar, so the panel no longer stalls while the page animates.
+
+
 ## [0.5.2-beta.3](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.3) — 2026-10-17
 
 ### Fixes
