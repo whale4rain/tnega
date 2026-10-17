@@ -1,4 +1,4 @@
-import type { DurableInbox, AgentRegistry, LiveAgent } from '@tnega/agent'
+import { DurableInbox, AgentRegistry, type LiveAgent } from '@tnega/agent'
 import { Context } from '@tnega/core'
 import { ChatGptLogin } from '@tnega/auth-chatgpt'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
@@ -7,8 +7,8 @@ import { ProcessRegistry, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, type PermissionMode } from '@tnega/approval-host'
 import { ProjectHost } from '@tnega/project-host'
 import { TerminalManager } from '@tnega/terminal'
-import type {  HotPluginHost  } from '@tnega/plugin-host'
-import type {  PluginWorkshop  } from '@tnega/plugin-host'
+import type { HotPluginHost } from '@tnega/plugin-host'
+import type { PluginWorkshop } from '@tnega/plugin-host'
 
 export interface ResidentAgentEntry {
   root: Context

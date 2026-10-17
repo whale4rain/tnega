@@ -1,5 +1,5 @@
-import type {  Context, Fiber  } from '@tnega/core'
-import type {  ToolRequest, ToolStagePayload  } from '@tnega/tools'
+import { Context, Fiber } from '@tnega/core'
+import type { ToolRequest, ToolStagePayload } from '@tnega/tools'
 import { renderToolResult } from '@tnega/session'
 
 /** Observe nested calls before approval starts, without changing the tool pipeline. */

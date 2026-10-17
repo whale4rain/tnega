@@ -1,9 +1,9 @@
 import { browserPlaywright, type PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { llmAuthOptions } from '@tnega/auth-chatgpt'
-import type {  EffectiveLlmConfig  } from '@tnega/config'
-import type {  Context, Plugin  } from '@tnega/core'
+import type { EffectiveLlmConfig } from '@tnega/config'
+import { Context, type Plugin } from '@tnega/core'
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
-import type {  HotPluginHost, PluginWorkshop  } from '@tnega/plugin-host'
+import type { HotPluginHost, PluginWorkshop } from '@tnega/plugin-host'
 import { isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
 import { sessionFile } from '@tnega/session-store'
 import { toolBrowser } from '@tnega/tool-browser'
@@ -12,6 +12,12 @@ import { resolve } from 'node:path'
 
 export const MAX_RUN_ATTACHMENTS = 8
 export const MAX_RUN_BODY_BYTES = 24 * 1024 * 1024
+// Independent of the automatic budget's retain ratio on purpose: a manual
+// compaction whose surface fits entirely under this budget falls back to
+// shadowing the whole surface (`keep` defaults to 0), so raising this value
+// past the surface size changes manual compaction from "keep the tail" to
+// "summarize everything". Keep it a deliberate choice, not a derived one.
+export const KEEP_RECENT_TOKENS = 20_000
 
 /** Host-level plugins the resident runtime mounts: the hot profile and the dev workshop. */
 export function hostPlugins(context: { hotPlugins?: HotPluginHost; pluginWorkshop?: PluginWorkshop }): Plugin[] {
