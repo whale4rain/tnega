@@ -150,9 +150,13 @@
   `http.ts`（传输，`c4bce20`）、`support.ts`（会话/路由小工具，`f231e61`）、
   `context.ts` + `runs.ts`（Host 上下文与两条 run 管线，`facec3a`）、
   `routes.ts`（路由面：`handleApi`、浏览器与终端端点、配置快照、压缩端点，`fbcd1d5`）。
-  最后一项可选重构是在 `routes.ts` 内把 `handleApi` 的 if 链换成
-  `method + pattern → handler` 表，并按域拆成 `routes/*.ts`；它不改包边界，
-  风险集中在请求分发本身。
+- 路由表（按 dsh 的 `WebServer` 形状）已落地：`web-server.ts` 提供 exact / prefix /
+  upgrade 三类具名路由与唯一 fallback 席位，匹配顺序固定为「精确 → 最长前缀 → 回退」，
+  重复路径与第二个 fallback 都直接抛错，注册返回 disposer；`handleRequest` 改走该表
+  （`47aea53`）。`/api` 的传输策略（`x-tnega-client`、JSON content-type）提升为分发边界检查，
+  `GET /api/health`、`GET /api/plugins`、`POST /api/plugins/reload`、
+  `POST /api/folder-picker` 已迁为表项作为样板。剩余工作：把 `handleApi` 其余域按同样形状
+  逐步注册（sessions/runs、files、config、browser、terminals、projects），每迁一域删除对应 if 块。
 - Phase 6 的发布收尾：根 `package.json` 的 `exports` 与 `scripts/build.mjs` 的 `libraryEntries`
   是否需要为新的宿主/运行时包增加子路径（当前它们只被打进 `dist/bin.js` 与 `dist/cli-runtime.js`）。
 
