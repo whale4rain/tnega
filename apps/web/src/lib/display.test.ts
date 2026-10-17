@@ -8,8 +8,8 @@ afterEach(() => { cleanup(); localStorage.clear() })
 
 it('writes each preference as a root attribute that tokens.css reads', () => {
   const root = document.createElement('html')
-  applyDisplay(root, { palette: 'forest', density: 'comfortable', textSize: 'large', readingWidth: 'full' })
-  expect(root.dataset).toMatchObject({ palette: 'forest', density: 'comfortable', textSize: 'large', reading: 'full' })
+  applyDisplay(root, { palette: 'forest', density: 'comfortable', textSize: 'large', readingWidth: 'full', glass: 'full' })
+  expect(root.dataset).toMatchObject({ palette: 'forest', density: 'comfortable', textSize: 'large', reading: 'full', glass: 'full' })
   expect(root.getAttribute('data-text-size')).toBe('large')
 })
 
@@ -29,4 +29,9 @@ it('restores stored choices, ignores unknown ones and persists changes', () => {
   act(() => change?.('readingWidth', 'wide'))
   expect(root.dataset.reading).toBe('wide')
   expect(localStorage.getItem('tnega.readingWidth')).toBe('wide')
+  // Glass is a display preference too: it persists and ignores unknown values.
+  expect(root.dataset.glass).toBe(DISPLAY_DEFAULTS.glass)
+  act(() => change?.('glass', 'off'))
+  expect(root.dataset.glass).toBe('off')
+  expect(localStorage.getItem('tnega.glass')).toBe('off')
 })

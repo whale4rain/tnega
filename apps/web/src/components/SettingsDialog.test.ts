@@ -127,7 +127,7 @@ it('applies colour palette and display choices without saving the config', () =>
   const onDisplayChange = vi.fn()
   const view = render(createElement(SettingsDialog, {
     config: snapshot, onClose: vi.fn(), onSaved: vi.fn(),
-    display: { palette: 'sky', density: 'compact', textSize: 'default', readingWidth: 'standard' }, onDisplayChange,
+    display: { palette: 'sky', density: 'compact', textSize: 'default', readingWidth: 'standard', glass: 'floating' }, onDisplayChange,
   }))
   const palettes = view.getByRole('radiogroup', { name: 'Colour palette' })
   expect([...palettes.querySelectorAll('[role="radio"] .palette-name')].map(name => name.textContent)).toEqual(['Carbon', 'Sky', 'Sand', 'Forest', 'Graphite'])
@@ -136,6 +136,7 @@ it('applies colour palette and display choices without saving the config', () =>
   fireEvent.click(view.getByRole('radio', { name: 'Comfortable' }))
   fireEvent.click(view.getByRole('radio', { name: 'Large' }))
   fireEvent.click(view.getByRole('radio', { name: 'Full width' }))
-  expect(onDisplayChange.mock.calls).toEqual([['palette', 'graphite'], ['density', 'comfortable'], ['textSize', 'large'], ['readingWidth', 'full']])
+  fireEvent.click(view.getByRole('radio', { name: 'Everywhere' }))
+  expect(onDisplayChange.mock.calls).toEqual([['palette', 'graphite'], ['density', 'comfortable'], ['textSize', 'large'], ['readingWidth', 'full'], ['glass', 'full']])
   expect(save).not.toHaveBeenCalled()
 })

@@ -56,6 +56,28 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.5.2-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.2) — 2026-10-17
+
+### Features
+
+- Glass can cover the whole app: Settings → Appearance → Glass offers floating
+  layers only (the default), everywhere (sidebar, conversation header, composer,
+  Workbench card and dialogs, over a tinted backdrop so the blur has something to
+  read), or off. Every mode still keeps body text above its contrast floor.
+- A long session opens on its newest page, with Load older messages bringing the
+  previous page in above the reader without moving it; the session response no
+  longer carries a second copy of the messages (4.5 MB -> 46 kB on an 8,000-event
+  session, first paint 478 ms -> 31 ms on the reference machine).
+
+### Fixes
+
+- A run belongs to the session that started it: switching sessions no longer
+  leaves Stop armed, shows "running elsewhere" under an idle transcript, or lets
+  that run's stream land in the session on screen; switching back reloads the
+  history and keeps the run live.
+- One-off confirmations dismiss themselves instead of sitting under the
+  transcript.
+
 ## [0.5.2-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.1) — 2026-10-16
 
 ### Features

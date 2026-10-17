@@ -156,7 +156,17 @@ kbd {
   .menu-popover,
   .slash-menu,
   .context-pop,
-  .reaction-menu {
+  .reaction-menu,
+  [data-glass="full"] .sidebar,
+  [data-glass="full"] .conv-header,
+  [data-glass="full"] .conv-dock,
+  [data-glass="full"] .composer-box,
+  [data-glass="full"] .wb-frame,
+  [data-glass="full"] .dialog,
+  [data-glass="full"] .menu-popover,
+  [data-glass="full"] .slash-menu,
+  [data-glass="full"] .context-pop,
+  [data-glass="full"] .reaction-menu {
     background: var(--surface-raised);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
@@ -166,6 +176,66 @@ kbd {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+}
+
+/*
+ * Glass everywhere (Settings -> Appearance -> Glass). The shells that float over
+ * the app are always glass; this mode brings the same material to the app own
+ * chrome. Glass over a flat colour is indistinguishable from a tint, so the mode
+ * also paints a tinted backdrop behind the app; over a photo or the browser view
+ * the cost is the accepted one documented in docs/design/tnega-design.md 3.2.
+ */
+[data-glass="full"] body::before {
+  content: "";
+  position: fixed;
+  inset: -15%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 42% at 8% 4%, var(--accent-soft), transparent 70%),
+    radial-gradient(34% 38% at 96% 10%, var(--surface-sunken), transparent 72%),
+    radial-gradient(46% 46% at 78% 96%, var(--accent-soft), transparent 74%);
+}
+
+[data-glass="full"] .sidebar,
+[data-glass="full"] .conv-header,
+[data-glass="full"] .conv-dock,
+[data-glass="full"] .composer-box,
+[data-glass="full"] .wb-frame,
+[data-glass="full"] .dialog,
+[data-glass="full"] .menu-popover,
+[data-glass="full"] .slash-menu,
+[data-glass="full"] .context-pop,
+[data-glass="full"] .reaction-menu {
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* The dock stops fading into the transcript: it is a surface of its own now. */
+[data-glass="full"] .conv-dock {
+  margin-top: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+[data-glass="full"] .conv-header {
+  border-bottom-color: var(--border);
+}
+
+/* Off: a solid app, the same result reduced transparency forces. */
+[data-glass="off"] .menu-popover,
+[data-glass="off"] .slash-menu,
+[data-glass="off"] .context-pop,
+[data-glass="off"] .reaction-menu {
+  background: var(--surface-raised);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-glass="off"] .dialog-scrim {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* ==========================================================================

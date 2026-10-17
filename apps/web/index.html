@@ -14,7 +14,7 @@
         document.documentElement.dataset.theme = dark ? 'dark' : 'light'
         // Display preferences from Settings → Appearance (lib/display.ts).
         document.documentElement.dataset.palette = 'carbon'
-        var display = { palette: 'tnega.palette', density: 'tnega.density', textSize: 'tnega.textSize', reading: 'tnega.readingWidth' }
+        var display = { palette: 'tnega.palette', density: 'tnega.density', textSize: 'tnega.textSize', reading: 'tnega.readingWidth', glass: 'tnega.glass' }
         for (var attribute in display) {
           var value = localStorage.getItem(display[attribute])
           if (value && /^[a-z]+$/.test(value)) document.documentElement.dataset[attribute] = value

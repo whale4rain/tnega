@@ -94,22 +94,31 @@ it('defines the material once, in the tokens', () => {
 
 it('paints glass with the blur on every shell, and falls back when transparency is off', () => {
   const rules = [...glassRules(app), ...glassRules(project)]
-  expect(rules.length, 'glass surfaces').toBe(4)
+  expect(rules.length, 'glass surfaces').toBeGreaterThanOrEqual(4)
   for (const rule of rules) {
     expect(rule.body, rule.selector).toContain('backdrop-filter: blur(var(--glass-blur))')
-    expect(rule.selector.startsWith('.')).toBe(true)
+    expect(rule.selector.startsWith('.') || rule.selector.startsWith('[data-glass='), rule.selector).toBe(true)
   }
   // The fallback lists every glass shell, so none can be left half glass.
   const fallback = app.match(/@media \(prefers-reduced-transparency: reduce\) \{([\s\S]*?)\n\}/u)?.[1] ?? ''
   for (const rule of rules) for (const part of rule.selector.split(',')) expect(fallback, 'fallback for ' + part).toContain(part.trim())
 })
 
-it('keeps surfaces that carry body copy opaque', () => {
-  // Glass is for shells that float over the app; the reading surfaces stay solid.
-  for (const opaque of ['.conv-scroll', '.sidebar', '.wb-frame', '.dialog', '.composer']) {
-    const bodies = [...app.matchAll(/([^\n{}]+)\{([^}]*)\}/gu)]
-      .filter(match => (match[1] ?? '').includes(opaque))
-      .map(match => match[2] ?? '')
-    expect(bodies.some(body => body.includes('var(--glass-surface)')), opaque + ' stays opaque').toBe(false)
+it('keeps surfaces that carry body copy opaque in the default mode', () => {
+  // Glass is opt-in for the app's own chrome; the default (floating only) keeps
+  // the reading surfaces solid, and every app-mode rule says which mode it is for.
+  const rules = [...app.matchAll(/([^\n{}]+)\{([^}]*)\}/gu)]
+    .filter(match => (match[2] ?? '').includes('var(--glass-surface)'))
+    .map(([, selector = '', body = '']) => ({ selector: selector.trim(), body }))
+  for (const { selector } of rules) {
+    const floating = selector.startsWith('.')
+    expect(floating || selector.startsWith('[data-glass="full"]'), selector).toBe(true)
   }
+  for (const opaque of ['.conv-scroll', '.sidebar', '.wb-frame', '.dialog', '.composer']) {
+    const defaultBodies = rules.filter(rule => rule.selector.startsWith('.')).map(rule => rule.selector)
+    expect(defaultBodies.some(selector => selector.includes(opaque)), opaque + ' stays opaque by default').toBe(false)
+  }
+  // Every mode has a solid app: the setting is not the only way out of the material.
+  expect(app).toContain('[data-glass="off"] .dialog-scrim')
+  expect(app).toContain('prefers-reduced-transparency')
 })

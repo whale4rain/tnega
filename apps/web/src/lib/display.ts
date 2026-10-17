@@ -20,12 +20,18 @@ export type Palette = typeof PALETTES[number]['id']
 export type Density = 'compact' | 'comfortable'
 export type TextSize = 'small' | 'default' | 'large'
 export type ReadingWidth = 'narrow' | 'standard' | 'wide' | 'full'
+/**
+ * How much of the material is glass: the shells that float over the app, the
+ * app's own chrome as well, or none of it (a solid app).
+ */
+export type Glass = 'floating' | 'full' | 'off'
 
 export interface DisplayPreferences {
   palette: Palette
   density: Density
   textSize: TextSize
   readingWidth: ReadingWidth
+  glass: Glass
 }
 
 export const DISPLAY_OPTIONS = {
@@ -33,9 +39,10 @@ export const DISPLAY_OPTIONS = {
   density: ['compact', 'comfortable'],
   textSize: ['small', 'default', 'large'],
   readingWidth: ['narrow', 'standard', 'wide', 'full'],
+  glass: ['floating', 'full', 'off'],
 } as const satisfies { [K in keyof DisplayPreferences]: readonly DisplayPreferences[K][] }
 
-export const DISPLAY_DEFAULTS: DisplayPreferences = { palette: 'carbon', density: 'compact', textSize: 'default', readingWidth: 'standard' }
+export const DISPLAY_DEFAULTS: DisplayPreferences = { palette: 'carbon', density: 'compact', textSize: 'default', readingWidth: 'standard', glass: 'floating' }
 
 /** Storage key and root attribute of each preference; index.html mirrors these. */
 export const DISPLAY_KEYS = {
@@ -43,6 +50,7 @@ export const DISPLAY_KEYS = {
   density: { storage: 'tnega.density', attribute: 'density' },
   textSize: { storage: 'tnega.textSize', attribute: 'textSize' },
   readingWidth: { storage: 'tnega.readingWidth', attribute: 'reading' },
+  glass: { storage: 'tnega.glass', attribute: 'glass' },
 } as const satisfies { [K in keyof DisplayPreferences]: { storage: string; attribute: string } }
 
 export function applyDisplay(root: HTMLElement, preferences: DisplayPreferences): void {
@@ -58,14 +66,16 @@ export function useDisplay(): [DisplayPreferences, DisplayChange] {
   const [density, setDensity] = useStoredState<Density>(DISPLAY_KEYS.density.storage, DISPLAY_DEFAULTS.density, DISPLAY_OPTIONS.density)
   const [textSize, setTextSize] = useStoredState<TextSize>(DISPLAY_KEYS.textSize.storage, DISPLAY_DEFAULTS.textSize, DISPLAY_OPTIONS.textSize)
   const [readingWidth, setReadingWidth] = useStoredState<ReadingWidth>(DISPLAY_KEYS.readingWidth.storage, DISPLAY_DEFAULTS.readingWidth, DISPLAY_OPTIONS.readingWidth)
+  const [glass, setGlass] = useStoredState<Glass>(DISPLAY_KEYS.glass.storage, DISPLAY_DEFAULTS.glass, DISPLAY_OPTIONS.glass)
   useEffect(() => {
-    applyDisplay(document.documentElement, { palette, density, textSize, readingWidth })
-  }, [palette, density, textSize, readingWidth])
+    applyDisplay(document.documentElement, { palette, density, textSize, readingWidth, glass })
+  }, [palette, density, textSize, readingWidth, glass])
   const change: DisplayChange = (key, value) => {
     const setters: { [K in keyof DisplayPreferences]: (value: DisplayPreferences[K]) => void } = {
       palette: setPalette, density: setDensity, textSize: setTextSize, readingWidth: setReadingWidth,
+      glass: setGlass,
     }
     setters[key](value)
   }
-  return [{ palette, density, textSize, readingWidth }, change]
+  return [{ palette, density, textSize, readingWidth, glass }, change]
 }

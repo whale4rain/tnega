@@ -85,6 +85,12 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 - **浮层外壳是玻璃**（2026-10-16 起）：菜单、`/` 面板、上下文用量气泡、表情菜单，以及对话框遮罩，用 `--glass-surface`（`--surface-raised` 以 `--glass-alpha` = 0.8 叠在底下）+ `backdrop-filter: blur(12px) saturate(1.4)`（`--glass-blur` / `--glass-saturate`），背后的画面透上来但不挡住内容。α 就是这笔交易的价码：0.8 时材质一眼可见，而且**对着本应用自己会画在浮层后面的每一张面**（`bg`、`bg-sidebar`、`surface`、`surface-raised`、`surface-sunken`、`code-bg`）正文仍 ≥7:1、其余角色仍 ≥4.5:1，由 `apps/web/src/styles/glass.test.ts` 逐个调色板检查。代价写在这里不藏起来：浮层压在一张照片、浏览器视图或别的窗口上时，正文可能降到约 6.5:1、三级文字约 2.7:1。
 - 玻璃只用在**外壳**上：正文所在的卡片、对话、侧栏与工作台保持不透明（`glass.test.ts` 也检查这一点）；浮层里的滚动条与吸顶标头（如 `/` 面板的标题行）用不透明底，否则滚动的行会透过来。
 - 系统偏好 `prefers-reduced-transparency: reduce` 时全部玻璃退回不透明（`app.css` 的 Glass 段）。新增玻璃浮层要同时加进那份清单，否则 `glass.test.ts` 会失败。
+- 设置 → 外观 → **玻璃**（display.ts 的 `glass`，写在 `<html data-glass>` 上）决定材质铺多广：
+  - `floating`（默认）：只有浮层是玻璃，正文面保持不透明；
+  - `full`：应用的整套外壳（侧栏、对话顶栏、输入区、工作台卡片、对话框）也换成 `--glass-surface` + 同一套 blur/saturate。玻璃压在纯色上跟一层半透明色没有区别，所以这个模式同时在 `body::before` 画一层由 `--accent-soft` / `--surface-sunken` 组成的固定底色，模糊才有东西可看；三段径向渐变刻意压得很淡，正文的对比度底线与浮层相同；
+  - `off`：整个应用不透明（等同于系统「降低透明度」的结果）。
+- `glass.test.ts` 守住三条不变量：每个 `--glass-surface` 规则都必须带 blur；每一条玻璃规则都必须出现在「降低透明度」的退回清单里；默认模式下正文所在的表面仍然不透明，`[data-glass="full"]` 之外的规则不得给它们上材质。
+
 
 ### 3.3 Sky（基础调色板）
 
