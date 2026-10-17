@@ -189,7 +189,10 @@ live Windows ACL tests therefore run on an interactive Windows host and skip
 on GitHub Actions; their unit/failure-path tests still run in CI. Verify the
 live suite locally before cutting a release. Shell permission and spill tests
 use explicit bypass because their assertions concern composition, not ACLs.
-The workflow installs ripgrep for the search integration tests.
+The workflow installs ripgrep for the search integration tests: Chocolatey
+first, then the matching zip of the latest official `BurntSushi/ripgrep` release,
+and it ends with `rg --version`, so a runner that ends up without `rg` fails that
+step instead of the search tests.
 
 After `npm publish` accepts the verified tarball, the publisher remains running
 while npm makes the version and its channel visible in the public registry. It
@@ -348,6 +351,18 @@ authorized automatic path.
   package check, Agent retry and all 33 desktop / 6 browser tests passed after
   isolation. Compare failure names against the prior release baseline; record
   the original full-suite result rather than calling the full suite green.
+- **Windows gate without ripgrep (0.5.2-beta.1):** `choco install ripgrep` exited
+  0 while installing 0/0 packages: the community V2 feed answered empty
+  ("Unable to find package 'ripgrep'"), so six search tests failed with
+  `SearchError: ripgrep (rg) was not found on PATH`
+  (`packages/cli/test/file-search.test.ts`, `web.test.ts`,
+  `project-worktrees.test.ts`, `packages/search/search-ripgrep/test/gitignore.test.ts`).
+  The install step now falls back to the official GitHub release and ends with
+  `rg --version`, so a missing binary fails the step itself. Nothing had been
+  published (the `bundle` and `publish` jobs were skipped), so the unpublished
+  tag moved to the fix commit and the run was repeated instead of cutting a new
+  version.
+
 - **npm EOTP / delayed visibility (0.4.7):** npm required the user's dynamic
   code. The user published the checked tarball locally; the official registry
   initially returned 404 and `latest=0.4.6`, then exposed `0.4.7` after several

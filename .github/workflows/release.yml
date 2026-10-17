@@ -35,8 +35,33 @@ jobs:
       - name: Check tag, versions, notes and main ancestry
         run: node scripts/release-ci.mjs check $env:GITHUB_REF_NAME
       - run: pnpm install --frozen-lockfile
+      # The Chocolatey community feed intermittently answers with an empty result
+      # set, and `choco install` still exits 0 with "installed 0/0 packages", which
+      # left the search tests without rg (0.5.2-beta.1). The official release has the
+      # same binary from a steadier source, so fall back to it and then prove that rg
+      # resolves: a missing ripgrep must fail here, not as six search-test failures
+      # later in the run.
       - name: Install ripgrep for search integration tests
-        run: choco install ripgrep --yes --no-progress
+        shell: pwsh
+        env:
+          GH_API_TOKEN: ${{ github.token }}
+        run: |
+          choco install ripgrep --yes --no-progress
+          if (-not (Get-Command rg -ErrorAction SilentlyContinue)) {
+            $headers = @{ Authorization = "Bearer $env:GH_API_TOKEN"; Accept = 'application/vnd.github+json' }
+            $release = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/BurntSushi/ripgrep/releases/latest'
+            $asset = $release.assets | Where-Object { $_.name -like '*x86_64-pc-windows-msvc.zip' } | Select-Object -First 1
+            if (-not $asset) { throw "ripgrep $($release.tag_name) has no x86_64-pc-windows-msvc zip" }
+            $zip = Join-Path $env:RUNNER_TEMP 'ripgrep.zip'
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip
+            $expanded = Join-Path $env:RUNNER_TEMP 'ripgrep'
+            Expand-Archive -Path $zip -DestinationPath $expanded -Force
+            $exe = Get-ChildItem -Path $expanded -Filter 'rg.exe' -Recurse | Select-Object -First 1
+            if (-not $exe) { throw 'rg.exe is missing from the downloaded ripgrep archive' }
+            $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+            $env:PATH = "$($exe.DirectoryName);$env:PATH"
+          }
+          rg --version
       # pnpm deliberately does not allow Electron's postinstall globally.
       # Install the test runtime explicitly on the clean hosted runner.
       - name: Install Electron for the real desktop browser check
