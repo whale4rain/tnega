@@ -1,13 +1,12 @@
 import { resolve } from 'node:path'
-import { Context, type Plugin } from '@tnega/core'
-import type { AgentProfile } from './profile.js'
+import { Context } from '@tnega/core'
+import type { AgentRuntime, AgentRuntimeOptions } from '@tnega/runtime'
 import {
   agent,
   DurableInbox,
   defineAgent,
   type SystemPromptService,
   type AgentContextBudget,
-  type AgentDefinition,
   type AgentInbox,
   type AgentInput,
   type AgentRunOptions,
@@ -20,8 +19,7 @@ import { configureSystemShell } from '@tnega/execution'
 import { SESSION_FORMAT_VERSION, session, isModelAttachment } from '@tnega/session'
 import { GENERAL_SYSTEM_PROMPT } from './work.js'
 import { runtimeCapabilities, ptcCapability } from './compose.js'
-import type { BuiltinToolsConfig, ToolPolicy } from '@tnega/tools'
-import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
+import type { BuiltinToolsConfig } from '@tnega/tools'
 import {
   effectiveApiKey,
   readSystemConfig,
@@ -68,44 +66,8 @@ export interface LlmEnvConfig {
 
 export { resolveLlmEnv } from './config.js'
 
-export interface AgentRuntimeOptions {
-  cwd: string
-  sessionFile: string
-  profile?: AgentProfile
-  llm?: LLMAdapter
-  contextWindow?: number
-  inbox?: AgentInbox
-  allowNetwork?: boolean
-  allowShell?: boolean
-  /**
-   * 本机沙箱的模式。缺省按「有 shell 就至少要能写工作区」推导：`allowShell` 时是
-   * `workspace-write`，否则 `read-only`。宿主上没有任何可用后端时 shell 会 fail
-   * closed（拒绝执行），而不是悄悄退回非受限执行。
-   */
-  sandboxMode?: SandboxMode
-  maxTurns?: number
-  maxSteps?: number
-  contextBudget?: AgentContextBudget
-  agent?: AgentDefinition
-  toolPolicy?: ToolPolicy
-  builtinTools?: false | BuiltinToolsConfig
-  /** Defaults to enabled with builtin tools; explicitly enable for custom compositions. */
-  jobs?: boolean
-  /** Defaults to enabled with builtin tools; installs offline user skills. */
-  skills?: boolean
-  plugins?: readonly Plugin[]
-  /** Web per-run agents consume durable steering at model step boundaries. */
-  durableInbox?: boolean
-  ptc?: { mode?: 'native' | 'both' | 'ptc'; timeoutMs?: number; memoryLimitBytes?: number }
-  /** Host-provided runtime assets and limits; independent of model-visible PTC mode. */
-  ptcRuntime?: PtcRuntimeQuickjsConfig
-}
-
-export interface AgentRuntime {
-  root: Context
-  inbox?: DurableInbox
-  dispose: () => Promise<void>
-}
+/** Re-exported for the existing CLI/programmatic surface; the types live in `@tnega/runtime`. */
+export type { AgentRuntime, AgentRuntimeOptions } from '@tnega/runtime'
 
 export class CliError extends Error {
   override name = 'CliError'

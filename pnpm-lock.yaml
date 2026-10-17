@@ -224,6 +224,8 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/approval-host: {}
+
   packages/approval-jev:
     dependencies:
       '@tnega/approval-review':
@@ -259,6 +261,8 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/auth-chatgpt: {}
 
   packages/auto-approval:
     dependencies:
@@ -320,6 +324,9 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/approval-host':
+        specifier: workspace:*
+        version: link:../approval-host
       '@tnega/approval-jev':
         specifier: workspace:*
         version: link:../approval-jev
@@ -338,6 +345,9 @@ importers:
       '@tnega/artifact-store':
         specifier: workspace:*
         version: link:../project/artifact-store
+      '@tnega/auth-chatgpt':
+        specifier: workspace:*
+        version: link:../auth-chatgpt
       '@tnega/auto-approval':
         specifier: workspace:*
         version: link:../auto-approval
@@ -362,15 +372,33 @@ importers:
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
+      '@tnega/compaction':
+        specifier: workspace:*
+        version: link:../compaction
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../config
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/directory-picker':
+        specifier: workspace:*
+        version: link:../directory-picker
       '@tnega/execution':
         specifier: workspace:*
         version: link:../execution
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
+      '@tnega/goal':
+        specifier: workspace:*
+        version: link:../goal
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
+      '@tnega/host':
+        specifier: workspace:*
+        version: link:../host
       '@tnega/jobs':
         specifier: workspace:*
         version: link:../jobs/jobs
@@ -386,15 +414,39 @@ importers:
       '@tnega/memory-local':
         specifier: workspace:*
         version: link:../memory/memory-local
+      '@tnega/persona':
+        specifier: workspace:*
+        version: link:../persona
+      '@tnega/plugin-host':
+        specifier: workspace:*
+        version: link:../plugin-host
+      '@tnega/profile':
+        specifier: workspace:*
+        version: link:../profile
       '@tnega/project':
         specifier: workspace:*
         version: link:../project/project
+      '@tnega/project-host':
+        specifier: workspace:*
+        version: link:../project/host
+      '@tnega/project-http':
+        specifier: workspace:*
+        version: link:../project/http
       '@tnega/project-local':
         specifier: workspace:*
         version: link:../project/project-local
       '@tnega/project-loop':
         specifier: workspace:*
         version: link:../loop/project-loop
+      '@tnega/project-memory':
+        specifier: workspace:*
+        version: link:../project/memory
+      '@tnega/project-routines':
+        specifier: workspace:*
+        version: link:../project/routines
+      '@tnega/project-worktrees':
+        specifier: workspace:*
+        version: link:../project/worktrees
       '@tnega/ptc-runtime':
         specifier: workspace:*
         version: link:../ptc-runtime
@@ -404,6 +456,9 @@ importers:
       '@tnega/run-summary':
         specifier: workspace:*
         version: link:../run-summary
+      '@tnega/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox/sandbox
@@ -419,6 +474,9 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../session-store
       '@tnega/spill-local':
         specifier: workspace:*
         version: link:../spill/spill-local
@@ -428,6 +486,9 @@ importers:
       '@tnega/subagent-local':
         specifier: workspace:*
         version: link:../subagent/subagent-local
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       '@tnega/thread':
         specifier: workspace:*
         version: link:../project/thread
@@ -470,15 +531,27 @@ importers:
       '@tnega/tool-thread':
         specifier: workspace:*
         version: link:../project/tool-thread
+      '@tnega/tool-web-search':
+        specifier: workspace:*
+        version: link:../web/tool-web-search
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
       '@tnega/tui':
         specifier: workspace:*
         version: link:../tui
+      '@tnega/usage':
+        specifier: workspace:*
+        version: link:../usage
       '@tnega/user-questions':
         specifier: workspace:*
         version: link:../user-questions
+      '@tnega/workspace-files':
+        specifier: workspace:*
+        version: link:../workspace-files
+      '@tnega/workspace-prompt':
+        specifier: workspace:*
+        version: link:../workspace-prompt
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -496,6 +569,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
@@ -506,13 +582,25 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/compaction: {}
+
+  packages/config: {}
+
   packages/core: {}
+
+  packages/directory-picker: {}
 
   packages/execution:
     dependencies:
       undici:
         specifier: 7.29.1
         version: 7.29.1
+
+  packages/goal: {}
+
+  packages/home: {}
+
+  packages/host: {}
 
   packages/jobs/jobs:
     dependencies:
@@ -644,6 +732,12 @@ importers:
         specifier: ^4.0.1
         version: 4.0.1
 
+  packages/persona: {}
+
+  packages/plugin-host: {}
+
+  packages/profile: {}
+
   packages/project/artifact-local:
     dependencies:
       '@tnega/artifact-store':
@@ -695,6 +789,12 @@ importers:
         specifier: workspace:*
         version: link:../../core
 
+  packages/project/host: {}
+
+  packages/project/http: {}
+
+  packages/project/memory: {}
+
   packages/project/project:
     dependencies:
       '@tnega/core':
@@ -712,6 +812,8 @@ importers:
       '@tnega/project':
         specifier: workspace:*
         version: link:../project
+
+  packages/project/routines: {}
 
   packages/project/thread:
     dependencies:
@@ -782,6 +884,8 @@ importers:
         specifier: workspace:*
         version: link:../../tools
 
+  packages/project/worktrees: {}
+
   packages/ptc-runtime:
     dependencies:
       '@tnega/core':
@@ -812,6 +916,24 @@ importers:
         specifier: workspace:*
         version: link:../session
     devDependencies:
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
+
+  packages/runtime:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/ptc-runtime-quickjs':
+        specifier: workspace:*
+        version: link:../ptc-runtime-quickjs
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
@@ -904,6 +1026,8 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/session-store: {}
+
   packages/spill/spill:
     dependencies:
       '@tnega/core':
@@ -972,6 +1096,8 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+
+  packages/terminal: {}
 
   packages/tool-office:
     dependencies:
@@ -1062,6 +1188,8 @@ importers:
         specifier: 4.0.0
         version: 4.0.0(@types/react@19.3.0)
 
+  packages/usage: {}
+
   packages/user-questions:
     dependencies:
       '@tnega/core':
@@ -1070,6 +1198,12 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+
+  packages/web/tool-web-search: {}
+
+  packages/workspace-files: {}
+
+  packages/workspace-prompt: {}
 
 packages:
 

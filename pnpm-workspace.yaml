@@ -9,6 +9,7 @@ packages:
   - packages/jobs/*
   - packages/project/*
   - packages/loop/*
+  - packages/web/*
   - apps/*
 
 onlyBuiltDependencies:

@@ -90,6 +90,13 @@ const packageDirs = {
   'tool-box': 'packages/project/tool-box',
   'tool-thread': 'packages/project/tool-thread',
   'tool-blackboard': 'packages/project/tool-blackboard',
+  // CLI 拆分后的包：分组目录必须在这里登记，声明产物的相对路径重写依赖它。
+  'tool-web-search': 'packages/web/tool-web-search',
+  'project-host': 'packages/project/host',
+  'project-http': 'packages/project/http',
+  'project-worktrees': 'packages/project/worktrees',
+  'project-routines': 'packages/project/routines',
+  'project-memory': 'packages/project/memory',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`

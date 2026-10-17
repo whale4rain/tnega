@@ -10,6 +10,7 @@
     "@modelcontextprotocol/sdk": "1.30.0",
     "@tnega/agent": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/home": "workspace:*",
     "@tnega/llm": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/tools": "workspace:*"

@@ -2,8 +2,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { constants, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
-import { resolveTnegaHome } from '@tnega/coding-agent'
-export { resolveTnegaHome } from '@tnega/coding-agent'
+import { resolveTnegaHome } from '@tnega/home'
+export { resolveTnegaHome } from '@tnega/home'
 
 export function workspaceStorageKey(workspace: string): string {
   const absolute = resolve(workspace)

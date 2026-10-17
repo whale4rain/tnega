@@ -1,11 +1,6 @@
-import type { Plugin } from '@tnega/core'
-import type { AgentRuntimeOptions } from './commands.js'
+import type { AgentProfile, AgentRuntimeOptions } from '@tnega/runtime'
 
-export interface AgentProfile {
-  name: string
-  bundles: readonly Plugin[]
-  options?: Omit<AgentRuntimeOptions, 'cwd' | 'sessionFile' | 'plugins'>
-}
+export type { AgentProfile } from '@tnega/runtime'
 
 export const generalAgentProfile: AgentProfile = {
   name: 'general',
