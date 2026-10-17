@@ -45,9 +45,11 @@ import type { WebServerService } from './web-server.js'
 export const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
 
 /**
- * Routes that no longer live in `handleApi`'s if-chain. Each one is registered
- * by name, and the table's fixed matching order (exact before prefix) keeps
- * them ahead of the `/api/` catch-all that still serves the untouched domains.
+ * Routes registered at the transport table level. The rest of `/api` still
+ * arrives through one `prefix '/api/'` entry and is dispatched by the ordered
+ * `apiRoutes` table below; these four are exact named routes so their paths
+ * never depend on that ordering. Migrating a domain means moving its entries
+ * here (or into the owning package) and deleting them from `apiRoutes`.
  */
 export function registerApiRoutes(web: WebServerService, context: ServerContext): void {
   web.register({
