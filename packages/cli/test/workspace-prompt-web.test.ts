@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { startWebServer } from '../src/server.js'
+import { startWebServer } from '@tnega/host'
 
 it('injects saved instructions into real requests and removes them after clearing', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-prompt-web-'))

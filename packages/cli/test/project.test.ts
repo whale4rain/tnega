@@ -4,9 +4,9 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { startWebServer, type WebServer } from '../src/server.js'
-import { projectSessionRoot } from '../src/state-storage.js'
-import { workspaceStateDir } from '../src/home-paths.js'
+import { startWebServer, type WebServer } from '@tnega/host'
+import { projectSessionRoot } from '@tnega/home'
+import { workspaceStateDir } from '@tnega/home'
 
 const dirs: string[] = []
 const servers: WebServer[] = []

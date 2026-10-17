@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { startWebServer } from '../src/server.js'
+import { startWebServer } from '@tnega/host'
 
 const cleanup: Array<() => Promise<void>> = []
 async function drainCleanup(): Promise<void> {

@@ -1,6 +1,20 @@
 # `@tnega/cli`
 
-CLI 命令、agent runtime 组合层、web server 与会话存储。
+`tnega` 可执行文件的入口与命令分发：argv 解析、`run` / `web` / `tui` 命令、帮助与版本输出。
+
+原先放在本包的能力已拆成独立包，本 README 其余章节描述的是 `tnega` 命令的整体行为，实现位置见下表：
+
+| 内容 | 现在的位置 |
+|---|---|
+| Agent runtime 组装、能力 bundle | [`@tnega/runtime`](../runtime/README.md) |
+| Web/桌面宿主、HTTP/SSE、常驻 Agent | [`@tnega/host`](../host/README.md) |
+| 系统配置、模型路由、ChatGPT 登录 | `@tnega/config`、`@tnega/auth-chatgpt` |
+| Session 存储、用量统计 | `@tnega/session-store`、`@tnega/usage` |
+| Project 宿主与 HTTP | `packages/project/{host,http,routines,memory,worktrees}` |
+| 工作区文件、提示词、路径 | `@tnega/workspace-files`、`@tnega/workspace-prompt`、`@tnega/home` |
+| 插件热重载、profile、审批 | `@tnega/plugin-host`、`@tnega/profile`、`@tnega/approval-host` |
+
+拆分计划与阶段记录见 [`docs/plans/cli-decomposition.md`](../../docs/plans/cli-decomposition.md)。
 
 Project 的 “Pause all work” 持久保存暂停状态并取消当前 Agent Run；Box 中未投递的消息与到期 Routine 等待显式 “Resume project”（`POST /api/projects/:id/resume`）。重启不会自动解除暂停；恢复后错过的 Routine 时段合并为一次执行。单个 Thread 的 Stop 仍只停止该 Run。
 

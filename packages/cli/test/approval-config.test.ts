@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SessionLog } from '@tnega/session'
 import { describe, expect, it } from 'vitest'
-import { readSystemConfig, updateSystemConfig } from '../src/config.js'
-import { createSession, forkSession, readSessionSummary, setSessionApprovalMode, sessionFile } from '../src/store.js'
+import { readSystemConfig, updateSystemConfig } from '@tnega/config'
+import { createSession, forkSession, readSessionSummary, setSessionApprovalMode, sessionFile } from '@tnega/session-store'
 
 describe('approval configuration', () => {
   it.each([undefined, 'deepseek-flash'])('reviewer model does not overwrite conversation model %s, including after fork', async model => {

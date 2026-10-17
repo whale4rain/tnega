@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { isWindowsAclAvailable } from '../../sandbox/sandbox-windows-acl/src/ffi.js'
-import { startWebServer } from '../src/server.js'
+import { startWebServer } from '@tnega/host'
 
 interface Approval { tool: string; input: string; via?: string }
 interface Outcome {

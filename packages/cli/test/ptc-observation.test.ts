@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { tools, type ToolsService } from '@tnega/tools'
-import { observePtc } from '../src/ptc-observation.js'
-import { ApprovalBroker, permissionGuard } from '../src/permissions.js'
+import { observePtc } from '@tnega/host'
+import { ApprovalBroker, permissionGuard } from '@tnega/approval-host'
 
 it('shows a nested call before review and reports its result without asking after auto allow', async () => {
   const ctx = new Context()

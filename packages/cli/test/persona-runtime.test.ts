@@ -5,7 +5,7 @@ import type { AgentLoop, LLMAdapter } from '@tnega/agent'
 import type { ModelMessage } from '@tnega/session'
 import { expect, it } from 'vitest'
 import { createAgentRuntime } from '../src/commands.js'
-import { personaFor } from '../src/work.js'
+import { personaFor } from '@tnega/persona'
 
 it('supplies the default persona to model requests without replacing custom agent instructions', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-persona-'))

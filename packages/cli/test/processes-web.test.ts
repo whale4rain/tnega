@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { startWebServer } from '../src/server.js'
+import { startWebServer } from '@tnega/host'
 
 it('keeps a background shell job visible after the run and lets the user read and stop it within its workspace', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-processes-web-'))

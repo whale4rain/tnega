@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/p
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSession, deleteSession, listSessions, sessionFile, setSessionTitle } from '../src/store.js'
-import { defaultRunSessionFile } from '../src/home-paths.js'
+import { createSession, deleteSession, listSessions, sessionFile, setSessionTitle } from '@tnega/session-store'
+import { defaultRunSessionFile } from '@tnega/home'
 
 let root: string
 const id = '11111111-1111-4111-8111-111111111111'

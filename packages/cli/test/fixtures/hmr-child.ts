@@ -2,7 +2,7 @@
 // plugin imports, and prints the probe result before and after the reload.
 import { writeFile } from 'node:fs/promises'
 import { Context } from '@tnega/core'
-import { createHotPluginHost } from '../../src/plugin-hmr.js'
+import { createHotPluginHost } from '@tnega/plugin-host'
 
 const [file, wordFile] = process.argv.slice(2)
 if (!file || !wordFile) throw new Error('usage: hmr-child <profile> <word-file>')

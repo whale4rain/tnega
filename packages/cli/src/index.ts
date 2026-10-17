@@ -3,11 +3,10 @@ import {
   formatAgentRun,
   runAgentCommand,
 } from './commands.js'
-import { startWebServer } from './server.js'
-import { defaultHotProfile } from './plugin-hmr.js'
-import { resolveProfileFile } from './profile-file.js'
-export * from './profile.js'
-export * from './profile-file.js'
+import { startWebServer } from '@tnega/host'
+import { defaultHotProfile } from '@tnega/plugin-host'
+import { resolveProfileFile } from '@tnega/profile'
+export * from '@tnega/profile'
 
 export type {
   AgentRuntime,
@@ -23,19 +22,19 @@ export {
   resolveLlmEnv,
   runAgentCommand,
 } from './commands.js'
-export { parseYaml } from './yaml.js'
-export { effectiveApiKey } from './config.js'
-export { startWebServer } from './server.js'
-export { createHotPluginHost, defaultHotProfile } from './plugin-hmr.js'
-export type { HotPluginEvent, HotPluginHost, HotPluginHostOptions, HotPluginStatus } from './plugin-hmr.js'
-export { ProjectHost } from './project-host.js'
+export { parseYaml } from '@tnega/profile'
+export { effectiveApiKey } from '@tnega/config'
+export { startWebServer } from '@tnega/host'
+export { createHotPluginHost, defaultHotProfile } from '@tnega/plugin-host'
+export type { HotPluginEvent, HotPluginHost, HotPluginHostOptions, HotPluginStatus } from '@tnega/plugin-host'
+export { ProjectHost } from '@tnega/project-host'
 export type {
   OpenProject,
   ProjectHostOptions,
   ProjectSnapshot,
   ProjectThreadDetail,
-} from './project-host.js'
-export type { WebServer, WebServerOptions } from './server.js'
+} from '@tnega/project-host'
+export type { WebServer, WebServerOptions } from '@tnega/host'
 
 export function main(argv: readonly string[]): Promise<number> {
   return (async () => {

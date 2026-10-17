@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { SessionLog } from '@tnega/session'
-import { startWebServer } from '../src/server.js'
-import { sessionFile } from '../src/store.js'
+import { startWebServer } from '@tnega/host'
+import { sessionFile } from '@tnega/session-store'
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => {

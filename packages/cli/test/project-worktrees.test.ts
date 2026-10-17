@@ -4,11 +4,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { ProjectWorktrees } from '../src/project-worktrees.js'
+import { ProjectWorktrees } from '@tnega/project-worktrees'
 import type { ToolsService } from '@tnega/tools'
-import { ProjectHost } from '../src/project-host.js'
-import { ApprovalBroker } from '../src/permissions.js'
-import { projectSessionRoot, workspaceProjectStateRoot } from '../src/state-storage.js'
+import { ProjectHost } from '@tnega/project-host'
+import { ApprovalBroker } from '@tnega/approval-host'
+import { projectSessionRoot, workspaceProjectStateRoot } from '@tnega/home'
 
 const exec = promisify(execFile)
 const roots: string[] = []

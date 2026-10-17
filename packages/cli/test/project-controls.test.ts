@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import type { LLMAdapter } from '@tnega/agent'
-import { ProjectHost } from '../src/project-host.js'
-import { ApprovalBroker } from '../src/permissions.js'
-import { projectSessionRoot, workspaceProjectStateRoot } from '../src/state-storage.js'
+import { ProjectHost } from '@tnega/project-host'
+import { ApprovalBroker } from '@tnega/approval-host'
+import { projectSessionRoot, workspaceProjectStateRoot } from '@tnega/home'
 
 const hosts: ProjectHost[] = []
 const roots: string[] = []

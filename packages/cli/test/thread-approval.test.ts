@@ -11,10 +11,10 @@ import { Context } from '@tnega/core'
 import { threadLocal } from '@tnega/thread-local'
 import { projectLoop } from '@tnega/project-loop'
 import { tools, type ToolsService } from '@tnega/tools'
-import { ApprovalBroker, permissionGuard } from '../src/permissions.js'
-import { mountThreadApprovals } from '../src/thread-approval.js'
-import { ProjectHost } from '../src/project-host.js'
-import { projectSessionRoot, workspaceProjectStateRoot } from '../src/state-storage.js'
+import { ApprovalBroker, permissionGuard } from '@tnega/approval-host'
+import { mountThreadApprovals } from '@tnega/approval-host'
+import { ProjectHost } from '@tnega/project-host'
+import { projectSessionRoot, workspaceProjectStateRoot } from '@tnega/home'
 
 const roots: string[] = []
 const contexts: Context[] = []

@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { startWebServer } from '../src/server.js'
+import { startWebServer } from '@tnega/host'
 
 it('lists background work while the session is idle and stops it without leaking across sessions', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-jobs-web-'))

@@ -2,10 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { ProjectHost } from '../src/project-host.js'
-import { ApprovalBroker } from '../src/permissions.js'
-import { workspaceProjectStateRoot } from '../src/state-storage.js'
-import { artifactThread, sendArtifactMessage } from '../src/project-artifacts.js'
+import { ProjectHost } from '@tnega/project-host'
+import { ApprovalBroker } from '@tnega/approval-host'
+import { workspaceProjectStateRoot } from '@tnega/home'
+import { artifactThread, sendArtifactMessage } from '@tnega/project-http'
 
 const hosts: ProjectHost[] = []
 const roots: string[] = []

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'vitest'
-import { projectSessionRoot, workspaceProjectStateRoot, workspaceSubagentRoot } from '../src/state-storage.js'
+import { projectSessionRoot, workspaceProjectStateRoot, workspaceSubagentRoot } from '@tnega/home'
 
 test('imports Project and subagent history into home and leaves workspace artifacts intact', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-state-migration-'))

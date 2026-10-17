@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { createLlmAdapter } from '@tnega/llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { discoverModels, parseModelDiscoveryInput } from '../src/model-discovery.js'
-import { availableModels, effectiveLlmConfig, parseModelRouteInput, readSystemConfig, upsertModelRoute, type SystemConfig } from '../src/config.js'
-import { startWebServer, type WebServer } from '../src/server.js'
+import { discoverModels, parseModelDiscoveryInput } from '@tnega/config'
+import { availableModels, effectiveLlmConfig, parseModelRouteInput, readSystemConfig, upsertModelRoute, type SystemConfig } from '@tnega/config'
+import { startWebServer, type WebServer } from '@tnega/host'
 
 const dirs: string[] = []
 const servers: WebServer[] = []

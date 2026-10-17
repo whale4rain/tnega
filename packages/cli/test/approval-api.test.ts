@@ -2,8 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { startWebServer } from '../src/server.js'
-import { readSystemConfig } from '../src/config.js'
+import { startWebServer } from '@tnega/host'
+import { readSystemConfig } from '@tnega/config'
 
 it('isolates reviewer credentials across provider switches and persists approval mode independently', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'tnega-approval-api-'))

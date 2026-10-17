@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { it, expect, vi } from 'vitest'
-import { startWebServer } from '../src/server.js'
+import { startWebServer } from '@tnega/host'
 it('creates and installs skills through slash endpoints while enforcing write permission', async () => {
   const home = await mkdtemp(join(tmpdir(), 'tnega-skills-web-'))
   const workspace = join(home, 'workspace')

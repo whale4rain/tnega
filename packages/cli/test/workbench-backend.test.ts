@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { fileDiff, listChanges, parsePorcelain } from '../src/changes.js'
-import { TerminalManager, type PtyLike, type TerminalEvent } from '../src/terminals.js'
+import { fileDiff, listChanges, parsePorcelain } from '@tnega/workspace-files'
+import { TerminalManager, type PtyLike, type TerminalEvent } from '@tnega/terminal'
 
 const dirs: string[] = []
 
@@ -121,7 +121,7 @@ describe('workbench changes', () => {
 
 describe('terminal over the web server', () => {
   it('runs a real shell command through the API', async () => {
-    const { startWebServer } = await import('../src/server.js')
+    const { startWebServer } = await import('@tnega/host')
     const dir = await tempDir('tnega-term-')
     const server = await startWebServer({ port: 0, browser: false, configFile: join(dir, 'config.json') })
     const headers = { 'x-tnega-client': '1', 'content-type': 'application/json' }

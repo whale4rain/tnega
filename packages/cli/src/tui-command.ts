@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import { CliError } from './commands.js'
-import { defaultHotProfile } from './plugin-hmr.js'
-import { resolveProfileFile } from './profile-file.js'
-import { startWebServer } from './server.js'
+import { defaultHotProfile } from '@tnega/plugin-host'
+import { resolveProfileFile } from '@tnega/profile'
+import { startWebServer } from '@tnega/host'
 
 /**
  * `tnega tui`: start the server in this process on a free loopback port (or

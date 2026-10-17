@@ -3,8 +3,8 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { readSystemConfig } from '../src/config.js'
-import { startWebServer } from '../src/server.js'
+import { readSystemConfig } from '@tnega/config'
+import { startWebServer } from '@tnega/host'
 
 it.each([true, false])('switches the complete model tool surface across runs (resident=%s)', async resident => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-code-mode-web-'))

@@ -10,9 +10,9 @@ import {
   readSystemConfig,
   resolveLlmEnv,
   systemConfigPath,
-} from './config.js'
-import { readAgentProfile } from './profile-file.js'
-import { defaultRunSessionFile } from './home-paths.js'
+} from '@tnega/config'
+import { readAgentProfile } from '@tnega/profile'
+import { defaultRunSessionFile } from '@tnega/home'
 
 export { createAgentRuntime }
 export type { AgentRuntime, AgentRuntimeOptions } from '@tnega/runtime'
@@ -52,7 +52,7 @@ export interface LlmEnvConfig {
   model?: string
 }
 
-export { resolveLlmEnv } from './config.js'
+export { resolveLlmEnv } from '@tnega/config'
 
 export class CliError extends Error {
   override name = 'CliError'

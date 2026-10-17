@@ -377,39 +377,49 @@ importers:
 
   packages/cli:
     dependencies:
-      '@lydell/node-pty':
-        specifier: 1.1.0
-        version: 1.1.0
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../config
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
+      '@tnega/host':
+        specifier: workspace:*
+        version: link:../host
+      '@tnega/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@tnega/plugin-host':
+        specifier: workspace:*
+        version: link:../plugin-host
+      '@tnega/profile':
+        specifier: workspace:*
+        version: link:../profile
+      '@tnega/project-host':
+        specifier: workspace:*
+        version: link:../project/host
+      '@tnega/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/tui':
+        specifier: workspace:*
+        version: link:../tui
+    devDependencies:
       '@tnega/approval-host':
         specifier: workspace:*
         version: link:../approval-host
-      '@tnega/approval-jev':
-        specifier: workspace:*
-        version: link:../approval-jev
-      '@tnega/approval-llm':
-        specifier: workspace:*
-        version: link:../approval-llm
-      '@tnega/approval-openai':
-        specifier: workspace:*
-        version: link:../approval-openai
-      '@tnega/approval-review':
-        specifier: workspace:*
-        version: link:../approval-review
-      '@tnega/artifact-local':
-        specifier: workspace:*
-        version: link:../project/artifact-local
-      '@tnega/artifact-store':
-        specifier: workspace:*
-        version: link:../project/artifact-store
-      '@tnega/auth-chatgpt':
-        specifier: workspace:*
-        version: link:../auth-chatgpt
-      '@tnega/auto-approval':
-        specifier: workspace:*
-        version: link:../auto-approval
       '@tnega/blackboard':
         specifier: workspace:*
         version: link:../project/blackboard
@@ -422,198 +432,39 @@ importers:
       '@tnega/box-blackboard':
         specifier: workspace:*
         version: link:../project/box-blackboard
-      '@tnega/browser':
-        specifier: workspace:*
-        version: link:../browser/browser
-      '@tnega/browser-playwright':
-        specifier: workspace:*
-        version: link:../browser/browser-playwright
-      '@tnega/coding-agent':
-        specifier: workspace:*
-        version: link:../coding-agent
-      '@tnega/compaction':
-        specifier: workspace:*
-        version: link:../compaction
-      '@tnega/config':
-        specifier: workspace:*
-        version: link:../config
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/directory-picker':
-        specifier: workspace:*
-        version: link:../directory-picker
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../execution
-      '@tnega/execution-sandbox':
-        specifier: workspace:*
-        version: link:../sandbox/execution-sandbox
-      '@tnega/goal':
-        specifier: workspace:*
-        version: link:../goal
-      '@tnega/home':
-        specifier: workspace:*
-        version: link:../home
-      '@tnega/host':
-        specifier: workspace:*
-        version: link:../host
-      '@tnega/jobs':
-        specifier: workspace:*
-        version: link:../jobs/jobs
-      '@tnega/jobs-local':
-        specifier: workspace:*
-        version: link:../jobs/jobs-local
-      '@tnega/llm':
-        specifier: workspace:*
-        version: link:../llm
-      '@tnega/memory':
-        specifier: workspace:*
-        version: link:../memory/memory
-      '@tnega/memory-local':
-        specifier: workspace:*
-        version: link:../memory/memory-local
       '@tnega/persona':
         specifier: workspace:*
         version: link:../persona
-      '@tnega/plugin-host':
-        specifier: workspace:*
-        version: link:../plugin-host
-      '@tnega/profile':
-        specifier: workspace:*
-        version: link:../profile
-      '@tnega/project':
-        specifier: workspace:*
-        version: link:../project/project
-      '@tnega/project-host':
-        specifier: workspace:*
-        version: link:../project/host
       '@tnega/project-http':
         specifier: workspace:*
         version: link:../project/http
-      '@tnega/project-local':
-        specifier: workspace:*
-        version: link:../project/project-local
       '@tnega/project-loop':
         specifier: workspace:*
         version: link:../loop/project-loop
-      '@tnega/project-memory':
-        specifier: workspace:*
-        version: link:../project/memory
       '@tnega/project-routines':
         specifier: workspace:*
         version: link:../project/routines
       '@tnega/project-worktrees':
         specifier: workspace:*
         version: link:../project/worktrees
-      '@tnega/ptc-runtime':
-        specifier: workspace:*
-        version: link:../ptc-runtime
-      '@tnega/ptc-runtime-quickjs':
-        specifier: workspace:*
-        version: link:../ptc-runtime-quickjs
-      '@tnega/run-summary':
-        specifier: workspace:*
-        version: link:../run-summary
-      '@tnega/runtime':
-        specifier: workspace:*
-        version: link:../runtime
-      '@tnega/sandbox':
-        specifier: workspace:*
-        version: link:../sandbox/sandbox
-      '@tnega/sandbox-local':
-        specifier: workspace:*
-        version: link:../sandbox/sandbox-local
-      '@tnega/search':
-        specifier: workspace:*
-        version: link:../search/search-definition
-      '@tnega/search-ripgrep':
-        specifier: workspace:*
-        version: link:../search/search-ripgrep
-      '@tnega/session':
-        specifier: workspace:*
-        version: link:../session
       '@tnega/session-store':
         specifier: workspace:*
         version: link:../session-store
-      '@tnega/spill-local':
-        specifier: workspace:*
-        version: link:../spill/spill-local
-      '@tnega/subagent':
-        specifier: workspace:*
-        version: link:../subagent/subagent
-      '@tnega/subagent-local':
-        specifier: workspace:*
-        version: link:../subagent/subagent-local
       '@tnega/terminal':
         specifier: workspace:*
         version: link:../terminal
-      '@tnega/thread':
-        specifier: workspace:*
-        version: link:../project/thread
       '@tnega/thread-local':
         specifier: workspace:*
         version: link:../project/thread-local
-      '@tnega/tool-blackboard':
-        specifier: workspace:*
-        version: link:../project/tool-blackboard
-      '@tnega/tool-box':
-        specifier: workspace:*
-        version: link:../project/tool-box
-      '@tnega/tool-browser':
-        specifier: workspace:*
-        version: link:../browser/tool-browser
-      '@tnega/tool-jobs':
-        specifier: workspace:*
-        version: link:../jobs/tool-jobs
-      '@tnega/tool-memory':
-        specifier: workspace:*
-        version: link:../memory/tool-memory
-      '@tnega/tool-office':
-        specifier: workspace:*
-        version: link:../tool-office
-      '@tnega/tool-ptc':
-        specifier: workspace:*
-        version: link:../tool-ptc
-      '@tnega/tool-question':
-        specifier: workspace:*
-        version: link:../tool-question
-      '@tnega/tool-search':
-        specifier: workspace:*
-        version: link:../search/tool-search
-      '@tnega/tool-spill':
-        specifier: workspace:*
-        version: link:../spill/tool-spill
-      '@tnega/tool-subagent':
-        specifier: workspace:*
-        version: link:../subagent/tool-subagent
-      '@tnega/tool-thread':
-        specifier: workspace:*
-        version: link:../project/tool-thread
-      '@tnega/tool-web-search':
-        specifier: workspace:*
-        version: link:../web/tool-web-search
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
-      '@tnega/tui':
-        specifier: workspace:*
-        version: link:../tui
-      '@tnega/usage':
-        specifier: workspace:*
-        version: link:../usage
-      '@tnega/user-questions':
-        specifier: workspace:*
-        version: link:../user-questions
       '@tnega/workspace-files':
         specifier: workspace:*
         version: link:../workspace-files
-      '@tnega/workspace-prompt':
-        specifier: workspace:*
-        version: link:../workspace-prompt
-      chokidar:
-        specifier: ^4.0.3
-        version: 4.0.3
 
   packages/client: {}
 

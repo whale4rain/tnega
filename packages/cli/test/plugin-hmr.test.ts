@@ -6,7 +6,7 @@ import { promisify } from 'node:util'
 import { Context } from '@tnega/core'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from '../src/plugin-hmr.js'
+import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from '@tnega/plugin-host'
 
 const execFileAsync = promisify(execFile)
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
@@ -129,7 +129,7 @@ describe('hot plugin host', () => {
 
 describe('web server plugin profile', () => {
   it('reports and reloads the hot plugin profile', async () => {
-    const { startWebServer } = await import('../src/server.js')
+    const { startWebServer } = await import('@tnega/host')
     const dir = await tempDir()
     await writePlugin(dir, 'served')
     const file = join(dir, 'default.yaml')

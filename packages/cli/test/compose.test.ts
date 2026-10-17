@@ -1,6 +1,6 @@
 import { Context } from '@tnega/core'
 import { describe, expect, it } from 'vitest'
-import { runtimeCapabilities } from '../src/compose.js'
+import { runtimeCapabilities } from '@tnega/runtime'
 
 async function mount(spec: Parameters<typeof runtimeCapabilities.apply>[1]): Promise<Context> {
   const ctx = new Context()

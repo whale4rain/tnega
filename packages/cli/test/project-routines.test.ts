@@ -9,8 +9,8 @@ import { Context } from '@tnega/core'
 import type { SessionEvent } from '@tnega/session'
 import { threadLocal } from '@tnega/thread-local'
 import { tools } from '@tnega/tools'
-import { sessionTotals } from '../src/project-host.js'
-import { RoutineError, RoutineRunner, describeSchedule, nextRun, normalizeSchedule } from '../src/project-routines.js'
+import { sessionTotals } from '@tnega/project-host'
+import { RoutineError, RoutineRunner, describeSchedule, nextRun, normalizeSchedule } from '@tnega/project-routines'
 
 const directories: string[] = []
 afterEach(async () => {

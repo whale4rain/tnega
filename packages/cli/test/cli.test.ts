@@ -11,7 +11,7 @@ import {
   resolveLlmEnv,
   runAgentCommand,
 } from '../src/index.js'
-import { defaultRunSessionFile } from '../src/home-paths.js'
+import { defaultRunSessionFile } from '@tnega/home'
 import { main as runExecutable } from '../src/entry.js'
 
 type FetchMock = Mock<(...args: [unknown, RequestInit]) => Promise<Response>>

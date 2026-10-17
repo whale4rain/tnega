@@ -3,9 +3,9 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { startWebServer, type WebServer } from '../src/server.js'
+import { startWebServer, type WebServer } from '@tnega/host'
 import { SessionLog } from '@tnega/session'
-import { sessionFile } from '../src/store.js'
+import { sessionFile } from '@tnega/session-store'
 
 const dirs: string[] = []
 const servers: WebServer[] = []
