@@ -56,6 +56,21 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.5.2-beta.3](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.3) — 2026-10-17
+
+### Fixes
+
+- A long session's older history now loads when you scroll to the top: the
+  **Load older messages** button is gone, the previous page is requested
+  automatically, and the reader keeps their place. A page that does not fill the
+  window keeps loading until the transcript can scroll or the history ends.
+- Glass everywhere now reads as glass: the tinted backdrop is visible through the
+  conversation surface instead of being covered by it, and popovers inside a
+  glass shell (the header's Agent and Access menus, the composer's model list,
+  the context popover) use a solid raised surface, so what is behind them no
+  longer shows through their text.
+
+
 ## [0.5.2-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.2) — 2026-10-17
 
 ### Features
