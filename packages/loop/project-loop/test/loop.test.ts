@@ -391,14 +391,8 @@ it('wakes the coordinator for a report it asked to act on', async () => {
   }
 })
 
-it('gives the coordinator a long report as its outcome with a pointer to the rest', async () => {
-  const { boundReport, COORDINATOR_REPORT_CHARS } = await import('../src/index.js')
-  expect(boundReport('  Short and done.  ', 't1')).toBe('Short and done.')
+it('gives the coordinator the whole report, with no size budget', async () => {
   const long = `Outcome: shipped.\n\n${'Evidence line. '.repeat(200)}`
-  const bounded = boundReport(long, 't1')
-  expect(bounded.startsWith('Outcome: shipped.')).toBe(true)
-  expect(bounded.length).toBeLessThan(COORDINATOR_REPORT_CHARS + 200)
-  expect(bounded).toContain('list_threads with thread_id "t1"')
 
   const root = await workspace()
   const ctx = await mount(root)
@@ -433,8 +427,9 @@ it('gives the coordinator a long report as its outcome with a pointer to the res
     const input = (await parent.session.read()).find(event => event.type === 'user/message'
       && event.payload.name === `box:${report.messageId}`)
     const content = JSON.stringify(input?.payload)
+    // A thread reports what serves the user; the coordinator reads all of it.
     expect(content).toContain('Outcome: shipped.')
-    expect(content.length).toBeLessThan(COORDINATOR_REPORT_CHARS + 800)
+    expect(content).toContain('Evidence line. '.repeat(200).trim())
     // The thread keeps the full report for whoever opens it.
     expect((await ctx.threads.get(child.id))?.detail).toBe(long.trim())
   } finally {

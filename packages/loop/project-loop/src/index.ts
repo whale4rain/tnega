@@ -111,28 +111,11 @@ const REPORT_LABEL: Partial<Record<BoxEnvelope['kind'], string>> = {
 }
 
 /**
- * A quiet report reaches the coordinator as context on every later request,
- * so it carries the outcome, not the whole write-up: threads lead with the
- * outcome, and the full text stays in the thread (and in `list_threads` with
- * `thread_id`) for the rare decision that needs it.
- */
-export const COORDINATOR_REPORT_CHARS = 1200
-
-export function boundReport(text: string, threadId: string, max = COORDINATOR_REPORT_CHARS): string {
-  const trimmed = text.trim()
-  if (trimmed.length <= max) return trimmed
-  const cut = trimmed.slice(0, max)
-  const boundary = Math.max(cut.lastIndexOf('\n\n'), cut.lastIndexOf('. '))
-  const head = (boundary > max / 2 ? cut.slice(0, boundary + 1) : cut).trimEnd()
-  return `${head}\n\n[Report shortened; the full text is in the thread. Call list_threads with thread_id "${threadId}" only if a decision needs it.]`
-}
-
-/**
  * Appended to work handed to a thread. A thread's final answer is the message
  * the user reads in it, so it should read like a colleague reporting back,
  * whatever detail the brief asked for.
  */
-export const REPORT_REMINDER = '[When you finish, your final answer is your report in this thread. Write it like a colleague\'s chat message: one short paragraph under about 80 words saying what is done or found, with links, and what the reader must decide (say nothing about decisions when there are none). Leave out the steps, checks, commands and raw output; put longer evidence in an artifact, which shows as a card under your report, so mention it by title rather than by ID.]'
+export const REPORT_REMINDER = '[When you finish, your final answer is your report in this thread. Write it like a colleague\'s chat message: what is done or found, with links, and what the reader must decide (say nothing about decisions when there are none). Take the room the outcome needs and no more. Leave out the steps, checks, commands and raw output; longer evidence belongs in an artifact, which shows as a card under your report, so mention it by title rather than by ID.]'
 
 function excerpt(text: string, max = 160): string {
   const line = text.replace(/\s+/g, ' ').trim()
@@ -495,13 +478,11 @@ export class ProjectLoopRuntime {
         // Work handed to a thread ends with a reminder of how to report: the brief's
         // own wording ("report the exact command and its output") otherwise wins.
         const briefed = envelope.kind === 'dispatch' && this.known.get(threadId)?.parentId !== undefined
-        const shown = quiet && envelope.kind === 'complete' && envelope.sender.kind === 'agent'
-          ? { ...envelope, text: boundReport(envelope.text, envelope.sender.id) }
-          : planned
-            ? { ...envelope, text: `${envelope.text}\n\n[Your planned next step: ${planned}]` }
-            : briefed
-              ? { ...envelope, text: `${envelope.text}\n\n${REPORT_REMINDER}` }
-              : envelope
+        const shown = planned
+          ? { ...envelope, text: `${envelope.text}\n\n[Your planned next step: ${planned}]` }
+          : briefed
+            ? { ...envelope, text: `${envelope.text}\n\n${REPORT_REMINDER}` }
+            : envelope
         const input = {
           messages: [{
             role: 'user' as const,
