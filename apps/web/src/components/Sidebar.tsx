@@ -21,7 +21,7 @@ import { PullRequestMark } from './PullRequestMark'
 import { api } from '../lib/api'
 import { folderName, relativeTime, useScrollFade, type ThemePreference } from '../lib/hooks'
 import { projectApi } from '../lib/project-api'
-import { projectLight } from '../lib/project-model'
+import { projectLight, type LightTone } from '../lib/project-model'
 import { StatusLight } from './StatusLight'
 import type { ProjectRecord } from '../lib/project-types'
 import type { SessionSummary } from '../lib/types'
@@ -55,7 +55,7 @@ function readCollapsed(): Set<string> {
  * The sidebar has two parts: Pinned, every project from every workspace, and
  * below it one collapsible group of sessions per workspace, the most recently
  * active workspace first. Both collapse and show a few rows before "N more".
- * A session row is a dot and a title; a project row is a project icon, its
+ * A session row is a status light and a title; a project row is a project icon, its
  * name, and at the end its status light and pull request mark when it has
  * them. Times and workspaces are in the tooltip.
  *
@@ -390,7 +390,7 @@ function WorkspaceGroup({
                 title={`${session.title || 'Untitled session'}\n${session.parentSessionId ? 'Forked · ' : ''}${relativeTime(session.updatedAt)}`}
               >
                 <span className="session-title">
-                  <span className="session-mark"><span className="session-dot" aria-hidden /></span>
+                  <span className="session-mark"><StatusLight {...sessionLight(session)} /></span>
                   <span>{session.title || 'Untitled session'}</span>
                 </span>
               </button>
@@ -472,6 +472,17 @@ function ProjectRow({
       />
     </div>
   )
+}
+
+/**
+ * A session's light says what needs you: amber while its approval card waits,
+ * pulsing accent while a run goes, and plain otherwise. Only this browser
+ * knows about a run it started, so the server reports both states.
+ */
+function sessionLight(session: SessionSummary): { tone: LightTone; label: string } {
+  if (session.waiting) return { tone: 'waiting', label: 'Waiting on you' }
+  if (session.running) return { tone: 'working', label: 'Working' }
+  return { tone: 'idle', label: 'Idle' }
 }
 
 function ThemeSwitch({ value, onChange }: { value: ThemePreference; onChange: (value: ThemePreference) => void }) {

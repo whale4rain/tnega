@@ -1106,23 +1106,12 @@ kbd {
   white-space: nowrap;
 }
 
-/* A session row is a quiet dot and a title; a project row puts its icon in the same slot. */
+/* A session row is a status light and a title; a project row puts its icon in the same slot. */
 .session-mark {
   display: grid;
   place-items: center;
   flex: none;
   width: var(--icon);
-}
-
-.session-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
-}
-
-.session-item.active .session-dot {
-  background: var(--accent);
 }
 
 .session-more {

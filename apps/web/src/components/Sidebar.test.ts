@@ -128,6 +128,25 @@ it('collapses Pinned, shows a few projects before "more", and archives or delete
   expect(JSON.parse(localStorage.getItem('tnega.sidebar.collapsed') ?? '[]')).toEqual(['\0pinned'])
 })
 
+it('turns a session row\'s dot into a light that says what needs you', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const sessions: SessionSummary[] = [
+    { ...session('busy', '/a', 3), running: true },
+    { ...session('ask', '/a', 2), running: true, waiting: true },
+    { ...session('rest', '/a', 1) },
+  ]
+  const { view } = renderSidebar({ sessions })
+  const mark = (title: string) => view.getByText(title).closest('.session-item')!.querySelector('.session-mark .status-light')!
+
+  expect(mark('Session busy').className).toContain('light-working')
+  // An approval card outranks the run it pauses.
+  expect(mark('Session ask').className).toContain('light-waiting')
+  expect(mark('Session ask').getAttribute('aria-label')).toBe('Waiting on you')
+  expect(mark('Session rest').className).toContain('light-idle')
+  expect(view.container.querySelector('.session-dot')).toBeNull()
+})
+
 it('marks where a project\'s pull requests stand', () => {
   vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
   vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })

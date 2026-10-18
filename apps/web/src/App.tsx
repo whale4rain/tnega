@@ -208,14 +208,16 @@ export function App() {
     }
   }, [workspace])
 
-  // Project status lights follow threads in every project, including ones not on screen.
+  // Status lights follow projects' threads and sessions' runs, including ones not on screen.
   useEffect(() => {
     if (!workspace) return
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') refreshProjects()
+      if (document.visibilityState !== 'visible') return
+      refreshProjects()
+      refreshSessions()
     }, 20_000)
     return () => clearInterval(timer)
-  }, [workspace, refreshProjects])
+  }, [workspace, refreshProjects, refreshSessions])
 
   // A project screen puts its own tabs (Board, Library, Routines, threads) at the
   // front of the same Workbench a session uses, and renders them into a slot.

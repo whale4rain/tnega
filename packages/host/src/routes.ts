@@ -276,14 +276,19 @@ const apiRoutes: ApiRoute[] = [
   },
 {
     match: (req, url) => Boolean(url.pathname === '/api/sessions' && req.method === 'GET'),
-    handle: async (req, res, url) => {
+    handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/sessions' && req.method === 'GET')) return
       const workspace = workspaceParam(url)
       if (!workspace) {
             sendError(res, 400, 'workspace query parameter is required')
             return
           }
-      const sessions = await listSessions(workspace)
+      // The sidebar's light says what needs you: a run going now, or an approval card waiting on you.
+      const sessions = (await listSessions(workspace)).map(session => {
+            const running = isActive(context.activeRuns, workspace, session.id)
+            const waiting = context.approvals.pendingFor(runKey(workspace, session.id))
+            return { ...session, ...(running ? { running } : {}), ...(waiting ? { waiting } : {}) }
+          })
       sendJson(res, 200, { workspace, sessions })
       return
     },

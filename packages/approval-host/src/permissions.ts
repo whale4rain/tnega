@@ -91,6 +91,14 @@ export class ApprovalBroker {
     return true
   }
 
+  /** Whether a person still has to answer for this run before it can go on. */
+  pendingFor(key: string): boolean {
+    for (const approval of this.pending.values()) {
+      if (approval.key === key) return true
+    }
+    return false
+  }
+
   async request(key: string, request: ToolRequest, options: { fullInput?: boolean } = {}): Promise<boolean> {
     return await this.ask(key, request, options) === 'allow'
   }

@@ -35,6 +35,10 @@ export interface SessionSummary {
   reasoningEffort?: SessionEffort
   permission?: Permission
   approvalMode?: ApprovalMode
+  /** A run is going now; the sidebar shows it as working. */
+  running?: boolean
+  /** Its approval card is open, so it needs you before it can go on. */
+  waiting?: boolean
 }
 
 export interface ErrorInfo {
