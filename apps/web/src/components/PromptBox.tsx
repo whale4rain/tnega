@@ -52,6 +52,7 @@ export function PromptBox({
   toolbar,
   footer,
   autoFocusKey,
+  resetKey,
   compact,
   inline,
   acceptImages = false,
@@ -75,6 +76,8 @@ export function PromptBox({
   toolbar?: ReactNode
   footer?: ReactNode
   autoFocusKey?: string | undefined
+  /** A draft belongs to the conversation it was typed in: a new key starts empty. */
+  resetKey?: string | undefined
   compact?: boolean
   /** One line at rest with the send button beside the text; grows as you type. Project room and threads. */
   inline?: boolean
@@ -137,6 +140,16 @@ export function PromptBox({
   useEffect(() => {
     input.current?.focus()
   }, [autoFocusKey])
+
+  // Unsent text belongs to the session, project or thread it was typed in: leaving it clears the draft.
+  useEffect(() => {
+    setText('')
+    setImages([])
+    setContexts([])
+    setCaret(0)
+    setDismissed('')
+    setAsyncItems(undefined)
+  }, [resetKey])
 
   // Things handed over from elsewhere in the app, e.g. an element picked in the browser.
   useEffect(() => {

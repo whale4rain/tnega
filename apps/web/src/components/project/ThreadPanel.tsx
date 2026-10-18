@@ -182,6 +182,7 @@ export function ThreadPanel({
           running={working}
           allowWhileRunning
           autoFocusKey={threadId}
+          resetKey={threadId}
         />
       </div>
       </div>

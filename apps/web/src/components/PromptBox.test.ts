@@ -39,6 +39,17 @@ it('completes commands, closes on Escape, reopens on typing and runs a typed-out
   expect(onSubmit).toHaveBeenCalledWith('/plan', [])
 })
 
+it('drops an unsent draft when the conversation changes', () => {
+  const view = render(createElement(PromptBox, { onSubmit: () => true, placeholder: 'Reply…', resetKey: 'session-a' }))
+  const box = messageBox(view)
+  type(box, 'Half a thought')
+  // The same conversation keeps the draft: a re-render is not a switch.
+  view.rerender(createElement(PromptBox, { onSubmit: () => true, placeholder: 'Reply…', resetKey: 'session-a' }))
+  expect(box.value).toBe('Half a thought')
+  view.rerender(createElement(PromptBox, { onSubmit: () => true, placeholder: 'Reply…', resetKey: 'session-b' }))
+  expect(box.value).toBe('')
+})
+
 it('inserts @ file mentions from the workspace search', async () => {
   vi.useFakeTimers()
   const searchFiles = vi.fn(async () => ['outputs/q2-summary.xlsx', 'notes.md'])

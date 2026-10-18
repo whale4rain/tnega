@@ -62,6 +62,7 @@ export function Composer({
   onStop,
   placeholder,
   autoFocusKey,
+  resetKey,
 }: {
   settings: RunSettings
   onSettingsChange: (patch: Partial<RunSettings>) => void
@@ -81,6 +82,8 @@ export function Composer({
   onStop: () => void
   placeholder: string
   autoFocusKey?: string | undefined
+  /** Clears an unsent draft when the conversation changes. */
+  resetKey?: string | undefined
 }) {
   const active = models.find(model => model.id === (settings.model || defaultModelId))
   return (
@@ -99,6 +102,7 @@ export function Composer({
       onStop={onStop}
       placeholder={placeholder}
       autoFocusKey={autoFocusKey}
+      resetKey={resetKey}
       toolbar={
         <>
           <Choice label="Mode" value={settings.mode} options={MODE_OPTIONS} onChange={mode => onSettingsChange({ mode })} disabled={locked} />

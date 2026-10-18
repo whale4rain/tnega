@@ -869,6 +869,7 @@ export function Conversation({
             onStop={() => void stop()}
             placeholder={live ? 'Steer the agent… (@ for files)' : sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
             autoFocusKey={sessionId ?? 'draft'}
+            resetKey={sessionId ?? 'draft'}
           />
         </div>
       </div>
