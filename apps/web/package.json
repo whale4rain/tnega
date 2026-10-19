@@ -14,7 +14,6 @@
     "test:e2e:release": "node e2e/release.mjs"
   },
   "dependencies": {
-    "@tnega/client": "workspace:*",
     "@babel/runtime": "^7.29.7",
     "@codemirror/language": "^6.12.4",
     "@codemirror/language-data": "^6.5.2",
@@ -28,6 +27,7 @@
     "@headless-tree/core": "^1.7.0",
     "@headless-tree/react": "^1.7.0",
     "@lezer/highlight": "^1.2.5",
+    "@tnega/client": "workspace:*",
     "@uiw/react-codemirror": "^4.25.12",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
@@ -37,6 +37,7 @@
     "exceljs": "^4.4.0",
     "jszip": "^3.10.2",
     "lucide-react": "^1.47.0",
+    "pele": "1.6.0",
     "pptxviewjs": "^1.1.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -44,9 +45,9 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
-    "@tnega/host": "workspace:*",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
+    "@tnega/host": "workspace:*",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^5.0.0",

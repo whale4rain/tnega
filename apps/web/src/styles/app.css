@@ -4673,3 +4673,65 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .status-light.light-working { animation: none; }
 }
+
+/* ==========================================================================
+   Mermaid diagrams (rendered by pele)
+   ========================================================================== */
+
+.mermaid-block {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.mermaid-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Pele reads its own variables; they are the palette's roles, never literals. */
+.mermaid-canvas {
+  --pele-bg: var(--surface);
+  --pele-fg: var(--text);
+  --pele-muted: var(--text-3);
+  --pele-line: var(--text-2);
+  --pele-surface: var(--surface-sunken);
+  --pele-surface-alt: var(--code-bg);
+  --pele-border: var(--border-strong);
+  --pele-accent: var(--accent);
+  --pele-critical: var(--danger);
+  --pele-error: var(--danger);
+  --pele-font: var(--font-sans);
+  --pele-font-mono: var(--font-mono);
+  --pele-radius: var(--radius-sm);
+  /* Charts need eight hues; the status and syntax roles are the only chromatic
+     tokens, and they are already checked against the code surfaces. */
+  --pele-series-1: var(--accent);
+  --pele-series-2: var(--success);
+  --pele-series-3: var(--warn);
+  --pele-series-4: var(--danger);
+  --pele-series-5: var(--syntax-function);
+  --pele-series-6: var(--syntax-number);
+  --pele-series-7: var(--syntax-string);
+  --pele-series-8: var(--text-2);
+  padding: 12px;
+  overflow-x: auto;
+}
+
+.mermaid-canvas[hidden] {
+  display: none;
+}
+
+.mermaid-canvas svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.mermaid-error {
+  margin: 0;
+  padding: 0 12px 10px;
+  font-size: var(--text-xs);
+  color: var(--danger);
+}

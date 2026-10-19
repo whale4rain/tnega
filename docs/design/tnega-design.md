@@ -37,7 +37,7 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。界面要**安�
 
 ## 3. 色彩：模式 × 调色板
 
-所有颜色只来自 `apps/web/src/styles/tokens.css`，组件**不得**写裸色值（`#hex`、`rgb()`、命名色）。唯一的例外是 `tokens.css` 本身、品牌 SVG 数据 URL 里的白眼睛，以及需要具体颜色值的第三方库——它们在运行时从 token 读取（终端 `TerminalView.themeFromTokens`、桌面标题栏 `desktop-chrome.ts`）。
+所有颜色只来自 `apps/web/src/styles/tokens.css`，组件**不得**写裸色值（`#hex`、`rgb()`、命名色）。唯一的例外是 `tokens.css` 本身、品牌 SVG 数据 URL 里的白眼睛，以及需要具体颜色值的第三方库——它们在运行时从 token 读取（终端 `TerminalView.themeFromTokens`、桌面标题栏 `desktop-chrome.ts`、Mermaid 图的 `--pele-*`）。
 
 ### 3.1 两个独立的轴
 
@@ -206,7 +206,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - 全应用使用同一字号阶梯（§6.1）：常规界面 13px，对话正文与输入 14px、1.6 行高，工具详情 12px，元数据 11px；标题 18.5 / 24px。Project、Session 和工作台沿用同一套 token：工作台里的 Thread 与 Agent 通信用和主对话**相同**的正文字号，不再缩小一号。
 - **转派便条**（2026-10-13 起，取代 2026-10-09 的虚线转派气泡）：Thread 对话里，启动这个 Thread 的 Agent（通常是协调者）发给它的消息收成**一行**靠左的弱化文字：“Message from Coordinator ⌄”（派工本身写 “Brief from Coordinator”）+ 时间，`--text-3`、`--text-sm`，无框无底色（`ThreadMessages` 的 `RelayNote`）。点开在下方缩进显示便条：`--border-strong` **虚线**圆角框、无底色、文字 `--text-2`，上面一行小字写发送者。它是给 Thread 的指令而不是给你的消息，所以默认收起，Thread 对话读起来就是你和这个 Thread 的往来。派工便条在时不再另放折叠的 Brief。「Messages with …」里的完整往来仍用虚线气泡（`ChatRun` 的 `side="relay"`）；Thread 发给协调者的汇报只在那里出现。
 - Project 主对话里，协调者把工作交给 Thread（或 Thread 第一次回话）的地方是一张 **Thread 链接卡**：状态灯 · 标题 · 状态 · 箭头，点开在工作台打开该 Thread；每个 Thread 只在它第一次出现的地方放一张卡，卡上的状态是实时的。协调者在正文里提到 Thread 时写成 `[标题](#thread:<id>)`，渲染为带状态灯的链接，同样打开 Thread。Thread 与协调者之间的往来在 Thread 工具栏的「Messages with …」里查看（工作台的通信标签，按发送者分组，只有名字没有头像）；文档标签不跨重载保留，通信内容从 Box 快照恢复。
-- 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台；文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文。
+- 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台；文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文；`mermaid` 代码块画成图（卡片头写 `mermaid`，`Source` 一切换回原文并可复制，图内链接与正文链接去向相同；图与代码块同用 `--pele-*` → token 映射，随模式与调色板变化；画不出来时回退成原来的代码块）。
 
 ### 5.2 输入区与图片
 
