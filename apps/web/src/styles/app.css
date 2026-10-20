@@ -872,6 +872,40 @@ kbd {
   gap: 2px;
 }
 
+/* New session and New project: two plain rows under the brand, the first things to reach for. */
+.sidebar-actions {
+  display: grid;
+  flex: none;
+}
+
+.sidebar-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--nav-row-h);
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  text-align: left;
+}
+
+.sidebar-action:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.sidebar-action:disabled {
+  color: var(--text-3);
+}
+
+.sidebar-action > svg {
+  flex: none;
+  width: var(--nav-icon);
+  height: var(--nav-icon);
+  color: var(--text-2);
+}
+
 /* Workspace tree: each workspace is a collapsible group of its projects and sessions. */
 .workspace-group + .workspace-group {
   margin-top: 6px;
@@ -944,7 +978,78 @@ kbd {
   gap: 6px;
 }
 
-.workspace-items .sidebar-empty {
+.workspace-items /* Selecting sessions: the light becomes a checkbox, and picked rows take the hover tint. */
+.session-check {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-inverse);
+}
+
+.session-check.on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.session-item.picked {
+  background: var(--surface-hover);
+}
+
+.session-item.picked .session-title {
+  color: var(--text);
+}
+
+/* A row found by what was said in it: the title, and the matching line under it. */
+.session-item.has-snippet .session-button {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  height: auto;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.session-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  padding-left: calc(var(--icon) + 6px);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.search-mark {
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: inherit;
+}
+
+.sidebar-select-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 6px 2px 0 6px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-select-count {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--text-md);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-empty {
   padding: 2px 4px 4px 24px;
   margin: 0;
 }
@@ -987,7 +1092,21 @@ kbd {
 .pr-mark.pr-merged { color: var(--accent); }
 .pr-mark.pr-closed { color: var(--danger); }
 
-.sidebar-section .workspace-more {
+.sidebar-section .workspace-pick-all {
+  flex: none;
+  height: var(--control);
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.workspace-pick-all:hover {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.workspace-more {
   padding-left: 24px;
 }
 

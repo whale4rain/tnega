@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { projectApi } from '../lib/project-api'
 import type { ProjectRecord } from '../lib/project-types'
 import type { SessionSummary } from '../lib/types'
-import { Sidebar } from './Sidebar'
+import { Sidebar, type PickedSession } from './Sidebar'
 
 beforeEach(() => localStorage.clear())
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -172,4 +172,105 @@ it('keeps showing a workspace\'s lists while the app loads them after a switch',
   expect(view.getByText('Project p1')).toBeTruthy()
   expect(view.getByText('Session a1')).toBeTruthy()
   expect(view.getByText('Session b1')).toBeTruthy()
+})
+
+it('puts New session and New project at the top, where you are', () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const { props, view } = renderSidebar({ workspaces: ['/a', '/scratch'], defaultWorkspace: '/scratch' })
+  fireEvent.click(view.getByRole('button', { name: 'New project' }))
+  expect(props.onNewProject).toHaveBeenCalledWith('/a')
+  fireEvent.click(view.getByRole('button', { name: 'New session' }))
+  expect(props.onNewSession).toHaveBeenCalledWith('/scratch')
+})
+
+it('finds sessions by what was said in them and shows the matching line', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [session('b1', '/b', 5)] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const search = vi.spyOn(api, 'searchSessions').mockImplementation(async path =>
+    ({ hits: path === '/b' ? [{ id: 'b1', snippet: '…the flaky login test…' }] : [] }))
+  const { view } = renderSidebar()
+  await waitFor(() => expect(view.getByText('Session b1')).toBeTruthy())
+
+  fireEvent.change(view.getByRole('textbox', { name: 'Search sessions and projects' }), { target: { value: 'Login' } })
+  // Titles filter at once; messages are asked of every workspace.
+  expect(view.queryByText('Session a1')).toBeNull()
+  await waitFor(() => expect(view.getByText('login')).toBeTruthy())
+  expect(search).toHaveBeenCalledWith('/a', 'login', expect.any(AbortSignal))
+  expect(search).toHaveBeenCalledWith('/b', 'login', expect.any(AbortSignal))
+  const row = view.getByText('Session b1').closest('.session-item')!
+  expect(row.querySelector('.session-snippet')?.textContent).toBe('…the flaky login test…')
+  expect(row.querySelector('mark')?.textContent).toBe('login')
+
+  fireEvent.change(view.getByRole('textbox', { name: 'Search sessions and projects' }), { target: { value: 'zzz' } })
+  search.mockResolvedValue({ hits: [] })
+  await waitFor(() => expect(view.getByText('Nothing matches “zzz”.')).toBeTruthy())
+})
+
+it('selects several sessions, across workspaces, and deletes them together', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [session('b1', '/b', 5)] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const onDeleteSessions = vi.fn((picked: PickedSession[]) => Promise.resolve(picked.length > 0))
+  const sessions = [session('a1', '/a', 3), session('a2', '/a', 2), session('a3', '/a', 1)]
+  const { props, view } = renderSidebar({ sessions, onDeleteSessions })
+  await waitFor(() => expect(view.getByText('Session b1')).toBeTruthy())
+
+  fireEvent.click(view.getAllByRole('button', { name: 'Session options' })[1]!)
+  fireEvent.click(view.getByRole('menuitem', { name: /Select/ }))
+  expect(view.getByText('1 selected')).toBeTruthy()
+  // Rows become checkboxes; clicking one picks it instead of opening it, Shift picks a range.
+  fireEvent.click(view.getByRole('checkbox', { name: /Session a3/ }), { shiftKey: true })
+  expect(view.getByText('3 selected')).toBeTruthy()
+  fireEvent.click(view.getByRole('checkbox', { name: /Session b1/ }))
+  expect(props.onSelectSession).not.toHaveBeenCalled()
+  expect(view.getByRole('checkbox', { name: /Session a2/ }).getAttribute('aria-checked')).toBe('true')
+
+  fireEvent.click(view.getByRole('button', { name: /Delete/ }))
+  await waitFor(() => expect(view.queryByRole('toolbar')).toBeNull())
+  const picked = onDeleteSessions.mock.calls[0]![0]
+  expect(picked.map(item => `${item.path}:${item.session.id}`).sort()).toEqual(['/a:a1', '/a:a2', '/a:a3', '/b:b1'])
+})
+
+it('keeps the selection when the delete is cancelled, and Escape leaves it', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const onDeleteSessions = vi.fn((picked: PickedSession[]) => Promise.resolve(picked.length < 0))
+  const { view } = renderSidebar({ onDeleteSessions })
+
+  fireEvent.click(view.getByRole('button', { name: 'a options' }))
+  fireEvent.click(view.getByRole('menuitem', { name: /Select sessions/ }))
+  fireEvent.click(view.getByRole('button', { name: 'Select all' }))
+  expect(view.getByText('2 selected')).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: /Delete/ }))
+  await waitFor(() => expect(view.getByRole('button', { name: /Delete/ }).hasAttribute('disabled')).toBe(false))
+  expect(onDeleteSessions).toHaveBeenCalled()
+  expect(view.getByText('2 selected')).toBeTruthy()
+
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(view.queryByRole('toolbar')).toBeNull()
+  expect(view.getAllByRole('button', { name: 'Session options' })).toHaveLength(2)
+})
+
+it('refreshes every list when it opens and when the window comes back', async () => {
+  const sessions = vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const onRefresh = vi.fn()
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    renderSidebar({ onRefresh })
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(sessions).toHaveBeenCalledTimes(1))
+
+    // Too soon after the last refresh: nothing happens.
+    window.dispatchEvent(new Event('focus'))
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+
+    vi.setSystemTime(Date.now() + 5_000)
+    window.dispatchEvent(new Event('focus'))
+    expect(onRefresh).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(sessions).toHaveBeenCalledTimes(2))
+    expect(sessions).toHaveBeenLastCalledWith('/b')
+  } finally {
+    vi.useRealTimers()
+  }
 })

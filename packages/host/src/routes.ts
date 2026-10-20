@@ -26,7 +26,7 @@ import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
-import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
+import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun } from './runs.js'
 import type { WebServerService } from '@tnega/web-kit'
@@ -290,6 +290,20 @@ const apiRoutes: ApiRoute[] = [
             return { ...session, ...(running ? { running } : {}), ...(waiting ? { waiting } : {}) }
           })
       sendJson(res, 200, { workspace, sessions })
+      return
+    },
+  },
+{
+    match: (req, url) => Boolean(url.pathname === '/api/sessions/search' && req.method === 'GET'),
+    handle: async (req, res, url) => {
+      if (!(url.pathname === '/api/sessions/search' && req.method === 'GET')) return
+      const workspace = workspaceParam(url)
+      if (!workspace) {
+            sendError(res, 400, 'workspace query parameter is required')
+            return
+          }
+      const query = url.searchParams.get('q') ?? ''
+      sendJson(res, 200, { workspace, hits: await searchSessions(workspace, query) })
       return
     },
   },

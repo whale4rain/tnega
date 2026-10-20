@@ -5,7 +5,7 @@ import type { RunSettings } from './components/Composer'
 import { NewProjectDialog } from './components/project/NewProjectDialog'
 import { ProjectView } from './components/project/ProjectView'
 import { SettingsDialog } from './components/SettingsDialog'
-import { Sidebar } from './components/Sidebar'
+import { Sidebar, type PickedSession } from './components/Sidebar'
 import { Workbench, WORKBENCH_MIN_WIDTH, type WorkbenchProject } from './components/workbench/Workbench'
 import { enterProject, openDoc, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
 import { useChangeCount } from './lib/hooks'
@@ -65,6 +65,8 @@ export function App() {
   const [projectsFor, setProjectsFor] = useState<string | undefined>()
   const [selectedId, setSelectedId] = useState<string | undefined>(sessionFromHash)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 860)
+  // Bumped by Ctrl+K to put the focus in the sidebar's search.
+  const [searchFocus, setSearchFocus] = useState(0)
   const [dialog, setDialog] = useState<'settings' | 'workspace' | undefined>()
   // The Workbench: files, changes, terminal and browser, plus documents opened from the conversation.
   const [workbench, setWorkbenchState] = useState<WorkbenchState>(() => {
@@ -283,6 +285,10 @@ export function App() {
       } else if (mod && !event.shiftKey && event.key.toLowerCase() === 'b') {
         event.preventDefault()
         setSidebarOpen(open => !open)
+      } else if (mod && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSidebarOpen(true)
+        setSearchFocus(count => count + 1)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -344,6 +350,32 @@ export function App() {
       void noticeDialog('Something went wrong', errorText(reason))
       return false
     }
+  }
+
+  /** Deletes several sessions, possibly from several workspaces, after one confirmation. */
+  const deleteSessions = async (picked: PickedSession[]): Promise<boolean> => {
+    if (picked.length === 0) return false
+    const names = picked.slice(0, 3).map(({ session }) => `“${session.title || 'Untitled session'}”`)
+    const more = picked.length - names.length
+    if (!await confirmDialog({
+      title: picked.length === 1 ? 'Delete session?' : `Delete ${picked.length} sessions?`,
+      message: `${names.join(', ')}${more > 0 ? ` and ${more} more` : ''} will be deleted. This can't be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return false
+    const results = await Promise.allSettled(picked.map(({ path, session }) => api.deleteSession(path, session.id)))
+    const deleted = picked.filter((_, index) => results[index]?.status === 'fulfilled')
+    const here = new Set(deleted.filter(item => item.path === workspace).map(item => item.session.id))
+    if (here.size) setSessions(list => list.filter(s => !here.has(s.id)))
+    if (selectedId && here.has(selectedId)) select(undefined)
+    const failed = results.flatMap(result => result.status === 'rejected' ? [errorText(result.reason)] : [])
+    if (failed.length) {
+      void noticeDialog(
+        failed.length === picked.length ? 'Nothing was deleted' : `${failed.length} of ${picked.length} sessions weren't deleted`,
+        [...new Set(failed)].join('\n'),
+      )
+    }
+    return deleted.length > 0
   }
 
   const archiveProject = async (path: string, project: ProjectRecord): Promise<boolean> => {
@@ -415,6 +447,9 @@ export function App() {
           onNewSession={path => { enterWorkspace(path); select(undefined) }}
           onForkSession={(path, id) => void forkSession(path, id)}
           onDeleteSession={deleteSession}
+          onDeleteSessions={deleteSessions}
+          onRefresh={() => { refreshSessions(); refreshProjects() }}
+          focusSearch={searchFocus}
           onOpenSettings={() => setDialog('settings')}
           theme={theme}
           onThemeChange={setTheme}
@@ -529,9 +564,12 @@ export function App() {
       {newProject && workspace && (
         <NewProjectDialog
           workspace={workspace}
+          workspaces={workspaces}
+          defaultWorkspace={defaultWorkspace}
           onClose={() => setNewProject(false)}
-          onCreated={project => {
-            setProjects(list => [project, ...list])
+          onCreated={(project, path) => {
+            if (path === workspace) setProjects(list => [project, ...list])
+            else setWorkspace(path)
             openProject(project.id)
           }}
         />
