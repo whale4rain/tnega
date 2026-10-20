@@ -422,10 +422,12 @@ export function Conversation({
     const requestId = resumeQueued ? undefined : crypto.randomUUID()
     if (stopRequested.current === id) stopRequested.current = undefined
     let natural = false
+    let failed = false
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
           await streamRun(workspace, id, prompt, event => {
+            if (event.type === 'error') failed = true
             notifyCompletion(event)
             onStreamEvent(event, id)
           }, controller.signal, resumeQueued, images, requestId)
@@ -439,7 +441,7 @@ export function Conversation({
           throw reason
         }
       }
-      if (stopRequested.current !== id) natural = true
+      natural = !failed && stopRequested.current !== id
     } catch (reason) {
       if (!controller.signal.aborted) setError(errorText(reason))
     } finally {

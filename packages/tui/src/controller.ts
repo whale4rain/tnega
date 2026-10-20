@@ -440,11 +440,16 @@ export class TuiController {
     // One id for every attempt below: a retry never queues the same message twice.
     const requestId = resumeQueued ? undefined : crypto.randomUUID()
     let failed = false
+    // The run's stream can end normally after the turn itself failed (e.g. the model call).
+    let turnFailed = false
     this.stopRequested = false
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
-          await this.client.streamRun(this.state.workspace, id, prompt, event => this.onStreamEvent(event), controller.signal, resumeQueued, [], requestId)
+          await this.client.streamRun(this.state.workspace, id, prompt, event => {
+            if (event.type === 'error') turnFailed = true
+            this.onStreamEvent(event)
+          }, controller.signal, resumeQueued, [], requestId)
           break
         } catch (reason) {
           // A previous run can take a moment to release the session.
@@ -474,7 +479,7 @@ export class TuiController {
       }
       this.set({ running: false, ...(failed ? {} : { finishedAt: Date.now() }) })
       void this.refreshSessions()
-      this.settleQueue(failed)
+      this.settleQueue(failed || turnFailed)
     }
   }
 
