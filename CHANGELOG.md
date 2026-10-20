@@ -56,6 +56,35 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.5.2-beta.5](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.5) — 2026-10-20
+
+### Features
+
+- Every session row in the sidebar carries the same status light projects use:
+  amber while an approval card waits on you, a pulsing accent while a run goes,
+  plain otherwise.
+- A mermaid code fence draws as a diagram. The renderer loads on the first
+  diagram and paints from the same tokens as the rest of the app, so it follows
+  the theme and palette without a redraw; the source stays one toggle away,
+  diagram links open in the Workbench, and anything it cannot draw falls back to
+  the code block from before.
+- Project threads and the coordinator answer in the language you wrote in, the
+  coordinator no longer introduces or restates its role, and a thread's report
+  reaches the coordinator in full instead of being cut at 1200 characters.
+
+### Fixes
+
+- A run's frames stay in the session that started it. A run left behind — or a
+  new session started over it — can no longer render another session's reply,
+  approval card or plan, and a finished run no longer clears the current
+  session's Stop control.
+- A new session gets its name after its first turn that finished cleanly,
+  instead of never when the first turn was stopped, interrupted or failed. The
+  name uses that turn's own answer, and a manual rename still wins.
+- A message box keeps its text, images and picked context only for the
+  conversation it was typed in; switching session or thread starts empty.
+
+
 ## [0.5.2-beta.4](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.4) — 2026-10-17
 
 ### Fixes

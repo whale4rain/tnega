@@ -1,6 +1,6 @@
 {
   "name": "@tnega/desktop",
-  "version": "0.5.2-beta.4",
+  "version": "0.5.2-beta.5",
   "private": true,
   "description": "Tnega desktop, a local agent workspace.",
   "author": "whale4rain <153174302+whale4rain@users.noreply.github.com>",
