@@ -346,13 +346,19 @@ export function Conversation({
     if (!events.length) return
     queue.current = []
     const owner = streamingFor.current
-    if (owner !== undefined && shown.current.sessionId !== undefined && shown.current.sessionId !== owner) return
+    // A frame belongs to the session that produced it; a view showing any other
+    // session - a new one without an id yet included - must not receive it.
+    if (owner !== undefined && shown.current.sessionId !== owner) return
     setEntries(current => events.reduce(applyStream, current))
   }, [])
 
   const onBrowserActivityRef = useRef(onBrowserActivity)
   onBrowserActivityRef.current = onBrowserActivity
-  const onStreamEvent = useCallback((event: StreamEvent) => {
+  const onStreamEvent = useCallback((event: StreamEvent, owner: string) => {
+    // A frame, an approval or a plan belongs to the run that produced it: the
+    // run in flight may have been started in another session than the one on
+    // screen (or than the newest one, when a new session was started over it).
+    if (owner !== streamingFor.current || shown.current.sessionId !== owner) return
     switch (event.type) {
       case 'approval/request':
         notifyDesktopWaiting(event.id)
@@ -391,6 +397,9 @@ export function Conversation({
     const notifyCompletion = completionObserver(controller.signal)
     abort.current = controller
     streamingFor.current = id
+    // This view is showing the session the run writes into, even before the
+    // parent re-renders with the id of the session it just created.
+    shown.current = { workspace, sessionId: id }
     setRunning(true)
     setError(undefined)
     entriesFor.current = id
@@ -402,7 +411,7 @@ export function Conversation({
         try {
           await streamRun(workspace, id, prompt, event => {
             notifyCompletion(event)
-            onStreamEvent(event)
+            onStreamEvent(event, id)
           }, controller.signal, resumeQueued, images, requestId)
           break
         } catch (reason) {
@@ -417,13 +426,17 @@ export function Conversation({
     } catch (reason) {
       if (!controller.signal.aborted) setError(errorText(reason))
     } finally {
-      if (frame.current !== undefined) cancelAnimationFrame(frame.current)
-      flush()
-      streamingFor.current = undefined
-      abort.current = undefined
-      setApprovals([])
+      // A newer run may own the view's live state by now; only the run that
+      // owns it may settle it and close its own transcript.
+      if (streamingFor.current === id) {
+        if (frame.current !== undefined) cancelAnimationFrame(frame.current)
+        flush()
+        streamingFor.current = undefined
+        abort.current = undefined
+        setApprovals([])
+        setRunning(false)
+      }
       await reload(id).catch(() => {})
-      setRunning(false)
       onSessionsChanged()
     }
   }, [workspace, onStreamEvent, flush, reload, onSessionsChanged])
