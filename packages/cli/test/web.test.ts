@@ -281,6 +281,14 @@ describe('web server', () => {
     expect(fork.session.id).not.toBe(id)
     expect(fork.session.title).toBe('renamed fork')
 
+    // Message search has its own route, not mistaken for a session id.
+    const search = await apiFetch(
+      server.url,
+      `/api/sessions/search?workspace=${encodeURIComponent(workspace)}&q=hello`,
+    )
+    expect(search.status).toBe(200)
+    expect(await search.json()).toEqual({ workspace, hits: [] })
+
     const removed = await apiFetch(
       server.url,
       `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,

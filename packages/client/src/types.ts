@@ -41,6 +41,12 @@ export interface SessionSummary {
   waiting?: boolean
 }
 
+/** A session whose messages match a search, with a stretch of the matching message. */
+export interface SessionSearchHit {
+  id: string
+  snippet: string
+}
+
 export interface ErrorInfo {
   name?: string
   message: string

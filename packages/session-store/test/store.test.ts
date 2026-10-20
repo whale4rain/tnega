@@ -12,6 +12,7 @@ import {
   patchSessionMeta,
   readSessionSnapshot,
   readSessionSummary,
+  searchSessions,
   sessionFile,
   setSessionPermission,
   setSessionTitle,
@@ -291,5 +292,34 @@ describe('history paging', () => {
     const whole = await readSessionSnapshot(workspace, created.id, () => 1000)
     expect(whole.events.filter(event => event.type === 'user/message')).toHaveLength(3)
     expect(whole.page).toEqual({ hasMore: false })
+  })
+})
+
+describe('searchSessions', () => {
+  it('finds sessions by user and assistant messages, newest match first, with a one-line snippet', async () => {
+    const workspace = await tempDir('tnega-store-search-')
+    const older = await createSession(workspace, { title: 'older' })
+    const newer = await createSession(workspace, { title: 'newer' })
+    const other = await createSession(workspace, { title: 'Login title only' })
+    const first = new SessionLog(sessionFile(workspace, older.id))
+    await first.append('user/message', { content: 'Why does the\nLOGIN test fail on CI?' })
+    await first.flush()
+    const second = new SessionLog(sessionFile(workspace, newer.id))
+    await second.append('assistant/message', { content: `${'x'.repeat(60)} the login form and "quotes" ${'y'.repeat(120)}` })
+    await second.append('user/message', { content: 'unrelated' })
+    await second.flush()
+    const third = new SessionLog(sessionFile(workspace, other.id))
+    await third.append('user/message', { content: 'nothing here' })
+    await third.flush()
+
+    const hits = await searchSessions(workspace, 'login')
+    expect(hits.map(hit => hit.id)).toEqual([newer.id, older.id])
+    expect(hits[1]!.snippet).toBe('Why does the LOGIN test fail on CI?')
+    expect(hits[0]!.snippet.startsWith('…')).toBe(true)
+    expect(hits[0]!.snippet.endsWith('…')).toBe(true)
+    expect(hits[0]!.snippet).toContain('the login form')
+
+    expect(await searchSessions(workspace, '"quotes"')).toHaveLength(1)
+    expect(await searchSessions(workspace, '   ')).toEqual([])
   })
 })

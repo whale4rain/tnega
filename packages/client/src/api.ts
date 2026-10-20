@@ -20,6 +20,7 @@ import type {
   SessionEffort,
   SessionEvent,
   SessionMode,
+  SessionSearchHit,
   SessionSummary,
   SlashCommand,
   SlashResult,
@@ -223,6 +224,9 @@ export function createClient(options: ClientOptions = {}) {
 
     sessions: (workspace: string) =>
       call<{ sessions: SessionSummary[] }>(scoped('/api/sessions', workspace)),
+    /** Sessions whose messages contain `query`, newest match first; titles are matched by the caller. */
+    searchSessions: (workspace: string, query: string, signal?: AbortSignal) =>
+      call<{ hits: SessionSearchHit[] }>(scoped('/api/sessions/search', workspace, { q: query }), { signal }),
     createSession: (workspace: string, init: { title?: string; agentType?: AgentType; mode?: SessionMode } = {}) =>
       call<{ session: SessionSummary }>(scoped('/api/sessions', workspace), { method: 'POST', body: init }),
     /** One history window: omit page for the newest one. */

@@ -715,6 +715,75 @@ export async function compactSession(
   })
 }
 
+export interface SessionSearchHit {
+  id: string
+  /** A short stretch of the matching message, on one line. */
+  snippet: string
+}
+
+const SEARCH_MESSAGE_TYPES = ['"type":"user/message"', '"type":"assistant/message"']
+
+/**
+ * Finds the sessions whose user or assistant messages contain `query`, ignoring
+ * case. Each session reports its latest match once, with a snippet around it.
+ * Titles are not searched here: clients already hold them.
+ */
+export async function searchSessions(
+  workspace: string,
+  query: string,
+  options: { limit?: number } = {},
+): Promise<SessionSearchHit[]> {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return []
+  const limit = options.limit ?? 50
+  const dir = await ensureSessionDir(workspace)
+  let entries: string[]
+  try {
+    entries = await readdir(dir)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+  // A line holds the query JSON-escaped; checking that first skips parsing lines that cannot match.
+  const escaped = JSON.stringify(needle).slice(1, -1)
+  const hits: Array<SessionSearchHit & { at: number }> = []
+  for (const entry of entries) {
+    if (!entry.endsWith('.jsonl')) continue
+    const id = entry.slice(0, -'.jsonl'.length)
+    if (!isSessionId(id)) continue
+    let lines: string[]
+    try {
+      lines = await readEventLines(join(dir, entry))
+    } catch {
+      continue
+    }
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index]!
+      if (!SEARCH_MESSAGE_TYPES.some(type => line.includes(type))) continue
+      if (!line.toLowerCase().includes(escaped)) continue
+      const event = parseSessionEvent(line)
+      if (event?.type !== 'user/message' && event?.type !== 'assistant/message') continue
+      const snippet = searchSnippet(event.payload.content, needle)
+      if (snippet === undefined) continue
+      hits.push({ id, snippet, at: event.ts })
+      break
+    }
+  }
+  return hits
+    .sort((a, b) => b.at - a.at)
+    .slice(0, limit)
+    .map(({ id, snippet }) => ({ id, snippet }))
+}
+
+function searchSnippet(content: string, needle: string): string | undefined {
+  const text = content.replace(/\s+/g, ' ').trim()
+  const at = text.toLowerCase().indexOf(needle)
+  if (at < 0) return undefined
+  const start = Math.max(0, at - 30)
+  const end = Math.min(text.length, at + needle.length + 70)
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
+}
+
 export async function deleteSession(workspace: string, id: string): Promise<void> {
   await rm(sessionFile(workspace, id), { force: true })
 }
