@@ -159,7 +159,6 @@ kbd {
   .reaction-menu,
   [data-glass="full"] .sidebar,
   [data-glass="full"] .conv-header,
-  [data-glass="full"] .conv-dock,
   [data-glass="full"] .composer-box,
   [data-glass="full"] .wb-frame,
   [data-glass="full"] .menu-popover,
@@ -213,7 +212,6 @@ kbd {
  * in Sky) with white fields standing out on it.
  */
 [data-glass="full"] .sidebar,
-[data-glass="full"] .conv-dock,
 [data-glass="full"] .composer-box,
 [data-glass="full"] .wb-frame {
   background: var(--glass-surface);
@@ -270,11 +268,17 @@ kbd {
   background: transparent;
 }
 
-/* The dock stops fading into the transcript: it is a surface of its own now. */
+/* The dock is part of the chat, not a bar of its own: like the default theme
+ * it has no band and no rule, only the composer card is glass. The default
+ * fades the transcript into --bg above the composer; here the transcript itself
+ * fades out, so the backdrop shows through instead of a strip of solid colour. */
 [data-glass="full"] .conv-dock {
-  margin-top: 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  background: transparent;
+}
+
+[data-glass="full"] .conv-scroll {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
 }
 
 [data-glass="full"] .conv-header {
