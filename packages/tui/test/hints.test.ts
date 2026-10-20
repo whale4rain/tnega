@@ -19,7 +19,7 @@ describe('key hints', () => {
   })
 
   it('switches to stop, steer and queue while a run goes, and to list keys while completing', () => {
-    expect(keyHints({ ...idle, live: true }).slice(0, 3)).toEqual(['esc stop', 'enter steer now', 'tab queue for later'])
+    expect(keyHints({ ...idle, live: true }).slice(0, 3)).toEqual(['esc stop', 'enter queue', 'tab steer now'])
     expect(keyHints({ ...idle, completing: true, live: true })[0]).toBe('↑↓ choose')
   })
 

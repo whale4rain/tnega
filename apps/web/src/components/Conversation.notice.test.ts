@@ -38,7 +38,7 @@ it('dismisses the steering confirmation instead of leaving it under the transcri
   await view.findByText('Test session')
   const input = view.getByRole('textbox')
   fireEvent.change(input, { target: { value: 'change direction' } })
-  fireEvent.keyDown(input, { key: 'Enter' })
+  fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
   expect(await view.findByText(STEERING)).toBeTruthy()
 
   act(() => { vi.advanceTimersByTime(5000) })

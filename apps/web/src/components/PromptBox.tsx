@@ -47,6 +47,7 @@ export function PromptBox({
   disabledReason,
   onSubmit,
   onInterruptSubmit,
+  onSteerSubmit,
   onStop,
   placeholder,
   toolbar,
@@ -72,6 +73,8 @@ export function PromptBox({
   onStop?: (() => void) | undefined
   /** Stop the current run and send a correction, offered separately while running. */
   onInterruptSubmit?: ((text: string, images: ImageAttachment[]) => Promise<boolean> | boolean) | undefined
+  /** While running, Ctrl/Cmd+Enter hands the message to the running agent now instead of `onSubmit`. */
+  onSteerSubmit?: ((text: string, images: ImageAttachment[]) => Promise<boolean> | boolean) | undefined
   placeholder: string
   toolbar?: ReactNode
   footer?: ReactNode
@@ -267,10 +270,10 @@ export function PromptBox({
 
   const canSend = (Boolean(text.trim()) || images.length > 0 || contexts.length > 0) && reading === 0
 
-  const submit = async (interrupt = false) => {
+  const submit = async (how: 'send' | 'interrupt' | 'steer' = 'send') => {
     const value = [...contexts.map(context => context.text), text.trim()].filter(Boolean).join('\n\n')
     if (!canSend || (showStop && !allowWhileRunning) || disabledReason) return
-    const send = interrupt ? onInterruptSubmit : onSubmit
+    const send = how === 'interrupt' ? onInterruptSubmit : how === 'steer' ? onSteerSubmit : onSubmit
     if (!send) return
     const accepted = await send(value, images)
     if (accepted) {
@@ -407,7 +410,8 @@ export function PromptBox({
             }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
-              void submit(singleControl && running && event.ctrlKey && Boolean(onInterruptSubmit))
+              const urgent = running && (event.ctrlKey || event.metaKey)
+              void submit(urgent && singleControl && onInterruptSubmit ? 'interrupt' : urgent && onSteerSubmit ? 'steer' : 'send')
             }
             if (event.key === 'Escape' && showStop) {
               event.preventDefault()
@@ -448,7 +452,7 @@ export function PromptBox({
               <button
                 type="button"
                 className="button ghost small"
-                onClick={() => void submit(true)}
+                onClick={() => void submit('interrupt')}
                 disabled={!canSend || Boolean(disabledReason)}
                 title="Stop the current run and send this correction"
               >
@@ -468,7 +472,9 @@ export function PromptBox({
               onClick={() => void submit()}
               disabled={!canSend || Boolean(disabledReason)}
               aria-label="Send"
-              title={singleControl && running && onInterruptSubmit ? 'Send (Enter); interrupt and send (Ctrl+Enter)' : 'Send (Enter)'}
+              title={singleControl && running && onInterruptSubmit
+                ? 'Send (Enter); interrupt and send (Ctrl+Enter)'
+                : running && onSteerSubmit ? 'Queue for after this run (Enter); steer now (Ctrl+Enter)' : 'Send (Enter)'}
             >
               <ArrowUp size={14} strokeWidth={2.4} />
             </button>

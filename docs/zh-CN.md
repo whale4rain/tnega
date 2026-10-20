@@ -82,7 +82,7 @@ tnega tui --continue   # 打开这个文件夹最近的会话
 tnega --help           # 所有命令与选项
 ```
 
-回复以流式显示，工具步骤自动折叠，支持 `/` 与 `@文件` 补全、工具审批、diff 和模型选择。在空输入框按 `?` 查看全部按键。Agent 工作时，Enter 引导它，Tab 把下一条消息排队，Esc 停止。状态栏里的小天气条表示它正在做什么。Project 用 `/web` 在 Web 应用中打开。按键与命令见 [TUI README](../packages/tui/README.md)。
+回复以流式显示，工具步骤自动折叠，支持 `/` 与 `@文件` 补全、工具审批、diff 和模型选择。在空输入框按 `?` 查看全部按键。Agent 工作时，Enter 把下一条消息排到本轮结束后，Tab 立即用它引导 Agent，Esc 停止。状态栏里的小天气条表示它正在做什么。Project 用 `/web` 在 Web 应用中打开。按键与命令见 [TUI README](../packages/tui/README.md)。
 
 不带任何界面执行单个任务：
 

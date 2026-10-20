@@ -109,8 +109,8 @@ tnega --help           # every command and option
 
 Replies stream in with folded tool steps, `/` and `@file` completion, tool
 approvals, diffs and the model picker. Press `?` on an empty prompt to see
-every key. While the agent works, Enter steers it, Tab queues your next message
-and Esc stops it. A small weather strip in the status line shows what it is
+every key. While the agent works, Enter queues your next message for after the
+run, Tab steers the agent with it right away, and Esc stops it. A small weather strip in the status line shows what it is
 doing. Projects open in the Web app with `/web`. The
 [TUI README](packages/tui/README.md) lists the keys and commands.
 

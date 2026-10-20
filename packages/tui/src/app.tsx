@@ -248,7 +248,7 @@ export function App({ controller, webUrl, openUrl, shiftEnter = false }: AppProp
             ? <OverlayView overlay={overlay} controller={controller} state={state} width={width} rows={overlayRows} onClose={() => setOverlay(undefined)} />
             : (
                 <Box ref={composerBox} flexDirection="column" marginTop={1}>
-                  <QueuedRows queued={state.queued} width={width} />
+                  <QueuedRows queued={state.queued} live={live} width={width} />
                   <Composer
                     value={editor}
                     onChange={next => {
@@ -262,7 +262,7 @@ export function App({ controller, webUrl, openUrl, shiftEnter = false }: AppProp
                       return direction < 0 ? history.current.previous(current) : history.current.next()
                     }}
                     active={!state.busy}
-                    placeholder={live ? 'Steer the agent' : state.session ? 'Reply…' : 'Ask tnega to do something'}
+                    placeholder={live ? 'Queue a message' : state.session ? 'Reply…' : 'Ask tnega to do something'}
                     width={width}
                     origin={composerBox}
                     label={composerLabel(editor, controller.settings.mode)}
@@ -271,7 +271,11 @@ export function App({ controller, webUrl, openUrl, shiftEnter = false }: AppProp
                       onCompletionMove: delta => setSelection(index => Math.max(0, Math.min(suggestions.length - 1, index + delta))),
                       onCompletionAccept: accept,
                       onCompletionClose: () => setDismissed(editor.text),
-                      onQueue: state.running ? text => void controller.enqueue(text) : undefined,
+                      onSteer: live
+                        ? text => void controller.steer(text.trim() || undefined).then(ok => {
+                          if (!ok && text.trim()) setEditor(current => current.text ? current : { text, caret: text.length })
+                        })
+                        : undefined,
                       onCycleMode: () => void controller.cycleMode(),
                       onEmptyKey: input => {
                         if (input !== '?') return false
@@ -521,10 +525,10 @@ export function foldedSteps(entries: readonly Entry[]): number {
   return presentRun(last).process.filter(block => block.kind === 'tool' || block.kind === 'subagent').length
 }
 
-/** Messages waiting for the run to end, newest last, with how to change them. */
-function QueuedRows({ queued, width }: { queued: readonly string[]; width: number }) {
+/** Messages waiting for the run to end, newest last, with how to send or change them. */
+function QueuedRows({ queued, live, width }: { queued: readonly string[]; live: boolean; width: number }) {
   if (!queued.length) return null
-  const actions = `↑ edit ${glyph.bullet} ctrl+x drop`
+  const actions = [live ? 'tab steer now' : 'enter send', '↑ edit', 'ctrl+x drop'].join(` ${glyph.bullet} `)
   return (
     <Box flexDirection="column" marginBottom={1}>
       {queued.map((text, index) => {

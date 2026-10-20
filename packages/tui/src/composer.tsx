@@ -1,7 +1,8 @@
 /**
  * The multi-line prompt box. Enter sends; Shift+Enter (where the terminal
  * reports it), Alt+Enter, Ctrl+J or a trailing `\` add a line. While a run
- * goes, Tab or Alt+Enter queue the text for after it instead. The real
+ * goes, Enter queues the text for after it, and Tab or Alt+Enter steer the
+ * agent with it now (on an empty box, with what is queued). The real
  * terminal cursor sits on the caret so an IME composes Chinese in place.
  */
 import { Box, Text, useCursor, useInput, usePaste, type DOMElement } from 'ink'
@@ -18,8 +19,8 @@ export interface ComposerKeys {
   /** `submit` is true for Enter: a command that needs nothing more runs at once. */
   onCompletionAccept: (submit: boolean) => void
   onCompletionClose: () => void
-  /** While a run goes: hold the text until it ends (Tab, Alt+Enter). */
-  onQueue?: ((text: string) => void) | undefined
+  /** While a run goes: steer with the text now, or with the queue when the box is empty (Tab, Alt+Enter). */
+  onSteer?: ((text: string) => void) | undefined
   /** Shift+Tab. */
   onCycleMode?: (() => void) | undefined
   /** A key pressed on an empty box (e.g. `?`); return true when handled. */
@@ -73,11 +74,9 @@ export function Composer({
       if (key.escape) return keys.onCompletionClose()
     }
     if (key.tab && key.shift) return keys.onCycleMode?.()
-    if (keys.onQueue && (key.tab || (key.return && key.meta))) {
-      if (state.text.trim()) {
-        keys.onQueue(state.text)
-        set(edit.EMPTY)
-      }
+    if (keys.onSteer && (key.tab || (key.return && key.meta))) {
+      keys.onSteer(state.text)
+      if (state.text.trim()) set(edit.EMPTY)
       return
     }
     if (key.return && (key.shift || key.meta)) return set(edit.insert(state, '\n'))

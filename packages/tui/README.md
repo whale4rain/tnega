@@ -14,9 +14,9 @@ Built with [Ink](https://github.com/vadimdemedes/ink). Layout and colours follow
 
 | Key | Does |
 | --- | --- |
-| Enter | Send; while the agent runs, the text steers it |
+| Enter | Send; while the agent runs, queue the text for after this run (↑ takes it back, Ctrl+X drops it) |
 | Shift+Enter, Alt+Enter, Ctrl+J, trailing `\` | New line |
-| Tab, Alt+Enter (while it runs) | Queue the text for after this run; ↑ takes it back, Ctrl+X drops it |
+| Tab, Alt+Enter (while it runs) | Steer the agent with the text now; on an empty prompt, with what is queued |
 | Shift+Tab | Mode: auto → plan → goal |
 | ? (empty prompt) | Every key |
 | Esc | Stop the run; close a panel |

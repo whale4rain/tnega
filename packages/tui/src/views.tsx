@@ -234,7 +234,8 @@ function DiffView({ api, workspace, path, onClose, width, rows }: { api: Api; wo
 export function HelpView({ commands, onClose, width }: { commands: readonly CommandSpec[]; onClose: () => void; width: number }) {
   useClose(onClose)
   const keys: Array<[string, string]> = [
-    ['Enter', 'Send, or steer the running agent'],
+    ['Enter', 'Send; while it runs, queue for after the run'],
+    ['Tab, Alt+Enter', 'While it runs, steer now (empty box: the queue)'],
     ['Shift/Alt+Enter, Ctrl+J', 'New line (or end the line with \\)'],
     ['Esc', 'Stop the run'],
     ['Ctrl+O', 'Show or fold every step of the transcript'],

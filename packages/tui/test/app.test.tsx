@@ -104,19 +104,24 @@ describe('App', () => {
     await until(() => frame().includes('2 lines · plan'))
   })
 
-  it('queues with Tab while the agent works and shows it above the box', async () => {
+  it('queues with Enter while the agent works, and Tab steers with the queue', async () => {
     const { server, type, frame, controller } = await mount()
     const release = deferred()
     server.state.release = release.promise
     await type('first')
     await type('\r')
     await until(() => controller.state.running)
-    expect(frame()).toContain('tab queue for later')
+    expect(frame()).toContain('enter queue')
+    expect(frame()).toContain('tab steer now')
     await type('also lint')
-    await type('\t')
+    await type('\r')
     await until(() => frame().includes('queued  also lint'))
     expect(frame()).toContain('ctrl+x drop')
-    release.resolve()
+    expect(server.calls.some(call => call.path.endsWith('/steer'))).toBe(false)
+    await type('\t')
     await until(() => !frame().includes('queued  also lint'))
+    expect(server.calls.find(call => call.path.endsWith('/steer'))?.body).toMatchObject({ prompt: 'also lint' })
+    release.resolve()
+    await until(() => !controller.state.running)
   })
 })
