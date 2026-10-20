@@ -32,4 +32,6 @@ The same run opens an ordinary General Session in each theme, checks body/user/A
 - Desktop title bar, emulated through the `tnegaDesktop` bridge the Electron preload exposes: the header actions sit beside the window controls with nothing underneath them, dialogs start below the controls and are not drag areas, and the controls dim with the scrim and recover after it closes.
 - A phone-width window fits sessions and projects without horizontal scrolling.
 
+Set `TNEGA_E2E_GLASS=full` to walk the same flows with Settings → Appearance → Glass set to everywhere; screenshots then go to `.artifacts/release-glass-full/`, so the two runs can be compared side by side.
+
 Like the other suites it needs no backend or model key and fails on any unhandled API route or browser error. It cannot drive the real Electron window: native drag regions, the native controls and installers still need a manual check on each platform.

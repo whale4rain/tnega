@@ -162,7 +162,6 @@ kbd {
   [data-glass="full"] .conv-dock,
   [data-glass="full"] .composer-box,
   [data-glass="full"] .wb-frame,
-  [data-glass="full"] .dialog,
   [data-glass="full"] .menu-popover,
   [data-glass="full"] .slash-menu,
   [data-glass="full"] .context-pop,
@@ -208,13 +207,15 @@ kbd {
  * the composer's model list) cannot blur what is behind and reads as a nearly
  * transparent sheet over the transcript. Those popovers therefore fall back to a
  * solid raised surface below, which stays readable over any content.
+ *
+ * Dialogs are not in this list: they already sit on the frosted scrim, and glass
+ * over that dark scrim turned light dialogs grey (tertiary text fell to about 4.2:1
+ * in Sky) with white fields standing out on it.
  */
-[data-glass="full"] .sidebar,
 [data-glass="full"] .sidebar,
 [data-glass="full"] .conv-dock,
 [data-glass="full"] .composer-box,
-[data-glass="full"] .wb-frame,
-[data-glass="full"] .dialog {
+[data-glass="full"] .wb-frame {
   background: var(--glass-surface);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
@@ -256,6 +257,16 @@ kbd {
 /* The tint behind the app is the mode's backdrop; an opaque reading surface
  * would hide it and reduce Glass everywhere to a flat tint. */
 [data-glass="full"] .conversation {
+  background: transparent;
+}
+
+/* The same holds for the Workbench: its backing is the backdrop, so the frame
+ * reads as glass instead of a tint over a solid page, and the panels that are
+ * conversations or Project views (thread, exchange, Board, Library, Routines)
+ * read on the frame's glass like the conversation beside them. Files, Changes
+ * and other framed cards keep their solid surface. */
+[data-glass="full"] .workbench,
+[data-glass="full"] .wb-card.wb-flow {
   background: transparent;
 }
 

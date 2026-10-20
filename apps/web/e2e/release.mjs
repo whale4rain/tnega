@@ -18,7 +18,9 @@ import { installFixtures, workspace, snapshot, session as savedSession, config a
  */
 
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const artifacts = resolve(web, 'e2e/.artifacts/release')
+// TNEGA_E2E_GLASS=full walks the same flows with Glass everywhere (Settings -> Appearance -> Glass).
+const glass = process.env.TNEGA_E2E_GLASS ?? ''
+const artifacts = resolve(web, glass ? `e2e/.artifacts/release-glass-${glass}` : 'e2e/.artifacts/release')
 await mkdir(artifacts, { recursive: true })
 const executablePath = process.env.TNEGA_E2E_BROWSER ?? [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -150,14 +152,15 @@ function holdRuns() {
 }
 
 async function open(context, { theme, firstRun = false, desktop = false, mode = 'sessions', hash = '' }) {
-  await context.addInitScript(({ workspace, theme, firstRun, desktop, mode, origin }) => {
+  await context.addInitScript(({ workspace, theme, firstRun, desktop, mode, origin, glass }) => {
     if (location.origin !== origin) return
+    if (glass && !localStorage.getItem('tnega.glass')) localStorage.setItem('tnega.glass', glass)
     if (!firstRun && !localStorage.getItem('tnega.workspace')) localStorage.setItem('tnega.workspace', workspace)
     if (!localStorage.getItem('tnega.theme')) localStorage.setItem('tnega.theme', theme)
     if (!localStorage.getItem('tnega.mode')) localStorage.setItem('tnega.mode', mode)
     // The Electron preload exposes this bridge; its presence is what turns on the desktop title bar.
     if (desktop) window.tnegaDesktop = { setTitleBarColors: colors => { window.__titleBar = colors } }
-  }, { workspace, theme, firstRun, desktop, mode, origin })
+  }, { workspace, theme, firstRun, desktop, mode, origin, glass })
   await context.addInitScript(holdRuns)
   const page = await context.newPage()
   activePage = page

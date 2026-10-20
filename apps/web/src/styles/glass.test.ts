@@ -20,7 +20,8 @@ function block(selector: RegExp): Record<string, string> {
   const body = tokens.match(selector)?.[1] ?? ''
   const hex = [...body.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})\s*;/giu)].map(match => [match[1]!, match[2]!.toLowerCase()])
   const numbers = [...body.matchAll(/--([\w-]+):\s*([\d.]+)\s*;/gu)].map(match => [match[1]!, match[2]!])
-  return Object.fromEntries([...hex, ...numbers])
+  const rgba = [...body.matchAll(/--([\w-]+):\s*(rgba\([^)]*\))\s*;/gu)].map(match => [match[1]!, match[2]!])
+  return Object.fromEntries([...hex, ...numbers, ...rgba])
 }
 
 const BASE = {
@@ -40,6 +41,15 @@ const THEMES: Array<[string, 'light' | 'dark', Record<string, string>]> = [
 ]
 
 const rgb = (hex: string): [number, number, number] => [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16)) as [number, number, number]
+
+/** A token as the eye sees it: a translucent one (dark accent-soft) is laid over the page. */
+function solid(theme: Record<string, string>, name: string): number[] {
+  const value = theme[name]!
+  const parts = /^rgba\(([^)]*)\)$/u.exec(value)?.[1]?.split(',').map(Number)
+  if (!parts) return rgb(value)
+  const [r = 0, g = 0, b = 0, a = 1] = parts
+  return overGlass([r, g, b], a, rgb(theme.bg!))
+}
 
 function luminance(colour: readonly number[]): number {
   const [r, g, b] = colour.map(value => { const v = value / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }) as [number, number, number]
@@ -66,8 +76,9 @@ describe.each(THEMES)('%s glass', (_label, _mode, theme) => {
 
   it('keeps every text role readable over every surface the app draws behind a popover', () => {
     const glass = rgb(theme['surface-raised']!)
-    for (const behind of ['bg', 'bg-sidebar', 'surface', 'surface-raised', 'surface-sunken', 'code-bg'] as const) {
-      const shown = overGlass(glass, alpha, rgb(theme[behind]!))
+    // accent-soft is part of the backdrop Glass everywhere paints behind the app.
+    for (const behind of ['bg', 'bg-sidebar', 'surface', 'surface-raised', 'surface-sunken', 'code-bg', 'accent-soft'] as const) {
+      const shown = overGlass(glass, alpha, solid(theme, behind))
       expect(contrast(rgb(theme.text!), shown), 'text over ' + behind).toBeGreaterThanOrEqual(7)
       for (const role of ['text-2', 'text-3', 'accent-text', 'success', 'warn', 'danger'] as const) {
         expect(contrast(rgb(theme[role]!), shown), role + ' over ' + behind).toBeGreaterThanOrEqual(4.5)
@@ -117,6 +128,15 @@ it('keeps surfaces that carry body copy opaque in the default mode', () => {
   for (const opaque of ['.conv-scroll', '.sidebar', '.wb-frame', '.dialog', '.composer']) {
     const defaultBodies = rules.filter(rule => rule.selector.startsWith('.')).map(rule => rule.selector)
     expect(defaultBodies.some(selector => selector.includes(opaque)), opaque + ' stays opaque by default').toBe(false)
+  }
+  // Dialogs sit on the frosted scrim; glass over it turned light dialogs grey and
+  // pushed tertiary text under its floor, so they stay solid in every mode.
+  for (const { selector } of rules) expect(selector, 'dialogs stay solid').not.toMatch(/\.dialog\b/u)
+  // Glass everywhere needs a backdrop to blur: the solid layers behind its shells yield.
+  for (const backing of ['.conversation', '.workbench', '.wb-card.wb-flow']) {
+    const yields = [...app.matchAll(/([^{}]+)\{([^}]*)\}/gu)]
+      .some(([, selector = '', body = '']) => selector.includes('[data-glass="full"] ' + backing) && body.includes('background: transparent'))
+    expect(yields, backing + ' yields to the backdrop in full mode').toBe(true)
   }
   // Every mode has a solid app: the setting is not the only way out of the material.
   expect(app).toContain('[data-glass="off"] .dialog-scrim')
