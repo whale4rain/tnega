@@ -10,15 +10,37 @@ function eligible(events: readonly SessionEvent[]): boolean {
     && !events.some(event => event.type === 'meta' && event.payload.kind === 'session/auto-title')
 }
 
+/**
+ * The intent a Session is named after, with the reply that shows it was met:
+ * the first user message and the answer of the first turn that finished
+ * cleanly. A turn that was cancelled, interrupted or ended in an error says
+ * nothing about the intent, so naming waits for a later turn instead of
+ * freezing the default name on the first one.
+ */
+function namingExchange(events: readonly SessionEvent[]): { input: string; reply: string } | undefined {
+  const input = events.find(event => event.type === 'user/message')
+  if (input?.type !== 'user/message' || !input.payload.content.trim()) return undefined
+  let answer: string | undefined
+  let sawTurnEnd = false
+  for (const event of events) {
+    if (event.type === 'assistant/message' && event.payload.content.trim()) answer = event.payload.content
+    if (event.type !== 'turn/end') continue
+    sawTurnEnd = true
+    if (event.payload.finishReason === 'stop' && answer) {
+      return { input: input.payload.content, reply: answer }
+    }
+    answer = undefined
+  }
+  // A plan-mode run persists its exchange without a turn/end.
+  return !sawTurnEnd && answer ? { input: input.payload.content, reply: answer } : undefined
+}
+
 /** One bounded side request after the first reply; a manual rename always wins. */
 export async function autoNameSession(session: SessionLog, llm: LLMAdapter): Promise<void> {
   const events = await session.read()
   if (!eligible(events)) return
-  const input = events.find(event => event.type === 'user/message')
-  const reply = events.find(event => event.type === 'assistant/message' && event.payload.content.trim())
-  const end = events.find(event => event.type === 'turn/end')
-  if (input?.type !== 'user/message' || reply?.type !== 'assistant/message'
-    || (end?.type === 'turn/end' && end.payload.finishReason !== 'stop')) return
+  const exchange = namingExchange(events)
+  if (!exchange) return
   let title: string | undefined
   let timeout: ReturnType<typeof setTimeout> | undefined
   const controller = new AbortController()
@@ -26,7 +48,7 @@ export async function autoNameSession(session: SessionLog, llm: LLMAdapter): Pro
     const completion = await Promise.race([
       llm.complete([
         { role: 'system', content: TITLE_SYSTEM_PROMPT },
-        { role: 'user', content: JSON.stringify({ intent: input.payload.content.slice(0, 2000), reply: reply.payload.content.slice(0, 1000) }) },
+        { role: 'user', content: JSON.stringify({ intent: exchange.input.slice(0, 2000), reply: exchange.reply.slice(0, 1000) }) },
       ], [], { maxTokens: 100, signal: controller.signal }),
       new Promise<never>((_resolve, reject) => {
         timeout = setTimeout(() => { controller.abort(); reject(new Error('Session naming timed out')) }, 5000)

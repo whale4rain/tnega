@@ -54,3 +54,29 @@ it('keeps the default title on provider failure and preserves manually reset nam
     expect(complete).not.toHaveBeenCalled()
   } finally { await log.close(); await rm(directory, { recursive: true, force: true }) }
 })
+
+it('names the session on the first turn that finished cleanly, not on a cancelled one', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'tnega-title-cancelled-'))
+  const log = new SessionLog(join(directory, 'session.jsonl'))
+  const complete = vi.fn<LLMAdapter['complete']>(async () => ({ content: 'Repair login flow', finishReason: 'stop' }))
+  try {
+    await log.init()
+    await log.append('meta', { title: 'New session' })
+    await log.append('turn/start', { turn: 1, input: 'Please investigate and repair our login flow' })
+    await log.append('user/message', { content: 'Please investigate and repair our login flow' })
+    await log.append('assistant/message', { content: 'Let me look at the auth' })
+    await log.append('turn/end', { turn: 1, finishReason: 'cancelled' })
+    await autoNameSession(log, { complete })
+    // A stopped first reply says nothing about the intent: naming waits.
+    expect(complete).not.toHaveBeenCalled()
+    expect(foldSessionMeta(await log.read()).title).toBe('New session')
+    await log.append('turn/start', { turn: 2, input: 'continue' })
+    await log.append('user/message', { content: 'continue' })
+    await log.append('assistant/message', { content: 'Repaired the login flow.' })
+    await log.append('turn/end', { turn: 2, finishReason: 'stop' })
+    await autoNameSession(log, { complete })
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(foldSessionMeta(await log.read()).title).toBe('Repair login flow')
+    expect(JSON.stringify(complete.mock.calls[0]![0])).toContain('Please investigate and repair our login flow')
+  } finally { await log.close(); await rm(directory, { recursive: true, force: true }) }
+})
