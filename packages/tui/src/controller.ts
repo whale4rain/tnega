@@ -348,7 +348,9 @@ export class TuiController {
       if (this.remoteTimer) return
       this.remoteTimer = setInterval(() => {
         this.reload(id).then(detail => {
-          if (!detail.running) void this.refreshSessions()
+          if (detail.running) return
+          void this.refreshSessions()
+          this.settleQueue(false)
         }, () => undefined)
       }, this.remotePollMs)
     } else if (this.remoteTimer) {
@@ -472,13 +474,18 @@ export class TuiController {
       }
       this.set({ running: false, ...(failed ? {} : { finishedAt: Date.now() }) })
       void this.refreshSessions()
-      if (this.state.queued.length) {
-        // A run that ended on its own takes the queue as the next prompt; a stopped
-        // or failed one leaves it waiting, since what was queued may no longer apply.
-        if (failed || this.stopRequested) this.info('Your queued message is still waiting: Enter sends it, ↑ edits it.')
-        else void this.sendQueued()
-      }
+      this.settleQueue(failed)
     }
+  }
+
+  /**
+   * A run that ended on its own takes the queue as the next prompt; a stopped
+   * or failed one leaves it waiting, since what was queued may no longer apply.
+   */
+  private settleQueue(failed: boolean): void {
+    if (!this.state.queued.length) return
+    if (failed || this.stopRequested) this.info('Your queued message is still waiting: Enter sends it, ↑ edits it.')
+    else void this.sendQueued()
   }
 
   /** Hold a message until the current run ends; with nothing running, send it now. */
@@ -507,6 +514,31 @@ export class TuiController {
     return sent
   }
 
+  /**
+   * Hand a message to the running agent at its next step. With `text` that
+   * message goes now; without, everything queued goes as one. With nothing
+   * running there is nothing to steer, so it is sent as the next prompt.
+   */
+  async steer(text?: string): Promise<boolean> {
+    const typed = text?.trim()
+    const queued = typed ? [] : this.state.queued
+    const message = typed || queued.join('\n\n')
+    if (!message) return false
+    if (!this.live) return typed ? this.send(typed) : this.sendQueued()
+    const id = this.streamingFor ?? this.state.session?.id
+    if (!id) return false
+    if (queued.length) this.set({ queued: [] })
+    try {
+      await this.api.steer(this.state.workspace, id, message)
+      this.info('Steering sent. The agent reads it at the next step.')
+      return true
+    } catch (reason) {
+      if (queued.length) this.set({ queued: [...queued, ...this.state.queued] })
+      this.fail(reason)
+      return false
+    }
+  }
+
   /** Auto → Plan → Goal → Auto, as /plan, /goal and /auto. */
   async cycleMode(): Promise<void> {
     if (this.live) {
@@ -528,24 +560,17 @@ export class TuiController {
   }
 
   /**
-   * Send what the composer holds: steering while a run is going, a client
-   * command, a coding-agent command, or a new prompt.
+   * Send what the composer holds: a client command, a coding-agent command or
+   * a new prompt. While a run goes it is queued for after the run instead;
+   * `steer` hands it to the running agent now.
    */
   async send(text: string): Promise<boolean> {
     const trimmed = text.trim()
     if (!trimmed) return false
     this.set({ notice: undefined })
     if (this.live) {
-      const id = this.streamingFor ?? this.state.session?.id
-      if (!id) return false
-      try {
-        await this.api.steer(this.state.workspace, id, trimmed)
-        this.info('Steering sent. The agent reads it at the next step.')
-        return true
-      } catch (reason) {
-        this.fail(reason)
-        return false
-      }
+      this.set({ queued: [...this.state.queued, trimmed] })
+      return true
     }
     const handled = await this.runClientCommand(trimmed)
     if (handled !== undefined) return handled

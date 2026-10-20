@@ -25,7 +25,7 @@ export interface HintContext {
 /** Hints in order of importance; the last one is kept when the row runs out of room. */
 export function keyHints(context: HintContext): string[] {
   if (context.completing) return ['↑↓ choose', 'tab complete', 'enter run', 'esc close']
-  if (context.live) return ['esc stop', 'enter steer now', 'tab queue for later', context.verbose ? 'ctrl+o fold steps' : 'ctrl+o show steps']
+  if (context.live) return ['esc stop', 'enter queue', 'tab steer now', context.verbose ? 'ctrl+o fold steps' : 'ctrl+o show steps']
   const newline = context.shiftEnter ? 'shift+enter new line' : 'ctrl+j new line'
   const steps = context.verbose
     ? 'ctrl+o fold steps'
@@ -57,9 +57,9 @@ type Row = readonly [string, string]
 export function keySheet(shiftEnter: boolean): { left: Row[]; right: Row[] } {
   return {
     left: [
-      ['enter', 'send; steer while it runs'],
+      ['enter', 'send; queue while it runs'],
       [shiftEnter ? 'shift+enter' : 'ctrl+j', `new line${shiftEnter ? ' (also ctrl+j)' : ' (also alt+enter)'}`],
-      ['tab', 'queue while it runs (also alt+enter)'],
+      ['tab', 'steer now while it runs (also alt+enter)'],
       ['shift+tab', 'auto · plan · goal'],
       ['↑ ↓', 'earlier prompts; a queued message'],
       ['ctrl+a ctrl+e', 'line start · end'],

@@ -32,6 +32,7 @@ import { api, ApiError, streamRun } from '../lib/api'
 import { errorText, folderName, useScrollPinning } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
+import { MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
 import { applyStream, beginRun, formatTokens, fromEvents, type Entry } from '../lib/timeline'
 import type {
   AgentType,
@@ -58,9 +59,10 @@ import type { ArgumentSuggestion } from './PromptBox'
 import { Menu } from './Menu'
 import { Timeline } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
+import { QueuedMessages, type QueuedMessage } from './QueuedMessages'
 import { BackgroundJobs } from './BackgroundJobs'
 import { LinkContext, type LinkHandlers } from '../lib/links'
-import { navigateBrowser } from '../lib/browser-live'
+import { insertIntoComposer, navigateBrowser } from '../lib/browser-live'
 import { formatCost, formatRate } from '../lib/usage'
 
 /** Transcript messages per history page; one page opens a long session. */
@@ -148,6 +150,16 @@ export function Conversation({
   /** The newest transcript page: how much older history is left behind it. */
   const [page, setPage] = useState<SessionPageRange | undefined>()
   const [loadingOlder, setLoadingOlder] = useState(false)
+  /**
+   * Messages typed while a run goes, per session: they wait for the run to end
+   * and go as the next prompt, unless steered into the run first.
+   */
+  const [queues, setQueues] = useState<Readonly<Record<string, readonly QueuedMessage[]>>>({})
+  const queuesRef = useRef(queues)
+  queuesRef.current = queues
+  /** A run that just ended, and whether it ended on its own (not stopped, not failed). */
+  const [settled, setSettled] = useState<{ id: string; natural: boolean; at: number } | undefined>()
+  const stopRequested = useRef<string | undefined>(undefined)
   /** Sessions this view already continued on its own, so a failure is not retried in a loop. */
   const autoRecovered = useRef(new Set<string>())
 
@@ -260,7 +272,9 @@ export function Conversation({
     if (!remoteRunning || !sessionId) return
     const timer = setInterval(() => {
       reload(sessionId).then(detail => {
-        if (!detail.running) onSessionsChanged()
+        if (detail.running) return
+        onSessionsChanged()
+        setSettled({ id: sessionId, natural: stopRequested.current !== sessionId, at: Date.now() })
       }, () => {})
     }, 1500)
     return () => clearInterval(timer)
@@ -406,6 +420,8 @@ export function Conversation({
     setEntries(resumeQueued ? base : beginRun(base, prompt, Date.now(), images))
     // One id for every attempt below: a retry never queues the same message twice.
     const requestId = resumeQueued ? undefined : crypto.randomUUID()
+    if (stopRequested.current === id) stopRequested.current = undefined
+    let natural = false
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
@@ -423,6 +439,7 @@ export function Conversation({
           throw reason
         }
       }
+      if (stopRequested.current !== id) natural = true
     } catch (reason) {
       if (!controller.signal.aborted) setError(errorText(reason))
     } finally {
@@ -438,6 +455,7 @@ export function Conversation({
       }
       await reload(id).catch(() => {})
       onSessionsChanged()
+      setSettled({ id, natural, at: Date.now() })
     }
   }, [workspace, onStreamEvent, flush, reload, onSessionsChanged])
 
@@ -526,19 +544,47 @@ export function Conversation({
     return undefined
   }
 
+  /** The session a running agent writes into, when one is running here. */
+  const liveSession = (): string | undefined => streamingHere ? streamingFor.current : remoteRunning ? sessionId : undefined
+
+  const setQueue = (id: string, update: (items: readonly QueuedMessage[]) => readonly QueuedMessage[]) => {
+    setQueues(current => {
+      const next = update(current[id] ?? [])
+      const rest = Object.fromEntries(Object.entries(current).filter(([key]) => key !== id))
+      return next.length ? { ...rest, [id]: next } : rest
+    })
+  }
+
+  /** Hand a message to the running agent now; it reads it at its next step. */
+  const steer = async (text: string, images: readonly ImageAttachment[] = []): Promise<boolean> => {
+    const id = liveSession()
+    if (!id) return send(text, [...images])
+    setError(undefined)
+    try {
+      await api.steer(workspace, id, text, images)
+      showNotice('Steering sent. The agent will read it at the next step.')
+      return true
+    } catch (reason) {
+      setError(errorText(reason))
+      return false
+    }
+  }
+
+  const sendQueued = async (item: QueuedMessage): Promise<void> => {
+    const id = liveSession() ?? sessionId
+    if (!id) return
+    setQueue(id, items => items.filter(each => each.id !== item.id))
+    const sent = liveSession() ? await steer(item.text, item.images) : await send(item.text, item.images)
+    if (!sent) setQueue(id, items => [item, ...items])
+  }
+
   const send = async (text: string, images: ImageAttachment[] = []): Promise<boolean> => {
     setError(undefined)
-    if (streamingHere || remoteRunning) {
-      const id = streamingHere ? streamingFor.current : sessionId
-      if (!id) return false
-      try {
-        await api.steer(workspace, id, text, images)
-        showNotice('Steering sent. The agent will read it at the next step.')
-        return true
-      } catch (reason) {
-        setError(errorText(reason))
-        return false
-      }
+    const liveId = liveSession()
+    if (liveId) {
+      // Queued by default: it goes once this run ends, or now with "Steer now".
+      setQueue(liveId, items => [...items, { id: crypto.randomUUID(), text, images }])
+      return true
     }
     if (!images.length) {
       const handled = await runClientCommand(text)
@@ -587,6 +633,7 @@ export function Conversation({
   const stop = async () => {
     const id = streamingHere ? streamingFor.current : sessionId
     if (!id) return
+    stopRequested.current = id
     const controller = abort.current
     try {
       await api.stop(workspace, id)
@@ -596,6 +643,28 @@ export function Conversation({
     setTimeout(() => controller?.abort(), 2500)
     if (remoteRunning) void reload(id)
   }
+
+  // A run that ended on its own takes its queue as the next prompt; a stopped or
+  // failed one leaves it waiting, since what was queued may no longer apply.
+  const sendRef = useRef(send)
+  sendRef.current = send
+  useEffect(() => {
+    if (!settled || settled.id !== sessionId || live) return
+    const items = queuesRef.current[settled.id] ?? []
+    setSettled(undefined)
+    if (!items.length) return
+    if (!settled.natural) {
+      showNotice('Your queued messages are waiting: send, edit or remove them.', 6000)
+      return
+    }
+    const id = settled.id
+    setQueue(id, () => [])
+    const text = items.map(item => item.text).filter(Boolean).join('\n\n')
+    const images = items.flatMap(item => item.images).slice(0, MAX_IMAGES_PER_MESSAGE)
+    void sendRef.current(text, images).then(sent => {
+      if (!sent) setQueue(id, current => [...items, ...current])
+    })
+  }, [settled, sessionId, live, showNotice])
 
   const resend = async (entryId: string, text: string) => {
     if (!sessionId || live) return
@@ -864,6 +933,18 @@ export function Conversation({
           ))}
           {sessionId && <QuestionPanel key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} running={live} onResumeQueued={() => { pendingResume.current = sessionId; setResumeVersion(version => version + 1) }} />}
           {plan && (plan.items.length > 0 || plan.status === 'pending') && <PlanPanel plan={plan} />}
+          {sessionId && (
+            <QueuedMessages
+              items={queues[sessionId] ?? []}
+              live={live}
+              onSend={item => void sendQueued(item)}
+              onEdit={item => {
+                setQueue(sessionId, items => items.filter(each => each.id !== item.id))
+                insertIntoComposer({ text: item.text, images: item.images })
+              }}
+              onRemove={item => setQueue(sessionId, items => items.filter(each => each.id !== item.id))}
+            />
+          )}
           <Composer
             settings={settings}
             onSettingsChange={patch => void changeSettings(patch)}
@@ -879,8 +960,9 @@ export function Conversation({
             locked={live || Boolean(busy)}
             disabledReason={disabledReason}
             onSubmit={send}
+            onSteerSubmit={steer}
             onStop={() => void stop()}
-            placeholder={live ? 'Steer the agent… (@ for files)' : sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
+            placeholder={live ? 'Queue a message for after this run… (Ctrl+Enter steers now)' : sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
             autoFocusKey={sessionId ?? 'draft'}
             resetKey={sessionId ?? 'draft'}
           />

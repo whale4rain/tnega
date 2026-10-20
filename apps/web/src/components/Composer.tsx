@@ -59,6 +59,7 @@ export function Composer({
   locked,
   disabledReason,
   onSubmit,
+  onSteerSubmit,
   onStop,
   placeholder,
   autoFocusKey,
@@ -79,6 +80,8 @@ export function Composer({
   locked: boolean
   disabledReason?: ReactNode
   onSubmit: (text: string, images: ImageAttachment[]) => Promise<boolean> | boolean
+  /** While running, Ctrl/Cmd+Enter steers the agent with the message now. */
+  onSteerSubmit?: ((text: string, images: ImageAttachment[]) => Promise<boolean> | boolean) | undefined
   onStop: () => void
   placeholder: string
   autoFocusKey?: string | undefined
@@ -99,6 +102,7 @@ export function Composer({
       allowWhileRunning={allowWhileRunning}
       disabledReason={disabledReason}
       onSubmit={onSubmit}
+      onSteerSubmit={onSteerSubmit}
       onStop={onStop}
       placeholder={placeholder}
       autoFocusKey={autoFocusKey}

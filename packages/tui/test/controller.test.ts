@@ -49,7 +49,7 @@ describe('TuiController', () => {
     expect(controller.state.finishedAt).toBeDefined()
   })
 
-  it('steers a running agent instead of starting another run', async () => {
+  it('queues a message sent while the agent runs, and steers with it on request', async () => {
     const { server, controller } = setup()
     await controller.start()
     const release = deferred()
@@ -57,7 +57,13 @@ describe('TuiController', () => {
     await controller.send('first')
     await until(() => controller.state.running)
     await controller.send('also check tests')
+    expect(controller.state.queued).toEqual(['also check tests'])
+    expect(server.calls.some(call => call.path.endsWith('/steer'))).toBe(false)
+    await controller.steer()
+    expect(controller.state.queued).toEqual([])
     expect(server.calls.find(call => call.path.endsWith('/steer'))?.body).toMatchObject({ prompt: 'also check tests' })
+    await controller.steer('and the docs')
+    expect(server.calls.filter(call => call.path.endsWith('/steer'))[1]?.body).toMatchObject({ prompt: 'and the docs' })
     expect(server.calls.filter(call => call.path.endsWith('/runs'))).toHaveLength(1)
     release.resolve()
     await until(() => !controller.state.running)

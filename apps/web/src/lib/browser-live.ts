@@ -3,6 +3,7 @@
  * frames of the (headless) page, and the user's pointer and keys go back to
  * it. The desktop app shows a native view instead (see desktop-browser.ts).
  */
+import type { ImageAttachment } from './types'
 
 export interface LiveTab {
   id: string
@@ -119,7 +120,7 @@ export interface ComposerContext {
 export interface ComposerInsert {
   text?: string
   context?: ComposerContext
-  images?: Array<{ type: 'image'; mediaType: 'image/jpeg' | 'image/png'; data: string; name?: string }>
+  images?: ImageAttachment[]
 }
 
 export function insertIntoComposer(detail: ComposerInsert): void {
