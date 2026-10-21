@@ -744,6 +744,10 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@tnega/client':
+        specifier: workspace:*
+        version: link:../../client
 
   packages/loop/project-loop:
     dependencies:

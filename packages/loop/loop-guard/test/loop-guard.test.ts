@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { tools } from '@tnega/tools'
+import { fromEvents } from '@tnega/client/timeline'
+import type { SessionEvent } from '@tnega/client/types'
 import { agents, type AgentRegistry, type LLMAdapter, type LLMCompletion } from '@tnega/agent'
 import {
   detectLoop,
@@ -48,6 +50,11 @@ async function run(
   toolService.register({
     schema: { name: 'write_file', description: 'write', parameters: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } } } },
     execute: () => 'written',
+  })
+  let shellRuns = 0
+  toolService.register({
+    schema: { name: 'shell', description: 'shell', parameters: { type: 'object', properties: { command: { type: 'string' } } } },
+    execute: () => `exit 1: 3 tests failed (run ${++shellRuns})`,
   })
   toolService.register({
     schema: { name: 'fail', description: 'fail', parameters: { type: 'object', properties: { n: { type: 'number' } } } },
@@ -171,5 +178,39 @@ describe('loop guard', () => {
     const staged = JSON.stringify(events.filter(event => JSON.stringify(event).includes(LOOP_GUARD_ATTEMPTS_NAME)))
     expect(staged).toContain('connection refused')
     await handle.dispose()
+  })
+
+  it('counts new shell commands as progress, so editing through the shell is not a stall', async () => {
+    const { guard, handle } = await run((_request, index) => index < 40
+      ? call('shell', { command: index % 2 ? 'pnpm test' : `sed -i 's/a/b${index}/' src/x.ts` })
+      : answer('Fixed.'), { stallSteps: 10 })
+    expect(guard).toEqual([])
+    await handle.dispose()
+  })
+
+  it('does not take the same filler text over new results for a loop', async () => {
+    const { guard, handle } = await run((_request, index) => index < 12
+      ? { ...call('read', { path: `f${index}.txt` }), content: 'Let me look at the next file.' }
+      : answer('Read them all.'))
+    expect(guard).toEqual([])
+    await handle.dispose()
+  })
+
+  it('treats a write that only changes whitespace as a new write', async () => {
+    const { guard, handle } = await run((_request, index) => index < 4
+      ? call('write_file', { path: 'a.py', content: `def f():\n${' '.repeat(index + 1)}return 1` })
+      : answer('Indented.'), { sameResult: 2 })
+    expect(guard).toEqual([])
+    await handle.dispose()
+  })
+
+  it('shows every guard message as a Timeline notice', () => {
+    const names = [LOOP_GUARD_NAME, LOOP_GUARD_REFLECT_NAME, LOOP_GUARD_PARK_NAME, LOOP_GUARD_ATTEMPTS_NAME]
+    const events: SessionEvent[] = names.map((name, index) => ({
+      id: `e${index}`, seq: index, ts: index, type: 'user/message', payload: { content: 'x', name },
+    }))
+    const entries = fromEvents(events)
+    expect(entries.filter(entry => entry.kind === 'user')).toEqual([])
+    expect(entries.flatMap(entry => entry.kind === 'agent' ? entry.blocks.map(block => block.kind) : [])).toEqual(names.map(() => 'notice'))
   })
 })

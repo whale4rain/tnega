@@ -24,10 +24,14 @@ export const LOOP_GUARD_ATTEMPTS_NAME = 'plugin:loop-guard:attempts'
 /**
  * Tools whose successful call changes the world the agent works on: a file,
  * an artifact, the plan, the goal, memory or a message to someone. A new call
- * to one of these is progress; repeating the identical call is not.
+ * to one of these is progress; repeating the identical call is not. `shell`
+ * is here because agents edit, build and commit through it: a new command
+ * counts, rerunning the same one (the same test run) does not.
  */
 export const DEFAULT_PROGRESS_TOOLS: readonly string[] = [
-  'write_file', 'edit_file', 'apply_patch',
+  'write_file', 'shell',
+  // Names that MCP servers and other tool sets commonly use for edits.
+  'edit_file', 'apply_patch',
   'office_create', 'office_edit',
   'publish_artifact', 'update_checklist', 'update_goal',
   'write_memory', 'remember_global',
@@ -94,6 +98,10 @@ interface TurnState {
   messages: string[]
   /** Actions of progress tools already seen this turn. */
   progressSeen: Set<string>
+  /** Outcomes already seen this turn: a step that sees none new learned nothing. */
+  outcomesSeen: Set<string>
+  /** How often each error signature has come up this turn. */
+  errors: Map<string, number>
   stepsSinceProgress: number
   level: number
   lastFiredStep: number
@@ -123,9 +131,11 @@ function hash(text: string): string {
   return createHash('sha1').update(text).digest('hex').slice(0, 16)
 }
 
-/** Key order and whitespace inside strings don't make two calls different. */
+/**
+ * Key order doesn't make two calls different. String contents are kept as
+ * they are: a write that only fixes indentation is a different write.
+ */
 function normalize(value: unknown): unknown {
-  if (typeof value === 'string') return value.replace(/\s+/g, ' ').trim()
   if (Array.isArray(value)) return value.map(normalize)
   if (value && typeof value === 'object') {
     const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
@@ -276,6 +286,8 @@ export const loopGuard = {
       entries: [],
       messages: [],
       progressSeen: new Set(),
+      outcomesSeen: new Set(),
+      errors: new Map(),
       stepsSinceProgress: 0,
       level: 0,
       lastFiredStep: -Infinity,
@@ -286,25 +298,31 @@ export const loopGuard = {
       turn.entries = []
       turn.messages = []
       turn.level = 0
+      // Someone answered or the work moved on: the turn may use tools again.
+      turn.parked = false
     }
     const remember = (state: AgentState, attempt: string): void => {
       state.attempts = [...state.attempts.filter(item => item !== attempt), attempt].slice(-options.attempts)
     }
 
-    ctx.on('agent/step-limits', (event: AgentStepLimitsEvent): AgentStepLimitsEvent => {
-      if (!event.agentId || options.backstopSteps <= 0) return event
+    ctx.on('agent/step-limits', async (_event: AgentStepLimitsEvent, next: () => Promise<AgentStepLimitsEvent>) => {
+      // Later listeners decide first; the backstop only fills what stays unset.
+      const limits = await next()
+      if (!limits.agentId || options.backstopSteps <= 0) return limits
       return {
-        ...event,
-        maxSteps: event.maxSteps ?? options.backstopSteps,
-        maxTurns: event.maxTurns ?? options.backstopSteps,
+        ...limits,
+        maxSteps: limits.maxSteps ?? options.backstopSteps,
+        maxTurns: limits.maxTurns ?? options.backstopSteps,
       }
     })
 
     ctx.on('agent/turn-start', (event: AgentTurnStartEvent) => {
       if (!event.agentId) return
-      // A new turn starts with whatever the user just said: a clean slate.
+      // A new turn starts with whatever the user just said: a clean slate,
+      // including the attempts, which belong to the task that was running.
       const state = stateOf(event.agentId)
       delete state.turn
+      state.attempts = []
     })
 
     ctx.on('agent/pre-step', async (event: AgentPreStepEvent, next: () => unknown) => {
@@ -330,6 +348,15 @@ export const loopGuard = {
     })
 
     ctx.on('agent/step-end', async (event: AgentStepEndEvent) => {
+      // An observer must never fail the turn it watches.
+      try {
+        await onStepEnd(event)
+      } catch (error) {
+        ctx.logger.warn(`loop guard skipped a step: ${String(error)}`)
+      }
+    })
+
+    async function onStepEnd(event: AgentStepEndEvent): Promise<void> {
       if (!event.agentId) return
       const state = stateOf(event.agentId)
       if (!state.turn || state.turn.turn !== event.turn) state.turn = freshTurn(event.turn)
@@ -340,17 +367,29 @@ export const loopGuard = {
       if (usage) turn.tokens += Math.max(0, usage.promptTokens - (usage.cachedTokens ?? 0)) + usage.completionTokens
 
       let moved = false
+      let learned = false
       for (const { call, result } of event.calls) {
         const entry = entryOf(call, result)
         if (result.ok && progressTools.has(call.name) && !turn.progressSeen.has(entry.action)) {
           turn.progressSeen.add(entry.action)
           moved = true
         }
-        if (entry.error) remember(state, `${entry.label} failed: ${entry.error}`)
+        if (!turn.outcomesSeen.has(entry.outcome)) {
+          turn.outcomesSeen.add(entry.outcome)
+          learned = true
+        }
+        if (entry.error) {
+          // A one-off failure is ordinary exploration; one that comes back is worth keeping.
+          const seen = (turn.errors.get(entry.error) ?? 0) + 1
+          turn.errors.set(entry.error, seen)
+          if (seen === 2) remember(state, `${entry.label} failed: ${entry.error}`)
+        }
         turn.entries.push(entry)
       }
+      // The same words over a step that learned something are filler, not a loop.
       const content = (event.completion.content ?? '').replace(/\s+/g, ' ').trim()
-      if (content) turn.messages.push(hash(content))
+      if (learned) turn.messages = []
+      else if (content) turn.messages.push(hash(content))
       if (turn.entries.length > options.window * 4) turn.entries = turn.entries.slice(-options.window * 2)
       if (turn.messages.length > options.sameMessage * 4) turn.messages = turn.messages.slice(-options.sameMessage)
 
@@ -383,7 +422,7 @@ export const loopGuard = {
       } else {
         await agent.steer({ messages: [{ role: 'user', name: LOOP_GUARD_NAME, content: nudgeText(signal) }] })
       }
-    })
+    }
 
     ctx.on('agent/context-compacted', async (event: AgentContextCompactedEvent) => {
       if (!event.agentId) return
