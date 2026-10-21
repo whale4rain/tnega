@@ -178,7 +178,7 @@ Sky 写在基础选择器里，是其他调色板覆盖的底；2026-10-12 起�
 2. 起点：先定中性色的色相，再从 `--text` 开始往下调到刚好过线，最后挑强调色并检查它作文字与作底色两种用法。
 3. 在 `lib/display.ts` 的 `PALETTES` 里加 `{ id, label, description }`；描述是一句话，说用途而不是颜色名。
 4. 跑对比度测试；在真实页面里按两种模式各截一张（对话、设置、工作台的 Changes），看 diff 增删色、状态点和链接。
-5. 在本节的表里补上它，并更新 `CHANGELOG.md` 的 Unreleased。
+5. 在本节的表里补上它。`CHANGELOG.md` 由发布准备 PR 统一写入，功能 PR 不改（见 `AGENTS.md`「发布」）。
 
 ## 4. 状态语言：天气
 
@@ -439,4 +439,4 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 3. 新图形沿用扁平语言：实心色块、无描边、16px 可辨。
 4. 改标志时同步改 `--brand-cloud` / `--brand-eyes`、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
 5. 测试与源文件同目录，覆盖用户可见的行为；跑 `pnpm exec vitest run apps/web`。改了颜色跑 `contrast.test.ts`，改了玻璃或新增浮层跑 `glass.test.ts`。
-6. 用户可见的变化写进 `CHANGELOG.md` 的 Unreleased；改变了设计规则的，同一次改动里更新本文。
+6. 用户可见的变化写在 PR 描述里，不改 `CHANGELOG.md`（由发布准备 PR 统一写入）；改变了设计规则的，同一次改动里更新本文。
