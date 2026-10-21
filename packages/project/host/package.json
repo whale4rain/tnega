@@ -24,6 +24,7 @@
     "@tnega/project": "workspace:*",
     "@tnega/project-local": "workspace:*",
     "@tnega/project-loop": "workspace:*",
+    "@tnega/loop-guard": "workspace:*",
     "@tnega/project-memory": "workspace:*",
     "@tnega/project-routines": "workspace:*",
     "@tnega/project-worktrees": "workspace:*",

@@ -226,6 +226,10 @@
       "types": "./dist/types/packages/run-summary/src/index.d.ts",
       "import": "./dist/run-summary.js"
     },
+    "./loop-guard": {
+      "types": "./dist/types/packages/loop/loop-guard/src/index.d.ts",
+      "import": "./dist/loop-guard.js"
+    },
     "./ptc-runtime": {
       "types": "./dist/types/packages/ptc-runtime/src/index.d.ts",
       "import": "./dist/ptc-runtime.js"

@@ -60,11 +60,13 @@ turn 或 step 因 `length` 被截断、turn 的 step 预算用尽（`max_steps`�
 
 ## agent/* 事件（waterfall 为主要拦截点）
 
+- `agent/step-limits` — 每次 Run 开始前：插件可为调用方没设的 `maxSteps` / `maxTurns` 填默认值（未填则为 64；`@tnega/loop-guard` 用它把上限提到高兜底）
 - `agent/pre-step` — 内容进模型前最后一道闸：可改写 messages，可让 turn 零 step 收尾
 - `agent/request` — 决定最终请求（messages/tools/options）
 - `llm/stream` — 调 adapter，可包装/短路
 - `agent/request-error` — 请求失败恢复缝（重试决策 `{ kind: 'retry' }`）
 - `agent/turn-stopping` — serial：依序问"要停吗"，首个 bail 出"不停"就继续；turn 因 step 预算用尽（`max_steps`）时也问一次，监听器可换来额外一步
+- `agent/step-end` — parallel：每步 durable 结束后、领取下一步输入前等待，带 completion 与 `calls`（调用 + 结果）；在这里 `steer` 的消息进入紧接着的下一步
 - inbox 系列：`agent/inbox/inserted` / `claimed` / `discarded` / `spliced`
 
 `agent/pre-step` 与 `agent/request` 使用异步 waterfall：监听器可以先 `await` 再改写

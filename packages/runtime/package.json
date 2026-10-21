@@ -17,6 +17,7 @@
     "@tnega/persona": "workspace:*",
     "@tnega/ptc-runtime-quickjs": "workspace:*",
     "@tnega/run-summary": "workspace:*",
+    "@tnega/loop-guard": "workspace:*",
     "@tnega/sandbox": "workspace:*",
     "@tnega/sandbox-local": "workspace:*",
     "@tnega/search-ripgrep": "workspace:*",

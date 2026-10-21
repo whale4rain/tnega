@@ -220,6 +220,8 @@ export interface AgentContextCompactEvent {
 
 /** Awaited after a durable compaction; consumers may curate long-lived memory. */
 export interface AgentContextCompactedEvent {
+  /** The live Agent whose context was compacted, when it has an identity. */
+  agentId?: string
   summary: string
   sourceMessages: readonly ModelMessage[]
   llm: LLMAdapter
@@ -272,6 +274,8 @@ export interface AgentPreStepEvent {
 }
 
 export interface AgentRequestEvent {
+  /** The live Agent making the request, when it has an identity. */
+  agentId?: string
   index: number
   /** Read-only snapshot of the model-visible messages for this request. */
   readonly messages: readonly ModelMessage[]
@@ -300,6 +304,32 @@ export type AgentRequestRetryDecision =
   | { kind: 'retry'; delayMs?: number }
   | undefined
 
+/**
+ * Asked once per Agent Run before the loop starts, with the limits the caller
+ * set (`undefined` when it set none). A plugin may fill in defaults, such as a
+ * high backstop when it watches for stalls itself; whatever stays unset falls
+ * back to 64.
+ */
+export interface AgentStepLimitsEvent {
+  agentId?: string
+  maxTurns?: number
+  maxSteps?: number
+}
+
+/**
+ * Awaited after each step is durably closed and its tool results recorded,
+ * before the loop claims next-step input, so a listener that steers the Agent
+ * here reaches the very next step.
+ */
+export interface AgentStepEndEvent {
+  agentId?: string
+  index: number
+  turn: number
+  completion: LLMCompletion
+  calls: readonly { call: LLMToolCall; result: ToolResult }[]
+  signal?: AbortSignal
+}
+
 export interface AgentTurnStoppingEvent {
   /** The live Agent whose turn is stopping, when it has an identity. */
   agentId?: string
@@ -310,6 +340,7 @@ export interface AgentTurnStoppingEvent {
 }
 
 export interface AgentToolCallEvent {
+  agentId?: string
   index: number
   turn?: number
   step?: number
@@ -317,6 +348,7 @@ export interface AgentToolCallEvent {
 }
 
 export interface AgentToolResultEvent {
+  agentId?: string
   index: number
   turn?: number
   step?: number

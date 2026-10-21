@@ -77,6 +77,13 @@ const SPAWN_TOOL = 'spawn_subagent'
 const CONTINUATION_NAME = 'plugin:continue'
 /** Author of the input that continues a run the app stopped (`RECOVERY_NUDGE_NAME` in @tnega/agent). */
 const RECOVERY_NAME = 'plugin:recover'
+/** Authors of the loop guard's messages (`LOOP_GUARD_*_NAME` in @tnega/agent), and what each one tells the person. */
+const LOOP_GUARD_NOTICES: Readonly<Record<string, { text: string; tone: 'info' | 'warn'; process?: boolean }>> = {
+  'plugin:loop-guard': { text: 'Noticed the agent repeating itself and nudged it', tone: 'info', process: true },
+  'plugin:loop-guard:reflect': { text: 'Asked the agent to rethink its approach', tone: 'info', process: true },
+  'plugin:loop-guard:park': { text: 'Paused the agent: it was stuck, so it reports instead', tone: 'warn' },
+  'plugin:loop-guard:attempts': { text: 'Reminded the agent of approaches that already failed', tone: 'info', process: true },
+}
 
 // ---------------------------------------------------------------------------
 // Durable events → Timeline
@@ -112,6 +119,11 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
         if (name === CONTINUATION_NAME) {
           // The harness nudging a model that stopped mid-task; part of the process, not a message.
           agent(event.id).blocks.push({ kind: 'notice', id: event.id, tone: 'info', process: true, text: 'Reminded the agent to finish the task' })
+          break
+        }
+        const guard = name ? LOOP_GUARD_NOTICES[name] : undefined
+        if (guard) {
+          agent(event.id).blocks.push({ kind: 'notice', id: event.id, tone: guard.tone, text: guard.text, ...(guard.process ? { process: true } : {}) })
           break
         }
         if (name === RECOVERY_NAME) {
