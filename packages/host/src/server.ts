@@ -14,6 +14,7 @@ import { fileRoutes } from '@tnega/workspace-files'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { folderPickerRoutes } from '@tnega/directory-picker'
 import { usageRoutes } from '@tnega/usage'
+import { contextInsightsRoutes } from '@tnega/context-insights'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
 import { browserRoutes } from '@tnega/browser-playwright'
@@ -132,6 +133,7 @@ export async function startWebServer(
   await root.plugin(browserRoutes, { browser: () => browser })
   await root.plugin(folderPickerRoutes)
   await root.plugin(usageRoutes, { configFile })
+  await root.plugin(contextInsightsRoutes, { configFile })
   await root.plugin(workspacePromptRoutes)
   await root.plugin(pluginRoutes, {
     profile: () => context.hotPlugins,

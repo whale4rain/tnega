@@ -534,6 +534,30 @@ importers:
         specifier: workspace:*
         version: link:../llm
 
+  packages/context-insights:
+    dependencies:
+      '@tnega/config':
+        specifier: workspace:*
+        version: link:../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../session-store
+      '@tnega/usage':
+        specifier: workspace:*
+        version: link:../usage
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
+
   packages/core: {}
 
   packages/directory-picker:
@@ -585,6 +609,9 @@ importers:
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
+      '@tnega/context-insights':
+        specifier: workspace:*
+        version: link:../context-insights
       '@tnega/core':
         specifier: workspace:*
         version: link:../core

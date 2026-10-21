@@ -28,6 +28,9 @@ import type {
   SubagentEntry,
   ImageAttachment,
   WorkspaceUsage,
+  SessionContextReport,
+  ContextInsights,
+  InsightsRange,
   ChatGptLoginState,
 } from './types.js'
 
@@ -196,6 +199,10 @@ export function createClient(options: ClientOptions = {}) {
     signOutChatgpt: () => call<ChatGptLoginState>('/api/auth/chatgpt', { method: 'DELETE' }),
     /** Token use and estimated spend across a workspace's sessions. */
     usage: (workspace: string, signal?: AbortSignal) => call<WorkspaceUsage>(scoped('/api/usage', workspace), { signal }),
+    /** What one session's context is made of, request by request. */
+    context: (workspace: string, session: string, signal?: AbortSignal) => call<SessionContextReport>(scoped('/api/context', workspace, { session }), { signal }),
+    /** Context and token use across a workspace's sessions over a range. */
+    contextInsights: (workspace: string, range: InsightsRange, signal?: AbortSignal) => call<ContextInsights>(scoped('/api/context-insights', workspace, { range }), { signal }),
     workspacePrompt: (workspace: string, signal?: AbortSignal) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { signal }),
     saveWorkspacePrompt: (workspace: string, prompt: string) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { method: 'PUT', body: { prompt } }),
     /** Add or replace one chat model route. */

@@ -14,6 +14,7 @@
     "@tnega/coding-agent": "workspace:*",
     "@tnega/compaction": "workspace:*",
     "@tnega/config": "workspace:*",
+    "@tnega/context-insights": "workspace:*",
     "@tnega/core": "workspace:*",
     "@tnega/directory-picker": "workspace:*",
     "@tnega/execution": "workspace:*",
