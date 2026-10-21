@@ -45,6 +45,29 @@ Feature and fix PRs:
 - `dist/` and other build output are not edited by hand or committed.
 - Commit subjects follow Conventional Commits and stay under 72 characters.
 
+Architecture: everything is a plugin (`AGENTS.md`, "插件化"):
+
+- New behaviour arrives as a plugin that registers on its own Fiber
+  (services, events, tools, routes), not as a hard-wired call inside
+  `packages/agent`, `packages/host`, `packages/runtime` or `packages/cli`.
+  Flag new `if (feature)` branches, direct imports of a feature package, or
+  global state in those core packages when a plugin could hook in instead.
+- A replaceable capability is a seam with three roles in separate packages:
+  Service Definition, Provider, Consumer (`CONTEXT.md`,
+  `docs/adr/0006-capability-seams.md`). Flag a PR that puts two roles in one
+  package, or a Provider that also registers model-visible tools.
+- Picking a Provider happens only in the composition layer
+  (`packages/runtime`), never inside a Consumer.
+- Package size and split: when a PR adds a new package, or grows one package
+  by roughly 1,500 lines of `src/` or more, always leave one comment that
+  answers "does this need a split?". Say yes or no and why: name the
+  separate responsibilities you see (for example a definition plus a
+  provider plus tools, or several file formats in one package) and the
+  packages you would split them into, or say why it is one cohesive piece.
+  This comment is posted even when the answer is "no split needed", is not
+  counted in the nit cap, and is Important only when the PR also breaks a
+  seam rule above.
+
 Core invariants (`AGENTS.md`, "设计不变量"):
 
 - Plugin registrations belong to their Fiber, and dispose undoes them in
