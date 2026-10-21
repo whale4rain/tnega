@@ -39,10 +39,13 @@ const TOOL_META: Record<ToolId, { label: string; icon: LucideIcon; hint: string 
  * view in the same shape — a toolbar row, then the content in a rounded card.
  *
  * Files, Changes and Terminal stay mounted once visited, so unsaved edits,
- * selections and shells survive switching tabs. The browser unmounts when
- * hidden, which also takes the desktop app's native page view off screen.
+ * selections and shells survive switching tabs. The panel itself stays mounted
+ * while folded away (`open` false), so closing and reopening it slides instead
+ * of reloading. The browser unmounts when hidden or folded, which also takes the
+ * desktop app's native page view off screen.
  */
 export function Workbench({
+  open = true,
   workspace,
   state,
   onChange,
@@ -55,6 +58,8 @@ export function Workbench({
   project,
   titleSlot,
 }: {
+  /** False while folded away: the panel keeps its content but shows nothing and takes no focus. */
+  open?: boolean
   workspace: string
   state: WorkbenchState
   onChange: (update: (state: WorkbenchState) => WorkbenchState) => void
@@ -87,7 +92,7 @@ export function Workbench({
   }, [active, state.docs.length])
 
   return (
-    <aside className="workbench" aria-label="Workbench">
+    <aside className={`workbench${open ? '' : ' is-closed'}`} aria-label="Workbench" aria-hidden={!open || undefined} inert={!open}>
       <ResizeHandle onResize={onResize} />
       {/* Desktop only (CSS): the title-bar row beside the native window controls. The view on the left
           portals its header actions here, so they sit next to – ☐ ✕ and the tabs get the row below. */}
@@ -152,9 +157,9 @@ export function Workbench({
       <div className="wb-body">
         {project && <div className="wb-pane" ref={project.slot} hidden={!isProjectKey(active)} />}
         {keep('files', <FilesView workspace={workspace} focus={state.focus} onPreview={path => onChange(current => openDoc(current, { kind: 'preview', path }))} />)}
-        {keep('changes', <ChangesView workspace={workspace} visible={active === 'changes'} focus={state.focus} onCount={onChangeCount} onOpenInFiles={path => onChange(current => openTool(current, 'files', path))} onPreview={path => onChange(current => openDoc(current, { kind: 'preview', path }))} />)}
-        {keep('terminal', <TerminalView workspace={workspace} visible={active === 'terminal'} />)}
-        {active === 'browser' && browser && <div className="wb-pane"><BrowserView width={width} /></div>}
+        {keep('changes', <ChangesView workspace={workspace} visible={open && active === 'changes'} focus={state.focus} onCount={onChangeCount} onOpenInFiles={path => onChange(current => openTool(current, 'files', path))} onPreview={path => onChange(current => openDoc(current, { kind: 'preview', path }))} />)}
+        {keep('terminal', <TerminalView workspace={workspace} visible={open && active === 'terminal'} />)}
+        {open && active === 'browser' && browser && <div className="wb-pane"><BrowserView width={width} /></div>}
         {doc?.kind === 'preview' && <div className="wb-pane" key={doc.key}><PreviewView workspace={workspace} path={doc.path} /></div>}
         {doc?.kind === 'subagent' && (
           <div className="wb-pane" key={doc.key}>

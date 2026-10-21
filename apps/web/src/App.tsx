@@ -16,6 +16,7 @@ import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
 import { useDisplay } from './lib/display'
 import { isDesktopChrome, useDesktopChrome } from './lib/desktop-chrome'
+import { useMediaQuery, usePanelMotion, WORKBENCH_OVERLAY_QUERY } from './lib/panels'
 import { useDesktopUpdates } from './lib/desktop-updates'
 import { UpdatingOverlay } from './components/UpdateButton'
 import { projectApi } from './lib/project-api'
@@ -226,7 +227,14 @@ export function App() {
   const [projectSlot, setProjectSlot] = useState<HTMLDivElement | null>(null)
   // In the desktop app the open Workbench's top row sits beside the window controls; the header actions go there.
   const [titleBar, setTitleBar] = useState<HTMLDivElement | null>(null)
-  const titleSlot = isDesktopChrome() && workbench.open && workspace ? titleBar : null
+  // A Workbench floating over a narrow window starts under the title bar, so the header keeps its actions.
+  const workbenchFloats = useMediaQuery(WORKBENCH_OVERLAY_QUERY)
+  const workbenchOpen = workbench.open && Boolean(workspace)
+  const titleSlot = isDesktopChrome() && workbenchOpen && !workbenchFloats ? titleBar : null
+  // Both side panels stay mounted once shown, so folding them slides instead of rebuilding their content.
+  const [workbenchShown, setWorkbenchShown] = useState(workbenchOpen)
+  if (workbenchOpen && !workbenchShown) setWorkbenchShown(true)
+  const panelsMoving = usePanelMotion(`${sidebarOpen}/${workbenchOpen}`)
   const [projectTabs, setProjectTabs] = useState<WorkbenchProject['tabs']>([])
   const activeProject = mode === 'projects' && workspace ? projectRoute.id : undefined
   // Adjusted while rendering rather than in an effect, so a double render (StrictMode)
@@ -428,43 +436,42 @@ export function App() {
 
   return (
     <div
-      className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${workbench.open && workspace ? ' workbench-open' : ''}`}
+      className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${workbenchOpen ? ' workbench-open' : ''}${panelsMoving ? ' panels-moving' : ''}`}
       ref={appRoot}
     >
       {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
-      {sidebarOpen && (
-        <Sidebar
-          updates={updates}
-          workspaces={workspaces}
-          defaultWorkspace={defaultWorkspace}
-          workspace={workspace || undefined}
-          onAddWorkspace={() => setDialog('workspace')}
-          onRemoveWorkspace={path => void removeWorkspace(path)}
-          sessions={sessions}
-          sessionsLoading={sessionsLoading}
-          selectedId={selectedId}
-          onSelectSession={(path, id) => { enterWorkspace(path); select(id) }}
-          onNewSession={path => { enterWorkspace(path); select(undefined) }}
-          onForkSession={(path, id) => void forkSession(path, id)}
-          onDeleteSession={deleteSession}
-          onDeleteSessions={deleteSessions}
-          onRefresh={() => { refreshSessions(); refreshProjects() }}
-          focusSearch={searchFocus}
-          onOpenSettings={() => setDialog('settings')}
-          theme={theme}
-          onThemeChange={setTheme}
-          onCollapse={() => setSidebarOpen(false)}
-          mode={mode}
-          projects={projects}
-          projectsLoading={projectsLoading}
-          listsReady={sessionsFor === workspace && projectsFor === workspace}
-          onArchiveProject={archiveProject}
-          onDeleteProject={deleteProject}
-          selectedProjectId={projectRoute.id}
-          onSelectProject={(path, id) => { enterWorkspace(path); openProject(id) }}
-          onNewProject={path => { enterWorkspace(path); setNewProject(true) }}
-        />
-      )}
+      <Sidebar
+        open={sidebarOpen}
+        updates={updates}
+        workspaces={workspaces}
+        defaultWorkspace={defaultWorkspace}
+        workspace={workspace || undefined}
+        onAddWorkspace={() => setDialog('workspace')}
+        onRemoveWorkspace={path => void removeWorkspace(path)}
+        sessions={sessions}
+        sessionsLoading={sessionsLoading}
+        selectedId={selectedId}
+        onSelectSession={(path, id) => { enterWorkspace(path); select(id) }}
+        onNewSession={path => { enterWorkspace(path); select(undefined) }}
+        onForkSession={(path, id) => void forkSession(path, id)}
+        onDeleteSession={deleteSession}
+        onDeleteSessions={deleteSessions}
+        onRefresh={() => { refreshSessions(); refreshProjects() }}
+        focusSearch={searchFocus}
+        onOpenSettings={() => setDialog('settings')}
+        theme={theme}
+        onThemeChange={setTheme}
+        onCollapse={() => setSidebarOpen(false)}
+        mode={mode}
+        projects={projects}
+        projectsLoading={projectsLoading}
+        listsReady={sessionsFor === workspace && projectsFor === workspace}
+        onArchiveProject={archiveProject}
+        onDeleteProject={deleteProject}
+        selectedProjectId={projectRoute.id}
+        onSelectProject={(path, id) => { enterWorkspace(path); openProject(id) }}
+        onNewProject={path => { enterWorkspace(path); setNewProject(true) }}
+      />
 
       {workspace && mode === 'projects' && (projectRoute.id
         ? (
@@ -544,9 +551,10 @@ export function App() {
           </main>
         )}
 
-      {workbench.open && workspace && (
+      {workbenchShown && workspace && (
         <Workbench
           key={workspace}
+          open={workbenchOpen}
           workspace={workspace}
           state={workbench}
           onChange={setWorkbench}

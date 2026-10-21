@@ -274,3 +274,24 @@ it('refreshes every list when it opens and when the window comes back', async ()
     vi.useRealTimers()
   }
 })
+
+it('stays mounted while folded: keeps its search, takes no focus, and refreshes when it opens again', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const onRefresh = vi.fn()
+  const { props, view } = renderSidebar({ onRefresh })
+  expect(onRefresh).toHaveBeenCalledTimes(1)
+  const search = view.getByLabelText('Search sessions and projects') as HTMLInputElement
+  fireEvent.change(search, { target: { value: 'a2' } })
+
+  view.rerender(createElement(Sidebar, { ...props, open: false }))
+  const aside = view.container.querySelector('aside')
+  expect(aside?.classList.contains('is-closed')).toBe(true)
+  expect(aside?.hasAttribute('inert')).toBe(true)
+  expect(onRefresh).toHaveBeenCalledTimes(1)
+
+  view.rerender(createElement(Sidebar, { ...props, open: true }))
+  expect(aside?.hasAttribute('inert')).toBe(false)
+  expect(search.value).toBe('a2')
+  expect(onRefresh).toHaveBeenCalledTimes(2)
+})

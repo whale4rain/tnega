@@ -175,7 +175,8 @@ kbd {
     backdrop-filter: none;
   }
 
-  [data-glass="full"] .conv-header::before {
+  [data-glass="full"] .conv-header::before,
+  [data-glass="full"] .wb-titlebar::before {
     content: none;
   }
 }
@@ -183,21 +184,12 @@ kbd {
 /*
  * Glass everywhere (Settings -> Appearance -> Glass). The shells that float over
  * the app are always glass; this mode brings the same material to the app own
- * chrome. Glass over a flat colour is indistinguishable from a tint, so the mode
- * also paints a tinted backdrop behind the app; over a photo or the browser view
- * the cost is the accepted one documented in docs/design/tnega-design.md 3.2.
+ * chrome. It sits on the plain page colour: the tinted glow it used to paint
+ * behind the app read as a dark vignette at the window edges and left the native
+ * window controls a different colour from the bar beside them (2026-10-21).
+ * Over a photo or the browser view the cost is the accepted one documented in
+ * docs/design/tnega-design.md 3.2.
  */
-[data-glass="full"] body::before {
-  content: "";
-  position: fixed;
-  inset: -15%;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(38% 42% at 8% 4%, var(--accent-soft), transparent 70%),
-    radial-gradient(34% 38% at 96% 10%, var(--surface-sunken), transparent 72%),
-    radial-gradient(46% 46% at 78% 96%, var(--accent-soft), transparent 74%);
-}
 
 /*
  * The shells are glass on the element itself, exactly as in floating mode. A
@@ -230,7 +222,14 @@ kbd {
   backdrop-filter: none;
 }
 
-[data-glass="full"] .conv-header::before {
+/* The desktop title strip above an open Workbench is the same bar as the header beside it. */
+[data-glass="full"] .wb-titlebar {
+  position: relative;
+  z-index: 1;
+}
+
+[data-glass="full"] .conv-header::before,
+[data-glass="full"] .wb-titlebar::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -801,15 +800,34 @@ kbd {
    App frame
    ========================================================================== */
 
+/*
+ * Three columns, always: sidebar, the view, Workbench. A folded panel keeps its
+ * column at 0 and stays mounted, sliding out past the window edge (the frame
+ * clips it) instead of being rebuilt when it comes back. Its own width never
+ * changes while it moves, so its content does not reflow; only the view between
+ * them does. The columns animate only for the fold itself (`panels-moving`), so
+ * resizing the window or dragging the Workbench edge stays immediate.
+ */
 .app {
+  --sidebar-col: var(--sidebar-width);
+  --workbench-col: 0px;
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-col) minmax(0, 1fr) var(--workbench-col);
   height: 100%;
   overflow: hidden;
 }
 
 .app.sidebar-closed {
-  grid-template-columns: minmax(0, 1fr);
+  --sidebar-col: 0px;
+}
+
+.app.panels-moving {
+  transition: grid-template-columns var(--duration-panel) var(--ease-out);
+}
+
+.app > main {
+  grid-row: 1;
+  grid-column: 2;
 }
 
 /* Documents need more room than a transcript. */
@@ -850,6 +868,11 @@ kbd {
    ========================================================================== */
 
 .sidebar {
+  grid-row: 1;
+  grid-column: 1;
+  /* Pinned to the column's end: as the column folds to 0 the sidebar slides out past the left edge. */
+  justify-self: unsafe end;
+  width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -857,6 +880,12 @@ kbd {
   border-right: 1px solid var(--border);
   padding: 0 10px 8px;
   gap: 6px;
+}
+
+/* Folded: hidden once it has slid out, so it takes no focus and paints nothing. */
+.sidebar.is-closed {
+  visibility: hidden;
+  transition: visibility 0s linear var(--duration-panel);
 }
 
 /* The title-bar row: level with the conversation header, the Workbench tabs and the window controls. */
@@ -3782,13 +3811,6 @@ kbd {
   color: var(--danger);
 }
 
-@keyframes slide-in {
-  from {
-    transform: translateX(16px);
-    opacity: 0;
-  }
-}
-
 /* ==========================================================================
    Responsive
    ========================================================================== */
@@ -3796,7 +3818,7 @@ kbd {
 @media (max-width: 860px) {
   .app,
   .app.sidebar-closed {
-    grid-template-columns: minmax(0, 1fr);
+    --sidebar-col: 0px;
   }
 
   .sidebar {
@@ -3807,7 +3829,12 @@ kbd {
     z-index: 50;
     width: min(300px, 86vw);
     box-shadow: var(--shadow-lg);
-    animation: slide-from-left 220ms var(--ease-out);
+    transition: transform var(--duration-panel) var(--ease-out);
+  }
+
+  .sidebar.is-closed {
+    transform: translateX(calc(-100% - 24px));
+    transition: transform var(--duration-panel) var(--ease-out), visibility 0s linear var(--duration-panel);
   }
 
   .sidebar-scrim {
@@ -3837,13 +3864,6 @@ kbd {
 
   .context-label {
     display: none;
-  }
-}
-
-@keyframes slide-from-left {
-  from {
-    transform: translateX(-16px);
-    opacity: 0;
   }
 }
 
