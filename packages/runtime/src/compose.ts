@@ -11,6 +11,7 @@ import { searchRipgrep } from '@tnega/search-ripgrep'
 import type { SessionLog } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { runSummary } from '@tnega/run-summary'
+import { loopGuard, type LoopGuardConfig } from '@tnega/loop-guard'
 import { toolJobs } from '@tnega/tool-jobs'
 import { toolMemory } from '@tnega/tool-memory'
 import { toolOffice } from '@tnega/tool-office'
@@ -68,6 +69,11 @@ export interface RuntimeSpec {
   memory?: boolean
   /** Mount the run summary tool. */
   summary?: boolean
+  /**
+   * Watch turns for stalls (repeats, cycles, no progress) instead of capping
+   * their length; lifts the default step cap to a high backstop.
+   */
+  loopGuard?: boolean | LoopGuardConfig
   /** Mount background jobs; `provider: false` reuses an inherited registry. */
   jobs?: false | {
     provider?: boolean
@@ -207,6 +213,7 @@ export const runtimeCapabilities: Plugin = {
     await ctx.plugin(systemPrompt)
     await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? spec.workspace })
     if (spec.summary) await ctx.plugin(runSummary)
+    if (spec.loopGuard) await ctx.plugin(loopGuard, spec.loopGuard === true ? {} : spec.loopGuard)
 
     if (builtinOn) {
       await ctx.plugin(sandboxCapability, {

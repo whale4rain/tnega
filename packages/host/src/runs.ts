@@ -346,6 +346,8 @@ export async function createResidentRuntime(
     },
     memory: true,
     summary: true,
+    // Long turns are fine while they keep moving; a turn that stalls is nudged, then parked.
+    loopGuard: true,
     jobs: { resolveSession: sessionOf },
     ptc: {
       mode: req.config.codeMode ? 'ptc' : 'native',

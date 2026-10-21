@@ -27,6 +27,7 @@ import { ApprovalBroker, mountApprovalReview, mountThreadApprovals, permissionGu
 import { ptcCapability, runtimeCapabilities } from '@tnega/runtime'
 import type { SystemConfig } from '@tnega/config'
 import { projectLoop } from '@tnega/project-loop'
+import { loopGuard } from '@tnega/loop-guard'
 import { projectLocal } from '@tnega/project-local'
 import type { ProjectRecord, ProjectsService } from '@tnega/project'
 import { SessionLog, foldUsage, type SessionEvent } from '@tnega/session'
@@ -804,6 +805,7 @@ export class ProjectHost {
     await ctx.plugin(jobsLocal)
     await ctx.plugin(toolJobs, { resolveSession: (agentId?: string) => registry.get(agentId ?? record.coordinatorId)?.session })
     await ctx.plugin(continuationNudge)
+    await ctx.plugin(loopGuard)
     const threads = ctx.get('threads')
     const toolService = ctx.get('tools')
     // Review first with trusted room evidence; an undecided call waits on its

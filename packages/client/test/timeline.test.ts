@@ -12,6 +12,22 @@ function ev<T extends SessionEvent['type']>(type: T, payload: Extract<SessionEve
 const SUB = '0f8f6c1e-3b0a-4a39-9d7e-7f1d2a3b4c5d'
 
 describe('fromEvents', () => {
+  it('shows the loop guard as notices, not as user messages', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('user/message', { content: 'go' }),
+      ev('assistant/message', { content: '', toolCalls: [{ id: 'c1', name: 'grep', arguments: {} }] }),
+      ev('user/message', { content: 'You have called grep 3 times.', name: 'plugin:loop-guard' }),
+      ev('user/message', { content: 'Stop here.', name: 'plugin:loop-guard:park' }),
+    ])
+    expect(entries.map(entry => entry.kind)).toEqual(['user', 'agent'])
+    expect(entries[1]).toMatchObject({ blocks: [
+      { kind: 'tool' },
+      { kind: 'notice', tone: 'info', process: true, text: 'Noticed the agent repeating itself and nudged it' },
+      { kind: 'notice', tone: 'warn', text: 'Paused the agent: it was stuck, so it reports instead' },
+    ] })
+  })
+
   it('does not split Agent activity at request rewrite checkpoints', () => {
     const entries = fromEvents([
       ev('user/message', { content: 'go' }),

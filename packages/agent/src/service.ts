@@ -38,6 +38,8 @@ import type {
   AgentRunOptions,
   AgentRunResult,
   AgentStep,
+  AgentStepEndEvent,
+  AgentStepLimitsEvent,
   AgentStreamEvent,
   LLMStreamRequestEvent,
   AgentTurnStoppingEvent,
@@ -505,8 +507,18 @@ export class AgentService {
     const streamAdapter = llm.stream
     const persistChunks = streamAdapter !== undefined
 
-    const maxTurns = options.maxTurns ?? this.config.maxTurns ?? 64
-    const maxSteps = options.maxSteps ?? this.config.maxSteps ?? 64
+    const requestedLimits: AgentStepLimitsEvent = {
+      ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+    }
+    const requestedTurns = options.maxTurns ?? this.config.maxTurns
+    const requestedSteps = options.maxSteps ?? this.config.maxSteps
+    if (requestedTurns !== undefined) requestedLimits.maxTurns = requestedTurns
+    if (requestedSteps !== undefined) requestedLimits.maxSteps = requestedSteps
+    const limits = await this.ctx.waterfallAsync(
+      'agent/step-limits', requestedLimits, (payload: AgentStepLimitsEvent) => payload,
+    ) as AgentStepLimitsEvent | undefined
+    const maxTurns = limits?.maxTurns ?? requestedTurns ?? 64
+    const maxSteps = limits?.maxSteps ?? requestedSteps ?? 64
     const contextBudget = options.contextBudget ?? this.config.contextBudget
     const injected = this.inbox.injected()
     this.ctx.emit('agent/start', { input: claimed, options, injected })
@@ -650,6 +662,7 @@ export class AgentService {
         }
         try {
           const request = await this.ctx.waterfallAsync('agent/request', {
+            ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
             index,
             messages: copyMessages(requestedInput),
             tools: streamRequest.tools,
@@ -799,7 +812,10 @@ export class AgentService {
         })
       }
       for (const call of toolCalls) {
-        this.ctx.emit('agent/tool-call', { index, turn, step: index, call })
+        this.ctx.emit('agent/tool-call', {
+          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+          index, turn, step: index, call,
+        })
         yield { type: 'tool/start', index, turn, step: index, call }
         await session.append('tool/call', {
           id: call.id,
@@ -862,6 +878,7 @@ export class AgentService {
         await session.append('tool/result', toolResultPayload)
         yield { type: 'tool/end', index, turn, step: index, call, result }
         this.ctx.emit('agent/tool-result', {
+          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
           index,
           turn,
           step: index,
@@ -898,6 +915,15 @@ export class AgentService {
         toolCalls: toolCalls.length,
       })
       currentStepIndex = undefined
+
+      await this.ctx.parallel('agent/step-end', {
+        ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+        index,
+        turn,
+        completion,
+        calls: toolCalls.map((call, position) => ({ call, result: toolResults[position]! })),
+        ...(options.signal ? { signal: options.signal } : {}),
+      } satisfies AgentStepEndEvent)
 
       const nextMessages = this._extendMessages(llmMessages, completion, toolResults)
       const concludesTurn = toolResults.some(result => result.concludesTurn === true)
@@ -1057,6 +1083,7 @@ export class AgentService {
     if (llm) {
       try {
         await this.ctx.parallel('agent/context-compacted', {
+          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
           summary,
           sourceMessages: copyMessages(messages),
           llm,
