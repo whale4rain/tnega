@@ -566,6 +566,7 @@ export function App() {
           onChangeCount={setChangeCount}
           project={activeProject ? { tabs: projectTabs, slot: setProjectSlot } : undefined}
           titleSlot={setTitleBar}
+          sessionId={mode === 'sessions' ? selectedId : undefined}
         />
       )}
 
@@ -583,7 +584,11 @@ export function App() {
         />
       )}
       <UpdatingOverlay updates={updates} />
-      {dialog === 'settings' &&<SettingsDialog config={config} workspace={workspace} updates={updates} theme={theme} onThemeChange={setTheme} display={display} onDisplayChange={setDisplay} onClose={() => setDialog(undefined)} onSaved={setConfig} />}
+      {dialog === 'settings' &&<SettingsDialog config={config} workspace={workspace} updates={updates} theme={theme} onThemeChange={setTheme} display={display} onDisplayChange={setDisplay} onClose={() => setDialog(undefined)} onSaved={setConfig} onOpenSession={session => {
+        setDialog(undefined)
+        if (session.kind === 'thread' && session.projectId) openProject(session.projectId, session.threadId)
+        else select(session.id)
+      }} />}
       {dialog === 'workspace' && (
         <WorkspaceDialog
           onClose={() => setDialog(undefined)}

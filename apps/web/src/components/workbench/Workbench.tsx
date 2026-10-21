@@ -1,10 +1,11 @@
-import { BookOpen, Bot, CalendarClock, FileText, FolderTree, GitCompareArrows, Globe, KanbanSquare, MessagesSquare, Settings2, SquareTerminal, X, type LucideIcon } from 'lucide-react'
+import { BookOpen, Bot, CalendarClock, FileText, FolderTree, Gauge, GitCompareArrows, Globe, KanbanSquare, MessagesSquare, Settings2, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fileName } from '../../lib/office'
 import { BOARD_KEY, closeDoc, isProjectKey, isTool, openDoc, openTool, projectTabKey, select, type DocTab, type ProjectTabId, type ToolId, type WorkbenchState } from '../../lib/workbench'
 import { PreviewView } from '../preview/FilePreview'
 import { BrowserView } from './BrowserView'
 import { ChangesView } from './ChangesView'
+import { ContextView } from './ContextView'
 import { FilesView } from './FilesView'
 import { SubagentView } from './SubagentView'
 import { TerminalView } from './TerminalView'
@@ -31,6 +32,7 @@ const TOOL_META: Record<ToolId, { label: string; icon: LucideIcon; hint: string 
   changes: { label: 'Changes', icon: GitCompareArrows, hint: 'What changed since the last commit' },
   terminal: { label: 'Terminal', icon: SquareTerminal, hint: 'Your shell in this workspace (Ctrl+`)' },
   browser: { label: 'Browser', icon: Globe, hint: 'The agent’s browser' },
+  context: { label: 'Context', icon: Gauge, hint: 'What this session’s context is made of' },
 }
 
 /**
@@ -57,6 +59,7 @@ export function Workbench({
   onChangeCount,
   project,
   titleSlot,
+  sessionId,
 }: {
   /** False while folded away: the panel keeps its content but shows nothing and takes no focus. */
   open?: boolean
@@ -73,14 +76,17 @@ export function Workbench({
   project?: WorkbenchProject | undefined
   /** Receives the desktop title-bar row, where the conversation's header actions go. */
   titleSlot?: ((element: HTMLDivElement | null) => void) | undefined
+  /** The open session, for the Context tool. */
+  sessionId?: string | undefined
 }) {
   const [visited, setVisited] = useState<ReadonlySet<ToolId>>(() => new Set(isTool(state.active) ? [state.active] : []))
   // Outside a project its tabs do not exist; show the first tool instead.
-  const active = !project && isProjectKey(state.active) ? 'files' : state.active
+  const active = !project && isProjectKey(state.active) ? 'files' : project && state.active === 'context' ? BOARD_KEY : state.active
   const projectDocs = project ? state.docs.filter(doc => doc.kind === 'artifact' || doc.kind === 'thread' || doc.kind === 'exchange' || doc.kind === 'settings') : []
   const otherDocs = state.docs.filter(doc => doc.kind === 'preview' || doc.kind === 'subagent')
   if (isTool(active) && !visited.has(active)) setVisited(new Set([...visited, active]))
-  const tools = (['files', 'changes', 'terminal', 'browser'] as const).filter(tool => tool !== 'browser' || browser)
+  // Context belongs to a session; a project screen has its own panels instead.
+  const tools = (['files', 'changes', 'terminal', 'browser', 'context'] as const).filter(tool => (tool !== 'browser' || browser) && (tool !== 'context' || !project))
   const keep = (tool: ToolId, view: ReactNode) => (visited.has(tool) || active === tool) && (
     <div className="wb-pane" hidden={active !== tool} key={tool}>{view}</div>
   )
@@ -160,6 +166,7 @@ export function Workbench({
         {keep('changes', <ChangesView workspace={workspace} visible={open && active === 'changes'} focus={state.focus} onCount={onChangeCount} onOpenInFiles={path => onChange(current => openTool(current, 'files', path))} onPreview={path => onChange(current => openDoc(current, { kind: 'preview', path }))} />)}
         {keep('terminal', <TerminalView workspace={workspace} visible={open && active === 'terminal'} />)}
         {open && active === 'browser' && browser && <div className="wb-pane"><BrowserView width={width} /></div>}
+        {active === 'context' && !project && <div className="wb-pane"><ContextView workspace={workspace} sessionId={sessionId} visible={open} /></div>}
         {doc?.kind === 'preview' && <div className="wb-pane" key={doc.key}><PreviewView workspace={workspace} path={doc.path} /></div>}
         {doc?.kind === 'subagent' && (
           <div className="wb-pane" key={doc.key}>
