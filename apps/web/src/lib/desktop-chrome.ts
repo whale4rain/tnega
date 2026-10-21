@@ -55,17 +55,30 @@ export function cssColorToHex(color: string): string | undefined {
 }
 
 /**
+ * A `::before` that covers its element paints a surface of its own: with Glass everywhere the
+ * conversation header and the Workbench title strip keep their glass there, not on the element.
+ */
+function coveringBefore(node: Element): Rgba | undefined {
+  const style = getComputedStyle(node, '::before')
+  if (style.content === 'none' || style.content === 'normal' || style.content === '' || style.position !== 'absolute') return undefined
+  if ([style.top, style.right, style.bottom, style.left].some(edge => edge !== '0px')) return undefined
+  return parseColor(style.backgroundColor)
+}
+
+/**
  * The colour seen at `element`: the first opaque background at or above it, with any translucent
- * layers in between (a dialog's scrim) mixed over it, so the native controls dim along with the page.
+ * layers in between (a glass header, a dialog's scrim) mixed over it, so the native controls match
+ * the bar they sit in and dim along with the page.
  */
 export function backgroundBehind(element: Element | null, fallback: string): string {
   const layers: Rgba[] = []
   let base: Rgba | undefined
   for (let node = element; node && !base; node = node.parentElement) {
-    const color = parseColor(getComputedStyle(node).backgroundColor)
-    if (!color || color[3] === 0) continue
-    if (color[3] >= 1) base = color
-    else layers.push(color)
+    for (const color of [parseColor(getComputedStyle(node).backgroundColor), coveringBefore(node)]) {
+      if (!color || color[3] === 0 || base) continue
+      if (color[3] >= 1) base = color
+      else layers.push(color)
+    }
   }
   if (!base && !layers.length) return fallback
   base ??= parseColor(fallback) ?? [255, 255, 255, 1]
@@ -119,7 +132,10 @@ export function useDesktopChrome(layoutKey: string): void {
         if (side === 'left') return
         const styles = getComputedStyle(root)
         const fallback = cssColorToHex(styles.getPropertyValue('--bg')) ?? '#f4f6f8'
-        const background = backgroundBehind(document.elementFromPoint(innerWidth - 4, 4), fallback)
+        const hit = document.elementFromPoint(innerWidth - 4, 4)
+        // The corner falls in the Workbench's edge gap; the bar the controls sit in is its title strip.
+        const bar = hit?.classList.contains('workbench') ? hit.querySelector(':scope > .wb-titlebar') ?? hit : hit
+        const background = backgroundBehind(bar, fallback)
         const foreground = cssColorToHex(styles.getPropertyValue('--text-2')) ?? '#57544d'
         const key = `${background}/${foreground}`
         if (key === last) return

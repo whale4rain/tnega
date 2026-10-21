@@ -76,7 +76,7 @@ describe.each(THEMES)('%s glass', (_label, _mode, theme) => {
 
   it('keeps every text role readable over every surface the app draws behind a popover', () => {
     const glass = rgb(theme['surface-raised']!)
-    // accent-soft is part of the backdrop Glass everywhere paints behind the app.
+    // accent-soft backs selected rows and tabs a popover can open over.
     for (const behind of ['bg', 'bg-sidebar', 'surface', 'surface-raised', 'surface-sunken', 'code-bg', 'accent-soft'] as const) {
       const shown = overGlass(glass, alpha, solid(theme, behind))
       expect(contrast(rgb(theme.text!), shown), 'text over ' + behind).toBeGreaterThanOrEqual(7)

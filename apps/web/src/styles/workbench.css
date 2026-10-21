@@ -4,15 +4,21 @@
    content in a rounded card. See docs/design/tnega-design.md §5.4.
    ========================================================================== */
 
-.app.workbench-open {
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--workbench-width, var(--workbench-default));
+/* The app frame's third column (app.css): the panel's width while open, 0 while folded. */
+.app {
+  --workbench-panel: var(--workbench-width, var(--workbench-default));
 }
 
-.app.workbench-open.sidebar-closed {
-  grid-template-columns: minmax(0, 1fr) var(--workbench-width, var(--workbench-default));
+.app.workbench-open {
+  --workbench-col: var(--workbench-panel);
 }
 
 .workbench {
+  grid-row: 1;
+  grid-column: 3;
+  /* Pinned to the column's start: as the column folds to 0 the panel slides out past the right edge. */
+  justify-self: unsafe start;
+  width: var(--workbench-panel);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -21,8 +27,13 @@
   /* A small gap to the window's edges; the conversation side has none, the card's border is the divide. */
   padding: 6px 6px 6px 0;
   background: var(--bg);
-  animation: slide-in 240ms var(--ease-out);
   container: workbench / inline-size;
+}
+
+/* Folded: hidden once it has slid out, so it takes no focus and paints nothing. */
+.workbench.is-closed {
+  visibility: hidden;
+  transition: visibility 0s linear var(--duration-panel);
 }
 
 /* The panel is a card like Claude's side panel: its own surface colour, a hairline border and round corners. */
@@ -642,30 +653,44 @@
   color: var(--accent-text);
 }
 
-/* Too narrow to sit beside the conversation: the Workbench floats over it. */
+/* Too narrow to sit beside the conversation: the Workbench floats over it (WORKBENCH_OVERLAY_QUERY in
+   lib/panels.ts) and slides in from the right edge. It covers the view, so it is solid in every Glass mode. */
 @media (max-width: 1100px) {
+  .app,
   .app.workbench-open {
-    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    --workbench-col: 0px;
+    --workbench-panel: min(var(--workbench-width, 640px), 100vw);
   }
 
-  .app.workbench-open.sidebar-closed {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .workbench {
+  .workbench,
+  [data-glass="full"] .workbench {
     position: fixed;
     top: 0;
     right: 0;
     bottom: 0;
     z-index: 60;
-    width: min(var(--workbench-width, 640px), 100vw);
+    background: var(--bg);
     box-shadow: var(--shadow-lg);
+    transition: transform var(--duration-panel) var(--ease-out);
   }
-}
 
-@media (max-width: 860px) {
-  .app.workbench-open,
-  .app.workbench-open.sidebar-closed {
-    grid-template-columns: minmax(0, 1fr);
+  .workbench.is-closed {
+    transform: translateX(calc(100% + 24px));
+    transition: transform var(--duration-panel) var(--ease-out), visibility 0s linear var(--duration-panel);
+  }
+
+  /* On the desktop the floating panel starts under the title bar: the header stays whole across the
+     window, keeps its actions beside the window controls, and no panel edge cuts through it. */
+  .desktop-chrome .workbench {
+    top: var(--header-h);
+    padding-top: 6px;
+  }
+
+  .desktop-chrome .wb-titlebar {
+    display: none;
+  }
+
+  .desktop-chrome .wb-resize::after {
+    top: 6px;
   }
 }

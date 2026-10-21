@@ -112,6 +112,7 @@ export function Sidebar({
   onThemeChange,
   onCollapse,
   updates,
+  open = true,
 }: {
   workspaces: string[]
   /** Where a new session starts when no folder is chosen; listed with the others. */
@@ -151,6 +152,11 @@ export function Sidebar({
   onCollapse: () => void
   /** Desktop self-update; absent in the browser. */
   updates?: DesktopUpdates | undefined
+  /**
+   * False while folded away. The app keeps the sidebar mounted so folding it is a slide, not a
+   * rebuild: its search, scroll and expanded groups survive, and reopening refreshes in place.
+   */
+  open?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState(readCollapsed)
@@ -206,11 +212,16 @@ export function Sidebar({
     onRefresh?.()
     for (const path of workspaces) if (path !== workspace && others[path] && !others[path].loading) load(path)
   }
+  const isOpen = useRef(open)
   useEffect(() => {
-    if (listsReady && !sessionsLoading && !projectsLoading) onRefresh?.()
+    if (open && !isOpen.current) refreshAll.current()
+    isOpen.current = open
+  }, [open])
+  useEffect(() => {
+    if (open && listsReady && !sessionsLoading && !projectsLoading) onRefresh?.()
     lastRefresh.current = Date.now()
     const onBack = () => {
-      if (document.visibilityState !== 'visible' || Date.now() - lastRefresh.current < REFRESH_GAP_MS) return
+      if (!isOpen.current || document.visibilityState !== 'visible' || Date.now() - lastRefresh.current < REFRESH_GAP_MS) return
       refreshAll.current()
     }
     window.addEventListener('focus', onBack)
@@ -354,7 +365,7 @@ export function Sidebar({
   useScrollFade(sessionList, 'bottom')
 
   return (
-    <aside className="sidebar" aria-label="Workspaces">
+    <aside className={`sidebar${open ? '' : ' is-closed'}`} aria-label="Workspaces" aria-hidden={!open || undefined} inert={!open}>
       <div className="sidebar-top">
         <div className="brand">
           <span className="brand-mark" aria-hidden />

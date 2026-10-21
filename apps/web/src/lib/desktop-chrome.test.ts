@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, renderHook } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { backgroundBehind, cssColorToHex, markWindowControls, useDesktopChrome, windowControlsSide } from './desktop-chrome'
 
 it('reserves native controls only in the header at the top-right edge', () => {
@@ -79,7 +79,30 @@ describe('cssColorToHex', () => {
   })
 })
 
+/** jsdom has no pseudo-element styles: `::before` reads as absent unless a test gives it one. */
+const realStyle = window.getComputedStyle.bind(window)
+let before: Partial<CSSStyleDeclaration> | undefined
+beforeEach(() => {
+  before = undefined
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => pseudo
+    ? { content: 'none', ...before } as CSSStyleDeclaration
+    : realStyle(element))
+})
+
 describe('backgroundBehind', () => {
+  it('counts a glass ::before that covers its bar, as the Glass everywhere header draws it', () => {
+    const page = document.createElement('div')
+    page.style.backgroundColor = 'rgb(25, 25, 25)'
+    const header = document.createElement('header')
+    page.appendChild(header)
+    document.body.appendChild(page)
+    before = { content: '""', position: 'absolute', top: '0px', right: '0px', bottom: '0px', left: '0px', backgroundColor: 'color(srgb 0.164706 0.164706 0.164706 / 0.8)' }
+    expect(backgroundBehind(header, '#ffffff')).toBe('#272727')
+    // A small decoration (a dot, an underline) is not the bar's surface.
+    before = { ...before, top: '12px' }
+    expect(backgroundBehind(header, '#ffffff')).toBe('#191919')
+  })
+
   it('walks up to the first opaque background', () => {
     const outer = document.createElement('div')
     outer.style.backgroundColor = 'rgb(27, 30, 29)'
