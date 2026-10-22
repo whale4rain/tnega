@@ -25,6 +25,12 @@ await Promise.all([
   }),
   build({
     ...shared,
+    // The MXC runner turns one confined call into an MXC request; Windows tries it before the ACL runner.
+    entryPoints: [fileURLToPath(new URL('../../../packages/sandbox/sandbox-windows-mxc/src/runner.ts', import.meta.url))],
+    outfile: fileURLToPath(new URL('../out/sandbox-windows-mxc-runner.js', import.meta.url)),
+  }),
+  build({
+    ...shared,
     // The ACL grant helper keeps whole-tree DACL propagation off the main process.
     entryPoints: [fileURLToPath(new URL('../../../packages/sandbox/sandbox-windows-acl/src/grant-entry.ts', import.meta.url))],
     outfile: fileURLToPath(new URL('../out/sandbox-windows-acl-grant.js', import.meta.url)),

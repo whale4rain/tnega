@@ -140,6 +140,14 @@
       "types": "./dist/types/packages/sandbox/sandbox-windows-acl/src/runner.d.ts",
       "import": "./dist/sandbox-windows-acl-runner.js"
     },
+    "./sandbox-windows-mxc": {
+      "types": "./dist/types/packages/sandbox/sandbox-windows-mxc/src/index.d.ts",
+      "import": "./dist/sandbox-windows-mxc.js"
+    },
+    "./sandbox-windows-mxc/runner": {
+      "types": "./dist/types/packages/sandbox/sandbox-windows-mxc/src/runner.d.ts",
+      "import": "./dist/sandbox-windows-mxc-runner.js"
+    },
     "./fs-sandbox": {
       "types": "./dist/types/packages/sandbox/fs-sandbox/src/index.d.ts",
       "import": "./dist/fs-sandbox.js"

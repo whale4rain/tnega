@@ -222,7 +222,7 @@ export class SandboxUnavailableError extends SandboxError {
       `sandbox mode "${mode}" is requested but no sandbox backend is usable on this host; `
       + 'refusing to run the command unconfined. Install bubblewrap or run a '
       + 'Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure '
-      + 'the ACL restricted-token runner can start (Windows) — otherwise run with bypass.',
+      + 'MXC (wxc-exec.exe) or the ACL restricted-token runner can start (Windows) — otherwise run with bypass.',
       'SANDBOX_UNAVAILABLE',
     )
     if (detail !== undefined) this.message += ` Runner failure: ${detail}`

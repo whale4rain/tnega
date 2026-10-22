@@ -451,6 +451,11 @@ authorized automatic path.
   The same applies to `sandbox-windows-acl-grant.js`, the helper that applies
   the workspace ACE out of process: it must sit beside the main bundle, or the
   grant silently falls back to running on the Electron main thread.
+  The MXC runner (`sandbox-windows-mxc-runner.js`) follows the same rule: the
+  desktop build ships it beside the main bundle. Windows tries MXC before the
+  ACL runner, so on a host with an MXC executor verify the packaged app with
+  MXC too (`status()` names `windows-mxc`), and with `TNEGA_MXC_EXEC=off` to
+  cover the ACL fallback.
 - **Bad release:** do not delete the tag clients already downloaded. Fix
   forward with a new patch version; the updater only moves forward.
 - **Code signing:** builds are unsigned, so Windows SmartScreen warns on a

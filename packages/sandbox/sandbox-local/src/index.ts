@@ -21,18 +21,21 @@ import {
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.js'
 
 /** 本机可用的机制名。`custom` 是自带 runner 的逃生口（部署方提供实现）。 */
-export type SandboxRunnerName = 'bwrap' | 'landlock' | 'seatbelt' | 'windows-acl' | 'custom'
+export type SandboxRunnerName = 'bwrap' | 'landlock' | 'seatbelt' | 'windows-mxc' | 'windows-acl' | 'custom'
 
 /**
  * 平台 → 机制链。顺序就是优先级：链上第一个**功能性探测**通过的机制被选中。
  *
  * linux 选 bwrap 优先是因为它的 mount profile 与模式词汇最贴近（工作区可写 = 同路径
  * rw bind）；bwrap 不可用（例如 user namespace 被禁）时退到 landlock。
+ *
+ * win32 优先 MXC（Microsoft 维护、由策略驱动、不改写工作区的常驻 DACL）；宿主上没有 MXC
+ * 执行器、系统低于 MXC 的版本下限，或执行器拒绝请求时，探测失败，退到原有的 ACL 受限令牌。
  */
 const PLATFORM_CHAINS: Partial<Record<NodeJS.Platform, readonly SandboxRunnerName[]>> = {
   linux: ['bwrap', 'landlock'],
   darwin: ['seatbelt'],
-  win32: ['windows-acl'],
+  win32: ['windows-mxc', 'windows-acl'],
 }
 
 /**
@@ -44,6 +47,8 @@ const STATIC_ENFORCEMENT: Record<SandboxRunnerName, SandboxEnforcement> = {
   bwrap: 'full',
   landlock: 'full',
   seatbelt: 'full',
+  // NTFS 硬链接别名、档位随宿主而变（base-container 档保留环境读权限）。
+  'windows-mxc': 'partial',
   'windows-acl': 'partial',
   custom: 'full',
 }
@@ -53,6 +58,7 @@ const DENIAL_SIGNATURES: Record<SandboxRunnerName, readonly string[]> = {
   bwrap: ['read-only file system', 'Permission denied'],
   landlock: ['Permission denied'],
   seatbelt: ['Operation not permitted'],
+  'windows-mxc': ['Access is denied', 'access is denied', '拒绝访问', 'Access to the path', 'EPERM'],
   'windows-acl': ['Access is denied', 'access is denied', 'EPERM'],
   custom: [],
 }
@@ -62,14 +68,19 @@ const RUNNER_FAILURE_RULES: Record<SandboxRunnerName, readonly RunnerFailureRule
   bwrap: [{ fatalSignatures: ['bwrap: '] }],
   landlock: [{ allowedExitCodes: [125], fatalSignatures: ['landlock-run: '] }],
   seatbelt: [{ fatalSignatures: ['sandbox-exec: '] }],
+  'windows-mxc': [{ allowedExitCodes: [127], fatalSignatures: ['mxc-sandbox-run: '] }],
   'windows-acl': [{ allowedExitCodes: [127], fatalSignatures: ['windows-acl-run: '] }],
   custom: [],
 }
 
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000
+/** MXC 的探测真的起一个容器，首次可能要几秒；未显式配置时给它更宽的预算。 */
+const DEFAULT_MXC_PROBE_TIMEOUT_MS = 30_000
 
 /** Windows ACL 机制包的形状：只有 win32 才会被动态加载。 */
 type WindowsAclModule = typeof import('@tnega/sandbox-windows-acl')
+/** MXC 机制包的形状：同样只在 win32 上加载。 */
+type WindowsMxcModule = typeof import('@tnega/sandbox-windows-mxc')
 
 interface AclGrant {
   add(path: string, options?: { revocable?: boolean }): Promise<void>
@@ -113,6 +124,17 @@ export interface Config {
   sandboxExecPath?: string
   /** Windows ACL runner 的显式命令；默认由机制包自己解析。 */
   windowsAclRunnerCommand?: readonly string[]
+  /** Windows MXC runner 的显式命令；默认由机制包自己解析。 */
+  windowsMxcRunnerCommand?: readonly string[]
+  /**
+   * MXC 执行器 `wxc-exec.exe` 的路径。省略时依次看 `TNEGA_MXC_EXEC`、`@microsoft/mxc-sdk`
+   * 载荷与 `PATH`；`TNEGA_MXC_EXEC=off` 关闭 MXC，直接用 windows-acl。
+   */
+  mxcExecPath?: string
+  /** 固定 MXC 请求契约版本；省略时探测按 `MXC_CONTRACT_VERSIONS` 依次协商。 */
+  mxcContractVersion?: string
+  /** 工作区之外命令需要**读**的目录（MXC 的 AppContainer 档位没有环境读权限）。 */
+  mxcReadOnlyRoots?: readonly string[]
   internals?: SandboxInternals
 }
 
@@ -121,7 +143,19 @@ interface Selection {
   enforcement: SandboxEnforcement
 }
 
+/** 探测协商出的 MXC 执行器与契约版本。 */
+interface MxcSelection {
+  exec: string
+  contract: string
+}
+
 let windowsAclModule: WindowsAclModule | undefined
+let windowsMxcModule: WindowsMxcModule | undefined
+
+async function windowsMxc(): Promise<WindowsMxcModule> {
+  windowsMxcModule ??= await import('@tnega/sandbox-windows-mxc')
+  return windowsMxcModule
+}
 
 /** 只在真正需要 Windows 机制时加载 koffi —— POSIX 上不该付这份代价。 */
 async function windowsAcl(): Promise<WindowsAclModule> {
@@ -147,6 +181,7 @@ export class LocalSandboxService extends SandboxService {
   private readonly platform: NodeJS.Platform
   private selection: Selection | undefined
   private probeFailure: string | undefined
+  private mxc: MxcSelection | undefined
   private readonly standingGrants = new Map<string, AclGrant>()
   /** 进行中的常驻授予：并发的命令共用同一次整树传播，而不是排队各做一遍。 */
   private readonly pendingStandingGrants = new Map<string, Promise<void>>()
@@ -191,15 +226,14 @@ export class LocalSandboxService extends SandboxService {
     const selection = await this.select(request.policy.mode)
     const runnerArgv = selection.runner === 'windows-acl'
       ? await this.confineWindowsAcl(request.policy, request.argv)
-      : this.wrapArgv(selection.runner, request.policy, request.argv)
+      : selection.runner === 'windows-mxc'
+        ? await this.confineWindowsMxc(request.policy, request.argv)
+        : this.wrapArgv(selection.runner, request.policy, request.argv)
+    const env = this.nodeRunnerEnv(selection.runner, runnerArgv[0])
 
     return {
       argv: runnerArgv,
-      ...(selection.runner === 'windows-acl' && process.versions.electron
-        && runnerArgv[0] === process.execPath
-        ? { env: { ELECTRON_RUN_AS_NODE: '1',
-          ...(this.config.windowsAclRunnerCommand === undefined ? { TNEGA_DESKTOP_ACL_RUNNER: '1' } : {}),
-        } } : {}),
+      ...(env ? { env } : {}),
       runner: selection.runner,
       enforcement: selection.enforcement,
       denialSignatures: denialSignatures(selection.runner, this.config),
@@ -240,11 +274,61 @@ export class LocalSandboxService extends SandboxService {
           ...argv,
         ]
       case 'windows-acl':
+      case 'windows-mxc':
         throw new SandboxUnavailableError(
           policy.mode,
-          'windows-acl requires asynchronous grant preparation',
+          `${runner} requires asynchronous preparation`,
         )
     }
+  }
+
+  /**
+   * 两个 Windows runner 都是 Node 脚本。桌面端用 Electron 自己的可执行文件以 Node 模式跑
+   * 它们；内置 runner 再带上标记，让桌面端改用不触发忙光标的 utility process 承载
+   * （见 `apps/desktop/src/process-launcher.ts`）。显式配置的 runner 不带标记。
+   */
+  private nodeRunnerEnv(runner: SandboxRunnerName, command: string | undefined): Record<string, string> | undefined {
+    if (runner !== 'windows-acl' && runner !== 'windows-mxc') return undefined
+    if (!process.versions.electron || command !== process.execPath) return undefined
+    const configured = runner === 'windows-acl' ? this.config.windowsAclRunnerCommand : this.config.windowsMxcRunnerCommand
+    return { ELECTRON_RUN_AS_NODE: '1', ...(configured === undefined ? { TNEGA_DESKTOP_ACL_RUNNER: '1' } : {}) }
+  }
+
+  /**
+   * Windows MXC：Provider 不落任何 ACE。runner 为每次调用写一份 MXC 请求（模式、工作区、
+   * `workspace-write` 的私有 temp），MXC 在请求结束时撤销它自己的策略，所以这里只拼 argv。
+   */
+  private async confineWindowsMxc(policy: SandboxPolicy, argv: readonly string[]): Promise<string[]> {
+    const mxc = await windowsMxc()
+    const selected = this.mxc ?? await this.locateMxc(mxc)
+    const workspaceRoot = canonicalPath(policy.workspaceRoot)
+    const tempBase = this.tempBase(policy)
+    if (policy.mode === 'workspace-write' && containsDirectory(workspaceRoot, tempBase)) {
+      throw new SandboxError(`sandbox tempRoot must live outside the workspace: ${tempBase}`, 'SANDBOX_INVALID_POLICY')
+    }
+    const runnerCommand = mxc.resolveMxcRunnerCommand({
+      ...(this.config.windowsMxcRunnerCommand ? { runnerCommand: this.config.windowsMxcRunnerCommand } : {}),
+    })
+    return [...runnerCommand, ...mxc.buildRunnerArgs({
+      workspace: workspaceRoot,
+      mode: policy.mode,
+      exec: selected.exec,
+      contract: selected.contract,
+      containerId: mxc.containerIdFor(workspaceRoot, policy.sessionId),
+      ...(policy.mode === 'workspace-write' ? { temp: tempBase } : {}),
+      readOnlyRoots: (this.config.mxcReadOnlyRoots ?? []).map(canonicalPath),
+      execArgs: [],
+      argv,
+    })]
+  }
+
+  /** 选执行器；探测被注入（测试）时契约取配置值或首选版本。 */
+  private async locateMxc(mxc: WindowsMxcModule): Promise<MxcSelection> {
+    const exec = mxc.locateMxcExecutor({
+      ...(this.config.mxcExecPath !== undefined ? { configuredPath: this.config.mxcExecPath } : {}),
+    })
+    this.mxc = { exec, contract: this.config.mxcContractVersion ?? mxc.MXC_CONTRACT_VERSIONS[0] }
+    return this.mxc
   }
 
   /**
@@ -436,6 +520,8 @@ export class LocalSandboxService extends SandboxService {
       }
       case 'windows-acl':
         return this.probeWindowsAcl(timeout)
+      case 'windows-mxc':
+        return this.probeWindowsMxc(this.config.probeTimeoutMs ?? DEFAULT_MXC_PROBE_TIMEOUT_MS)
       case 'custom':
         if (this.config.runnerCommand === undefined || this.config.runnerCommand.length === 0) {
           this.probeFailure = 'runnerCommand is not configured'
@@ -480,6 +566,62 @@ export class LocalSandboxService extends SandboxService {
       })
       if (result.exitCode === 0) return STATIC_ENFORCEMENT['windows-acl']
       this.probeFailure = result.stderr.trim() || `runner exited ${result.exitCode}`
+    } catch (error) {
+      this.probeFailure = error instanceof Error ? error.message : String(error)
+    }
+    return 'unusable'
+  }
+
+  /**
+   * MXC 的功能性探测：真的经 runner 在 MXC 里跑一次只读的 `exit 0`。它同时回答三个问题：
+   * 执行器在不在、宿主够不够 MXC 的版本下限、执行器接受哪个请求契约 —— 按
+   * `MXC_CONTRACT_VERSIONS` 依次试，第一个跑通的被记住。
+   */
+  private async probeWindowsMxc(timeout: number): Promise<SandboxEnforcement | 'unusable'> {
+    if (this.platform !== 'win32') {
+      this.probeFailure = 'MXC confines on Windows only'
+      return 'unusable'
+    }
+    if (this.config.mxcExecPath === undefined && process.env.TNEGA_MXC_EXEC?.toLowerCase() === 'off') {
+      this.probeFailure = 'disabled by TNEGA_MXC_EXEC=off'
+      return 'unusable'
+    }
+    try {
+      const mxc = await windowsMxc()
+      const exec = mxc.locateMxcExecutor({
+        ...(this.config.mxcExecPath !== undefined ? { configuredPath: this.config.mxcExecPath } : {}),
+      })
+      const runnerCommand = mxc.resolveMxcRunnerCommand({
+        ...(this.config.windowsMxcRunnerCommand ? { runnerCommand: this.config.windowsMxcRunnerCommand } : {}),
+      })
+      const [command, ...prefix] = runnerCommand
+      if (command === undefined) throw new Error('windows-mxc runner command is empty')
+      const workspace = this.probePolicy().workspaceRoot
+      const contracts = this.config.mxcContractVersion !== undefined
+        ? [this.config.mxcContractVersion]
+        : mxc.MXC_CONTRACT_VERSIONS
+      const env = this.nodeRunnerEnv('windows-mxc', command)
+      const failures: string[] = []
+      for (const contract of contracts) {
+        const result = await localExecutionProvider.runProcess({
+          argv: [command, ...prefix, ...mxc.buildRunnerArgs({
+            workspace, mode: 'read-only', exec, contract,
+            containerId: mxc.containerIdFor(workspace, 'probe'),
+            readOnlyRoots: [], execArgs: [],
+            argv: ['cmd.exe', '/d', '/s', '/c', 'exit 0'],
+          })],
+          cwd: workspace,
+          timeoutMs: timeout,
+          maxBuffer: 64 * 1024,
+          ...(env ? { env } : {}),
+        })
+        if (result.exitCode === 0) {
+          this.mxc = { exec, contract }
+          return STATIC_ENFORCEMENT['windows-mxc']
+        }
+        failures.push(`contract ${contract}: ${result.stderr.trim() || `runner exited ${result.exitCode}`}`)
+      }
+      this.probeFailure = failures.join('; ')
     } catch (error) {
       this.probeFailure = error instanceof Error ? error.message : String(error)
     }
