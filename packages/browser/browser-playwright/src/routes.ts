@@ -51,7 +51,7 @@ async function handleBrowser(
       if (res.destroyed || res.writableEnded) return
       // Drop frames while the socket is still flushing the previous one.
       if (event.type === 'frame' && pending) return
-      pending = !res.write(`event: ${event.type}data: ${JSON.stringify(event)}`)
+      pending = !writeSse(res, event)
     }, { frames: url.searchParams.get('frames') !== '0' })
     res.on('drain', () => { pending = false })
     req.on('close', unsubscribe)

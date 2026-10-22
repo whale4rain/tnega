@@ -36,7 +36,8 @@ export async function readJsonBody(req: IncomingMessage, maxBytes = MAX_BODY_BYT
   return parsed as Record<string, unknown>
 }
 
-export function writeSse(res: ServerResponse, data: unknown): void {
+/** Write one Server-Sent Event; false means the socket is buffering and the caller may hold back. */
+export function writeSse(res: ServerResponse, data: unknown): boolean {
   const value = JSON.stringify(data)
   const type = typeof data === 'object' && data !== null
     ? (data as { type?: unknown }).type
@@ -47,7 +48,7 @@ export function writeSse(res: ServerResponse, data: unknown): void {
     '',
     '',
   ]
-  res.write(lines.join('\n'))
+  return res.write(lines.join('\n'))
 }
 
 export function sendJson(res: ServerResponse, status: number, body: unknown): void {
