@@ -9,7 +9,12 @@ import { ApprovalBroker, type PermissionMode } from '@tnega/approval-host'
 import { TerminalManager } from '@tnega/terminal'
 import { createHotPluginHost, type HotPluginEvent } from '@tnega/plugin-host'
 import { createPluginWorkshop } from '@tnega/plugin-host'
-import { readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
+import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
+import { memoryDream, memoryDreamRoutes } from '@tnega/memory-dream'
+import { memoryLocal } from '@tnega/memory-local'
+import { defaultWorkspace } from '@tnega/home'
+import { dedupe } from '@tnega/web-kit'
+import { compactionAdapter } from './support.js'
 import { fileRoutes } from '@tnega/workspace-files'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { folderPickerRoutes } from '@tnega/directory-picker'
@@ -152,6 +157,29 @@ export async function startWebServer(
     },
   })
   await root.plugin(terminalRoutes, { terminals: context.terminals })
+  // Dreaming: quiet sessions are folded into their workspace's project memory
+  // in the background. Composition picks the memory provider and the model.
+  await root.plugin(memoryDream, {
+    workspaces: async () => dedupe([...((await readSystemConfig(configFile)).workspaces ?? []), defaultWorkspace()]),
+    settings: async () => {
+      const dream = { ...MEMORY_DREAM_DEFAULTS, ...(await readSystemConfig(configFile)).memoryDream }
+      return { enabled: dream.enabled, idleMinutes: dream.idleMinutes }
+    },
+    resolveAdapter: async () => {
+      const config = await readSystemConfig(configFile)
+      const routeId = config.memoryDream?.modelId || undefined
+      if (routeId && !config.models?.some(route => route.id === routeId)) return undefined
+      const effective = effectiveLlmConfig(config, process.env, routeId)
+      const apiKey = effectiveApiKey(config, process.env, routeId)
+      return apiKey || effective.auth === 'chatgpt' ? compactionAdapter(effective, apiKey ?? '') : undefined
+    },
+    openMemory: async (workspace: string) => {
+      const scope = new Context()
+      await scope.plugin(memoryLocal, { cwd: workspace })
+      return { memory: scope.get('memory'), dispose: () => scope.fiber.dispose() }
+    },
+  })
+  await root.plugin(memoryDreamRoutes)
   registerApiRoutes(context.web)
   context.web.register({
     kind: 'prefix',

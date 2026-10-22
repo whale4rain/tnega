@@ -21,6 +21,10 @@ async function configFile(text?: string): Promise<string> {
 describe('system config file', () => {
   it('persists memory limits and disables extraction for an invalid budget file setting', async () => {
     const file = await configFile()
+    await updateSystemConfig({ memoryDream: { enabled: false, modelId: 'economical', idleMinutes: 30 } }, file)
+    expect((await readSystemConfig(file)).memoryDream).toEqual({ enabled: false, modelId: 'economical', idleMinutes: 30 })
+    await writeFile(file, JSON.stringify({ memoryDream: { idleMinutes: 0 } }))
+    expect((await readSystemConfig(file)).memoryDream).toEqual({ enabled: false })
     await updateSystemConfig({ projectMemory: { enabled: true, maxCallsPerDay: 2, coldModelId: 'economical' } }, file)
     expect((await readSystemConfig(file)).projectMemory).toEqual({ enabled: true, maxCallsPerDay: 2, coldModelId: 'economical' })
     await writeFile(file, JSON.stringify({ projectMemory: { maxCallsPerDay: -1 } }))

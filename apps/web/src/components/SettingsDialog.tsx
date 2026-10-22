@@ -66,6 +66,9 @@ export function SettingsDialog({
   const [memoryOutput, setMemoryOutput] = useState(stored?.projectMemory?.maxOutputTokens ?? 512)
   const [memoryDaily, setMemoryDaily] = useState(stored?.projectMemory?.maxTokensPerDay ?? 65536)
   const [memoryInterval, setMemoryInterval] = useState(stored?.projectMemory?.minIntervalSeconds ?? 300)
+  const [dreamEnabled, setDreamEnabled] = useState(stored?.memoryDream?.enabled ?? true)
+  const [dreamModel, setDreamModel] = useState(stored?.memoryDream?.modelId ?? '')
+  const [dreamIdle, setDreamIdle] = useState(stored?.memoryDream?.idleMinutes ?? 10)
   const [shell, setShell] = useState(stored?.shell ?? '')
   const [protocol, setProtocol] = useState<'' | Protocol>(stored?.protocol ?? '')
   const [baseUrl, setBaseUrl] = useState(stored?.baseUrl ?? '')
@@ -97,6 +100,8 @@ export function SettingsDialog({
     setError(undefined)
     const patch: ConfigPatch = { codeMode, shell, protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
     patch.projectMemory = { enabled: memoryEnabled, coldModelId: memoryModel, maxCallsPerDay: memoryCalls, maxInputTokens: memoryInput, maxOutputTokens: memoryOutput, maxTokensPerDay: memoryDaily, minIntervalSeconds: memoryInterval }
+    if (!Number.isSafeInteger(dreamIdle) || dreamIdle < 1 || dreamIdle > 1440) return fail('Quiet minutes must be a whole number from 1 to 1440', 'model')
+    patch.memoryDream = { enabled: dreamEnabled, modelId: dreamModel, idleMinutes: dreamIdle }
     patch.approvalReview = {
       provider: reviewProvider, defaultMode: reviewDefault,
       modelId: reviewModelId.trim(), model: reviewModel.trim(), baseUrl: reviewBaseUrl.trim(), apiKeyEnv: reviewKeyEnv.trim(),
@@ -200,6 +205,18 @@ export function SettingsDialog({
               <label className="field"><span className="field-label">Memory interval in seconds</span><input type="number" min={0} max={86400} value={memoryInterval} onChange={event => setMemoryInterval(Number(event.target.value))} /></label>
             </div>
             <p className="muted small">After completed work, memory uses a separate request with the original context. Cache reuse is possible, never guaranteed. Delayed extraction uses only the selected route; choose an economical model. All projects share the daily limits and run one memory request at a time. Uncached input and maximum output are reserved even for failures. These token reservations are not a currency budget.</p>
+            <h4>Dreaming</h4>
+            <div className="form-grid">
+              <label className="field-check span-2"><input type="checkbox" checked={dreamEnabled} onChange={event => setDreamEnabled(event.target.checked)} />Dream from recent sessions</label>
+              <label className="field"><span className="field-label">Dreaming model</span>
+                <select value={dreamModel} onChange={event => setDreamModel(event.target.value)}>
+                  <option value="">Default model</option>
+                  {stored?.models?.map(route => <option key={route.id} value={route.id}>{route.name || route.id}</option>)}
+                </select>
+              </label>
+              <label className="field"><span className="field-label">Quiet minutes before dreaming</span><input type="number" min={1} max={1440} value={dreamIdle} onChange={event => setDreamIdle(Number(event.target.value))} /></label>
+            </div>
+            <p className="muted small">When a session has been quiet for a while, tnega reads what was said since its last dream and updates the workspace's project memory in the background, one request at a time. Tool output is not read, and global memory is never changed this way.</p>
             {config && (
               <ModelRoutes
                 config={config}

@@ -11,6 +11,7 @@ import type {
   ApprovalMode,
   ApprovalReviewerSettings,
   ProjectMemorySettings,
+  MemoryDreamSettings,
   ConfigSnapshot,
   GoalState,
   Permission,
@@ -63,6 +64,7 @@ export interface SessionPatch {
 
 export interface ConfigPatch {
   projectMemory?: ProjectMemorySettings
+  memoryDream?: MemoryDreamSettings
   codeMode?: boolean
   /** Shell name or path; empty restores automatic detection. */
   shell?: string
