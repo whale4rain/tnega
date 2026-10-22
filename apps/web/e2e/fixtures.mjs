@@ -78,6 +78,8 @@ export async function installFixtures(context) {
     if (reaction && method === 'POST') { reactions.push({ messageId: reaction[1], ...request.postDataJSON() }); return json({ reaction: null }) }
     if (method === 'GET') {
       if (path === '/api/config') return json(config)
+      // Nothing better to install: the MXC hint stays out of the walk.
+      if (path === '/api/sandbox/setup') return json({ mxc: 'unsupported', install: { command: '', url: '' } })
       if (path === '/api/workspaces') return json({ workspaces: [workspace] })
       if (path === '/api/sessions') return json({ sessions: [session] })
       if (path === '/api/sessions/session-fixture') return json({ summary: session, events: sessionEvents, surface: sessionEvents,

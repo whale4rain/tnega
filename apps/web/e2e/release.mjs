@@ -464,6 +464,33 @@ try {
       await context.close()
     }
 
+    // --- a folded Workbench -------------------------------------------------------------------------
+    {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+      const fixtures = await installFixtures(context)
+      await installReleaseFixtures(context, { firstRun: false })
+      const errors = []
+      context.on('page', page => page.on('pageerror', error => errors.push(error.message)))
+      const page = await open(context, { theme, hash: '#session-fixture' })
+      await check(`${theme}: a new session after a project keeps the layout inside the window`, async () => {
+        await page.goto(`${origin}/#p/project`)
+        await page.locator('.project-main').getByRole('heading', { name: 'Writing site', exact: true }).waitFor()
+        // Folding the Workbench and leaving the project drops its tabs; the rail must not drag the frame along.
+        await page.getByRole('button', { name: 'Hide panel', exact: true }).click()
+        await page.getByRole('button', { name: 'New session', exact: true }).first().click()
+        await page.getByRole('heading', { name: 'New session', exact: true }).waitFor()
+        const frame = await page.evaluate(() => ({
+          scroll: document.querySelector('.app')?.scrollLeft,
+          sidebar: document.querySelector('.sidebar')?.getBoundingClientRect().left,
+        }))
+        assert.deepEqual(frame, { scroll: 0, sidebar: 0 }, `${theme}: the app frame shifted sideways`)
+        await noOverflow(page)
+      })
+      assert.deepEqual(errors, [], `${theme}: unhandled browser exceptions`)
+      assert.deepEqual(fixtures.unexpected, [], `${theme}: unhandled API routes`)
+      await context.close()
+    }
+
     // --- narrow window ----------------------------------------------------------------------------
     {
       const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
