@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 取代关系：无
-> 当前实现：`packages/sandbox/sandbox/README.md`、`packages/sandbox/sandbox-local/README.md`、`packages/sandbox/execution-sandbox/README.md`、`packages/sandbox/fs-sandbox/README.md`、`packages/sandbox/sandbox-windows-acl/README.md`
+> 当前实现：`packages/sandbox/sandbox/README.md`、`packages/sandbox/sandbox-local/README.md`、`packages/sandbox/sandbox-windows-mxc/README.md`、`packages/sandbox/execution-sandbox/README.md`、`packages/sandbox/fs-sandbox/README.md`、`packages/sandbox/sandbox-windows-acl/README.md`
 > 参考：DeepSeek Harness 的 `packages/sandbox/*`（`sandbox` / `sandbox-local` / `sandbox-windows-acl`）、`packages/fs/fs-sandbox`、`packages/shell/*-sandbox`
 
 ## 背景
@@ -89,6 +89,19 @@ Definition 里不是「更宽的策略」而是「不要沙箱」：`confine` �
   `scripts/build.mjs`、根 `package.json` 的 `exports` 与 `test/publish.test.ts`。
 - 新增可选依赖 `koffi`（FFI）：只在 Windows 机制里被 `import()`，缺失时探测失败并
   fail closed，不影响其它平台。esbuild 把它标为 `external`。
+
+### 补充（2026-10）：Windows 优先 MXC
+
+Windows 链改为 `windows-mxc → windows-acl`。新增机制库 `@tnega/sandbox-windows-mxc`，与
+`sandbox-windows-acl` 同一地位（机制库，Provider 按需 `import()`），把一次受限调用翻译成
+Microsoft eXecution Container 的请求，由 MXC 落策略并在请求结束时撤销。
+
+- **为什么放在 ACL 前面**：MXC 不在工作区上留常驻 ACE，不要求调用者拥有工作区目录，受限进程
+  里的管道 stdio 在参考实现验收的档位上可用；策略、档位与拒绝记录由 Microsoft 维护。
+- **为什么 ACL 仍在链上**：MXC 需要 Windows 11 24H2+ 与一个单独安装的执行器（SDK 解包约
+  108 MB，tnega 不自带）。没有它的宿主照旧走 ACL；两者都不可用才 `SANDBOX_UNAVAILABLE`。
+- **探测即协商**：探测经 runner 在 MXC 里真的跑一次只读命令，按 `1.0.0 → 0.9.0-alpha` 依次试
+  请求契约，选第一个跑通的。缝的词汇与事件面不变，`ConfinedArgv` 的形状不变。
 
 ## 验证
 

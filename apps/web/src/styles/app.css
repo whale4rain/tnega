@@ -2310,6 +2310,25 @@ kbd {
   align-items: center;
 }
 
+.mxc-hint {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.mxc-hint > span {
+  flex: 1;
+}
+
+.mxc-hint code {
+  white-space: nowrap;
+}
+
+.mxc-hint a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .recovery-notice > span {
   flex: 1;
 }

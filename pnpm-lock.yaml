@@ -657,6 +657,9 @@ importers:
       '@tnega/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tnega/sandbox-local':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox-local
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
@@ -1404,12 +1407,20 @@ importers:
       '@tnega/sandbox-windows-acl':
         specifier: workspace:*
         version: link:../sandbox-windows-acl
+      '@tnega/sandbox-windows-mxc':
+        specifier: workspace:*
+        version: link:../sandbox-windows-mxc
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
 
   packages/sandbox/sandbox-windows-acl:
     dependencies:
       koffi:
         specifier: ^3.1.0
         version: 3.3.1
+
+  packages/sandbox/sandbox-windows-mxc: {}
 
   packages/search/search-definition:
     dependencies:

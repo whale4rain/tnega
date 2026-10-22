@@ -1,0 +1,10 @@
+{
+  "name": "@tnega/sandbox-windows-mxc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runner": "./src/runner.ts"
+  }
+}
