@@ -211,7 +211,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - 全应用使用同一字号阶梯（§6.1）：常规界面 13px，对话正文与输入 14px、1.6 行高，工具详情 12px，元数据 11px；标题 18.5 / 24px。Project、Session 和工作台沿用同一套 token：工作台里的 Thread 与 Agent 通信用和主对话**相同**的正文字号，不再缩小一号。
 - **转派便条**（2026-10-13 起，取代 2026-10-09 的虚线转派气泡）：Thread 对话里，启动这个 Thread 的 Agent（通常是协调者）发给它的消息收成**一行**靠左的弱化文字：“Message from Coordinator ⌄”（派工本身写 “Brief from Coordinator”）+ 时间，`--text-3`、`--text-sm`，无框无底色（`ThreadMessages` 的 `RelayNote`）。点开在下方缩进显示便条：`--border-strong` **虚线**圆角框、无底色、文字 `--text-2`，上面一行小字写发送者。它是给 Thread 的指令而不是给你的消息，所以默认收起，Thread 对话读起来就是你和这个 Thread 的往来。派工便条在时不再另放折叠的 Brief。「Messages with …」里的完整往来仍用虚线气泡（`ChatRun` 的 `side="relay"`）；Thread 发给协调者的汇报只在那里出现。
 - Project 主对话里，协调者把工作交给 Thread（或 Thread 第一次回话）的地方是一张 **Thread 链接卡**：状态灯 · 标题 · 状态 · 箭头，点开在工作台打开该 Thread；每个 Thread 只在它第一次出现的地方放一张卡，卡上的状态是实时的。协调者在正文里提到 Thread 时写成 `[标题](#thread:<id>)`，渲染为带状态灯的链接，同样打开 Thread。Thread 与协调者之间的往来在 Thread 工具栏的「Messages with …」里查看（工作台的通信标签，按发送者分组，只有名字没有头像）；文档标签不跨重载保留，通信内容从 Box 快照恢复。
-- 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台；文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文；`mermaid` 代码块画成图（卡片头写 `mermaid`，`Source` 一切换回原文并可复制，图内链接与正文链接去向相同；图与代码块同用 `--pele-*` → token 映射，随模式与调色板变化；画不出来时回退成原来的代码块）。
+- 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台（2026-10-22 起按类型分流，`lib/file-open.ts`）：**HTML 在 Browser 里作为页面打开**（`file://`，同目录的 CSS、脚本与图片照常加载；没有浏览器时退回 Files）；**Markdown 在 Files 里渲染显示**；其余文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文；`mermaid` 代码块画成图（卡片头写 `mermaid`，`Source` 一切换回原文并可复制，图内链接与正文链接去向相同；图与代码块同用 `--pele-*` → token 映射，随模式与调色板变化；画不出来时回退成原来的代码块）。
 
 ### 5.2 输入区与图片
 
@@ -231,7 +231,8 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **一种形状**：每个视图都是 **标签栏 → 工具栏行 → 圆角卡片**。标签栏先是固定的工具（Files · Changes · Terminal · Browser · Context），竖线之后是可关闭的文档标签（文件预览、子 Agent 记录），同一文档不会开两次。工具栏行左边是上下文（路径、分支、会话），右边是动作；工具内部的多实例（浏览器页面、多个终端）用同一种**子标签胶囊**。内容一律放进圆角卡片：代码、终端与 diff 用 `--code-bg`，文档与页面用 `--surface`。**Project 的面板是阅读面**（Thread、Agent 通信、Board、Library、Routines、Project 设置）：内容用 `.wb-card.wb-flow` 从工具栏下的一条分隔线开始铺满面板，底色 `--bg`，不再套第二层带边框的卡片——和旁边的对话连成一片（2026-10-09 起）。
 - **底色与层级**（2026-10-12 起，参照 Claude 的侧边面板）：工作台是一张**卡片**（`.wb-frame`）：`--surface` 底、`--border` 细边、`--radius-xl` 圆角，与窗口右、下边缘留 6px 空隙（网页端顶部也留 6px），和对话之间不再画竖线，卡片的边框就是分界；卡片里的阅读面（`.wb-flow`）同样用 `--surface`，选中的标签用 `--surface-active`。工具栏标题是 `--text` + 600（Thread 名用 `--text-lg` + 650）；面板内的区块标题是句首大写的 `--text-md` + 650 + `--text`，数量跟在后面用 `--text-3`，**不用全大写的小号灰字**；Board 以项目名（`--text-xl` + 700）和一句天气（带状态灯）开头。
 - **左右分栏**：Files 与 Changes 用同一种布局——左边列表（目录树 / 改动文件），右边详情（编辑器 / diff），选中项用 `--accent-soft`。
-- **Files**：懒加载目录树（headless-tree）+ CodeMirror 6 编辑器，`Ctrl+S` 保存；磁盘上的文件在打开后被改过（比如 Agent 改了）时拒绝覆盖。
+- **Files**：懒加载目录树（headless-tree）+ CodeMirror 6 编辑器，`Ctrl+S` 保存；磁盘上的文件在打开后被改过（比如 Agent 改了）时拒绝覆盖。Markdown 文件默认渲染成文档（`.files-markdown`：`--surface` 底、`--text-lg` 正文、`--reading-width` 一栏），工具栏的 `.segmented` 单选（眼睛 / 代码图标，`role="radio"`）切到源码编辑，选择按设备记住（`tnega.markdownView`）；HTML 文件在工具栏多一个「Open in browser」（地球图标）。
+- **文件右键菜单**（2026-10-22 起，`components/FileMenu.tsx` 的 `useFileMenu`）：对话里的文件链接、改动卡片的行、Office 文件卡片与 Files 目录树上的文件，右键（或菜单键 / `Shift+F10`）都出现同一个菜单：先是点击会做的事（Open in browser / Open preview / Open in Files），HTML 与 Markdown 多一项 Edit in Files；桌面端再有 **Open with default app**（交给系统为这种文件登记的应用，比如代码进 VS Code）与 **Show in Finder / Explorer / folder**；最后是 Copy path / Copy relative path。菜单就是 `Menu` 的 `.menu-popover` + `.menu-item`，放在指针处（`.menu-at-point`，渲染到 `<body>`，在对话框之上），方向键移动、Esc 关闭并把焦点还给文件。系统会直接运行的类型（`.exe`、`.bat`、Windows 上的 `.js`、`.app`、`.command`、`.desktop` 等，见 `apps/desktop/src/open-file.ts`）不会被「Open with default app」启动，而是在文件管理器里显示出来；工作区之外的路径一律拒绝。
 - **Changes**：相对 HEAD 的改动，状态字母（M 警告色、A/U 成功色、D 危险色、R 强调色）与 `+n −n`；diff 用 `@codemirror/merge`，可切换合并 / 并排视图，长段未改动内容折叠；增删着色只用 `--success-soft` / `--danger-soft`。可见时每 5 秒刷新，Agent 的改动随写随现。非 git 工作区给出说明而不是空白。
 - **Terminal**：你自己的 shell（Windows 上优先 PowerShell 7），跑在真实 PTY 上（node-pty + xterm.js），不经沙箱、不是 Agent 工具。切换标签不会断开，重新连接时回放最近的输出。终端配色从 token 读取，随深浅主题切换。
 - **Browser**：见 5.4。
@@ -395,6 +396,7 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 | --- | --- |
 | 按钮 | `.button` + `.primary` / `.secondary` / `.ghost` / `.danger`，尺寸 `.small` / `.large`；只有图标时用 `.icon-button`（`.small` / `.tiny` / `.active`），并写 `aria-label` |
 | 菜单、下拉、单选列表 | `components/Menu.tsx` 的 `Menu`、`Choice`、`SectionChoice`、`choiceSection` |
+| 文件的右键菜单 | `components/FileMenu.tsx` 的 `useFileMenu`（§5.3），不另做右键菜单 |
 | 对话框 | `components/Dialog.tsx`；确认用 `lib/dialogs.ts` 的 `confirmDialog`，不用 `window.confirm` |
 | 表单 | `.form-grid` 两列 + `.field`（`.span-2` 占满）+ `.field-label`；说明文字 `.muted.small`；复选 `.field-check` |
 | 少量互斥选项（2–4 个） | 设置里的 `ChoiceField`（`.settings-choice-row` + `.settings-choice`，`role="radiogroup"`）；更多选项用 `<select>` |

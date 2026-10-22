@@ -34,6 +34,7 @@ import { ImageStrip } from './ImageStrip'
 import { splitPickedContext } from '../lib/browser-live'
 import { CodeBlock, Markdown } from './Markdown'
 import { OfficeFiles } from './OfficeFiles'
+import { useFileMenu } from './FileMenu'
 
 export interface TimelineActions {
   onEdit?: (entryId: string, text: string) => void
@@ -683,8 +684,10 @@ function SubagentCard({ agent, onOpen }: { agent: SubagentView; onOpen?: ((id: s
 }
 
 function EditedFiles({ files, onOpen }: { files: Array<{ path: string; additions?: number; deletions?: number }>; onOpen?: ((path: string) => void) | undefined }) {
+  const { show, menu } = useFileMenu()
   return (
     <div className="files-card">
+      {menu}
       <div className="files-head">
         <FilePen size={14} />
         <span>{files.length === 1 ? '1 file changed' : `${files.length} files changed`}</span>
@@ -701,7 +704,7 @@ function EditedFiles({ files, onOpen }: { files: Array<{ path: string; additions
           return (
             <li key={file.path}>
               {onOpen
-                ? <button type="button" className="files-row" title={`Show the diff of ${file.path}`} onClick={() => onOpen(file.path)}>{body}</button>
+                ? <button type="button" className="files-row" title={`Show the diff of ${file.path}`} onClick={() => onOpen(file.path)} onContextMenu={event => show(event, file.path)}>{body}</button>
                 : body}
             </li>
           )

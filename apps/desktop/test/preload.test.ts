@@ -25,6 +25,15 @@ describe('desktop preload bridge', () => {
   })
 })
 
+describe('desktop file bridge', () => {
+  test('hands a workspace file to the system by workspace and relative path', async () => {
+    const preload = await readPreload()
+
+    expect(preload).toContain("ipcRenderer.invoke('tnega:open-file', workspace, path)")
+    expect(preload).toContain("ipcRenderer.invoke('tnega:reveal-file', workspace, path)")
+  })
+})
+
 describe('desktop browser bridge', () => {
   test('only places, navigates and observes the agent browser view', async () => {
     const preload = await readPreload()

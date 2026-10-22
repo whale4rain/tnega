@@ -1,11 +1,14 @@
-import { PanelLeftClose, PanelLeftOpen, RefreshCw, Save } from 'lucide-react'
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Code, Eye, Globe, PanelLeftClose, PanelLeftOpen, RefreshCw, Save } from 'lucide-react'
+import { Suspense, lazy, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type TextFile } from '../../lib/api'
 import { errorText, folderName, useStoredState } from '../../lib/hooks'
 import type { Focus } from '../../lib/workbench'
 import { officeKind } from '../../lib/office'
 import { confirmDialog } from '../../lib/dialogs'
+import { fileOpenKind } from '../../lib/file-open'
 import { FileTree, type FileTreeHandle } from '../files/FileTree'
+import { FileActionsContext } from '../FileMenu'
+import { Markdown } from '../Markdown'
 
 /** CodeMirror and its grammars load only when a file is first opened. */
 const CodeEditor = lazy(() => import('../files/CodeEditor'))
@@ -19,7 +22,8 @@ interface OpenFile {
  * Workbench Files: the workspace tree beside an editor. Text files open in
  * CodeMirror and save with Ctrl+S; a save over a newer change on disk (say,
  * the agent edited the file meanwhile) is refused rather than overwriting it.
- * Office documents, PDFs and images open as preview tabs.
+ * Office documents, PDFs and images open as preview tabs. Markdown opens
+ * rendered, with a switch to its source; HTML can be shown in the browser.
  */
 export function FilesView({
   workspace,
@@ -40,6 +44,9 @@ export function FilesView({
   // The tree stays mounted while hidden so its expanded folders survive.
   const [treeMode, setTreeMode] = useStoredState<'shown' | 'hidden'>('tnega.filesTree', 'shown', ['shown', 'hidden'])
   const treeHidden = treeMode === 'hidden'
+  // Rendered or source, remembered on this device for every Markdown file.
+  const [markdownView, setMarkdownView] = useStoredState<'preview' | 'source'>('tnega.markdownView', 'preview', ['preview', 'source'])
+  const actions = useContext(FileActionsContext)
   const dirty = open !== undefined && open.file.content !== undefined && open.draft !== open.file.content
 
   const confirmDiscard = useCallback(async () => !dirty || await confirmDialog({
@@ -106,6 +113,9 @@ export function FilesView({
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
 
   const file = open?.file
+  const kind = file ? fileOpenKind(file.path) : undefined
+  const rendered = kind === 'markdown' && markdownView === 'preview'
+  const openPage = kind === 'page' && actions.browser && actions.open
   return (
     <div className="wb-view">
       <div className="wb-toolbar">
@@ -123,6 +133,17 @@ export function FilesView({
           {file ? file.path : folderName(workspace)}
           {dirty && <span className="dirty-dot" aria-label="Unsaved changes" />}
         </span>
+        {kind === 'markdown' && file?.content !== undefined && (
+          <div className="segmented small" role="radiogroup" aria-label="Markdown view">
+            <button type="button" role="radio" aria-checked={rendered} className={rendered ? 'active' : ''} aria-label="Preview" title="Preview" onClick={() => setMarkdownView('preview')}><Eye size={14} /></button>
+            <button type="button" role="radio" aria-checked={!rendered} className={rendered ? '' : 'active'} aria-label="Source" title="Source" onClick={() => setMarkdownView('source')}><Code size={14} /></button>
+          </div>
+        )}
+        {openPage && file && (
+          <button type="button" className="icon-button small" aria-label="Open in browser" title="Open in browser" onClick={() => actions.open?.(file.path)}>
+            <Globe size={14} />
+          </button>
+        )}
         <button type="button" className="icon-button small" aria-label="Reload from disk" title="Reload from disk" onClick={() => file ? void reload() : tree.current?.refresh()}>
           <RefreshCw size={14} />
         </button>
@@ -142,7 +163,12 @@ export function FilesView({
           {!loading && !file && <div className="file-preview-status">Pick a file to read or edit it.</div>}
           {!loading && file?.reason === 'binary' && <div className="file-preview-status">{file.path} is a binary file.</div>}
           {!loading && file?.reason === 'too-large' && <div className="file-preview-status">{file.path} is too large to open here ({Math.round(file.size / 1024)} KB).</div>}
-          {!loading && file?.content !== undefined && open && (
+          {!loading && file?.content !== undefined && open && rendered && (
+            <div className="files-markdown" aria-label={`Preview of ${file.path}`}>
+              <Markdown text={open.draft} />
+            </div>
+          )}
+          {!loading && file?.content !== undefined && open && !rendered && (
             <Suspense fallback={<div className="file-preview-status"><span className="spinner" /> Opening editor…</div>}>
               <CodeEditor
                 key={file.path}

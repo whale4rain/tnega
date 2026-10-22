@@ -2,6 +2,8 @@ export interface TnegaDesktopApi {
   pickFolder(): Promise<string | undefined>
   revealWorkspace(path: string): Promise<void>
   version(): string
+  /** Open a workspace file with the system's app for it, or show it in the file manager. */
+  files?: TnegaDesktopFilesApi
   /** `process.platform` of the host; the renderer keeps clear of the native window controls with it. */
   platform?: string
   /** Recolour the native window controls to match what the renderer draws behind them. */
@@ -30,6 +32,14 @@ export interface TnegaDesktopUpdatesApi {
   /** Shut the runtime down, install the downloaded version and relaunch; for an `available` update, open its download page. */
   install(): Promise<void>
   onState(listener: (state: TnegaDesktopUpdateState) => void): () => void
+}
+
+export type TnegaDesktopOpenResult = 'opened' | 'revealed' | 'missing' | 'failed'
+
+export interface TnegaDesktopFilesApi {
+  /** Programs (`.exe`, `.app`, …) are shown in the file manager instead of run. */
+  open(workspace: string, path: string): Promise<TnegaDesktopOpenResult>
+  reveal(workspace: string, path: string): Promise<TnegaDesktopOpenResult>
 }
 
 export interface TnegaDesktopBrowserState {

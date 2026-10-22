@@ -4,6 +4,11 @@ const desktopApi = Object.freeze({
   notifyCompletion: (outcome: 'completed' | 'failed' | 'waiting'): Promise<boolean> => ipcRenderer.invoke('tnega:completion', outcome),
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke('tnega:pick-folder') as Promise<string | undefined>,
   revealWorkspace: (path: string): Promise<void> => ipcRenderer.invoke('tnega:reveal-workspace', path) as Promise<void>,
+  /** Hand a workspace file to the system: its default app, or the file manager. */
+  files: Object.freeze({
+    open: (workspace: string, path: string): Promise<string> => ipcRenderer.invoke('tnega:open-file', workspace, path) as Promise<string>,
+    reveal: (workspace: string, path: string): Promise<string> => ipcRenderer.invoke('tnega:reveal-file', workspace, path) as Promise<string>,
+  }),
   version: (): string => ipcRenderer.sendSync('tnega:version') as string,
   /** Where the native window controls sit: top-left on macOS, top-right elsewhere. */
   platform: process.platform,

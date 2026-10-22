@@ -1,8 +1,9 @@
 import { asyncDataLoaderFeature, hotkeysCoreFeature, selectionFeature } from '@headless-tree/core'
 import { useTree } from '@headless-tree/react'
 import { ChevronRight, File, Folder, FolderOpen } from 'lucide-react'
-import { forwardRef, useImperativeHandle } from 'react'
+import { forwardRef, useImperativeHandle, type MouseEvent } from 'react'
 import { api, type DirectoryEntry } from '../../lib/api'
+import { useFileMenu } from '../FileMenu'
 
 const ROOT = '.'
 const ROOT_ENTRY: DirectoryEntry = { name: '', path: '', type: 'dir' }
@@ -51,9 +52,11 @@ export const FileTree = forwardRef<FileTreeHandle, {
     },
   }), [tree])
 
+  const { show, menu } = useFileMenu()
   const items = tree.getItems()
   return (
     <div {...tree.getContainerProps('Workspace files')} className="file-tree">
+      {menu}
       {items.length === 0 && <div className="file-tree-empty muted small">Loading…</div>}
       {items.map(item => {
         const data = item.getItemData()
@@ -68,6 +71,7 @@ export const FileTree = forwardRef<FileTreeHandle, {
             className={`file-tree-row${item.isFocused() ? ' focused' : ''}${data?.path === selected ? ' selected' : ''}`}
             style={{ paddingLeft: 6 + level * 14 }}
             title={data?.path}
+            {...(data?.type === 'file' && data.path ? { onContextMenu: (event: MouseEvent<HTMLButtonElement>) => show(event, data.path) } : {})}
           >
             <ChevronRight size={12} className={`file-tree-caret${folder ? '' : ' hidden'}${item.isExpanded() ? ' open' : ''}`} aria-hidden />
             <Icon size={14} className={`file-tree-icon${folder ? ' folder' : ''}`} aria-hidden />

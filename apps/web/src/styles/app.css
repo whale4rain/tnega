@@ -796,6 +796,15 @@ kbd {
   background: var(--border);
 }
 
+/* A right-click menu (FileMenu): the same popover, placed at the pointer and
+ * portalled to <body> so a scroller or a sliding panel never clips it. It sits
+ * above dialogs, since file links also appear inside them. */
+.menu-popover.menu-at-point {
+  position: fixed;
+  z-index: 110;
+  transform-origin: top left;
+}
+
 /* ==========================================================================
    App frame
    ========================================================================== */

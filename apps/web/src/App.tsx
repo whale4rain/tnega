@@ -1,5 +1,5 @@
 import { FolderKanban, FolderPlus } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Conversation } from './components/Conversation'
 import type { RunSettings } from './components/Composer'
 import { NewProjectDialog } from './components/project/NewProjectDialog'
@@ -10,7 +10,9 @@ import { Workbench, WORKBENCH_MIN_WIDTH, type WorkbenchProject } from './compone
 import { enterProject, openDoc, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
 import { useChangeCount } from './lib/hooks'
 import { desktopBrowser } from './lib/desktop-browser'
-import { browserAvailable } from './lib/browser-live'
+import { browserAvailable, navigateBrowser } from './lib/browser-live'
+import { fileOpenKind, fileUrl } from './lib/file-open'
+import { FileActionsContext, type FileActions } from './components/FileMenu'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
@@ -99,7 +101,29 @@ export function App() {
     localStorage.setItem('tnega.workbenchWidth', String(width))
   }, [])
   // The desktop app asks for the browser whenever the agent is about to use it.
-  const openPath = useCallback((path: string) => setWorkbench(current => openTool(current, 'files', path)), [setWorkbench])
+  // Outside the desktop app the server streams its headless browser into the panel.
+  const [browserReady, setBrowserReady] = useState(Boolean(desktopBrowser()))
+  useEffect(() => {
+    if (!desktopBrowser()) void browserAvailable().then(setBrowserReady)
+  }, [])
+  const editPath = useCallback((path: string) => setWorkbench(current => openTool(current, 'files', path)), [setWorkbench])
+  // A file clicked in a session: HTML shows as a page in the browser, office
+  // files and images preview, the rest (Markdown rendered) opens in Files.
+  const openPath = useCallback((path: string) => {
+    const kind = fileOpenKind(path)
+    if (kind === 'page' && browserReady && workspace) {
+      setWorkbench(current => openTool(current, 'browser'))
+      void navigateBrowser(fileUrl(workspace, path)).catch(() => undefined)
+      return
+    }
+    setWorkbench(current => kind === 'preview' ? openDoc(current, { kind: 'preview', path }) : openTool(current, 'files', path))
+  }, [setWorkbench, browserReady, workspace])
+  const fileActions = useMemo<FileActions>(() => ({
+    ...(workspace ? { workspace } : {}),
+    open: openPath,
+    edit: editPath,
+    browser: browserReady,
+  }), [workspace, openPath, editPath, browserReady])
   const showBrowser = useCallback(() => setWorkbench(current => current.open && current.active === 'browser' ? current : openTool(current, 'browser')), [setWorkbench])
   useEffect(() => desktopBrowser()?.onReveal(showBrowser), [showBrowser])
   // Ctrl+J shows or hides the Workbench; Ctrl+` opens the terminal.
@@ -117,11 +141,6 @@ export function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [setWorkbench])
-  // Outside the desktop app the server streams its headless browser into the panel.
-  const [browserReady, setBrowserReady] = useState(Boolean(desktopBrowser()))
-  useEffect(() => {
-    if (!desktopBrowser()) void browserAvailable().then(setBrowserReady)
-  }, [])
   const [fatal, setFatal] = useState<string | undefined>()
   const [mode, setMode] = useStoredState<Mode>('tnega.mode', projectFromHash() ? 'projects' : 'sessions', ['sessions', 'projects'])
   useDesktopChrome(`${mode}:${workbench.open ? workbench.active : 'none'}:${theme}`)
@@ -438,6 +457,7 @@ export function App() {
   }
 
   return (
+    <FileActionsContext.Provider value={fileActions}>
     <div
       className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-closed'}${workbenchOpen ? ' workbench-open' : ''}${panelsMoving ? ' panels-moving' : ''}`}
       ref={appRoot}
@@ -602,5 +622,6 @@ export function App() {
         />
       )}
     </div>
+    </FileActionsContext.Provider>
   )
 }
