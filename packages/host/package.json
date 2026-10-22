@@ -22,6 +22,7 @@
     "@tnega/home": "workspace:*",
     "@tnega/jobs": "workspace:*",
     "@tnega/llm": "workspace:*",
+    "@tnega/memory-dream": "workspace:*",
     "@tnega/memory-local": "workspace:*",
     "@tnega/persona": "workspace:*",
     "@tnega/plugin-host": "workspace:*",

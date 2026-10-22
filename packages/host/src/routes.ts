@@ -25,7 +25,7 @@ import { ProjectHost } from '@tnega/project-host'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { resolveLlmEnv } from '@tnega/config'
-import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
+import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun } from './runs.js'
@@ -132,6 +132,15 @@ const apiRoutes: ApiRoute[] = [
               sendError(res, 400, 'Project memory model must be a configured route'); return
             }
             patch.projectMemory = { ...current.projectMemory, ...memory }
+          }
+      if (body.memoryDream !== undefined) {
+            const dream = normalizeMemoryDream(body.memoryDream)
+            if (!dream) { sendError(res, 400, 'Invalid dreaming settings'); return }
+            const current = await readSystemConfig(context.configFile)
+            if (dream.modelId && !current.models?.some(route => route.id === dream.modelId)) {
+              sendError(res, 400, 'Dreaming model must be a configured route'); return
+            }
+            patch.memoryDream = { ...current.memoryDream, ...dream }
           }
       if (typeof body.apiKey === 'string') patch.apiKey = body.apiKey
       if (typeof body.shell === 'string') patch.shell = body.shell.trim()
@@ -782,6 +791,7 @@ export function configSnapshot(config: SystemConfig, path = systemConfigPath()):
       apiKeySet: Boolean(config.apiKey),
       codeMode: config.codeMode ?? false,
       projectMemory: { ...PROJECT_MEMORY_DEFAULTS, ...config.projectMemory },
+      memoryDream: { ...MEMORY_DREAM_DEFAULTS, ...config.memoryDream },
       shell: config.shell ?? '',
       path,
       approvalReview: {

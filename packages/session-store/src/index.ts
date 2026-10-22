@@ -635,6 +635,21 @@ export async function readSessionLog(workspace: string, id: string): Promise<Ses
   return withSessionLog(sessionFile(workspace, id), log => log.read())
 }
 
+/**
+ * A session's events as they are on disk, without opening the log. Opening a
+ * log may repair it (an interrupted tool call gets its result), which a
+ * background reader must never do to a session another process is running.
+ */
+export async function readSessionEventsReadOnly(workspace: string, id: string): Promise<SessionEvent[]> {
+  const lines = await readEventLines(sessionFile(resolve(workspace), id))
+  const events: SessionEvent[] = []
+  for (const line of lines) {
+    const event = parseSessionEvent(line)
+    if (event) events.push(event)
+  }
+  return events
+}
+
 /** Provider-reported cost and throughput of a session's committed responses. */
 export async function readSessionMetrics(
   workspace: string,

@@ -126,6 +126,8 @@ export interface LlmEnvConfig {
 
 export interface SystemConfig {
   projectMemory?: ProjectMemoryConfig
+  /** Background dreaming of workspace sessions into project memory. */
+  memoryDream?: MemoryDreamConfig
   codeMode?: boolean
   /** Shell for the `shell` tool (also when run as a background job): a name (`pwsh`, `bash`…) or a path; absent detects one. */
   shell?: string
@@ -188,6 +190,42 @@ export function normalizeProjectMemory(value: unknown): ProjectMemoryConfig | un
     const [min, max] = bounds[key]
     if (typeof field !== 'number' || !Number.isSafeInteger(field) || field < min || field > max) return undefined
     result[key] = field
+  }
+  return result
+}
+
+/** Dreaming folds quiet sessions into their workspace's project memory in the background. */
+export interface MemoryDreamConfig {
+  enabled?: boolean
+  /** Model route a dream uses; empty uses the default route. */
+  modelId?: string
+  /** Minutes a session stays quiet before it is dreamed. */
+  idleMinutes?: number
+}
+
+export const MEMORY_DREAM_DEFAULTS = {
+  enabled: true,
+  modelId: '',
+  idleMinutes: 10,
+} satisfies Required<MemoryDreamConfig>
+
+export function normalizeMemoryDream(value: unknown): MemoryDreamConfig | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const result: MemoryDreamConfig = {}
+  const enabled: unknown = Reflect.get(value, 'enabled')
+  if (enabled !== undefined) {
+    if (typeof enabled !== 'boolean') return undefined
+    result.enabled = enabled
+  }
+  const route: unknown = Reflect.get(value, 'modelId')
+  if (route !== undefined) {
+    if (typeof route !== 'string') return undefined
+    result.modelId = route.trim()
+  }
+  const idle: unknown = Reflect.get(value, 'idleMinutes')
+  if (idle !== undefined) {
+    if (typeof idle !== 'number' || !Number.isSafeInteger(idle) || idle < 1 || idle > 1440) return undefined
+    result.idleMinutes = idle
   }
   return result
 }
@@ -494,6 +532,7 @@ export async function removeModelRoute(id: string, file = systemConfigPath()): P
   if (config.model === id) delete config.model
   if (config.approvalReview?.modelId === id) config.approvalReview = { ...config.approvalReview, modelId: '' }
   if (config.projectMemory?.coldModelId === id) config.projectMemory = { ...config.projectMemory, coldModelId: '' }
+  if (config.memoryDream?.modelId === id) config.memoryDream = { ...config.memoryDream, modelId: '' }
   await writeSystemConfig(config, file)
   return config
 }
@@ -602,6 +641,9 @@ function normalizeConfig(value: unknown): SystemConfig {
   const memory = normalizeProjectMemory(record.projectMemory)
   if (memory) config.projectMemory = memory
   else if (record.projectMemory !== undefined) config.projectMemory = { enabled: false }
+  const dream = normalizeMemoryDream(record.memoryDream)
+  if (dream) config.memoryDream = dream
+  else if (record.memoryDream !== undefined) config.memoryDream = { enabled: false }
   if (typeof record.shell === 'string' && record.shell.trim()) config.shell = record.shell.trim()
   const review = normalizeApprovalReviewer(record.approvalReview)
   if (review) config.approvalReview = review

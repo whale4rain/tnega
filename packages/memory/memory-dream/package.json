@@ -1,0 +1,17 @@
+{
+  "name": "@tnega/memory-dream",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/home": "workspace:*",
+    "@tnega/memory": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/session-store": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
+  },
+  "devDependencies": { "@tnega/memory-local": "workspace:*" }
+}

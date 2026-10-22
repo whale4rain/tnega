@@ -30,6 +30,27 @@ it('saves memory route and shared limits with the other model settings', async (
   expect(save.mock.calls[0]?.[0].projectMemory).toEqual({ enabled: false, coldModelId: 'cheap', maxCallsPerDay: 2, maxTokensPerDay: 12000, maxInputTokens: 4096, maxOutputTokens: 256, minIntervalSeconds: 600 })
 })
 
+it('saves dreaming choices with the memory settings', async () => {
+  const config: ConfigSnapshot = { ...snapshot, config: { ...snapshot.config, models: [{ id: 'cheap', model: 'fast', name: 'Economical', apiKeySet: true }] } }
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(config)
+  const view = render(createElement(SettingsDialog, { config, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.change(view.getByLabelText('Dreaming model'), { target: { value: 'cheap' } })
+  fireEvent.change(view.getByLabelText('Quiet minutes before dreaming'), { target: { value: '30' } })
+  fireEvent.click(view.getByLabelText('Dream from recent sessions'))
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].memoryDream).toEqual({ enabled: false, modelId: 'cheap', idleMinutes: 30 })
+})
+
+it('refuses a dreaming delay outside its range', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  const view = render(createElement(SettingsDialog, { config: snapshot, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.change(view.getByLabelText('Quiet minutes before dreaming'), { target: { value: '0' } })
+  fireEvent.click(view.getByText('Save changes'))
+  expect(view.getByText('Quiet minutes must be a whole number from 1 to 1440')).toBeTruthy()
+  expect(save).not.toHaveBeenCalled()
+})
+
 it('saves automatic review separately and clears unsaved credentials when switching provider', async () => {
   const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
   const view = render(createElement(SettingsDialog, { config: snapshot, onClose: vi.fn(), onSaved: vi.fn() }))

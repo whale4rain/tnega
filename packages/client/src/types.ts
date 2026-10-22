@@ -466,6 +466,7 @@ export interface ConfigSnapshot {
   }
   config: {
     projectMemory?: ProjectMemorySettings
+    memoryDream?: MemoryDreamSettings
     codeMode?: boolean
     /** Saved shell preference; empty means detect automatically. */
     shell?: string
@@ -492,6 +493,14 @@ export interface ProjectMemorySettings {
   maxOutputTokens?: number
   maxTokensPerDay?: number
   minIntervalSeconds?: number
+}
+
+/** Dreaming: quiet sessions are folded into project memory in the background. */
+export interface MemoryDreamSettings {
+  enabled?: boolean
+  /** Model route a dream uses; empty uses the default route. */
+  modelId?: string
+  idleMinutes?: number
 }
 
 export interface ShellOption {
