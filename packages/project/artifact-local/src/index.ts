@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@tnega/core'
 import {
   ArtifactError,
@@ -29,6 +30,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Windows 上，目标正被另一个写入者替换时 `rename` 会短暂失败；内容寻址让这次写入
+ * 可以幂等重试，不必让并发发布的一方报错。
+ */
+const RETRYABLE_RENAME_CODES = new Set(['EACCES', 'EBUSY', 'EPERM'])
+const RENAME_RETRIES = 6
+
+async function isFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
  * 本地产物 Provider：内容寻址的文件树。
  *
  * ```
@@ -43,6 +59,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * - **写一次，不改**。内容按哈希落盘后不再变化；`mediaType` 是内容附带的第一份声明，
  *   同内容再 `put` 一次不会改掉它 —— 引用必须稳定，否则同一个哈希会解释出两种类型。
  * - **先写临时文件再改名**。崩在写入中间只会留下一个 `.tmp`，读者永远看不到半份内容。
+ *   并发写同一哈希是幂等的：另一写入者已经落下同一份内容时，这次写入算成功。
  */
 export class LocalArtifactStore extends ArtifactStore {
   private readonly root: string
@@ -85,7 +102,13 @@ export class LocalArtifactStore extends ArtifactStore {
         mediaType: request.mediaType,
       })),
     )
-    return { hash, size: bytes.byteLength, mediaType: request.mediaType }
+    // 并发发布同一份内容时，先落盘的 metadata 决定 mediaType；报告实际存下来的
+    // 引用，而不是本次调用声明的那个。
+    const stored = await this.runStat(hash)
+    if (!stored) {
+      throw new ArtifactError(`artifact metadata disappeared after writing: ${hash}`, 'ARTIFACT_FAILED')
+    }
+    return stored
   }
 
   protected override async runGet(hash: string): Promise<Uint8Array> {
@@ -130,16 +153,37 @@ export class LocalArtifactStore extends ArtifactStore {
 
   /**
    * 同目录内的改名是原子的；崩在中间只会留下 `.tmp`，读者看不到半份内容。并发写入同一
-   * 哈希时两个临时文件内容相同，后者覆盖前者不影响结果。
+   * 哈希时两个临时文件内容相同，目标已经就位就说明另一个写入者赢了，这次写入算成功。
    */
   private async writeAtomic(path: string, bytes: Uint8Array): Promise<void> {
     const temp = `${path}.${randomUUID()}.tmp`
     try {
       await writeFile(temp, bytes, { flag: 'wx' })
-      await rename(temp, path)
+      await this.commit(temp, path)
     } catch (error) {
-      await rm(temp, { force: true }).catch(() => {})
       throw new ArtifactError(`could not write artifact ${path}`, 'ARTIFACT_FAILED', { cause: error })
+    } finally {
+      // 改名成功后临时名已经不存在；输掉并发时它仍在，别留下垃圾。
+      await rm(temp, { force: true }).catch(() => {})
+    }
+  }
+
+  /**
+   * 把临时文件换成正式文件。目标已经存在时直接成功：路径由内容哈希决定，先到的
+   * 那一份内容相同。Windows 不能替换另一个线程正在替换的目标，先短暂重试，再接受
+   * 「已经就位」——否则并发发布相同内容会把输掉竞争的一方报成 `EPERM`。
+   */
+  private async commit(temp: string, path: string): Promise<void> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename(temp, path)
+        return
+      } catch (error) {
+        if (await isFile(path)) return
+        const code = (error as NodeJS.ErrnoException).code
+        if (!code || !RETRYABLE_RENAME_CODES.has(code) || attempt >= RENAME_RETRIES) throw error
+        await delay(10 * 2 ** attempt)
+      }
     }
   }
 }
