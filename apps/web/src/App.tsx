@@ -16,7 +16,7 @@ import { api } from './lib/api'
 import { errorText, useStoredState, useTheme } from './lib/hooks'
 import { useDisplay } from './lib/display'
 import { isDesktopChrome, useDesktopChrome } from './lib/desktop-chrome'
-import { useMediaQuery, usePanelMotion, WORKBENCH_OVERLAY_QUERY } from './lib/panels'
+import { useHeldWhileClosing, useMediaQuery, usePanelMotion, WORKBENCH_OVERLAY_QUERY } from './lib/panels'
 import { useDesktopUpdates } from './lib/desktop-updates'
 import { UpdatingOverlay } from './components/UpdateButton'
 import { projectApi } from './lib/project-api'
@@ -230,7 +230,10 @@ export function App() {
   // A Workbench floating over a narrow window starts under the title bar, so the header keeps its actions.
   const workbenchFloats = useMediaQuery(WORKBENCH_OVERLAY_QUERY)
   const workbenchOpen = workbench.open && Boolean(workspace)
-  const titleSlot = isDesktopChrome() && workbenchOpen && !workbenchFloats ? titleBar : null
+  // While the panel slides out the actions stay in its title strip, which is pinned beside the window
+  // controls, and move back into the header once the header reaches them: they never travel.
+  const titleStripShown = useHeldWhileClosing(workbenchOpen)
+  const titleSlot = isDesktopChrome() && titleStripShown && !workbenchFloats ? titleBar : null
   // Both side panels stay mounted once shown, so folding them slides instead of rebuilding their content.
   const [workbenchShown, setWorkbenchShown] = useState(workbenchOpen)
   if (workbenchOpen && !workbenchShown) setWorkbenchShown(true)

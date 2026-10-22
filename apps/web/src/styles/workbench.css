@@ -30,10 +30,11 @@
   container: workbench / inline-size;
 }
 
-/* Folded: hidden once it has slid out, so it takes no focus and paints nothing. */
+/* Folded: hidden once it has slid out, so it takes no focus and paints nothing. It stays visible a
+   moment past the slide, as long as its title strip holds the header actions (useHeldWhileClosing). */
 .workbench.is-closed {
   visibility: hidden;
-  transition: visibility 0s linear var(--duration-panel);
+  transition: visibility 0s linear calc(var(--duration-panel) + 60ms);
 }
 
 /* The panel is a card like Claude's side panel: its own surface colour, a hairline border and round corners. */
@@ -85,17 +86,25 @@
 }
 
 /* On the desktop the native window controls own the window's top line: the panel card starts under it.
-   The strip beside the controls is a drag area that holds the conversation's header actions, right-aligned
-   next to the controls and on their centre line. */
+   The strip beside the controls is a drag area that holds the conversation's header actions on the
+   controls' centre line. The actions are pinned to the window at exactly the spot they hold in the
+   header (its padding beside the controls), so opening, closing or sliding the panel never moves them. */
 .wb-titlebar { display: none; }
 .desktop-chrome .workbench { padding-top: 0; }
 .desktop-chrome .wb-titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  display: block;
   flex: none;
   height: var(--header-h);
-  padding-right: calc(var(--window-controls-width) + 2px);
+}
+
+.desktop-chrome .wb-titlebar-actions {
+  position: fixed;
+  top: 0;
+  right: calc(var(--window-controls-width) + 16px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: var(--header-h);
 }
 
 /* Tab rail: tools first, then documents opened from the conversation. */

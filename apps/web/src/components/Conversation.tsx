@@ -809,11 +809,11 @@ export function Conversation({
   return (
     <main className="conversation">
       <header className="conv-header">
-        {!sidebarOpen && (
-          <button type="button" className="icon-button" onClick={onToggleSidebar} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)">
-            <PanelLeft size={14} />
-          </button>
-        )}
+        {/* Always rendered: it folds away while the sidebar is open, so the title glides instead of jumping. */}
+        <button type="button" className="icon-button header-sidebar-toggle" onClick={onToggleSidebar} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)"
+          aria-hidden={sidebarOpen || undefined} tabIndex={sidebarOpen ? -1 : undefined}>
+          <PanelLeft size={14} />
+        </button>
         <div className="conv-title-wrap">
           <div className="conv-title-row">
             {summary ? <EditableTitle value={title} onSave={rename} /> : <h1 className="conv-title">{title}</h1>}

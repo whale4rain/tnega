@@ -1423,6 +1423,24 @@ kbd {
   z-index: 1;
 }
 
+/* The header's Show sidebar button folds to nothing (and gives back the 12px gap) while the sidebar
+   is open; during a fold it grows or shrinks with the sidebar so the title glides. */
+.header-sidebar-toggle {
+  overflow: hidden;
+}
+
+.app.sidebar-open .header-sidebar-toggle {
+  width: 0;
+  margin-right: -12px;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.app.panels-moving .header-sidebar-toggle {
+  transition: width var(--duration-panel) var(--ease-out), margin var(--duration-panel) var(--ease-out),
+    opacity var(--duration-panel) var(--ease-out), visibility var(--duration-panel);
+}
+
 /* Title and workspace share one line so the header fits the 32px title bar. */
 .conv-title-wrap {
   display: flex;
@@ -4141,6 +4159,13 @@ kbd {
 
 .desktop-chrome .window-controls-header-start {
   padding-left: 72px;
+}
+
+/* A sidebar fold carries the header to or from the macOS traffic lights mid-slide; that clearance
+   eases in and out with the panel instead of snapping the title sideways. (The right-hand clearance
+   only holds the header actions, which wait in the Workbench strip until it has settled.) */
+.desktop-chrome .app.panels-moving :is(.sidebar-top, .conv-header, .wb-header) {
+  transition: padding-left var(--duration-panel) var(--ease-out);
 }
 
 .desktop-chrome .sidebar-top,

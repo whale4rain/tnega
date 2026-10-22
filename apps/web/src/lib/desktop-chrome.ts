@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 /**
@@ -111,7 +111,17 @@ export function markWindowControls(root: ParentNode, width: number, side: 'left'
   }
 }
 
+/**
+ * Marks the page for the desktop title bar and keeps it in step with the layout. The setup runs
+ * once: a layout change (`layoutKey`) only asks for a fresh sync. Tearing the setup down on every
+ * change dropped the `desktop-chrome` class and the headers' clearance for a few frames, so each
+ * panel toggle made the header and the title-bar row jump sideways and back.
+ */
 export function useDesktopChrome(layoutKey: string): void {
+  const resync = useRef<(() => void) | undefined>(undefined)
+  useEffect(() => {
+    resync.current?.()
+  }, [layoutKey])
   useEffect(() => {
     const desktop = bridge()
     if (!desktop?.setTitleBarColors) return
@@ -147,6 +157,7 @@ export function useDesktopChrome(layoutKey: string): void {
     // DOM change or window resize; macOS starts with nothing else to trigger a sync.
     const sizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(sync) : undefined
     sync()
+    resync.current = sync
     const themeObserver = new MutationObserver(sync)
     themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme', 'data-palette', 'data-glass'] })
     // Workspace loading and opening drawers can mount a header after the effect.
@@ -156,6 +167,7 @@ export function useDesktopChrome(layoutKey: string): void {
     // Panels inside a view (project side panel, tabs) change the corner without changing `layoutKey`.
     addEventListener('click', sync, { passive: true })
     return () => {
+      resync.current = undefined
       clearTimeout(timer)
       sizeObserver?.disconnect()
       themeObserver.disconnect()
@@ -165,5 +177,5 @@ export function useDesktopChrome(layoutKey: string): void {
       root.classList.remove('desktop-chrome', 'window-controls-left')
       document.querySelectorAll('.window-controls-header, .window-controls-header-start').forEach(header => header.classList.remove('window-controls-header', 'window-controls-header-start'))
     }
-  }, [layoutKey])
+  }, [])
 }

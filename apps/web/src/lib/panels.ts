@@ -39,3 +39,19 @@ export function usePanelMotion(key: string): boolean {
   }, [moving, key])
   return moving
 }
+
+/**
+ * `value`, held true for one fold after it turns false: what a panel shows while it slides out.
+ * Turning true again shows at once.
+ */
+export function useHeldWhileClosing(value: boolean): boolean {
+  const [held, setHeld] = useState(value)
+  if (value && !held) setHeld(true)
+  useEffect(() => {
+    if (value || !held) return
+    // A little past the fold, so the layout has settled (and the header made room) before it lets go.
+    const timer = setTimeout(() => setHeld(false), PANEL_MS + 60)
+    return () => clearTimeout(timer)
+  }, [value, held])
+  return value || held
+}
