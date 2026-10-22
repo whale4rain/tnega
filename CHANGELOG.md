@@ -16,7 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | 16 |
+| 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | 20 |
 | 0.5.2-beta.7 | [`v0.5.2-beta.6...v0.5.2-beta.7`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.6...v0.5.2-beta.7) | 12 |
 | 0.5.2-beta.6 | [`v0.5.2-beta.5...v0.5.2-beta.6`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.5...v0.5.2-beta.6) | 9 |
 | 0.5.2-beta.5 | [`v0.5.2-beta.4...v0.5.2-beta.5`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.4...v0.5.2-beta.5) | 7 |
@@ -96,6 +96,10 @@ compare links provide a convenient browser view of the boundaries.
 - The workbench Browser tab receives live tab, page and frame updates again
   instead of showing an empty tab strip until it reconnects, and on the desktop
   the page view follows the panel while it slides instead of staying offset.
+- Opening a new session after hiding a project's workbench no longer shifts the
+  whole app sideways so the sidebar and the panel spill past the window edges.
+- On Windows, two threads publishing the same artifact at once no longer fail
+  the one that loses the race.
 
 ### Other
 
