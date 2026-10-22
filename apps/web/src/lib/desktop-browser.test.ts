@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { desktopBrowser, displayUrl, viewportRect } from './desktop-browser'
+import { boundsFollower, desktopBrowser, displayUrl, viewportRect } from './desktop-browser'
 
 afterEach(() => {
   Reflect.deleteProperty(globalThis, 'tnegaDesktop')
@@ -22,5 +22,32 @@ describe('desktop browser bridge', () => {
     expect(viewportRect({ getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0 }) } as unknown as Element, false)).toBeNull()
     expect(displayUrl('about:blank')).toBe('')
     expect(displayUrl('http://localhost:5173/')).toBe('http://localhost:5173/')
+  })
+
+  it('follows the card while the panel slides in, then stops once it holds still', () => {
+    const queue: Array<() => void> = []
+    const tick = () => queue.splice(0).forEach(callback => callback())
+    let x = 1290
+    const sent: Array<number | null> = []
+    const follower = boundsFollower({
+      measure: () => ({ x, y: 138, width: 486, height: 666 }),
+      send: rect => sent.push(rect?.x ?? null),
+      frame: callback => queue.push(callback),
+      cancel: () => { queue.length = 0 },
+    })
+    follower.follow()
+    // The panel moves without changing size: every frame lands at its new place.
+    for (const next of [1134, 1001, 900, 820, 778]) {
+      tick()
+      x = next
+    }
+    for (let frame = 0; frame < 10; frame += 1) tick()
+    expect(sent).toEqual([1290, 1134, 1001, 900, 820, 778])
+    expect(queue).toHaveLength(0)
+    follower.follow()
+    tick()
+    expect(sent).toHaveLength(6)
+    follower.stop()
+    expect(queue).toHaveLength(0)
   })
 })

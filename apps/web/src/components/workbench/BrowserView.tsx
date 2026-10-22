@@ -17,7 +17,7 @@ import {
   type LiveInput,
   type LiveTab,
 } from '../../lib/browser-live'
-import { desktopBrowser, displayUrl, OVERLAY_SELECTOR, viewportRect, type DesktopBrowserBridge } from '../../lib/desktop-browser'
+import { boundsFollower, desktopBrowser, displayUrl, OVERLAY_SELECTOR, viewportRect, type DesktopBrowserBridge } from '../../lib/desktop-browser'
 
 interface PageState {
   url: string
@@ -285,25 +285,26 @@ function NativeViewport({ bridge, url }: { bridge: DesktopBrowserBridge; url: st
   useEffect(() => { bridge.command('state') }, [bridge])
 
   // Keep the native view glued to the card, and out of the way of overlays.
+  // The Workbench slides in and out by moving, not resizing, so transitions
+  // anywhere in the page also start a frame-by-frame follow.
   useLayoutEffect(() => {
-    let frame = 0
-    const place = () => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => {
-        bridge.setBounds(viewportRect(viewport.current, Boolean(document.querySelector(OVERLAY_SELECTOR))))
-      })
-    }
-    place()
-    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(place)
+    const follower = boundsFollower({
+      measure: () => viewportRect(viewport.current, Boolean(document.querySelector(OVERLAY_SELECTOR))),
+      send: rect => bridge.setBounds(rect),
+    })
+    const follow = () => follower.follow()
+    follow()
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(follow)
     if (viewport.current) resize?.observe(viewport.current)
-    const overlays = new MutationObserver(place)
+    const overlays = new MutationObserver(follow)
     overlays.observe(document.body, { childList: true, subtree: true })
-    window.addEventListener('resize', place)
+    const moves = ['resize', 'transitionrun', 'transitionstart', 'transitionend'] as const
+    for (const name of moves) window.addEventListener(name, follow, true)
     return () => {
-      cancelAnimationFrame(frame)
+      follower.stop()
       resize?.disconnect()
       overlays.disconnect()
-      window.removeEventListener('resize', place)
+      for (const name of moves) window.removeEventListener(name, follow, true)
       bridge.setBounds(null)
     }
   }, [bridge])
