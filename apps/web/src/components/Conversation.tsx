@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
+import { MxcHint } from './MxcHint'
 import { errorText, folderName, useScrollPinning } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
@@ -864,6 +865,7 @@ export function Conversation({
 
       <div className="conv-scroll" ref={scroller} onScroll={onScrollWithPaging}>
         <div className="conv-column">
+          <MxcHint />
           {loading && entries.length === 0 && <TimelineSkeleton />}
           {busy === 'Compacting context…' && <div className="notice notice-info" role="status">Compacting context…</div>}
           {empty && (

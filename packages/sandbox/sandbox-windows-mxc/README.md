@@ -29,11 +29,16 @@ ACL 机制要在工作区树上落一条常驻的可继承 ACE（大仓库首次
 1. `sandbox-local` 的 `mxcExecPath` 配置；
 2. 环境变量 `TNEGA_MXC_EXEC`（设为 `off` 则跳过 MXC，直接用 windows-acl）；
 3. 可解析到的 `@microsoft/mxc-sdk` 包里的 `bin/<arch>/wxc-exec.exe`（x64 / arm64 互为回退）；
-4. `PATH` 上的 `wxc-exec.exe`。
+4. 全局 npm 安装的 SDK（`%APPDATA%\npm\node_modules\@microsoft\mxc-sdk`）；
+5. `PATH` 上的 `wxc-exec.exe`。
 
 tnega **不**自带执行器：SDK 解包约 108 MB（含全部平台的原生载荷）。在 Windows 上
-`npm install -g @microsoft/mxc-sdk` 之后把 `TNEGA_MXC_EXEC` 指向其中的 `wxc-exec.exe`，或把
-它放到 `PATH` 上即可启用。
+`npm install -g @microsoft/mxc-sdk` 再重启 tnega 即可启用。
+
+`mxcSetup()` 不起进程地报告本机状态（`unsupported` / `disabled` / `missing` / `installed`）。
+`@tnega/sandbox-local` 的 `sandboxSetupRoutes` 以 `GET /api/sandbox/setup` 提供它；Windows 24H2+
+上找不到执行器时，Web 与桌面端在对话顶部显示一条可关闭的安装提示（`components/MxcHint.tsx`，
+关闭状态按设备记在 `tnega.mxcHint`）。
 
 ## 一次调用如何变成 MXC 请求
 

@@ -12,6 +12,7 @@
     "@tnega/fs-sandbox": "workspace:*",
     "@tnega/sandbox": "workspace:*",
     "@tnega/sandbox-windows-acl": "workspace:*",
-    "@tnega/sandbox-windows-mxc": "workspace:*"
+    "@tnega/sandbox-windows-mxc": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }

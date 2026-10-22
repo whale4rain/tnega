@@ -284,6 +284,15 @@ export interface InsightsDay {
   cost?: CostList
 }
 
+/**
+ * Which better sandbox this machine could still install (`GET /api/sandbox/setup`).
+ * `missing` means Windows is new enough for Microsoft MXC but its executor is not installed.
+ */
+export interface SandboxSetup {
+  mxc: 'unsupported' | 'disabled' | 'missing' | 'installed'
+  install: { command: string; url: string }
+}
+
 /** The workspace roll-up behind Settings → Context insights (`GET /api/context-insights`). */
 export interface ContextInsights {
   range: InsightsRange

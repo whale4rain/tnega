@@ -654,6 +654,9 @@ importers:
       '@tnega/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tnega/sandbox-local':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox-local
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
@@ -1376,6 +1379,9 @@ importers:
       '@tnega/sandbox-windows-mxc':
         specifier: workspace:*
         version: link:../sandbox-windows-mxc
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
 
   packages/sandbox/sandbox-windows-acl:
     dependencies:

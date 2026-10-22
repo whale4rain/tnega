@@ -497,10 +497,19 @@ function modulePath(): string {
   return typeof meta.filename === 'string' ? meta.filename : fileURLToPath(import.meta.url)
 }
 
-/** 是否由 `node <runner>` 直接执行（被 import 时绝不启动 main）。 */
+/** 这个文件自己的两种形态：仓库内的源码与构建出的独立 runner。 */
+const RUNNER_FILE = /(?:^|[\\/])(?:runner\.ts|sandbox-windows-mxc-runner\.js)$/iu
+
+/**
+ * 是否由 `node <runner>` 直接执行（被 import 时绝不启动 main）。
+ *
+ * 包入口会再导出这里的纯函数，于是构建会把本文件**打进**别的包（CLI 的 `bin.js`、桌面端的
+ * `main.js`）。那时 `import.meta.url` 就是那个包自己，单比较入口路径会让 runner 在 CLI 里
+ * 启动；所以还要求本模块的文件名就是 runner。
+ */
 function isDirectRun(): boolean {
   const entry = process.argv[1]
-  if (entry === undefined) return false
+  if (entry === undefined || !RUNNER_FILE.test(modulePath())) return false
   const normalize = (path: string): string => (process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path))
   return normalize(modulePath()) === normalize(entry)
 }

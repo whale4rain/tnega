@@ -15,6 +15,7 @@ import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { folderPickerRoutes } from '@tnega/directory-picker'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
+import { sandboxSetupRoutes } from '@tnega/sandbox-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
 import { browserRoutes } from '@tnega/browser-playwright'
@@ -134,6 +135,7 @@ export async function startWebServer(
   await root.plugin(folderPickerRoutes)
   await root.plugin(usageRoutes, { configFile })
   await root.plugin(contextInsightsRoutes, { configFile })
+  await root.plugin(sandboxSetupRoutes)
   await root.plugin(workspacePromptRoutes)
   await root.plugin(pluginRoutes, {
     profile: () => context.hotPlugins,

@@ -20,6 +20,8 @@ import {
 } from '@tnega/sandbox'
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.js'
 
+export { sandboxSetupRoutes, type SandboxSetup } from './routes.js'
+
 /** 本机可用的机制名。`custom` 是自带 runner 的逃生口（部署方提供实现）。 */
 export type SandboxRunnerName = 'bwrap' | 'landlock' | 'seatbelt' | 'windows-mxc' | 'windows-acl' | 'custom'
 

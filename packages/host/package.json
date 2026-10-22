@@ -29,6 +29,7 @@
     "@tnega/project-http": "workspace:*",
     "@tnega/ptc-runtime-quickjs": "workspace:*",
     "@tnega/runtime": "workspace:*",
+    "@tnega/sandbox-local": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/session-store": "workspace:*",
     "@tnega/subagent": "workspace:*",
@@ -42,8 +43,8 @@
     "@tnega/tools": "workspace:*",
     "@tnega/usage": "workspace:*",
     "@tnega/user-questions": "workspace:*",
+    "@tnega/web-kit": "workspace:*",
     "@tnega/workspace-files": "workspace:*",
-    "@tnega/workspace-prompt": "workspace:*",
-    "@tnega/web-kit": "workspace:*"
+    "@tnega/workspace-prompt": "workspace:*"
   }
 }
