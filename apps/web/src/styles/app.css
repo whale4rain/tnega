@@ -814,7 +814,9 @@ kbd {
   display: grid;
   grid-template-columns: var(--sidebar-col) minmax(0, 1fr) var(--workbench-col);
   height: 100%;
-  overflow: hidden;
+  /* Clip, not hidden: a hidden frame is still a scroll container, and focusing or revealing anything
+     in a folded panel (which sits past the window edge) would scroll the whole layout sideways. */
+  overflow: clip;
 }
 
 .app.sidebar-closed {

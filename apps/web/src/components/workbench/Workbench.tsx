@@ -1,6 +1,7 @@
 import { BookOpen, Bot, CalendarClock, FileText, FolderTree, Gauge, GitCompareArrows, Globe, KanbanSquare, MessagesSquare, Settings2, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fileName } from '../../lib/office'
+import { revealInRail } from '../../lib/rail'
 import { BOARD_KEY, closeDoc, isProjectKey, isTool, openDoc, openTool, projectTabKey, select, type DocTab, type ProjectTabId, type ToolId, type WorkbenchState } from '../../lib/workbench'
 import { PreviewView } from '../preview/FilePreview'
 import { BrowserView } from './BrowserView'
@@ -91,10 +92,14 @@ export function Workbench({
     <div className="wb-pane" hidden={active !== tool} key={tool}>{view}</div>
   )
   const doc = state.docs.find(item => item.key === active)
-  // The rail scrolls without a scrollbar, so bring the selected tab into view.
+  // The rail scrolls without a scrollbar, so bring the selected tab into view. Only the rail scrolls:
+  // `scrollIntoView` would also scroll the app frame, and while the panel is folded past the window
+  // edge that shifts the whole layout sideways.
   const rail = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    rail.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    const strip = rail.current
+    const tab = strip?.querySelector('[aria-selected="true"]')
+    if (strip && tab) revealInRail(strip, tab)
   }, [active, state.docs.length])
 
   return (
