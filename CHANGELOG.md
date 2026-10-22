@@ -56,6 +56,66 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.5.2-beta.7](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.7) — 2026-10-22
+
+### Features
+
+- Turns are no longer cut off at a fixed step count. A loop guard watches for
+  repeated calls and results, cycles, repeated errors, repeated assistant text
+  and steps without progress: a turn that keeps moving may run long, while one
+  that stalls is first nudged, then asked to reflect, then parked with its tools
+  removed so the model reports what it finished, where it is stuck and what it
+  needs. Writing files, changing a checklist or goal, publishing an artifact,
+  sending a message or running a new shell command counts as progress, and so
+  does a message that arrives mid-turn; progress resets the escalation, and
+  replying to a parked turn restores its tools.
+- With no caller limit the fallback step cap rises from 64 to 500, and a soft
+  limit parks — rather than kills — a turn that reaches 4M uncached input plus
+  output tokens or two hours, asking you what to do next. Each turn's failures
+  and fired detections are re-injected after context compaction, so a summary no
+  longer hides which approaches already failed.
+- A **Context** tab in the workbench shows what the current session's context is
+  made of: session stats, the current context against the model's window with
+  the automatic-compaction line at 75%, one stacked bar per request (Step or
+  Turn, click to pin, a scissors mark on compacted requests), billed tokens
+  split by what the prompt held, and where the active time went. It refreshes
+  while visible and appears only in a session, not on Project screens.
+- Settings → **Context insights** replaces the Usage section, keeping its By
+  model table: a remembered range (Today / 7 days / 30 days / All), workspace
+  totals, the last seven days, a twelve-week activity heatmap that filters by
+  day, token stats, timing, and searchable session cards — sortable by recent,
+  tokens or current context, filterable by thread type — that open the session
+  or thread they describe.
+
+### Fixes
+
+- The desktop window controls take the colour of the bar they sit in, including
+  the glass header and the workbench title strip, so the title bar reads as one
+  bar.
+- Glass everywhere no longer paints a radial glow behind the app: on dark
+  palettes it read as a vignette at the window edges and left the native window
+  buttons a different colour from the header beside them.
+- In a narrow window the floating workbench starts below the desktop title bar
+  instead of cutting through it, and the header keeps its action buttons.
+- The sidebar and the workbench stay mounted while folded and slide out of and
+  into the frame, so expanded folders, a terminal, the Board and a sidebar
+  search survive a fold; only the middle view re-lays out, and Changes stops
+  polling and the browser unloads while folded.
+
+### Other
+
+- `@tnega/loop-guard` is a new package, published as `tnega/loop-guard`; the web
+  host mounts it by default and `runtimeCapabilities` accepts
+  `loopGuard: true | LoopGuardConfig`. `@tnega/context-insights` serves
+  `GET /api/context` and `GET /api/context-insights` from the durable session
+  log.
+- `@tnega/agent` gains the `agent/step-limits` and `agent/step-end` mount points
+  and an `agentId` on request, tool-call, tool-result and compaction events;
+  existing listeners keep working and can now tell agents apart.
+- The design spec records the Context tool, panel folding, chart series tokens
+  and the removed glass glow; `REVIEW.md` and the plugin-first rule are added
+  for reviews.
+
 ## [0.5.2-beta.6](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.6) — 2026-10-20
 
 ### Features
