@@ -16,7 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
-| 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | TBD |
+| 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | 16 |
 | 0.5.2-beta.7 | [`v0.5.2-beta.6...v0.5.2-beta.7`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.6...v0.5.2-beta.7) | 12 |
 | 0.5.2-beta.6 | [`v0.5.2-beta.5...v0.5.2-beta.6`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.5...v0.5.2-beta.6) | 9 |
 | 0.5.2-beta.5 | [`v0.5.2-beta.4...v0.5.2-beta.5`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.4...v0.5.2-beta.5) | 7 |
@@ -81,6 +81,12 @@ compare links provide a convenient browser view of the boundaries.
   updates the workspace's `MEMORY.md` in one request; global memory is never
   written this way. Settings → Model → **Dreaming** turns it off, picks the model
   and sets the quiet time (10 minutes by default).
+- Clicking a workspace file in a session opens it by type: HTML as a page in
+  the workbench browser, with its relative assets; Markdown rendered in Files
+  with a **Preview**/**Source** switch; office files and images in a preview
+  tab. A right-click menu on file links, changed files, office cards and the
+  file tree adds **Edit in Files**, **Copy path** and, in the desktop app,
+  **Open with default app** and **Show in folder**.
 
 ### Fixes
 
