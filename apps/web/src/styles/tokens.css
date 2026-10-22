@@ -584,6 +584,26 @@
 }
 
 /*
+ * Chart series (Context tab, Settings → Context insights). Each series borrows
+ * a syntax colour, so every palette in both modes gets its own muted, distinct
+ * set without a second list of hex values. Declared wherever a palette can be
+ * set, so a subtree with its own data-palette resolves its own colours.
+ * The usage heat scale (--usage-*) stays for the heatmap only.
+ */
+:root,
+[data-theme],
+[data-palette] {
+  --series-system: var(--syntax-comment);
+  --series-tools: var(--syntax-number);
+  --series-user: var(--syntax-string);
+  --series-injected: var(--syntax-keyword);
+  --series-assistant: color-mix(in srgb, var(--syntax-function) 55%, var(--syntax-comment));
+  --series-results: var(--syntax-property);
+  --series-output: var(--syntax-type);
+  --series-other: var(--border-strong);
+}
+
+/*
  * Information display (Settings → Appearance). Density loosens rows and
  * controls; the header keeps its height so desktop window controls still fit.
  * Text size scales the type ramp; reading width sets the conversation column.

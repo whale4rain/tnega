@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api } from '../lib/api'
-import type { ConfigSnapshot } from '../lib/types'
+import type { ConfigSnapshot, ContextInsights, InsightsRange, InsightsSession } from '../lib/types'
 import { SettingsDialog } from './SettingsDialog'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -73,7 +73,7 @@ it('groups settings into sections and saves the chosen shell', async () => {
     { path: 'C:/Git/bin/bash.exe', label: 'Git Bash', kind: 'bash' },
   ] } }
   const view = render(createElement(SettingsDialog, { config: withShells, onClose: vi.fn(), onSaved: vi.fn() }))
-  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Models', 'Usage', 'Instructions', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
+  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Models', 'Context insights', 'Instructions', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
   expect(view.getByRole('tab', { name: 'Models' }).getAttribute('aria-selected')).toBe('true')
   fireEvent.click(view.getByRole('tab', { name: 'Tools & shell' }))
   expect(view.getByRole('tabpanel').id).toBe('settings-panel-tools')
@@ -103,22 +103,53 @@ it('switches theme from Appearance right away', () => {
   expect(onThemeChange).toHaveBeenCalledWith('dark')
 })
 
-it('shows workspace usage with cache share and cost, and points at missing prices', async () => {
+const composition = { system: 100, tools: 200, user: 50, injected: 0, assistant: 300, results: 1350 }
+const timing = { activeMs: 90_000, waitingMs: 10_000, thinkingMs: 20_000, respondingMs: 15_000, toolMs: 30_000, otherMs: 15_000, modelCalls: 6, toolRuns: 4 }
+function insights(range: InsightsRange, sessions: InsightsSession[]): ContextInsights {
+  return {
+    range, generatedAt: Date.now(), sessionCount: 3, activeSessions: sessions.length,
+    totals: { promptTokens: 12_000, completionTokens: 1500, cachedTokens: 6000, cacheHitRate: 0.5, cost: [{ amount: 0.12, currency: 'USD' }], pricedSessions: 1, turns: 4, steps: 6, toolCalls: 4 },
+    billed: { composition, output: 1500 }, timing,
+    week: Array.from({ length: 7 }, (_, index) => ({ date: `2026-10-${String(15 + index).padStart(2, '0')}`, tokens: index * 100, steps: index })),
+    activity: Array.from({ length: 84 }, (_, index) => ({ date: new Date(2026, 6, 30 + index).toISOString().slice(0, 10), tokens: index === 83 ? 500 : 0, steps: 0 })),
+    sessions,
+  }
+}
+const card = (id: string, title: string, kind: 'session' | 'thread' = 'session'): InsightsSession => ({
+  id, kind, title, updatedAt: Date.now() - 60_000, window: 100_000, turns: 2, steps: 3, tokens: 4200, days: ['2026-10-21'],
+  current: { estimate: composition, tokens: 2000, source: 'provider' }, lastMessage: `last words in ${title}`,
+  ...(kind === 'thread' ? { projectId: 'p1', threadId: 't1' } : {}),
+})
+
+it('shows context insights for the stored range, remembers a new range, and opens a session', async () => {
   localStorage.setItem('tnega.settingsSection', 'usage')
+  localStorage.removeItem('tnega.insightsRange')
   const totals = (input: number) => ({ responses: 2, promptTokens: input, completionTokens: 1500, cachedTokens: input / 2, reasoningTokens: 0, cacheHitRate: 0.5 })
   vi.spyOn(api, 'usage').mockResolvedValue({
-    today: { ...totals(12_000), cost: [{ amount: 0.12, currency: 'USD' }] },
-    week: totals(40_000), total: totals(90_000),
+    today: totals(12_000), week: totals(40_000), total: totals(90_000),
     byModel: [{ ...totals(90_000), modelId: 'pro', name: 'Pro', priced: false }],
     sessions: 3,
     responses: [],
   })
-  const view = render(createElement(SettingsDialog, { config: snapshot, workspace: '/work', onClose: vi.fn(), onSaved: vi.fn() }))
-  expect(await view.findByText('Today')).toBeTruthy()
-  expect(view.getByText('$0.12')).toBeTruthy()
-  expect(view.getAllByText('50%').length).toBeGreaterThan(0)
+  const load = vi.spyOn(api, 'contextInsights').mockImplementation(async (_workspace, range) => insights(range, [card('s1', 'Fix the parser'), card('t1', 'Write the docs', 'thread')]))
+  const onOpenSession = vi.fn()
+  const view = render(createElement(SettingsDialog, { config: snapshot, workspace: '/work', onClose: vi.fn(), onSaved: vi.fn(), onOpenSession }))
+  expect(await view.findByText('$0.12')).toBeTruthy()
+  expect(load).toHaveBeenLastCalledWith('/work', '30d', expect.anything())
+  expect(view.getByRole('radio', { name: 'Last 30 days' }).getAttribute('aria-checked')).toBe('true')
   expect(view.getByText(/No prices set for Pro/)).toBeTruthy()
+  expect(view.getByRole('table')).toBeTruthy()
+
+  fireEvent.click(view.getByRole('radio', { name: 'Last 7 days' }))
+  await waitFor(() => expect(load).toHaveBeenLastCalledWith('/work', '7d', expect.anything()))
+  expect(localStorage.getItem('tnega.insightsRange')).toBe('7d')
+
+  fireEvent.change(await view.findByRole('searchbox', { name: 'Search sessions' }), { target: { value: 'docs' } })
+  expect(view.queryByRole('button', { name: 'Open Fix the parser' })).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: 'Open Write the docs' }))
+  expect(onOpenSession).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', kind: 'thread', projectId: 'p1' }))
   localStorage.removeItem('tnega.settingsSection')
+  localStorage.removeItem('tnega.insightsRange')
 })
 
 it('applies colour palette and display choices without saving the config', () => {

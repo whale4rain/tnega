@@ -1,6 +1,7 @@
 /**
  * The Workbench: one right-hand panel for everything you and the agent work
- * on — the workspace's files, its changes, a terminal, the browser — plus
+ * on — the workspace's files, its changes, a terminal, the browser, the
+ * session's context — plus
  * documents and transcripts opened from the conversation. The conversation
  * is where you talk about the work; the Workbench is where the work is.
  *
@@ -14,9 +15,9 @@
 
 import type { ArtifactFact } from './project-types'
 
-export type ToolId = 'files' | 'changes' | 'terminal' | 'browser'
+export type ToolId = 'files' | 'changes' | 'terminal' | 'browser' | 'context'
 
-export const TOOLS: readonly ToolId[] = ['files', 'changes', 'terminal', 'browser']
+export const TOOLS: readonly ToolId[] = ['files', 'changes', 'terminal', 'browser', 'context']
 
 export type ProjectTabId = 'board' | 'library' | 'routines'
 

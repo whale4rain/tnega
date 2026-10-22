@@ -187,6 +187,128 @@ export interface UsageResponse extends UsageTotals {
   threadId?: string
 }
 
+/** What a request's prompt holds (`GET /api/context`). */
+export type ContextCategory = 'system' | 'tools' | 'user' | 'injected' | 'assistant' | 'results'
+export type ContextComposition = Record<ContextCategory, number>
+export type CostList = Array<{ amount: number; currency: string }>
+
+/** Where active time went: model calls split by what the stream was doing, then tools and the rest. */
+export interface ContextTiming {
+  activeMs: number
+  waitingMs: number
+  thinkingMs: number
+  respondingMs: number
+  toolMs: number
+  otherMs: number
+  modelCalls: number
+  toolRuns: number
+}
+
+/** One model request of a session. */
+export interface ContextStep {
+  turn: number
+  step: number
+  ts: number
+  modelId: string
+  estimate: ContextComposition
+  promptTokens: number
+  completionTokens: number
+  cachedTokens?: number
+  reasoningTokens?: number
+  cost?: { amount: number; currency: string }
+  compacted?: boolean
+  toolCalls: number
+  timing: Omit<ContextTiming, 'activeMs' | 'otherMs' | 'modelCalls'>
+}
+
+export interface ContextCurrent {
+  estimate: ContextComposition
+  tokens: number
+  source: 'provider' | 'estimate'
+}
+
+/** One session's context (`GET /api/context`). */
+export interface SessionContextReport {
+  title: string
+  model?: string
+  window: number
+  compactAt: number
+  current: ContextCurrent
+  stats: {
+    turns: number
+    steps: number
+    userInputs: number
+    toolCalls: number
+    toolErrors: number
+    compactions: number
+    promptTokens: number
+    completionTokens: number
+    cachedTokens: number
+    reasoningTokens: number
+    cacheHitRate?: number
+    cost?: CostList
+    pricedSteps: number
+  }
+  billed: { composition: ContextComposition; output: number }
+  timing: ContextTiming
+  steps: ContextStep[]
+  turns: Array<{ turn: number; start: number; end: number }>
+  lastMessage?: string
+  updatedAt: number
+}
+
+export type InsightsRange = 'today' | '7d' | '30d' | 'all'
+
+export interface InsightsSession {
+  id: string
+  kind: 'session' | 'thread'
+  projectId?: string
+  threadId?: string
+  title: string
+  model?: string
+  updatedAt: number
+  lastMessage?: string
+  window: number
+  current: ContextCurrent
+  turns: number
+  steps: number
+  tokens: number
+  cost?: CostList
+  days: string[]
+}
+
+export interface InsightsDay {
+  date: string
+  tokens: number
+  steps: number
+  cost?: CostList
+}
+
+/** The workspace roll-up behind Settings → Context insights (`GET /api/context-insights`). */
+export interface ContextInsights {
+  range: InsightsRange
+  from?: number
+  generatedAt: number
+  sessionCount: number
+  activeSessions: number
+  totals: {
+    promptTokens: number
+    completionTokens: number
+    cachedTokens: number
+    cacheHitRate?: number
+    cost?: CostList
+    pricedSessions: number
+    turns: number
+    steps: number
+    toolCalls: number
+  }
+  billed: { composition: ContextComposition; output: number }
+  timing: ContextTiming
+  week: InsightsDay[]
+  activity: InsightsDay[]
+  sessions: InsightsSession[]
+}
+
 /** Where a ChatGPT sign-in stands (`/api/auth/chatgpt`). */
 export type ChatGptLoginState =
   | { status: 'signed-out' }
