@@ -16,6 +16,14 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | TBD |
+| 0.5.2-beta.7 | [`v0.5.2-beta.6...v0.5.2-beta.7`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.6...v0.5.2-beta.7) | 12 |
+| 0.5.2-beta.6 | [`v0.5.2-beta.5...v0.5.2-beta.6`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.5...v0.5.2-beta.6) | 9 |
+| 0.5.2-beta.5 | [`v0.5.2-beta.4...v0.5.2-beta.5`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.4...v0.5.2-beta.5) | 7 |
+| 0.5.2-beta.4 | [`v0.5.2-beta.3...v0.5.2-beta.4`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.3...v0.5.2-beta.4) | 2 |
+| 0.5.2-beta.3 | [`v0.5.2-beta.2...v0.5.2-beta.3`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.2...v0.5.2-beta.3) | 29 |
+| 0.5.2-beta.2 | [`v0.5.2-beta.1...v0.5.2-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.1...v0.5.2-beta.2) | 1 |
+| 0.5.2-beta.1 | [`v0.5.1...v0.5.2-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.1...v0.5.2-beta.1) | 3 |
 | 0.5.1 | [`v0.5.0...v0.5.1`](https://github.com/whale4rain/tnega/compare/v0.5.0...v0.5.1) | 18 |
 | 0.5.0 | [`v0.4.25-beta.4...v0.5.0`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.4...v0.5.0) | 26 |
 | 0.4.25-beta.4 | [`v0.4.25-beta.3...v0.4.25-beta.4`](https://github.com/whale4rain/tnega/compare/v0.4.25-beta.3...v0.4.25-beta.4) | 10 |
@@ -55,6 +63,44 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.2) — 2026-10-22
+
+### Features
+
+- On Windows the sandbox tries a Microsoft eXecution Container (MXC) first and
+  falls back to the existing ACL runner when no MXC executor is found or MXC
+  refuses. A probe runs a read-only command through MXC before it is trusted, so
+  the sandbox still fails closed. A global `npm install -g @microsoft/mxc-sdk`
+  is found without `TNEGA_MXC_EXEC`, and `TNEGA_MXC_EXEC=off` forces the ACL
+  runner. On Windows 11 24H2 and later without an executor, a dismissible
+  notice above the chat suggests installing it.
+- Dreaming curates project memory from sessions that changed and then went
+  quiet, not only from long sessions that compact. Every few minutes it reads
+  what you and the assistant said since the last dream (no tool output) and
+  updates the workspace's `MEMORY.md` in one request; global memory is never
+  written this way. Settings → Model → **Dreaming** turns it off, picks the model
+  and sets the quiet time (10 minutes by default).
+
+### Fixes
+
+- The title-bar actions stay put while the sidebar or the workbench folds,
+  instead of riding along with the sliding panel or losing their place beside
+  the window controls for a few frames.
+- The workbench Browser tab receives live tab, page and frame updates again
+  instead of showing an empty tab strip until it reconnects, and on the desktop
+  the page view follows the panel while it slides instead of staying offset.
+
+### Other
+
+- `@tnega/sandbox-windows-mxc` and `@tnega/memory-dream` are new packages; the
+  host serves `GET /api/sandbox/setup` and `GET`/`POST /api/memory/dream`.
+- `pnpm release:tag` pulls main, checks that `CHANGELOG.md` and
+  `docs/releases/` have the current version, then pushes the `v<version>` tag
+  that starts the Release workflow. It runs no tests; the workflow does.
+- This stable release promotes the 0.5.2 previews (beta.1 to beta.7). npm
+  publishes it to `latest`; desktop clients on the Stable channel update from
+  `latest.yml`.
 
 ## [0.5.2-beta.7](https://github.com/whale4rain/tnega/releases/tag/v0.5.2-beta.7) — 2026-10-22
 

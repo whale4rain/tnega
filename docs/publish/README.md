@@ -125,7 +125,11 @@ on GitHub-hosted runners. See [npm's Trusted Publishing documentation](https://d
 1. Apply the version policy above and audit the complete previous-tag range.
    Run `pnpm release version <version>`, finish `docs/releases/v<version>.md`,
    and move the shipped changes from Unreleased into `CHANGELOG.md`.
-2. Commit the version and notes on main, then push main and the tag:
+2. Merge the release-prep pull request, then tag. `pnpm release:tag` does it in
+   one step: it checks out and pulls main, checks that `CHANGELOG.md` has a
+   section and `docs/releases/` a notes file for the current version, then
+   creates and pushes `v<version>`. It runs no tests; the workflow does. By
+   hand it is:
 
    ```bash
    git tag v0.4.13
