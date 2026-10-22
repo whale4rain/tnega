@@ -9,7 +9,7 @@ import {
   CornerUpLeft,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { errorText } from '../../lib/hooks'
 import { inTitleBar } from '../../lib/desktop-chrome'
@@ -36,6 +36,8 @@ import type { ArtifactFact, BoxEnvelope, ProjectStreamEvent } from '../../lib/pr
 import type { ConfigSnapshot } from '../../lib/types'
 import { LinkContext, type LinkHandlers } from '../../lib/links'
 import { navigateBrowser } from '../../lib/browser-live'
+import { fileOpenKind } from '../../lib/file-open'
+import { FileActionsContext } from '../FileMenu'
 import { BOARD_KEY, closeDoc, openDoc, openTool, select, toggle, type WorkbenchState } from '../../lib/workbench'
 import type { WorkbenchProject } from '../workbench/Workbench'
 import { PromptBox } from '../Composer'
@@ -135,10 +137,12 @@ export function ProjectView({
   }, [])
   const [sourceMessage, setSourceMessage] = useState<string>()
   const [seen, markSeen] = useSeenThreads(projectId)
+  const files = useContext(FileActionsContext)
   const links = useMemo<LinkHandlers>(() => ({
     workspace,
-    openPath: path => onWorkbench(current => /\.(?:docx|xlsx|pptx|pdf|png|jpe?g|webp|gif|svg)$/i.test(path)
-      ? openDoc(current, { kind: 'preview', path }) : openTool(current, 'files', path)),
+    // The app's file click (HTML in the browser, Markdown rendered); without it, Files or a preview.
+    openPath: files.open ?? (path => onWorkbench(current => fileOpenKind(path) === 'preview'
+      ? openDoc(current, { kind: 'preview', path }) : openTool(current, 'files', path))),
     openLocalUrl: url => {
       onWorkbench(current => openTool(current, 'browser'))
       void navigateBrowser(url).catch(reason => setError(errorText(reason)))
@@ -149,7 +153,7 @@ export function ProjectView({
       const tone = threadLight(state, thread, seen)
       return { label: thread.label, tone, status: LIGHT_LABEL[tone], open: () => openThreadRef.current(id) }
     },
-  }), [workspace, onWorkbench, state, seen])
+  }), [workspace, files.open, onWorkbench, state, seen])
 
   // Snapshot first, then follow the change stream from its cursor.
   useEffect(() => {

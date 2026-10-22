@@ -5,6 +5,7 @@ import { codePathTarget, LinkContext, linkTarget } from '../lib/links'
 import { CodeBlock } from './CodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { StatusLight } from './StatusLight'
+import { useFileMenu } from './FileMenu'
 
 export { CodeBlock }
 
@@ -77,8 +78,7 @@ function SmartLink({ href, children }: { href: string | undefined; children: Rea
   }
   if (target.kind === 'file') {
     if (!openPath) return <span className="file-ref" title={target.path}>{children}</span>
-    const open = (event: MouseEvent) => { event.preventDefault(); openPath(target.path) }
-    return <a href={target.path} className="file-link" title={`Open ${target.path}${target.line ? ` (line ${target.line})` : ''}`} onClick={open}>{children}</a>
+    return <FileLink path={target.path} title={`Open ${target.path}${target.line ? ` (line ${target.line})` : ''}`} open={openPath}>{children}</FileLink>
   }
   if (target.kind === 'local' && openLocalUrl) {
     const open = (event: MouseEvent) => { event.preventDefault(); openLocalUrl(target.url) }
@@ -91,8 +91,26 @@ function InlineCode({ text, children }: { text: string; children: ReactNode }) {
   const { workspace, openPath } = useContext(LinkContext)
   const target = openPath ? codePathTarget(text, workspace) : undefined
   if (!target || !openPath) return <code>{children}</code>
-  const open = (event: MouseEvent) => { event.preventDefault(); openPath(target.path) }
-  return <a href={target.path} className="file-link code-link" title={`Open ${target.path}`} onClick={open}><code>{children}</code></a>
+  return <FileLink path={target.path} title={`Open ${target.path}`} open={openPath} code><code>{children}</code></FileLink>
+}
+
+/** A workspace file in a reply: a click opens it where it belongs, a right-click offers the rest (FileMenu). */
+function FileLink({ path, title, open, code, children }: { path: string; title: string; open: (path: string) => void; code?: boolean; children: ReactNode }) {
+  const { show, menu } = useFileMenu()
+  return (
+    <>
+      <a
+        href={path}
+        className={`file-link${code ? ' code-link' : ''}`}
+        title={title}
+        onClick={(event: MouseEvent) => { event.preventDefault(); open(path) }}
+        onContextMenu={event => show(event, path)}
+      >
+        {children}
+      </a>
+      {menu}
+    </>
+  )
 }
 
 /** Link plain file references without traversing code blocks or existing anchors. */

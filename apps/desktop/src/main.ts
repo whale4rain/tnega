@@ -13,6 +13,7 @@ import { UpdateController, releasePage, type UpdaterLike } from './updater.js'
 import { readUpdateChannel, saveUpdateChannel } from './update-preferences.js'
 import { desktopPtcAssets } from './ptc-assets.js'
 import { desktopProcessLauncher } from './process-launcher.js'
+import { openWorkspaceFile, revealWorkspaceFile } from './open-file.js'
 import electronUpdater from 'electron-updater'
 
 let server: WebServer | undefined
@@ -93,6 +94,14 @@ function installDesktopHandlers(): void {
   ipcMain.handle('tnega:reveal-workspace', async (event, path: unknown) => {
     if (!isTrustedSender(event.senderFrame?.url ?? '') || typeof path !== 'string') return
     await shell.openPath(path)
+  })
+  ipcMain.handle('tnega:open-file', async (event, workspace: unknown, path: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return 'failed'
+    return openWorkspaceFile(shell, workspace, path)
+  })
+  ipcMain.handle('tnega:reveal-file', (event, workspace: unknown, path: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url ?? '')) return 'failed'
+    return revealWorkspaceFile(shell, workspace, path)
   })
   ipcMain.on('tnega:title-bar-colors', (event, value: unknown) => {
     // macOS has no overlay to recolour: its traffic lights follow the system.

@@ -444,6 +444,27 @@
   background: var(--code-bg);
 }
 
+/* Markdown in Files, rendered: a document, so it reads on --surface (§5.3)
+ * at the conversation's body size, one reading column wide. */
+.files-markdown {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 28px 40px;
+  background: var(--surface);
+  font-size: var(--text-lg);
+  line-height: 1.6;
+}
+
+.files-markdown > .prose {
+  max-width: var(--reading-width);
+  margin: 0 auto;
+}
+
+.files-markdown > .prose > :first-child {
+  margin-top: 0;
+}
+
 .wb-notice {
   margin: 8px;
 }
