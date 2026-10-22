@@ -69,6 +69,26 @@ it('marks a header again when its size settles after mounting', async () => {
   document.body.innerHTML = ''
 })
 
+it('keeps the page marked through a layout change instead of clearing and re-adding it', async () => {
+  vi.stubGlobal('tnegaDesktop', { setTitleBarColors: () => {}, platform: 'win32' })
+  document.body.innerHTML = '<header class="conv-header"></header>'
+  const header = document.querySelector('.conv-header')
+  if (!header) throw new Error('missing header')
+  header.getBoundingClientRect = () => new DOMRect(0, 0, window.innerWidth, 32)
+  document.elementFromPoint = () => header
+  const { rerender } = renderHook(({ key }) => useDesktopChrome(key), { initialProps: { key: 'sessions:none' } })
+  await new Promise(resolve => setTimeout(resolve, 5))
+  expect(header.classList.contains('window-controls-header')).toBe(true)
+  // Opening the Workbench: nothing may drop the clearance, even for a frame.
+  rerender({ key: 'sessions:files' })
+  expect(document.documentElement.classList.contains('desktop-chrome')).toBe(true)
+  expect(header.classList.contains('window-controls-header')).toBe(true)
+  cleanup()
+  expect(document.documentElement.classList.contains('desktop-chrome')).toBe(false)
+  vi.unstubAllGlobals()
+  document.body.innerHTML = ''
+})
+
 describe('cssColorToHex', () => {
   it('converts computed colours and skips transparent ones', () => {
     expect(cssColorToHex('rgb(246, 245, 241)')).toBe('#f6f5f1')

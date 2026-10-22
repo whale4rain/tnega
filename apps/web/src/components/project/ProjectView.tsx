@@ -418,11 +418,11 @@ export function ProjectView({
         onThread={thread => setState(current => current && ({ ...current, threads: { ...current.threads, [thread.id]: thread } }))} />}
       <main className="conversation project-main">
         <header className="conv-header">
-          {!sidebarOpen && (
-            <button type="button" className="icon-button" onClick={onToggleSidebar} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)">
-              <PanelLeft size={14} />
-            </button>
-          )}
+          {/* Always rendered: it folds away while the sidebar is open, so the title glides instead of jumping. */}
+          <button type="button" className="icon-button header-sidebar-toggle" onClick={onToggleSidebar} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)"
+            aria-hidden={sidebarOpen || undefined} tabIndex={sidebarOpen ? -1 : undefined}>
+            <PanelLeft size={14} />
+          </button>
           <div className="conv-title-wrap">
             <h1 className="conv-title"><span>{state.project.name}</span></h1>
             <div className="conv-subtitle">

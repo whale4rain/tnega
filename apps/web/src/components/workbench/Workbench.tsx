@@ -101,8 +101,9 @@ export function Workbench({
     <aside className={`workbench${open ? '' : ' is-closed'}`} aria-label="Workbench" aria-hidden={!open || undefined} inert={!open}>
       <ResizeHandle onResize={onResize} />
       {/* Desktop only (CSS): the title-bar row beside the native window controls. The view on the left
-          portals its header actions here, so they sit next to – ☐ ✕ and the tabs get the row below. */}
-      <div className="wb-titlebar" ref={titleSlot} />
+          portals its header actions here, so they sit next to – ☐ ✕ and the tabs get the row below.
+          The actions are pinned to the window, not the panel, so they stay put while it slides. */}
+      <div className="wb-titlebar"><div className="wb-titlebar-actions" ref={titleSlot} /></div>
       {/* The panel itself: a rounded card inset from the window edges, so it reads as its own surface. */}
       <div className="wb-frame">
       <div className="wb-header">
