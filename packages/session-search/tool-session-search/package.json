@@ -1,0 +1,17 @@
+{
+  "name": "@tnega/tool-session-search",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/session-search": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/session": "workspace:*",
+    "@tnega/session-search-sqlite": "workspace:*",
+    "@tnega/session-store": "workspace:*"
+  }
+}

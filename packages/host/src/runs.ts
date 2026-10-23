@@ -91,7 +91,7 @@ export async function handleRun(
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ...(context.browser ? { browser: context.browser } : {}),
       processes: processesFor(context, workspace),
-      hostPlugins: hostPlugins(context),
+      hostPlugins: hostPlugins(context, workspace),
     })
     return
   }
@@ -126,7 +126,7 @@ export async function handleRun(
       },
       plugins: [
         ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false })] : []),
-        ...hostPlugins(context),
+        ...hostPlugins(context, workspace),
       ],
     })
     const toolService = runtime.root.get('tools')

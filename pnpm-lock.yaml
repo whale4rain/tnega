@@ -666,6 +666,9 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+      '@tnega/session-search-sqlite':
+        specifier: workspace:*
+        version: link:../session-search/session-search-sqlite
       '@tnega/session-store':
         specifier: workspace:*
         version: link:../session-store
@@ -687,6 +690,9 @@ importers:
       '@tnega/tool-question':
         specifier: workspace:*
         version: link:../tool-question
+      '@tnega/tool-session-search':
+        specifier: workspace:*
+        version: link:../session-search/tool-session-search
       '@tnega/tool-subagent':
         specifier: workspace:*
         version: link:../subagent/tool-subagent
@@ -1480,6 +1486,55 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/session-search/session-search:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+
+  packages/session-search/session-search-sqlite:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../../home
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/session-search':
+        specifier: workspace:*
+        version: link:../session-search
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../../session-store
+
+  packages/session-search/tool-session-search:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/session-search':
+        specifier: workspace:*
+        version: link:../session-search
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+    devDependencies:
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/session-search-sqlite':
+        specifier: workspace:*
+        version: link:../session-search-sqlite
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../../session-store
 
   packages/session-store:
     dependencies:
