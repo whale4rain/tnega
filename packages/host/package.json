@@ -39,6 +39,7 @@
     "@tnega/tool-browser": "workspace:*",
     "@tnega/tool-memory": "workspace:*",
     "@tnega/tool-question": "workspace:*",
+    "@tnega/tool-sessions": "workspace:*",
     "@tnega/tool-subagent": "workspace:*",
     "@tnega/tool-web-search": "workspace:*",
     "@tnega/tools": "workspace:*",

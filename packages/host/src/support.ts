@@ -2,7 +2,7 @@ export { workspaceParam } from '@tnega/web-kit'
 
 import { browserPlaywright, type PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { llmAuthOptions } from '@tnega/auth-chatgpt'
-import type { EffectiveLlmConfig } from '@tnega/config'
+import { readSystemConfig, type EffectiveLlmConfig } from '@tnega/config'
 import { Context, type Plugin } from '@tnega/core'
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
 import type { HotPluginHost, PluginWorkshop } from '@tnega/plugin-host'
@@ -10,6 +10,8 @@ import type { PermissionMode } from '@tnega/approval-host'
 import { SessionLog, isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
 import { sessionFile } from '@tnega/session-store'
 import { toolBrowser } from '@tnega/tool-browser'
+import { toolSessions } from '@tnega/tool-sessions'
+import { defaultWorkspace } from '@tnega/home'
 import { ProcessRegistry } from '@tnega/tools'
 import { resolve } from 'node:path'
 
@@ -22,12 +24,25 @@ export const MAX_RUN_BODY_BYTES = 24 * 1024 * 1024
 // "summarize everything". Keep it a deliberate choice, not a derived one.
 export const KEEP_RECENT_TOKENS = 20_000
 
-/** Host-level plugins the resident runtime mounts: the hot profile and the dev workshop. */
-export function hostPlugins(context: { hotPlugins?: HotPluginHost; pluginWorkshop?: PluginWorkshop }): Plugin[] {
+/**
+ * Host-level plugins every run mounts: the hot profile, the dev workshop, and
+ * the session tools over the workspaces the app lists.
+ */
+export function hostPlugins(
+  context: { hotPlugins?: HotPluginHost; pluginWorkshop?: PluginWorkshop; configFile?: string },
+  workspace: string,
+): Plugin[] {
   return [
     ...(context.hotPlugins ? [context.hotPlugins.plugin] : []),
     ...(context.pluginWorkshop ? [context.pluginWorkshop.plugin] : []),
+    toolSessions({ workspaces: () => knownWorkspaces(context, workspace) }),
   ]
+}
+
+/** The workspaces the sidebar lists, plus the scratch folder and the run's own. */
+async function knownWorkspaces(context: { configFile?: string }, workspace: string): Promise<string[]> {
+  const config = await readSystemConfig(context.configFile)
+  return [workspace, ...(config.workspaces ?? []), defaultWorkspace()]
 }
 
 export function processesFor(

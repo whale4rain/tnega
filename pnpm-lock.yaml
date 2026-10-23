@@ -684,6 +684,9 @@ importers:
       '@tnega/tool-question':
         specifier: workspace:*
         version: link:../tool-question
+      '@tnega/tool-sessions':
+        specifier: workspace:*
+        version: link:../tool-sessions
       '@tnega/tool-subagent':
         specifier: workspace:*
         version: link:../subagent/tool-subagent
@@ -1597,6 +1600,21 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+
+  packages/tool-sessions:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../session
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../session-store
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/tools:
     dependencies:
