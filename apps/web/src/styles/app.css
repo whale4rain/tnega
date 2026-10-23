@@ -280,8 +280,13 @@ kbd {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
 }
 
+/* The glass header ends on a hairline. It is drawn just below the header, not as its bottom
+ * border: the desktop window controls are a native strip exactly as tall as the header, so a
+ * line (or the transparent border row the glass cannot cover) inside it stopped short under
+ * – ☐ ✕ and left them looking like a block of their own. */
 [data-glass="full"] .conv-header {
-  border-bottom-color: var(--border);
+  border-bottom: 0;
+  box-shadow: 0 1px 0 var(--border);
 }
 
 /* Off: a solid app, the same result reduced transparency forces. */
