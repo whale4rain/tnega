@@ -10,7 +10,8 @@ import type { PermissionMode } from '@tnega/approval-host'
 import { SessionLog, isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
 import { sessionFile } from '@tnega/session-store'
 import { toolBrowser } from '@tnega/tool-browser'
-import { toolSessions } from '@tnega/tool-sessions'
+import { sessionSearchSqlite, type SqliteSessionIndex } from '@tnega/session-search-sqlite'
+import { toolSessionSearch } from '@tnega/tool-session-search'
 import { defaultWorkspace } from '@tnega/home'
 import { ProcessRegistry } from '@tnega/tools'
 import { resolve } from 'node:path'
@@ -26,16 +27,20 @@ export const KEEP_RECENT_TOKENS = 20_000
 
 /**
  * Host-level plugins every run mounts: the hot profile, the dev workshop, and
- * the session tools over the workspaces the app lists.
+ * session search over the workspaces the app lists.
  */
 export function hostPlugins(
-  context: { hotPlugins?: HotPluginHost; pluginWorkshop?: PluginWorkshop; configFile?: string },
+  context: { hotPlugins?: HotPluginHost; pluginWorkshop?: PluginWorkshop; configFile?: string; sessionIndex?: SqliteSessionIndex },
   workspace: string,
 ): Plugin[] {
+  const index = context.sessionIndex
   return [
     ...(context.hotPlugins ? [context.hotPlugins.plugin] : []),
     ...(context.pluginWorkshop ? [context.pluginWorkshop.plugin] : []),
-    toolSessions({ workspaces: () => knownWorkspaces(context, workspace) }),
+    ...(index ? [
+      { name: 'session-search', apply: (ctx: Context) => { ctx.plugin(sessionSearchSqlite, { index }) } },
+      toolSessionSearch({ workspaces: () => knownWorkspaces(context, workspace) }),
+    ] : []),
   ]
 }
 

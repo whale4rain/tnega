@@ -24,7 +24,8 @@ describe('permissionGuard', () => {
   it('lets the session tools read past sessions without asking, even in read-only mode', async () => {
     const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
     expect(await guard(request('search_sessions', { query: 'installer' }))).toBeUndefined()
-    expect(await guard(request('read_session', { workspace: '/elsewhere', sessionId: 'x' }))).toBeUndefined()
+    expect(await guard(request('search_session', { session: 'tnega://session/x', query: 'a' }))).toBeUndefined()
+    expect(await guard(request('read_session', { session: 'x', workspace: '/elsewhere' }))).toBeUndefined()
   })
   it('uses automatic review for an otherwise gated action and still preserves narrower child permissions', async () => {
     let reviews = 0

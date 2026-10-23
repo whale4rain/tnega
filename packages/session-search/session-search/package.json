@@ -1,0 +1,11 @@
+{
+  "name": "@tnega/session-search",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/session": "workspace:*"
+  }
+}

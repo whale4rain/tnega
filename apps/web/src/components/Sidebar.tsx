@@ -3,9 +3,11 @@ import {
   ArchiveRestore,
   Check,
   ChevronRight,
+  Copy,
   FolderKanban,
   FolderPlus,
   GitBranch,
+  Link,
   Monitor,
   Moon,
   ListChecks,
@@ -21,7 +23,8 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { PullRequestMark } from './PullRequestMark'
 import { api } from '../lib/api'
-import { folderName, relativeTime, useScrollFade, type ThemePreference } from '../lib/hooks'
+import { sessionLink } from '@tnega/client/session-link'
+import { copyToClipboard, folderName, relativeTime, useScrollFade, type ThemePreference } from '../lib/hooks'
 import { projectApi } from '../lib/project-api'
 import { projectLight, type LightTone } from '../lib/project-model'
 import { StatusLight } from './StatusLight'
@@ -659,6 +662,8 @@ function WorkspaceGroup({
                     trigger={<MoreHorizontal size={12} />}
                     items={[
                       { key: 'fork', label: 'Fork', icon: <GitBranch size={14} />, onSelect: () => onFork(session.id) },
+                      { key: 'copy-link', label: 'Copy link', icon: <Link size={14} />, onSelect: () => copyToClipboard(sessionLink(path, session.id)) },
+                      { key: 'copy-id', label: 'Copy ID', icon: <Copy size={14} />, onSelect: () => copyToClipboard(session.id) },
                       ...(onStartSelecting ? [{ key: 'select', label: 'Select', icon: <ListChecks size={14} />, onSelect: () => onStartSelecting(session) }] : []),
                       { key: 'delete', label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => onDelete(session) },
                     ]}

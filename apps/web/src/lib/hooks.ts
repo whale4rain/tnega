@@ -78,6 +78,11 @@ export function useCopy(): [boolean, (text: string) => void] {
   return [copied, copy]
 }
 
+/** Puts text on the clipboard; a refused write is ignored. */
+export function copyToClipboard(text: string): void {
+  void navigator.clipboard?.writeText(text).catch(() => undefined)
+}
+
 export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }

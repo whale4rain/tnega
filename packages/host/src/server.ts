@@ -11,6 +11,7 @@ import { createHotPluginHost, type HotPluginEvent } from '@tnega/plugin-host'
 import { createPluginWorkshop } from '@tnega/plugin-host'
 import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
 import { memoryDream, memoryDreamRoutes } from '@tnega/memory-dream'
+import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
@@ -108,6 +109,8 @@ export async function startWebServer(
   const pluginWorkshop = pluginDev
     ? await createPluginWorkshop(...(typeof pluginDev === 'string' ? [pluginDev] : []))
     : undefined
+  // One session index per host, in the tnega home; it opens on the first search.
+  const sessionIndex = new SqliteSessionIndex()
   const root = new Context()
   await root.plugin(webServer)
   const web = root.get('webServer')
@@ -131,6 +134,7 @@ export async function startWebServer(
     ...(pluginWorkshop ? { pluginWorkshop } : {}),
     processes: new Map(),
     terminals: new TerminalManager(),
+    sessionIndex,
     web,
   }
 
@@ -223,6 +227,7 @@ export async function startWebServer(
       await hotPlugins?.close()
       await pluginWorkshop?.close()
       await ownedBrowser?.close()
+      await sessionIndex.close()
       const registries = [...context.processes.values()]
       context.processes.clear()
       await Promise.all(registries.map(registry => registry.dispose()))

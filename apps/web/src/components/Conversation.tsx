@@ -2,6 +2,8 @@ import { completionObserver, notifyDesktopWaiting } from '../lib/desktop-complet
 import {
   ArrowDown,
   Check,
+  Copy,
+  Link,
   ChevronDown,
   CircleDashed,
   GitBranch,
@@ -29,8 +31,9 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
+import { sessionLink } from '@tnega/client/session-link'
 import { MxcHint } from './MxcHint'
-import { errorText, folderName, useScrollPinning } from '../lib/hooks'
+import { copyToClipboard, errorText, folderName, useScrollPinning } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
 import { MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
@@ -853,6 +856,8 @@ export function Conversation({
               trigger={<MoreHorizontal size={14} />}
               items={[
                 { key: 'fork', label: 'Fork entire session', icon: <GitBranch size={14} />, onSelect: () => void fork(), disabled: live },
+                { key: 'copy-link', label: 'Copy session link', icon: <Link size={14} />, onSelect: () => copyToClipboard(sessionLink(workspace, summary.id)) },
+                { key: 'copy-id', label: 'Copy session ID', icon: <Copy size={14} />, onSelect: () => copyToClipboard(summary.id) },
                 { key: 'compact', label: 'Compact context', icon: <Shrink size={14} />, onSelect: () => void compact(), disabled: live || entries.length === 0 },
                 'separator',
                 { key: 'delete', label: 'Delete session', icon: <Trash2 size={14} />, danger: true, onSelect: () => void remove(), disabled: live },

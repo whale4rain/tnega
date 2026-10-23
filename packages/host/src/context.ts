@@ -9,6 +9,7 @@ import { TerminalManager } from '@tnega/terminal'
 import type { HotPluginHost } from '@tnega/plugin-host'
 import type { PluginWorkshop } from '@tnega/plugin-host'
 import type { WebServerService } from '@tnega/web-kit'
+import type { SqliteSessionIndex } from '@tnega/session-search-sqlite'
 
 export interface ResidentAgentEntry {
   root: Context
@@ -47,6 +48,8 @@ export interface ServerContext {
   hotPlugins?: HotPluginHost
   pluginWorkshop?: PluginWorkshop
   terminals: TerminalManager
+  /** The shared index behind the agent's session search tools. */
+  sessionIndex?: SqliteSessionIndex
   /** The named-route table requests are dispatched through. */
   web: WebServerService
 }

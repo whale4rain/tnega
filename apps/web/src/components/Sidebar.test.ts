@@ -295,3 +295,22 @@ it('stays mounted while folded: keeps its search, takes no focus, and refreshes 
   expect(search.value).toBe('a2')
   expect(onRefresh).toHaveBeenCalledTimes(2)
 })
+
+it('copies a session link the agent can read, or the bare id, from the session menu', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const writeText = vi.fn(() => Promise.resolve())
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+  try {
+    const { view } = renderSidebar({ workspaces: ['/a'] })
+    await waitFor(() => expect(view.getByText('Session a1')).toBeTruthy())
+    fireEvent.click(view.getAllByRole('button', { name: 'Session options' })[0]!)
+    fireEvent.click(view.getByRole('menuitem', { name: /Copy link/ }))
+    expect(writeText).toHaveBeenLastCalledWith('tnega://session/a1?workspace=%2Fa')
+    fireEvent.click(view.getAllByRole('button', { name: 'Session options' })[0]!)
+    fireEvent.click(view.getByRole('menuitem', { name: /Copy ID/ }))
+    expect(writeText).toHaveBeenLastCalledWith('a1')
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
