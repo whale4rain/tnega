@@ -67,6 +67,36 @@ describe('global npm install', () => {
     expect(locateMxcExecutor({ env: { APPDATA: 'C:\\Users\\u\\AppData\\Roaming' }, arch: 'x64', exists: present(exec), resolveSdkManifest: noSdk }))
       .toBe(exec)
   })
+
+  it('follows the configured npm prefix, not only the default one', () => {
+    const prefix = join('D:\\', 'node', 'npm_global')
+    const exec = join(prefix, 'node_modules', '@microsoft', 'mxc-sdk', 'bin', 'x64', 'wxc-exec.exe')
+    const found = { arch: 'x64', exists: present(exec), resolveSdkManifest: noSdk }
+    expect(locateMxcExecutor({ env: { NPM_CONFIG_PREFIX: prefix }, ...found })).toBe(exec)
+    expect(locateMxcExecutor({ env: { npm_config_prefix: prefix }, ...found })).toBe(exec)
+  })
+
+  it('reads the prefix off PATH, where the global bin directory lives', () => {
+    const prefix = join('D:\\', 'node', 'npm_global')
+    const exec = join(prefix, 'node_modules', '@microsoft', 'mxc-sdk', 'bin', 'x64', 'wxc-exec.exe')
+    expect(locateMxcExecutor({
+      env: { PATH: ['C:\\Windows', prefix].join(delimiter) },
+      arch: 'x64',
+      exists: present(exec),
+      resolveSdkManifest: noSdk,
+    })).toBe(exec)
+  })
+
+  it('also checks the parent of a POSIX <prefix>/bin entry', () => {
+    const prefix = join('/usr', 'local', 'lib', 'nodejs')
+    const exec = join(prefix, 'node_modules', '@microsoft', 'mxc-sdk', 'bin', 'x64', 'wxc-exec.exe')
+    expect(locateMxcExecutor({
+      env: { PATH: join(prefix, 'bin') },
+      arch: 'x64',
+      exists: present(exec),
+      resolveSdkManifest: noSdk,
+    })).toBe(exec)
+  })
 })
 
 describe('mxcSetup', () => {

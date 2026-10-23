@@ -21,10 +21,10 @@ Electron 宿主使用自身可执行文件启动 Windows runner（MXC 与 ACL �
 - landlock：跑 `<launcher> --probe`，按它报告的 ABI 给出 `full` 或 `partial`；
 - seatbelt：真的跑一次 `sandbox-exec -p <read-only profile> -- true`；
 - windows-mxc：先找到 MXC 执行器 `wxc-exec.exe`（`mxcExecPath` → `TNEGA_MXC_EXEC` →
-  `@microsoft/mxc-sdk` 载荷 → `PATH`），再经 runner 在 MXC 里真的跑一次只读的 `exit 0`；
-  请求契约按 `1.0.0` → `0.9.0-alpha` 依次试，第一个跑通的被记住（`mxcContractVersion` 可固定）。
-  找不到执行器、系统低于 MXC 的版本下限、执行器拒绝请求，都让探测失败并退到 windows-acl。
-  `TNEGA_MXC_EXEC=off` 直接跳过 MXC；
+  `@microsoft/mxc-sdk` 载荷 → 全局 npm 前缀 → `PATH`），再经 runner 在 MXC 里真的跑一次
+  只读的 `exit 0`；请求契约按 `1.0.0` → `0.9.0-alpha` 依次试，第一个跑通的被记住
+  （`mxcContractVersion` 可固定）。找不到执行器、系统低于 MXC 的版本下限、执行器拒绝请求，
+  都让探测失败并退到 windows-acl。`TNEGA_MXC_EXEC=off` 直接跳过 MXC；
 - windows-acl：先确认 FFI 可加载，再真的跑一次 runner 的只读空命令。
 
 判决（含「不可用」）按 Provider 生命周期缓存 —— 探测要起进程，而机制不会在一次运行中间
@@ -58,7 +58,7 @@ await ctx.plugin(sandboxLocal, {
   bwrapPath / landlockLauncher / sandboxExecPath,
   windowsAclRunnerCommand,
   windowsMxcRunnerCommand,
-  mxcExecPath,                         // 省略：TNEGA_MXC_EXEC → @microsoft/mxc-sdk → PATH
+  mxcExecPath,                         // 省略：TNEGA_MXC_EXEC → @microsoft/mxc-sdk → 全局 npm 前缀 → PATH
   mxcContractVersion,                  // 省略：探测协商
   mxcReadOnlyRoots,                    // 工作区之外命令要读的目录（AppContainer 档位没有环境读）
   runnerCommand / runnerFailureSignatures / runnerDenialSignatures,  // custom
@@ -94,4 +94,5 @@ await ctx.plugin(sandboxLocal, {
 `test/local.test.ts` 逐字钉死四种 runner 的 argv、链式回退、探测缓存、无链时的
 `SANDBOX_UNAVAILABLE`/`status()`、tempRoot 越界与配置校验。真实机制（bwrap/landlock/
 seatbelt）的端到端验证需要在有对应二进制与内核支持的机器上跑，仓库内的测试不假设宿主
-一定具备它们。
+一定具备它们。`packages/sandbox/sandbox-windows-mxc/test/locate.test.ts` 钉死执行器的
+查找顺序（含全局 npm 前缀）。

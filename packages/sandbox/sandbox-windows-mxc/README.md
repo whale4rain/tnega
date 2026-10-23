@@ -29,8 +29,15 @@ ACL 机制要在工作区树上落一条常驻的可继承 ACE（大仓库首次
 1. `sandbox-local` 的 `mxcExecPath` 配置；
 2. 环境变量 `TNEGA_MXC_EXEC`（设为 `off` 则跳过 MXC，直接用 windows-acl）；
 3. 可解析到的 `@microsoft/mxc-sdk` 包里的 `bin/<arch>/wxc-exec.exe`（x64 / arm64 互为回退）；
-4. 全局 npm 安装的 SDK（`%APPDATA%\npm\node_modules\@microsoft\mxc-sdk`）；
+4. 全局安装的 SDK（`<npm prefix>/node_modules/@microsoft/mxc-sdk`）：前缀依次取
+   `NPM_CONFIG_PREFIX` / `npm_config_prefix`、`%APPDATA%\npm`（Windows 默认值），以及
+   `PATH` 上每个目录与它父目录旁边的 `node_modules`；
 5. `PATH` 上的 `wxc-exec.exe`。
+
+第 4 条读的是**真实的 npm 前缀**，不是只认默认值：`~/.npmrc` 里的 `prefix=` 能把全局根指到
+别的盘，`npm install -g` 装的包就落在那里，只查 `%APPDATA%\npm` 会永远报 `missing`。这里不跑
+`npm config get prefix` 子进程 —— 前缀的 `xxx.cmd` 本来就在 `PATH` 上，兄弟 `node_modules`
+是同步判一下就够的事实。
 
 tnega **不**自带执行器：SDK 解包约 108 MB（含全部平台的原生载荷）。在 Windows 上
 `npm install -g @microsoft/mxc-sdk` 再重启 tnega 即可启用。

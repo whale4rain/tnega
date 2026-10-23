@@ -78,9 +78,52 @@ function defaultSdkManifest(): string | undefined {
   }
 }
 
+/** npm 的全局前缀变量；`npm_config_*` 是 npm 生命周期脚本里的写法。 */
+const PREFIX_ENV = ['NPM_CONFIG_PREFIX', 'npm_config_prefix'] as const
+
+/** `<root>/bin/<arch>/wxc-exec.exe`，按架构顺序取第一个存在的。 */
+function sdkExecutable(
+  root: string,
+  archs: readonly string[],
+  exists: (path: string) => boolean,
+): string | undefined {
+  for (const arch of archs) {
+    const candidate = join(root, 'bin', arch, EXEC_NAME)
+    if (exists(candidate)) return candidate
+  }
+  return undefined
+}
+
+/**
+ * 全局安装的 SDK 目录（`node_modules/@microsoft/mxc-sdk`）候选，按可信度排列：
+ *
+ * 1. `NPM_CONFIG_PREFIX` —— npm 自己的前缀（`~/.npmrc` 里的 `prefix=` 会改掉它）；
+ * 2. `%APPDATA%\npm` —— Windows 上的默认前缀；
+ * 3. `PATH` 上每个目录及其父目录 —— 全局 bin 落在 `<prefix>`（Windows）或 `<prefix>/bin`
+ *    （POSIX），兄弟 `node_modules` 就在旁边，不值得为此起一次 `npm config get prefix`。
+ *
+ * 只认默认前缀会让装在别处的 SDK 永远找不到：prefix 是可配置的（本机就指向 `D:\` 下的
+ * 目录），而 `npm install -g` 把包放进的是那个前缀，不是 `%APPDATA%\npm`。
+ */
+function globalSdkRoots(env: NodeJS.ProcessEnv, pathDirs: readonly string[]): string[] {
+  const segment = ['node_modules', ...SDK_PACKAGE.split('/')]
+  const roots: string[] = []
+  for (const key of PREFIX_ENV) {
+    const prefix = env[key]
+    if (prefix !== undefined && prefix !== '') roots.push(join(prefix, ...segment))
+  }
+  const appData = env.APPDATA
+  if (appData !== undefined && appData !== '') roots.push(join(appData, 'npm', ...segment))
+  for (const dir of pathDirs) {
+    roots.push(join(dir, ...segment), join(dirname(dir), ...segment))
+  }
+  return roots
+}
+
 /**
  * 找到 MXC 执行器。顺序：显式配置 → `TNEGA_MXC_EXEC` → 可解析到的 `@microsoft/mxc-sdk`
- * 载荷 → 全局 npm 安装的 SDK（`%APPDATA%\npm\node_modules`）→ `PATH` 上的 `wxc-exec.exe`。
+ * 载荷 → 全局安装的 SDK（`NPM_CONFIG_PREFIX`、`%APPDATA%\npm`、`PATH` 上的各前缀）→
+ * `PATH` 上的 `wxc-exec.exe`。
  *
  * 执行器是原生二进制，它的位置是运维事实而不是猜测：显式给出的路径不存在就报错；
  * 什么都找不到也报错 —— Provider 据此判这个机制不可用并退回 windows-acl，绝不以非受限方式
@@ -101,17 +144,16 @@ export function locateMxcExecutor(options: LocateMxcExecutorOptions = {}): strin
     return fromEnv
   }
   const manifest = (options.resolveSdkManifest ?? defaultSdkManifest)()
-  // A global `npm install -g @microsoft/mxc-sdk` lands under %APPDATA%\npm on Windows.
-  const globalSdk = env.APPDATA ? join(env.APPDATA, 'npm', 'node_modules', ...SDK_PACKAGE.split('/')) : undefined
-  for (const root of [manifest === undefined ? undefined : dirname(manifest), globalSdk]) {
-    if (root === undefined) continue
-    for (const arch of architectures(options.arch ?? process.arch)) {
-      const candidate = join(root, 'bin', arch, EXEC_NAME)
-      if (exists(candidate)) return candidate
-    }
+  const archs = architectures(options.arch ?? process.arch)
+  const pathDirs = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
+  const sdkRoots = manifest === undefined
+    ? globalSdkRoots(env, pathDirs)
+    : [dirname(manifest), ...globalSdkRoots(env, pathDirs)]
+  for (const root of sdkRoots) {
+    const found = sdkExecutable(root, archs, exists)
+    if (found !== undefined) return found
   }
-  const path = env.PATH ?? env.Path ?? ''
-  for (const dir of path.split(delimiter).filter(Boolean)) {
+  for (const dir of pathDirs) {
     const candidate = join(dir, EXEC_NAME)
     if (exists(candidate)) return candidate
   }
