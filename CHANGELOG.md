@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.3 | [`v0.5.2...v0.5.3`](https://github.com/whale4rain/tnega/compare/v0.5.2...v0.5.3) | 14 |
 | 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | 16 |
 | 0.5.2-beta.7 | [`v0.5.2-beta.6...v0.5.2-beta.7`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.6...v0.5.2-beta.7) | 12 |
 | 0.5.2-beta.6 | [`v0.5.2-beta.5...v0.5.2-beta.6`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.5...v0.5.2-beta.6) | 9 |
@@ -63,6 +64,48 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.3](https://github.com/whale4rain/tnega/releases/tag/v0.5.3) — 2026-10-23
+
+### Features
+
+- The model, reasoning effort, permission level and approval mode can change
+  while a turn runs. The step already talking to the model keeps its settings
+  and the next step uses the new ones; the timeline shows each change as one
+  quiet settings line. Agent type and mode still wait for a new turn.
+- The agent can search past sessions: `search_sessions` ranks sessions across
+  every workspace the app lists, `search_session` finds the matches inside one
+  session and `read_session` reads around a match or pages back. An SQLite index
+  in the Tnega home keeps up incrementally, is capped in size and drops the
+  sessions used least. Session menus can copy a session link or id to paste into
+  chat; both tools are read-only and need no approval.
+- Thoughts and tool calls between two replies fold into one line that says what
+  was done ("Searched 3 times, ran a command · 12s"), and step rows lose their
+  card and fill, so an opened step hangs from one rail.
+- Under MXC the sandbox hands every volume root in as a read root, so node, npm
+  and PowerShell work wherever they were installed; writes stay confined to the
+  workspace, as they always were under the ACL runner. `mxcRead: 'roots'`
+  restores read-side confinement.
+
+### Fixes
+
+- A permission switch now reaches the resident runtime and the model: the level
+  joins the resident signature, a permission-only change retires the runtime,
+  and the switch appends a durable system message naming the new level, so the
+  model stops asking for escalations its level already grants.
+- An MXC executor installed under a custom npm prefix is found again; the lookup
+  reads `NPM_CONFIG_PREFIX`/`npm_config_prefix` and the `node_modules` beside
+  each `PATH` directory, so the setup notice no longer claims MXC is missing.
+- With Glass everywhere, the header's bottom border runs under the native window
+  controls instead of stopping short of them.
+
+### Other
+
+- New internal packages `@tnega/run-settings`, `@tnega/session-search`,
+  `@tnega/session-search-sqlite` and `@tnega/tool-session-search`; the host owns
+  one session index and mounts session search over the workspaces it lists,
+  replacing `@tnega/tool-sessions`. The index lives under the Tnega home and can
+  be deleted at any time.
 
 ## [0.5.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.2) — 2026-10-22
 
