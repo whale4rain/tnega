@@ -367,6 +367,26 @@ authorized automatic path.
   tag moved to the fix commit and the run was repeated instead of cutting a new
   version.
 
+- **Windows file-time skew failed the suite gate (0.5.3):**
+  `packages/memory/memory-dream/test/dream.test.ts > waits for a session to go
+  quiet` failed: an explicit dream (`idleMs` 0) reported `idle` instead of
+  `unchanged`. A session's `updatedAt` is its file modification time, and
+  Windows rounds that up to as much as ~8 ms after `Date.now()`, so
+  `now - updatedAt` went negative and the idle filter dropped a session written
+  a moment earlier. `pendingSessions` now clamps the quiet time at zero and a
+  test covers the skew. Nothing had been published (the `bundle` and `publish`
+  jobs were skipped), so the unpublished `v0.5.3` tag moved to the fix commit
+  and the run was repeated. Reproduce a suspected skew with a loop that writes
+  a file and compares `statSync(file).mtimeMs` with `Date.now()`; on Windows
+  roughly half the samples are ahead.
+- **Unhandled write after a test removed its temp folder (0.5.3):** the first
+  `v0.5.3` gate run reported one unhandled rejection, `ENOENT` on
+  `agents/<id>/session.jsonl` from `packages/loop/project-loop/test/loop.test.ts`
+  after `fiber.dispose()`; the tests themselves passed. It did not reproduce on
+  the rerun, so treat it as an unfinished race between a background session
+  write and the test's cleanup rather than a product failure, and check whether
+  it returns.
+
 - **npm EOTP / delayed visibility (0.4.7):** npm required the user's dynamic
   code. The user published the checked tarball locally; the official registry
   initially returned 404 and `latest=0.4.6`, then exposed `0.4.7` after several
