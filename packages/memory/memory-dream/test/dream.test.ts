@@ -103,6 +103,16 @@ it('waits for a session to go quiet', async () => {
   expect(llm.calls).toHaveLength(1)
 })
 
+it('treats a session whose file time runs ahead of the clock as just written', async () => {
+  const { workspace, memory, ledgerFile } = await setup()
+  await session(workspace, 'Skewed', log => log.append('user/message', { content: 'Use tabs.' }).then(() => {}))
+  const llm = model([])
+  // Windows rounds file times up, so a session written now can look newer than
+  // `now`; an explicit dream must still read it instead of calling it idle.
+  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile, idleMs: 0, now: () => 0 })).toMatchObject({ status: 'unchanged' })
+  expect(llm.calls).toHaveLength(1)
+})
+
 it('keeps the sessions pending when the request fails or the reply is too long', async () => {
   const { workspace, memory, ledgerFile } = await setup()
   const id = await session(workspace, 'Prefs', log => log.append('user/message', { content: 'Answer in Chinese.' }).then(() => {}))

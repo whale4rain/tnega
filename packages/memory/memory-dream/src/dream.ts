@@ -136,7 +136,15 @@ export function conversationSince(events: readonly SessionEvent[], afterSeq: num
   return { lines, lastSeq }
 }
 
-/** Sessions that changed since their last dream and have since gone quiet, oldest first. */
+/**
+ * Sessions that changed since their last dream and have since gone quiet, oldest first.
+ *
+ * A session's `updatedAt` is its file's modification time, which on Windows can
+ * land a few milliseconds *after* `Date.now()` because the file system rounds it
+ * up. Such a session was just written, so its quiet time is zero rather than
+ * negative; without the clamp an explicit dream (`idleMs` 0) skipped the session
+ * it was asked to read.
+ */
 export function pendingSessions(
   sessions: readonly SessionSummary[],
   ledger: DreamLedger,
@@ -145,7 +153,7 @@ export function pendingSessions(
 ): SessionSummary[] {
   return sessions
     .filter(session => ledger.sessions[session.id]?.eventCount !== session.eventCount)
-    .filter(session => now - session.updatedAt >= idleMs)
+    .filter(session => Math.max(0, now - session.updatedAt) >= idleMs)
     .sort((a, b) => a.updatedAt - b.updatedAt)
 }
 
