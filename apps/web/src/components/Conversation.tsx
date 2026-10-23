@@ -34,7 +34,7 @@ import { errorText, folderName, useScrollPinning } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
 import { MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
-import { applyStream, beginRun, formatTokens, fromEvents, type Entry } from '../lib/timeline'
+import { applyStream, beginRun, formatTokens, fromEvents, noteSettingChange, settingChangeText, type Entry } from '../lib/timeline'
 import type {
   AgentType,
   ConfigSnapshot,
@@ -180,6 +180,14 @@ export function Conversation({
   const streamingHere = running && streamingFor.current === sessionId
   const live = streamingHere || remoteRunning
 
+  // Settings lines in the transcript name a model the way the picker does.
+  const modelNames = useRef<(id: string) => string>(id => id)
+  modelNames.current = id => config?.models.find(model => model.id === id)?.name || id
+  const toEntries = useCallback(
+    (events: SessionDetail['events']) => fromEvents(events, { modelName: id => modelNames.current(id) }),
+    [],
+  )
+
   /** Show a one-off confirmation; it clears itself so the transcript stays clean. */
   const showNotice = useCallback((text: string, ms = 4000) => {
     if (noticeTimer.current !== undefined) clearTimeout(noticeTimer.current)
@@ -208,7 +216,7 @@ export function Conversation({
     if (shown.current.sessionId !== detail.summary.id || shown.current.workspace !== workspace) return false
     entriesFor.current = detail.summary.id
     setSummary(detail.summary)
-    setEntries(fromEvents(detail.events))
+    setEntries(toEntries(detail.events))
     setPage(detail.page)
     setContext(detail.context)
     setMetrics(detail.metrics)
@@ -217,7 +225,7 @@ export function Conversation({
     setRemoteRunning(detail.running && streamingFor.current !== detail.summary.id)
     setRecovery(detail.recovery)
     return true
-  }, [workspace])
+  }, [workspace, toEntries])
 
   const reload = useCallback(async (id: string) => {
     const detail = await api.session(workspace, id, { maxMessages: HISTORY_PAGE })
@@ -346,6 +354,20 @@ export function Conversation({
       if (!Object.keys(body).length) return
       const result = await api.patchSession(workspace, summary.id, body)
       setSummary(result.summary)
+      // A change after the conversation started leaves a line in the transcript
+      // (the durable log has the same line on reload). While a turn runs, the
+      // step in flight keeps its settings; the next one uses the new ones.
+      const text = settingChangeText({
+        ...(model && model !== settings.model ? { model } : {}),
+        ...(patch.reasoningEffort && patch.reasoningEffort !== settings.reasoningEffort ? { reasoningEffort: patch.reasoningEffort } : {}),
+        ...(patch.permission && patch.permission !== settings.permission ? { permission: patch.permission } : {}),
+        ...(patch.approvalMode && patch.approvalMode !== settings.approvalMode ? { approvalMode: patch.approvalMode } : {}),
+      }, modelNames.current)
+      if (text) {
+        setEntries(current => current.some(entry => entry.kind === 'agent')
+          ? noteSettingChange(current, `setting-${Date.now()}`, text, live)
+          : current)
+      }
       if (patch.mode === 'goal') api.goal(workspace, summary.id).then(r => setGoal(r.goal), () => {})
       if (patch.mode && patch.mode !== 'goal') setGoal(null)
     } catch (reason) {
@@ -676,7 +698,7 @@ export function Conversation({
       await api.truncate(workspace, sessionId, entryId)
       const detail = await reload(sessionId)
       setBusy(undefined)
-      void run(sessionId, text, fromEvents(detail.events))
+      void run(sessionId, text, toEntries(detail.events))
     } catch (reason) {
       setBusy(undefined)
       setError(errorText(reason))
@@ -728,7 +750,7 @@ export function Conversation({
       const detail = await api.session(workspace, id, { beforeSeq: page.beforeSeq, maxMessages: HISTORY_PAGE })
       // The reader may have switched sessions while the page was in flight.
       if (shown.current.sessionId !== id) return
-      const older = fromEvents(detail.events)
+      const older = toEntries(detail.events)
       setEntries(current => [...older, ...current])
       setPage(detail.page)
       // Keep what the reader was looking at where they left it.
@@ -827,7 +849,7 @@ export function Conversation({
         </div>
         {inTitleBar(titleSlot, <div className="conv-header-actions">
           <div className="header-group">
-            <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} />
+            <SessionControls settings={settings} onSettingsChange={patch => void changeSettings(patch)} locked={live || Boolean(busy)} accessLocked={Boolean(busy)} />
           </div>
           <div className="header-group header-tools">
           {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} onOpenBrowser={onBrowserActivity} />}
@@ -962,6 +984,7 @@ export function Conversation({
             running={live}
             allowWhileRunning
             locked={live || Boolean(busy)}
+            modelLocked={Boolean(busy)}
             disabledReason={disabledReason}
             onSubmit={send}
             onSteerSubmit={steer}

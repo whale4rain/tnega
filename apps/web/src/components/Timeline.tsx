@@ -10,6 +10,7 @@ import {
   Info,
   Layers,
   Lightbulb,
+  SlidersHorizontal,
   Brain,
   Pencil,
   RotateCcw,
@@ -95,6 +96,8 @@ export function Timeline({ entries, running, actions, agent, sky, outcomeFirst =
             return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} processView={processView} onProcessViewChange={onProcessViewChange} />
           case 'compaction':
             return <CompactionMarker key={entry.id} summary={entry.summary} tokensBefore={entry.tokensBefore} />
+          case 'setting':
+            return <SettingChange key={entry.id} text={entry.text} />
           case 'slash':
             return (
               <div key={entry.id} className="slash-result">
@@ -314,6 +317,8 @@ const AgentTurn = memo(function AgentTurn({
         return <EditedFiles key={seg.id} files={seg.files} onOpen={actions.onOpenChange} />
       case 'notice':
         return <Notice key={seg.id} tone={seg.tone} text={seg.text} />
+      case 'setting':
+        return <SettingLine key={seg.id} text={seg.text} />
       case 'reasoning':
         return <Thought key={seg.id} text={seg.text} streaming={live && seg.streaming === true} {...(seg.durationMs !== undefined ? { durationMs: seg.durationMs } : {})} />
     }
@@ -471,6 +476,28 @@ function Notice({ tone, text }: { tone: 'info' | 'warn' | 'error'; text: string 
     <div className={`notice notice-${tone}`}>
       <Icon size={14} />
       <span>{text}</span>
+    </div>
+  )
+}
+
+/** A setting changed while the turn ran: one quiet line, not a notice box. */
+function SettingLine({ text }: { text: string }) {
+  return (
+    <div className="setting-line" role="note">
+      <SlidersHorizontal size={12} aria-hidden />
+      <span>{text}</span>
+    </div>
+  )
+}
+
+/** A setting changed between turns: a quiet rule across the conversation. */
+function SettingChange({ text }: { text: string }) {
+  return (
+    <div className="setting-change" role="note">
+      <span className="setting-change-label">
+        <SlidersHorizontal size={12} aria-hidden />
+        {text}
+      </span>
     </div>
   )
 }

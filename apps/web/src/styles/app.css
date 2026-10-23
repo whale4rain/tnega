@@ -2733,6 +2733,44 @@ kbd {
   color: var(--danger);
 }
 
+/* A run setting changed (model, effort, permissions, approvals): quieter than
+   a notice, since nothing went wrong. Between turns it is a rule across the
+   conversation; inside a turn, a line among the steps. */
+.setting-change {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.setting-change::before,
+.setting-change::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+.setting-change-label,
+.setting-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.setting-line {
+  display: flex;
+}
+
+.setting-change svg,
+.setting-line svg {
+  flex: none;
+}
+
 .compaction-rule {
   display: flex;
   align-items: center;

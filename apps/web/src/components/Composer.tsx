@@ -57,6 +57,7 @@ export function Composer({
   running,
   allowWhileRunning,
   locked,
+  modelLocked = locked,
   disabledReason,
   onSubmit,
   onSteerSubmit,
@@ -76,8 +77,13 @@ export function Composer({
   searchFiles?: (query: string) => Promise<string[]>
   running: boolean
   allowWhileRunning?: boolean
-  /** Settings can't change while a run is active. */
+  /** The mode can't change while a run is active. */
   locked: boolean
+  /**
+   * The model and effort can: a change applies from the running turn's next
+   * step. Defaults to `locked`.
+   */
+  modelLocked?: boolean
   disabledReason?: ReactNode
   onSubmit: (text: string, images: ImageAttachment[]) => Promise<boolean> | boolean
   /** While running, Ctrl/Cmd+Enter steers the agent with the message now. */
@@ -110,7 +116,7 @@ export function Composer({
       toolbar={
         <>
           <Choice label="Mode" value={settings.mode} options={MODE_OPTIONS} onChange={mode => onSettingsChange({ mode })} disabled={locked} />
-          <ModelPicker model={settings.model} reasoningEffort={settings.reasoningEffort} onChange={onSettingsChange} models={models} defaultModelId={defaultModelId} config={config} onConfigChanged={onConfigChanged} disabled={locked} />
+          <ModelPicker model={settings.model} reasoningEffort={settings.reasoningEffort} onChange={onSettingsChange} models={models} defaultModelId={defaultModelId} config={config} onConfigChanged={onConfigChanged} disabled={modelLocked} />
         </>
       }
     />
@@ -125,10 +131,14 @@ export function SessionControls({
   settings,
   onSettingsChange,
   locked,
+  accessLocked = locked,
 }: {
   settings: RunSettings
   onSettingsChange: (patch: Partial<RunSettings>) => void
+  /** The agent can't change while a run is active. */
   locked: boolean
+  /** Permissions and approvals can: they apply from the running turn's next step. Defaults to `locked`. */
+  accessLocked?: boolean
 }) {
   const permission = PERMISSION_OPTIONS.find(option => option.value === settings.permission) ?? PERMISSION_OPTIONS[0]
   const approval = settings.approvalMode ?? 'manual'
@@ -152,7 +162,7 @@ export function SessionControls({
           choiceSection('permission', 'Permissions', PERMISSION_OPTIONS, settings.permission, value => onSettingsChange({ permission: value })),
           choiceSection('approval', 'Approvals', APPROVAL_OPTIONS, approval, value => onSettingsChange({ approvalMode: value })),
         ]}
-        disabled={locked}
+        disabled={accessLocked}
         side="bottom"
         align="end"
       />

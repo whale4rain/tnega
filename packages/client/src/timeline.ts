@@ -8,7 +8,7 @@
  * and `applyStream` advances it with live Stream Events during a run. Once a
  * run ends the UI reloads, so durable events always have the final word.
  */
-import type { CancelCause, ErrorInfo, ImageAttachment, SessionEvent, SlashResult, StreamEvent } from './types.js'
+import type { ApprovalMode, CancelCause, ErrorInfo, ImageAttachment, Permission, SessionEffort, SessionEvent, SlashResult, StreamEvent } from './types.js'
 import { needsAttention } from './tools.js'
 
 export interface ToolView {
@@ -50,6 +50,8 @@ export type Block =
   | { kind: 'subagent'; id: string; agent: SubagentView }
   | { kind: 'files'; id: string; files: EditedFile[] }
   | { kind: 'notice'; id: string; tone: 'info' | 'warn' | 'error'; text: string; process?: boolean }
+  /** A run setting changed while this turn ran; a quiet line, not a notice. */
+  | { kind: 'setting'; id: string; text: string }
 
 export type Entry =
   | { kind: 'user'; id: string; text: string; images?: ImageAttachment[]; local?: boolean }
@@ -66,6 +68,8 @@ export type Entry =
     }
   | { kind: 'compaction'; id: string; summary: string; tokensBefore?: number }
   | { kind: 'slash'; id: string; command: string; args: string[]; result: SlashResult }
+  /** A run setting changed between turns: one quiet line in the transcript. */
+  | { kind: 'setting'; id: string; text: string }
 
 type AgentEntry = Extract<Entry, { kind: 'agent' }>
 
@@ -86,10 +90,83 @@ const LOOP_GUARD_NOTICES: Readonly<Record<string, { text: string; tone: 'info' |
 }
 
 // ---------------------------------------------------------------------------
+// Run settings
+// ---------------------------------------------------------------------------
+
+/** A change to the settings a turn reads at every step. */
+export interface SettingChange {
+  model?: string
+  reasoningEffort?: SessionEffort
+  permission?: Permission
+  approvalMode?: ApprovalMode
+}
+
+const EFFORT_TEXT: Record<SessionEffort, string> = { default: 'default', low: 'low', medium: 'medium', high: 'high' }
+const PERMISSION_TEXT: Record<Permission, string> = { 'read-only': 'read only', 'workspace-write': 'workspace write', bypass: 'full access' }
+const APPROVAL_TEXT: Record<ApprovalMode, string> = { manual: 'ask me', auto: 'auto review' }
+
+/**
+ * The line a settings change leaves in the transcript ("Effort set to high"),
+ * or undefined when nothing a turn reads changed. `modelName` turns a route id
+ * into the name the picker shows.
+ */
+export function settingChangeText(change: SettingChange, modelName: (id: string) => string = id => id): string | undefined {
+  const parts: string[] = []
+  if (change.model) parts.push(`Model set to ${modelName(change.model)}`)
+  if (change.reasoningEffort) parts.push(`Effort set to ${EFFORT_TEXT[change.reasoningEffort]}`)
+  if (change.permission) parts.push(`Permissions set to ${PERMISSION_TEXT[change.permission]}`)
+  if (change.approvalMode) parts.push(`Approvals set to ${APPROVAL_TEXT[change.approvalMode]}`)
+  if (!parts.length) return undefined
+  return parts.map((part, index) => index ? part.charAt(0).toLowerCase() + part.slice(1) : part).join(', ')
+}
+
+/** Said of a change made while a turn runs: the step in flight keeps its settings. */
+const NEXT_STEP = ' · applies from the next step'
+
+/**
+ * Add a settings line to the view. In the middle of a turn it joins that
+ * turn as a notice; between turns it is a line of its own.
+ */
+export function noteSettingChange(entries: readonly Entry[], id: string, text: string, live: boolean): Entry[] {
+  const last = entries.at(-1)
+  if (live && last?.kind === 'agent') {
+    return [...entries.slice(0, -1), {
+      ...last,
+      blocks: [...last.blocks, { kind: 'setting', id, text: `${text}${NEXT_STEP}` }],
+    }]
+  }
+  return [...entries, { kind: 'setting', id, text }]
+}
+
+function settingChangeOf(event: SessionEvent): SettingChange | undefined {
+  switch (event.type) {
+    case 'meta/patch': {
+      const change: SettingChange = {}
+      if (event.payload.fields.includes('model') && event.payload.model) change.model = event.payload.model
+      if (event.payload.fields.includes('reasoningEffort') && event.payload.reasoningEffort) {
+        change.reasoningEffort = event.payload.reasoningEffort
+      }
+      return change
+    }
+    case 'permission/mode':
+      return { permission: event.payload.mode }
+    case 'meta':
+      return event.payload.kind === 'approval/mode' && (event.payload.mode === 'manual' || event.payload.mode === 'auto')
+        ? { approvalMode: event.payload.mode }
+        : undefined
+    default:
+      return undefined
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Durable events → Timeline
 // ---------------------------------------------------------------------------
 
-export function fromEvents(events: readonly SessionEvent[]): Entry[] {
+export function fromEvents(
+  events: readonly SessionEvent[],
+  options: { modelName?: (id: string) => string } = {},
+): Entry[] {
   const entries: Entry[] = []
   let turn: number | undefined
   const closed = new Set<number>()
@@ -108,7 +185,27 @@ export function fromEvents(events: readonly SessionEvent[]): Entry[] {
     return created
   }
 
+  // One change of several settings writes back-to-back events; they read as one line.
+  let lastSetting: { change: SettingChange; line: { text: string }; suffix: string } | undefined
   for (const event of events) {
+    // Settings chosen before the first turn are where the Session started, not a change.
+    const setting = turn === undefined ? undefined : settingChangeOf(event)
+    const settingText = setting && settingChangeText(setting, options.modelName)
+    if (setting && settingText) {
+      if (lastSetting) {
+        lastSetting.change = { ...lastSetting.change, ...setting }
+        lastSetting.line.text = `${settingChangeText(lastSetting.change, options.modelName) ?? settingText}${lastSetting.suffix}`
+        continue
+      }
+      const target = turn !== undefined && !closed.has(turn) ? byTurn.get(turn) : undefined
+      const suffix = target ? NEXT_STEP : ''
+      const line: Extract<Block, { kind: 'setting' }> = { kind: 'setting', id: event.id, text: `${settingText}${suffix}` }
+      if (target) target.blocks.push(line)
+      else entries.push(line)
+      lastSetting = { change: setting, line, suffix }
+      continue
+    }
+    lastSetting = undefined
     switch (event.type) {
       case 'turn/start':
         turn = event.payload.turn
@@ -259,7 +356,7 @@ export function presentRun(entry: AgentEntry): { process: Block[]; visible: Bloc
     } else if (block.kind === 'reasoning' && block.id === `reasoning-${summary.sourceMessageId}`) {
       // The thought behind the answer stays beside it, folded to one line.
       visible.push(block)
-    } else if (block.kind === 'files' || (block.kind === 'notice' && !block.process)
+    } else if (block.kind === 'files' || block.kind === 'setting' || (block.kind === 'notice' && !block.process)
       || (block.kind === 'tool' && (block.tool.status === 'running' || needsAttention(block.tool)))
       || (block.kind === 'subagent' && block.agent.status !== 'ready')) {
       visible.push(block)
@@ -304,6 +401,7 @@ export function presentOutcome(entry: AgentEntry, live: boolean): { process: Blo
     const shown = block === answer
       || block === thought
       || block.kind === 'files'
+      || block.kind === 'setting'
       || (block.kind === 'notice' && !block.process && block.tone !== 'info')
       || (!live && block.kind === 'tool' && needsAttention(block.tool))
     if (shown) visible.push(block)
