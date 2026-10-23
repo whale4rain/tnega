@@ -428,7 +428,7 @@ export function SettingsDialog({
               disabled={!onDisplayChange}
               onChange={value => onDisplayChange?.('glass', value)}
               options={[['floating', 'Floating only'], ['full', 'Everywhere'], ['off', 'Off']]}
-              hint="Glass blurs what is behind a surface. Floating only keeps it on menus and dialogs; everywhere brings it to the sidebar, header, composer and Workbench over a tinted backdrop; off is a solid app."
+              hint="Glass blurs what is behind a surface. Floating only keeps it on menus and dialogs; everywhere brings it to the sidebar, header, composer and Workbench; off is a solid app."
             />
 
             <ChoiceField

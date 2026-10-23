@@ -29,6 +29,7 @@
     "@tnega/project-host": "workspace:*",
     "@tnega/project-http": "workspace:*",
     "@tnega/ptc-runtime-quickjs": "workspace:*",
+    "@tnega/run-settings": "workspace:*",
     "@tnega/runtime": "workspace:*",
     "@tnega/sandbox-local": "workspace:*",
     "@tnega/session": "workspace:*",

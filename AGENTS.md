@@ -23,7 +23,7 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 - `packages/browser/` 是浏览器缝的容器：`browser` 是 Service Definition（`ctx.browser`，事件面 `browser/*`）、`browser-playwright` 是 Provider（`playwright-core`，可启动系统浏览器或经 CDP 附着到桌面端内嵌视图）、`tool-browser` 是 Consumer（模型可见的 `browser_*`）。取舍见 `docs/adr/0012-agent-browser.md`。
 - `packages/session`：JSONL Session 持久化与重建不变量。
 - `packages/cli`：`tnega` 可执行文件的入口与命令分发（argv、help、TUI 启动、`run`）；`packages/host`：Web/桌面宿主（HTTP/SSE 路由、常驻 Agent 生命周期、Project HTTP 委托）；`packages/runtime`：Agent 作用域组装（能力 bundle 与 `createAgentRuntime`）。
-- 其余能力包：`packages/{goal,persona,compaction,config,auth-chatgpt,session-store,usage,context-insights,workspace-files,workspace-prompt,home,approval-host,plugin-host,profile,terminal,directory-picker}`；Project 家族在 `packages/project/{host,http,routines,memory,worktrees}`。`packages/coding-agent`：coding session 的 plan、skills、MCP 与 slash commands。
+- 其余能力包：`packages/{goal,persona,run-settings,compaction,config,auth-chatgpt,session-store,usage,context-insights,workspace-files,workspace-prompt,home,approval-host,plugin-host,profile,terminal,directory-picker}`；Project 家族在 `packages/project/{host,http,routines,memory,worktrees}`。`packages/coding-agent`：coding session 的 plan、skills、MCP 与 slash commands。
 - `packages/client`：前端共享的服务端客户端（HTTP API、SSE、wire 类型、Timeline 视图模型、天气与工具呈现规则），Web 与 TUI 共用，不依赖 React / DOM / Node 专有模块。
 - `packages/tui`：`tnega tui` 的终端界面（Ink），是 `@tnega/client` 的又一个客户端；设计见 `docs/design/tnega-design.md` §5.8。
 - `apps/web`：React/Vite 本地 UI；`src/`：根包的公开聚合导出。

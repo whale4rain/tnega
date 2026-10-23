@@ -226,7 +226,7 @@ function requestHeaderFor(
   request: Pick<AgentRequestEvent, 'tools' | 'options'>,
   input: readonly ModelMessage[],
 ): {
-  config?: { provider?: string; model?: string; temperature?: number }
+  config?: { provider?: string; model?: string; temperature?: number; reasoningEffort?: string }
   system?: string
   tools?: ToolSchemaSnapshot[]
 } {
@@ -242,6 +242,7 @@ function requestHeaderFor(
     ...(request.options.temperature !== undefined
       ? { temperature: request.options.temperature }
       : {}),
+    ...(request.options.reasoningEffort ? { reasoningEffort: request.options.reasoningEffort } : {}),
   }
   return {
     ...(Object.keys(config).length ? { config } : {}),
@@ -250,7 +251,8 @@ function requestHeaderFor(
   }
 }
 
-async function* completeAsStream(
+/** A completion played back as stream events, for an adapter that cannot stream. */
+export async function* completeAsStream(
   llm: LLMAdapter,
   messages: readonly ModelMessage[],
   tools: readonly ToolDefinition[],

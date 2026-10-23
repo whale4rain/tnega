@@ -1437,6 +1437,17 @@ export class SessionLog {
     await liveSessions.get(sessionFileKey(file))?.flush()
   }
 
+  /**
+   * The writer that owns `file` in this process, once it has loaded. A second
+   * writer would keep its own sequence and collide with the owner's, so a
+   * short write to a Session that may be live (a running turn, a resident
+   * Agent) goes through this one instead.
+   */
+  static live(file: string): SessionLog | undefined {
+    const owner = liveSessions.get(sessionFileKey(file))
+    return owner?._loaded ? owner : undefined
+  }
+
   private _events: SessionEvent[] = []
   private _surface: ModelMessage[] = []
   private _surfaceNodes: number[] = []

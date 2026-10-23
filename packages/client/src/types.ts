@@ -122,6 +122,8 @@ export type SessionEvent =
   | EventBase<'plan', PlanPayload>
   | EventBase<'checkpoint', { summary?: string; tokensBefore?: number }>
   | EventBase<'meta', Record<string, unknown>>
+  | EventBase<'meta/patch', { fields: string[]; model?: string; reasoningEffort?: SessionEffort }>
+  | EventBase<'permission/mode', { mode: Permission }>
   | EventBase<'llm/retry', { retryId: string; retry: number; delayMs?: number; failure?: ErrorInfo }>
   | EventBase<'turn/start', { turn: number }>
   | EventBase<'turn/end', {

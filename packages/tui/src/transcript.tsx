@@ -45,6 +45,12 @@ export function EntryView({ entry, width, verbose = false }: EntryProps) {
           <Text dimColor>{rule(`Context compacted${entry.tokensBefore ? ` from ${formatTokens(entry.tokensBefore)} tokens` : ''}`, width)}</Text>
         </Box>
       )
+    case 'setting':
+      return (
+        <Box marginTop={1}>
+          <Text dimColor>{rule(entry.text, width)}</Text>
+        </Box>
+      )
     case 'slash':
       return (
         <Box marginTop={1} flexDirection="column">
@@ -213,6 +219,8 @@ function BlockGroup({ group, width, live, verbose }: { group: Group; width: numb
           ))}
         </Box>
       )
+    case 'setting':
+      return <Text dimColor>{truncate(block.text, width)}</Text>
     case 'notice':
       return (
         <Box>

@@ -569,10 +569,7 @@ const apiRoutes: ApiRoute[] = [
             return
           }
       if (action === undefined && req.method === 'PATCH') {
-            if (isActive(context.activeRuns, workspace, id)) {
-              sendError(res, 409, 'session is running: change its settings after the current turn ends')
-              return
-            }
+            const running = isActive(context.activeRuns, workspace, id)
             const body = await readJsonBody(req)
             const patch: Parameters<typeof patchSessionMeta>[2] = {}
             const permission = body.permission === 'workspace-write' || body.permission === 'bypass'
@@ -592,19 +589,31 @@ const apiRoutes: ApiRoute[] = [
               sendError(res, 400, 'session metadata is required')
               return
             }
+            // The agent type and the mode shape the whole run; the model, effort,
+            // permission and approvals are read again at every step, so they can
+            // change while a turn runs and apply from its next step.
+            if (running && (patch.agentType !== undefined || patch.mode !== undefined)) {
+              sendError(res, 409, 'session is running: change the agent or mode after the current turn ends')
+              return
+            }
+            const previous = await readSessionSummary(workspace, id)
+            // Choosing what is already in force is not a change: it writes nothing,
+            // so the transcript does not report it either.
+            if (patch.model !== undefined && patch.model === previous.model) delete patch.model
+            if (patch.reasoningEffort !== undefined && patch.reasoningEffort === (previous.reasoningEffort ?? 'default')) {
+              delete patch.reasoningEffort
+            }
             // A resident runtime snapshots the permission it was built with, so a
-            // permission-only change has to retire it too.
-            const previous = permission === undefined ? undefined : await readSessionSummary(workspace, id)
-            if (Object.keys(patch).length || permission !== undefined) await evictResident(context, workspace, id)
+            // permission-only change has to retire it too. A running turn keeps its
+            // runtime: the next run sees the new signature and rebuilds it then.
+            if (!running && (Object.keys(patch).length || permission !== undefined)) await evictResident(context, workspace, id)
             if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
             if (approvalMode) await setSessionApprovalMode(workspace, id, approvalMode)
             const summary = permission === undefined
               ? await readSessionSummary(workspace, id)
               : await setSessionPermission(workspace, id, permission)
-            const before = previous?.permission ?? 'read-only'
-            if (permission !== undefined && summary.permission !== before) {
-              await appendPermissionNotice(workspace, id, permission)
-            }
+            // Mid-turn, the next step tells the model (see @tnega/run-settings).
+            if (permission !== undefined && !running) await appendPermissionNotice(workspace, id)
             sendJson(res, 200, { summary })
             return
           }

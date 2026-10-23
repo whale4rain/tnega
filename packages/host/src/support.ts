@@ -2,13 +2,15 @@ export { workspaceParam } from '@tnega/web-kit'
 
 import { browserPlaywright, type PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { llmAuthOptions } from '@tnega/auth-chatgpt'
-import { readSystemConfig, type EffectiveLlmConfig } from '@tnega/config'
+import type { LLMAdapter } from '@tnega/agent'
+import { availableModels, effectiveApiKey, effectiveLlmConfig, readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { Context, type Plugin } from '@tnega/core'
-import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
+import { createLlmAdapter, modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
+import { PERMISSION_NOTICE_NAME, pendingPermission, type ModelSelection } from '@tnega/run-settings'
 import type { HotPluginHost, PluginWorkshop } from '@tnega/plugin-host'
 import type { PermissionMode } from '@tnega/approval-host'
 import { SessionLog, isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
-import { sessionFile } from '@tnega/session-store'
+import { readSessionSummary, sessionFile } from '@tnega/session-store'
 import { toolBrowser } from '@tnega/tool-browser'
 import { sessionSearchSqlite, type SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import { toolSessionSearch } from '@tnega/tool-session-search'
@@ -162,22 +164,89 @@ export function permissionNotice(permission: PermissionMode, workspace: string):
 }
 
 /**
- * Append {@link permissionNotice} to the durable log. A `system/message` is a
- * surface event, so the model sees it on every later request, while
- * `transcriptEvents` keeps it out of the human-facing history.
+ * Append {@link permissionNotice} to the durable log when the model has not
+ * been told the current level yet. A `system/message` is a surface event, so
+ * the model sees it on every later request, while the client timeline keeps
+ * it out of the human-facing history.
+ *
+ * Only for a Session with no running turn: during a turn the notice waits for
+ * the next step boundary (see `@tnega/run-settings`), which carries it in the
+ * same request it records.
  */
-export async function appendPermissionNotice(
-  workspace: string,
-  id: string,
-  permission: PermissionMode,
-): Promise<void> {
-  const log = new SessionLog(sessionFilePath(workspace, id))
-  await log.init()
+export async function appendPermissionNotice(workspace: string, id: string): Promise<void> {
+  const file = sessionFilePath(workspace, id)
+  const live = SessionLog.live(file)
+  const log = live ?? new SessionLog(file)
+  if (!live) await log.init()
   try {
-    await log.append('system/message', { content: permissionNotice(permission, workspace) })
+    const level = pendingPermission(await log.read())
+    if (!level) return
+    await log.append('system/message', { content: permissionNotice(level, workspace), name: PERMISSION_NOTICE_NAME })
     await log.flush()
   } finally {
-    await log.close()
+    if (!live) await log.close()
+  }
+}
+
+type SessionEffort = 'default' | 'low' | 'medium' | 'high'
+type Effort = NonNullable<EffectiveLlmConfig['reasoningEffort']>
+
+function isEffort(value: string | undefined): value is Effort {
+  return value === 'low' || value === 'medium' || value === 'high'
+}
+
+/**
+ * The model route a Session runs with: its chosen model (or the default) and
+ * its chosen effort, dropped when that model has no such effort.
+ */
+export function resolveSessionLlm(
+  config: SystemConfig,
+  model: string | undefined,
+  effort: SessionEffort | undefined,
+): { effective: EffectiveLlmConfig; apiKey: string | undefined } {
+  const effective = effectiveLlmConfig(config, process.env, model)
+  const capabilities = availableModels(config).find(option => option.id === effective.modelId)
+    ?? modelCapabilities(effective.model, effective.protocol)
+  const selected = effort === 'default' ? effective.reasoningEffort : effort ?? effective.reasoningEffort
+  if (selected && capabilities.reasoningEfforts.includes(selected)) effective.reasoningEffort = selected
+  else delete effective.reasoningEffort
+  return { effective, apiKey: effectiveApiKey(config, process.env, effective.modelId) }
+}
+
+/**
+ * The live model selection of one Session, for `@tnega/run-settings`: what the
+ * next step should use, and an adapter for each route it names. Adapters are
+ * kept per route and effort for the life of the runtime.
+ */
+export function sessionModelRoute(configFile: string | undefined, workspace: string, id: string): {
+  selection: () => Promise<ModelSelection>
+  adapterFor: (selection: ModelSelection) => Promise<LLMAdapter>
+} {
+  const adapters = new Map<string, LLMAdapter>()
+  return {
+    async selection() {
+      const summary = await readSessionSummary(workspace, id)
+      const { effective } = resolveSessionLlm(await readSystemConfig(configFile), summary.model, summary.reasoningEffort)
+      return {
+        route: effective.modelId,
+        model: effective.model,
+        ...(effective.reasoningEffort ? { reasoningEffort: effective.reasoningEffort } : {}),
+      }
+    },
+    async adapterFor(selection) {
+      const key = `${selection.route}\0${selection.reasoningEffort ?? ''}`
+      const cached = adapters.get(key)
+      if (cached) return cached
+      const config = await readSystemConfig(configFile)
+      const effective = effectiveLlmConfig(config, process.env, selection.route)
+      if (isEffort(selection.reasoningEffort)) effective.reasoningEffort = selection.reasoningEffort
+      else delete effective.reasoningEffort
+      const apiKey = effectiveApiKey(config, process.env, effective.modelId)
+      if (!apiKey) throw new Error(`API key is not configured for ${selection.route}`)
+      const adapter = adapterFromConfig(effective, apiKey)
+      adapters.set(key, adapter)
+      return adapter
+    },
   }
 }
 

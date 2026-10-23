@@ -1,6 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { HttpError, errorMessage, readJsonBody, sendError, sendJson, writeSse } from '@tnega/web-kit'
-import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, hostPlugins, isActive, mountBrowser, parseRunAttachments, processesFor, runKey, searchApiKey, sessionFilePath, userMessage } from './support.js'
+import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, hostPlugins, isActive, mountBrowser, parseRunAttachments, permissionNotice, processesFor, resolveSessionLlm, runKey, searchApiKey, sessionFilePath, sessionModelRoute, userMessage } from './support.js'
 import type { ResidentAgentEntry, ServerContext } from './context.js'
 import { agents, continuationNudge, findInterruptedTurn, type AgentCreationOptions, type AgentHandle, type AgentRegistry, type AgentStreamEvent, type LiveAgent } from '@tnega/agent'
 import { Context, type Fiber, type Plugin } from '@tnega/core'
@@ -13,7 +13,8 @@ import { userQuestions, formatQuestionAnswer, type PendingQuestionRequest, type 
 import { toolQuestion } from '@tnega/tool-question'
 import { mountApprovalReview, reviewAutomaticApproval } from '@tnega/approval-host'
 import { createCodingAgentPlugin, renderSkillIndex, createSlashRegistry, generatePlan, type CodingService, type Plan, type SlashCommandResult } from '@tnega/coding-agent'
-import { modelCapabilities, openaiCompatAdapter } from '@tnega/llm'
+import { openaiCompatAdapter } from '@tnega/llm'
+import { routedAdapter, runSettings } from '@tnega/run-settings'
 import { changeGoal, createGoal, goalTools, readGoal, writeGoal } from '@tnega/goal'
 import { personaFor } from '@tnega/persona'
 import { session, SessionLog, type AgentType, type ModelAttachment, type ModelMessage, type PlanPayload, type SessionEvent } from '@tnega/session'
@@ -27,7 +28,7 @@ import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { webSearchTool } from '@tnega/tool-web-search'
 import { createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
-import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
+import { readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { patchSessionMeta, readSessionSummary } from '@tnega/session-store'
 
 export async function handleRun(
@@ -62,21 +63,11 @@ export async function handleRun(
   const mode = summary.mode ?? 'auto'
 
   const config = await readSystemConfig(context.configFile)
-  const effective = effectiveLlmConfig(config, process.env, summary.model)
-  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
-    ?? modelCapabilities(effective.model, effective.protocol)
-  const selectedEffort = summary.reasoningEffort === 'default'
-    ? effective.reasoningEffort : summary.reasoningEffort ?? effective.reasoningEffort
-  if (selectedEffort && capabilities.reasoningEfforts.includes(selectedEffort)) {
-    effective.reasoningEffort = selectedEffort
-  } else {
-    delete effective.reasoningEffort
-  }
+  const { effective, apiKey } = resolveSessionLlm(config, summary.model, summary.reasoningEffort)
   if (!effective.apiKeySet) {
     sendError(res, 400, 'API key is not configured')
     return
   }
-  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
   if (!apiKey) {
     sendError(res, 400, 'API key is not configured')
     return
@@ -92,6 +83,7 @@ export async function handleRun(
       goalMode: mode === 'goal',
       effective,
       apiKey,
+      route: sessionModelRoute(context.configFile, workspace, id),
       config,
       resumeQueued,
       attachments,
@@ -108,6 +100,7 @@ export async function handleRun(
 
   const controller = new AbortController()
   const adapter = adapterFromConfig(effective, apiKey)
+  const route = sessionModelRoute(context.configFile, workspace, id)
   let runtime: AgentRuntime | undefined
   let approvalFiber: { dispose(): Promise<void> } | undefined
   try {
@@ -117,7 +110,8 @@ export async function handleRun(
       durableInbox: true,
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ptc: { mode: config.codeMode ? 'ptc' : 'native' },
-      llm: adapter,
+      // A model or effort chosen mid-run takes effect at the next step.
+      llm: routedAdapter(route.adapterFor, adapter),
       ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
       allowNetwork: true,
       allowShell: true,
@@ -138,6 +132,13 @@ export async function handleRun(
     const toolService = runtime.root.get('tools')
     toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
     await mountBrowser(runtime.root, context.browser)
+    const settingsRoot = runtime.root
+    await settingsRoot.plugin(runSettings, {
+      // This runtime's own agent has no id; anything else is a subagent.
+      session: (agentId: string | undefined) => agentId === undefined ? settingsRoot.get('session') : undefined,
+      selection: route.selection,
+      permissionNotice: (level: PermissionMode) => permissionNotice(level, workspace),
+    })
     approvalFiber = await mountApprovalReview(runtime.root, {
       config, workspace, adapter, model: effective.model,
       session: () => runtime?.root.get('session'),
@@ -313,6 +314,8 @@ export interface ResidentRunRequest {
   goalMode: boolean
   effective: EffectiveLlmConfig
   apiKey: string
+  /** The Session's live model selection, read at every step. */
+  route: ReturnType<typeof sessionModelRoute>
 }
 
 export async function evictResident(context: ServerContext, workspace: string, id: string): Promise<void> {
@@ -384,6 +387,12 @@ export async function createResidentRuntime(
   })
   toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
   await mountBrowser(root, req.browser)
+  // Model, effort and permission changed mid-turn apply at the next step.
+  await root.plugin(runSettings, {
+    session: (agentId: string | undefined) => agentId === req.sessionId ? registry?.get(agentId)?.session : undefined,
+    selection: req.route.selection,
+    permissionNotice: (level: PermissionMode) => permissionNotice(level, workspace),
+  })
   toolService.guard(permissionGuard(currentPermission, runKey(workspace, req.sessionId), req.approvals, {
     workspace,
     review: request => reviewAutomaticApproval(root, request),
@@ -480,7 +489,7 @@ export async function createResidentAgent(
       sessionId: id,
       id,
       mode: 'auto',
-      llm: adapterFromConfig(req.effective, req.apiKey),
+      llm: routedAdapter(req.route.adapterFor, adapterFromConfig(req.effective, req.apiKey)),
       ...(req.effective.contextWindow !== undefined ? { contextWindow: req.effective.contextWindow } : {}),
       // Long sessions compact themselves (see auto-compaction.ts).
       contextBudget: autoContextBudget({
@@ -549,18 +558,13 @@ export function recoveryField(events: readonly SessionEvent[]): { recovery?: { s
 export async function residentQuestionRequest(context: ServerContext, workspace: string, id: string): Promise<ResidentRunRequest> {
   const summary = await readSessionSummary(workspace, id)
   const config = await readSystemConfig(context.configFile)
-  const effective = effectiveLlmConfig(config, process.env, summary.model)
-  const capabilities = availableModels(config).find(model => model.id === effective.modelId)
-    ?? modelCapabilities(effective.model, effective.protocol)
-  const effort = summary.reasoningEffort === 'default' ? effective.reasoningEffort : summary.reasoningEffort ?? effective.reasoningEffort
-  if (effort && capabilities.reasoningEfforts.includes(effort)) effective.reasoningEffort = effort
-  else delete effective.reasoningEffort
-  const apiKey = effectiveApiKey(config, process.env, effective.modelId)
+  const { effective, apiKey } = resolveSessionLlm(config, summary.model, summary.reasoningEffort)
   if (!apiKey) throw new HttpError(400, 'API key is not configured')
   return {
     prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
     approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
     effective, apiKey, config, resumeQueued: true,
+    route: sessionModelRoute(context.configFile, workspace, id),
     processes: processesFor(context, workspace),
     ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
   }

@@ -29,7 +29,7 @@ it('displays a live compaction message with an expandable summary while the Agen
   expect(view.queryByText('The earlier investigation is complete.')).toBeNull()
   fireEvent.click(marker)
   expect(view.getByText('The earlier investigation is complete.')).toBeTruthy()
-  expect(view.queryByRole('button', { name: /Show details|Used/ })).toBeNull()
+  expect(view.container.querySelector('.tool-group.process')).toBeNull()
 })
 
 const completed: Entry = {
@@ -76,7 +76,7 @@ it('reveals PTC child tools and their errors inside the outer tool details', () 
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
   // An ordinary failure is the agent's to handle: it folds with the rest of the process.
   expect(view.queryByText('1 tool call · 1 done')).toBeNull()
-  fireEvent.click(view.getByRole('button', { name: /^Used 1 tool/ }))
+  fireEvent.click(view.getByRole('button', { name: /^Used a tool/ }))
   expect(view.getByText('1 tool call · 1 done')).toBeTruthy()
   expect(view.queryByText('Tests failed')).toBeNull()
   fireEvent.click(view.getByRole('button', { name: /CodeMode/ }))
@@ -98,7 +98,7 @@ it('keeps model-facing tool errors quiet and flags only failures a person must a
   // The failure a person must act on stays in view; the agent's own error folds away.
   expect(view.getByRole('button', { name: /denied, Failed/ })).toBeTruthy()
   expect(view.queryByRole('button', { name: /missing, Returned an error to the agent/ })).toBeNull()
-  fireEvent.click(view.getByRole('button', { name: /^Used 1 tool/ }))
+  fireEvent.click(view.getByRole('button', { name: /^Made a web request/ }))
   expect(view.getByRole('button', { name: /missing, Returned an error to the agent/ })).toBeTruthy()
   expect(view.container.querySelectorAll('.tool-row.status-error')).toHaveLength(1)
   expect(view.container.querySelectorAll('.tool-row.status-note')).toHaveLength(1)
@@ -113,17 +113,40 @@ it('folds tool calls behind one line that names the current step while a turn st
   const view = render(createElement(Timeline, { entries: [live], running: true, actions: {} }))
   expect(view.getByText('Reading the sources first.')).toBeTruthy()
   expect(view.queryByRole('button', { name: /Read a.ts/ })).toBeNull()
-  expect(view.getByRole('button', { name: /^Used 2 steps/ }).getAttribute('aria-expanded')).toBe('false')
+  expect(view.getByRole('button', { name: 'Read 2 files' }).getAttribute('aria-expanded')).toBe('false')
   view.rerender(createElement(Timeline, { entries: [{ ...live, blocks: [...live.blocks, block('c', 'running')] }], running: true, actions: {} }))
-  expect(view.getByRole('button', { name: /^Reading\s*c.ts\s*3 steps/ })).toBeTruthy()
+  expect(view.getByRole('button', { name: 'Reading c.ts, 3 steps, Running' })).toBeTruthy()
   expect(view.container.querySelectorAll('.tool-row')).toHaveLength(0)
   fireEvent.click(view.getByRole('button', { name: /^Reading\s*c.ts/ }))
   expect(view.container.querySelectorAll('.tool-row')).toHaveLength(3)
   const answer: Block = { kind: 'text', id: 'answer', text: 'All three files agree.' }
   view.rerender(createElement(Timeline, { entries: [{ ...live, status: 'done', blocks: [...live.blocks, block('c', 'ok'), answer] }], running: false, actions: {} }))
-  expect(view.getByRole('button', { name: 'Used 3 tools: 3 reads' }).getAttribute('aria-expanded')).toBe('false')
+  expect(view.getByRole('button', { name: 'Read 3 files' }).getAttribute('aria-expanded')).toBe('false')
   expect(view.queryByText('Reading the sources first.')).toBeNull()
   expect(view.getByText('All three files agree.')).toBeTruthy()
+})
+
+it('folds thoughts and tool calls between two replies into one quiet line', () => {
+  const read = (callId: string): Block => ({
+    kind: 'tool', id: callId, tool: { callId, name: 'read_file', args: { path: `${callId}.ts` }, status: 'ok', durationMs: 1500 },
+  })
+  const thought: Block = { kind: 'reasoning', id: 'why', text: 'The second file decides it.', durationMs: 2000 }
+  const live: Entry = { kind: 'agent', id: 'live', status: 'running', blocks: [
+    { kind: 'text', id: 'say', text: 'Reading the sources first.' },
+    read('a'), thought, read('b'),
+    { kind: 'text', id: 'more', text: 'Both read.' },
+    { kind: 'reasoning', id: 'now', text: 'Weighing it up.', streaming: true },
+  ] }
+  const view = render(createElement(Timeline, { entries: [live], running: true, actions: {} }))
+  // One line for the run, in the same row style a thought uses; nothing else in between.
+  const run = view.getByRole('button', { name: 'Read 2 files' })
+  expect(view.queryByRole('button', { name: /^Thought/ })).toBeNull()
+  expect(run.textContent).toContain('5.0s')
+  // The thought being written stays on its own line so it can be read as it streams.
+  expect(view.getByRole('button', { name: 'Thinking' }).getAttribute('aria-expanded')).toBe('true')
+  fireEvent.click(run)
+  expect(view.getByRole('button', { name: 'Thought for 2.0s' })).toBeTruthy()
+  expect(view.container.querySelectorAll('.tool-group-list .tool-row')).toHaveLength(2)
 })
 
 it('opens running CodeMode scripts and child tool progress without showing escaped JSON', () => {
@@ -155,7 +178,7 @@ it('renders text emissions as separate readable blocks and a returned value sepa
     },
   }] }
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
-  fireEvent.click(view.getByRole('button', { name: /^Used 1 tool/ }))
+  fireEvent.click(view.getByRole('button', { name: /^Used a tool/ }))
   fireEvent.click(view.getByRole('button', { name: /CodeMode/ }))
   expect([...view.container.querySelectorAll('.ptc-output-block')].map(block => block.textContent)).toEqual(['first line\nsecond line', '<script>literal text</script>'])
   expect(view.getByText('Return value')).toBeTruthy()
@@ -224,7 +247,7 @@ it('labels a finished thought with how long it took', () => {
   }
   const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
   expect(view.getByRole('button', { name: 'Thought for 8.0s' }).getAttribute('aria-expanded')).toBe('false')
-  expect(view.queryByRole('button', { name: /Show details|Used/ })).toBeNull()
+  expect(view.container.querySelector('.tool-group.process')).toBeNull()
 })
 it('folds an entire streaming turn into one line when the reader hides the process', () => {
   const block = (callId: string, status: ToolView['status']): Block => ({

@@ -160,3 +160,29 @@ export function codeModeOutput(output: unknown): { blocks: string[]; value?: unk
   const readable = readableOutput(output)
   return { blocks: readable.text ? [readable.text] : [] }
 }
+
+const STEP_PHRASE: Record<ToolFamily, [one: string, many: (n: number) => string]> = {
+  read: ['read a file', n => `read ${n} files`],
+  write: ['edited a file', n => `edited ${n} files`],
+  search: ['searched once', n => `searched ${n} times`],
+  shell: ['ran a command', n => `ran ${n} commands`],
+  web: ['made a web request', n => `made ${n} web requests`],
+  agent: ['made an agent call', n => `made ${n} agent calls`],
+  memory: ['updated memory', n => `updated memory ${n} times`],
+  other: ['used a tool', n => `used ${n} tools`],
+}
+
+/**
+ * One plain sentence for a run of steps, in the order the kinds first
+ * appear: "Searched 3 times, ran a command". A run with no tools is only
+ * thinking, so it reads "Thought" (the caller adds how long).
+ */
+export function summarizeSteps(tools: readonly ToolView[]): string {
+  const counts = new Map<ToolFamily, number>()
+  for (const tool of tools) {
+    const family = presentTool(tool).family
+    counts.set(family, (counts.get(family) ?? 0) + 1)
+  }
+  const text = [...counts].map(([family, n]) => (n === 1 ? STEP_PHRASE[family][0] : STEP_PHRASE[family][1](n))).join(', ')
+  return text ? text[0]!.toUpperCase() + text.slice(1) : 'Thought'
+}

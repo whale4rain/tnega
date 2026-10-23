@@ -280,8 +280,13 @@ kbd {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
 }
 
+/* The glass header ends on a hairline. It is drawn just below the header, not as its bottom
+ * border: the desktop window controls are a native strip exactly as tall as the header, so a
+ * line (or the transparent border row the glass cannot cover) inside it stopped short under
+ * – ☐ ✕ and left them looking like a block of their own. */
 [data-glass="full"] .conv-header {
-  border-bottom-color: var(--border);
+  border-bottom: 0;
+  box-shadow: 0 1px 0 var(--border);
 }
 
 /* Off: a solid app, the same result reduced transparency forces. */
@@ -2344,89 +2349,45 @@ kbd {
   flex: 1;
 }
 
-/* --- thought (visible model reasoning) ---------------------------------- */
+/* --- steps: thoughts, tool calls and their folds -------------------------- */
 
-/* A bare row like a single tool: muted, one line once the answer begins. */
-.thought-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--control-sm);
-  margin-left: -6px;
-  padding: 2px 6px;
-  border-radius: var(--radius-md);
-  color: var(--text-3);
-  font-size: var(--text-sm);
-  text-align: left;
-  transition: background var(--duration-fast);
-}
-
-.thought-head:hover {
-  background: var(--surface-hover);
-}
-
-.thought-title {
-  white-space: nowrap;
-}
-
-.thought-body {
-  margin: 2px 0 var(--space-2) 7px;
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--border);
-  color: var(--text-3);
-  font-size: var(--text-sm);
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* While it streams, only the newest lines stay in view. */
-.thought-body.is-live {
-  max-height: calc(var(--text-sm) * 1.55 * 6);
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-/* --- tools --------------------------------------------------------------- */
-
-.tool-group {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.tool-group.single {
-  border-color: transparent;
-  background: transparent;
-  overflow: visible;
-}
-
+/*
+ * One row style for every step (tnega-design §5.1): a bare line, no card and
+ * no fill. Icon · what happened · quiet detail · chevron, all hugging the
+ * text, so a thought, a single call and a folded run read the same.
+ */
+.thought-head,
 .tool-group-head,
 .tool-row-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
   min-height: var(--control-sm);
-  padding: 2px 6px;
-  text-align: left;
+  padding: 2px 0;
+  color: var(--text-2);
   font-size: var(--text-sm);
-  transition: background var(--duration-fast);
+  text-align: left;
+  transition: color var(--duration-fast);
 }
 
+.thought-head:hover,
 .tool-group-head:hover,
-.tool-row-head:hover {
-  background: var(--surface-hover);
+.tool-row-head:hover,
+.thought-head[aria-expanded="true"],
+.tool-group-head[aria-expanded="true"],
+.tool-row-head[aria-expanded="true"] {
+  color: var(--text);
 }
 
-.tool-group.single .tool-row-head {
-  border-radius: var(--radius-md);
-  margin-left: -6px;
-  width: calc(100% + 6px);
+.thought-head:hover :is(.tool-icon, .chevron),
+.tool-group-head:hover :is(.tool-icon, .chevron),
+.tool-row-head:hover :is(.tool-icon, .chevron) {
+  color: var(--text-2);
 }
 
-/* A bare glyph, not a tile: the row's text carries the weight. */
+/* A bare glyph, not a tile: the row's words carry the weight. */
 .tool-icon {
   display: grid;
   place-items: center;
@@ -2434,12 +2395,42 @@ kbd {
   height: var(--icon);
   flex: none;
   color: var(--text-3);
+  transition: color var(--duration-fast);
 }
 
-.tool-group-title {
+.thought-title,
+.tool-group-title,
+.tool-verb {
   flex: none;
-  font-weight: 550;
-  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* A run's sentence can be long; it gives way before the chevron does. */
+.tool-group-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-target {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.tool-group-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2448,66 +2439,15 @@ kbd {
   flex: none;
 }
 
-.tool-group-summary {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tool-group-list {
-  border-top: 1px solid var(--border);
-  padding: 4px;
-}
-
-.run-process-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-}
-
-.tool-group-list .tool-row-head {
-  border-radius: var(--radius-sm);
-}
-
-.tool-verb {
-  flex: none;
-  font-weight: 550;
-  color: var(--text);
-}
-
-.tool-target {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-2);
-}
-
-.tool-row-head .tool-verb + .chevron,
-.tool-row-head .tool-meta:first-of-type {
-  margin-left: auto;
-}
-
 .tool-meta {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   flex: none;
 }
 
-.tool-target + .tool-meta {
-  margin-left: 0;
-}
-
 .tool-duration {
+  flex: none;
   font-size: var(--text-xs);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
@@ -2525,18 +2465,50 @@ kbd {
   color: var(--accent-text);
 }
 
+/*
+ * Whatever a step opens hangs from one rail under its icon: a run's steps,
+ * a thought's text, a call's detail. Nothing opened gets a box.
+ */
+.tool-group-list,
+.thought-body,
+.tool-detail {
+  margin: 2px 0 6px calc(var(--icon) / 2 - 0.5px);
+  padding-left: calc(var(--icon) / 2 + 6px);
+  border-left: 1px solid var(--border);
+}
+
+.tool-group-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.run-process-list {
+  gap: 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.thought-body {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* While it streams, only the newest lines stay in view. */
+.thought-body.is-live {
+  max-height: calc(var(--text-sm) * 1.55 * 6);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
 .tool-detail {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 2px 0 6px 20px;
-  padding-left: 12px;
-  border-left: 2px solid var(--border);
+  padding-top: 2px;
   animation: fade-up 180ms var(--ease-out);
-}
-
-.tool-group.single .tool-detail {
-  margin-left: 21px;
 }
 
 .tool-detail-label {
@@ -2731,6 +2703,44 @@ kbd {
 
 .diff-del {
   color: var(--danger);
+}
+
+/* A run setting changed (model, effort, permissions, approvals): quieter than
+   a notice, since nothing went wrong. Between turns it is a rule across the
+   conversation; inside a turn, a line among the steps. */
+.setting-change {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.setting-change::before,
+.setting-change::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+.setting-change-label,
+.setting-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.setting-line {
+  display: flex;
+}
+
+.setting-change svg,
+.setting-line svg {
+  flex: none;
 }
 
 .compaction-rule {
