@@ -43,6 +43,12 @@ export interface CompleteOptions {
   model?: string
   temperature?: number
   /**
+   * Reasoning effort chosen for this call. It is recorded in the request
+   * header, so a change between steps is a durable `request/header` change;
+   * adapters that route by it read it, the others keep their configured one.
+   */
+  reasoningEffort?: string
+  /**
    * Output cap for this call, overriding the adapter's configured default.
    * Callers that need a different budget from the conversation's — a
    * structured side request, for example — set it per call.

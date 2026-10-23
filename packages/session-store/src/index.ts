@@ -100,6 +100,9 @@ async function withSessionLog<T>(
   file: string,
   run: (log: SessionLog) => Promise<T>,
 ): Promise<T> {
+  // A live writer (a running turn or a resident Agent) owns the sequence.
+  const live = SessionLog.live(file)
+  if (live) return run(live)
   const log = new SessionLog(file)
   await log.init()
   try {

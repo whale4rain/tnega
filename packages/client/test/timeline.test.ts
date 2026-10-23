@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSseFrame } from '../src/api.js'
-import { applyStream, beginRun, fromEvents, presentOutcome, presentRun, type Entry } from '../src/timeline.js'
+import { applyStream, beginRun, fromEvents, noteSettingChange, presentOutcome, presentRun, settingChangeText, type Entry } from '../src/timeline.js'
 import { presentTool, readableOutput } from '../src/tools.js'
 import type { SessionEvent, StreamEvent } from '../src/types.js'
 
@@ -427,5 +427,64 @@ describe('recovered runs', () => {
     expect(agent?.kind === 'agent' && agent.blocks).toEqual([
       expect.objectContaining({ kind: 'notice', text: 'Continued the run that stopped when the app closed' }),
     ])
+  })
+})
+
+describe('settings changes', () => {
+  it('shows a change made mid-turn inside that turn, and one made between turns as its own line', () => {
+    const entries = fromEvents([
+      // Settings chosen before the first turn are where the Session started.
+      ev('meta/patch', { fields: ['model', 'reasoningEffort'], model: 'fast', reasoningEffort: 'low' }),
+      ev('permission/mode', { mode: 'workspace-write' }),
+      ev('turn/start', { turn: 1 }),
+      ev('user/message', { content: 'go' }),
+      ev('assistant/message', { content: '', toolCalls: [{ id: 'c1', name: 'grep', arguments: {} }] }),
+      ev('meta/patch', { fields: ['reasoningEffort'], reasoningEffort: 'high' }, 'effort'),
+      ev('assistant/message', { content: 'done' }),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+      ev('meta', { kind: 'approval/mode', mode: 'auto' }, 'approvals'),
+      ev('meta/patch', { fields: ['model'], model: 'deep' }, 'model'),
+      ev('permission/mode', { mode: 'bypass' }, 'permission'),
+      ev('meta/patch', { fields: ['title'] }),
+    ], { modelName: id => id === 'deep' ? 'Deep Model' : id })
+    expect(entries.map(entry => entry.kind)).toEqual(['user', 'agent', 'setting'])
+    expect(entries[1]?.kind === 'agent' && entries[1].blocks.find(block => block.kind === 'setting'))
+      .toEqual({ kind: 'setting', id: 'effort', text: 'Effort set to high · applies from the next step' })
+    // One change of several settings is one line.
+    expect(entries[2]).toEqual({ kind: 'setting', id: 'approvals', text: 'Model set to Deep Model, permissions set to full access, approvals set to auto review' })
+  })
+
+  it('keeps a mid-turn change beside the answer once the turn is done', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('user/message', { content: 'go' }),
+      ev('assistant/message', { content: '', toolCalls: [{ id: 'c1', name: 'grep', arguments: {} }] }),
+      ev('tool/result', { id: 'r1', toolCallId: 'c1', name: 'grep', ok: true, output: 'x' }),
+      ev('permission/mode', { mode: 'workspace-write' }),
+      ev('assistant/message', { content: 'answer' }, 'answer'),
+      ev('turn/end', { turn: 1, finishReason: 'stop', reason: { kind: 'completed' } }),
+      ev('meta', { kind: 'run/summary', turn: 1, summary: 'answer', sourceMessageId: 'answer' }),
+    ])
+    const agent = entries[1]
+    expect(agent?.kind).toBe('agent')
+    if (agent?.kind !== 'agent') return
+    const { process, visible } = presentRun(agent)
+    // The steps fold away; the settings line stays with the answer.
+    expect(process.map(block => block.kind)).toEqual(['tool'])
+    expect(visible.map(block => block.kind)).toEqual(['setting', 'text'])
+  })
+
+  it('names every changed setting in one line, and nothing when nothing changed', () => {
+    expect(settingChangeText({})).toBeUndefined()
+    expect(settingChangeText({ model: 'deep', reasoningEffort: 'medium', permission: 'read-only', approvalMode: 'manual' }))
+      .toBe('Model set to deep, effort set to medium, permissions set to read only, approvals set to ask me')
+  })
+
+  it('adds a live change to the running turn and an idle one as a line', () => {
+    const running = fromEvents([ev('turn/start', { turn: 1 }), ev('user/message', { content: 'go' }), ev('assistant/message', { content: 'working' })])
+    const live = noteSettingChange(running, 'n1', 'Effort set to high', true)
+    expect(live).toHaveLength(running.length)
+    expect(live.at(-1)?.kind === 'agent' && live.at(-1)).toMatchObject({ blocks: [{ kind: 'text' }, { kind: 'setting', text: 'Effort set to high · applies from the next step' }] })
+    expect(noteSettingChange(running, 'n2', 'Effort set to high', false).at(-1)).toEqual({ kind: 'setting', id: 'n2', text: 'Effort set to high' })
   })
 })

@@ -48,8 +48,18 @@ Session 持久化的 `read-only`、`workspace-write` 或 `bypass` 权限预设�
 越权工具调用需要一次性人工批准；`read-only` 允许公开网络搜索与抓取，`bypass` 允许工作区外
 文件和私有网络访问。Shell 的执行边界由沙箱缝负责，两者不是同一个开关。
 切换权限会退役常驻运行时（它构造时快照了权限，子代理尤其依赖这一点），并向 Session 追加一条
-`system/message` 告知模型当前档位 —— 否则模型会沿用上一次的档位去请求不需要的升权。
+`system/message`（作者 `plugin:permission`）告知模型当前档位 —— 否则模型会沿用上一次的档位去
+请求不需要的升权。回合进行中切换时不退役运行时，告知留到下一步的步骤边界（见 **Run Setting**）。
 _Avoid_: capability flag
+
+**Run Setting**:
+回合进行中也能改的 Session 设置：模型、推理强度、权限与审批方式（Agent 类型与模式影响整个
+Agent Run，运行中不能改）。改动立即写入 durable 事件（`meta/patch`、`permission/mode`、
+`meta` 的 `approval/mode`），正在请求模型的那一步不受影响，从**下一步**起生效：
+`@tnega/run-settings` 在步骤准入时快照模型选择并写进该步的请求选项，所以 `request/header`
+以 `change` 记下新的模型与强度；权限变化的告知也在这个边界写入 Session 并随同一次请求发出，
+保证实时请求与重放一致。时间线把开始后的改动显示成一行安静的设置行。
+_Avoid_: hot reload, live config
 
 **沙箱 (Sandbox)**:
 把一次执行包进本机机制（bwrap / landlock / seatbelt / Windows ACL）的能力缝，拥有

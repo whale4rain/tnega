@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ApprovalBroker } from '@tnega/approval-host'
 import type { SystemConfig } from '@tnega/config'
 import { residentSignature, type ResidentRunRequest } from '../src/runs.js'
-import { permissionNotice } from '../src/support.js'
+import { permissionNotice, sessionModelRoute } from '../src/support.js'
 
 const request: ResidentRunRequest = {
   config: {} as SystemConfig,
@@ -20,6 +20,7 @@ const request: ResidentRunRequest = {
     vision: false,
   },
   apiKey: 'key',
+  route: sessionModelRoute(undefined, 'workspace', 'session'),
 }
 
 describe('residentSignature', () => {

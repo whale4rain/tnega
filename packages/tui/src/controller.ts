@@ -11,7 +11,9 @@ import {
   CLIENT_COMMANDS,
   fromEvents,
   mergeCommands,
+  noteSettingChange,
   parseCommand,
+  settingChangeText,
   type AgentType,
   type ApprovalMode,
   type Client,
@@ -192,6 +194,11 @@ export class TuiController {
     }
   }
 
+  /** The name the model picker shows for a route id. */
+  private modelName(id: string): string {
+    return this.state.config?.models.find(model => model.id === id)?.name || id
+  }
+
   /** Id and display name of the model the next turn uses. */
   get model(): { id: string; name: string } | undefined {
     const config = this.state.config
@@ -248,7 +255,7 @@ export class TuiController {
   private applyDetail(detail: SessionDetail, replace: boolean): void {
     this.set({
       session: detail.summary,
-      entries: fromEvents(detail.events),
+      entries: fromEvents(detail.events, { modelName: id => this.modelName(id) }),
       context: detail.context,
       metrics: detail.metrics,
       usage: detail.usage,
@@ -741,8 +748,19 @@ export class TuiController {
       const { model, ...rest } = patch
       const body = { ...rest, ...(model ? { model } : {}) }
       if (!Object.keys(body).length) return
+      const before = this.settings
       const result = await this.api.patchSession(this.state.workspace, session.id, body)
       this.set({ session: result.summary })
+      // Same line the durable log shows on reload; mid-turn it applies from the next step.
+      const text = settingChangeText({
+        ...(model && model !== before.model ? { model } : {}),
+        ...(patch.reasoningEffort && patch.reasoningEffort !== before.reasoningEffort ? { reasoningEffort: patch.reasoningEffort } : {}),
+        ...(patch.permission && patch.permission !== before.permission ? { permission: patch.permission } : {}),
+        ...(patch.approvalMode && patch.approvalMode !== before.approvalMode ? { approvalMode: patch.approvalMode } : {}),
+      }, id => this.modelName(id))
+      if (text && this.state.entries.some(entry => entry.kind === 'agent')) {
+        this.set({ entries: noteSettingChange(this.state.entries, `setting-${Date.now()}`, text, this.live) })
+      }
       if (patch.mode === 'goal') void this.loadGoal(session.id)
       if (patch.mode && patch.mode !== 'goal') this.set({ goal: null })
     } catch (reason) {
