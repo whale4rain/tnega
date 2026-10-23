@@ -28,7 +28,7 @@ import type { ProcessView } from '../lib/process-view'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentLive, presentOutcome, presentRun, stringify } from '../lib/timeline'
 import { officeFiles } from '../lib/office'
-import { codeModeOutput, needsAttention, presentTool, readableOutput, type ToolFamily } from '../lib/tools'
+import { codeModeOutput, needsAttention, presentTool, readableOutput, summarizeSteps, type ToolFamily } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
 import { ImageStrip } from './ImageStrip'
 import { splitPickedContext } from '../lib/browser-live'
@@ -215,21 +215,40 @@ function IconAction({ label, onClick, children }: { label: string; onClick: () =
 
 // ---------------------------------------------------------------------------
 
+/** A thought or a tool call: the steps an agent takes between the words it says. */
+type Step = Extract<Block, { kind: 'tool' | 'reasoning' }>
+
 type Segment =
-  | { kind: 'tools'; id: string; tools: ToolView[] }
+  | { kind: 'steps'; id: string; steps: Step[] }
   | Exclude<Block, { kind: 'tool' }>
 
-function segment(blocks: readonly Block[]): Segment[] {
+/**
+ * Consecutive thoughts and tool calls fold into one run of steps, so the
+ * transcript reads as words and one quiet line between them (tnega-design
+ * §5.1). A thought still being written stays on its own line so it can be
+ * read as it streams; a run of one thought is just that thought. Inside an
+ * opened process fold the steps are already behind one line, so `fold: false`
+ * lists them one by one instead of folding them a second time.
+ */
+function segment(blocks: readonly Block[], { fold = true }: { fold?: boolean } = {}): Segment[] {
   const out: Segment[] = []
+  let run: Step[] = []
+  const flush = () => {
+    const only = run.length === 1 ? run[0] : undefined
+    if (only?.kind === 'reasoning') out.push(only)
+    else if (run.length) out.push({ kind: 'steps', id: run[0]!.id, steps: run })
+    run = []
+  }
   for (const block of blocks) {
-    if (block.kind === 'tool') {
-      const last = out.at(-1)
-      if (last?.kind === 'tools') last.tools.push(block.tool)
-      else out.push({ kind: 'tools', id: block.id, tools: [block.tool] })
+    if (block.kind === 'tool' || (block.kind === 'reasoning' && !block.streaming)) {
+      run.push(block)
+      if (!fold) flush()
     } else {
+      flush()
       out.push(block)
     }
   }
+  flush()
   return out
 }
 
@@ -306,8 +325,8 @@ const AgentTurn = memo(function AgentTurn({
             <Markdown text={seg.text} />
           </div>
         )
-      case 'tools':
-        return <ToolGroup key={seg.id} tools={seg.tools} live={live} />
+      case 'steps':
+        return <StepGroup key={seg.id} steps={seg.steps} live={live} />
       case 'subagent':
         return <SubagentCard key={seg.id} agent={seg.agent} onOpen={actions.onOpenSubagent} />
       case 'files':
@@ -330,7 +349,7 @@ const AgentTurn = memo(function AgentTurn({
         {presentation.process.length > 0 && (
           <div className={`tool-group process${processOpen ? ' open' : ''}${live ? ' is-live' : ''}`}>
             <ProcessHead blocks={presentation.process} live={live} open={processOpen} onToggle={() => setProcessOpen(value => !value)} />
-            {processOpen && <div className="tool-group-list run-process-list">{segment(presentation.process).map(renderSegment)}</div>}
+            {processOpen && <div className="tool-group-list run-process-list">{segment(presentation.process, { fold: false }).map(renderSegment)}</div>}
           </div>
         )}
         {segments.map(renderSegment)}
@@ -387,22 +406,18 @@ function present(entry: Extract<Entry, { kind: 'agent' }>, live: boolean, outcom
 
 /**
  * The one line a folded process shows. While the turn runs it names the
- * current step ("Running npm test"); once done it sums up what was used
- * ("Used 6 tools · 3 reads, 2 commands, 1 search").
+ * current step ("Running npm test"); once done it says what was done, in the
+ * same words as any other run of steps ("Read 3 files, ran a command").
  */
 function ProcessHead({ blocks, live, open, onToggle }: { blocks: readonly Block[]; live: boolean; open: boolean; onToggle: () => void }) {
   const tools = blocks.flatMap(block => (block.kind === 'tool' ? [block.tool] : []))
+  const thoughts = blocks.filter(block => block.kind === 'reasoning').length
   const running = [...tools].reverse().find(tool => tool.status === 'running')
-  const counts = new Map<ToolFamily, number>()
-  for (const tool of tools) {
-    const family = presentTool(tool).family
-    counts.set(family, (counts.get(family) ?? 0) + 1)
-  }
-  const summary = [...counts].map(([family, n]) => `${n} ${FAMILY_NOUN[family][n === 1 ? 0 : 1]}`).join(', ')
   const current = running ? presentTool(running) : undefined
   const title = live
     ? current ? `${current.verb}${current.target ? ` ${current.target}` : ''}` : 'Thinking'
-    : tools.length ? `Used ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}` : 'Show details'
+    : tools.length ? summarizeSteps(tools) : thoughts ? thoughtTitle(stepsDuration(blocks)) : 'Show details'
+  const duration = !live && tools.length ? stepsDuration(blocks) : undefined
   const Icon = current ? FAMILY_ICON[current.family] : Layers
   return (
     <button
@@ -410,15 +425,33 @@ function ProcessHead({ blocks, live, open, onToggle }: { blocks: readonly Block[
       className="tool-group-head"
       onClick={onToggle}
       aria-expanded={open}
-      aria-label={live ? `Working: ${title}${tools.length ? `, ${tools.length} ${tools.length === 1 ? 'step' : 'steps'} so far` : ''}` : `${title}${summary ? `: ${summary}` : ''}`}
+      aria-label={live ? `Working: ${title}${tools.length ? `, ${tools.length} ${tools.length === 1 ? 'step' : 'steps'} so far` : ''}` : title}
     >
       <span className="tool-icon"><Icon size={14} /></span>
       <span className={`tool-group-title${live ? ' shimmer' : ''}`}>{title}</span>
-      <span className="tool-group-summary">{live ? (tools.length > 1 ? `${tools.length} steps` : '') : summary}</span>
+      {live && tools.length > 1 && <span className="tool-group-summary">{tools.length} steps</span>}
       {live && <span className="spinner" aria-hidden />}
+      {duration !== undefined && <span className="tool-duration">{formatDuration(duration)}</span>}
       <ChevronRight size={14} className="chevron" />
     </button>
   )
+}
+
+/** How long a run of steps took: its tool calls plus its thinking. */
+function stepsDuration(blocks: readonly Block[]): number | undefined {
+  let total = 0
+  let known = false
+  for (const block of blocks) {
+    const ms = block.kind === 'tool' ? block.tool.durationMs : block.kind === 'reasoning' ? block.durationMs : undefined
+    if (ms === undefined) continue
+    total += ms
+    known = true
+  }
+  return known ? total : undefined
+}
+
+function thoughtTitle(durationMs: number | undefined): string {
+  return durationMs !== undefined && durationMs >= 1000 ? `Thought for ${formatDuration(durationMs)}` : 'Thought'
 }
 
 /**
@@ -443,7 +476,7 @@ function Thought({ text, streaming, durationMs }: { text: string; streaming: boo
     // Follow the newest line while it streams, like a terminal tail.
     if (streaming && open && body.current) body.current.scrollTop = body.current.scrollHeight
   }, [text, streaming, open])
-  const title = streaming ? 'Thinking' : durationMs !== undefined && durationMs >= 1000 ? `Thought for ${formatDuration(durationMs)}` : 'Thought'
+  const title = streaming ? 'Thinking' : thoughtTitle(durationMs)
   return (
     <div className={`thought${open ? ' open' : ''}${streaming ? ' is-live' : ''}`}>
       <button type="button" className="thought-head" aria-expanded={open} onClick={() => setChosen(!open)}>
@@ -488,54 +521,52 @@ const FAMILY_ICON: Record<ToolFamily, typeof Wrench> = {
   other: Wrench,
 }
 
-const FAMILY_NOUN: Record<ToolFamily, [string, string]> = {
-  read: ['read', 'reads'],
-  write: ['edit', 'edits'],
-  search: ['search', 'searches'],
-  shell: ['command', 'commands'],
-  web: ['web request', 'web requests'],
-  agent: ['agent call', 'agent calls'],
-  memory: ['memory update', 'memory updates'],
-  other: ['tool call', 'tool calls'],
-}
-
-function ToolGroup({ tools, live }: { tools: ToolView[]; live: boolean }) {
-  const running = tools.some(t => t.status === 'running')
-  const failed = tools.filter(needsAttention).length
+/**
+ * A run of steps. One tool call is its own row; anything more folds to one
+ * line: the current step while it runs, then what was done and how long it
+ * took. Opened, the steps hang from the same rail a thought or a tool's
+ * detail uses.
+ */
+function StepGroup({ steps, live }: { steps: Step[]; live: boolean }) {
   const [open, setOpen] = useState(false)
-  if (tools.length === 1) {
-    return <div className="tool-group single">{tools.map(tool => <ToolRow key={tool.callId} tool={tool} />)}</div>
+  const only = steps.length === 1 ? steps[0] : undefined
+  if (only?.kind === 'tool') {
+    return <div className="tool-group single"><ToolRow tool={only.tool} /></div>
   }
 
-  const counts = new Map<ToolFamily, number>()
-  for (const tool of tools) {
-    const family = presentTool(tool).family
-    counts.set(family, (counts.get(family) ?? 0) + 1)
-  }
-  const summary = [...counts].map(([family, n]) => `${n} ${FAMILY_NOUN[family][n === 1 ? 0 : 1]}`).join(', ')
+  const tools = steps.flatMap(step => (step.kind === 'tool' ? [step.tool] : []))
+  const running = tools.some(tool => tool.status === 'running')
+  const failed = tools.filter(needsAttention).length
   // While steps run, the folded line names the current one, like a status bar.
   const current = live ? [...tools].reverse().find(tool => tool.status === 'running') : undefined
   const step = current ? presentTool(current) : undefined
   const Icon = step ? FAMILY_ICON[step.family] : Layers
+  const duration = running ? undefined : stepsDuration(steps)
+  const title = step ? step.verb : tools.length ? summarizeSteps(tools) : thoughtTitle(duration)
+  const count = `${tools.length} ${tools.length === 1 ? 'step' : 'steps'}`
+  const label = step
+    ? `${step.verb}${step.target ? ` ${step.target}` : ''}${tools.length > 1 ? `, ${count}` : ''}, Running`
+    : `${title}${failed ? `, ${failed} failed` : ''}${running ? ', Running' : ''}`
 
   return (
     <div className={`tool-group${open ? ' open' : ''}${current ? ' is-live' : ''}`}>
-      <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open}
+      <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={label}
         title={step?.target ? `${step.verb} ${step.fullTarget ?? step.target}` : undefined}>
         <span className="tool-icon"><Icon size={14} /></span>
-        <span className={`tool-group-title${current ? ' shimmer' : ''}`}>
-          {step ? step.verb : `${running ? 'Working through' : 'Used'} ${tools.length} steps`}
-        </span>
-        {/* A long command shrinks to an ellipsis instead of pushing past the card. */}
+        <span className={`tool-group-title${current ? ' shimmer' : ''}`}>{title}</span>
+        {/* A long command shrinks to an ellipsis instead of pushing the line wider. */}
         {step?.target && <span className="tool-target">{step.target}</span>}
-        <span className="tool-group-summary">{step ? `${tools.length} steps` : summary}</span>
+        {step && tools.length > 1 && <span className="tool-group-summary">{count}</span>}
         {failed > 0 && <span className="pill pill-danger">{failed} failed</span>}
-        {running ? <span className="spinner" aria-label="Running" /> : null}
+        {running && <span className="spinner" aria-hidden />}
+        {tools.length > 0 && duration !== undefined && <span className="tool-duration">{formatDuration(duration)}</span>}
         <ChevronRight size={14} className="chevron" />
       </button>
       {open && (
         <div className="tool-group-list">
-          {tools.map(tool => <ToolRow key={tool.callId} tool={tool} />)}
+          {steps.map(item => item.kind === 'tool'
+            ? <ToolRow key={item.id} tool={item.tool} />
+            : <Thought key={item.id} text={item.text} streaming={false} {...(item.durationMs !== undefined ? { durationMs: item.durationMs } : {})} />)}
         </div>
       )}
     </div>
