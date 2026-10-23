@@ -6,7 +6,8 @@ import type { EffectiveLlmConfig } from '@tnega/config'
 import { Context, type Plugin } from '@tnega/core'
 import { createLlmAdapter, openaiCompatAdapter } from '@tnega/llm'
 import type { HotPluginHost, PluginWorkshop } from '@tnega/plugin-host'
-import { isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
+import type { PermissionMode } from '@tnega/approval-host'
+import { SessionLog, isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
 import { sessionFile } from '@tnega/session-store'
 import { toolBrowser } from '@tnega/tool-browser'
 import { ProcessRegistry } from '@tnega/tools'
@@ -118,6 +119,46 @@ export function isActive(
 
 export function sessionFilePath(workspace: string, id: string): string {
   return sessionFile(workspace, id)
+}
+
+/**
+ * What the model is told when the sandbox level changes.
+ *
+ * The permission guard enforces the level on every call, but nothing else puts
+ * it in front of the model: without this notice the model keeps the level it
+ * saw last, asks for escalations its level no longer needs, and reads a refusal
+ * as a bug rather than as the policy.
+ */
+export function permissionNotice(permission: PermissionMode, workspace: string): string {
+  switch (permission) {
+    case 'read-only':
+      return 'Session permission changed: read-only. Writing files, and any command that would write, is refused.'
+    case 'workspace-write':
+      return `Session permission changed: workspace-write. You can write inside ${workspace}; writes elsewhere and `
+        + 'any command outside the sandbox need an explicit per-call escalation the user approves.'
+    case 'bypass':
+      return "Session permission changed: full access. Commands run outside the sandbox with your account's own permissions."
+  }
+}
+
+/**
+ * Append {@link permissionNotice} to the durable log. A `system/message` is a
+ * surface event, so the model sees it on every later request, while
+ * `transcriptEvents` keeps it out of the human-facing history.
+ */
+export async function appendPermissionNotice(
+  workspace: string,
+  id: string,
+  permission: PermissionMode,
+): Promise<void> {
+  const log = new SessionLog(sessionFilePath(workspace, id))
+  await log.init()
+  try {
+    await log.append('system/message', { content: permissionNotice(permission, workspace) })
+    await log.flush()
+  } finally {
+    await log.close()
+  }
 }
 
 export function userMessage(prompt: string, attachments: readonly ModelAttachment[]): ModelMessage {

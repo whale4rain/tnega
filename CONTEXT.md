@@ -47,6 +47,8 @@ Session 持久化的 `read-only`、`workspace-write` 或 `bypass` 权限预设�
 `permission/mode`，后续 Agent Run 与工具调用读取该 Session 的最新值。
 越权工具调用需要一次性人工批准；`read-only` 允许公开网络搜索与抓取，`bypass` 允许工作区外
 文件和私有网络访问。Shell 的执行边界由沙箱缝负责，两者不是同一个开关。
+切换权限会退役常驻运行时（它构造时快照了权限，子代理尤其依赖这一点），并向 Session 追加一条
+`system/message` 告知模型当前档位 —— 否则模型会沿用上一次的档位去请求不需要的升权。
 _Avoid_: capability flag
 
 **沙箱 (Sandbox)**:

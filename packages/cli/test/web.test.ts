@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startWebServer, type WebServer } from '@tnega/host'
-import { SessionLog } from '@tnega/session'
+import { SessionLog, deriveSurfaceMessages } from '@tnega/session'
 import { sessionFile } from '@tnega/session-store'
 
 const dirs: string[] = []
@@ -301,6 +301,63 @@ describe('web server', () => {
       `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
     ).then(r => r.json()) as { sessions: Array<{ id: string }> }
     expect(list.sessions.map(session => session.id)).toEqual([fork.session.id])
+  })
+
+  it('tells the model when the permission level changes, once per change', async () => {
+    const dir = await tempDir('tnega-web-permission-')
+    const workspace = await mkdir(dir, 'workspace')
+    const configFile = join(dir, 'config.json')
+    const server = await startWebServer({ port: 0, host: '127.0.0.1', configFile })
+    servers.push(server)
+
+    const created = await apiFetch(
+      server.url,
+      `/api/sessions?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'POST', body: JSON.stringify({ title: 'permission' }) },
+    ).then(r => r.json()) as { session: { id: string } }
+    const id = created.session.id
+
+    const notices = async (): Promise<string[]> => (await readFile(sessionFile(workspace, id), 'utf8'))
+      .split('\n')
+      .filter(Boolean)
+      .map(line => JSON.parse(line) as { type: string; payload: { content?: string } })
+      .filter(event => event.type === 'system/message')
+      .map(event => event.payload.content ?? '')
+    const patch = (permission: string) => apiFetch(
+      server.url,
+      `/api/sessions/${id}?workspace=${encodeURIComponent(workspace)}`,
+      { method: 'PATCH', body: JSON.stringify({ permission }) },
+    )
+
+    // A session says nothing about its level until the level changes.
+    expect(await notices()).toEqual([])
+
+    expect((await patch('workspace-write')).status).toBe(200)
+    expect(await notices()).toHaveLength(1)
+    expect((await notices())[0]).toContain('workspace-write')
+
+    // Choosing the level already in force is not a change: no second notice.
+    expect((await patch('workspace-write')).status).toBe(200)
+    expect(await notices()).toHaveLength(1)
+
+    expect((await patch('read-only')).status).toBe(200)
+    expect(await notices()).toHaveLength(2)
+    expect((await notices())[1]).toContain('read-only')
+
+    // The notice is durable model context: the model surface every later request
+    // derives from carries it. The client timeline has no case for system
+    // messages, so readers never see it as a chat bubble.
+    const log = new SessionLog(sessionFile(workspace, id))
+    await log.init()
+    try {
+      const system = deriveSurfaceMessages(await log.read())
+        .filter(message => message.role === 'system')
+        .map(message => message.content)
+      expect(system.some(content => content.includes('workspace-write'))).toBe(true)
+      expect(system.some(content => content.includes('read-only'))).toBe(true)
+    } finally {
+      await log.close()
+    }
   })
 
   it('creates coding sessions with agent type and mode and patches mode', async () => {

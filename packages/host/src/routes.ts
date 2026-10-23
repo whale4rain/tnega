@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { dedupe, errorMessage, readJsonBody, sendError, sendJson, HttpError } from '@tnega/web-kit'
-import { KEEP_RECENT_TOKENS, MAX_RUN_BODY_BYTES, adapterFromConfig, canonicalWorkspace, compactionAdapter, isActive, optionalCount, optionalSeq, parseRunAttachments, processesFor, runKey, sessionFilePath, userMessage, workspaceParam } from './support.js'
+import { KEEP_RECENT_TOKENS, MAX_RUN_BODY_BYTES, adapterFromConfig, appendPermissionNotice, canonicalWorkspace, compactionAdapter, isActive, optionalCount, optionalSeq, parseRunAttachments, processesFor, runKey, sessionFilePath, userMessage, workspaceParam } from './support.js'
 import { Context } from '@tnega/core'
 import { configureNetwork } from '@tnega/execution'
 import { modelCapabilities } from '@tnega/llm'
@@ -570,7 +570,7 @@ const apiRoutes: ApiRoute[] = [
           }
       if (action === undefined && req.method === 'PATCH') {
             if (isActive(context.activeRuns, workspace, id)) {
-              sendError(res, 409, 'session is running')
+              sendError(res, 409, 'session is running: change its settings after the current turn ends')
               return
             }
             const body = await readJsonBody(req)
@@ -592,12 +592,19 @@ const apiRoutes: ApiRoute[] = [
               sendError(res, 400, 'session metadata is required')
               return
             }
-            if (Object.keys(patch).length) await evictResident(context, workspace, id)
+            // A resident runtime snapshots the permission it was built with, so a
+            // permission-only change has to retire it too.
+            const previous = permission === undefined ? undefined : await readSessionSummary(workspace, id)
+            if (Object.keys(patch).length || permission !== undefined) await evictResident(context, workspace, id)
             if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
             if (approvalMode) await setSessionApprovalMode(workspace, id, approvalMode)
             const summary = permission === undefined
               ? await readSessionSummary(workspace, id)
               : await setSessionPermission(workspace, id, permission)
+            const before = previous?.permission ?? 'read-only'
+            if (permission !== undefined && summary.permission !== before) {
+              await appendPermissionNotice(workspace, id, permission)
+            }
             sendJson(res, 200, { summary })
             return
           }

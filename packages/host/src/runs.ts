@@ -429,14 +429,17 @@ export async function ensureResidentAgent(
   finally { if (context.residentCreation?.get(key) === creation) context.residentCreation.delete(key) }
 }
 
-export async function createResidentAgent(
-  context: ServerContext,
-  workspace: string,
-  id: string,
-  req: ResidentRunRequest,
-): Promise<ResidentAgentEntry> {
-  const key = runKey(workspace, id)
-  const signature = [
+/**
+ * Identity of a resident runtime: anything in here that changes has to rebuild
+ * the runtime instead of reusing it.
+ *
+ * `permission` is part of it because `subagentLocal` snapshots the level (as
+ * `permission` and `allowShell`) when the runtime is built: reusing a runtime
+ * across a permission change would keep spawning subagents with the old level,
+ * while the main session's own guard follows the live value.
+ */
+export function residentSignature(req: ResidentRunRequest): string {
+  return [
     req.effective.baseUrl,
     req.effective.model,
     req.apiKey,
@@ -447,8 +450,19 @@ export async function createResidentAgent(
     JSON.stringify(req.config.approvalReview ?? {}),
     req.config.codeMode ? 'ptc' : 'native',
     req.agentType,
+    req.permission,
     'auto',
   ].join('|')
+}
+
+export async function createResidentAgent(
+  context: ServerContext,
+  workspace: string,
+  id: string,
+  req: ResidentRunRequest,
+): Promise<ResidentAgentEntry> {
+  const key = runKey(workspace, id)
+  const signature = residentSignature(req)
   const existing = context.residentAgents?.get(key)
   if (existing && existing.signature === signature) return existing
   if (existing) {
