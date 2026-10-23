@@ -54,7 +54,7 @@ Provider 拼出 runner argv（见 `src/runner.ts` 的契约），runner 为这�
 | 请求字段 | read-only | workspace-write |
 |---|---|---|
 | `filesystem.readwritePaths` | `[]` | `[工作区, 本次的私有 temp]` |
-| `filesystem.readonlyPaths` | `[工作区, ...mxcReadOnlyRoots]` | `[...mxcReadOnlyRoots]` |
+| `filesystem.readonlyPaths` | `[工作区, ...读根]` | `[...读根]` |
 | `process.commandLine` | cmd 的 `/c` 之后原样包进引号，其余程序按 CRT 规则加引号 | 同左 |
 | `process.cwd` / `process.env` | 命令的工作目录 / 执行层组装的环境（去掉 runner 专属变量） | 同左，TMP/TEMP 指向私有 temp |
 | `network` | 两个方向显式 `allow`（本缝只管文件；省略在 MXC 里等于拒绝） | 同左 |
@@ -65,6 +65,10 @@ Provider 拼出 runner argv（见 `src/runner.ts` 的契约），runner 为这�
 
 - `ui.disable: false` 是参考实现在真机上找到的：MXC 默认禁 Win32k，PowerShell 与 Node 会以
   `STATUS_DLL_INIT_FAILED`（0xC0000142）在启动时死掉。
+- 「读根」由 Provider 决定：默认是本机每个卷根（`C:\`、`D:\`…），因此读不受限 ——
+  AppContainer 档位没有环境读权限，只授予工作区时工作区之外的 `node` / `npm` / `pwsh`
+  连加载都做不到（pwsh 7.7 之前还要求能读 `C:\` 根）。需要读侧隔离时由 Provider 传
+  `mxcRead: 'roots'`，只交工作区与显式列出的目录。
 - 不设执行超时：命令期限属于执行层。
 - 请求里带着子进程的完整环境，所以请求文件只在本次调用期间存在于私有目录里，结束即删。
 

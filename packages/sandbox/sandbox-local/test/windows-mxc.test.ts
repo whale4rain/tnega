@@ -56,11 +56,12 @@ describe('Windows chain', () => {
   it('wraps a workspace-write command in the MXC runner with a session-scoped container', async () => {
     const workspace = scratch('tnega-mxc-ws-')
     const tempRoot = scratch('tnega-mxc-tmp-')
+    const volumeRoot = scratch('tnega-mxc-vol-')
     const service = mount({
       mxcExecPath: process.execPath,
       mxcReadOnlyRoots: [tempRoot],
       windowsMxcRunnerCommand: ['node', 'mxc-runner.js'],
-      internals: { platform: 'win32', chain: ['windows-mxc'], probe: () => 'partial' },
+      internals: { platform: 'win32', chain: ['windows-mxc'], probe: () => 'partial', volumeRoots: () => [volumeRoot] },
     })
     const confined = await service.confine({
       op: 'shell',
@@ -81,7 +82,9 @@ describe('Windows chain', () => {
       contract: '1.0.0',
       containerId: containerIdFor(workspace, 's1'),
       temp: tempRoot,
-      readOnlyRoots: [tempRoot],
+      // Every volume root is readable, then the explicitly configured ones: the seam
+      // narrows writes only, exactly like the ACL chain.
+      readOnlyRoots: [volumeRoot, tempRoot],
       execArgs: [],
       argv: SHELL,
     })
@@ -94,7 +97,7 @@ describe('Windows chain', () => {
       mxcExecPath: process.execPath,
       mxcContractVersion: '0.9.0-alpha',
       windowsMxcRunnerCommand: ['node', 'mxc-runner.js'],
-      internals: { platform: 'win32', chain: ['windows-mxc'], probe: () => 'partial' },
+      internals: { platform: 'win32', chain: ['windows-mxc'], probe: () => 'partial', volumeRoots: () => [] },
     })
     const confined = await service.confine({
       op: 'shell', argv: SHELL, policy: { mode: 'read-only', workspaceRoot: canonicalPath(process.cwd()) },
@@ -104,13 +107,29 @@ describe('Windows chain', () => {
     expect(parsed.contract).toBe('0.9.0-alpha')
   })
 
+  it('keeps reads scoped to the workspace and the configured roots under mxcRead: roots', async () => {
+    const workspace = scratch('tnega-mxc-ws-')
+    const extra = scratch('tnega-mxc-extra-')
+    const service = mount({
+      mxcExecPath: process.execPath,
+      mxcRead: 'roots',
+      mxcReadOnlyRoots: [extra],
+      windowsMxcRunnerCommand: ['node', 'mxc-runner.js'],
+      internals: { platform: 'win32', chain: ['windows-mxc'], probe: () => 'partial', volumeRoots: () => [scratch('tnega-mxc-vol-')] },
+    })
+    const confined = await service.confine({
+      op: 'shell', argv: SHELL, policy: { mode: 'read-only', workspaceRoot: workspace },
+    })
+    expect(parseRunnerArgs(confined.argv.slice(2)).readOnlyRoots).toEqual([extra])
+  })
+
   it('runs the built-in runner as a desktop Node worker under Electron', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(process.versions, 'electron')
     Object.defineProperty(process.versions, 'electron', { value: '44.4.3', configurable: true })
     try {
       const service = mount({
         mxcExecPath: process.execPath,
-        internals: { platform: 'win32', chain: ['windows-mxc'], probe: () => 'partial' },
+        internals: { platform: 'win32', chain: ['windows-mxc'], probe: () => 'partial', volumeRoots: () => [] },
       })
       const confined = await service.confine({
         op: 'shell', argv: SHELL, policy: { mode: 'read-only', workspaceRoot: canonicalPath(process.cwd()) },
@@ -174,7 +193,10 @@ if (request.version === '1.0.0') {
   process.stderr.write("Configuration parse error: Config schema version '1.0.0' is newer than supported (supported: >=0.6, <=0.9)\\n")
   process.exit(1)
 }`)
-    const service = mount({ mxcExecPath: exec, internals: { platform: 'win32', chain: ['windows-mxc'] } })
+    const service = mount({
+      mxcExecPath: exec,
+      internals: { platform: 'win32', chain: ['windows-mxc'], volumeRoots: () => [] },
+    })
     expect(await service.status()).toEqual({ available: true, runner: 'windows-mxc', enforcement: 'partial' })
     expect(readFileSync(log, 'utf8')).toBe('1.0.0 cmd.exe /d /s /c "exit 0"\n0.9.0-alpha cmd.exe /d /s /c "exit 0"\n')
     const confined = await service.confine({
@@ -183,7 +205,7 @@ if (request.version === '1.0.0') {
     expect(parseRunnerArgs(confined.argv.slice(2)).contract).toBe('0.9.0-alpha')
   })
 
-  it('falls back to the ACL runner with MXC\'s own reason when no contract is accepted', async () => {
+  it("falls back to the ACL runner with MXC's own reason when no contract is accepted", async () => {
     process.env.SYSTEMROOT = 'C:\\Windows'
     process.env.LOCALAPPDATA = 'C:\\Users\\u\\AppData\\Local'
     const { exec } = fakeExecutor(`process.stderr.write('{"error":{"code":"backend_unavailable"}}\\n'); process.exit(1)`)

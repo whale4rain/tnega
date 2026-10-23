@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -104,6 +105,8 @@ export interface SandboxInternals {
   chain?: readonly SandboxRunnerName[]
   /** 替换功能性探测；返回 `'unusable'` 表示该机制在本机不可用。 */
   probe?: (runner: SandboxRunnerName) => SandboxEnforcement | 'unusable'
+  /** 替换「本机卷根」的枚举（`mxcRead: 'all'` 用）；只用于测试。 */
+  volumeRoots?: () => readonly string[]
 }
 
 export interface Config {
@@ -135,7 +138,13 @@ export interface Config {
   mxcExecPath?: string
   /** 固定 MXC 请求契约版本；省略时探测按 `MXC_CONTRACT_VERSIONS` 依次协商。 */
   mxcContractVersion?: string
-  /** 工作区之外命令需要**读**的目录（MXC 的 AppContainer 档位没有环境读权限）。 */
+  /**
+   * MXC 的读策略：`all`（默认）把本机每个卷根（`C:\`、`D:\`…）作为只读根交给 MXC，
+   * 因此**读不受限**，与 ACL 链的既有语义一致（它只收窄写）；`roots` 只放开工作区与
+   * `mxcReadOnlyRoots`，用于需要读侧隔离的部署。
+   */
+  mxcRead?: 'all' | 'roots'
+  /** `mxcRead: 'roots'` 时工作区之外命令可以**读**的目录（也总是叠加在 `all` 之上）。 */
   mxcReadOnlyRoots?: readonly string[]
   internals?: SandboxInternals
 }
@@ -153,6 +162,8 @@ interface MxcSelection {
 
 let windowsAclModule: WindowsAclModule | undefined
 let windowsMxcModule: WindowsMxcModule | undefined
+/** 卷根枚举结果：盘符是否存在是进程生命周期内稳定的事实。 */
+let volumeRootCache: readonly string[] | undefined
 
 async function windowsMxc(): Promise<WindowsMxcModule> {
   windowsMxcModule ??= await import('@tnega/sandbox-windows-mxc')
@@ -163,6 +174,28 @@ async function windowsMxc(): Promise<WindowsMxcModule> {
 async function windowsAcl(): Promise<WindowsAclModule> {
   windowsAclModule ??= await import('@tnega/sandbox-windows-acl')
   return windowsAclModule
+}
+
+/**
+ * 本机卷根（`C:\`、`D:\`…）。
+ *
+ * MXC 的 AppContainer 档位没有环境读权限：只授予工作区时，`node`、`npm`、`pwsh` 这些
+ * 装在工作区之外的工具连加载都做不到（pwsh 7.7 之前甚至要求能读 `C:\` 根才肯启动）。
+ * 只挑「工具根」是猜不准的 —— 每个用户的 node / 工具链盘符都不同，所以默认按卷放开读，
+ * 与 ACL 链只写不读的语义对齐。
+ *
+ * 枚举用 `existsSync`，同步且不做子进程；结果缓存一次，且不存在的盘符查询是即时的。
+ * 唯一代价是被映射但已断开网络驱动器可能让首次调用等一次 SMB 超时。
+ */
+function windowsVolumeRoots(): readonly string[] {
+  if (volumeRootCache !== undefined) return volumeRootCache
+  const roots: string[] = []
+  for (let code = 'A'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code++) {
+    const root = `${String.fromCharCode(code)}:\\`
+    if (existsSync(root)) roots.push(root)
+  }
+  volumeRootCache = roots
+  return roots
 }
 
 /**
@@ -298,7 +331,7 @@ export class LocalSandboxService extends SandboxService {
 
   /**
    * Windows MXC：Provider 不落任何 ACE。runner 为每次调用写一份 MXC 请求（模式、工作区、
-   * `workspace-write` 的私有 temp），MXC 在请求结束时撤销它自己的策略，所以这里只拼 argv。
+   * `workspace-write` 的私有 temp、读根），MXC 在请求结束时撤销它自己的策略，所以这里只拼 argv。
    */
   private async confineWindowsMxc(policy: SandboxPolicy, argv: readonly string[]): Promise<string[]> {
     const mxc = await windowsMxc()
@@ -318,10 +351,22 @@ export class LocalSandboxService extends SandboxService {
       contract: selected.contract,
       containerId: mxc.containerIdFor(workspaceRoot, policy.sessionId),
       ...(policy.mode === 'workspace-write' ? { temp: tempBase } : {}),
-      readOnlyRoots: (this.config.mxcReadOnlyRoots ?? []).map(canonicalPath),
+      readOnlyRoots: this.mxcReadRoots(),
       execArgs: [],
       argv,
     })]
+  }
+
+  /** 交给 MXC 的只读根：默认全卷 + 显式配置；`mxcRead: 'roots'` 时只有显式配置。 */
+  private mxcReadRoots(): string[] {
+    const configured = (this.config.mxcReadOnlyRoots ?? []).map(canonicalPath)
+    if ((this.config.mxcRead ?? 'all') === 'roots') return configured
+    return [...this.volumeRoots().map(canonicalPath), ...configured]
+  }
+
+  private volumeRoots(): readonly string[] {
+    if (this.platform !== 'win32') return []
+    return (this.config.internals?.volumeRoots ?? windowsVolumeRoots)()
   }
 
   /** 选执行器；探测被注入（测试）时契约取配置值或首选版本。 */
@@ -578,6 +623,8 @@ export class LocalSandboxService extends SandboxService {
    * MXC 的功能性探测：真的经 runner 在 MXC 里跑一次只读的 `exit 0`。它同时回答三个问题：
    * 执行器在不在、宿主够不够 MXC 的版本下限、执行器接受哪个请求契约 —— 按
    * `MXC_CONTRACT_VERSIONS` 依次试，第一个跑通的被记住。
+   *
+   * 探测不申请读根：它跑的是 `cmd exit 0`，不需要工具链；只读根按每次调用实际计算。
    */
   private async probeWindowsMxc(timeout: number): Promise<SandboxEnforcement | 'unusable'> {
     if (this.platform !== 'win32') {

@@ -103,6 +103,14 @@ Microsoft eXecution Container 的请求，由 MXC 落策略并在请求结束时
 - **探测即协商**：探测经 runner 在 MXC 里真的跑一次只读命令，按 `1.0.0 → 0.9.0-alpha` 依次试
   请求契约，选第一个跑通的。缝的词汇与事件面不变，`ConfinedArgv` 的形状不变。
 
+### 补充（2026-10）：MXC 的读侧默认放开
+
+MXC 的 AppContainer 档位没有环境读权限，只授予工作区时 `node` / `npm` / `pwsh` 这类装在工作区
+之外的工具连加载都做不到（pwsh 7.7 之前还要求能读 `C:\` 根才肯启动）。挑「工具根」是猜不准的：
+每个用户的工具链盘符都不同。所以 `mxcRead` 默认 `all`，把本机每个卷根作为只读根交给 MXC，
+**与 ACL 链只收窄写的既有语义对齐**；需要读侧隔离的部署用 `mxcRead: 'roots'` 关回去。缝的词汇
+不变（`SandboxExecutionPolicy` 里仍然没有读字段），这是 Provider 的默认值，不是新契约。
+
 ## 验证
 
 - `packages/sandbox/sandbox/test/events.test.ts`：stub Provider 挂在真实 `Context` 上，

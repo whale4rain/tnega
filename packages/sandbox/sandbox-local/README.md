@@ -60,7 +60,8 @@ await ctx.plugin(sandboxLocal, {
   windowsMxcRunnerCommand,
   mxcExecPath,                         // 省略：TNEGA_MXC_EXEC → @microsoft/mxc-sdk → 全局 npm 前缀 → PATH
   mxcContractVersion,                  // 省略：探测协商
-  mxcReadOnlyRoots,                    // 工作区之外命令要读的目录（AppContainer 档位没有环境读）
+  mxcRead: 'all',                    // 默认：每个卷根都只读 → 读不受限（与 ACL 链一致）
+  mxcReadOnlyRoots,                    // 叠加的读根；mxcRead: 'roots' 时是唯一来源
   runnerCommand / runnerFailureSignatures / runnerDenialSignatures,  // custom
   internals: { platform, chain, probe },  // 测试/覆盖用
 })
@@ -82,6 +83,9 @@ await ctx.plugin(sandboxLocal, {
 ## 已知限制
 
 - 只限制**文件写**。网络与进程可见性不在词汇内，也没有后端试图限制它们。
+- Windows MXC 的读侧默认放开（`mxcRead: 'all'`：每个卷根都是只读根），因为 AppContainer
+  档位没有环境读权限，而 `node` / `npm` / `pwsh` 装在工作区之外的哪个盘只取决于用户环境；
+  这也与 ACL 链「只收窄写」的既有语义一致。需要读侧隔离的部署用 `mxcRead: 'roots'`。
 - Windows ACL 是 `partial`：Everyone 仍在环境权限里，NTFS 硬链接是文件对象别名。
 - Windows MXC 也是 `partial`：硬链接同样是别名，选中的档位随宿主而变（新系统上的
   base-container 档保留环境读权限）。详见 `@tnega/sandbox-windows-mxc` 的 README。
