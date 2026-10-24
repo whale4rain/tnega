@@ -55,6 +55,55 @@ it('keeps the default title on provider failure and preserves manually reset nam
   } finally { await log.close(); await rm(directory, { recursive: true, force: true }) }
 })
 
+it('asks for a short answer with hidden reasoning skipped', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'tnega-title-options-'))
+  const log = new SessionLog(join(directory, 'session.jsonl'))
+  const complete = vi.fn<LLMAdapter['complete']>(async () => ({ content: 'Repair login flow', finishReason: 'stop' }))
+  try {
+    await log.init()
+    await log.append('meta', { title: 'New session' })
+    await log.append('user/message', { content: 'Please investigate and repair our login flow' })
+    await log.append('assistant/message', { content: 'Fixed the login issue.' })
+    await autoNameSession(log, { complete })
+    const options = complete.mock.calls[0]![2]
+    // A truncated answer (reasoning spent the cap) used to lose the title outright.
+    expect(options?.maxTokens).toBeGreaterThanOrEqual(256)
+    expect(options?.reasoning).toBe('off')
+  } finally { await log.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+it('tries again after a failed attempt instead of leaving the default name for good', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'tnega-title-retry-'))
+  const log = new SessionLog(join(directory, 'session.jsonl'))
+  const complete = vi.fn<LLMAdapter['complete']>()
+    .mockResolvedValueOnce({ content: '', finishReason: 'length' })
+    .mockResolvedValueOnce({ content: 'Repair login flow', finishReason: 'stop' })
+  try {
+    await log.init()
+    await log.append('meta', { title: 'New session' })
+    await log.append('turn/start', { turn: 1, input: 'Please investigate and repair our login flow' })
+    await log.append('user/message', { content: 'Please investigate and repair our login flow' })
+    await log.append('assistant/message', { content: 'Fixed the login issue.' })
+    await log.append('turn/end', { turn: 1, finishReason: 'stop' })
+    await autoNameSession(log, { complete })
+    expect(foldSessionMeta(await log.read()).title).toBe('New session')
+    const failure = (await log.read()).find(event => event.type === 'meta' && event.payload.kind === 'session/auto-title')
+    // The marker says why, so a Session with no generated title can be told apart from one never asked.
+    expect(failure?.type === 'meta' && failure.payload).toMatchObject({ status: 'failed', reason: 'finishReason length' })
+    // The next clean turn names it.
+    await log.append('turn/start', { turn: 2, input: 'continue' })
+    await log.append('user/message', { content: 'continue' })
+    await log.append('assistant/message', { content: 'Repaired the login flow.' })
+    await log.append('turn/end', { turn: 2, finishReason: 'stop' })
+    await autoNameSession(log, { complete })
+    expect(foldSessionMeta(await log.read()).title).toBe('Repair login flow')
+    expect(complete).toHaveBeenCalledTimes(2)
+    // Once it is named, no further request is made.
+    await autoNameSession(log, { complete })
+    expect(complete).toHaveBeenCalledTimes(2)
+  } finally { await log.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
 it('names the session on the first turn that finished cleanly, not on a cancelled one', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'tnega-title-cancelled-'))
   const log = new SessionLog(join(directory, 'session.jsonl'))
