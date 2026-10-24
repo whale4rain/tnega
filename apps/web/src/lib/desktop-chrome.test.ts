@@ -17,11 +17,16 @@ it('reserves native controls only in the header at the top-right edge', () => {
   markWindowControls(root, 1280)
   expect(conversation.classList.contains('window-controls-header')).toBe(false)
   expect(drawer.classList.contains('window-controls-header')).toBe(true)
+  // The header keeps only the room the controls still take from its own end: the Workbench holds
+  // that end here, so nothing is left of the controls over it.
+  expect((conversation as HTMLElement).style.getPropertyValue('--window-controls-gap')).toBe('580px')
+  expect((drawer as HTMLElement).style.getPropertyValue('--window-controls-gap')).toBe('0px')
   conversation.getBoundingClientRect = () => new DOMRect(0, 0, 1280, 58)
   drawer.getBoundingClientRect = () => new DOMRect(700, 58, 580, 58)
   markWindowControls(root, 1280)
   expect(conversation.classList.contains('window-controls-header')).toBe(true)
   expect(drawer.classList.contains('window-controls-header')).toBe(false)
+  expect((conversation as HTMLElement).style.getPropertyValue('--window-controls-gap')).toBe('0px')
 })
 
 it('keeps the top-left header clear of the macOS traffic lights instead', () => {
@@ -89,8 +94,50 @@ it('keeps the page marked through a layout change instead of clearing and re-add
   document.body.innerHTML = ''
 })
 
-describe('cssColorToHex', () => {
-  it('converts computed colours and skips transparent ones', () => {
+/** The bars only: the corner itself often holds neither while a panel folds. */
+function barsOnScreen(open: boolean) {
+  document.body.innerHTML = `<div class="app${open ? ' workbench-open' : ''}"><header class="conv-header"></header>`
+    + '<aside class="workbench"><div class="wb-titlebar"></div></aside></div>'
+  const header = document.querySelector('.conv-header') as HTMLElement
+  const strip = document.querySelector('.wb-titlebar') as HTMLElement
+  const app = document.querySelector('.app') as HTMLElement
+  header.style.backgroundColor = 'rgb(10, 20, 30)'
+  strip.style.backgroundColor = 'rgb(30, 20, 10)'
+  // jsdom gives every element an empty rect list; in the desktop app the bars have a size.
+  strip.getClientRects = (() => [new DOMRect(0, 0, 500, 32)]) as unknown as () => DOMRectList
+  header.getBoundingClientRect = () => new DOMRect(0, 0, window.innerWidth, 32)
+  // Mid-fold the point lands on the frame between the two bars.
+  document.elementFromPoint = () => app
+  return { app, strip }
+}
+
+describe('the controls colour', () => {
+  it('comes from the Workbench title strip while its panel holds the corner', async () => {
+    const colors: Array<{ background: string, foreground: string }> = []
+    vi.stubGlobal('tnegaDesktop', { setTitleBarColors: (value: { background: string, foreground: string }) => colors.push(value), platform: 'win32' })
+    barsOnScreen(true)
+    renderHook(() => useDesktopChrome('sessions:files'))
+    await new Promise(resolve => setTimeout(resolve, 5))
+    expect(colors.at(-1)?.background).toBe('#1e140a')
+    cleanup()
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+  })
+
+  it('comes from the view header while the Workbench is folded', async () => {
+    const colors: Array<{ background: string, foreground: string }> = []
+    vi.stubGlobal('tnegaDesktop', { setTitleBarColors: (value: { background: string, foreground: string }) => colors.push(value), platform: 'win32' })
+    barsOnScreen(false)
+    renderHook(() => useDesktopChrome('sessions:files'))
+    await new Promise(resolve => setTimeout(resolve, 5))
+    expect(colors.at(-1)?.background).toBe('#0a141e')
+    cleanup()
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+  })
+})
+
+describe('cssColorToHex', () => {  it('converts computed colours and skips transparent ones', () => {
     expect(cssColorToHex('rgb(246, 245, 241)')).toBe('#f6f5f1')
     expect(cssColorToHex('rgba(20, 22, 21, 1)')).toBe('#141615')
     expect(cssColorToHex('rgba(0, 0, 0, 0)')).toBeUndefined()

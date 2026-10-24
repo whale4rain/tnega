@@ -98,6 +98,13 @@ export function windowControlsSide(platform = bridge()?.platform): 'left' | 'rig
 
 const HEADERS = '.sidebar-top, .conv-header, .wb-header, .project-side .side-tabs, .project-side .side-header'
 
+/** How far a bar ends short of the window edge, for the CSS that keeps only the room the controls still take. */
+function markGap(header: Element, gap: number): void {
+  const value = `${gap}px`
+  const style = (header as HTMLElement).style
+  if (style.getPropertyValue('--window-controls-gap') !== value) style.setProperty('--window-controls-gap', value)
+}
+
 /** Only the bar touching the native controls needs horizontal clearance. */
 export function markWindowControls(root: ParentNode, width: number, side: 'left' | 'right' = 'right'): void {
   for (const header of root.querySelectorAll(HEADERS)) {
@@ -108,7 +115,50 @@ export function markWindowControls(root: ParentNode, width: number, side: 'left'
     // The sidebar card is inset from the window edge, so on macOS any top bar that
     // starts under the traffic lights needs clearance, not only one at x = 0.
     header.classList.toggle('window-controls-header-start', side === 'left' && atTop && edge.left < TRAFFIC_LIGHTS_WIDTH)
+    // The conversation header keeps only the room the controls still take from its own end (CSS), so
+    // its clearance follows a panel folding in beside it instead of snapping by the controls' width a
+    // frame into the fold, which shifted the title area mid-slide.
+    markGap(header, atTop ? Math.max(0, Math.round(width - edge.right)) : 0)
   }
+}
+
+/** The Workbench's title strip, while its open panel holds the corner beside the window controls. */
+function titleStrip(): Element | undefined {
+  if (!document.querySelector('.app.workbench-open')) return undefined
+  // A floating panel (a narrow window) hides the strip: the conversation header keeps the corner.
+  const strip = document.querySelector('.wb-titlebar')
+  return strip && strip.getClientRects().length > 0 ? strip : undefined
+}
+
+/** The bar running to the top-right corner of the view: the conversation's or a project's header. */
+function cornerHeader(): Element | undefined {
+  let bar: Element | undefined
+  let right = -Infinity
+  for (const header of document.querySelectorAll(HEADERS)) {
+    // The Workbench's own rows sit behind a panel that may be folded off screen.
+    if (header.closest('.workbench')) continue
+    const rect = header.getBoundingClientRect()
+    if (rect.width <= 0 || rect.top >= 32 || rect.bottom <= 0) continue
+    if (rect.right > right) {
+      right = rect.right
+      bar = header
+    }
+  }
+  return bar
+}
+
+/**
+ * What the native controls sit on, and so the colour they take: the scrim of a dialog or a menu
+ * covering the corner (they dim the controls with the page), the Workbench's title strip while its
+ * panel holds the corner, else the view's header. The point itself often holds neither — it lands in
+ * the gap the panel leaves at the window edge, on its drag strip, or on the frame once the folded
+ * panel is inert — so a hit that is not a bar resolves to the bar the corner belongs to. That keeps
+ * the controls one colour for the whole fold instead of flashing the page colour and back.
+ */
+function cornerSurface(hit: Element | null): Element | undefined {
+  const overlay = hit?.closest('.dialog-scrim, .image-viewer, .menu-popover')
+  if (overlay) return overlay
+  return hit?.closest('.wb-titlebar, .conv-header') ?? titleStrip() ?? cornerHeader() ?? hit ?? undefined
 }
 
 /**
@@ -142,10 +192,7 @@ export function useDesktopChrome(layoutKey: string): void {
         if (side === 'left') return
         const styles = getComputedStyle(root)
         const fallback = cssColorToHex(styles.getPropertyValue('--bg')) ?? '#f4f6f8'
-        const hit = document.elementFromPoint(innerWidth - 4, 4)
-        // The corner falls in the Workbench's edge gap; the bar the controls sit in is its title strip.
-        const bar = hit?.classList.contains('workbench') ? hit.querySelector(':scope > .wb-titlebar') ?? hit : hit
-        const background = backgroundBehind(bar, fallback)
+        const background = backgroundBehind(cornerSurface(document.elementFromPoint(innerWidth - 4, 4)) ?? null, fallback)
         const foreground = cssColorToHex(styles.getPropertyValue('--text-2')) ?? '#57544d'
         const key = `${background}/${foreground}`
         if (key === last) return

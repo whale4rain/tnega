@@ -4192,6 +4192,15 @@ kbd {
   padding-right: calc(var(--window-controls-width) + 16px);
 }
 
+/* The conversation header keeps only the room the window controls still take from its own end: the gap
+   between its end and the window edge (--window-controls-gap, measured on every sync) grows as the
+   Workbench slides in beside it, so the clearance shrinks with the fold instead of snapping by the
+   controls' width a frame into it, which shifted the title area mid-slide. A bar that reaches the edge
+   has a gap of 0 and takes the full room, exactly as .window-controls-header above. */
+.desktop-chrome .app .conv-header {
+  padding-right: calc(16px + max(0px, var(--window-controls-width, 0px) - var(--window-controls-gap, 0px)));
+}
+
 /* macOS: the traffic lights sit at the top-left (TRAFFIC_LIGHTS in apps/desktop/src/titlebar.ts). */
 .desktop-chrome.window-controls-left {
   --window-controls-width: 0px;
@@ -4203,7 +4212,7 @@ kbd {
 
 /* A sidebar fold carries the header to or from the macOS traffic lights mid-slide; that clearance
    eases in and out with the panel instead of snapping the title sideways. (The right-hand clearance
-   only holds the header actions, which wait in the Workbench strip until it has settled.) */
+   follows the fold on its own, through --window-controls-gap.) */
 .desktop-chrome .app.panels-moving :is(.sidebar-top, .conv-header, .wb-header) {
   transition: padding-left var(--duration-panel) var(--ease-out);
 }
