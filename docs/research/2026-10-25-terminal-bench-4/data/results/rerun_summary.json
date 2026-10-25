@@ -1,0 +1,80 @@
+{
+ "n_tasks": 66,
+ "n_run": 7,
+ "n_passed": 1,
+ "pass_at_1": 0.015151515151515152,
+ "pass_at_1_ran": 0.14285714285714285,
+ "errors": [],
+ "passed_tasks": [
+  "atrx-vep-crispr"
+ ],
+ "total_cost_usd": 1.3482368489999998,
+ "cost_parts": {
+  "miss": 0.09523844999999997,
+  "hit": 0.374654199,
+  "out": 0.8783441999999999
+ },
+ "total_prompt_tokens": 125519656,
+ "total_cached_tokens": 124884733,
+ "total_output_tokens": 1463907,
+ "total_reasoning_tokens": 1062775,
+ "total_llm_calls": 836,
+ "total_tool_calls": 856,
+ "total_wall_hours": 6.564253888888889,
+ "llm_seconds": 8158.46,
+ "tool_seconds": 14714.037,
+ "stop_reasons": {
+  "finished": 2,
+  "cost_cap": 3,
+  "wall_cap": 2
+ },
+ "tools": {
+  "shell": 734,
+  "write_file": 82,
+  "job_output": 14,
+  "read_file": 10,
+  "job_start": 10,
+  "list_dir": 3,
+  "edit_file": 1,
+  "now": 1,
+  "job_kill": 1
+ },
+ "by_category": {
+  "Media": {
+   "passed": 0,
+   "ran": 1
+  },
+  "Science": {
+   "passed": 1,
+   "ran": 3
+  },
+  "Security": {
+   "passed": 0,
+   "ran": 2
+  },
+  "Software": {
+   "passed": 0,
+   "ran": 1
+  }
+ },
+ "session_bytes": 133730137,
+ "bytes_by_type": {
+  "meta": 42051,
+  "turn/start": 20316,
+  "step/start": 105619,
+  "request/header": 133084,
+  "request/context": 924,
+  "system/message": 25116,
+  "user/message": 20820,
+  "assistant/chunk": 380980,
+  "assistant/message": 130324285,
+  "tool/call": 1210295,
+  "tool/result": 1260219,
+  "step/end": 138308,
+  "turn/end": 3864
+ },
+ "median_cost": 0.19484600400000002,
+ "median_calls": 103,
+ "median_wall_min": 39.13078333333333,
+ "shell_nonzero": 54
+}

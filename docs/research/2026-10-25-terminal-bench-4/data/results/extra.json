@@ -1,0 +1,21 @@
+{
+ "shell_timeouts_15s": 83,
+ "fence_errors": 28,
+ "write_tokens": 496936.0,
+ "first_prompt_median": 5492,
+ "tools_offered": 24,
+ "main": 4.304198241,
+ "aborted": 0.07873231799999998,
+ "spend_all": 4.382930559,
+ "stream_bytes": 488573862,
+ "session_total": 492265564,
+ "plan_only": [
+  "coq-block-bound",
+  "freecad-spring-clip",
+  "layout-config-recreation2",
+  "payments-pipeline-fix",
+  "photonic-waveguide-routing",
+  "production-planning",
+  "rs-archive-clone"
+ ]
+}

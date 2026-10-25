@@ -1,0 +1,66 @@
+{
+ "n_tasks": 66,
+ "n_run": 3,
+ "n_passed": 0,
+ "pass_at_1": 0.0,
+ "pass_at_1_ran": 0.0,
+ "errors": [],
+ "passed_tasks": [],
+ "total_cost_usd": 0.567209184,
+ "cost_parts": {
+  "miss": 0.057267,
+  "hit": 0.167529984,
+  "out": 0.34241220000000006
+ },
+ "total_prompt_tokens": 56225108,
+ "total_cached_tokens": 55843328,
+ "total_output_tokens": 570687,
+ "total_reasoning_tokens": 477659,
+ "total_llm_calls": 351,
+ "total_tool_calls": 351,
+ "total_wall_hours": 1.0739175,
+ "llm_seconds": 3489.226,
+ "tool_seconds": 341.4,
+ "stop_reasons": {
+  "finished": 2,
+  "cost_cap": 1
+ },
+ "tools": {
+  "shell": 305,
+  "write_file": 42,
+  "read_file": 1,
+  "job_start": 1,
+  "job_output": 1,
+  "list_dir": 1
+ },
+ "by_category": {
+  "Hardware": {
+   "passed": 0,
+   "ran": 2
+  },
+  "Media": {
+   "passed": 0,
+   "ran": 1
+  }
+ },
+ "session_bytes": 60762815,
+ "bytes_by_type": {
+  "meta": 5968,
+  "turn/start": 2147,
+  "step/start": 44381,
+  "request/header": 57036,
+  "request/context": 396,
+  "system/message": 10764,
+  "user/message": 2363,
+  "assistant/chunk": 114953,
+  "assistant/message": 58170460,
+  "tool/call": 292856,
+  "tool/result": 1924122,
+  "step/end": 58287,
+  "turn/end": 1876
+ },
+ "median_cost": 0.22748393400000003,
+ "median_calls": 121,
+ "median_wall_min": 24.050416666666667,
+ "shell_nonzero": 37
+}

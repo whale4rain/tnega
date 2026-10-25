@@ -1,0 +1,61 @@
+{
+ "n_tasks": 66,
+ "n_run": 2,
+ "n_passed": 0,
+ "pass_at_1": 0.0,
+ "pass_at_1_ran": 0.0,
+ "errors": [],
+ "passed_tasks": [],
+ "total_cost_usd": 0.27197529600000003,
+ "cost_parts": {
+  "miss": 0.0251994,
+  "hit": 0.079005696,
+  "out": 0.1677702
+ },
+ "total_prompt_tokens": 26503228,
+ "total_cached_tokens": 26335232,
+ "total_output_tokens": 279617,
+ "total_reasoning_tokens": 232791,
+ "total_llm_calls": 228,
+ "total_tool_calls": 246,
+ "total_wall_hours": 1.2266283333333334,
+ "llm_seconds": 1917.712,
+ "tool_seconds": 2475.734,
+ "stop_reasons": {
+  "finished": 2
+ },
+ "tools": {
+  "shell": 227,
+  "write_file": 10,
+  "job_start": 4,
+  "job_output": 2,
+  "read_file": 2,
+  "now": 1
+ },
+ "by_category": {
+  "ML": {
+   "passed": 0,
+   "ran": 2
+  }
+ },
+ "session_bytes": 29647860,
+ "bytes_by_type": {
+  "meta": 12849,
+  "turn/start": 2925,
+  "step/start": 28732,
+  "request/header": 38024,
+  "request/context": 264,
+  "system/message": 7176,
+  "user/message": 3069,
+  "assistant/chunk": 136840,
+  "assistant/message": 28702498,
+  "tool/call": 161752,
+  "tool/result": 504070,
+  "step/end": 37845,
+  "turn/end": 2833
+ },
+ "median_cost": 0.13598764800000002,
+ "median_calls": 114.0,
+ "median_wall_min": 36.79885,
+ "shell_nonzero": 8
+}

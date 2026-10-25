@@ -1,0 +1,111 @@
+{
+ "n_tasks": 66,
+ "n_run": 63,
+ "n_passed": 6,
+ "pass_at_1": 0.09090909090909091,
+ "pass_at_1_ran": 0.09523809523809523,
+ "errors": [
+  "formal-crypto",
+  "ks-solver-cpp",
+  "layout-config-recreation",
+  "medical-claims-processing",
+  "payments-pipeline-fix",
+  "takens-embedding-lean"
+ ],
+ "passed_tasks": [
+  "cumulative-layout-shift",
+  "embedding-drift-monitor",
+  "html-js-filter",
+  "live-database-cutover",
+  "wal-recovery-ordering",
+  "wdm-design"
+ ],
+ "total_cost_usd": 4.304198241,
+ "cost_parts": {
+  "miss": 0.4372845,
+  "hit": 0.777942141,
+  "out": 3.0889716
+ },
+ "total_prompt_tokens": 262229277,
+ "total_cached_tokens": 259314047,
+ "total_output_tokens": 5148286,
+ "total_reasoning_tokens": 3755532,
+ "total_llm_calls": 3458,
+ "total_tool_calls": 3677,
+ "total_wall_hours": 17.70538888888889,
+ "llm_seconds": 31684.722,
+ "tool_seconds": 31704.858,
+ "stop_reasons": {
+  "cost_cap": 33,
+  "finished": 24,
+  "wall_cap": 3,
+  "exit_128": 1,
+  "null": 2
+ },
+ "tools": {
+  "shell": 2919,
+  "write_file": 371,
+  "read_file": 140,
+  "job_start": 106,
+  "job_output": 87,
+  "list_dir": 26,
+  "job_kill": 12,
+  "office_inspect": 4,
+  "now": 3,
+  "office_read": 3,
+  "http_get": 2,
+  "job_list": 2,
+  "calculator": 1,
+  "skills_list": 1
+ },
+ "by_category": {
+  "Hardware": {
+   "passed": 0,
+   "ran": 5
+  },
+  "ML": {
+   "passed": 1,
+   "ran": 8
+  },
+  "Media": {
+   "passed": 0,
+   "ran": 4
+  },
+  "Operations": {
+   "passed": 0,
+   "ran": 9
+  },
+  "Science": {
+   "passed": 1,
+   "ran": 14
+  },
+  "Security": {
+   "passed": 1,
+   "ran": 5
+  },
+  "Software": {
+   "passed": 3,
+   "ran": 18
+  }
+ },
+ "session_bytes": 492755223,
+ "bytes_by_type": {
+  "meta": 1083055,
+  "turn/start": 122357,
+  "step/start": 437053,
+  "request/header": 1160732,
+  "request/context": 8052,
+  "system/message": 219868,
+  "user/message": 126749,
+  "assistant/chunk": 2823793,
+  "assistant/message": 472851841,
+  "tool/call": 4805201,
+  "tool/result": 8016842,
+  "step/end": 569999,
+  "turn/end": 40022
+ },
+ "median_cost": 0.09008538599999998,
+ "median_calls": 55,
+ "median_wall_min": 12.789533333333333,
+ "shell_nonzero": 176
+}
