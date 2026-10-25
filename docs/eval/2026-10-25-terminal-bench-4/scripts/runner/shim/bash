@@ -1,0 +1,25 @@
+#!/bin/bash
+# tnega calls its shell as `bash -c <command>`. This shim runs the command inside
+# the task container instead, in the same working directory (the workspace is
+# the same path on both sides), and kills the in-container process group when
+# tnega stops the command.
+set -u
+if [ "${1:-}" != "-c" ]; then exec /bin/bash "$@"; fi
+cmd="$2"
+id="$$-$RANDOM"
+ca=/opt/bench-ca.crt
+docker exec -w "$PWD" \
+  -e SSL_CERT_FILE=$ca -e REQUESTS_CA_BUNDLE=$ca -e CURL_CA_BUNDLE=$ca -e PIP_CERT=$ca \
+  -e NODE_EXTRA_CA_CERTS=$ca -e GIT_SSL_CAINFO=$ca -e UV_NATIVE_TLS=1 \
+  "$TNEGA_BENCH_CONTAINER" setsid -w bash -c 'mkdir -p /tmp/.bench-exec; echo $$ > /tmp/.bench-exec/'"$id"'; exec bash -c "$1"' _ "$cmd" &
+child=$!
+stop() {
+  docker exec "$TNEGA_BENCH_CONTAINER" sh -c 'p=$(cat /tmp/.bench-exec/'"$id"' 2>/dev/null) && kill -TERM -"$p" 2>/dev/null; sleep 2; [ -n "$p" ] && kill -KILL -"$p" 2>/dev/null; true' >/dev/null 2>&1
+  kill "$child" 2>/dev/null
+  exit 143
+}
+trap stop TERM INT HUP
+wait "$child"
+code=$?
+docker exec "$TNEGA_BENCH_CONTAINER" rm -f "/tmp/.bench-exec/$id" >/dev/null 2>&1 &
+exit $code
