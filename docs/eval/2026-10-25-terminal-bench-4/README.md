@@ -13,7 +13,7 @@ We ran tnega on all 66 tasks of Terminal-Bench 4.0 through the Harbor framework,
 | Main run, only tasks that were not capped and got a grade | 3 / 24 | 12.5 % |
 | Main run, only runs that ended with a final answer | 3 / 17 | 17.6 % |
 
-For comparison, the same model scored 42.3 % in Claude Code and 31.8 % in mini-SWE-agent on the public leaderboard (`data/tb4-leaderboard.json`).
+For comparison, the same model scored 42.3 % in Claude Code and 31.8 % in mini-SWE-agent on the public leaderboard (`tb4-leaderboard.json` in `data.zip`).
 
 **How the 66 main runs ended:**
 - 17 gave a final answer (3 passed).
@@ -84,8 +84,9 @@ Token counts are estimated at 3 characters per token. "Carry" is how much of the
 - [`report.html`](report.html): the main report, with scores, cost, comparison and endings.
 - [`deep-dive.html`](deep-dive.html): token use, context growth, time, and failure analysis.
 - [`tool-report.html`](tool-report.html): cost and usefulness per tool, and agent patterns.
-- `data/results/`: per-task results for each batch (`tasks.csv`, `summary.json`, `rerun*.json`, `round2.json`).
-- `data/*.json`: the analysis outputs (`stats`, `tools`, `steps`, `fail`, `endings`, `report_data`) and the leaderboard snapshot.
+- `data.zip` (77 KB, unzips to `data/`):
+  - `data/results/`: per-task results for each batch (`tasks.csv`, `summary.json`, `rerun*.json`, `round2.json`).
+  - `data/*.json`: the analysis outputs (`stats`, `tools`, `steps`, `fail`, `endings`, `report_data`) and the leaderboard snapshot.
 - `scripts/runner/`: the Harbor runner.
   - `orchestrate.py` and `analyze.py`.
   - The `tnega_harbor` external-agent adapter.
