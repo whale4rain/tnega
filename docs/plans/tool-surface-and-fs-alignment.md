@@ -1,6 +1,6 @@
 # 工具面收敛与文件写入对齐计划
 
-> 状态：阶段 A–D、F、G 已实现；E 的 pruner 需重设计（见「零、进展 · 阶段 E」）
+> 状态：A–D、F、G、H 已实现；E 的 pruner 需重设计（见「零、进展 · 阶段 E」）
 > 参考基线：`D:\task\deepseek-harness`（dsh）的 `packages/bundle/base/cordis.patch.yml`、
 > `packages/fs/{fs-local,tool-fs,tool-str-replace-editor,fs-observation-policy}`、
 > `packages/jobs/{jobs,jobs-local,tool-jobs}`、`docs/tool-catalog.md`、`docs/subsystems/filesystem.md`
@@ -261,6 +261,42 @@
 `test/publish.test.ts` 12/12 通过，其中「resolves every documented subpath as a consumer
 via package exports」正好覆盖这五条导出路径；`packages/{ptc,questions,office,runtime,agent,host}`
 共 302 项通过。
+
+### 阶段 H · 已完成：溢出恢复与读取预算
+
+一次 context 溢出原本会直接失败整轮：压缩只有预防式（跨步的 0.75/0.9 比例），
+`agent/request-error` 这个缝虽然存在，但没有任何监听者处理「窗口装不下」；
+llm 层的重试只看 HTTP 状态（429/5xx），而溢出是 400。
+
+**改了三处**：
+
+1. **`isContextOverflowError(error)`**（`packages/agent/src/overflow.ts`）：按错误链上的
+   `message` / `detail` 匹配各家实际文案（`prompt is too long`、`context_length_exceeded`、
+   `maximum context length`、`input length and max_tokens exceed context limit` 等）。
+   纯文本匹配、不 import llm 包，新 provider 不需要改代码。
+2. **重试可以携带替换后的对话**：`AgentRequestRetryDecision` 新增 `messages?`。
+   重试仍要过 `_assertReplayable`，所以替换必须已经持久化 —— 这不是新语义，
+   和 `session.compact` 的既有约束一致。
+3. **`agent/request-error` 的终端回调就是内建恢复**：插件先决定（有插件的决策就不动），
+   没有插件时若错误是溢出且有 `contextBudget`，就走一次 `_compactForOverflow`
+   （等于强制 `_compactNow`，与跨步压缩同一份实现），然后带 `messages` 重试。
+   每步最多恢复一次：第二次溢出是真实失败，不是循环。
+
+**顺带堵了 `read_file` 的口子**：它豁免 spill（否则「用 spill 的文件让模型再读一遍」会成环），
+所以单次读没有任何上限 —— 默认 256 KiB ≈ 64k token，一次能吃掉半个 128k 窗口。
+新增 `maxReadFileBytes`（默认 50 KiB，与参考实现的 `readMaxBytes` 同值），
+`maxReadBytes` 保留给 `http_get`。
+
+**为什么参考实现也豁免 `read`**：它的 README 明写「Results within budget, `read` … pass through」。
+两个实现都选择「不溢出读取，而是压死单次读取的字节数」，所以这不是我们的将就。
+
+验证：`packages/agent/test/context-overflow.test.ts` 六项（分类器识别各家文案、
+溢出后压缩并重试成功、无预算时不恢复、无关 401 不误判、插件决策优先、第二次溢出不再循环）；
+`packages/tools/test/read-budget.test.ts` 两项（100 KB 文件读到 ≤50 KiB 且 `truncated`、
+小文件整读）。`agent` / `tools` / `spill` / `cli` / `host` 共 370 项通过；`tsc` 与 eslint 干净。
+
+红色证据：实现前 `read_file` 返回 100,100 字节；溢出用例 3 项失败，其中一项报的正是
+provider 的 400 原文。
 
 ---
 

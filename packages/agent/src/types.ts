@@ -307,7 +307,18 @@ export interface AgentRequestErrorEvent {
 }
 
 export type AgentRequestRetryDecision =
-  | { kind: 'retry'; delayMs?: number }
+  | {
+    kind: 'retry'
+    delayMs?: number
+    /**
+     * Replacement conversation for the next attempt. Used when the failure is
+     * one a plain retry cannot fix, such as a prompt that outgrew the window:
+     * whoever compacts has to hand back the smaller conversation it produced.
+     * The replacement must already be durable — the retried request is checked
+     * against the session log like any other.
+     */
+    messages?: readonly ModelMessage[]
+  }
   | undefined
 
 /**

@@ -41,6 +41,15 @@ export interface BuiltinToolsConfig {
   disabled?: readonly string[]
   maxReadBytes?: number
   maxWriteBytes?: number
+  /**
+   * Byte cap for one `read_file` result.
+   *
+   * Separate from `maxReadBytes` (which bounds a fetched http body): a read is
+   * exempt from spill, because telling the model to read a spill file with the
+   * tool that spilled would loop. So this cap is the only thing standing between
+   * one read and the whole prompt.
+   */
+  maxReadFileBytes?: number
   /** Lines one read returns unless it asks for fewer; also the most it may ask for. */
   maxReadLines?: number
   /** Characters kept per line before the line is clipped. */
@@ -75,6 +84,7 @@ interface NormalizedBuiltinToolsConfig {
   disabled: readonly string[]
   maxReadBytes: number
   maxWriteBytes: number
+  maxReadFileBytes: number
   maxReadLines: number
   maxLineChars: number
   fsGuard: FsGuardMode
@@ -129,6 +139,7 @@ function normalizeConfig(config: BuiltinToolsConfig = {}, ownedProcesses?: Proce
     allowPrivateNetwork: config.allowPrivateNetwork ?? false,
     disabled: [...(config.disabled ?? [])],
     maxReadBytes: config.maxReadBytes ?? 256 * 1024,
+    maxReadFileBytes: config.maxReadFileBytes ?? 50 * 1024,
     maxWriteBytes: config.maxWriteBytes ?? 1024 * 1024,
     maxReadLines: config.maxReadLines ?? 2000,
     maxLineChars: config.maxLineChars ?? 2000,
@@ -538,7 +549,7 @@ export function createBuiltinToolDefinitions(
   for (const tool of createFileTools({
     resolve: async path => await resolveToolPath(normalized, path),
     displayPath: target => displayPath(normalized.cwd, target),
-    maxReadBytes: normalized.maxReadBytes,
+    maxReadBytes: normalized.maxReadFileBytes,
     maxWriteBytes: normalized.maxWriteBytes,
     maxReadLines: normalized.maxReadLines,
     maxLineChars: normalized.maxLineChars,

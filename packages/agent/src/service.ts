@@ -8,6 +8,7 @@ import {
   DEFAULT_CONTEXT_RETAIN_RATIO,
   estimateContextUsage,
   type AssistantMessagePayload,
+  type ContextUsage,
   type AssistantStreamChunk,
   type AssistantStreamRecord,
   type ModelMessage,
@@ -20,6 +21,7 @@ import {
   type TurnEndReason,
 } from '@tnega/session'
 import { toToolError, type ToolDefinition, type ToolError, type ToolResult } from '@tnega/tools'
+import { isContextOverflowError } from './overflow.js'
 import type { ToolSchemaSnapshot } from './prompt.js'
 import { provideAgentSteer } from './steer.js'
 import type { ToolsService } from '@tnega/tools'
@@ -668,10 +670,10 @@ export class AgentService {
       await session.append('step/start', { turn, step: index })
       currentStepIndex = index
 
-      const requestedInput = copyMessages(preStep.messages)
+      let requestedInput = copyMessages(preStep.messages)
       // Request rewrites may replace the current surface, but retries retain
       // the durable owners present when this step was admitted.
-      const admittedHistory = await session.deriveMessages()
+      let admittedHistory = await session.deriveMessages()
       this.ctx.emit('agent/step', {
         index,
         turn,
@@ -692,6 +694,7 @@ export class AgentService {
       // When the request that produced `completion` started, for throughput.
       let requestStartedAt = 0
       let attempt = 0
+      let overflowRecovered = false
       /**
        * Cost and latency of the response being committed. Only a real
        * measurement is reported: a response that never started a request
@@ -813,13 +816,24 @@ export class AgentService {
               ...(streamRequest.options.model ? { model: streamRequest.options.model } : {}),
               ...(options.signal ? { signal: options.signal } : {}),
             } satisfies AgentRequestErrorEvent,
-            () => undefined,
+            async (): Promise<AgentRequestRetryDecision> => {
+              if (overflowRecovered || !contextBudget || !isContextOverflowError(error)) return undefined
+              const compacted = await this._compactForOverflow(session, contextBudget, llm, requestedInput)
+              if (!compacted) return undefined
+              overflowRecovered = true
+              return { kind: 'retry', messages: compacted }
+            },
           ) as AgentRequestRetryDecision
           if (options.signal?.aborted) {
             finishReason = 'cancelled'
             break
           }
           if (decision?.kind !== 'retry') throw error
+          if (decision.messages) {
+            requestedInput = copyMessages(decision.messages)
+            messages = copyMessages(decision.messages)
+            admittedHistory = await session.deriveMessages()
+          }
           const retryId = randomUUID()
           const delayMs = decision.delayMs ?? 0
           await session.append('llm/retry', {
@@ -1137,6 +1151,48 @@ export class AgentService {
       }
       if (state.nearEnd) return copyMessages(messages)
     }
+    return await this._compactNow(session, budget, messages, llm, usage, limit)
+  }
+
+  /**
+   * Recover from a request the provider rejected as too large.
+   *
+   * Compaction has always been preventive: the ratio between steps keeps the
+   * prompt under the window. That cannot help once a single request has already
+   * overflowed — there is nothing left to prevent — so the same compaction runs
+   * here, after the rejection, and the request is retried with its result.
+   * Nothing to compact, or a compaction that fails, leaves the failure standing.
+   */
+  private async _compactForOverflow(
+    session: SessionLog,
+    budget: AgentContextBudget,
+    llm: LLMAdapter | undefined,
+    messages: readonly ModelMessage[],
+  ): Promise<ModelMessage[] | undefined> {
+    const limit = budget.limit ?? DEFAULT_CONTEXT_LIMIT
+    if (limit <= 0) return undefined
+    try {
+      const usage = estimateContextUsage(messages, limit)
+      return await this._compactNow(session, budget, messages, llm, usage, limit)
+    } catch (error) {
+      this.ctx.logger.warn(`context overflow recovery failed: ${String(error)}`)
+      return undefined
+    }
+  }
+
+  /**
+   * Compact unconditionally. The budget check lives in its callers: this is the
+   * one action, shared by the ratio-driven path between steps and by recovery
+   * from a request the provider already rejected as too large.
+   */
+  private async _compactNow(
+    session: SessionLog,
+    budget: AgentContextBudget,
+    messages: readonly ModelMessage[],
+    llm: LLMAdapter | undefined,
+    usage: ContextUsage,
+    limit: number,
+  ): Promise<ModelMessage[]> {
     // Messages already in the Session are what compaction replaces or keeps;
     // input this step has not persisted yet (the new user message) stays.
     const persisted = await session.deriveMessages()
