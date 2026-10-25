@@ -21,7 +21,7 @@ import {
   Network,
   SquareMousePointer,
 } from 'lucide-react'
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Choice, type ChoiceOption } from './Menu'
 import { turnWeather } from '../lib/weather'
 import { useCopy } from '../lib/hooks'
@@ -33,6 +33,8 @@ import { codeModeOutput, needsAttention, presentTool, readableOutput, summarizeS
 import { AgentAvatar } from './AgentAvatar'
 import { ImageStrip } from './ImageStrip'
 import { splitPickedContext } from '../lib/browser-live'
+import { fileName, splitAttachedFiles } from '../lib/attached-files'
+import { LinkContext } from '../lib/links'
 import { CodeBlock, Markdown } from './Markdown'
 import { OfficeFiles } from './OfficeFiles'
 import { useFileMenu } from './FileMenu'
@@ -141,6 +143,8 @@ const UserMessage = memo(function UserMessage({
   const [draft, setDraft] = useState(entry.text)
   const [copied, copy] = useCopy()
   const picked = splitPickedContext(entry.text)
+  const attached = splitAttachedFiles(picked.rest)
+  const links = useContext(LinkContext)
 
   if (editing) {
     const submit = () => {
@@ -188,7 +192,14 @@ const UserMessage = memo(function UserMessage({
           ))}
         </div>
       )}
-      {picked.rest && <div className="user-bubble"><Markdown text={picked.rest} /></div>}
+      {attached.paths.length > 0 && (
+        <div className="user-contexts">
+          {attached.paths.map((path, index) => (
+            <AttachedFileChip key={index} path={path} {...(links.openPath ? { onOpen: links.openPath } : {})} />
+          ))}
+        </div>
+      )}
+      {attached.rest && <div className="user-bubble"><Markdown text={attached.rest} /></div>}
       <div className="row-actions">
         <IconAction label={copied ? 'Copied' : 'Copy'} onClick={() => copy(entry.text)}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -207,6 +218,23 @@ const UserMessage = memo(function UserMessage({
     </div>
   )
 })
+
+/** A file sent with the message: its name, and a click opens it in the Workbench. */
+function AttachedFileChip({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
+  const name = fileName(path)
+  const content = (
+    <>
+      <FileText size={12} aria-hidden />
+      <span className="composer-context-label">{name}</span>
+    </>
+  )
+  if (!onOpen) return <span className="composer-context composer-file" title={path}>{content}</span>
+  return (
+    <button type="button" className="composer-context composer-file" title={path} aria-label={`Open ${name}`} onClick={() => onOpen(path)}>
+      {content}
+    </button>
+  )
+}
 
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
@@ -229,9 +257,8 @@ type Segment =
  * Consecutive thoughts and tool calls fold into one run of steps, so the
  * transcript reads as words and one quiet line between them (tnega-design
  * §5.1). A thought still being written stays on its own line so it can be
- * read as it streams; a run of one thought is just that thought. Inside an
- * opened process fold the steps are already behind one line, so `fold: false`
- * lists them one by one instead of folding them a second time.
+ * read as it streams; a run of one thought is just that thought. `fold: false`
+ * lists the steps one by one (see `processSegments`).
  */
 function segment(blocks: readonly Block[], { fold = true }: { fold?: boolean } = {}): Segment[] {
   const out: Segment[] = []
@@ -253,6 +280,18 @@ function segment(blocks: readonly Block[], { fold = true }: { fold?: boolean } =
   }
   flush()
   return out
+}
+
+/**
+ * What an opened process fold lists. Narration stays as written and each run
+ * of thoughts and tool calls between it folds to one line again, so a long
+ * process reads as a few lines. A process that is one run already sits behind
+ * the fold's own line; folding it twice would only add a click, so its steps
+ * are listed one by one.
+ */
+function processSegments(blocks: readonly Block[]): Segment[] {
+  const folded = segment(blocks)
+  return folded.length === 1 && folded[0]?.kind === 'steps' ? segment(blocks, { fold: false }) : folded
 }
 
 function findLastAgent(entries: readonly Entry[]): string | undefined {
@@ -354,7 +393,7 @@ const AgentTurn = memo(function AgentTurn({
         {presentation.process.length > 0 && (
           <div className={`tool-group process${processOpen ? ' open' : ''}${live ? ' is-live' : ''}`}>
             <ProcessHead blocks={presentation.process} live={live} open={processOpen} onToggle={() => setProcessOpen(value => !value)} />
-            {processOpen && <div className="tool-group-list run-process-list">{segment(presentation.process, { fold: false }).map(renderSegment)}</div>}
+            {processOpen && <div className="tool-group-list run-process-list">{processSegments(presentation.process).map(renderSegment)}</div>}
           </div>
         )}
         {segments.map(renderSegment)}

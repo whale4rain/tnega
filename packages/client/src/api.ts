@@ -311,6 +311,9 @@ export function createClient(options: ClientOptions = {}) {
         method: 'PUT',
         body: { content, ...(mtimeMs !== undefined ? { mtimeMs } : {}) },
       }),
+    /** Save a file dropped onto the message box into the workspace; `data` is base64. */
+    uploadFile: (workspace: string, name: string, data: string) =>
+      call<{ path: string; size: number }>(scoped('/api/files/upload', workspace), { method: 'POST', body: { name, data } }),
     searchFiles: (workspace: string, query: string, signal?: AbortSignal) =>
       call<{ files: string[] }>(scoped('/api/files/search', workspace, { q: query, limit: '30' }), { signal }),
     /** What differs in the workspace from the last commit. */

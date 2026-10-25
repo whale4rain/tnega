@@ -1,9 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@tnega/core'
-import { readJsonBody, sendError, sendJson, workspaceParam } from '@tnega/web-kit'
+import { HttpError, readJsonBody, sendError, sendJson, workspaceParam } from '@tnega/web-kit'
 import { fileDiff, listChanges } from './changes.js'
 import { searchWorkspaceFiles } from './file-search.js'
 import { FileServeError, readWorkspaceFile, sendFile } from './files.js'
+import { MAX_UPLOAD_BYTES, saveUpload } from './uploads.js'
 import { MAX_TEXT_FILE_BYTES, listDirectory, readTextFile, writeTextFile } from './workspace-files.js'
 
 /** The workspace file browsing endpoints; this package owns what it serves. */
@@ -56,6 +57,12 @@ export const fileRoutes = {
       method: 'GET',
       path: '/api/files',
       handler: file,
+    }))
+    ctx.fiber.effect(() => web.register({
+      kind: 'exact',
+      method: 'POST',
+      path: '/api/files/upload',
+      handler: upload,
     }))
   },
 }
@@ -147,5 +154,32 @@ async function file(req: IncomingMessage, res: ServerResponse, url: URL): Promis
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
+  }
+}
+
+/**
+ * A file dropped onto the message box. The body is JSON like every other
+ * write to `/api` (the content-type check is what keeps other pages out), so
+ * the bytes travel as base64: `{ name, data }`.
+ */
+async function upload(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+  const workspace = workspaceParam(url)
+  if (!workspace) {
+    sendError(res, 400, 'workspace query parameter is required')
+    return
+  }
+  try {
+    const body = await readJsonBody(req, Math.ceil(MAX_UPLOAD_BYTES * 4 / 3) + 4096)
+    if (typeof body.name !== 'string' || !body.name || typeof body.data !== 'string') {
+      sendError(res, 400, 'name and data (base64) are required')
+      return
+    }
+    sendJson(res, 200, await saveUpload(workspace, body.name, Buffer.from(body.data, 'base64')))
+  } catch (error) {
+    if (error instanceof FileServeError || error instanceof HttpError) {
+      sendError(res, error.status, error.message)
+      return
+    }
+    throw error
   }
 }

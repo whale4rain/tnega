@@ -1,8 +1,10 @@
-import { ArrowUp, AtSign, FileText, ImagePlus, Slash, Sparkles, SquareMousePointer, Square, X } from 'lucide-react'
+import { ArrowUp, AtSign, FileText, ImagePlus, Paperclip, Slash, Sparkles, SquareMousePointer, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { imageFiles, imageFromFile, imageSrc, MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
+import { attachedFileLine, droppedFiles, MAX_FILES_PER_MESSAGE, sortDropped } from '../lib/attached-files'
+import { imageFromFile, imageSrc, MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
 import { COMPOSER_INSERT, type ComposerContext, type ComposerInsert } from '../lib/browser-live'
 import { applyCompletion, detectTrigger, rankCommands, type CommandSpec, type Trigger } from '../lib/completion'
+import { errorText } from '../lib/hooks'
 import type { ImageAttachment } from '../lib/types'
 
 /** One argument suggestion for a command, e.g. a model id or a skill name. */
@@ -28,6 +30,14 @@ interface Completion {
 }
 
 const MAX_ITEMS = 12
+
+/** A dropped file on its way into the workspace, then the path it was saved at. */
+interface AttachedFile {
+  key: number
+  name: string
+  path?: string
+  error?: string
+}
 
 function triggerKey(trigger: Trigger | undefined): string {
   if (!trigger) return ''
@@ -58,6 +68,7 @@ export function PromptBox({
   inline,
   acceptImages = false,
   imageNotice,
+  attachFile,
 }: {
   commands?: readonly CommandSpec[]
   /** Suggestions for the first argument of `command` (with its slash). */
@@ -88,10 +99,18 @@ export function PromptBox({
   acceptImages?: boolean
   /** Shown under attached images, e.g. when the model cannot see them. */
   imageNotice?: ReactNode
+  /**
+   * Save a dropped, pasted or picked file (a document, notes, data) into the
+   * workspace and return its path; the message then names that path. Without
+   * it only images are accepted.
+   */
+  attachFile?: ((file: File) => Promise<string>) | undefined
 }) {
   const [text, setText] = useState('')
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [contexts, setContexts] = useState<ComposerContext[]>([])
+  const [files, setFiles] = useState<AttachedFile[]>([])
+  const fileKey = useRef(0)
   const [reading, setReading] = useState(0)
   const [dragging, setDragging] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
@@ -104,7 +123,8 @@ export function PromptBox({
   const pendingCaret = useRef<number | undefined>(undefined)
   const showStop = running && Boolean(onStop)
   const singleControl = inline && allowWhileRunning && Boolean(onStop)
-  const hasContent = Boolean(text.trim() || images.length || contexts.length)
+  const hasContent = Boolean(text.trim() || images.length || contexts.length || files.length)
+  const acceptsFiles = acceptImages || Boolean(attachFile)
 
   const maxHeight = compact || inline ? 180 : 280
   const fit = useCallback(() => {
@@ -149,6 +169,7 @@ export function PromptBox({
     setText('')
     setImages([])
     setContexts([])
+    setFiles([])
     setCaret(0)
     setDismissed('')
     setAsyncItems(undefined)
@@ -268,10 +289,38 @@ export function PromptBox({
     }
   }
 
-  const canSend = (Boolean(text.trim()) || images.length > 0 || contexts.length > 0) && reading === 0
+  /**
+   * Take what was dropped, pasted or picked: images go in as images, other
+   * files are saved into the workspace. False when nothing could be taken.
+   */
+  const addFiles = (incoming: readonly File[]): boolean => {
+    const { images: pictures, others } = sortDropped(incoming, acceptImages)
+    if (pictures.length) void addImages(pictures)
+    if (!attachFile || !others.length) return pictures.length > 0
+    const batch = others.slice(0, Math.max(0, MAX_FILES_PER_MESSAGE - files.length))
+      .map(file => ({ key: fileKey.current++, name: file.name || 'file', file }))
+    setFiles(current => [...current, ...batch.map(({ key, name }) => ({ key, name }))])
+    const settle = (key: number, patch: Partial<AttachedFile>) =>
+      setFiles(current => current.map(each => (each.key === key ? { ...each, ...patch } : each)))
+    for (const item of batch) {
+      attachFile(item.file).then(
+        path => settle(item.key, { path }),
+        (reason: unknown) => settle(item.key, { error: errorText(reason) }),
+      )
+    }
+    return true
+  }
+
+  const attached = files.flatMap(file => (file.path ? [file.path] : []))
+  const saving = files.some(file => !file.path && !file.error)
+  const canSend = (Boolean(text.trim()) || images.length > 0 || contexts.length > 0 || attached.length > 0) && reading === 0 && !saving
 
   const submit = async (how: 'send' | 'interrupt' | 'steer' = 'send') => {
-    const value = [...contexts.map(context => context.text), text.trim()].filter(Boolean).join('\n\n')
+    const value = [
+      ...contexts.map(context => context.text),
+      attached.map(attachedFileLine).join('\n'),
+      text.trim(),
+    ].filter(Boolean).join('\n\n')
     if (!canSend || (showStop && !allowWhileRunning) || disabledReason) return
     const send = how === 'interrupt' ? onInterruptSubmit : how === 'steer' ? onSteerSubmit : onSubmit
     if (!send) return
@@ -280,6 +329,7 @@ export function PromptBox({
       setText('')
       setImages([])
       setContexts([])
+      setFiles([])
       setCaret(0)
       setDismissed('')
     }
@@ -322,21 +372,22 @@ export function PromptBox({
         className={`composer-box${dragging ? ' is-dropping' : ''}`}
         onClick={() => input.current?.focus()}
         onDragOver={event => {
-          if (!acceptImages || !Array.from(event.dataTransfer.types).includes('Files')) return
+          if (!acceptsFiles || !Array.from(event.dataTransfer.types).includes('Files')) return
           event.preventDefault()
           setDragging(true)
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={event => {
-          if (!acceptImages) return
-          const files = imageFiles(event.dataTransfer)
+          if (!acceptsFiles) return
+          const dropped = droppedFiles(event.dataTransfer)
           setDragging(false)
-          if (!files.length) return
+          if (!dropped.length) return
+          // A file dropped here never opens in the window instead, even one the box cannot take.
           event.preventDefault()
-          void addImages(files)
+          addFiles(dropped)
         }}
       >
-        {(images.length > 0 || reading > 0 || contexts.length > 0) && (
+        {(images.length > 0 || reading > 0 || contexts.length > 0 || files.length > 0) && (
           <div className="composer-attachments" onClick={event => event.stopPropagation()}>
             {contexts.map((context, index) => (
               <span className="composer-context" key={`${index}-${context.label}`} title={context.text}>
@@ -360,6 +411,21 @@ export function PromptBox({
                 </button>
               </div>
             ))}
+            {files.map(file => (
+              <span
+                className={`composer-context composer-file${file.error ? ' is-error' : ''}`}
+                key={file.key}
+                title={file.error ? `Couldn't attach ${file.name}: ${file.error}` : file.path ?? `Attaching ${file.name}…`}
+              >
+                {file.path || file.error
+                  ? <FileText size={12} aria-hidden />
+                  : <span className="spinner tiny" role="status" aria-label={`Attaching ${file.name}`} />}
+                <span className="composer-context-label">{file.error ? `${file.name} · not attached` : file.name}</span>
+                <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles(current => current.filter(each => each.key !== file.key))}>
+                  <X size={12} strokeWidth={2.6} />
+                </button>
+              </span>
+            ))}
             {reading > 0 && <div className="composer-thumb is-loading" aria-label="Reading image" />}
             {imageNotice && images.length > 0 && <span className="composer-attachment-note">{imageNotice}</span>}
           </div>
@@ -378,11 +444,9 @@ export function PromptBox({
           }}
           onSelect={event => setCaret(event.currentTarget.selectionStart)}
           onPaste={event => {
-            if (!acceptImages) return
-            const files = imageFiles(event.clipboardData)
-            if (!files.length) return
-            event.preventDefault()
-            void addImages(files)
+            if (!acceptsFiles) return
+            const pasted = droppedFiles(event.clipboardData)
+            if (pasted.length && addFiles(pasted)) event.preventDefault()
           }}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing) return
@@ -421,28 +485,28 @@ export function PromptBox({
         />
         <div className="composer-toolbar" onClick={event => event.stopPropagation()}>
           <div className="composer-controls">
-            {acceptImages && (
+            {acceptsFiles && (
               <>
                 <button
                   type="button"
                   className="composer-attach"
-                  aria-label="Attach images"
-                  title="Attach images (or paste / drop them)"
-                  disabled={images.length >= MAX_IMAGES_PER_MESSAGE}
+                  aria-label={attachFile ? 'Attach files' : 'Attach images'}
+                  title={attachFile ? 'Attach files or images (or paste / drop them)' : 'Attach images (or paste / drop them)'}
+                  disabled={attachFile ? files.length >= MAX_FILES_PER_MESSAGE && images.length >= MAX_IMAGES_PER_MESSAGE : images.length >= MAX_IMAGES_PER_MESSAGE}
                   onClick={() => picker.current?.click()}
                 >
-                  <ImagePlus size={14} />
+                  {attachFile ? <Paperclip size={14} /> : <ImagePlus size={14} />}
                 </button>
                 <input
                   ref={picker}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  {...(attachFile ? {} : { accept: 'image/png,image/jpeg,image/webp,image/gif' })}
                   multiple
                   hidden
                   onChange={event => {
-                    const files = Array.from(event.target.files ?? [])
+                    const picked = Array.from(event.target.files ?? [])
                     event.target.value = ''
-                    void addImages(files)
+                    addFiles(picked)
                   }}
                 />
               </>

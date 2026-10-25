@@ -5,6 +5,7 @@ export function isRuntimeFile(path: string): boolean {
   return normalized.startsWith('.tnega/sessions/')
     || normalized.startsWith('.tnega/spill/')
     || normalized.startsWith('.tnega/blackboard/')
+    || normalized.startsWith('.tnega/uploads/')
     || /^\.tnega\/run-v\d+\.jsonl$/.test(normalized)
     || /^\.tnega\/subagents\/[^/]+\/session\.jsonl$/.test(normalized)
     || /^\.tnega\/projects\/[^/]+\/blackboard\//.test(normalized)

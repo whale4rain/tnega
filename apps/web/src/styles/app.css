@@ -3799,9 +3799,36 @@ kbd {
 
 .field input:focus,
 .field select:focus,
+.field textarea:focus,
 .input-with-icon:focus-within {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* A multi-line field: the same border, surface and focus halo as a one-line input. */
+.field textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  line-height: 1.5;
+  resize: vertical;
+  outline: 0;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.field textarea:hover:not(:disabled):not(:focus) {
+  border-color: var(--border-strong);
+}
+
+.field textarea:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .input-with-icon {
@@ -4496,6 +4523,28 @@ kbd {
   background: var(--surface-active);
 }
 
+/* A dropped file: the same chip, with the file's name in the UI font. */
+.composer-file .composer-context-label {
+  font-family: inherit;
+}
+
+button.composer-file {
+  padding-right: 10px;
+}
+
+button.composer-file:hover {
+  background: var(--surface-active);
+}
+
+.composer-file .spinner {
+  flex: none;
+}
+
+.composer-file.is-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .user-contexts {
   display: flex;
   flex-wrap: wrap;
@@ -4820,8 +4869,6 @@ kbd {
 }
 
 .workspace-instructions { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.workspace-instructions textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; padding: 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; }
-.workspace-instructions textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .workspace-instructions-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .usage-day { display: inline-block; width: 12px; height: 12px; padding: 0; border: 1px solid var(--border); border-radius: 3px; }
 .usage-day[aria-pressed="true"], .usage-day:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
