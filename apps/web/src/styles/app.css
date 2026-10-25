@@ -2046,15 +2046,33 @@ kbd {
   animation: fade-up 260ms var(--ease-out);
 }
 
+/* Your message: a quiet bubble on the right, the same shape as in a Project. Line breaks come from
+   the Markdown (`breaks`), not from `pre-wrap`, which would also show the newlines between blocks
+   as empty lines. */
 .user-bubble {
   max-width: min(84%, 620px);
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
-  background: transparent;
-  white-space: pre-wrap;
+  background: var(--surface-raised);
   overflow-wrap: anywhere;
-  font-size: var(--text-lg);
+}
+
+.user-bubble .prose {
   line-height: 1.55;
+}
+
+.user-bubble .prose p,
+.user-bubble .prose ul,
+.user-bubble .prose ol {
+  margin-bottom: 0.45em;
+}
+
+.user-bubble .prose li {
+  margin: 0.1em 0;
+}
+
+.user-bubble .prose > :last-child {
+  margin-bottom: 0;
 }
 
 .image-strip {
@@ -3118,6 +3136,60 @@ kbd {
 
 .composer textarea::placeholder {
   color: var(--text-3);
+}
+
+/* Markdown shows as you type: the textarea's own text is clear and a layer under it paints the same
+   characters with colour only (never weight or size), so the two always wrap alike. */
+.composer-input {
+  position: relative;
+  min-width: 0;
+}
+
+.composer.inline .composer-input {
+  flex: 1;
+}
+
+.composer-input textarea {
+  position: relative;
+  color: transparent;
+  caret-color: var(--text);
+}
+
+.composer-input textarea::selection {
+  background: var(--selection);
+}
+
+.composer-highlight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.composer-highlight .md-marker,
+.composer-highlight .md-syntax,
+.composer-highlight .md-fence {
+  color: var(--text-3);
+}
+
+.composer-highlight .md-heading,
+.composer-highlight .md-strong {
+  color: var(--text);
+}
+
+.composer-highlight .md-quote {
+  color: var(--text-2);
+}
+
+.composer-highlight .md-code {
+  border-radius: var(--radius-xs);
+  background: var(--code-bg);
+  color: var(--accent-text);
 }
 
 .composer-toolbar {

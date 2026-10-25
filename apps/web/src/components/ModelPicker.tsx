@@ -1,7 +1,7 @@
 import { Cpu, Gauge } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ConfigSnapshot, ModelOption, SessionEffort } from '../lib/types'
-import { SectionChoice, choiceSection, type ChoiceOption } from './Menu'
+import { Choice, SectionChoice, choiceSection, type ChoiceOption } from './Menu'
 import { ModelManager } from './ModelManager'
 
 export function modelOptions(models: ModelOption[], defaultModelId: string | undefined): Array<ChoiceOption<string>> {
@@ -13,8 +13,18 @@ export function modelOptions(models: ModelOption[], defaultModelId: string | und
 }
 
 const EFFORT: Record<SessionEffort, string> = { default: 'Default effort', low: 'Low effort', medium: 'Medium effort', high: 'High effort' }
+const EFFORT_HINT: Record<SessionEffort, string> = {
+  default: 'Whatever the model does by default',
+  low: 'Answer quickly with little reasoning',
+  medium: 'Balance speed and depth',
+  high: 'Think longest before answering',
+}
 
-/** Shared Session / Project model menu, with adding available even before any model exists. */
+/**
+ * Shared Session / Project model menu, with adding available even before any
+ * model exists. With `showEffort`, the reasoning effort sits beside it as its
+ * own menu whenever the chosen model has effort levels.
+ */
 export function ModelPicker({ model, reasoningEffort = 'default', onChange, models, defaultModelId, config, onConfigChanged, disabled = false, label = 'Model', showEffort = true, side = 'top' }: {
   model?: string | undefined
   reasoningEffort?: SessionEffort
@@ -43,11 +53,20 @@ export function ModelPicker({ model, reasoningEffort = 'default', onChange, mode
       const choices = options.slice(1).filter(option => (available.find(entry => entry.id === option.value)?.source ?? 'third-party') === source)
       return choices.length ? [choiceSection(source, source === 'provider' ? 'Model providers' : 'Third-party', choices, model ?? '', select)] : []
     }),
-    ...(efforts.length ? [choiceSection('effort', 'Reasoning effort', efforts.map(value => ({ value, label: EFFORT[value], icon: <Gauge size={14} /> })), reasoningEffort, value => onChange({ reasoningEffort: value }))] : []),
   ]
-  const effort = efforts.length && reasoningEffort !== 'default' ? ` · ${reasoningEffort[0]?.toUpperCase()}${reasoningEffort.slice(1)}` : ''
   return <>
-    <SectionChoice label={label} summary={`${current?.label ?? 'Default model'}${effort}`} icon={<Cpu size={14} />} sections={sections} disabled={disabled} side={side} action={{ label: 'Add model…', onSelect: () => setAdding(true) }} />
+    <SectionChoice label={label} summary={current?.label ?? 'Default model'} icon={<Cpu size={14} />} sections={sections} disabled={disabled} side={side} action={{ label: 'Add model…', onSelect: () => setAdding(true) }} />
+    {efforts.length > 0 && (
+      <Choice
+        label="Effort"
+        value={efforts.includes(reasoningEffort) ? reasoningEffort : 'default'}
+        options={efforts.map(value => ({ value, label: EFFORT[value], description: EFFORT_HINT[value], icon: <Gauge size={14} /> }))}
+        onChange={value => onChange({ reasoningEffort: value })}
+        icon={<Gauge size={14} />}
+        disabled={disabled}
+        side={side}
+      />
+    )}
     {adding && <ModelManager config={local ?? config} onClose={() => setAdding(false)} onChanged={next => { setLocal(next); onConfigChanged?.(next) }} onAdded={id => onChange({ model: id })} />}
   </>
 }
