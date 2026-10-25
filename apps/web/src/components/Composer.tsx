@@ -54,6 +54,7 @@ export function Composer({
   commands,
   completeArgument,
   searchFiles,
+  attachFile,
   running,
   allowWhileRunning,
   locked,
@@ -75,6 +76,8 @@ export function Composer({
   commands: readonly CommandSpec[]
   completeArgument?: (command: string, query: string) => Promise<ArgumentSuggestion[]>
   searchFiles?: (query: string) => Promise<string[]>
+  /** Save a dropped document into the workspace; see `PromptBox`. */
+  attachFile?: ((file: File) => Promise<string>) | undefined
   running: boolean
   allowWhileRunning?: boolean
   /** The mode can't change while a run is active. */
@@ -104,6 +107,7 @@ export function Composer({
       commands={commands}
       completeArgument={completeArgument}
       searchFiles={searchFiles}
+      attachFile={attachFile}
       running={running}
       allowWhileRunning={allowWhileRunning}
       disabledReason={disabledReason}

@@ -37,6 +37,7 @@ import { copyToClipboard, errorText, folderName, useScrollPinning } from '../lib
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
 import { MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
+import { base64FromFile } from '../lib/attached-files'
 import { applyStream, beginRun, formatTokens, fromEvents, noteSettingChange, settingChangeText, type Entry } from '../lib/timeline'
 import type {
   AgentType,
@@ -339,6 +340,7 @@ export function Conversation({
       .map(candidate => ({ value: candidate.args.join(' '), label: candidate.label, ...(candidate.detail ? { detail: candidate.detail } : {}) }))
   }, [models, sessionId, workspace])
   const searchFiles = useCallback(async (query: string) => (await api.searchFiles(workspace, query)).files, [workspace])
+  const attachFile = useCallback(async (file: File) => (await api.uploadFile(workspace, file.name, await base64FromFile(file))).path, [workspace])
 
   const changeSettings = async (patch: Partial<RunSettings>) => {
     if (!summary) {
@@ -986,6 +988,7 @@ export function Conversation({
             commands={allCommands}
             completeArgument={completeArgument}
             searchFiles={searchFiles}
+            attachFile={attachFile}
             running={live}
             allowWhileRunning
             locked={live || Boolean(busy)}
