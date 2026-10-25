@@ -44,6 +44,8 @@ export interface AgentRuntimeOptions {
    * closed（拒绝执行），而不是悄悄退回非受限执行。
    */
   sandboxMode?: SandboxMode
+  /** How strictly a file write must match what this Session already read. */
+  fsGuard?: 'off' | 'warn' | 'enforce'
   maxTurns?: number
   maxSteps?: number
   contextBudget?: AgentContextBudget

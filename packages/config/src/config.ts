@@ -129,6 +129,13 @@ export interface SystemConfig {
   /** Background dreaming of workspace sessions into project memory. */
   memoryDream?: MemoryDreamConfig
   codeMode?: boolean
+  /**
+   * How strictly a file write must match what this Session already read of that
+   * path. `warn` (the default) records and proceeds with a note, `enforce`
+   * refuses an unread or externally changed target, `off` does neither.
+   * Experimental: the default may change once the refusal rate is known.
+   */
+  fsGuard?: 'off' | 'warn' | 'enforce'
   /** Shell for the `shell` tool (also when run as a background job): a name (`pwsh`, `bash`…) or a path; absent detects one. */
   shell?: string
   approvalReview?: ApprovalReviewerConfig
@@ -638,6 +645,9 @@ function normalizeConfig(value: unknown): SystemConfig {
   const record = value as Record<string, unknown>
   const config: SystemConfig = {}
   if (typeof record.codeMode === 'boolean') config.codeMode = record.codeMode
+  if (record.fsGuard === 'off' || record.fsGuard === 'warn' || record.fsGuard === 'enforce') {
+    config.fsGuard = record.fsGuard
+  }
   const memory = normalizeProjectMemory(record.projectMemory)
   if (memory) config.projectMemory = memory
   else if (record.projectMemory !== undefined) config.projectMemory = { enabled: false }

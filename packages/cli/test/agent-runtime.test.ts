@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -457,6 +457,28 @@ it.each(['native', 'ptc'] as const)('discovers skills in an older Session throug
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('implementing-changes')
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('tdd')
   } finally { await runtime.dispose() }
+})
+
+describe('file write guard setting', () => {
+  it('reaches the file tools from the runtime options', async () => {
+    const dir = await tempDir('tnega-runtime-fs-guard-')
+    const { adapter } = fakeLLM([{ content: 'done', finishReason: 'stop' }])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, { llm: adapter, fsGuard: 'enforce' }))
+    try {
+      const registry = runtime.root.get('tools')
+      await writeFile(join(dir, 'note.txt'), 'old', 'utf8')
+      // Unread, so enforce refuses the overwrite instead of writing it.
+      const refused = await registry.execute('write_file', { path: 'note.txt', content: 'new' })
+      expect(refused.ok).toBe(false)
+      expect(refused.error?.message).toContain('has not been read in this session')
+      // Reading it first is the documented remedy.
+      expect((await registry.execute('read_file', { path: 'note.txt' })).ok).toBe(true)
+      expect((await registry.execute('write_file', { path: 'note.txt', content: 'new' })).ok).toBe(true)
+      expect(await readFile(join(dir, 'note.txt'), 'utf8')).toBe('new')
+    } finally {
+      await runtime.dispose()
+    }
+  })
 })
 
 describe('headless long-session capabilities', () => {

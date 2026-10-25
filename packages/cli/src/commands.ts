@@ -40,6 +40,8 @@ export interface RunAgentCommandOptions {
    * `bypass` 是显式选择「不要沙箱」，不是失败后的降级。
    */
   sandboxMode?: SandboxMode
+  /** How strictly a file write must match what this Session already read. */
+  fsGuard?: 'off' | 'warn' | 'enforce'
   timeoutMs?: number
   maxRetries?: number
   retryDelayMs?: number
@@ -151,6 +153,7 @@ export async function runAgentCommand(
       : {}),
     ...(options.allowShell !== undefined ? { allowShell: options.allowShell } : {}),
     ...(options.sandboxMode !== undefined ? { sandboxMode: options.sandboxMode } : {}),
+    ...(options.fsGuard !== undefined ? { fsGuard: options.fsGuard } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
   })

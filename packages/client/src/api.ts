@@ -67,6 +67,8 @@ export interface ConfigPatch {
   projectMemory?: ProjectMemorySettings
   memoryDream?: MemoryDreamSettings
   codeMode?: boolean
+  /** How strictly a file write must match what the Session already read. */
+  fsGuard?: 'off' | 'warn' | 'enforce'
   /** Shell name or path; empty restores automatic detection. */
   shell?: string
   approvalReview?: ApprovalReviewerSettings & { apiKey?: string }

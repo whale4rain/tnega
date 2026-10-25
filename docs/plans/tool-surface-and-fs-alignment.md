@@ -1,6 +1,6 @@
 # 工具面收敛与文件写入对齐计划
 
-> 状态：阶段 A–D、G（并行）已实现（见「零、进展」），E、F 待实现；第四节「已定」为本次拍板结果
+> 状态：阶段 A–D、G（并行）已实现，E 部分实现（pruner 需重设计），F 待实现；见「零、进展」
 > 参考基线：`D:\task\deepseek-harness`（dsh）的 `packages/bundle/base/cordis.patch.yml`、
 > `packages/fs/{fs-local,tool-fs,tool-str-replace-editor,fs-observation-policy}`、
 > `packages/jobs/{jobs,jobs-local,tool-jobs}`、`docs/tool-catalog.md`、`docs/subsystems/filesystem.md`
@@ -179,6 +179,43 @@
 未知工具当栅栏、失败不连坐、按参数分类）；`packages/tools/test/fs-tools.test.ts` 加一项守卫
 （读声明确实在、写声明确实没有），防止有人删掉声明后静默退回串行。`agent`、`tools`、`jobs`、
 `search`、`tool-office`、`host`、`cli` 全绿。
+
+### 阶段 E · 部分完成
+
+**做完了**：
+
+1. **`fsGuard` 三档接线**：`packages/config` 新增 `fsGuard?: 'off' | 'warn' | 'enforce'`（解析 +
+   自动进 `SystemConfigPatch`）、CLI `--fs-guard=`（`index.ts` / `help.ts` / `commands.ts`）、
+   `AgentRuntimeOptions.fsGuard` → `BuiltinToolsConfig`、host 的两条 run 路径透传
+   （一次性运行与 resident 各自传 `config.fsGuard`）、Web 设置面板新增一项并标「实验性」
+   （`SettingsDialog.tsx` + `packages/client` 的 `ConfigPatch` / 视图类型）。
+   新增一项测试：`enforce` 下未读的覆盖被拒、读后可写 —— 证明设置真的传到了工具层。
+
+2. **两条 ADR**：`docs/adr/0013-parallel-tool-calls.md`（契约、为什么默认独占、
+   白名单、`job_output` 的代价）、`docs/adr/0014-atomic-file-writes.md`
+   （staging 形状、`fsGuard` 为什么默认 `warn`、为什么用 sha256 而非 mtime、已知限制）。
+
+**没做，且计划里的设计是错的**：`tool-result-pruner`。读了参考实现的 README 之后发现两点：
+
+1. **它与 spill 重叠或倒退。** spill 现在是「单条结果 > 50,000 字节 → 头 12,000 + 尾 4,000
+   + 定位符，全文落盘」。pruner 按计划的 8192/4096/1024 会**先**触发，结果被砍到约 5KB，
+   永远到不了 spill 的 50,000 阈值 —— 而 pruner 自己不落盘，于是内容**直接丢失**。
+   照抄参数就是一个内容丢失的倒退。
+2. **参考实现的 pruner 是压缩阶段的动作，不是常驻策略。** 它「在压缩触发条件成立时」才裁剪
+   历史里的超大工具结果，目的是让这次压缩不必真的做摘要。而 tnega 的请求必须能由 Session 日志
+   重建（`_assertReplayable` 会比对模型消息与日志派生结果），所以任何「只改请求、不改日志」的
+   裁剪都会直接失败。要做就必须写成一次 surface 变更（像 `session.compact` 那样落事件），
+   那是新的持久化语义，不是一次工具管线改动。
+
+因此这一步需要重新设计，不在本阶段强行实现。备选方向（都还没定）：
+
+- **A**：给 spill 加 per-tool 阈值，把 `read_file` 从 skip 列表里拿出来。
+  它现在是唯一完全豁免的工具，而按行分页后单次读仍可达 `maxReadBytes`（256 KiB）。
+  代价是模型读文件会看到溢出提示；收益是那个 256 KiB 的口子被堵上。
+- **B**：真正的 pruner —— 压缩前先裁历史里的工具结果，若因此降到阈值以下就跳过摘要。
+  需要新增一种 surface 变更事件，并让 `_assertReplayable` 认可它。
+
+倾向 A（改动小、堵的是真实口子），但这是产品取舍，要单独决定。
 
 ---
 

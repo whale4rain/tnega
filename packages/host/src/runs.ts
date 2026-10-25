@@ -121,6 +121,7 @@ export async function handleRun(
         cwd: workspace,
         allowNetwork: true,
         allowShell: true,
+        ...(config.fsGuard ? { fsGuard: config.fsGuard } : {}),
         allowOutsideWorkspace: permission === 'bypass',
         allowPrivateNetwork: permission === 'bypass',
         processes: processesFor(context, workspace),
@@ -346,6 +347,7 @@ export async function createResidentRuntime(
     builtin: {
       allowNetwork: true,
       allowShell: true,
+      ...(req.config.fsGuard ? { fsGuard: req.config.fsGuard } : {}),
       allowOutsideWorkspace: async () => (await currentPermission()) === 'bypass',
       allowPrivateNetwork: async () => (await currentPermission()) === 'bypass',
       ...(req.processes ? { processes: req.processes } : {}),

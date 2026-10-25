@@ -479,6 +479,8 @@ export interface ConfigSnapshot {
     projectMemory?: ProjectMemorySettings
     memoryDream?: MemoryDreamSettings
     codeMode?: boolean
+    /** How strictly a file write must match what the Session already read. */
+    fsGuard?: 'off' | 'warn' | 'enforce'
     /** Saved shell preference; empty means detect automatically. */
     shell?: string
     approvalReview?: ApprovalReviewerSettings

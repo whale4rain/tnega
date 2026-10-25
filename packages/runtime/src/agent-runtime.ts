@@ -70,6 +70,7 @@ export async function createAgentRuntime(
     ? {
       ...(merged.allowNetwork ? { allowNetwork: true } : {}),
       ...(merged.allowShell ? { allowShell: true } : {}),
+      ...(merged.fsGuard ? { fsGuard: merged.fsGuard } : {}),
       ...(merged.builtinTools && typeof merged.builtinTools === 'object' ? merged.builtinTools : {}),
     }
     : false
