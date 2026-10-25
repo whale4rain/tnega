@@ -224,6 +224,9 @@ export function createClient(options: ClientOptions = {}) {
       if (patch.codeMode !== undefined && saved.config.codeMode !== patch.codeMode) {
         throw new ApiError(409, 'CodeMode 设置未保存：后端没有确认该设置，请重启或更新 Tnega 后端后重试。')
       }
+      if (patch.fsGuard !== undefined && saved.config.fsGuard !== patch.fsGuard) {
+        throw new ApiError(409, '文件写入保护设置未保存：后端没有确认该设置，请重启或更新 Tnega 后端后重试。')
+      }
       return saved
     },
 

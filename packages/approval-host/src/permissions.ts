@@ -19,7 +19,7 @@ const WORKSPACE_WRITES = new Set(['write_file', 'edit_file', 'office_create', 'o
 
 const ALWAYS_ALLOWED = new Set([
   // 只读
-  'echo', 'now', 'calculator', 'json', 'read_file', 'list_dir',
+  'now', 'read_file', 'list_dir',
   'glob', 'grep', 'http_get', 'web_search',
   // 用户自己的 Session 记录（各 Workspace），只读，不碰文件系统里的工作区内容。
   'search_sessions', 'search_session', 'read_session',
@@ -177,7 +177,7 @@ export function permissionGuard(
       ? request.input as Record<string, unknown> : {}
     const rawPath = typeof input[pathKey] === 'string' ? input[pathKey] : '.'
     let scoped = true
-    if (unrestricted && ['read_file', 'write_file', 'list_dir', 'shell'].includes(request.name)) {
+    if (unrestricted && ['read_file', 'write_file', 'edit_file', 'list_dir', 'shell'].includes(request.name)) {
       try { await resolveInside(options.workspace, rawPath) } catch { scoped = false }
     }
     // One tool, several verbs: reading skills never needs approval, writing

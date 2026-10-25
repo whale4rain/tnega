@@ -31,6 +31,12 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: strin
 
 const SECTION_IDS = SECTIONS.map(section => section.id)
 
+type FsGuard = 'off' | 'warn' | 'enforce'
+
+function isFsGuard(value: string): value is FsGuard {
+  return value === 'off' || value === 'warn' || value === 'enforce'
+}
+
 export function SettingsDialog({
   config,
   workspace,
@@ -59,7 +65,7 @@ export function SettingsDialog({
   const stored = config?.config
   const [section, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
   const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
-  const [fsGuard, setFsGuard] = useState<'off' | 'warn' | 'enforce'>(stored?.fsGuard ?? 'warn')
+  const [fsGuard, setFsGuard] = useState<FsGuard>(stored?.fsGuard ?? 'warn')
   const [memoryEnabled, setMemoryEnabled] = useState(stored?.projectMemory?.enabled ?? true)
   const [memoryModel, setMemoryModel] = useState(stored?.projectMemory?.coldModelId ?? '')
   const [memoryCalls, setMemoryCalls] = useState(stored?.projectMemory?.maxCallsPerDay ?? 4)
@@ -352,7 +358,7 @@ export function SettingsDialog({
             </label>
             <label className="field span-2">
               <span className="field-label">File write guard · 实验性</span>
-              <select aria-label="File write guard" value={fsGuard} onChange={event => setFsGuard(event.target.value as 'off' | 'warn' | 'enforce')}>
+              <select aria-label="File write guard" value={fsGuard} onChange={event => { const next = event.target.value; if (isFsGuard(next)) setFsGuard(next) }}>
                 <option value="off">off · 不记录读取版本</option>
                 <option value="warn">warn · 覆盖被改过的文件时写入并提示</option>
                 <option value="enforce">enforce · 未读过或被改过则拒绝</option>

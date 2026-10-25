@@ -21,6 +21,15 @@ describe('permissionGuard', () => {
     }
     expect(await guard(request('shell', { command: 'echo hello' }))).toMatch(/approval/)
   })
+  it('keeps a narrower child\'s edits inside the workspace when the parent bypasses', async () => {
+    const guard = permissionGuard('bypass', 'session', new ApprovalBroker(), { workspace: process.cwd(), agentMode: () => 'workspace-write' })
+    const inside = request('edit_file', { path: 'notes.txt', edits: [] })
+    inside.options.agentId = 'child'
+    expect(await guard(inside)).toBeUndefined()
+    const outside = request('edit_file', { path: '../elsewhere.txt', edits: [] })
+    outside.options.agentId = 'child'
+    expect(await guard(outside)).toMatch(/approval/)
+  })
   it('lets the session tools read past sessions without asking, even in read-only mode', async () => {
     const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
     expect(await guard(request('search_sessions', { query: 'installer' }))).toBeUndefined()

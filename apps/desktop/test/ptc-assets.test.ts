@@ -16,16 +16,16 @@ test('bundled desktop PTC executes from resources outside app.asar', async () =>
     await writeFile(join(runtimeRoot, 'package.json'), JSON.stringify({ type: 'module' }))
     const worker = join(runtimeRoot, 'dist', 'ptc-worker.js')
     await build({
-      entryPoints: [resolve('packages/ptc-runtime-quickjs/src/worker.mjs')],
+      entryPoints: [resolve('packages/ptc/ptc-runtime-quickjs/src/worker.mjs')],
       outfile: worker, bundle: true, platform: 'node', format: 'esm',
       banner: { js: "import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);" },
     })
-    const piDirectory = await realpath(resolve('packages/ptc-runtime-quickjs/node_modules/@earendil-works/pi-codemode'))
+    const piDirectory = await realpath(resolve('packages/ptc/ptc-runtime-quickjs/node_modules/@earendil-works/pi-codemode'))
     const piRequire = createRequire(join(piDirectory, 'package.json'))
     await cp(piRequire.resolve('quickjs-wasi/quickjs.wasm'), join(runtimeRoot, 'dist', 'quickjs.wasm'))
     const bundledProvider = join(directory, 'resources', 'app.asar', 'out', 'provider.mjs')
     await build({
-      entryPoints: [resolve('packages/ptc-runtime-quickjs/src/index.ts')],
+      entryPoints: [resolve('packages/ptc/ptc-runtime-quickjs/src/index.ts')],
       outfile: bundledProvider, bundle: true, platform: 'node', format: 'esm',
       banner: { js: "import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);" },
     })
