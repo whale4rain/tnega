@@ -195,17 +195,21 @@
    白名单、`job_output` 的代价）、`docs/adr/0014-atomic-file-writes.md`
    （staging 形状、`fsGuard` 为什么默认 `warn`、为什么用 sha256 而非 mtime、已知限制）。
 
-**没做，且计划里的设计是错的**：`tool-result-pruner`。读了参考实现的 README 之后发现两点：
+**没做**：`tool-result-pruner`。两轮核对参考实现后，结论是**跨层比较导致的错误设计**：
 
-1. **它与 spill 重叠或倒退。** spill 现在是「单条结果 > 50,000 字节 → 头 12,000 + 尾 4,000
-   + 定位符，全文落盘」。pruner 按计划的 8192/4096/1024 会**先**触发，结果被砍到约 5KB，
-   永远到不了 spill 的 50,000 阈值 —— 而 pruner 自己不落盘，于是内容**直接丢失**。
-   照抄参数就是一个内容丢失的倒退。
-2. **参考实现的 pruner 是压缩阶段的动作，不是常驻策略。** 它「在压缩触发条件成立时」才裁剪
-   历史里的超大工具结果，目的是让这次压缩不必真的做摘要。而 tnega 的请求必须能由 Session 日志
-   重建（`_assertReplayable` 会比对模型消息与日志派生结果），所以任何「只改请求、不改日志」的
-   裁剪都会直接失败。要做就必须写成一次 surface 变更（像 `session.compact` 那样落事件），
-   那是新的持久化语义，不是一次工具管线改动。
+1. **两者的层不同。** spill 是常驻的、每条工具结果产生时的**逐条准入控制**（`tools/post-execute`），
+   按估算 token 计，全文落盘可恢复，`read` 豁免。pruner 是**压缩阶段**的动作：参考实现原文是
+   「只有压缩触发条件成立时才裁剪，压力以下什么都不裁」，按字符计，写替换事件并把原文留在日志里。
+   本计划最初写的那条（`tools/post-execute` 监听器 + 8192/4096/1024）把两者放到了同一层，
+   于是得出「prune 会先削到 5KB、永远到不了 spill 的 50,000，且 pruner 不落盘 → 丢内容」——
+   这个论断只对**那个错误设计**成立，对参考实现不成立。
+2. **为什么两个都要**：单条 12,000 token 的结果 spill 会放行，但会话里攒 30 条就是 360,000 token，
+   每条合规、总量爆窗。spill 管单条，管不了聚合；prune 是聚合层面的节食，且它的产出可能把压力
+   降到不必摘要。
+3. **对 tnega 的约束仍在**：`_assertReplayable` 要求请求能由日志重建，所以任何「只改请求、
+   不改日志」的裁剪都会直接失败。要做得像 `session.compact` 那样落一次 surface 变更
+   （新 `tool/result` 事件 + 引用原事件的来源标记），那是新的持久化语义，不是一次工具管线改动。
+   这正是参考实现的做法（`sourceEventSeqs` + `compaction/prune` 记账事件）。
 
 因此这一步需要重新设计，不在本阶段强行实现。备选方向（都还没定）：
 
@@ -354,7 +358,7 @@ via package exports」正好覆盖这五条导出路径；`packages/{ptc,questio
 | 原子性 | staging + `link`/`ReplaceFile`/`rename` | 对齐 | 见「三」 |
 | 后台命令 | `bash` 自带 `run_in_background`；超时**不杀，转 job** | `shell.runInBackground`；超时仍杀（本次不做转换） | 转换要改 `@tnega/execution` 的 `runShell` seam |
 | 技能 | 单个 `skill` 工具 + 会话级 durable 目录 | 对齐 | |
-| 工具结果裁剪 | `tool-result-pruner` 8192/4096/1024 | 阶段 E 实现同形状 | 与 spill 互补 |
+| 工具结果裁剪 | `tool-result-pruner`：压缩阶段裁剪，写替换事件并引用原事件 | 未实现，方案待定（见阶段 E） | 与 spill **不同层**：spill 管单条，prune 管聚合 |
 | 重复调用提醒 | `repeat-tool-reminder` 阈值 [3,5,8] | 保留 loop-guard（nudge → 反思 → park） | 不抄数值 |
 | 压缩 | session `surfaceOp` 替换 + 锁事件 | 保持 `contextBudget.summarize` | 改造远超收益，记入 ADR |
 | 包目录 | 按能力域分组（`fs/`、`shell/`、`jobs/`、`web/`、`skill/`），**没有**统一 tool 目录 | 补齐缺的域目录 | 见阶段 F |
@@ -479,7 +483,7 @@ dsh 同样没有独立 `wait` 工具（`docs/tool-catalog.md` 无此项），做
 ### 阶段 E · 裁剪层、灰度与收尾
 
 1. **工具结果裁剪**：`packages/tools/src/prune.ts`，作为 `tools/post-execute` 监听器：
-   单条结果超 8192 字符时保留头 4096 + 尾 1024，中间标注省略量并指向 spill 全文。与 spill 互补。
+   **不按此设计实现**：它是压缩阶段的历史裁剪，不是 post-execute 策略。见阶段 E。
 2. **`fsGuard` 三档**：`off` / `warn`（默认）/ `enforce`。
    - CLI：`--fs-guard=off|warn|enforce`（`packages/cli/src/index.ts` + `help.ts`）；
    - 设置：`packages/config/src/config.ts` 增字段，`apps/web/src/components/SettingsDialog.tsx` 新增一项并标「实验性」，
