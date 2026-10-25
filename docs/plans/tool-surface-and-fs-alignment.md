@@ -1,6 +1,6 @@
 # 工具面收敛与文件写入对齐计划
 
-> 状态：阶段 A、B 已实现（见「零、进展」），阶段 C–F 待实现；第四节「已定」为本次拍板结果
+> 状态：阶段 A、B、C 已实现（见「零、进展」），阶段 D–F 待实现；第四节「已定」为本次拍板结果
 > 参考基线：`D:\task\deepseek-harness`（dsh）的 `packages/bundle/base/cordis.patch.yml`、
 > `packages/fs/{fs-local,tool-fs,tool-str-replace-editor,fs-observation-policy}`、
 > `packages/jobs/{jobs,jobs-local,tool-jobs}`、`docs/tool-catalog.md`、`docs/subsystems/filesystem.md`
@@ -79,6 +79,40 @@
 并发串行化、staging 不残留、三档灰度、按 agent 记账、新建免读）；`packages/tools`（82）、
 `approval-host`、`workspace-files`、`auto-approval`、`host`、`project/host`、`coding-agent`、
 `cli` 的 `web` / `code-mode-web` / `processes-web` 全绿；`tsc` 与 eslint 干净。
+
+### 阶段 C · 已完成
+
+工具面从「全部常驻」收敛到 base + preset。实测（`JSON.stringify(schema).length` 之和）：
+
+| 配置 | 之前 | 之后 |
+|---|---|---|
+| CLI preset，普通工作区 | 14,219 / 22 个 | **6,893 / 9 个** |
+| CLI preset，工作区里有表格 | 14,219 | 13,424 / 13 个（office 四个按需挂上） |
+| Project preset | — | 8,603 / 14 个（多 `now`、jobs、memory） |
+
+五处偏差：
+
+1. **`job_start` 不是被合并，而是被删除**（阶段 C.1）。`shell` 的 `runInBackground` 由
+   `@tnega/tools` 声明、`@tnega/tool-jobs` 在 `tools/execute` 上接管 —— 在守卫已经决定之后，
+   因此一条命令只批一次。若按原计划重新进入 `ctx.tools.execute`，同一条命令会过两遍守卫。
+   `job_start({kind:'subagent'})` 也一并删除：`spawn_subagent` 本就异步返回，完成时投递 inbox，
+   `list_subagent({wait_ms})` 可等待 —— 能力没丢，少了一个包装。
+2. **技能索引没有搬成 durable 用户消息**，而是搭在唯一的 `skill` 工具描述上。
+   它本来就在请求头里（稳定前缀、被缓存），真正的成本是四个 schema；改成用户消息反而要碰
+   历史重写那套逻辑。记为对 dsh 的有意偏离。
+3. **office 用「探测」而非「工作区提示」**：`hasOfficeFiles()` 扫两层，跳过
+   `node_modules/.git/.worktrees/.pnpm-store/.tnega/dist/out`。work persona 例外 ——
+   交付文档就是它的本职工作，`runs.ts` 对它传 `office: true`。
+4. **preset 是一张三行的表**（`compose.ts` 的 `PRESETS`），不是插件化配置。`cli` 与
+   `interactive` 目前同形（都不带 `echo/calculator/json/now`），`project` 多一个 `now`。
+5. **`scopeTools` 落在 `@tnega/agent`**，不在 `@tnega/tools`：后者是 Agent 的下游，
+   反向 import 才能给事件类型注解。project 的 `agent/request` 过滤改成调它。
+
+顺带：`shell`、`skill`、`edit_file`、`read_file` 的描述按「一句话说完」重写，为的是把 CLI 面压到 7k 以下。
+
+验证：`packages/tools`、`packages/runtime`、`packages/agent`、`packages/host`、`packages/project/host`、
+`packages/coding-agent`、`packages/jobs`、`packages/approval-host`、`packages/client` 全绿；
+`cli` 的 `compose` / `agent-runtime` / `web` / `code-mode-web` 全绿；`tsc` 与 eslint 干净。
 
 ---
 

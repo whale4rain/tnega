@@ -419,7 +419,8 @@ describe('createAgentRuntime composition', () => {
       const services = dynamic(runtime.root).tools as {
         has(name: string): boolean
       }
-      expect(services.has('echo')).toBe(true)
+      // Utility tools are off by default; the caller's own list is merged in.
+      expect(services.has('echo')).toBe(false)
       expect(services.has('shell')).toBe(true)
       expect(services.has('calculator')).toBe(false)
     } finally {

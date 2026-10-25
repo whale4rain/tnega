@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@tnega/core'
 import { describe, expect, it } from 'vitest'
 import { runtimeCapabilities } from '@tnega/runtime'
@@ -13,17 +16,62 @@ function toolNames(ctx: Context): string[] {
 }
 
 describe('runtime capabilities', () => {
-  it('mounts the sandbox, search, spill and office slice with builtin tools', async () => {
+  it('mounts the sandbox, search and spill slice with builtin tools', async () => {
     const ctx = await mount({ permission: 'read-only' })
     try {
-      expect(toolNames(ctx)).toEqual(expect.arrayContaining([
-        'read_file', 'glob', 'grep', 'office_read',
-      ]))
+      expect(toolNames(ctx)).toEqual(expect.arrayContaining(['read_file', 'edit_file', 'glob', 'grep']))
       expect(ctx.get('search', false)).toBeDefined()
       expect(ctx.get('spillStore', false)).toBeDefined()
       expect(ctx.get('sandbox', false)).toBeDefined()
     } finally {
       await ctx.fiber.dispose()
+    }
+  })
+
+  it('leaves the utility tools out unless a preset asks for them', async () => {
+    const ctx = await mount({ permission: 'read-only' })
+    try {
+      const names = toolNames(ctx)
+      for (const name of ['echo', 'calculator', 'json', 'now']) expect(names).not.toContain(name)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+    const project = await mount({ permission: 'read-only', preset: 'project' })
+    try {
+      // Routines and reports reason about dates, so the project shape keeps it.
+      expect(toolNames(project)).toContain('now')
+      expect(toolNames(project)).not.toContain('echo')
+    } finally {
+      await project.fiber.dispose()
+    }
+  })
+
+  it('mounts the office tools only when the workspace holds one, or when told to', async () => {
+    const empty = await mkdtemp(join(tmpdir(), 'tnega-compose-empty-'))
+    const withSheet = await mkdtemp(join(tmpdir(), 'tnega-compose-office-'))
+    try {
+      await writeFile(join(withSheet, 'report.xlsx'), Buffer.from([0x50, 0x4b, 3, 4]))
+      const plain = await mount({ workspace: empty, permission: 'read-only' })
+      try {
+        expect(toolNames(plain)).not.toContain('office_read')
+      } finally {
+        await plain.fiber.dispose()
+      }
+      const detected = await mount({ workspace: withSheet, permission: 'read-only' })
+      try {
+        expect(toolNames(detected)).toContain('office_read')
+      } finally {
+        await detected.fiber.dispose()
+      }
+      const forced = await mount({ workspace: empty, permission: 'read-only', office: true })
+      try {
+        expect(toolNames(forced)).toContain('office_read')
+      } finally {
+        await forced.fiber.dispose()
+      }
+    } finally {
+      await rm(empty, { recursive: true, force: true })
+      await rm(withSheet, { recursive: true, force: true })
     }
   })
 
@@ -45,7 +93,7 @@ describe('runtime capabilities', () => {
       const names = toolNames(ctx)
       expect(names).not.toContain('glob')
       expect(names).not.toContain('grep')
-      expect(names).toContain('office_read')
+      expect(names).toContain('read_file')
       expect(ctx.get('search', false)).toBeUndefined()
     } finally {
       await ctx.fiber.dispose()

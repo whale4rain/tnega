@@ -455,7 +455,7 @@ function progressDecoder(progress: (output: string) => void): (chunk: Buffer, st
 }
 
 /** Where a long command belongs: a timeout expires, it does not background. */
-const BACKGROUND_HINT = 'Downloads, dependency installs, builds and full test suites routinely take minutes: pass a larger timeoutMs for them. This runtime kills a command whose timeout expires; it does not move it to the background on its own.'
+const BACKGROUND_HINT = 'Long commands (downloads, installs, builds, full test suites) need a larger timeoutMs; on expiry the command is killed, not backgrounded.'
 
 function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
   const properties: Record<string, unknown> = {

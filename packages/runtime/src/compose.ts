@@ -19,7 +19,8 @@ import { toolPtc } from '@tnega/tool-ptc'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSpill } from '@tnega/tool-spill'
 import { builtinTools, tools, type BuiltinToolsConfig, type ToolPolicy } from '@tnega/tools'
-import { resolve } from 'node:path'
+import { readdir } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import type { PermissionMode } from '@tnega/approval-host'
 import { workspacePrompt } from '@tnega/workspace-prompt'
 
@@ -40,6 +41,74 @@ import { workspacePrompt } from '@tnega/workspace-prompt'
  * A caller only states what its role needs; adding a capability means adding
  * one entry here, not editing four composition roots.
  */
+
+/**
+ * Which tools a deployment puts in front of the model.
+ *
+ * Not a plugin system: three named shapes covering the three products, so a new
+ * capability is added in one table instead of being rediscovered in each
+ * composition root. A caller can still override any capability by name.
+ */
+export type Preset = 'cli' | 'interactive' | 'project'
+
+interface PresetTools {
+  /**
+   * `echo`, `calculator` and `json`: the shell already covers all three, and
+   * their schemas are paid for on every request.
+   */
+  utilities: boolean
+  /** `now` stays where routines and reports reason about dates. */
+  clock: boolean
+  /** Office files are opened on demand: see {@link hasOfficeFiles}. */
+  office: boolean | 'auto'
+}
+
+const PRESETS: Record<Preset, PresetTools> = {
+  cli: { utilities: false, clock: false, office: 'auto' },
+  interactive: { utilities: false, clock: false, office: 'auto' },
+  project: { utilities: false, clock: true, office: 'auto' },
+}
+
+/** Builtin tools a preset keeps off, on top of whatever the caller disabled. */
+export function presetDisabledTools(preset: Preset | undefined, disabled: readonly string[] = []): readonly string[] {
+  const tools = PRESETS[preset ?? 'cli']
+  const off = new Set(disabled)
+  if (!tools.utilities) for (const name of ['echo', 'calculator', 'json']) off.add(name)
+  if (!tools.clock) off.add('now')
+  return [...off]
+}
+
+const OFFICE_EXTENSIONS = ['.xlsx', '.docx', '.pptx']
+const SCAN_EXCLUDES = new Set(['node_modules', '.git', '.worktrees', '.pnpm-store', '.tnega', 'dist', 'out'])
+
+/**
+ * Whether a workspace holds Office files at all.
+ *
+ * Two levels deep, skipping the directories nobody keeps a deliverable in. The
+ * four office tools cost more schema text than everything else in the CLI put
+ * together, so they are mounted when there is something to open — or when the
+ * caller says so, which is what a documents-oriented persona does.
+ */
+export async function hasOfficeFiles(workspace: string): Promise<boolean> {
+  const walk = async (directory: string, depth: number): Promise<boolean> => {
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch {
+      return false
+    }
+    for (const entry of entries) {
+      if (entry.isFile() && OFFICE_EXTENSIONS.some(extension => entry.name.toLowerCase().endsWith(extension))) {
+        return true
+      }
+      if (entry.isDirectory() && depth > 1 && !SCAN_EXCLUDES.has(entry.name)) {
+        if (await walk(join(directory, entry.name), depth - 1)) return true
+      }
+    }
+    return false
+  }
+  return await walk(workspace, 2)
+}
 
 /** A sandbox mode, or a resolver for a permission that can change per call. */
 export type Permission = PermissionMode | (() => PermissionMode | Promise<PermissionMode>)
@@ -63,8 +132,10 @@ export interface RuntimeSpec {
   search?: boolean
   /** Mount the tool-output spill policy. Defaults to on with builtin tools. */
   spill?: boolean
-  /** Mount the office tools. Defaults to on with builtin tools. */
-  office?: boolean
+  /** Mount the office tools. Defaults to `auto`: only when the workspace holds one. */
+  office?: boolean | 'auto'
+  /** The product shape whose tool defaults apply. Defaults to `cli`. */
+  preset?: Preset
   /** Mount the memory service and its tool. */
   memory?: boolean
   /** Mount the run summary tool. */
@@ -209,6 +280,13 @@ export const runtimeCapabilities: Plugin = {
   name: 'runtime:capabilities',
   async apply(ctx: Context, spec: RuntimeSpec) {
     const builtinOn = spec.builtin !== false
+    const preset = PRESETS[spec.preset ?? 'cli']
+    const office = spec.office ?? preset.office
+    // Utility tools are off in every preset, so a composition that names none
+    // does not pay for echo/calculator/json/now.
+    const builtin: BuiltinToolsConfig | false = spec.builtin === false
+      ? false
+      : { ...(spec.builtin ?? {}), disabled: presetDisabledTools(spec.preset, spec.builtin?.disabled) }
     await ctx.plugin(tools, spec.tools ?? {})
     await ctx.plugin(systemPrompt)
     await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? spec.workspace })
@@ -220,12 +298,14 @@ export const runtimeCapabilities: Plugin = {
         workspace: spec.workspace,
         permission: spec.permission ?? 'read-only',
         ...(spec.sessionId !== undefined ? { sessionId: spec.sessionId } : {}),
-        ...(spec.builtin ? { builtin: spec.builtin } : {}),
+        ...(builtin ? { builtin } : {}),
       })
     }
     if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace })
     if (spec.spill ?? builtinOn) await ctx.plugin(spillCapability, { workspace: spec.workspace })
-    if (spec.office ?? builtinOn) await ctx.plugin(officeCapability, { workspace: spec.workspace })
+    if (office === true || (office === 'auto' && builtinOn && await hasOfficeFiles(spec.workspace))) {
+      await ctx.plugin(officeCapability, { workspace: spec.workspace })
+    }
     if (spec.skills ?? builtinOn) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
     if (spec.memory) {
       await ctx.plugin(memoryCapability, { workspace: spec.workspace, writeTool: builtinOn })

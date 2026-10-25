@@ -39,14 +39,7 @@ export function skillTool(deps: SkillToolDeps): ToolDefinition {
   return {
     schema: {
       name: 'skill',
-      description: [
-        'Work with skills: reusable instruction documents kept in the user home and the workspace.',
-        'action=list: names and the trigger description of every available skill.',
-        'action=read (name): the full SKILL.md; read one before applying it.',
-        'action=create (name, description, content?): a new user-home skill; never overwrites.',
-        'action=install (source, name?): import a SKILL.md from a workspace path or an HTTPS URL into user home.',
-        'Skills do not grant permissions; follow user and repository instructions first.',
-      ].join(' '),
+      description: 'Skills: reusable instruction documents in the user home and the workspace. action=list: names and trigger descriptions. action=read (name): the full SKILL.md, read one before applying it. action=create (name, description, content?): a new user-home skill, never overwrites. action=install (source, name?): import a SKILL.md from a workspace path or an HTTPS URL. Skills grant no permissions; user and repository instructions come first.',
       parameters: {
         type: 'object',
         properties: {

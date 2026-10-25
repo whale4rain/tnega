@@ -105,12 +105,7 @@ export function editFileTool(config: FileToolsConfig): ToolDefinition {
   return {
     schema: {
       name: 'edit_file',
-      description: [
-        'Apply literal text edits to one existing file inside the workspace, atomically: either every edit applies or the file is unchanged.',
-        'Each old_string must appear exactly once unless replace_all is true; the error names the lines it matched.',
-        'Prefer this over write_file for a small change in a large file. Read the file first so the edit is checked against what you saw.',
-        'Returns { path, bytes, sha256, edits: [{ line, removed, added }] }.',
-      ].join(' '),
+      description: 'Apply literal text edits to one existing file, atomically: every edit applies or nothing changes. Each old_string must appear exactly once unless replace_all is true; a mismatch names the lines it matched. Prefer this over write_file for a small change in a large file, and read the file first. Returns { path, bytes, sha256, edits: [{ line }] }.',
       parameters: {
         type: 'object',
         properties: {

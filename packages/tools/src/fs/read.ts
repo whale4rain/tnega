@@ -43,13 +43,7 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
   return {
     schema: {
       name: 'read_file',
-      description: [
-        'Read a UTF-8 text file inside the workspace, one page of lines at a time.',
-        `Returns { path, bytes, content, truncated, lines: { start, end, total } }: \`bytes\` is the whole file size,`,
-        `\`content\` is lines \`start\`..\`end\` of \`total\`, and \`truncated\` says whether anything was left out of \`content\`.`,
-        `Page with offset (1-based) and limit (default and maximum ${config.maxReadLines} lines).`,
-        'Reading a file records it as seen: a later write or edit of it is checked against that version.',
-      ].join(' '),
+      description: `Read a UTF-8 text file, one page of lines at a time: { path, bytes, content, truncated, lines: { start, end, total } }. Page with offset (1-based) and limit (at most ${config.maxReadLines} lines). Reading records the version, which a later write or edit is checked against.`,
       parameters: {
         type: 'object',
         properties: {

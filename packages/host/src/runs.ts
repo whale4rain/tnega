@@ -116,6 +116,7 @@ export async function handleRun(
       allowNetwork: true,
       allowShell: true,
       sandboxMode: permission,
+      office: agentType === 'work' ? true : 'auto',
       builtinTools: {
         cwd: workspace,
         allowNetwork: true,
@@ -351,6 +352,9 @@ export async function createResidentRuntime(
     },
     memory: true,
     summary: true,
+    // Documents are what a work session delivers, so its office tools are not
+    // conditional on finding one first.
+    office: req.agentType === 'work' ? true : 'auto',
     // Long turns are fine while they keep moving; a turn that stalls is nudged, then parked.
     loopGuard: true,
     jobs: { resolveSession: sessionOf },

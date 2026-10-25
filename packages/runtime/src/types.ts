@@ -69,6 +69,10 @@ export interface AgentRuntimeOptions {
   ptc?: { mode?: 'native' | 'both' | 'ptc'; timeoutMs?: number; memoryLimitBytes?: number }
   /** Host-provided runtime assets and limits; independent of model-visible PTC mode. */
   ptcRuntime?: PtcRuntimeQuickjsConfig
+  /** The product shape whose tool defaults apply (see `Preset`). */
+  preset?: 'cli' | 'interactive' | 'project'
+  /** Mount the office tools; defaults to `auto`, i.e. only when the workspace has one. */
+  office?: boolean | 'auto'
 }
 
 export interface AgentRuntime {
