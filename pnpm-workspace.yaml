@@ -10,6 +10,9 @@ packages:
   - packages/jobs/*
   - packages/project/*
   - packages/loop/*
+  - packages/office/*
+  - packages/ptc/*
+  - packages/questions/*
   - packages/web/*
   - apps/*
 

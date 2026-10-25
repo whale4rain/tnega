@@ -1,6 +1,6 @@
 # 工具面收敛与文件写入对齐计划
 
-> 状态：阶段 A–D、G（并行）已实现，E 部分实现（pruner 需重设计），F 待实现；见「零、进展」
+> 状态：阶段 A–D、F、G 已实现；E 的 pruner 需重设计（见「零、进展 · 阶段 E」）
 > 参考基线：`D:\task\deepseek-harness`（dsh）的 `packages/bundle/base/cordis.patch.yml`、
 > `packages/fs/{fs-local,tool-fs,tool-str-replace-editor,fs-observation-policy}`、
 > `packages/jobs/{jobs,jobs-local,tool-jobs}`、`docs/tool-catalog.md`、`docs/subsystems/filesystem.md`
@@ -216,6 +216,47 @@
   需要新增一种 surface 变更事件，并让 `_assertReplayable` 认可它。
 
 倾向 A（改动小、堵的是真实口子），但这是产品取舍，要单独决定。
+
+### 阶段 F · 已完成
+
+7 个包下沉到能力域目录，全部只落一级：
+
+| 之前 | 之后 |
+|---|---|
+| `packages/office`（`@tnega/office`） | `packages/office/office` |
+| `packages/tool-office` | `packages/office/tool-office` |
+| `packages/ptc-runtime` | `packages/ptc/ptc-runtime` |
+| `packages/ptc-runtime-quickjs` | `packages/ptc/ptc-runtime-quickjs` |
+| `packages/tool-ptc` | `packages/ptc/tool-ptc` |
+| `packages/user-questions` | `packages/questions/user-questions` |
+| `packages/tool-question` | `packages/questions/tool-question` |
+
+`packages/tools` 未动：它是缝定义，不是 consumer。
+
+同步的清单（逐项核实过）：
+
+1. `pnpm-workspace.yaml` 三行分组 glob；
+2. `scripts/build.mjs` 的 `packageDirs` 七条映射；
+3. `scripts/build.mjs` 的 `libraryEntries`：五条硬编码路径改走 `packageDir()`，并补 `office` / `tool-office` 两条
+   （此前它们不在库入口表里，是从别处打包的）；
+4. `scripts/build.mjs` 的 PTC worker 入口与 `pi-codemode` 的 realpath —— 后者第一次改错，
+   `${}` 落在普通字符串里不会插值，已改成模板字符串；
+5. 根 `package.json` 的五条 `exports.types` 路径；
+6. `src/index.ts` 的五条 re-export；
+7. `pnpm-lock.yaml`（由 `pnpm install --offline` 重写，importer 键与 workspace symlink 都已正确）；
+8. `docs/adr/0010-ptc-tool-orchestration.md` 与 `docs/fix/2026-09-30-review-ptc.md` 的路径。
+
+`tsconfig.build.json` 的 `include` 覆盖两级，无需改动；`tsc -p tsconfig.json` 与
+`tsc -p apps/web/tsconfig.json` 都通过。
+
+顺带产出 `packages/README.md`：能力域表 + 工具名到包的索引表 + 「加一个包要动哪四处」。
+它补上了「统一 tool 目录」方案唯一的好处（好找），而不必拆散「三角缝同域」。
+
+验证：`node scripts/build.mjs` 通过；`dist/types/packages/{ptc,questions,office}/…` 与
+`dist/{office,tool-office,tool-question,ptc-worker,quickjs}.js` 都在；
+`test/publish.test.ts` 12/12 通过，其中「resolves every documented subpath as a consumer
+via package exports」正好覆盖这五条导出路径；`packages/{ptc,questions,office,runtime,agent,host}`
+共 302 项通过。
 
 ---
 

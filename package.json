@@ -239,23 +239,23 @@
       "import": "./dist/loop-guard.js"
     },
     "./ptc-runtime": {
-      "types": "./dist/types/packages/ptc-runtime/src/index.d.ts",
+      "types": "./dist/types/packages/ptc/ptc-runtime/src/index.d.ts",
       "import": "./dist/ptc-runtime.js"
     },
     "./ptc-runtime-quickjs": {
-      "types": "./dist/types/packages/ptc-runtime-quickjs/src/index.d.ts",
+      "types": "./dist/types/packages/ptc/ptc-runtime-quickjs/src/index.d.ts",
       "import": "./dist/ptc-runtime-quickjs.js"
     },
     "./tool-ptc": {
-      "types": "./dist/types/packages/tool-ptc/src/index.d.ts",
+      "types": "./dist/types/packages/ptc/tool-ptc/src/index.d.ts",
       "import": "./dist/tool-ptc.js"
     },
     "./user-questions": {
-      "types": "./dist/types/packages/user-questions/src/index.d.ts",
+      "types": "./dist/types/packages/questions/user-questions/src/index.d.ts",
       "import": "./dist/user-questions.js"
     },
     "./tool-question": {
-      "types": "./dist/types/packages/tool-question/src/index.d.ts",
+      "types": "./dist/types/packages/questions/tool-question/src/index.d.ts",
       "import": "./dist/tool-question.js"
     }
   },
