@@ -385,6 +385,31 @@ dsh 同样没有独立 `wait` 工具（`docs/tool-catalog.md` 无此项），做
 
 ---
 
+## 八之二、并行工具调用（现状，未排期）
+
+现状是**全串行**，既非自动也非手动：
+
+- 一条 assistant 消息里的多个工具调用按顺序执行 —— `packages/agent/src/service.ts` 是
+  `for (const call of toolCalls) { await tools.execute(...) }`，没有并发分组。
+- `run_code`（PTC）内部也是串行的：`packages/tool-ptc/src/index.ts` 用一条 `queue` 串起来，
+  描述里明写「Calls are serialized, including Promise.all」。
+- 唯一的重叠来自**手动**：`shell` 的 `runInBackground` 让命令在 turn 之外继续跑，
+  `spawn_subagent` 让子 Agent 并行工作。并发是靠「另开一个执行单元」拿到的，
+  不是靠一次消息里的多个调用。
+
+dsh 做的是另一件事：`ToolDefinition.isConcurrencySafe(args)` 是**纯同步分类器**，
+默认独占（省略、抛错、返回非 `true` 都算独占），返回 `true` 的调用才加入同一批的并行组；
+约定是「加入并行的执行不得改父级状态，共享状态的写入必须可交换或失败即关闭」。
+分组对模型是自动的，授权是工具作者声明的。
+
+若要做，tnega 需要先解决三处不并行安全的地方，否则并行只会把顺序 bug 变成偶发 bug：
+`tools/execute` 与 post-execute 管线（spill、pruner 会并发写同一份溢出存储）、
+审批通道（`ApprovalBroker` 的 pending 表按 run key 挂起，同一 key 的两个并行请求会互相遮蔽）、
+`ToolOutputRecorder` 与会话 append 的顺序（`agent/step-end` 的 `calls` 按下标与 result 对齐）。
+文件写入已由阶段 B 的按路径锁覆盖，是唯一准备好的一项。
+
+---
+
 ## 九、风险
 
 1. **阶段 C.1 波及最广**：`job_start` 散在 `permissions.ts` 白名单、`project-activity`、
