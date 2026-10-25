@@ -157,3 +157,20 @@ it('keeps a file that could not be saved out of the message and says so', async 
   await act(async () => {})
   expect(onSubmit).toHaveBeenCalledWith('Hello', [])
 })
+
+it('carries a markdown list on with Shift+Enter and paints it under the text', () => {
+  const onSubmit = vi.fn(() => true)
+  const view = render(createElement(PromptBox, { onSubmit, placeholder: 'Reply…' }))
+  const box = messageBox(view)
+  type(box, '1. first')
+  fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+  expect(box.value).toBe('1. first\n2. ')
+  expect(onSubmit).not.toHaveBeenCalled()
+  expect(view.container.querySelector('.composer-highlight .md-marker')?.textContent).toBe('1. ')
+  // Shift+Enter on the empty item ends the list; Enter still sends.
+  box.setSelectionRange(box.value.length, box.value.length)
+  fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+  expect(box.value).toBe('1. first\n')
+  fireEvent.keyDown(box, { key: 'Enter' })
+  expect(onSubmit).toHaveBeenCalledWith('1. first', [])
+})

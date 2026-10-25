@@ -44,9 +44,8 @@ it('changes permissions while a turn runs and says the change applies from the n
   const view = mount()
   await view.findByText('Looking at the errors.')
 
-  // The agent and the mode shape the whole run; the rest applies per step.
+  // The agent shapes the whole run; the rest applies per step.
   expect(view.getByRole('button', { name: /^Agent:/ })).toHaveProperty('disabled', true)
-  expect(view.getByRole('button', { name: /^Mode:/ })).toHaveProperty('disabled', true)
   expect(view.getByRole('button', { name: /^Model:/ })).toHaveProperty('disabled', false)
   const access = view.getByRole('button', { name: /^Access:/ })
   expect(access).toHaveProperty('disabled', false)

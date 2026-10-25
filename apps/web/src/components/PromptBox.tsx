@@ -5,6 +5,7 @@ import { imageFromFile, imageSrc, MAX_IMAGES_PER_MESSAGE } from '../lib/attachme
 import { COMPOSER_INSERT, type ComposerContext, type ComposerInsert } from '../lib/browser-live'
 import { applyCompletion, detectTrigger, rankCommands, type CommandSpec, type Trigger } from '../lib/completion'
 import { errorText } from '../lib/hooks'
+import { continueList, indentList, markdownTokens, type InputEdit } from '../lib/markdown-input'
 import type { ImageAttachment } from '../lib/types'
 
 /** One argument suggestion for a command, e.g. a model id or a skill name. */
@@ -119,6 +120,7 @@ export function PromptBox({
   const [dismissed, setDismissed] = useState('')
   const [asyncItems, setAsyncItems] = useState<{ key: string, items: CompletionItem[] } | undefined>()
   const input = useRef<HTMLTextAreaElement>(null)
+  const highlight = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const pendingCaret = useRef<number | undefined>(undefined)
   const showStop = running && Boolean(onStop)
@@ -127,13 +129,31 @@ export function PromptBox({
   const acceptsFiles = acceptImages || Boolean(attachFile)
 
   const maxHeight = compact || inline ? 180 : 280
+  /**
+   * The highlight layer sits under the textarea and must wrap exactly like
+   * it: same font, padding and text width (the textarea's scrollbar takes
+   * some), scrolled to the same place. Its height follows the box in CSS, so
+   * it keeps up while the textarea's height animates.
+   */
+  const mirror = useCallback(() => {
+    const el = input.current
+    const layer = highlight.current
+    if (!el || !layer) return
+    const style = getComputedStyle(el)
+    layer.style.font = style.font
+    layer.style.letterSpacing = style.letterSpacing
+    layer.style.padding = style.padding
+    layer.style.width = `${el.clientWidth}px`
+    layer.scrollTop = el.scrollTop
+  }, [])
   const fit = useCallback(() => {
     const el = input.current
     // Without a width (hidden or not laid out yet) the text would wrap per character.
     if (!el || el.clientWidth === 0) return
     el.style.height = '0px'
     el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
-  }, [maxHeight])
+    mirror()
+  }, [maxHeight, mirror])
 
   useLayoutEffect(fit, [text, fit])
 
@@ -266,6 +286,14 @@ export function PromptBox({
   useEffect(() => {
     menu.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [active])
+
+  /** Applies a markdown list edit as one step, the caret where the edit says. */
+  const applyEdit = (edit: InputEdit) => {
+    pendingCaret.current = edit.caret
+    setText(edit.text)
+    setCaret(edit.caret)
+  }
+  const tokens = useMemo(() => markdownTokens(text), [text])
 
   const accept = (item: CompletionItem | undefined): boolean => {
     if (!item || !trigger) return false
@@ -430,6 +458,14 @@ export function PromptBox({
             {imageNotice && images.length > 0 && <span className="composer-attachment-note">{imageNotice}</span>}
           </div>
         )}
+        <div className="composer-input">
+        <div className="composer-highlight" ref={highlight} aria-hidden>
+          {tokens.map((token, index) => token.kind
+            ? <span key={index} className={`md-${token.kind}`}>{token.text}</span>
+            : token.text)}
+          {/* A trailing newline needs a character after it to take up its line. */}
+          {text.endsWith('\n') ? ' ' : null}
+        </div>
         <textarea
           ref={input}
           value={text}
@@ -443,6 +479,7 @@ export function PromptBox({
             setCaret(event.target.selectionStart)
           }}
           onSelect={event => setCaret(event.currentTarget.selectionStart)}
+          onScroll={mirror}
           onPaste={event => {
             if (!acceptsFiles) return
             const pasted = droppedFiles(event.clipboardData)
@@ -472,6 +509,24 @@ export function PromptBox({
                 }
               }
             }
+            const el = event.currentTarget
+            // Markdown lists: Shift+Enter carries the list on, Tab nests an item and Shift+Tab lifts it.
+            if (event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+              const edit = continueList(text, el.selectionStart, el.selectionEnd)
+              if (edit) {
+                event.preventDefault()
+                applyEdit(edit)
+                return
+              }
+            }
+            if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+              const edit = indentList(text, el.selectionStart, el.selectionEnd, event.shiftKey)
+              if (edit) {
+                event.preventDefault()
+                applyEdit(edit)
+                return
+              }
+            }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
               const urgent = running && (event.ctrlKey || event.metaKey)
@@ -483,6 +538,7 @@ export function PromptBox({
             }
           }}
         />
+        </div>
         <div className="composer-toolbar" onClick={event => event.stopPropagation()}>
           <div className="composer-controls">
             {acceptsFiles && (
