@@ -46,14 +46,14 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
   return {
     schema: {
       name: 'read_file',
-      description: `Read a UTF-8 text file, one page of lines at a time: { path, bytes, content, truncated, lines: { start, end, total } }. Page with offset (1-based) and limit (at most ${config.maxReadLines} lines). Lines longer than ${config.maxLineChars} characters are cut only when a page would not fit; read one long line whole with limit=1. Reading records the version, which a later write or edit is checked against.`,
+      description: `Read a UTF-8 text file, one page of lines at a time: { path, bytes, content, truncated, lines: { start, end, total } }. Page with offset (1-based) and limit (at most ${config.maxReadLines} lines). Lines longer than ${config.maxLineChars} characters are cut only when a page would not fit; read one long line whole (up to the byte limit) with limit=1. Reading records the version, which a later write or edit is checked against.`,
       parameters: {
         type: 'object',
         properties: {
           path: { type: 'string', description: 'file path relative to the workspace' },
           offset: { type: 'number', description: 'first line to return, 1-based (default 1)' },
           limit: { type: 'number', description: `how many lines to return (default and maximum ${config.maxReadLines})` },
-          maxBytes: { type: 'number', description: 'optional byte limit for the returned content' },
+          maxBytes: { type: 'number', description: `optional smaller byte limit for the returned content (at most ${config.maxReadBytes})` },
         },
         required: ['path'],
       },
@@ -73,8 +73,11 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
       const requested = optionalNumber(args.limit, 'limit') ?? config.maxReadLines
       if (!Number.isInteger(requested) || requested < 1) throw new ToolInputError(`limit must be a positive whole number: ${requested}`)
       const limit = Math.min(requested, config.maxReadLines)
-      const maxBytes = optionalNumber(args.maxBytes, 'maxBytes') ?? config.maxReadBytes
-      if (maxBytes <= 0) throw new ToolInputError(`maxBytes must be positive: ${maxBytes}`)
+      const askedBytes = optionalNumber(args.maxBytes, 'maxBytes') ?? config.maxReadBytes
+      if (askedBytes <= 0) throw new ToolInputError(`maxBytes must be positive: ${askedBytes}`)
+      // The model may ask for less, never more: read results skip spill, so
+      // this is the only cap between a huge file and the context window.
+      const maxBytes = Math.min(askedBytes, config.maxReadBytes)
 
       // A file past the whole-file limit is paged within the prefix that was
       // read; its hash is then incomplete, so the read does not authorize a
@@ -106,7 +109,10 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
       const joined = lines.join('\n')
       const bytes = Buffer.byteLength(joined, 'utf8')
       const content = bytes > maxBytes ? trimPartialUtf8(Buffer.from(joined, 'utf8').subarray(0, maxBytes)).toString('utf8') : joined
-      const truncated = !whole || end < total || offset > 1 || clippedAt.length > 0 || content.length !== joined.length
+      const cut = content.length !== joined.length
+      const truncated = !whole || end < total || offset > 1 || clippedAt.length > 0 || cut
+      // One line larger than the whole budget cannot be paged any further here.
+      const longLine = cut && page.length === 1 && clippedAt.length === 0
       return {
         path: config.displayPath(target),
         bytes: stats.size,
@@ -118,7 +124,9 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
             clippedLines: clippedAt.length,
             note: `${clippedAt.length} long line(s) were cut at ${config.maxLineChars} characters to fit the page (first: line ${clippedAt[0]}); read one in full with offset=${clippedAt[0]} and limit=1.`,
           }
-          : {}),
+          : longLine
+            ? { note: `line ${offset} is longer than ${maxBytes} bytes and was cut; read_file cannot page within a line, so read the rest with shell (for example \`cut -c\` or \`head -c\`) if you need it.` }
+            : {}),
       }
     },
   }

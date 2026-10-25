@@ -22,13 +22,12 @@ import { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { subagentLocal } from '@tnega/subagent-local'
 import { toolSubagent } from '@tnega/tool-subagent'
 import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
-import { createWebFetchTool } from '@tnega/tool-web-fetch'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
 import { runtimeCapabilities } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { webSearchTool } from '@tnega/tool-web-search'
-import { createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
+import { builtinTools, createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
 import { readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { patchSessionMeta, readSessionSummary } from '@tnega/session-store'
 
@@ -873,7 +872,11 @@ export async function withCodingAgent<T>(
     registry.guard(permissionGuard(summary.permission ?? 'read-only', runKey(workspace, id), new ApprovalBroker(), { workspace }))
     // A typed slash install URL is an explicit user request to read that source.
     // Model calls only have http_get when their runtime enables network tools.
-    registry.register(createWebFetchTool())
+    await root.plugin(builtinTools, {
+      cwd: workspace,
+      allowNetwork: true,
+      disabled: ['read_file', 'write_file', 'edit_file', 'list_dir'],
+    })
     fiber = await root.plugin(createCodingAgentPlugin({
       cwd: workspace,
       skills: true,

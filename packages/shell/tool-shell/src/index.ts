@@ -1,4 +1,3 @@
-import { resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import {
   describeShell,
@@ -14,7 +13,7 @@ import {
   optionalNumber,
   optionalString,
   record,
-  resolveInside,
+  resolveWorkspacePath,
   stringField,
   type ToolDefinition,
   type ToolExecuteOptions,
@@ -40,10 +39,6 @@ export interface ToolShellConfig {
    * Defaults to on when this config can start processes at all.
    */
   backgroundJobs?: boolean
-}
-
-async function enabled(value: boolean | (() => boolean | Promise<boolean>)): Promise<boolean> {
-  return typeof value === 'function' ? await value() : value
 }
 
 /** Decode each stream incrementally, so a character split across chunks arrives whole. */
@@ -73,9 +68,7 @@ export function createShellTool(config: ToolShellConfig = {}, owned?: ProcessReg
   const timeoutDefault = config.timeoutMs ?? 15_000
   const maxBuffer = config.maxOutputBytes ?? 1024 * 1024
   const background = config.backgroundJobs ?? Boolean(processes && execution.startShell)
-  const resolveCwd = async (path: string): Promise<string> => await enabled(outside)
-    ? resolve(cwdRoot, path)
-    : await resolveInside(cwdRoot, path)
+  const resolveCwd = async (path: string): Promise<string> => await resolveWorkspacePath(cwdRoot, outside, path)
 
   const properties: Record<string, unknown> = {
     command: { type: 'string', description: 'shell command to run' },

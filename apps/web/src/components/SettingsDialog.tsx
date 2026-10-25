@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import { DISPLAY_DEFAULTS, PALETTES, type DisplayChange, type DisplayPreferences } from '../lib/display'
-import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, InsightsSession, Protocol } from '../lib/types'
+import { isFsGuardMode, type ApprovalMode, type ApprovalReviewerSettings, type ConfigSnapshot, type Effort, type FsGuardMode, type InsightsSession, type Protocol } from '../lib/types'
 import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
 import { ContextInsights } from './context/ContextInsights'
@@ -30,12 +30,6 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: strin
 ]
 
 const SECTION_IDS = SECTIONS.map(section => section.id)
-
-type FsGuard = 'off' | 'warn' | 'enforce'
-
-function isFsGuard(value: string): value is FsGuard {
-  return value === 'off' || value === 'warn' || value === 'enforce'
-}
 
 export function SettingsDialog({
   config,
@@ -65,7 +59,7 @@ export function SettingsDialog({
   const stored = config?.config
   const [section, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
   const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
-  const [fsGuard, setFsGuard] = useState<FsGuard>(stored?.fsGuard ?? 'warn')
+  const [fsGuard, setFsGuard] = useState<FsGuardMode>(stored?.fsGuard ?? 'warn')
   const [memoryEnabled, setMemoryEnabled] = useState(stored?.projectMemory?.enabled ?? true)
   const [memoryModel, setMemoryModel] = useState(stored?.projectMemory?.coldModelId ?? '')
   const [memoryCalls, setMemoryCalls] = useState(stored?.projectMemory?.maxCallsPerDay ?? 4)
@@ -105,7 +99,10 @@ export function SettingsDialog({
   const save = async () => {
     setSaving(true)
     setError(undefined)
-    const patch: ConfigPatch = { codeMode, fsGuard, shell, protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
+    const patch: ConfigPatch = { codeMode, shell, protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
+    // Sent only when changed, so a dialog opened before the config arrived
+    // cannot write the default over a stored `off` or `enforce`.
+    if (fsGuard !== (stored?.fsGuard ?? 'warn')) patch.fsGuard = fsGuard
     patch.projectMemory = { enabled: memoryEnabled, coldModelId: memoryModel, maxCallsPerDay: memoryCalls, maxInputTokens: memoryInput, maxOutputTokens: memoryOutput, maxTokensPerDay: memoryDaily, minIntervalSeconds: memoryInterval }
     if (!Number.isSafeInteger(dreamIdle) || dreamIdle < 1 || dreamIdle > 1440) return fail('Quiet minutes must be a whole number from 1 to 1440', 'model')
     patch.memoryDream = { enabled: dreamEnabled, modelId: dreamModel, idleMinutes: dreamIdle }
@@ -358,7 +355,7 @@ export function SettingsDialog({
             </label>
             <label className="field span-2">
               <span className="field-label">File write guard · 实验性</span>
-              <select aria-label="File write guard" value={fsGuard} onChange={event => { const next = event.target.value; if (isFsGuard(next)) setFsGuard(next) }}>
+              <select aria-label="File write guard" value={fsGuard} onChange={event => { const next = event.target.value; if (isFsGuardMode(next)) setFsGuard(next) }}>
                 <option value="off">off · 不记录读取版本</option>
                 <option value="warn">warn · 覆盖被改过的文件时写入并提示</option>
                 <option value="enforce">enforce · 未读过或被改过则拒绝</option>

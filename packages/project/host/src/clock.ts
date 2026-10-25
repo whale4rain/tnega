@@ -12,7 +12,7 @@ export function nowTool(): ToolDefinition {
   return {
     schema: {
       name: 'now',
-      description: 'Return the current date and time as an ISO 8601 string in the local timezone.',
+      description: 'Return the current date and time as an ISO 8601 string (UTC).',
       parameters: { type: 'object', properties: {} },
     },
     interruption: 'retry',
@@ -21,7 +21,7 @@ export function nowTool(): ToolDefinition {
   }
 }
 
-/** Mount `now` on this scope's registry. */
+/** Mount `now` on this scope's registry. ProjectHost mounts it on every Project, also when `builtinTools` is off: it is a Project tool, not a builtin. */
 export const projectClock = {
   name: 'project-clock',
   inject: ['tools'],

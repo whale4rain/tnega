@@ -4,6 +4,7 @@
  * in-process server on a loopback port).
  */
 import type {
+  FsGuardMode,
   ModelRouteInput,
   ModelDiscovery,
   ModelDiscoveryInput,
@@ -68,7 +69,7 @@ export interface ConfigPatch {
   memoryDream?: MemoryDreamSettings
   codeMode?: boolean
   /** How strictly a file write must match what the Session already read. */
-  fsGuard?: 'off' | 'warn' | 'enforce'
+  fsGuard?: FsGuardMode
   /** Shell name or path; empty restores automatic detection. */
   shell?: string
   approvalReview?: ApprovalReviewerSettings & { apiKey?: string }

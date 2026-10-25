@@ -25,7 +25,7 @@ import { ProjectHost } from '@tnega/project-host'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { resolveLlmEnv } from '@tnega/config'
-import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
+import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun } from './runs.js'
@@ -125,8 +125,8 @@ const apiRoutes: ApiRoute[] = [
             patch.codeMode = body.codeMode
           }
       if (body.fsGuard !== undefined) {
-            if (body.fsGuard !== 'off' && body.fsGuard !== 'warn' && body.fsGuard !== 'enforce') {
-              sendError(res, 400, 'fsGuard must be off, warn or enforce'); return
+            if (!isFsGuardMode(body.fsGuard)) {
+              sendError(res, 400, `fsGuard must be one of ${FS_GUARD_MODES.join(', ')}`); return
             }
             patch.fsGuard = body.fsGuard
           }
@@ -755,6 +755,7 @@ export async function projectHostFor(
     JSON.stringify(config.projectMemory ?? {}),
     JSON.stringify(config.models ?? []),
     config.codeMode ? 'ptc' : 'native',
+    config.fsGuard ?? 'warn',
   ].join('|')
   const existing = context.projectHosts?.get(path)
   if (existing?.signature === signature) return existing.host
@@ -777,6 +778,7 @@ export async function projectHostFor(
       allowShell: true,
       allowOutsideWorkspace: context.projectPermission === 'bypass',
       allowPrivateNetwork: context.projectPermission === 'bypass',
+      fsGuard: config.fsGuard ?? 'warn',
     },
   })
   context.projectHosts?.set(path, { host, signature })

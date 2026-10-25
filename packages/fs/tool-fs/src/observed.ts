@@ -22,10 +22,8 @@ export function fingerprint(content: Uint8Array | string): string {
 const MAX_OBSERVATIONS = 4096
 
 /**
- * The observations of one file-tools scope, keyed by Agent and path.
- *
- * Owned by the plugin that registered the tools, so it goes away with that
- * plugin: two runtimes in one host process never see each other's reads.
+ * Observations keyed by Agent and (followed) path. Injectable for tests and
+ * isolated hosts; by default every mount shares {@link sharedObservations}.
  */
 export class ObservationStore {
   private readonly entries = new Map<string, Observation>()
@@ -62,3 +60,11 @@ export class ObservationStore {
     }
   }
 }
+
+/**
+ * The process-wide store. A host rebuilds an Agent's runtime between turns
+ * (model or permission change, plan mode), and a store owned by one mount
+ * would forget the reads the transcript still shows; the guard would then
+ * refuse a valid edit. Entries are keyed by Agent id and bounded.
+ */
+export const sharedObservations = new ObservationStore()

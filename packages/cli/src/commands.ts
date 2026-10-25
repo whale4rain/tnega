@@ -153,7 +153,8 @@ export async function runAgentCommand(
       : {}),
     ...(options.allowShell !== undefined ? { allowShell: options.allowShell } : {}),
     ...(options.sandboxMode !== undefined ? { sandboxMode: options.sandboxMode } : {}),
-    ...(options.fsGuard !== undefined ? { fsGuard: options.fsGuard } : {}),
+    // The flag wins; otherwise the guard saved in Settings applies here too.
+    ...((options.fsGuard ?? systemConfig.fsGuard) !== undefined ? { fsGuard: options.fsGuard ?? systemConfig.fsGuard } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
   })

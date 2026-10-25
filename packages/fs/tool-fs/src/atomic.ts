@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { chmod, link, lstat, mkdir, open, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, link, mkdir, open, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { ToolInputError } from '@tnega/tools'
 
@@ -14,18 +14,6 @@ function code(error: unknown): string | undefined {
 }
 
 const pause = async (ms: number): Promise<void> => await new Promise(done => setTimeout(done, ms))
-
-/**
- * The file a write lands on. A symlink is written through, as a plain
- * `writeFile` would: replacing the link with a regular file would silently cut
- * it from what it points to. The caller already checked that the resolved path
- * stays inside the workspace.
- */
-async function publishTarget(target: string): Promise<string> {
-  const entry = await lstat(target).catch(() => undefined)
-  if (!entry?.isSymbolicLink()) return target
-  return await realpath(target).catch(() => target)
-}
 
 /**
  * Publish a file atomically: the target is either the old content or the new
@@ -43,23 +31,27 @@ async function publishTarget(target: string): Promise<string> {
  *    `sync`ed before it is visible to anyone else;
  * 3. `rename` onto the target — a directory-entry swap, atomic on POSIX and on
  *    Windows (`MoveFileEx` with replace). While another program holds the
- *    target open on Windows the swap is retried, then the content is written
- *    in place rather than failing the call;
+ *    target open on Windows the swap is retried briefly, then the call fails
+ *    with the old content intact: a non-atomic fallback would break the
+ *    promise above;
  * 4. for a target known to be absent, `link` instead: atomic *and* never
  *    overwrites, so a concurrent creator surfaces as `EEXIST` rather than
  *    being silently clobbered. A filesystem without hard links falls back to
  *    `rename`.
  *
+ * `target` is the followed name of the file (the file tools resolve symlinks
+ * and fence the result before calling): a link swapped in afterwards is
+ * replaced by the rename, never followed out of the workspace.
+ *
  * A crash mid-write leaves the old target intact and some staging residue.
  */
 export async function writeFileAtomic(
-  requested: string,
+  target: string,
   content: string,
   options: { createOnly?: boolean; signal?: AbortSignal } = {},
 ): Promise<void> {
   const { createOnly = false, signal } = options
   signal?.throwIfAborted()
-  const target = await publishTarget(requested)
   const directory = dirname(target)
   await mkdir(directory, { recursive: true })
   // Permission bits of the file being replaced; a new file gets the usual
@@ -83,7 +75,7 @@ export async function writeFileAtomic(
     }
     signal?.throwIfAborted()
     if (createOnly) await publishNew(tempPath, target)
-    else await replace(tempPath, target, content)
+    else await replace(tempPath, target)
   } finally {
     // The target is committed (or the write failed); staging residue is inert.
     await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
@@ -110,7 +102,7 @@ async function publishNew(tempPath: string, target: string): Promise<void> {
   await rename(tempPath, target)
 }
 
-async function replace(tempPath: string, target: string, content: string): Promise<void> {
+async function replace(tempPath: string, target: string): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
     try {
       await rename(tempPath, target)
@@ -124,9 +116,8 @@ async function replace(tempPath: string, target: string, content: string): Promi
     }
   }
   // Still held open after the retries (an editor, a watcher, an antivirus
-  // scan): an in-place write is what the tool did before atomic publishing,
-  // and it beats failing a write the user asked for.
-  await writeFile(target, content, 'utf8')
+  // scan, or a real permission denial). Fail with the old content intact.
+  throw new ToolInputError(`${basename(target)} is open in another program or not writable; close it and retry`)
 }
 
 /** Whether the path exists at all, without following it into a directory. */

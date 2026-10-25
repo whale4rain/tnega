@@ -742,9 +742,6 @@ importers:
       '@tnega/tool-subagent':
         specifier: workspace:*
         version: link:../subagent/tool-subagent
-      '@tnega/tool-web-fetch':
-        specifier: workspace:*
-        version: link:../web/tool-web-fetch
       '@tnega/tool-web-search':
         specifier: workspace:*
         version: link:../web/tool-web-search

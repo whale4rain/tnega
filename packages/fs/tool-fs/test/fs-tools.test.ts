@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { tools, type ToolResult, type ToolsService } from '@tnega/tools'
-import { toolFs, type ToolFsConfig } from '../src/index.js'
+import { ObservationStore, toolFs, type ToolFsConfig } from '../src/index.js'
 
 const dirs: string[] = []
 
@@ -301,15 +301,73 @@ describe('atomic writes keep what the file was', () => {
   })
 })
 
-describe('observations belong to one mount', () => {
-  it('does not let a read in one runtime vouch for a write in another', async () => {
+describe('symlinks are followed once and fenced', () => {
+  it.skipIf(process.platform === 'win32')('treats a link and its target as one file for the read guard', async () => {
+    const dir = await tempDir('tnega-fs-link-guard-')
+    const service = await mount({ cwd: dir, fsGuard: 'enforce' })
+    await writeFile(join(dir, 'real.txt'), 'old\n', 'utf8')
+    await symlink('real.txt', join(dir, 'link.txt'))
+
+    await ok(service, 'read_file', { path: 'real.txt' }, 'agent')
+    await ok(service, 'write_file', { path: 'link.txt', content: 'new\n' }, 'agent')
+    expect(await readFile(join(dir, 'real.txt'), 'utf8')).toBe('new\n')
+  })
+
+  it.skipIf(process.platform === 'win32')('creates the target of a dangling link', async () => {
+    const dir = await tempDir('tnega-fs-link-dangling-')
+    const service = await mount({ cwd: dir })
+    await symlink(join('logs', 'out.log'), join(dir, 'out.log'))
+
+    await ok(service, 'write_file', { path: 'out.log', content: 'line\n' })
+    expect((await lstat(join(dir, 'out.log'))).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(dir, 'logs', 'out.log'), 'utf8')).toBe('line\n')
+  })
+
+  it.skipIf(process.platform === 'win32')('refuses a dangling link that points outside the workspace', async () => {
+    const dir = await tempDir('tnega-fs-link-escape-')
+    const outside = await tempDir('tnega-fs-link-outside-')
+    const service = await mount({ cwd: dir })
+    await symlink(join(outside, 'new.txt'), join(dir, 'escape.txt'))
+
+    const refused = await fail(service, 'write_file', { path: 'escape.txt', content: 'x' })
+    expect(refused.error?.message).toMatch(/escapes the workspace/)
+    expect(await readdir(outside)).toEqual([])
+  })
+})
+
+describe('read observations', () => {
+  it('survive a rebuilt runtime, so a read in one turn vouches for the next', async () => {
+    const dir = await tempDir('tnega-fs-rebuilt-')
+    await writeFile(join(dir, 'kept.txt'), 'one\n', 'utf8')
+    const before = await mount({ cwd: dir, fsGuard: 'enforce' })
+    await ok(before, 'read_file', { path: 'kept.txt' }, 'agent')
+
+    const after = await mount({ cwd: dir, fsGuard: 'enforce' })
+    await ok(after, 'write_file', { path: 'kept.txt', content: 'two\n' }, 'agent')
+    expect(await readFile(join(dir, 'kept.txt'), 'utf8')).toBe('two\n')
+  })
+
+  it('stay apart when each mount is given its own store', async () => {
     const dir = await tempDir('tnega-fs-scopes-')
     await writeFile(join(dir, 'shared.txt'), 'one\n', 'utf8')
-    const first = await mount({ cwd: dir, fsGuard: 'enforce' })
-    const second = await mount({ cwd: dir, fsGuard: 'enforce' })
+    const first = await mount({ cwd: dir, fsGuard: 'enforce', observations: new ObservationStore() })
+    const second = await mount({ cwd: dir, fsGuard: 'enforce', observations: new ObservationStore() })
 
     await ok(first, 'read_file', { path: 'shared.txt' }, 'agent')
     const refused = await fail(second, 'write_file', { path: 'shared.txt', content: 'two\n' }, 'agent')
     expect(refused.error?.message).toMatch(/has not been read/)
+  })
+})
+
+describe('read_file byte cap', () => {
+  it('never returns more than the configured cap, whatever maxBytes asks', async () => {
+    const dir = await tempDir('tnega-fs-cap-')
+    const service = await mount({ cwd: dir, maxReadBytes: 16 })
+    await writeFile(join(dir, 'one-line.js'), 'x'.repeat(100), 'utf8')
+
+    const page = await ok(service, 'read_file', { path: 'one-line.js', limit: 1, maxBytes: 100_000_000 })
+    expect(page.content).toBe('x'.repeat(16))
+    expect(page.truncated).toBe(true)
+    expect(page.note).toMatch(/line 1 is longer than 16 bytes/)
   })
 })

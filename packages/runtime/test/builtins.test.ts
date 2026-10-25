@@ -293,6 +293,7 @@ describe('file tools', () => {
       content: '1234',
       truncated: true,
       lines: { start: 1, end: 1, total: 1 },
+      note: expect.stringMatching(/line 1 is longer than 4 bytes/),
     })
     expect(await ok(service, 'read_file', { path: 'long.txt' }))
       .toMatchObject({ bytes: 10, content: '1234567890', truncated: false })
@@ -318,6 +319,7 @@ describe('file tools', () => {
         content: 'ab',
         truncated: true,
         lines: { start: 1, end: 1, total: 1 },
+        note: expect.stringMatching(/line 1 is longer than 4 bytes/),
       })
     expect(await ok(service, 'read_file', { path: 'note.txt', maxBytes: 5 }))
       .toMatchObject({ content: 'ab记', truncated: true })

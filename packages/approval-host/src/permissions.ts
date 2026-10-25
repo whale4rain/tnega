@@ -17,6 +17,13 @@ export type PermissionModeSource = PermissionMode | (() => PermissionMode | Prom
 /** 与 `write_file` 同级：workspace-write 下在工作区内直接放行。 */
 const WORKSPACE_WRITES = new Set(['write_file', 'edit_file', 'office_create', 'office_edit'])
 
+/**
+ * Tools whose `path` (`cwd` for shell) can leave the workspace under a `bypass`
+ * parent; a narrower child must not reach outside through them unasked. Built
+ * from the write list so a new write tool cannot be missed here.
+ */
+const PATH_TOOLS = new Set([...WORKSPACE_WRITES, 'read_file', 'list_dir', 'shell'])
+
 const ALWAYS_ALLOWED = new Set([
   // 只读
   'now', 'read_file', 'list_dir',
@@ -177,7 +184,7 @@ export function permissionGuard(
       ? request.input as Record<string, unknown> : {}
     const rawPath = typeof input[pathKey] === 'string' ? input[pathKey] : '.'
     let scoped = true
-    if (unrestricted && ['read_file', 'write_file', 'edit_file', 'list_dir', 'shell'].includes(request.name)) {
+    if (unrestricted && PATH_TOOLS.has(request.name)) {
       try { await resolveInside(options.workspace, rawPath) } catch { scoped = false }
     }
     // One tool, several verbs: reading skills never needs approval, writing

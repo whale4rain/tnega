@@ -480,7 +480,7 @@ export interface ConfigSnapshot {
     memoryDream?: MemoryDreamSettings
     codeMode?: boolean
     /** How strictly a file write must match what the Session already read. */
-    fsGuard?: 'off' | 'warn' | 'enforce'
+    fsGuard?: FsGuardMode
     /** Saved shell preference; empty means detect automatically. */
     shell?: string
     approvalReview?: ApprovalReviewerSettings
@@ -590,4 +590,12 @@ export interface QuestionAnswerItem {
   questionId: string
   selected?: string[]
   text?: string
+}
+
+/** The file write guard's modes (mirrors `@tnega/config`, which the browser cannot import). */
+export const FS_GUARD_MODES = ['off', 'warn', 'enforce'] as const
+export type FsGuardMode = typeof FS_GUARD_MODES[number]
+
+export function isFsGuardMode(value: unknown): value is FsGuardMode {
+  return FS_GUARD_MODES.some(mode => mode === value)
 }

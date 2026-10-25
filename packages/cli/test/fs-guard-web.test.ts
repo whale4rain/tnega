@@ -64,6 +64,7 @@ it('saves the file write guard and applies it to the next run', async () => {
   } finally {
     await server.close()
     await new Promise<void>((resolve, reject) => llm.close(error => error ? reject(error) : resolve()))
-    await rm(workspace, { recursive: true, force: true })
+    // Windows can hold the Session files for a moment after the server closes.
+    await rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
   }
 })

@@ -74,9 +74,14 @@ sha256 按内容判定，没有这个问题；代价是每次覆盖前完整读�
 
 - 文件工具在文件域自己的包 `packages/fs/tool-fs`（read / write / edit / list /
   observed / atomic / guards）；按路径锁 `withPathLock` 留在 `@tnega/tools`，因为
-  Windows ACL 授权也用它。观测记录属于挂载这组工具的插件实例，不再是进程级全局表。
-- 发布保留目标原有的权限位（可执行脚本仍可执行），symlink 写穿到它指向的文件而不是被
-  替换成普通文件；Windows 上目标被别的程序占用时重试，仍失败则退回原地写入；没有硬链接
+  Windows ACL 授权也用它。观测记录默认仍是进程级的一张表（`sharedObservations`，按 Agent
+  与路径记）：宿主在换模型、换权限、plan 模式时会重建运行时，按挂载私有的表会忘掉对话里
+  明明读过的文件；需要隔离的宿主或测试可以注入自己的 `ObservationStore`。
+- 发布保留目标原有的权限位（可执行脚本仍可执行）。symlink 写穿到它指向的文件而不是被
+  替换成普通文件：路径在解析时就跟随到底（悬空链接也跟到它的目标），跟随后的名字**再过
+  一次工作区围栏**，锁、观测记录与写入都用这一个名字；之后被换成链接的目标只会被 rename
+  替换，不会被跟随出工作区。Windows 上目标被别的程序占用时短暂重试，仍失败则报错、旧内容
+  不动（不退回非原子的原地写入）；没有硬链接
   的文件系统（exFAT、部分网络盘）上新建文件退回 `rename`。
 - `approval-host`、`host/runs.ts` 的 preimage 守卫、`workspace-files` 的变更统计、
   `auto-approval` 的证据摘要都学会认 `edit_file`。

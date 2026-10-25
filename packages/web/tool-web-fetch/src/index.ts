@@ -5,6 +5,7 @@ import {
   optionalRecord,
   record,
   stringField,
+  switchOn,
   ToolInputError,
   type ToolDefinition,
   type ToolExecuteOptions,
@@ -21,10 +22,6 @@ export interface ToolWebFetchConfig {
 }
 
 const DEFAULT_MAX_BYTES = 256 * 1024
-
-async function enabled(value: boolean | (() => boolean | Promise<boolean>)): Promise<boolean> {
-  return typeof value === 'function' ? await value() : value
-}
 
 /** Build `http_get` without registering it. */
 export function createWebFetchTool(config: ToolWebFetchConfig = {}): ToolDefinition {
@@ -68,7 +65,7 @@ export function createWebFetchTool(config: ToolWebFetchConfig = {}): ToolDefinit
         ...(Object.keys(headers).length ? { headers } : {}),
         ...(maxBytes !== DEFAULT_MAX_BYTES ? { maxBytes } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
-        ...(await enabled(allowPrivate) ? { allowPrivate: true } : {}),
+        ...(await switchOn(allowPrivate) ? { allowPrivate: true } : {}),
       })
     },
   }

@@ -99,6 +99,16 @@ it('shows the stored file write guard and saves the one chosen', async () => {
   expect(save.mock.calls[0]?.[0].fsGuard).toBe('enforce')
 })
 
+it('leaves the stored file write guard alone when another setting is saved', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  // Opened before the config arrived: the guard shows the default, but saving
+  // must not write it over whatever is stored.
+  const view = render(createElement(SettingsDialog, { config: undefined, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0]).not.toHaveProperty('fsGuard')
+})
+
 it('groups settings into sections and saves the chosen shell', async () => {
   localStorage.removeItem('tnega.settingsSection')
   const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
