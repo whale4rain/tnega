@@ -118,9 +118,8 @@ export const continuationNudge = {
       const key = `${event.agentId}:${event.turn ?? event.index}`
       const count = sent.get(key) ?? 0
       if (count >= max) return undefined
-      const registry = ctx.get('agents', false)
-      const agent = registry?.get(event.agentId)
-      if (!agent) return undefined
+      const steer = ctx.get('agentSteer', false)
+      if (!steer?.has(event.agentId)) return undefined
       sent.set(key, count + 1)
       // Forget old turns; a turn only needs its own count.
       for (const old of sent.keys()) {
@@ -128,7 +127,7 @@ export const continuationNudge = {
         sent.delete(old)
       }
       const content = reason === 'max_steps' ? BUDGET_NUDGE : CONTINUATION_NUDGE
-      await agent.steer({ messages: [{ role: 'user', name: CONTINUATION_NUDGE_NAME, content }] })
+      await steer.steer(event.agentId, { messages: [{ role: 'user', name: CONTINUATION_NUDGE_NAME, content }] })
       return undefined
     })
   },

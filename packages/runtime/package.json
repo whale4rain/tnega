@@ -10,6 +10,7 @@
     "@tnega/agent": "workspace:*",
     "@tnega/approval-host": "workspace:*",
     "@tnega/coding-agent": "workspace:*",
+    "@tnega/compaction": "workspace:*",
     "@tnega/core": "workspace:*",
     "@tnega/execution-sandbox": "workspace:*",
     "@tnega/jobs-local": "workspace:*",

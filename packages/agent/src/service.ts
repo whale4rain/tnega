@@ -21,6 +21,7 @@ import {
 } from '@tnega/session'
 import { toToolError, type ToolDefinition, type ToolError, type ToolResult } from '@tnega/tools'
 import type { ToolSchemaSnapshot } from './prompt.js'
+import { provideAgentSteer } from './steer.js'
 import type { ToolsService } from '@tnega/tools'
 
 import type {
@@ -463,9 +464,25 @@ export class AgentService {
     this.inbox = config.inbox ?? new AgentInbox()
   }
 
+  /** Identity its events and its steer seam answer to; absent for an anonymous run. */
+  get agentId(): string | undefined {
+    return this.config.agentId
+  }
+
   /** Call when a request begins an explicit new model-message series. */
   startSeries(): void {
     this._seriesStarted = true
+  }
+
+  /**
+   * Take everything queued for the next step of the running turn. A steer
+   * arrives here between steps; without a live Agent there is no durable inbox
+   * to claim from, so this in-memory queue is the seam's delivery path.
+   */
+  claimQueuedInputs(): AgentInput[] {
+    const claimed: AgentInput[] = []
+    for (let next = this.inbox.claim(); next; next = this.inbox.claim()) claimed.push(next)
+    return claimed
   }
 
   /** Clear any pending series marker after a completed run. */
@@ -1265,7 +1282,9 @@ export class AgentService {
   }
 
   private async _claimNextStepMessages(): Promise<ModelMessage[]> {
-    const inputs = await this.config.claimNextStep?.() ?? []
+    const inputs = this.config.claimNextStep
+      ? await this.config.claimNextStep()
+      : this.claimQueuedInputs()
     return inputs.flatMap(input => input.messages?.length
       ? copyMessages(input.messages)
       : input.text || input.attachments?.length
@@ -1471,6 +1490,16 @@ export const agent = {
     ctx.provide('agent', service)
     ctx.provide('agentLoop', (input?: AgentInput, options?: AgentRunOptions) => service.run(input, options))
     ctx.provide('inbox', service.inbox)
+    // One Agent, no registry: this scope is its own steer seam.
+    provideAgentSteer(ctx, {
+      has: agentId => service.agentId !== undefined && agentId === service.agentId,
+      async steer(agentId, input) {
+        if (service.agentId === agentId) service.inbox.steer(input)
+      },
+      async inject(agentId, input) {
+        if (service.agentId === agentId) service.inbox.push(input)
+      },
+    })
     return () => {}
   },
 }

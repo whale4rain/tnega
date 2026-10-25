@@ -1327,6 +1327,9 @@ importers:
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
+      '@tnega/compaction':
+        specifier: workspace:*
+        version: link:../compaction
       '@tnega/core':
         specifier: workspace:*
         version: link:../core

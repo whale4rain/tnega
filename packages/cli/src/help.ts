@@ -68,7 +68,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       ['--allow-shell', 'let the agent run shell commands'],
       ['--allow-network', 'let the agent use the network'],
       ['--max-turns <n>', 'stop after n turns'],
-      ['--max-steps <n>', 'stop after n tool steps'],
+      ['--max-steps <n>', 'stop after n tool steps (default 64)'],
       ['--max-tokens <n>', 'output token limit per response'],
       ['--temperature <n>', 'sampling temperature'],
       ['--timeout-ms <n>', 'request timeout'],

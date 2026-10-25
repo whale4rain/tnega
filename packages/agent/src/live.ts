@@ -5,6 +5,7 @@ import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
 import { findInterruptedTurn, recoverInterruptedTurn } from './recovery.js'
+import { provideAgentSteer } from './steer.js'
 import {
   DurableInbox,
   type DurableInboxMessage,
@@ -1067,6 +1068,15 @@ export const agents = {
   apply: (ctx: Context) => {
     const registry = new AgentRegistry(ctx)
     ctx.provide('agents', registry)
+    provideAgentSteer(ctx, {
+      has: agentId => registry.get(agentId) !== undefined,
+      async steer(agentId, input) {
+        await registry.get(agentId)?.steer(input)
+      },
+      async inject(agentId, input) {
+        await registry.get(agentId)?.inject(input)
+      },
+    })
     registry.setFactory({
       create: (options) => buildHandle(ctx, options),
       resume: (options) => buildHandle(ctx, options, true),

@@ -404,8 +404,8 @@ export const loopGuard = {
       if (!signal) return
       if (!limit && event.index - turn.lastFiredStep < options.grace) return
 
-      const agent = ctx.get('agents', false)?.get(event.agentId)
-      if (!agent) return
+      const steer = ctx.get('agentSteer', false)
+      if (!steer?.has(event.agentId)) return
       turn.level = limit ? 3 : turn.level + 1
       turn.lastFiredStep = event.index
       // The pattern must show up again before the next level fires.
@@ -416,11 +416,11 @@ export const loopGuard = {
 
       if (turn.level >= 3) {
         turn.parked = true
-        await agent.steer({ messages: [{ role: 'user', name: LOOP_GUARD_PARK_NAME, content: parkText(signal) }] })
+        await steer.steer(event.agentId, { messages: [{ role: 'user', name: LOOP_GUARD_PARK_NAME, content: parkText(signal) }] })
       } else if (turn.level === 2) {
-        await agent.steer({ messages: [{ role: 'user', name: LOOP_GUARD_REFLECT_NAME, content: reflectText(signal) }] })
+        await steer.steer(event.agentId, { messages: [{ role: 'user', name: LOOP_GUARD_REFLECT_NAME, content: reflectText(signal) }] })
       } else {
-        await agent.steer({ messages: [{ role: 'user', name: LOOP_GUARD_NAME, content: nudgeText(signal) }] })
+        await steer.steer(event.agentId, { messages: [{ role: 'user', name: LOOP_GUARD_NAME, content: nudgeText(signal) }] })
       }
     }
 
@@ -428,11 +428,11 @@ export const loopGuard = {
       if (!event.agentId) return
       const state = agents.get(event.agentId)
       if (!state?.attempts.length) return
-      const agent = ctx.get('agents', false)?.get(event.agentId)
-      if (!agent) return
+      const steer = ctx.get('agentSteer', false)
+      if (!steer?.has(event.agentId)) return
       // A summary tends to drop what didn't work; say it again so it isn't retried.
       const list = state.attempts.map(item => `- ${item}`).join('\n')
-      await agent.inject({ messages: [{
+      await steer.inject(event.agentId, { messages: [{
         role: 'user',
         name: LOOP_GUARD_ATTEMPTS_NAME,
         content: `Kept across the summary: these attempts already failed or went in circles in this task. Do not repeat them unless something has changed.\n${list}`,

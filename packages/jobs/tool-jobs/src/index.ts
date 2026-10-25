@@ -27,7 +27,9 @@ function required(value: unknown, name: string): string {
 function ownerOf(ctx: Context, options: ToolExecuteOptions): LiveAgent | undefined {
   if (!options.agentId) return undefined
   const registry = ctx.get('agents', false)
-  const owner = registry?.get(options.agentId)
+  // A headless run has one Agent and no registry: its calls are unattributed.
+  if (!registry) return undefined
+  const owner = registry.get(options.agentId)
   if (!owner) throw new Error('background jobs require an active Agent identity')
   return owner
 }

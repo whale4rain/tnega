@@ -6,6 +6,7 @@ import type {
   LLMAdapter,
 } from '@tnega/agent'
 import type { Context, Plugin } from '@tnega/core'
+import type { LoopGuardConfig } from '@tnega/loop-guard'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import type { SandboxMode } from '@tnega/sandbox'
 import type { BuiltinToolsConfig, ToolPolicy } from '@tnega/tools'
@@ -25,6 +26,12 @@ export interface AgentProfile {
 export interface AgentRuntimeOptions {
   cwd: string
   sessionFile: string
+  /**
+   * Stable identity this scope's one Agent answers to. Defaults to the session
+   * file's name: a run that resumes the same file keeps the same id, which is
+   * what the loop guard and the continuation nudge key their state on.
+   */
+  agentId?: string
   profile?: AgentProfile
   llm?: LLMAdapter
   contextWindow?: number
@@ -40,6 +47,15 @@ export interface AgentRuntimeOptions {
   maxTurns?: number
   maxSteps?: number
   contextBudget?: AgentContextBudget
+  /**
+   * Compact automatically past the model window instead of failing the request.
+   * Defaults to on when an LLM adapter and a context window are known.
+   */
+  autoCompact?: boolean
+  /** Watch turns for stalls (nudge, reflect, park). Defaults to on. */
+  loopGuard?: boolean | LoopGuardConfig
+  /** Steer a turn that stopped mid-task one more step. Defaults to on. */
+  continuation?: boolean
   agent?: AgentDefinition
   toolPolicy?: ToolPolicy
   builtinTools?: false | BuiltinToolsConfig
