@@ -2,8 +2,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@tnega/core'
-import { builtinTools, localUrls, ProcessRegistry, stripAnsi, tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
+import { localUrls, ProcessRegistry, stripAnsi, tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
 import { jobsLocal } from '../../jobs-local/src/index.js'
+import { toolShell } from '@tnega/tool-shell'
 import { toolJobs } from '../src/index.js'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -15,7 +16,7 @@ async function setup(options: { processes?: ProcessRegistry; execution?: Executi
   dirs.push(cwd)
   const root = new Context()
   await root.plugin(tools)
-  const builtins = await root.plugin(builtinTools, { cwd, allowShell: true, ...options })
+  const builtins = await root.plugin(toolShell, { cwd, ...options })
   const jobs = await root.plugin(jobsLocal)
   await root.plugin(toolJobs)
   const registry: ToolsService = root.get('tools')

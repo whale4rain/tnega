@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { Context } from '@tnega/core'
 import { agents, type AgentRegistry } from '@tnega/agent'
 import { session, type SessionLog } from '@tnega/session'
-import { builtinTools, tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
+import { tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
 import { jobsLocal } from '../../jobs-local/src/index.js'
+import { toolShell } from '@tnega/tool-shell'
 import { toolJobs } from '../src/index.js'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -45,7 +46,7 @@ async function setup(options: { execution?: ExecutionProvider } = {}) {
   const root = new Context()
   await root.plugin(session, { file: join(cwd, 'session.jsonl') })
   await root.plugin(tools)
-  await root.plugin(builtinTools, { cwd, allowShell: true, ...options })
+  await root.plugin(toolShell, { cwd, ...options })
   await root.plugin(jobsLocal)
   const log: SessionLog = root.get('session')
   await root.plugin(toolJobs, { resolveSession: () => log })
@@ -116,7 +117,7 @@ describe('a backgrounded shell command', () => {
     dirs.push(cwd)
     const root = new Context()
     await root.plugin(tools)
-    await root.plugin(builtinTools, { cwd, allowShell: true, execution: fakeProcess().provider })
+    await root.plugin(toolShell, { cwd, execution: fakeProcess().provider })
     const registry: ToolsService = root.get('tools')
     const refused = await registry.execute('shell', { command: 'npm run dev', runInBackground: true })
     expect(refused.ok).toBe(false)

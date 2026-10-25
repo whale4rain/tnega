@@ -1,6 +1,7 @@
 packages:
   - packages/*
-  - packages/search/*
+  - packages/fs/*
+  - packages/shell/*
   - packages/session-search/*
   - packages/browser/*
   - packages/sandbox/*

@@ -56,7 +56,7 @@
 ## 后果
 
 - 新增工具时想让它并行，必须自己声明，并保证不改同级调用拥有的状态。
-- `packages/tools/test/fs-tools.test.ts` 有一项守卫：读工具必须声明、写工具必须不声明，
+- `packages/fs/tool-fs/test/fs-tools.test.ts` 有一项守卫：读工具必须声明、写工具必须不声明，
   防止有人删掉声明后静默退回串行。
 - `packages/agent/test/concurrency.test.ts` 用「同时在场峰值」度量真实并行，
   并覆盖位置对齐、栅栏、失败不连坐、按参数分类。

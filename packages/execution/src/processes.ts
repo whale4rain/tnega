@@ -1,4 +1,4 @@
-import { isSandboxPipeDenial, SANDBOX_PIPE_HINT, type BackgroundProcess } from '@tnega/execution'
+import { isSandboxPipeDenial, SANDBOX_PIPE_HINT, type BackgroundProcess } from './index.js'
 
 /** Local URLs a dev server prints, e.g. `http://localhost:5173/`. */
 const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|[\w-]+\.localhost)(?::\d+)?(?:\/[^\s"'`)\]]*)?/giu

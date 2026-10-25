@@ -9,7 +9,8 @@ import type { Context, Plugin } from '@tnega/core'
 import type { LoopGuardConfig } from '@tnega/loop-guard'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import type { SandboxMode } from '@tnega/sandbox'
-import type { BuiltinToolsConfig, ToolPolicy } from '@tnega/tools'
+import type { ToolPolicy } from '@tnega/tools'
+import type { BuiltinToolsConfig } from './builtins.js'
 
 /**
  * A named composition: the bundles to mount, plus defaults the caller may
@@ -71,8 +72,6 @@ export interface AgentRuntimeOptions {
   ptc?: { mode?: 'native' | 'both' | 'ptc'; timeoutMs?: number; memoryLimitBytes?: number }
   /** Host-provided runtime assets and limits; independent of model-visible PTC mode. */
   ptcRuntime?: PtcRuntimeQuickjsConfig
-  /** The product shape whose tool defaults apply (see `Preset`). */
-  preset?: 'cli' | 'interactive' | 'project'
   /** Mount the office tools; defaults to `auto`, i.e. only when the workspace has one. */
   office?: boolean | 'auto'
 }

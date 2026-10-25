@@ -1,8 +1,11 @@
 import { open, readFile, stat } from 'node:fs/promises'
-import type { ToolDefinition, ToolExecuteOptions } from '../index.js'
-import { ToolInputError } from '../errors.js'
-import { optionalNumber, record, stringField } from '../input.js'
-import { fingerprint, recordObservation } from './observed.js'
+import {
+  optionalNumber, record, stringField,
+  ToolInputError,
+  type ToolDefinition,
+  type ToolExecuteOptions,
+} from '@tnega/tools'
+import { fingerprint } from './observed.js'
 import { READ_WHOLE_FILE_LIMIT, type FileToolsConfig } from './types.js'
 
 /**
@@ -43,7 +46,7 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
   return {
     schema: {
       name: 'read_file',
-      description: `Read a UTF-8 text file, one page of lines at a time: { path, bytes, content, truncated, lines: { start, end, total } }. Page with offset (1-based) and limit (at most ${config.maxReadLines} lines). Reading records the version, which a later write or edit is checked against.`,
+      description: `Read a UTF-8 text file, one page of lines at a time: { path, bytes, content, truncated, lines: { start, end, total } }. Page with offset (1-based) and limit (at most ${config.maxReadLines} lines). Lines longer than ${config.maxLineChars} characters are cut only when a page would not fit; read one long line whole with limit=1. Reading records the version, which a later write or edit is checked against.`,
       parameters: {
         type: 'object',
         properties: {
@@ -79,30 +82,43 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
       const whole = stats.size <= READ_WHOLE_FILE_LIMIT
       const buffer = whole ? await readFile(target) : await readPrefix(target, READ_WHOLE_FILE_LIMIT)
       if (buffer.includes(0)) throw new ToolInputError(`file is binary: ${args.path}`)
-      if (whole) recordObservation(options.agentId, target, { kind: 'present', sha256: fingerprint(buffer) })
+      if (whole) config.observations.record(options.agentId, target, { kind: 'present', sha256: fingerprint(buffer) })
 
       const text = buffer.toString('utf8')
       const total = countLines(text)
       const rawLines = text.split('\n')
       const page = rawLines.slice(offset - 1, offset - 1 + limit)
-      let clipped = 0
-      const lines = page.map(line => {
-        if (line.length <= config.maxLineChars) return line
-        clipped += 1
-        return line.slice(0, config.maxLineChars)
-      })
+      // Long lines are clipped only when the page would not fit the byte budget
+      // whole: a page that fits is returned as written, and a single-line page
+      // (`limit: 1`) is never clipped per line, so one long line — minified
+      // code, one-line JSON — can always be read up to `maxBytes`.
+      const pageText = page.join('\n')
+      const clip = page.length > 1 && Buffer.byteLength(pageText, 'utf8') > maxBytes
+      const clippedAt: number[] = []
+      const lines = clip
+        ? page.map((line, position) => {
+          if (line.length <= config.maxLineChars) return line
+          clippedAt.push(offset + position)
+          return line.slice(0, config.maxLineChars)
+        })
+        : page
       const end = page.length ? Math.min(total, offset + page.length - 1) : 0
       const joined = lines.join('\n')
       const bytes = Buffer.byteLength(joined, 'utf8')
       const content = bytes > maxBytes ? trimPartialUtf8(Buffer.from(joined, 'utf8').subarray(0, maxBytes)).toString('utf8') : joined
-      const truncated = !whole || end < total || offset > 1 || clipped > 0 || content.length !== joined.length
+      const truncated = !whole || end < total || offset > 1 || clippedAt.length > 0 || content.length !== joined.length
       return {
         path: config.displayPath(target),
         bytes: stats.size,
         content,
         truncated,
         lines: { start: page.length ? offset : 0, end, total },
-        ...(clipped ? { clippedLines: clipped } : {}),
+        ...(clippedAt.length
+          ? {
+            clippedLines: clippedAt.length,
+            note: `${clippedAt.length} long line(s) were cut at ${config.maxLineChars} characters to fit the page (first: line ${clippedAt[0]}); read one in full with offset=${clippedAt[0]} and limit=1.`,
+          }
+          : {}),
       }
     },
   }

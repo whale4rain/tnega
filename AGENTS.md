@@ -15,9 +15,10 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 
 - `packages/core`：Context、Fiber、Service、Registry 和事件分发的生命周期内核。
 - `packages/agent`：Agent loop、durable inbox、live agent、prompt 组装和 LLM service seam。
-- `packages/tools`：工具注册表、执行管线与 policy。
-- `packages/execution`：本机执行边界（shell / 无 shell 的 argv 进程 / HTTP）的词汇与实现。纯库，无 ctx key，不是缝。
-- `packages/search/` 是搜索缝三个角色的容器：`search-definition` 是 Service Definition（`ctx.search`，事件面 `search/*` 也由它拥有）、`search-ripgrep` 是 Provider、`tool-search` 是 Consumer（模型可见的 `glob` / `grep`）。
+- `packages/tools`：工具注册表、执行管线与 policy，以及各工具包共用的词汇（入参读取、`ToolInputError`、路径围栏转发、按路径锁、后台进程交接 `ADOPT_BACKGROUND_PROCESS`）。它本身**不注册任何模型可见工具**；工具按能力域放在各自的包里，由 `packages/runtime` 的 `builtinTools` bundle 决定一个作用域挂哪些。
+- `packages/execution`：本机执行边界（shell / 无 shell 的 argv 进程 / HTTP）的词汇与实现，以及后台进程登记表 `ProcessRegistry`。纯库，无 ctx key，不是缝。
+- `packages/fs/` 是文件域：`tool-fs` 是模型可见的 `read_file` / `write_file` / `edit_file` / `list_dir`（按行分页、原子写入、读后写守卫）；同域还有搜索缝的三个角色 —— `search-definition` 是 Service Definition（`ctx.search`，事件面 `search/*` 也由它拥有）、`search-ripgrep` 是 Provider、`tool-search` 是 Consumer（模型可见的 `glob` / `grep`）。
+- `packages/shell/tool-shell` 是模型可见的 `shell`（`runInBackground` 由 `jobs/tool-jobs` 接管）；`packages/web/` 是网络域：`tool-web-fetch`（`http_get`）与 `tool-web-search`（`web_search`）。`now` 属于 Project 域（`packages/project/host/src/clock.ts`）。
 - `packages/spill/` 是工具输出溢出缝三个角色的容器：`spill` 是 Service Definition（`ctx.spillStore`）、`spill-local` 是文件系统 Provider、`tool-spill` 是 Consumer（`tools/post-execute` 策略，把过大结果换成头尾预览加定位符）。
 - `packages/sandbox/` 是沙箱缝的容器：`sandbox` 是 Service Definition（`ctx.sandbox`，事件面 `sandbox/*` 也由它拥有）、`sandbox-local` 是 Provider（bwrap / landlock / seatbelt / Windows MXC → ACL 链，功能性探测 + fail closed）、`execution-sandbox` 是 Consumer（`ExecutionProvider` 装饰器）、`sandbox-windows-mxc` 与 `sandbox-windows-acl` 是 Windows 两个机制的实现库（MXC 执行器 `wxc-exec.exe`；koffi FFI，可选依赖）、`fs-sandbox` 是 fs 侧路径围栏的**唯一实现**（`packages/tools/src/path.ts` 只是转发）。取舍见 `docs/adr/0008-sandbox-seam.md`。
 - `packages/browser/` 是浏览器缝的容器：`browser` 是 Service Definition（`ctx.browser`，事件面 `browser/*`）、`browser-playwright` 是 Provider（`playwright-core`，可启动系统浏览器或经 CDP 附着到桌面端内嵌视图）、`tool-browser` 是 Consumer（模型可见的 `browser_*`）。取舍见 `docs/adr/0012-agent-browser.md`。
@@ -44,7 +45,8 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 Tnega 的一切能力都是插件。动手前先想清楚它挂在哪个插件上，而不是在核心里加分支。
 
 - 新功能写成插件：在自己的 Fiber 上注册服务、事件、工具或路由，由 composition 层（`packages/runtime`）装配。不要在 `packages/agent`、`packages/host`、`packages/runtime`、`packages/cli` 里写死对某个功能包的调用、`if (feature)` 分支或全局状态；核心缺挂载点时，先补一个通用的挂载点。
-- 可替换的能力做成能力缝：Service Definition、Provider、Consumer 各占一个包，放在同一个容器目录下（如 `packages/search/`）。一个包只承担一个角色。
+- 可替换的能力做成能力缝：Service Definition、Provider、Consumer 各占一个包，放在同一个容器目录下（如 `packages/fs/`、`packages/spill/`）。一个包只承担一个角色。
+- 模型可见工具按能力域分包（`fs/`、`shell/`、`web/`、`jobs/`……），不要再往 `packages/tools` 里加工具，也不要把不同域的工具塞进同一个包。
 - 一个包只做一件事。新建包或一次改动让某个包的 `src/` 增长约 1500 行以上时，先问自己能否拆分：能说出两件以上互相独立的职责（例如定义 + 实现 + 工具，或多种文件格式）就拆；确实是一个整体，在 PR 描述里写一句为什么不拆。
 
 ## 设计不变量

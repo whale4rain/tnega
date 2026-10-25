@@ -18,7 +18,8 @@ import { toolOffice } from '@tnega/tool-office'
 import { toolPtc } from '@tnega/tool-ptc'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSpill } from '@tnega/tool-spill'
-import { builtinTools, tools, type BuiltinToolsConfig, type ToolPolicy } from '@tnega/tools'
+import { tools, type ToolPolicy } from '@tnega/tools'
+import { builtinTools, type BuiltinToolsConfig } from './builtins.js'
 import { readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { PermissionMode } from '@tnega/approval-host'
@@ -41,42 +42,6 @@ import { workspacePrompt } from '@tnega/workspace-prompt'
  * A caller only states what its role needs; adding a capability means adding
  * one entry here, not editing four composition roots.
  */
-
-/**
- * Which tools a deployment puts in front of the model.
- *
- * Not a plugin system: three named shapes covering the three products, so a new
- * capability is added in one table instead of being rediscovered in each
- * composition root. A caller can still override any capability by name.
- */
-export type Preset = 'cli' | 'interactive' | 'project'
-
-interface PresetTools {
-  /**
-   * `echo`, `calculator` and `json`: the shell already covers all three, and
-   * their schemas are paid for on every request.
-   */
-  utilities: boolean
-  /** `now` stays where routines and reports reason about dates. */
-  clock: boolean
-  /** Office files are opened on demand: see {@link hasOfficeFiles}. */
-  office: boolean | 'auto'
-}
-
-const PRESETS: Record<Preset, PresetTools> = {
-  cli: { utilities: false, clock: false, office: 'auto' },
-  interactive: { utilities: false, clock: false, office: 'auto' },
-  project: { utilities: false, clock: true, office: 'auto' },
-}
-
-/** Builtin tools a preset keeps off, on top of whatever the caller disabled. */
-export function presetDisabledTools(preset: Preset | undefined, disabled: readonly string[] = []): readonly string[] {
-  const tools = PRESETS[preset ?? 'cli']
-  const off = new Set(disabled)
-  if (!tools.utilities) for (const name of ['echo', 'calculator', 'json']) off.add(name)
-  if (!tools.clock) off.add('now')
-  return [...off]
-}
 
 const OFFICE_EXTENSIONS = ['.xlsx', '.docx', '.pptx']
 const SCAN_EXCLUDES = new Set(['node_modules', '.git', '.worktrees', '.pnpm-store', '.tnega', 'dist', 'out'])
@@ -134,8 +99,6 @@ export interface RuntimeSpec {
   spill?: boolean
   /** Mount the office tools. Defaults to `auto`: only when the workspace holds one. */
   office?: boolean | 'auto'
-  /** The product shape whose tool defaults apply. Defaults to `cli`. */
-  preset?: Preset
   /** Mount the memory service and its tool. */
   memory?: boolean
   /** Mount the run summary tool. */
@@ -280,13 +243,8 @@ export const runtimeCapabilities: Plugin = {
   name: 'runtime:capabilities',
   async apply(ctx: Context, spec: RuntimeSpec) {
     const builtinOn = spec.builtin !== false
-    const preset = PRESETS[spec.preset ?? 'cli']
-    const office = spec.office ?? preset.office
-    // Utility tools are off in every preset, so a composition that names none
-    // does not pay for echo/calculator/json/now.
-    const builtin: BuiltinToolsConfig | false = spec.builtin === false
-      ? false
-      : { ...(spec.builtin ?? {}), disabled: presetDisabledTools(spec.preset, spec.builtin?.disabled) }
+    const office = spec.office ?? 'auto'
+    const builtin = spec.builtin === false ? false : spec.builtin ?? {}
     await ctx.plugin(tools, spec.tools ?? {})
     await ctx.plugin(systemPrompt)
     await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? spec.workspace })

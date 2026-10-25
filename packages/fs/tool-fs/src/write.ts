@@ -1,12 +1,15 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { ToolDefinition, ToolExecuteOptions } from '../index.js'
-import { ToolInputError } from '../errors.js'
-import { optionalBoolean, record, stringField } from '../input.js'
+import {
+  optionalBoolean, record, stringField,
+  ToolInputError,
+  withPathLock,
+  type ToolDefinition,
+  type ToolExecuteOptions,
+} from '@tnega/tools'
 import { exists, writeFileAtomic } from './atomic.js'
 import { checkObserved, type CurrentVersion } from './guards.js'
-import { withPathLock } from './lock.js'
-import { fingerprint, recordObservation } from './observed.js'
+import { fingerprint } from './observed.js'
 import type { FileToolsConfig } from './types.js'
 
 export function writeFileTool(config: FileToolsConfig): ToolDefinition {
@@ -56,13 +59,13 @@ export function writeFileTool(config: FileToolsConfig): ToolDefinition {
           }
           const after = await readFile(target)
           const sha256 = fingerprint(after)
-          recordObservation(options.agentId, target, { kind: 'present', sha256 })
+          config.observations.record(options.agentId, target, { kind: 'present', sha256 })
           return { path: display, bytes, appended: true, sha256 }
         }
         const verdict = checkObserved(config, options.agentId, target, display, current)
         await writeFileAtomic(target, content, { createOnly: current.kind === 'absent', ...signal })
         const sha256 = fingerprint(content)
-        recordObservation(options.agentId, target, { kind: 'present', sha256 })
+        config.observations.record(options.agentId, target, { kind: 'present', sha256 })
         return {
           path: display,
           bytes,

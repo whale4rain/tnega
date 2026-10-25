@@ -575,6 +575,52 @@ importers:
         specifier: 7.29.1
         version: 7.29.1
 
+  packages/fs/search-definition:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/fs/search-ripgrep:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../../execution
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search-definition
+
+  packages/fs/tool-fs:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search-definition
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
+  packages/fs/tool-search:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search-definition
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+    devDependencies:
+      '@tnega/search-ripgrep':
+        specifier: workspace:*
+        version: link:../search-ripgrep
+
   packages/goal:
     dependencies:
       '@tnega/core':
@@ -696,6 +742,9 @@ importers:
       '@tnega/tool-subagent':
         specifier: workspace:*
         version: link:../subagent/tool-subagent
+      '@tnega/tool-web-fetch':
+        specifier: workspace:*
+        version: link:../web/tool-web-fetch
       '@tnega/tool-web-search':
         specifier: workspace:*
         version: link:../web/tool-web-search
@@ -759,6 +808,10 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@tnega/tool-shell':
+        specifier: workspace:*
+        version: link:../../shell/tool-shell
 
   packages/llm:
     dependencies:
@@ -1388,6 +1441,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
@@ -1417,13 +1473,16 @@ importers:
         version: link:../sandbox/sandbox-local
       '@tnega/search-ripgrep':
         specifier: workspace:*
-        version: link:../search/search-ripgrep
+        version: link:../fs/search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
       '@tnega/spill-local':
         specifier: workspace:*
         version: link:../spill/spill-local
+      '@tnega/tool-fs':
+        specifier: workspace:*
+        version: link:../fs/tool-fs
       '@tnega/tool-jobs':
         specifier: workspace:*
         version: link:../jobs/tool-jobs
@@ -1438,10 +1497,16 @@ importers:
         version: link:../ptc/tool-ptc
       '@tnega/tool-search':
         specifier: workspace:*
-        version: link:../search/tool-search
+        version: link:../fs/tool-search
+      '@tnega/tool-shell':
+        specifier: workspace:*
+        version: link:../shell/tool-shell
       '@tnega/tool-spill':
         specifier: workspace:*
         version: link:../spill/tool-spill
+      '@tnega/tool-web-fetch':
+        specifier: workspace:*
+        version: link:../web/tool-web-fetch
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
@@ -1504,40 +1569,6 @@ importers:
         version: 3.3.1
 
   packages/sandbox/sandbox-windows-mxc: {}
-
-  packages/search/search-definition:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../../core
-
-  packages/search/search-ripgrep:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../../core
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../../execution
-      '@tnega/search':
-        specifier: workspace:*
-        version: link:../search-definition
-
-  packages/search/tool-search:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../../core
-      '@tnega/search':
-        specifier: workspace:*
-        version: link:../search-definition
-      '@tnega/tools':
-        specifier: workspace:*
-        version: link:../../tools
-    devDependencies:
-      '@tnega/search-ripgrep':
-        specifier: workspace:*
-        version: link:../search-ripgrep
 
   packages/session:
     dependencies:
@@ -1605,6 +1636,18 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+
+  packages/shell/tool-shell:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../../execution
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/spill/spill:
     dependencies:
@@ -1697,7 +1740,7 @@ importers:
         version: link:../sandbox/fs-sandbox
       '@tnega/search':
         specifier: workspace:*
-        version: link:../search/search-definition
+        version: link:../fs/search-definition
 
   packages/tui:
     dependencies:
@@ -1754,6 +1797,18 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/web/tool-web-fetch:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../../execution
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
   packages/web/tool-web-search:
     dependencies:
       '@tnega/tools':
@@ -1770,10 +1825,10 @@ importers:
         version: link:../execution
       '@tnega/search':
         specifier: workspace:*
-        version: link:../search/search-definition
+        version: link:../fs/search-definition
       '@tnega/search-ripgrep':
         specifier: workspace:*
-        version: link:../search/search-ripgrep
+        version: link:../fs/search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session

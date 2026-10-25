@@ -4,12 +4,6 @@ import type { ThreadRecord } from '@tnega/thread'
 import type { ToolGuard } from '@tnega/tools'
 
 /**
- * Toy builtins a Project Agent never needs: they only add schema to every request.
- * `now` stays because routines and reports reason about dates.
- */
-export const PROJECT_DISABLED_BUILTINS: readonly string[] = ['echo', 'calculator', 'json']
-
-/**
  * Explicit coordination surface. New capabilities belong to execution Threads
  * until deliberately admitted here; investigation and deliverables never do.
  */

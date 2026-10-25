@@ -1,5 +1,4 @@
-import { ToolInputError } from './builtins.js'
-import { describeParameters, describeUnparsedArguments } from './errors.js'
+import { describeParameters, describeUnparsedArguments, ToolInputError } from './errors.js'
 import type {
   ToolDefinition,
   ToolParameterSchema,

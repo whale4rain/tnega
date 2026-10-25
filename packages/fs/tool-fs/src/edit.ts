@@ -1,11 +1,14 @@
 import { readFile } from 'node:fs/promises'
-import type { ToolDefinition, ToolExecuteOptions } from '../index.js'
-import { ToolInputError } from '../errors.js'
-import { record, stringField } from '../input.js'
+import {
+  record, stringField,
+  ToolInputError,
+  withPathLock,
+  type ToolDefinition,
+  type ToolExecuteOptions,
+} from '@tnega/tools'
 import { exists, writeFileAtomic } from './atomic.js'
 import { checkObserved, type CurrentVersion } from './guards.js'
-import { withPathLock } from './lock.js'
-import { fingerprint, recordObservation } from './observed.js'
+import { fingerprint } from './observed.js'
 import type { FileToolsConfig } from './types.js'
 
 interface Edit {
@@ -150,7 +153,7 @@ export function editFileTool(config: FileToolsConfig): ToolDefinition {
         }
         await writeFileAtomic(target, updated, { ...(options.signal ? { signal: options.signal } : {}) })
         const sha256 = fingerprint(updated)
-        recordObservation(options.agentId, target, { kind: 'present', sha256 })
+        config.observations.record(options.agentId, target, { kind: 'present', sha256 })
         const removed = placements.reduce((total, item) => total + item.edit.oldText.length, 0)
         const added = placements.reduce((total, item) => total + item.edit.newText.length, 0)
         return {

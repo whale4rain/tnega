@@ -9,6 +9,7 @@ it('declares how each builtin tool behaves after a restart cut it off', () => {
     list_dir: 'retry',
     http_get: 'retry',
     write_file: 'confirm',
+    edit_file: 'confirm',
     shell: 'confirm',
   })
   expect(definitions.every(definition => definition.interruption !== undefined)).toBe(true)

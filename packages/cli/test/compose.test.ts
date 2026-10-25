@@ -28,21 +28,14 @@ describe('runtime capabilities', () => {
     }
   })
 
-  it('leaves the utility tools out unless a preset asks for them', async () => {
+  it('mounts no toy utilities and no clock outside a Project', async () => {
     const ctx = await mount({ permission: 'read-only' })
     try {
       const names = toolNames(ctx)
       for (const name of ['echo', 'calculator', 'json', 'now']) expect(names).not.toContain(name)
+      for (const name of ['read_file', 'write_file', 'edit_file', 'list_dir', 'glob', 'grep']) expect(names).toContain(name)
     } finally {
       await ctx.fiber.dispose()
-    }
-    const project = await mount({ permission: 'read-only', preset: 'project' })
-    try {
-      // Routines and reports reason about dates, so the project shape keeps it.
-      expect(toolNames(project)).toContain('now')
-      expect(toolNames(project)).not.toContain('echo')
-    } finally {
-      await project.fiber.dispose()
     }
   })
 

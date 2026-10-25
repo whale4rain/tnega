@@ -551,6 +551,11 @@ dsh 同样没有独立 `wait` 工具（`docs/tool-catalog.md` 无此项），做
 
 `packages/tools` **不动**：它是缝定义（`ToolsService` + 内置工具实现），不是 consumer。
 
+> 后续修正（评审后）：`packages/tools` 只留注册表与共用词汇，内置工具按 dsh 的域拆出：
+> `packages/fs/tool-fs`（读写编辑列目录）、搜索缝整体移到 `packages/fs/`、
+> `packages/shell/tool-shell`、`packages/web/tool-web-fetch`；`echo` / `calculator` / `json`
+> 删除，`now` 归 Project 域；preset 表随之删除（只剩 office 一项，已由 `office` 选项表达）。
+
 必须同步的 7 处（已逐一核实存在，漏任何一处都会出现「构建找不到包 / 类型入口 404」）：
 
 1. `pnpm-workspace.yaml`：加 `packages/office/*`、`packages/ptc/*`、`packages/questions/*` 三行。

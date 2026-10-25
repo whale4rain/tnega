@@ -8,6 +8,7 @@ packages/<域>/<包>
 ```
 
 顶层目录（`tools`、`agent`、`session`、`core` 等）是各域共用的基础设施，自身不构成域。
+`tools` 只有工具注册表、执行管线与共用词汇，**不注册任何模型可见工具**。
 
 ## 能力域
 
@@ -18,6 +19,7 @@ packages/<域>/<包>
 | `browser/` | `browser`、`browser-playwright`、`tool-browser` | Agent 浏览器 |
 | `compaction/` | `compaction` | 自动压缩与标题生成 |
 | `config/` | `config` | 系统配置与模型发现 |
+| `fs/` | `tool-fs`、`search`（`search-definition`）、`search-ripgrep`、`tool-search` | 文件工具：读、写、编辑、列目录、`glob` / `grep` |
 | `fs-sandbox/`* | `fs-sandbox` | 路径围栏（被文件工具与 shell 共用） |
 | `goal/` | `goal` | 持久目标 |
 | `jobs/` | `jobs`、`jobs-local`、`tool-jobs` | 后台任务（`shell` 的 `runInBackground`） |
@@ -27,12 +29,12 @@ packages/<域>/<包>
 | `project/` | `project`、`project-local`、`blackboard`、`artifact-store`、`thread`、`host`、`http`、`worktrees`、`routines`、`memory`、`tool-*` | Project 协作 |
 | `ptc/` | `ptc-runtime`、`ptc-runtime-quickjs`、`tool-ptc` | 程序化工具调用（`run_code`） |
 | `questions/` | `user-questions`、`tool-question` | 向用户提问（`ask_user_question`） |
+| `shell/` | `tool-shell` | `shell`（后台运行交给 `jobs/`） |
 | `sandbox/` | `sandbox`、`sandbox-local`、`sandbox-windows-acl`、`sandbox-windows-mxc`、`execution-sandbox` | 执行边界 |
-| `search/` | `search`、`search-ripgrep`、`tool-search` | 文件搜索（`glob` / `grep`） |
 | `session-search/` | `session-search`、`tool-session-search` | 会话检索 |
 | `spill/` | `spill`、`spill-local`、`tool-spill` | 工具结果溢出 |
 | `subagent/` | `subagent`、`subagent-local`、`tool-subagent` | 子 Agent |
-| `web/` | `tool-web-search`、`web`、`web-kit` | Web 工具与 Web 宿主套件 |
+| `web/` | `tool-web-fetch`、`tool-web-search`、`web`、`web-kit` | 网络工具（`http_get`、`web_search`）与 Web 宿主套件 |
 
 \* `fs-sandbox` 目前在 `packages/sandbox/fs-sandbox`，与执行边界同域。
 
@@ -43,10 +45,11 @@ packages/<域>/<包>
 
 | 工具 | 包 | 默认挂载 |
 |---|---|---|
-| `shell`（含 `runInBackground`） | `tools` + `jobs/tool-jobs` | 有 shell 时 |
-| `read_file` `write_file` `edit_file` `list_dir` | `tools` | 是 |
-| `glob` `grep` | `search/tool-search` | 是 |
-| `http_get` | `tools` | 有网络时 |
+| `shell`（含 `runInBackground`） | `shell/tool-shell` + `jobs/tool-jobs` | 有 shell 时 |
+| `read_file` `write_file` `edit_file` `list_dir` | `fs/tool-fs` | 是 |
+| `glob` `grep` | `fs/tool-search` | 是 |
+| `http_get` | `web/tool-web-fetch` | 有网络时 |
+| `now` | `project/host`（`clock.ts`） | Project |
 | `job_list` `job_output` `job_kill` | `jobs/tool-jobs` | 挂 jobs 时 |
 | `skill` | `coding-agent` | 是 |
 | `office_inspect` `office_read` `office_create` `office_edit` | `office/tool-office` | 工作区有 Office 文件时 |
@@ -58,6 +61,10 @@ packages/<域>/<包>
 | `browser_*` | `browser/tool-browser` | 有浏览器时 |
 | `web_search` | `web/tool-web-search` | 有搜索凭据时 |
 | `*`（Project 协作） | `project/tool-*` | Project |
+
+`echo`、`calculator`、`json` 已删除：`shell` 覆盖它们，它们的 schema 却每次请求都要付费。
+`runtime` 的 `builtinTools` 是组合层的 bundle：它按 `allowShell` / `allowNetwork` 决定挂
+`tool-fs`、`tool-shell`、`tool-web-fetch` 中的哪些，本身不实现任何工具。
 
 ## 加一个包
 

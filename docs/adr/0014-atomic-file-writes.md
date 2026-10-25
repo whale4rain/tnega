@@ -72,8 +72,12 @@ sha256 按内容判定，没有这个问题；代价是每次覆盖前完整读�
 
 ## 后果
 
-- 文件工具从 `builtins.ts` 拆到 `packages/tools/src/fs/`（read / write / edit /
-  observed / atomic / lock / guards），`builtins.ts` 只剩注册。
+- 文件工具在文件域自己的包 `packages/fs/tool-fs`（read / write / edit / list /
+  observed / atomic / guards）；按路径锁 `withPathLock` 留在 `@tnega/tools`，因为
+  Windows ACL 授权也用它。观测记录属于挂载这组工具的插件实例，不再是进程级全局表。
+- 发布保留目标原有的权限位（可执行脚本仍可执行），symlink 写穿到它指向的文件而不是被
+  替换成普通文件；Windows 上目标被别的程序占用时重试，仍失败则退回原地写入；没有硬链接
+  的文件系统（exFAT、部分网络盘）上新建文件退回 `rename`。
 - `approval-host`、`host/runs.ts` 的 preimage 守卫、`workspace-files` 的变更统计、
   `auto-approval` 的证据摘要都学会认 `edit_file`。
 - `node_modules` 之外的所有原子写（如 office）仍是各自的临时文件 + rename，

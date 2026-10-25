@@ -33,24 +33,22 @@ tools/result       [parallel]   事后通知（审计、UI）
 三角色的依赖方向是：Provider → Definition，Consumer → Definition，Provider 与
 Consumer 互不依赖；Provider 的挑选属于 composition 层。
 
-## 内置工具
+## 本包不注册模型可见工具
 
-| 工具 | 说明 | 开关 |
-|---|---|---|
-| `echo` `now` `calculator` `json` | 纯计算/回显 | 默认 |
-| `read_file` `write_file` `edit_file` `list_dir` | 工作目录内文件操作，路径沙箱；读取按行分页，写入原子发布，覆盖受 `fsGuard` 约束 | 默认 |
-| `shell` | 子进程执行 | `--allow-shell` |
-| `http_get` | 网络抓取 | `--allow-network` |
+工具按能力域放在各自的包里：
 
-`glob` / `grep` 由 `@tnega/tool-search` 注册，见上面的能力缝一节。
+| 工具 | 包 |
+|---|---|
+| `read_file` `write_file` `edit_file` `list_dir` | `@tnega/tool-fs`（`packages/fs/tool-fs`） |
+| `glob` `grep` | `@tnega/tool-search`（`packages/fs/tool-search`） |
+| `shell` | `@tnega/tool-shell`（`packages/shell/tool-shell`），需显式 `allowShell` |
+| `http_get` | `@tnega/tool-web-fetch`（`packages/web/tool-web-fetch`），需显式 `allowNetwork` |
 
-文件工具拒绝二进制、限制写入字节。`read_file` 按行窗口返回（`offset`/`limit`，默认并上限 2000 行），并把 `lines: {start,end,total}` 交回；`maxBytes`（默认 256 KiB）仍是返回内容的字节上限，超出时返回前缀并把 `truncated` 置为 `true`，而不是报错 —— 调用方显式要的东西不该被拒绝。`write_file` 与 `edit_file` 走私有 staging 目录 + 原子发布，再按 `fsGuard`（`off`/`warn`/`enforce`）核对本会话读过的那一版。`calculator` 拒绝非法算术输入。
-`path.ts` 只是 `@tnega/fs-sandbox` 的转发：路径围栏（词法 + 身份包含判定、
-`..` / 绝对路径 / symlink 逃逸）在整个仓库只有那一份实现；`list_dir --recursive`
-会剪掉 `DEFAULT_SEARCH_EXCLUDES` 里的噪声目录。
-
-`shell` / `http_get` 的进程与网络执行走 `@tnega/execution` 的 `runShell` /
-`runProcess` / `fetchHttp`。
+`echo`、`calculator`、`json` 已删除，`now` 归 Project 域。组合层（`@tnega/runtime` 的
+`builtinTools`）决定一个作用域挂哪些。本包只留它们共用的词汇：入参读取
+（`record` / `stringField` …）、`ToolInputError`、`resolveInside`（`@tnega/fs-sandbox`
+的转发，路径围栏全仓库只有那一份实现）、按路径锁 `withPathLock`、提权声明
+（`ESCALATE_PROPERTIES` / `escalated`）与后台进程交接（`ADOPT_BACKGROUND_PROCESS`）。
 
 `tools.execute` 为声明了 `ToolDefinition.timeoutMs` 的工具装上 deadline：它把
 组合后的 signal 交给工具，只有自己的计时器真的触发时才把结果替换成
@@ -71,5 +69,5 @@ Consumer 互不依赖；Provider 的挑选属于 composition 层。
 
 ## 测试
 
-`packages/tools/test/`：注册/卸载、管线钩子顺序、policy、路径逃逸、字节限制、
-内置工具行为。CLI 端到端见 `packages/cli/test/tools-e2e.test.ts`。
+`packages/tools/test/`：注册/卸载、管线钩子顺序、policy、错误文案。各工具的行为测试在
+各自的包里；默认工具集的组合见 `packages/runtime/test/builtins.test.ts`。CLI 端到端见 `packages/cli/test/tools-e2e.test.ts`。

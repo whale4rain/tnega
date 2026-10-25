@@ -1,5 +1,4 @@
-import { ToolInputError } from '../errors.js'
-import { observationOf } from './observed.js'
+import { ToolInputError } from '@tnega/tools'
 import type { FileToolsConfig } from './types.js'
 
 /** What the target looks like right now, as far as the guard cares. */
@@ -29,7 +28,7 @@ export function checkObserved(
   current: CurrentVersion,
 ): GuardVerdict {
   if (config.fsGuard === 'off' || current.kind === 'absent') return {}
-  const observed = observationOf(agentId, target)
+  const observed = config.observations.get(agentId, target)
   if (!observed) {
     const remedy = `read it with read_file first, then retry`
     if (config.fsGuard === 'enforce') {

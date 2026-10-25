@@ -43,6 +43,7 @@
     "@tnega/tool-question": "workspace:*",
     "@tnega/tool-session-search": "workspace:*",
     "@tnega/tool-subagent": "workspace:*",
+    "@tnega/tool-web-fetch": "workspace:*",
     "@tnega/tool-web-search": "workspace:*",
     "@tnega/tools": "workspace:*",
     "@tnega/usage": "workspace:*",

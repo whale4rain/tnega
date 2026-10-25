@@ -51,13 +51,16 @@ function inkDevtoolsStub() {
 /**
  * 每个包的物理目录：发布子路径名 → 仓库内路径。
  *
- * `packages/search/` 是搜索缝三个角色的共同容器，所以这三个包不在 `packages/<name>`
+ * `packages/fs/` 是搜索缝三个角色的共同容器，所以这三个包不在 `packages/<name>`
  * 这一层。声明产物的重写（rewriteDeclarationImports）与库入口共用这张表。
  */
 const packageDirs = {
-  search: 'packages/search/search-definition',
-  'search-ripgrep': 'packages/search/search-ripgrep',
-  'tool-search': 'packages/search/tool-search',
+  search: 'packages/fs/search-definition',
+  'search-ripgrep': 'packages/fs/search-ripgrep',
+  'tool-search': 'packages/fs/tool-search',
+  'tool-fs': 'packages/fs/tool-fs',
+  'tool-shell': 'packages/shell/tool-shell',
+  'tool-web-fetch': 'packages/web/tool-web-fetch',
   sandbox: 'packages/sandbox/sandbox',
   'sandbox-local': 'packages/sandbox/sandbox-local',
   'sandbox-windows-acl': 'packages/sandbox/sandbox-windows-acl',
@@ -159,6 +162,9 @@ const libraryEntries = {
   'spill-local': `${packageDir('spill-local')}/src/index.ts`,
   'tool-spill': `${packageDir('tool-spill')}/src/index.ts`,
   'tool-search': `${packageDir('tool-search')}/src/index.ts`,
+  'tool-fs': `${packageDir('tool-fs')}/src/index.ts`,
+  'tool-shell': `${packageDir('tool-shell')}/src/index.ts`,
+  'tool-web-fetch': `${packageDir('tool-web-fetch')}/src/index.ts`,
   'tool-memory': `${packageDir('tool-memory')}/src/index.ts`,
   'tool-subagent': `${packageDir('tool-subagent')}/src/index.ts`,
   tools: 'packages/tools/src/index.ts',

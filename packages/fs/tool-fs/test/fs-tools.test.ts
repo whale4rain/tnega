@@ -1,16 +1,10 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import {
-  builtinTools,
-  forgetObservations,
-  tools,
-  type BuiltinToolsConfig,
-  type ToolResult,
-  type ToolsService,
-} from '../src/index.js'
+import { tools, type ToolResult, type ToolsService } from '@tnega/tools'
+import { toolFs, type ToolFsConfig } from '../src/index.js'
 
 const dirs: string[] = []
 
@@ -21,15 +15,14 @@ async function tempDir(prefix: string): Promise<string> {
 }
 
 afterEach(async () => {
-  forgetObservations()
   await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }).catch(() => undefined)))
 })
 
-async function mount(config: BuiltinToolsConfig = {}): Promise<ToolsService> {
+async function mount(config: ToolFsConfig = {}): Promise<ToolsService> {
   const root = new Context()
   await root.plugin(tools)
-  await root.plugin(builtinTools, config)
-  return (root as unknown as { tools: ToolsService }).tools
+  await root.plugin(toolFs, config)
+  return root.get('tools')
 }
 
 async function ok(service: ToolsService, name: string, input: unknown, agentId?: string): Promise<Record<string, unknown>> {
@@ -61,15 +54,31 @@ describe('read_file pages by line', () => {
     expect(whole.truncated).toBe(false)
   })
 
-  it('clips one very long line and says how many were clipped', async () => {
-    const dir = await tempDir('tnega-fs-read-clip-')
+  it('returns long lines whole when the page fits its byte budget', async () => {
+    const dir = await tempDir('tnega-fs-read-long-')
     const service = await mount({ cwd: dir, maxLineChars: 5 })
     await writeFile(join(dir, 'wide.txt'), `${'x'.repeat(50)}\nshort`, 'utf8')
 
     const page = await ok(service, 'read_file', { path: 'wide.txt' })
-    expect(page.clippedLines).toBe(1)
-    expect(String(page.content).split('\n')[0]).toBe('xxxxx')
+    expect(page.clippedLines).toBeUndefined()
+    expect(String(page.content).split('\n')[0]).toBe('x'.repeat(50))
+    expect(page.truncated).toBe(false)
+  })
+
+  it('clips long lines only to fit a page, and reads one of them whole with limit 1', async () => {
+    const dir = await tempDir('tnega-fs-read-clip-')
+    const service = await mount({ cwd: dir, maxLineChars: 5, maxReadBytes: 40 })
+    await writeFile(join(dir, 'wide.txt'), `short\n${'x'.repeat(30)}\n${'y'.repeat(30)}\n`, 'utf8')
+
+    const page = await ok(service, 'read_file', { path: 'wide.txt' })
+    expect(page.clippedLines).toBe(2)
+    expect(String(page.content).split('\n')).toEqual(['short', 'xxxxx', 'yyyyy', ''])
     expect(page.truncated).toBe(true)
+    expect(String(page.note)).toMatch(/offset=2 and limit=1/)
+
+    const line = await ok(service, 'read_file', { path: 'wide.txt', offset: 2, limit: 1 })
+    expect(line.content).toBe('x'.repeat(30))
+    expect(line.clippedLines).toBeUndefined()
   })
 
   it('reports a file past the whole-file limit as a prefix that does not authorize a write', async () => {
@@ -259,5 +268,48 @@ describe('fsGuard modes', () => {
     const written = await ok(service, 'write_file', { path: 'new/deep.txt', content: 'fresh' })
     expect(written.warning).toBeUndefined()
     expect(await readFile(join(dir, 'new', 'deep.txt'), 'utf8')).toBe('fresh')
+  })
+})
+
+describe('atomic writes keep what the file was', () => {
+  it.skipIf(process.platform === 'win32')('keeps an executable script executable across write and edit', async () => {
+    const dir = await tempDir('tnega-fs-mode-')
+    const service = await mount({ cwd: dir })
+    const script = join(dir, 'run.sh')
+    await writeFile(script, '#!/bin/sh\necho hi\n', 'utf8')
+    await chmod(script, 0o755)
+
+    await ok(service, 'edit_file', { path: 'run.sh', edits: [{ old_string: 'hi', new_string: 'bye' }] })
+    expect((await stat(script)).mode & 0o777).toBe(0o755)
+    await ok(service, 'write_file', { path: 'run.sh', content: '#!/bin/sh\necho again\n' })
+    expect((await stat(script)).mode & 0o777).toBe(0o755)
+  })
+
+  it.skipIf(process.platform === 'win32')('writes through a symlink instead of replacing it', async () => {
+    const dir = await tempDir('tnega-fs-link-')
+    const service = await mount({ cwd: dir })
+    await writeFile(join(dir, 'real.txt'), 'old\n', 'utf8')
+    await symlink('real.txt', join(dir, 'link.txt'))
+
+    await ok(service, 'write_file', { path: 'link.txt', content: 'new\n' })
+    expect((await lstat(join(dir, 'link.txt'))).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(dir, 'real.txt'), 'utf8')).toBe('new\n')
+
+    await ok(service, 'edit_file', { path: 'link.txt', edits: [{ old_string: 'new', new_string: 'edited' }] })
+    expect((await lstat(join(dir, 'link.txt'))).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(dir, 'real.txt'), 'utf8')).toBe('edited\n')
+  })
+})
+
+describe('observations belong to one mount', () => {
+  it('does not let a read in one runtime vouch for a write in another', async () => {
+    const dir = await tempDir('tnega-fs-scopes-')
+    await writeFile(join(dir, 'shared.txt'), 'one\n', 'utf8')
+    const first = await mount({ cwd: dir, fsGuard: 'enforce' })
+    const second = await mount({ cwd: dir, fsGuard: 'enforce' })
+
+    await ok(first, 'read_file', { path: 'shared.txt' }, 'agent')
+    const refused = await fail(second, 'write_file', { path: 'shared.txt', content: 'two\n' }, 'agent')
+    expect(refused.error?.message).toMatch(/has not been read/)
   })
 })

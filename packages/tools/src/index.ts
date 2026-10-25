@@ -2,6 +2,7 @@ import type { Context, Disposable } from '@tnega/core'
 import { Service } from '@tnega/core'
 import { closestToolNames, ToolAbortError, toToolError } from './errors.js'
 import { ToolAuthorizationError, validateToolInput } from './policy.js'
+import type { AdoptBackgroundProcess } from './adopt.js'
 import type {
   ToolAuthorizer,
   ToolInputValidator,
@@ -9,12 +10,12 @@ import type {
   ToolResultTruncator,
 } from './policy.js'
 
-export * from './builtins.js'
-export * from './fs/index.js'
-export * from './processes.js'
-export * from './calc.js'
+export * from './adopt.js'
+export * from './escalation.js'
+export * from './input.js'
+export * from './lock.js'
 export * from './path.js'
-export { closestToolNames, describeError, describeParameters, ToolAbortError, toToolError } from './errors.js'
+export { closestToolNames, describeError, describeParameters, ToolAbortError, ToolInputError, toToolError } from './errors.js'
 export * from '@tnega/execution'
 export {
   ToolAuthorizationError,
@@ -51,6 +52,8 @@ export interface ToolExecuteOptions {
    * its tail durably, so a call a crash cuts off can still say what it printed.
    */
   progress?: (output: string) => void
+  /** Set by the jobs plugin: hand a started background process over instead of waiting (see `ADOPT_BACKGROUND_PROCESS`). */
+  adoptBackgroundProcess?: AdoptBackgroundProcess
   [key: string]: unknown
 }
 

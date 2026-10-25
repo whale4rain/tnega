@@ -3,15 +3,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import { builtinTools, tools, type BuiltinToolsConfig, type ToolsService } from '../src/index.js'
+import { tools, type ToolsService } from '@tnega/tools'
+import { toolFs, type ToolFsConfig } from '../src/index.js'
 
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
 
-async function mount(config: BuiltinToolsConfig = {}): Promise<ToolsService> {
+async function mount(config: ToolFsConfig = {}): Promise<ToolsService> {
   const root = new Context()
   await root.plugin(tools)
-  await root.plugin(builtinTools, config)
+  await root.plugin(toolFs, config)
   return root.get('tools')
 }
 

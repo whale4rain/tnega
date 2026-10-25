@@ -93,5 +93,5 @@ Provider 导出：它们命名的是能力默认值，不是某个实现的选�
 `test/events.test.ts`：用只回答固定结果的 stub Provider 验证事件面本身 —— pre 改写、
 post 改写、非法改写被拒、不调用 `next()` 被拒、`search/result` / `search/error` 的负载
 与只读语义、监听器随 fiber 卸载。Provider 机制由
-`packages/search/search-ripgrep/test/ripgrep.test.ts` 覆盖，Consumer 行为与「换 Provider 零
-改动」的不变量由 `packages/search/tool-search/test/tool-search.test.ts` 覆盖。
+`packages/fs/search-ripgrep/test/ripgrep.test.ts` 覆盖，Consumer 行为与「换 Provider 零
+改动」的不变量由 `packages/fs/tool-search/test/tool-search.test.ts` 覆盖。

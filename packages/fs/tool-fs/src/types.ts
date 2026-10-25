@@ -1,3 +1,5 @@
+import type { ObservationStore } from './observed.js'
+
 /** How strictly a write must match what this Agent has already read. */
 export type FsGuardMode = 'off' | 'warn' | 'enforce'
 
@@ -20,6 +22,8 @@ export interface FileToolsConfig {
   /** Characters kept per line before it is clipped. */
   maxLineChars: number
   fsGuard: FsGuardMode
+  /** What each Agent of this scope has read, for {@link fsGuard}. */
+  observations: ObservationStore
 }
 
 /** Files above this size are read as a prefix; their hash is not recorded. */

@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 取代关系：无
-> 当前实现：`packages/search/search-definition/README.md`、`packages/search/search-ripgrep/README.md`、`packages/search/tool-search/README.md`、`packages/sandbox/sandbox/README.md`、`packages/sandbox/sandbox-local/README.md`、`packages/sandbox/execution-sandbox/README.md`、`packages/execution/README.md`
+> 当前实现：`packages/fs/search-definition/README.md`、`packages/fs/search-ripgrep/README.md`、`packages/fs/tool-search/README.md`、`packages/sandbox/sandbox/README.md`、`packages/sandbox/sandbox-local/README.md`、`packages/sandbox/execution-sandbox/README.md`、`packages/execution/README.md`
 > 后续实例：沙箱缝（`ctx.sandbox`）见 `docs/adr/0008-sandbox-seam.md`
 
 ## 背景
@@ -73,9 +73,9 @@ Provider 已经具体可设想（本仓库上一版实现过的内存内 JS 遍�
 
 ## 验证
 
-- `packages/search/search-ripgrep/test/ripgrep.test.ts`：argv 构造、`--json` 解析、
+- `packages/fs/search-ripgrep/test/ripgrep.test.ts`：argv 构造、`--json` 解析、
   退出码分类、二进制解析、`resolve*` 的默认值落点与路径校验。
-- `packages/search/tool-search/test/tool-search.test.ts`：把 fake Provider 与真
+- `packages/fs/tool-search/test/tool-search.test.ts`：把 fake Provider 与真
   `searchRipgrep` 分别挂在真实 `Context` 上，同一组契约断言原样通过 —— 换 Provider 时
   Consumer 零改动的机器可验证证明。
 - `pnpm typecheck` / `pnpm test` / `pnpm lint` / `pnpm build` / `pnpm test:package`。
@@ -102,7 +102,7 @@ Provider 已经具体可设想（本仓库上一版实现过的内存内 JS 遍�
 
 ## 验证（事件面）
 
-- `packages/search/search-definition/test/events.test.ts`：把 stub Provider 直接挂在真实 `Context` 上，
+- `packages/fs/search-definition/test/events.test.ts`：把 stub Provider 直接挂在真实 `Context` 上，
   覆盖 pre / post 改写、非法改写被拒、`search/result` 与 `search/error` 的负载与只读
   语义、监听器随注册 fiber 卸载。stub Provider 里不出现任何事件名 —— 这是「事件面对
   Provider 透明」的机器可验证证明。
@@ -131,25 +131,27 @@ Provider 已经具体可设想（本仓库上一版实现过的内存内 JS 遍�
 
 ## 验证（事件面）
 
-- `packages/search/search-definition/test/events.test.ts`：把 stub Provider 直接挂在真实 `Context` 上，
+- `packages/fs/search-definition/test/events.test.ts`：把 stub Provider 直接挂在真实 `Context` 上，
   覆盖 pre / post 改写、非法改写被拒、未调用 `next()` 被拒、`search/result` 与
   `search/error` 的负载与只读语义、监听器随注册 fiber 卸载。stub Provider 里不出现任何
   事件名 —— 这是「事件面对 Provider 透明」的机器可验证证明。
 
 ## 物理布局
 
-搜索缝的三个角色放在同一个容器目录 `packages/search/` 下，因为它们的共同主题是一条缝而
-不是三个独立能力：
+搜索缝的三个角色放在同一个容器目录下，因为它们的共同主题是一条缝而不是三个独立能力。
+这个容器是文件域 `packages/fs/`：搜索是文件工具的一部分（`glob` / `grep` 与
+`read_file` / `edit_file` 同属文件工作），所以它与 `tool-fs` 同域，而不再单独占一个
+`packages/search/`：
 
 | 角色 | 目录 | 包名（未变） |
 |---|---|---|
-| Service Definition | `packages/search/search-definition` | `@tnega/search` |
-| Service Provider | `packages/search/search-ripgrep` | `@tnega/search-ripgrep` |
-| Consumer | `packages/search/tool-search` | `@tnega/tool-search` |
+| Service Definition | `packages/fs/search-definition` | `@tnega/search` |
+| Service Provider | `packages/fs/search-ripgrep` | `@tnega/search-ripgrep` |
+| Consumer | `packages/fs/tool-search` | `@tnega/tool-search` |
 
 **包名与发布子路径都不变**（`tnega/search`、`tnega/search-ripgrep`、`tnega/tool-search`），
 所以消费者与 `test/publish.test.ts` 的子路径断言零改动。目录移动只影响三点：
-`pnpm-workspace.yaml` 需要额外的 `packages/search/*` glob；`tsconfig.build.json` 需要
+`pnpm-workspace.yaml` 需要额外的 `packages/fs/*` glob；`tsconfig.build.json` 需要
 `packages/*/*/src/**/*.ts`；`scripts/build.mjs` 用一张 `packageDirs` 表同时供库入口与
 声明产物重写（`rewriteDeclarationImports`）使用 —— 后者原先硬编码 `packages/<spec>`。
 
