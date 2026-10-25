@@ -1,0 +1,414 @@
+<title>tnega on Terminal-Bench 4.0</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (~70ch) for prose, wider bands for the chart and tables. Calm neutral ground, one green accent for tnega. */
+:root {
+  --bg: #fbfbf9; --surface: #ffffff; --fg: #1d1f1c; --muted: #5d625b; --line: #e3e5df;
+  --accent: #2f6b4f; --accent-soft: #e5efe9; --ref: #9a6b1f; --other: #b9bdb5;
+  --pass: #2f6b4f; --pass-bg: #e3f0e8; --fail: #8d3a2e; --fail-bg: #f6e6e2; --err: #7a6420; --err-bg: #f4eedb; --skip-bg: #eceee9;
+  --seg1: #2f6b4f; --seg2: #8fb3a0; --seg3: #c9d6cd;
+  --font-ui: "Geist", "Segoe UI", system-ui, sans-serif; --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151714; --surface: #1c1f1b; --fg: #e9ebe6; --muted: #a2a89f; --line: #2e322c;
+  --accent: #7cc19c; --accent-soft: #1f2e26; --ref: #d6a85a; --other: #555b53;
+  --pass: #8fd0ab; --pass-bg: #1d3327; --fail: #f0a596; --fail-bg: #3a2420; --err: #e2c770; --err-bg: #332c17; --skip-bg: #262a24;
+  --seg1: #7cc19c; --seg2: #4d7d63; --seg3: #34473c; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #151714; --surface: #1c1f1b; --fg: #e9ebe6; --muted: #a2a89f; --line: #2e322c;
+  --accent: #7cc19c; --accent-soft: #1f2e26; --ref: #d6a85a; --other: #555b53;
+  --pass: #8fd0ab; --pass-bg: #1d3327; --fail: #f0a596; --fail-bg: #3a2420; --err: #e2c770; --err-bg: #332c17; --skip-bg: #262a24;
+  --seg1: #7cc19c; --seg2: #4d7d63; --seg3: #34473c; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 48px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 56px; }
+section { display: grid; gap: 16px; min-width: 0; }
+.prose { max-width: 70ch; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.35rem; font-weight: 600; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h3 { font-size: 1.02rem; font-weight: 600; margin: 0; }
+p { margin: 0; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+.lede { font-size: 1.1rem; max-width: 66ch; }
+header { display: grid; gap: 14px; }
+.notice { margin: 0 0 20px; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; background: var(--surface); max-width: 72ch; line-height: 1.55; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+@media (max-width: 640px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+.stat { background: var(--surface); padding: 16px 18px; display: grid; gap: 2px; }
+.stat b { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.stat span { color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
+.chart { width: 100%; height: auto; display: block; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .tick { fill: var(--muted); font: 11px var(--font-mono); }
+.chart .lab { fill: var(--fg); font: 13px var(--font-ui); }
+.chart .lab.me { font-weight: 600; fill: var(--accent); }
+.chart .lab.ref { fill: var(--ref); }
+.chart .val { fill: var(--muted); font: 12px var(--font-mono); }
+.chart .bar.other rect { fill: var(--other); }
+.chart .bar.ref rect { fill: var(--ref); }
+.chart .bar.me rect { fill: var(--accent); }
+.chart .bar:hover rect { opacity: 0.8; }
+.keyrow { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85rem; color: var(--muted); }
+.keyrow i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+th { font-weight: 500; color: var(--muted); font-size: 0.78rem; position: sticky; top: 0; background: var(--surface); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 0.8rem; }
+td.mono { font-family: var(--font-mono); font-size: 0.8rem; }
+tr.hl td { background: var(--accent-soft); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 500; }
+.pill.pass { background: var(--pass-bg); color: var(--pass); }
+.pill.fail { background: var(--fail-bg); color: var(--fail); }
+.pill.err { background: var(--err-bg); color: var(--err); }
+.pill.skip { background: var(--skip-bg); color: var(--muted); }
+.fixes { display: grid; gap: 12px; counter-reset: fix; }
+.fix { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 8px; min-width: 0; }
+.fix h3 { display: flex; gap: 10px; align-items: baseline; }
+.fix h3::before { counter-increment: fix; content: counter(fix); font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); min-width: 1.2em; }
+.fix .meta { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.82rem; color: var(--muted); }
+.fix .meta b { color: var(--fg); font-weight: 500; }
+code { font-family: var(--font-mono); font-size: 0.84em; background: var(--skip-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.stack { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 2px; }
+.seg.s1 { background: var(--seg1); } .seg.s2 { background: var(--seg2); } .seg.s3 { background: var(--seg3); }
+.legend { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.sw.s1 { background: var(--seg1); } .sw.s2 { background: var(--seg2); } .sw.s3 { background: var(--seg3); }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+ul.plain { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+details summary { cursor: pointer; font-weight: 500; }
+details[open] summary { margin-bottom: 12px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Harness benchmark · Oct 24, 2026 · DeepSeek V4.1 Flash</div>
+  <h1>tnega on Terminal-Bench 4.0</h1>
+  <p class="lede">tnega passed <b>6 of 66</b> tasks (9.1%) on a hard cap of $0.09 and 60 minutes per task. Rerunning some failed tasks with bigger budgets added 2 more (8 of 66, 12.1%). That is well below the same model in Claude Code (42%) and mini-SWE-agent (32%). Those runs had no cap and spent several times more per task. The run also turned up harness problems that end runs early or waste budget. They are listed below, ordered by how many tasks they cost.</p>
+</header>
+
+<p class="notice"><b>What this measures.</b> These runs used <code>tnega run</code>, the command-line entry. It loads tnega's core loop and tools but not the plugins the web app and Projects load: the continuation nudge, the loop guard, automatic compaction and the coding-agent plugin (plans, skills, slash commands). So this is a bare tnega, not tnega as the app runs it. The continuation nudge alone would have caught the 8 runs that ended on a broken, empty reply. The missing edit tool is different: no part of tnega has one yet.</p>
+<div class="stats">
+  <div class="stat"><b>9.1%</b><span>pass@1 over all 66 tasks at $0.09 a task (6 passed)</span></div>
+  <div class="stat"><b>12.1%</b><span>pass@1 counting the bigger-budget retries (8 passed)</span></div>
+  <div class="stat"><b>2 of 13</b><span>failed tasks that passed when retried at $0.25 to $0.50</span></div>
+  <div class="stat"><b>$0.071</b><span>DeepSeek cost per task (median leaderboard entry: several dollars)</span></div>
+  <div class="stat"><b>4.4M</b><span>tokens per task, 98.9% served from cache</span></div>
+  <div class="stat"><b>84k</b><span>output tokens per task, 73% of them reasoning</span></div>
+  <div class="stat"><b>17 min</b><span>average agent time per task</span></div>
+  <div class="stat"><b>$7.17</b><span>total DeepSeek spend, including setup and reruns</span></div>
+</div>
+
+<section>
+  <h2>How it compares</h2>
+  <p class="prose muted">Best entry per harness and model on the official Terminal-Bench 4.0 leaderboard, plus the two published DeepSeek V4.1 Flash results. Hover a bar for cost and source.</p>
+  <div class="card">
+    <svg viewBox="0 0 760 424" role="img" aria-label="Terminal-Bench 4.0 accuracy by harness and model" class="chart">
+<line x1="250.0" y1="6" x2="250.0" y2="402" class="grid"/>
+<text x="250.0" y="418" class="tick" text-anchor="middle">0%</text>
+<line x1="312.9" y1="6" x2="312.9" y2="402" class="grid"/>
+<text x="312.9" y="418" class="tick" text-anchor="middle">10%</text>
+<line x1="375.7" y1="6" x2="375.7" y2="402" class="grid"/>
+<text x="375.7" y="418" class="tick" text-anchor="middle">20%</text>
+<line x1="438.6" y1="6" x2="438.6" y2="402" class="grid"/>
+<text x="438.6" y="418" class="tick" text-anchor="middle">30%</text>
+<line x1="501.4" y1="6" x2="501.4" y2="402" class="grid"/>
+<text x="501.4" y="418" class="tick" text-anchor="middle">40%</text>
+<line x1="564.3" y1="6" x2="564.3" y2="402" class="grid"/>
+<text x="564.3" y="418" class="tick" text-anchor="middle">50%</text>
+<line x1="627.1" y1="6" x2="627.1" y2="402" class="grid"/>
+<text x="627.1" y="418" class="tick" text-anchor="middle">60%</text>
+<line x1="690.0" y1="6" x2="690.0" y2="402" class="grid"/>
+<text x="690.0" y="418" class="tick" text-anchor="middle">70%</text>
+<g class="bar other"><title>Claude Code · Opus 5.5: 64.8%, $14.30 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="24" text-anchor="end" class="lab other">Claude Code · Opus 5.5</text>
+<rect x="250" y="11" width="407.6" height="18" rx="3"/>
+<text x="663.6" y="24" class="val">64.8%</text></g>
+<g class="bar other"><title>Claude Code · Sonnet 5.5: 61.8%, $22.22 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="54" text-anchor="end" class="lab other">Claude Code · Sonnet 5.5</text>
+<rect x="250" y="41" width="388.6" height="18" rx="3"/>
+<text x="644.6" y="54" class="val">61.8%</text></g>
+<g class="bar other"><title>Codex · GPT-6.1 Sol: 58.2%, $1.92 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="84" text-anchor="end" class="lab other">Codex · GPT-6.1 Sol</text>
+<rect x="250" y="71" width="365.7" height="18" rx="3"/>
+<text x="621.7" y="84" class="val">58.2%</text></g>
+<g class="bar other"><title>Claude Code · Fable 5.1: 57.9%, $18.92 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="114" text-anchor="end" class="lab other">Claude Code · Fable 5.1</text>
+<rect x="250" y="101" width="363.8" height="18" rx="3"/>
+<text x="619.8" y="114" class="val">57.9%</text></g>
+<g class="bar ref"><title>Claude Code · DeepSeek V4.1 Flash: 42.3% (DeepSeek, self-reported (llm-stats, Oct 17 2026))</title>
+<text x="240" y="144" text-anchor="end" class="lab ref">Claude Code · DeepSeek V4.1 Flash</text>
+<rect x="250" y="131" width="265.9" height="18" rx="3"/>
+<text x="521.9" y="144" class="val">42.3%</text></g>
+<g class="bar other"><title>Claude Code · GLM-5.3: 41.8%, $8.27 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="174" text-anchor="end" class="lab other">Claude Code · GLM-5.3</text>
+<rect x="250" y="161" width="262.9" height="18" rx="3"/>
+<text x="518.9" y="174" class="val">41.8%</text></g>
+<g class="bar other"><title>Grok Build · Grok 4.7: 37.6%, $11.16 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="204" text-anchor="end" class="lab other">Grok Build · Grok 4.7</text>
+<rect x="250" y="191" width="236.2" height="18" rx="3"/>
+<text x="492.2" y="204" class="val">37.6%</text></g>
+<g class="bar other"><title>Claude Code · GLM-5.3-Flash: 35.8%, $0.36 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="234" text-anchor="end" class="lab other">Claude Code · GLM-5.3-Flash</text>
+<rect x="250" y="221" width="224.8" height="18" rx="3"/>
+<text x="480.8" y="234" class="val">35.8%</text></g>
+<g class="bar ref"><title>mini-SWE-agent · DeepSeek V4.1 Flash: 31.8% (vals.ai Terminal-Bench 4.0 board)</title>
+<text x="240" y="264" text-anchor="end" class="lab ref">mini-SWE-agent · DeepSeek V4.1 Flash</text>
+<rect x="250" y="251" width="200.0" height="18" rx="3"/>
+<text x="456.0" y="264" class="val">31.8%</text></g>
+<g class="bar other"><title>mini-SWE-agent · Gemini 3.8 Flash: 19.1%, $5.54 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="294" text-anchor="end" class="lab other">mini-SWE-agent · Gemini 3.8 Flash</text>
+<rect x="250" y="281" width="120.0" height="18" rx="3"/>
+<text x="376.0" y="294" class="val">19.1%</text></g>
+<g class="bar other"><title>Codex · GPT-6 Luna: 16.4%, $0.22 per task (Official TB 4.0 leaderboard (5 trials per task))</title>
+<text x="240" y="324" text-anchor="end" class="lab other">Codex · GPT-6 Luna</text>
+<rect x="250" y="311" width="102.8" height="18" rx="3"/>
+<text x="358.8" y="324" class="val">16.4%</text></g>
+<g class="bar me"><title>tnega + retries · DeepSeek V4.1 Flash: 12.1% (Same run, with 13 failed tasks retried at $0.25 to $0.50)</title>
+<text x="240" y="354" text-anchor="end" class="lab me">tnega + retries · DeepSeek V4.1 Flash</text>
+<rect x="250" y="341" width="76.2" height="18" rx="3"/>
+<text x="332.2" y="354" class="val">12.1%</text></g>
+<g class="bar me"><title>tnega 0.5.3 · DeepSeek V4.1 Flash: 9.1%, $0.07 per task (This run: 1 trial per task, capped at $0.09 and 60 min)</title>
+<text x="240" y="384" text-anchor="end" class="lab me">tnega 0.5.3 · DeepSeek V4.1 Flash</text>
+<rect x="250" y="371" width="57.1" height="18" rx="3"/>
+<text x="313.1" y="384" class="val">9.1%</text></g>
+</svg>
+    <div class="keyrow"><span><i style="background:var(--accent)"></i>tnega (this run)</span><span><i style="background:var(--ref)"></i>same model, other harness</span><span><i style="background:var(--other)"></i>official leaderboard</span></div>
+  </div>
+  <p class="prose">The closest budget peer is <b>Claude Code with GLM-5.3-Flash</b> (35.8%): $0.36 per task, 8.8M tokens, 135k output tokens and 103 minutes per trial on average. tnega got $0.071, 4.4M tokens, 84k output tokens and 17 minutes. So the comparison is mostly about what tnega does with a small budget, not a like-for-like score.</p>
+</section>
+
+<section>
+  <h2>Where the 66 tasks ended</h2>
+  <div class="two">
+    <div class="scroll">
+      <table>
+        <thead><tr><th>How the run ended</th><th class="num">Tasks</th><th class="num">Passed</th></tr></thead>
+        <tbody><tr><td>Said done</td><td class="num">23</td><td class="num">3</td></tr><tr><td>Stopped by $0.09 cap</td><td class="num">33</td><td class="num">3</td></tr><tr><td>Stopped by 60 min cap</td><td class="num">3</td><td class="num">0</td></tr><tr><td>Ended: output token limit</td><td class="num">1</td><td class="num">0</td></tr><tr><td>Crashed / empty reply</td><td class="num">2</td><td class="num">0</td></tr><tr><td>Not run (needs a GPU)</td><td class="num">3</td><td class="num">0</td></tr><tr><td>Not run (needs an MCP browser server)</td><td class="num">1</td><td class="num">0</td></tr></tbody>
+      </table>
+    </div>
+    <div class="prose" style="display:grid;gap:12px">
+      <p><b>23 runs stopped because tnega said the work was done, and only 3 passed.</b> 7 of the failures never finished at all: the model's reply stream broke off with no answer and no tool call, and tnega accepted that as finished, with budget left (see the deep-dive report). Most of the others claim the work is verified, but the hidden tests disagree. The first group is a pure harness bug; the second is where a stronger model or forced self-checks would help.</p>
+      <p><b>33 runs hit the $0.09 cap</b> while still working, and 3 of them still passed. A bigger budget helps these, but not by much (see the rerun below).</p>
+      <p>Passed: <span class="mono">cumulative-layout-shift, embedding-drift-monitor, html-js-filter, live-database-cutover, wal-recovery-ordering, wdm-design</span>.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Does a bigger budget fix it?</h2>
+  <p class="prose">7 tasks that hit the cap were rerun from scratch with <b>$0.25 each</b> (2.8 times the budget) and up to 120 minutes. <b>1 of 7 passed</b> at a cost of $1.35, 3 hit the new cap and 2 ran out of time. </p>
+  <p class="prose">A second round the next day tried 6 more failed tasks in small batches (7 runs, $1.44): three at $0.25, then pairs at $0.50, with each run's final state saved so a capped run could be continued. <b>1 more passed</b> (interleaved-vigenere). But 6 of the 7 runs ended on their own well under the bigger budget, so there was almost nothing to continue. Of the 5 that failed this way, 3 claimed the work was done and the hidden tests disagreed (vpp-loss-divergence was close: its losses drifted from the reference by 0.004 against a tolerance of 0.00005). The other 2 never claimed anything: their last reply announced a next step ("Let me verify the note extents and build a harmonization engine.") and the run ended there, the same harness bug as in the first run. Counting every bigger-budget run, tnega solves <b>8 of 66 (12.1%)</b>. Past about $0.25 a task, budget is no longer what limits tnega: runs end early, with a wrong "done" or in the middle of the work. Fixing how runs end, in the list below, is the lever.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Task</th><th class="num">Cap</th><th>Result</th><th>How it ended</th><th class="num">Cost $</th><th class="num">LLM calls</th><th class="num">Minutes</th></tr></thead>
+    <tbody><tr><td class="mono">cad-model</td><td class="num">$0.25</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.227</td><td class="num">178</td><td class="num">24</td></tr><tr><td class="mono">freecad-platform-drawing</td><td class="num">$0.25</td><td><span class="pill fail">Failed</span></td><td>Stopped by cap</td><td class="num">0.255</td><td class="num">121</td><td class="num">28</td></tr><tr><td class="mono">music-harmony</td><td class="num">$0.25</td><td><span class="pill fail">Failed</span></td><td>Stopped mid-plan</td><td class="num">0.084</td><td class="num">52</td><td class="num">13</td></tr><tr><td class="mono">freecad-platform-drawing</td><td class="num">$0.50</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.247</td><td class="num">148</td><td class="num">30</td></tr><tr><td class="mono">interleaved-vigenere</td><td class="num">$0.50</td><td><span class="pill pass">Passed</span></td><td>Said done</td><td class="num">0.330</td><td class="num">147</td><td class="num">44</td></tr><tr><td class="mono">pretrain-shard-corruption</td><td class="num">$0.50</td><td><span class="pill fail">Failed</span></td><td>Stopped mid-plan</td><td class="num">0.091</td><td class="num">74</td><td class="num">27</td></tr><tr><td class="mono">vpp-loss-divergence</td><td class="num">$0.50</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.181</td><td class="num">154</td><td class="num">46</td></tr></tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>What to improve, in order</h2>
+  <div class="fixes">
+    <div class="fix">
+      <h3>Don't accept "done" without evidence</h3>
+      <p>23 runs ended because the model sent a reply with no tool call, and 3 passed. In <code>tnega run</code>, a reply without tool calls ends the turn (<code>packages/agent/src/service.ts:933</code>), and nothing in the CLI asks for a continuation. In 7 runs the last reply was a broken stream with no answer at all, which the OpenAI adapter treats as a normal stop (<code>packages/llm/src/openai.ts:457</code>).</p>
+      <p>Fix: add a completion check through the existing continuation hook. When a reply has no tool call, ask once whether the task's own checks were run and passed, and continue if the reply announces next steps. Mount the loop guard in the CLI runtime as it is in the web host.</p>
+      <div class="meta"><span>Tasks affected <b>23</b></span><span>Where <b>agent continuation hook, runtime CLI composition</b></span></div>
+    </div>
+    <div class="fix">
+      <h3>Raise the 15-second shell timeout</h3>
+      <p>83 of 2919 shell calls hit the default 15 s limit (builds, test suites, model training, solvers). Each one wastes a round trip, and the model then reruns the step with a guessed timeout or in the background.</p>
+      <p>Fix: default to about 120 s for foreground commands and move long commands to a background job automatically instead of killing them.</p>
+      <div class="meta"><span>Calls affected <b>83</b></span><span>Where <b>packages/execution/src/index.ts (runLocalShell)</b></span></div>
+    </div>
+    <div class="fix">
+      <h3>Add a targeted edit tool</h3>
+      <p>tnega has no edit or patch tool. Every change rewrites the whole file through <code>write_file</code> (371 calls, about 497k tokens, 10% of all output tokens) or goes through <code>sed</code> in the shell. Output tokens are the most expensive part of the bill (below), so this is the cheapest saving on the list. The client and the loop guard already know the names <code>edit_file</code> and <code>apply_patch</code>.</p>
+      <div class="meta"><span>Output share <b>10%</b></span><span>Where <b>packages/tools (new tool)</b></span></div>
+    </div>
+    <div class="fix">
+      <h3>Retry a stream that times out, and give thinking models more than 2 minutes</h3>
+      <p>The first attempt of this benchmark lost runs to <code>LLM stream timed out after 120000ms</code>. The timeout covers the whole streamed reply (<code>packages/llm/src/shared.ts:6</code>), and once any event has arrived, a failure is never retried (<code>packages/llm/src/openai.ts:192</code>). A long reasoning reply from DeepSeek takes more than 2 minutes, so the whole run dies. The benchmark ran with a 15-minute timeout to get past this.</p>
+      <p>Fix: switch to an idle timeout (time since the last chunk), and retry the step when a stream fails mid-way.</p>
+      <div class="meta"><span>Seen in <b>2 of 5 runs</b> of the first attempt</span><span>Where <b>packages/llm</b></span></div>
+    </div>
+    <div class="fix">
+      <h3>Keep going after an output-token limit or an empty reply</h3>
+      <p>One run spent 65,536 reasoning tokens in one reply, hit the output limit with no text, and the run ended as <code>length</code> after 2 steps. Another got an empty reply, which was counted as a normal finish. Both are treated like a final answer.</p>
+      <p>Fix: on <code>length</code> or an empty completion, retry with a "be concise, act now" nudge and a lower reasoning effort, instead of ending the turn.</p>
+      <div class="meta"><span>Tasks affected <b>2</b></span><span>Where <b>packages/agent/src/service.ts:790, 933</b></span></div>
+    </div>
+    <div class="fix">
+      <h3>Keep context smaller</h3>
+      <p>Median peak context was 147k tokens (max 246k) within minutes, and compaction never triggered. Caching keeps this cheap on DeepSeek (98.9% hit rate), but each step still re-reads everything and the model slows down. Tool output is the main driver: long shell output goes back in full.</p>
+      <p>Fix: cap shell output in context earlier (spill already exists), and start compaction near 100k on models where cache hits are not free.</p>
+      <div class="meta"><span>Median peak <b>147k</b></span><span>Where <b>tool-spill, compaction</b></span></div>
+    </div>
+    <div class="fix">
+      <h3>Smaller fixes</h3>
+      <ul class="plain">
+        <li><b>Office tool crash.</b> <code>office_inspect</code> on a large .xlsx ran Node out of memory and killed the whole run (gsea-proteomics). Check file size first or parse in a worker.</li>
+        <li><b>Scratch files.</b> 28 writes to <code>/tmp</code> or other paths outside the workspace were refused by the path fence, so the model fell back to the shell. A workspace-local scratch folder in the prompt would avoid the detour.</li>
+        <li><b>Tool list noise.</b> 24 tools are offered to every coding run (including <code>echo</code>, <code>json</code>, <code>remember_global</code>, <code>skill_install</code>), and 14 were used. The system prompt is about 5492 tokens before the task.</li>
+        <li><b>Session log size.</b> Sessions average 8.1 MB, and 99% of that is the raw stream (every streamed chunk) stored again inside each <code>assistant/message</code>. Dropping that copy would make sessions more than 50 times smaller without losing history.</li>
+        <li><b>Skills and MCP in a task.</b> tnega reads skills from <code>.tnega/skills</code> only, so a project's <code>.agents/skills</code> folder is ignored. One task needed an MCP browser server that this setup could not provide.</li>
+        <li><b>Default step cap.</b> <code>tnega run</code> still stops at 64 steps unless told otherwise (<code>service.ts:523</code>). The benchmark raised it to 1000.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Where the money went</h2>
+  <div class="card" style="display:grid;gap:12px">
+    <div class="stack" role="img" aria-label="Cost split"><span class="seg s1" style="width:72%"></span><span class="seg s2" style="width:10%"></span><span class="seg s3" style="width:18%"></span></div>
+    <ul class="legend"><li><span class="sw s1"></span>Output tokens <b>72%</b></li><li><span class="sw s2"></span>Uncached input <b>10%</b></li><li><span class="sw s3"></span>Cached input <b>18%</b></li></ul>
+    <p class="prose">Input is almost free because 98.9% of it is a cache hit. Output tokens, 73% of them reasoning, are most of the bill. The cheapest wins are fewer full-file rewrites and less reasoning per step on routine actions.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Every task</h2>
+  <div class="scroll" style="max-height: 640px">
+    <table>
+      <thead><tr><th>Task</th><th>Category</th><th>Result</th><th>How it ended</th><th class="num">Cost $</th><th class="num">LLM calls</th><th class="num">Tokens M</th><th class="num">Output k</th><th class="num">Peak ctx k</th><th class="num">Minutes</th><th>$0.25 rerun</th></tr></thead>
+      <tbody><tr><td class="mono">cumulative-layout-shift</td><td>Software</td><td><span class="pill pass">Passed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">121</td><td class="num">12.1</td><td class="num">66</td><td class="num">152</td><td class="num">18</td><td></td></tr>
+<tr><td class="mono">embedding-drift-monitor</td><td>ML</td><td><span class="pill pass">Passed</span></td><td>Said done</td><td class="num">0.054</td><td class="num">45</td><td class="num">2.8</td><td class="num">70</td><td class="num">97</td><td class="num">21</td><td></td></tr>
+<tr><td class="mono">html-js-filter</td><td>Security</td><td><span class="pill pass">Passed</span></td><td>Said done</td><td class="num">0.066</td><td class="num">40</td><td class="num">2.9</td><td class="num">87</td><td class="num">117</td><td class="num">10</td><td></td></tr>
+<tr><td class="mono">live-database-cutover</td><td>Software</td><td><span class="pill pass">Passed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">77</td><td class="num">6.8</td><td class="num">105</td><td class="num">150</td><td class="num">15</td><td></td></tr>
+<tr><td class="mono">wal-recovery-ordering</td><td>Software</td><td><span class="pill pass">Passed</span></td><td>Said done</td><td class="num">0.042</td><td class="num">38</td><td class="num">2.0</td><td class="num">55</td><td class="num">76</td><td class="num">5</td><td></td></tr>
+<tr><td class="mono">wdm-design</td><td>Science</td><td><span class="pill pass">Passed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">147</td><td class="num">10.8</td><td class="num">82</td><td class="num">124</td><td class="num">47</td><td></td></tr>
+<tr><td class="mono">atrx-vep-crispr</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">70</td><td class="num">5.0</td><td class="num">115</td><td class="num">158</td><td class="num">12</td><td><span class="pill pass">Passed</span> <span class="muted">$0.10</span></td></tr>
+<tr><td class="mono">batched-eval-parity</td><td>ML</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">55</td><td class="num">5.4</td><td class="num">113</td><td class="num">156</td><td class="num">13</td><td></td></tr>
+<tr><td class="mono">biped-contact-dynamics</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.092</td><td class="num">28</td><td class="num">2.3</td><td class="num">136</td><td class="num">157</td><td class="num">14</td><td><span class="pill fail">Failed</span> <span class="muted">$0.25</span></td></tr>
+<tr><td class="mono">bun-sourcemap-leak</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.051</td><td class="num">44</td><td class="num">2.6</td><td class="num">65</td><td class="num">95</td><td class="num">6</td><td></td></tr>
+<tr><td class="mono">cad-model</td><td>Hardware</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">81</td><td class="num">7.2</td><td class="num">71</td><td class="num">246</td><td class="num">12</td><td></td></tr>
+<tr><td class="mono">cargo-flight-dispatch</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.046</td><td class="num">30</td><td class="num">1.6</td><td class="num">62</td><td class="num">91</td><td class="num">6</td><td></td></tr>
+<tr><td class="mono">coq-block-bound</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.032</td><td class="num">7</td><td class="num">0.2</td><td class="num">52</td><td class="num">58</td><td class="num">7</td><td></td></tr>
+<tr><td class="mono">ctr-optimization</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Stopped by 60 min cap</td><td class="num">0.058</td><td class="num">62</td><td class="num">2.8</td><td class="num">75</td><td class="num">104</td><td class="num">60</td><td></td></tr>
+<tr><td class="mono">data-anonymization</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.092</td><td class="num">65</td><td class="num">6.4</td><td class="num">112</td><td class="num">145</td><td class="num">27</td><td></td></tr>
+<tr><td class="mono">distributed-dedup</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.092</td><td class="num">45</td><td class="num">3.1</td><td class="num">134</td><td class="num">122</td><td class="num">32</td><td><span class="pill fail">Failed</span> <span class="muted">$0.19</span></td></tr>
+<tr><td class="mono">fin-saccr-rwa</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.051</td><td class="num">33</td><td class="num">2.1</td><td class="num">68</td><td class="num">98</td><td class="num">6</td><td></td></tr>
+<tr><td class="mono">foodstuff-beta-activity</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.023</td><td class="num">13</td><td class="num">0.3</td><td class="num">36</td><td class="num">47</td><td class="num">4</td><td></td></tr>
+<tr><td class="mono">formal-crypto</td><td>Security</td><td><span class="pill err">No grade</span></td><td>Stopped by $0.09 cap</td><td class="num">0.092</td><td class="num">62</td><td class="num">6.4</td><td class="num">94</td><td class="num">198</td><td class="num">10</td><td></td></tr>
+<tr><td class="mono">fp8-rmsnorm-gemm</td><td>ML</td><td><span class="pill skip">Not run</span></td><td>Not run (needs a GPU)</td><td class="num">0.000</td><td class="num">0</td><td class="num">0.0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td></td></tr>
+<tr><td class="mono">freecad-impeller</td><td>Hardware</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.078</td><td class="num">58</td><td class="num">4.2</td><td class="num">100</td><td class="num">135</td><td class="num">51</td><td></td></tr>
+<tr><td class="mono">freecad-platform-drawing</td><td>Hardware</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.092</td><td class="num">105</td><td class="num">8.7</td><td class="num">83</td><td class="num">183</td><td class="num">14</td><td></td></tr>
+<tr><td class="mono">freecad-spring-clip</td><td>Hardware</td><td><span class="pill fail">Failed</span></td><td>Ended: output token limit</td><td class="num">0.040</td><td class="num">2</td><td class="num">0.1</td><td class="num">66</td><td class="num">6</td><td class="num">6</td><td></td></tr>
+<tr><td class="mono">freight-dispatch-shift</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">59</td><td class="num">5.3</td><td class="num">113</td><td class="num">153</td><td class="num">10</td><td></td></tr>
+<tr><td class="mono">glycan-ms2-elucidation</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.100</td><td class="num">32</td><td class="num">2.3</td><td class="num">148</td><td class="num">164</td><td class="num">14</td><td></td></tr>
+<tr><td class="mono">gsea-proteomics</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Crashed / empty reply</td><td class="num">0.000</td><td class="num">1</td><td class="num">0.0</td><td class="num">0</td><td class="num">6</td><td class="num">0</td><td></td></tr>
+<tr><td class="mono">heat-pump-warranty</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.076</td><td class="num">85</td><td class="num">6.6</td><td class="num">73</td><td class="num">157</td><td class="num">23</td><td></td></tr>
+<tr><td class="mono">hof-topology-interpenetration</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.096</td><td class="num">56</td><td class="num">5.2</td><td class="num">117</td><td class="num">175</td><td class="num">23</td><td><span class="pill fail">Failed</span> <span class="muted">$0.11</span></td></tr>
+<tr><td class="mono">interleaved-vigenere</td><td>Security</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">59</td><td class="num">4.0</td><td class="num">125</td><td class="num">155</td><td class="num">13</td><td></td></tr>
+<tr><td class="mono">intrastat-meldung</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.049</td><td class="num">59</td><td class="num">4.3</td><td class="num">41</td><td class="num">120</td><td class="num">5</td><td></td></tr>
+<tr><td class="mono">jax-speedrun-gpu</td><td>ML</td><td><span class="pill skip">Not run</span></td><td>Not run (needs a GPU)</td><td class="num">0.000</td><td class="num">0</td><td class="num">0.0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td></td></tr>
+<tr><td class="mono">ks-solver-cpp</td><td>Science</td><td><span class="pill err">No grade</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">27</td><td class="num">3.0</td><td class="num">131</td><td class="num">143</td><td class="num">27</td><td></td></tr>
+<tr><td class="mono">kv-live-surgery</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">70</td><td class="num">6.5</td><td class="num">102</td><td class="num">158</td><td class="num">14</td><td></td></tr>
+<tr><td class="mono">lake-temp-glm</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Stopped by 60 min cap</td><td class="num">0.040</td><td class="num">45</td><td class="num">2.3</td><td class="num">49</td><td class="num">71</td><td class="num">60</td><td></td></tr>
+<tr><td class="mono">layout-config-recreation</td><td>Media</td><td><span class="pill err">No grade</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">88</td><td class="num">8.0</td><td class="num">89</td><td class="num">174</td><td class="num">50</td><td></td></tr>
+<tr><td class="mono">layout-config-recreation2</td><td>Media</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.017</td><td class="num">31</td><td class="num">0.7</td><td class="num">19</td><td class="num">43</td><td class="num">23</td><td></td></tr>
+<tr><td class="mono">legacy-utility-triage</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Stopped by 60 min cap</td><td class="num">0.070</td><td class="num">106</td><td class="num">6.7</td><td class="num">65</td><td class="num">135</td><td class="num">60</td><td></td></tr>
+<tr><td class="mono">math-eval-grader</td><td>ML</td><td><span class="pill skip">Not run</span></td><td>Not run (needs a GPU)</td><td class="num">0.000</td><td class="num">0</td><td class="num">0.0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td></td></tr>
+<tr><td class="mono">medical-claims-processing</td><td>Operations</td><td><span class="pill err">No grade</span></td><td>Not run (needs an MCP browser server)</td><td class="num">0.000</td><td class="num">0</td><td class="num">0.0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td></td></tr>
+<tr><td class="mono">mp-checkpoint-consolidation</td><td>ML</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">50</td><td class="num">4.1</td><td class="num">121</td><td class="num">161</td><td class="num">46</td><td></td></tr>
+<tr><td class="mono">music-harmony</td><td>Media</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.096</td><td class="num">48</td><td class="num">4.7</td><td class="num">123</td><td class="num">172</td><td class="num">12</td><td></td></tr>
+<tr><td class="mono">mvcc-lsm-compaction</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.022</td><td class="num">31</td><td class="num">0.9</td><td class="num">28</td><td class="num">48</td><td class="num">9</td><td></td></tr>
+<tr><td class="mono">nextjs-performance</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.082</td><td class="num">141</td><td class="num">9.6</td><td class="num">76</td><td class="num">115</td><td class="num">19</td><td></td></tr>
+<tr><td class="mono">ontology-kg-querying</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">44</td><td class="num">6.5</td><td class="num">86</td><td class="num">218</td><td class="num">8</td><td></td></tr>
+<tr><td class="mono">payments-pipeline-fix</td><td>Software</td><td><span class="pill err">No grade</span></td><td>Said done</td><td class="num">0.035</td><td class="num">17</td><td class="num">0.4</td><td class="num">54</td><td class="num">64</td><td class="num">7</td><td></td></tr>
+<tr><td class="mono">photonic-waveguide-routing</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.000</td><td class="num">2</td><td class="num">0.0</td><td class="num">0</td><td class="num">6</td><td class="num">2</td><td></td></tr>
+<tr><td class="mono">pretrain-shard-corruption</td><td>ML</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.095</td><td class="num">73</td><td class="num">5.3</td><td class="num">121</td><td class="num">160</td><td class="num">30</td><td></td></tr>
+<tr><td class="mono">production-planning</td><td>Operations</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.059</td><td class="num">26</td><td class="num">1.4</td><td class="num">81</td><td class="num">127</td><td class="num">9</td><td></td></tr>
+<tr><td class="mono">protein-autointerp-disulfide</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.061</td><td class="num">14</td><td class="num">0.8</td><td class="num">94</td><td class="num">108</td><td class="num">11</td><td></td></tr>
+<tr><td class="mono">react-lead-form</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.065</td><td class="num">61</td><td class="num">4.1</td><td class="num">81</td><td class="num">107</td><td class="num">9</td><td></td></tr>
+<tr><td class="mono">retro-console-soc</td><td>Hardware</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.094</td><td class="num">44</td><td class="num">3.7</td><td class="num">124</td><td class="num">174</td><td class="num">18</td><td></td></tr>
+<tr><td class="mono">risk-scorer-replay</td><td>ML</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.094</td><td class="num">80</td><td class="num">6.6</td><td class="num">112</td><td class="num">151</td><td class="num">13</td><td></td></tr>
+<tr><td class="mono">roy-polymorph-cn</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.020</td><td class="num">17</td><td class="num">0.4</td><td class="num">30</td><td class="num">43</td><td class="num">3</td><td></td></tr>
+<tr><td class="mono">rs-archive-clone</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.016</td><td class="num">18</td><td class="num">0.4</td><td class="num">21</td><td class="num">38</td><td class="num">2</td><td></td></tr>
+<tr><td class="mono">satb-audio-transcription</td><td>Media</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.090</td><td class="num">58</td><td class="num">3.8</td><td class="num">119</td><td class="num">170</td><td class="num">13</td><td><span class="pill fail">Failed</span> <span class="muted">$0.19</span></td></tr>
+<tr><td class="mono">session-window-debug</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.038</td><td class="num">26</td><td class="num">1.2</td><td class="num">54</td><td class="num">70</td><td class="num">5</td><td></td></tr>
+<tr><td class="mono">sglang-qwen-burst</td><td>ML</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">132</td><td class="num">10.9</td><td class="num">76</td><td class="num">152</td><td class="num">14</td><td></td></tr>
+<tr><td class="mono">shadow-relay</td><td>Security</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">60</td><td class="num">5.2</td><td class="num">116</td><td class="num">153</td><td class="num">11</td><td><span class="pill fail">Failed</span> <span class="muted">$0.25</span></td></tr>
+<tr><td class="mono">sound-change-cascade</td><td>Science</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.092</td><td class="num">61</td><td class="num">5.1</td><td class="num">110</td><td class="num">170</td><td class="num">14</td><td></td></tr>
+<tr><td class="mono">takens-embedding-lean</td><td>Science</td><td><span class="pill err">No grade</span></td><td>Crashed / empty reply</td><td class="num">0.000</td><td class="num">0</td><td class="num">0.0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td></td></tr>
+<tr><td class="mono">telecom-entity-resolution</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">93</td><td class="num">6.6</td><td class="num">106</td><td class="num">152</td><td class="num">17</td><td></td></tr>
+<tr><td class="mono">uefi-bootkit</td><td>Security</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">101</td><td class="num">7.5</td><td class="num">100</td><td class="num">155</td><td class="num">15</td><td><span class="pill fail">Failed</span> <span class="muted">$0.25</span></td></tr>
+<tr><td class="mono">vba-userform-port</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">77</td><td class="num">7.2</td><td class="num">101</td><td class="num">156</td><td class="num">10</td><td></td></tr>
+<tr><td class="mono">vf2-speedup-networkx</td><td>Software</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.093</td><td class="num">25</td><td class="num">2.0</td><td class="num">141</td><td class="num">149</td><td class="num">14</td><td></td></tr>
+<tr><td class="mono">vllm-deepseek-streaming</td><td>ML</td><td><span class="pill fail">Failed</span></td><td>Said done</td><td class="num">0.081</td><td class="num">115</td><td class="num">9.4</td><td class="num">67</td><td class="num">147</td><td class="num">13</td><td></td></tr>
+<tr><td class="mono">vpp-loss-divergence</td><td>ML</td><td><span class="pill fail">Failed</span></td><td>Stopped by $0.09 cap</td><td class="num">0.091</td><td class="num">98</td><td class="num">8.6</td><td class="num">87</td><td class="num">173</td><td class="num">18</td><td></td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Official leaderboard, full</h2>
+  <details>
+    <summary>All results from the Terminal-Bench 4.0 leaderboard, per trial averages</summary>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Harness</th><th>Model</th><th>Effort</th><th class="num">Accuracy %</th><th class="num">$ / trial</th><th class="num">Tokens M</th><th class="num">Output k</th><th class="num">Minutes</th></tr></thead>
+        <tbody><tr class="hl"><td>tnega 0.5.3</td><td>DeepSeek V4.1 Flash</td><td>default</td><td class="num">9.1</td><td class="num">0.071</td><td class="num">4.4</td><td class="num">84</td><td class="num">17</td></tr>
+<tr><td>Claude Code</td><td>Opus 5.5</td><td>max</td><td class="num">64.8</td><td class="num">14.30</td><td class="num">24.3</td><td class="num">269</td><td class="num">80</td></tr>
+<tr><td>Claude Code</td><td>Sonnet 5.5</td><td>max</td><td class="num">61.8</td><td class="num">22.22</td><td class="num">58.8</td><td class="num">565</td><td class="num">124</td></tr>
+<tr><td>Codex</td><td>GPT-6 Astra</td><td>max</td><td class="num">58.2</td><td class="num">9.90</td><td class="num">4.6</td><td class="num">73</td><td class="num">47</td></tr>
+<tr><td>Codex</td><td>GPT-6.1 Sol</td><td>max</td><td class="num">58.2</td><td class="num">1.92</td><td class="num">4.4</td><td class="num">95</td><td class="num">53</td></tr>
+<tr><td>Claude Code</td><td>Fable 5.1</td><td>max</td><td class="num">57.9</td><td class="num">18.92</td><td class="num">8.3</td><td class="num">191</td><td class="num">65</td></tr>
+<tr><td>Codex</td><td>GPT-6 Astra</td><td>xhigh</td><td class="num">57.9</td><td class="num">7.12</td><td class="num">3.6</td><td class="num">45</td><td class="num">37</td></tr>
+<tr><td>Codex</td><td>GPT-6 Astra</td><td>high</td><td class="num">57.9</td><td class="num">6.88</td><td class="num">3.7</td><td class="num">42</td><td class="num">35</td></tr>
+<tr><td>Claude Code</td><td>Fable 5.1</td><td>xhigh</td><td class="num">57.9</td><td class="num">14.76</td><td class="num">7.1</td><td class="num">153</td><td class="num">53</td></tr>
+<tr><td>Claude Code</td><td>Fable 5.1</td><td>high</td><td class="num">54.5</td><td class="num">12.08</td><td class="num">6.8</td><td class="num">113</td><td class="num">50</td></tr>
+<tr><td>Codex</td><td>GPT-6 Astra</td><td>medium</td><td class="num">54.2</td><td class="num">5.80</td><td class="num">3.2</td><td class="num">33</td><td class="num">31</td></tr>
+<tr><td>Claude Code</td><td>Fable 5.1</td><td>medium</td><td class="num">53.9</td><td class="num">8.58</td><td class="num">4.9</td><td class="num">79</td><td class="num">42</td></tr>
+<tr><td>Claude Code</td><td>Opus 5</td><td>xhigh</td><td class="num">53.9</td><td class="num">18.44</td><td class="num">20.9</td><td class="num">179</td><td class="num">75</td></tr>
+<tr><td>Claude Code</td><td>Opus 5</td><td>max</td><td class="num">51.8</td><td class="num">18.09</td><td class="num">19.8</td><td class="num">200</td><td class="num">80</td></tr>
+<tr><td>Codex</td><td>GPT-6 Astra</td><td>low</td><td class="num">50.6</td><td class="num">4.72</td><td class="num">2.7</td><td class="num">24</td><td class="num">28</td></tr>
+<tr><td>Claude Code</td><td>Opus 5</td><td>high</td><td class="num">50.3</td><td class="num">14.13</td><td class="num">16.6</td><td class="num">144</td><td class="num">64</td></tr>
+<tr><td>Codex</td><td>GPT-6 Sol</td><td>max</td><td class="num">49.4</td><td class="num">4.40</td><td class="num">15.1</td><td class="num">93</td><td class="num">44</td></tr>
+<tr><td>Claude Code</td><td>Opus 5</td><td>medium</td><td class="num">44.9</td><td class="num">9.67</td><td class="num">11.1</td><td class="num">101</td><td class="num">55</td></tr>
+<tr><td>Claude Code</td><td>Fable 5</td><td>max</td><td class="num">44.5</td><td class="num">22.02</td><td class="num">11.5</td><td class="num">178</td><td class="num">70</td></tr>
+<tr><td>Claude Code</td><td>Fable 5.1</td><td>low</td><td class="num">43.3</td><td class="num">7.15</td><td class="num">4.0</td><td class="num">60</td><td class="num">38</td></tr>
+<tr><td>Claude Code</td><td>GLM-5.3</td><td>max</td><td class="num">41.8</td><td class="num">8.27</td><td class="num">26.3</td><td class="num">208</td><td class="num">97</td></tr>
+<tr><td>Grok Build</td><td>Grok 4.7</td><td>xhigh</td><td class="num">37.6</td><td class="num">11.16</td><td class="num">16.6</td><td class="num">70</td><td class="num">95</td></tr>
+<tr><td>Codex</td><td>GPT-5.6 Sol</td><td>max</td><td class="num">37.3</td><td class="num">7.70</td><td class="num">13.4</td><td class="num">71</td><td class="num">40</td></tr>
+<tr><td>Claude Code</td><td>GLM-5.3-Flash</td><td>none</td><td class="num">35.8</td><td class="num">0.36</td><td class="num">8.8</td><td class="num">135</td><td class="num">103</td></tr>
+<tr><td>Claude Code</td><td>Opus 5</td><td>low</td><td class="num">34.9</td><td class="num">7.25</td><td class="num">8.2</td><td class="num">72</td><td class="num">49</td></tr>
+<tr><td>Claude Code</td><td>Qwen3.8-Max-0902</td><td>max</td><td class="num">27.0</td><td class="num">14.05</td><td class="num">9.0</td><td class="num">253</td><td class="num">166</td></tr>
+<tr><td>Claude Code</td><td>Opus 4.8</td><td>max</td><td class="num">23.6</td><td class="num">19.64</td><td class="num">19.4</td><td class="num">269</td><td class="num">86</td></tr>
+<tr><td>Codex</td><td>GPT-5.6 Terra</td><td>max</td><td class="num">21.5</td><td class="num">5.25</td><td class="num">17.2</td><td class="num">101</td><td class="num">42</td></tr>
+<tr><td>Grok Build</td><td>Grok 4.6</td><td>high</td><td class="num">20.3</td><td class="num">10.88</td><td class="num">12.1</td><td class="num">99</td><td class="num">39</td></tr>
+<tr><td>mini-SWE-agent</td><td>Gemini 3.8 Flash</td><td>high</td><td class="num">19.1</td><td class="num">5.54</td><td class="num">52.1</td><td class="num">206</td><td class="num">33</td></tr>
+<tr><td>Codex</td><td>GPT-5.6 Luna</td><td>max</td><td class="num">17.3</td><td class="num">1.05</td><td class="num">35.0</td><td class="num">186</td><td class="num">68</td></tr>
+<tr><td>Codex</td><td>GPT-6 Luna</td><td>max</td><td class="num">16.4</td><td class="num">0.22</td><td class="num">11.8</td><td class="num">138</td><td class="num">38</td></tr>
+<tr><td>Muse Code</td><td>Muse Spark 1.3</td><td>xhigh</td><td class="num">14.6</td><td class="num">0.00</td><td class="num">27.3</td><td class="num">265</td><td class="num">72</td></tr>
+<tr><td>Grok Build</td><td>Grok 4.5</td><td>high</td><td class="num">12.4</td><td class="num">6.35</td><td class="num">10.3</td><td class="num">98</td><td class="num">53</td></tr>
+<tr><td>Claude Code</td><td>Sonnet 5</td><td>max</td><td class="num">12.4</td><td class="num">29.10</td><td class="num">65.3</td><td class="num">353</td><td class="num">109</td></tr>
+<tr><td>mini-SWE-agent</td><td>Gemini 3.7 Flash</td><td>high</td><td class="num">11.2</td><td class="num">3.82</td><td class="num">33.7</td><td class="num">158</td><td class="num">28</td></tr></tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section class="prose">
+  <h2>How this was run</h2>
+  <ul class="plain">
+    <li><b>Benchmark.</b> Terminal-Bench 4.0 (Aug 29, 2026), all 66 tasks from Harbor Hub, graded by each task's own verifier in its separate verifier container, through Harbor. One trial per task, so pass@1 equals accuracy. The leaderboard averages 5 trials per task.</li>
+    <li><b>Harness.</b> tnega 0.5.3 from <code>main</code>, <code>tnega run</code> with DeepSeek V4.1 Flash (<code>deepseek-v4-flash</code>, default reasoning effort) at api.deepseek.com. tnega ran on the host. Its shell commands ran inside the task container through <code>docker exec</code>, and the workspace was a shared volume so file tools saw the same files. Sandbox off (the container is the sandbox). Step cap raised to 1000, LLM timeout to 15 minutes.</li>
+    <li><b>Caps.</b> $0.09 and 60 minutes per task, set so the whole set fit the $6 budget. The leaderboard allows up to 8 hours per task with no cost cap.</li>
+    <li><b>Not run.</b> 3 tasks need a GPU, and their images are larger than this sandbox's disk. 1 task needs an MCP browser server the adapter did not provide. All 4 count as failures.</li>
+    <li><b>Network.</b> Task containers could reach package registries and GitHub but not every site, unlike leaderboard runs.</li>
+    <li><b>Cost.</b> Rebuilt from the token counts in each session log at DeepSeek's off-peak list price ($0.15 per million uncached input tokens, $0.003 cached, $0.60 output). The run was on a weekend, which is off-peak. Comparison sources: official leaderboard via Harbor Hub; DeepSeek's self-reported Claude Code score (llm-stats); vals.ai for mini-SWE-agent.</li>
+    <li><b>Raw data.</b> <code>reports/tnega-terminal-bench-4/</code> in the project files: <code>results/tasks.csv</code> and <code>tasks.json</code> (per task), <code>summary.json</code>, the leaderboard export, every tnega session log, Harbor trial folders and the runner scripts.</li>
+  </ul>
+</section>
+
+</div>

@@ -1,0 +1,243 @@
+<title>tnega Tool Report</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (~70ch) for prose, wider bands for the chart and tables. Calm neutral ground, one green accent for tnega. */
+:root {
+  --bg: #fbfbf9; --surface: #ffffff; --fg: #1d1f1c; --muted: #5d625b; --line: #e3e5df;
+  --accent: #2f6b4f; --accent-soft: #e5efe9; --ref: #9a6b1f; --other: #b9bdb5;
+  --pass: #2f6b4f; --pass-bg: #e3f0e8; --fail: #8d3a2e; --fail-bg: #f6e6e2; --err: #7a6420; --err-bg: #f4eedb; --skip-bg: #eceee9;
+  --seg1: #2f6b4f; --seg2: #8fb3a0; --seg3: #c9d6cd;
+  --font-ui: "Geist", "Segoe UI", system-ui, sans-serif; --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151714; --surface: #1c1f1b; --fg: #e9ebe6; --muted: #a2a89f; --line: #2e322c;
+  --accent: #7cc19c; --accent-soft: #1f2e26; --ref: #d6a85a; --other: #555b53;
+  --pass: #8fd0ab; --pass-bg: #1d3327; --fail: #f0a596; --fail-bg: #3a2420; --err: #e2c770; --err-bg: #332c17; --skip-bg: #262a24;
+  --seg1: #7cc19c; --seg2: #4d7d63; --seg3: #34473c; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #151714; --surface: #1c1f1b; --fg: #e9ebe6; --muted: #a2a89f; --line: #2e322c;
+  --accent: #7cc19c; --accent-soft: #1f2e26; --ref: #d6a85a; --other: #555b53;
+  --pass: #8fd0ab; --pass-bg: #1d3327; --fail: #f0a596; --fail-bg: #3a2420; --err: #e2c770; --err-bg: #332c17; --skip-bg: #262a24;
+  --seg1: #7cc19c; --seg2: #4d7d63; --seg3: #34473c; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 48px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 56px; }
+section { display: grid; gap: 16px; min-width: 0; }
+.prose { max-width: 70ch; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.35rem; font-weight: 600; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h3 { font-size: 1.02rem; font-weight: 600; margin: 0; }
+p { margin: 0; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+.lede { font-size: 1.1rem; max-width: 66ch; }
+header { display: grid; gap: 14px; }
+.notice { margin: 0 0 20px; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; background: var(--surface); max-width: 72ch; line-height: 1.55; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+@media (max-width: 640px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+.stat { background: var(--surface); padding: 16px 18px; display: grid; gap: 2px; }
+.stat b { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.stat span { color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
+.chart { width: 100%; height: auto; display: block; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .tick { fill: var(--muted); font: 11px var(--font-mono); }
+.chart .lab { fill: var(--fg); font: 13px var(--font-ui); }
+.chart .lab.me { font-weight: 600; fill: var(--accent); }
+.chart .lab.ref { fill: var(--ref); }
+.chart .val { fill: var(--muted); font: 12px var(--font-mono); }
+.chart .bar.other rect { fill: var(--other); }
+.chart .bar.ref rect { fill: var(--ref); }
+.chart .bar.me rect { fill: var(--accent); }
+.chart .bar:hover rect { opacity: 0.8; }
+.keyrow { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85rem; color: var(--muted); }
+.keyrow i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+th { font-weight: 500; color: var(--muted); font-size: 0.78rem; position: sticky; top: 0; background: var(--surface); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 0.8rem; }
+td.mono { font-family: var(--font-mono); font-size: 0.8rem; }
+tr.hl td { background: var(--accent-soft); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 500; }
+.pill.pass { background: var(--pass-bg); color: var(--pass); }
+.pill.fail { background: var(--fail-bg); color: var(--fail); }
+.pill.err { background: var(--err-bg); color: var(--err); }
+.pill.skip { background: var(--skip-bg); color: var(--muted); }
+.fixes { display: grid; gap: 12px; counter-reset: fix; }
+.fix { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 8px; min-width: 0; }
+.fix h3 { display: flex; gap: 10px; align-items: baseline; }
+.fix h3::before { counter-increment: fix; content: counter(fix); font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); min-width: 1.2em; }
+.fix .meta { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.82rem; color: var(--muted); }
+.fix .meta b { color: var(--fg); font-weight: 500; }
+code { font-family: var(--font-mono); font-size: 0.84em; background: var(--skip-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.stack { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 2px; }
+.seg.s1 { background: var(--seg1); } .seg.s2 { background: var(--seg2); } .seg.s3 { background: var(--seg3); }
+.legend { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.sw.s1 { background: var(--seg1); } .sw.s2 { background: var(--seg2); } .sw.s3 { background: var(--seg3); }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+ul.plain { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+details summary { cursor: pointer; font-weight: 500; }
+details[open] summary { margin-bottom: 12px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.seg.s4, .sw.s4 { background: var(--seg4); } .seg.s5, .sw.s5 { background: var(--seg5); }
+:root { --seg4: #dfe3dc; --seg5: #b48a3c; --warn: #8a6414; --warn-bg: #f6eedc; --ok: var(--pass); --ok-bg: var(--pass-bg); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --seg4: #3a4038; --seg5: #9c7a3a; --warn: #e2c770; --warn-bg: #332c17; } }
+:root[data-theme="dark"] { --seg4: #3a4038; --seg5: #9c7a3a; --warn: #e2c770; --warn-bg: #332c17; }
+.pill.ok { background: var(--ok-bg); color: var(--ok); } .pill.warn { background: var(--warn-bg); color: var(--warn); } .pill.bad { background: var(--fail-bg); color: var(--fail); }
+.stack.tall { height: 26px; flex: 1; }
+.stack.tall .seg { display: flex; align-items: center; justify-content: center; font: 11px var(--font-mono); color: var(--bg); overflow: hidden; }
+.stack.tall .seg.s4 span { color: var(--fg); }
+.phrow { display: flex; align-items: center; gap: 12px; }
+.phlab { width: 84px; font-size: 0.82rem; color: var(--muted); flex: none; }
+.tool { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 12px; min-width: 0; }
+.tool h3 { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 1.1rem; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.facts div { display: grid; gap: 2px; }
+.facts b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.facts span { font-size: 0.8rem; color: var(--muted); line-height: 1.3; }
+.tool p { max-width: 76ch; }
+.do { border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; max-width: 76ch; }
+.next { display: grid; gap: 12px; counter-reset: n; }
+.next .tool h3::before { counter-increment: n; content: counter(n); font-family: var(--font-mono); color: var(--accent); font-size: 0.85rem; }
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">Terminal-Bench 4.0 · tnega 0.5.3 · DeepSeek V4.1 Flash · 61 runs, 3,458 steps, 3,660 tool calls</div>
+  <h1>What each tool costs, how well it works, and what to change</h1>
+  <p class="lede">The shell is tnega's whole workbench: it handles 79% of tool calls. Most of the cost is not in running tools. It is in the model writing code into tool calls and re-reading results that stay in context. The biggest wins are for reading, probing and waiting. The fixes you already assigned are not repeated here.</p>
+</header>
+
+<section>
+  <h2>Every action, side by side</h2>
+  <p class="prose muted">Each model step is grouped by the first tool it called. "Output tokens" is what the model generated for that step, reasoning included. "Context share" is how much of all input tokens over the run came from that action's arguments and results, because each one is re-sent on every later step. Shell commands are sorted by what they actually do.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Action</th><th class="num">Steps</th><th class="num">of steps</th><th class="num">Output tok / step</th><th class="num">of which reasoning</th><th class="num">Model s / step</th><th class="num">Tool s / step</th><th class="num">Result tok / step</th><th class="num">Share of output</th><th class="num">Context share</th><th class="num">Failed</th><th>Verdict</th></tr></thead>
+    <tbody><tr><td>Write a file with write_file</td><td class="num">362</td><td class="num">10%</td><td class="num">3,956</td><td class="num">2,287</td><td class="num">19.7</td><td class="num">0.0</td><td class="num">35</td><td class="num">28%</td><td class="num">8.3%</td><td class="num">5%</td><td><span class="pill bad">Most expensive action</span></td></tr><tr><td>Probe data or code with inline Python</td><td class="num">768</td><td class="num">22%</td><td class="num">1,685</td><td class="num">1,387</td><td class="num">10.6</td><td class="num">2.1</td><td class="num">694</td><td class="num">25%</td><td class="num">9.9%</td><td class="num">6%</td><td><span class="pill warn">Works, costly</span></td></tr><tr><td>Look around (cat, grep, ls, read_file, list_dir)</td><td class="num">630</td><td class="num">18%</td><td class="num">883</td><td class="num">786</td><td class="num">6.3</td><td class="num">0.4</td><td class="num">1,424</td><td class="num">11%</td><td class="num">18.7%</td><td class="num">6%</td><td><span class="pill warn">Works, wasteful</span></td></tr><tr><td>Run a program or script</td><td class="num">630</td><td class="num">18%</td><td class="num">735</td><td class="num">590</td><td class="num">5.3</td><td class="num">11.9</td><td class="num">1,031</td><td class="num">9%</td><td class="num">9.9%</td><td class="num">10%</td><td><span class="pill ok">Works</span></td></tr><tr><td>Write a file through the shell (cat &gt; f &lt;&lt;EOF)</td><td class="num">320</td><td class="num">9%</td><td class="num">2,400</td><td class="num">1,705</td><td class="num">13.6</td><td class="num">28.3</td><td class="num">866</td><td class="num">15%</td><td class="num">5.7%</td><td class="num">15%</td><td><span class="pill warn">Workaround</span></td></tr><tr><td>Edit a file with a Python string replace</td><td class="num">198</td><td class="num">6%</td><td class="num">1,331</td><td class="num">809</td><td class="num">7.7</td><td class="num">15.6</td><td class="num">317</td><td class="num">5%</td><td class="num">1.3%</td><td class="num">9%</td><td><span class="pill warn">Workaround</span></td></tr><tr><td>Background job (start, poll, kill)</td><td class="num">203</td><td class="num">6%</td><td class="num">383</td><td class="num">280</td><td class="num">3.5</td><td class="num">9.9</td><td class="num">127</td><td class="num">2%</td><td class="num">0.7%</td><td class="num">4%</td><td><span class="pill ok">Works</span></td></tr><tr><td>Sleep, check processes, curl</td><td class="num">168</td><td class="num">5%</td><td class="num">406</td><td class="num">289</td><td class="num">3.6</td><td class="num">42.5</td><td class="num">296</td><td class="num">1%</td><td class="num">1.1%</td><td class="num">19%</td><td><span class="pill bad">Wastes time</span></td></tr><tr><td>Install packages</td><td class="num">48</td><td class="num">1%</td><td class="num">590</td><td class="num">497</td><td class="num">5.1</td><td class="num">7.2</td><td class="num">279</td><td class="num">1%</td><td class="num">0.3%</td><td class="num">22%</td><td><span class="pill bad">Fails often</span></td></tr><tr><td>Edit a file with sed -i</td><td class="num">47</td><td class="num">1%</td><td class="num">416</td><td class="num">230</td><td class="num">3.4</td><td class="num">11.6</td><td class="num">311</td><td class="num">0%</td><td class="num">0.4%</td><td class="num">15%</td><td><span class="pill warn">Workaround</span></td></tr><tr><td>Run a test runner (pytest, cargo test, ...)</td><td class="num">36</td><td class="num">1%</td><td class="num">1,657</td><td class="num">1,296</td><td class="num">10.3</td><td class="num">4.3</td><td class="num">340</td><td class="num">1%</td><td class="num">0.1%</td><td class="num">3%</td><td><span class="pill warn">Rarely used</span></td></tr><tr><td>Reply without tools (final answer)</td><td class="num">41</td><td class="num">1%</td><td class="num">2,833</td><td class="num">2,472</td><td class="num">27.0</td><td class="num">0.0</td><td class="num">0</td><td class="num">2%</td><td class="num">0.0%</td><td class="num">0%</td><td><span class="pill ok">Final answer</span></td></tr></tbody>
+  </table></div>
+  <p class="prose muted">Token counts are reported by DeepSeek. Result and context tokens are estimated at 3 characters per token. Context shares cover tool arguments and results only; old reasoning, about half the context, is shown in the deep-dive report.</p>
+</section>
+
+<section>
+  <h2>How the agent works through a task</h2>
+  <p class="prose">Each run is split into fifths by step. The agent spends its first fifth mostly looking around, then settles into a steady loop: probe with Python, write a file, run it, look again. It rarely runs a test suite: only 36 steps used a test runner, against 768 steps of ad-hoc Python probes. It checks its work by printing values, not by running tests, which matches how its wrong answers failed on hidden edge cases.</p>
+  <div class="card" style="display:grid;gap:10px"><div class="phrow"><span class="phlab">First fifth</span><div class="stack tall"><div class="seg s1" style="flex:0.3701" title="Look around: 37%"><span>37%</span></div><div class="seg s2" style="flex:0.2277" title="Probe with Python: 23%"><span>23%</span></div><div class="seg s3" style="flex:0.1355" title="Write or edit files: 14%"><span>14%</span></div><div class="seg s4" style="flex:0.1620" title="Run code or tests: 16%"><span>16%</span></div><div class="seg s5" style="flex:0.1006" title="Jobs, waiting, installs: 10%"><span>10%</span></div></div></div><div class="phrow"><span class="phlab">Second</span><div class="stack tall"><div class="seg s1" style="flex:0.1870" title="Look around: 19%"><span>19%</span></div><div class="seg s2" style="flex:0.2333" title="Probe with Python: 23%"><span>23%</span></div><div class="seg s3" style="flex:0.2957" title="Write or edit files: 30%"><span>30%</span></div><div class="seg s4" style="flex:0.1754" title="Run code or tests: 18%"><span>18%</span></div><div class="seg s5" style="flex:0.1087" title="Jobs, waiting, installs: 11%"><span>11%</span></div></div></div><div class="phrow"><span class="phlab">Third</span><div class="stack tall"><div class="seg s1" style="flex:0.1288" title="Look around: 13%"><span>13%</span></div><div class="seg s2" style="flex:0.2272" title="Probe with Python: 23%"><span>23%</span></div><div class="seg s3" style="flex:0.3314" title="Write or edit files: 33%"><span>33%</span></div><div class="seg s4" style="flex:0.1881" title="Run code or tests: 19%"><span>19%</span></div><div class="seg s5" style="flex:0.1216" title="Jobs, waiting, installs: 12%"><span>12%</span></div></div></div><div class="phrow"><span class="phlab">Fourth</span><div class="stack tall"><div class="seg s1" style="flex:0.1116" title="Look around: 11%"><span>11%</span></div><div class="seg s2" style="flex:0.2304" title="Probe with Python: 23%"><span>23%</span></div><div class="seg s3" style="flex:0.3261" title="Write or edit files: 33%"><span>33%</span></div><div class="seg s4" style="flex:0.1986" title="Run code or tests: 20%"><span>20%</span></div><div class="seg s5" style="flex:0.1290" title="Jobs, waiting, installs: 13%"><span>13%</span></div></div></div><div class="phrow"><span class="phlab">Last fifth</span><div class="stack tall"><div class="seg s1" style="flex:0.1043" title="Look around: 10%"><span>10%</span></div><div class="seg s2" style="flex:0.1908" title="Probe with Python: 19%"><span>19%</span></div><div class="seg s3" style="flex:0.2563" title="Write or edit files: 26%"><span>26%</span></div><div class="seg s4" style="flex:0.2414" title="Run code or tests: 24%"><span>24%</span></div><div class="seg s5" style="flex:0.1475" title="Jobs, waiting, installs: 15%"><span>15%</span></div></div></div><ul class="legend" style="margin-top:6px"><li><span class="sw s1"></span>Look around</li><li><span class="sw s2"></span>Probe with Python</li><li><span class="sw s3"></span>Write or edit files</li><li><span class="sw s4"></span>Run code or tests</li><li><span class="sw s5"></span>Jobs, waiting, installs</li></ul></div>
+  <ul class="plain prose">
+    <li><b>Serial looking.</b> Of 630 look-around steps, 325 came straight after another look-around step. Each one is a full model round trip (6.3 s and 786 reasoning tokens) to read one more file. Only 218 of 3,458 steps called more than one tool at once.</li>
+    <li><b>Five ways to change a file.</b> write_file (362 steps), shell heredocs (320), Python string replace (198), and sed -i (47). The workarounds fail more often (9 to 15%) than write_file (5%).</li>
+    <li><b>Scratch scripts in the workspace.</b> 87 of 327 files written were throwaway probes like <code>sift2.py</code>, <code>step2.py</code> and <code>t19.py</code>. The path fence refused 29 attempts to write to <code>/tmp</code>, so scratch work lands next to the deliverables.</li>
+    <li><b>Waiting by sleeping.</b> 55 commands start with <code>sleep N</code> to wait for a background process. Together they took 1.8 hours, 10% of all agent time.</li>
+    <li><b>Few repeats.</b> Only 9 shell commands were exact repeats, and 29 files were read more than once. The agent does not loop. It just takes many small serial steps.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Tool by tool</h2>
+
+  <div class="tool">
+    <h3><code>shell</code> <span class="pill warn">Works, but carries too much</span></h3>
+    <div class="facts">
+      <div><b>2,903</b><span>calls in 59 of 61 runs (79% of all calls)</span></div>
+      <div><b>43%</b><span>of all input tokens come from shell commands and their output staying in context</span></div>
+      <div><b>8.3 h</b><span>of runtime, median 0.36 s per call</span></div>
+      <div><b>9%</b><span>non-zero exit or error; about 100 hit the 15 s timeout</span></div>
+    </div>
+    <p>It works: commands rarely fail for tool reasons. The problem is what it is used for. Shell is the reader, the editor, the Python console and the process manager, and every output stays in context until the run ends.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>What the command does</th><th class="num">Calls</th><th class="num">Result tok / call</th><th class="num">Context share</th><th class="num">Hours</th><th class="num">Median s</th><th class="num">Failed</th><th class="num">Timeouts</th></tr></thead>
+      <tbody><tr><td>inline python</td><td class="num">1,003</td><td class="num">595</td><td class="num">11.2%</td><td class="num">1.30</td><td class="num">0.39</td><td class="num">7%</td><td class="num">23</td></tr><tr><td>other</td><td class="num">400</td><td class="num">710</td><td class="num">5.7%</td><td class="num">1.38</td><td class="num">0.75</td><td class="num">11%</td><td class="num">16</td></tr><tr><td>write file via shell</td><td class="num">324</td><td class="num">852</td><td class="num">5.7%</td><td class="num">2.52</td><td class="num">0.66</td><td class="num">15%</td><td class="num">18</td></tr><tr><td>search/list</td><td class="num">311</td><td class="num">506</td><td class="num">3.8%</td><td class="num">0.03</td><td class="num">0.16</td><td class="num">5%</td><td class="num">0</td></tr><tr><td>read/inspect</td><td class="num">269</td><td class="num">1,670</td><td class="num">9.9%</td><td class="num">0.02</td><td class="num">0.14</td><td class="num">4%</td><td class="num">1</td></tr><tr><td>run script/program</td><td class="num">229</td><td class="num">1,597</td><td class="num">4.2%</td><td class="num">0.62</td><td class="num">1.19</td><td class="num">9%</td><td class="num">7</td></tr><tr><td>system/network</td><td class="num">181</td><td class="num">299</td><td class="num">1.2%</td><td class="num">1.99</td><td class="num">5.39</td><td class="num">18%</td><td class="num">22</td></tr><tr><td>install packages</td><td class="num">51</td><td class="num">127</td><td class="num">0.2%</td><td class="num">0.10</td><td class="num">6.32</td><td class="num">24%</td><td class="num">9</td></tr><tr><td>edit in place (sed -i)</td><td class="num">47</td><td class="num">311</td><td class="num">0.4%</td><td class="num">0.15</td><td class="num">2.59</td><td class="num">15%</td><td class="num">1</td></tr><tr><td>run tests</td><td class="num">36</td><td class="num">333</td><td class="num">0.1%</td><td class="num">0.04</td><td class="num">3.06</td><td class="num">3%</td><td class="num">1</td></tr><tr><td>git</td><td class="num">26</td><td class="num">674</td><td class="num">0.3%</td><td class="num">0.00</td><td class="num">0.21</td><td class="num">8%</td><td class="num">0</td></tr><tr><td>build/compile</td><td class="num">26</td><td class="num">356</td><td class="num">0.2%</td><td class="num">0.10</td><td class="num">2.03</td><td class="num">12%</td><td class="num">2</td></tr></tbody>
+    </table></div>
+    <p class="do"><b>Change:</b> cap reading commands (<code>cat</code>, <code>grep</code>, <code>find</code>, <code>head</code>) at about 8k characters in context, with a pointer to the full output. Reading results average 1,670 tokens per call and take 9.9% of all input tokens. Spill only starts at 50k characters today.</p>
+  </div>
+
+  <div class="tool">
+    <h3><code>write_file</code> <span class="pill bad">Most expensive action</span></h3>
+    <div class="facts">
+      <div><b>362</b><span>steps (371 calls, 46 runs)</span></div>
+      <div><b>3,956</b><span>output tokens per step: 1,670 of file content plus 2,287 reasoning</span></div>
+      <div><b>28%</b><span>of all output tokens, the biggest share of any action</span></div>
+      <div><b>19.7 s</b><span>model time per write, 3 times a look-around step</span></div>
+    </div>
+    <p>It is reliable: 5% of calls failed, mostly the path fence refusing <code>/tmp</code>. Across all ways of writing, a write followed by a failing run happened 35 times, against 309 clean runs. It is costly because every change resends the whole file.</p>
+    <p class="do"><b>Change:</b> the edit tool is already assigned. Two things to add for it. Let <code>write_file</code> write to a session scratch folder outside the workspace, so the 87 throwaway scripts stop landing next to deliverables. And put one line in the tool description: "for changes to an existing file, use edit_file".</p>
+  </div>
+
+  <div class="tool">
+    <h3><code>read_file</code> <span class="pill warn">Under-used</span></h3>
+    <div class="facts">
+      <div><b>140</b><span>calls, against 269 reading commands in the shell</span></div>
+      <div><b>1,822</b><span>tokens per result on average (whole files up to 256 KB)</span></div>
+      <div><b>4.0%</b><span>of all input tokens</span></div>
+      <div><b>6%</b><span>failed: path fence or binary file</span></div>
+    </div>
+    <p>It works, but it only reads from the start of a file with a byte limit (<code>maxBytes</code>). It has no line range and no line numbers. To read the middle of a log or source file, the agent has to use <code>sed -n</code>, <code>head</code> or <code>tail</code> in the shell.</p>
+    <p class="do"><b>Change:</b> add <code>offset</code> and <code>limit</code> in lines, return line numbers, and for big files return the first 200 lines plus the total line count by default. This lets reading move out of the shell and keeps each result small.</p>
+  </div>
+
+  <div class="tool">
+    <h3>Inline Python through the shell <span class="pill warn">Works, costly</span></h3>
+    <div class="facts">
+      <div><b>768</b><span>probe steps, the most common action (22% of steps)</span></div>
+      <div><b>1,685</b><span>output tokens per probe (297 of code)</span></div>
+      <div><b>25%</b><span>of all output tokens</span></div>
+      <div><b>10.6 s</b><span>model time per probe; 2.1 s to run</span></div>
+    </div>
+    <p>The agent investigates data, images and code by writing small Python programs. Each probe starts from nothing. Of 1,003 inline Python calls, 795 begin with imports and 596 load a file again, such as an image, a JSON file or a CSV, before printing a few values. Separately, 198 steps used a Python script to edit a file with <code>.replace()</code>.</p>
+    <p class="do"><b>Change:</b> add a persistent Python tool, a REPL that keeps its variables between calls inside the task container. Loaded data and helpers stay in memory, so each probe is a few lines instead of a whole script. It also gives the model a clean place to run checks.</p>
+  </div>
+
+  <div class="tool">
+    <h3>Waiting: <code>sleep</code>, <code>job_output</code> <span class="pill bad">Wastes time</span></h3>
+    <div class="facts">
+      <div><b>55</b><span><code>sleep N</code> commands to wait for something</span></div>
+      <div><b>1.8 h</b><span>spent sleeping, 10% of agent time</span></div>
+      <div><b>87</b><span><code>job_output</code> polls for 106 started jobs</span></div>
+      <div><b>19%</b><span>of process and network commands failed</span></div>
+    </div>
+    <p>Background jobs work: 8% of <code>job_start</code> calls had bad arguments, and the rest ran. But the agent cannot wait for a job, a port or a file to be ready. It guesses a sleep length, so it waits too long or too short and checks again. The system prompt even says "use wait only when blocked", but no <code>wait</code> tool is offered.</p>
+    <p class="do"><b>Change:</b> add the <code>wait</code> tool the prompt already names. It should wait until a job finishes, a port opens, a file appears or a log line matches, with a timeout. It returns as soon as the condition is true, instead of after a fixed sleep.</p>
+  </div>
+
+  <div class="tool">
+    <h3>Installing packages <span class="pill bad">Fails often</span></h3>
+    <div class="facts">
+      <div><b>51</b><span>install commands in 20 runs</span></div>
+      <div><b>24%</b><span>failed; most were killed by the 15 s shell timeout</span></div>
+      <div><b>6.3 s</b><span>median install time when it worked</span></div>
+    </div>
+    <p>Examples: <code>pip install opencv-python-headless scipy</code>, <code>pip install rapidocr-onnxruntime</code> and <code>apt-get install tesseract-ocr</code> were all killed at 15 s. The agent then tried again with a longer timeout or gave up on that approach.</p>
+    <p class="do"><b>Change:</b> raising the shell default is already assigned. As a cheap extra, recognise install commands and give them a longer timeout automatically.</p>
+  </div>
+
+  <div class="tool">
+    <h3><code>list_dir</code>, jobs, Office, skills and the rest <span class="pill ok">Fine, rarely needed</span></h3>
+    <p><code>list_dir</code>: 26 calls, 15% refused by the path fence. The agent prefers <code>ls</code> and <code>find</code>. Office tools: 6 calls, which fits the few Office tasks. These were never called: <code>glob</code>, <code>grep</code>, <code>json</code>, <code>office_create</code>, <code>office_edit</code>, <code>skill_read</code>, <code>skill_create</code>, <code>skill_install</code> and <code>remember_global</code>. That includes <code>glob</code> and <code>grep</code>, even though <code>search/list</code> shell commands ran 311 times.</p>
+    <p class="do"><b>Change:</b> either drop <code>glob</code> and <code>grep</code> from the default set, or make the shell <code>grep</code>/<code>find</code> results go through the same output cap as above. The agent will not switch on its own.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Next improvements, by expected payoff</h2>
+  <p class="prose muted">New items only. The seven fixes from the earlier reports are already assigned. The estimates come from these 61 runs.</p>
+  <div class="next">
+    <div class="tool"><h3>Batch look-around steps</h3><p>325 look-around steps came straight after another one. Add one line to the system prompt ("read related files in one step with parallel tool calls") and keep parallel reads fast. Payoff: up to about 34 minutes and 290k output tokens across these runs.</p></div>
+    <div class="tool"><h3>Line ranges and line numbers in <code>read_file</code></h3><p>This moves reading out of the shell and keeps results small. Reading results take about 14% of all input tokens today (9.9% from shell reads plus 4.0% from read_file).</p></div>
+    <div class="tool"><h3>A <code>wait</code> tool</h3><p>It replaces guessed sleeps. Payoff: up to 1.8 hours of the 17.7 here, and it fixes a prompt that already names a missing tool.</p></div>
+    <div class="tool"><h3>A persistent Python tool</h3><p>It targets the most common action (768 steps, 25% of output tokens). The saving is hard to predict, so measure it on a small rerun of the Python-heavy tasks, such as the image, audio and data tasks.</p></div>
+    <div class="tool"><h3>A scratch folder outside the workspace</h3><p>It keeps 87 throwaway scripts out of the deliverables and removes 29 path-fence refusals. It is a small change in the path fence and in <code>write_file</code>.</p></div>
+    <div class="tool"><h3>Cap reading output in context at about 8k characters</h3><p>The cap applies to cat, grep, find and similar. The full output stays available through the existing spill pointer.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Data</h2>
+  <p class="prose muted">This report covers the 61 main-run sessions (3,458 steps). The scripts <code>deep/tools.py</code> and <code>deep/steps.py</code>, and their output <code>deep/tools.json</code> and <code>deep/steps.json</code>, are in <code>reports/tnega-terminal-bench-4/</code> in the project files.</p>
+</section>
+</div>
