@@ -1,4 +1,4 @@
-import { Briefcase, Code2, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Target, ListChecks, Zap } from 'lucide-react'
+import { Briefcase, Code2, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Target, ListChecks, X, Zap } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { CommandSpec } from '../lib/completion'
 import type { AgentType, ApprovalMode, ConfigSnapshot, ImageAttachment, ModelOption, Permission, SessionEffort, SessionMode } from '../lib/types'
@@ -54,6 +54,7 @@ export function Composer({
   commands,
   completeArgument,
   searchFiles,
+  attachFile,
   running,
   allowWhileRunning,
   locked,
@@ -75,6 +76,8 @@ export function Composer({
   commands: readonly CommandSpec[]
   completeArgument?: (command: string, query: string) => Promise<ArgumentSuggestion[]>
   searchFiles?: (query: string) => Promise<string[]>
+  /** Save a dropped document into the workspace; see `PromptBox`. */
+  attachFile?: ((file: File) => Promise<string>) | undefined
   running: boolean
   allowWhileRunning?: boolean
   /** The mode can't change while a run is active. */
@@ -104,6 +107,7 @@ export function Composer({
       commands={commands}
       completeArgument={completeArgument}
       searchFiles={searchFiles}
+      attachFile={attachFile}
       running={running}
       allowWhileRunning={allowWhileRunning}
       disabledReason={disabledReason}
@@ -115,11 +119,34 @@ export function Composer({
       resetKey={resetKey}
       toolbar={
         <>
-          <Choice label="Mode" value={settings.mode} options={MODE_OPTIONS} onChange={mode => onSettingsChange({ mode })} disabled={locked} />
           <ModelPicker model={settings.model} reasoningEffort={settings.reasoningEffort} onChange={onSettingsChange} models={models} defaultModelId={defaultModelId} config={config} onConfigChanged={onConfigChanged} disabled={modelLocked} />
+          <ModeTag mode={settings.mode} onClear={() => onSettingsChange({ mode: 'auto' })} disabled={locked} />
         </>
       }
     />
+  )
+}
+
+/**
+ * Plan and Goal have no button of their own: `/plan` and `/goal` turn them
+ * on. While one is on, this tag says so and clears it back to Auto.
+ */
+function ModeTag({ mode, onClear, disabled }: { mode: SessionMode; onClear: () => void; disabled: boolean }) {
+  const option = MODE_OPTIONS.find(each => each.value === mode)
+  if (!option || mode === 'auto') return null
+  return (
+    <button
+      type="button"
+      className="chip"
+      aria-label={`${option.label} mode is on. Switch back to Auto`}
+      title={`${option.description}. Click to switch back to Auto.`}
+      disabled={disabled}
+      onClick={onClear}
+    >
+      {option.icon}
+      <span>{option.label} mode</span>
+      <X size={12} className="chip-caret" />
+    </button>
   )
 }
 

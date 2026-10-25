@@ -629,7 +629,7 @@ function Room({
                 <div key={item.id} className="room-bubble reactable">
                   <div id={`msg-${item.id}`} className="room-message">
                     {item.replyTo.map(ref => <ReplyChip key={ref.id} reply={ref} onJump={handlers.onJump} />)}
-                    <Markdown text={item.text} />
+                    <Markdown text={item.text} breaks />
                   </div>
                   <Reactions workspace={workspace} state={state} messageId={item.id} align="end" />
                 </div>

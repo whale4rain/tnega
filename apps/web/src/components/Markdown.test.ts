@@ -55,3 +55,11 @@ it('keeps path:line links that the default sanitizer drops, and still drops scri
   expect(openPath).toHaveBeenCalledWith('server.cjs')
   expect(view.getByText('b').closest('a')?.getAttribute('href') ?? '').not.toContain('javascript')
 })
+
+it('keeps typed line breaks with `breaks` and shows no empty lines between blocks', () => {
+  const view = render(createElement(Markdown, { text: 'One\nTwo\n\n1. a\n2. b', breaks: true }))
+  expect(view.container.querySelectorAll('p br')).toHaveLength(1)
+  expect(view.container.querySelectorAll('ol li')).toHaveLength(2)
+  const plain = render(createElement(Markdown, { text: 'One\nTwo' }))
+  expect(plain.container.querySelectorAll('br')).toHaveLength(0)
+})

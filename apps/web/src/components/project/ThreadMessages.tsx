@@ -34,7 +34,7 @@ export function ThreadMessages({ messages, label, running, threadId, goal, autho
           <ChatRun key={message.messageId} at={message.createdAt} side={user ? 'user' : 'agent'}>
             <div className={user ? 'room-bubble reactable' : 'room-message reactable'} {...(user ? {} : { id: `msg-${message.messageId}` })}>
               {user
-                ? <div id={`msg-${message.messageId}`} className="room-message"><Markdown text={message.text} /></div>
+                ? <div id={`msg-${message.messageId}`} className="room-message"><Markdown text={message.text} breaks /></div>
                 : <Markdown text={message.text} />}
               {workspace !== undefined && state && (
                 <Reactions workspace={workspace} state={state} messageId={message.messageId} align={user ? 'end' : 'start'} />

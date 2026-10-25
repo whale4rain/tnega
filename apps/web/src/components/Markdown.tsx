@@ -136,10 +136,42 @@ function FileReferences({ children }: { children: ReactNode }) {
   return render(children)
 }
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+interface MdNode {
+  type: string
+  value?: string
+  children?: MdNode[]
+}
+
+/**
+ * Every newline in the text is a line break, the way it looked when typed.
+ * For what people write in the message box, where a single Shift+Enter means
+ * a new line; code blocks keep theirs anyway.
+ */
+function remarkLineBreaks() {
+  const visit = (node: MdNode) => {
+    if (!node.children) return
+    node.children = node.children.flatMap((child): MdNode[] => {
+      if (child.type !== 'text' || !child.value?.includes('\n')) {
+        visit(child)
+        return [child]
+      }
+      return child.value.split('\n').flatMap((part, index) => [
+        ...(index ? [{ type: 'break' }] : []),
+        ...(part ? [{ type: 'text', value: part }] : []),
+      ])
+    })
+  }
+  return visit
+}
+
+const PLUGINS = [remarkGfm]
+const PLUGINS_WITH_BREAKS = [remarkGfm, remarkLineBreaks]
+
+/** `breaks` keeps single newlines as line breaks; use it for what the user wrote. */
+export const Markdown = memo(function Markdown({ text, breaks = false }: { text: string; breaks?: boolean }) {
   return (
     <div className="prose">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={urlTransform}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={breaks ? PLUGINS_WITH_BREAKS : PLUGINS} components={components} urlTransform={urlTransform}>{text}</ReactMarkdown>
     </div>
   )
 })

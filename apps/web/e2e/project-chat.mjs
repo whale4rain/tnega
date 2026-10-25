@@ -253,7 +253,7 @@ try {
       await input.fill('')
       assert.equal(await main.getByRole('button', { name: 'Stop', exact: true }).count(), 0)
     })
-    await check(`${theme}: ordinary Session has plain messages and opens user/Agent references`, async () => {
+    await check(`${theme}: ordinary Session has a user bubble, plain Agent text and opens user/Agent references`, async () => {
       await page.setViewportSize({ width: 1440, height: 1000 })
       if (!await page.getByRole('complementary', { name: 'Workspaces', exact: true }).isVisible()) await page.keyboard.press('Control+b')
       await page.locator('.session-button').filter({ hasText: 'Short general chat' }).click()
@@ -261,16 +261,17 @@ try {
       const user = page.locator('.user-bubble')
       const agent = page.locator('.agent-body')
       await agent.getByText('Done. See', { exact: false }).waitFor()
-      const style = await user.evaluate(element => ({ user: getComputedStyle(element).fontSize,
+      const style = await user.locator('.prose').evaluate(element => ({ user: getComputedStyle(element).fontSize,
         body: getComputedStyle(document.body).fontSize, agent: getComputedStyle(document.querySelector('.agent-body .prose')).fontSize }))
       const scale = await page.evaluate(() => ({ lg: getComputedStyle(document.documentElement).getPropertyValue('--text-lg').trim(),
         md: getComputedStyle(document.documentElement).getPropertyValue('--text-md').trim() }))
       assert.equal(style.body, scale.md)
       assert.equal(style.user, scale.lg)
       assert.equal(style.agent, scale.lg)
-      for (const element of [user, agent.locator('.prose')]) {
-        assert.equal(await element.evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', 'Ordinary messages have no bubble background')
-      }
+      assert.equal(await agent.locator('.prose').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', 'Agent replies have no bubble background')
+      // The user's bubble is the raised surface, the same as in a Project.
+      const raised = await page.evaluate(() => { const probe = document.createElement('i'); probe.style.background = 'var(--surface-raised)'; document.body.appendChild(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color })
+      assert.equal(await user.evaluate(element => getComputedStyle(element).backgroundColor), raised)
       const bubble = await agent.locator('.prose').boundingBox()
       assert(bubble && bubble.height < 45, `Short Agent response should fit one compact line: ${JSON.stringify(bubble)}`)
       for (const [message, reference, suffix] of [[user, 'user reference', 'user'], [agent, 'agent reference', 'agent']]) {

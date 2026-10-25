@@ -1936,16 +1936,6 @@ button.board-chip.active {
   flex: 1;
 }
 
-.field textarea {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  resize: vertical;
-  font: inherit;
-}
-
 /* --- thread view and artifacts inside the Workbench ---------------------- */
 
 .wb-card.thread-body {

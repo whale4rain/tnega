@@ -24,7 +24,7 @@ export function fitWithin(width: number, height: number, maxEdge = MAX_IMAGE_EDG
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
 }
 
-function base64FromBuffer(buffer: ArrayBuffer): string {
+export function base64FromBuffer(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let binary = ''
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {

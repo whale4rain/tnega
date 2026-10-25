@@ -20,6 +20,18 @@ it('opens file and website references in ordinary user messages', () => {
   expect(view.getByRole('link', { name: 'https://example.com' }).getAttribute('target')).toBe('_blank')
 })
 
+it('shows files sent with a message as chips that open in the Workbench', () => {
+  const openPath = vi.fn()
+  const entries: Entry[] = [{ kind: 'user', id: 'user', text: '[Attached file: .tnega/uploads/brief.docx]\n[Attached file: .tnega/uploads/notes.md]\n\nSummarise these.' }]
+  const view = render(createElement(LinkContext.Provider, { value: { workspace: '/repo', openPath } },
+    createElement(Timeline, { entries, running: false, actions: {} })))
+  expect(view.getByText('Summarise these.')).toBeTruthy()
+  expect(view.queryByText(/Attached file/)).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: 'Open brief.docx' }))
+  expect(openPath).toHaveBeenCalledWith('.tnega/uploads/brief.docx')
+  expect(view.getByRole('button', { name: 'Open notes.md' })).toBeTruthy()
+})
+
 it('displays a live compaction message with an expandable summary while the Agent Run continues', () => {
   const entries = applyStream(beginRun([], 'Continue', 1), {
     type: 'session/compaction', id: 'checkpoint', summary: 'The earlier investigation is complete.', tokensBefore: 12000,
@@ -147,6 +159,42 @@ it('folds thoughts and tool calls between two replies into one quiet line', () =
   fireEvent.click(run)
   expect(view.getByRole('button', { name: 'Thought for 2.0s' })).toBeTruthy()
   expect(view.container.querySelectorAll('.tool-group-list .tool-row')).toHaveLength(2)
+})
+
+it('folds each run of steps again inside an opened process, and lists a single run', () => {
+  const read = (callId: string): Block => ({
+    kind: 'tool', id: callId, tool: { callId, name: 'read_file', args: { path: `${callId}.ts` }, status: 'ok', durationMs: 1000 },
+  })
+  const shell: Block = { kind: 'tool', id: 'sh', tool: { callId: 'sh', name: 'shell', args: { command: 'pnpm test' }, status: 'ok', durationMs: 4000 } }
+  const thought: Block = { kind: 'reasoning', id: 'why', text: 'Check the tests next.', durationMs: 1000 }
+  const answer: Block = { kind: 'text', id: 'answer', text: 'All good.' }
+  const done = (blocks: Block[]): Entry => ({
+    kind: 'agent', id: 'turn', turn: 1, status: 'done', summary: { text: 'All good.', sourceMessageId: 'answer' }, blocks: [...blocks, answer],
+  })
+  const view = render(createElement(Timeline, { entries: [done([
+    { kind: 'text', id: 'say', text: 'Reading the sources first.' },
+    read('a'), thought, read('b'), shell,
+    { kind: 'text', id: 'more', text: 'Now the docs.' },
+    read('c'),
+  ])], running: false, actions: {} }))
+  fireEvent.click(view.getByRole('button', { name: 'Read 3 files, ran a command' }))
+  // Narration stays as written; the run between it folds to one line, not one row per step.
+  expect(view.getByText('Reading the sources first.')).toBeTruthy()
+  expect(view.getByText('Now the docs.')).toBeTruthy()
+  const run = view.getByRole('button', { name: 'Read 2 files, ran a command' })
+  expect(run.getAttribute('aria-expanded')).toBe('false')
+  expect(view.queryByRole('button', { name: /^Thought/ })).toBeNull()
+  expect(view.getByRole('button', { name: 'Read c.ts' })).toBeTruthy()
+  fireEvent.click(run)
+  expect(view.getByRole('button', { name: 'Thought for 1.0s' })).toBeTruthy()
+  expect(view.getByRole('button', { name: 'Ran pnpm test' })).toBeTruthy()
+
+  // A process that is one run is already behind one line: opening it lists the steps.
+  cleanup()
+  const single = render(createElement(Timeline, { entries: [done([read('a'), thought, read('b')])], running: false, actions: {} }))
+  fireEvent.click(single.getByRole('button', { name: 'Read 2 files' }))
+  expect(single.getByRole('button', { name: 'Thought for 1.0s' })).toBeTruthy()
+  expect(single.container.querySelectorAll('.tool-row')).toHaveLength(2)
 })
 
 it('opens running CodeMode scripts and child tool progress without showing escaped JSON', () => {
