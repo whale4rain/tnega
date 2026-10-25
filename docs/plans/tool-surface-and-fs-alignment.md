@@ -1,6 +1,6 @@
 # 工具面收敛与文件写入对齐计划
 
-> 状态：阶段 A、B、C 已实现（见「零、进展」），阶段 D–F 待实现；第四节「已定」为本次拍板结果
+> 状态：阶段 A–D 已实现（见「零、进展」），G（并行）与 E、F 待实现；第四节「已定」为本次拍板结果
 > 参考基线：`D:\task\deepseek-harness`（dsh）的 `packages/bundle/base/cordis.patch.yml`、
 > `packages/fs/{fs-local,tool-fs,tool-str-replace-editor,fs-observation-policy}`、
 > `packages/jobs/{jobs,jobs-local,tool-jobs}`、`docs/tool-catalog.md`、`docs/subsystems/filesystem.md`
@@ -113,6 +113,34 @@
 验证：`packages/tools`、`packages/runtime`、`packages/agent`、`packages/host`、`packages/project/host`、
 `packages/coding-agent`、`packages/jobs`、`packages/approval-host`、`packages/client` 全绿；
 `cli` 的 `compose` / `agent-runtime` / `web` / `code-mode-web` 全绿；`tsc` 与 eslint 干净。
+
+### 阶段 D · 已完成
+
+旧名字清理干净。剩下命中旧名的地方全是该保留的：`CHANGELOG.md` 与 `docs/releases/*`（已发布，
+不可改）、`docs/superpowers/plans/2026-10-02-background-jobs.md`（历史计划）、
+本文件（描述改动本身的前后对比）、ADR 0012 里作为沿革提到的一处，以及
+`codingAgent.test.ts` 里明确断言「旧名已消失」的那一行。
+
+改了什么：
+
+| 位置 | 改动 |
+|---|---|
+| `coding-agent/src/skill-management.ts` | 删掉死代码 `skillCreateTool()` / `skillInstallTool()` 与只服务于它们的 `record()` / `textField()` |
+| `coding-agent/test/slash.test.ts` | 假工具从 `skills_list` 改成 `skill` |
+| `cli/test/project.test.ts` | 断言 `action=read`（索引文本变了） |
+| `project/host/test/project-tool-scope.test.ts` | 不可见列表里 `job_start` 换成 `edit_file`（前者已不存在，断言变得无意义） |
+| `tools/src/processes.ts`、`tools/src/builtins.ts` | 两处注释仍写 `job_start` |
+| `coding-agent/README.md`、`cli/README.md`、`sandbox-windows-acl/README.md` | 工具名与用法 |
+| `coding-agent/builtin-skills/{using-tnega,skill-create,skill-install}/SKILL.md` | **模型实际读到的指令** |
+| `docs/guide/README.md` | 用户指南 |
+| `docs/adr/0012-agent-browser.md` | 保留决策、修正事实（注明由 `job_start` 收敛为参数） |
+| `.gitignore` | 补 `.tnega-*` |
+
+**一个已知限制**：`installBuiltinSkills()` 是「只装缺失、绝不替换」，所以内置技能的文本改动
+只影响新安装；已有用户在 home 里的副本仍写着旧工具名。这是那条安全属性（不覆盖用户指令）
+的代价，不改，记在这里。
+
+验证：`coding-agent`、`project/host`、`tools`、`cli/test/project.test.ts` 全绿；`tsc` 与 eslint 干净。
 
 ---
 

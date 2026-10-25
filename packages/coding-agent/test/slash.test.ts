@@ -34,7 +34,7 @@ describe('SlashRegistry', () => {
 
 describe('createSlashRegistry', () => {
   const tools: ToolDefinition[] = [
-    { schema: { name: 'skills_list', description: 'list' }, execute: () => [] },
+    { schema: { name: 'skill', description: 'skills' }, execute: () => [] },
     { schema: { name: 'mcp__files__read', description: 'read' }, execute: () => '' },
     { schema: { name: 'read_file', description: 'builtin' }, execute: () => '' },
   ]

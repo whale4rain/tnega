@@ -89,8 +89,8 @@ interface NormalizedBuiltinToolsConfig {
 }
 
 /**
- * Execute option a background-job runner passes to `shell` (see
- * `job_start`): instead of waiting for the command to exit, the tool starts it
+ * Execute option the jobs plugin passes to `shell` when the call asked for
+ * `runInBackground`: instead of waiting for the command to exit, the tool starts it
  * as a background process in the workspace registry and hands the entry over.
  * Tools that accept it declare `metadata.backgroundProcess: true`.
  */

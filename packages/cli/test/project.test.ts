@@ -162,7 +162,7 @@ it('creates a project, runs the main conversation and takes thread notes', async
   const settled = await waitForSnapshot(server.url, workspace, project.id, snapshot =>
     snapshot.messages.some(entry => entry.kind === 'agent-reply')
       && snapshot.threads.every(thread => thread.state === 'idle'))
-  expect(requests[0]).toContain('skill_read')
+  expect(requests[0]).toContain('action=read')
   expect(requests[0]).toContain('using-tnega')
   expect(requests[0]).toContain('Use concise release summaries.')
   expect(settled.project.name).toBe('Notes')

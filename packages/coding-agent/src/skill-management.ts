@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { link, lstat, mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { resolveInside, type ToolDefinition, type ToolExecuteOptions, type ToolsService } from '@tnega/tools'
+import { resolveInside } from '@tnega/tools'
 import { resolveTnegaHome } from './home.js'
 
 const MAX_BYTES = 512 * 1024
@@ -61,27 +61,6 @@ export async function installSkill(cwd: string, input: InstallSkillInput, signal
   const metadata = validateSkillDocument(content, input.name)
   return publishSkill(metadata.name, content, signal)
 }
-function record(input: unknown): Record<string, unknown> {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('expected an object')
-  return Object.fromEntries(Object.entries(input))
-}
-function textField(input: Record<string, unknown>, name: string): string {
-  const value = input[name]
-  if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} must be a non-empty string`)
-  return value
-}
-export function skillCreateTool(): ToolDefinition {
-  return {
-    schema: { name: 'skill_create', description: 'Create a new user-home skill with a template or complete SKILL.md. Never overwrite existing skills.', parameters: {
-      type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, content: { type: 'string' } }, required: ['name', 'description'], additionalProperties: false,
-    } },
-    execute: (input, options) => {
-      options.signal?.throwIfAborted()
-      const args = record(input)
-      return createSkill({ name: textField(args, 'name'), description: textField(args, 'description'), ...(typeof args.content === 'string' ? { content: args.content } : {}) }, options.signal)
-    },
-  }
-}
 /**
  * A GitHub page link (`github.com/o/r/blob/main/SKILL.md`) serves HTML; the
  * file itself is on raw.githubusercontent.com.
@@ -89,28 +68,4 @@ export function skillCreateTool(): ToolDefinition {
 export function rawGitHubUrl(url: URL): URL {
   const match = url.hostname === 'github.com' ? /^\/([^/]+)\/([^/]+)\/(?:blob|raw)\/(.+)$/.exec(url.pathname) : null
   return match ? new URL(`https://raw.githubusercontent.com/${match[1]}/${match[2]}/${match[3]}`) : url
-}
-
-export function skillInstallTool(cwd: string, registry: ToolsService): ToolDefinition {
-  return {
-    schema: { name: 'skill_install', description: 'Install a SKILL.md from a workspace file/directory or HTTPS raw Markdown URL into user home. Copies only instructions, never scripts or assets; existing files are not overwritten. HTTPS requires the http_get tool.', parameters: {
-      type: 'object', properties: { source: { type: 'string' }, name: { type: 'string' } }, required: ['source'], additionalProperties: false,
-    } },
-    execute: async (input, options: ToolExecuteOptions) => {
-      const args = record(input)
-      options.signal?.throwIfAborted()
-      const source = textField(args, 'source')
-      const name = typeof args.name === 'string' ? args.name : undefined
-      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) return installSkill(cwd, { source, ...(name ? { name } : {}) }, options.signal)
-      const url = rawGitHubUrl(new URL(source))
-      if (url.protocol !== 'https:' || url.username || url.password) throw new Error('only HTTPS URLs without embedded credentials are supported')
-      const response = await registry.execute('http_get', { url: url.href, maxBytes: MAX_BYTES }, { ...options, callId: `${options.callId ?? 'skill-install'}:download` })
-      if (!response.ok) throw new Error(response.error?.message ?? 'skill download failed')
-      const output = record(response.output)
-      if (output.ok !== true || output.truncated !== false || typeof output.body !== 'string') throw new Error('skill download failed or was truncated')
-      options.signal?.throwIfAborted()
-      const metadata = validateSkillDocument(output.body, name)
-      return publishSkill(metadata.name, output.body, options.signal)
-    },
-  }
 }
