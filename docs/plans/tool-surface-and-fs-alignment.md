@@ -1,6 +1,6 @@
 # 工具面收敛与文件写入对齐计划
 
-> 状态：阶段 A–D 已实现（见「零、进展」），G（并行）与 E、F 待实现；第四节「已定」为本次拍板结果
+> 状态：阶段 A–D、G（并行）已实现（见「零、进展」），E、F 待实现；第四节「已定」为本次拍板结果
 > 参考基线：`D:\task\deepseek-harness`（dsh）的 `packages/bundle/base/cordis.patch.yml`、
 > `packages/fs/{fs-local,tool-fs,tool-str-replace-editor,fs-observation-policy}`、
 > `packages/jobs/{jobs,jobs-local,tool-jobs}`、`docs/tool-catalog.md`、`docs/subsystems/filesystem.md`
@@ -141,6 +141,44 @@
 的代价，不改，记在这里。
 
 验证：`coding-agent`、`project/host`、`tools`、`cli/test/project.test.ts` 全绿；`tsc` 与 eslint 干净。
+
+### 阶段 G · 已完成（并行工具调用）
+
+实测：一条 assistant 消息里的多个并发安全调用真的同时在跑（测试用「同时在场峰值」度量，
+串行时恒为 1）。改动集中在 `packages/agent/src/service.ts` 一处调度，外加各工具的一行声明。
+
+**契约**（照 dsh）：`ToolDefinition.isConcurrencySafe?(input): boolean`，**纯同步分类器，
+只认 `true`**；省略、抛错、返回别的都算独占。独占即栅栏 —— 它等前面的批落定，后面的批等它。
+
+**实现要点**：
+
+- 分批按**位置**划分连续区间，不重排。`Promise.all` 天然按输入顺序返回，所以结果回填仍是
+  调用顺序 —— `agent/step-end` 的 `calls` 按下标对 result 的那份约定没有变。
+- 整批先 `tool/start` + `tool/call` 落盘，再开始执行：日志与 UI 都先看到「这一组在跑」。
+- 一个调用失败只结算成它自己的结果，不取消同批兄弟 —— 批是调度单位，不是事务。
+- 未知工具名也当栅栏：它的失败是普通工具结果，产出这个结果的过程不该和别的东西竞争。
+- `tool/result` 与 `tool/end` 按调用顺序落，不按完成先后。
+
+**白名单**（声明为安全）：`read_file`、`list_dir`、`glob`、`grep`、`http_get`、`job_output`、
+`job_list`、`office_read`、`office_inspect`。其余全部独占，包括 `shell`、`write_file`、
+`edit_file`、`run_code`、`spawn_subagent`、`ask_user_question`、`job_kill`。
+
+**`read_file` 为什么算安全**：它唯一的共享写入是观测记录（`agentId + 路径 → sha256`），
+两次读同一路径写的是同一个值，可交换。注释与测试都钉了这一点。
+
+**接受的一处代价**：`job_output` 有一个「读到第几个字符」的游标，两个并发读同一个 job 时
+取决于交错，新输出可能交付两次、也可能一次而另一个为空 —— 两种情况都不丢内容。测试断言的是
+「不丢」而不是「不重复」，并在注释里写明这是为了换取「读不同 job 可以并行」。上一版计划里我
+把它描述成「UI 读到半新半旧」，那是错的：UI 读的是 `JobSnapshot`，不碰这个游标。
+
+**为什么现在能做**：核实后，原先担心的三处不并行安全的地方有两处本来就没问题 ——
+`spill-local` 按 `toolName-callId` 各自写文件、`ApprovalBroker` 按审批 id 挂起且前端并存、
+`SessionLog.append` 有 `_queue` 串行链。真正需要改的只有调度本身。
+
+验证：新增 `packages/agent/test/concurrency.test.ts` 六项（真实并行、位置对齐、独占即栅栏、
+未知工具当栅栏、失败不连坐、按参数分类）；`packages/tools/test/fs-tools.test.ts` 加一项守卫
+（读声明确实在、写声明确实没有），防止有人删掉声明后静默退回串行。`agent`、`tools`、`jobs`、
+`search`、`tool-office`、`host`、`cli` 全绿。
 
 ---
 
@@ -413,28 +451,9 @@ dsh 同样没有独立 `wait` 工具（`docs/tool-catalog.md` 无此项），做
 
 ---
 
-## 八之二、并行工具调用（现状，未排期）
+## 八之二、并行工具调用
 
-现状是**全串行**，既非自动也非手动：
-
-- 一条 assistant 消息里的多个工具调用按顺序执行 —— `packages/agent/src/service.ts` 是
-  `for (const call of toolCalls) { await tools.execute(...) }`，没有并发分组。
-- `run_code`（PTC）内部也是串行的：`packages/tool-ptc/src/index.ts` 用一条 `queue` 串起来，
-  描述里明写「Calls are serialized, including Promise.all」。
-- 唯一的重叠来自**手动**：`shell` 的 `runInBackground` 让命令在 turn 之外继续跑，
-  `spawn_subagent` 让子 Agent 并行工作。并发是靠「另开一个执行单元」拿到的，
-  不是靠一次消息里的多个调用。
-
-dsh 做的是另一件事：`ToolDefinition.isConcurrencySafe(args)` 是**纯同步分类器**，
-默认独占（省略、抛错、返回非 `true` 都算独占），返回 `true` 的调用才加入同一批的并行组；
-约定是「加入并行的执行不得改父级状态，共享状态的写入必须可交换或失败即关闭」。
-分组对模型是自动的，授权是工具作者声明的。
-
-若要做，tnega 需要先解决三处不并行安全的地方，否则并行只会把顺序 bug 变成偶发 bug：
-`tools/execute` 与 post-execute 管线（spill、pruner 会并发写同一份溢出存储）、
-审批通道（`ApprovalBroker` 的 pending 表按 run key 挂起，同一 key 的两个并行请求会互相遮蔽）、
-`ToolOutputRecorder` 与会话 append 的顺序（`agent/step-end` 的 `calls` 按下标与 result 对齐）。
-文件写入已由阶段 B 的按路径锁覆盖，是唯一准备好的一项。
+已实现，见「零、进展 · 阶段 G」。
 
 ---
 

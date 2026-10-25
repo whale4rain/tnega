@@ -72,6 +72,18 @@ export interface ToolDefinition {
   timeoutMs?: number
   /** Restart disposition; no tool is automatically replayed after interruption. */
   interruption?: 'fail' | 'retry' | 'confirm'
+  /**
+   * Pure synchronous classifier: may this call run in the same batch as its
+   * siblings in one assistant message?
+   *
+   * Only `true` opts in. Omitting it, throwing, or returning anything else
+   * makes the call a fence — it runs alone, after the batch before it settles
+   * and before the batch after it starts. A tool that opts in must not mutate
+   * state its siblings own; shared state it writes must commute or fail closed.
+   * `read_file`'s observation record qualifies: two reads of one path record
+   * the same version. Never model-visible.
+   */
+  isConcurrencySafe?: (input: unknown) => boolean
 }
 
 export interface ToolError {

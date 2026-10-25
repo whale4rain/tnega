@@ -179,6 +179,21 @@ describe('edit_file', () => {
   })
 })
 
+describe('concurrency declarations', () => {
+  it('declares reads safe and mutations exclusive', async () => {
+    const service = await mount({ cwd: await tempDir('tnega-fs-concurrency-') })
+    const byName = new Map(service.list().map(tool => [tool.schema.name, tool]))
+    // A declaration is what the scheduler groups on: dropping it here silently
+    // serialises every read again.
+    expect(byName.get('read_file')?.isConcurrencySafe?.({ path: 'a' })).toBe(true)
+    expect(byName.get('write_file')?.isConcurrencySafe).toBeUndefined()
+    expect(byName.get('edit_file')?.isConcurrencySafe).toBeUndefined()
+    // A read that records an observation is still safe: two reads of one path
+    // write the same version.
+    expect(byName.get('list_dir')?.isConcurrencySafe?.({ path: '.' })).toBe(true)
+  })
+})
+
 describe('fsGuard modes', () => {
   it('warns but writes when the target was never read', async () => {
     const dir = await tempDir('tnega-fs-guard-warn-')

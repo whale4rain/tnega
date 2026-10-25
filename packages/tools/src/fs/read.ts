@@ -57,6 +57,9 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
     },
     // Read-only: a call cut off by a restart is safe to issue again.
     interruption: 'retry',
+    // Its only shared write is the observation record, and two reads of one
+    // path record the same version.
+    isConcurrencySafe: () => true,
     async execute(input, options: ToolExecuteOptions) {
       const args = record(input)
       const target = await config.resolve(stringField(args.path, 'path'))

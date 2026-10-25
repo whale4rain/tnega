@@ -125,6 +125,37 @@ describe('a backgrounded shell command', () => {
   })
 })
 
+describe('two reads of one job at once', () => {
+  it('may repeat the same new output but never loses it', async () => {
+    const fake = fakeProcess({ output: 'first\n' })
+    const { root, registry } = await setup({ execution: fake.provider })
+    await registry.execute('shell', { command: 'node --watch', runInBackground: true })
+    const job = root.jobs.list()[0]!
+    // The launch already showed 'first'; this read sees only what came after.
+    fake.print('second\n')
+
+    // Accepted cost of treating job_output as concurrency-safe: both reads
+    // advance one per-job cursor, so the new text may be delivered twice or
+    // once with the other read empty. Which one wins depends on how the two
+    // calls interleave; neither loses anything.
+    const [left, right] = await Promise.all([
+      registry.execute('job_output', { job_id: job.id }),
+      registry.execute('job_output', { job_id: job.id }),
+    ])
+    const outputs = [left, right].map(result => (result.output as ProcessJob).output)
+    expect(outputs.some(output => output.includes('second'))).toBe(true)
+
+    // What must hold: the text is still readable afterwards, exactly once.
+    const later = (await registry.execute('job_output', { job_id: job.id })).output as ProcessJob
+    expect(later.output).toBe('')
+    fake.finish(0)
+    await root.jobs.wait(job.id, 1_000)
+    const final = (await registry.execute('job_output', { job_id: job.id, all: true })).output as ProcessJob
+    expect(final.output).toContain('second')
+    await root.fiber.dispose()
+  })
+})
+
 describe('ownership', () => {
   it('fences jobs to their agent and notices completion in its inbox', async () => {
     const fake = fakeProcess()

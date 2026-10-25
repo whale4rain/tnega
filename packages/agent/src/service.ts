@@ -125,6 +125,46 @@ export interface AgentConfig {
   claimNextStep?: AgentNextStepClaimer
 }
 
+/**
+ * Group the calls of one assistant message into the units the scheduler runs.
+ *
+ * A tool opts in with {@link ToolDefinition.isConcurrencySafe}. Everything that
+ * does not opt in runs alone, which fences the batches around it: a write and a
+ * spawn cannot overlap a read that may have been its input. An unknown tool
+ * name fences too — its failure is an ordinary tool result, and producing it
+ * must not race anything.
+ */
+export function concurrencyBatches(
+  calls: readonly LLMToolCall[],
+  available: readonly ToolDefinition[],
+): number[][] {
+  const byName = new Map(available.map(tool => [tool.schema.name, tool]))
+  const batches: number[][] = []
+  let group: number[] = []
+  calls.forEach((call, position) => {
+    const classify = byName.get(call.name)?.isConcurrencySafe
+    let safe = false
+    if (classify) {
+      // A classifier that throws is a tool author's bug, and the safe reading
+      // of a bug about overlap is "do not overlap me".
+      try {
+        safe = classify(call.arguments) === true
+      } catch {
+        safe = false
+      }
+    }
+    if (safe) {
+      group.push(position)
+      return
+    }
+    if (group.length) batches.push(group)
+    group = []
+    batches.push([position])
+  })
+  if (group.length) batches.push(group)
+  return batches
+}
+
 function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
   return messages.map((message) => {
     const copy: ModelMessage = {
@@ -830,81 +870,100 @@ export class AgentService {
           ...settledMeta(),
         })
       }
-      for (const call of toolCalls) {
-        this.ctx.emit('agent/tool-call', {
-          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
-          index, turn, step: index, call,
-        })
-        yield { type: 'tool/start', index, turn, step: index, call }
-        await session.append('tool/call', {
-          id: call.id,
-          name: call.name,
-          arguments: call.arguments,
-          interruption: availableTools.find(tool => tool.schema.name === call.name)?.interruption ?? 'fail',
-        })
-        const recorder = new ToolOutputRecorder(session, call.id)
-        const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string; progress: (output: string) => void } = {
-          callId: call.id,
-          progress: output => recorder.push(output),
-        }
-        if (this.config.agentId) toolOptions.agentId = this.config.agentId
-        if (options.signal) toolOptions.signal = options.signal
-        const startedAt = Date.now()
-        let result: ToolResult
-        if (options.signal?.aborted) {
-          result = {
-            ok: false,
+      // Consecutive concurrency-safe calls share one batch; anything else runs
+      // alone, which fences the batches around it. Grouping is positional: the
+      // log and the model read results in the order the calls were made, not
+      // the order the work happened to finish.
+      for (const batch of concurrencyBatches(toolCalls, availableTools)) {
+        // Announce and log the whole batch first, so it reads as running
+        // before any of it settles.
+        for (const position of batch) {
+          const call = toolCalls[position]!
+          this.ctx.emit('agent/tool-call', {
+            ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+            index, turn, step: index, call,
+          })
+          yield { type: 'tool/start', index, turn, step: index, call }
+          await session.append('tool/call', {
+            id: call.id,
             name: call.name,
+            arguments: call.arguments,
+            interruption: availableTools.find(tool => tool.schema.name === call.name)?.interruption ?? 'fail',
+          })
+        }
+        // One failing call settles as its own result; it never cancels a
+        // sibling, because a batch is a scheduling unit, not a transaction.
+        const settled = await Promise.all(batch.map(async position => {
+          const call = toolCalls[position]!
+          const recorder = new ToolOutputRecorder(session, call.id)
+          const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string; progress: (output: string) => void } = {
             callId: call.id,
-            input: call.arguments,
-            error: abortedToolError(options.signal),
-            startedAt,
-            durationMs: Date.now() - startedAt,
+            progress: output => recorder.push(output),
           }
-        } else {
-          try {
-            result = await tools.execute(call.name, call.arguments, toolOptions)
-          } catch (error) {
+          if (this.config.agentId) toolOptions.agentId = this.config.agentId
+          if (options.signal) toolOptions.signal = options.signal
+          const startedAt = Date.now()
+          let result: ToolResult
+          if (options.signal?.aborted) {
             result = {
               ok: false,
               name: call.name,
               callId: call.id,
               input: call.arguments,
-              error: toToolError(error),
+              error: abortedToolError(options.signal),
               startedAt,
               durationMs: Date.now() - startedAt,
             }
+          } else {
+            try {
+              result = await tools.execute(call.name, call.arguments, toolOptions)
+            } catch (error) {
+              result = {
+                ok: false,
+                name: call.name,
+                callId: call.id,
+                input: call.arguments,
+                error: toToolError(error),
+                startedAt,
+                durationMs: Date.now() - startedAt,
+              }
+            }
           }
-        }
-        await recorder.stop()
-        toolResults.push(result)
-        const toolResultPayload: ToolResultPayload = {
-          id: call.id,
-          toolCallId: call.id,
-          name: call.name,
-          ok: result.ok,
-          durationMs: result.durationMs,
-        }
-        if (result.output !== undefined) toolResultPayload.output = result.output
-        if (result.attachments?.length) toolResultPayload.attachments = result.attachments.map(item => ({ ...item }))
-        if (result.error) {
-          toolResultPayload.error = {
-            name: result.error.name,
-            message: result.error.message,
+          await recorder.stop()
+          return { call, result }
+        }))
+        // Promise.all already answers in batch order, which is call order.
+        for (const { call, result } of settled) {
+          toolResults.push(result)
+          const toolResultPayload: ToolResultPayload = {
+            id: call.id,
+            toolCallId: call.id,
+            name: call.name,
+            ok: result.ok,
+            durationMs: result.durationMs,
           }
-          if (result.error.stack) toolResultPayload.error.stack = result.error.stack
+          if (result.output !== undefined) toolResultPayload.output = result.output
+          if (result.attachments?.length) toolResultPayload.attachments = result.attachments.map(item => ({ ...item }))
+          if (result.error) {
+            toolResultPayload.error = {
+              name: result.error.name,
+              message: result.error.message,
+            }
+            if (result.error.stack) toolResultPayload.error.stack = result.error.stack
+          }
+          await session.append('tool/result', toolResultPayload)
+          yield { type: 'tool/end', index, turn, step: index, call, result }
+          this.ctx.emit('agent/tool-result', {
+            ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+            index,
+            turn,
+            step: index,
+            call,
+            result,
+          })
         }
-        await session.append('tool/result', toolResultPayload)
-        yield { type: 'tool/end', index, turn, step: index, call, result }
-        this.ctx.emit('agent/tool-result', {
-          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
-          index,
-          turn,
-          step: index,
-          call,
-          result,
-        })
       }
+
       if (options.signal?.aborted) {
         finishReason = 'cancelled'
         break

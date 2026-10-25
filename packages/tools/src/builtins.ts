@@ -546,9 +546,17 @@ export function createBuiltinToolDefinitions(
   })) {
     if (!disabled.has(tool.schema.name)) definitions.push(tool)
   }
-  if (!disabled.has('list_dir')) definitions.push(listDirTool(normalized))
+  if (!disabled.has('list_dir')) {
+    const listDir = listDirTool(normalized)
+    // A directory listing reads; nothing it does is observable by a sibling.
+    listDir.isConcurrencySafe = () => true
+    definitions.push(listDir)
+  }
   if (normalized.allowNetwork && !disabled.has('http_get')) {
-    definitions.push(httpGetTool(normalized))
+    const httpGet = httpGetTool(normalized)
+    // A GET has no effect of its own; two of them cannot disturb each other.
+    httpGet.isConcurrencySafe = () => true
+    definitions.push(httpGet)
   }
   if (normalized.allowShell && !disabled.has('shell')) {
     const shell = shellTool(normalized)

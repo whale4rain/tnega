@@ -243,6 +243,7 @@ export const toolJobs = {
 
     tools.register({
       schema: { name: 'job_list', description: 'List your running and finished background jobs.', parameters: { type: 'object', properties: {} } },
+      isConcurrencySafe: () => true,
       execute(_input, options) { return jobs.list(ownerOf(ctx, options)) },
     })
     tools.register({
@@ -258,6 +259,7 @@ export const toolJobs = {
           required: ['job_id'],
         },
       },
+      isConcurrencySafe: () => true,
       async execute(input, options) {
         const value = fields(input)
         const id = required(value.job_id, 'job_id')
