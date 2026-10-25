@@ -9,6 +9,22 @@ function historicalInput(tool: string, input: unknown): unknown {
     const { content, ...fields } = input
     return { ...fields, contentChars: content.length }
   }
+  // Edit bodies are as large as write bodies and just as uninformative as
+  // evidence; the paths and the sizes are what an approval needs to read.
+  if (tool === 'edit_file' && input && typeof input === 'object' && 'edits' in input && Array.isArray(input.edits)) {
+    const { edits, ...fields } = input as { edits: unknown[] }
+    return {
+      ...fields,
+      edits: edits.map(entry => {
+        const edit = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {}
+        return {
+          oldChars: typeof edit.old_string === 'string' ? edit.old_string.length : 0,
+          newChars: typeof edit.new_string === 'string' ? edit.new_string.length : 0,
+          ...(edit.replace_all === true ? { replaceAll: true } : {}),
+        }
+      }),
+    }
+  }
   return input
 }
 

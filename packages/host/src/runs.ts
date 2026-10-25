@@ -204,7 +204,9 @@ export async function handleRun(
     const editBaseline = editTracking.baseline
     const toolService = runtime.root.get('tools')
     toolService.guard(async request => {
-      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      if (request.name === 'write_file' || request.name === 'edit_file') {
+        await captureWritePreimage(workspace, editBaseline, request.input)
+      }
       return undefined
     })
     const history = await sessionLog.deriveMessages()
@@ -618,7 +620,9 @@ export async function runResidentTurn(
     }
     const editBaseline = editTracking.baseline
     releaseWriteCapture = entry.tools.guard(async request => {
-      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      if (request.name === 'write_file' || request.name === 'edit_file') {
+        await captureWritePreimage(workspace, editBaseline, request.input)
+      }
       return undefined
     })
     // A coding or work session keeps its persona as the durable leading system
@@ -861,7 +865,7 @@ export async function withCodingAgent<T>(
     // A typed slash install URL is an explicit user request to read that source.
     // Model calls only have http_get when their runtime enables network tools.
     for (const tool of createBuiltinToolDefinitions({ cwd: workspace, allowNetwork: true,
-      disabled: ['echo', 'now', 'calculator', 'json', 'read_file', 'write_file', 'list_dir'],
+      disabled: ['echo', 'now', 'calculator', 'json', 'read_file', 'write_file', 'edit_file', 'list_dir'],
     })) registry.register(tool)
     fiber = await root.plugin(createCodingAgentPlugin({
       cwd: workspace,

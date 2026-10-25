@@ -1,13 +1,5 @@
-import {
-  appendFile,
-  mkdir,
-  open,
-  readFile,
-  readdir,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { readdir, stat } from 'node:fs/promises'
+import { join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@tnega/core'
 import type {
   ToolDefinition,
@@ -16,7 +8,18 @@ import type {
   ToolParameterSchema,
   ToolSchema,
 } from './index.js'
+import { ToolInputError } from './errors.js'
+import {
+  message,
+  optionalBoolean,
+  optionalNumber,
+  optionalRecord,
+  optionalString,
+  record,
+  stringField,
+} from './input.js'
 import { evaluateExpression } from './calc.js'
+import { createFileTools, type FsGuardMode } from './fs/index.js'
 import { ToolAbortError } from './errors.js'
 import { resolveInside } from './path.js'
 import { ESCALATE_HINT, ESCALATE_PROPERTIES, escalated } from './escalation.js'
@@ -38,6 +41,16 @@ export interface BuiltinToolsConfig {
   disabled?: readonly string[]
   maxReadBytes?: number
   maxWriteBytes?: number
+  /** Lines one read returns unless it asks for fewer; also the most it may ask for. */
+  maxReadLines?: number
+  /** Characters kept per line before the line is clipped. */
+  maxLineChars?: number
+  /**
+   * How strictly a write must match what this Agent already read of that path.
+   * `warn` (default) records and proceeds with a note, `enforce` refuses an
+   * unread or externally changed target, `off` does neither.
+   */
+  fsGuard?: FsGuardMode
   maxResults?: number
   timeoutMs?: number
   /** 递归 `list_dir` 剪掉的目录名；默认与搜索能力的能力级默认值一致。 */
@@ -56,6 +69,9 @@ interface NormalizedBuiltinToolsConfig {
   disabled: readonly string[]
   maxReadBytes: number
   maxWriteBytes: number
+  maxReadLines: number
+  maxLineChars: number
+  fsGuard: FsGuardMode
   maxResults: number
   timeoutMs: number
   searchExcludeSet: ReadonlySet<string>
@@ -83,9 +99,7 @@ export interface AdoptedProcess {
 
 export type AdoptBackgroundProcess = (process: AdoptedProcess) => void
 
-export class ToolInputError extends Error {
-  override name = 'ToolInputError'
-}
+export { ToolInputError } from './errors.js'
 
 const DEFAULT_TOOL_NAMES = [
   'echo',
@@ -94,6 +108,7 @@ const DEFAULT_TOOL_NAMES = [
   'json',
   'read_file',
   'write_file',
+  'edit_file',
   'list_dir',
 ] as const
 
@@ -108,6 +123,9 @@ function normalizeConfig(config: BuiltinToolsConfig = {}, ownedProcesses?: Proce
     disabled: [...(config.disabled ?? [])],
     maxReadBytes: config.maxReadBytes ?? 256 * 1024,
     maxWriteBytes: config.maxWriteBytes ?? 1024 * 1024,
+    maxReadLines: config.maxReadLines ?? 2000,
+    maxLineChars: config.maxLineChars ?? 2000,
+    fsGuard: config.fsGuard ?? 'warn',
     maxResults: config.maxResults ?? 200,
     timeoutMs: config.timeoutMs ?? 15_000,
     searchExcludeSet: new Set(config.searchExcludes ?? DEFAULT_SEARCH_EXCLUDES),
@@ -141,62 +159,9 @@ function definition(
   return tool
 }
 
-function record(value: unknown, label = 'input'): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-  throw new ToolInputError(`${label} must be an object`)
-}
-
-function stringField(value: unknown, name: string): string {
-  if (typeof value === 'string') return value
-  throw new ToolInputError(`${name} must be a string`)
-}
-
-function optionalString(value: unknown, name: string): string | undefined {
-  if (value === undefined) return undefined
-  return stringField(value, name)
-}
-
-function numberField(value: unknown, name: string): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  throw new ToolInputError(`${name} must be a finite number`)
-}
-
-function optionalNumber(value: unknown, name: string): number | undefined {
-  if (value === undefined) return undefined
-  return numberField(value, name)
-}
-
-function booleanField(value: unknown, name: string): boolean {
-  if (typeof value === 'boolean') return value
-  throw new ToolInputError(`${name} must be a boolean`)
-}
-
-function optionalBoolean(value: unknown, name: string): boolean | undefined {
-  if (value === undefined) return undefined
-  return booleanField(value, name)
-}
-
-function optionalRecord(value: unknown, name: string): Record<string, string> | undefined {
-  if (value === undefined) return undefined
-  const source = record(value, name)
-  const result: Record<string, string> = {}
-  for (const [key, entry] of Object.entries(source)) {
-    if (typeof entry !== 'string') throw new ToolInputError(`${name}.${key} must be a string`)
-    result[key] = entry
-  }
-  return result
-}
-
 function displayPath(cwd: string, target: string): string {
   const rel = relative(cwd, target)
   return (rel === '' ? '.' : rel).split(sep).join('/')
-}
-
-function message(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }
 
 function echoTool(): ToolDefinition {
@@ -360,108 +325,6 @@ function stripQuotes(value: string): string {
     }
   }
   return value
-}
-
-/**
- * Drop a trailing byte prefix that ends mid-UTF-8-sequence, so decoding a
- * truncated read never leaves a replacement character at the cut.
- */
-function trimPartialUtf8(buffer: Buffer): Buffer {
-  for (let back = 1; back <= 3 && back <= buffer.length; back += 1) {
-    const byte = buffer[buffer.length - back]!
-    if ((byte & 0x80) === 0) return buffer
-    if ((byte & 0xc0) === 0xc0) {
-      const needed = byte >= 0xf0 ? 4 : byte >= 0xe0 ? 3 : 2
-      return back === needed ? buffer : buffer.subarray(0, buffer.length - back)
-    }
-  }
-  return buffer
-}
-
-async function readPrefix(target: string, maxBytes: number): Promise<Buffer> {
-  const handle = await open(target, 'r')
-  try {
-    const buffer = Buffer.allocUnsafe(maxBytes)
-    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0)
-    return buffer.subarray(0, bytesRead)
-  } finally {
-    await handle.close()
-  }
-}
-
-function readFileTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
-  return definition(
-    'read_file',
-    'Read a UTF-8 text file inside the workspace. Returns { path, bytes, content, truncated }: `bytes` is the whole file size, `content` is its first `maxBytes` bytes, and `truncated` reports whether anything was left out.',
-    async (input) => {
-      const args = record(input)
-      const target = await resolveToolPath(config, stringField(args.path, 'path'))
-      const stats = await stat(target)
-      if (stats.isDirectory()) throw new ToolInputError(`not a file: ${args.path}`)
-      const maxBytes = optionalNumber(args.maxBytes, 'maxBytes') ?? config.maxReadBytes
-      if (maxBytes <= 0) throw new ToolInputError(`maxBytes must be positive: ${maxBytes}`)
-      // An over-long file is a prefix, not an error: the caller asked to read it,
-      // and the truncation is reported so a partial view is never mistaken for
-      // the whole file.
-      const truncated = stats.size > maxBytes
-      const buffer = truncated
-        ? await readPrefix(target, maxBytes)
-        : await readFile(target)
-      if (buffer.includes(0)) throw new ToolInputError(`file is binary: ${args.path}`)
-      const content = truncated ? trimPartialUtf8(buffer) : buffer
-      return {
-        path: displayPath(config.cwd, target),
-        bytes: stats.size,
-        content: content.toString('utf8'),
-        truncated,
-      }
-    },
-    {
-      type: 'object',
-      properties: {
-        path: { type: 'string', description: 'file path relative to the workspace' },
-        maxBytes: { type: 'number', description: 'optional byte limit; longer files are truncated to it' },
-      },
-      required: ['path'],
-    },
-  )
-}
-
-function writeFileTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
-  return definition(
-    'write_file',
-    'Write UTF-8 text to a file inside the workspace, creating parent directories as needed. Returns { path, bytes, appended }.',
-    async (input) => {
-      const args = record(input)
-      const target = await resolveToolPath(config, stringField(args.path, 'path'))
-      const content = stringField(args.content, 'content')
-      const append = optionalBoolean(args.append, 'append') ?? false
-      const bytes = Buffer.byteLength(content, 'utf8')
-      if (bytes > config.maxWriteBytes) {
-        throw new ToolInputError(`content exceeds ${config.maxWriteBytes} bytes`)
-      }
-      await mkdir(dirname(target), { recursive: true })
-      if (append) {
-        await appendFile(target, content, 'utf8')
-      } else {
-        await writeFile(target, content, 'utf8')
-      }
-      return {
-        path: displayPath(config.cwd, target),
-        bytes,
-        appended: append,
-      }
-    },
-    {
-      type: 'object',
-      properties: {
-        path: { type: 'string', description: 'file path relative to the workspace' },
-        content: { type: 'string', description: 'text content to write' },
-        append: { type: 'boolean', description: 'append instead of overwrite' },
-      },
-      required: ['path', 'content'],
-    },
-  )
 }
 
 interface DirectoryEntry {
@@ -645,8 +508,17 @@ export function createBuiltinToolDefinitions(
   if (!disabled.has('now')) definitions.push(nowTool())
   if (!disabled.has('calculator')) definitions.push(calculatorTool())
   if (!disabled.has('json')) definitions.push(jsonTool())
-  if (!disabled.has('read_file')) definitions.push(readFileTool(normalized))
-  if (!disabled.has('write_file')) definitions.push(writeFileTool(normalized))
+  for (const tool of createFileTools({
+    resolve: async path => await resolveToolPath(normalized, path),
+    displayPath: target => displayPath(normalized.cwd, target),
+    maxReadBytes: normalized.maxReadBytes,
+    maxWriteBytes: normalized.maxWriteBytes,
+    maxReadLines: normalized.maxReadLines,
+    maxLineChars: normalized.maxLineChars,
+    fsGuard: normalized.fsGuard,
+  })) {
+    if (!disabled.has(tool.schema.name)) definitions.push(tool)
+  }
   if (!disabled.has('list_dir')) definitions.push(listDirTool(normalized))
   if (normalized.allowNetwork && !disabled.has('http_get')) {
     definitions.push(httpGetTool(normalized))
@@ -673,6 +545,7 @@ const BUILTIN_INTERRUPTION: Readonly<Record<string, 'retry' | 'confirm'>> = {
   calculator: 'retry',
   json: 'retry',
   read_file: 'retry',
+  edit_file: 'confirm',
   list_dir: 'retry',
   http_get: 'retry',
   write_file: 'confirm',

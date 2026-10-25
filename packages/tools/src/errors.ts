@@ -142,6 +142,15 @@ export function describeUnparsedArguments(input: string): string | undefined {
 }
 
 /**
+ * The tool was called with arguments it cannot use: a missing field, a value
+ * of the wrong type, or a path that is not a file. Distinct from a failure of
+ * the work itself, and reported the same way to the model.
+ */
+export class ToolInputError extends Error {
+  override name = 'ToolInputError'
+}
+
+/**
  * Raised when a tool notices the caller's abort mid-walk, or by the registry
  * when a cancelled tool never settles on its own. The agent loop reads
  * the abort from its own signal and settles the turn as cancelled; the error

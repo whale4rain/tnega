@@ -88,6 +88,7 @@ describe('builtinTools plugin lifecycle', () => {
     expect(names(service)).toEqual([
       'calculator',
       'echo',
+      'edit_file',
       'json',
       'list_dir',
       'now',
@@ -375,6 +376,7 @@ describe('file tools', () => {
       bytes: 10,
       content: '1234',
       truncated: true,
+      lines: { start: 1, end: 1, total: 1 },
     })
     expect(await ok(service, 'read_file', { path: 'long.txt' }))
       .toMatchObject({ bytes: 10, content: '1234567890', truncated: false })
@@ -394,7 +396,13 @@ describe('file tools', () => {
     await writeFile(join(dir, 'note.txt'), 'ab记忆', 'utf8')
 
     expect(await ok(service, 'read_file', { path: 'note.txt', maxBytes: 4 }))
-      .toEqual({ path: 'note.txt', bytes: 8, content: 'ab', truncated: true })
+      .toEqual({
+        path: 'note.txt',
+        bytes: 8,
+        content: 'ab',
+        truncated: true,
+        lines: { start: 1, end: 1, total: 1 },
+      })
     expect(await ok(service, 'read_file', { path: 'note.txt', maxBytes: 5 }))
       .toMatchObject({ content: 'ab记', truncated: true })
   })

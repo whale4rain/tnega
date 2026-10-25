@@ -17,7 +17,7 @@ export type PermissionModeSource = PermissionMode | (() => PermissionMode | Prom
 /** 与 `write_file` 同级：workspace-write 下在工作区内直接放行。 */
 // Fixed user-home capability; callers cannot choose a destination path.
 const SKILL_WRITES = new Set(['skill_create', 'skill_install'])
-const WORKSPACE_WRITES = new Set(['write_file', 'office_create', 'office_edit'])
+const WORKSPACE_WRITES = new Set(['write_file', 'edit_file', 'office_create', 'office_edit'])
 
 const ALWAYS_ALLOWED = new Set([
   // 只读

@@ -1,6 +1,6 @@
 # 工具面收敛与文件写入对齐计划
 
-> 状态：阶段 A 已实现（见「零、进展」），阶段 B–F 待实现；第四节「已定」为本次拍板结果
+> 状态：阶段 A、B 已实现（见「零、进展」），阶段 C–F 待实现；第四节「已定」为本次拍板结果
 > 参考基线：`D:\task\deepseek-harness`（dsh）的 `packages/bundle/base/cordis.patch.yml`、
 > `packages/fs/{fs-local,tool-fs,tool-str-replace-editor,fs-observation-policy}`、
 > `packages/jobs/{jobs,jobs-local,tool-jobs}`、`docs/tool-catalog.md`、`docs/subsystems/filesystem.md`
@@ -46,6 +46,39 @@
 `packages/jobs/tool-jobs`、`packages/host`、`packages/project/host`、`packages/cli`
 的 `agent-runtime` / `compose` / `web` / `jobs-web` / `processes-web` / `code-mode-web` 全绿。
 已知无关失败：`packages/cli/test/cli.test.ts` 与同目录其他文件并行运行时有一次 TTY 文案抖动（单独运行通过）。
+
+### 阶段 B · 已完成
+
+文件工具落在 `packages/tools/src/fs/`（`read` / `write` / `edit` / `observed` / `atomic` / `lock` / `guards`），
+`builtins.ts` 只剩注册。五处偏差：
+
+1. **原子发布没有 Win32 那两个分支。** `@tnega/tools` 里没有 FFI，所以 `ReplaceFileW` 与 `copyFileDacl`
+   都没实现：发布一律走 `rename`（Windows 上 libuv 用 `MoveFileEx` + `REPLACE_EXISTING`，替换仍是原子的），
+   而 DACL 通过「临时文件建在工作区同目录的 staging 目录里」继承工作区的 ACE 来保住权限。
+   计划里写的「FFI 不可用时降级 rename」因此变成「只有 rename」；真正的 `ReplaceFile` 留在
+   `sandbox-windows-acl` 的 FFI 里，将来要补时是那一层的活。
+2. **`read_file` 的正文不带行号。** 行号分页实现为「行窗口 + `lines: { start, end, total }`」，
+   正文保持原样：`edit_file` 的 `old_string` 必须逐字匹配，给正文加行号会让模型把行号一起复制进
+   `old_string`（dsh 的 `str_replace_editor` 就有这个坑，它靠提示词让模型自己剥）。
+   行号改由错误信息提供 —— 歧义时报 `lines 1, 3`。
+3. **`edits` 是「一起定位、一起应用、不许重叠」**，不是「依次应用」：每条 `old_string` 都在**原始内容**里
+   定位，重叠直接报错。与 dsh 的 `applyEdits` 同义，也避免了「前一条改完后一条再也匹配不上」的连锁失败。
+4. **观测只记「读到了整个文件」。** 超过 8MB 的文件按前缀读取，sha256 不完整，因此这次读**不授权**
+   后续的受保护覆盖（dsh 用 provider 的 version，没有这个问题）。
+5. **`ToolInputError` 迁到 `errors.ts`，参数读取函数收进 `input.ts`**，供 `builtins.ts` 与 `fs/*` 共用，
+   避免 fs 模块反向 import `builtins.ts` 形成环。
+
+为让 `edit_file` 立刻可用而提前落地的横切改动（原属阶段 D）：
+`approval-host` 的 `WORKSPACE_WRITES`、`host/runs.ts` 的两处 preimage 守卫与 slash 运行时的 disabled 列表、
+`workspace-files` 的 `writtenPaths`、`auto-approval` 的证据摘要（`edit_file` 的正文换成字符数）。
+`project-activity` 与 `client/tools.ts` 本来就认 `edit_file`，无需改。
+
+尚未接线：`fsGuard` 的 `--fs-guard` 与设置项（阶段 E），目前所有组合用默认 `warn`。
+
+验证：`packages/tools/test/fs-tools.test.ts` 新增 16 项（分页、行长裁剪、歧义与重叠报错、`replace_all`、
+并发串行化、staging 不残留、三档灰度、按 agent 记账、新建免读）；`packages/tools`（82）、
+`approval-host`、`workspace-files`、`auto-approval`、`host`、`project/host`、`coding-agent`、
+`cli` 的 `web` / `code-mode-web` / `processes-web` 全绿；`tsc` 与 eslint 干净。
 
 ---
 

@@ -177,7 +177,8 @@ function writtenPaths(workspace: string, events: readonly SessionEvent[], afterS
   const paths: string[] = []
   for (const event of events) {
     if (event.seq <= afterSeq || event.type !== 'tool/result'
-      || event.payload.name !== 'write_file' || !event.payload.ok) continue
+      || (event.payload.name !== 'write_file' && event.payload.name !== 'edit_file')
+      || !event.payload.ok) continue
     const output = event.payload.output
     if (!output || typeof output !== 'object' || !('path' in output)
       || typeof output.path !== 'string') continue
