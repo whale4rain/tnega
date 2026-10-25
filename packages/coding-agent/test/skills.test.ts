@@ -3,13 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import {
-  ensureSkillsDir,
-  listSkills,
-  readSkill,
-  skillReadTool,
-  skillTool,
-} from '../src/skills.js'
+import { ensureSkillsDir, listSkills, readSkill } from '../src/skills.js'
+import { skillTool } from '../src/skill-tool.js'
 
 const dirs: string[] = []
 
@@ -62,21 +57,28 @@ describe('skills', () => {
     await expect(readSkill(dir, 'a/b')).rejects.toThrow(/invalid skill name/)
   })
 
-  it('registers skill tools that list and read skills', async () => {
+  it('registers one skill tool whose action chooses the verb', async () => {
     const dir = await tempDir('tnega-skills-tools-')
     await ensureSkillsDir(dir)
     const skills = join(dir, '.tnega', 'skills')
     await mkdir(join(skills, 'alpha'), { recursive: true })
     await writeFile(join(skills, 'alpha', 'SKILL.md'), '# Alpha\n\ncontent\n')
+    const registry = { execute: async () => ({ ok: false }) } as unknown as Parameters<typeof skillTool>[0]['registry']
+    const tool = skillTool({
+      cwd: dir,
+      registry,
+      list: () => listSkills(dir),
+      read: name => readSkill(dir, name),
+    })
 
-    const listTool = await skillTool(dir)
-    const readTool = await skillReadTool(dir)
-    expect(listTool.schema.name).toBe('skills_list')
-    expect(readTool.schema.name).toBe('skill_read')
-    expect(await listTool.execute({}, {})).toMatchObject([
+    expect(tool.schema.name).toBe('skill')
+    expect(tool.schema.parameters?.properties?.action).toMatchObject({ enum: ['list', 'read', 'create', 'install'] })
+    expect(await tool.execute({ action: 'list' }, {})).toMatchObject([
       { name: 'alpha', path: join(skills, 'alpha', 'SKILL.md') },
     ])
-    expect(await readTool.execute({ name: 'alpha' }, {})).toContain('content')
-    await expect(readTool.execute({ name: 'nope' }, {})).rejects.toThrow(/skill not found/)
+    expect(await tool.execute({ action: 'read', name: 'alpha' }, {})).toContain('content')
+    await expect(tool.execute({ action: 'read', name: 'nope' }, {})).rejects.toThrow(/skill not found/)
+    await expect(tool.execute({ action: 'read' }, {})).rejects.toThrow(/name is required/)
+    await expect(tool.execute({ action: 'rename' }, {})).rejects.toThrow(/unknown skill action/)
   })
 })

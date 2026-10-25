@@ -46,8 +46,8 @@ describe('createCodingAgentPlugin', () => {
     const service = root.get('tools') as ToolsService
     expect(service.has('plan_execute_mark')).toBe(false)
     expect(service.has('plan_execute_result')).toBe(false)
-    expect(service.has('skills_list')).toBe(true)
-    expect(service.has('skill_read')).toBe(true)
+    expect(service.has('skill')).toBe(true)
+    expect(service.has('skills_list')).toBe(false)
 
     const coding = root.get('coding') as CodingService
     expect(coding.survey()).toEqual({
@@ -70,7 +70,7 @@ describe('createCodingAgentPlugin', () => {
 
     await fiber.dispose()
     expect(service.has('plan_execute_mark')).toBe(false)
-    expect(service.has('skills_list')).toBe(false)
+    expect(service.has('skill')).toBe(false)
     expect(root.get('coding')).toBeUndefined()
   })
 

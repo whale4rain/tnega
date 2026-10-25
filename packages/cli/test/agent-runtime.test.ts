@@ -433,11 +433,10 @@ it('offers installed skills and their trigger index in a general runtime', async
   const runtime = await createAgentRuntime(runtimeOptions(dir, { ptc: { mode: 'native' } }))
   try {
     const registry = runtime.root.get('tools') as import('@tnega/tools').ToolsService
-    expect(registry.has('skills_list')).toBe(true)
-    expect(registry.has('skill_read')).toBe(true)
+    expect(registry.has('skill')).toBe(true)
     const prompt = runtime.root.get('systemPrompt') as import('@tnega/agent').SystemPromptService
     expect((await prompt.assemble()).text).toContain('using-tnega')
-    const listed = await registry.list().find(tool => tool.schema.name === 'skills_list')!.execute({}, {})
+    const listed = await registry.list().find(tool => tool.schema.name === 'skill')!.execute({ action: 'list' }, {})
     expect(listed).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'implementing-changes' })]))
   } finally {
     await runtime.dispose()
@@ -452,7 +451,7 @@ it.each(['native', 'ptc'] as const)('discovers skills in an older Session throug
     const loop = runtime.root.get('agentLoop') as AgentLoop
     await loop({ messages: [{ role: 'system', content: 'Legacy persona. Available skills (descriptions are metadata): old index' }, { role: 'user', content: 'Help with coding.' }] })
     expect(mock.calls[0]?.messages[0]?.content).toBe('Legacy persona. Available skills (descriptions are metadata): old index')
-    const name = mode === 'native' ? 'skills_list' : 'run_code'
+    const name = mode === 'native' ? 'skill' : 'run_code'
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('using-tnega')
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('implementing-changes')
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('tdd')

@@ -32,7 +32,7 @@ export const DEFAULT_PROGRESS_TOOLS: readonly string[] = [
   'write_file', 'shell',
   // Names that MCP servers and other tool sets commonly use for edits.
   'edit_file', 'apply_patch',
-  'office_create', 'office_edit',
+  'office_create', 'office_edit', 'skill',
   'publish_artifact', 'update_checklist', 'update_goal',
   'write_memory', 'remember_global',
   'send_project_message', 'send_thread_message', 'send_agent_message', 'spawn_thread', 'spawn_subagent',

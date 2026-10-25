@@ -12,7 +12,7 @@ function validateName(name: string): void {
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name) || name.length > 64
     || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(name)) throw new TypeError('invalid skill name; use lowercase letters, numbers and hyphens')
 }
-function validateDocument(content: string, expectedName?: string): { name: string; description: string } {
+export function validateSkillDocument(content: string, expectedName?: string): { name: string; description: string } {
   if (Buffer.byteLength(content, 'utf8') > MAX_BYTES) throw new Error('skill exceeds 512 KiB')
   const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)?.[1]
   if (!block) throw new Error('skill requires frontmatter with name and description')
@@ -24,7 +24,7 @@ function validateDocument(content: string, expectedName?: string): { name: strin
   if (!description || description.length > 1024 || /[\r\n]/.test(description)) throw new Error('skill requires a single-line description of at most 1024 characters')
   return { name, description }
 }
-async function publish(name: string, content: string, signal?: AbortSignal): Promise<{ name: string; path: string }> {
+export async function publishSkill(name: string, content: string, signal?: AbortSignal): Promise<{ name: string; path: string }> {
   signal?.throwIfAborted()
   const root = join(resolveTnegaHome(), 'skills')
   await mkdir(root, { recursive: true })
@@ -50,16 +50,16 @@ export async function createSkill(input: CreateSkillInput, signal?: AbortSignal)
   validateName(input.name)
   if (!input.description.trim() || input.description.length > 1024 || /[\r\n]/.test(input.description)) throw new TypeError('description must be a non-empty single line of at most 1024 characters')
   const content = input.content ?? `---\nname: ${input.name}\ndescription: ${JSON.stringify(input.description.trim())}\n---\n\n# ${input.name}\n\nFollow user and repository instructions first.\n\n## Workflow\n\nDescribe the steps, available tools, and verification that apply to this task.\n`
-  validateDocument(content, input.name)
-  return publish(input.name, content, signal)
+  validateSkillDocument(content, input.name)
+  return publishSkill(input.name, content, signal)
 }
 export async function installSkill(cwd: string, input: InstallSkillInput, signal?: AbortSignal): Promise<{ name: string; path: string }> {
   const source = await resolveInside(cwd, input.source)
   const file = (await lstat(source)).isDirectory() ? await resolveInside(cwd, join(source, 'SKILL.md')) : source
   if ((await stat(file)).size > MAX_BYTES) throw new Error('skill exceeds 512 KiB')
   const content = await readFile(file, 'utf8')
-  const metadata = validateDocument(content, input.name)
-  return publish(metadata.name, content, signal)
+  const metadata = validateSkillDocument(content, input.name)
+  return publishSkill(metadata.name, content, signal)
 }
 function record(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('expected an object')
@@ -109,8 +109,8 @@ export function skillInstallTool(cwd: string, registry: ToolsService): ToolDefin
       const output = record(response.output)
       if (output.ok !== true || output.truncated !== false || typeof output.body !== 'string') throw new Error('skill download failed or was truncated')
       options.signal?.throwIfAborted()
-      const metadata = validateDocument(output.body, name)
-      return publish(metadata.name, output.body, options.signal)
+      const metadata = validateSkillDocument(output.body, name)
+      return publishSkill(metadata.name, output.body, options.signal)
     },
   }
 }

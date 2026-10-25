@@ -55,10 +55,10 @@ it('exposes an index to child prompts and disposes tools and prompt hooks', asyn
   await child.plugin(systemPrompt)
   const prompt = child.get('systemPrompt') as SystemPromptService
   const registry = root.get('tools') as ToolsService
-  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skills_list', 'skill_read', 'skill_create', 'skill_install'])
+  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skill'])
   const assembly = await prompt.assemble()
   expect(assembly.text).toContain('processing-data-files')
-  expect(assembly.text).toContain('skill_read')
+  expect(assembly.text).toContain('action=read')
   expect(assembly.text).not.toContain('前导零')
   await fiber.dispose()
   expect(registry.list()).toEqual([])
@@ -73,9 +73,9 @@ it('reuses shared skill tools for a coding Session without duplicate registratio
   await root.plugin(skillTools, { cwd: workspace })
   const coding = await root.plugin(createCodingAgentPlugin({ cwd: workspace, mcp: false, registerAgent: false }))
   const registry = root.get('tools') as ToolsService
-  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skills_list', 'skill_read', 'skill_create', 'skill_install'])
+  expect(registry.list().map(tool => tool.schema.name)).toEqual(['skill'])
   await coding.dispose()
-  expect(registry.has('skill_read')).toBe(true)
+  expect(registry.has('skill')).toBe(true)
   await root.fiber.dispose()
 })
 

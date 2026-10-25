@@ -145,13 +145,16 @@ it('gates fixed-home skill writes, including narrower child permissions', async 
   const approvals = new ApprovalBroker()
   const readonly = permissionGuard('read-only', 'session', approvals, { workspace: process.cwd() })
   const writable = permissionGuard('workspace-write', 'session', approvals, { workspace: process.cwd(), agentMode: () => 'read-only' })
-  for (const name of ['skill_create', 'skill_install']) {
-    expect(await readonly(request(name, {}))).toMatch(/approval/)
-    expect(await writable(request(name, {}))).toBeUndefined()
-    const child = request(name, {})
+  for (const action of ['create', 'install']) {
+    expect(await readonly(request('skill', { action }))).toMatch(/approval/)
+    expect(await writable(request('skill', { action }))).toBeUndefined()
+    const child = request('skill', { action })
     child.options.agentId = 'child'
     expect(await writable(child)).toMatch(/approval/)
   }
+  // Reading a skill is metadata work, never a write.
+  expect(await readonly(request('skill', { action: 'list' }))).toBeUndefined()
+  expect(await readonly(request('skill', { action: 'read', name: 'tdd' }))).toBeUndefined()
 })
 
 it('tells the model when nobody answered an approval in time, apart from a refusal', async () => {

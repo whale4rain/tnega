@@ -45,7 +45,7 @@ it('imports HTTPS through the guarded http_get tool and preserves call context',
     childPtc = options.ptcParentCallId
     return { ok: true, body: document, truncated: false }
   } })
-  const result = await registry.execute('skill_install', { source: 'https://example.com/SKILL.md' }, { agentId: 'child', ptcParentCallId: 'parent-code-call' })
+  const result = await registry.execute('skill', { action: 'install', source: 'https://example.com/SKILL.md' }, { agentId: 'child', ptcParentCallId: 'parent-code-call' })
   expect(result.ok).toBe(true)
   expect(childAgent).toBe('child')
   expect(childPtc).toBe('parent-code-call')
@@ -57,9 +57,9 @@ it('routes slash writes through tool execution rather than direct filesystem cal
   const slash = createSlashRegistry()
   const context = { cwd, tools: [], executeTool }
   await slash.run('/skills', ['create', 'example', 'Use', 'when', 'testing.'], context)
-  expect(executeTool).toHaveBeenCalledWith('skill_create', { name: 'example', description: 'Use when testing.' })
+  expect(executeTool).toHaveBeenCalledWith('skill', { action: 'create', name: 'example', description: 'Use when testing.' })
   await slash.run('/skills', ['install', 'source'], context)
-  expect(executeTool).toHaveBeenCalledWith('skill_install', { source: 'source' })
+  expect(executeTool).toHaveBeenCalledWith('skill', { action: 'install', source: 'source' })
   expect((await slash.run('/skills', ['create', 'other', 'Description'], { cwd, tools: [] })).kind).toBe('text')
   await expect(readFile(join(home, 'skills', 'example', 'SKILL.md'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
@@ -85,18 +85,18 @@ it('fails closed on guarded, missing, truncated, cancelled or invalid HTTPS down
   await root.plugin(skillTools, { cwd })
   const registry = root.get('tools') as ToolsService
   const denied = registry.guard(request => request.name === 'http_get' ? 'Network denied' : undefined)
-  const source = { source: 'https://example.com/SKILL.md' }
+  const source = { action: 'install', source: 'https://example.com/SKILL.md' }
   registry.register({ schema: { name: 'http_get', description: 'Fixture network' }, execute: () => ({ ok: true, body: document, truncated: false }) })
-  expect((await registry.execute('skill_install', source)).ok).toBe(false)
+  expect((await registry.execute('skill', source)).ok).toBe(false)
   denied()
   registry.unregister('http_get')
-  expect((await registry.execute('skill_install', source)).ok).toBe(false)
+  expect((await registry.execute('skill', source)).ok).toBe(false)
   registry.register({ schema: { name: 'http_get', description: 'Truncated network' }, execute: () => ({ ok: true, body: document, truncated: true }) })
-  expect((await registry.execute('skill_install', source)).ok).toBe(false)
-  expect((await registry.execute('skill_install', { source: 'http://example.com/SKILL.md' })).ok).toBe(false)
+  expect((await registry.execute('skill', source)).ok).toBe(false)
+  expect((await registry.execute('skill', { action: 'install', source: 'http://example.com/SKILL.md' })).ok).toBe(false)
   const controller = new AbortController()
   controller.abort()
-  expect((await registry.execute('skill_install', source, { signal: controller.signal })).ok).toBe(false)
+  expect((await registry.execute('skill', source, { signal: controller.signal })).ok).toBe(false)
   await expect(readFile(join(home, 'skills', 'sample', 'SKILL.md'))).rejects.toMatchObject({ code: 'ENOENT' })
   await root.fiber.dispose()
 })

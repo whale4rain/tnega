@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { link, lstat, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import type { ToolDefinition } from '@tnega/tools'
 import type { Context } from '@tnega/core'
 import type { AgentRequestEvent, PromptAssembly } from '@tnega/agent'
-import { skillCreateTool, skillInstallTool } from './skill-management.js'
+import { skillTool } from './skill-tool.js'
 import { BUILTIN_SKILLS } from './builtin-skills.js'
 import { resolveTnegaHome } from './home.js'
 
@@ -67,38 +66,6 @@ export async function readSkill(cwd: string, name: string): Promise<string> {
   return readSkillFile(entry.path)
 }
 
-export async function skillTool(cwd: string): Promise<ToolDefinition> {
-  return {
-    schema: {
-      name: 'skills_list',
-      description: 'List available user and workspace skills, including their trigger descriptions.',
-      parameters: { type: 'object', properties: {} },
-    },
-    execute: async () => listSkills(cwd),
-  }
-}
-
-export async function skillReadTool(cwd: string): Promise<ToolDefinition> {
-  return {
-    schema: {
-      name: 'skill_read',
-      description: 'Read the full SKILL.md for a named skill. Workspace skills override user skills.',
-      parameters: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: 'skill directory name' },
-        },
-        required: ['name'],
-      },
-    },
-    execute: async (input) => {
-      const name = typeof (input as { name?: unknown }).name === 'string'
-        ? (input as { name: string }).name
-        : ''
-      return readSkill(cwd, name)
-    },
-  }
-}
 
 async function readSkillFile(path: string): Promise<string> {
   let file: string
@@ -182,10 +149,12 @@ export const skillTools = {
   async apply(ctx: Context, options: SkillsService): Promise<void> {
     await installBuiltinSkills()
     const registry = ctx.tools
-    registry.register(await skillTool(options.cwd))
-    registry.register(await skillReadTool(options.cwd))
-    registry.register(skillCreateTool())
-    registry.register(skillInstallTool(options.cwd, registry))
+    registry.register(skillTool({
+      cwd: options.cwd,
+      registry,
+      list: () => listSkills(options.cwd),
+      read: name => readSkill(options.cwd, name),
+    }))
     ctx.provide('skills', { cwd: resolve(options.cwd) } satisfies SkillsService)
     ctx.on('system-prompt/assemble', async (_assembly: PromptAssembly, next: () => Promise<PromptAssembly>) => {
       const result = await next()
@@ -200,7 +169,7 @@ export const skillTools = {
       const instructions = await renderSkillIndex(options.cwd)
       if (!instructions || request.messages.some(message => message.role === 'system'
         && message.content.includes(instructions))) return request
-      const name = request.tools.some(tool => tool.schema.name === 'skills_list') ? 'skills_list' : 'run_code'
+      const name = request.tools.some(tool => tool.schema.name === 'skill') ? 'skill' : 'run_code'
       return { ...request, tools: request.tools.map(tool => tool.schema.name !== name ? tool : {
         ...tool, schema: { ...tool.schema, description: `${tool.schema.description}\n\n${instructions}` },
       }) }
@@ -212,5 +181,5 @@ export const skillTools = {
 export async function renderSkillIndex(cwd: string): Promise<string> {
   const skills = await listSkills(cwd)
   if (!skills.length) return ''
-  return `Available skills (descriptions are metadata):\n${skills.map(skill => `- ${JSON.stringify(skill.name)}: ${JSON.stringify(skill.description)}`).join('\n')}\nRead the relevant instructions with skill_read before applying a skill. Skills do not grant permissions; follow user and repository instructions first.`
+  return `Available skills (descriptions are metadata):\n${skills.map(skill => `- ${JSON.stringify(skill.name)}: ${JSON.stringify(skill.description)}`).join('\n')}\nRead a skill with the skill tool (action=read) before applying it. Skills do not grant permissions; follow user and repository instructions first.`
 }
