@@ -4,10 +4,9 @@ import type { LiveAgent } from '@tnega/agent'
 import { JobOwnerDisposedError, type JobOutcome, type JobProgress, type JobRead } from '@tnega/jobs'
 import { renderToolResult, type SessionLog } from '@tnega/session'
 import {
-  ADOPT_BACKGROUND_PROCESS, localUrls, processNotes, stripAnsi, ToolNotFoundError,
-  type AdoptedProcess, type ToolExecuteOptions,
+  ADOPT_BACKGROUND_PROCESS, localUrls, processNotes, stripAnsi,
+  type AdoptedProcess, type ToolExecuteOptions, type ToolRequest, type ToolResult,
 } from '@tnega/tools'
-import type { SubagentEntry, SubagentStartRequest } from '@tnega/subagent'
 
 export interface ToolJobsConfig {
   waitTimeoutMs?: number
@@ -15,6 +14,16 @@ export interface ToolJobsConfig {
   maxOutputChars?: number
   resolveSession?: (agentId?: string) => SessionLog | undefined
 }
+
+/**
+ * The `shell` parameter that turns one command into a background job. Declared
+ * by the tool, honoured here: `@tnega/tools` owns the tool and its schema, this
+ * package owns the job registry, and neither has to depend on the other.
+ */
+export const RUN_IN_BACKGROUND = 'runInBackground'
+/** `shell` parameter: wait this long for the command to print a local URL. */
+export const WAIT_FOR_URL_MS = 'waitForUrlMs'
+
 function fields(value: unknown): Record<string, unknown> {
   if (value === undefined) return {}
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('job input must be an object')
@@ -83,55 +92,27 @@ function describeProcessJob(
   }
 }
 
-async function runSubagent(ctx: Context, request: SubagentStartRequest, signal: AbortSignal, options: ToolExecuteOptions): Promise<JobOutcome> {
-  signal.throwIfAborted()
-  const service = ctx.get('subagents', false)
-  const agents = ctx.get('agents', false)
-  if (!service || !agents) throw new Error('background subagents require subagents and agents services')
-  const tools = ctx.tools
-  let child: LiveAgent | undefined
-  const cancel = (): void => child?.cancel({ type: 'user' })
-  signal.addEventListener('abort', cancel, { once: true })
-  try {
-    const result = await tools.execute('spawn_subagent', {
-      task: request.task, ...(request.label ? { label: request.label } : {}),
-      ...(request.mode ? { mode: request.mode } : {}),
-    }, { signal, agentId: request.parentId, jobStart: true,
-      onSubagentStarted: (entry: SubagentEntry) => {
-        child = agents.get(entry.id)
-        if (signal.aborted) cancel()
-      },
-      ...(typeof options.ptcParentCallId === 'string' ? { ptcParentCallId: options.ptcParentCallId } : {}),
-    })
-    if (!result.ok) {
-      cancel()
-      await child?.whenIdle()
-      return { status: 'failed', output: renderToolResult(result) }
-    }
-    if (!child) throw new Error('started Subagent is unavailable')
-    await child.whenIdle()
-    await child.session.flush()
-    const events = await child.session.read()
-    const end = [...events].reverse().find(event => event.type === 'turn/end')
-    const message = [...events].reverse().find(event => event.type === 'assistant/message')
-    const reason = end?.type === 'turn/end' ? end.payload.finishReason : 'error'
-    return {
-      status: signal.aborted ? 'killed' : reason === 'stop' ? 'completed' : 'failed',
-      detail: `subagent ${child.id}: ${reason}`,
-      output: message?.type === 'assistant/message' ? message.payload.content : '(no final text)',
-    }
-  } catch (error) {
-    cancel()
-    await child?.whenIdle()
-    throw error
-  } finally { signal.removeEventListener('abort', cancel) }
-}
-
+/**
+ * Background work and the three tools that read it.
+ *
+ * A long-running command is a property of `shell`, not a second tool: the model
+ * asks for the command it wants and adds `runInBackground`. This plugin owns the
+ * job registry, so it intercepts that call after policy has already decided it
+ * (the guard has run, an approval may have been answered) and starts the same
+ * tool body with the adopt hook. Re-entering `ctx.tools.execute` would ask a
+ * person to approve one command twice.
+ *
+ * A background Subagent needs no job: `spawn_subagent` already returns its id
+ * immediately and reports completion into the inbox, and `list_subagent` can
+ * wait for it.
+ */
 export const toolJobs = {
   name: 'tool-jobs', inject: ['tools', 'jobs'],
   apply(ctx: Context, config: ToolJobsConfig = {}): void {
     const waitDefault = config.waitTimeoutMs ?? 30_000
-    const waitCap = config.maxWaitTimeoutMs ?? 60_000
+    // A model that has to guess a sleep length waits too little, looks again,
+    // and pays a round trip each time. One long wait it can cancel is cheaper.
+    const waitCap = config.maxWaitTimeoutMs ?? 600_000
     const outputCap = config.maxOutputChars ?? 64_000
     for (const value of [waitDefault, waitCap, outputCap]) {
       if (!Number.isSafeInteger(value) || value < 1) throw new Error('job tool limits must be positive integers')
@@ -152,152 +133,131 @@ export const toolJobs = {
     const prompt = ctx.get('systemPrompt', false)
     if (prompt) ctx.effect(() => prompt.registerSection({
       name: 'tool:jobs', order: 45,
-      content: 'Use job_start for independent long-running tools or Subagent tasks; for a command that keeps running (a dev server, a watcher) use job_start with tool=shell, since plain shell waits for the command to exit. Track job IDs, continue useful work, and collect relevant results with job_output before your final answer. Use wait only when blocked; job_kill cancels unnecessary work. Completion notices enter your inbox. Jobs survive Agent Runs but not runtime shutdown.',
+      content: 'A command that keeps running (a dev server, a watcher, a long build you do not need to wait for) belongs in the background: call shell with runInBackground, which returns a job id and its first output. Keep working, then read job_output. When you are blocked on a job, wait for it with job_output({job_id, wait: true, timeout_ms}) — cancelling that wait does not stop the job. job_kill stops work you no longer need. Completion notices arrive in your inbox. Jobs survive Agent Runs but not runtime shutdown.',
     }))
-    tools.register({
-      schema: {
-        name: 'job_start', description: 'Start a long-running tool or Subagent task in the background and return its job ID. Tool calls retain normal permissions and deadlines. Set kind=subagent with task to delegate; otherwise specify tool and input. With tool=shell the command runs as a background process without a deadline (a dev server, a watcher): the call returns once it runs, with its first output; job_output reads new output and local URLs; job_kill stops it. Collect results with job_output.',
-        parameters: { type: 'object', properties: {
-          kind: { type: 'string', enum: ['tool', 'subagent'] },
-          tool: { type: 'string' }, input: {}, task: { type: 'string' },
-          label: { type: 'string' }, mode: { type: 'string', enum: ['spawn', 'fork'] },
-          wait_for_url_ms: { type: 'integer', minimum: 0, description: 'tool=shell: wait up to this long (max 60000) for a local URL in the output, e.g. 15000 for a dev server' },
-        }, additionalProperties: false },
-      },
-      metadata: { permissionBoundary: 'nested-tools' },
-      async execute(input, options) {
-        options.signal?.throwIfAborted()
-        const value = fields(input)
-        const kind = value.kind ?? 'tool'
-        if (kind !== 'tool' && kind !== 'subagent') throw new Error('kind must be tool or subagent')
-        const owner = ownerOf(ctx, options)
-        const label = value.label === undefined ? undefined : required(value.label, 'label')
-        const session = owner?.session ?? config.resolveSession?.(options.agentId)
-        let run: (signal: AbortSignal) => Promise<JobOutcome>
-        let defaultLabel: string
-        let progress: (() => JobProgress | undefined) | undefined
-        let started: Promise<void> | undefined
-        const live: { adopted?: AdoptedProcess } = {}
-        if (kind === 'subagent') {
-          if (!owner) throw new Error('background Subagent tasks require a live Agent')
-          const task = required(value.task, 'task')
-          if (value.mode !== undefined && value.mode !== 'spawn' && value.mode !== 'fork') throw new Error('mode must be spawn or fork')
-          defaultLabel = task.slice(0, 128)
-          run = async signal => {
-            const callId = `${options.callId ?? randomUUID()}/job/${randomUUID()}`
-            signal.throwIfAborted()
-            await session?.append('meta', { kind: 'job/dispatch-start', callId, name: 'spawn_subagent', task: task.slice(0, outputCap) })
+
+    // ── the background form of shell ──
+    ctx.on('tools/execute', async (request: ToolRequest, next: () => Promise<ToolResult>) => {
+      if (request.name !== 'shell' || request.tool.metadata?.backgroundProcess !== true) return next()
+      const input = fields(request.input)
+      if (input[RUN_IN_BACKGROUND] !== true) return next()
+      const command: Record<string, unknown> = { ...input }
+      delete command[RUN_IN_BACKGROUND]
+      const owner = ownerOf(ctx, request.options)
+      const session = owner?.session ?? config.resolveSession?.(request.options.agentId)
+      const text = typeof command.command === 'string' && command.command.trim()
+        ? command.command.trim().slice(0, 128)
+        : 'shell'
+      const live: { adopted?: AdoptedProcess } = {}
+      let markStarted: () => void = () => undefined
+      const started = new Promise<void>(resolve => { markStarted = resolve })
+      const id = jobs.start({
+        kind: 'process',
+        label: text,
+        ...(owner ? { owner } : {}),
+        progress(): JobProgress | undefined {
+          const adopted = live.adopted
+          if (!adopted) return undefined
+          const output = adopted.entry.process.output()
+          return { output: stripAnsi(output), urls: localUrls(output), processId: adopted.entry.id }
+        },
+        async run(signal) {
+          const callId = `${request.options.callId ?? randomUUID()}/job/${randomUUID()}`
+          const note = async (kind: string, payload: Record<string, unknown>): Promise<void> => {
+            await session?.append('meta', { kind, callId, name: 'shell', ...payload })
             await session?.flush()
-            const outcome = await runSubagent(ctx, { parentId: owner.id, task,
-              ...(label ? { label } : {}), ...(value.mode === 'fork' ? { mode: 'fork' } : {}),
-            }, signal, options)
-            if (outcome.output !== undefined) outcome.output = outcome.output.slice(0, outputCap)
-            await session?.append('meta', { kind: 'job/dispatch-result', callId, name: 'spawn_subagent', ...outcome })
-            await session?.flush()
-            return outcome
           }
-        } else {
-          const name = required(value.tool, 'tool')
-          const definition = tools.list().find(tool => tool.schema.name === name)
-          if (!definition) throw new ToolNotFoundError(name, tools.list().map(tool => tool.schema.name).filter(tool => !tool.startsWith('job_')))
-          if (name.startsWith('job_') || name === 'spawn_subagent' || definition.metadata?.background === false) {
-            throw new Error('tool cannot be backgrounded; use kind=subagent for Subagent work')
-          }
-          defaultLabel = name
-          if (definition.metadata?.backgroundProcess === true) {
-            const command = (value.input as { command?: unknown } | undefined)?.command
-            if (typeof command === 'string' && command.trim()) defaultLabel = command.trim().slice(0, 128)
-            let markStarted: () => void = () => undefined
-            started = new Promise<void>(resolve => { markStarted = resolve })
-            progress = () => {
-              const adopted = live.adopted
-              if (!adopted) return undefined
-              const output = adopted.entry.process.output()
-              return { output: stripAnsi(output), urls: localUrls(output), processId: adopted.entry.id }
-            }
-            run = async signal => {
-              const callId = `${options.callId ?? randomUUID()}/job/${randomUUID()}`
-              try {
-                signal.throwIfAborted()
-                await session?.append('meta', { kind: 'job/dispatch-start', callId, name,
-                  input: renderToolResult({ ok: true, output: value.input ?? {} }).slice(0, outputCap) })
-                await session?.flush()
-                const result = await tools.execute(name, value.input ?? {}, {
-                  callId, signal, ...(options.agentId ? { agentId: options.agentId } : {}),
-                  ...(typeof options.ptcParentCallId === 'string' ? { ptcParentCallId: options.ptcParentCallId } : {}),
-                  [ADOPT_BACKGROUND_PROCESS]: (adopted: AdoptedProcess) => { live.adopted = adopted; markStarted() },
-                })
-                const adopted = live.adopted
-                if (!result.ok || !adopted) {
-                  const output = renderToolResult(result).slice(0, outputCap)
-                  await session?.append('meta', { kind: 'job/dispatch-result', callId, name, ok: result.ok, output })
-                  await session?.flush()
-                  return { status: result.ok ? 'completed' : 'failed', output }
-                }
-                const code = await exitOrAbort(adopted, signal)
-                const output = (): string => tail(stripAnsi(adopted.entry.process.output()), outputCap)
-                if (code === 'aborted' && signal.reason instanceof JobOwnerDisposedError && adopted.shared) {
-                  // The runtime is going away, not a person stopping the job:
-                  // the workspace keeps the process (a dev server survives a
-                  // settings change) and the user can still stop it there.
-                  return { status: 'killed', detail: `still running in the workspace as ${adopted.entry.id}`, output: output() }
-                }
-                if (code === 'aborted') await adopted.stop()
-                const exit = adopted.entry.process.exitCode()
-                await session?.append('meta', { kind: 'job/dispatch-result', callId, name, ok: exit === 0, output: output() })
-                await session?.flush()
-                // A stopped job reads as stopped, not as the exit code the kill caused.
-                if (code === 'aborted') return { status: 'killed', output: output() }
-                return {
-                  status: exit === 0 ? 'completed' : 'failed',
-                  ...(typeof exit === 'number' ? { detail: `exit code ${exit}` } : {}),
-                  output: output(),
-                }
-              } finally { markStarted() }
-            }
-          } else run = async signal => {
-            const callId = `${options.callId ?? randomUUID()}/job/${randomUUID()}`
+          try {
             signal.throwIfAborted()
-            await session?.append('meta', { kind: 'job/dispatch-start', callId, name,
-              input: renderToolResult({ ok: true, output: value.input ?? {} }).slice(0, outputCap) })
-            await session?.flush()
-            signal.throwIfAborted()
-            const result = await tools.execute(name, value.input ?? {}, {
-              callId, signal, ...(options.agentId ? { agentId: options.agentId } : {}),
-              ...(typeof options.ptcParentCallId === 'string' ? { ptcParentCallId: options.ptcParentCallId } : {}),
+            await note('job/dispatch-start', {
+              input: renderToolResult({ ok: true, output: command }).slice(0, outputCap),
             })
-            const output = renderToolResult(result).slice(0, outputCap)
-            await session?.append('meta', { kind: 'job/dispatch-result', callId, name, ok: result.ok, output })
-            await session?.flush()
-            return { status: result.ok ? 'completed' : 'failed', output }
+            let output: unknown
+            try {
+              output = await request.tool.execute(command, {
+                ...request.options,
+                callId,
+                signal,
+                [ADOPT_BACKGROUND_PROCESS]: (adopted: AdoptedProcess) => {
+                  live.adopted = adopted
+                  markStarted()
+                },
+              })
+            } catch (error) {
+              markStarted()
+              throw error
+            }
+            const adopted = live.adopted
+            if (!adopted) {
+              // The body ran the command instead of handing over a process.
+              const rendered = renderToolResult({ ok: true, output }).slice(0, outputCap)
+              await note('job/dispatch-result', { ok: true, output: rendered })
+              return { status: 'completed', output: rendered }
+            }
+            markStarted()
+            const code = await exitOrAbort(adopted, signal)
+            const printed = (): string => tail(stripAnsi(adopted.entry.process.output()), outputCap)
+            if (code === 'aborted' && signal.reason instanceof JobOwnerDisposedError && adopted.shared) {
+              // The runtime is going away, not a person stopping the job: the
+              // workspace keeps the process and the user can still stop it there.
+              return { status: 'killed', detail: `still running in the workspace as ${adopted.entry.id}`, output: printed() }
+            }
+            if (code === 'aborted') await adopted.stop()
+            const exit = adopted.entry.process.exitCode()
+            await note('job/dispatch-result', { ok: exit === 0, output: printed() })
+            // A stopped job reads as stopped, not as the exit code the kill caused.
+            if (code === 'aborted') return { status: 'killed', output: printed() }
+            return {
+              status: exit === 0 ? 'completed' : 'failed',
+              ...(typeof exit === 'number' ? { detail: `exit code ${exit}` } : {}),
+              output: printed(),
+            } satisfies JobOutcome
+          } finally {
+            markStarted()
           }
-        }
-        if (value.wait_for_url_ms !== undefined && (typeof value.wait_for_url_ms !== 'number' || value.wait_for_url_ms < 0)) {
-          throw new Error('wait_for_url_ms must be a non-negative number')
-        }
-        const id = jobs.start({ kind, label: label ?? defaultLabel, ...(owner ? { owner } : {}), run, ...(progress ? { progress } : {}) })
-        if (!started) return { job_id: id, status: 'running' }
-        processes.set(id, live)
-        // A process job answers once the command runs (after any approval),
-        // and for a server once it printed a local URL.
-        await abortable(started, options.signal)
-        const waitMs = Math.min(typeof value.wait_for_url_ms === 'number' ? value.wait_for_url_ms : 0, 60_000)
-        const deadline = Date.now() + waitMs
-        while (Date.now() < deadline && !options.signal?.aborted
-          && jobs.get(id, owner).status === 'running' && !progress?.()?.urls?.length) {
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-        return describeProcessJob(jobs.read(id, owner), START_OUTPUT_CHARS, true, reads, live.adopted)
-      },
+        },
+      })
+      processes.set(id, live)
+      // A process job answers once the command runs (after any approval), and
+      // for a server once it printed a local URL.
+      await abortable(started, request.options.signal)
+      const waitMs = Math.min(
+        typeof command[WAIT_FOR_URL_MS] === 'number' ? command[WAIT_FOR_URL_MS] as number : 0,
+        60_000,
+      )
+      const deadline = Date.now() + waitMs
+      while (Date.now() < deadline && !request.options.signal?.aborted
+        && jobs.get(id, owner).status === 'running' && !live.adopted?.entry.process.output().match(/https?:\/\//i)) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+      return {
+        ok: true,
+        name: request.name,
+        ...(request.options.callId ? { callId: request.options.callId } : {}),
+        input: request.input,
+        output: describeProcessJob(jobs.read(id, owner), START_OUTPUT_CHARS, true, reads, live.adopted),
+        startedAt: request.startedAt,
+        durationMs: Date.now() - request.startedAt,
+      }
     })
-    tools.register({ schema: { name: 'job_list', description: 'List your running and finished background jobs.', parameters: { type: 'object', properties: {} } },
+
+    tools.register({
+      schema: { name: 'job_list', description: 'List your running and finished background jobs.', parameters: { type: 'object', properties: {} } },
       execute(_input, options) { return jobs.list(ownerOf(ctx, options)) },
     })
-    tools.register({ schema: { name: 'job_output', description: 'Read a background job final result; for a shell process, its new output since the last read, its status and local URLs. wait=true waits up to timeout_ms for the job to finish without cancelling work on timeout. Cancelling this tool stops only the wait.',
-      parameters: { type: 'object', properties: {
-        job_id: { type: 'string' }, wait: { type: 'boolean' }, timeout_ms: { type: 'integer', minimum: 1 },
-        all: { type: 'boolean', description: 'shell process: return all retained output instead of only new output' },
-      }, required: ['job_id'] } },
+    tools.register({
+      schema: {
+        name: 'job_output',
+        description: 'Read a background job final result; for a shell process, its new output since the last read, its status and local URLs. wait=true waits up to timeout_ms for the job to finish without cancelling work on timeout. Cancelling this tool stops only the wait.',
+        parameters: {
+          type: 'object',
+          properties: {
+            job_id: { type: 'string' }, wait: { type: 'boolean' }, timeout_ms: { type: 'integer', minimum: 1 },
+            all: { type: 'boolean', description: 'shell process: return all retained output instead of only new output' },
+          },
+          required: ['job_id'],
+        },
+      },
       async execute(input, options) {
         const value = fields(input)
         const id = required(value.job_id, 'job_id')
@@ -306,7 +266,21 @@ export const toolJobs = {
         if (value.wait) {
           const timeout = value.timeout_ms ?? waitDefault
           if (typeof timeout !== 'number' || !Number.isSafeInteger(timeout) || timeout < 1) throw new Error('timeout_ms must be a positive integer')
-          await jobs.wait(id, Math.min(timeout, waitCap), owner, options.signal)
+          const waited = Math.min(timeout, waitCap)
+          await jobs.wait(id, waited, owner, options.signal)
+          if (jobs.get(id, owner).status === 'running' || jobs.get(id, owner).status === 'stopping') {
+            // Saying so beats letting the model guess how long to sleep next.
+            const read = jobs.read(id, owner)
+            const process = processes.get(id)
+            const described = process
+              ? describeProcessJob(read, READ_OUTPUT_CHARS, value.all === true, reads, process.adopted)
+              : read as unknown as Record<string, unknown>
+            return {
+              ...described,
+              waited_ms: waited,
+              hint: `still running after waiting ${Math.round(waited / 1000)}s; wait again with a larger timeout_ms (up to ${Math.round(waitCap / 1000)}s), or keep working and read it later`,
+            }
+          }
         }
         if (value.all !== undefined && typeof value.all !== 'boolean') throw new Error('all must be boolean')
         const read = jobs.read(id, owner)
@@ -315,8 +289,12 @@ export const toolJobs = {
         return describeProcessJob(read, READ_OUTPUT_CHARS, value.all === true, reads, process.adopted)
       },
     })
-    tools.register({ schema: { name: 'job_kill', description: 'Request background job cancellation. It remains stopping until execution releases resources.',
-      parameters: { type: 'object', properties: { job_id: { type: 'string' }, reason: { type: 'string' } }, required: ['job_id'] } },
+    tools.register({
+      schema: {
+        name: 'job_kill',
+        description: 'Request background job cancellation. It remains stopping until execution releases resources.',
+        parameters: { type: 'object', properties: { job_id: { type: 'string' }, reason: { type: 'string' } }, required: ['job_id'] },
+      },
       execute(input, options) {
         const value = fields(input)
         if (value.reason !== undefined && typeof value.reason !== 'string') throw new Error('reason must be string')

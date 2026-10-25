@@ -13,7 +13,7 @@ it('keeps a background shell job visible after the run and lets the user read an
     req.on('end', () => {
       const first = ++requests === 1
       const delta = first ? { tool_calls: [{ index: 0, id: 'call-process', type: 'function', function: {
-        name: 'job_start', arguments: JSON.stringify({ tool: 'shell', input: { command: 'node server.cjs' }, wait_for_url_ms: 5000 }),
+        name: 'shell', arguments: JSON.stringify({ command: 'node server.cjs', runInBackground: true, waitForUrlMs: 5000 }),
       } }] } : { content: 'Server started' }
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: first ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`)

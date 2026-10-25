@@ -16,7 +16,7 @@ function request(name: string, input: unknown): ToolRequest {
 describe('permissionGuard', () => {
   it('allows job controls while child execution retains its own permission check', async () => {
     const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
-    for (const name of ['job_start', 'job_list', 'job_output', 'job_kill']) {
+    for (const name of ['job_list', 'job_output', 'job_kill']) {
       expect(await guard(request(name, {}))).toBeUndefined()
     }
     expect(await guard(request('shell', { command: 'echo hello' }))).toMatch(/approval/)
@@ -132,10 +132,10 @@ describe('browser and process permissions', () => {
     expect(await guardAt('bypass', 'https://shop.example.com')(request('browser_click', { ref: 'e3' }))).toBeUndefined()
   })
 
-  it('lets job tools through so the shell they start meets the shell gate', async () => {
+  it('gates a backgrounded command on the shell it is, and leaves collecting it free', async () => {
     const guard = guardAt('workspace-write', undefined)
-    expect(await guard(request('job_start', { tool: 'shell', input: { command: 'npm run dev' } }))).toBeUndefined()
-    expect(await guard(request('shell', { command: 'npm run dev' }))).toMatch(/approval/)
+    // runInBackground is a shell parameter: the command meets the shell gate once.
+    expect(await guard(request('shell', { command: 'npm run dev', runInBackground: true }))).toMatch(/approval/)
     expect(await guard(request('job_output', { job_id: 'tool-1' }))).toBeUndefined()
     expect(await guard(request('job_kill', { job_id: 'tool-1' }))).toBeUndefined()
   })

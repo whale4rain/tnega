@@ -35,8 +35,8 @@ const ALWAYS_ALLOWED = new Set([
   'write_memory', 'publish_artifact', 'index_resource',
   // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。
   'run_code', 'ask_user_question',
-  // 后台任务（含后台进程）：启动的子工具（如 shell）仍经过同一道守卫。
-  'job_start', 'job_list', 'job_output', 'job_kill',
+  // 后台任务的读取与停止不碰宿主；启动走 shell 的 runInBackground，照样过 shell 那道守卫。
+  'job_list', 'job_output', 'job_kill',
 ])
 
 /**

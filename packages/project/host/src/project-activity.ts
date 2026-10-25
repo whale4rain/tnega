@@ -37,8 +37,7 @@ export function describeToolCall(name: string, args: unknown): string {
     case 'glob':
     case 'grep':
       return 'Searching the workspace'
-    case 'shell':
-    case 'job_start': {
+    case 'shell': {
       const command = text('command')
       return command ? `Running ${short(command, 40)}` : 'Running a command'
     }

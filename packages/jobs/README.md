@@ -4,40 +4,32 @@
 
 - `@tnega/jobs`：Service Definition，拥有 `ctx.jobs`、Job 词汇和 `jobs/change`。
 - `@tnega/jobs-local`：进程内 Provider。管理归属、状态、取消、等待和资源清理。
-- `@tnega/tool-jobs`：Consumer，注册 `job_start`、`job_list`、`job_output`、`job_kill`。
+- `@tnega/tool-jobs`：Consumer。它接管 `shell` 的 `runInBackground` 参数，并注册
+  `job_list`、`job_output`、`job_kill`。
 
 Provider 与 Consumer 只依赖 Definition；composition 层选择 Provider。
 发布入口是 `tnega/jobs`、`tnega/jobs-local`、`tnega/tool-jobs`。
 
-```json
-{"tool":"shell","input":{"command":"pnpm test"},"label":"test suite"}
-```
-
-把上面的参数交给 `job_start`，立即取得 `{job_id,status}`，继续处理独立工作。
-要后台运行 Subagent，使用：
+## 后台命令是 shell 的参数，不是另一个工具
 
 ```json
-{"kind":"subagent","task":"检查指定模块并报告发现","mode":"spawn"}
+{"command":"npm run dev","runInBackground":true,"waitForUrlMs":15000}
 ```
 
-Subagent 仍经过 `spawn_subagent` 的原有工具授权，保留深度、并行数量、Workspace
-权限和 durable Session。该次运行由 job controller 报告完成，避免重复父级通知；
-原有 `spawn_subagent` 与 `send_agent_message` 的继续交互行为保持不变。
+一次调用、一次授权。`runInBackground` 由 `@tnega/tools` 声明（只有该配置能起进程时才出现），
+由 `@tnega/tool-jobs` 在 `tools/execute` 上接管：它登记 job，然后以
+`adoptBackgroundProcess` 执行**同一个** shell 调用体。之所以不重新进入 `ctx.tools.execute`：
+那会让同一条命令过两遍守卫，用户要批两次，第二次还可能被拒。
 
-长期运行的命令（dev server、watcher）也走 job：
+`shell` 在已获批准后经同一执行边界（同一沙箱）启动后台进程、登记到 workspace 的
+`ProcessRegistry` 并交出句柄。调用的答复里带 `job_id`、首段输出与本地 URL；
+`waitForUrlMs` 可再等 URL。运行中 `job_output` 只返回上次读取后的新输出
+（`all:true` 取全部）、状态与本地 URL，Windows 沙箱下附带 `note` / `hint`；
+`job_kill` 停止整个进程树。进程退出码 0 为 `completed`，否则 `failed`。
+原 `job_start` 与 `process_*` 工具已移除。
 
-```json
-{"tool":"shell","input":{"command":"npm run dev"},"wait_for_url_ms":15000}
-```
-
-声明了 `metadata.backgroundProcess` 的工具（`shell`）在 job 里不等命令退出：
-tool-jobs 传入执行选项 `adoptBackgroundProcess`，shell 经同一执行边界（同一沙箱）
-启动后台进程、登记到 workspace 的 `ProcessRegistry` 并交出句柄。`job_start` 在
-命令启动后（含审批）返回首段输出，`wait_for_url_ms` 可再等本地 URL；运行中
-`job_output` 只返回上次读取后的新输出（`all:true` 取全部）、状态与本地 URL，
-Windows 沙箱下附带 `note` / `hint`；`job_kill` 停止整个进程树。进程退出码 0 为
-`completed`，否则 `failed`。原 `process_start` / `process_output` / `process_list` /
-`process_stop` 工具已移除。
+后台 Subagent 不再包成 job：`spawn_subagent` 本就立即返回 id，完成时把结果投进
+父级 inbox，`list_subagent({wait_ms})` 可等待。job 只覆盖命令。
 
 Job 可在运行中提供 `progress()`（输出、URL、`processId`），快照与 `jobs/change`
 因此带上 `urls` / `processId`。Owner 或 registry 卸载时以 `JobOwnerDisposedError`
@@ -46,7 +38,8 @@ Job 可在运行中提供 `progress()`（输出、URL、`processId`），快照�
 registry 时进程随 builtins 插件结束。
 
 读取结果：`job_output({job_id,wait:true,timeout_ms:30000})`。
-默认不等待；等待默认 30 秒、上限 60 秒，超时返回当前状态并保留工作。
+默认不等待；等待默认 30 秒、上限 600 秒（与 DSH 同值），超时返回当前状态与 `waited_ms`、
+`hint`，并保留工作。
 调用方取消 signal 只取消这次等待。`job_kill({job_id,reason})` 请求取消工作，
 状态先变成 `stopping`，直到执行方释放资源才变成 `killed`。
 

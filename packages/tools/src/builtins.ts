@@ -46,6 +46,12 @@ export interface BuiltinToolsConfig {
   /** Characters kept per line before the line is clipped. */
   maxLineChars?: number
   /**
+   * Declare `shell`'s `runInBackground` parameter. The jobs plugin honours it;
+   * without that plugin the flag is refused rather than silently run inline.
+   * Defaults to on when this config can start processes at all.
+   */
+  backgroundJobs?: boolean
+  /**
    * How strictly a write must match what this Agent already read of that path.
    * `warn` (default) records and proceeds with a note, `enforce` refuses an
    * unread or externally changed target, `off` does neither.
@@ -72,6 +78,7 @@ interface NormalizedBuiltinToolsConfig {
   maxReadLines: number
   maxLineChars: number
   fsGuard: FsGuardMode
+  backgroundJobs: boolean
   maxResults: number
   timeoutMs: number
   searchExcludeSet: ReadonlySet<string>
@@ -126,6 +133,8 @@ function normalizeConfig(config: BuiltinToolsConfig = {}, ownedProcesses?: Proce
     maxReadLines: config.maxReadLines ?? 2000,
     maxLineChars: config.maxLineChars ?? 2000,
     fsGuard: config.fsGuard ?? 'warn',
+    backgroundJobs: config.backgroundJobs
+      ?? Boolean((config.processes ?? ownedProcesses) && (config.execution ?? localExecutionProvider).startShell),
     maxResults: config.maxResults ?? 200,
     timeoutMs: config.timeoutMs ?? 15_000,
     searchExcludeSet: new Set(config.searchExcludes ?? DEFAULT_SEARCH_EXCLUDES),
@@ -445,15 +454,38 @@ function progressDecoder(progress: (output: string) => void): (chunk: Buffer, st
   }
 }
 
+/** Where a long command belongs: a timeout expires, it does not background. */
+const BACKGROUND_HINT = 'Downloads, dependency installs, builds and full test suites routinely take minutes: pass a larger timeoutMs for them. This runtime kills a command whose timeout expires; it does not move it to the background on its own.'
+
 function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
+  const properties: Record<string, unknown> = {
+    command: { type: 'string', description: 'shell command to run' },
+    cwd: { type: 'string', description: 'working directory relative to the workspace' },
+    timeoutMs: { type: 'number', description: 'optional timeout in milliseconds' },
+  }
+  if (config.backgroundJobs) {
+    // Declared here, honoured by the jobs plugin: the tool owns the schema, the
+    // job registry owns the work, and neither package depends on the other.
+    properties.runInBackground = {
+      type: 'boolean',
+      description: 'run it as a background job and return a job id immediately (no timeout applies); read it with job_output',
+    }
+    properties.waitForUrlMs = {
+      type: 'number',
+      description: 'with runInBackground: wait this long for the command to print a local URL before answering',
+    }
+  }
   return definition(
     'shell',
-    `Run a shell command inside the workspace and return { exitCode, stdout, stderr }. ${describeShell(systemShell())} ${ESCALATE_HINT}`,
+    `Run a shell command inside the workspace and return { exitCode, stdout, stderr }. ${describeShell(systemShell())} ${BACKGROUND_HINT} ${ESCALATE_HINT}`,
     async (input, options: ToolExecuteOptions) => {
       const args = record(input)
       const command = stringField(args.command, 'command')
       const cwd = await resolveToolPath(config, optionalString(args.cwd, 'cwd') ?? '.')
       const adopt = options[ADOPT_BACKGROUND_PROCESS]
+      if (args.runInBackground === true && typeof adopt !== 'function') {
+        throw new Error('this runtime cannot run background commands; run it in the foreground with a larger timeoutMs')
+      }
       if (typeof adopt === 'function') {
         const start = config.execution.startShell?.bind(config.execution)
         const registry = config.processes
@@ -485,12 +517,7 @@ function shellTool(config: NormalizedBuiltinToolsConfig): ToolDefinition {
     },
     {
       type: 'object',
-      properties: {
-        command: { type: 'string', description: 'shell command to run' },
-        cwd: { type: 'string', description: 'working directory relative to the workspace' },
-        timeoutMs: { type: 'number', description: 'optional timeout in milliseconds' },
-        ...ESCALATE_PROPERTIES,
-      },
+      properties: { ...properties, ...ESCALATE_PROPERTIES },
       required: ['command'],
     },
   )
@@ -525,8 +552,8 @@ export function createBuiltinToolDefinitions(
   }
   if (normalized.allowShell && !disabled.has('shell')) {
     const shell = shellTool(normalized)
-    // job_start runs it as a background process (a dev server, a watcher).
-    if (normalized.processes && normalized.execution.startShell) shell.metadata = { ...shell.metadata, backgroundProcess: true }
+    // The jobs plugin turns `runInBackground` into a job (a dev server, a watcher).
+    if (normalized.backgroundJobs) shell.metadata = { ...shell.metadata, backgroundProcess: true }
     definitions.push(shell)
   }
   for (const definition of definitions) {

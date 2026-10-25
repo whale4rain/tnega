@@ -38,13 +38,13 @@ Consumer 互不依赖；Provider 的挑选属于 composition 层。
 | 工具 | 说明 | 开关 |
 |---|---|---|
 | `echo` `now` `calculator` `json` | 纯计算/回显 | 默认 |
-| `read_file` `write_file` `list_dir` | 工作目录内文件操作，路径沙箱 | 默认 |
+| `read_file` `write_file` `edit_file` `list_dir` | 工作目录内文件操作，路径沙箱；读取按行分页，写入原子发布，覆盖受 `fsGuard` 约束 | 默认 |
 | `shell` | 子进程执行 | `--allow-shell` |
 | `http_get` | 网络抓取 | `--allow-network` |
 
 `glob` / `grep` 由 `@tnega/tool-search` 注册，见上面的能力缝一节。
 
-文件工具拒绝二进制、限制写入字节；`read_file` 超过 `maxBytes`（默认 256 KiB）时返回前缀并把 `truncated` 置为 `true`，而不是报错 —— 调用方显式要的东西不该被拒绝。`calculator` 拒绝非法算术输入。
+文件工具拒绝二进制、限制写入字节。`read_file` 按行窗口返回（`offset`/`limit`，默认并上限 2000 行），并把 `lines: {start,end,total}` 交回；`maxBytes`（默认 256 KiB）仍是返回内容的字节上限，超出时返回前缀并把 `truncated` 置为 `true`，而不是报错 —— 调用方显式要的东西不该被拒绝。`write_file` 与 `edit_file` 走私有 staging 目录 + 原子发布，再按 `fsGuard`（`off`/`warn`/`enforce`）核对本会话读过的那一版。`calculator` 拒绝非法算术输入。
 `path.ts` 只是 `@tnega/fs-sandbox` 的转发：路径围栏（词法 + 身份包含判定、
 `..` / 绝对路径 / symlink 逃逸）在整个仓库只有那一份实现；`list_dir --recursive`
 会剪掉 `DEFAULT_SEARCH_EXCLUDES` 里的噪声目录。

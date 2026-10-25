@@ -239,7 +239,7 @@ export class ToolTimeoutError extends Error {
   override name = 'ToolTimeoutError'
 
   constructor(readonly toolName: string, readonly timeoutMs: number) {
-    super(`tool call timed out after ${timeoutMs}ms: ${toolName}. The call was stopped; split the work into smaller calls, or run it in the background if a background tool such as job_start is available`)
+    super(`tool call timed out after ${timeoutMs}ms: ${toolName}. The call was stopped; split the work into smaller calls, or run a long command with shell and runInBackground where that is available`)
   }
 }
 
