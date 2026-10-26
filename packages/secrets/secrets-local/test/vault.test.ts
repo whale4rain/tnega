@@ -15,6 +15,14 @@ async function vault() {
 }
 
 describe('SecretVault', () => {
+  it('keeps every workspace entry when it rewrites the file, whatever its key', async () => {
+    const { vault: v, file, workspace } = await vault()
+    await writeFile(file, '{"version":1,"workspaces":{"__proto__":{"path":"/elsewhere","secrets":{"KEEP":"kept-value"}}}}')
+    await v.set({ workspace, sessionId: 'a' }, 'NEW_KEY', 'new-value', { remember: true })
+    const saved: unknown = JSON.parse(await readFile(file, 'utf8'))
+    expect(saved).toMatchObject({ workspaces: { ['__proto__']: { secrets: { KEEP: 'kept-value' } } } })
+  })
+
   it('refuses a saved file it does not understand instead of rewriting it', async () => {
     const { vault: v, file, workspace } = await vault()
     const odd = JSON.stringify({ version: 1, workspaces: { w: { path: workspace, secrets: { KEEP: 'kept-value', BAD: 42 } } } })

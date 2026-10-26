@@ -42,7 +42,8 @@ function parseSaved(text: string): SavedFile {
   if (!record(parsed) || parsed.version !== 1 || !record(parsed.workspaces)) {
     throw new Error('expected { version: 1, workspaces: {...} }')
   }
-  const workspaces: Record<string, SavedWorkspace> = {}
+  // Null prototype, like `secrets` below: every key read must be written back.
+  const workspaces: Record<string, SavedWorkspace> = Object.create(null)
   for (const [key, entry] of Object.entries(parsed.workspaces)) {
     if (!record(entry) || typeof entry.path !== 'string' || !record(entry.secrets)) {
       throw new Error(`workspace ${key} is not { path, secrets }`)
