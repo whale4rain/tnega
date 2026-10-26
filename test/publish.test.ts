@@ -78,13 +78,11 @@ describe('packed artifact', () => {
         const runtime = await createAgentRuntime({ cwd: ${JSON.stringify(directory)},
           sessionFile: ${JSON.stringify(join(directory, 'session.jsonl'))}, builtinTools: false, jobs: true });
         const tools = runtime.root.get('tools');
-        tools.register({ schema: { name: 'long_work', description: 'long work' }, execute: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10)); return 'work finished';
-        } });
-        const started = await tools.execute('job_start', { tool: 'long_work' });
-        if (!started.ok || !started.output.job_id) throw new Error('job failed to launch');
-        const output = await tools.execute('job_output', { job_id: started.output.job_id, wait: true });
-        if (!output.ok || output.output.job.status !== 'completed' || output.output.output !== 'work finished') throw new Error('job result lost');
+        for (const name of ['job_list', 'job_output', 'job_kill']) {
+          if (!tools.has(name)) throw new Error('missing job tool: ' + name);
+        }
+        const listed = await tools.execute('job_list', {});
+        if (!listed.ok || !Array.isArray(listed.output)) throw new Error('job list unavailable');
         await runtime.dispose();
         console.log('packed jobs ok');
       `)
@@ -240,6 +238,9 @@ describe('packed artifact', () => {
       'tool-blackboard',
       'tool-box',
       'tool-search',
+      'tool-fs',
+      'tool-shell',
+      'tool-web-fetch',
       'tool-thread',
       'tool-memory',
       'tool-spill',
@@ -297,6 +298,9 @@ describe('packed artifact', () => {
       'tool-blackboard',
       'tool-box',
       'tool-search',
+      'tool-fs',
+      'tool-shell',
+      'tool-web-fetch',
       'tool-thread',
       'tool-memory',
       'tool-spill',

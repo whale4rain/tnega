@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 取代关系：无；产品默认 both 的早期实现已由二选一设置取代
-> 当前实现：`packages/ptc-runtime/README.md`、`packages/ptc-runtime-quickjs/README.md`、`packages/tool-ptc/README.md`、`packages/cli/README.md`
+> 当前实现：`packages/ptc/ptc-runtime/README.md`、`packages/ptc/ptc-runtime-quickjs/README.md`、`packages/ptc/tool-ptc/README.md`、`packages/cli/README.md`
 
 ## 背景
 
@@ -38,4 +38,4 @@ Web 每次运行安装观察 Fiber，在审批前发送子调用开始，完成�
 
 ## 验证
 
-真实 VM 隔离、取消、期限/输出边界：`packages/ptc-runtime-quickjs/test/runtime.test.ts`。工具审批/身份/串行顺序/失败与结束传播：`packages/tool-ptc/test/tool-ptc.test.ts`。设置切换及 live 显示：`packages/cli/test/code-mode-web.test.ts`、`ptc-observation.test.ts`、Web Timeline 测试。打包入口：`test/publish.test.ts`。故障细节见 [修复记录](../fix/2026-09-30-review-ptc.md)。
+真实 VM 隔离、取消、期限/输出边界：`packages/ptc/ptc-runtime-quickjs/test/runtime.test.ts`。工具审批/身份/串行顺序/失败与结束传播：`packages/ptc/tool-ptc/test/tool-ptc.test.ts`。设置切换及 live 显示：`packages/cli/test/code-mode-web.test.ts`、`ptc-observation.test.ts`、Web Timeline 测试。打包入口：`test/publish.test.ts`。故障细节见 [修复记录](../fix/2026-09-30-review-ptc.md)。

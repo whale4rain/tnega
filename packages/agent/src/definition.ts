@@ -17,7 +17,7 @@ export interface AgentDefinition {
 }
 
 export interface DefineAgentConfig extends Partial<
-  Pick<AgentConfig, 'llm' | 'contextWindow' | 'maxTurns' | 'maxSteps' | 'inbox' | 'contextBudget'>
+  Pick<AgentConfig, 'llm' | 'contextWindow' | 'maxTurns' | 'maxSteps' | 'inbox' | 'contextBudget' | 'agentId'>
 > {
   [key: string]: unknown
 }
@@ -79,6 +79,7 @@ export function defineAgent(
         if (config.maxSteps !== undefined) agentConfig.maxSteps = config.maxSteps
         if (config.inbox) agentConfig.inbox = config.inbox
         if (config.contextBudget) agentConfig.contextBudget = config.contextBudget
+        if (config.agentId) agentConfig.agentId = config.agentId
         const agentFiber = ctx.plugin(agent, agentConfig)
         await agentFiber
         agentService = ctx.get('agent')

@@ -54,6 +54,7 @@ export function main(argv: readonly string[]): Promise<number> {
         ...(parsed.temperature !== undefined ? { temperature: parsed.temperature } : {}),
         ...(parsed.maxTurns !== undefined ? { maxTurns: parsed.maxTurns } : {}),
         ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
+        ...(parsed.fsGuard !== undefined ? { fsGuard: parsed.fsGuard } : {}),
         ...(parsed.allowNetwork !== undefined ? { allowNetwork: parsed.allowNetwork } : {}),
         ...(parsed.allowShell !== undefined ? { allowShell: parsed.allowShell } : {}),
         ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
@@ -97,6 +98,8 @@ interface ParsedRunAgentArgs {
   temperature?: number
   maxTurns?: number
   maxSteps?: number
+  /** `--fs-guard=`: how strictly a write must match what was read. */
+  fsGuard?: 'off' | 'warn' | 'enforce'
   allowNetwork?: boolean
   allowShell?: boolean
   timeoutMs?: number
@@ -192,6 +195,12 @@ function assignRunAgentOption(
       return
     case 'max-steps':
       parsed.maxSteps = parseFiniteNumber('--max-steps', value)
+      return
+    case 'fs-guard':
+      if (value !== 'off' && value !== 'warn' && value !== 'enforce') {
+        throw new CliError('--fs-guard must be off, warn or enforce')
+      }
+      parsed.fsGuard = value
       return
     case 'timeout-ms':
       parsed.timeoutMs = parseFiniteNumber('--timeout-ms', value)

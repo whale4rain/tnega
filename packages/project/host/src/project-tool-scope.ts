@@ -1,13 +1,7 @@
-import type { AgentRequestEvent } from '@tnega/agent'
+import { scopeTools } from '@tnega/agent'
 import type { Context } from '@tnega/core'
 import type { ThreadRecord } from '@tnega/thread'
 import type { ToolGuard } from '@tnega/tools'
-
-/**
- * Toy builtins a Project Agent never needs: they only add schema to every request.
- * `now` stays because routines and reports reason about dates.
- */
-export const PROJECT_DISABLED_BUILTINS: readonly string[] = ['echo', 'calculator', 'json']
 
 /**
  * Explicit coordination surface. New capabilities belong to execution Threads
@@ -61,10 +55,7 @@ export function toolVisible(role: ProjectAgentRole, name: string): boolean {
  * by name or from inside code mode.
  */
 export function scopeAgentTools(agentCtx: Context, role: ProjectAgentRole): void {
-  agentCtx.on('agent/request', (request: AgentRequestEvent): AgentRequestEvent => ({
-    ...request,
-    tools: request.tools.filter(tool => toolVisible(role, tool.schema.name)),
-  }))
+  scopeTools(agentCtx, name => toolVisible(role, name))
 }
 
 export function projectToolGuard(roleOf: (agentId: string) => ProjectAgentRole | undefined): ToolGuard {

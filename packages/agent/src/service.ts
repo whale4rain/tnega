@@ -8,6 +8,7 @@ import {
   DEFAULT_CONTEXT_RETAIN_RATIO,
   estimateContextUsage,
   type AssistantMessagePayload,
+  type ContextUsage,
   type AssistantStreamChunk,
   type AssistantStreamRecord,
   type ModelMessage,
@@ -20,7 +21,9 @@ import {
   type TurnEndReason,
 } from '@tnega/session'
 import { toToolError, type ToolDefinition, type ToolError, type ToolResult } from '@tnega/tools'
+import { isContextOverflowError } from './overflow.js'
 import type { ToolSchemaSnapshot } from './prompt.js'
+import { provideAgentSteer } from './steer.js'
 import type { ToolsService } from '@tnega/tools'
 
 import type {
@@ -122,6 +125,46 @@ export interface AgentConfig {
   contextBudget?: AgentContextBudget
   /** Optional live-agent seam for work admitted after the first step. */
   claimNextStep?: AgentNextStepClaimer
+}
+
+/**
+ * Group the calls of one assistant message into the units the scheduler runs.
+ *
+ * A tool opts in with {@link ToolDefinition.isConcurrencySafe}. Everything that
+ * does not opt in runs alone, which fences the batches around it: a write and a
+ * spawn cannot overlap a read that may have been its input. An unknown tool
+ * name fences too — its failure is an ordinary tool result, and producing it
+ * must not race anything.
+ */
+export function concurrencyBatches(
+  calls: readonly LLMToolCall[],
+  available: readonly ToolDefinition[],
+): number[][] {
+  const byName = new Map(available.map(tool => [tool.schema.name, tool]))
+  const batches: number[][] = []
+  let group: number[] = []
+  calls.forEach((call, position) => {
+    const classify = byName.get(call.name)?.isConcurrencySafe
+    let safe = false
+    if (classify) {
+      // A classifier that throws is a tool author's bug, and the safe reading
+      // of a bug about overlap is "do not overlap me".
+      try {
+        safe = classify(call.arguments) === true
+      } catch {
+        safe = false
+      }
+    }
+    if (safe) {
+      group.push(position)
+      return
+    }
+    if (group.length) batches.push(group)
+    group = []
+    batches.push([position])
+  })
+  if (group.length) batches.push(group)
+  return batches
 }
 
 function copyMessages(messages: readonly ModelMessage[]): ModelMessage[] {
@@ -463,9 +506,25 @@ export class AgentService {
     this.inbox = config.inbox ?? new AgentInbox()
   }
 
+  /** Identity its events and its steer seam answer to; absent for an anonymous run. */
+  get agentId(): string | undefined {
+    return this.config.agentId
+  }
+
   /** Call when a request begins an explicit new model-message series. */
   startSeries(): void {
     this._seriesStarted = true
+  }
+
+  /**
+   * Take everything queued for the next step of the running turn. A steer
+   * arrives here between steps; without a live Agent there is no durable inbox
+   * to claim from, so this in-memory queue is the seam's delivery path.
+   */
+  claimQueuedInputs(): AgentInput[] {
+    const claimed: AgentInput[] = []
+    for (let next = this.inbox.claim(); next; next = this.inbox.claim()) claimed.push(next)
+    return claimed
   }
 
   /** Clear any pending series marker after a completed run. */
@@ -611,10 +670,10 @@ export class AgentService {
       await session.append('step/start', { turn, step: index })
       currentStepIndex = index
 
-      const requestedInput = copyMessages(preStep.messages)
+      let requestedInput = copyMessages(preStep.messages)
       // Request rewrites may replace the current surface, but retries retain
       // the durable owners present when this step was admitted.
-      const admittedHistory = await session.deriveMessages()
+      let admittedHistory = await session.deriveMessages()
       this.ctx.emit('agent/step', {
         index,
         turn,
@@ -635,6 +694,7 @@ export class AgentService {
       // When the request that produced `completion` started, for throughput.
       let requestStartedAt = 0
       let attempt = 0
+      let overflowRecovered = false
       /**
        * Cost and latency of the response being committed. Only a real
        * measurement is reported: a response that never started a request
@@ -756,13 +816,24 @@ export class AgentService {
               ...(streamRequest.options.model ? { model: streamRequest.options.model } : {}),
               ...(options.signal ? { signal: options.signal } : {}),
             } satisfies AgentRequestErrorEvent,
-            () => undefined,
+            async (): Promise<AgentRequestRetryDecision> => {
+              if (overflowRecovered || !contextBudget || !isContextOverflowError(error)) return undefined
+              const compacted = await this._compactForOverflow(session, contextBudget, llm, requestedInput)
+              if (!compacted) return undefined
+              overflowRecovered = true
+              return { kind: 'retry', messages: compacted }
+            },
           ) as AgentRequestRetryDecision
           if (options.signal?.aborted) {
             finishReason = 'cancelled'
             break
           }
           if (decision?.kind !== 'retry') throw error
+          if (decision.messages) {
+            requestedInput = copyMessages(decision.messages)
+            messages = copyMessages(decision.messages)
+            admittedHistory = await session.deriveMessages()
+          }
           const retryId = randomUUID()
           const delayMs = decision.delayMs ?? 0
           await session.append('llm/retry', {
@@ -813,81 +884,100 @@ export class AgentService {
           ...settledMeta(),
         })
       }
-      for (const call of toolCalls) {
-        this.ctx.emit('agent/tool-call', {
-          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
-          index, turn, step: index, call,
-        })
-        yield { type: 'tool/start', index, turn, step: index, call }
-        await session.append('tool/call', {
-          id: call.id,
-          name: call.name,
-          arguments: call.arguments,
-          interruption: availableTools.find(tool => tool.schema.name === call.name)?.interruption ?? 'fail',
-        })
-        const recorder = new ToolOutputRecorder(session, call.id)
-        const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string; progress: (output: string) => void } = {
-          callId: call.id,
-          progress: output => recorder.push(output),
-        }
-        if (this.config.agentId) toolOptions.agentId = this.config.agentId
-        if (options.signal) toolOptions.signal = options.signal
-        const startedAt = Date.now()
-        let result: ToolResult
-        if (options.signal?.aborted) {
-          result = {
-            ok: false,
+      // Consecutive concurrency-safe calls share one batch; anything else runs
+      // alone, which fences the batches around it. Grouping is positional: the
+      // log and the model read results in the order the calls were made, not
+      // the order the work happened to finish.
+      for (const batch of concurrencyBatches(toolCalls, availableTools)) {
+        // Announce and log the whole batch first, so it reads as running
+        // before any of it settles.
+        for (const position of batch) {
+          const call = toolCalls[position]!
+          this.ctx.emit('agent/tool-call', {
+            ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+            index, turn, step: index, call,
+          })
+          yield { type: 'tool/start', index, turn, step: index, call }
+          await session.append('tool/call', {
+            id: call.id,
             name: call.name,
+            arguments: call.arguments,
+            interruption: availableTools.find(tool => tool.schema.name === call.name)?.interruption ?? 'fail',
+          })
+        }
+        // One failing call settles as its own result; it never cancels a
+        // sibling, because a batch is a scheduling unit, not a transaction.
+        const settled = await Promise.all(batch.map(async position => {
+          const call = toolCalls[position]!
+          const recorder = new ToolOutputRecorder(session, call.id)
+          const toolOptions: { callId: string; signal?: AbortSignal; agentId?: string; progress: (output: string) => void } = {
             callId: call.id,
-            input: call.arguments,
-            error: abortedToolError(options.signal),
-            startedAt,
-            durationMs: Date.now() - startedAt,
+            progress: output => recorder.push(output),
           }
-        } else {
-          try {
-            result = await tools.execute(call.name, call.arguments, toolOptions)
-          } catch (error) {
+          if (this.config.agentId) toolOptions.agentId = this.config.agentId
+          if (options.signal) toolOptions.signal = options.signal
+          const startedAt = Date.now()
+          let result: ToolResult
+          if (options.signal?.aborted) {
             result = {
               ok: false,
               name: call.name,
               callId: call.id,
               input: call.arguments,
-              error: toToolError(error),
+              error: abortedToolError(options.signal),
               startedAt,
               durationMs: Date.now() - startedAt,
             }
+          } else {
+            try {
+              result = await tools.execute(call.name, call.arguments, toolOptions)
+            } catch (error) {
+              result = {
+                ok: false,
+                name: call.name,
+                callId: call.id,
+                input: call.arguments,
+                error: toToolError(error),
+                startedAt,
+                durationMs: Date.now() - startedAt,
+              }
+            }
           }
-        }
-        await recorder.stop()
-        toolResults.push(result)
-        const toolResultPayload: ToolResultPayload = {
-          id: call.id,
-          toolCallId: call.id,
-          name: call.name,
-          ok: result.ok,
-          durationMs: result.durationMs,
-        }
-        if (result.output !== undefined) toolResultPayload.output = result.output
-        if (result.attachments?.length) toolResultPayload.attachments = result.attachments.map(item => ({ ...item }))
-        if (result.error) {
-          toolResultPayload.error = {
-            name: result.error.name,
-            message: result.error.message,
+          await recorder.stop()
+          return { call, result }
+        }))
+        // Promise.all already answers in batch order, which is call order.
+        for (const { call, result } of settled) {
+          toolResults.push(result)
+          const toolResultPayload: ToolResultPayload = {
+            id: call.id,
+            toolCallId: call.id,
+            name: call.name,
+            ok: result.ok,
+            durationMs: result.durationMs,
           }
-          if (result.error.stack) toolResultPayload.error.stack = result.error.stack
+          if (result.output !== undefined) toolResultPayload.output = result.output
+          if (result.attachments?.length) toolResultPayload.attachments = result.attachments.map(item => ({ ...item }))
+          if (result.error) {
+            toolResultPayload.error = {
+              name: result.error.name,
+              message: result.error.message,
+            }
+            if (result.error.stack) toolResultPayload.error.stack = result.error.stack
+          }
+          await session.append('tool/result', toolResultPayload)
+          yield { type: 'tool/end', index, turn, step: index, call, result }
+          this.ctx.emit('agent/tool-result', {
+            ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
+            index,
+            turn,
+            step: index,
+            call,
+            result,
+          })
         }
-        await session.append('tool/result', toolResultPayload)
-        yield { type: 'tool/end', index, turn, step: index, call, result }
-        this.ctx.emit('agent/tool-result', {
-          ...(this.config.agentId ? { agentId: this.config.agentId } : {}),
-          index,
-          turn,
-          step: index,
-          call,
-          result,
-        })
       }
+
       if (options.signal?.aborted) {
         finishReason = 'cancelled'
         break
@@ -1061,6 +1151,48 @@ export class AgentService {
       }
       if (state.nearEnd) return copyMessages(messages)
     }
+    return await this._compactNow(session, budget, messages, llm, usage, limit)
+  }
+
+  /**
+   * Recover from a request the provider rejected as too large.
+   *
+   * Compaction has always been preventive: the ratio between steps keeps the
+   * prompt under the window. That cannot help once a single request has already
+   * overflowed — there is nothing left to prevent — so the same compaction runs
+   * here, after the rejection, and the request is retried with its result.
+   * Nothing to compact, or a compaction that fails, leaves the failure standing.
+   */
+  private async _compactForOverflow(
+    session: SessionLog,
+    budget: AgentContextBudget,
+    llm: LLMAdapter | undefined,
+    messages: readonly ModelMessage[],
+  ): Promise<ModelMessage[] | undefined> {
+    const limit = budget.limit ?? DEFAULT_CONTEXT_LIMIT
+    if (limit <= 0) return undefined
+    try {
+      const usage = estimateContextUsage(messages, limit)
+      return await this._compactNow(session, budget, messages, llm, usage, limit)
+    } catch (error) {
+      this.ctx.logger.warn(`context overflow recovery failed: ${String(error)}`)
+      return undefined
+    }
+  }
+
+  /**
+   * Compact unconditionally. The budget check lives in its callers: this is the
+   * one action, shared by the ratio-driven path between steps and by recovery
+   * from a request the provider already rejected as too large.
+   */
+  private async _compactNow(
+    session: SessionLog,
+    budget: AgentContextBudget,
+    messages: readonly ModelMessage[],
+    llm: LLMAdapter | undefined,
+    usage: ContextUsage,
+    limit: number,
+  ): Promise<ModelMessage[]> {
     // Messages already in the Session are what compaction replaces or keeps;
     // input this step has not persisted yet (the new user message) stays.
     const persisted = await session.deriveMessages()
@@ -1265,7 +1397,9 @@ export class AgentService {
   }
 
   private async _claimNextStepMessages(): Promise<ModelMessage[]> {
-    const inputs = await this.config.claimNextStep?.() ?? []
+    const inputs = this.config.claimNextStep
+      ? await this.config.claimNextStep()
+      : this.claimQueuedInputs()
     return inputs.flatMap(input => input.messages?.length
       ? copyMessages(input.messages)
       : input.text || input.attachments?.length
@@ -1471,6 +1605,16 @@ export const agent = {
     ctx.provide('agent', service)
     ctx.provide('agentLoop', (input?: AgentInput, options?: AgentRunOptions) => service.run(input, options))
     ctx.provide('inbox', service.inbox)
+    // One Agent, no registry: this scope is its own steer seam.
+    provideAgentSteer(ctx, {
+      has: agentId => service.agentId !== undefined && agentId === service.agentId,
+      async steer(agentId, input) {
+        if (service.agentId === agentId) service.inbox.steer(input)
+      },
+      async inject(agentId, input) {
+        if (service.agentId === agentId) service.inbox.push(input)
+      },
+    })
     return () => {}
   },
 }

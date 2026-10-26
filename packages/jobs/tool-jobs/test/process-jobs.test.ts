@@ -2,8 +2,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@tnega/core'
-import { builtinTools, localUrls, ProcessRegistry, stripAnsi, tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
+import { localUrls, ProcessRegistry, stripAnsi, tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
 import { jobsLocal } from '../../jobs-local/src/index.js'
+import { toolShell } from '@tnega/tool-shell'
 import { toolJobs } from '../src/index.js'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -15,7 +16,7 @@ async function setup(options: { processes?: ProcessRegistry; execution?: Executi
   dirs.push(cwd)
   const root = new Context()
   await root.plugin(tools)
-  const builtins = await root.plugin(builtinTools, { cwd, allowShell: true, ...options })
+  const builtins = await root.plugin(toolShell, { cwd, ...options })
   const jobs = await root.plugin(jobsLocal)
   await root.plugin(toolJobs)
   const registry: ToolsService = root.get('tools')
@@ -41,7 +42,7 @@ describe('shell as a background job', () => {
     await writeFile(join(cwd, 'server.cjs'), 'console.log("ready at http://localhost:4321/"); setInterval(() => console.log("tick"), 100)')
     expect(registry.list().some(tool => tool.schema.name.startsWith('process_'))).toBe(false)
 
-    const started = await registry.execute('job_start', { tool: 'shell', input: { command: 'node server.cjs' }, wait_for_url_ms: 10_000 })
+    const started = await registry.execute('shell', { command: 'node server.cjs', runInBackground: true, waitForUrlMs: 10_000 })
     expect(started.ok).toBe(true)
     const job = started.output as ProcessJob
     expect(job).toMatchObject({ status: 'running', process_id: 'p1', urls: ['http://localhost:4321/'] })
@@ -64,7 +65,7 @@ describe('shell as a background job', () => {
 
   it('finishes with the exit code and output of a command that ends', async () => {
     const { root, registry } = await setup()
-    const started = (await registry.execute('job_start', { tool: 'shell', input: { command: 'node -e "console.log(41 + 1); process.exit(3)"' } })).output as ProcessJob
+    const started = (await registry.execute('shell', { command: 'node -e "console.log(41 + 1); process.exit(3)"', runInBackground: true })).output as ProcessJob
     const done = await root.jobs.wait(started.job_id, 10_000)
     expect(done).toMatchObject({ status: 'failed', detail: 'exit code 3' })
     const read = (await registry.execute('job_output', { job_id: started.job_id })).output as ProcessJob
@@ -74,7 +75,7 @@ describe('shell as a background job', () => {
   it('keeps a server in a shared workspace registry when the runtime goes away, and kills private ones', async () => {
     const shared = new ProcessRegistry()
     const first = await setup({ processes: shared })
-    await first.registry.execute('job_start', { tool: 'shell', input: { command: 'node -e "setInterval(() => {}, 1000)"' } })
+    await first.registry.execute('shell', { command: 'node -e "setInterval(() => {}, 1000)"', runInBackground: true })
     await first.jobs.dispose()
     await first.builtins.dispose()
     expect(shared.list()).toMatchObject([{ id: 'p1', status: 'running' }])
@@ -94,21 +95,19 @@ describe('shell as a background job', () => {
       }),
     }
     const owned = await setup({ execution: fake })
-    const started = (await owned.registry.execute('job_start', { tool: 'shell', input: { command: 'npm run watch' } })).output as ProcessJob
+    const started = (await owned.registry.execute('shell', { command: 'npm run watch', runInBackground: true })).output as ProcessJob
     expect(started.status).toBe('running')
     await owned.jobs.dispose()
     expect(kills).toBe(1)
   }, 30_000)
 
-  it('reports a denied start as a failed job instead of hanging', async () => {
+  it('starts no job when the command itself was not approved', async () => {
     const { root, registry } = await setup()
     registry.guard(request => request.name === 'shell' ? 'shell was not approved' : undefined)
-    const started = await registry.execute('job_start', { tool: 'shell', input: { command: 'npm run dev' } })
-    expect(started.ok).toBe(true)
-    const [job] = root.jobs.list()
-    const done = await root.jobs.wait(job!.id, 5_000)
-    expect(done.status).toBe('failed')
-    expect(root.jobs.read(job!.id).output).toContain('shell was not approved')
+    const denied = await registry.execute('shell', { command: 'npm run dev', runInBackground: true })
+    expect(denied.ok).toBe(false)
+    expect(denied.error?.message).toContain('shell was not approved')
+    expect(root.jobs.list()).toEqual([])
   })
 
   it.runIf(process.platform === 'win32')('warns that a confined server can fail later, and points at escalation once it does', async () => {
@@ -127,7 +126,7 @@ describe('shell as a background job', () => {
       },
     }
     const { registry } = await setup({ execution: fake })
-    const started = (await registry.execute('job_start', { tool: 'shell', input: { command: 'npm run dev' } })).output as ProcessJob
+    const started = (await registry.execute('shell', { command: 'npm run dev', runInBackground: true })).output as ProcessJob
     expect(started.note).toMatch(/spawn EPERM/)
 
     output += '[vite] Internal server error: spawn EPERM\n'

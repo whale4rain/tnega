@@ -575,6 +575,52 @@ importers:
         specifier: 7.29.1
         version: 7.29.1
 
+  packages/fs/search-definition:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/fs/search-ripgrep:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../../execution
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search-definition
+
+  packages/fs/tool-fs:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search-definition
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
+  packages/fs/tool-search:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/search':
+        specifier: workspace:*
+        version: link:../search-definition
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+    devDependencies:
+      '@tnega/search-ripgrep':
+        specifier: workspace:*
+        version: link:../search-ripgrep
+
   packages/goal:
     dependencies:
       '@tnega/core':
@@ -653,7 +699,7 @@ importers:
         version: link:../project/http
       '@tnega/ptc-runtime-quickjs':
         specifier: workspace:*
-        version: link:../ptc-runtime-quickjs
+        version: link:../ptc/ptc-runtime-quickjs
       '@tnega/run-settings':
         specifier: workspace:*
         version: link:../run-settings
@@ -689,7 +735,7 @@ importers:
         version: link:../memory/tool-memory
       '@tnega/tool-question':
         specifier: workspace:*
-        version: link:../tool-question
+        version: link:../questions/tool-question
       '@tnega/tool-session-search':
         specifier: workspace:*
         version: link:../session-search/tool-session-search
@@ -707,7 +753,7 @@ importers:
         version: link:../usage
       '@tnega/user-questions':
         specifier: workspace:*
-        version: link:../user-questions
+        version: link:../questions/user-questions
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit
@@ -759,6 +805,10 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@tnega/tool-shell':
+        specifier: workspace:*
+        version: link:../../shell/tool-shell
 
   packages/llm:
     dependencies:
@@ -874,7 +924,7 @@ importers:
         specifier: workspace:*
         version: link:../memory-local
 
-  packages/office:
+  packages/office/office:
     dependencies:
       '@formulajs/formulajs':
         specifier: ^4.6.1
@@ -894,6 +944,18 @@ importers:
       pptxgenjs:
         specifier: ^4.0.1
         version: 4.0.1
+
+  packages/office/tool-office:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/office':
+        specifier: workspace:*
+        version: link:../office
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/persona:
     dependencies:
@@ -1052,7 +1114,7 @@ importers:
         version: link:../worktrees
       '@tnega/ptc-runtime-quickjs':
         specifier: workspace:*
-        version: link:../../ptc-runtime-quickjs
+        version: link:../../ptc/ptc-runtime-quickjs
       '@tnega/run-summary':
         specifier: workspace:*
         version: link:../../run-summary
@@ -1079,7 +1141,7 @@ importers:
         version: link:../../jobs/tool-jobs
       '@tnega/tool-ptc':
         specifier: workspace:*
-        version: link:../../tool-ptc
+        version: link:../../ptc/tool-ptc
       '@tnega/tool-thread':
         specifier: workspace:*
         version: link:../tool-thread
@@ -1266,23 +1328,66 @@ importers:
         specifier: workspace:*
         version: link:../blackboard-local
 
-  packages/ptc-runtime:
+  packages/ptc/ptc-runtime:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
 
-  packages/ptc-runtime-quickjs:
+  packages/ptc/ptc-runtime-quickjs:
     dependencies:
       '@earendil-works/pi-codemode':
         specifier: 0.99.1
         version: 0.99.1
       '@tnega/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       '@tnega/ptc-runtime':
         specifier: workspace:*
         version: link:../ptc-runtime
+
+  packages/ptc/tool-ptc:
+    dependencies:
+      '@tnega/agent':
+        specifier: workspace:*
+        version: link:../../agent
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/ptc-runtime':
+        specifier: workspace:*
+        version: link:../ptc-runtime
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
+  packages/questions/tool-question:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@tnega/user-questions':
+        specifier: workspace:*
+        version: link:../user-questions
+    devDependencies:
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+
+  packages/questions/user-questions:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
 
   packages/run-settings:
     dependencies:
@@ -1327,9 +1432,15 @@ importers:
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
+      '@tnega/compaction':
+        specifier: workspace:*
+        version: link:../compaction
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../execution
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
@@ -1347,7 +1458,7 @@ importers:
         version: link:../persona
       '@tnega/ptc-runtime-quickjs':
         specifier: workspace:*
-        version: link:../ptc-runtime-quickjs
+        version: link:../ptc/ptc-runtime-quickjs
       '@tnega/run-summary':
         specifier: workspace:*
         version: link:../run-summary
@@ -1359,13 +1470,16 @@ importers:
         version: link:../sandbox/sandbox-local
       '@tnega/search-ripgrep':
         specifier: workspace:*
-        version: link:../search/search-ripgrep
+        version: link:../fs/search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
       '@tnega/spill-local':
         specifier: workspace:*
         version: link:../spill/spill-local
+      '@tnega/tool-fs':
+        specifier: workspace:*
+        version: link:../fs/tool-fs
       '@tnega/tool-jobs':
         specifier: workspace:*
         version: link:../jobs/tool-jobs
@@ -1374,16 +1488,22 @@ importers:
         version: link:../memory/tool-memory
       '@tnega/tool-office':
         specifier: workspace:*
-        version: link:../tool-office
+        version: link:../office/tool-office
       '@tnega/tool-ptc':
         specifier: workspace:*
-        version: link:../tool-ptc
+        version: link:../ptc/tool-ptc
       '@tnega/tool-search':
         specifier: workspace:*
-        version: link:../search/tool-search
+        version: link:../fs/tool-search
+      '@tnega/tool-shell':
+        specifier: workspace:*
+        version: link:../shell/tool-shell
       '@tnega/tool-spill':
         specifier: workspace:*
         version: link:../spill/tool-spill
+      '@tnega/tool-web-fetch':
+        specifier: workspace:*
+        version: link:../web/tool-web-fetch
       '@tnega/tools':
         specifier: workspace:*
         version: link:../tools
@@ -1446,40 +1566,6 @@ importers:
         version: 3.3.1
 
   packages/sandbox/sandbox-windows-mxc: {}
-
-  packages/search/search-definition:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../../core
-
-  packages/search/search-ripgrep:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../../core
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../../execution
-      '@tnega/search':
-        specifier: workspace:*
-        version: link:../search-definition
-
-  packages/search/tool-search:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../../core
-      '@tnega/search':
-        specifier: workspace:*
-        version: link:../search-definition
-      '@tnega/tools':
-        specifier: workspace:*
-        version: link:../../tools
-    devDependencies:
-      '@tnega/search-ripgrep':
-        specifier: workspace:*
-        version: link:../search-ripgrep
 
   packages/session:
     dependencies:
@@ -1547,6 +1633,18 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
+
+  packages/shell/tool-shell:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../../execution
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/spill/spill:
     dependencies:
@@ -1626,52 +1724,6 @@ importers:
         specifier: workspace:*
         version: link:../web-kit
 
-  packages/tool-office:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
-      '@tnega/office':
-        specifier: workspace:*
-        version: link:../office
-      '@tnega/tools':
-        specifier: workspace:*
-        version: link:../tools
-
-  packages/tool-ptc:
-    dependencies:
-      '@tnega/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
-      '@tnega/ptc-runtime':
-        specifier: workspace:*
-        version: link:../ptc-runtime
-      '@tnega/session':
-        specifier: workspace:*
-        version: link:../session
-      '@tnega/tools':
-        specifier: workspace:*
-        version: link:../tools
-
-  packages/tool-question:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
-      '@tnega/tools':
-        specifier: workspace:*
-        version: link:../tools
-      '@tnega/user-questions':
-        specifier: workspace:*
-        version: link:../user-questions
-    devDependencies:
-      '@tnega/session':
-        specifier: workspace:*
-        version: link:../session
-
   packages/tools:
     dependencies:
       '@tnega/core':
@@ -1685,7 +1737,7 @@ importers:
         version: link:../sandbox/fs-sandbox
       '@tnega/search':
         specifier: workspace:*
-        version: link:../search/search-definition
+        version: link:../fs/search-definition
 
   packages/tui:
     dependencies:
@@ -1736,20 +1788,23 @@ importers:
         specifier: workspace:*
         version: link:../web-kit
 
-  packages/user-questions:
-    dependencies:
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
-      '@tnega/session':
-        specifier: workspace:*
-        version: link:../session
-
   packages/web-kit:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/web/tool-web-fetch:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../../execution
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/web/tool-web-search:
     dependencies:
@@ -1767,10 +1822,10 @@ importers:
         version: link:../execution
       '@tnega/search':
         specifier: workspace:*
-        version: link:../search/search-definition
+        version: link:../fs/search-definition
       '@tnega/search-ripgrep':
         specifier: workspace:*
-        version: link:../search/search-ripgrep
+        version: link:../fs/search-ripgrep
       '@tnega/session':
         specifier: workspace:*
         version: link:../session

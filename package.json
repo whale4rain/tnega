@@ -117,11 +117,11 @@
       "import": "./dist/tool-subagent.js"
     },
     "./search": {
-      "types": "./dist/types/packages/search/search-definition/src/index.d.ts",
+      "types": "./dist/types/packages/fs/search-definition/src/index.d.ts",
       "import": "./dist/search.js"
     },
     "./search-ripgrep": {
-      "types": "./dist/types/packages/search/search-ripgrep/src/index.d.ts",
+      "types": "./dist/types/packages/fs/search-ripgrep/src/index.d.ts",
       "import": "./dist/search-ripgrep.js"
     },
     "./sandbox": {
@@ -177,8 +177,20 @@
       "import": "./dist/session.js"
     },
     "./tool-search": {
-      "types": "./dist/types/packages/search/tool-search/src/index.d.ts",
+      "types": "./dist/types/packages/fs/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"
+    },
+    "./tool-fs": {
+      "types": "./dist/types/packages/fs/tool-fs/src/index.d.ts",
+      "import": "./dist/tool-fs.js"
+    },
+    "./tool-shell": {
+      "types": "./dist/types/packages/shell/tool-shell/src/index.d.ts",
+      "import": "./dist/tool-shell.js"
+    },
+    "./tool-web-fetch": {
+      "types": "./dist/types/packages/web/tool-web-fetch/src/index.d.ts",
+      "import": "./dist/tool-web-fetch.js"
     },
     "./tool-box": {
       "types": "./dist/types/packages/project/tool-box/src/index.d.ts",
@@ -239,23 +251,23 @@
       "import": "./dist/loop-guard.js"
     },
     "./ptc-runtime": {
-      "types": "./dist/types/packages/ptc-runtime/src/index.d.ts",
+      "types": "./dist/types/packages/ptc/ptc-runtime/src/index.d.ts",
       "import": "./dist/ptc-runtime.js"
     },
     "./ptc-runtime-quickjs": {
-      "types": "./dist/types/packages/ptc-runtime-quickjs/src/index.d.ts",
+      "types": "./dist/types/packages/ptc/ptc-runtime-quickjs/src/index.d.ts",
       "import": "./dist/ptc-runtime-quickjs.js"
     },
     "./tool-ptc": {
-      "types": "./dist/types/packages/tool-ptc/src/index.d.ts",
+      "types": "./dist/types/packages/ptc/tool-ptc/src/index.d.ts",
       "import": "./dist/tool-ptc.js"
     },
     "./user-questions": {
-      "types": "./dist/types/packages/user-questions/src/index.d.ts",
+      "types": "./dist/types/packages/questions/user-questions/src/index.d.ts",
       "import": "./dist/user-questions.js"
     },
     "./tool-question": {
-      "types": "./dist/types/packages/tool-question/src/index.d.ts",
+      "types": "./dist/types/packages/questions/tool-question/src/index.d.ts",
       "import": "./dist/tool-question.js"
     }
   },

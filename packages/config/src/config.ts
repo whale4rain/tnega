@@ -129,6 +129,13 @@ export interface SystemConfig {
   /** Background dreaming of workspace sessions into project memory. */
   memoryDream?: MemoryDreamConfig
   codeMode?: boolean
+  /**
+   * How strictly a file write must match what this Session already read of that
+   * path. `warn` (the default) records and proceeds with a note, `enforce`
+   * refuses an unread or externally changed target, `off` does neither.
+   * Experimental: the default may change once the refusal rate is known.
+   */
+  fsGuard?: FsGuardMode
   /** Shell for the `shell` tool (also when run as a background job): a name (`pwsh`, `bash`…) or a path; absent detects one. */
   shell?: string
   approvalReview?: ApprovalReviewerConfig
@@ -633,11 +640,20 @@ export function resolveLlmEnv(env: NodeJS.ProcessEnv = process.env): LlmEnvConfi
   return config
 }
 
+/** The file write guard's modes; `warn` is the default. */
+export const FS_GUARD_MODES = ['off', 'warn', 'enforce'] as const
+export type FsGuardMode = typeof FS_GUARD_MODES[number]
+
+export function isFsGuardMode(value: unknown): value is FsGuardMode {
+  return FS_GUARD_MODES.some(mode => mode === value)
+}
+
 function normalizeConfig(value: unknown): SystemConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   const record = value as Record<string, unknown>
   const config: SystemConfig = {}
   if (typeof record.codeMode === 'boolean') config.codeMode = record.codeMode
+  if (isFsGuardMode(record.fsGuard)) config.fsGuard = record.fsGuard
   const memory = normalizeProjectMemory(record.projectMemory)
   if (memory) config.projectMemory = memory
   else if (record.projectMemory !== undefined) config.projectMemory = { enabled: false }

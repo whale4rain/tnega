@@ -1,6 +1,7 @@
 packages:
   - packages/*
-  - packages/search/*
+  - packages/fs/*
+  - packages/shell/*
   - packages/session-search/*
   - packages/browser/*
   - packages/sandbox/*
@@ -10,6 +11,9 @@ packages:
   - packages/jobs/*
   - packages/project/*
   - packages/loop/*
+  - packages/office/*
+  - packages/ptc/*
+  - packages/questions/*
   - packages/web/*
   - apps/*
 

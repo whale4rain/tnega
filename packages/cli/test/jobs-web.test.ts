@@ -7,26 +7,15 @@ import { startWebServer } from '@tnega/host'
 
 it('lists background work while the session is idle and stops it without leaking across sessions', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-jobs-web-'))
+  // A command that never exits: the session stays idle while its job runs.
+  const command = 'node -e "setInterval(() => {}, 1000)"'
   let parentRequests = 0
-  let markChildStarted = () => {}
-  const childStarted = new Promise<void>(resolve => { markChildStarted = resolve })
   const llm = createServer((req, res) => {
-    let body = ''
-    req.on('data', chunk => { body += String(chunk) })
+    req.on('data', () => undefined)
     req.on('end', () => {
-      if (body.includes('background-child-marker')) {
-        // The parent also includes the task in its tool result history.
-        const parsed: { messages: Array<{ role: string; content?: string }> } = JSON.parse(body)
-        if (parsed.messages.some(message => message.role === 'user' && message.content?.endsWith('Task: background-child-marker'))) {
-          res.writeHead(200, { 'content-type': 'text/event-stream' })
-          res.flushHeaders()
-          markChildStarted()
-          return
-        }
-      }
       parentRequests++
       const delta = parentRequests === 1 ? { tool_calls: [{ index: 0, id: 'call-job', type: 'function', function: {
-        name: 'job_start', arguments: JSON.stringify({ kind: 'subagent', task: 'background-child-marker', label: 'Long task' }),
+        name: 'shell', arguments: JSON.stringify({ command, runInBackground: true }),
       } }] } : { content: 'Background task started' }
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: parentRequests === 1 ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`)
@@ -57,18 +46,18 @@ it('lists background work while the session is idle and stops it without leaking
     const otherId = await createSession()
     expect((await call(`/api/sessions/${id}`, 'PATCH', { permission: 'bypass' })).status).toBe(200)
     expect(await (await call(`/api/sessions/${id}/jobs`)).json()).toEqual({ jobs: [] })
-    const run = await call(`/api/sessions/${id}/runs`, 'POST', { prompt: 'Delegate long task' })
+    const run = await call(`/api/sessions/${id}/runs`, 'POST', { prompt: 'Start the watcher' })
     const runEvents = await run.text()
     expect(runEvents).toContain('Background task started')
-    expect(await (await call(`/api/sessions/${id}/jobs`)).json()).toMatchObject({ jobs: [{ status: 'running' }] })
-    await childStarted
+
     const listed: unknown = await (await call(`/api/sessions/${id}/jobs`)).json()
     if (!listed || typeof listed !== 'object' || !('jobs' in listed) || !Array.isArray(listed.jobs)) throw new Error('Invalid jobs response')
     expect(listed.jobs).toHaveLength(1)
-    expect(listed.jobs[0]).toMatchObject({ status: 'running', label: 'Long task' })
+    expect(listed.jobs[0]).toMatchObject({ status: 'running', label: command })
     const firstJob: unknown = listed.jobs[0]
     if (!firstJob || typeof firstJob !== 'object' || !('id' in firstJob) || typeof firstJob.id !== 'string') throw new Error('Invalid job')
     const jobId = firstJob.id
+
     expect(await (await call(`/api/sessions/${otherId}/jobs`)).json()).toEqual({ jobs: [] })
     expect((await call(`/api/sessions/${otherId}/jobs?job_id=${jobId}`)).status).toBe(404)
     expect((await call(`/api/sessions/${otherId}/jobs`, 'POST', { action: 'stop', job_id: jobId })).status).toBe(404)

@@ -2,6 +2,7 @@ import type { Context, Disposable } from '@tnega/core'
 import { Service } from '@tnega/core'
 import { closestToolNames, ToolAbortError, toToolError } from './errors.js'
 import { ToolAuthorizationError, validateToolInput } from './policy.js'
+import type { AdoptBackgroundProcess } from './adopt.js'
 import type {
   ToolAuthorizer,
   ToolInputValidator,
@@ -9,11 +10,12 @@ import type {
   ToolResultTruncator,
 } from './policy.js'
 
-export * from './builtins.js'
-export * from './processes.js'
-export * from './calc.js'
+export * from './adopt.js'
+export * from './escalation.js'
+export * from './input.js'
+export * from './lock.js'
 export * from './path.js'
-export { closestToolNames, describeError, describeParameters, ToolAbortError, toToolError } from './errors.js'
+export { closestToolNames, describeError, describeParameters, ToolAbortError, ToolInputError, toToolError } from './errors.js'
 export * from '@tnega/execution'
 export {
   ToolAuthorizationError,
@@ -50,6 +52,8 @@ export interface ToolExecuteOptions {
    * its tail durably, so a call a crash cuts off can still say what it printed.
    */
   progress?: (output: string) => void
+  /** Set by the jobs plugin: hand a started background process over instead of waiting (see `ADOPT_BACKGROUND_PROCESS`). */
+  adoptBackgroundProcess?: AdoptBackgroundProcess
   [key: string]: unknown
 }
 
@@ -71,6 +75,18 @@ export interface ToolDefinition {
   timeoutMs?: number
   /** Restart disposition; no tool is automatically replayed after interruption. */
   interruption?: 'fail' | 'retry' | 'confirm'
+  /**
+   * Pure synchronous classifier: may this call run in the same batch as its
+   * siblings in one assistant message?
+   *
+   * Only `true` opts in. Omitting it, throwing, or returning anything else
+   * makes the call a fence — it runs alone, after the batch before it settles
+   * and before the batch after it starts. A tool that opts in must not mutate
+   * state its siblings own; shared state it writes must commute or fail closed.
+   * `read_file`'s observation record qualifies: two reads of one path record
+   * the same version. Never model-visible.
+   */
+  isConcurrencySafe?: (input: unknown) => boolean
 }
 
 export interface ToolError {
@@ -238,7 +254,7 @@ export class ToolTimeoutError extends Error {
   override name = 'ToolTimeoutError'
 
   constructor(readonly toolName: string, readonly timeoutMs: number) {
-    super(`tool call timed out after ${timeoutMs}ms: ${toolName}. The call was stopped; split the work into smaller calls, or run it in the background if a background tool such as job_start is available`)
+    super(`tool call timed out after ${timeoutMs}ms: ${toolName}. The call was stopped; split the work into smaller calls, or run a long command with shell and runInBackground where that is available`)
   }
 }
 

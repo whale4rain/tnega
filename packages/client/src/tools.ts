@@ -13,8 +13,7 @@ interface ToolPresentation {
 const FAMILY: Record<string, ToolFamily> = {
   read_file: 'read',
   list_dir: 'read',
-  skill_read: 'read',
-  skills_list: 'read',
+  skill: 'read',
   read_artifact: 'read',
   read_project: 'read',
   write_file: 'write',
@@ -49,7 +48,7 @@ const VERB: Record<string, [running: string, done: string]> = {
   shell: ['Running', 'Ran'],
   http_get: ['Fetching', 'Fetched'],
   web_search: ['Searching the web', 'Searched the web'],
-  skill_read: ['Reading skill', 'Read skill'],
+  skill: ['Skill', 'Skill'],
   remember_global: ['Remembering', 'Remembered'],
   write_memory: ['Saving memory', 'Saved memory'],
   update_goal: ['Updating goal', 'Updated goal'],

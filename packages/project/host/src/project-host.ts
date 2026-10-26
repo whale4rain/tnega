@@ -41,11 +41,13 @@ import { DEFAULT_THREAD_LIMITS, type ThreadRecord, type ThreadService } from '@t
 import { toolBlackboard } from '@tnega/tool-blackboard'
 import { toolBox } from '@tnega/tool-box'
 import { toolThread } from '@tnega/tool-thread'
-import type { BuiltinToolsConfig, ToolsService } from '@tnega/tools'
+import type { ToolsService } from '@tnega/tools'
+import type { BuiltinToolsConfig } from '@tnega/runtime'
 import { describeToolCall } from './project-activity.js'
 import { mountProjectMemory } from '@tnega/project-memory'
 import { ProjectWorktrees, PullRequestStates, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
-import { PROJECT_DISABLED_BUILTINS, projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
+import { projectClock } from './clock.js'
+import { projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 
 export interface ProjectHostOptions {
   ptcRuntime?: PtcRuntimeQuickjsConfig
@@ -686,12 +688,11 @@ export class ProjectHost {
       workspace: this.workspace,
       permission: this.options.permission,
       sessionId: record.id,
-      builtin: config === false ? false : {
-        ...(config ?? {}),
-        disabled: [...new Set([...PROJECT_DISABLED_BUILTINS, ...(config?.disabled ?? [])])],
-      },
+      builtin: config === false ? false : { ...(config ?? {}) },
       ptc: false,
     })
+    // Routines and reports reason about dates; threads inherit it below.
+    await ctx.plugin(projectClock)
     await ctx.plugin(blackboardLocal, { root: join(directory, 'blackboard') })
     await ctx.plugin(artifactLocal, { root: join(this.workspace, '.tnega', 'projects', record.id, 'artifacts') })
     await ctx.plugin(boxBlackboard, { projectId: record.id })
@@ -724,10 +725,7 @@ export class ProjectHost {
           permission: thread.permission,
           sessionId: thread.id,
           promptWorkspace: this.workspace,
-          builtin: config === false ? false : {
-            ...(config ?? {}),
-            disabled: [...new Set([...PROJECT_DISABLED_BUILTINS, ...(config?.disabled ?? [])])],
-          },
+          builtin: config === false ? false : { ...(config ?? {}) },
           // The PTC runtime is project-scoped; a thread mounts only its tool.
           ptc: false,
         })

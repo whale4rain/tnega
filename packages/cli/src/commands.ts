@@ -7,6 +7,7 @@ import { configureSystemShell } from '@tnega/execution'
 import { SESSION_FORMAT_VERSION } from '@tnega/session'
 import {
   effectiveApiKey,
+  effectiveLlmConfig,
   readSystemConfig,
   resolveLlmEnv,
   systemConfigPath,
@@ -16,6 +17,9 @@ import { defaultRunSessionFile } from '@tnega/home'
 
 export { createAgentRuntime }
 export type { AgentRuntime, AgentRuntimeOptions } from '@tnega/runtime'
+
+/** Steps one `tnega run` turn may take unless `--max-steps` says otherwise. */
+export const RUN_MAX_STEPS = 64
 
 export interface RunAgentCommandOptions {
   prompt: string
@@ -36,6 +40,8 @@ export interface RunAgentCommandOptions {
    * `bypass` 是显式选择「不要沙箱」，不是失败后的降级。
    */
   sandboxMode?: SandboxMode
+  /** How strictly a file write must match what this Session already read. */
+  fsGuard?: 'off' | 'warn' | 'enforce'
   timeoutMs?: number
   maxRetries?: number
   retryDelayMs?: number
@@ -129,6 +135,9 @@ export async function runAgentCommand(
       ? { retryDelayMs: profileOptions.retryDelayMs }
       : {}),
   })
+  // The window the route actually has: auto compaction needs it, and a run
+  // without one compacts against a generic default instead of its own model.
+  const contextWindow = effectiveLlmConfig(systemConfig, process.env, options.model).contextWindow
   const profileRuntimeOptions = runtimeOptionsFromProfile(profileOptions)
   configureSystemShell(systemConfig.shell)
   const context = await createAgentRuntime({
@@ -138,11 +147,14 @@ export async function runAgentCommand(
     ...(profile ? { profile } : {}),
     ...profileRuntimeOptions,
     ptc: { mode: systemConfig.codeMode ? 'ptc' : 'native' },
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(options.allowNetwork !== undefined
       ? { allowNetwork: options.allowNetwork }
       : {}),
     ...(options.allowShell !== undefined ? { allowShell: options.allowShell } : {}),
     ...(options.sandboxMode !== undefined ? { sandboxMode: options.sandboxMode } : {}),
+    // The flag wins; otherwise the guard saved in Settings applies here too.
+    ...((options.fsGuard ?? systemConfig.fsGuard) !== undefined ? { fsGuard: options.fsGuard ?? systemConfig.fsGuard } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
   })
@@ -150,7 +162,10 @@ export async function runAgentCommand(
     const loop = context.root.get('agentLoop')
     const runOptions: AgentRunOptions = {}
     if (options.maxTurns !== undefined) runOptions.maxTurns = options.maxTurns
-    if (options.maxSteps !== undefined) runOptions.maxSteps = options.maxSteps
+    // Pinned explicitly: the runtime mounts the loop guard, whose backstop would
+    // otherwise lift this one-shot budget from 64 steps to a long-running one.
+    // A script that needs more says so with --max-steps.
+    runOptions.maxSteps = options.maxSteps ?? RUN_MAX_STEPS
     const run = await loop({ text: options.prompt }, runOptions)
     return { run, sessionFile }
   } finally {

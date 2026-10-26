@@ -16,10 +16,19 @@ function request(name: string, input: unknown): ToolRequest {
 describe('permissionGuard', () => {
   it('allows job controls while child execution retains its own permission check', async () => {
     const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
-    for (const name of ['job_start', 'job_list', 'job_output', 'job_kill']) {
+    for (const name of ['job_list', 'job_output', 'job_kill']) {
       expect(await guard(request(name, {}))).toBeUndefined()
     }
     expect(await guard(request('shell', { command: 'echo hello' }))).toMatch(/approval/)
+  })
+  it('keeps a narrower child\'s edits inside the workspace when the parent bypasses', async () => {
+    const guard = permissionGuard('bypass', 'session', new ApprovalBroker(), { workspace: process.cwd(), agentMode: () => 'workspace-write' })
+    const inside = request('edit_file', { path: 'notes.txt', edits: [] })
+    inside.options.agentId = 'child'
+    expect(await guard(inside)).toBeUndefined()
+    const outside = request('edit_file', { path: '../elsewhere.txt', edits: [] })
+    outside.options.agentId = 'child'
+    expect(await guard(outside)).toMatch(/approval/)
   })
   it('lets the session tools read past sessions without asking, even in read-only mode', async () => {
     const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
@@ -132,10 +141,10 @@ describe('browser and process permissions', () => {
     expect(await guardAt('bypass', 'https://shop.example.com')(request('browser_click', { ref: 'e3' }))).toBeUndefined()
   })
 
-  it('lets job tools through so the shell they start meets the shell gate', async () => {
+  it('gates a backgrounded command on the shell it is, and leaves collecting it free', async () => {
     const guard = guardAt('workspace-write', undefined)
-    expect(await guard(request('job_start', { tool: 'shell', input: { command: 'npm run dev' } }))).toBeUndefined()
-    expect(await guard(request('shell', { command: 'npm run dev' }))).toMatch(/approval/)
+    // runInBackground is a shell parameter: the command meets the shell gate once.
+    expect(await guard(request('shell', { command: 'npm run dev', runInBackground: true }))).toMatch(/approval/)
     expect(await guard(request('job_output', { job_id: 'tool-1' }))).toBeUndefined()
     expect(await guard(request('job_kill', { job_id: 'tool-1' }))).toBeUndefined()
   })
@@ -145,13 +154,16 @@ it('gates fixed-home skill writes, including narrower child permissions', async 
   const approvals = new ApprovalBroker()
   const readonly = permissionGuard('read-only', 'session', approvals, { workspace: process.cwd() })
   const writable = permissionGuard('workspace-write', 'session', approvals, { workspace: process.cwd(), agentMode: () => 'read-only' })
-  for (const name of ['skill_create', 'skill_install']) {
-    expect(await readonly(request(name, {}))).toMatch(/approval/)
-    expect(await writable(request(name, {}))).toBeUndefined()
-    const child = request(name, {})
+  for (const action of ['create', 'install']) {
+    expect(await readonly(request('skill', { action }))).toMatch(/approval/)
+    expect(await writable(request('skill', { action }))).toBeUndefined()
+    const child = request('skill', { action })
     child.options.agentId = 'child'
     expect(await writable(child)).toMatch(/approval/)
   }
+  // Reading a skill is metadata work, never a write.
+  expect(await readonly(request('skill', { action: 'list' }))).toBeUndefined()
+  expect(await readonly(request('skill', { action: 'read', name: 'tdd' }))).toBeUndefined()
 })
 
 it('tells the model when nobody answered an approval in time, apart from a refusal', async () => {

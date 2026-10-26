@@ -108,6 +108,8 @@ function inspectTool(config: ResolvedConfig): ToolDefinition {
       },
     },
     timeoutMs: TIMEOUT_MS,
+    // Reads the file into a fresh parser; no shared state.
+    isConcurrencySafe: () => true,
     async execute(input) {
       const args = record(input)
       const target = await resolveInside(config.cwd, stringField(args.path, 'path'))
@@ -136,6 +138,7 @@ function readTool(config: ResolvedConfig): ToolDefinition {
       },
     },
     timeoutMs: TIMEOUT_MS,
+    isConcurrencySafe: () => true,
     async execute(input) {
       const args = record(input)
       const target = await resolveInside(config.cwd, stringField(args.path, 'path'))

@@ -360,7 +360,7 @@ authorized automatic path.
   ("Unable to find package 'ripgrep'"), so six search tests failed with
   `SearchError: ripgrep (rg) was not found on PATH`
   (`packages/cli/test/file-search.test.ts`, `web.test.ts`,
-  `project-worktrees.test.ts`, `packages/search/search-ripgrep/test/gitignore.test.ts`).
+  `project-worktrees.test.ts`, `packages/fs/search-ripgrep/test/gitignore.test.ts`).
   The install step now falls back to the official GitHub release and ends with
   `rg --version`, so a missing binary fails the step itself. Nothing had been
   published (the `bundle` and `publish` jobs were skipped), so the unpublished

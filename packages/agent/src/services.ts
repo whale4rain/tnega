@@ -4,6 +4,7 @@ import type { AgentRegistry } from './live.js'
 import type { LlmService } from './llm-service.js'
 import type { SystemPromptService } from './prompt.js'
 import type { AgentInbox, AgentService } from './service.js'
+import type { AgentSteerService } from './steer.js'
 import type { AgentLoop } from './types.js'
 
 /**
@@ -20,6 +21,8 @@ declare module '@tnega/core' {
     agentLoop: AgentLoop
     inbox: AgentInbox
     agents: AgentRegistry
+    /** Reaches an Agent by id, whether or not this scope owns a registry. */
+    agentSteer: AgentSteerService
     systemPrompt: SystemPromptService
     agentDefinition: AgentDefinition | undefined
     agentSystem: string | undefined

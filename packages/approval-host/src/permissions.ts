@@ -15,14 +15,19 @@ export type PermissionModeSource = PermissionMode | (() => PermissionMode | Prom
  * 本身界定。真正需要用户点头的是越界与对外的动作 —— shell、工作区外的路径、网络。
  */
 /** 与 `write_file` 同级：workspace-write 下在工作区内直接放行。 */
-// Fixed user-home capability; callers cannot choose a destination path.
-const SKILL_WRITES = new Set(['skill_create', 'skill_install'])
-const WORKSPACE_WRITES = new Set(['write_file', 'office_create', 'office_edit'])
+const WORKSPACE_WRITES = new Set(['write_file', 'edit_file', 'office_create', 'office_edit'])
+
+/**
+ * Tools whose `path` (`cwd` for shell) can leave the workspace under a `bypass`
+ * parent; a narrower child must not reach outside through them unasked. Built
+ * from the write list so a new write tool cannot be missed here.
+ */
+const PATH_TOOLS = new Set([...WORKSPACE_WRITES, 'read_file', 'list_dir', 'shell'])
 
 const ALWAYS_ALLOWED = new Set([
   // 只读
-  'echo', 'now', 'calculator', 'json', 'read_file', 'list_dir',
-  'glob', 'grep', 'http_get', 'web_search', 'skills_list', 'skill_read',
+  'now', 'read_file', 'list_dir',
+  'glob', 'grep', 'http_get', 'web_search',
   // 用户自己的 Session 记录（各 Workspace），只读，不碰文件系统里的工作区内容。
   'search_sessions', 'search_session', 'read_session',
   // 插件开发模式的只读入口；plugin_write / plugin_remove 在宿主进程里执行代码，始终要批准。
@@ -35,9 +40,14 @@ const ALWAYS_ALLOWED = new Set([
   'write_memory', 'publish_artifact', 'index_resource',
   // 编排入口不自行执行宿主操作，子工具仍经过同一道守卫。
   'run_code', 'ask_user_question',
-  // 后台任务（含后台进程）：启动的子工具（如 shell）仍经过同一道守卫。
-  'job_start', 'job_list', 'job_output', 'job_kill',
+  // 后台任务的读取与停止不碰宿主；启动走 shell 的 runInBackground，照样过 shell 那道守卫。
+  'job_list', 'job_output', 'job_kill',
 ])
+
+/** Whether a `skill` call writes (creates or installs) rather than reads. */
+function skillActionWrites(input: Record<string, unknown>): boolean {
+  return input.action === 'create' || input.action === 'install'
+}
 
 /**
  * Browser tools that only move around or look: navigation is a GET like
@@ -174,12 +184,15 @@ export function permissionGuard(
       ? request.input as Record<string, unknown> : {}
     const rawPath = typeof input[pathKey] === 'string' ? input[pathKey] : '.'
     let scoped = true
-    if (unrestricted && ['read_file', 'write_file', 'list_dir', 'shell'].includes(request.name)) {
+    if (unrestricted && PATH_TOOLS.has(request.name)) {
       try { await resolveInside(options.workspace, rawPath) } catch { scoped = false }
     }
+    // One tool, several verbs: reading skills never needs approval, writing
+    // one into the user's home directory is the same tier as a workspace write.
+    if (request.name === 'skill' && !skillActionWrites(input)) return undefined
     if (ALWAYS_ALLOWED.has(request.name) && scoped
       && !(request.name === 'http_get' && unrestricted)) return undefined
-    if (effective === 'workspace-write' && SKILL_WRITES.has(request.name)) return undefined
+    if (effective === 'workspace-write' && request.name === 'skill' && skillActionWrites(input)) return undefined
     if (effective === 'workspace-write' && WORKSPACE_WRITES.has(request.name) && scoped) return undefined
     if (BROWSER_PASSIVE.has(request.name)) return undefined
     if (effective === 'workspace-write' && browserInteractionIsLocal(request, options.browserUrl?.())) return undefined

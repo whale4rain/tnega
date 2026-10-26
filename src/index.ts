@@ -123,21 +123,16 @@ export {
 } from '../packages/session/src/index.js'
 
 export {
-  CalculatorError,
   PathSandboxError,
   ToolAuthorizationError,
   ToolAlreadyRegisteredError,
   ToolInputError,
   ToolNotFoundError,
   ToolsService,
-  builtinTools,
-  createBuiltinToolDefinitions,
-  evaluateExpression,
   tools,
   validateSchema,
   validateToolInput,
   type ToolAuthorizer,
-  type BuiltinToolsConfig,
   type ToolDefinition,
   type ToolError,
   type ToolExecuteOptions,
@@ -185,19 +180,39 @@ export {
   type SearchTextRequest,
   type SearchTextResult,
   type SearchTextSpec,
-} from '../packages/search/search-definition/src/index.js'
+} from '../packages/fs/search-definition/src/index.js'
 
 export {
   RipgrepSearch,
   searchRipgrep,
   type Config as SearchRipgrepConfig,
-} from '../packages/search/search-ripgrep/src/index.js'
+} from '../packages/fs/search-ripgrep/src/index.js'
 
 export {
   toolSearch,
   DEFAULT_TOOL_SEARCH_NAMES,
   type ToolSearchConfig,
-} from '../packages/search/tool-search/src/index.js'
+} from '../packages/fs/tool-search/src/index.js'
+
+export {
+  ObservationStore,
+  TOOL_FS_NAMES,
+  createFsTools,
+  toolFs,
+  writeFileAtomic,
+  type FsGuardMode,
+  type ToolFsConfig,
+} from '../packages/fs/tool-fs/src/index.js'
+
+export { createShellTool, toolShell, type ToolShellConfig } from '../packages/shell/tool-shell/src/index.js'
+
+export { createWebFetchTool, toolWebFetch, type ToolWebFetchConfig } from '../packages/web/tool-web-fetch/src/index.js'
+
+export {
+  builtinTools,
+  createBuiltinToolDefinitions,
+  type BuiltinToolsConfig,
+} from '../packages/runtime/src/builtins.js'
 
 export {
   DEFAULT_SANDBOX_MODE,
@@ -441,7 +456,7 @@ export type {
   SearchTextPostEvent,
   SearchTextPreEvent,
   SearchTextResultEvent,
-} from '../packages/search/search-definition/src/index.js'
+} from '../packages/fs/search-definition/src/index.js'
 
 export * as approvalReviewApi from '../packages/approval-review/src/index.js'
 export * as approvalLlmApi from '../packages/approval-llm/src/index.js'
@@ -449,8 +464,8 @@ export * as approvalJevApi from '../packages/approval-jev/src/index.js'
 export * as approvalOpenaiApi from '../packages/approval-openai/src/index.js'
 export * as autoApprovalApi from '../packages/auto-approval/src/index.js'
 export * as runSummaryApi from '../packages/run-summary/src/index.js'
-export * as ptcRuntimeApi from '../packages/ptc-runtime/src/index.js'
-export * as ptcRuntimeQuickjsApi from '../packages/ptc-runtime-quickjs/src/index.js'
-export * as toolPtcApi from '../packages/tool-ptc/src/index.js'
-export * as userQuestionsApi from '../packages/user-questions/src/index.js'
-export * as toolQuestionApi from '../packages/tool-question/src/index.js'
+export * as ptcRuntimeApi from '../packages/ptc/ptc-runtime/src/index.js'
+export * as ptcRuntimeQuickjsApi from '../packages/ptc/ptc-runtime-quickjs/src/index.js'
+export * as toolPtcApi from '../packages/ptc/tool-ptc/src/index.js'
+export * as userQuestionsApi from '../packages/questions/user-questions/src/index.js'
+export * as toolQuestionApi from '../packages/questions/tool-question/src/index.js'

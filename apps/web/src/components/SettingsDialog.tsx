@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import { DISPLAY_DEFAULTS, PALETTES, type DisplayChange, type DisplayPreferences } from '../lib/display'
-import type { ApprovalMode, ApprovalReviewerSettings, ConfigSnapshot, Effort, InsightsSession, Protocol } from '../lib/types'
+import { isFsGuardMode, type ApprovalMode, type ApprovalReviewerSettings, type ConfigSnapshot, type Effort, type FsGuardMode, type InsightsSession, type Protocol } from '../lib/types'
 import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
 import { ContextInsights } from './context/ContextInsights'
@@ -59,6 +59,7 @@ export function SettingsDialog({
   const stored = config?.config
   const [section, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
   const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
+  const [fsGuard, setFsGuard] = useState<FsGuardMode>(stored?.fsGuard ?? 'warn')
   const [memoryEnabled, setMemoryEnabled] = useState(stored?.projectMemory?.enabled ?? true)
   const [memoryModel, setMemoryModel] = useState(stored?.projectMemory?.coldModelId ?? '')
   const [memoryCalls, setMemoryCalls] = useState(stored?.projectMemory?.maxCallsPerDay ?? 4)
@@ -99,6 +100,9 @@ export function SettingsDialog({
     setSaving(true)
     setError(undefined)
     const patch: ConfigPatch = { codeMode, shell, protocol, baseUrl: baseUrl.trim(), model: model.trim(), reasoningEffort: effort }
+    // Sent only when changed, so a dialog opened before the config arrived
+    // cannot write the default over a stored `off` or `enforce`.
+    if (fsGuard !== (stored?.fsGuard ?? 'warn')) patch.fsGuard = fsGuard
     patch.projectMemory = { enabled: memoryEnabled, coldModelId: memoryModel, maxCallsPerDay: memoryCalls, maxInputTokens: memoryInput, maxOutputTokens: memoryOutput, maxTokensPerDay: memoryDaily, minIntervalSeconds: memoryInterval }
     if (!Number.isSafeInteger(dreamIdle) || dreamIdle < 1 || dreamIdle > 1440) return fail('Quiet minutes must be a whole number from 1 to 1440', 'model')
     patch.memoryDream = { enabled: dreamEnabled, modelId: dreamModel, idleMinutes: dreamIdle }
@@ -348,6 +352,15 @@ export function SettingsDialog({
                 <option value="enabled">开启 · 仅 run_code</option>
               </select>
               <span className="muted small">开启后模型只看到 run_code，通过代码调用原有工具。关闭后仅使用原生工具。保存后于下一次运行生效。</span>
+            </label>
+            <label className="field span-2">
+              <span className="field-label">File write guard · 实验性</span>
+              <select aria-label="File write guard" value={fsGuard} onChange={event => { const next = event.target.value; if (isFsGuardMode(next)) setFsGuard(next) }}>
+                <option value="off">off · 不记录读取版本</option>
+                <option value="warn">warn · 覆盖被改过的文件时写入并提示</option>
+                <option value="enforce">enforce · 未读过或被改过则拒绝</option>
+              </select>
+              <span className="muted small">覆盖已有文件时，与本次会话读到的版本比对。warn 只提示，enforce 会拒绝并要求重读。新建文件不受影响；精确编辑（edit_file）的匹配校验始终生效。默认 warn，观察一段时间后再决定是否收紧。</span>
             </label>
             {config?.network && <>
               <label className="field span-2">

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -16,6 +16,8 @@ import type {
   ModelMessage,
 } from '@tnega/session'
 import type { ToolDefinition, ToolPolicy } from '@tnega/tools'
+
+import { agentIdFor } from '@tnega/runtime'
 
 import {
   createAgentRuntime,
@@ -417,7 +419,8 @@ describe('createAgentRuntime composition', () => {
       const services = dynamic(runtime.root).tools as {
         has(name: string): boolean
       }
-      expect(services.has('echo')).toBe(true)
+      // Utility tools are off by default; the caller's own list is merged in.
+      expect(services.has('echo')).toBe(false)
       expect(services.has('shell')).toBe(true)
       expect(services.has('calculator')).toBe(false)
     } finally {
@@ -431,11 +434,10 @@ it('offers installed skills and their trigger index in a general runtime', async
   const runtime = await createAgentRuntime(runtimeOptions(dir, { ptc: { mode: 'native' } }))
   try {
     const registry = runtime.root.get('tools') as import('@tnega/tools').ToolsService
-    expect(registry.has('skills_list')).toBe(true)
-    expect(registry.has('skill_read')).toBe(true)
+    expect(registry.has('skill')).toBe(true)
     const prompt = runtime.root.get('systemPrompt') as import('@tnega/agent').SystemPromptService
     expect((await prompt.assemble()).text).toContain('using-tnega')
-    const listed = await registry.list().find(tool => tool.schema.name === 'skills_list')!.execute({}, {})
+    const listed = await registry.list().find(tool => tool.schema.name === 'skill')!.execute({ action: 'list' }, {})
     expect(listed).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'implementing-changes' })]))
   } finally {
     await runtime.dispose()
@@ -450,9 +452,123 @@ it.each(['native', 'ptc'] as const)('discovers skills in an older Session throug
     const loop = runtime.root.get('agentLoop') as AgentLoop
     await loop({ messages: [{ role: 'system', content: 'Legacy persona. Available skills (descriptions are metadata): old index' }, { role: 'user', content: 'Help with coding.' }] })
     expect(mock.calls[0]?.messages[0]?.content).toBe('Legacy persona. Available skills (descriptions are metadata): old index')
-    const name = mode === 'native' ? 'skills_list' : 'run_code'
+    const name = mode === 'native' ? 'skill' : 'run_code'
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('using-tnega')
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('implementing-changes')
     expect(mock.calls[0]?.tools.find(tool => tool.schema.name === name)?.schema.description).toContain('tdd')
   } finally { await runtime.dispose() }
+})
+
+describe('file write guard setting', () => {
+  it('reaches the file tools from the runtime options', async () => {
+    const dir = await tempDir('tnega-runtime-fs-guard-')
+    const { adapter } = fakeLLM([{ content: 'done', finishReason: 'stop' }])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, { llm: adapter, fsGuard: 'enforce' }))
+    try {
+      const registry = runtime.root.get('tools')
+      await writeFile(join(dir, 'note.txt'), 'old', 'utf8')
+      // Unread, so enforce refuses the overwrite instead of writing it.
+      const refused = await registry.execute('write_file', { path: 'note.txt', content: 'new' })
+      expect(refused.ok).toBe(false)
+      expect(refused.error?.message).toContain('has not been read in this session')
+      // Reading it first is the documented remedy.
+      expect((await registry.execute('read_file', { path: 'note.txt' })).ok).toBe(true)
+      expect((await registry.execute('write_file', { path: 'note.txt', content: 'new' })).ok).toBe(true)
+      expect(await readFile(join(dir, 'note.txt'), 'utf8')).toBe('new')
+    } finally {
+      await runtime.dispose()
+    }
+  })
+})
+
+describe('headless long-session capabilities', () => {
+  it('gives the run an agent id without a registry', async () => {
+    const dir = await tempDir('tnega-runtime-agent-id-')
+    const { adapter } = fakeLLM([{ content: 'done', finishReason: 'stop' }])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, { llm: adapter, builtinTools: false }))
+    const ids: Array<string | undefined> = []
+    runtime.root.on('agent/step-end', (event: { agentId?: string }) => { ids.push(event.agentId) })
+    try {
+      // No AgentRegistry here: the single agent service is its own identity.
+      expect(runtime.root.get('agents', false)).toBeUndefined()
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      await loop({ text: 'hi' })
+      expect(ids).toEqual([agentIdFor(runtimeOptions(dir))])
+      expect(agentIdFor(runtimeOptions(dir))).toMatch(/^runtime$/)
+      expect(runtime.root.get('agentSteer').has(agentIdFor(runtimeOptions(dir)))).toBe(true)
+      expect(runtime.root.get('agentSteer').has('somebody-else')).toBe(false)
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('steers a run that stopped mid-task instead of ending on "let me check:"', async () => {
+    const dir = await tempDir('tnega-runtime-continuation-')
+    const { adapter, calls } = fakeLLM([
+      { content: 'Let me check the tests:', finishReason: 'stop' },
+      { content: 'All tests pass.', finishReason: 'stop' },
+    ])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, { llm: adapter, builtinTools: false }))
+    try {
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      const result = await loop({ text: 'check the tests' })
+      expect(result.output).toBe('All tests pass.')
+      expect(result.steps).toHaveLength(2)
+      expect(calls).toHaveLength(2)
+      // The nudge arrives as a named user message the next step can read.
+      const nudge = calls[1]!.messages.find(message => message.name === 'plugin:continue')
+      expect(nudge).toBeTruthy()
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('compacts automatically once the model window is known', async () => {
+    const dir = await tempDir('tnega-runtime-auto-compact-')
+    const compactEvents: AgentContextCompactEvent[] = []
+    const { adapter } = fakeLLM([
+      { content: '# Project memory\n\n- Use pnpm', finishReason: 'stop' },
+      { content: 'stop', finishReason: 'stop' },
+    ])
+    // No explicit contextBudget: the window alone has to switch compaction on.
+    const runtime = await createAgentRuntime(runtimeOptions(dir, {
+      llm: adapter,
+      builtinTools: false,
+      contextWindow: 100,
+    }))
+    runtime.root.on('agent/context-compact', (value: AgentContextCompactEvent) => { compactEvents.push(value) })
+    try {
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      expect((await loop({ text: 'z'.repeat(400) })).output).toBe('stop')
+      expect(compactEvents).toHaveLength(1)
+      expect(compactEvents[0]).toMatchObject({ limit: 100 })
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('mounts the loop guard so a stalled turn is nudged', async () => {
+    const dir = await tempDir('tnega-runtime-loop-guard-')
+    const { adapter, calls } = fakeLLM([
+      { content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'c1', name: 'runtime_ping', arguments: {} }] },
+      { content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'c2', name: 'runtime_ping', arguments: {} }] },
+      { content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'c3', name: 'runtime_ping', arguments: {} }] },
+      { content: 'stuck', finishReason: 'stop' },
+    ])
+    const runtime = await createAgentRuntime(runtimeOptions(dir, {
+      llm: adapter,
+      builtinTools: false,
+      agent: { name: 'loop-agent', tools: [pingTool()] },
+      // Same call, same result, three times: the guard's first repeat threshold.
+      loopGuard: { sameResult: 2, grace: 0 },
+    }))
+    try {
+      const loop = runtime.root.get('agentLoop') as AgentLoop
+      await loop({ text: 'go' })
+      const nudged = calls.some(call => call.messages.some(message => message.name === 'plugin:loop-guard'))
+      expect(nudged).toBe(true)
+    } finally {
+      await runtime.dispose()
+    }
+  })
 })

@@ -21,13 +21,13 @@ import { session, SessionLog, type AgentType, type ModelAttachment, type ModelMe
 import { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { subagentLocal } from '@tnega/subagent-local'
 import { toolSubagent } from '@tnega/tool-subagent'
-import { createBuiltinToolDefinitions, ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
+import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
 import { runtimeCapabilities } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { webSearchTool } from '@tnega/tool-web-search'
-import { createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
+import { builtinTools, createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
 import { readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { patchSessionMeta, readSessionSummary } from '@tnega/session-store'
 
@@ -116,10 +116,12 @@ export async function handleRun(
       allowNetwork: true,
       allowShell: true,
       sandboxMode: permission,
+      office: agentType === 'work' ? true : 'auto',
       builtinTools: {
         cwd: workspace,
         allowNetwork: true,
         allowShell: true,
+        ...(config.fsGuard ? { fsGuard: config.fsGuard } : {}),
         allowOutsideWorkspace: permission === 'bypass',
         allowPrivateNetwork: permission === 'bypass',
         processes: processesFor(context, workspace),
@@ -204,7 +206,9 @@ export async function handleRun(
     const editBaseline = editTracking.baseline
     const toolService = runtime.root.get('tools')
     toolService.guard(async request => {
-      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      if (request.name === 'write_file' || request.name === 'edit_file') {
+        await captureWritePreimage(workspace, editBaseline, request.input)
+      }
       return undefined
     })
     const history = await sessionLog.deriveMessages()
@@ -343,12 +347,16 @@ export async function createResidentRuntime(
     builtin: {
       allowNetwork: true,
       allowShell: true,
+      ...(req.config.fsGuard ? { fsGuard: req.config.fsGuard } : {}),
       allowOutsideWorkspace: async () => (await currentPermission()) === 'bypass',
       allowPrivateNetwork: async () => (await currentPermission()) === 'bypass',
       ...(req.processes ? { processes: req.processes } : {}),
     },
     memory: true,
     summary: true,
+    // Documents are what a work session delivers, so its office tools are not
+    // conditional on finding one first.
+    office: req.agentType === 'work' ? true : 'auto',
     // Long turns are fine while they keep moving; a turn that stalls is nudged, then parked.
     loopGuard: true,
     jobs: { resolveSession: sessionOf },
@@ -458,6 +466,8 @@ export function residentSignature(req: ResidentRunRequest): string {
     req.effective.temperature ?? '',
     JSON.stringify(req.config.approvalReview ?? {}),
     req.config.codeMode ? 'ptc' : 'native',
+    // The file tools read their guard mode when they are built.
+    req.config.fsGuard ?? 'warn',
     req.agentType,
     req.permission,
     'auto',
@@ -618,7 +628,9 @@ export async function runResidentTurn(
     }
     const editBaseline = editTracking.baseline
     releaseWriteCapture = entry.tools.guard(async request => {
-      if (request.name === 'write_file') await captureWritePreimage(workspace, editBaseline, request.input)
+      if (request.name === 'write_file' || request.name === 'edit_file') {
+        await captureWritePreimage(workspace, editBaseline, request.input)
+      }
       return undefined
     })
     // A coding or work session keeps its persona as the durable leading system
@@ -860,9 +872,11 @@ export async function withCodingAgent<T>(
     registry.guard(permissionGuard(summary.permission ?? 'read-only', runKey(workspace, id), new ApprovalBroker(), { workspace }))
     // A typed slash install URL is an explicit user request to read that source.
     // Model calls only have http_get when their runtime enables network tools.
-    for (const tool of createBuiltinToolDefinitions({ cwd: workspace, allowNetwork: true,
-      disabled: ['echo', 'now', 'calculator', 'json', 'read_file', 'write_file', 'list_dir'],
-    })) registry.register(tool)
+    await root.plugin(builtinTools, {
+      cwd: workspace,
+      allowNetwork: true,
+      disabled: ['read_file', 'write_file', 'edit_file', 'list_dir'],
+    })
     fiber = await root.plugin(createCodingAgentPlugin({
       cwd: workspace,
       skills: true,

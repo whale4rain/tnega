@@ -204,7 +204,7 @@ profile 应只引用信任的代码；工具沙箱不会隔离插件本身。
 
 ## PTC 与提问
 
-后台任务默认随内置工具启用，提供 `job_start`、`job_list`、`job_output`、`job_kill`。
+后台任务默认随内置工具启用：`shell` 的 `runInBackground` 把一条命令变成后台任务，`job_list`、`job_output`、`job_kill` 读取与停止它。
 Web resident Agent 和 Project Thread 也可使用。任务跨 Agent Run 保留，权限继续由
 原工具管线检查；runtime 关闭会取消并等待任务。完整用法与配置见
 [Background jobs](../jobs/README.md)。自定义 runtime 的 `builtinTools:false`
@@ -343,7 +343,7 @@ Anthropic 使用 [`GET /v1/models`](https://platform.claude.com/docs/en/api/mode
 ChatGPT 沿用 [Codex 的模型目录协议](https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/endpoint/models.rs)，
 复用登录刷新与账户 header（目录 schema client version 固定为经官方 npm 核验的 `0.161.0`）。
 
-`shell` 选择 `shell` 工具（包括经 `job_start` 后台运行时）使用的系统 shell：名称（`pwsh`、`powershell`、
+`shell` 选择 `shell` 工具（包括经 `runInBackground` 后台运行时）使用的系统 shell：名称（`pwsh`、`powershell`、
 `bash`、`cmd`、`zsh`…）或可执行文件路径；省略时自动检测（Windows 依次为 PowerShell 7、
 Windows PowerShell、Git Bash、cmd；其他平台为 `$SHELL`）。环境变量 `TNEGA_SHELL` 在未配置时
 同样生效。Windows 上 `bash` 指 Git Bash，不会选中 WSL 的 `System32\bash.exe`；Git Bash 无法在
@@ -382,7 +382,7 @@ Web / 桌面首次启动会离线安装内置 skills 到 `~/.tnega/skills`，遵
 `.tnega/skills` 同名文档优先。自定义 runtime 的 `builtinTools: false` 不默认挂
 skills；可以显式指定 `skills: true`，或用 `skills: false` 禁用默认加载。
 
-Skill 管理工具是 `skill_create` / `skill_install`，固定写 home 的 skills 目录，
+Skill 管理是 `skill` 工具的 `action=create` / `action=install`，固定写 home 的 skills 目录，
 `workspace-write` 可用，窄权限子 Agent 不能借父权限写入。coding Session 的
 `/skills create <name> <description>` 创建模板；`/skills install <工作区路径或HTTPS raw链接> [name]`
 导入主文档；`/skills read <name>` 明确读取。已有文件不覆盖，安装不复制附属脚本或

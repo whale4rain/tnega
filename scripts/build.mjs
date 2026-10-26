@@ -51,13 +51,16 @@ function inkDevtoolsStub() {
 /**
  * 每个包的物理目录：发布子路径名 → 仓库内路径。
  *
- * `packages/search/` 是搜索缝三个角色的共同容器，所以这三个包不在 `packages/<name>`
+ * `packages/fs/` 是搜索缝三个角色的共同容器，所以这三个包不在 `packages/<name>`
  * 这一层。声明产物的重写（rewriteDeclarationImports）与库入口共用这张表。
  */
 const packageDirs = {
-  search: 'packages/search/search-definition',
-  'search-ripgrep': 'packages/search/search-ripgrep',
-  'tool-search': 'packages/search/tool-search',
+  search: 'packages/fs/search-definition',
+  'search-ripgrep': 'packages/fs/search-ripgrep',
+  'tool-search': 'packages/fs/tool-search',
+  'tool-fs': 'packages/fs/tool-fs',
+  'tool-shell': 'packages/shell/tool-shell',
+  'tool-web-fetch': 'packages/web/tool-web-fetch',
   sandbox: 'packages/sandbox/sandbox',
   'sandbox-local': 'packages/sandbox/sandbox-local',
   'sandbox-windows-acl': 'packages/sandbox/sandbox-windows-acl',
@@ -99,6 +102,14 @@ const packageDirs = {
   'project-worktrees': 'packages/project/worktrees',
   'project-routines': 'packages/project/routines',
   'project-memory': 'packages/project/memory',
+  // 能力域容器：库与其模型可见工具同域，和 fs/、jobs/ 的形状一致。
+  office: 'packages/office/office',
+  'tool-office': 'packages/office/tool-office',
+  'ptc-runtime': 'packages/ptc/ptc-runtime',
+  'ptc-runtime-quickjs': 'packages/ptc/ptc-runtime-quickjs',
+  'tool-ptc': 'packages/ptc/tool-ptc',
+  'user-questions': 'packages/questions/user-questions',
+  'tool-question': 'packages/questions/tool-question',
 }
 
 const packageDir = (name) => packageDirs[name] ?? `packages/${name}`
@@ -107,11 +118,13 @@ const libraryEntries = {
   jobs: `${packageDir('jobs')}/src/index.ts`,
   'jobs-local': `${packageDir('jobs-local')}/src/index.ts`,
   'tool-jobs': `${packageDir('tool-jobs')}/src/index.ts`,
-  'ptc-runtime': 'packages/ptc-runtime/src/index.ts',
-  'ptc-runtime-quickjs': 'packages/ptc-runtime-quickjs/src/index.ts',
-  'tool-ptc': 'packages/tool-ptc/src/index.ts',
-  'user-questions': 'packages/user-questions/src/index.ts',
-  'tool-question': 'packages/tool-question/src/index.ts',
+  'ptc-runtime': `${packageDir('ptc-runtime')}/src/index.ts`,
+  'ptc-runtime-quickjs': `${packageDir('ptc-runtime-quickjs')}/src/index.ts`,
+  'tool-ptc': `${packageDir('tool-ptc')}/src/index.ts`,
+  'user-questions': `${packageDir('user-questions')}/src/index.ts`,
+  'tool-question': `${packageDir('tool-question')}/src/index.ts`,
+  office: `${packageDir('office')}/src/index.ts`,
+  'tool-office': `${packageDir('tool-office')}/src/index.ts`,
   'approval-review': 'packages/approval-review/src/index.ts',
   'approval-llm': 'packages/approval-llm/src/index.ts',
   'approval-jev': 'packages/approval-jev/src/index.ts',
@@ -149,6 +162,9 @@ const libraryEntries = {
   'spill-local': `${packageDir('spill-local')}/src/index.ts`,
   'tool-spill': `${packageDir('tool-spill')}/src/index.ts`,
   'tool-search': `${packageDir('tool-search')}/src/index.ts`,
+  'tool-fs': `${packageDir('tool-fs')}/src/index.ts`,
+  'tool-shell': `${packageDir('tool-shell')}/src/index.ts`,
+  'tool-web-fetch': `${packageDir('tool-web-fetch')}/src/index.ts`,
   'tool-memory': `${packageDir('tool-memory')}/src/index.ts`,
   'tool-subagent': `${packageDir('tool-subagent')}/src/index.ts`,
   tools: 'packages/tools/src/index.ts',
@@ -169,7 +185,7 @@ const libraryEntries = {
 await Promise.all([
   build({
     ...common,
-    entryPoints: ['packages/ptc-runtime-quickjs/src/worker.mjs'],
+    entryPoints: [`${packageDir('ptc-runtime-quickjs')}/src/worker.mjs`],
     outfile: 'dist/ptc-worker.js',
   }),
   build({
@@ -191,7 +207,7 @@ await Promise.all([
   ),
 ])
 // Keep the VM beside its bundled Worker; desktop ships this dist directory whole.
-const piDirectory = await realpath(new URL('../packages/ptc-runtime-quickjs/node_modules/@earendil-works/pi-codemode/', import.meta.url))
+const piDirectory = await realpath(new URL(`../${packageDir('ptc-runtime-quickjs')}/node_modules/@earendil-works/pi-codemode/`, import.meta.url))
 const piRequire = createRequire(join(piDirectory, 'package.json'))
 await copyFile(piRequire.resolve('quickjs-wasi/quickjs.wasm'), new URL('../dist/quickjs.wasm', import.meta.url))
 chmodSync(new URL('../dist/bin.js', import.meta.url), 0o755)

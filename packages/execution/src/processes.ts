@@ -1,4 +1,4 @@
-import { isSandboxPipeDenial, SANDBOX_PIPE_HINT, type BackgroundProcess } from '@tnega/execution'
+import { isSandboxPipeDenial, SANDBOX_PIPE_HINT, type BackgroundProcess } from './index.js'
 
 /** Local URLs a dev server prints, e.g. `http://localhost:5173/`. */
 const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|[\w-]+\.localhost)(?::\d+)?(?:\/[^\s"'`)\]]*)?/giu
@@ -39,7 +39,7 @@ export interface ProcessSnapshot {
 
 /**
  * Background processes started by agents in one workspace, through `shell`
- * run as a background job (`job_start`). The web server keeps one per
+ * with `runInBackground`. The web server keeps one per
  * workspace so a dev server outlives the run, and the runtime, that started
  * it; without one, the shell tool owns a private registry that dies with it.
  */

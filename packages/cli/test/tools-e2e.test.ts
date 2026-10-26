@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -66,22 +66,23 @@ function chatFetchMock(handler: (init: RequestInit) => Response): FetchMock {
 }
 
 describe('tnega run builtin tools via OpenAI compatible endpoint', () => {
-  it('executes calculator and persists tool events in the session', async () => {
-    const dir = await tempDir('tnega-cli-tools-calc-')
+  it('executes read_file and persists tool events in the session', async () => {
+    const dir = await tempDir('tnega-cli-tools-read-')
+    await writeFile(join(dir, 'answer.txt'), 'fourteen\n', 'utf8')
     vi.stubEnv('OPENCODE_GO_API_KEY', 'test-key')
     let calls = 0
     const fetchMock = chatFetchMock(() => {
       calls += 1
       return calls === 1
         ? openaiResponse('', [
-          toolCall('call_calc_1', 'calculator', { expression: '2 + 3 * 4' }),
+          toolCall('call_read_1', 'read_file', { path: 'answer.txt' }),
         ], 'tool_calls')
-        : openaiResponse('The result is 14.')
+        : openaiResponse('The answer is fourteen.')
     })
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await runAgentCommand({
-      prompt: 'use calculator',
+      prompt: 'read answer.txt',
       cwd: dir,
       maxTokens: 64,
       maxSteps: 4,
@@ -92,15 +93,15 @@ describe('tnega run builtin tools via OpenAI compatible endpoint', () => {
     expect(result.run.steps[0]!.toolResults).toHaveLength(1)
     expect(result.run.steps[0]!.toolResults[0]).toMatchObject({
       ok: true,
-      name: 'calculator',
-      output: 14,
+      name: 'read_file',
+      output: { path: 'answer.txt', content: 'fourteen\n', truncated: false },
     })
     expect(result.run.finishReason).toBe('stop')
 
     const sessionText = await readFile(result.sessionFile, 'utf8')
     expect(sessionText).toContain('"tool/call"')
     expect(sessionText).toContain('"tool/result"')
-    expect(sessionText).toContain('calculator')
+    expect(sessionText).toContain('answer.txt')
     expect(sessionText).not.toContain('test-key')
   })
 

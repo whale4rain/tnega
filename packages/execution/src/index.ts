@@ -5,6 +5,7 @@ import { shellCommandArgv, systemShell } from './shell.js'
 
 export * from './shell.js'
 export * from './network.js'
+export * from './processes.js'
 
 export interface ShellRequest {
   command: string

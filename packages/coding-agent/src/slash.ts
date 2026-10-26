@@ -135,10 +135,10 @@ export function createSlashRegistry(): SlashRegistry {
         if (!context.executeTool) return { kind: 'text', text: 'Skill management is not available in this context.' }
         if (args[0] === 'create') {
           if (args.length < 3) return { kind: 'text', text: 'Usage: /skills create <name> <description>' }
-          return { kind: 'json', value: await context.executeTool('skill_create', { name: args[1], description: args.slice(2).join(' ') }) }
+          return { kind: 'json', value: await context.executeTool('skill', { action: 'create', name: args[1], description: args.slice(2).join(' ') }) }
         }
         if (args.length < 2 || args.length > 3) return { kind: 'text', text: 'Usage: /skills install <path-or-HTTPS-url> [name]' }
-        return { kind: 'json', value: await context.executeTool('skill_install', { source: args[1], ...(args[2] ? { name: args[2] } : {}) }) }
+        return { kind: 'json', value: await context.executeTool('skill', { action: 'install', source: args[1], ...(args[2] ? { name: args[2] } : {}) }) }
       }
       const skills = context.skills ?? await listSkills(context.cwd)
       if (!args.length) {

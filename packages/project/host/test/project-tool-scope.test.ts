@@ -19,7 +19,7 @@ describe('project tool scope', () => {
     for (const name of ['spawn_thread', 'send_thread_message', 'read_project', 'write_memory', 'create_routine']) {
       expect(toolVisible(role, name), name).toBe(true)
     }
-    for (const name of ['shell', 'write_file', 'office_create', 'job_start', 'update_checklist', 'read_file', 'grep', 'http_get', 'publish_artifact', 'future_execution_tool']) {
+    for (const name of ['shell', 'write_file', 'office_create', 'edit_file', 'update_checklist', 'read_file', 'grep', 'http_get', 'publish_artifact', 'future_execution_tool']) {
       expect(toolVisible(role, name), name).toBe(false)
     }
   })
