@@ -10,12 +10,19 @@ export default tseslint.config(
       '.pnpm-store/**',
       'data/**',
       '.tnega/**',
+      // Scratch files at the repository root are git-ignored by the same
+      // pattern; linting them reported failures that never existed in a clone.
+      '.tnega-*',
       'coverage/**',
       // Build and packaging output that .gitignore already excludes; without
       // these, linting fails on any checkout that has packaged the desktop app.
       '.worktrees/**',
       'apps/desktop/out/**',
       'apps/desktop/release*/**',
+      // Evaluation records keep the harness that produced them verbatim: the
+      // Terminal-Bench runner is written for that container's Node, not for this
+      // repository's lint rules, and it is never built or shipped.
+      'docs/eval/**',
     ],
   },
   js.configs.recommended,
