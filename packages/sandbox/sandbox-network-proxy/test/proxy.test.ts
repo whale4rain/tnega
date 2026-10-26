@@ -1,5 +1,5 @@
 import { createServer, request, type Server } from 'node:http'
-import { connect, type AddressInfo, type Socket } from 'node:net'
+import { connect, type Socket } from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,7 +29,9 @@ async function origin(): Promise<number> {
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())))
-  return (server.address() as AddressInfo).port
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('origin server has no TCP address')
+  return address.port
 }
 
 /** Allows `allowed.test` (named) and `*.wild.test` (wildcard); both resolve to loopback. */
@@ -169,6 +171,36 @@ describe('network proxy', () => {
     expect(decisions.at(-1)).toMatchObject({ host: 'api.wild.test', allowed: false, reason: 'local-address', rule: '*.wild.test' })
   })
 
+  it('forwards the Host the filter checked, not the one the client sent', async () => {
+    const port = await origin()
+    const started = await proxy()
+    const response = await new Promise<string>((resolve, reject) => {
+      const req = request({ host: '127.0.0.1', port: portOf(started), path: `http://allowed.test:${port}/h`, headers: { host: 'other.test' } }, (res) => {
+        let body = ''
+        res.setEncoding('utf8')
+        res.on('data', (chunk: string) => { body += chunk })
+        res.on('end', () => resolve(body))
+      })
+      req.on('error', reject)
+      req.end()
+    })
+    expect(response).toBe(`origin /h host=allowed.test:${port}`)
+  })
+
+  it('refuses local IP literals that only a wildcard allowed, also through an upstream', async () => {
+    const port = await origin()
+    const upstream = await proxy()
+    const any = await startNetworkProxy({ host: '127.0.0.1', port: 0 }, {
+      decide: () => ({ allowed: true, reason: 'allowed', rule: '*', named: false }),
+      upstream: () => `http://127.0.0.1:${portOf(upstream)}`,
+    })
+    cleanup.push(() => any.close())
+    expect((await tunnelGet({ port: portOf(any) }, `127.0.0.1:${port}`)).status).toBe(403)
+    expect((await tunnelGet({ port: portOf(any) }, `[0:0:0:0:0:0:0:1]:${port}`)).status).toBe(403)
+    expect((await tunnelGet({ port: portOf(any) }, `localhost:${port}`)).status).toBe(403)
+    expect((await plainGet(portOf(any), `http://127.0.0.1:${port}/`)).status).toBe(403)
+  })
+
   it('speaks SOCKS5 on the same port', async () => {
     const port = await origin()
     const started = await proxy()
@@ -210,7 +242,8 @@ describe('network proxy', () => {
 
 describe('proxy helpers', () => {
   it('recognises local addresses but not private networks', () => {
-    for (const address of ['127.0.0.1', '127.5.0.1', '0.0.0.0', '169.254.169.254', '224.0.0.1', '::1', '::', 'fe80::1', '::ffff:127.0.0.1', '::ffff:7f00:1', 'ff02::1']) {
+    for (const address of ['127.0.0.1', '127.5.0.1', '0.0.0.0', '169.254.169.254', '224.0.0.1', '::1', '::', 'fe80::1', '::ffff:127.0.0.1', '::ffff:7f00:1', 'ff02::1',
+      '0:0:0:0:0:0:0:1', '0:0:0:0:0:0:0:0', '0:0:0:0:0:ffff:7f00:1', 'FE80:0:0:0:0:0:0:1', '::1%lo']) {
       expect(isLocalAddress(address), address).toBe(true)
     }
     for (const address of ['10.0.0.1', '192.168.1.1', '198.18.0.5', '8.8.8.8', '2606:4700::1111', 'fd00::1', 'not-an-ip']) {

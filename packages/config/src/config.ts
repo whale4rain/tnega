@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, lookupModel, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
 import type { ApprovalMode } from '@tnega/approval-review'
 import { CHATGPT_CODEX_BASE_URL, CHATGPT_SIGNED_IN, isChatgptSignedIn } from '@tnega/auth-chatgpt'
-import { isSandboxNetworkMode, parseDomainPattern, type SandboxNetworkMode } from '@tnega/sandbox'
+import { isSandboxNetworkMode, type SandboxNetworkMode } from '@tnega/sandbox'
 
 export interface ApprovalReviewerConfig {
   provider: 'conversation' | 'model' | 'jev' | 'openai'
@@ -283,22 +283,25 @@ export interface SandboxConfig {
   network?: SandboxNetworkConfig
 }
 
+/**
+ * A rule list as saved. Entries are kept as written, even ones the sandbox cannot read: the
+ * sandbox then refuses to run commands and names the bad entry, instead of this reader
+ * silently dropping a blocked domain and so widening the network.
+ */
 function domainList(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
-  const entries = value
-    .filter((entry): entry is string => typeof entry === 'string')
-    .map(entry => entry.trim().toLowerCase())
-    // An entry the sandbox would refuse is dropped rather than breaking every command.
-    .filter(entry => parseDomainPattern(entry) !== undefined)
+  const entries = value.map(entry => typeof entry === 'string' ? entry.trim().toLowerCase() : JSON.stringify(entry))
+    .filter(entry => entry.length > 0)
   return entries.length ? [...new Set(entries)] : undefined
 }
 
+/** `sandbox` from the config file. An unreadable network mode reads as `off` (fail closed). */
 export function parseSandboxConfig(value: unknown): SandboxConfig | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const network = fieldOf(value, 'network')
   if (!network || typeof network !== 'object' || Array.isArray(network)) return undefined
-  const mode = fieldOf(network, 'mode')
-  if (!isSandboxNetworkMode(mode)) return undefined
+  const saved = fieldOf(network, 'mode')
+  const mode: SandboxNetworkMode = isSandboxNetworkMode(saved) ? saved : 'off'
   const allowed = domainList(fieldOf(network, 'allowedDomains'))
   const denied = domainList(fieldOf(network, 'deniedDomains'))
   return {

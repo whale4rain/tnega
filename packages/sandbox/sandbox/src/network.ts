@@ -190,10 +190,11 @@ export function resolveNetworkPolicy(request: SandboxNetworkRequest | undefined)
 /** 运行期形状校验（事件改写之后用）。 */
 export function isSandboxNetworkPolicy(value: unknown): value is SandboxNetworkPolicy {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
   const list = (entries: unknown): boolean => Array.isArray(entries)
     && entries.every(entry => typeof entry === 'string' && parseDomainPattern(entry) !== undefined)
-  return isSandboxNetworkMode(record.mode) && list(record.allowedDomains) && list(record.deniedDomains)
+  return isSandboxNetworkMode(Reflect.get(value, 'mode'))
+    && list(Reflect.get(value, 'allowedDomains'))
+    && list(Reflect.get(value, 'deniedDomains'))
 }
 
 /** 这份策略是否需要 Provider 限制网络。 */

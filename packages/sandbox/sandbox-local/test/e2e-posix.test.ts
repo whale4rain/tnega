@@ -1,6 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { existsSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -145,8 +144,10 @@ const curl = spawnSync('curl', ['--version'], { stdio: 'ignore' }).status === 0
 async function origin(): Promise<{ port: number; close: () => Promise<void> }> {
   const server: Server = createServer((req, res) => res.end(`origin ${req.url ?? ''}`))
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('origin server has no TCP address')
   return {
-    port: (server.address() as AddressInfo).port,
+    port: address.port,
     close: () => new Promise<void>(resolve => server.close(() => resolve())),
   }
 }

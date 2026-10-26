@@ -87,9 +87,14 @@ export function SettingsDialog({
   const [reviewKeyEnv, setReviewKeyEnv] = useState(stored?.approvalReview?.apiKeyEnv ?? '')
   const [proxy, setProxy] = useState(config?.network?.proxy ?? '')
   const [allowedHosts, setAllowedHosts] = useState((config?.network?.allowedHosts ?? []).join('\n'))
-  const [commandNetwork, setCommandNetwork] = useState<CommandNetworkMode>(config?.sandbox?.network.mode ?? 'open')
-  const [commandAllowed, setCommandAllowed] = useState((config?.sandbox?.network.allowedDomains ?? []).join('\n'))
-  const [commandDenied, setCommandDenied] = useState((config?.sandbox?.network.deniedDomains ?? []).join('\n'))
+  const [networkEdited, setNetworkEdited] = useState(false)
+  const [commandNetwork, setCommandNetworkState] = useState<CommandNetworkMode>(config?.sandbox?.network.mode ?? 'open')
+  const [commandAllowed, setCommandAllowedState] = useState((config?.sandbox?.network.allowedDomains ?? []).join('\n'))
+  const [commandDenied, setCommandDeniedState] = useState((config?.sandbox?.network.deniedDomains ?? []).join('\n'))
+  const edited = <T,>(set: (value: T) => void) => (value: T) => { setNetworkEdited(true); set(value) }
+  const setCommandNetwork = edited(setCommandNetworkState)
+  const setCommandAllowed = edited(setCommandAllowedState)
+  const setCommandDenied = edited(setCommandDeniedState)
   const networkSupport = useNetworkSupport(section === 'tools' && commandNetwork !== 'open')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
@@ -127,7 +132,9 @@ export function SettingsDialog({
     if (badHost) return fail(`"${badHost}" is not a host name; use names like example.com or *.example.com`, 'tools')
     if (proxy.trim() && !/^https?:\/\/[^\s/]+/i.test(proxy.trim())) return fail('The proxy is a URL such as http://127.0.0.1:7890', 'tools')
     if (config?.network) patch.network = { allowedHosts: hosts, proxy: proxy.trim() }
-    if (config?.sandbox) {
+    // Sent only after the person edits it: a dialog opened before the config arrived
+    // must not save its "open" default over a stored "off" or allowlist.
+    if (config?.sandbox && networkEdited) {
       // The host checks every rule and names the one it cannot read.
       patch.sandbox = { network: { mode: commandNetwork, allowedDomains: domainLines(commandAllowed), deniedDomains: domainLines(commandDenied) } }
     }

@@ -13,12 +13,23 @@ export function isLocalAddress(address: string): boolean {
   const kind = isIP(address)
   if (kind === 4) return isLocalV4(address)
   if (kind !== 6) return false
-  const value = address.toLowerCase()
+  // 先压缩成规范形态：SOCKS5 与 CONNECT 都可能送来展开的写法（0:0:0:0:0:0:0:1）。
+  const value = canonicalV6(address)
+  if (value === undefined) return true
   const mapped = mappedV4(value)
   if (mapped !== undefined) return isLocalV4(mapped)
   if (value === '::' || value === '::1') return true
   // fe80::/10 链路本地；ff00::/8 组播。
   return /^fe[89ab]/u.test(value) || value.startsWith('ff')
+}
+
+/** IPv6 的规范（压缩、小写）写法；读不懂就返回 `undefined`，调用方按本机处理（fail closed）。 */
+function canonicalV6(address: string): string | undefined {
+  try {
+    return new URL(`http://[${address.replace(/%.*$/u, '')}]/`).hostname.slice(1, -1)
+  } catch {
+    return undefined
+  }
 }
 
 /** `::ffff:a.b.c.d` 与 `::ffff:7f00:1` 两种写法的 IPv4 映射地址。 */

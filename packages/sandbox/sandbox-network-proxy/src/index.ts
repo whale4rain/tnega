@@ -10,9 +10,9 @@
  * `http-proxy.ts` / `socks-proxy.ts`。
  */
 
-import { createServer as createHttpServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http'
-import { createServer, type AddressInfo, type Server, type Socket } from 'node:net'
-import { dialDirect, LocalAddressError } from './dial.js'
+import { createServer as createHttpServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from 'node:http'
+import { createServer, isIP, type AddressInfo, type Server, type Socket } from 'node:net'
+import { dialDirect, isLocalAddress, LocalAddressError } from './dial.js'
 import { readSocksRequest, SocksError, socksReply, SOCKS_REPLY } from './socks.js'
 import { authority, bypassesUpstream, parseUpstreamProxy, tunnelThrough } from './upstream.js'
 
@@ -138,6 +138,18 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
     return parseUpstreamProxy(url)
   }
 
+  /**
+   * 经上游出去时名字由上游解析，这里看不到答案；但字面量的本机地址与 `localhost` 不需要解析，
+   * 规则没点名它时照样拦下 —— 否则一个通配规则就能借本机上的上游代理摸到宿主服务。
+   */
+  function localViaUpstream(target: ProxyTarget, protocol: ProxyProtocol, verdict: ProxyVerdict): ProxyDecision | undefined {
+    if (verdict.named === true) return undefined
+    const host = target.host
+    const local = isIP(host) !== 0 ? isLocalAddress(host) : host === 'localhost' || host.endsWith('.localhost')
+    if (!local) return undefined
+    return record(target, protocol, { allowed: false, reason: 'local-address', ...(verdict.rule !== undefined ? { rule: verdict.rule } : {}) })
+  }
+
   /** 直连一个已放行的目标；名字解析到本机地址而规则没点名它时，记为拦下。 */
   async function dial(target: ProxyTarget, protocol: ProxyProtocol, verdict: ProxyVerdict): Promise<{ socket: Socket } | { denied: ProxyDecision }> {
     try {
@@ -161,6 +173,8 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
     if (!verdict.allowed) return { denied: record(target, protocol, verdict) }
     const upstream = upstreamFor(target)
     if (upstream === undefined) return dial(target, protocol, verdict)
+    const local = localViaUpstream(target, protocol, verdict)
+    if (local !== undefined) return { denied: local }
     record(target, protocol, verdict)
     // 上游负责解析名字：本机地址检查只对直连有意义。
     return { socket: await tunnelThrough(upstream, target.host, target.port) }
@@ -228,7 +242,8 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
       return
     }
     const target = { host: url.hostname.replace(/^\[|\]$/gu, '').toLowerCase(), port: url.port === '' ? 80 : Number(url.port) }
-    const headers = { ...req.headers }
+    // Host 跟着判定过的 URL 走：否则请求可以打到允许的主机、却选中它上面别的虚拟主机。
+    const headers: IncomingHttpHeaders = { ...req.headers, host: url.host }
     for (const name of HOP_BY_HOP) delete headers[name]
     try {
       const verdict = judge(target)
@@ -239,6 +254,11 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
       const upstream = upstreamFor(target)
       let forward
       if (upstream !== undefined) {
+        const local = localViaUpstream(target, 'http', verdict)
+        if (local !== undefined) {
+          sendText(res, 403, explain(local))
+          return
+        }
         // 明文请求按绝对 URI 交给上游：很多代理只允许 CONNECT 到 443。
         record(target, 'http', verdict)
         forward = httpRequest({

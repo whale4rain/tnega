@@ -252,3 +252,13 @@ it('turns command network off without asking for domains', async () => {
   await waitFor(() => expect(save).toHaveBeenCalledOnce())
   expect(save.mock.calls[0]?.[0].sandbox).toEqual({ network: { mode: 'off', allowedDomains: ['a.dev'], deniedDomains: [] } })
 })
+
+it('does not save the open default over command network rules that arrived after the dialog opened', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  const view = render(createElement(SettingsDialog, { config: undefined, onClose: vi.fn(), onSaved: vi.fn() }))
+  const loaded: ConfigSnapshot = { ...snapshot, sandbox: { network: { mode: 'off', allowedDomains: [], deniedDomains: [] } } }
+  view.rerender(createElement(SettingsDialog, { config: loaded, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0]).not.toHaveProperty('sandbox')
+})
