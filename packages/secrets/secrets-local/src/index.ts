@@ -32,17 +32,28 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * Read the saved file strictly. Anything unexpected throws instead of being
+ * skipped: the next save rewrites the whole file, so skipping would silently
+ * drop whatever was there.
+ */
 function parseSaved(text: string): SavedFile {
   const parsed: unknown = JSON.parse(text)
+  if (!record(parsed) || parsed.version !== 1 || !record(parsed.workspaces)) {
+    throw new Error('expected { version: 1, workspaces: {...} }')
+  }
   const workspaces: Record<string, SavedWorkspace> = {}
-  if (record(parsed) && record(parsed.workspaces)) {
-    for (const [key, entry] of Object.entries(parsed.workspaces)) {
-      if (!record(entry) || typeof entry.path !== 'string' || !record(entry.secrets)) continue
-      // Null prototype: a secret may legitimately be named `__proto__`.
-      const secrets: Record<string, string> = Object.create(null)
-      for (const [name, value] of Object.entries(entry.secrets)) if (typeof value === 'string') secrets[name] = value
-      workspaces[key] = { path: entry.path, secrets }
+  for (const [key, entry] of Object.entries(parsed.workspaces)) {
+    if (!record(entry) || typeof entry.path !== 'string' || !record(entry.secrets)) {
+      throw new Error(`workspace ${key} is not { path, secrets }`)
     }
+    // Null prototype: a secret may legitimately be named `__proto__`.
+    const secrets: Record<string, string> = Object.create(null)
+    for (const [name, value] of Object.entries(entry.secrets)) {
+      if (typeof value !== 'string') throw new Error(`secret ${name} in workspace ${key} is not a string`)
+      secrets[name] = value
+    }
+    workspaces[key] = { path: entry.path, secrets }
   }
   return { version: 1, workspaces }
 }

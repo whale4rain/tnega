@@ -28,15 +28,20 @@ export const toolSecrets = {
       const progress = request.options.progress
       if (progress) {
         const entries = await store.maskingEntries()
-        if (entries.length > 0) {
-          const masker = createStreamMasker(entries)
-          request.options = {
-            ...request.options,
-            progress: output => {
-              const safe = masker.push(output)
-              if (safe) progress(safe)
-            },
-          }
+        const masker = createStreamMasker(entries)
+        let seen = store.injectedVersion
+        request.options = {
+          ...request.options,
+          progress: output => {
+            // A key typed while this call runs reaches a command only through
+            // noteInjected, which happens before the command can print it.
+            if (store.injectedVersion !== seen) {
+              seen = store.injectedVersion
+              masker.setEntries([...entries, ...store.injectedEntries()])
+            }
+            const safe = masker.push(output)
+            if (safe) progress(safe)
+          },
         }
       }
       return next()

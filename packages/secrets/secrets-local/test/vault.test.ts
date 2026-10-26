@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -15,6 +15,16 @@ async function vault() {
 }
 
 describe('SecretVault', () => {
+  it('refuses a saved file it does not understand instead of rewriting it', async () => {
+    const { vault: v, file, workspace } = await vault()
+    const odd = JSON.stringify({ version: 1, workspaces: { w: { path: workspace, secrets: { KEEP: 'kept-value', BAD: 42 } } } })
+    await writeFile(file, odd)
+    const scope = { workspace, sessionId: 'a' }
+    await expect(v.set(scope, 'NEW_KEY', 'new-value', { remember: true })).rejects.toThrow(file)
+    await expect(v.list(scope)).rejects.toThrow(/damaged/)
+    expect(await readFile(file, 'utf8')).toBe(odd)
+  })
+
   it('keeps a session secret in memory only, for that session', async () => {
     const { vault: v, file, workspace } = await vault()
     const a = { workspace, sessionId: 'a' }

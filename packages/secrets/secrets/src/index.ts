@@ -125,7 +125,23 @@ export abstract class SecretStore extends Service {
 
   /** Remember that `entries` went into a child process's environment. */
   noteInjected(entries: readonly SecretEntry[]): void {
-    for (const { name, value } of entries) this.injected.set(value, name)
+    for (const { name, value } of entries) {
+      if (this.injected.has(value)) continue
+      this.injected.set(value, name)
+      this.injectedVersion++
+    }
+  }
+
+  /**
+   * Grows each time a value a command was not given before is handed to one.
+   * Read synchronously, so a live masker can tell it must take on new values
+   * before the command that got them prints anything.
+   */
+  injectedVersion = 0
+
+  /** Every value handed to a command in this scope, read synchronously. */
+  injectedEntries(): SecretEntry[] {
+    return [...this.injected].map(([value, name]) => ({ name, value }))
   }
 
   /**
@@ -215,6 +231,8 @@ export interface StreamMasker {
   push(chunk: string): string
   /** Whatever is still held back, masked. */
   flush(): string
+  /** Mask with these entries from now on, including any tail still held back. */
+  setEntries(entries: readonly SecretEntry[]): void
 }
 
 /**
@@ -223,7 +241,7 @@ export interface StreamMasker {
  * next piece shows whether it does.
  */
 export function createStreamMasker(entries: readonly SecretEntry[]): StreamMasker {
-  const list = patterns(entries)
+  let list = patterns(entries)
   let pending = ''
   const heldBack = (text: string): number => {
     let longest = 0
@@ -246,6 +264,9 @@ export function createStreamMasker(entries: readonly SecretEntry[]): StreamMaske
       const rest = maskWith(pending, list)
       pending = ''
       return rest
+    },
+    setEntries(next) {
+      list = patterns(next)
     },
   }
 }

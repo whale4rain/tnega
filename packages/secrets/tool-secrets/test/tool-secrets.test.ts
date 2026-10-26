@@ -82,6 +82,24 @@ it('masks a value a command got even if the secret is gone by the time the resul
   expect((await registry.execute('latecomer', {})).output).toBe('printed [secret: LATE_KEY]')
 })
 
+it('masks progress from a value handed to a command after the call started', async () => {
+  const { ctx, registry } = await setup()
+  const late = 'late-value-0123456789'
+  registry.register({
+    schema: { name: 'late', description: 'streams', parameters: { type: 'object', properties: {} } },
+    execute: async (_input, options) => {
+      // What execution-secrets does when a command starts with a key typed mid-call.
+      ctx.secrets.noteInjected([{ name: 'LATE_KEY', value: late }])
+      options.progress?.(`got ${late.slice(0, 8)}`)
+      options.progress?.(`${late.slice(8)}!`)
+      return 'ok'
+    },
+  })
+  const shown: string[] = []
+  await registry.execute('late', {}, { progress: output => shown.push(output) })
+  expect(shown.join('')).toBe('got [secret: LATE_KEY]!')
+})
+
 it('stops masking once disposed', async () => {
   const { registry, fiber } = await setup()
   registry.register({
