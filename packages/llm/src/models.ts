@@ -41,7 +41,10 @@ export function supportsVision(model: string): boolean {
   return !TEXT_ONLY_MODEL.test(model.trim())
 }
 
-/** Request features are resolved by the LLM seam, not inferred by the UI. */
+/**
+ * Request features are resolved by the LLM seam, not inferred by the UI.
+ * `configuredEfforts` is what a saved route lists; left out, the model id decides.
+ */
 export function modelCapabilities(
   model: string,
   protocol?: LlmProtocol,
@@ -57,11 +60,14 @@ export function modelCapabilities(
     && /^(?:gpt-5(?:[.-]|$)|o[1-9](?:[.-]|$))/iu.test(model)
   const supportsAnthropicEffort = route === 'anthropic'
     && /^claude-(?:opus|sonnet)-4[.-](?:6|[7-9])(?:[.-]|$)/iu.test(model)
+  // DeepSeek V4 takes `reasoning_effort` on its OpenAI-style API; its model
+  // list names `low` and `high` (and `max`, which tnega does not offer).
+  const supportsDeepSeekEffort = route === 'openai' && /^deepseek-(?:v4|flash)(?:[.-]|$)/iu.test(model)
   return {
     protocol: route,
     reasoningEfforts: configuredEfforts ?? (supportsOpenAiEffort || supportsAnthropicEffort
       ? ['low', 'medium', 'high']
-      : []),
+      : supportsDeepSeekEffort ? ['low', 'high'] : []),
     vision: configuredVision ?? supportsVision(model),
   }
 }

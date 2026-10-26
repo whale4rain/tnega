@@ -572,7 +572,7 @@ export function effectiveLlmConfig(
   if (config.temperature !== undefined) result.temperature = config.temperature
   const contextWindow = profile?.contextWindow ?? config.contextWindow ?? lookupModel(model)?.contextWindow
   if (contextWindow !== undefined) result.contextWindow = contextWindow
-  const capabilities = modelCapabilities(model, protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile ? profile.vision : config.vision)
+  const capabilities = modelCapabilities(model, protocol, profile?.reasoningEfforts, profile ? profile.vision : config.vision)
   result.vision = capabilities.vision
   const supported = capabilities.reasoningEfforts
   const defaultEffort = profile?.reasoningEffort ?? config.reasoningEffort
@@ -599,7 +599,7 @@ export function availableModels(config: SystemConfig, env: NodeJS.ProcessEnv = p
       id,
       name: profile?.name ?? id,
       source: modelSource({ ...profile, baseUrl: route.baseUrl }),
-      ...modelCapabilities(route.model, route.protocol, profile ? profile.reasoningEfforts ?? [] : undefined, profile ? profile.vision : config.vision),
+      ...modelCapabilities(route.model, route.protocol, profile?.reasoningEfforts, profile ? profile.vision : config.vision),
       apiKeySet: route.apiKeySet,
       ...(route.contextWindow !== undefined ? { contextWindow: route.contextWindow } : {}),
     }
