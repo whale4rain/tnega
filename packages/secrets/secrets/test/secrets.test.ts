@@ -83,13 +83,16 @@ describe('values handed to a command', () => {
     expect(maskSecrets(`token ${TOKEN.value}`, await store.maskingEntries())).toBe('token [secret: GITHUB_TOKEN]')
   })
 
-  it('prefer the value the store holds now', async () => {
+  it('keeps an old value masked after the secret is typed again', async () => {
     const store = new MemoryStore(new Context())
-    store.noteInjected([{ name: TOKEN.name, value: 'old-value-0000' }])
+    const old = { name: TOKEN.name, value: 'old-value-0000' }
+    store.noteInjected([old])
     await store.set(TOKEN.name, TOKEN.value)
-    expect(await store.maskingEntries()).toEqual([TOKEN])
+    expect(await store.maskingEntries()).toEqual([TOKEN, old])
+    expect(maskSecrets(`${old.value} ${TOKEN.value}`, await store.maskingEntries()))
+      .toBe('[secret: GITHUB_TOKEN] [secret: GITHUB_TOKEN]')
     await store.set('OTHER', 'later-0000')
-    expect((await store.maskingEntries()).map(entry => entry.name)).toEqual(['GITHUB_TOKEN', 'OTHER'])
+    expect((await store.maskingEntries()).map(entry => entry.name)).toEqual(['GITHUB_TOKEN', 'GITHUB_TOKEN', 'OTHER'])
   })
 })
 

@@ -105,6 +105,8 @@ export abstract class SecretStore extends Service {
    * the store then no longer holds the value, but it is still a value the model
    * must not see. Per scope, not per call: a value a command was given stays
    * masked in everything this scope reports later, even once removed.
+   * Keyed by value, so a secret typed again with a new value keeps its old
+   * value masked too: a command started earlier may still print it.
    */
   private readonly injected = new Map<string, string>()
 
@@ -123,7 +125,7 @@ export abstract class SecretStore extends Service {
 
   /** Remember that `entries` went into a child process's environment. */
   noteInjected(entries: readonly SecretEntry[]): void {
-    for (const { name, value } of entries) this.injected.set(name, value)
+    for (const { name, value } of entries) this.injected.set(value, name)
   }
 
   /**
@@ -131,11 +133,11 @@ export abstract class SecretStore extends Service {
    * given in this scope, including one removed since.
    */
   async maskingEntries(): Promise<SecretEntry[]> {
-    const merged = new Map(this.injected)
-    for (const entry of await this.entries()) merged.set(entry.name, entry.value)
-    return [...merged]
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => a.name.localeCompare(b.name))
+    const merged = new Map<string, SecretEntry>()
+    for (const [value, name] of this.injected) merged.set(value, { name, value })
+    for (const entry of await this.entries()) merged.set(entry.value, entry)
+    return [...merged.values()]
+      .sort((a, b) => a.name.localeCompare(b.name) || a.value.localeCompare(b.value))
   }
 }
 

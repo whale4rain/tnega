@@ -39,7 +39,10 @@ Agent 需要 `GITHUB_TOKEN` 这类密钥才能干活，但密钥一旦进入模�
    一个变量都能改变命令加载什么代码、从哪里取包，密钥放在那里等于让值变成配置。
    不整族拒绝 `GIT_`（`GIT_TOKEN` 之类是正当名字），只拒绝能改执行的
    `GIT_DIR` / `GIT_WORK_TREE` / `GIT_SSH_COMMAND` / `GIT_EXEC_PATH` 与 `JDK_JAVA_OPTIONS`。
-6. **权限边界**：值只出现在两处——子进程环境，以及被掩码后的文本。`list()` 只给名字。
+6. **权限边界**：会被模型、Session 或工具结果看到的面上，值只以一种形式出现——掩码后的
+   `[secret: NAME]`；`list()` 与 HTTP 路由只给名字。值本身只存在于：输入框（提交前）、
+   `SecretVault`（会话级在内存，记住的在 `secrets.json`）、`maskingEntries()` 的记账，以及
+   子进程环境。
    掩码在 `tools/post-execute` 前置执行，因此溢出落盘看到的是已掩码文本；实时
    `progress` 走跨块的流式掩码，值被切开也认得出。掩码集合是
    `SecretStore.maskingEntries()`：当前值 **加上** 本作用域内已经交给过命令的每个值
@@ -60,3 +63,13 @@ Agent 需要 `GITHUB_TOKEN` 这类密钥才能干活，但密钥一旦进入模�
   模式下不传 `sessionId`，因此不会列出某个后台会话的会话级密钥。
 - `secretEnvExecution` 与 `tool-secrets` 通过同一个 `ctx.secrets` 实例共享记账，
   不引入新的服务。
+
+## 验证
+
+- 单测：`packages/secrets/*/test`（命名、掩码与流式掩码、轮换后旧值仍掩码、保管库的会话与
+  记住两种寿命及 0600 写盘、环境注入、`tools/post-execute` 先于溢出策略掩码）；
+  `packages/runtime/test/secrets.test.ts` 在 bypass 下跑真实 shell，确认命令读到值而结果里只有占位符。
+- 前端：`QuestionPanel.test.ts`、`SecretsSettings.test.ts`、`SettingsDialog.test.ts`、TUI `prompts.test.tsx`。
+- `pnpm typecheck`、`pnpm lint` 通过；`pnpm test` 除已知与本改动无关的 Windows 路径沙箱用例外全部通过。
+- 端到端（DeepSeek）：Agent 询问 `DEMO_API_KEY`，命令输出 `length=24` 与 `[secret: DEMO_API_KEY]`；
+  值不在任何 Session 文件中，只在 `secrets.json`（0600）。
