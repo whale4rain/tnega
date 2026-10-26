@@ -10,6 +10,7 @@
     "@tnega/approval-review": "workspace:*",
     "@tnega/auth-chatgpt": "workspace:*",
     "@tnega/execution": "workspace:*",
-    "@tnega/llm": "workspace:*"
+    "@tnega/llm": "workspace:*",
+    "@tnega/sandbox": "workspace:*"
   }
 }

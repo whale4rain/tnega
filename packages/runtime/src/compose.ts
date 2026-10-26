@@ -5,7 +5,8 @@ import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { jobsLocal } from '@tnega/jobs-local'
 import { memoryLocal } from '@tnega/memory-local'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
-import { canonicalPath, resolveSandboxPolicy, type SandboxExecutionPolicy } from '@tnega/sandbox'
+import { networkPolicy } from '@tnega/execution'
+import { canonicalPath, resolveSandboxPolicy, type SandboxExecutionPolicy, type SandboxNetworkRequest } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import type { SessionLog } from '@tnega/session'
@@ -78,10 +79,24 @@ export async function hasOfficeFiles(workspace: string): Promise<boolean> {
 /** A sandbox mode, or a resolver for a permission that can change per call. */
 export type Permission = PermissionMode | (() => PermissionMode | Promise<PermissionMode>)
 
+/**
+ * Network access for sandboxed commands, or a resolver read before every
+ * command so a change in Settings applies without restarting. Absent is open.
+ */
+export type SandboxNetworkSource =
+  | SandboxNetworkRequest
+  | (() => SandboxNetworkRequest | undefined | Promise<SandboxNetworkRequest | undefined>)
+
+async function networkOf(source: SandboxNetworkSource | undefined): Promise<SandboxNetworkRequest | undefined> {
+  return typeof source === 'function' ? await source() : source
+}
+
 export interface RuntimeSpec {
   workspace: string
   /** Sandbox mode for builtin tools. Defaults to `read-only`. */
   permission?: Permission
+  /** Network access for sandboxed commands. Defaults to open. */
+  sandboxNetwork?: SandboxNetworkSource
   /** Identity for the sandbox policy; defaults to the workspace. */
   sessionId?: string
   /** Tool registry policy (validation, authorization, truncation). */
@@ -130,6 +145,7 @@ async function permissionOf(permission: Permission): Promise<PermissionMode> {
 export interface SandboxCapabilitySpec {
   workspace: string
   permission: Permission
+  network?: SandboxNetworkSource
   sessionId?: string
   builtin?: BuiltinToolsConfig
 }
@@ -144,12 +160,20 @@ export const sandboxCapability: Plugin = {
   inject: ['tools'],
   async apply(ctx: Context, spec: SandboxCapabilitySpec) {
     const workspaceRoot = canonicalPath(resolve(spec.workspace))
-    await ctx.plugin(sandboxLocal, { workspaceRoot })
-    const policy = async (): Promise<SandboxExecutionPolicy> => resolveSandboxPolicy({
-      mode: await permissionOf(spec.permission),
+    await ctx.plugin(sandboxLocal, {
       workspaceRoot,
-      sessionId: spec.sessionId ?? spec.workspace,
+      // Allowed connections leave through the proxy set in Settings, else HTTPS_PROXY.
+      upstreamProxy: () => networkPolicy().proxy,
     })
+    const policy = async (): Promise<SandboxExecutionPolicy> => {
+      const network = await networkOf(spec.network)
+      return resolveSandboxPolicy({
+        mode: await permissionOf(spec.permission),
+        workspaceRoot,
+        sessionId: spec.sessionId ?? spec.workspace,
+        ...(network !== undefined ? { network } : {}),
+      })
+    }
     await ctx.plugin(builtinTools, {
       ...(spec.builtin ?? {}),
       cwd: spec.workspace,
@@ -256,6 +280,7 @@ export const runtimeCapabilities: Plugin = {
         workspace: spec.workspace,
         permission: spec.permission ?? 'read-only',
         ...(spec.sessionId !== undefined ? { sessionId: spec.sessionId } : {}),
+        ...(spec.sandboxNetwork !== undefined ? { network: spec.sandboxNetwork } : {}),
         ...(builtin ? { builtin } : {}),
       })
     }

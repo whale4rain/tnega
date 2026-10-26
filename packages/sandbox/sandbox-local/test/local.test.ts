@@ -266,6 +266,7 @@ describe('mechanism selection', () => {
       available: true,
       runner: 'windows-acl',
       enforcement: 'partial',
+      network: { filtering: false, detail: expect.stringContaining('cannot restrict network access') },
     })
   })
 })

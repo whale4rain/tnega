@@ -52,6 +52,16 @@ export interface SandboxedExecutionConfig {
  */
 export { SANDBOX_PIPE_HINT }
 
+/** Append the Provider's note (for example hosts the network policy blocked) to stderr. */
+function withNote(result: { exitCode: number; stdout: string; stderr: string }, note: string | undefined): { exitCode: number; stdout: string; stderr: string } {
+  if (note === undefined || note === '') return result
+  return { ...result, stderr: `${result.stderr}${result.stderr.endsWith('\n') || !result.stderr ? '' : '\n'}${note}\n` }
+}
+
+function withoutNote(confined: Pick<ConfinedArgv, 'argv' | 'env' | 'annotate'>): Pick<ConfinedArgv, 'argv' | 'env'> {
+  return { argv: confined.argv, ...(confined.env ? { env: confined.env } : {}) }
+}
+
 function withPipeHint(result: { exitCode: number; stdout: string; stderr: string }): { exitCode: number; stdout: string; stderr: string } {
   if (process.platform !== 'win32' || result.exitCode === 0) return result
   if (!isSandboxPipeDenial(`${result.stdout}\n${result.stderr}`)) return result
@@ -90,7 +100,8 @@ function shellArgv(request: ShellRequest, config: SandboxedExecutionConfig, conf
  * 失败语义：Provider 交不出受限 argv 时 `confine` 会抛出，这里**不捕获**——
  * 「宿主上无法沙箱」必须让调用方看见并放弃执行，而不是回退到非受限执行。
  *
- * 网络（`fetchHttp`）直接透传：当前没有任何后端限制网络，词汇里也没有这一维。
+ * 命令的网络由 Provider 在 OS 层限制（策略里的 `network`）；`fetchHttp` 是宿主进程自己的
+ * 请求（模型的 web 工具），不在沙箱里，直接透传。
  */
 export function sandboxedExecution(
   ctx: Context,
@@ -119,14 +130,18 @@ export function sandboxedExecution(
     argv: readonly string[],
     request: { signal?: AbortSignal },
     activePolicy: SandboxExecutionPolicy,
-  ): Promise<Pick<ConfinedArgv, 'argv' | 'env'>> {
+  ): Promise<Pick<ConfinedArgv, 'argv' | 'env' | 'annotate'>> {
     const confined = await requireSandbox().confine({
       op,
       argv,
       policy: activePolicy,
       ...(request.signal ? { signal: request.signal } : {}),
     })
-    return { argv: confined.argv, ...(confined.env ? { env: confined.env } : {}) }
+    return {
+      argv: confined.argv,
+      ...(confined.env ? { env: confined.env } : {}),
+      ...(confined.annotate ? { annotate: confined.annotate } : {}),
+    }
   }
 
   return {
@@ -134,7 +149,7 @@ export function sandboxedExecution(
       const activePolicy = await policy()
       // An approved escalation runs as the user would; the approval was the gate.
       if (activePolicy.mode === 'bypass' || request.unsandboxed) return inner.runShell(request)
-      const confined = await confine('shell', shellArgv(request, config), request, activePolicy)
+      const { annotate, ...confined } = await confine('shell', shellArgv(request, config), request, activePolicy)
       const result = await inner.runProcess({
         ...confined,
         cwd: request.cwd,
@@ -143,16 +158,18 @@ export function sandboxedExecution(
         ...(request.signal ? { signal: request.signal } : {}),
         ...(request.onOutput ? { onOutput: request.onOutput } : {}),
       })
-      return withPipeHint({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr })
+      return withNote(withPipeHint({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr }), annotate?.())
     },
 
     async runProcess(request: ProcessRequest) {
       const activePolicy = await policy()
       if (activePolicy.mode === 'bypass' || !confineProcess) return inner.runProcess(request)
-      const confined = await confine('process', request.argv, request, activePolicy)
-      return inner.runProcess({ ...request, ...confined,
+      const { annotate, ...confined } = await confine('process', request.argv, request, activePolicy)
+      const result = await inner.runProcess({ ...request, ...confined,
         ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
       })
+      const note = annotate?.()
+      return note === undefined ? result : { ...result, ...withNote(result, note) }
     },
 
     fetchHttp(request) {
@@ -167,15 +184,16 @@ export function sandboxedExecution(
             const activePolicy = await policy()
             const open = activePolicy.mode === 'bypass' || request.unsandboxed === true
             if (open && inner.startShell) return inner.startShell(request)
+            // A background process has no single end to report on, so no note.
             const confined = open
               ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config, false) }
-              : await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy)
+              : withoutNote(await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy))
             return markSandboxed(await inner.startProcess!({ ...confined, cwd: request.cwd }), !open)
           },
           async startProcess(request: BackgroundProcessRequest) {
             const activePolicy = await policy()
             if (activePolicy.mode === 'bypass' || !confineProcess) return inner.startProcess!(request)
-            const confined = await confine('process', request.argv, {}, activePolicy)
+            const confined = withoutNote(await confine('process', request.argv, {}, activePolicy))
             return markSandboxed(await inner.startProcess!({ ...request, ...confined,
               ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
             }), true)

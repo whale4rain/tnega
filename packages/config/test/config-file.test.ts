@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { availableModels, ModelRouteError, parseModelRouteInput, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
+import { availableModels, ModelRouteError, parseModelRouteInput, parseSandboxConfig, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
 
 const dirs: string[] = []
 
@@ -29,6 +29,18 @@ describe('system config file', () => {
     expect((await readSystemConfig(file)).projectMemory).toEqual({ enabled: true, maxCallsPerDay: 2, coldModelId: 'economical' })
     await writeFile(file, JSON.stringify({ projectMemory: { maxCallsPerDay: -1 } }))
     expect((await readSystemConfig(file)).projectMemory).toEqual({ enabled: false })
+  })
+  it('persists command network rules, drops entries that are not domains, and clears them', async () => {
+    const file = await configFile()
+    await updateSystemConfig({ sandbox: { network: { mode: 'allowlist', allowedDomains: ['*.github.com', 'pypi.org:443'], deniedDomains: ['gist.github.com'] } } }, file)
+    expect((await readSystemConfig(file)).sandbox).toEqual({
+      network: { mode: 'allowlist', allowedDomains: ['*.github.com', 'pypi.org:443'], deniedDomains: ['gist.github.com'] },
+    })
+    await writeFile(file, JSON.stringify({ sandbox: { network: { mode: 'allowlist', allowedDomains: ['ok.dev', 'http://bad', 3] } } }))
+    expect((await readSystemConfig(file)).sandbox).toEqual({ network: { mode: 'allowlist', allowedDomains: ['ok.dev'] } })
+    await updateSystemConfig({ sandbox: undefined }, file)
+    expect((await readSystemConfig(file)).sandbox).toBeUndefined()
+    expect(parseSandboxConfig({ network: { mode: 'wide' } })).toBeUndefined()
   })
   it('never saves over a file it could not parse', async () => {
     const broken = `{

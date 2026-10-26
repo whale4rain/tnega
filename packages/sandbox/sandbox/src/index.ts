@@ -3,9 +3,11 @@ import {
   normalizeError,
   notifyConfined,
   notifyError,
+  notifyNetwork,
   preConfine,
   sandboxErrorCode,
 } from './events.js'
+import { isNetworkNarrowing, isSandboxNetworkPolicy } from './network.js'
 import {
   SandboxError,
   isAbsolutePath,
@@ -15,10 +17,12 @@ import {
   type SandboxConfineRequest,
   type SandboxOp,
   type SandboxExecutionPolicy,
+  type SandboxNetworkEvent,
   type SandboxPolicy,
 } from './types.js'
 
 export * from './types.js'
+export * from './network.js'
 export * from './roots.js'
 export * from './events.js'
 
@@ -78,6 +82,14 @@ export abstract class SandboxService extends Service {
   abstract status(): Promise<SandboxBackendStatus>
 
   /**
+   * Provider 的过滤代理每判定一次连接就调用它：派发 `sandbox/network`。事件名属于本包，
+   * Provider 只报告事实；观察者失败被吞掉，不影响判定。
+   */
+  protected async reportNetwork(event: SandboxNetworkEvent): Promise<void> {
+    await notifyNetwork(this.ctx, event)
+  }
+
+  /**
    * 把一次准备执行的调用包进沙箱。
    *
    * 事件序列：`sandbox/pre-confine`（可收紧策略/改写 argv）→ Provider（`runConfine`）
@@ -102,6 +114,12 @@ export abstract class SandboxService extends Service {
       if (!isConfinedMode(rewritten.policy.mode)) {
         throw new SandboxError(
           'sandbox/pre-confine widened the policy to bypass; a listener may only narrow it',
+          'SANDBOX_INVALID_POLICY',
+        )
+      }
+      if (!isNetworkNarrowing(active.policy.network, rewritten.policy.network)) {
+        throw new SandboxError(
+          'sandbox/pre-confine widened the network policy; a listener may only narrow it',
           'SANDBOX_INVALID_POLICY',
         )
       }
@@ -183,11 +201,18 @@ function assertPolicy(policy: SandboxExecutionPolicy): SandboxPolicy {
       'SANDBOX_INVALID_POLICY',
     )
   }
+  if (policy.network !== undefined && !isSandboxNetworkPolicy(policy.network)) {
+    throw new SandboxError(
+      'sandbox network policy must name a mode and lists of valid domains; resolve it with resolveNetworkPolicy',
+      'SANDBOX_INVALID_POLICY',
+    )
+  }
   return {
     mode: policy.mode,
     workspaceRoot: policy.workspaceRoot,
     ...(policy.tempRoot !== undefined ? { tempRoot: policy.tempRoot } : {}),
     ...(policy.sessionId !== undefined ? { sessionId: policy.sessionId } : {}),
+    ...(policy.network !== undefined ? { network: policy.network } : {}),
   }
 }
 

@@ -533,6 +533,9 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox
 
   packages/context-insights:
     dependencies:
@@ -706,6 +709,9 @@ importers:
       '@tnega/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox
       '@tnega/sandbox-local':
         specifier: workspace:*
         version: link:../sandbox/sandbox-local
@@ -1549,6 +1555,9 @@ importers:
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox
+      '@tnega/sandbox-network-proxy':
+        specifier: workspace:*
+        version: link:../sandbox-network-proxy
       '@tnega/sandbox-windows-acl':
         specifier: workspace:*
         version: link:../sandbox-windows-acl
@@ -1558,6 +1567,8 @@ importers:
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../../web-kit
+
+  packages/sandbox/sandbox-network-proxy: {}
 
   packages/sandbox/sandbox-windows-acl:
     dependencies:

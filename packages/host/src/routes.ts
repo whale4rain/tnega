@@ -28,7 +28,7 @@ import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
-import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun } from './runs.js'
+import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun, sandboxNetworkFrom } from './runs.js'
 import type { WebServerService } from '@tnega/web-kit'
 
 export const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
@@ -771,6 +771,7 @@ export async function projectHostFor(
     permission: context.projectPermission,
     approvals: context.approvals,
     systemConfig: config,
+    sandboxNetwork: sandboxNetworkFrom(context.configFile),
     builtinTools: {
       cwd: path,
       processes: processesFor(context, path),

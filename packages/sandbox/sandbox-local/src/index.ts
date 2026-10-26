@@ -1,25 +1,36 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@tnega/core'
 import { localExecutionProvider } from '@tnega/execution'
 import { containsDirectory } from '@tnega/fs-sandbox'
+import { startNetworkProxy, type NetworkProxy, type ProxyDecision } from '@tnega/sandbox-network-proxy'
 import {
   SandboxError,
   SandboxService,
   SandboxUnavailableError,
   canonicalPath,
+  decideNetworkAccess,
+  isNetworkRestricted,
   type ConfinedArgv,
   type ConfinedSandboxMode,
   type RunnerFailureRule,
   type SandboxBackendStatus,
   type SandboxEnforcement,
   type SandboxMechanismRequest,
+  type SandboxNetworkPolicy,
   type SandboxPolicy,
 } from '@tnega/sandbox'
-import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.js'
+import {
+  LINUX_PROXY_PORT,
+  bwrapProfileArgs,
+  landlockProfileArgs,
+  linuxRelayArgv,
+  proxyEnvironment,
+  seatbeltProfileArgs,
+} from './profiles.js'
 
 export { sandboxSetupRoutes, type SandboxSetup } from './routes.js'
 
@@ -107,6 +118,11 @@ export interface SandboxInternals {
   probe?: (runner: SandboxRunnerName) => SandboxEnforcement | 'unusable'
   /** 替换「本机卷根」的枚举（`mxcRead: 'all'` 用）；只用于测试。 */
   volumeRoots?: () => readonly string[]
+  /**
+   * 替换网络能力的探测：返回 `undefined` 表示该机制能强制这种网络模式，返回字符串则是
+   * 做不到的原因。只用于测试。
+   */
+  networkProbe?: (runner: SandboxRunnerName, mode: 'allowlist' | 'off') => string | undefined
 }
 
 export interface Config {
@@ -146,12 +162,62 @@ export interface Config {
   mxcRead?: 'all' | 'roots'
   /** `mxcRead: 'roots'` 时工作区之外命令可以**读**的目录（也总是叠加在 `all` 之上）。 */
   mxcReadOnlyRoots?: readonly string[]
+  /** Linux 网络过滤用的 `socat`；默认按 `PATH` 找。 */
+  socatPath?: string
+  /**
+   * 过滤代理放行之后经哪个上游代理出去（`http://host:port`），每次连接读一次。返回
+   * `undefined` 时退回宿主的 `HTTPS_PROXY` / `HTTP_PROXY`；返回空串即直连。
+   */
+  upstreamProxy?: () => string | undefined
+  /** 不走上游的目标（`NO_PROXY` 语法），默认读宿主的 `NO_PROXY`。 */
+  noProxy?: () => string | undefined
   internals?: SandboxInternals
 }
 
 interface Selection {
   runner: SandboxRunnerName
   enforcement: SandboxEnforcement
+}
+
+/** 一份网络策略对应的过滤代理。 */
+interface ProxyHandle {
+  proxy: NetworkProxy
+  /** Linux 上代理 socket 所在的私有目录；TCP 代理缺席。 */
+  socketDir?: string
+}
+
+/** 宿主自己的上游代理：只认 http(s) 变量，`ALL_PROXY` 常常是 socks5://，过滤代理不会说。 */
+function environmentUpstream(): string | undefined {
+  for (const key of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) {
+    const value = process.env[key]?.trim()
+    if (value) return value
+  }
+  return undefined
+}
+
+/** 让模型读得懂的拦截说明，附在命令的 stderr 末尾。 */
+function describeDenials(denials: readonly ProxyDecision[]): string | undefined {
+  if (denials.length === 0) return undefined
+  const seen = new Set<string>()
+  const lines: string[] = []
+  for (const denial of denials) {
+    const target = `${denial.host.includes(':') ? `[${denial.host}]` : denial.host}:${denial.port}`
+    if (seen.has(target)) continue
+    seen.add(target)
+    const why = denial.reason === 'denied'
+      ? `matches the denied domain ${denial.rule ?? ''}`.trim()
+      : denial.reason === 'local-address'
+        ? 'resolves to a local address'
+        : 'not in the allowed domains'
+    lines.push(`  ${target} (${why})`)
+    if (lines.length >= 10) break
+  }
+  return [
+    'tnega sandbox blocked network access for this command:',
+    ...lines,
+    'Commands can only reach the allowed domains set in Settings › Tools & shell › Command network. '
+    + 'If the task needs one of these, ask the user to allow it; do not try to work around the block.',
+  ].join('\n')
 }
 
 /** 探测协商出的 MXC 执行器与契约版本。 */
@@ -221,6 +287,10 @@ export class LocalSandboxService extends SandboxService {
   /** 进行中的常驻授予：并发的命令共用同一次整树传播，而不是排队各做一遍。 */
   private readonly pendingStandingGrants = new Map<string, Promise<void>>()
   private readonly tempGrants = new Map<string, TempGrant>()
+  /** 每份网络策略一个过滤代理，按需启动，dispose 时关闭。 */
+  private readonly proxies = new Map<string, Promise<ProxyHandle>>()
+  /** 机制能否强制某种网络模式：`undefined` 能，字符串是不能的原因。按生命周期缓存。 */
+  private readonly networkSupport = new Map<string, string | undefined>()
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx)
@@ -238,15 +308,18 @@ export class LocalSandboxService extends SandboxService {
       throw new TypeError('runnerFailureSignatures must be non-empty single-line strings')
     }
     ctx.fiber.effect(() => () => this.releaseGrants(), 'dispose sandbox grants')
+    ctx.fiber.effect(() => () => this.closeProxies(), 'close sandbox network proxies')
   }
 
   override async status(): Promise<SandboxBackendStatus> {
     try {
       const selection = await this.select('read-only')
+      const unsupported = await this.networkUnsupported(selection.runner, 'allowlist')
       return {
         available: true,
         runner: selection.runner,
         enforcement: selection.enforcement,
+        network: unsupported === undefined ? { filtering: true } : { filtering: false, detail: unsupported },
       }
     } catch (error) {
       return {
@@ -259,12 +332,16 @@ export class LocalSandboxService extends SandboxService {
   protected override async runConfine(request: SandboxMechanismRequest): Promise<ConfinedArgv> {
     assertTempOutsideWorkspace(request.policy)
     const selection = await this.select(request.policy.mode)
+    const network = await this.prepareNetwork(selection.runner, request.policy)
     const runnerArgv = selection.runner === 'windows-acl'
       ? await this.confineWindowsAcl(request.policy, request.argv)
       : selection.runner === 'windows-mxc'
-        ? await this.confineWindowsMxc(request.policy, request.argv)
-        : this.wrapArgv(selection.runner, request.policy, request.argv)
-    const env = this.nodeRunnerEnv(selection.runner, runnerArgv[0])
+        ? await this.confineWindowsMxc(request.policy, request.argv, network?.proxy)
+        : this.wrapArgv(selection.runner, request.policy, request.argv, network)
+    const runnerEnv = this.nodeRunnerEnv(selection.runner, runnerArgv[0])
+    const env = runnerEnv || network?.env ? { ...network?.env, ...runnerEnv } : undefined
+    const startedAt = Date.now()
+    const proxy = network?.proxy
 
     return {
       argv: runnerArgv,
@@ -273,6 +350,168 @@ export class LocalSandboxService extends SandboxService {
       enforcement: selection.enforcement,
       denialSignatures: denialSignatures(selection.runner, this.config),
       runnerFailureRules: runnerFailureRules(selection.runner, this.config),
+      ...(proxy ? { annotate: () => describeDenials(proxy.proxy.denialsSince(startedAt)) } : {}),
+    }
+  }
+
+  /**
+   * 网络受限时：确认选中的机制做得到（做不到就 fail closed），`allowlist` 再拿到这份策略的
+   * 过滤代理，以及命令里客户端找到它所需的环境变量。
+   */
+  private async prepareNetwork(
+    runner: SandboxRunnerName,
+    policy: SandboxPolicy,
+  ): Promise<{ proxy?: ProxyHandle; env?: Record<string, string> } | undefined> {
+    const network = policy.network
+    if (network === undefined || !isNetworkRestricted(network)) return undefined
+    const mode = network.mode === 'off' ? 'off' : 'allowlist'
+    const unsupported = await this.networkUnsupported(runner, mode)
+    if (unsupported !== undefined) {
+      throw new SandboxError(
+        `network access for commands is set to "${mode === 'off' ? 'off' : 'listed domains only'}", but ${unsupported}; `
+        + 'refusing to run the command with open network. Fix that, or set command network back to open.',
+        'SANDBOX_UNAVAILABLE',
+      )
+    }
+    if (mode === 'off') return {}
+    const proxy = await this.proxyFor(runner, network)
+    if (runner === 'windows-mxc') return { proxy }
+    const port = 'port' in proxy.proxy.address ? proxy.proxy.address.port : LINUX_PROXY_PORT
+    return { proxy, env: proxyEnvironment(port, this.platform, this.config.socatPath ?? 'socat') }
+  }
+
+  /**
+   * 选中的机制能否强制这种网络模式：`undefined` 能，字符串是不能的原因（面向人类）。
+   *
+   * - bwrap：`--unshare-net` 要真的能建 network namespace（探一次）；`allowlist` 还要 socat。
+   * - seatbelt：profile 里的 `network*` 规则，总能做到。
+   * - windows-mxc：`off` 是 MXC 的完全阻断；`allowlist` 要这台机器的 MXC 接受代理模式（探一次）。
+   * - landlock、windows-acl、custom：管不了网络。
+   */
+  private async networkUnsupported(runner: SandboxRunnerName, mode: 'allowlist' | 'off'): Promise<string | undefined> {
+    const key = `${runner}:${mode}`
+    if (this.networkSupport.has(key)) return this.networkSupport.get(key)
+    const override = this.config.internals?.networkProbe
+    const verdict = override !== undefined ? override(runner, mode) : await this.probeNetwork(runner, mode)
+    this.networkSupport.set(key, verdict)
+    return verdict
+  }
+
+  private async probeNetwork(runner: SandboxRunnerName, mode: 'allowlist' | 'off'): Promise<string | undefined> {
+    const timeout = this.config.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
+    switch (runner) {
+      case 'bwrap': {
+        const probe = { ...this.probePolicy(), network: { mode: 'off', allowedDomains: [], deniedDomains: [] } } satisfies SandboxPolicy
+        if (this.probeCommand(this.config.bwrapPath ?? 'bwrap', [...bwrapProfileArgs(probe), '--', 'true'], timeout, 'full') === 'unusable') {
+          return `bubblewrap cannot create a private network here (${this.probeFailure ?? 'probe failed'})`
+        }
+        if (mode === 'off') return undefined
+        const socat = spawnSync(this.config.socatPath ?? 'socat', ['-V'], { timeout, stdio: 'ignore' })
+        return socat.status === 0 ? undefined : 'socat is not installed (install it, for example `apt install socat`)'
+      }
+      case 'seatbelt':
+        return undefined
+      case 'windows-mxc':
+        return mode === 'off' ? undefined : this.probeMxcProxy(timeout)
+      case 'landlock':
+        return 'Landlock cannot restrict network access; install bubblewrap'
+      case 'windows-acl':
+        return 'the Windows ACL sandbox cannot restrict network access; install MXC (npm install -g @microsoft/mxc-sdk) on Windows 11 24H2 or later'
+      case 'custom':
+        return 'the custom sandbox runner does not restrict network access'
+    }
+  }
+
+  /**
+   * MXC 的代理模式要较新的 Windows 构建（26100.9278 / 26200.9278 起）。真跑一次只读的
+   * `exit 0`，请求里带代理模式的网络块；MXC 不在探测里连代理，所以端点只要是回环 URL 即可。
+   */
+  private async probeMxcProxy(timeout: number): Promise<string | undefined> {
+    try {
+      const mxc = await windowsMxc()
+      const selected = this.mxc ?? await this.locateMxc(mxc)
+      const [command, ...prefix] = mxc.resolveMxcRunnerCommand({
+        ...(this.config.windowsMxcRunnerCommand ? { runnerCommand: this.config.windowsMxcRunnerCommand } : {}),
+      })
+      if (command === undefined) return 'the MXC runner command is empty'
+      const workspace = this.probePolicy().workspaceRoot
+      const env = this.nodeRunnerEnv('windows-mxc', command)
+      const result = await localExecutionProvider.runProcess({
+        argv: [command, ...prefix, ...mxc.buildRunnerArgs({
+          workspace, mode: 'read-only', exec: selected.exec, contract: selected.contract,
+          containerId: mxc.containerIdFor(workspace, 'probe-network'),
+          network: { proxy: 'http://127.0.0.1:9' },
+          readOnlyRoots: [], execArgs: [],
+          argv: ['cmd.exe', '/d', '/s', '/c', 'exit 0'],
+        })],
+        cwd: workspace,
+        timeoutMs: Math.max(timeout, DEFAULT_MXC_PROBE_TIMEOUT_MS),
+        maxBuffer: 64 * 1024,
+        ...(env ? { env } : {}),
+      })
+      if (result.exitCode === 0) return undefined
+      return `this Windows build's MXC does not accept proxy mode (${result.stderr.trim() || `runner exited ${result.exitCode}`}); `
+        + 'update Windows 11 to build 26100.9278 / 26200.9278 or later'
+    } catch (error) {
+      return `MXC proxy mode could not be checked: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+
+  /**
+   * 这份网络策略的过滤代理。Linux 上它监听私有目录里的 Unix socket（绑定进 bwrap 后由 socat
+   * 接回 TCP）；macOS 与 Windows 监听 `127.0.0.1` 的随机端口（Seatbelt 与 MXC 只放行它）。
+   */
+  private proxyFor(runner: SandboxRunnerName, network: SandboxNetworkPolicy): Promise<ProxyHandle> {
+    const unix = runner === 'bwrap'
+    const key = JSON.stringify([unix, network.allowedDomains, network.deniedDomains])
+    let pending = this.proxies.get(key)
+    if (pending === undefined) {
+      pending = this.startProxy(unix, network)
+      // 起不来的代理不缓存：下一条命令重试。
+      pending.catch(() => this.proxies.delete(key))
+      this.proxies.set(key, pending)
+    }
+    return pending
+  }
+
+  private async startProxy(unix: boolean, network: SandboxNetworkPolicy): Promise<ProxyHandle> {
+    const options = {
+      decide: (target: { host: string; port: number }) => decideNetworkAccess(network, target.host, target.port),
+      upstream: () => this.config.upstreamProxy?.() ?? environmentUpstream(),
+      noProxy: this.config.noProxy ?? (() => process.env.NO_PROXY ?? process.env.no_proxy),
+      onDecision: (decision: ProxyDecision) => {
+        void this.reportNetwork({
+          host: decision.host,
+          port: decision.port,
+          protocol: decision.protocol,
+          allowed: decision.allowed,
+          reason: decision.reason,
+          ...(decision.rule !== undefined ? { rule: decision.rule } : {}),
+          at: decision.at,
+        })
+      },
+    }
+    if (!unix) return { proxy: await startNetworkProxy({ host: '127.0.0.1', port: 0 }, options) }
+    const socketDir = canonicalPath(await mkdtemp(join(tmpdir(), 'tnega-net-')))
+    try {
+      // 目录只给本账户：别的本地用户不该借这个 socket 出网。
+      await chmod(socketDir, 0o700)
+      return { proxy: await startNetworkProxy({ path: join(socketDir, 'proxy.sock') }, options), socketDir }
+    } catch (error) {
+      await rm(socketDir, { recursive: true, force: true }).catch(() => undefined)
+      throw error
+    }
+  }
+
+  private async closeProxies(): Promise<void> {
+    const handles = await Promise.allSettled(this.proxies.values())
+    this.proxies.clear()
+    for (const handle of handles) {
+      if (handle.status !== 'fulfilled') continue
+      await handle.value.proxy.close().catch(() => undefined)
+      if (handle.value.socketDir !== undefined) {
+        await rm(handle.value.socketDir, { recursive: true, force: true }).catch(() => undefined)
+      }
     }
   }
 
@@ -281,10 +520,17 @@ export class LocalSandboxService extends SandboxService {
     runner: SandboxRunnerName,
     policy: SandboxPolicy,
     argv: readonly string[],
+    network?: { proxy?: ProxyHandle },
   ): string[] {
+    const proxy = network?.proxy
     switch (runner) {
-      case 'bwrap':
-        return [this.config.bwrapPath ?? 'bwrap', ...bwrapProfileArgs(policy), '--', ...argv]
+      case 'bwrap': {
+        const socketDir = proxy?.socketDir
+        const relay = socketDir === undefined
+          ? []
+          : linuxRelayArgv(this.config.socatPath ?? 'socat', join(socketDir, 'proxy.sock'))
+        return [this.config.bwrapPath ?? 'bwrap', ...bwrapProfileArgs(policy, socketDir), '--', ...relay, ...argv]
+      }
       case 'landlock':
         return [
           this.config.landlockLauncher ?? 'landlock-run',
@@ -295,7 +541,7 @@ export class LocalSandboxService extends SandboxService {
       case 'seatbelt':
         return [
           this.config.sandboxExecPath ?? 'sandbox-exec',
-          ...seatbeltProfileArgs(policy),
+          ...seatbeltProfileArgs(policy, proxy && 'port' in proxy.proxy.address ? proxy.proxy.address.port : undefined),
           '--',
           ...argv,
         ]
@@ -333,7 +579,7 @@ export class LocalSandboxService extends SandboxService {
    * Windows MXC：Provider 不落任何 ACE。runner 为每次调用写一份 MXC 请求（模式、工作区、
    * `workspace-write` 的私有 temp、读根），MXC 在请求结束时撤销它自己的策略，所以这里只拼 argv。
    */
-  private async confineWindowsMxc(policy: SandboxPolicy, argv: readonly string[]): Promise<string[]> {
+  private async confineWindowsMxc(policy: SandboxPolicy, argv: readonly string[], proxy?: ProxyHandle): Promise<string[]> {
     const mxc = await windowsMxc()
     const selected = this.mxc ?? await this.locateMxc(mxc)
     const workspaceRoot = canonicalPath(policy.workspaceRoot)
@@ -351,6 +597,11 @@ export class LocalSandboxService extends SandboxService {
       contract: selected.contract,
       containerId: mxc.containerIdFor(workspaceRoot, policy.sessionId),
       ...(policy.mode === 'workspace-write' ? { temp: tempBase } : {}),
+      ...(policy.network?.mode === 'off'
+        ? { network: 'off' as const }
+        : proxy && 'port' in proxy.proxy.address
+          ? { network: { proxy: `http://127.0.0.1:${proxy.proxy.address.port}` } }
+          : {}),
       readOnlyRoots: this.mxcReadRoots(),
       execArgs: [],
       argv,

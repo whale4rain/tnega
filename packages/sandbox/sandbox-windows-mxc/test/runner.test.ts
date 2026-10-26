@@ -22,7 +22,9 @@ import {
   buildRunnerArgs,
   childEnvironment,
   containerIdFor,
+  loopbackProxyUrl,
   mxcErrorCode,
+  mxcNetworkFields,
   mxcRequestRefusal,
   parseRunnerArgs,
   type MxcRunnerInvocation,
@@ -122,6 +124,42 @@ describe('runner argv', () => {
 
   it('speaks the 1.0.0 contract first and falls back to the 0.9 alpha', () => {
     expect(MXC_CONTRACT_VERSIONS).toEqual(['1.0.0', '0.9.0-alpha'])
+  })
+})
+
+describe('runner network', () => {
+  it('round-trips off and a loopback proxy, and leaves open implicit', () => {
+    const off = invocation({ network: 'off' })
+    expect(parseRunnerArgs(buildRunnerArgs(off))).toEqual(off)
+    const proxied = invocation({ network: { proxy: 'http://127.0.0.1:8123' } })
+    expect(parseRunnerArgs(buildRunnerArgs(proxied))).toEqual(proxied)
+    expect(buildRunnerArgs(invocation({ network: 'open' }))).not.toContain('--network')
+  })
+
+  it('accepts only a loopback http:// proxy with a port', () => {
+    expect(loopbackProxyUrl('http://127.0.0.1:8123/')).toBe('http://127.0.0.1:8123')
+    expect(loopbackProxyUrl('http://[::1]:8123')).toBe('http://[::1]:8123')
+    for (const bad of ['http://10.0.0.1:8123', 'https://127.0.0.1:8123', 'http://127.0.0.1', 'http://u:p@127.0.0.1:1', 'http://127.0.0.1:1/x', 'nope']) {
+      expect(loopbackProxyUrl(bad), bad).toBeUndefined()
+    }
+    expect(() => parseRunnerArgs(['--network', 'http://example.com:80', ...buildRunnerArgs(invocation())]))
+      .toThrow(/--network must be open, off or a loopback/u)
+  })
+
+  it('maps each mode to the MXC network block', () => {
+    expect(mxcNetworkFields('open')).toEqual({ network: { egress: { default: 'allow' }, ingress: { default: 'allow', hostLoopback: 'allow' } } })
+    expect(mxcNetworkFields('off')).toEqual({ network: { egress: { default: 'deny' }, ingress: { default: 'deny', hostLoopback: 'deny' } } })
+    // Identity-less loopback proxy: egress denied, the host proxy reachable over loopback.
+    expect(mxcNetworkFields({ proxy: 'http://127.0.0.1:8123' })).toEqual({
+      network: { egress: { default: 'deny' }, ingress: { default: 'allow', hostLoopback: 'allow' } },
+      runtimeConfig: { networkProxy: 'http://127.0.0.1:8123' },
+    })
+    const request = buildMxcRequest({
+      contract: '1.0.0', mode: 'read-only', workspace, readOnlyRoots: [], commandLine: 'cmd', cwd: workspace,
+      env: {}, containerId: 'tnega-x', network: { proxy: 'http://127.0.0.1:1' },
+    })
+    expect(request).toMatchObject({ runtimeConfig: { networkProxy: 'http://127.0.0.1:1' }, network: { egress: { default: 'deny' } } })
+    expect(request).not.toHaveProperty('network.allowedProxyPeer')
   })
 })
 
