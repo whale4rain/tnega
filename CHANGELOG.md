@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.4 | [`v0.5.3...v0.5.4`](https://github.com/whale4rain/tnega/compare/v0.5.3...v0.5.4) | 29 |
 | 0.5.3 | [`v0.5.2...v0.5.3`](https://github.com/whale4rain/tnega/compare/v0.5.2...v0.5.3) | 14 |
 | 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | 16 |
 | 0.5.2-beta.7 | [`v0.5.2-beta.6...v0.5.2-beta.7`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.6...v0.5.2-beta.7) | 12 |
@@ -64,6 +65,102 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.4](https://github.com/whale4rain/tnega/releases/tag/v0.5.4) — 2026-10-26
+
+### Features
+
+- Files are read in pages and edited in place. `read_file` pages by line
+  window (`offset`, `limit`, 2000 lines per call, a 2000-character line clip)
+  and reports `lines: { start, end, total }`; the body stays unnumbered so an
+  `old_string` copied from it matches verbatim. The new `edit_file` applies
+  literal `old_string`/`new_string` edits with a unique match or
+  `replace_all`, reports the lines an ambiguous match hit, refuses overlapping
+  edits, and either lands every edit or leaves the file unchanged. Writes are
+  atomic (a private staging file, fsync, then `rename`, or `link` for a target
+  known to be absent), keep the target's permission bits, write through
+  symlinks, and a per-path lock serialises read-modify-write so two agents
+  editing one file no longer lose an edit.
+- The file write guard is a real setting. `off`, `warn` (the default) or
+  `enforce` decide what an unread or externally changed file means: proceed,
+  proceed with a note, or refuse and name the version to re-read against. It is
+  in Settings, labelled experimental until the refusal rate of `enforce` is
+  known, and on the command line as `tnega run --fs-guard=off|warn|enforce`.
+- Read-only tool calls of one message run together. A tool may declare
+  `isConcurrencySafe`; consecutive `read_file`, `list_dir`, `glob`, `grep`,
+  `http_get`, `job_output`, `job_list`, `office_read` and `office_inspect`
+  calls now overlap instead of each costing a round trip. Everything else stays
+  exclusive, results still settle in call order, and a failing call settles as
+  its own result instead of cancelling its siblings.
+- A long command is a `shell` parameter: `shell({runInBackground: true})` starts
+  the job and the wrapper tool `job_start` is gone, while
+  `job_output`/`job_kill`/`job_list` stay. One wait may last up to 10 minutes and
+  reports how long it waited and how long it may wait again.
+- One `skill` tool instead of four:
+  `skill({action: 'list' | 'read' | 'create' | 'install'})` replaces
+  `skills_list`, `skill_read`, `skill_create` and `skill_install`, and approval
+  branches on the action, so `list` and `read` stay free and `create` and
+  `install` still need the workspace-write tier.
+- Each product shape keeps one tool table. The CLI sends 6,893 characters of
+  schema over 9 tools instead of 14,219 over 22: `echo`, `calculator` and `json`
+  are gone, `now` survives only in the project shape, and the office tools mount
+  only when the workspace holds a spreadsheet, a document or a deck, or when a
+  work session asks for them.
+- A context overflow no longer ends the run. The provider's "prompt is too long"
+  is recognised by its wording over the whole cause chain; when no plugin
+  handled it and a context budget is configured, the same compaction the
+  between-steps path uses runs once and the request retries from its result, and
+  a second overflow in the same step is a real failure. A single `read_file` is
+  now capped at 50 KiB.
+- `tnega run` behaves like a session: a headless run gets an agent id, an
+  automatic context budget from the model's window, the loop guard and the
+  continuation nudge, so a steered message is read back and a scripted run stops
+  where a session would.
+- The composer writes Markdown. Your own messages are bubbles in ordinary
+  sessions too; the message box colours list markers, quotes, headings and
+  inline code under the text as you type and carries a list on Shift+Enter / Tab
+  (`1. a` → `2. `, `- a` → `- `); the tool row holds only the model and effort
+  dropdowns, with `/plan`, `/goal` and `/auto` replacing the mode buttons; and
+  documents dropped, pasted or picked into a session composer are saved to
+  `.tnega/uploads/` and travel as `[Attached file: <path>]`.
+
+### Fixes
+
+- A saved file write guard reaches Projects and `tnega run` again:
+  `PUT /api/config` accepts `fsGuard`, the snapshot returns it, and a changed
+  mode rebuilds the resident runtime.
+- `edit_file` is fenced for a thread narrower than a bypassing parent, so it can
+  no longer write outside the workspace without approval.
+- Path fencing follows symlinks and fences the name it resolved to, so a lock, a
+  read record and the write agree; a dangling link creates its target, and a
+  busy target on Windows fails instead of being written in place.
+- `read_file` never returns more than its cap and says how to read the rest of a
+  line that alone is over it; such a line is read whole with `limit: 1`.
+- A Session keeps trying to name itself: a failed auto-title attempt no longer
+  marks naming as done and its marker records why, and the title is asked for
+  with reasoning off and a 256-token budget so reasoning cannot eat the answer.
+- A finished turn's process folds each run of thoughts and tool calls between
+  narration into one line again; a process that is a single run still lists its
+  steps.
+- The desktop top bar and its native window controls stay put while the
+  Workbench folds, and the controls keep one colour for the whole fold.
+
+### Other
+
+- `@tnega/tools` holds the registry, the pipeline and shared vocabulary only.
+  The builtin tools moved to the domains that own them (`fs/tool-fs`,
+  `shell/tool-shell`, `web/tool-web-fetch`), the office, PTC and question
+  packages moved into `office/`, `ptc/` and `questions/`, and
+  `ProcessRegistry` moved to `@tnega/execution`.
+- ADR 0013 (parallel tool calls) and ADR 0014 (atomic file writes) record the
+  contracts behind this batch; the planned tool-result pruner is deliberately
+  not implemented and the reasons are in the plan.
+- Tool names removed in this release: `echo`, `calculator`, `json`, `now`
+  outside the project shape, `job_start`, `skills_list`, `skill_read`,
+  `skill_create` and `skill_install`. A builtin skill file already installed in
+  your home directory keeps the old names, because existing instructions are
+  never overwritten; new installs get the corrected text.
+- A Terminal-Bench 4.0 report is in `docs/eval/2026-10-25-terminal-bench-4`.
 
 ## [0.5.3](https://github.com/whale4rain/tnega/releases/tag/v0.5.3) — 2026-10-23
 
