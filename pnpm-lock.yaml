@@ -1492,6 +1492,9 @@ importers:
       '@tnega/tool-memory':
         specifier: workspace:*
         version: link:../memory/tool-memory
+      '@tnega/tool-network-access':
+        specifier: workspace:*
+        version: link:../sandbox/tool-network-access
       '@tnega/tool-office':
         specifier: workspace:*
         version: link:../office/tool-office
@@ -1577,6 +1580,18 @@ importers:
         version: 3.3.1
 
   packages/sandbox/sandbox-windows-mxc: {}
+
+  packages/sandbox/tool-network-access:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/session:
     dependencies:

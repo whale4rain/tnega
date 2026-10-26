@@ -64,6 +64,7 @@ const packageDirs = {
   sandbox: 'packages/sandbox/sandbox',
   'sandbox-local': 'packages/sandbox/sandbox-local',
   'sandbox-network-proxy': 'packages/sandbox/sandbox-network-proxy',
+  'tool-network-access': 'packages/sandbox/tool-network-access',
   'sandbox-windows-acl': 'packages/sandbox/sandbox-windows-acl',
   'sandbox-windows-mxc': 'packages/sandbox/sandbox-windows-mxc',
   'fs-sandbox': 'packages/sandbox/fs-sandbox',

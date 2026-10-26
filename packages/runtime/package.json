@@ -28,6 +28,7 @@
     "@tnega/tool-fs": "workspace:*",
     "@tnega/tool-jobs": "workspace:*",
     "@tnega/tool-memory": "workspace:*",
+    "@tnega/tool-network-access": "workspace:*",
     "@tnega/tool-office": "workspace:*",
     "@tnega/tool-ptc": "workspace:*",
     "@tnega/tool-search": "workspace:*",

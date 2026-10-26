@@ -19,6 +19,7 @@ import { toolOffice } from '@tnega/tool-office'
 import { toolPtc } from '@tnega/tool-ptc'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSpill } from '@tnega/tool-spill'
+import { NetworkGrants, toolNetworkAccess, withGrants } from '@tnega/tool-network-access'
 import { tools, type ToolPolicy } from '@tnega/tools'
 import { builtinTools, type BuiltinToolsConfig } from './builtins.js'
 import { readdir } from 'node:fs/promises'
@@ -86,9 +87,22 @@ export type Permission = PermissionMode | (() => PermissionMode | Promise<Permis
 export type SandboxNetworkSource =
   | SandboxNetworkRequest
   | (() => SandboxNetworkRequest | undefined | Promise<SandboxNetworkRequest | undefined>)
+  | SandboxNetworkSettings
+
+/** Command network settings a host can also write: "always allow" from an approval saves here. */
+export interface SandboxNetworkSettings {
+  read: () => SandboxNetworkRequest | undefined | Promise<SandboxNetworkRequest | undefined>
+  remember?: (domains: readonly string[]) => Promise<void>
+}
+
+function isNetworkSettings(source: SandboxNetworkSource): source is SandboxNetworkSettings {
+  return typeof source === 'object' && 'read' in source && typeof source.read === 'function'
+}
 
 async function networkOf(source: SandboxNetworkSource | undefined): Promise<SandboxNetworkRequest | undefined> {
-  return typeof source === 'function' ? await source() : source
+  if (source === undefined) return undefined
+  if (typeof source === 'function') return await source()
+  return isNetworkSettings(source) ? await source.read() : source
 }
 
 export interface RuntimeSpec {
@@ -165,8 +179,10 @@ export const sandboxCapability: Plugin = {
       // Allowed connections leave through the proxy set in Settings, else HTTPS_PROXY.
       upstreamProxy: () => networkPolicy().proxy,
     })
+    // Domains the person approved through request_network_access, rebuilt from the Session.
+    const grants = new NetworkGrants(() => ctx.get('session', false))
     const policy = async (): Promise<SandboxExecutionPolicy> => {
-      const network = await networkOf(spec.network)
+      const network = await withGrants(await networkOf(spec.network), grants)
       return resolveSandboxPolicy({
         mode: await permissionOf(spec.permission),
         workspaceRoot,
@@ -182,6 +198,15 @@ export const sandboxCapability: Plugin = {
         resolvePolicy: policy,
       }),
     })
+    // Only hosts that read live settings (and so have a person to approve) get the tool.
+    const source = spec.network
+    if (source !== undefined && isNetworkSettings(source)) {
+      await ctx.plugin(toolNetworkAccess, {
+        grants,
+        network: () => networkOf(source),
+        ...(source.remember ? { remember: source.remember } : {}),
+      })
+    }
   },
 }
 

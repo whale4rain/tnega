@@ -135,6 +135,10 @@ Definition 里的纯函数（`decideNetworkAccess`），代理与设置界面共
 - **只能收紧**：`sandbox/pre-confine` 的监听器可以把网络改得更严，改宽即
   `SANDBOX_INVALID_POLICY`。代理的每次判定以 `sandbox/network` 只读广播；命令退出后，
   `ConfinedArgv.annotate` 把本次被拒的主机附在 stderr 末尾，模型知道该去设置里加哪个域名。
+- **向人要权限**：`@tnega/tool-network-access` 的 `request_network_access` 让 Agent 为被拦的域名
+  走常规审批（与其它越权工具调用同一张卡片、同一套自动审批）。批准即对本 Session 生效，
+  `remember` 还写进设置的允许表；授予由 Session 里的 `tool/result` 重建。`off` 与拒绝表不能经
+  审批打开，`*` 永不授予，没有 permission guard 的宿主不挂这个工具。
 - **配置**：System Config 的 `sandbox.network`，设置里的 Tools & shell › Command network；
   每次执行都重新读，改了不必重启。`bypass` 仍然是「不要沙箱」，网络也不限制。
 - **限制**：只有遵守代理环境变量的客户端能出网（HTTP/S 与 SOCKS5，Linux/macOS 的 git ssh 经

@@ -23,12 +23,12 @@ import { subagentLocal } from '@tnega/subagent-local'
 import { toolSubagent } from '@tnega/tool-subagent'
 import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
-import { runtimeCapabilities, type SandboxNetworkSource } from '@tnega/runtime'
+import { runtimeCapabilities, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { toolWebSearch } from '@tnega/tool-web-search'
 import { builtinTools, createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
-import { readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
+import { readSystemConfig, updateSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import type { SandboxNetworkRequest } from '@tnega/sandbox'
 import { patchSessionMeta, readSessionSummary } from '@tnega/session-store'
 
@@ -306,8 +306,20 @@ export async function handleRun(
  * Command network access as saved in Settings, read before every command so
  * a change applies to running sessions without restarting them.
  */
-export function sandboxNetworkFrom(configFile: string | undefined): () => Promise<SandboxNetworkRequest | undefined> {
-  return async () => (await readSystemConfig(configFile)).sandbox?.network
+/**
+ * Command network from the System Config, read before every command so a change in
+ * Settings applies at once. An approved "always allow" adds its domains to the list.
+ */
+export function sandboxNetworkFrom(configFile: string | undefined): SandboxNetworkSettings {
+  return {
+    read: async (): Promise<SandboxNetworkRequest | undefined> => (await readSystemConfig(configFile)).sandbox?.network,
+    remember: async (domains) => {
+      const network = (await readSystemConfig(configFile)).sandbox?.network
+      if (network?.mode !== 'allowlist') return
+      const allowedDomains = [...new Set([...(network.allowedDomains ?? []), ...domains])]
+      await updateSystemConfig({ sandbox: { network: { ...network, allowedDomains } } }, configFile)
+    },
+  }
 }
 
 export interface ResidentRunRequest {
