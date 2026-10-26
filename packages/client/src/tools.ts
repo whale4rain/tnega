@@ -48,6 +48,7 @@ const VERB: Record<string, [running: string, done: string]> = {
   shell: ['Running', 'Ran'],
   http_get: ['Fetching', 'Fetched'],
   web_search: ['Searching the web', 'Searched the web'],
+  web_fetch: ['Reading', 'Read'],
   skill: ['Skill', 'Skill'],
   remember_global: ['Remembering', 'Remembered'],
   write_memory: ['Saving memory', 'Saved memory'],

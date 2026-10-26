@@ -51,6 +51,13 @@ describe('image capability', () => {
     expect(supportsVision('gpt-3.5-turbo')).toBe(false)
     expect(modelCapabilities('deepseek-flash', 'openai', undefined, false).vision).toBe(false)
   })
+
+  it('offers DeepSeek V4 effort levels on its OpenAI-style route', () => {
+    expect(modelCapabilities('deepseek-v4-flash').reasoningEfforts).toEqual(['low', 'high'])
+    expect(modelCapabilities('deepseek-flash', 'openai').reasoningEfforts).toEqual(['low', 'high'])
+    expect(modelCapabilities('deepseek-chat', 'openai').reasoningEfforts).toEqual([])
+    expect(modelCapabilities('deepseek-v4-pro', 'openai', []).reasoningEfforts).toEqual([])
+  })
 })
 
 describe('prepareImages', () => {

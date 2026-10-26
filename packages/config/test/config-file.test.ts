@@ -54,6 +54,21 @@ describe('system config file', () => {
 })
 
 describe('chat model routes', () => {
+  it('offers the model\'s own effort levels to a saved route that lists none, and keeps a listed set', () => {
+    const config = {
+      models: [
+        { id: 'deepseek-flash', model: 'deepseek-flash', protocol: 'openai' as const, baseUrl: 'https://api.deepseek.com', apiKey: 'sk' },
+        { id: 'pinned', model: 'deepseek-v4-pro', protocol: 'openai' as const, baseUrl: 'https://api.deepseek.com', apiKey: 'sk', reasoningEfforts: ['high' as const] },
+        { id: 'plain', model: 'qwen3-coder', protocol: 'openai' as const, baseUrl: 'https://example.test/v1', apiKey: 'sk' },
+      ],
+    }
+    expect(availableModels(config, {}).map(model => [model.id, model.reasoningEfforts])).toEqual([
+      ['deepseek-flash', ['low', 'high']],
+      ['pinned', ['high']],
+      ['plain', []],
+    ])
+  })
+
   it('registers several models, keeps a saved key when the form leaves it blank, and removes one', async () => {
     const file = await configFile(JSON.stringify({ model: 'deepseek-flash', apiKey: 'sk-default' }))
     await upsertModelRoute('deepseek-flash', parseModelRouteInput({ name: 'DeepSeek Flash', model: 'deepseek-flash', protocol: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: 'sk-ds' }), file)

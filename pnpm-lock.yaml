@@ -1808,6 +1808,9 @@ importers:
 
   packages/web/tool-web-search:
     dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools

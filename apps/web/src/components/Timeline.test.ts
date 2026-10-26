@@ -189,12 +189,22 @@ it('folds each run of steps again inside an opened process, and lists a single r
   expect(view.getByRole('button', { name: 'Thought for 1.0s' })).toBeTruthy()
   expect(view.getByRole('button', { name: 'Ran pnpm test' })).toBeTruthy()
 
-  // A process that is one run is already behind one line: opening it lists the steps.
+  // A process that is one run is already behind one line: opening it shows the
+  // thoughts, with the tool calls between two thoughts folded to one line.
   cleanup()
-  const single = render(createElement(Timeline, { entries: [done([read('a'), thought, read('b')])], running: false, actions: {} }))
-  fireEvent.click(single.getByRole('button', { name: 'Read 2 files' }))
-  expect(single.getByRole('button', { name: 'Thought for 1.0s' })).toBeTruthy()
-  expect(single.container.querySelectorAll('.tool-row')).toHaveLength(2)
+  const single = render(createElement(Timeline, { entries: [done([read('a'), read('b'), thought, read('c'), shell, thought, read('d')])], running: false, actions: {} }))
+  fireEvent.click(single.getByRole('button', { name: 'Read 4 files, ran a command' }))
+  expect(single.getAllByRole('button', { name: 'Thought for 1.0s' })).toHaveLength(2)
+  expect(single.getByRole('button', { name: 'Read 2 files' }).getAttribute('aria-expanded')).toBe('false')
+  expect(single.getByRole('button', { name: 'Read a file, ran a command' })).toBeTruthy()
+  expect(single.getByRole('button', { name: 'Read d.ts' })).toBeTruthy()
+  expect(single.container.querySelectorAll('.tool-row')).toHaveLength(1)
+
+  // Only tool calls and no thought: opening lists them, rather than one more fold.
+  cleanup()
+  const tools = render(createElement(Timeline, { entries: [done([read('a'), read('b')])], running: false, actions: {} }))
+  fireEvent.click(tools.getByRole('button', { name: 'Read 2 files' }))
+  expect(tools.container.querySelectorAll('.tool-row')).toHaveLength(2)
 })
 
 it('opens running CodeMode scripts and child tool progress without showing escaped JSON', () => {

@@ -257,10 +257,11 @@ type Segment =
  * Consecutive thoughts and tool calls fold into one run of steps, so the
  * transcript reads as words and one quiet line between them (tnega-design
  * §5.1). A thought still being written stays on its own line so it can be
- * read as it streams; a run of one thought is just that thought. `fold: false`
- * lists the steps one by one (see `processSegments`).
+ * read as it streams; a run of one thought is just that thought.
+ * `fold: 'tools'` keeps each thought on its own line and folds only the tool
+ * calls between them; `fold: 'none'` lists every step (see `processSegments`).
  */
-function segment(blocks: readonly Block[], { fold = true }: { fold?: boolean } = {}): Segment[] {
+function segment(blocks: readonly Block[], { fold = 'steps' }: { fold?: 'steps' | 'tools' | 'none' } = {}): Segment[] {
   const out: Segment[] = []
   let run: Step[] = []
   const flush = () => {
@@ -270,9 +271,9 @@ function segment(blocks: readonly Block[], { fold = true }: { fold?: boolean } =
     run = []
   }
   for (const block of blocks) {
-    if (block.kind === 'tool' || (block.kind === 'reasoning' && !block.streaming)) {
+    if (block.kind === 'tool' || (fold === 'steps' && block.kind === 'reasoning' && !block.streaming)) {
       run.push(block)
-      if (!fold) flush()
+      if (fold === 'none') flush()
     } else {
       flush()
       out.push(block)
@@ -286,12 +287,17 @@ function segment(blocks: readonly Block[], { fold = true }: { fold?: boolean } =
  * What an opened process fold lists. Narration stays as written and each run
  * of thoughts and tool calls between it folds to one line again, so a long
  * process reads as a few lines. A process that is one run already sits behind
- * the fold's own line; folding it twice would only add a click, so its steps
- * are listed one by one.
+ * the fold's own line, so opening it shows its thoughts, with the tool calls
+ * between two thoughts folded to one line ("Read 2 files, ran a command").
+ * Folding that to one line again would only add a click, so then every step
+ * is listed.
  */
 function processSegments(blocks: readonly Block[]): Segment[] {
+  const single = (segments: Segment[]) => segments.length === 1 && segments[0]?.kind === 'steps'
   const folded = segment(blocks)
-  return folded.length === 1 && folded[0]?.kind === 'steps' ? segment(blocks, { fold: false }) : folded
+  if (!single(folded)) return folded
+  const tools = segment(blocks, { fold: 'tools' })
+  return single(tools) ? segment(blocks, { fold: 'none' }) : tools
 }
 
 function findLastAgent(entries: readonly Entry[]): string | undefined {
