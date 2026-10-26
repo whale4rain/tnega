@@ -33,6 +33,11 @@ describe('web_search', () => {
     await expect(createWebSearchTool({}).execute({ query: 'news' }, run)).rejects.toThrow('DEEPSEEK_API_KEY')
     const broke = createWebSearchTool({ apiKey: 'sk-test', fetch: fakeFetch(402, { error: { message: 'Insufficient Balance', type: 'payment', param: null, code: 'x' } }) })
     await expect(broke.execute({ query: 'news' }, run)).rejects.toThrow('HTTP 402): the DeepSeek account balance is too low (Insufficient Balance)')
+    // A 200 that is not the documented shape is a fault, not "no hits" or an empty page.
+    const garbled = vi.fn<typeof globalThis.fetch>(async () => new Response('<html>oops</html>', { status: 200 }))
+    await expect(createWebSearchTool({ apiKey: 'sk-test', fetch: garbled }).execute({ query: 'news' }, run)).rejects.toThrow('invalid response body')
+    await expect(createWebFetchPageTool({ apiKey: 'sk-test', fetch: garbled }).execute({ url: 'https://example.com/' }, run)).rejects.toThrow('invalid response body')
+    await expect(createWebSearchTool({ apiKey: 'sk-test', fetch: fakeFetch(200, {}) }).execute({ query: 'news' }, run)).rejects.toThrow('no results list')
   })
 })
 

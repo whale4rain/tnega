@@ -77,11 +77,13 @@ async function call(
     ...(options.signal ? { signal: options.signal } : {}),
   })
   const payload: unknown = await response.json().catch(() => undefined)
-  const data = isRecord(payload) ? payload : {}
+  const data = isRecord(payload) ? payload : undefined
   if (!response.ok) {
-    const error = isRecord(data.error) ? data.error : undefined
+    const error = data && isRecord(data.error) ? data.error : undefined
     throw failure(tool, response.status, text(error?.message))
   }
+  // A success without a JSON object is a provider fault, not "no results" or an empty page.
+  if (!data) throw new Error(`${tool} failed: DeepSeek returned an invalid response body`)
   return data
 }
 
@@ -119,7 +121,8 @@ export function createWebSearchTool(config: ToolWebSearchConfig = {}): ToolDefin
       }, options)
       const results: WebSearchResult[] = []
       const seen = new Set<string>()
-      for (const value of Array.isArray(data.results) ? data.results : []) {
+      if (!Array.isArray(data.results)) throw new Error('web_search failed: DeepSeek returned no results list')
+      for (const value of data.results) {
         if (!isRecord(value)) continue
         const item = value
         const url = text(item.url)
