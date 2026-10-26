@@ -63,8 +63,9 @@ _Avoid_: hot reload, live config
 
 **沙箱 (Sandbox)**:
 把一次执行包进本机机制（bwrap / landlock / seatbelt / Windows ACL）的能力缝，拥有
-`ctx.sandbox`。它只声明**文件写**的效果：`read-only` 不允许任何写，`workspace-write` 只允许
-工作区与临时区。宿主上没有任何可用机制时 fail closed（`SANDBOX_UNAVAILABLE`），绝不回退到
+`ctx.sandbox`。模式只声明**文件写**的效果：`read-only` 不允许任何写，`workspace-write` 只允许
+工作区与临时区。策略另有可选的**命令网络**维度（`open` / `allowlist` / `off`，按域名规则经过滤
+代理放行）。宿主上没有能强制策略的机制时 fail closed（`SANDBOX_UNAVAILABLE`），绝不回退到
 非受限执行；`bypass` 的含义是「不要沙箱」，不是更宽的策略。
 _Avoid_: jail、container、isolation
 

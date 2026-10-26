@@ -111,7 +111,7 @@ class NetworkStub extends SandboxService {
 
   protected override runConfine(request: SandboxMechanismRequest): ConfinedArgv {
     this.seen.push(request)
-    return { argv: ['/bin/true'], runner: 'stub', enforcement: 'full' }
+    return { argv: ['/bin/true'], runner: 'stub', enforcement: 'full', denialSignatures: [], runnerFailureRules: [] }
   }
 
   override async status(): Promise<SandboxBackendStatus> {

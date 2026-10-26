@@ -75,9 +75,10 @@ Core invariants (`AGENTS.md`, "设计不变量"):
 - Capability seams keep their direction: a Provider and a Consumer depend only
   on the Service Definition, never on each other, and a Consumer never imports
   or lists a concrete Provider. See `docs/adr/0006-capability-seams.md`.
-- The sandbox only limits file writes and fails closed: with no working
-  mechanism it throws `SANDBOX_UNAVAILABLE` and never falls back to
-  unrestricted execution. `bypass` means "no sandbox", not a wider policy.
+- The sandbox limits file writes, and command network when `sandbox.network`
+  asks for it, and fails closed: with no mechanism that can enforce the policy
+  it throws `SANDBOX_UNAVAILABLE` and never falls back to unrestricted
+  execution or open network. `bypass` means "no sandbox", not a wider policy.
 - The text of a tool result that reaches the model comes only from
   `renderToolResult` in `@tnega/session`. Flag any second `stringify` of tool
   results for the model, token counting or spill.

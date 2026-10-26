@@ -215,3 +215,40 @@ it('applies colour palette and display choices without saving the config', () =>
   expect(onDisplayChange.mock.calls).toEqual([['palette', 'graphite'], ['density', 'comfortable'], ['textSize', 'large'], ['readingWidth', 'full'], ['glass', 'full']])
   expect(save).not.toHaveBeenCalled()
 })
+
+it('saves listed command domains and says when this machine cannot enforce them', async () => {
+  const config: ConfigSnapshot = { ...snapshot, sandbox: { network: { mode: 'open', allowedDomains: [], deniedDomains: [] } } }
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(config)
+  const support = vi.spyOn(api, 'sandboxNetwork').mockResolvedValue({ filtering: false, detail: 'socat is not installed' })
+  const view = render(createElement(SettingsDialog, { config, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.click(view.getByRole('tab', { name: 'Tools & shell' }))
+  expect(view.queryByLabelText('Allowed domains for commands')).toBeNull()
+  expect(support).not.toHaveBeenCalled()
+
+  fireEvent.click(view.getByRole('radio', { name: 'Listed domains only' }))
+  expect(view.getByRole('radio', { name: 'Listed domains only' }).getAttribute('aria-checked')).toBe('true')
+  fireEvent.change(view.getByLabelText('Allowed domains for commands'), { target: { value: 'github.com\n*.github.com\n' } })
+  fireEvent.change(view.getByLabelText('Blocked domains for commands'), { target: { value: 'gist.github.com' } })
+  await waitFor(() => expect(view.getByRole('status').textContent).toContain('cannot enforce it: socat is not installed'))
+
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].sandbox).toEqual({
+    network: { mode: 'allowlist', allowedDomains: ['github.com', '*.github.com'], deniedDomains: ['gist.github.com'] },
+  })
+})
+
+it('turns command network off without asking for domains', async () => {
+  const config: ConfigSnapshot = { ...snapshot, sandbox: { network: { mode: 'allowlist', allowedDomains: ['a.dev'], deniedDomains: [] } } }
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(config)
+  vi.spyOn(api, 'sandboxNetwork').mockResolvedValue({ filtering: true, runner: 'bwrap' })
+  const view = render(createElement(SettingsDialog, { config, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.click(view.getByRole('tab', { name: 'Tools & shell' }))
+  expect(view.getByLabelText('Allowed domains for commands')).toHaveProperty('value', 'a.dev')
+  fireEvent.click(view.getByRole('radio', { name: 'Off' }))
+  expect(view.queryByLabelText('Allowed domains for commands')).toBeNull()
+  await waitFor(() => expect(view.getByText('Enforced on this machine by bubblewrap.')).toBeTruthy())
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].sandbox).toEqual({ network: { mode: 'off', allowedDomains: ['a.dev'], deniedDomains: [] } })
+})

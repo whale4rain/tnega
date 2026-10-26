@@ -20,7 +20,7 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 - `packages/fs/` 是文件域：`tool-fs` 是模型可见的 `read_file` / `write_file` / `edit_file` / `list_dir`（按行分页、原子写入、读后写守卫）；同域还有搜索缝的三个角色 —— `search-definition` 是 Service Definition（`ctx.search`，事件面 `search/*` 也由它拥有）、`search-ripgrep` 是 Provider、`tool-search` 是 Consumer（模型可见的 `glob` / `grep`）。
 - `packages/shell/tool-shell` 是模型可见的 `shell`（`runInBackground` 由 `jobs/tool-jobs` 接管）；`packages/web/` 是网络域：`tool-web-fetch`（`http_get`）与 `tool-web-search`（DeepSeek Search & Fetch API 上的 `web_search` 与 `web_fetch`）。`now` 属于 Project 域（`packages/project/host/src/clock.ts`）。
 - `packages/spill/` 是工具输出溢出缝三个角色的容器：`spill` 是 Service Definition（`ctx.spillStore`）、`spill-local` 是文件系统 Provider、`tool-spill` 是 Consumer（`tools/post-execute` 策略，把过大结果换成头尾预览加定位符）。
-- `packages/sandbox/` 是沙箱缝的容器：`sandbox` 是 Service Definition（`ctx.sandbox`，事件面 `sandbox/*` 也由它拥有）、`sandbox-local` 是 Provider（bwrap / landlock / seatbelt / Windows MXC → ACL 链，功能性探测 + fail closed）、`execution-sandbox` 是 Consumer（`ExecutionProvider` 装饰器）、`sandbox-windows-mxc` 与 `sandbox-windows-acl` 是 Windows 两个机制的实现库（MXC 执行器 `wxc-exec.exe`；koffi FFI，可选依赖）、`fs-sandbox` 是 fs 侧路径围栏的**唯一实现**（`packages/tools/src/path.ts` 只是转发）。取舍见 `docs/adr/0008-sandbox-seam.md`。
+- `packages/sandbox/` 是沙箱缝的容器：`sandbox` 是 Service Definition（`ctx.sandbox`，事件面 `sandbox/*` 也由它拥有）、`sandbox-local` 是 Provider（bwrap / landlock / seatbelt / Windows MXC → ACL 链，功能性探测 + fail closed）、`execution-sandbox` 是 Consumer（`ExecutionProvider` 装饰器）、`sandbox-network-proxy` 是命令网络的过滤代理（机制库，HTTP + SOCKS5）、`sandbox-windows-mxc` 与 `sandbox-windows-acl` 是 Windows 两个机制的实现库（MXC 执行器 `wxc-exec.exe`；koffi FFI，可选依赖）、`fs-sandbox` 是 fs 侧路径围栏的**唯一实现**（`packages/tools/src/path.ts` 只是转发）。取舍见 `docs/adr/0008-sandbox-seam.md`。
 - `packages/browser/` 是浏览器缝的容器：`browser` 是 Service Definition（`ctx.browser`，事件面 `browser/*`）、`browser-playwright` 是 Provider（`playwright-core`，可启动系统浏览器或经 CDP 附着到桌面端内嵌视图）、`tool-browser` 是 Consumer（模型可见的 `browser_*`）。取舍见 `docs/adr/0012-agent-browser.md`。
 - `packages/session`：JSONL Session 持久化与重建不变量。
 - `packages/cli`：`tnega` 可执行文件的入口与命令分发（argv、help、TUI 启动、`run`）；`packages/host`：Web/桌面宿主（HTTP/SSE 路由、常驻 Agent 生命周期、Project HTTP 委托）；`packages/runtime`：Agent 作用域组装（能力 bundle 与 `createAgentRuntime`）。
@@ -54,7 +54,7 @@ Tnega 的一切能力都是插件。动手前先想清楚它挂在哪个插件�
 - 插件注册必须归属于其 Fiber；dispose 后效果按逆序撤销，且不能残留服务、事件监听或子进程。
 - 同一作用域的同名服务应明确失败；必需服务写入 `inject`，可选服务通过 `ctx.get()` 取得。
 - 能力缝的角色分工与依赖方向见 `docs/adr/0006-capability-seams.md`：Provider 与 Consumer 只依赖 Service Definition，两者互不依赖；Provider 的挑选属于 composition 层，Consumer 不得 import 或枚举具体 Provider。工具输出溢出缝的取舍见 `docs/adr/0007-tool-output-spill.md`，沙箱缝的取舍见 `docs/adr/0008-sandbox-seam.md`。
-- 沙箱只限制**文件写**，且必须 fail closed：宿主上没有可用机制时抛 `SANDBOX_UNAVAILABLE`，禁止回退到非受限执行。`bypass` 是「不要沙箱」而不是更宽的策略。
+- 沙箱只限制**文件写**，以及配置了时的**命令网络**（`sandbox.network`），且必须 fail closed：宿主上没有能强制策略的机制时抛 `SANDBOX_UNAVAILABLE`，禁止回退到非受限执行或开放网络。`bypass` 是「不要沙箱」而不是更宽的策略。
 - 工具结果进入模型上下文的文本只有 `@tnega/session` 的 `renderToolResult` 一个来源：会话折叠、token 估算、Agent 组装请求、溢出策略都读它，不得各自再写一份 `stringify`。
 - Agent 的模型可见历史必须能由 durable Session 事件重建；live `agent/*` 事件只用于运行时观察或拦截。
 - 工具先记录调用意图、再执行、再记录结果。高权限 shell 与网络能力保持显式 opt-in，路径必须限制在 workspace 内。

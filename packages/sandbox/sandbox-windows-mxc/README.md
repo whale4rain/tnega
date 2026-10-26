@@ -57,7 +57,7 @@ Provider 拼出 runner argv（见 `src/runner.ts` 的契约），runner 为这�
 | `filesystem.readonlyPaths` | `[工作区, ...读根]` | `[...读根]` |
 | `process.commandLine` | cmd 的 `/c` 之后原样包进引号，其余程序按 CRT 规则加引号 | 同左 |
 | `process.cwd` / `process.env` | 命令的工作目录 / 执行层组装的环境（去掉 runner 专属变量） | 同左，TMP/TEMP 指向私有 temp |
-| `network` | 两个方向显式 `allow`（本缝只管文件；省略在 MXC 里等于拒绝） | 同左 |
+| `network` | 按 `--network`：`open`（缺省）两个方向显式 `allow`（省略在 MXC 里等于拒绝）；`off` 出入与宿主回环全部 `deny`；回环代理 URL 时出站 `deny`、入站与 `hostLoopback` `allow`，并写 `runtimeConfig.networkProxy` | 同左 |
 | `ui` | `{ disable: false, clipboard: 'none', injection: false }` | 同左 |
 | `lifecycle` | `{ destroyOnExit: true, preservePolicy: false }` | 同左 |
 | `containerId` | `tnega-<sha256(工作区, Session)[0..24]>` | 同左 |
@@ -93,7 +93,10 @@ MXC 的拒绝有两种形状，runner 都转成上面第三行：stderr 最后�
   同时证明宿主档位可用。
 - **桌面端**：runner 以 Electron utility process 承载时，显式 `process.exit`（只设
   `exitCode` 不会结束 utility process）。
-- 去掉了本缝用不到的配置面（网络拒绝、UI 拒绝、拒绝报告、ETL 等）。
+- 去掉了本缝用不到的配置面（UI 拒绝、拒绝报告、ETL 等）。网络只用两档：完全阻断（`off`），
+  与 ProcessContainer 文档的 Model 2 代理模式里「无身份回环代理」那一档 —— 过滤代理是宿主上
+  没有包身份的普通进程，所以不给 `allowedProxyPeer`。代理模式要 Windows 构建 26100.9278 /
+  26200.9278 起；`allowedHosts` / `blockedHosts` 在 Windows 上不生效，按域名的判定全在代理里。
 
 ## 已知限制
 

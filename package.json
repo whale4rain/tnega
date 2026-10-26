@@ -132,6 +132,10 @@
       "types": "./dist/types/packages/sandbox/sandbox-local/src/index.d.ts",
       "import": "./dist/sandbox-local.js"
     },
+    "./sandbox-network-proxy": {
+      "types": "./dist/types/packages/sandbox/sandbox-network-proxy/src/index.d.ts",
+      "import": "./dist/sandbox-network-proxy.js"
+    },
     "./sandbox-windows-acl": {
       "types": "./dist/types/packages/sandbox/sandbox-windows-acl/src/index.d.ts",
       "import": "./dist/sandbox-windows-acl.js"

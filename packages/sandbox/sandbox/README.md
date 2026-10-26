@@ -40,7 +40,19 @@ abstract class SandboxService extends Service {
   放宽文件权限或绕过沙箱的通道。
 - **runner 失败不能靠退出码断言**：`RunnerFailureRule` 的判定顺序是
   `allowedExitCodes` → 整行剔除 `informationalLines` → 逐行匹配 `fatalSignatures`。
-- **模式只声明文件效果**：网络与进程可见性不在词汇里，因为当前没有后端限制它们。
+- **模式只声明文件效果**；网络是策略上独立的可选维度 `network`（见下），进程可见性不在词汇里。
+
+## 命令网络
+
+`SandboxExecutionPolicy.network` 缺席即 `open`。`allowlist` 只允许经 Provider 的过滤代理访问
+允许表命中、且未被拒绝表命中的目标；`off` 没有网络。规则：`example.com`、`*.example.com`
+（只含子域）、`*`、IP（IPv6 带方括号），可带 `:port`；拒绝先于允许，没命中即拒绝。
+`parseDomainPattern`、`decideNetworkAccess`、`resolveNetworkPolicy`（默认值与校验）都是纯函数，
+Provider 的代理、配置解析与宿主的设置接口共用。
+
+Provider 管不了网络，或缺强制它所需的东西时，必须以 `SANDBOX_UNAVAILABLE` 拒绝一份
+`allowlist` / `off` 的策略 —— 与文件写一样 fail closed。命令退出后 `ConfinedArgv.annotate`
+（可选）返回的说明会被 Consumer 附在 stderr 末尾，例如本次被拒的主机。
 
 ## 事件面
 
@@ -49,11 +61,13 @@ abstract class SandboxService extends Service {
 | `sandbox/pre-confine` | `waterfallAsync` | 收紧策略或改写 argv；不交出合法事件即失败 |
 | `sandbox/confined` | `parallel` | 事后通知（审计、UI），只读 |
 | `sandbox/error` | `parallel` | 事后通知，含 `SANDBOX_*` 码，只读 |
+| `sandbox/network` | `parallel` | 过滤代理的每次判定（主机、端口、协议、放行与否、命中的规则），只读 |
 
 改写点遵循 core 的 waterfall 约定（与 `agent/pre-step`、`tools/pre-execute`、
 `search/pre-search` 一致）：监听器就地改写负载后调用无参 `next()`。**监听器只能收紧**
 —— 把模式改回 `bypass` 会以 `SANDBOX_INVALID_POLICY` 失败；一个说不清楚话的策略监听器
-不能变成一次不受限执行。两个观察事件是只读的：观察者失败被吞掉，不改写权威结论。
+不能变成一次不受限执行；把网络改宽（`off` → `allowlist` → `open`，或往允许表里加、从拒绝表里
+删）同样失败。三个观察事件是只读的：观察者失败被吞掉，不改写权威结论。
 
 ## 默认值与根
 
