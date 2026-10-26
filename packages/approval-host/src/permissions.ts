@@ -27,7 +27,7 @@ const PATH_TOOLS = new Set([...WORKSPACE_WRITES, 'read_file', 'list_dir', 'shell
 const ALWAYS_ALLOWED = new Set([
   // 只读
   'now', 'read_file', 'list_dir',
-  'glob', 'grep', 'http_get', 'web_search',
+  'glob', 'grep', 'http_get', 'web_search', 'web_fetch',
   // 用户自己的 Session 记录（各 Workspace），只读，不碰文件系统里的工作区内容。
   'search_sessions', 'search_session', 'read_session',
   // 插件开发模式的只读入口；plugin_write / plugin_remove 在宿主进程里执行代码，始终要批准。

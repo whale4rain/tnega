@@ -26,7 +26,7 @@ import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/app
 import { runtimeCapabilities } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
-import { webSearchTool } from '@tnega/tool-web-search'
+import { toolWebSearch } from '@tnega/tool-web-search'
 import { builtinTools, createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
 import { readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { patchSessionMeta, readSessionSummary } from '@tnega/session-store'
@@ -132,7 +132,7 @@ export async function handleRun(
       ],
     })
     const toolService = runtime.root.get('tools')
-    toolService.register(webSearchTool(searchApiKey(effective, apiKey)))
+    await runtime.root.plugin(toolWebSearch, { apiKey: searchApiKey(effective, apiKey) })
     await mountBrowser(runtime.root, context.browser)
     const settingsRoot = runtime.root
     await settingsRoot.plugin(runSettings, {
@@ -393,7 +393,7 @@ export async function createResidentRuntime(
     session: agentId => registry?.get(agentId ?? req.sessionId)?.session,
     mode: async () => (await readSessionSummary(workspace, req.sessionId)).approvalMode ?? req.config.approvalReview?.defaultMode ?? 'manual',
   })
-  toolService.register(webSearchTool(searchApiKey(req.effective, req.apiKey)))
+  await root.plugin(toolWebSearch, { apiKey: searchApiKey(req.effective, req.apiKey) })
   await mountBrowser(root, req.browser)
   // Model, effort and permission changed mid-turn apply at the next step.
   await root.plugin(runSettings, {
