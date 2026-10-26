@@ -33,6 +33,8 @@ import type {
   WorkspaceUsage,
   SessionContextReport,
   ContextInsights,
+  CommandNetworkSettings,
+  SandboxNetworkSupport,
   SandboxSetup,
   InsightsRange,
   ChatGptLoginState,
@@ -81,6 +83,8 @@ export interface ConfigPatch {
   reasoningEffort?: '' | 'low' | 'medium' | 'high'
   temperature?: number
   network?: { allowedHosts: string[]; proxy: string }
+  /** `null` clears the command network rules. */
+  sandbox?: { network: CommandNetworkSettings } | null
 }
 
 export interface BackgroundJob {
@@ -212,6 +216,7 @@ export function createClient(options: ClientOptions = {}) {
     contextInsights: (workspace: string, range: InsightsRange, signal?: AbortSignal) => call<ContextInsights>(scoped('/api/context-insights', workspace, { range }), { signal }),
     /** Whether a better sandbox (Windows MXC) could be installed on this machine. */
     sandboxSetup: (signal?: AbortSignal) => call<SandboxSetup>('/api/sandbox/setup', { signal }),
+    sandboxNetwork: (signal?: AbortSignal) => call<SandboxNetworkSupport>('/api/sandbox/network', { signal }),
     workspacePrompt: (workspace: string, signal?: AbortSignal) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { signal }),
     saveWorkspacePrompt: (workspace: string, prompt: string) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { method: 'PUT', body: { prompt } }),
     /** Add or replace one chat model route. */

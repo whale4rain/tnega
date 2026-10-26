@@ -24,7 +24,7 @@ import { toolPtc } from '@tnega/tool-ptc'
 import { jobsLocal } from '@tnega/jobs-local'
 import { toolJobs } from '@tnega/tool-jobs'
 import { ApprovalBroker, mountApprovalReview, mountThreadApprovals, permissionGuard, reviewAutomaticApproval, type PermissionMode } from '@tnega/approval-host'
-import { ptcCapability, runtimeCapabilities } from '@tnega/runtime'
+import { ptcCapability, runtimeCapabilities, type SandboxNetworkSource } from '@tnega/runtime'
 import type { SystemConfig } from '@tnega/config'
 import { projectLoop } from '@tnega/project-loop'
 import { loopGuard } from '@tnega/loop-guard'
@@ -58,6 +58,8 @@ export interface ProjectHostOptions {
   contextWindow?: number
   /** Project 授权：所有 Thread 的上限。 */
   permission: PermissionMode
+  /** 沙箱命令的网络（允许 / 拒绝的域名）；缺席即不限制。 */
+  sandboxNetwork?: SandboxNetworkSource
   approvals: ApprovalBroker
   /** 传给 Thread 的内置工具配置；`false` 表示不挂文件与 shell 工具。 */
   builtinTools?: BuiltinToolsConfig | false
@@ -687,6 +689,7 @@ export class ProjectHost {
     await ctx.plugin(runtimeCapabilities, {
       workspace: this.workspace,
       permission: this.options.permission,
+      ...(this.options.sandboxNetwork !== undefined ? { sandboxNetwork: this.options.sandboxNetwork } : {}),
       sessionId: record.id,
       builtin: config === false ? false : { ...(config ?? {}) },
       ptc: false,
@@ -723,6 +726,7 @@ export class ProjectHost {
         await local.plugin(runtimeCapabilities, {
           workspace: cwd,
           permission: thread.permission,
+          ...(this.options.sandboxNetwork !== undefined ? { sandboxNetwork: this.options.sandboxNetwork } : {}),
           sessionId: thread.id,
           promptWorkspace: this.workspace,
           builtin: config === false ? false : { ...(config ?? {}) },

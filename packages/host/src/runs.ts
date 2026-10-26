@@ -24,12 +24,13 @@ import { toolSubagent } from '@tnega/tool-subagent'
 import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import type { SecretVault } from '@tnega/secrets-local'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
-import { runtimeCapabilities } from '@tnega/runtime'
+import { runtimeCapabilities, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { toolWebSearch } from '@tnega/tool-web-search'
 import { builtinTools, createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
-import { readSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
+import { readSystemConfig, updateSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
+import type { SandboxNetworkRequest } from '@tnega/sandbox'
 import { patchSessionMeta, readSessionSummary } from '@tnega/session-store'
 
 export async function handleRun(
@@ -86,6 +87,7 @@ export async function handleRun(
       apiKey,
       route: sessionModelRoute(context.configFile, workspace, id),
       config,
+      sandboxNetwork: sandboxNetworkFrom(context.configFile),
       resumeQueued,
       attachments,
       ...(requestId ? { requestId } : {}),
@@ -118,6 +120,7 @@ export async function handleRun(
       allowNetwork: true,
       allowShell: true,
       sandboxMode: permission,
+      sandboxNetwork: sandboxNetworkFrom(context.configFile),
       office: agentType === 'work' ? true : 'auto',
       ...(context.secrets ? { secrets: { vault: context.secrets, sessionId: id } } : {}),
       builtinTools: {
@@ -302,7 +305,29 @@ export async function handleRun(
   }
 }
 
+/**
+ * Command network access as saved in Settings, read before every command so
+ * a change applies to running sessions without restarting them.
+ */
+/**
+ * Command network from the System Config, read before every command so a change in
+ * Settings applies at once. An approved "always allow" adds its domains to the list.
+ */
+export function sandboxNetworkFrom(configFile: string | undefined): SandboxNetworkSettings {
+  return {
+    read: async (): Promise<SandboxNetworkRequest | undefined> => (await readSystemConfig(configFile)).sandbox?.network,
+    remember: async (domains) => {
+      const network = (await readSystemConfig(configFile)).sandbox?.network
+      if (network?.mode !== 'allowlist') return
+      const allowedDomains = [...new Set([...(network.allowedDomains ?? []), ...domains])]
+      await updateSystemConfig({ sandbox: { network: { ...network, allowedDomains } } }, configFile)
+    },
+  }
+}
+
 export interface ResidentRunRequest {
+  /** Command network access; defaults to the snapshot in `config`. */
+  sandboxNetwork?: SandboxNetworkSource
   ptcRuntime?: PtcRuntimeQuickjsConfig
   resumeQueued?: boolean
   /** The client's id for this submission; a retry with the same id is admitted once. */
@@ -348,6 +373,7 @@ export async function createResidentRuntime(
   await root.plugin(runtimeCapabilities, {
     workspace,
     permission: currentPermission,
+    ...(req.sandboxNetwork ?? req.config.sandbox?.network ? { sandboxNetwork: req.sandboxNetwork ?? req.config.sandbox?.network } : {}),
     sessionId: req.sessionId,
     builtin: {
       allowNetwork: true,
@@ -579,7 +605,7 @@ export async function residentQuestionRequest(context: ServerContext, workspace:
   return {
     prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
     approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
-    effective, apiKey, config, resumeQueued: true,
+    effective, apiKey, config, sandboxNetwork: sandboxNetworkFrom(context.configFile), resumeQueued: true,
     route: sessionModelRoute(context.configFile, workspace, id),
     processes: processesFor(context, workspace),
     ...(context.secrets ? { secrets: context.secrets } : {}),

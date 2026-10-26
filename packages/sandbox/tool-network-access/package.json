@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/tool-network-access",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/sandbox": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, lookupModel, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
 import type { ApprovalMode } from '@tnega/approval-review'
 import { CHATGPT_CODEX_BASE_URL, CHATGPT_SIGNED_IN, isChatgptSignedIn } from '@tnega/auth-chatgpt'
+import { isSandboxNetworkMode, type SandboxNetworkMode } from '@tnega/sandbox'
 
 export interface ApprovalReviewerConfig {
   provider: 'conversation' | 'model' | 'jev' | 'openai'
@@ -154,6 +155,8 @@ export interface SystemConfig {
   /** Browser launched for the agent's `browser_*` tools outside the desktop app. */
   browser?: BrowserLaunchConfig
   network?: NetworkConfig
+  /** What the command sandbox enforces beyond file writes. */
+  sandbox?: SandboxConfig
 }
 
 /** All Projects share daily limits. Reservations count uncached input, including failed calls. */
@@ -267,6 +270,52 @@ export function parseNetworkConfig(value: unknown): NetworkConfig | undefined {
   return network
 }
 
+/** Network access for sandboxed commands (see `SandboxNetworkPolicy` in @tnega/sandbox). */
+export interface SandboxNetworkConfig {
+  mode: SandboxNetworkMode
+  /** Reachable destinations in `allowlist` mode: `example.com`, `*.example.com`, `*`, an IP, each with an optional `:port`. */
+  allowedDomains?: string[]
+  /** Destinations refused even when an allowed entry matches; same grammar. */
+  deniedDomains?: string[]
+}
+
+export interface SandboxConfig {
+  network?: SandboxNetworkConfig
+}
+
+/**
+ * A rule list as saved. Entries are kept as written, even ones the sandbox cannot read: the
+ * sandbox then refuses to run commands and names the bad entry, instead of this reader
+ * silently dropping a blocked domain and so widening the network.
+ */
+function domainList(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined
+  // Not a list at all (say a bare string): keep it as one entry the sandbox cannot read, so
+  // commands refuse to run rather than lose the rule.
+  if (!Array.isArray(value)) return [JSON.stringify(value)]
+  const entries = value.map(entry => typeof entry === 'string' ? entry.trim().toLowerCase() : JSON.stringify(entry))
+    .filter(entry => entry.length > 0)
+  return entries.length ? [...new Set(entries)] : undefined
+}
+
+/** `sandbox` from the config file. An unreadable network mode reads as `off` (fail closed). */
+export function parseSandboxConfig(value: unknown): SandboxConfig | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const network = fieldOf(value, 'network')
+  if (!network || typeof network !== 'object' || Array.isArray(network)) return undefined
+  const saved = fieldOf(network, 'mode')
+  const mode: SandboxNetworkMode = isSandboxNetworkMode(saved) ? saved : 'off'
+  const allowed = domainList(fieldOf(network, 'allowedDomains'))
+  const denied = domainList(fieldOf(network, 'deniedDomains'))
+  return {
+    network: {
+      mode,
+      ...(allowed ? { allowedDomains: allowed } : {}),
+      ...(denied ? { deniedDomains: denied } : {}),
+    },
+  }
+}
+
 export interface BrowserLaunchConfig {
   /** Chromium-based browser channel, e.g. `msedge`, `chrome`. */
   channel?: string
@@ -290,11 +339,13 @@ export interface EffectiveLlmConfig {
   auth?: 'chatgpt'
 }
 
-export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort' | 'network'> & {
+export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort' | 'network' | 'sandbox'> & {
   protocol?: 'anthropic' | 'openai' | ''
   reasoningEffort?: ReasoningEffort | ''
   /** `undefined` written explicitly clears the network settings. */
   network?: NetworkConfig | undefined
+  /** `undefined` written explicitly clears the sandbox settings (network open). */
+  sandbox?: SandboxConfig | undefined
 }
 
 export function systemConfigPath(): string {
@@ -726,6 +777,8 @@ function normalizeConfig(value: unknown): SystemConfig {
   }
   const network = parseNetworkConfig(fieldOf(record, 'network'))
   if (network && (network.allowedHosts || network.proxy)) config.network = network
+  const sandbox = parseSandboxConfig(fieldOf(record, 'sandbox'))
+  if (sandbox) config.sandbox = sandbox
   if (Array.isArray(record.workspaces)) {
     config.workspaces = record.workspaces
       .filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))

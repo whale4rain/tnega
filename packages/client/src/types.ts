@@ -295,6 +295,25 @@ export interface SandboxSetup {
   install: { command: string; url: string }
 }
 
+/**
+ * Whether this machine's sandbox can filter command network by domain (`GET /api/sandbox/network`).
+ * When `filtering` is false, "listed domains only" and "off" make commands refuse to run; `detail` says why.
+ */
+export interface SandboxNetworkSupport {
+  filtering: boolean
+  runner?: string
+  detail?: string
+}
+
+/** How commands run by the agent may reach the network. */
+export type CommandNetworkMode = 'open' | 'allowlist' | 'off'
+
+export interface CommandNetworkSettings {
+  mode: CommandNetworkMode
+  allowedDomains: string[]
+  deniedDomains: string[]
+}
+
 /** The workspace roll-up behind Settings → Context insights (`GET /api/context-insights`). */
 export interface ContextInsights {
   range: InsightsRange
@@ -475,6 +494,8 @@ export interface ConfigSnapshot {
     /** The proxy HTTPS_PROXY / HTTP_PROXY sets, without credentials. */
     environmentProxy?: string
   }
+  /** Network rules for commands the agent runs (shell and processes), enforced by the sandbox. */
+  sandbox?: { network: CommandNetworkSettings }
   config: {
     projectMemory?: ProjectMemorySettings
     memoryDream?: MemoryDreamSettings

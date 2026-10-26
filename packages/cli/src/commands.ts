@@ -3,7 +3,7 @@ import { createAgentRuntime, type AgentRuntimeOptions } from '@tnega/runtime'
 import type { AgentRunOptions, AgentRunResult } from '@tnega/agent'
 import { createLlmAdapter } from '@tnega/llm'
 import { isSandboxMode, type SandboxMode } from '@tnega/sandbox'
-import { configureSystemShell } from '@tnega/execution'
+import { configureNetwork, configureSystemShell } from '@tnega/execution'
 import { SESSION_FORMAT_VERSION } from '@tnega/session'
 import {
   effectiveApiKey,
@@ -140,6 +140,8 @@ export async function runAgentCommand(
   const contextWindow = effectiveLlmConfig(systemConfig, process.env, options.model).contextWindow
   const profileRuntimeOptions = runtimeOptionsFromProfile(profileOptions)
   configureSystemShell(systemConfig.shell)
+  // The saved proxy, for http_get and for sandboxed commands' allowed traffic.
+  configureNetwork({ ...systemConfig.network })
   const context = await createAgentRuntime({
     cwd,
     sessionFile,
@@ -153,6 +155,8 @@ export async function runAgentCommand(
       : {}),
     ...(options.allowShell !== undefined ? { allowShell: options.allowShell } : {}),
     ...(options.sandboxMode !== undefined ? { sandboxMode: options.sandboxMode } : {}),
+    // Command network access saved in Settings applies to `tnega run` too.
+    ...(systemConfig.sandbox?.network ? { sandboxNetwork: systemConfig.sandbox.network } : {}),
     // The flag wins; otherwise the guard saved in Settings applies here too.
     ...((options.fsGuard ?? systemConfig.fsGuard) !== undefined ? { fsGuard: options.fsGuard ?? systemConfig.fsGuard } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),

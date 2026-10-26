@@ -11,7 +11,7 @@ import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import type { SandboxMode } from '@tnega/sandbox'
 import type { ToolPolicy } from '@tnega/tools'
 import type { BuiltinToolsConfig } from './builtins.js'
-import type { SecretsCapabilitySpec } from './compose.js'
+import type { SandboxNetworkSource, SecretsCapabilitySpec } from './compose.js'
 
 /**
  * A named composition: the bundles to mount, plus defaults the caller may
@@ -46,6 +46,8 @@ export interface AgentRuntimeOptions {
    * closed（拒绝执行），而不是悄悄退回非受限执行。
    */
   sandboxMode?: SandboxMode
+  /** Network access for sandboxed commands (allowed / denied domains). Defaults to open. */
+  sandboxNetwork?: SandboxNetworkSource
   /** How strictly a file write must match what this Session already read. */
   fsGuard?: 'off' | 'warn' | 'enforce'
   maxTurns?: number

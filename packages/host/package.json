@@ -31,6 +31,7 @@
     "@tnega/ptc-runtime-quickjs": "workspace:*",
     "@tnega/run-settings": "workspace:*",
     "@tnega/runtime": "workspace:*",
+    "@tnega/sandbox": "workspace:*",
     "@tnega/sandbox-local": "workspace:*",
     "@tnega/secrets-local": "workspace:*",
     "@tnega/session": "workspace:*",

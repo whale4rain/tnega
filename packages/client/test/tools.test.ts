@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { summarizeSteps } from '../src/tools.js'
+import { presentTool, summarizeSteps } from '../src/tools.js'
 import type { ToolView } from '../src/timeline.js'
 
 const tool = (name: string): ToolView => ({ callId: name, name, args: {}, status: 'ok' })
@@ -10,4 +10,9 @@ it('sums a run of steps in one plain sentence, in the order the kinds appear', (
   expect(summarizeSteps([tool('edit_file'), tool('write_file'), tool('shell'), tool('shell')])).toBe('Edited 2 files, ran 2 commands')
   expect(summarizeSteps([tool('run_code')])).toBe('Used a tool')
   expect(summarizeSteps([])).toBe('Thought')
+})
+
+it('names the domains a network access request asks for', () => {
+  const ask: ToolView = { callId: 'n', name: 'request_network_access', args: { domains: ['pypi.org', '*.pythonhosted.org'], reason: 'pip' }, status: 'running' }
+  expect(presentTool(ask)).toMatchObject({ family: 'other', verb: 'Asking for network access', target: 'pypi.org, *.pythonhosted.org' })
 })

@@ -533,6 +533,9 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox
 
   packages/context-insights:
     dependencies:
@@ -706,6 +709,9 @@ importers:
       '@tnega/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox/sandbox
       '@tnega/sandbox-local':
         specifier: workspace:*
         version: link:../sandbox/sandbox-local
@@ -1501,6 +1507,9 @@ importers:
       '@tnega/tool-memory':
         specifier: workspace:*
         version: link:../memory/tool-memory
+      '@tnega/tool-network-access':
+        specifier: workspace:*
+        version: link:../sandbox/tool-network-access
       '@tnega/tool-office':
         specifier: workspace:*
         version: link:../office/tool-office
@@ -1567,6 +1576,9 @@ importers:
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox
+      '@tnega/sandbox-network-proxy':
+        specifier: workspace:*
+        version: link:../sandbox-network-proxy
       '@tnega/sandbox-windows-acl':
         specifier: workspace:*
         version: link:../sandbox-windows-acl
@@ -1577,6 +1589,8 @@ importers:
         specifier: workspace:*
         version: link:../../web-kit
 
+  packages/sandbox/sandbox-network-proxy: {}
+
   packages/sandbox/sandbox-windows-acl:
     dependencies:
       koffi:
@@ -1584,6 +1598,18 @@ importers:
         version: 3.3.1
 
   packages/sandbox/sandbox-windows-mxc: {}
+
+  packages/sandbox/tool-network-access:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
 
   packages/secrets/execution-secrets:
     dependencies:

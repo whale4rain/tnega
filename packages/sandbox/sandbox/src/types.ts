@@ -5,6 +5,11 @@
  * seatbelt、Windows ACL/受限令牌都属于 Provider（`@tnega/sandbox-local`）。
  */
 
+import { SandboxError, type SandboxErrorCode } from './errors.js'
+import { resolveNetworkPolicy, type SandboxNetworkPolicy, type SandboxNetworkRequest } from './network.js'
+
+export * from './errors.js'
+
 /**
  * 一次 Agent Run 的文件权限预设，沿用 `CONTEXT.md` 的 Tool Permission 命名，
  * 因此 CLI / Web / Session 里已有的 `read-only` / `workspace-write` / `bypass`
@@ -45,8 +50,7 @@ export function isConfinedMode(mode: SandboxMode): mode is ConfinedSandboxMode {
 export type SandboxEnforcement = 'full' | 'partial'
 
 /**
- * 一次受限执行的文件效果。这是**全部**语义：网络与进程可见性不在词汇内，
- * 因为当前没有任何后端限制它们（这是已接受的限制，写在 README 里）。
+ * 一次受限执行的效果：文件写（`mode`）与可选的网络（`network`）。进程可见性不在词汇内。
  */
 export interface SandboxExecutionPolicy {
   mode: SandboxMode
@@ -60,6 +64,11 @@ export interface SandboxExecutionPolicy {
    * 无 Session 的调用（评测、一次性任务）缺席即可。
    */
   sessionId?: string
+  /**
+   * 命令的网络。缺席等同于 `open`：不限制。`allowlist` / `off` 由 Provider 在 OS 层强制
+   * （断开直连，只留过滤代理或什么都不留）；做不到的机制必须 fail closed。
+   */
+  network?: SandboxNetworkPolicy
 }
 
 /** 交给 Provider 的策略：模式已被收窄到可强制的两种之一。 */
@@ -73,6 +82,7 @@ export interface SandboxPolicyRequest {
   workspaceRoot: string
   tempRoot?: string
   sessionId?: string
+  network?: SandboxNetworkRequest
 }
 
 /**
@@ -111,6 +121,11 @@ export interface ConfinedArgv {
    */
   denialSignatures: readonly string[]
   runnerFailureRules: readonly RunnerFailureRule[]
+  /**
+   * 命令结束后调用：返回要附加在 stderr 末尾的说明（例如这段时间里被网络策略拦下的目标），
+   * 没有要说的就返回 `undefined`。让模型知道失败是策略造成的，以及该请用户做什么。
+   */
+  annotate?: () => string | undefined
 }
 
 /** 一次受限执行的请求。 */
@@ -135,6 +150,11 @@ export interface SandboxBackendStatus {
   enforcement?: SandboxEnforcement
   /** 不可用或降级的原因，面向人类。 */
   detail?: string
+  /**
+   * 选中的机制能否强制网络策略（`allowlist` / `off`）。不可用时缺席。`filtering: false`
+   * 意味着网络受限的命令会以 `SANDBOX_UNAVAILABLE` 拒绝执行。
+   */
+  network?: { filtering: boolean; detail?: string }
 }
 
 /**
@@ -181,52 +201,21 @@ export interface SandboxErrorEvent {
   durationMs: number
 }
 
-/** 稳定、可路由的沙箱失败码。 */
-export type SandboxErrorCode =
-  /** 宿主上没有任何可用后端：**拒绝以非受限方式执行**。 */
-  | 'SANDBOX_UNAVAILABLE'
-  /** 请求的策略自相矛盾（bypass 被送进沙箱、workspaceRoot 不是绝对路径……）。 */
-  | 'SANDBOX_INVALID_POLICY'
-  /** 要执行的 argv 非法（空、含非字符串、缺少可执行名）。 */
-  | 'SANDBOX_INVALID_ARGV'
-  /** Provider 交出的受限 argv 不合法。 */
-  | 'SANDBOX_INVALID_RESULT'
-
-/** `SANDBOX_UNAVAILABLE` 的常量形态，供只做字符串比较的调用方使用。 */
-export const SANDBOX_UNAVAILABLE = 'SANDBOX_UNAVAILABLE' satisfies SandboxErrorCode
-
-/** 带稳定错误码的沙箱失败。 */
-export class SandboxError extends Error {
-  override name = 'SandboxError'
-
-  constructor(
-    message: string,
-    readonly code: SandboxErrorCode,
-    options?: ErrorOptions,
-  ) {
-    super(message, options)
-  }
-}
-
 /**
- * 没有任何可用后端时抛出的错误。
- *
- * 它存在的意义是让调用方把「宿主缺沙箱」与「命令自己失败了」分开：拿到这个码的
- * 调用方**必须**放弃执行，而不是回退到非受限执行。
+ * `sandbox/network` 的负载（parallel）：过滤代理对一次连接的判定。只读观察（审计、UI）。
  */
-export class SandboxUnavailableError extends SandboxError {
-  override name = 'SandboxUnavailableError'
-
-  constructor(mode: ConfinedSandboxMode, detail?: string) {
-    super(
-      `sandbox mode "${mode}" is requested but no sandbox backend is usable on this host; `
-      + 'refusing to run the command unconfined. Install bubblewrap or run a '
-      + 'Landlock-enforcing kernel (Linux), ensure sandbox-exec is usable (macOS), or ensure '
-      + 'MXC (wxc-exec.exe) or the ACL restricted-token runner can start (Windows) — otherwise run with bypass.',
-      'SANDBOX_UNAVAILABLE',
-    )
-    if (detail !== undefined) this.message += ` Runner failure: ${detail}`
-  }
+export interface SandboxNetworkEvent {
+  /** 规范化后的目标主机。 */
+  host: string
+  port: number
+  /** 客户端怎么来的：HTTP 代理的明文请求、CONNECT 隧道，或 SOCKS5。 */
+  protocol: 'http' | 'connect' | 'socks5'
+  allowed: boolean
+  /** 判定原因：`NetworkDecision.reason`，或代理自己的 `local-address`（名字解析到了本机地址）。 */
+  reason: string
+  /** 命中的规则原文。 */
+  rule?: string
+  at: number
 }
 
 /**
@@ -255,6 +244,7 @@ export function resolveSandboxPolicy(request: SandboxPolicyRequest): SandboxExec
     workspaceRoot: request.workspaceRoot,
     ...(request.tempRoot !== undefined ? { tempRoot: request.tempRoot } : {}),
     ...(request.sessionId !== undefined ? { sessionId: request.sessionId } : {}),
+    ...(request.network !== undefined ? { network: resolveNetworkPolicy(request.network) } : {}),
   }
 }
 
