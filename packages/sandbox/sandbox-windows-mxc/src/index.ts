@@ -26,11 +26,13 @@ export {
   buildRunnerArgs,
   childEnvironment,
   containerIdFor,
+  loopbackProxyUrl,
   mxcErrorCode,
+  mxcNetworkFields,
   mxcRequestRefusal,
   parseRunnerArgs,
 } from './runner.js'
-export type { MxcRequestOptions, MxcRunnerInvocation, MxcSandboxMode } from './runner.js'
+export type { MxcNetwork, MxcRequestOptions, MxcRunnerInvocation, MxcSandboxMode } from './runner.js'
 
 /**
  * 本后端的拒绝方言（小写子串，大小写不敏感匹配）。被拒绝的写由 Windows 自己报告，所以与

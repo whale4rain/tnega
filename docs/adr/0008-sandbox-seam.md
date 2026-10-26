@@ -76,8 +76,9 @@ Definition 里不是「更宽的策略」而是「不要沙箱」：`confine` �
 - **只沙箱 shell，不沙箱 argv 进程**（`confineProcess` 默认 `false`）。理由与参考实现
   一致：`runProcess` 目前唯一的消费者是我们自己构造 argv 的搜索 Provider（ripgrep），
   把它也包进沙箱会给每次搜索加一层进程，而它本来只读。需要更严的部署可以打开这个开关。
-- **网络不在词汇内**。当前没有任何后端限制网络，所以 `SandboxMode` 只声明文件效果；
-  假装它管网络比不管更糟。`fetchHttp` 直接透传。
+- **网络不在词汇内**（已由下文「命令网络」补充取代）。当时没有任何后端限制网络，所以
+  `SandboxMode` 只声明文件效果。`fetchHttp` 至今直接透传：它是宿主自己的 HTTP 工具，由
+  `@tnega/execution` 的私网守卫与 allowed hosts 管。
 - **`bypass` 与 `allowOutsideWorkspace` 仍各自存在**：`allowOutsideWorkspace` 控制
   `@tnega/tools` 内置文件工具的路径围栏是否解除（沿用既有语义），`bypass` 控制是否
   沙箱。两者由同一个权限预设驱动，但不是同一个开关，合并它们会改变 0.1.x 的行为。
@@ -111,6 +112,39 @@ MXC 的 AppContainer 档位没有环境读权限，只授予工作区时 `node` 
 **与 ACL 链只收窄写的既有语义对齐**；需要读侧隔离的部署用 `mxcRead: 'roots'` 关回去。缝的词汇
 不变（`SandboxExecutionPolicy` 里仍然没有读字段），这是 Provider 的默认值，不是新契约。
 
+### 补充（2026-10）：命令网络
+
+策略多了一个**独立于模式**的维度 `network`（`SandboxNetworkPolicy`）：`open`（默认，等同于
+缺席）、`allowlist`（只能经过滤代理访问允许表命中、且未被拒绝表命中的目标）、`off`（没有网络）。
+规则语法与判定顺序沿用 Anthropic sandbox-runtime：`example.com`、`*.example.com`（只含子域）、
+`*`、IP 字面量（IPv6 带方括号），可带 `:port`；拒绝先于允许，两表都没命中即拒绝。判定是
+Definition 里的纯函数（`decideNetworkAccess`），代理与设置界面共用一份。
+
+- **机制**：Linux 用 bwrap `--unshare-net` 给命令一个只有回环的空网络，再由命令里的 `socat`
+  把 `localhost:3128` 接到绑定进来的代理 Unix socket；macOS 用 Seatbelt `(deny network*)`，
+  只放行到代理端口的回环连接；Windows 用 MXC 的代理模式（出站拒绝，宿主回环放行，
+  `runtimeConfig.networkProxy` 指向代理），取「无身份回环代理」这一档，因为代理是宿主上没有
+  包身份的普通进程。`off` 在三个平台上都不起代理。
+- **过滤代理**是新的机制库 `@tnega/sandbox-network-proxy`：同一个口上说 HTTP（CONNECT 与
+  绝对 URI）与 SOCKS5，放行后可以再经上游代理（设置里的 Network proxy，否则宿主的
+  `HTTPS_PROXY`）出去。通配规则放行的名字若解析到回环、链路本地等本机地址仍拒绝 —— 只有逐字
+  点名的规则才能放行它们；代理连接的是自己检查过的地址，DNS 换答案绕不过去。
+- **仍然 fail closed**：选中的机制管不了网络（landlock、windows-acl、custom），或这台机器缺
+  它所需的东西（Linux 缺 `socat`、Windows 构建低于 26100.9278 / 26200.9278 不接受代理模式），
+  而策略要求 `allowlist` / `off` 时，`confine` 抛 `SANDBOX_UNAVAILABLE`，不以开放网络执行。
+- **只能收紧**：`sandbox/pre-confine` 的监听器可以把网络改得更严，改宽即
+  `SANDBOX_INVALID_POLICY`。代理的每次判定以 `sandbox/network` 只读广播；命令退出后，
+  `ConfinedArgv.annotate` 把本次被拒的主机附在 stderr 末尾，模型知道该去设置里加哪个域名。
+- **向人要权限**：`@tnega/tool-network-access` 的 `request_network_access` 让 Agent 为被拦的域名
+  走常规审批（与其它越权工具调用同一张卡片、同一套自动审批）。批准即对本 Session 生效，
+  `remember` 还写进设置的允许表；授予由 Session 里的 `tool/result` 重建。`off` 与拒绝表不能经
+  审批打开，`*` 永不授予，没有 permission guard 的宿主不挂这个工具。
+- **配置**：System Config 的 `sandbox.network`，设置里的 Tools & shell › Command network；
+  每次执行都重新读，改了不必重启。`bypass` 仍然是「不要沙箱」，网络也不限制。
+- **限制**：只有遵守代理环境变量的客户端能出网（HTTP/S 与 SOCKS5，Linux/macOS 的 git ssh 经
+  `GIT_SSH_COMMAND` 走代理）；Windows 的 MXC 只认 HTTP/S 代理。按域名放行不检查 TLS 内容，
+  允许 `github.com` 也就允许了经它中转的一切。
+
 ## 验证
 
 - `packages/sandbox/sandbox/test/events.test.ts`：stub Provider 挂在真实 `Context` 上，
@@ -133,3 +167,8 @@ MXC 的 AppContainer 档位没有环境读权限，只授予工作区时 `node` 
   真实 DACL 生命周期、真实受限令牌 E2E（含含引号与重定向的 `cmd` 命令）、注入式失败
   路径（见该包 README）。
 - 端到端：`packages/cli/test/tools-e2e.test.ts` 的 `allowShell` 用例现在会真的经过沙箱。
+- 命令网络：`packages/sandbox/sandbox/test/network.test.ts`（语法、判定、只能收紧、
+  `sandbox/network`）、`packages/sandbox/sandbox-network-proxy/test/proxy.test.ts`（HTTP、
+  CONNECT、SOCKS5、上游链式、本机地址守卫）、`packages/sandbox/sandbox-local/test/network.test.ts`
+  （各机制的 argv 与 fail closed）、`e2e-posix.test.ts` 的「bwrap network end to end」（有 bwrap
+  与 socat 时真跑 curl）、`sandbox-windows-mxc/test/runner.test.ts` 的 `--network` 与请求字段。

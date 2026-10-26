@@ -49,6 +49,7 @@ const VERB: Record<string, [running: string, done: string]> = {
   http_get: ['Fetching', 'Fetched'],
   web_search: ['Searching the web', 'Searched the web'],
   web_fetch: ['Reading', 'Read'],
+  request_network_access: ['Asking for network access', 'Asked for network access'],
   skill: ['Skill', 'Skill'],
   remember_global: ['Remembering', 'Remembered'],
   write_memory: ['Saving memory', 'Saved memory'],
@@ -96,6 +97,9 @@ function toolTarget(args: unknown): string | undefined {
     const value = record[key]
     if (typeof value === 'string' && value.trim()) return key === 'path' && /^\.\/?$/.test(value.trim()) ? 'workspace root' : value
   }
+  // request_network_access names its domains as a list.
+  const domains = record.domains
+  if (Array.isArray(domains) && domains.length > 0 && domains.every(entry => typeof entry === 'string')) return domains.join(', ')
   return undefined
 }
 

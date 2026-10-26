@@ -18,6 +18,7 @@ import { pendingQuestionsFromEvents, UserQuestionError } from '@tnega/user-quest
 import { readGoal } from '@tnega/goal'
 import { isAgentType, SessionLog } from '@tnega/session'
 import { availableShells, configureSystemShell, DEFAULT_ALLOWED_HOSTS, systemShell } from '@tnega/execution'
+import { isSandboxNetworkMode, resolveNetworkPolicy, SandboxError } from '@tnega/sandbox'
 import { listStoredSubagents, readSubagentEvents } from '@tnega/subagent-local'
 import { SubagentError } from '@tnega/subagent'
 import { JobRegistry } from '@tnega/jobs'
@@ -28,7 +29,7 @@ import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
-import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun } from './runs.js'
+import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun, sandboxNetworkFrom } from './runs.js'
 import type { WebServerService } from '@tnega/web-kit'
 
 export const CHATGPT_DEFAULT_MODEL = 'gpt-5-codex'
@@ -170,6 +171,11 @@ const apiRoutes: ApiRoute[] = [
             const network = parseNetworkConfig(body.network)
             if (!network) { sendError(res, 400, 'network must be an object'); return }
             patch.network = network.allowedHosts || network.proxy ? network : undefined
+          }
+      if (body.sandbox !== undefined) {
+            const sandbox = sandboxPatch(body.sandbox)
+            if (typeof sandbox === 'string') { sendError(res, 400, sandbox); return }
+            patch.sandbox = sandbox
           }
       const config = await updateSystemConfig(patch, context.configFile)
       configureSystemShell(config.shell)
@@ -771,6 +777,7 @@ export async function projectHostFor(
     permission: context.projectPermission,
     approvals: context.approvals,
     systemConfig: config,
+    sandboxNetwork: sandboxNetworkFrom(context.configFile),
     builtinTools: {
       cwd: path,
       processes: processesFor(context, path),
@@ -783,6 +790,40 @@ export async function projectHostFor(
   })
   context.projectHosts?.set(path, { host, signature })
   return host
+}
+
+/**
+ * `PUT /api/config` 的 `sandbox` 字段：命令的网络规则。规则逐条校验，非法时整次拒绝并点名
+ * 是哪一条（配置读取时只会静默丢弃）。`open` 且两张表都空即清除这一节。
+ * @returns 补丁，或面向人类的错误。
+ */
+function stringList(value: unknown): string[] | undefined {
+  if (value === undefined) return []
+  return Array.isArray(value) && value.every((entry): entry is string => typeof entry === 'string') ? value : undefined
+}
+
+function sandboxPatch(value: unknown): SystemConfigPatch['sandbox'] | string {
+  if (value === null) return undefined
+  const network = typeof value === 'object' && !Array.isArray(value) ? Reflect.get(value, 'network') : undefined
+  if (typeof network !== 'object' || network === null || Array.isArray(network)) return 'sandbox.network must be an object'
+  const mode: unknown = Reflect.get(network, 'mode')
+  if (!isSandboxNetworkMode(mode)) return 'sandbox.network.mode must be open, allowlist or off'
+  const allowedDomains = stringList(Reflect.get(network, 'allowedDomains'))
+  const deniedDomains = stringList(Reflect.get(network, 'deniedDomains'))
+  if (allowedDomains === undefined) return 'sandbox.network.allowedDomains must be an array of strings'
+  if (deniedDomains === undefined) return 'sandbox.network.deniedDomains must be an array of strings'
+  try {
+    const policy = resolveNetworkPolicy({ mode, allowedDomains, deniedDomains })
+    if (policy.mode === 'open' && policy.allowedDomains.length === 0 && policy.deniedDomains.length === 0) return undefined
+    return { network: {
+      mode: policy.mode,
+      ...(policy.allowedDomains.length > 0 ? { allowedDomains: [...policy.allowedDomains] } : {}),
+      ...(policy.deniedDomains.length > 0 ? { deniedDomains: [...policy.deniedDomains] } : {}),
+    } }
+  } catch (error) {
+    if (error instanceof SandboxError) return error.message
+    throw error
+  }
 }
 
 export function configSnapshot(config: SystemConfig, path = systemConfigPath()): Record<string, unknown> {
@@ -810,6 +851,13 @@ export function configSnapshot(config: SystemConfig, path = systemConfigPath()):
       proxy: config.network?.proxy ?? '',
       defaultAllowedHosts: DEFAULT_ALLOWED_HOSTS,
       ...(environmentProxy() ? { environmentProxy: environmentProxy() } : {}),
+    },
+    sandbox: {
+      network: {
+        mode: config.sandbox?.network?.mode ?? 'open',
+        allowedDomains: config.sandbox?.network?.allowedDomains ?? [],
+        deniedDomains: config.sandbox?.network?.deniedDomains ?? [],
+      },
     },
     config: {
       apiKeySet: Boolean(config.apiKey),

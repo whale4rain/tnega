@@ -11,6 +11,7 @@
     "@tnega/execution": "workspace:*",
     "@tnega/fs-sandbox": "workspace:*",
     "@tnega/sandbox": "workspace:*",
+    "@tnega/sandbox-network-proxy": "workspace:*",
     "@tnega/sandbox-windows-acl": "workspace:*",
     "@tnega/sandbox-windows-mxc": "workspace:*",
     "@tnega/web-kit": "workspace:*"

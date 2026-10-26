@@ -20,6 +20,7 @@ class RecordingSandbox extends SandboxService {
   readonly requests: SandboxConfineRequest[] = []
   unavailable = false
   runnerEnv?: Readonly<Record<string, string>>
+  note?: string
 
   protected override runConfine(request: SandboxMechanismRequest): ConfinedArgv {
     this.requests.push({
@@ -31,6 +32,7 @@ class RecordingSandbox extends SandboxService {
     return {
       argv: ['RUNNER', '--', ...request.argv],
       ...(this.runnerEnv ? { env: this.runnerEnv } : {}),
+      ...(this.note !== undefined ? { annotate: () => this.note } : {}),
       runner: 'recording',
       enforcement: 'full',
       denialSignatures: ['denied'],
@@ -202,7 +204,18 @@ describe('sandboxed execution', () => {
     expect(inner.shells).toHaveLength(0)
   })
 
-  it('leaves network access alone: no backend restricts it, so the vocabulary does not claim to', async () => {
+  it('appends the provider note (blocked hosts) to stderr after the command exits', async () => {
+    const { ctx, sandbox, inner } = mount()
+    sandbox.note = 'tnega sandbox blocked evil.test:443'
+    const provider = execution(ctx, inner)
+    const shell = await provider.runShell({ command: 'curl evil.test', cwd: WORKSPACE })
+    const argv = await provider.runProcess({ argv: ['curl', 'evil.test'], cwd: WORKSPACE })
+    expect(shell.stderr).toBe('tnega sandbox blocked evil.test:443\n')
+    expect(argv.stderr).toBe('tnega sandbox blocked evil.test:443\n')
+    expect(inner.processes[0]).not.toHaveProperty('annotate')
+  })
+
+  it('does not confine the host-side http_get fetch: command network rules apply to commands only', async () => {
     const { ctx, inner } = mount()
     const response = await execution(ctx, inner).fetchHttp({ url: 'https://example.com' })
     expect(response.body).toBe('ok')

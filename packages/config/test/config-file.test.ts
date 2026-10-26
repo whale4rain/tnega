@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { availableModels, ModelRouteError, parseModelRouteInput, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
+import { availableModels, ModelRouteError, parseModelRouteInput, parseSandboxConfig, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
 
 const dirs: string[] = []
 
@@ -29,6 +29,23 @@ describe('system config file', () => {
     expect((await readSystemConfig(file)).projectMemory).toEqual({ enabled: true, maxCallsPerDay: 2, coldModelId: 'economical' })
     await writeFile(file, JSON.stringify({ projectMemory: { maxCallsPerDay: -1 } }))
     expect((await readSystemConfig(file)).projectMemory).toEqual({ enabled: false })
+  })
+  it('persists command network rules, keeps unreadable ones so the sandbox refuses them, and clears them', async () => {
+    const file = await configFile()
+    await updateSystemConfig({ sandbox: { network: { mode: 'allowlist', allowedDomains: ['*.github.com', 'pypi.org:443'], deniedDomains: ['gist.github.com'] } } }, file)
+    expect((await readSystemConfig(file)).sandbox).toEqual({
+      network: { mode: 'allowlist', allowedDomains: ['*.github.com', 'pypi.org:443'], deniedDomains: ['gist.github.com'] },
+    })
+    // Dropping a bad blocked entry would widen the network, so entries stay as written.
+    await writeFile(file, JSON.stringify({ sandbox: { network: { mode: 'allowlist', allowedDomains: ['ok.dev'], deniedDomains: ['http://bad', 3] } } }))
+    expect((await readSystemConfig(file)).sandbox).toEqual({ network: { mode: 'allowlist', allowedDomains: ['ok.dev'], deniedDomains: ['http://bad', '3'] } })
+    await updateSystemConfig({ sandbox: undefined }, file)
+    expect((await readSystemConfig(file)).sandbox).toBeUndefined()
+    // An unreadable mode fails closed.
+    expect(parseSandboxConfig({ network: { mode: 'wide' } })).toEqual({ network: { mode: 'off' } })
+    // A blocked list that is not a list stays as one entry the sandbox refuses.
+    expect(parseSandboxConfig({ network: { mode: 'allowlist', deniedDomains: 'evil.dev' } }))
+      .toEqual({ network: { mode: 'allowlist', deniedDomains: ['"evil.dev"'] } })
   })
   it('never saves over a file it could not parse', async () => {
     const broken = `{

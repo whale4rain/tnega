@@ -44,13 +44,16 @@ describe('Windows chain', () => {
         },
       },
     })
-    expect(await service.status()).toEqual({ available: true, runner: 'windows-acl', enforcement: 'partial' })
+    expect(await service.status()).toEqual({
+      available: true, runner: 'windows-acl', enforcement: 'partial',
+      network: { filtering: false, detail: expect.stringContaining('ACL sandbox cannot restrict network access') },
+    })
     expect(probed).toEqual(['windows-mxc', 'windows-acl'])
   })
 
   it('reports MXC as partial and names it when its probe passes', async () => {
-    const service = mount({ internals: { platform: 'win32', probe: () => 'partial' } })
-    expect(await service.status()).toEqual({ available: true, runner: 'windows-mxc', enforcement: 'partial' })
+    const service = mount({ internals: { platform: 'win32', probe: () => 'partial', networkProbe: () => undefined } })
+    expect(await service.status()).toEqual({ available: true, runner: 'windows-mxc', enforcement: 'partial', network: { filtering: true } })
   })
 
   it('wraps a workspace-write command in the MXC runner with a session-scoped container', async () => {
@@ -197,8 +200,9 @@ if (request.version === '1.0.0') {
       mxcExecPath: exec,
       internals: { platform: 'win32', chain: ['windows-mxc'], volumeRoots: () => [] },
     })
-    expect(await service.status()).toEqual({ available: true, runner: 'windows-mxc', enforcement: 'partial' })
-    expect(readFileSync(log, 'utf8')).toBe('1.0.0 cmd.exe /d /s /c "exit 0"\n0.9.0-alpha cmd.exe /d /s /c "exit 0"\n')
+    expect(await service.status()).toEqual({ available: true, runner: 'windows-mxc', enforcement: 'partial', network: { filtering: true } })
+    // Two contract probes, then one proxy-mode probe on the negotiated contract.
+    expect(readFileSync(log, 'utf8')).toBe('1.0.0 cmd.exe /d /s /c "exit 0"\n0.9.0-alpha cmd.exe /d /s /c "exit 0"\n0.9.0-alpha cmd.exe /d /s /c "exit 0"\n')
     const confined = await service.confine({
       op: 'shell', argv: SHELL, policy: { mode: 'read-only', workspaceRoot: canonicalPath(process.cwd()) },
     })

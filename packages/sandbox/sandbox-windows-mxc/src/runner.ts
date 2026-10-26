@@ -11,9 +11,12 @@
  * ```text
  * [node, <runner>, '--workspace', <绝对目录>, '--mode', <read-only|workspace-write>,
  *  '--exec', <wxc-exec 路径>, '--contract', <版本>, '--container-id', <id>,
- *  ['--temp', <绝对目录>], ['--read-only-root', <目录>]..., ['--exec-arg', <参数>]...,
- *  '--', ...argv]
+ *  ['--temp', <绝对目录>], ['--network', <open|off|http://127.0.0.1:端口>],
+ *  ['--read-only-root', <目录>]..., ['--exec-arg', <参数>]..., '--', ...argv]
  * ```
+ *
+ * - `--network` 缺省为 `open`（不限制）；`off` 断开一切网络；回环代理 URL 表示「只能经这个
+ *   HTTP/S 代理出去」（MXC 的代理模式，见 {@link buildMxcRequest}）。
  *
  * - `workspace-write` 必须给 `--temp`：runner 在它下面为本次调用建一个私有目录，授予读写，
  *   并把 TMP/TEMP 指过去；`read-only` 不接受 `--temp`，什么都不可写。
@@ -56,6 +59,39 @@ export const MXC_CONTRACT_VERSIONS = ['1.0.0', '0.9.0-alpha'] as const
 /** 本机制可以强制的两种模式。`bypass` 不是受限策略，不在机制库的词汇里。 */
 export type MxcSandboxMode = 'read-only' | 'workspace-write'
 
+/**
+ * 命令的网络：`open` 不限制；`off` 全部断开；`{ proxy }` 只能经宿主上的回环 HTTP/S 代理出去。
+ */
+export type MxcNetwork = 'open' | 'off' | { proxy: string }
+
+/**
+ * 代理 URL 必须是回环上的 `http://`：MXC 拒绝非回环端点，而且代理就跑在宿主上。
+ * @returns 规范化后的 URL；不合格时返回 `undefined`。
+ */
+export function loopbackProxyUrl(value: string): string | undefined {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== 'http:' || url.port === '' || url.username !== '' || url.pathname !== '/') return undefined
+  if (url.hostname !== '127.0.0.1' && url.hostname !== '[::1]') return undefined
+  return `http://${url.host}`
+}
+
+function parseNetwork(value: string | undefined): MxcNetwork {
+  if (value === undefined || value === 'open') return 'open'
+  if (value === 'off') return 'off'
+  const proxy = loopbackProxyUrl(value)
+  if (proxy === undefined) throw new Error(`--network must be open, off or a loopback http:// proxy URL; received ${value}`)
+  return { proxy }
+}
+
+function networkArg(network: MxcNetwork): string {
+  return typeof network === 'string' ? network : network.proxy
+}
+
 /** 解析后的 runner 参数。 */
 export interface MxcRunnerInvocation {
   workspace: string
@@ -67,6 +103,8 @@ export interface MxcRunnerInvocation {
   containerId: string
   /** `workspace-write` 的私有 temp 父目录；`read-only` 下缺席。 */
   temp?: string
+  /** 命令的网络；缺席等同于 `open`。 */
+  network?: MxcNetwork
   /** 额外的只读根（工作区之外命令需要读的目录）。 */
   readOnlyRoots: readonly string[]
   /** 放在请求文件路径之前、交给执行器的额外参数（诊断用，例如 `--debug`）。 */
@@ -82,6 +120,7 @@ const VALUE_FLAGS = {
   '--contract': 'contract',
   '--container-id': 'containerId',
   '--temp': 'temp',
+  '--network': 'network',
 } as const
 
 const REPEAT_FLAGS = {
@@ -109,6 +148,7 @@ export function buildRunnerArgs(invocation: MxcRunnerInvocation): string[] {
     '--contract', invocation.contract,
     '--container-id', invocation.containerId,
     ...(invocation.temp === undefined ? [] : ['--temp', invocation.temp]),
+    ...(invocation.network === undefined || invocation.network === 'open' ? [] : ['--network', networkArg(invocation.network)]),
     ...invocation.readOnlyRoots.flatMap(root => ['--read-only-root', root]),
     ...invocation.execArgs.flatMap(argument => ['--exec-arg', argument]),
     '--',
@@ -150,6 +190,7 @@ export function parseRunnerArgs(raw: readonly string[]): MxcRunnerInvocation {
   if (index >= raw.length) throw new Error('missing -- before the command')
   const argv = raw.slice(index + 1)
   const { workspace, mode, exec, contract, containerId, temp } = values
+  const network = parseNetwork(values.network)
   if (workspace === undefined) throw new Error('missing --workspace')
   if (mode !== 'read-only' && mode !== 'workspace-write') throw new Error(`unknown --mode: ${String(mode)}`)
   if (exec === undefined) throw new Error('missing --exec')
@@ -168,6 +209,7 @@ export function parseRunnerArgs(raw: readonly string[]): MxcRunnerInvocation {
   return {
     workspace, mode, exec, contract, containerId,
     ...(temp === undefined ? {} : { temp }),
+    ...(network === 'open' ? {} : { network }),
     readOnlyRoots: repeats.readOnlyRoots,
     execArgs: repeats.execArgs,
     argv,
@@ -267,6 +309,8 @@ export interface MxcRequestOptions {
   /** `workspace-write` 下被授予读写的私有 temp 目录。 */
   privateTemp?: string
   readOnlyRoots: readonly string[]
+  /** 缺席等同于 `open`。 */
+  network?: MxcNetwork
   commandLine: string
   cwd: string
   env: Readonly<Record<string, string>>
@@ -284,12 +328,19 @@ function uniquePaths(paths: readonly (string | undefined)[]): string[] {
  *
  * - `ui.disable: false`：MXC 默认禁 Win32k，PowerShell 与 Node 会以 0xC0000142 在启动时
  *   死掉；沙箱缝的模式只管文件效果，桌面保持与非受限时一样可达，剪贴板与输入注入仍关闭。
- * - 网络两个方向都显式 `allow`：省略在 MXC 里等于拒绝，而本缝不管网络。
+ * - 网络按 {@link MxcNetwork}：
+ *   - `open`：两个方向都显式 `allow`（省略在 MXC 里等于拒绝）；
+ *   - `off`：MXC 的「完全阻断」：出入与宿主回环全部 `deny`；
+ *   - `{ proxy }`：MXC 的代理模式（ProcessContainer 文档的 Model 2）。出站默认拒绝，WFP 只放行
+ *     到这个回环端点的连接，MXC 同时为容器设好 WinHTTP 代理与 `HTTP(S)_PROXY`。代理是宿主上
+ *     的普通进程（没有包身份），按 MXC 的要求取「无身份回环代理」这一档：
+ *     `ingress.default: allow` + `hostLoopback: allow`，不给 `allowedProxyPeer`。
  * - 不设执行超时：命令的期限属于执行层，第二个期限会把超时报成 MXC 的结果。
  * - `preservePolicy: false`：本次请求落下的 ACE 在结束时撤销，不留常驻宿主状态。
  */
 export function buildMxcRequest(options: MxcRequestOptions): Record<string, unknown> {
   const { contract, mode, workspace, privateTemp, readOnlyRoots, commandLine, cwd, env, containerId } = options
+  const network = options.network ?? 'open'
   const readwritePaths = mode === 'workspace-write' ? uniquePaths([workspace, privateTemp]) : []
   const readonlyPaths = mode === 'workspace-write'
     ? uniquePaths(readOnlyRoots)
@@ -304,13 +355,24 @@ export function buildMxcRequest(options: MxcRequestOptions): Record<string, unkn
       env: Object.entries(env).map(([key, value]) => `${key}=${value}`).sort(),
     },
     filesystem: { readwritePaths, readonlyPaths, deniedPaths: [] },
-    network: {
-      egress: { default: 'allow' },
-      ingress: { default: 'allow', hostLoopback: 'allow' },
-    },
+    ...mxcNetworkFields(network),
     ui: { disable: false, clipboard: 'none', injection: false },
     lifecycle: { destroyOnExit: true, preservePolicy: false },
     fallback: { allowDaclMutation: true },
+  }
+}
+
+/** 请求里与网络有关的字段：`network`，代理模式下还有 `runtimeConfig.networkProxy`。 */
+export function mxcNetworkFields(network: MxcNetwork): Record<string, unknown> {
+  if (network === 'open') {
+    return { network: { egress: { default: 'allow' }, ingress: { default: 'allow', hostLoopback: 'allow' } } }
+  }
+  if (network === 'off') {
+    return { network: { egress: { default: 'deny' }, ingress: { default: 'deny', hostLoopback: 'deny' } } }
+  }
+  return {
+    network: { egress: { default: 'deny' }, ingress: { default: 'allow', hostLoopback: 'allow' } },
+    runtimeConfig: { networkProxy: network.proxy },
   }
 }
 
@@ -477,6 +539,7 @@ export async function main(rawArgs: readonly string[]): Promise<number> {
       workspace,
       ...(privateTemp === undefined ? {} : { privateTemp }),
       readOnlyRoots: invocation.readOnlyRoots.map(canonical),
+      ...(invocation.network === undefined ? {} : { network: invocation.network }),
       commandLine: buildCommandLine(invocation.argv),
       // 执行层以命令的工作目录启动 runner；省略 cwd 会让 MXC 自己挑默认值。
       cwd: process.cwd(),

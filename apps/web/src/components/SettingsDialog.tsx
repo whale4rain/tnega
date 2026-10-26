@@ -1,9 +1,9 @@
 import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, ShieldCheck, SquareTerminal, Sun } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import { DISPLAY_DEFAULTS, PALETTES, type DisplayChange, type DisplayPreferences } from '../lib/display'
-import { isFsGuardMode, type ApprovalMode, type ApprovalReviewerSettings, type ConfigSnapshot, type Effort, type FsGuardMode, type InsightsSession, type Protocol } from '../lib/types'
+import { isFsGuardMode, type ApprovalMode, type ApprovalReviewerSettings, type CommandNetworkMode, type ConfigSnapshot, type Effort, type FsGuardMode, type InsightsSession, type Protocol, type SandboxNetworkSupport } from '../lib/types'
 import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
 import { ContextInsights } from './context/ContextInsights'
@@ -87,6 +87,28 @@ export function SettingsDialog({
   const [reviewKeyEnv, setReviewKeyEnv] = useState(stored?.approvalReview?.apiKeyEnv ?? '')
   const [proxy, setProxy] = useState(config?.network?.proxy ?? '')
   const [allowedHosts, setAllowedHosts] = useState((config?.network?.allowedHosts ?? []).join('\n'))
+  // Which Command network fields the person changed. Untouched fields follow the stored
+  // config, also when it arrives after the dialog opened.
+  const [networkTouched, setNetworkTouched] = useState<ReadonlySet<'mode' | 'allowed' | 'denied'>>(() => new Set())
+  const [commandNetwork, setCommandNetworkState] = useState<CommandNetworkMode>(config?.sandbox?.network.mode ?? 'open')
+  const [commandAllowed, setCommandAllowedState] = useState((config?.sandbox?.network.allowedDomains ?? []).join('\n'))
+  const [commandDenied, setCommandDeniedState] = useState((config?.sandbox?.network.deniedDomains ?? []).join('\n'))
+  const touch = <T,>(field: 'mode' | 'allowed' | 'denied', set: (value: T) => void) => (value: T) => {
+    setNetworkTouched(touched => touched.has(field) ? touched : new Set([...touched, field]))
+    set(value)
+  }
+  const setCommandNetwork = touch('mode', setCommandNetworkState)
+  const setCommandAllowed = touch('allowed', setCommandAllowedState)
+  const setCommandDenied = touch('denied', setCommandDeniedState)
+  const storedNetwork = config?.sandbox?.network
+  useEffect(() => {
+    if (storedNetwork === undefined) return
+    if (!networkTouched.has('mode')) setCommandNetworkState(storedNetwork.mode)
+    if (!networkTouched.has('allowed')) setCommandAllowedState((storedNetwork.allowedDomains ?? []).join('\n'))
+    if (!networkTouched.has('denied')) setCommandDeniedState((storedNetwork.deniedDomains ?? []).join('\n'))
+    // Only a new stored value re-hydrates; touching a field must not reset the others.
+  }, [storedNetwork])
+  const networkSupport = useNetworkSupport(section === 'tools' && commandNetwork !== 'open')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
 
@@ -123,6 +145,12 @@ export function SettingsDialog({
     if (badHost) return fail(`"${badHost}" is not a host name; use names like example.com or *.example.com`, 'tools')
     if (proxy.trim() && !/^https?:\/\/[^\s/]+/i.test(proxy.trim())) return fail('The proxy is a URL such as http://127.0.0.1:7890', 'tools')
     if (config?.network) patch.network = { allowedHosts: hosts, proxy: proxy.trim() }
+    // Sent only after the person edits it: a dialog opened before the config arrived
+    // must not save its "open" default over a stored "off" or allowlist.
+    if (config?.sandbox && networkTouched.size > 0) {
+      // The host checks every rule and names the one it cannot read.
+      patch.sandbox = { network: { mode: commandNetwork, allowedDomains: domainLines(commandAllowed), deniedDomains: domainLines(commandDenied) } }
+    }
     try {
       onSaved(await api.saveConfig(patch))
       onClose()
@@ -367,13 +395,37 @@ export function SettingsDialog({
                 <span className="field-label">Network proxy</span>
                 <input aria-label="Network proxy" value={proxy} onChange={event => setProxy(event.target.value)} spellCheck={false}
                   placeholder={config.network.environmentProxy ? `From the environment · ${config.network.environmentProxy}` : 'None · direct, or the system proxy in the desktop app'} />
-                <span className="muted small">For the agent's web requests and skill installs, such as http://127.0.0.1:7890. Leave empty to use HTTPS_PROXY from the environment.</span>
+                <span className="muted small">For the agent's web requests, skill installs and the commands Command network lets out, such as http://127.0.0.1:7890. Leave empty to use HTTPS_PROXY from the environment.</span>
               </label>
               <label className="field span-2">
                 <span className="field-label">Allowed hosts</span>
                 <textarea aria-label="Allowed hosts" rows={3} value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} spellCheck={false} placeholder="docs.example.com&#10;*.example.org" />
-                <span className="muted small">Web requests to private or reserved addresses are blocked. Hosts listed here are trusted whatever their DNS answers, which a proxy in fake-IP mode (198.18.x.x) needs. Trusted already: {config.network.defaultAllowedHosts.join(', ')}.</span>
+                <span className="muted small">For the agent's own web tools. Their requests to private or reserved addresses are blocked. Hosts listed here are trusted whatever their DNS answers, which a proxy in fake-IP mode (198.18.x.x) needs. Trusted already: {config.network.defaultAllowedHosts.join(', ')}.</span>
               </label>
+            </>}
+            {config?.sandbox && <>
+              <ChoiceField
+                id="command-network"
+                label="Command network"
+                value={commandNetwork}
+                onChange={setCommandNetwork}
+                options={[['open', 'Open'], ['allowlist', 'Listed domains only'], ['off', 'Off']]}
+                hint={COMMAND_NETWORK_HINTS[commandNetwork]}
+              />
+              {commandNetwork === 'allowlist' && <>
+                <label className="field">
+                  <span className="field-label">Allowed domains</span>
+                  <textarea aria-label="Allowed domains for commands" rows={4} value={commandAllowed} onChange={event => setCommandAllowed(event.target.value)} spellCheck={false} placeholder="github.com&#10;*.github.com&#10;registry.npmjs.org:443" />
+                </label>
+                <label className="field">
+                  <span className="field-label">Blocked domains</span>
+                  <textarea aria-label="Blocked domains for commands" rows={4} value={commandDenied} onChange={event => setCommandDenied(event.target.value)} spellCheck={false} placeholder="gist.github.com" />
+                </label>
+                <p className="field span-2 muted small">One per line. *.example.com matches subdomains only, so list example.com too if you need it. Add :443 to allow one port. Blocked wins over allowed. Allowed traffic leaves through the network proxy above.</p>
+              </>}
+              {commandNetwork !== 'open' && networkSupport && (networkSupport.filtering
+                ? <p className="field span-2 muted small">Enforced on this machine by {runnerName(networkSupport.runner)}.</p>
+                : <div className="field span-2 notice notice-warn" role="status">This machine cannot enforce it{networkSupport.detail ? `: ${networkSupport.detail}` : ''}. Commands will refuse to run until that is fixed.</div>)}
             </>}
           </div>)}
 
@@ -467,6 +519,38 @@ export function SettingsDialog({
       </div>
     </Dialog>
   )
+}
+
+const COMMAND_NETWORK_HINTS: Record<CommandNetworkMode, string> = {
+  open: 'Commands the agent runs (shell, scripts, package installs) can reach any address.',
+  allowlist: 'Commands can reach only the domains listed below, through a filtering proxy. Anything else is refused and the command is told which host was blocked.',
+  off: 'Commands get no network at all. Local files and the workspace still work.',
+}
+
+const RUNNER_NAMES: Record<string, string> = {
+  bwrap: 'bubblewrap',
+  seatbelt: 'macOS Seatbelt',
+  'windows-mxc': 'Windows MXC',
+}
+
+function runnerName(runner: string | undefined): string {
+  return runner ? RUNNER_NAMES[runner] ?? runner : 'the sandbox'
+}
+
+function domainLines(text: string): string[] {
+  return text.split(/[\s,]+/).map(entry => entry.trim()).filter(Boolean)
+}
+
+/** Asks once, and only when needed, whether this machine can filter command network: the check starts processes. */
+function useNetworkSupport(wanted: boolean): SandboxNetworkSupport | undefined {
+  const [support, setSupport] = useState<SandboxNetworkSupport>()
+  useEffect(() => {
+    if (!wanted || support) return
+    const controller = new AbortController()
+    api.sandboxNetwork(controller.signal).then(setSupport, () => undefined)
+    return () => controller.abort()
+  }, [wanted, support])
+  return support
 }
 
 function ChoiceField<T extends string>({ id, label, value, options, disabled, onChange, hint }: {

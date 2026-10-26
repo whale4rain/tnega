@@ -44,6 +44,24 @@ windows-acl: <node> <runner> --workspace <dir> --temp <dir> --mode <mode>
 custom    : <runnerCommand...> --mode <mode> --workspace <dir> --temp <dir> -- <argv...>
 ```
 
+网络受限时（策略的 `network` 是 `allowlist` 或 `off`）：
+
+```
+bwrap     : ... --unshare-net [--ro-bind <proxy-dir> <proxy-dir>] -- [/bin/sh -c <socat 中继> tnega-sandbox-net] <argv...>
+seatbelt  : profile 追加 (deny network*) [(allow network-outbound (remote ip "localhost:<proxy-port>"))]
+windows-mxc: ... --network off | --network http://127.0.0.1:<proxy-port> ...
+```
+
+`allowlist` 时 Provider 为每份网络策略起一个 `@tnega/sandbox-network-proxy` 过滤代理（Linux 监听
+私有 0700 目录里的 Unix socket，其它平台监听 `127.0.0.1` 的随机端口，dispose 时关闭），并给命令
+`HTTP(S)_PROXY` / `ALL_PROXY` / `NO_PROXY` 等环境变量。放行的连接经 `upstreamProxy`（省略时是宿主的
+`HTTPS_PROXY` / `HTTP_PROXY`）出去。命令退出后，`annotate` 列出本次被拒的主机。
+
+网络能力另做一次探测并缓存：bwrap 要真能建 network namespace，`allowlist` 还要 `socat -V` 成功；
+MXC 的 `allowlist` 要这台 Windows 真的接受代理模式（在 MXC 里跑一次带代理的 `exit 0`）；
+landlock、windows-acl、custom 管不了网络。做不到时 `confine` 抛 `SANDBOX_UNAVAILABLE` 并说明原因，
+`status().network` 给出同样的结论（设置界面经 `GET /api/sandbox/network` 读它）。
+
 `--unshare-pid` + `--proc /proc` 是安全项：没有私有 PID namespace，`/proc/1/root/...`
 这类 procfs magic link 可以绕过 mount profile 写回宿主。landlock 只授权 `/dev/null`
 这一个文件而不是 `/dev`，否则 `/dev/shm` 这种世界可写的宿主 tmpfs 就进来了。
@@ -63,7 +81,10 @@ await ctx.plugin(sandboxLocal, {
   mxcRead: 'all',                    // 默认：每个卷根都只读 → 读不受限（与 ACL 链一致）
   mxcReadOnlyRoots,                    // 叠加的读根；mxcRead: 'roots' 时是唯一来源
   runnerCommand / runnerFailureSignatures / runnerDenialSignatures,  // custom
-  internals: { platform, chain, probe },  // 测试/覆盖用
+  socatPath,                           // Linux 网络过滤的 socat，默认按 PATH 找
+  upstreamProxy: () => undefined,      // 放行后的上游代理；undefined 退回 HTTPS_PROXY，'' 直连
+  noProxy: () => process.env.NO_PROXY, // 不走上游的目标
+  internals: { platform, chain, probe, networkProbe },  // 测试/覆盖用
 })
 ```
 
@@ -82,7 +103,9 @@ await ctx.plugin(sandboxLocal, {
 
 ## 已知限制
 
-- 只限制**文件写**。网络与进程可见性不在词汇内，也没有后端试图限制它们。
+- 限制**文件写**，以及配置了时的**命令网络**。进程可见性不在词汇内。
+- 网络过滤只对遵守代理环境变量的客户端有效（其它连接在空网络里直接失败）；按域名放行不看 TLS
+  内容。Windows MXC 只认 HTTP/S 代理，ssh 等其它协议在 `allowlist` 下连不出去。
 - Windows MXC 的读侧默认放开（`mxcRead: 'all'`：每个卷根都是只读根），因为 AppContainer
   档位没有环境读权限，而 `node` / `npm` / `pwsh` 装在工作区之外的哪个盘只取决于用户环境；
   这也与 ACL 链「只收窄写」的既有语义一致。需要读侧隔离的部署用 `mxcRead: 'roots'`。

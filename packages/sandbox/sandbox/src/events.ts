@@ -1,4 +1,5 @@
 import type { Context } from '@tnega/core'
+import { isSandboxNetworkPolicy } from './network.js'
 import {
   SandboxError,
   type ConfinedArgv,
@@ -7,6 +8,7 @@ import {
   type SandboxEnforcement,
   type SandboxErrorCode,
   type SandboxErrorEvent,
+  type SandboxNetworkEvent,
   type SandboxOp,
   type SandboxPolicy,
   type SandboxPreConfineEvent,
@@ -23,6 +25,7 @@ import {
  * | `sandbox/pre-confine` | `waterfallAsync` | 收紧策略或改写 argv（策略）；不交出合法事件即失败 |
  * | `sandbox/confined` | `parallel` | 事后通知（审计、UI），成功包装后派发 |
  * | `sandbox/error` | `parallel` | 事后通知，任何失败（含 fail closed）时派发 |
+ * | `sandbox/network` | `parallel` | 过滤代理对一次连接的判定（允许或拦下），只读 |
  *
  * 改写点遵循 core 的 waterfall 约定（与 `agent/pre-step`、`tools/pre-execute`、
  * `search/pre-search` 一致）：**监听器就地改写负载，然后调用无参的 `next()`**。
@@ -52,6 +55,7 @@ export function isSandboxPolicy(value: unknown): value is SandboxPolicy {
   return (value.mode === 'read-only' || value.mode === 'workspace-write')
     && typeof value.workspaceRoot === 'string'
     && (value.tempRoot === undefined || typeof value.tempRoot === 'string')
+    && (value.network === undefined || isSandboxNetworkPolicy(value.network))
 }
 
 /** 受限 argv 形状：调用方会直接 spawn 它，所以每一项都要能过。 */
@@ -63,6 +67,7 @@ export function isConfinedArgv(value: unknown): value is ConfinedArgv {
     && isStringArray(value.denialSignatures)
     && Array.isArray(value.runnerFailureRules)
     && value.runnerFailureRules.every(isRunnerFailureRule)
+    && (value.annotate === undefined || typeof value.annotate === 'function')
 }
 
 function isRunnerFailureRule(value: unknown): value is RunnerFailureRule {
@@ -116,6 +121,15 @@ export async function notifyConfined(ctx: Context, event: SandboxConfinedEvent):
 export async function notifyError(ctx: Context, event: SandboxErrorEvent): Promise<void> {
   try {
     await ctx.parallel('sandbox/error', event)
+  } catch {
+    // 只读观察：观察者失败不改写权威结论。
+  }
+}
+
+/** 事后通知 `sandbox/network`；观察者失败不影响代理的判定。 */
+export async function notifyNetwork(ctx: Context, event: SandboxNetworkEvent): Promise<void> {
+  try {
+    await ctx.parallel('sandbox/network', event)
   } catch {
     // 只读观察：观察者失败不改写权威结论。
   }
