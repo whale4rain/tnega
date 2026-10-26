@@ -262,3 +262,18 @@ it('does not save the open default over command network rules that arrived after
   await waitFor(() => expect(save).toHaveBeenCalledOnce())
   expect(save.mock.calls[0]?.[0]).not.toHaveProperty('sandbox')
 })
+
+it('fills untouched command network fields from rules that arrive after the dialog opened', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  vi.spyOn(api, 'sandboxNetwork').mockResolvedValue({ filtering: true, runner: 'bwrap' })
+  const view = render(createElement(SettingsDialog, { config: undefined, onClose: vi.fn(), onSaved: vi.fn() }))
+  const loaded: ConfigSnapshot = { ...snapshot, sandbox: { network: { mode: 'allowlist', allowedDomains: ['a.dev'], deniedDomains: ['old.dev'] } } }
+  view.rerender(createElement(SettingsDialog, { config: loaded, onClose: vi.fn(), onSaved: vi.fn() }))
+  fireEvent.click(view.getByRole('tab', { name: 'Tools & shell' }))
+  expect(view.getByRole('radio', { name: 'Listed domains only' }).getAttribute('aria-checked')).toBe('true')
+  expect(view.getByLabelText('Allowed domains for commands')).toHaveProperty('value', 'a.dev')
+  fireEvent.change(view.getByLabelText('Blocked domains for commands'), { target: { value: 'gist.github.com' } })
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].sandbox).toEqual({ network: { mode: 'allowlist', allowedDomains: ['a.dev'], deniedDomains: ['gist.github.com'] } })
+})

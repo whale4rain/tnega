@@ -65,7 +65,7 @@ export interface DialOptions {
   timeoutMs?: number
 }
 
-async function defaultResolve(host: string): Promise<string[]> {
+export async function defaultResolve(host: string): Promise<string[]> {
   const answers = await lookup(host, { all: true, verbatim: true })
   return answers.map(answer => answer.address)
 }

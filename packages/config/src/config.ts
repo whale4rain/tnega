@@ -289,7 +289,10 @@ export interface SandboxConfig {
  * silently dropping a blocked domain and so widening the network.
  */
 function domainList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined
+  if (value === undefined || value === null) return undefined
+  // Not a list at all (say a bare string): keep it as one entry the sandbox cannot read, so
+  // commands refuse to run rather than lose the rule.
+  if (!Array.isArray(value)) return [JSON.stringify(value)]
   const entries = value.map(entry => typeof entry === 'string' ? entry.trim().toLowerCase() : JSON.stringify(entry))
     .filter(entry => entry.length > 0)
   return entries.length ? [...new Set(entries)] : undefined

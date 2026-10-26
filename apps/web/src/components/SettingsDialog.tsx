@@ -87,14 +87,27 @@ export function SettingsDialog({
   const [reviewKeyEnv, setReviewKeyEnv] = useState(stored?.approvalReview?.apiKeyEnv ?? '')
   const [proxy, setProxy] = useState(config?.network?.proxy ?? '')
   const [allowedHosts, setAllowedHosts] = useState((config?.network?.allowedHosts ?? []).join('\n'))
-  const [networkEdited, setNetworkEdited] = useState(false)
+  // Which Command network fields the person changed. Untouched fields follow the stored
+  // config, also when it arrives after the dialog opened.
+  const [networkTouched, setNetworkTouched] = useState<ReadonlySet<'mode' | 'allowed' | 'denied'>>(() => new Set())
   const [commandNetwork, setCommandNetworkState] = useState<CommandNetworkMode>(config?.sandbox?.network.mode ?? 'open')
   const [commandAllowed, setCommandAllowedState] = useState((config?.sandbox?.network.allowedDomains ?? []).join('\n'))
   const [commandDenied, setCommandDeniedState] = useState((config?.sandbox?.network.deniedDomains ?? []).join('\n'))
-  const edited = <T,>(set: (value: T) => void) => (value: T) => { setNetworkEdited(true); set(value) }
-  const setCommandNetwork = edited(setCommandNetworkState)
-  const setCommandAllowed = edited(setCommandAllowedState)
-  const setCommandDenied = edited(setCommandDeniedState)
+  const touch = <T,>(field: 'mode' | 'allowed' | 'denied', set: (value: T) => void) => (value: T) => {
+    setNetworkTouched(touched => touched.has(field) ? touched : new Set([...touched, field]))
+    set(value)
+  }
+  const setCommandNetwork = touch('mode', setCommandNetworkState)
+  const setCommandAllowed = touch('allowed', setCommandAllowedState)
+  const setCommandDenied = touch('denied', setCommandDeniedState)
+  const storedNetwork = config?.sandbox?.network
+  useEffect(() => {
+    if (storedNetwork === undefined) return
+    if (!networkTouched.has('mode')) setCommandNetworkState(storedNetwork.mode)
+    if (!networkTouched.has('allowed')) setCommandAllowedState((storedNetwork.allowedDomains ?? []).join('\n'))
+    if (!networkTouched.has('denied')) setCommandDeniedState((storedNetwork.deniedDomains ?? []).join('\n'))
+    // Only a new stored value re-hydrates; touching a field must not reset the others.
+  }, [storedNetwork])
   const networkSupport = useNetworkSupport(section === 'tools' && commandNetwork !== 'open')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
@@ -134,7 +147,7 @@ export function SettingsDialog({
     if (config?.network) patch.network = { allowedHosts: hosts, proxy: proxy.trim() }
     // Sent only after the person edits it: a dialog opened before the config arrived
     // must not save its "open" default over a stored "off" or allowlist.
-    if (config?.sandbox && networkEdited) {
+    if (config?.sandbox && networkTouched.size > 0) {
       // The host checks every rule and names the one it cannot read.
       patch.sandbox = { network: { mode: commandNetwork, allowedDomains: domainLines(commandAllowed), deniedDomains: domainLines(commandDenied) } }
     }

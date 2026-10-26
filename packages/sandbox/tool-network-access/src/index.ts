@@ -35,7 +35,15 @@ export class NetworkGrants {
 
   /** Approved domains, including those approved before this process started. */
   async list(): Promise<string[]> {
-    this.seeded ??= this.seed()
+    if (this.seeded === undefined) {
+      const log = this.session?.()
+      // No Session mounted yet: try again on the next call instead of settling on none.
+      if (log === undefined) return [...this.granted]
+      this.seeded = this.seed(log).catch((error: unknown) => {
+        this.seeded = undefined
+        throw error
+      })
+    }
     await this.seeded
     return [...this.granted]
   }
@@ -45,16 +53,14 @@ export class NetworkGrants {
   }
 
   /** Read earlier approvals once from the Session's tool results. */
-  private async seed(): Promise<void> {
-    const log = this.session?.()
-    if (log === undefined) return
+  private async seed(log: GrantSource): Promise<void> {
     for (const event of await log.read()) {
       if (event.type !== 'tool/result') continue
       const payload = event.payload
       if (!isRecord(payload) || payload.name !== NETWORK_ACCESS_TOOL || payload.ok !== true) continue
       const output = payload.output
       if (isRecord(output) && Array.isArray(output.granted)) {
-        this.add(output.granted.filter((entry): entry is string => typeof entry === 'string' && parseDomainPattern(entry) !== undefined))
+        this.add(output.granted.filter((entry): entry is string => typeof entry === 'string' && grantable(entry)))
       }
     }
   }
@@ -88,14 +94,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** A domain this tool may grant: readable, and never `*` (or `*:port`). */
+function grantable(entry: string): boolean {
+  const pattern = parseDomainPattern(entry)
+  return pattern !== undefined && pattern.match !== 'any'
+}
+
 function domainList(value: unknown): string[] {
   if (!Array.isArray(value) || value.length === 0) throw new ToolInputError('domains must be a non-empty array of domain names')
   if (value.length > MAX_DOMAINS) throw new ToolInputError(`ask for at most ${MAX_DOMAINS} domains at a time`)
   const domains = value.map(entry => typeof entry === 'string' ? entry.trim().toLowerCase() : '')
-  const bad = domains.filter(entry => {
-    const pattern = parseDomainPattern(entry)
-    return pattern === undefined || pattern.match === 'any'
-  })
+  const bad = domains.filter(entry => !grantable(entry))
   if (bad.length > 0) {
     throw new ToolInputError(`not a domain this tool can grant: ${bad.map(entry => JSON.stringify(entry)).join(', ')}. Use names such as example.com, *.example.com or example.com:443; "*" is never granted`)
   }
@@ -148,14 +157,23 @@ export function createNetworkAccessTool(config: ToolNetworkAccessConfig): ToolDe
       })
       const granted = domains.filter(domain => !blocked.includes(domain))
       config.grants.add(granted)
-      const remembered = remember && config.remember !== undefined && granted.length > 0
-      if (remembered) await config.remember?.(granted)
+      let remembered = false
+      let saveFailed = false
+      if (remember && config.remember !== undefined && granted.length > 0) {
+        // The grant for this Session stands even if saving it for later fails.
+        try {
+          await config.remember(granted)
+          remembered = true
+        } catch {
+          saveFailed = true
+        }
+      }
       return {
         granted,
         ...(blocked.length > 0 ? { stillBlocked: blocked } : {}),
         remembered,
         note: granted.length > 0
-          ? `Allowed for ${remembered ? 'this and later sessions' : 'this session'}. Re-run the command.`
+          ? `Allowed for ${remembered ? 'this and later sessions' : 'this session'}.${saveFailed ? ' Saving them to Settings failed, so later sessions will ask again.' : ''} Re-run the command.`
           : 'Nothing granted: these are on the blocked list in Settings.',
       }
     },

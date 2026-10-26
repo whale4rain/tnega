@@ -12,7 +12,7 @@
 
 import { createServer as createHttpServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer, isIP, type AddressInfo, type Server, type Socket } from 'node:net'
-import { dialDirect, isLocalAddress, LocalAddressError } from './dial.js'
+import { defaultResolve, dialDirect, isLocalAddress, LocalAddressError } from './dial.js'
 import { readSocksRequest, SocksError, socksReply, SOCKS_REPLY } from './socks.js'
 import { authority, bypassesUpstream, parseUpstreamProxy, tunnelThrough } from './upstream.js'
 
@@ -139,13 +139,26 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
   }
 
   /**
-   * 经上游出去时名字由上游解析，这里看不到答案；但字面量的本机地址与 `localhost` 不需要解析，
-   * 规则没点名它时照样拦下 —— 否则一个通配规则就能借本机上的上游代理摸到宿主服务。
+   * 经上游出去时名字由上游解析，这里看不到它的答案。字面量的本机地址与 `localhost` 直接拦；
+   * 其余名字在本地先解析一次（尽力而为），任一答案是本机地址就拦 —— 否则一个通配规则就能借
+   * 本机上的上游代理摸到宿主服务。本地解析失败时照常交给上游：有的网络只有上游能解析名字。
+   * 规则逐字点名了主机时不拦。
    */
-  function localViaUpstream(target: ProxyTarget, protocol: ProxyProtocol, verdict: ProxyVerdict): ProxyDecision | undefined {
+  async function localViaUpstream(target: ProxyTarget, protocol: ProxyProtocol, verdict: ProxyVerdict): Promise<ProxyDecision | undefined> {
     if (verdict.named === true) return undefined
     const host = target.host
-    const local = isIP(host) !== 0 ? isLocalAddress(host) : host === 'localhost' || host.endsWith('.localhost')
+    let local: boolean
+    if (isIP(host) !== 0) local = isLocalAddress(host)
+    else if (host === 'localhost' || host.endsWith('.localhost')) local = true
+    else {
+      let answers: string[] = []
+      try {
+        answers = await (options.resolve ?? defaultResolve)(host)
+      } catch {
+        // 只有上游能解析：交给上游。
+      }
+      local = answers.some(isLocalAddress)
+    }
     if (!local) return undefined
     return record(target, protocol, { allowed: false, reason: 'local-address', ...(verdict.rule !== undefined ? { rule: verdict.rule } : {}) })
   }
@@ -173,10 +186,9 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
     if (!verdict.allowed) return { denied: record(target, protocol, verdict) }
     const upstream = upstreamFor(target)
     if (upstream === undefined) return dial(target, protocol, verdict)
-    const local = localViaUpstream(target, protocol, verdict)
+    const local = await localViaUpstream(target, protocol, verdict)
     if (local !== undefined) return { denied: local }
     record(target, protocol, verdict)
-    // 上游负责解析名字：本机地址检查只对直连有意义。
     return { socket: await tunnelThrough(upstream, target.host, target.port) }
   }
 
@@ -254,7 +266,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
       const upstream = upstreamFor(target)
       let forward
       if (upstream !== undefined) {
-        const local = localViaUpstream(target, 'http', verdict)
+        const local = await localViaUpstream(target, 'http', verdict)
         if (local !== undefined) {
           sendText(res, 403, explain(local))
           return

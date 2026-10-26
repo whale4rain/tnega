@@ -56,11 +56,38 @@ describe('request_network_access', () => {
   it('rebuilds earlier grants from the Session after a restart', async () => {
     const grants = new NetworkGrants(() => ({
       read: async () => [
-        { type: 'tool/result', payload: { name: NETWORK_ACCESS_TOOL, ok: true, output: { granted: ['pypi.org', 'not a domain'] } } },
+        { type: 'tool/result', payload: { name: NETWORK_ACCESS_TOOL, ok: true, output: { granted: ['pypi.org', 'not a domain', '*', '*:443'] } } },
         { type: 'tool/result', payload: { name: NETWORK_ACCESS_TOOL, ok: false, output: { granted: ['evil.test'] } } },
         { type: 'tool/result', payload: { name: 'shell', ok: true, output: { granted: ['other.test'] } } },
       ],
     }))
+    expect(await grants.list()).toEqual(['pypi.org'])
+  })
+
+  it('reads the Session once it is mounted, and again after a failed read', async () => {
+    const mounted: { log?: { read: () => Promise<Array<{ type: string; payload: unknown }>> } } = {}
+    let fail = true
+    const grants = new NetworkGrants(() => mounted.log)
+    expect(await grants.list()).toEqual([])
+    mounted.log = {
+      read: async () => {
+        if (fail) throw new Error('disk busy')
+        return [{ type: 'tool/result', payload: { name: NETWORK_ACCESS_TOOL, ok: true, output: { granted: ['pypi.org'] } } }]
+      },
+    }
+    await expect(grants.list()).rejects.toThrow('disk busy')
+    fail = false
+    expect(await grants.list()).toEqual(['pypi.org'])
+  })
+
+  it('keeps the session grant when saving to Settings fails', async () => {
+    const grants = new NetworkGrants()
+    const result = await createNetworkAccessTool({
+      grants,
+      network: async () => ALLOWLIST,
+      remember: async () => { throw new Error('read-only config') },
+    }).execute({ domains: ['pypi.org'], reason: 'pip', remember: true }, { approvedElevation: true })
+    expect(result).toMatchObject({ granted: ['pypi.org'], remembered: false, note: expect.stringMatching(/Saving them to Settings failed/) })
     expect(await grants.list()).toEqual(['pypi.org'])
   })
 })

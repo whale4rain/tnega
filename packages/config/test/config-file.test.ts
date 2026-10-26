@@ -43,6 +43,9 @@ describe('system config file', () => {
     expect((await readSystemConfig(file)).sandbox).toBeUndefined()
     // An unreadable mode fails closed.
     expect(parseSandboxConfig({ network: { mode: 'wide' } })).toEqual({ network: { mode: 'off' } })
+    // A blocked list that is not a list stays as one entry the sandbox refuses.
+    expect(parseSandboxConfig({ network: { mode: 'allowlist', deniedDomains: 'evil.dev' } }))
+      .toEqual({ network: { mode: 'allowlist', deniedDomains: ['"evil.dev"'] } })
   })
   it('never saves over a file it could not parse', async () => {
     const broken = `{

@@ -201,6 +201,27 @@ describe('network proxy', () => {
     expect((await plainGet(portOf(any), `http://127.0.0.1:${port}/`)).status).toBe(403)
   })
 
+  it('refuses wildcard names that resolve to a local address before using the upstream', async () => {
+    const port = await origin()
+    const upstream = await proxy()
+    const started = await proxy({ upstream: `http://127.0.0.1:${portOf(upstream)}` })
+    expect((await tunnelGet({ port: portOf(started) }, `api.wild.test:${port}`)).status).toBe(403)
+    expect((await plainGet(portOf(started), `http://api.wild.test:${port}/`)).status).toBe(403)
+    expect((await socksConnect(portOf(started), 'api.wild.test', port)).reply).toBe(2)
+
+    // A name only the upstream can resolve still goes to the upstream.
+    const upstreamDecisions: ProxyDecision[] = []
+    const resolver = await proxy({ decisions: upstreamDecisions })
+    const blind = await startNetworkProxy({ host: '127.0.0.1', port: 0 }, {
+      decide: rules,
+      resolve: async () => { throw new Error('ENOTFOUND') },
+      upstream: () => `http://127.0.0.1:${portOf(resolver)}`,
+    })
+    cleanup.push(() => blind.close())
+    await tunnelGet({ port: portOf(blind) }, `api.wild.test:${port}`)
+    expect(upstreamDecisions.map(decision => decision.host)).toEqual(['api.wild.test'])
+  })
+
   it('speaks SOCKS5 on the same port', async () => {
     const port = await origin()
     const started = await proxy()
