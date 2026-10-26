@@ -18,6 +18,7 @@ import type {
   Permission,
   PendingQuestionRequest,
   QuestionAnswerItem,
+  SecretInfo,
   SessionDetail,
   SessionEffort,
   SessionEvent,
@@ -263,6 +264,11 @@ export function createClient(options: ClientOptions = {}) {
       call<{ questions: PendingQuestionRequest[] }>(scoped(`/api/sessions/${id}/questions`, workspace), { signal }),
     answerQuestions: (workspace: string, id: string, requestId: string, answers: QuestionAnswerItem[], signal?: AbortSignal) =>
       call<{ accepted: boolean; resumeQueued?: boolean }>(scoped(`/api/sessions/${id}/questions/${requestId}`, workspace), { method: 'POST', body: { answers }, signal }),
+    /** Secrets of a session (names only), plus the ones saved for its workspace. */
+    secrets: (workspace: string, sessionId?: string, signal?: AbortSignal) =>
+      call<{ secrets: SecretInfo[] }>(scoped('/api/secrets', workspace, sessionId ? { session: sessionId } : {}), { signal }),
+    removeSecret: (workspace: string, name: string, sessionId?: string) =>
+      call<{ secrets: SecretInfo[] }>(scoped('/api/secrets', workspace, { name, ...(sessionId ? { session: sessionId } : {}) }), { method: 'DELETE' }),
     patchSession: (workspace: string, id: string, patch: SessionPatch) =>
       call<{ summary: SessionSummary }>(scoped(`/api/sessions/${id}`, workspace), { method: 'PATCH', body: patch }),
     deleteSession: (workspace: string, id: string) =>

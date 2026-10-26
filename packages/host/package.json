@@ -32,6 +32,7 @@
     "@tnega/run-settings": "workspace:*",
     "@tnega/runtime": "workspace:*",
     "@tnega/sandbox-local": "workspace:*",
+    "@tnega/secrets-local": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/session-search-sqlite": "workspace:*",
     "@tnega/session-store": "workspace:*",

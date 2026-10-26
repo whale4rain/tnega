@@ -86,7 +86,49 @@ export function QuestionPanel({ request, onAnswer, width }: {
         <Text color={color.warn}>Waiting for you</Text>
         <Text dimColor> · question{request.questions.length > 1 ? ` ${step + 1} of ${request.questions.length}` : ''}</Text>
       </Text>
-      <QuestionStep key={question.id} question={question} onDone={finish} width={width - 4} />
+      {question.secret !== undefined
+        ? <SecretStep key={question.id} question={question} name={question.secret} onDone={finish} />
+        : <QuestionStep key={question.id} question={question} onDone={finish} width={width - 4} />}
+    </Box>
+  )
+}
+
+/**
+ * A secret the agent asked for: typed into a masked line, never echoed.
+ * Tab toggles Remember (save it for this workspace instead of this session).
+ */
+export function SecretStep({ question, name, onDone }: {
+  question: UserQuestion
+  name: string
+  onDone: (answer: QuestionAnswerItem | undefined) => void
+}) {
+  const [text, setText] = useState('')
+  const [remember, setRemember] = useState(false)
+  usePaste(value => setText(current => current + value.replace(/\r?\n/g, '')))
+  useInput((input, key) => {
+    if (key.escape && question.optional) return onDone(undefined)
+    if (key.tab) return setRemember(value => !value)
+    if (key.return) {
+      const typed = text.trim()
+      if (!typed) {
+        if (question.optional) onDone(undefined)
+        return
+      }
+      onDone({ questionId: question.id, text: typed, ...(remember ? { remember: true } : {}) })
+      return
+    }
+    if (key.backspace || key.delete) return setText(Array.from(text).slice(0, -1).join(''))
+    if (!key.ctrl && !key.meta && input) setText(text + input)
+  })
+  const length = Array.from(text).length
+  return (
+    <Box flexDirection="column">
+      <Text bold>{question.question?.trim() || `Needs ${name}`}</Text>
+      <Text>› {length ? '•'.repeat(Math.min(length, 40)) : <Text dimColor>type or paste; it is not shown</Text>}<Text inverse> </Text></Text>
+      <Text dimColor>
+        Commands read it as ${name}; the agent never sees it. {remember ? '[x] remember for this workspace' : '[ ] this session only'}
+      </Text>
+      <Text dimColor>enter send · tab remember{question.optional ? ' · esc skip' : ''}</Text>
     </Box>
   )
 }

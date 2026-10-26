@@ -574,6 +574,8 @@ export interface UserQuestion {
   options?: UserQuestionOption[]
   multiple?: boolean
   optional?: boolean
+  /** A secret question: the environment variable its hidden answer becomes. */
+  secret?: string
 }
 
 export interface PendingQuestionRequest {
@@ -589,7 +591,17 @@ export interface PendingQuestionRequest {
 export interface QuestionAnswerItem {
   questionId: string
   selected?: string[]
+  /** For a secret question, the value; it goes to the host's secret store, not the Session. */
   text?: string
+  /** A secret question only: save it for every session in this workspace. */
+  remember?: boolean
+}
+
+/** A secret by name; values never come back from the server. */
+export interface SecretInfo {
+  name: string
+  /** Saved for the workspace rather than kept for this session only. */
+  remembered: boolean
 }
 
 /** The file write guard's modes (mirrors `@tnega/config`, which the browser cannot import). */

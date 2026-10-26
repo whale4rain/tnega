@@ -86,3 +86,22 @@ it('resumes the durable queued answer when a nonblocking question is answered af
   expect(answer.mock.calls[0]?.slice(0, 4)).toEqual(['/work', 'session', 'request', [{ questionId: 'direction', text: '继续我的方案' }]])
   expect(view.queryByRole('form', { name: '会话问题' })).toBeNull()
 })
+
+it('asks for a secret in a hidden field and sends Remember only when chosen', async () => {
+  const onAnswer = vi.fn().mockResolvedValue(undefined)
+  const secretRequest: PendingQuestionRequest = { ...request, questions: [{ id: 'token', question: 'GitHub token', secret: 'GITHUB_TOKEN' }] }
+  const view = render(createElement(QuestionCard, { request: secretRequest, onAnswer }))
+  const field = view.getByLabelText('GitHub token：GITHUB_TOKEN 的值')
+  expect(field.getAttribute('type')).toBe('password')
+  expect(view.queryByRole('textbox')).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: '显示内容' }))
+  expect(field.getAttribute('type')).toBe('text')
+  fireEvent.change(field, { target: { value: ' ghp_secret ' } })
+  const remember = view.getByRole('button', { name: '记住' })
+  expect(remember.getAttribute('aria-pressed')).toBe('false')
+  fireEvent.click(remember)
+  expect(remember.getAttribute('aria-pressed')).toBe('true')
+  expect(view.getByText(/保存到这个工作区/)).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: '提交回答' }))
+  await waitFor(() => expect(onAnswer).toHaveBeenCalledWith([{ questionId: 'token', text: 'ghp_secret', remember: true }]))
+})

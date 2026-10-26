@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Context } from '@tnega/core'
 import { SessionLog } from '@tnega/session'
-import { userQuestions } from '../src/index.js'
+import { SecretStore, type SecretEntry, type SecretInfo, type SetSecretOptions } from '@tnega/secrets'
+import { formatQuestionAnswer, parseQuestionInput, userQuestions, type PendingQuestionRequest, type QuestionAnswers } from '../src/index.js'
 
 const cleanups: Array<() => Promise<unknown>> = []
 afterEach(async () => { await Promise.all(cleanups.splice(0).map(cleanup => cleanup())) })
@@ -137,4 +138,64 @@ it('retries durable delivery before settlement while preserving the first submit
   const result = await ctx.userQuestions.answer(request.requestId, [{ questionId: 'q', text: 'second' }], { agentId: 'a' })
   expect(result.answers).toEqual([{ questionId: 'q', text: 'first' }])
   expect(deliver.mock.calls[1]?.[1]).toEqual(result.answers)
+})
+
+class MemorySecrets extends SecretStore {
+  values = new Map<string, { value: string; remembered: boolean }>()
+  override async set(name: string, value: string, options: SetSecretOptions = {}): Promise<SecretInfo> {
+    this.values.set(name, { value, remembered: options.remember === true })
+    return { name, remembered: options.remember === true }
+  }
+  override async remove(name: string) { return this.values.delete(name) }
+  override async list() { return [...this.values].map(([name, entry]) => ({ name, remembered: entry.remembered })) }
+  override async entries(): Promise<SecretEntry[]> { return [...this.values].map(([name, entry]) => ({ name, value: entry.value })) }
+}
+
+async function setupWithSecrets() {
+  const setup_ = await setup()
+  const store = setup_.ctx.plugin({ name: 'memory-secrets', apply: (child: Context) => { new MemorySecrets(child) } })
+  await store
+  cleanups.unshift(async () => { await store.dispose() })
+  return { ...setup_, secrets: setup_.ctx.get('secrets') }
+}
+
+it('hands a secret answer to the store and keeps only its name in the Session', async () => {
+  const { ctx, session, secrets } = await setupWithSecrets()
+  const waiting = ctx.userQuestions.ask({ questions: [{ id: 'token', question: 'GitHub token?', secret: 'GITHUB_TOKEN' }] }, { agentId: 'a' })
+  const pending = await waitForPending(ctx)
+  await expect(ctx.userQuestions.answer(pending.requestId, [{ questionId: 'token', selected: ['x'] }], { agentId: 'a' })).rejects.toThrow()
+  await expect(ctx.userQuestions.answer(pending.requestId, [{ questionId: 'token', secret: { name: 'GITHUB_TOKEN', remembered: false } }], { agentId: 'a' })).rejects.toThrow('Send a secret as text')
+  await ctx.userQuestions.answer(pending.requestId, [{ questionId: 'token', text: 'ghp_value_123456', remember: true }], { agentId: 'a' })
+  expect(await waiting).toMatchObject({ status: 'answered', answers: [{ questionId: 'token', secret: { name: 'GITHUB_TOKEN', remembered: true } }] })
+  expect(await secrets.entries()).toEqual([{ name: 'GITHUB_TOKEN', value: 'ghp_value_123456' }])
+  expect(JSON.stringify(await session.read())).not.toContain('ghp_value_123456')
+})
+
+it('tells a nonblocking asker the name and how to use it, never the value', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'tnega-questions-'))
+  const session = new SessionLog(join(directory, 'session.jsonl'))
+  await session.init()
+  const ctx = new Context()
+  const delivered: string[] = []
+  const store = ctx.plugin({ name: 'memory-secrets', apply: (child: Context) => { new MemorySecrets(child) } })
+  await store
+  const fiber = ctx.plugin(userQuestions, {
+    resolveSession: () => session,
+    deliverNonblocking: async (request: PendingQuestionRequest, answers: QuestionAnswers) => { delivered.push(formatQuestionAnswer(request, answers)) },
+  })
+  await fiber
+  cleanups.push(async () => { await fiber.dispose(); await store.dispose(); await rm(directory, { recursive: true, force: true }) })
+  const result = await ctx.userQuestions.ask({ mode: 'nonblocking', questions: [{ id: 'key', secret: 'API_KEY' }] }, { agentId: 'a' })
+  await ctx.userQuestions.answer(result.requestId, [{ questionId: 'key', text: 'value-abcdef' }], { agentId: 'a' })
+  expect(delivered[0]).toContain('$API_KEY')
+  expect(delivered.join('')).not.toContain('value-abcdef')
+  expect(JSON.stringify(await session.read())).not.toContain('value-abcdef')
+})
+
+it('refuses secret questions without a store, and invalid secret names', async () => {
+  const { ctx } = await setup()
+  await expect(ctx.userQuestions.ask({ questions: [{ id: 'k', secret: 'API_KEY' }] }, { agentId: 'a' })).rejects.toMatchObject({ code: 'SECRETS_UNAVAILABLE' })
+  expect(() => parseQuestionInput({ questions: [{ id: 'k', secret: 'PATH' }] })).toThrow('rely on')
+  expect(() => parseQuestionInput({ questions: [{ id: 'k', secret: 'A_KEY', options: [{ label: 'x' }] }] })).toThrow('without options')
+  expect(() => parseQuestionInput({ questions: [{ id: 'a', secret: 'A_KEY' }, { id: 'b', secret: 'A_KEY' }] })).toThrow('Duplicate secret')
 })

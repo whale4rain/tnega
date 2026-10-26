@@ -4053,6 +4053,21 @@ kbd {
 .question-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .question-actions .muted { flex: 1; }
 .question-error { margin-top: 8px; color: var(--danger); font-size: var(--text-sm); }
+/* A secret answer: a hidden one-line field, its variable name and the Remember toggle. */
+.question-secret { display: grid; gap: 6px; }
+.question-secret .input-with-icon input { font-family: var(--font-mono); font-size: var(--text-sm); }
+.question-secret-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.question-secret-foot .muted { flex: 1; min-width: 0; }
+.question-remember[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); }
+
+/* Settings → Secrets: one quiet row per name. */
+.secret-settings { display: grid; gap: 12px; }
+.secret-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.secret-row { display: flex; align-items: center; gap: 10px; min-height: var(--control-lg); padding: 0 4px 0 10px; border-radius: var(--radius-sm); }
+.secret-row:hover { background: var(--surface-hover); }
+.secret-row > svg { color: var(--text-3); flex: none; }
+.secret-name { font-family: var(--font-mono); font-size: var(--text-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.secret-row .muted { flex: 1; min-width: 0; }
 .ptc-tool-children { margin-top: 12px; padding-left: 8px; border-left: 2px solid var(--border); }
 .code-token-keyword { color: var(--accent); font-weight: 600; }
 .code-token-string { color: var(--success); }

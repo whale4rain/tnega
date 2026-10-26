@@ -10,6 +10,8 @@ export * from './processes.js'
 export interface ShellRequest {
   command: string
   cwd: string
+  /** Child-only overrides; other host environment variables are inherited. */
+  env?: Readonly<Record<string, string>>
   timeoutMs?: number
   maxBuffer?: number
   signal?: AbortSignal
@@ -78,6 +80,8 @@ export interface HttpResponse {
 export interface BackgroundShellRequest {
   command: string
   cwd: string
+  /** Child-only overrides; other host environment variables are inherited. */
+  env?: Readonly<Record<string, string>>
   /** See {@link ShellRequest.unsandboxed}. */
   unsandboxed?: boolean
 }
@@ -377,9 +381,9 @@ function spawnOptions(
 }
 
 /** Spawn the system shell directly with the command as one argument: no cmd.exe hop, no console window. */
-function spawnShell(command: string, cwd: string): ExecutionChild {
+function spawnShell(command: string, cwd: string, env?: Readonly<Record<string, string>>): ExecutionChild {
   const [file, ...args] = shellCommandArgv(systemShell(), command)
-  return spawnProcess({ argv: [file!, ...args], cwd })
+  return spawnProcess({ argv: [file!, ...args], cwd, ...(env ? { env } : {}) })
 }
 
 function spawnProcess(request: BackgroundProcessRequest): ExecutionChild {
@@ -393,7 +397,7 @@ function spawnProcess(request: BackgroundProcessRequest): ExecutionChild {
 
 function runLocalShell(request: ShellRequest): Promise<ShellResult> {
   return runChild(
-    () => spawnShell(request.command, request.cwd),
+    () => spawnShell(request.command, request.cwd, request.env),
     {
       timeoutMs: request.timeoutMs ?? 15_000,
       maxBuffer: request.maxBuffer ?? 1024 * 1024,
@@ -455,7 +459,7 @@ ${errorMessage(error)}`
 }
 
 async function startLocalShell(request: BackgroundShellRequest): Promise<BackgroundProcess> {
-  return background(spawnShell(request.command, request.cwd))
+  return background(spawnShell(request.command, request.cwd, request.env))
 }
 
 async function startLocalProcess(request: BackgroundProcessRequest): Promise<BackgroundProcess> {

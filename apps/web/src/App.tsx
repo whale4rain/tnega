@@ -607,7 +607,7 @@ export function App() {
         />
       )}
       <UpdatingOverlay updates={updates} />
-      {dialog === 'settings' &&<SettingsDialog config={config} workspace={workspace} updates={updates} theme={theme} onThemeChange={setTheme} display={display} onDisplayChange={setDisplay} onClose={() => setDialog(undefined)} onSaved={setConfig} onOpenSession={session => {
+      {dialog === 'settings' &&<SettingsDialog config={config} workspace={workspace} sessionId={selectedId} updates={updates} theme={theme} onThemeChange={setTheme} display={display} onDisplayChange={setDisplay} onClose={() => setDialog(undefined)} onSaved={setConfig} onOpenSession={session => {
         setDialog(undefined)
         if (session.kind === 'thread' && session.projectId) openProject(session.projectId, session.threadId)
         else select(session.id)
