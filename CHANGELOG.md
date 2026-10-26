@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.5 | [`v0.5.4...v0.5.5`](https://github.com/whale4rain/tnega/compare/v0.5.4...v0.5.5) | 6 |
 | 0.5.4 | [`v0.5.3...v0.5.4`](https://github.com/whale4rain/tnega/compare/v0.5.3...v0.5.4) | 29 |
 | 0.5.3 | [`v0.5.2...v0.5.3`](https://github.com/whale4rain/tnega/compare/v0.5.2...v0.5.3) | 14 |
 | 0.5.2 | [`v0.5.2-beta.7...v0.5.2`](https://github.com/whale4rain/tnega/compare/v0.5.2-beta.7...v0.5.2) | 16 |
@@ -65,6 +66,43 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.5](https://github.com/whale4rain/tnega/releases/tag/v0.5.5) — 2026-10-26
+
+### Features
+
+- `web_search` uses DeepSeek's Search API: `POST /v1/tools/search` with the same
+  DeepSeek key instead of a wrapped model call, returning
+  `{ results: [{ title, url, summary, site, publishedAt }] }` best first with
+  each URL once. The query takes the API's operators (`site:`, `-site:`,
+  `"exact phrase"`, `-term`, `lang:`, `after:`, `before:`, at most 128
+  characters), plus optional `question` (the user's wording, sent as
+  `ori_question`) and `count` (1–20, default 8).
+- `web_fetch({url})` reads one public page as Markdown and returns
+  `{ url, title, content, truncated }`, cut at 60 000 characters; `http_get`
+  stays for APIs, raw files and headers. Both tools are read-only, run beside
+  other read-only calls of one message, and need no approval; without a key they
+  say to set `DEEPSEEK_API_KEY`.
+- A DeepSeek route lists Low and High reasoning effort instead of none, and a
+  saved model route that lists no `reasoningEfforts` now takes them from its
+  model id instead of an empty list, so the effort dropdown appears for the
+  model that was added.
+
+### Fixes
+
+- A `web_search` request that succeeds without a JSON body is a provider failure
+  with a stated reason, not an empty result list.
+- The queued-messages card keeps Steer now, edit and remove in view for a message
+  longer than the card; only its text is truncated.
+- Opening the process of a turn whose process is one run no longer folds it
+  twice: its thoughts are listed one by one and the tool calls between two
+  thoughts collapse into one line ("Read 2 files, ran a command").
+
+### Other
+
+- Design notes and `AGENTS.md` describe the web domain's two model-visible tools
+  and the narrower process fold; `@tnega/tool-web-search` now depends on
+  `@tnega/core` for its plugin shape.
 
 ## [0.5.4](https://github.com/whale4rain/tnega/releases/tag/v0.5.4) — 2026-10-26
 
