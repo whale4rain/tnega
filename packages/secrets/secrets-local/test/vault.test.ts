@@ -56,7 +56,21 @@ describe('SecretVault', () => {
   it('refuses names commands rely on and empty values', async () => {
     const { vault: v, workspace } = await vault()
     await expect(v.set({ workspace, sessionId: 'a' }, 'PATH', 'x')).rejects.toMatchObject({ code: 'SECRET_INVALID' })
+    await expect(v.set({ workspace, sessionId: 'a' }, 'LD_AUDIT', 'x')).rejects.toMatchObject({ code: 'SECRET_INVALID' })
     await expect(v.set({ workspace, sessionId: 'a' }, 'OK_NAME', '')).rejects.toMatchObject({ code: 'SECRET_INVALID' })
+  })
+
+  it('keeps a secret named __proto__ and does not read inherited names as stored', async () => {
+    const { vault: v, file, workspace } = await vault()
+    await v.set({ workspace, sessionId: 'a' }, '__proto__', 'proto-value', { remember: true })
+    expect(await v.list({ workspace, sessionId: 'b' })).toEqual([{ name: '__proto__', remembered: true }])
+    expect(await v.entries({ workspace, sessionId: 'b' })).toEqual([{ name: '__proto__', value: 'proto-value' }])
+    // And it survives a restart, which re-reads the file.
+    const restarted = new SecretVault({ file })
+    expect(await restarted.entries({ workspace, sessionId: 'c' })).toEqual([{ name: '__proto__', value: 'proto-value' }])
+    // `toString` was never stored: reporting a removal would be a lie.
+    expect(await v.remove({ workspace, sessionId: 'a' }, 'toString')).toBe(false)
+    expect(await v.list({ workspace, sessionId: 'b' })).toEqual([{ name: '__proto__', remembered: true }])
   })
 })
 

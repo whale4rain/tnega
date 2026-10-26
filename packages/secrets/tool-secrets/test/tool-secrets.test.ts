@@ -65,6 +65,23 @@ it('masks live progress, even a value split across pieces', async () => {
   expect(shown.join('')).toBe('out [secret: API_KEY] done')
 })
 
+it('masks a value a command got even if the secret is gone by the time the result comes back', async () => {
+  const { ctx, registry } = await setup()
+  const late = 'late-key-0123456789'
+  registry.register({
+    schema: { name: 'latecomer', description: 'gets a key mid-call', parameters: { type: 'object', properties: {} } },
+    execute: async () => {
+      // The user enters a key while this call runs, a command gets it, and it
+      // is removed before the result comes back.
+      await ctx.secrets.set('LATE_KEY', late)
+      ctx.secrets.noteInjected([{ name: 'LATE_KEY', value: late }])
+      await ctx.secrets.remove('LATE_KEY')
+      return `printed ${late}`
+    },
+  })
+  expect((await registry.execute('latecomer', {})).output).toBe('printed [secret: LATE_KEY]')
+})
+
 it('stops masking once disposed', async () => {
   const { registry, fiber } = await setup()
   registry.register({

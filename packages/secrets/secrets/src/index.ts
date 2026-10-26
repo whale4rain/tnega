@@ -52,7 +52,16 @@ const RESERVED = new Set([
   'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMFILES',
   'NODE_OPTIONS', 'NODE_PATH', 'PYTHONPATH', 'PYTHONSTARTUP', 'PERL5OPT', 'RUBYOPT',
   'BASH_ENV', 'ENV', 'PROMPT_COMMAND', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH',
+  'JDK_JAVA_OPTIONS', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH',
 ])
+
+/**
+ * Families where any one variable chooses code a command loads or runs
+ * (`LD_AUDIT`, `NPM_CONFIG_SCRIPT_SHELL`, `JAVA_TOOL_OPTIONS`,
+ * `GIT_CONFIG_COUNT`) or where it fetches from. A secret there would act as
+ * configuration rather than data, so the whole family is refused.
+ */
+const RESERVED_PREFIXES = ['LD_', 'DYLD_', 'NPM_CONFIG_', 'JAVA_', '_JAVA_', 'GIT_CONFIG_']
 
 /** Why `name` cannot name a secret, or `undefined` when it can. */
 export function secretNameProblem(name: unknown): string | undefined {
@@ -62,6 +71,9 @@ export function secretNameProblem(name: unknown): string | undefined {
   const upper = name.toUpperCase()
   if (RESERVED.has(upper)) return `${name} is a variable commands rely on and cannot hold a secret`
   if (upper.startsWith('TNEGA_')) return 'Names starting with TNEGA_ are reserved for tnega itself'
+  if (RESERVED_PREFIXES.some(prefix => upper.startsWith(prefix))) {
+    return `${name} is a variable commands rely on and cannot hold a secret`
+  }
   return undefined
 }
 
@@ -86,6 +98,16 @@ export function assertSecretName(name: unknown): asserts name is string {
  * subclasses {@link SecretStore} and mounts it as a plugin.
  */
 export abstract class SecretStore extends Service {
+  /**
+   * Values this scope has handed to a command, kept so masking still catches
+   * them afterwards. A user can remove a secret while a command that already
+   * reads it runs, or between the call that got it and the result coming back;
+   * the store then no longer holds the value, but it is still a value the model
+   * must not see. Per scope, not per call: a value a command was given stays
+   * masked in everything this scope reports later, even once removed.
+   */
+  private readonly injected = new Map<string, string>()
+
   constructor(ctx: Context) {
     super(ctx, 'secrets')
   }
@@ -98,6 +120,23 @@ export abstract class SecretStore extends Service {
   abstract list(): Promise<SecretInfo[]>
   /** Names with values, for the environment and masking consumers only. */
   abstract entries(): Promise<SecretEntry[]>
+
+  /** Remember that `entries` went into a child process's environment. */
+  noteInjected(entries: readonly SecretEntry[]): void {
+    for (const { name, value } of entries) this.injected.set(name, value)
+  }
+
+  /**
+   * Values to mask with: the current ones, plus every value a command was
+   * given in this scope, including one removed since.
+   */
+  async maskingEntries(): Promise<SecretEntry[]> {
+    const merged = new Map(this.injected)
+    for (const entry of await this.entries()) merged.set(entry.name, entry.value)
+    return [...merged]
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
 }
 
 /** Environment variables for a child process. */

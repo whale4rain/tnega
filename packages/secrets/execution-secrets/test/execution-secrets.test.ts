@@ -47,3 +47,16 @@ it('adds the current secrets to every command, with the caller winning on a clas
   expect(processes[0]?.env).toEqual({ API_KEY: 'mine', OTHER: '1' })
   await fiber.dispose()
 })
+
+it('records what it handed over, so masking still catches it once removed', async () => {
+  const ctx = new Context()
+  const fiber = ctx.plugin({ name: 'fake-secrets', apply: (child: Context) => { new FakeStore(child) } })
+  await fiber
+  const { inner } = recorder()
+  const execution = secretEnvExecution(ctx, inner)
+  await ctx.secrets.set('API_KEY', 'value-1234')
+  await execution.runShell({ command: 'echo $API_KEY', cwd: '.' })
+  await ctx.secrets.remove('API_KEY')
+  expect(await ctx.secrets.maskingEntries()).toEqual([{ name: 'API_KEY', value: 'value-1234' }])
+  await fiber.dispose()
+})

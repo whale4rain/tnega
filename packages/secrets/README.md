@@ -23,6 +23,9 @@ to the store and keeps only `{ name, remembered }` in the Session.
 - A remembered secret is saved for the workspace in `<tnega home>/secrets.json`
   (owner-only) and comes back after a restart, for every Session there.
 - A background process keeps the environment it started with.
+- A value a command was given stays masked in this scope's tool output even
+  after the secret is removed: masking covers the current values plus every
+  value a command could have read.
 
 ## Limits
 

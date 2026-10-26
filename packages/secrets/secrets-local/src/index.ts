@@ -38,7 +38,8 @@ function parseSaved(text: string): SavedFile {
   if (record(parsed) && record(parsed.workspaces)) {
     for (const [key, entry] of Object.entries(parsed.workspaces)) {
       if (!record(entry) || typeof entry.path !== 'string' || !record(entry.secrets)) continue
-      const secrets: Record<string, string> = {}
+      // Null prototype: a secret may legitimately be named `__proto__`.
+      const secrets: Record<string, string> = Object.create(null)
       for (const [name, value] of Object.entries(entry.secrets)) if (typeof value === 'string') secrets[name] = value
       workspaces[key] = { path: entry.path, secrets }
     }
@@ -121,7 +122,10 @@ export class SecretVault {
     if (options.remember) {
       const workspaceKey = workspaceStorageKey(scope.workspace)
       await this.updateSaved(saved => {
-        const entry = saved.workspaces[workspaceKey] ??= { path: resolve(scope.workspace), secrets: {} }
+        const entry = saved.workspaces[workspaceKey] ??= {
+          path: resolve(scope.workspace),
+          secrets: Object.create(null) as Record<string, string>,
+        }
         entry.secrets[name] = value
         return true
       })
@@ -141,7 +145,8 @@ export class SecretVault {
     const workspaceKey = workspaceStorageKey(scope.workspace)
     const fromFile = await this.updateSaved(saved => {
       const entry = saved.workspaces[workspaceKey]
-      if (!entry || !(name in entry.secrets)) return false
+      // Own keys only: `toString` and `constructor` are not stored secrets.
+      if (!entry || !Object.hasOwn(entry.secrets, name)) return false
       delete entry.secrets[name]
       return true
     })

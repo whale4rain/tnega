@@ -13,8 +13,10 @@ import { secretEnv } from '@tnega/secrets'
  * command and process this scope starts its secrets as environment variables.
  *
  * It reads the store at each call, so a key the user enters mid-turn reaches
- * the next command. With no store mounted it passes requests through. A
- * variable the caller sets itself wins over a secret of the same name.
+ * the next command, and records what it handed over so masking still catches
+ * those values once the store no longer holds them. With no store mounted it
+ * passes requests through. A variable the caller sets itself wins over a secret
+ * of the same name.
  *
  * Wrap the provider that spawns (the sandbox decorator's `inner`): the sandbox
  * then confines the command as usual and the variables ride along.
@@ -22,8 +24,12 @@ import { secretEnv } from '@tnega/secrets'
 export function secretEnvExecution(ctx: Context, inner: ExecutionProvider): ExecutionProvider {
   async function env(own: Readonly<Record<string, string>> | undefined): Promise<Readonly<Record<string, string>> | undefined> {
     const store = ctx.get('secrets', false)
-    const entries = store ? await store.entries() : []
+    if (!store) return own
+    const entries = await store.entries()
     if (entries.length === 0) return own
+    // Masking keeps catching these once a command could have printed them,
+    // even if the user removes one before the tool result comes back.
+    store.noteInjected(entries)
     return { ...secretEnv(entries), ...own }
   }
   const withEnv = async <T extends { env?: Readonly<Record<string, string>> }>(request: T): Promise<T> => {
