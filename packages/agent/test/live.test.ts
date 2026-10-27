@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Context } from '@tnega/core'
@@ -119,6 +119,37 @@ describe('live agent registry', () => {
     await handle.dispose()
 
     expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('contains an agent write that fails because its session tree is gone', async () => {
+    // A host closes the scope and then removes the workspace. Durable work queued but
+    // not yet written then fails with ENOENT. Context disposal must wait for that
+    // teardown and report the failure as an event; an unawaited rejection here aborts a
+    // whole test run (and the release gate) with no failing assertion behind it.
+    const unhandled: unknown[] = []
+    const record = (error: unknown): void => { unhandled.push(error) }
+    process.on('unhandledRejection', record)
+    const root = await mountRoot()
+    const errors: unknown[] = []
+    root.on('agent/error', (payload: { error: unknown }) => errors.push(payload.error))
+    const file = await tempFile('gone-tree.jsonl')
+    const registry = dynamic(root).agents as AgentRegistry
+    const handle = await registry.create({
+      id: '11111111-1111-4111-8111-222222222222',
+      file,
+      llm: fakeLLM([{ content: 'done', finishReason: 'stop' }]),
+      manualStreaming: true,
+    })
+    await handle.agent.inject({ text: 'staged' })
+    await handle.agent.followup({ text: 'queued' })
+    await rm(dirname(file), { recursive: true, force: true })
+
+    await expect(root.fiber.dispose()).resolves.toBeUndefined()
+    // Give any stray write a chance to surface before the test ends.
+    await new Promise(resolve => setTimeout(resolve, 100))
+    process.off('unhandledRejection', record)
+
+    expect(unhandled).toEqual([])
   })
 
   it('wakes the driver and drains queued followups', async () => {

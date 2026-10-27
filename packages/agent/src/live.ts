@@ -1081,9 +1081,18 @@ export const agents = {
       create: (options) => buildHandle(ctx, options),
       resume: (options) => buildHandle(ctx, options, true),
     })
-    return () => {
-      for (const agent of registry.list()) {
-        void agent.dispose()
+    return async () => {
+      // Agent teardown writes durable state (a closing `turn/end`, the cleared inbox).
+      // Disposing the Context must wait for it: otherwise the last writes race whatever
+      // the host does next (removing the workspace), and nothing surfaces the failure.
+      const settled = await Promise.allSettled(registry.list().map(agent => agent.dispose()))
+      for (const result of settled) {
+        if (result.status !== 'rejected') continue
+        try {
+          ctx.emit('agent/error', { id: 'registry', error: result.reason })
+        } catch {
+          // An observer must not turn a contained teardown failure into an unhandled rejection.
+        }
       }
     }
   },
