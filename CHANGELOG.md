@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.6-beta.1 | [`v0.5.5...v0.5.6-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6-beta.1) | 12 |
 | 0.5.5 | [`v0.5.4...v0.5.5`](https://github.com/whale4rain/tnega/compare/v0.5.4...v0.5.5) | 6 |
 | 0.5.4 | [`v0.5.3...v0.5.4`](https://github.com/whale4rain/tnega/compare/v0.5.3...v0.5.4) | 29 |
 | 0.5.3 | [`v0.5.2...v0.5.3`](https://github.com/whale4rain/tnega/compare/v0.5.2...v0.5.3) | 14 |
@@ -66,6 +67,70 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.6-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.6-beta.1) — 2026-10-27
+
+### Features
+
+- The agent can ask for a secret it can use but never see: `ask_user_question`
+  with a `secret` name such as `GITHUB_TOKEN` shows a hidden input with
+  show/hide and **Remember**, the value goes only to the host's secret store,
+  and commands get it as an environment variable. A session secret lives until
+  the session is deleted or tnega exits; **Remember** saves it for the workspace
+  in `~/.tnega/secrets.json` (owner-only). Settings → Secrets lists names and
+  removes one. Values are masked in tool output and live progress as
+  `[secret: NAME]`, including base64, base64url and URL-encoded forms, and a
+  value a command was given stays masked after the secret is removed or
+  replaced.
+- Command network rules: Settings → Tools & shell → Command network chooses
+  `open`, `off`, or `allowlist` with allowed and denied domains
+  (`example.com`, `*.example.com`, an IP literal, each with an optional `:port`
+  or `:*`). Deny wins over allow and anything unlisted is refused. **No port
+  means every port** in both lists; `example.com:443` matches only 443. Commands
+  reach the network through a host-side filter proxy, and allowed connections
+  can chain through the network proxy already configured in Settings.
+- The agent can ask for a blocked domain with `request_network_access`, on the
+  usual approval card. An approved host applies to the rest of the session, and
+  **remember** also writes it to Settings. `off` and the deny list cannot be
+  opened by an approval, and `*` is never granted.
+
+### Fixes
+
+- Projects mode no longer lists the secrets of a session that is not on screen.
+- A saved secret named `__proto__` is kept, and inherited names such as
+  `toString` are no longer reported as removed when they were never stored.
+- Secret names that would change what a command loads or runs are refused:
+  families `LD_`, `DYLD_`, `NPM_CONFIG_`, `JAVA_`, `_JAVA_`, `GIT_CONFIG_`, plus
+  `JDK_JAVA_OPTIONS` and the Git variables that steer execution. `GIT_TOKEN` and
+  similar names still work.
+- A damaged or unexpected `secrets.json` reports its path instead of being
+  silently dropped on the next save, and rewriting it keeps every workspace's
+  keys.
+- The filter proxy refuses a host it is about to block before resolving it, so a
+  blocked name never leaks to DNS, and it also refuses cloud instance-metadata
+  endpoints outside link-local (`100.100.100.200`, `168.63.129.16`,
+  `192.0.0.192`, `fd00:ec2::/32` and similar) and the host's own interface
+  addresses. Both stay recoverable: a rule that names the host literally skips
+  that check.
+- WebSocket traffic works through the filter proxy: an upgrade request used to
+  reach the origin as an ordinary request and come back `200`, leaving the
+  client stuck after "connected".
+- A refused command's note describes only that command; a background job hitting
+  a different host no longer appears in it.
+- Sandbox grants, upstream checks and settings loaded late are hardened: an
+  approval cannot widen a narrower policy, and a network setting saved after a
+  run starts is still honoured.
+
+### Other
+
+- `@tnega/secrets`, `@tnega/secrets-local`, `@tnega/execution-secrets`,
+  `@tnega/tool-secrets`, `@tnega/sandbox-network-proxy` and
+  `@tnega/tool-network-access` are new packages; the secrets four are also
+  published as `tnega/*` subpaths. `@tnega/sandbox` gains the `network` policy
+  dimension, `decideNetworkAccess` and the `sandbox/network` event.
+- ADR 0015 records the secret store's format, lifecycle and permission boundary.
+  ADR 0008 records the command-network dimension and why the sandbox has no
+  managed policy baseline.
 
 ## [0.5.5](https://github.com/whale4rain/tnega/releases/tag/v0.5.5) — 2026-10-26
 
