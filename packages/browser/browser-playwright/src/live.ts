@@ -40,6 +40,11 @@ const clamp = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) 
 
 export const DEFAULT_MAX_FPS = 15
 
+/** How many times a start that lost the navigation race retries before giving up. */
+const MAX_START_RETRIES = 3
+/** Backoff between those attempts; multiplied by the attempt number. */
+const RETRY_DELAY_MS = 250
+
 export function parseLiveInput(value: unknown): BrowserLiveInput | undefined {
   if (!value || typeof value !== 'object') return undefined
   const record = value as Record<string, unknown>
@@ -64,8 +69,7 @@ export function parseLiveInput(value: unknown): BrowserLiveInput | undefined {
   }
 }
 
-/** One screencast shared by every subscriber; it runs only while someone watches. */
-export class LiveView {
+/** One screencast shared by every subscriber; it runs only while someone watches. */export class LiveView {
   private readonly _listeners = new Set<(event: BrowserLiveEvent) => void>()
   /** Listeners that want screencast frames; the others only follow tabs and state. */
   private readonly _watchers = new Set<(event: BrowserLiveEvent) => void>()
@@ -75,6 +79,10 @@ export class LiveView {
   private _starting: Promise<void> | undefined
   private _pendingFrame: { data: string; width: number; height: number; sessionId: number } | undefined
   private _frameTimer: ReturnType<typeof setTimeout> | undefined
+  /** A start was requested while one was running (the driven page changed). */
+  private _restart = false
+  private _retries = 0
+  private _retryTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly _acquire: () => Promise<Page>, private readonly _options: LiveViewOptions = {}) {}
 
@@ -82,6 +90,8 @@ export class LiveView {
     this._listeners.add(listener)
     if (options.frames !== false) {
       this._watchers.add(listener)
+      // A new watcher gets a fresh chance: the UI opened a panel that must show the page.
+      this._retries = 0
       void this._ensure().catch(() => {})
     } else {
       void this._acquire().catch(() => {})
@@ -153,57 +163,99 @@ export class LiveView {
 
   private _ensure(): Promise<void> {
     if (this._session) return Promise.resolve()
-    this._starting ??= this._start().finally(() => { this._starting = undefined })
+    if (this._starting) return this._starting
+    this._starting = this._start()
+      .then(
+        () => { this._retries = 0 },
+        (error: unknown) => {
+          // Starting loses a race with navigation: `Page.startScreencast` answers "Not
+          // attached to an active page" when the renderer is being replaced. Nobody is
+          // left to retry — the UI only called subscribe() once — so do it here, or the
+          // panel stays black for the rest of the session.
+          if (this._watchers.size > 0) this._retry()
+          throw error
+        },
+      )
+      .finally(() => {
+        this._starting = undefined
+        if (this._restart) {
+          this._restart = false
+          if (this._watchers.size > 0) void this._ensure().catch(() => {})
+        }
+      })
     return this._starting
+  }
+
+  private _retry(): void {
+    if (this._retryTimer) return
+    if (this._retries >= MAX_START_RETRIES) return
+    this._retries += 1
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = undefined
+      if (this._session || this._watchers.size === 0) return
+      void this._ensure().catch(() => {})
+    }, RETRY_DELAY_MS * this._retries)
+    this._retryTimer.unref?.()
   }
 
   private async _start(): Promise<void> {
     const page = await this._acquire()
     const session = await page.context().newCDPSession(page)
-    this._page = page
-    this._session = session
-    const size = page.viewportSize() ?? await page.evaluate<{ width: number; height: number }>('({ width: innerWidth, height: innerHeight })')
-    this._viewport = size
-    const interval = 1000 / Math.max(1, this._options.maxFps ?? DEFAULT_MAX_FPS)
-    let lastEmittedAt = 0
-    const flush = () => {
-      this._frameTimer = undefined
-      const frame = this._pendingFrame
-      this._pendingFrame = undefined
-      if (!frame) return
-      this._viewport = { width: frame.width, height: frame.height }
-      const event = { type: 'frame' as const, data: frame.data, width: frame.width, height: frame.height }
-      lastEmittedAt = Date.now()
-      for (const listener of this._watchers) listener(event)
-      // Acknowledging is what asks Chromium for the next frame; holding the ack
-      // until this one is delivered keeps at most one frame in flight, so an
-      // animated page costs the UI the frame rate below instead of the page's.
-      void session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => {})
-    }
-    session.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
-      this._pendingFrame = {
-        data: frame.data,
-        width: frame.metadata.deviceWidth,
-        height: frame.metadata.deviceHeight,
-        sessionId: frame.sessionId,
+    try {
+      const size = page.viewportSize() ?? await page.evaluate<{ width: number; height: number }>('({ width: innerWidth, height: innerHeight })')
+      this._viewport = size
+      const interval = 1000 / Math.max(1, this._options.maxFps ?? DEFAULT_MAX_FPS)
+      let lastEmittedAt = 0
+      const flush = () => {
+        this._frameTimer = undefined
+        const frame = this._pendingFrame
+        this._pendingFrame = undefined
+        if (!frame) return
+        this._viewport = { width: frame.width, height: frame.height }
+        const event = { type: 'frame' as const, data: frame.data, width: frame.width, height: frame.height }
+        lastEmittedAt = Date.now()
+        for (const listener of this._watchers) listener(event)
+        // Acknowledging is what asks Chromium for the next frame; holding the ack
+        // until this one is delivered keeps at most one frame in flight, so an
+        // animated page costs the UI the frame rate below instead of the page's.
+        void session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => {})
       }
-      if (this._frameTimer) return
-      const wait = Math.max(0, interval - (Date.now() - lastEmittedAt))
-      this._frameTimer = setTimeout(flush, wait)
-    })
-    page.once('close', () => { if (this._page === page) void this._stop() })
-    await session.send('Page.startScreencast', {
-      format: 'jpeg',
-      quality: this._options.quality ?? 60,
-      maxWidth: this._options.maxWidth ?? 1280,
-      maxHeight: this._options.maxHeight ?? 800,
-    })
+      session.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
+        this._pendingFrame = {
+          data: frame.data,
+          width: frame.metadata.deviceWidth,
+          height: frame.metadata.deviceHeight,
+          sessionId: frame.sessionId,
+        }
+        if (this._frameTimer) return
+        const wait = Math.max(0, interval - (Date.now() - lastEmittedAt))
+        this._frameTimer = setTimeout(flush, wait)
+      })
+      page.once('close', () => { if (this._page === page) void this._stop() })
+      await session.send('Page.startScreencast', {
+        format: 'jpeg',
+        quality: this._options.quality ?? 60,
+        maxWidth: this._options.maxWidth ?? 1280,
+        maxHeight: this._options.maxHeight ?? 800,
+      })
+      // Published only once the screencast really runs: `_ensure()` treats a set
+      // `_session` as "already started", so a half-started one would never retry.
+      this._page = page
+      this._session = session
+    } catch (error) {
+      // `startScreencast` failed (usually because the page navigated onto a new
+      // renderer): drop the session so the next attempt starts clean.
+      await session.detach().catch(() => undefined)
+      throw error
+    }
     this._emit({ type: 'state', url: page.url(), title: await page.title().catch(() => '') })
     // The active tab may have changed while starting; follow it.
     const current = await this._acquire().catch(() => page)
     if (current !== page) {
       await this._stop()
-      if (this._watchers.size) void this._ensure().catch(() => {})
+      // Still inside `_start()`, so ask the owner of `_starting` to go again rather
+      // than calling `_ensure()` here — that would await the promise we are in.
+      if (this._watchers.size) this._restart = true
     }
   }
 
@@ -211,6 +263,10 @@ export class LiveView {
     if (this._frameTimer) {
       clearTimeout(this._frameTimer)
       this._frameTimer = undefined
+    }
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer)
+      this._retryTimer = undefined
     }
     this._pendingFrame = undefined
     const session = this._session
