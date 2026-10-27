@@ -82,6 +82,14 @@ Provider 管不了网络，或缺强制它所需的东西时，必须以 `SANDBO
   `os.tmpdir()`、POSIX 上是 `/tmp` 与 `os.tmpdir()`。所有根都过 `canonicalPath`
   （`realpathSync.native`），因为 Seatbelt 与 Windows ACL 匹配的是已解析路径。
 
+## 端口
+
+**不写端口就是所有端口**，允许表与拒绝表都一样：`example.com` 与 `example.com:*` 同义
+（后者只是把「不限端口」写明白），写了 `:443` 就只匹配 443。允许表里不写端口是一条
+**显式授权**，拒绝表里不写端口是一个**兜底**；只想拦一个端口就写 `:端口`。
+所以 `request_network_access` 尽量拿拦截说明里的 `host:port` 去申请，并在批下来的条目
+不带端口时明说「on every port」。
+
 ## 测试
 
 `test/vocabulary.test.ts`、`test/events.test.ts`：词汇与默认值、stub Provider 上的事件

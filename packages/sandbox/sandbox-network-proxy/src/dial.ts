@@ -3,7 +3,8 @@ import { connect, isIP, type Socket } from 'node:net'
 
 /**
  * 地址是否指向**本机或本链路**：回环、未指定、链路本地（含云厂商的元数据地址
- * 169.254.169.254）、组播与广播。
+ * 169.254.169.254）、组播与广播，以及不在链路本地段里的云平台端点
+ * （{@link PLATFORM_ENDPOINTS}）。
  *
  * 这些地址从宿主上的代理连出去，等于让沙箱里的命令绕过 network namespace 摸到宿主的本地
  * 服务。私有网段（10/8、192.168/16……）不在这里：用户点名允许的内网域名，以及 fake-IP
@@ -19,6 +20,7 @@ export function isLocalAddress(address: string): boolean {
   const mapped = mappedV4(value)
   if (mapped !== undefined) return isLocalV4(mapped)
   if (value === '::' || value === '::1') return true
+  if (PLATFORM_ENDPOINT_V6.some(prefix => value.startsWith(prefix))) return true
   // fe80::/10 链路本地；ff00::/8 组播。
   return /^fe[89ab]/u.test(value) || value.startsWith('ff')
 }
@@ -43,7 +45,24 @@ function mappedV4(value: string): string | undefined {
   return [high >> 8, high & 255, low >> 8, low & 255].join('.')
 }
 
+/**
+ * 云厂商的实例元数据与平台端点：不在 link-local 段里，所以上面的网段规则抓不到它们。
+ * 拿到这些地址等于拿到这台机器的临时凭证，而命令行工具与 SDK 会直接打它们。
+ */
+const PLATFORM_ENDPOINTS = new Set([
+  '100.100.100.200', // Alibaba Cloud
+  '168.63.129.16', // Azure
+  '192.0.0.192', // Oracle Cloud
+])
+
+/**
+ * 同上，IPv6 形式。按 `/32` 前缀判，所以不拦整个 ULA 段（`fd00::1` 这类内网地址照旧），
+ * 只拦这几个分配出去的块。
+ */
+const PLATFORM_ENDPOINT_V6 = ['fd00:ec2:', 'fd20:ce:', 'fd00:c1:', 'fd00:42:']
+
 function isLocalV4(address: string): boolean {
+  if (PLATFORM_ENDPOINTS.has(address)) return true
   const [a = 0, b = 0] = address.split('.').map(Number)
   return a === 127 || a === 0 || (a === 169 && b === 254) || a >= 224
 }

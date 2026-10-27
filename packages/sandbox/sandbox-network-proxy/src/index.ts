@@ -37,7 +37,7 @@ export interface ProxyVerdict {
   named?: boolean
 }
 
-export type ProxyProtocol = 'http' | 'connect' | 'socks5'
+export type ProxyProtocol = 'http' | 'connect' | 'socks5' | 'upgrade'
 
 /** 每次判定（含解析之后的本机地址拦截）报告一次。 */
 export interface ProxyDecision extends ProxyTarget {
@@ -94,6 +94,23 @@ function parseAuthority(value: string | undefined): ProxyTarget | undefined {
 }
 
 const HOP_BY_HOP = ['proxy-connection', 'proxy-authorization', 'connection', 'keep-alive', 'upgrade', 'te', 'trailer']
+
+/**
+ * 升级请求要原样送到源站：`Upgrade` 与 `Connection` 保留（这是握手本身），只去掉代理自己的头，
+ * `Host` 换成判定过的那个（否则请求能打到允许的主机上却选中它上面别的虚拟主机）。
+ */
+function upgradeRequest(req: IncomingMessage, path: string, host: string): string {
+  const raw = req.rawHeaders
+  const headers: string[] = []
+  for (let index = 0; index + 1 < raw.length; index += 2) {
+    const name = raw[index] ?? ''
+    const lower = name.toLowerCase()
+    if (lower === 'host' || lower === 'proxy-connection' || lower === 'proxy-authorization') continue
+    headers.push(`${name}: ${raw[index + 1] ?? ''}`)
+  }
+  headers.push(`Host: ${host}`)
+  return `${req.method ?? 'GET'} ${path} HTTP/1.1\r\n${headers.join('\r\n')}\r\n\r\n`
+}
 
 /** 启动过滤代理。 */
 export async function startNetworkProxy(listen: ProxyListen, options: NetworkProxyOptions): Promise<NetworkProxy> {
@@ -307,6 +324,51 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
     }
   }
 
+  /**
+   * 把一次性 HTTP 请求升成透明隧道（WebSocket 等）。以前 `upgrade` 被当成 hop-by-hop 头剥掉，
+   * 源站收到的是普通请求、回一个 200，客户端就在「握手失败」上卡住。这里把**判定过的**
+   * 目标原名转发：升级头保留，由源站回 101，之后两个方向都是字节流。
+   */
+  async function onUpgrade(req: IncomingMessage, client: Socket, head: Buffer): Promise<void> {
+    client.on('error', () => client.destroy())
+    // 代理收到的是绝对形式；少数客户端发 origin 形式，退回 Host 头。（不猜：两个都没有就拒。）
+    let url: URL | undefined
+    try {
+      url = new URL(req.url ?? '')
+    } catch {
+      const host = req.headers.host
+      if (host === undefined) {
+        client.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
+        return
+      }
+      try {
+        url = new URL(`http://${host}${req.url ?? '/'}`)
+      } catch {
+        client.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
+        return
+      }
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'ws:') {
+      client.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
+      return
+    }
+    const target = { host: url.hostname.replace(/^\[|\]$/gu, '').toLowerCase(), port: url.port === '' ? 80 : Number(url.port) }
+    try {
+      const opened = await open(target, 'upgrade')
+      if ('denied' in opened) {
+        const message = explain(opened.denied)
+        client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nX-Tnega-Sandbox: blocked\r\nContent-Length: ${Buffer.byteLength(message) + 1}\r\nConnection: close\r\n\r\n${message}\n`)
+        return
+      }
+      opened.socket.write(upgradeRequest(req, `${url.pathname}${url.search}`, url.host))
+      if (head.length > 0) opened.socket.write(head)
+      splice(client, opened.socket)
+    } catch (error) {
+      const message = `tnega sandbox could not reach ${authority(target.host, target.port)}: ${error instanceof Error ? error.message : String(error)}`
+      client.end(`HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(message) + 1}\r\nConnection: close\r\n\r\n${message}\n`)
+    }
+  }
+
   async function onSocks(client: Socket): Promise<void> {
     let target: ProxyTarget
     try {
@@ -335,6 +397,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
   const http = createHttpServer()
   http.on('connect', (req: IncomingMessage, socket: Socket, head: Buffer) => { void onConnect(req, socket, head) })
   http.on('request', (req: IncomingMessage, res: ServerResponse) => { void onRequest(req, res) })
+  http.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => { void onUpgrade(req, socket, head) })
   http.on('clientError', (_error, socket: Socket) => socket.destroy())
 
   // 同一个口上分辨两种协议：SOCKS5 的第一个字节是版本号 5，HTTP 的第一个字节是方法名的字母。

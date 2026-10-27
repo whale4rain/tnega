@@ -66,6 +66,11 @@ function parsePort(text: string): number | undefined {
   return port <= 65_535 ? port : undefined
 }
 
+/** `:*`：把“不限端口”写明白；与省略端口同义。 */
+function anyPort(text: string): boolean {
+  return text === '*'
+}
+
 /** IPv6 的规范形态（与 URL 解析一致），以便规则与目标逐字比较。 */
 function canonicalIpv6(address: string): string | undefined {
   if (isIP(address) !== 6) return undefined
@@ -95,10 +100,14 @@ export function normalizeHost(host: string): string | undefined {
  * 解析一条规则。语法：
  *
  * - `*`：任何目标；
- * - `example.com`：只有它本身；
+ * - `example.com`：只有它本身，**不限端口**；
+ * - `example.com:*`：同上，把「不限端口」写明白；
  * - `*.example.com`：只有它的子域（`a.example.com`、`a.b.example.com`），不含 `example.com`；
  * - IPv4 字面量，或带方括号的 IPv6 字面量（`[::1]`）；
  * - 以上任何一种后接 `:port`（1–65535），只匹配该端口。
+ *
+ * 「不带端口」等于「所有端口」：允许表里它是一条显式授权，拒绝表里它是一个兜底。
+ * 只想要某个端口就写 `:443`，两种表都一样。
  *
  * @returns 非法规则返回 `undefined`（不猜测含义）。
  */
@@ -113,8 +122,11 @@ export function parseDomainPattern(entry: string): DomainPattern | undefined {
     const rest = raw.slice(close + 1)
     if (rest !== '') {
       if (!rest.startsWith(':')) return undefined
-      port = parsePort(rest.slice(1))
-      if (port === undefined) return undefined
+      const written = rest.slice(1)
+      if (!anyPort(written)) {
+        port = parsePort(written)
+        if (port === undefined) return undefined
+      }
     }
     const host = canonicalIpv6(raw.slice(1, close))
     return host === undefined ? undefined : { host, match: 'exact', ...(port !== undefined ? { port } : {}) }
@@ -123,8 +135,11 @@ export function parseDomainPattern(entry: string): DomainPattern | undefined {
   if (colon >= 0) {
     // 不带括号的多冒号是 IPv6：不拆端口，让它按 IPv6 字面量被拒（必须带括号）。
     if (raw.indexOf(':') !== colon) return undefined
-    port = parsePort(raw.slice(colon + 1))
-    if (port === undefined) return undefined
+    const written = raw.slice(colon + 1)
+    if (!anyPort(written)) {
+      port = parsePort(written)
+      if (port === undefined) return undefined
+    }
     hostPart = raw.slice(0, colon)
   }
   const withPort = port !== undefined ? { port } : {}

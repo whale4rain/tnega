@@ -124,7 +124,7 @@ export function createNetworkAccessTool(config: ToolNetworkAccessConfig): ToolDe
       parameters: {
         type: 'object',
         properties: {
-          domains: { type: 'array', items: { type: 'string' }, description: 'e.g. pypi.org, *.pythonhosted.org, example.com:443' },
+          domains: { type: 'array', items: { type: 'string' }, description: 'e.g. pypi.org:443, *.pythonhosted.org:443. Take host:port from the blocked notice to allow just that destination; write host:* (or the bare host) only when every port is needed.' },
           reason: { type: 'string', description: 'one line on why the task needs them' },
           remember: { type: 'boolean', description: 'ask to keep them allowed in Settings, not just this session' },
         },
@@ -157,6 +157,8 @@ export function createNetworkAccessTool(config: ToolNetworkAccessConfig): ToolDe
       })
       const granted = domains.filter(domain => !blocked.includes(domain))
       config.grants.add(granted)
+      // 「不写端口」就是所有端口，这件事要在回答里说出来，否则用户以为只批了一个目的地。
+      const everyPort = granted.some(domain => parseDomainPattern(domain)?.port === undefined)
       let remembered = false
       let saveFailed = false
       if (remember && config.remember !== undefined && granted.length > 0) {
@@ -173,7 +175,7 @@ export function createNetworkAccessTool(config: ToolNetworkAccessConfig): ToolDe
         ...(blocked.length > 0 ? { stillBlocked: blocked } : {}),
         remembered,
         note: granted.length > 0
-          ? `Allowed for ${remembered ? 'this and later sessions' : 'this session'}.${saveFailed ? ' Saving them to Settings failed, so later sessions will ask again.' : ''} Re-run the command.`
+          ? `Allowed ${granted.join(', ')} for ${remembered ? 'this and later sessions' : 'this session'}${everyPort ? ' on every port' : ''}.${saveFailed ? ' Saving them to Settings failed, so later sessions will ask again.' : ''} Re-run the command.`
           : 'Nothing granted: these are on the blocked list in Settings.',
       }
     },

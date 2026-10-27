@@ -208,8 +208,8 @@ export interface SandboxNetworkEvent {
   /** 规范化后的目标主机。 */
   host: string
   port: number
-  /** 客户端怎么来的：HTTP 代理的明文请求、CONNECT 隧道，或 SOCKS5。 */
-  protocol: 'http' | 'connect' | 'socks5'
+  /** 客户端怎么来的：HTTP 代理的明文请求、CONNECT 隧道、SOCKS5，或一次协议升级（WebSocket）。 */
+  protocol: 'http' | 'connect' | 'socks5' | 'upgrade'
   allowed: boolean
   /** 判定原因：`NetworkDecision.reason`，或代理自己的 `local-address`（名字解析到了本机地址）。 */
   reason: string

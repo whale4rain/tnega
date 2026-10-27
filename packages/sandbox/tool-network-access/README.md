@@ -9,6 +9,10 @@
   回调写进 System Config 的允许表（设置里的 Command network）。
 - **只在 `allowlist` 下有意义**：`open` 不需要；`off` 是人的选择，审批不能把它打开；拒绝表里的
   域名也不放行，只有人能在设置里改。`"*"` 永不授予。
+- **粒度是目标，不是域名**：拦截说明里写的是 `host:port`，Agent 就直接申请 `pypi.org:443`，
+  只放行那一个端口；确实需要每个端口时才写 `pypi.org:*`（或裸域名）。批准下来的条目
+  不带端口时，回答会追加「on every port」——否则用户以为只批了一个接口。拒绝表里的条目
+  不放行，带不带端口都一样需人改。
 - **可重放**：授予记录就是 Session 里这个工具的 `tool/result`。`NetworkGrants` 在第一次用到时从
   Session 读一次，恢复的 Session 保留授予。
 

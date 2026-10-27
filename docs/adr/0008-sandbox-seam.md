@@ -141,9 +141,28 @@ Definition 里的纯函数（`decideNetworkAccess`），代理与设置界面共
   审批打开，`*` 永不授予，没有 permission guard 的宿主不挂这个工具。
 - **配置**：System Config 的 `sandbox.network`，设置里的 Tools & shell › Command network；
   每次执行都重新读，改了不必重启。`bypass` 仍然是「不要沙箱」，网络也不限制。
+- **没有托管基线（暂不面向组织）**：允许/拒绝表只有用户自己那一层，没有 Codex `requirements`
+  那样的管理员下发层（「托管表是用户表的下界、用户 deny 不被它抹掉、放开模式也钉死」），
+  也没有 srt 的 `allowManagedDomainsOnly`。tnega 目前的使用者是单机个人用户，引入托管层会带来
+  一套新的配置优先级、MDM/服务端下发与冲突解释，却没有服务对象。代价：用户（或未来的自动化
+  审批）一旦把 `*` 写进允许表，就没有任何一层能拦住。将来真要面向企业时，落点不是加字段，
+  而是给「读配置」加一个**不可增宽**的基线层，并入 `resolveNetworkPolicy` 的校验；
+  那时这个 ADR 要重写而不是补注。
+- **本机地址集**：链路本地之外还拦云厂商的元数据端点（`100.100.100.200`、`168.63.129.16`、
+  `192.0.0.192`、`fd00:ec2::/32` 等）；本机网卡自己的地址暂不拦（会误伤局域网里的合法开发服务）。
+  这两类都是**可恢复的**：本机地址检查只对通配规则生效，逐字点名主机（如 `192.168.1.10:3000`
+  或解析到它那个域名）的条目返回 `named: true`，直接跳过检查。即 `*.corp.internal` 蒙不过去，
+  但把具体地址加进允许表就能用。列表与遗留项记在
+  `packages/sandbox/sandbox-network-proxy/README.md`。
+- **端口粒度**：不写端口 = 所有端口（`example.com` 与 `example.com:*` 同义），写了 `:443` 就只限
+  那一个；允许表里是显式授权，拒绝表里是兜底。审批时 Agent 尽量申请 `host:port`，
+  而不是只给域名。
 - **限制**：只有遵守代理环境变量的客户端能出网（HTTP/S 与 SOCKS5，Linux/macOS 的 git ssh 经
   `GIT_SSH_COMMAND` 走代理）；Windows 的 MXC 只认 HTTP/S 代理。按域名放行不检查 TLS 内容，
-  允许 `github.com` 也就允许了经它中转的一切。
+  允许 `github.com` 也就允许了经它中转的一切。判定必须排在 DNS 解析之前（否则被拒的主机名
+  会泄露给 DNS），这条由 `test/proxy.test.ts` 的「被拒目标不触发 resolve」守住。协议升级
+  （WebSocket）由代理转成隧道；早期版本把 `Upgrade` 当 hop-by-hop 头剥掉，让客户端停在
+  「连上了但握手失败」上，现由 `test/proxy.test.ts` 的两条升级用例守住。
 
 ## 验证
 

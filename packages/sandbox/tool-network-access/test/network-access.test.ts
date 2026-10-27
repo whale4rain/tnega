@@ -20,14 +20,34 @@ describe('request_network_access', () => {
   it('grants approved domains for the session and merges them into an allowlist', async () => {
     const { run, grants } = tool(ALLOWLIST)
     expect(await run({ domains: ['PyPI.org', '*.pythonhosted.org'], reason: 'pip install' })).toEqual({
-      granted: ['pypi.org', '*.pythonhosted.org'], remembered: false, note: 'Allowed for this session. Re-run the command.',
+      granted: ['pypi.org', '*.pythonhosted.org'], remembered: false,
+      note: 'Allowed pypi.org, *.pythonhosted.org for this session on every port. Re-run the command.',
     })
     expect(await withGrants(ALLOWLIST, grants)).toEqual({ ...ALLOWLIST, allowedDomains: ['github.com', 'pypi.org', '*.pythonhosted.org'] })
   })
 
+  it('keeps a grant on one port when the request names it, and says so', async () => {
+    const { run, grants } = tool(ALLOWLIST)
+    expect(await run({ domains: ['pypi.org:443'], reason: 'pip install' })).toMatchObject({
+      granted: ['pypi.org:443'],
+      note: 'Allowed pypi.org:443 for this session. Re-run the command.',
+    })
+    // "不写端口"= 所有端口，所以这里要明说；:443 则不言自明。
+    expect(await run({ domains: ['files.pythonhosted.org:*'], reason: 'wheels' })).toMatchObject({
+      granted: ['files.pythonhosted.org:*'],
+      note: 'Allowed files.pythonhosted.org:* for this session on every port. Re-run the command.',
+    })
+    expect(await withGrants(ALLOWLIST, grants)).toEqual({
+      ...ALLOWLIST,
+      allowedDomains: ['github.com', 'pypi.org:443', 'files.pythonhosted.org:*'],
+    })
+  })
+
   it('saves to Settings only when asked to remember', async () => {
     const { run, remembered } = tool(ALLOWLIST)
-    expect(await run({ domains: ['pypi.org'], reason: 'pip', remember: true })).toMatchObject({ remembered: true, note: 'Allowed for this and later sessions. Re-run the command.' })
+    expect(await run({ domains: ['pypi.org'], reason: 'pip', remember: true })).toMatchObject({
+      remembered: true, note: 'Allowed pypi.org for this and later sessions on every port. Re-run the command.',
+    })
     expect(remembered).toEqual([['pypi.org']])
   })
 

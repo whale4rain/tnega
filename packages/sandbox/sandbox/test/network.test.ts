@@ -35,6 +35,13 @@ describe('domain grammar', () => {
     expect(parseDomainPattern('[0:0::1]')).toEqual({ host: '::1', match: 'exact' })
   })
 
+  it('treats an explicit :* the same as no port at all', () => {
+    expect(parseDomainPattern('example.com:*')).toEqual({ host: 'example.com', match: 'exact' })
+    expect(parseDomainPattern('*.example.com:*')).toEqual({ host: 'example.com', match: 'subdomains' })
+    expect(parseDomainPattern('[::1]:*')).toEqual({ host: '::1', match: 'exact' })
+    expect(parseDomainPattern('10.0.0.1:*')).toEqual({ host: '10.0.0.1', match: 'exact' })
+  })
+
   it('refuses entries it would have to guess about', () => {
     expect(invalidDomainEntries([
       '', 'http://example.com', 'example.com/path', 'user@example.com', '::1', 'example.com:0',
@@ -59,6 +66,25 @@ describe('decideNetworkAccess', () => {
     expect(decideNetworkAccess(policy, 'pypi.org', 80)).toMatchObject({ allowed: false, reason: 'not-allowed' })
     expect(decideNetworkAccess(policy, 'notexample.com', 443)).toMatchObject({ allowed: false, reason: 'not-allowed' })
     expect(decideNetworkAccess(policy, 'bad host', 443)).toMatchObject({ allowed: false, reason: 'invalid-host' })
+  })
+
+  it('reads "no port" as every port in both lists, and a port as just that port', async () => {
+    // 允许表：不带端口 = 所有端口。
+    const everyPort = allowlist(['pypi.org'], [])
+    for (const port of [80, 443, 22, 5432]) {
+      expect(decideNetworkAccess(everyPort, 'pypi.org', port), String(port)).toMatchObject({ allowed: true, named: true })
+    }
+    // 带了端口就只限那一个。
+    const onePort = allowlist(['pypi.org:443'], [])
+    expect(decideNetworkAccess(onePort, 'pypi.org', 443).allowed).toBe(true)
+    expect(decideNetworkAccess(onePort, 'pypi.org', 80)).toMatchObject({ allowed: false, reason: 'not-allowed' })
+    // 拒绝表反过来：不带端口兜住所有端口，带端口才收窄。
+    const denyAll = allowlist(['pypi.org'], ['pypi.org'])
+    expect(decideNetworkAccess(denyAll, 'pypi.org', 443)).toMatchObject({ allowed: false, reason: 'denied' })
+    expect(decideNetworkAccess(denyAll, 'pypi.org', 22)).toMatchObject({ allowed: false, reason: 'denied' })
+    const denyOne = allowlist(['pypi.org'], ['pypi.org:22'])
+    expect(decideNetworkAccess(denyOne, 'pypi.org', 22)).toMatchObject({ allowed: false, reason: 'denied' })
+    expect(decideNetworkAccess(denyOne, 'pypi.org', 443)).toMatchObject({ allowed: true, named: true })
   })
 
   it('prefers a rule that names the host over a wildcard that also matches', () => {

@@ -131,6 +131,65 @@ function socksConnect(proxyPort: number, host: string, port: number): Promise<{ 
   })
 }
 
+/** An origin that accepts a WebSocket-style upgrade, greets, and echoes what it is sent. */
+async function upgradeOrigin(): Promise<number> {
+  const server: Server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' })
+    res.end(`origin ${req.url ?? ''} host=${req.headers.host ?? ''} upgrade=${req.headers.upgrade ?? 'none'}`)
+  })
+  // 升级后的连接不会自己结束，得由测试收尾时切断，否则 server.close() 一直等它们。
+  const live = new Set<Socket>()
+  server.on('connection', socket => {
+    live.add(socket)
+    socket.once('close', () => live.delete(socket))
+  })
+  server.on('upgrade', (req, socket) => {
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
+    socket.write(`reached ${req.url ?? ''} host=${req.headers.host ?? ''}\n`)
+    socket.on('data', chunk => socket.write(chunk))
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  cleanup.push(() => {
+    for (const socket of live) socket.destroy()
+    live.clear()
+    return new Promise<void>(resolve => server.close(() => resolve()))
+  })
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('origin server has no TCP address')
+  return address.port
+}
+
+/** Send an upgrade through the proxy and, if it is accepted, check the tunnel echoes. */
+function upgradeThrough(proxyPort: number, target: string, path = '/ws'): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: '127.0.0.1', port: proxyPort })
+    let text = ''
+    let opened = false
+    socket.on('error', reject)
+    socket.on('data', (chunk: Buffer) => {
+      text += chunk.toString('utf8')
+      if (!opened) {
+        if (!text.includes('\r\n\r\n')) return
+        opened = true
+        const status = Number(/^HTTP\/1\.1 (\d{3})/u.exec(text)?.[1] ?? 0)
+        if (status !== 101) {
+          socket.destroy()
+          resolve({ status, text })
+          return
+        }
+        socket.write('ping-through')
+        return
+      }
+      if (text.includes('ping-through')) {
+        socket.destroy()
+        resolve({ status: 101, text })
+      }
+    })
+    socket.setTimeout(5000, () => { socket.destroy(); resolve({ status: 0, text: `${text} (timed out)` }) })
+    socket.write(`GET http://${target}${path} HTTP/1.1\r\nHost: ${target}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\n\r\n`)
+  })
+}
+
 describe('network proxy', () => {
   it('tunnels CONNECT to an allowed host and refuses others with a reason', async () => {
     const port = await origin()
@@ -158,6 +217,44 @@ describe('network proxy', () => {
     const blocked = await plainGet(portOf(started), `http://evil.test:${port}/`)
     expect(blocked.status).toBe(403)
     expect(blocked.body).toContain(`tnega sandbox blocked evil.test:${port}: it is not in the allowed domains`)
+  })
+
+  it('does not resolve a host it is about to refuse', async () => {
+    // 解析会把主机名送给 DNS 服务器。判定必须排在它前面，否则被拒的名字照样泄露。
+    const resolved: string[] = []
+    const started = await startNetworkProxy({ host: '127.0.0.1', port: 0 }, {
+      decide: rules,
+      resolve: async (host) => { resolved.push(host); return ['93.184.216.34'] },
+    })
+    cleanup.push(() => started.close())
+
+    expect((await tunnelGet({ port: portOf(started) }, 'evil.test:443')).status).toBe(403)
+    expect((await plainGet(portOf(started), 'http://evil.test/')).status).toBe(403)
+    expect((await socksConnect(portOf(started), 'evil.test', 443)).reply).toBe(2)
+    expect(resolved).toEqual([])
+  })
+
+  it('carries an upgrade request through to the origin instead of answering it itself', async () => {
+    const port = await upgradeOrigin()
+    const decisions: ProxyDecision[] = []
+    const started = await proxy({ decisions })
+
+    const upgraded = await upgradeThrough(portOf(started), `allowed.test:${port}`)
+    expect(upgraded.status).toBe(101)
+    // Host 仍然是被判定过的那个，而不是客户端自己写的别的名字。
+    expect(upgraded.text).toContain(`reached /ws host=allowed.test:${port}`)
+    // 握手之后两个方向都能走字节：这条连接不能被当成一次性请求用。
+    expect(upgraded.text).toContain('ping-through')
+    expect(decisions.at(-1)).toMatchObject({ host: 'allowed.test', protocol: 'upgrade', allowed: true })
+  })
+
+  it('refuses an upgrade to a host the rules deny', async () => {
+    const port = await upgradeOrigin()
+    const started = await proxy()
+
+    const blocked = await upgradeThrough(portOf(started), `evil.test:${port}`)
+    expect(blocked.status).toBe(403)
+    expect(blocked.text).toContain('tnega sandbox blocked evil.test')
   })
 
   it('refuses a wildcard-allowed name that resolves to a local address', async () => {
@@ -265,6 +362,11 @@ describe('proxy helpers', () => {
   it('recognises local addresses but not private networks', () => {
     for (const address of ['127.0.0.1', '127.5.0.1', '0.0.0.0', '169.254.169.254', '224.0.0.1', '::1', '::', 'fe80::1', '::ffff:127.0.0.1', '::ffff:7f00:1', 'ff02::1',
       '0:0:0:0:0:0:0:1', '0:0:0:0:0:0:0:0', '0:0:0:0:0:ffff:7f00:1', 'FE80:0:0:0:0:0:0:1', '::1%lo']) {
+      expect(isLocalAddress(address), address).toBe(true)
+    }
+    // 不在 link-local 段里的云平台端点。
+    for (const address of ['100.100.100.200', '168.63.129.16', '192.0.0.192',
+      'fd00:ec2::254', 'fd20:ce::254', 'fd00:c1::a9fe:a9fe', 'fd00:42::42', '::ffff:100.100.100.200']) {
       expect(isLocalAddress(address), address).toBe(true)
     }
     for (const address of ['10.0.0.1', '192.168.1.1', '198.18.0.5', '8.8.8.8', '2606:4700::1111', 'fd00::1', 'not-an-ip']) {
