@@ -715,6 +715,9 @@ importers:
       '@tnega/sandbox-local':
         specifier: workspace:*
         version: link:../sandbox/sandbox-local
+      '@tnega/secrets-local':
+        specifier: workspace:*
+        version: link:../secrets/secrets-local
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
@@ -1382,6 +1385,9 @@ importers:
         specifier: workspace:*
         version: link:../user-questions
     devDependencies:
+      '@tnega/secrets':
+        specifier: workspace:*
+        version: link:../../secrets/secrets
       '@tnega/session':
         specifier: workspace:*
         version: link:../../session
@@ -1391,6 +1397,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/secrets':
+        specifier: workspace:*
+        version: link:../../secrets/secrets
       '@tnega/session':
         specifier: workspace:*
         version: link:../../session
@@ -1450,6 +1459,9 @@ importers:
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
+      '@tnega/execution-secrets':
+        specifier: workspace:*
+        version: link:../secrets/execution-secrets
       '@tnega/jobs-local':
         specifier: workspace:*
         version: link:../jobs/jobs-local
@@ -1477,6 +1489,9 @@ importers:
       '@tnega/search-ripgrep':
         specifier: workspace:*
         version: link:../fs/search-ripgrep
+      '@tnega/secrets-local':
+        specifier: workspace:*
+        version: link:../secrets/secrets-local
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
@@ -1504,6 +1519,9 @@ importers:
       '@tnega/tool-search':
         specifier: workspace:*
         version: link:../fs/tool-search
+      '@tnega/tool-secrets':
+        specifier: workspace:*
+        version: link:../secrets/tool-secrets
       '@tnega/tool-shell':
         specifier: workspace:*
         version: link:../shell/tool-shell
@@ -1589,6 +1607,51 @@ importers:
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
+  packages/secrets/execution-secrets:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/execution':
+        specifier: workspace:*
+        version: link:../../execution
+      '@tnega/secrets':
+        specifier: workspace:*
+        version: link:../secrets
+
+  packages/secrets/secrets:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/secrets/secrets-local:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../../home
+      '@tnega/secrets':
+        specifier: workspace:*
+        version: link:../secrets
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
+
+  packages/secrets/tool-secrets:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/secrets':
+        specifier: workspace:*
+        version: link:../secrets
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools

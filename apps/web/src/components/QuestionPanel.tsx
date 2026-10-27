@@ -1,9 +1,9 @@
-import { MessageCircleQuestion } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, MessageCircleQuestion } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { notifyDesktopWaiting } from '../lib/desktop-completion'
 import { errorText } from '../lib/hooks'
-import type { PendingQuestionRequest, QuestionAnswerItem } from '../lib/types'
+import type { PendingQuestionRequest, QuestionAnswerItem, UserQuestion } from '../lib/types'
 
 export function QuestionPanel({ workspace, sessionId, running, onResumeQueued }: {
   workspace: string
@@ -104,9 +104,17 @@ export function QuestionCard({ request, onAnswer }: {
         {request.questions.map(question => {
           const answer = draft[question.id]
           const selected = answer?.selected ?? []
+          if (question.secret !== undefined) {
+            return (
+              <fieldset key={question.id} className="question-item" disabled={submitting}>
+                <legend>{questionTitle(question)}{question.optional && <span className="muted small">（可跳过）</span>}</legend>
+                <SecretField name={question.secret} label={questionTitle(question)} answer={answer} onChange={patch => update(question.id, patch)} />
+              </fieldset>
+            )
+          }
           return (
             <fieldset key={question.id} className="question-item" disabled={submitting}>
-              <legend>{question.question?.trim() || '你的意见'}{question.optional && <span className="muted small">（可跳过）</span>}</legend>
+              <legend>{questionTitle(question)}{question.optional && <span className="muted small">（可跳过）</span>}</legend>
               {question.options?.length ? (
                 <div className="question-options">
                   {question.options.map(option => (
@@ -145,6 +153,51 @@ export function QuestionCard({ request, onAnswer }: {
         <button type="submit" className="button primary small" disabled={!complete || submitting}>{submitting ? '提交中…' : !hasAnswers && complete ? '跳过问题' : '提交回答'}</button>
       </div>
     </form>
+  )
+}
+
+function questionTitle(question: UserQuestion): string {
+  return question.question?.trim() || (question.secret !== undefined ? `需要 ${question.secret}` : '你的意见')
+}
+
+/**
+ * A hidden field for a secret the agent asked for. The value goes to the
+ * host's secret store; the agent only learns the variable name. "记住" saves
+ * it for every session in this workspace instead of this session only.
+ */
+function SecretField({ name, label, answer, onChange }: {
+  name: string
+  label: string
+  answer: QuestionAnswerItem | undefined
+  onChange: (patch: Partial<QuestionAnswerItem>) => void
+}) {
+  const [shown, setShown] = useState(false)
+  const remember = answer?.remember === true
+  return (
+    <div className="question-secret">
+      <span className="input-with-icon">
+        <KeyRound size={14} aria-hidden="true" />
+        <input
+          type={shown ? 'text' : 'password'}
+          aria-label={`${label}：${name} 的值`}
+          placeholder="粘贴或输入，内容不会显示给 Agent"
+          autoComplete="off"
+          spellCheck={false}
+          value={answer?.text ?? ''}
+          onChange={event => onChange({ text: event.target.value })}
+        />
+        <button type="button" className="icon-button tiny" aria-label={shown ? '隐藏内容' : '显示内容'} aria-pressed={shown} onClick={() => setShown(value => !value)}>
+          {shown ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </span>
+      <div className="question-secret-foot">
+        <span className="muted small">
+          {remember ? '保存到这个工作区，重启后其他会话也能用。' : '只在这个会话里使用，退出 tnega 后清除。'}
+          {' '}命令里用 <code>${name}</code> 读取。
+        </span>
+        <button type="button" className="button ghost small question-remember" aria-pressed={remember} aria-label="记住" onClick={() => onChange({ remember: !remember })}>记住</button>
+      </div>
+    </div>
   )
 }
 

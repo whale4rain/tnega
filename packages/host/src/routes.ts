@@ -636,6 +636,7 @@ const apiRoutes: ApiRoute[] = [
             }
             await evictResident(context, workspace, id)
             await deleteSession(workspace, id)
+            context.secrets?.forgetSession({ workspace, sessionId: id })
             res.writeHead(204)
             res.end()
             return

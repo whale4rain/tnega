@@ -176,6 +176,22 @@
       "types": "./dist/types/packages/spill/tool-spill/src/index.d.ts",
       "import": "./dist/tool-spill.js"
     },
+    "./secrets": {
+      "types": "./dist/types/packages/secrets/secrets/src/index.d.ts",
+      "import": "./dist/secrets.js"
+    },
+    "./secrets-local": {
+      "types": "./dist/types/packages/secrets/secrets-local/src/index.d.ts",
+      "import": "./dist/secrets-local.js"
+    },
+    "./execution-secrets": {
+      "types": "./dist/types/packages/secrets/execution-secrets/src/index.d.ts",
+      "import": "./dist/execution-secrets.js"
+    },
+    "./tool-secrets": {
+      "types": "./dist/types/packages/secrets/tool-secrets/src/index.d.ts",
+      "import": "./dist/tool-secrets.js"
+    },
     "./session": {
       "types": "./dist/types/packages/session/src/index.d.ts",
       "import": "./dist/session.js"

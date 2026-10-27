@@ -22,6 +22,7 @@ import { folderPickerRoutes } from '@tnega/directory-picker'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
 import { sandboxSetupRoutes } from '@tnega/sandbox-local'
+import { SecretVault, secretRoutes } from '@tnega/secrets-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
 import { browserRoutes } from '@tnega/browser-playwright'
@@ -135,6 +136,7 @@ export async function startWebServer(
     processes: new Map(),
     terminals: new TerminalManager(),
     sessionIndex,
+    secrets: new SecretVault(),
     web,
   }
 
@@ -146,6 +148,7 @@ export async function startWebServer(
   await root.plugin(contextInsightsRoutes, { configFile })
   await root.plugin(sandboxSetupRoutes)
   await root.plugin(workspacePromptRoutes)
+  if (context.secrets) await root.plugin(secretRoutes, { vault: context.secrets })
   await root.plugin(pluginRoutes, {
     profile: () => context.hotPlugins,
     workshop: () => context.pluginWorkshop,

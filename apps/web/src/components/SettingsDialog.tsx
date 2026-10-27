@@ -8,6 +8,7 @@ import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
 import { ContextInsights } from './context/ContextInsights'
 import { WorkspacePrompt } from './WorkspacePrompt'
+import { SecretsSettings } from './SecretsSettings'
 import { UpdateSettings } from './UpdateButton'
 import type { DesktopUpdates } from '../lib/desktop-updates'
 
@@ -17,12 +18,13 @@ import type { DesktopUpdates } from '../lib/desktop-updates'
  * entry in `SECTIONS` plus its panel below. Form fields are saved together
  * with "Save changes"; appearance and updates apply immediately.
  */
-type SectionId = 'model' | 'usage' | 'instructions' | 'approvals' | 'tools' | 'appearance' | 'about'
+type SectionId = 'model' | 'usage' | 'instructions' | 'secrets' | 'approvals' | 'tools' | 'appearance' | 'about'
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: string; icon: typeof Cpu }> = [
   { id: 'model', label: 'Models', description: 'Chat models that run sessions, projects and threads. Register several, choose the default, and switch per session from the composer. Approval reviewers such as TypeSafe Jev are not chat models; set them under Approvals.', icon: Cpu },
   { id: 'usage', label: 'Context insights', description: 'How the sessions in this workspace spend their context: tokens, cost, time and what each prompt held. Set prices on each model under Models to see cost.', icon: ChartColumn },
   { id: 'instructions', label: 'Instructions', description: 'Your instructions for every session in the open workspace.', icon: SquareTerminal },
+  { id: 'secrets', label: 'Secrets', description: 'Keys you gave the agent for the open session, or saved for this workspace. Names only; remove one to stop commands getting it.', icon: KeyRound },
   { id: 'approvals', label: 'Approvals', description: 'Who reviews actions that need permission.', icon: ShieldCheck },
   { id: 'tools', label: 'Tools & shell', description: 'How the agent runs commands and calls its tools.', icon: SquareTerminal },
   { id: 'appearance', label: 'Appearance', description: 'Colours and how much information fits on screen, on this device. Changes apply right away.', icon: Palette },
@@ -34,6 +36,7 @@ const SECTION_IDS = SECTIONS.map(section => section.id)
 export function SettingsDialog({
   config,
   workspace,
+  sessionId,
   updates,
   theme,
   onThemeChange,
@@ -46,6 +49,8 @@ export function SettingsDialog({
   config: ConfigSnapshot | undefined
   /** The open workspace, for the Context insights section. */
   workspace?: string | undefined
+  /** The open session, for the Secrets section. */
+  sessionId?: string | undefined
   updates?: DesktopUpdates | undefined
   theme?: ThemePreference
   onThemeChange?: (theme: ThemePreference) => void
@@ -321,6 +326,7 @@ export function SettingsDialog({
 
           {panel('usage', section === 'usage' ? <ContextInsights workspace={workspace} onOpenSession={onOpenSession} /> : null)}
           {panel('instructions', section === 'instructions' ? <WorkspacePrompt key={workspace} workspace={workspace} /> : null)}
+          {panel('secrets', section === 'secrets' ? <SecretsSettings workspace={workspace} sessionId={sessionId} /> : null)}
           {panel('approvals', <div className="form-grid">
             <label className="field">
               <span className="field-label">Approval reviewer</span>

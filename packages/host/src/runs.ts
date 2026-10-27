@@ -22,6 +22,7 @@ import { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { subagentLocal } from '@tnega/subagent-local'
 import { toolSubagent } from '@tnega/tool-subagent'
 import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
+import type { SecretVault } from '@tnega/secrets-local'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
 import { runtimeCapabilities, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
@@ -93,6 +94,7 @@ export async function handleRun(
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ...(context.browser ? { browser: context.browser } : {}),
       processes: processesFor(context, workspace),
+      ...(context.secrets ? { secrets: context.secrets } : {}),
       hostPlugins: hostPlugins(context, workspace),
     })
     return
@@ -120,6 +122,7 @@ export async function handleRun(
       sandboxMode: permission,
       sandboxNetwork: sandboxNetworkFrom(context.configFile),
       office: agentType === 'work' ? true : 'auto',
+      ...(context.secrets ? { secrets: { vault: context.secrets, sessionId: id } } : {}),
       builtinTools: {
         cwd: workspace,
         allowNetwork: true,
@@ -332,6 +335,8 @@ export interface ResidentRunRequest {
   attachments?: ModelAttachment[]
   browser?: PlaywrightBrowserHost
   processes?: ProcessRegistry
+  /** The host's secret vault; the runtime binds it to this Session. */
+  secrets?: SecretVault
   /** Host-level plugins: the hot profile carrier and the plugin dev workshop. */
   hostPlugins?: readonly Plugin[]
   config: SystemConfig
@@ -383,6 +388,7 @@ export async function createResidentRuntime(
     // Documents are what a work session delivers, so its office tools are not
     // conditional on finding one first.
     office: req.agentType === 'work' ? true : 'auto',
+    ...(req.secrets ? { secrets: { vault: req.secrets, sessionId: req.sessionId } } : {}),
     // Long turns are fine while they keep moving; a turn that stalls is nudged, then parked.
     loopGuard: true,
     jobs: { resolveSession: sessionOf },
@@ -602,6 +608,7 @@ export async function residentQuestionRequest(context: ServerContext, workspace:
     effective, apiKey, config, sandboxNetwork: sandboxNetworkFrom(context.configFile), resumeQueued: true,
     route: sessionModelRoute(context.configFile, workspace, id),
     processes: processesFor(context, workspace),
+    ...(context.secrets ? { secrets: context.secrets } : {}),
     ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
   }
 }

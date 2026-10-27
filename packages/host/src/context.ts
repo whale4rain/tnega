@@ -10,6 +10,7 @@ import type { HotPluginHost } from '@tnega/plugin-host'
 import type { PluginWorkshop } from '@tnega/plugin-host'
 import type { WebServerService } from '@tnega/web-kit'
 import type { SqliteSessionIndex } from '@tnega/session-search-sqlite'
+import type { SecretVault } from '@tnega/secrets-local'
 
 export interface ResidentAgentEntry {
   root: Context
@@ -50,6 +51,8 @@ export interface ServerContext {
   terminals: TerminalManager
   /** The shared index behind the agent's session search tools. */
   sessionIndex?: SqliteSessionIndex
+  /** Secrets users gave their Sessions; outlives every Agent runtime. */
+  secrets?: SecretVault
   /** The named-route table requests are dispatched through. */
   web: WebServerService
 }

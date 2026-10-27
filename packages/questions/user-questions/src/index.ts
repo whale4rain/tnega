@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Service, type Context } from '@tnega/core'
+import { SecretError, secretNameProblem } from '@tnega/secrets'
 import type { SessionEvent, SessionLog } from '@tnega/session'
 
 export interface UserQuestionOption { label: string; description?: string }
@@ -9,10 +10,27 @@ export interface UserQuestion {
   options?: UserQuestionOption[]
   multiple?: boolean
   optional?: boolean
+  /**
+   * Ask for a secret: the environment variable name its answer becomes. The
+   * user types it into a hidden field; the value goes to `ctx.secrets` and
+   * never into the Session or the model's context.
+   */
+  secret?: string
 }
 export type QuestionMode = 'blocking' | 'nonblocking'
 export interface AskUserQuestionInput { mode?: QuestionMode; questions: UserQuestion[] }
-export interface QuestionAnswerItem { questionId: string; selected?: string[]; text?: string }
+/** A secret answer as it is kept and shown: the name, never the value. */
+export interface SecretAnswer { name: string; remembered: boolean }
+export interface QuestionAnswerItem {
+  questionId: string
+  selected?: string[]
+  /** For a secret question this is the value, and it only exists on the way in. */
+  text?: string
+  /** On the way in, for a secret question: save it for the workspace. */
+  remember?: boolean
+  /** Set in place of `text` once a secret answer has been stored. */
+  secret?: SecretAnswer
+}
 export type QuestionAnswers = QuestionAnswerItem[]
 export interface PendingQuestionRequest {
   requestId: string
@@ -66,6 +84,7 @@ export function parseQuestionInput(value: unknown): Required<AskUserQuestionInpu
   if (mode !== 'blocking' && mode !== 'nonblocking') invalid('mode must be blocking or nonblocking')
   if (!Array.isArray(value.questions) || value.questions.length === 0 || value.questions.length > 12) invalid('questions must contain 1–12 questions')
   const ids = new Set<string>()
+  const secrets = new Set<string>()
   const questions = value.questions.map(item => {
     if (!record(item) || typeof item.id !== 'string' || !item.id.trim() || item.id.length > 128) invalid('Each question requires a stable nonempty id')
     if (ids.has(item.id)) invalid(`Duplicate question id: ${item.id}`)
@@ -74,6 +93,14 @@ export function parseQuestionInput(value: unknown): Required<AskUserQuestionInpu
     if (question !== undefined && question.length > 8000) invalid('question is too long')
     const multiple = optionalBoolean(item.multiple, 'multiple')
     const optional = optionalBoolean(item.optional, 'optional')
+    const secret = optionalString(item.secret, 'secret')
+    if (secret !== undefined) {
+      const problem = secretNameProblem(secret)
+      if (problem) invalid(problem)
+      if (item.options !== undefined || multiple) invalid('A secret question takes a typed answer only, without options')
+      if (secrets.has(secret)) invalid(`Duplicate secret name: ${secret}`)
+      secrets.add(secret)
+    }
     let options: UserQuestionOption[] | undefined
     if (item.options !== undefined) {
       if (!Array.isArray(item.options) || item.options.length > 20) invalid('options must be an array with at most 20 entries')
@@ -87,12 +114,25 @@ export function parseQuestionInput(value: unknown): Required<AskUserQuestionInpu
         return { label: option.label, ...(description === undefined ? {} : { description }) }
       })
     }
-    return { id: item.id, ...(question === undefined ? {} : { question }), ...(options === undefined ? {} : { options }), ...(multiple === undefined ? {} : { multiple }), ...(optional === undefined ? {} : { optional }) }
+    return { id: item.id, ...(question === undefined ? {} : { question }), ...(options === undefined ? {} : { options }), ...(multiple === undefined ? {} : { multiple }), ...(optional === undefined ? {} : { optional }), ...(secret === undefined ? {} : { secret }) }
   })
   return { mode, questions }
 }
 
-export function parseQuestionAnswers(request: PendingQuestionRequest, value: unknown): QuestionAnswers {
+export interface ParseAnswersOptions {
+  /**
+   * Read answers as they were kept: a secret question is answered by its
+   * `secret` record, and a typed value is refused.
+   */
+  stored?: boolean
+}
+
+function storedSecret(question: UserQuestion, name: string, value: unknown): SecretAnswer {
+  if (!record(value) || value.name !== name || typeof value.remembered !== 'boolean') invalid(`Invalid secret answer for ${question.id}`)
+  return { name, remembered: value.remembered }
+}
+
+export function parseQuestionAnswers(request: PendingQuestionRequest, value: unknown, options: ParseAnswersOptions = {}): QuestionAnswers {
   if (!Array.isArray(value)) invalid('answers must be an array')
   const seen = new Set<string>()
   const result = value.map(item => {
@@ -113,6 +153,23 @@ export function parseQuestionAnswers(request: PendingQuestionRequest, value: unk
     }
     const text = optionalString(item.text, 'text')?.trim()
     if (text !== undefined && text.length > 32000) invalid('Answer text is too long')
+    const secretName = question.secret
+    if (secretName !== undefined) {
+      if (selected !== undefined) invalid('A secret question has no options')
+      if (options.stored) {
+        if (text) invalid('A kept secret answer cannot carry its value')
+        if (item.secret === undefined) {
+          if (!question.optional) invalid(`Required question is unanswered: ${question.id}`)
+          return { questionId: item.questionId }
+        }
+        return { questionId: item.questionId, secret: storedSecret(question, secretName, item.secret) }
+      }
+      if (item.secret !== undefined) invalid('Send a secret as text; it is stored when the answer is accepted')
+      const remember = optionalBoolean(item.remember, 'remember')
+      if (!question.optional && !text) invalid(`Required question is unanswered: ${question.id}`)
+      return { questionId: item.questionId, ...(text ? { text } : {}), ...(remember === undefined ? {} : { remember }) }
+    }
+    if (item.secret !== undefined || item.remember !== undefined) invalid(`${question.id} is not a secret question`)
     if (!question.optional && !selected?.length && !text) invalid(`Required question is unanswered: ${question.id}`)
     return { questionId: item.questionId, ...(selected === undefined ? {} : { selected }), ...(text === undefined ? {} : { text }) }
   })
@@ -143,10 +200,16 @@ export function pendingQuestionsFromEvents(events: readonly SessionEvent[]): Pen
   return [...pending.values()]
 }
 
+/** What the model is told about a secret it asked for. */
+export function secretAnswerNote(secret: SecretAnswer): string {
+  return `The user set ${secret.name}. Your shell commands and processes have it as an environment variable; refer to it as $${secret.name} (PowerShell: $env:${secret.name}). Its value is hidden from you and masked in tool output, so never try to print it.`
+}
+
 export function formatQuestionAnswer(request: PendingQuestionRequest, answers: QuestionAnswers): string {
   return [`User answered nonblocking request ${request.requestId}:`, ...request.questions.map(question => {
     const answer = answers.find(answer => answer.questionId === question.id)
-    const response = [...(answer?.selected ?? []), ...(answer?.text ? [answer.text] : [])].join('\n') || '(skipped)'
+    const response = answer?.secret ? secretAnswerNote(answer.secret)
+      : [...(answer?.selected ?? []), ...(answer?.text ? [answer.text] : [])].join('\n') || '(skipped)'
     return `${question.question?.trim() || question.id}\n${response}`
   })].join('\n\n')
 }
@@ -176,6 +239,9 @@ export class UserQuestionsService extends Service {
 
   async ask(input: AskUserQuestionInput, caller: QuestionCaller): Promise<QuestionResult> {
     const parsed = parseQuestionInput(input)
+    if (parsed.questions.some(question => question.secret !== undefined) && !this.ctx.get('secrets', false)) {
+      throw new UserQuestionError('Secret questions are not available here', 'SECRETS_UNAVAILABLE')
+    }
     if (this.disposed || caller.signal?.aborted) throw new UserQuestionError('Question cancelled', 'QUESTION_CANCELLED')
     const session = await this.config.resolveSession(caller.agentId)
     if (!session) throw new UserQuestionError('Question session is unavailable', 'QUESTION_SESSION_UNAVAILABLE')
@@ -244,10 +310,11 @@ export class UserQuestionsService extends Service {
     let parsed = parseQuestionAnswers(entry.request, answers)
     entry.settled = true
     try {
+      parsed = await this.storeSecrets(entry.request, parsed)
       if (entry.request.mode === 'nonblocking' && this.config.deliverNonblocking) {
         const submitted = (await entry.session.read()).find(event => event.type === 'meta'
           && event.payload.kind === 'question/submitted' && event.payload.requestId === requestId)
-        if (submitted?.type === 'meta') parsed = parseQuestionAnswers(entry.request, submitted.payload.answers)
+        if (submitted?.type === 'meta') parsed = parseQuestionAnswers(entry.request, submitted.payload.answers, { stored: true })
         else {
           await entry.session.append('meta', { kind: 'question/submitted', requestId, answers: parsed })
           await entry.session.flush()
@@ -267,6 +334,27 @@ export class UserQuestionsService extends Service {
     entry.resolve?.(structuredClone(result))
     await this.ctx.parallel('user-questions/answered', { request: structuredClone(entry.request), answers: structuredClone(parsed) } satisfies QuestionAnsweredEvent)
     return result
+  }
+
+  /** Hand typed secrets to `ctx.secrets` and keep only their names. */
+  private async storeSecrets(request: PendingQuestionRequest, answers: QuestionAnswers): Promise<QuestionAnswers> {
+    if (!request.questions.some(question => question.secret !== undefined)) return answers
+    const store = this.ctx.get('secrets', false)
+    if (!store) throw new UserQuestionError('Secret questions are not available here', 'SECRETS_UNAVAILABLE')
+    const kept: QuestionAnswers = []
+    for (const answer of answers) {
+      const name = request.questions.find(question => question.id === answer.questionId)?.secret
+      if (name === undefined) { kept.push(answer); continue }
+      if (!answer.text) { kept.push({ questionId: answer.questionId }); continue }
+      let info
+      try { info = await store.set(name, answer.text, { remember: answer.remember === true }) }
+      catch (error) {
+        if (error instanceof SecretError) throw new UserQuestionError(error.message, error.code)
+        throw error
+      }
+      kept.push({ questionId: answer.questionId, secret: { name: info.name, remembered: info.remembered } })
+    }
+    return kept
   }
 
   private async cancel(entry: WaitingQuestion): Promise<void> {

@@ -1,6 +1,8 @@
 import type { Context, Plugin } from '@tnega/core'
 import { systemPrompt } from '@tnega/agent'
 import { skillTools } from '@tnega/coding-agent'
+import { localExecutionProvider } from '@tnega/execution'
+import { secretEnvExecution } from '@tnega/execution-secrets'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { jobsLocal } from '@tnega/jobs-local'
 import { memoryLocal } from '@tnega/memory-local'
@@ -9,6 +11,7 @@ import { networkPolicy } from '@tnega/execution'
 import { canonicalPath, resolveSandboxPolicy, type SandboxExecutionPolicy, type SandboxNetworkRequest } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { secretsLocal, type SecretVault } from '@tnega/secrets-local'
 import type { SessionLog } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { runSummary } from '@tnega/run-summary'
@@ -18,6 +21,7 @@ import { toolMemory } from '@tnega/tool-memory'
 import { toolOffice } from '@tnega/tool-office'
 import { toolPtc } from '@tnega/tool-ptc'
 import { toolSearch } from '@tnega/tool-search'
+import { toolSecrets } from '@tnega/tool-secrets'
 import { toolSpill } from '@tnega/tool-spill'
 import { NetworkGrants, toolNetworkAccess, withGrants } from '@tnega/tool-network-access'
 import { tools, type ToolPolicy } from '@tnega/tools'
@@ -39,6 +43,7 @@ import { workspacePrompt } from '@tnega/workspace-prompt'
  * @tnega/sandbox-local ─→ capability:sandbox ─→ @tnega/execution-sandbox
  * @tnega/search-ripgrep ─→ capability:search ─→ @tnega/tool-search
  * @tnega/spill-local ─→ capability:spill ─→ @tnega/tool-spill
+ * @tnega/secrets-local ─→ capability:secrets ─→ @tnega/execution-secrets, @tnega/tool-secrets
  * ```
  *
  * A caller only states what its role needs; adding a capability means adding
@@ -150,6 +155,8 @@ export interface RuntimeSpec {
   }
   /** Workspace whose user instructions feed the prompt; defaults to `workspace`. */
   promptWorkspace?: string
+  /** Secrets the user gives this Session; without it, secret questions are refused. */
+  secrets?: SecretsCapabilitySpec
 }
 
 async function permissionOf(permission: Permission): Promise<PermissionMode> {
@@ -194,6 +201,8 @@ export const sandboxCapability: Plugin = {
       ...(spec.builtin ?? {}),
       cwd: spec.workspace,
       execution: sandboxedExecution(ctx, {
+        // Commands get this scope's secrets as variables when a store is mounted.
+        inner: secretEnvExecution(ctx, localExecutionProvider),
         policy: await policy(),
         resolvePolicy: policy,
       }),
@@ -207,6 +216,26 @@ export const sandboxCapability: Plugin = {
         ...(source.remember ? { remember: source.remember } : {}),
       })
     }
+  },
+}
+
+export interface SecretsCapabilitySpec {
+  /** The host's vault; it outlives this scope. */
+  vault: SecretVault
+  sessionId: string
+}
+
+/**
+ * Secrets seam: the store bound to this Session, then the policy that masks
+ * values in tool results. The command environment is wired by
+ * `capability:sandbox`, which wraps its execution boundary.
+ */
+export const secretsCapability: Plugin = {
+  name: 'capability:secrets',
+  inject: ['tools'],
+  async apply(ctx: Context, spec: SecretsCapabilitySpec & { workspace: string }) {
+    await ctx.plugin(secretsLocal, { vault: spec.vault, workspace: spec.workspace, sessionId: spec.sessionId })
+    await ctx.plugin(toolSecrets)
   },
 }
 
@@ -300,6 +329,7 @@ export const runtimeCapabilities: Plugin = {
     if (spec.summary) await ctx.plugin(runSummary)
     if (spec.loopGuard) await ctx.plugin(loopGuard, spec.loopGuard === true ? {} : spec.loopGuard)
 
+    if (spec.secrets) await ctx.plugin(secretsCapability, { ...spec.secrets, workspace: spec.workspace })
     if (builtinOn) {
       await ctx.plugin(sandboxCapability, {
         workspace: spec.workspace,

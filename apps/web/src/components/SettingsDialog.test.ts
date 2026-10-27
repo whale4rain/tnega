@@ -117,7 +117,7 @@ it('groups settings into sections and saves the chosen shell', async () => {
     { path: 'C:/Git/bin/bash.exe', label: 'Git Bash', kind: 'bash' },
   ] } }
   const view = render(createElement(SettingsDialog, { config: withShells, onClose: vi.fn(), onSaved: vi.fn() }))
-  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Models', 'Context insights', 'Instructions', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
+  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Models', 'Context insights', 'Instructions', 'Secrets', 'Approvals', 'Tools & shell', 'Appearance', 'About & updates'])
   expect(view.getByRole('tab', { name: 'Models' }).getAttribute('aria-selected')).toBe('true')
   fireEvent.click(view.getByRole('tab', { name: 'Tools & shell' }))
   expect(view.getByRole('tabpanel').id).toBe('settings-panel-tools')

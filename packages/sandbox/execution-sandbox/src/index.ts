@@ -152,6 +152,7 @@ export function sandboxedExecution(
       const { annotate, ...confined } = await confine('shell', shellArgv(request, config), request, activePolicy)
       const result = await inner.runProcess({
         ...confined,
+        ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
         cwd: request.cwd,
         ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
         ...(request.maxBuffer !== undefined ? { maxBuffer: request.maxBuffer } : {}),
@@ -188,7 +189,8 @@ export function sandboxedExecution(
             const confined = open
               ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config, false) }
               : withoutNote(await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy))
-            return markSandboxed(await inner.startProcess!({ ...confined, cwd: request.cwd }), !open)
+            const env = request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}
+            return markSandboxed(await inner.startProcess!({ ...confined, ...env, cwd: request.cwd }), !open)
           },
           async startProcess(request: BackgroundProcessRequest) {
             const activePolicy = await policy()

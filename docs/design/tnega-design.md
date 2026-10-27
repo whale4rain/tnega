@@ -215,6 +215,8 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - Project 主对话里，协调者把工作交给 Thread（或 Thread 第一次回话）的地方是一张 **Thread 链接卡**：状态灯 · 标题 · 状态 · 箭头，点开在工作台打开该 Thread；每个 Thread 只在它第一次出现的地方放一张卡，卡上的状态是实时的。协调者在正文里提到 Thread 时写成 `[标题](#thread:<id>)`，渲染为带状态灯的链接，同样打开 Thread。Thread 与协调者之间的往来在 Thread 工具栏的「Messages with …」里查看（工作台的通信标签，按发送者分组，只有名字没有头像）；文档标签不跨重载保留，通信内容从 Box 快照恢复。
 - 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台（2026-10-22 起按类型分流，`lib/file-open.ts`）：**HTML 在 Browser 里作为页面打开**（`file://`，同目录的 CSS、脚本与图片照常加载；没有浏览器时退回 Files）；**Markdown 在 Files 里渲染显示**；其余文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文；`mermaid` 代码块画成图（卡片头写 `mermaid`，`Source` 一切换回原文并可复制，图内链接与正文链接去向相同；图与代码块同用 `--pele-*` → token 映射，随模式与调色板变化；画不出来时回退成原来的代码块）。
 
+- **密钥问题**（2026-10-26 起）：Agent 用 `ask_user_question` 的 `secret`（环境变量名，如 `GITHUB_TOKEN`）要密钥时，问题卡里是一行**隐藏输入**（复用 `.input-with-icon`：`KeyRound` 图标 · `password` 输入框，等宽字体 · 显示 / 隐藏的 `.icon-button.tiny`，`aria-pressed`），没有选项与补充文本框。下面一行 `.muted.small` 写去向（“只在这个会话里使用……命令里用 `$NAME` 读取”），右侧是 **记住** 按钮（`.button.ghost.small`，`aria-pressed`，按下时 `--accent-soft` 底、`--accent-text` 字）：按下则保存到这个工作区（重启后同一工作区的会话都能用），说明文字随之改写。值只交给宿主的密钥库，不进 Session、不回到时间线；Agent 只知道名字。设置里的 **Secrets** 分区（§9）列出名字并可移除。
+
 ### 5.2 输入区与图片
 
 - Project 输入区只显示一个主按钮：有内容时是发送（异步消息）；内容为空时，只有收件方正在运行才是停止，空闲时是禁用的发送——不显示一个用不了的停止按钮。`Ctrl+Enter` 可停止当前运行并发送改向消息，`Esc` 停止当前运行。
@@ -316,6 +318,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **等你** 的审批与问题替换输入框，黄色圆角框首行写 “Waiting for you”，状态行同时是雪；审批只认 `y` / `n`（Esc 也拒绝），回车不批准，避免把给输入框的回车误当成同意。
 - **会话开头** 是品牌云（与 `apps/desktop/build/icon.svg` 同形，10×8 像素，半块字符两像素一格，眼睛是留空），晴天时太阳在右后方；云用终端前景色，太阳黄色，云和太阳同格时云优先。它只打印一次、不动，右侧是 `tnega`、工作区与会话标题。终端窄于约 47 列时不画云。
 - **状态行** 在最底一行：天气条 · `WEATHER_LABEL` 文字 · 模型 · Agent 类型 · 非默认的模式与权限；右侧是上下文占比与花费。天气条固定 6 格宽（空闲的太阳只占 1 格），不加行、只画天气不画云，用粗的块字符和颜色（`packages/tui/src/weather.tsx`）：晴是黄色太阳、思考是灰白的雾霭飘动、一个工具是稀疏的蓝雨、多个工具是满格的蓝雨、等你是白与青的雪、重试是雨夹雪、失败是雨里的黄色闪电、上下文将满是雾条、完成是一条彩虹、启动助手是升起的品红与青色小块。标签文字跟随天气色（雨蓝、等你黄、失败红、完成绿、助手品红）。活动天气每 400ms 换一帧；`TNEGA_REDUCED_MOTION=1` 让天气条与转圈都静止（终端没有 `prefers-reduced-motion`）。
+- **密钥问题** 在等你的框里是一行掩码输入：每个字画成 `•`（最多 40 个），不回显原文；下面一行 `dim` 写 `Commands read it as $NAME` 与 `[ ] this session only` / `[x] remember for this workspace`，Tab 切换记住，Enter 发送。
 - 列表类面板（会话、模型、改动文件）共用 `Picker`：标题一行、可输入过滤、`›` 与反色标出选中项、当前项前有 `•`，末行是按键提示；面板高度受终端行数限制，超出时滚动。
 
 下一阶段（帮助、首次连接模型、全屏查看器、后台任务、回退与分叉等）的设计稿见 [tui-next.md](tui-next.md)；定稿的规则在实现时并入本节。
@@ -424,6 +427,7 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 - **两种保存方式，不要混用：** 写入 System Config 的选项（模型、审批、工具）进表单状态，由 “Save changes” 一起保存；只影响本设备显示的选项（模式、调色板、密度、字号、宽度、更新）立即生效、存 localStorage，不经过 Save。
 - 选项的标签用名词（“Text size”），选项值用短词（“Large”）；后果写在下方一行 `.muted.small` 说明里。
 - 每个新设置至少有一个测试（`SettingsDialog.test.ts` 或对应 lib 的测试）覆盖“选了之后发生什么”。
+- **Secrets**（2026-10-26 起）：打开的会话与当前工作区的密钥，**只列名字**：每行 `KeyRound` · 名字（等宽）· “This session only” / “Saved for this workspace”（`.muted.small`）· Remove（`.button.ghost.small`，`aria-label` 写 “Remove NAME”，先 `confirmDialog`）。没有时一行 `.muted.small` 说明密钥从哪来。这里不能新增或查看值：新增只能回答 Agent 的密钥问题（§5.1）。
 - **Context insights**（2026-10-21 起，取代原 Usage 分区，保留它的按模型表）：当前工作区所有会话与 Project Thread 的上下文概览。右上角是范围（Today / Last 7 days / Last 30 days / All，按设备记住，`tnega.insightsRange`，默认 30 天）；依次是 Overview 数字、Last 7 days 柱（中性 `--text-3`，下面写当天费用）与 12 周 Activity 热力图（`--usage-*`，点某天筛选下方会话）、Token stats、Timing、Sessions 卡片（构成小环图、窗口占比、轮次 / 步数、tokens、费用、最后一条你写的消息；可搜索，按最近 / tokens / 当前上下文排序，有 Thread 时可按类型筛选；点卡片关闭设置并打开那个会话或 Thread），最后是 By model。不做 dsh-context 的 Context Browser 及其下方各块。
 
 ## 10. 动效与无障碍

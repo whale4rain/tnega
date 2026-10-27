@@ -3,7 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@tnega/core": "workspace:*", "@tnega/tools": "workspace:*", "@tnega/user-questions": "workspace:*" },
-  "devDependencies": { "@tnega/session": "workspace:*" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/tools": "workspace:*",
+    "@tnega/user-questions": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/secrets": "workspace:*",
+    "@tnega/session": "workspace:*"
+  }
 }
