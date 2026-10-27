@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { connect as netConnect } from 'node:net'
 import { dirname } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
@@ -30,10 +31,58 @@ function mount(runner: SandboxRunnerName, config: Config = {}, unsupported?: str
   })
 }
 
-function confine(service: LocalSandboxService, network: SandboxNetworkRequest) {
+function confine(service: LocalSandboxService, network: SandboxNetworkRequest, options: { reportDenials?: boolean } = {}) {
   const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: WS, network: resolveNetworkPolicy(network) }
-  return service.confine({ op: 'shell', argv: SHELL, policy })
+  return service.confine({ op: 'shell', argv: SHELL, policy, ...(options.reportDenials ? { reportDenials: true } : {}) })
 }
+
+/** 一次调用自己的代理端口，从它给的 env 里读回来（bwrap 是固定中继口，所以用 seatbelt）。 */
+function proxyPortOf(env: Readonly<Record<string, string>> | undefined): number {
+  const url = env?.HTTPS_PROXY ?? ''
+  const port = Number(/:(\d+)$/u.exec(url)?.[1] ?? 0)
+  expect(port).toBeGreaterThan(0)
+  return port
+}
+
+describe('per-call attribution', () => {
+  it('gives each reporting call its own proxy, and closing one leaves the other open', async () => {
+    const service = mount('seatbelt')
+    const a = await confine(service, { mode: 'allowlist', allowedDomains: ['example.com'] }, { reportDenials: true })
+    const b = await confine(service, { mode: 'allowlist', allowedDomains: ['example.com'] }, { reportDenials: true })
+    expect(a.release).toBeTypeOf('function')
+    expect(proxyPortOf(a.env)).not.toBe(proxyPortOf(b.env))
+    // 一条命令的拒绝不会跑到另一条的说明里：a 关掉之后 b 还在。
+    a.release?.()
+    expect(b.annotate?.()).toBeUndefined()
+    b.release?.()
+  })
+
+  it('keeps the shared proxy for calls that will not read a note', async () => {
+    const service = mount('seatbelt')
+    const a = await confine(service, { mode: 'allowlist', allowedDomains: ['example.com'] })
+    const b = await confine(service, { mode: 'allowlist', allowedDomains: ['example.com'] })
+    expect(a.release).toBeUndefined()
+    // 后台进程要活得比命令久，所以共用同一份代理。
+    expect(proxyPortOf(a.env)).toBe(proxyPortOf(b.env))
+  })
+
+  it('turns the note from a reporting call into a denial that only it saw', async () => {
+    const service = mount('seatbelt')
+    const confined = await confine(service, { mode: 'allowlist', allowedDomains: ['example.com'] }, { reportDenials: true })
+    const port = proxyPortOf(confined.env)
+    // 直接问那个代理：没列的主机会被拒，而它只属于这一次调用。
+    const blocked = await new Promise<number>((done) => {
+      const socket = netConnect({ host: '127.0.0.1', port }, () => {
+        socket.write('CONNECT evil.test:443 HTTP/1.1\r\nHost: evil.test:443\r\n\r\n')
+      })
+      socket.once('data', (chunk: Buffer) => { done(Number(/HTTP\/1\.1 (\d{3})/u.exec(chunk.toString('latin1'))?.[1] ?? 0)); socket.destroy() })
+      socket.once('error', () => done(0))
+    })
+    expect(blocked).toBe(403)
+    expect(confined.annotate?.()).toContain('evil.test:443')
+    confined.release?.()
+  })
+})
 
 describe.skipIf(process.platform === 'win32')('bwrap network', () => {
   it('gives an allowlisted command a private network, the proxy socket and a socat relay', async () => {

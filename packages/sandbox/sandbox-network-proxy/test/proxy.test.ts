@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   bypassesUpstream,
   isLocalAddress,
+  ownAddresses,
   parseUpstreamProxy,
   startNetworkProxy,
   type NetworkProxy,
@@ -41,10 +42,11 @@ function rules(target: ProxyTarget): ProxyVerdict {
   return { allowed: false, reason: 'not-allowed' }
 }
 
-async function proxy(options: { upstream?: string; decisions?: ProxyDecision[]; listen?: { path: string } } = {}): Promise<NetworkProxy> {
+async function proxy(options: { upstream?: string; decisions?: ProxyDecision[]; listen?: { path: string }; resolve?: () => Promise<string[]>; local?: ReadonlySet<string> } = {}): Promise<NetworkProxy> {
   const started = await startNetworkProxy(options.listen ?? { host: '127.0.0.1', port: 0 }, {
     decide: rules,
-    resolve: async () => ['127.0.0.1'],
+    resolve: options.resolve ?? (async () => ['127.0.0.1']),
+    ...(options.local ? { localAddresses: () => options.local as ReadonlySet<string> } : {}),
     ...(options.upstream ? { upstream: () => options.upstream } : {}),
     onDecision: decision => options.decisions?.push(decision),
   })
@@ -257,6 +259,19 @@ describe('network proxy', () => {
     expect(blocked.text).toContain('tnega sandbox blocked evil.test')
   })
 
+  it('refuses a wildcard-allowed name that resolves to one of the host\'s own interfaces', async () => {
+    const decisions: ProxyDecision[] = []
+    // 本机网卡地址：一个绑在 0.0.0.0 的服务在它上面与回环等价。
+    const started = await proxy({ decisions, resolve: async () => ['192.168.1.10'], local: new Set(['192.168.1.10']) })
+    const blocked = await tunnelGet({ port: portOf(started) }, 'api.wild.test:3000')
+    expect(blocked.status).toBe(403)
+    expect(decisions.at(-1)).toMatchObject({ host: 'api.wild.test', allowed: false, reason: 'local-address' })
+    // 逐字点名的规则跳过这项检查，所以加进允许表就能恢复。
+    const named = await proxy({ resolve: async () => ['192.168.1.10'], local: new Set(['192.168.1.10']) })
+    const allowed = await tunnelGet({ port: portOf(named) }, `127.0.0.1:${1}`)
+    expect(allowed.status).not.toBe(403)
+  })
+
   it('refuses a wildcard-allowed name that resolves to a local address', async () => {
     const port = await origin()
     const decisions: ProxyDecision[] = []
@@ -360,18 +375,29 @@ describe('network proxy', () => {
 
 describe('proxy helpers', () => {
   it('recognises local addresses but not private networks', () => {
+    // 显式传一个空的「本机网卡」集：这条测的是网段规则，不该随跑测试的机器变。
+    const none = new Set<string>()
     for (const address of ['127.0.0.1', '127.5.0.1', '0.0.0.0', '169.254.169.254', '224.0.0.1', '::1', '::', 'fe80::1', '::ffff:127.0.0.1', '::ffff:7f00:1', 'ff02::1',
       '0:0:0:0:0:0:0:1', '0:0:0:0:0:0:0:0', '0:0:0:0:0:ffff:7f00:1', 'FE80:0:0:0:0:0:0:1', '::1%lo']) {
-      expect(isLocalAddress(address), address).toBe(true)
+      expect(isLocalAddress(address, none), address).toBe(true)
     }
     // 不在 link-local 段里的云平台端点。
     for (const address of ['100.100.100.200', '168.63.129.16', '192.0.0.192',
       'fd00:ec2::254', 'fd20:ce::254', 'fd00:c1::a9fe:a9fe', 'fd00:42::42', '::ffff:100.100.100.200']) {
-      expect(isLocalAddress(address), address).toBe(true)
+      expect(isLocalAddress(address, none), address).toBe(true)
     }
     for (const address of ['10.0.0.1', '192.168.1.1', '198.18.0.5', '8.8.8.8', '2606:4700::1111', 'fd00::1', 'not-an-ip']) {
-      expect(isLocalAddress(address), address).toBe(false)
+      expect(isLocalAddress(address, none), address).toBe(false)
     }
+  })
+
+  it('counts the host\'s own interface addresses as local', () => {
+    const own = new Set(['192.168.1.10', 'fd00::1'])
+    expect(isLocalAddress('192.168.1.10', own)).toBe(true)
+    expect(isLocalAddress('fd00::1', own)).toBe(true)
+    expect(isLocalAddress('192.168.1.11', own)).toBe(false)
+    // 这个包没有本机接口列表时，就是机器的真实网卡。
+    expect(ownAddresses().size).toBeGreaterThan(0)
   })
 
   it('parses http upstreams with credentials and refuses other schemes', () => {

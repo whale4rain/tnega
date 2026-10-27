@@ -52,7 +52,12 @@ Provider 的代理、配置解析与宿主的设置接口共用。
 
 Provider 管不了网络，或缺强制它所需的东西时，必须以 `SANDBOX_UNAVAILABLE` 拒绝一份
 `allowlist` / `off` 的策略 —— 与文件写一样 fail closed。命令退出后 `ConfinedArgv.annotate`
-（可选）返回的说明会被 Consumer 附在 stderr 末尾，例如本次被拒的主机。
+（可选）返回的说明会被 Consumer 附在 stderr 末尾，例如本次被拒的主机；读完后 Consumer
+调 `ConfinedArgv.release`（可选）让 Provider 收掉只为这一次调用起的资源。
+
+请求里的 `reportDenials: true` 告诉 Provider：「调用方会在本次调用结束前读 `annotate()`
+并调 `release()`」。它要为这次调用做**专属**的拒绝记账，而不是按时间窗从共享代理里捞；
+不带的调用（后台进程）共用代理，且不产生说明。
 
 ## 事件面
 

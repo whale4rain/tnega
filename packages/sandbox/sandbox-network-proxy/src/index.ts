@@ -12,11 +12,11 @@
 
 import { createServer as createHttpServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer, isIP, type AddressInfo, type Server, type Socket } from 'node:net'
-import { defaultResolve, dialDirect, isLocalAddress, LocalAddressError } from './dial.js'
+import { defaultResolve, dialDirect, isLocalAddress, LocalAddressError, ownAddresses } from './dial.js'
 import { readSocksRequest, SocksError, socksReply, SOCKS_REPLY } from './socks.js'
 import { authority, bypassesUpstream, parseUpstreamProxy, tunnelThrough } from './upstream.js'
 
-export { isLocalAddress, LocalAddressError } from './dial.js'
+export { isLocalAddress, LocalAddressError, ownAddresses } from './dial.js'
 export { bypassesUpstream, parseUpstreamProxy } from './upstream.js'
 
 /** 客户端想去的地方。 */
@@ -57,6 +57,8 @@ export interface NetworkProxyOptions {
   onDecision?: (decision: ProxyDecision) => void
   /** 替换 DNS（测试用）。 */
   resolve?: (host: string) => Promise<string[]>
+  /** 替换「本机地址」集（测试用）；默认读网卡。 */
+  localAddresses?: () => ReadonlySet<string>
   /** 被拦下时给客户端看的一句话；默认说明是哪个主机、为什么。 */
   explain?: (decision: ProxyDecision) => string
 }
@@ -117,6 +119,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
   const sockets = new Set<Socket>()
   const denials: ProxyDecision[] = []
   const explain = options.explain ?? defaultExplain
+  const own = (): ReadonlySet<string> => options.localAddresses?.() ?? ownAddresses()
 
   function record(target: ProxyTarget, protocol: ProxyProtocol, verdict: ProxyVerdict): ProxyDecision {
     const decision: ProxyDecision = {
@@ -163,9 +166,10 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
    */
   async function localViaUpstream(target: ProxyTarget, protocol: ProxyProtocol, verdict: ProxyVerdict): Promise<ProxyDecision | undefined> {
     if (verdict.named === true) return undefined
+    const ownSet = own()
     const host = target.host
     let local: boolean
-    if (isIP(host) !== 0) local = isLocalAddress(host)
+    if (isIP(host) !== 0) local = isLocalAddress(host, ownSet)
     else if (host === 'localhost' || host.endsWith('.localhost')) local = true
     else {
       let answers: string[] = []
@@ -174,7 +178,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
       } catch {
         // 只有上游能解析：交给上游。
       }
-      local = answers.some(isLocalAddress)
+      local = answers.some(answer => isLocalAddress(answer, ownSet))
     }
     if (!local) return undefined
     return record(target, protocol, { allowed: false, reason: 'local-address', ...(verdict.rule !== undefined ? { rule: verdict.rule } : {}) })
@@ -186,6 +190,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
       const socket = await dialDirect(target.host, target.port, {
         allowLocal: verdict.named === true,
         ...(options.resolve ? { resolve: options.resolve } : {}),
+        ownAddresses: own,
       })
       record(target, protocol, verdict)
       return { socket }

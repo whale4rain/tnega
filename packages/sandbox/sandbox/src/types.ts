@@ -122,10 +122,15 @@ export interface ConfinedArgv {
   denialSignatures: readonly string[]
   runnerFailureRules: readonly RunnerFailureRule[]
   /**
-   * 命令结束后调用：返回要附加在 stderr 末尾的说明（例如这段时间里被网络策略拦下的目标），
+   * 命令结束后调用：返回要附加在 stderr 末尾的说明（例如本次被网络策略拦下的目标），
    * 没有要说的就返回 `undefined`。让模型知道失败是策略造成的，以及该请用户做什么。
    */
   annotate?: () => string | undefined
+  /**
+   * 调用方用完本次受限结果（或放弃它）时调用，只调一次。Provider 用来收掉只为这一次
+   * 调用而起的资源（例如请求了 `reportDenials` 时那份专属过滤代理）。没有要收的就缺席。
+   */
+  release?: () => void
 }
 
 /** 一次受限执行的请求。 */
@@ -136,6 +141,12 @@ export interface SandboxConfineRequest {
   argv: readonly string[]
   policy: SandboxExecutionPolicy
   signal?: AbortSignal
+  /**
+   * 调用方会在最多这一次调用结束前读 `annotate()`，并且用完会调 `release()`。Provider
+   * 据此把「这次被拒了什么」的记账做成**本次专属**的，而不是按时间窗从共享代理里捞——
+   * 否则同时跑着的后台任务或子命令的拒绝会写进这次的结果。长命的后台进程不带它。
+   */
+  reportDenials?: boolean
 }
 
 /** 调用方准备执行的东西的判别标签。 */

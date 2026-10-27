@@ -68,6 +68,7 @@ export function isConfinedArgv(value: unknown): value is ConfinedArgv {
     && Array.isArray(value.runnerFailureRules)
     && value.runnerFailureRules.every(isRunnerFailureRule)
     && (value.annotate === undefined || typeof value.annotate === 'function')
+    && (value.release === undefined || typeof value.release === 'function')
 }
 
 function isRunnerFailureRule(value: unknown): value is RunnerFailureRule {

@@ -130,17 +130,20 @@ export function sandboxedExecution(
     argv: readonly string[],
     request: { signal?: AbortSignal },
     activePolicy: SandboxExecutionPolicy,
-  ): Promise<Pick<ConfinedArgv, 'argv' | 'env' | 'annotate'>> {
+    reportDenials: boolean,
+  ): Promise<Pick<ConfinedArgv, 'argv' | 'env' | 'annotate' | 'release'>> {
     const confined = await requireSandbox().confine({
       op,
       argv,
       policy: activePolicy,
       ...(request.signal ? { signal: request.signal } : {}),
+      ...(reportDenials ? { reportDenials: true } : {}),
     })
     return {
       argv: confined.argv,
       ...(confined.env ? { env: confined.env } : {}),
       ...(confined.annotate ? { annotate: confined.annotate } : {}),
+      ...(confined.release ? { release: confined.release } : {}),
     }
   }
 
@@ -149,28 +152,36 @@ export function sandboxedExecution(
       const activePolicy = await policy()
       // An approved escalation runs as the user would; the approval was the gate.
       if (activePolicy.mode === 'bypass' || request.unsandboxed) return inner.runShell(request)
-      const { annotate, ...confined } = await confine('shell', shellArgv(request, config), request, activePolicy)
-      const result = await inner.runProcess({
-        ...confined,
-        ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
-        cwd: request.cwd,
-        ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
-        ...(request.maxBuffer !== undefined ? { maxBuffer: request.maxBuffer } : {}),
-        ...(request.signal ? { signal: request.signal } : {}),
-        ...(request.onOutput ? { onOutput: request.onOutput } : {}),
-      })
-      return withNote(withPipeHint({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr }), annotate?.())
+      const { annotate, release, ...confined } = await confine('shell', shellArgv(request, config), request, activePolicy, true)
+      try {
+        const result = await inner.runProcess({
+          ...confined,
+          ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
+          cwd: request.cwd,
+          ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+          ...(request.maxBuffer !== undefined ? { maxBuffer: request.maxBuffer } : {}),
+          ...(request.signal ? { signal: request.signal } : {}),
+          ...(request.onOutput ? { onOutput: request.onOutput } : {}),
+        })
+        return withNote(withPipeHint({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr }), annotate?.())
+      } finally {
+        release?.()
+      }
     },
 
     async runProcess(request: ProcessRequest) {
       const activePolicy = await policy()
       if (activePolicy.mode === 'bypass' || !confineProcess) return inner.runProcess(request)
-      const { annotate, ...confined } = await confine('process', request.argv, request, activePolicy)
-      const result = await inner.runProcess({ ...request, ...confined,
-        ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
-      })
-      const note = annotate?.()
-      return note === undefined ? result : { ...result, ...withNote(result, note) }
+      const { annotate, release, ...confined } = await confine('process', request.argv, request, activePolicy, true)
+      try {
+        const result = await inner.runProcess({ ...request, ...confined,
+          ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
+        })
+        const note = annotate?.()
+        return note === undefined ? result : { ...result, ...withNote(result, note) }
+      } finally {
+        release?.()
+      }
     },
 
     fetchHttp(request) {
@@ -188,14 +199,14 @@ export function sandboxedExecution(
             // A background process has no single end to report on, so no note.
             const confined = open
               ? { argv: shellArgv({ command: request.command, cwd: request.cwd }, config, false) }
-              : withoutNote(await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy))
+              : withoutNote(await confine('shell', shellArgv({ command: request.command, cwd: request.cwd }, config), {}, activePolicy, false))
             const env = request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}
             return markSandboxed(await inner.startProcess!({ ...confined, ...env, cwd: request.cwd }), !open)
           },
           async startProcess(request: BackgroundProcessRequest) {
             const activePolicy = await policy()
             if (activePolicy.mode === 'bypass' || !confineProcess) return inner.startProcess!(request)
-            const confined = withoutNote(await confine('process', request.argv, {}, activePolicy))
+            const confined = withoutNote(await confine('process', request.argv, {}, activePolicy, false))
             return markSandboxed(await inner.startProcess!({ ...request, ...confined,
               ...(request.env || confined.env ? { env: { ...request.env, ...confined.env } } : {}),
             }), true)

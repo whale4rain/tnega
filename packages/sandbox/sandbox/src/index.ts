@@ -38,6 +38,8 @@ export interface SandboxMechanismRequest {
   argv: readonly string[]
   policy: SandboxPolicy
   signal?: AbortSignal
+  /** 调用方会在本次调用结束前读 `annotate()` 并调 `release()`；见 `SandboxConfineRequest`。 */
+  reportDenials?: boolean
 }
 
 /**
@@ -129,6 +131,7 @@ export abstract class SandboxService extends Service {
         argv: active.argv,
         policy: active.policy,
         ...(request.signal ? { signal: request.signal } : {}),
+        ...(request.reportDenials === true ? { reportDenials: true } : {}),
       })), request.signal))
       await notifyConfined(this.ctx, {
         op: active.op,

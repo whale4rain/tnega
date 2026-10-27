@@ -1,24 +1,26 @@
 import { lookup } from 'node:dns/promises'
 import { connect, isIP, type Socket } from 'node:net'
+import { networkInterfaces } from 'node:os'
 
 /**
  * 地址是否指向**本机或本链路**：回环、未指定、链路本地（含云厂商的元数据地址
- * 169.254.169.254）、组播与广播，以及不在链路本地段里的云平台端点
- * （{@link PLATFORM_ENDPOINTS}）。
+ * 169.254.169.254）、组播与广播、不在链路本地段里的云平台端点
+ * （{@link PLATFORM_ENDPOINTS}），以及**本机网卡自己的地址**。
  *
- * 这些地址从宿主上的代理连出去，等于让沙箱里的命令绕过 network namespace 摸到宿主的本地
- * 服务。私有网段（10/8、192.168/16……）不在这里：用户点名允许的内网域名，以及 fake-IP
- * 模式的代理（198.18/15）都依赖它们。
+ * 最后一项是故意的：服务绑在 `0.0.0.0` 时，局域网地址与回环等价，不拦就等于绕过了上一条。
+ * 代价是「公司域名解析到我本机的开发服务」这类场景会被拦；规则逐字点名主机时不查这些，
+ * 所以把具体地址加进允许表就能恢复。
  */
-export function isLocalAddress(address: string): boolean {
+export function isLocalAddress(address: string, own: ReadonlySet<string> = ownAddresses()): boolean {
   const kind = isIP(address)
-  if (kind === 4) return isLocalV4(address)
+  if (kind === 4) return isLocalV4(address) || own.has(address)
   if (kind !== 6) return false
   // 先压缩成规范形态：SOCKS5 与 CONNECT 都可能送来展开的写法（0:0:0:0:0:0:0:1）。
   const value = canonicalV6(address)
   if (value === undefined) return true
+  if (own.has(value)) return true
   const mapped = mappedV4(value)
-  if (mapped !== undefined) return isLocalV4(mapped)
+  if (mapped !== undefined) return isLocalV4(mapped) || own.has(mapped)
   if (value === '::' || value === '::1') return true
   if (PLATFORM_ENDPOINT_V6.some(prefix => value.startsWith(prefix))) return true
   // fe80::/10 链路本地；ff00::/8 组播。
@@ -67,6 +69,28 @@ function isLocalV4(address: string): boolean {
   return a === 127 || a === 0 || (a === 169 && b === 254) || a >= 224
 }
 
+/**
+ * 本机网卡当前的地址（已规范化）。读一次网卡列表是系统调用，而一条命令会检查好几个答案，
+ * 所以缓存一小会儿：接口出现/消失的延迟上限就是这段时间。
+ */
+const OWN_CACHE_MS = 1_000
+let ownCache: { at: number; addresses: Set<string> } | undefined
+
+export function ownAddresses(now = Date.now()): ReadonlySet<string> {
+  if (ownCache !== undefined && now - ownCache.at < OWN_CACHE_MS) return ownCache.addresses
+  const addresses = new Set<string>()
+  for (const list of Object.values(networkInterfaces())) {
+    for (const entry of list ?? []) {
+      // 带 zone 的链路本地地址（fe80::1%eth0）按去掉 zone 的写法比较。
+      const bare = entry.address.replace(/%.*$/u, '')
+      const canonical = isIP(bare) === 6 ? canonicalV6(bare) : bare
+      if (canonical !== undefined) addresses.add(canonical)
+    }
+  }
+  ownCache = { at: now, addresses }
+  return addresses
+}
+
 /** 名字解析到了本机地址，而允许它的规则没有点名它。 */
 export class LocalAddressError extends Error {
   override name = 'LocalAddressError'
@@ -81,6 +105,8 @@ export interface DialOptions {
   allowLocal: boolean
   /** 替换 DNS（测试用）。 */
   resolve?: (host: string) => Promise<string[]>
+  /** 替换「本机地址」集（测试用）；默认读网卡。 */
+  ownAddresses?: () => ReadonlySet<string>
   timeoutMs?: number
 }
 
@@ -95,10 +121,12 @@ export async function defaultResolve(host: string): Promise<string[]> {
  * @throws LocalAddressError 任一答案是本机地址且 `allowLocal` 为假。
  */
 export async function dialDirect(host: string, port: number, options: DialOptions): Promise<Socket> {
+  const own = options.ownAddresses?.() ?? ownAddresses()
+  const check = (address: string): boolean => isLocalAddress(address, own)
   const addresses = isIP(host) !== 0 ? [host] : await (options.resolve ?? defaultResolve)(host)
   if (addresses.length === 0) throw new Error(`${host} did not resolve to any address`)
   if (!options.allowLocal) {
-    const local = addresses.find(isLocalAddress)
+    const local = addresses.find(check)
     if (local !== undefined) throw new LocalAddressError(host, local)
   }
   let lastError: unknown

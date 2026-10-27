@@ -289,6 +289,8 @@ export class LocalSandboxService extends SandboxService {
   private readonly tempGrants = new Map<string, TempGrant>()
   /** 每份网络策略一个过滤代理，按需启动，dispose 时关闭。 */
   private readonly proxies = new Map<string, Promise<ProxyHandle>>()
+  /** 只为单次调用起的代理；`release()` 或 dispose 时关闭。 */
+  private readonly ownProxies = new Set<ProxyHandle>()
   /** 机制能否强制某种网络模式：`undefined` 能，字符串是不能的原因。按生命周期缓存。 */
   private readonly networkSupport = new Map<string, string | undefined>()
 
@@ -332,7 +334,7 @@ export class LocalSandboxService extends SandboxService {
   protected override async runConfine(request: SandboxMechanismRequest): Promise<ConfinedArgv> {
     assertTempOutsideWorkspace(request.policy)
     const selection = await this.select(request.policy.mode)
-    const network = await this.prepareNetwork(selection.runner, request.policy)
+    const network = await this.prepareNetwork(selection.runner, request.policy, request.reportDenials === true)
     const runnerArgv = selection.runner === 'windows-acl'
       ? await this.confineWindowsAcl(request.policy, request.argv)
       : selection.runner === 'windows-mxc'
@@ -342,6 +344,11 @@ export class LocalSandboxService extends SandboxService {
     const env = runnerEnv || network?.env ? { ...network?.env, ...runnerEnv } : undefined
     const startedAt = Date.now()
     const proxy = network?.proxy
+    // 专属代理只属于这一次调用：说明取完就收，否则每个命令留一个监听口。
+    const own = network?.own === true
+    const release = own && proxy !== undefined
+      ? () => { void this.closeHandle(proxy) }
+      : undefined
 
     return {
       argv: runnerArgv,
@@ -351,17 +358,22 @@ export class LocalSandboxService extends SandboxService {
       denialSignatures: denialSignatures(selection.runner, this.config),
       runnerFailureRules: runnerFailureRules(selection.runner, this.config),
       ...(proxy ? { annotate: () => describeDenials(proxy.proxy.denialsSince(startedAt)) } : {}),
+      ...(release ? { release } : {}),
     }
   }
 
   /**
    * 网络受限时：确认选中的机制做得到（做不到就 fail closed），`allowlist` 再拿到这份策略的
    * 过滤代理，以及命令里客户端找到它所需的环境变量。
+   *
+   * `perCall` 为真时（调用方要读这一条的 `annotate()`）起一个**只服务本次调用**的代理：
+   * 拒绝记录因此不会被同时跑着的后台任务或子命令污染。代价是每条命令多一次监听。
    */
   private async prepareNetwork(
     runner: SandboxRunnerName,
     policy: SandboxPolicy,
-  ): Promise<{ proxy?: ProxyHandle; env?: Record<string, string> } | undefined> {
+    perCall: boolean,
+  ): Promise<{ proxy?: ProxyHandle; env?: Record<string, string>; own?: boolean } | undefined> {
     const network = policy.network
     if (network === undefined || !isNetworkRestricted(network)) return undefined
     const mode = network.mode === 'off' ? 'off' : 'allowlist'
@@ -374,10 +386,11 @@ export class LocalSandboxService extends SandboxService {
       )
     }
     if (mode === 'off') return {}
-    const proxy = await this.proxyFor(runner, network)
-    if (runner === 'windows-mxc') return { proxy }
+    const proxy = perCall ? await this.startProxy(runner === 'bwrap', network) : await this.proxyFor(runner, network)
+    if (perCall) this.ownProxies.add(proxy)
+    if (runner === 'windows-mxc') return { proxy, ...(perCall ? { own: true } : {}) }
     const port = 'port' in proxy.proxy.address ? proxy.proxy.address.port : LINUX_PROXY_PORT
-    return { proxy, env: proxyEnvironment(port, this.platform, this.config.socatPath ?? 'socat') }
+    return { proxy, env: proxyEnvironment(port, this.platform, this.config.socatPath ?? 'socat'), ...(perCall ? { own: true } : {}) }
   }
 
   /**
@@ -504,14 +517,27 @@ export class LocalSandboxService extends SandboxService {
   }
 
   private async closeProxies(): Promise<void> {
-    const handles = await Promise.allSettled(this.proxies.values())
+    const handles = await Promise.allSettled([...this.proxies.values(), ...this.ownProxies])
     this.proxies.clear()
+    this.ownProxies.clear()
     for (const handle of handles) {
       if (handle.status !== 'fulfilled') continue
-      await handle.value.proxy.close().catch(() => undefined)
-      if (handle.value.socketDir !== undefined) {
-        await rm(handle.value.socketDir, { recursive: true, force: true }).catch(() => undefined)
-      }
+      await this.closeHandle(handle.value)
+    }
+  }
+
+  /** 关掉一个代理，并删掉它自己的 socket 目录（只有 bwrap 的代理有）。 */
+  private async closeHandle(handle: ProxyHandle | Promise<ProxyHandle>): Promise<void> {
+    let settled: ProxyHandle
+    try {
+      settled = await handle
+    } catch {
+      return
+    }
+    this.ownProxies.delete(settled)
+    await settled.proxy.close().catch(() => undefined)
+    if (settled.socketDir !== undefined) {
+      await rm(settled.socketDir, { recursive: true, force: true }).catch(() => undefined)
     }
   }
 
