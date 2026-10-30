@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/computer-cua",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@tnega/computer": "workspace:*",
+    "@tnega/core": "workspace:*"
+  }
+}

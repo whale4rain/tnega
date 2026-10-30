@@ -86,6 +86,7 @@ export async function createAgentRuntime(
       summary: true,
       ...(merged.office !== undefined ? { office: merged.office } : {}),
       ...(merged.secrets ? { secrets: merged.secrets } : {}),
+      ...(merged.computer ? { computer: merged.computer } : {}),
       // A long turn is fine while it keeps moving; a turn that stalls is
       // nudged, then asked to reflect, then parked.
       loopGuard: merged.loopGuard ?? true,

@@ -4,6 +4,7 @@ import { skillTools } from '@tnega/coding-agent'
 import { localExecutionProvider } from '@tnega/execution'
 import { secretEnvExecution } from '@tnega/execution-secrets'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
+import { computerCua } from '@tnega/computer-cua'
 import { jobsLocal } from '@tnega/jobs-local'
 import { memoryLocal } from '@tnega/memory-local'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
@@ -16,6 +17,7 @@ import type { SessionLog } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { runSummary } from '@tnega/run-summary'
 import { loopGuard, type LoopGuardConfig } from '@tnega/loop-guard'
+import { toolComputer } from '@tnega/tool-computer'
 import { toolJobs } from '@tnega/tool-jobs'
 import { toolMemory } from '@tnega/tool-memory'
 import { toolOffice } from '@tnega/tool-office'
@@ -44,6 +46,7 @@ import { workspacePrompt } from '@tnega/workspace-prompt'
  * @tnega/search-ripgrep ─→ capability:search ─→ @tnega/tool-search
  * @tnega/spill-local ─→ capability:spill ─→ @tnega/tool-spill
  * @tnega/secrets-local ─→ capability:secrets ─→ @tnega/execution-secrets, @tnega/tool-secrets
+ * @tnega/computer-cua ─→ capability:computer ─→ @tnega/tool-computer
  * ```
  *
  * A caller only states what its role needs; adding a capability means adding
@@ -157,6 +160,8 @@ export interface RuntimeSpec {
   promptWorkspace?: string
   /** Secrets the user gives this Session; without it, secret questions are refused. */
   secrets?: SecretsCapabilitySpec
+  /** Let the agent see and use apps on this machine; only when the person turned it on. */
+  computer?: ComputerCapabilitySpec
 }
 
 async function permissionOf(permission: Permission): Promise<PermissionMode> {
@@ -311,6 +316,25 @@ export const ptcCapability: Plugin = {
   },
 }
 
+export interface ComputerCapabilitySpec {
+  /** Path to the `cua-driver` binary; found on PATH or in the installer's folder otherwise. */
+  driverPath?: string
+}
+
+/**
+ * Computer seam: cua-driver is the Provider, the `computer_*` tools the
+ * Consumer. Mount it only when the person turned computer use on; the tools
+ * ask for each app once per Session through the approval host.
+ */
+export const computerCapability: Plugin = {
+  name: 'capability:computer',
+  inject: ['tools'],
+  async apply(ctx: Context, spec: ComputerCapabilitySpec) {
+    await ctx.plugin(computerCua, spec.driverPath ? { driverPath: spec.driverPath } : {})
+    await ctx.plugin(toolComputer)
+  },
+}
+
 /**
  * The capability slice of one Agent scope, assembled from a spec.
  *
@@ -356,6 +380,7 @@ export const runtimeCapabilities: Plugin = {
       })
     }
     if (spec.ptc) await ctx.plugin(ptcCapability, spec.ptc)
+    if (spec.computer) await ctx.plugin(computerCapability, spec.computer)
 
     // Every executable tool is a schema provider, so the assembled prompt and
     // the registry can never disagree about what the model may call.

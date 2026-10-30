@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { resolveInside, type ToolGuard, type ToolRequest } from '@tnega/tools'
+import { resolveInside, type ToolGrant, type ToolGuard, type ToolRequest } from '@tnega/tools'
 import { isLocalUrl, normalizeBrowserUrl } from '@tnega/browser'
 import { BROWSER_OBSERVE_TOOLS } from '@tnega/tool-browser'
 import type { ApprovalDecision } from '@tnega/approval-review'
@@ -69,6 +69,16 @@ function browserInteractionIsLocal(request: ToolRequest, pageUrl: string | undef
   return pageUrl !== undefined && isLocalUrl(normalizeBrowserUrl(pageUrl))
 }
 
+/** The Session-long scope a tool offers for this call, if any; a failing lookup offers none. */
+async function grantOf(request: ToolRequest): Promise<ToolGrant | undefined> {
+  if (!request.tool.grant) return undefined
+  try {
+    return await request.tool.grant(request.input, request.options)
+  } catch {
+    return undefined
+  }
+}
+
 /** How an approval request ended. */
 export type ApprovalOutcome = 'allow' | 'deny' | 'timeout' | 'cancelled'
 
@@ -86,6 +96,23 @@ interface PendingApproval {
 export class ApprovalBroker {
   private readonly runs = new Map<string, (event: Record<string, unknown>) => void>()
   private readonly pending = new Map<string, PendingApproval>()
+  /** Scopes a person allowed for the rest of a Session, by run key. */
+  private readonly grants = new Map<string, Set<string>>()
+
+  /** Whether a person already allowed `scope` in this Session. */
+  granted(key: string, scope: string): boolean {
+    return this.grants.get(key)?.has(scope) === true
+  }
+
+  /** Remember that a person allowed `scope` for the rest of this Session. */
+  grant(key: string, scope: string): void {
+    let scopes = this.grants.get(key)
+    if (!scopes) {
+      scopes = new Set()
+      this.grants.set(key, scopes)
+    }
+    scopes.add(scope)
+  }
 
   attach(key: string, emit: (event: Record<string, unknown>) => void): () => void {
     this.runs.set(key, emit)
@@ -115,8 +142,12 @@ export class ApprovalBroker {
     return await this.ask(key, request, options) === 'allow'
   }
 
-  /** Ask a person and say how it ended: answered, unanswered in time, or cancelled. */
-  ask(key: string, request: ToolRequest, options: { fullInput?: boolean } = {}): Promise<ApprovalOutcome> {
+  /**
+   * Ask a person and say how it ended: answered, unanswered in time, or
+   * cancelled. With `grant`, the card offers that scope for the rest of the
+   * Session, and an allow is remembered for it.
+   */
+  ask(key: string, request: ToolRequest, options: { fullInput?: boolean; grant?: ToolGrant } = {}): Promise<ApprovalOutcome> {
     const emit = this.runs.get(key)
     if (!emit || request.options.signal?.aborted) return Promise.resolve('cancelled')
     const id = randomUUID()
@@ -136,6 +167,7 @@ export class ApprovalBroker {
           input: options.fullInput ? (JSON.stringify(request.input) ?? '') : (JSON.stringify(request.input) ?? '').slice(0, 2_000),
           // A call a CodeMode script made: the model only called run_code.
           ...(typeof request.options.ptcParentCallId === 'string' ? { via: 'run_code' } : {}),
+          ...(options.grant ? { grant: { scope: options.grant.scope, label: options.grant.label } } : {}),
         })
       } catch {
         this.settle(id, 'cancelled')
@@ -197,6 +229,8 @@ export function permissionGuard(
     if (BROWSER_PASSIVE.has(request.name)) return undefined
     if (effective === 'workspace-write' && browserInteractionIsLocal(request, options.browserUrl?.())) return undefined
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
+    const grant = await grantOf(request)
+    if (grant && approvals.granted(key, grant.scope)) return undefined
     let reviewed: ApprovalDecision | undefined
     const delegated = options.delegated?.(request.options.agentId) === true
     // A narrower child cannot use the parent's automatic elevation policy, unless
@@ -221,9 +255,12 @@ export function permissionGuard(
       return undefined
     }
     if (reviewed?.decision === 'deny') return `Automatic review denied ${request.name}: ${reviewed.reason}`
-    const outcome = reviewed?.decision === 'allow' ? 'allow' : await approvals.ask(key, request)
+    const asked = reviewed?.decision !== 'allow'
+    const outcome = asked ? await approvals.ask(key, request, grant ? { grant } : {}) : 'allow'
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
     if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during approval'
+    // Only a person's answer covers the scope; an automatic allow stays per call.
+    if (outcome === 'allow' && asked && grant) approvals.grant(key, grant.scope)
     if (outcome === 'allow') {
       request.options.approvedElevation = true
       return undefined

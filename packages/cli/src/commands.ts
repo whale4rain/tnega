@@ -161,6 +161,8 @@ export async function runAgentCommand(
     ...((options.fsGuard ?? systemConfig.fsGuard) !== undefined ? { fsGuard: options.fsGuard ?? systemConfig.fsGuard } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    // Computer use only when turned on in Settings; `tnega run` has no approval card.
+    ...(systemConfig.computerUse ? { computer: systemConfig.computerDriverPath ? { driverPath: systemConfig.computerDriverPath } : {} } : {}),
   })
   try {
     const loop = context.root.get('agentLoop')

@@ -14,6 +14,52 @@ function request(name: string, input: unknown): ToolRequest {
 }
 
 describe('permissionGuard', () => {
+  it('remembers a person\'s allow for a tool\'s grant scope until the Session ends', async () => {
+    const broker = new ApprovalBroker()
+    const asked: Array<Record<string, unknown>> = []
+    broker.attach('session', event => {
+      asked.push(event)
+      queueMicrotask(() => broker.decide(String(event.id), 'session', true))
+    })
+    const guard = permissionGuard('workspace-write', 'session', broker, { workspace: process.cwd() })
+    const call = (app: string): ToolRequest => {
+      const next = request('computer_click', { window_id: 1, x: 2, y: 3 })
+      next.tool.grant = () => ({ scope: `computer:app:${app}`, label: `use ${app}` })
+      return next
+    }
+    expect(await guard(call('Notepad'))).toBeUndefined()
+    expect(await guard(call('Notepad'))).toBeUndefined()
+    expect(asked).toHaveLength(1)
+    expect(asked[0]?.grant).toEqual({ scope: 'computer:app:Notepad', label: 'use Notepad' })
+    expect(await guard(call('Calculator'))).toBeUndefined()
+    expect(asked).toHaveLength(2)
+    // Another Session starts over.
+    expect(broker.granted('other', 'computer:app:Notepad')).toBe(false)
+  })
+
+  it('does not remember a grant the person denied or an automatic reviewer allowed', async () => {
+    const broker = new ApprovalBroker()
+    let allow = false
+    broker.attach('session', event => queueMicrotask(() => broker.decide(String(event.id), 'session', allow)))
+    const reviewed = permissionGuard('workspace-write', 'session', broker, {
+      workspace: process.cwd(),
+      review: async () => ({ decision: 'allow', risk: 'low', reason: 'fine' }),
+    })
+    const call = (): ToolRequest => {
+      const next = request('computer_click', {})
+      next.tool.grant = () => ({ scope: 'computer:app:Notepad', label: 'use Notepad' })
+      return next
+    }
+    expect(await reviewed(call())).toBeUndefined()
+    expect(broker.granted('session', 'computer:app:Notepad')).toBe(false)
+    const manual = permissionGuard('workspace-write', 'session', broker, { workspace: process.cwd() })
+    expect(await manual(call())).toMatch(/approval/)
+    expect(broker.granted('session', 'computer:app:Notepad')).toBe(false)
+    allow = true
+    expect(await manual(call())).toBeUndefined()
+    expect(broker.granted('session', 'computer:app:Notepad')).toBe(true)
+  })
+
   it('allows job controls while child execution retains its own permission check', async () => {
     const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
     for (const name of ['job_list', 'job_output', 'job_kill']) {

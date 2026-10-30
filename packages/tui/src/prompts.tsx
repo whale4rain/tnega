@@ -28,9 +28,11 @@ export function ApprovalPanel({ approval, more, onAnswer, width }: {
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={color.warn} paddingX={1} width={width} marginTop={1}>
       <Text><Text color={color.warn}>Waiting for you</Text><Text dimColor> · approval{more ? ` (${more} more)` : ''}</Text></Text>
-      <Text bold>Allow {approval.tool}{approval.via === 'run_code' ? ' from a CodeMode script' : ''}?</Text>
+      {approval.grant
+        ? <Text bold>Let the agent {approval.grant.label}?</Text>
+        : <Text bold>Allow {approval.tool}{approval.via === 'run_code' ? ' from a CodeMode script' : ''}?</Text>}
       {preview && <Text dimColor>{firstLines(preview, 8)}</Text>}
-      <Text><Text bold>y</Text><Text dimColor> allow · </Text><Text bold>n</Text><Text dimColor> or esc deny</Text></Text>
+      <Text><Text bold>y</Text><Text dimColor>{approval.grant ? ' allow in this session · ' : ' allow · '}</Text><Text bold>n</Text><Text dimColor> or esc deny</Text></Text>
     </Box>
   )
 }

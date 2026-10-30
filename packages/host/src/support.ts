@@ -65,6 +65,12 @@ export function processesFor(
   return registry
 }
 
+/** Computer use for a run, only when the person turned it on in Settings. */
+export function computerSpec(config: SystemConfig): { computer?: { driverPath?: string } } {
+  if (!config.computerUse) return {}
+  return { computer: config.computerDriverPath ? { driverPath: config.computerDriverPath } : {} }
+}
+
 /** Mount the browser Provider over the shared host and the model-visible tools. */
 export async function mountBrowser(root: Context, host: PlaywrightBrowserHost | undefined): Promise<Array<{ dispose: () => Promise<void> }>> {
   if (!host) return []

@@ -125,6 +125,10 @@ const apiRoutes: ApiRoute[] = [
             if (typeof body.codeMode !== 'boolean') { sendError(res, 400, 'codeMode must be a boolean'); return }
             patch.codeMode = body.codeMode
           }
+      if (body.computerUse !== undefined) {
+            if (typeof body.computerUse !== 'boolean') { sendError(res, 400, 'computerUse must be a boolean'); return }
+            patch.computerUse = body.computerUse
+          }
       if (body.fsGuard !== undefined) {
             if (!isFsGuardMode(body.fsGuard)) {
               sendError(res, 400, `fsGuard must be one of ${FS_GUARD_MODES.join(', ')}`); return
@@ -863,6 +867,7 @@ export function configSnapshot(config: SystemConfig, path = systemConfigPath()):
     config: {
       apiKeySet: Boolean(config.apiKey),
       codeMode: config.codeMode ?? false,
+      computerUse: config.computerUse ?? false,
       fsGuard: config.fsGuard ?? 'warn',
       projectMemory: { ...PROJECT_MEMORY_DEFAULTS, ...config.projectMemory },
       memoryDream: { ...MEMORY_DREAM_DEFAULTS, ...config.memoryDream },

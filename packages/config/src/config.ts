@@ -131,6 +131,14 @@ export interface SystemConfig {
   memoryDream?: MemoryDreamConfig
   codeMode?: boolean
   /**
+   * Let the agent see and use apps on this computer (`computer_*` tools,
+   * through cua-driver). Off unless chosen; each app still needs the person's
+   * approval once per Session.
+   */
+  computerUse?: boolean
+  /** Path to the `cua-driver` binary when it is not on PATH or in the installer's folder. */
+  computerDriverPath?: string
+  /**
    * How strictly a file write must match what this Session already read of that
    * path. `warn` (the default) records and proceeds with a note, `enforce`
    * refuses an unread or externally changed target, `off` does neither.
@@ -704,6 +712,8 @@ function normalizeConfig(value: unknown): SystemConfig {
   const record = value as Record<string, unknown>
   const config: SystemConfig = {}
   if (typeof record.codeMode === 'boolean') config.codeMode = record.codeMode
+  if (typeof record.computerUse === 'boolean') config.computerUse = record.computerUse
+  if (typeof record.computerDriverPath === 'string' && record.computerDriverPath.trim()) config.computerDriverPath = record.computerDriverPath.trim()
   if (isFsGuardMode(record.fsGuard)) config.fsGuard = record.fsGuard
   const memory = normalizeProjectMemory(record.projectMemory)
   if (memory) config.projectMemory = memory
