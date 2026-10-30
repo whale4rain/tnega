@@ -11,7 +11,7 @@ import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import type { SandboxMode } from '@tnega/sandbox'
 import type { ToolPolicy } from '@tnega/tools'
 import type { BuiltinToolsConfig } from './builtins.js'
-import type { SandboxNetworkSource, SecretsCapabilitySpec } from './compose.js'
+import type { ComputerCapabilitySpec, SandboxNetworkSource, SecretsCapabilitySpec } from './compose.js'
 
 /**
  * A named composition: the bundles to mount, plus defaults the caller may
@@ -79,6 +79,8 @@ export interface AgentRuntimeOptions {
   office?: boolean | 'auto'
   /** Secrets the user gives this Session (see `capability:secrets`). */
   secrets?: SecretsCapabilitySpec
+  /** Computer use (see `capability:computer`); off unless given. `false` also overrides a profile. */
+  computer?: ComputerCapabilitySpec | false
 }
 
 export interface AgentRuntime {

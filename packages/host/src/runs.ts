@@ -1,6 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { HttpError, errorMessage, readJsonBody, sendError, sendJson, writeSse } from '@tnega/web-kit'
-import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, hostPlugins, isActive, mountBrowser, parseRunAttachments, permissionNotice, processesFor, resolveSessionLlm, runKey, searchApiKey, sessionFilePath, sessionModelRoute, userMessage } from './support.js'
+import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, computerSpec, hostPlugins, isActive, mountBrowser, parseRunAttachments, permissionNotice, processesFor, resolveSessionLlm, runKey, searchApiKey, sessionFilePath, sessionModelRoute, userMessage } from './support.js'
 import type { ResidentAgentEntry, ServerContext } from './context.js'
 import { agents, continuationNudge, findInterruptedTurn, type AgentCreationOptions, type AgentHandle, type AgentRegistry, type AgentStreamEvent, type LiveAgent } from '@tnega/agent'
 import { Context, type Fiber, type Plugin } from '@tnega/core'
@@ -123,6 +123,7 @@ export async function handleRun(
       sandboxNetwork: sandboxNetworkFrom(context.configFile),
       office: agentType === 'work' ? true : 'auto',
       ...(context.secrets ? { secrets: { vault: context.secrets, sessionId: id } } : {}),
+      ...computerSpec(config),
       builtinTools: {
         cwd: workspace,
         allowNetwork: true,
@@ -389,6 +390,7 @@ export async function createResidentRuntime(
     // conditional on finding one first.
     office: req.agentType === 'work' ? true : 'auto',
     ...(req.secrets ? { secrets: { vault: req.secrets, sessionId: req.sessionId } } : {}),
+    ...computerSpec(req.config),
     // Long turns are fine while they keep moving; a turn that stalls is nudged, then parked.
     loopGuard: true,
     jobs: { resolveSession: sessionOf },
@@ -500,6 +502,8 @@ export function residentSignature(req: ResidentRunRequest): string {
     req.config.codeMode ? 'ptc' : 'native',
     // The file tools read their guard mode when they are built.
     req.config.fsGuard ?? 'warn',
+    // Turning computer use on or off rebuilds the runtime, so its tools follow the switch.
+    req.config.computerUse ? `computer:${req.config.computerDriverPath ?? ''}` : 'no-computer',
     req.agentType,
     req.permission,
     'auto',

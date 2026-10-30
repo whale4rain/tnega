@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/tool-computer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/computer": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}

@@ -7,6 +7,12 @@ export type AgentType = 'general' | 'coding' | 'work'
 export type SessionMode = 'auto' | 'plan' | 'goal'
 export type Permission = 'read-only' | 'workspace-write' | 'bypass'
 export type ApprovalMode = 'manual' | 'auto'
+/** What one approval covers for the rest of a Session, e.g. using one app on the computer. */
+export interface ApprovalGrant {
+  scope: string
+  /** Phrase after "The agent wants to". */
+  label: string
+}
 export interface ApprovalReviewerSettings {
   provider: 'conversation' | 'model' | 'jev' | 'openai'
   defaultMode: ApprovalMode
@@ -500,6 +506,8 @@ export interface ConfigSnapshot {
     projectMemory?: ProjectMemorySettings
     memoryDream?: MemoryDreamSettings
     codeMode?: boolean
+    /** Whether the agent may see and use apps on this computer. */
+    computerUse?: boolean
     /** How strictly a file write must match what the Session already read. */
     fsGuard?: FsGuardMode
     /** Saved shell preference; empty means detect automatically. */
@@ -580,7 +588,7 @@ export type StreamEvent =
   | { type: 'plan/done'; plan: PlanPayload }
   | { type: 'plan/error'; message: string }
   | { type: 'run/end'; run: { output: string; finishReason: string } }
-  | { type: 'approval/request'; id: string; tool: string; input: string; via?: 'run_code' }
+  | { type: 'approval/request'; id: string; tool: string; input: string; via?: 'run_code'; grant?: ApprovalGrant }
   | { type: 'assistant/stream' }
   | { type: 'done' }
   | { type: 'error'; message: string }

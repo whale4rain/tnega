@@ -161,6 +161,8 @@ export async function runAgentCommand(
     ...((options.fsGuard ?? systemConfig.fsGuard) !== undefined ? { fsGuard: options.fsGuard ?? systemConfig.fsGuard } : {}),
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    // Computer use only when turned on in Settings; off also overrides a profile.
+    computer: systemConfig.computerUse ? (systemConfig.computerDriverPath ? { driverPath: systemConfig.computerDriverPath } : {}) : false,
   })
   try {
     const loop = context.root.get('agentLoop')

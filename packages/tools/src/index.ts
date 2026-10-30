@@ -87,6 +87,21 @@ export interface ToolDefinition {
    * the same version. Never model-visible.
    */
   isConcurrencySafe?: (input: unknown) => boolean
+  /**
+   * What a person's approval of this call may cover for the rest of the
+   * Session, e.g. "use Notepad". An approval host that asks a person records
+   * the scope and lets later calls with the same scope through; `undefined`
+   * means the approval covers this one call only. Never model-visible.
+   */
+  grant?: (input: unknown, options: ToolExecuteOptions) => ToolGrant | undefined | Promise<ToolGrant | undefined>
+}
+
+/** A Session-long approval scope a tool offers; see {@link ToolDefinition.grant}. */
+export interface ToolGrant {
+  /** Stable key: calls with the same scope share one approval. */
+  scope: string
+  /** What the person allows, as a phrase after "The agent wants to", e.g. "use Notepad (notepad.exe)". */
+  label: string
 }
 
 export interface ToolError {

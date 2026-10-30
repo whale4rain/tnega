@@ -4,6 +4,7 @@ packages:
   - packages/shell/*
   - packages/session-search/*
   - packages/browser/*
+  - packages/computer/*
   - packages/sandbox/*
   - packages/spill/*
   - packages/secrets/*

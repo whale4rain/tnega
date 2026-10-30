@@ -52,6 +52,8 @@ export interface Approval {
   input: string
   /** Set when a CodeMode script made the call. */
   via?: 'run_code'
+  /** Set when allowing covers this scope for the rest of the Session. */
+  grant?: { scope: string; label: string }
 }
 
 export interface Notice {
@@ -403,7 +405,7 @@ export class TuiController {
   private onStreamEvent(event: StreamEvent): void {
     switch (event.type) {
       case 'approval/request':
-        this.set({ approvals: [...this.state.approvals, { id: event.id, tool: event.tool, input: event.input, ...(event.via ? { via: event.via } : {}) }] })
+        this.set({ approvals: [...this.state.approvals, { id: event.id, tool: event.tool, input: event.input, ...(event.via ? { via: event.via } : {}), ...(event.grant ? { grant: event.grant } : {}) }] })
         return
       case 'plan/start':
         this.set({ plan: { items: [], status: 'pending' } })

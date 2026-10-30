@@ -64,6 +64,9 @@ export function SettingsDialog({
   const stored = config?.config
   const [section, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
   const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
+  // Follows the stored value until the person picks one, so a late config is not overwritten.
+  const [computerUsePicked, setComputerUse] = useState<boolean | undefined>(undefined)
+  const computerUse = computerUsePicked ?? stored?.computerUse ?? false
   const [fsGuard, setFsGuard] = useState<FsGuardMode>(stored?.fsGuard ?? 'warn')
   const [memoryEnabled, setMemoryEnabled] = useState(stored?.projectMemory?.enabled ?? true)
   const [memoryModel, setMemoryModel] = useState(stored?.projectMemory?.coldModelId ?? '')
@@ -130,6 +133,7 @@ export function SettingsDialog({
     // Sent only when changed, so a dialog opened before the config arrived
     // cannot write the default over a stored `off` or `enforce`.
     if (fsGuard !== (stored?.fsGuard ?? 'warn')) patch.fsGuard = fsGuard
+    if (computerUsePicked !== undefined && computerUsePicked !== (stored?.computerUse ?? false)) patch.computerUse = computerUsePicked
     patch.projectMemory = { enabled: memoryEnabled, coldModelId: memoryModel, maxCallsPerDay: memoryCalls, maxInputTokens: memoryInput, maxOutputTokens: memoryOutput, maxTokensPerDay: memoryDaily, minIntervalSeconds: memoryInterval }
     if (!Number.isSafeInteger(dreamIdle) || dreamIdle < 1 || dreamIdle > 1440) return fail('Quiet minutes must be a whole number from 1 to 1440', 'model')
     patch.memoryDream = { enabled: dreamEnabled, modelId: dreamModel, idleMinutes: dreamIdle }
@@ -386,6 +390,14 @@ export function SettingsDialog({
                 <option value="enabled">开启 · 仅 run_code</option>
               </select>
               <span className="muted small">开启后模型只看到 run_code，通过代码调用原有工具。关闭后仅使用原生工具。保存后于下一次运行生效。</span>
+            </label>
+            <label className="field span-2">
+              <span className="field-label">Computer use · experimental</span>
+              <select aria-label="Computer use" value={computerUse ? 'enabled' : 'disabled'} onChange={event => setComputerUse(event.target.value === 'enabled')}>
+                <option value="disabled">Off</option>
+                <option value="enabled">On · the agent can see and use your apps</option>
+              </select>
+              <span className="muted small">Uses cua-driver, which must be installed. Screenshots of the windows it works in go to the model. You approve each app once per session. Takes effect from the next run.</span>
             </label>
             <label className="field span-2">
               <span className="field-label">File write guard · 实验性</span>

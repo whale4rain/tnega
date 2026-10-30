@@ -86,6 +86,31 @@ it('offers exactly two CodeMode choices and saves the enabled state', async () =
   expect(save.mock.calls[0]?.[0].codeMode).toBe(true)
 })
 
+it('keeps computer use off unless chosen, and saves it once turned on', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  const view = render(createElement(SettingsDialog, { config: snapshot, onClose: vi.fn(), onSaved: vi.fn() }))
+  const computer = view.getByLabelText('Computer use')
+  expect(computer).toHaveProperty('value', 'disabled')
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].computerUse).toBeUndefined()
+  fireEvent.change(computer, { target: { value: 'enabled' } })
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2))
+  expect(save.mock.calls[1]?.[0].computerUse).toBe(true)
+})
+
+it('does not overwrite computer use with a default when the config arrives late', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  const stored: ConfigSnapshot = { ...snapshot, config: { ...snapshot.config, computerUse: true } }
+  const view = render(createElement(SettingsDialog, { config: undefined, onClose: vi.fn(), onSaved: vi.fn() }))
+  view.rerender(createElement(SettingsDialog, { config: stored, onClose: vi.fn(), onSaved: vi.fn() }))
+  expect(view.getByLabelText('Computer use')).toHaveProperty('value', 'enabled')
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].computerUse).toBeUndefined()
+})
+
 it('shows the stored file write guard and saves the one chosen', async () => {
   const stored: ConfigSnapshot = { ...snapshot, config: { ...snapshot.config, fsGuard: 'off' } }
   const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(stored)

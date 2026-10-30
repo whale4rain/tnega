@@ -25,3 +25,19 @@ it('says when a CodeMode script made the call', () => {
   }))
   expect(view.getByRole('alertdialog').textContent).toContain('wants to use shell from a CodeMode script')
 })
+
+it('offers a Session-long grant in words and allows it with one press', () => {
+  const answers: boolean[] = []
+  const view = render(createElement(ApprovalCard, {
+    approval: {
+      id: 'approval',
+      tool: 'computer_screenshot',
+      input: JSON.stringify({ window_id: 7 }),
+      grant: { scope: 'computer:app:notepad.exe', label: 'see and use notepad.exe on this computer for the rest of this session' },
+    },
+    onAnswer: allow => answers.push(allow),
+  }))
+  expect(view.getByRole('alertdialog').textContent).toContain('The agent wants to see and use notepad.exe on this computer for the rest of this session')
+  view.getByRole('button', { name: 'Allow in this session' }).click()
+  expect(answers).toEqual([true])
+})
