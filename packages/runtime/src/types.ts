@@ -79,8 +79,8 @@ export interface AgentRuntimeOptions {
   office?: boolean | 'auto'
   /** Secrets the user gives this Session (see `capability:secrets`). */
   secrets?: SecretsCapabilitySpec
-  /** Computer use (see `capability:computer`); off unless given. */
-  computer?: ComputerCapabilitySpec
+  /** Computer use (see `capability:computer`); off unless given. `false` also overrides a profile. */
+  computer?: ComputerCapabilitySpec | false
 }
 
 export interface AgentRuntime {

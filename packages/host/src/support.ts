@@ -66,8 +66,9 @@ export function processesFor(
 }
 
 /** Computer use for a run, only when the person turned it on in Settings. */
-export function computerSpec(config: SystemConfig): { computer?: { driverPath?: string } } {
-  if (!config.computerUse) return {}
+export function computerSpec(config: SystemConfig): { computer: { driverPath?: string } | false } {
+  // `false`, not absent: the Settings switch wins over an agent profile's options.
+  if (!config.computerUse) return { computer: false }
   return { computer: config.computerDriverPath ? { driverPath: config.computerDriverPath } : {} }
 }
 

@@ -502,6 +502,8 @@ export function residentSignature(req: ResidentRunRequest): string {
     req.config.codeMode ? 'ptc' : 'native',
     // The file tools read their guard mode when they are built.
     req.config.fsGuard ?? 'warn',
+    // Turning computer use on or off rebuilds the runtime, so its tools follow the switch.
+    req.config.computerUse ? `computer:${req.config.computerDriverPath ?? ''}` : 'no-computer',
     req.agentType,
     req.permission,
     'auto',

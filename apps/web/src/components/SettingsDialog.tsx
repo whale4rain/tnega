@@ -64,7 +64,9 @@ export function SettingsDialog({
   const stored = config?.config
   const [section, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
   const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
-  const [computerUse, setComputerUse] = useState(stored?.computerUse ?? false)
+  // Follows the stored value until the person picks one, so a late config is not overwritten.
+  const [computerUsePicked, setComputerUse] = useState<boolean | undefined>(undefined)
+  const computerUse = computerUsePicked ?? stored?.computerUse ?? false
   const [fsGuard, setFsGuard] = useState<FsGuardMode>(stored?.fsGuard ?? 'warn')
   const [memoryEnabled, setMemoryEnabled] = useState(stored?.projectMemory?.enabled ?? true)
   const [memoryModel, setMemoryModel] = useState(stored?.projectMemory?.coldModelId ?? '')
@@ -131,7 +133,7 @@ export function SettingsDialog({
     // Sent only when changed, so a dialog opened before the config arrived
     // cannot write the default over a stored `off` or `enforce`.
     if (fsGuard !== (stored?.fsGuard ?? 'warn')) patch.fsGuard = fsGuard
-    if (computerUse !== (stored?.computerUse ?? false)) patch.computerUse = computerUse
+    if (computerUsePicked !== undefined && computerUsePicked !== (stored?.computerUse ?? false)) patch.computerUse = computerUsePicked
     patch.projectMemory = { enabled: memoryEnabled, coldModelId: memoryModel, maxCallsPerDay: memoryCalls, maxInputTokens: memoryInput, maxOutputTokens: memoryOutput, maxTokensPerDay: memoryDaily, minIntervalSeconds: memoryInterval }
     if (!Number.isSafeInteger(dreamIdle) || dreamIdle < 1 || dreamIdle > 1440) return fail('Quiet minutes must be a whole number from 1 to 1440', 'model')
     patch.memoryDream = { enabled: dreamEnabled, modelId: dreamModel, idleMinutes: dreamIdle }

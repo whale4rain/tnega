@@ -90,6 +90,7 @@ export abstract class ComputerService extends Service {
     const startedAt = Date.now()
     let active = action
     let window: ComputerWindow | undefined
+    let result: ComputerActionResult
     const settle = async (outcome: Pick<ComputerActionEvent, 'ok' | 'result' | 'error'>): Promise<void> => {
       const event: ComputerActionEvent = {
         action: active,
@@ -100,8 +101,8 @@ export abstract class ComputerService extends Service {
       }
       await this.ctx.parallel('computer/action', event)
     }
+    const windowId = actionWindowId(action)
     try {
-      const windowId = actionWindowId(action)
       if (windowId !== undefined) {
         window = await this.window(windowId, options)
         if (!window) throw new ComputerError('COMPUTER_NO_WINDOW', `window ${windowId} is not open; call computer_list_windows`)
@@ -114,15 +115,20 @@ export abstract class ComputerService extends Service {
       )
       if (!isPreAction(resolved)) throw new ComputerError('COMPUTER_DENIED', 'computer/pre-action did not forward the action')
       if (resolved.deny) throw new ComputerError('COMPUTER_DENIED', resolved.deny)
+      // Policy judged this window; a rewrite may change how, not where.
+      if (actionWindowId(resolved.action) !== windowId) {
+        throw new ComputerError('COMPUTER_DENIED', 'computer/pre-action may not move the action to another window')
+      }
       active = resolved.action
       if (options.signal?.aborted) throw new ComputerError('COMPUTER_ABORTED', 'computer action was cancelled')
-      const result = await this.runAction(active, options)
-      await settle({ ok: true, result })
-      return result
+      result = await this.runAction(active, options)
     } catch (error) {
-      await settle({ ok: false, error: errorOf(error) })
+      await settle({ ok: false, error: errorOf(error) }).catch(audit => this.ctx.logger('computer').warn('computer/action listener failed', audit))
       throw error
     }
+    // The action happened: a failing listener must not turn it into a failure.
+    await settle({ ok: true, result }).catch(audit => this.ctx.logger('computer').warn('computer/action listener failed', audit))
+    return result
   }
 }
 

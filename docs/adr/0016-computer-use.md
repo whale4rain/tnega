@@ -1,5 +1,9 @@
 # 0016 电脑操作：computer 缝、cua-driver 与按应用的会话授权
 
+> 状态：当前
+> 取代关系：无
+> 当前实现：`packages/computer/computer/README.md`、`packages/computer/computer-cua/README.md`、`packages/computer/tool-computer/README.md`
+
 日期：2026-10-30
 
 ## 决策
@@ -7,7 +11,7 @@
 新增电脑操作（computer use）能力缝，让 Agent 看屏幕并操作本机应用。第一版以 Windows 为目标平台、截图优先，安全层保持最薄。
 
 - **Service Definition** `@tnega/computer`：拥有 `ctx.computer`。观察（`windows` / `screenshot` / `zoom`）无副作用；动作只经 `act()`，它先解析目标窗口，再派发 `computer/pre-action`（可改写、可 `deny`）与 `computer/action`。坐标一律是该窗口最近一次截图的像素。
-- **Provider** `@tnega/computer-cua`：用 [cua-driver](https://cua.ai/docs/cua-driver)（MIT）经 MCP stdio 驱动系统，不自研驱动。Windows 上它走 UI Automation 与窗口消息、默认后台投递；某个表面只接受前台输入时（报 `background_unavailable`），Provider 以 `delivery_mode: foreground` 重试一次。驱动首次使用时启动、随插件停止；找不到驱动时一律抛 `COMPUTER_UNAVAILABLE` 并给出安装命令，不回退到其他输入方式。tnega 不打包驱动，查找顺序：配置 `computerDriverPath` → `TNEGA_CUA_DRIVER` → PATH → 安装器默认目录。驱动的遥测默认开启，tnega 启动它前先执行 `cua-driver telemetry disable`。
+- **Provider** `@tnega/computer-cua`：用 [cua-driver](https://cua.ai/docs/cua-driver)（MIT）经 MCP stdio 驱动系统，不自研驱动。Windows 上它走 UI Automation 与窗口消息、默认后台投递；某个表面只接受前台输入时（报 `background_unavailable`），Provider 以 `delivery_mode: foreground` 重试一次。驱动首次使用时启动、随插件停止；找不到驱动时一律抛 `COMPUTER_UNAVAILABLE` 并给出安装命令，不回退到其他输入方式。tnega 不打包驱动，查找顺序：配置 `computerDriverPath` → `TNEGA_CUA_DRIVER` → PATH → 安装器默认目录。驱动的遥测默认开启，tnega 启动它时设置 `CUA_DRIVER_RS_TELEMETRY_ENABLED=false` 关掉这一进程的遥测，不改用户保存的选择。
 - **Consumer** `@tnega/tool-computer`：`computer_*` 工具（列窗口、启动应用、截图、局部放大、点击、输入、按键、滚动、拖拽、等待）。每个动作返回该窗口的新截图（图片附件），模型据此确认效果。
 - **组合**：`packages/runtime` 的 `capability:computer` 挂 Provider 与 Consumer；Web 宿主与 `tnega run` 只在 System Config 的 `computerUse` 为真时传入。Project 线程不挂载（无人值守）。
 

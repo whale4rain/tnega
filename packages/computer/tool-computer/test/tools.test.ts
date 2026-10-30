@@ -21,6 +21,7 @@ const WINDOWS: ComputerWindow[] = [
 class FakeComputer extends ComputerService {
   performed: ComputerAction[] = []
   open = [...WINDOWS]
+  shotFails = false
 
   async windows(): Promise<ComputerWindow[]> {
     return this.open
@@ -28,6 +29,7 @@ class FakeComputer extends ComputerService {
 
   async screenshot(windowId: number): Promise<ComputerScreenshot> {
     const window = this.open.find(item => item.id === windowId)
+    if (this.shotFails) throw new ComputerError('COMPUTER_FAILED', 'capture timed out')
     if (!window) throw new ComputerError('COMPUTER_NO_WINDOW', `window ${windowId} is not open`)
     return { windowId, app: window.app, title: window.title, width: 1280, height: 800, mediaType: 'image/png', data: 'cG5n' }
   }
@@ -75,6 +77,15 @@ describe('tool-computer', () => {
     expect(closed.ok).toBe(true)
     expect(String(closed.output)).toMatch(/Window 2 has closed/)
     expect(closed.attachments).toBeUndefined()
+  })
+
+  it('reports a done action as done when the screenshot after it fails', async () => {
+    const { computer, run } = await setup()
+    computer.shotFails = true
+    const result = await run('computer_click', { window_id: 1, x: 1, y: 1 })
+    expect(result.ok).toBe(true)
+    expect(String(result.output)).toMatch(/click done\nThe action was done, but the screenshot after it failed \(capture timed out\)/)
+    expect(computer.performed).toHaveLength(1)
   })
 
   it('lists windows with their ids', async () => {

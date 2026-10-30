@@ -197,7 +197,8 @@ export class CuaComputer extends ComputerService {
       const { tool, args } = driverCall(action, 0)
       const result = await this.call(tool, args, options)
       if (result.isError) throw failure(result, `launching ${action.app}`)
-      return { note: result.text || `Launched ${action.app}` }
+      const launched = launchedWindow(result.structured)
+      return { note: result.text || `Launched ${action.app}`, ...(launched !== undefined ? { windowId: launched } : {}) }
     }
     const window = await this.target(action.windowId, options)
     if (!this._captured.has(window.id)) await this.capture(window, options)
@@ -211,6 +212,13 @@ export class CuaComputer extends ComputerService {
   }
 }
 
+/** The window a launch opened, when the driver names exactly one. */
+export function launchedWindow(structured: Record<string, unknown>): number | undefined {
+  const windows = Array.isArray(structured.windows) ? structured.windows : []
+  const ids = windows.flatMap(item => typeof item === 'object' && item !== null && 'window_id' in item && typeof item.window_id === 'number' ? [item.window_id] : [])
+  return ids.length === 1 ? ids[0] : undefined
+}
+
 export const name = '@tnega/computer-cua'
 
 /** Mount: `await ctx.plugin(computerCua, { driverPath })`. The driver stops with the plugin. */
@@ -218,6 +226,6 @@ export const computerCua = {
   name: 'computer-cua',
   apply(ctx: Context, config: Config = {}) {
     const computer = new CuaComputer(ctx, config)
-    ctx.fiber.effect(() => () => { void computer.close() }, 'computer-cua/close')
+    ctx.fiber.effect(() => () => computer.close(), 'computer-cua/close')
   },
 }

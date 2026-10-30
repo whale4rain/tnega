@@ -118,8 +118,15 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     try {
       return shotResult(result.note, await computer.screenshot(windowId, signalOf(options)))
     } catch (error) {
-      if (error instanceof ComputerError && error.code === 'COMPUTER_NO_WINDOW') return `${result.note}\nWindow ${windowId} has closed.`
-      throw error
+      if (options.signal?.aborted) throw error
+      if (error instanceof ComputerError && error.code === 'COMPUTER_NO_WINDOW') {
+        return action.op === 'launch'
+          ? `${result.note}\nIts window is not ready yet; call computer_list_windows.`
+          : `${result.note}\nWindow ${windowId} has closed.`
+      }
+      // The action already happened; say so, so it is not repeated.
+      const reason = error instanceof Error ? error.message : String(error)
+      return `${result.note}\nThe action was done, but the screenshot after it failed (${reason}). Call computer_screenshot before acting again.`
     }
   }
 
@@ -146,7 +153,7 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
       if (!windows.length) return 'No windows are open. Start an app with computer_open_app.'
       return windows.map(window => `${describeWindow(window)} · ${window.bounds.width}x${window.bounds.height}${window.onScreen ? '' : ' · hidden'}`).join('\n')
     }, () => ({ scope: 'computer:windows', label: 'see the titles of your open windows for the rest of this session' })),
-    tool('computer_open_app', 'Start an app by name or command (e.g. "chrome", "msedge", "notepad"), optionally opening URLs in it. Then call computer_list_windows to find its window.', {
+    tool('computer_open_app', 'Start an app by name or command (e.g. "chrome", "msedge", "notepad"), optionally opening URLs in it. Returns a screenshot when the driver names the new window; otherwise call computer_list_windows to find it.', {
       name: { type: 'string', description: 'App name or command' },
       urls: { type: 'array', items: { type: 'string' }, description: 'URLs to open, for a browser' },
     }, ['name'], async (input, options) => {
@@ -171,7 +178,7 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
       const shot = await computer.zoom(number(input, 'window_id'), region, signalOf(options))
       return withAttachments(
         `Zoom of (${region.x1},${region.y1})-(${region.x2},${region.y2}) in ${describeWindow({ id: shot.windowId, app: shot.app, title: shot.title })}. Use full-window points, not this image's pixels, for actions.`,
-        [{ type: 'image', mediaType: shot.mediaType, data: shot.data, name: `zoom-${shot.windowId}.png` }],
+        [{ type: 'image', mediaType: shot.mediaType, data: shot.data, name: `zoom-${shot.windowId}.${shot.mediaType === 'image/jpeg' ? 'jpg' : 'png'}` }],
       )
     }),
     tool('computer_click', 'Click a point in a window. Returns a fresh screenshot.', {

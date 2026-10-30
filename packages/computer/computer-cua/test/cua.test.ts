@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import '@tnega/computer'
 
-import { computerCua, driverCall, findDriver, readResult, type DriverConnection, type DriverResult } from '../src/index.js'
+import { computerCua, driverCall, findDriver, launchedWindow, readResult, type DriverConnection, type DriverResult } from '../src/index.js'
 
 const WINDOWS = {
   windows: [
@@ -120,6 +120,14 @@ describe('driverCall', () => {
     expect(driverCall({ op: 'key', windowId: 1, keys: ['Enter'] }, 5)).toEqual({ tool: 'press_key', args: { pid: 5, window_id: 1, key: 'enter' } })
     expect(driverCall({ op: 'key', windowId: 1, keys: ['ctrl', 'shift', 't'] }, 5)).toEqual({ tool: 'hotkey', args: { pid: 5, window_id: 1, keys: ['ctrl', 'shift', 't'] } })
     expect(() => driverCall({ op: 'key', windowId: 1, keys: ['a', 'b'] }, 5)).toThrow(/non-modifier/)
+  })
+})
+
+describe('launchedWindow', () => {
+  it('names the window only when the driver reports exactly one', () => {
+    expect(launchedWindow({ windows: [{ window_id: 42, title: 'Notepad' }] })).toBe(42)
+    expect(launchedWindow({ windows: [{ window_id: 1 }, { window_id: 2 }] })).toBeUndefined()
+    expect(launchedWindow({})).toBeUndefined()
   })
 })
 

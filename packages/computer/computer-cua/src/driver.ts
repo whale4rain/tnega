@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
@@ -83,21 +82,20 @@ export function readResult(raw: unknown): DriverResult {
   }
 }
 
-/** Telemetry is on by default upstream; tnega turns it off once per process. */
-let telemetryOff: Promise<void> | undefined
-function disableTelemetry(driverPath: string): Promise<void> {
-  telemetryOff ??= new Promise(resolve => {
-    execFile(driverPath, ['telemetry', 'disable'], { timeout: 10_000, windowsHide: true }, () => resolve())
-  })
-  return telemetryOff
-}
+/**
+ * Telemetry is on by default upstream. This variable turns it off for the
+ * driver process tnega starts, without changing the user's saved choice.
+ */
+export const TELEMETRY_OFF_ENV = { CUA_DRIVER_RS_TELEMETRY_ENABLED: 'false' } as const
 
 /** Start `cua-driver mcp` over stdio. It exits when the connection closes. */
 export const connectDriver: DriverConnector = async driverPath => {
-  await disableTelemetry(driverPath)
   // The SDK passes only a few variables by default; the driver needs the
   // desktop session's (DISPLAY, DBUS_SESSION_BUS_ADDRESS, WAYLAND_DISPLAY…).
-  const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+    ...TELEMETRY_OFF_ENV,
+  }
   const transport = new StdioClientTransport({ command: driverPath, args: ['mcp'], env, stderr: 'ignore' })
   const client = new Client({ name: 'tnega', version: '0' })
   await client.connect(transport)

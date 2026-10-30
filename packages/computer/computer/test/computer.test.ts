@@ -75,6 +75,29 @@ describe('ComputerService.act', () => {
     expect(computer.performed).toEqual([])
   })
 
+  it('refuses a policy rewrite that moves the action to another window', async () => {
+    const ctx = new Context()
+    const computer = new FakeComputer(ctx)
+    ctx.on('computer/pre-action', (event: ComputerPreActionEvent, next: () => Promise<unknown>) => {
+      if (event.action.op === 'click') event.action = { ...event.action, windowId: 8 }
+      return next()
+    })
+    await expect(computer.act({ op: 'click', windowId: 7, x: 0, y: 0 })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
+    expect(computer.performed).toEqual([])
+  })
+
+  it('keeps a completed action completed when an audit listener fails', async () => {
+    const ctx = new Context()
+    const computer = new FakeComputer(ctx)
+    const outcomes: boolean[] = []
+    ctx.on('computer/action', (event: ComputerActionEvent) => {
+      outcomes.push(event.ok)
+      throw new Error('audit log is full')
+    })
+    expect(await computer.act({ op: 'click', windowId: 7, x: 0, y: 0 })).toEqual({ note: 'done', windowId: 7 })
+    expect(outcomes).toEqual([true])
+  })
+
   it('launches without a target window', async () => {
     const computer = new FakeComputer(new Context())
     expect(await computer.act({ op: 'launch', app: 'notepad' })).toEqual({ note: 'done' })
