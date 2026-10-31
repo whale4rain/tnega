@@ -88,6 +88,12 @@ supported` 等），并记住是被哪一组图片教会的：同一组图之后
 `previous_response_id` 返回 200 但丢弃上下文。所以对这类端点（`statelessResponses()`，
 目前就是 DeepSeek）**不发** `store` / `previous_response_id` / `conversation`，而是直接重发完整历史。
 
+## 一个路由一条通路
+
+etch 覆盖这条路由发出的**每一个**请求：补全、Files API 上传、模型列表。曾经只有上传用它、
+补全走全局 fetch，于是同一个请求被拆到两条通路——注入了网络桩的宿主或测试，只拦到上传。
+现在不跨通路的请求也走同一个钩子。
+
 ## 超时与重试
 
 `timeoutMs` / `maxRetries` / `retryDelayMs` 配置。默认 120s、最多 2 次重试、指数退避。

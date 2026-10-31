@@ -1,7 +1,12 @@
 import type { ReasoningEffort } from './models.js'
 
 export interface LlmConfig {
-  /** Responses transport; composition may supply a fetch that follows its network settings. */
+  /**
+   * Transport for every request this route makes: the completion call, the
+   * Files API upload and the model list. Composition may supply one that
+   * follows its network settings, and tests inject one to see the wire. One
+   * transport for the whole route, so a request can never be split across two.
+   */
   fetch?: typeof globalThis.fetch
   apiKey?: string
   /** Header used for API-key authentication with Anthropic-compatible providers. */

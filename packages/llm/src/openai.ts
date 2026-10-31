@@ -108,7 +108,7 @@ export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAda
           combineSignal(options.signal, timeoutMs),
         )
         try {
-          const response = await fetch(request.url, request.init)
+          const response = await (effective.fetch ?? fetch)(request.url, request.init)
           if (!isRetryableStatus(response.status) || attempt >= maxRetries) {
             return parseResponse(response, effective.apiKey)
           }
@@ -143,7 +143,7 @@ export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAda
         )
         let response: Response
         try {
-          response = await fetch(request.url, request.init)
+          response = await (effective.fetch ?? fetch)(request.url, request.init)
         } catch (error) {
           if (isExternalAbort(error, options.signal)) {
             throw new OpenAICompatibleError(
@@ -204,7 +204,7 @@ export async function listModels(config: OpenAICompatibleConfig = {}): Promise<s
   const headers = authHeaders(config.apiKey)
   let response: Response
   try {
-    response = await fetch(`${baseUrl}/models`, { headers })
+    response = await (config.fetch ?? fetch)(`${baseUrl}/models`, { headers })
   } catch (error) {
     throw new OpenAICompatibleError(
       0,

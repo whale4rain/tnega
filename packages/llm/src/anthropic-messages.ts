@@ -106,7 +106,7 @@ export function anthropicMessagesAdapter(
           combineSignal(options.signal, timeoutMs),
         )
         try {
-          const response = await fetch(request.url, request.init)
+          const response = await (effective.fetch ?? fetch)(request.url, request.init)
           if (!isRetryableStatus(response.status) || attempt >= maxRetries) {
             return parseResponse(response, effective.apiKey)
           }
@@ -141,7 +141,7 @@ export function anthropicMessagesAdapter(
         )
         let response: Response
         try {
-          response = await fetch(request.url, request.init)
+          response = await (effective.fetch ?? fetch)(request.url, request.init)
         } catch (error) {
           if (isExternalAbort(error, options.signal)) {
             throw new OpenAICompatibleError(

@@ -106,6 +106,22 @@ describe('image files', () => {
       .rejects.toThrow(/status 500/)
   })
 
+  it('routes the completion request through the same transport as the upload', async () => {
+    const seen: string[] = []
+    const transport: typeof fetch = async (url) => {
+      seen.push(String(url))
+      if (String(url).endsWith('/files')) return json({ id: 'file-1' })
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    // Any request that falls back to the global fetch shows up as a failure.
+    vi.stubGlobal('fetch', async (url: unknown) => { throw new Error(`the global fetch was used for ${String(url)}`) })
+
+    await openaiCompatAdapter({ baseUrl: 'https://api.example.com', apiKey: 'k', model: 'm', fetch: transport })
+      .complete([{ role: 'user', content: 'see', attachments: [PNG] }], [], {})
+    expect(seen).toContain('https://api.example.com/files')
+    expect(seen).toContain('https://api.example.com/chat/completions')
+  })
+
   it('stays inline when files are off', async () => {
     const fetchMock = uploadMock()
     const wire = await prepareWireImages(conversation, { baseUrl: 'https://api.example.com', filesApi: 'off', fetch: fetchMock })
