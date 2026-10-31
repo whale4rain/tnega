@@ -13,13 +13,14 @@ const hasApiKey = Boolean(
 
 describe('OpenCode Go real tool smoke', () => {
   it.runIf(hasApiKey)(
-    'calls calculator through the real LLM and persists tool events',
+    'lists the workspace through the real LLM and persists tool events',
     async () => {
-      const dir = await mkdtemp(join(tmpdir(), 'tnega-deepseek-calc-'))
+      const dir = await mkdtemp(join(tmpdir(), 'tnega-deepseek-list-'))
       try {
+        await writeFile(join(dir, 'listed.txt'), 'tnega-tool-list-ok\n', 'utf8')
         const result = await runAgentCommand({
-          prompt: 'You must call the calculator tool exactly once with expression "2 + 3 * 4". '
-            + 'After the tool result, reply with only the number.',
+          prompt: 'Use the list_dir tool on the current workspace root. '
+            + 'After the tool result, reply with only the names you saw, one per line.',
           cwd: dir,
           maxTokens: 256,
           maxSteps: 4,
@@ -27,10 +28,10 @@ describe('OpenCode Go real tool smoke', () => {
         })
 
         const called = result.run.steps.some(step => step.toolResults.some(tool =>
-          tool.ok && tool.name === 'calculator' && tool.output === 14,
+          tool.ok && tool.name === 'list_dir',
         ))
         expect(called).toBe(true)
-        expect(result.run.output).toContain('14')
+        expect(result.run.output).toContain('listed.txt')
 
         const sessionText = await readFile(result.sessionFile, 'utf8')
         // Durable event type names, as written to the session log.
