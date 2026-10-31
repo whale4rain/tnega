@@ -58,6 +58,28 @@ export interface ContextStep {
   timing: Omit<ContextTiming, 'activeMs' | 'otherMs' | 'modelCalls'>
 }
 
+/**
+ * One tool's share of a session, by tool name. Calls, failures, time and
+ * images come from its results. Tokens and cost are those of the model
+ * requests that read its results: each request after a batch of results is
+ * split evenly over those results, so the rows add up to the requests that
+ * followed a tool, not to the whole session.
+ */
+export interface ContextToolUse {
+  name: string
+  calls: number
+  failed: number
+  durationMs: number
+  /** Images its results carried, e.g. screenshots. */
+  images: number
+  /** Decoded size of those images. */
+  imageBytes: number
+  promptTokens: number
+  cachedTokens: number
+  completionTokens: number
+  cost?: CostEstimate[]
+}
+
 export interface ContextTurn {
   turn: number
   start: number
@@ -98,6 +120,8 @@ export interface SessionContextReport {
   timing: ContextTiming
   steps: ContextStep[]
   turns: ContextTurn[]
+  /** Per tool name, most tokens first. */
+  tools: ContextToolUse[]
   /** The last thing the user said, shortened. */
   lastMessage?: string
   updatedAt: number
@@ -249,6 +273,9 @@ export function sessionContextReport(events: readonly SessionEvent[], config: Sy
   let lastMessage: string | undefined
   let latestSurface: SessionEvent | undefined
   let lastTs = 0
+  const tools = new Map<string, ToolTally>()
+  // Results since the last response; the next response read them.
+  let unread: ToolTally[] = []
 
   const replace = (start: number, end: number, node: SurfaceNode): void => {
     const startIndex = nodes.findIndex(item => item.seq === start)
@@ -298,6 +325,16 @@ export function sessionContextReport(events: readonly SessionEvent[], config: Sy
       if (event.type === 'tool/result') {
         toolCalls += 1
         if (!event.payload.ok) toolErrors += 1
+        const tally = tools.get(event.payload.name) ?? newTally(event.payload.name)
+        tools.set(tally.name, tally)
+        tally.calls += 1
+        if (!event.payload.ok) tally.failed += 1
+        tally.durationMs += event.payload.durationMs ?? 0
+        for (const attachment of event.payload.attachments ?? []) {
+          tally.images += 1
+          tally.imageBytes += base64Bytes(attachment.data)
+        }
+        unread.push(tally)
         const current = steps.at(-1)
         if (current) {
           current.toolCalls += 1
@@ -327,7 +364,15 @@ export function sessionContextReport(events: readonly SessionEvent[], config: Sy
         if (compactedSinceStep && steps.length > 0) step.compacted = true
         compactedSinceStep = false
         steps.push(step)
+        for (const tally of unread) {
+          const share = 1 / unread.length
+          tally.promptTokens += usage.promptTokens * share
+          tally.cachedTokens += (usage.cachedTokens ?? 0) * share
+          tally.completionTokens += usage.completionTokens * share
+          if (step.cost) tally.costs.set(step.cost.currency, (tally.costs.get(step.cost.currency) ?? 0) + step.cost.amount * share)
+        }
       }
+      if (event.type === 'assistant/message') unread = []
       const message = deriveEventMessage(event)
       const node: SurfaceNode = { seq: event.seq, reset: false, parts: message ? messageParts([message]) : [] }
       const op = event.surfaceOp ?? 'append'
@@ -399,11 +444,38 @@ export function sessionContextReport(events: readonly SessionEvent[], config: Sy
     timing,
     steps,
     turns,
+    tools: [...tools.values()].map(toolUse).sort((a, b) => b.promptTokens - a.promptTokens || b.calls - a.calls || a.name.localeCompare(b.name)),
     updatedAt: options.updatedAt ?? lastTs,
   }
   if (meta.model) report.model = meta.model
   if (lastMessage) report.lastMessage = lastMessage
   return report
+}
+
+interface ToolTally extends Omit<ContextToolUse, 'cost'> {
+  costs: Map<string, number>
+}
+
+function newTally(name: string): ToolTally {
+  return { name, calls: 0, failed: 0, durationMs: 0, images: 0, imageBytes: 0, promptTokens: 0, cachedTokens: 0, completionTokens: 0, costs: new Map() }
+}
+
+function toolUse({ costs, ...tally }: ToolTally): ContextToolUse {
+  const use: ContextToolUse = {
+    ...tally,
+    promptTokens: Math.round(tally.promptTokens),
+    cachedTokens: Math.round(tally.cachedTokens),
+    completionTokens: Math.round(tally.completionTokens),
+  }
+  const cost = costList(costs)
+  if (cost) use.cost = cost
+  return use
+}
+
+/** Bytes a base64 string decodes to, without decoding it. */
+function base64Bytes(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor(data.length * 3 / 4) - padding)
 }
 
 /**
