@@ -174,7 +174,11 @@ describe('packed artifact', () => {
   })
 
   it('resolves the library entry as a consumer via package exports', async () => {
-    const mod = await import('tnega')
+    // Imported through a variable: the name 'tnega' resolves to this package's
+    // own built output, whose declarations only exist after a build, and a
+    // typecheck must not depend on the order a build and a test happened in.
+    const specifier = 'tnega'
+    const mod = await import(specifier) as Record<string, unknown>
     expect(typeof mod.Context).toBe('function')
     expect(typeof mod.SessionLog).toBe('function')
     expect(typeof mod.ToolsService).toBe('function')

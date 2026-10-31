@@ -478,9 +478,19 @@ it.each([
     await ctx.plugin(projectLoop, { projectId: project.id, sweepIntervalMs: 0 })
     await agent.followup({ messages: [] })
     await waitFor(async () => (await agent.session.read()).find(event => event.type === 'turn/end'), 'coordinator Run')
-    await new Promise(resolve => setTimeout(resolve, 100))
-    const replies = (await timeline(ctx)).filter(entry => entry.kind === 'agent-reply' && entry.sender.id === parent.id)
-    expect(replies).toHaveLength(visible ? 1 : 0)
+    const replies = async () => (await timeline(ctx))
+      .filter(entry => entry.kind === 'agent-reply' && entry.sender.id === parent.id)
+    if (visible) {
+      // The help reply is published by a queued fiber after the Run ends, so a
+      // fixed sleep here loses to a loaded machine; wait for the reply itself.
+      await waitFor(async () => (await replies()).length ? true : undefined, 'coordinator help reply')
+      expect(await replies()).toHaveLength(1)
+    } else {
+      // Nothing may appear, and absence is only ever observed after a grace
+      // window; this one is the settle time the loop needs to publish at all.
+      await new Promise(resolve => setTimeout(resolve, 500))
+      expect(await replies()).toHaveLength(0)
+    }
   } finally {
     await ctx.fiber.dispose()
   }
