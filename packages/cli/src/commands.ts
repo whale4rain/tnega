@@ -97,8 +97,10 @@ export async function runAgentCommand(
     ?? profileBaseUrl
     ?? envConfig.baseUrl
     ?? systemConfig.baseUrl
+  const route = effectiveLlmConfig(systemConfig, process.env, options.model)
   const adapter = createLlmAdapter({
     apiKey,
+    ...(route.maxImages !== undefined ? { maxImages: route.maxImages } : {}),
     ...(typeof model === 'string' && model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(protocolFrom(profileOptions) ?? systemConfig.protocol
@@ -137,7 +139,7 @@ export async function runAgentCommand(
   })
   // The window the route actually has: auto compaction needs it, and a run
   // without one compacts against a generic default instead of its own model.
-  const contextWindow = effectiveLlmConfig(systemConfig, process.env, options.model).contextWindow
+  const contextWindow = route.contextWindow
   const profileRuntimeOptions = runtimeOptionsFromProfile(profileOptions)
   configureSystemShell(systemConfig.shell)
   // The saved proxy, for http_get and for sandboxed commands' allowed traffic.
