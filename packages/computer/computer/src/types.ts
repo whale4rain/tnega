@@ -100,12 +100,37 @@ export interface ComputerRegion {
 /** What the driver could tell about an action's effect. Only `confirmed` means it checked. */
 export type ComputerEffect = 'confirmed' | 'unverifiable' | 'suspected_noop' | 'partial'
 
+/**
+ * What a window did while an action ran, as the driver compared it with the
+ * read before. Only asked when the effect could not be confirmed.
+ */
+export interface ComputerChange {
+  /** The driver's word for the comparison: `diff`, `no_change`, `no_baseline`, ... */
+  status: string
+  added: number
+  changed: number
+  removed: number
+  /**
+   * The differing rows only (`+` added, `~` changed, `-` gone), never the whole
+   * tree: a diff read of a big window would otherwise cost as much as a full one.
+   */
+  diff?: string
+}
+
 export interface ComputerActionResult {
   /** Short human-readable note from the driver, e.g. how the click was delivered. */
   note: string
   /** The window the action landed in; a launch reports the app's new window when it knows one. */
   windowId?: number
   effect?: ComputerEffect
+  /**
+   * How the driver delivered it: `accessibility` is UIA/MSAA, `synthetic_events`
+   * is posted input. The second one silently no-ops on some UWP targets, so a
+   * caller that needs certainty should treat it as a hint, not a fact.
+   */
+  route?: 'accessibility' | 'synthetic_events'
+  /** Present when the effect was not `confirmed`: what the window did instead. */
+  change?: ComputerChange
   /** What a clipboard read found. */
   text?: string
   /** A batch: one entry per step that ran, the failed one last. */
@@ -120,6 +145,12 @@ export interface ComputerStepResult {
 export interface ComputerTreeOptions extends ComputerCallOptions {
   /** Keep only rows whose text contains this (case-insensitive), with their ancestors. */
   query?: string
+  /**
+   * Append each row's box, in screenshot pixels, after its label — the frame an
+   * action takes. Costs a screenshot per read, so ask for it when position is
+   * the point (grids, rows and columns, popups whose rows carry no token).
+   */
+  frames?: boolean
   /** An earlier `snapshotId` of the same window: answer with what changed since. */
   since?: string
   maxElements?: number
@@ -141,8 +172,16 @@ export interface ComputerTree {
   /** Elements in the whole window, and how many this read returned. */
   total: number
   returned: number
-  /** The walk stopped at its budget; narrow with `query` or raise `maxElements`. */
+  /**
+   * The walk stopped at its budget. This counts every node, so `returned` can
+   * already equal `total` (the actionable elements) while rows were still left
+   * unvisited: read `truncation.hint` for what was skipped.
+   */
   truncated: boolean
+  /** Whether the read saw the whole tree. */
+  complete?: boolean
+  /** Why the walk stopped, and what to narrow or raise to see the rest. */
+  truncation?: { reason?: string; hint?: string }
   /** With `since`: how the driver answered, e.g. `diff` or why it fell back to a full read. */
   sinceStatus?: string
 }

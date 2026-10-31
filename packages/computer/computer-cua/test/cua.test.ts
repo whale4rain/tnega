@@ -49,10 +49,17 @@ async function driverFile(): Promise<string> {
   return file
 }
 
-async function mount(answer: (name: string, args: Record<string, unknown>) => DriverResult) {
+async function mount(
+  answer: (name: string, args: Record<string, unknown>) => DriverResult,
+  config: { observe?: 'auto' | 'off' } = {},
+) {
   const driver = fakeDriver(answer)
   const ctx = new Context()
-  const fiber = await ctx.plugin(computerCua, { driverPath: await driverFile(), connect: async () => driver.connection })
+  const fiber = await ctx.plugin(computerCua, {
+    driverPath: await driverFile(),
+    connect: async () => driver.connection,
+    ...config,
+  })
   return { driver, computer: ctx.get('computer'), fiber }
 }
 
@@ -142,7 +149,8 @@ describe('computer-cua actions', () => {
   it('invokes a menu by its path without a screenshot', async () => {
     const { driver, computer } = await mount(name => name === 'list_windows' ? ok(WINDOWS) : ok({}, { text: 'Invoked File > Save As...' }))
     await computer.act({ op: 'menu', windowId: 2, path: ['File', 'Save As...'] })
-    expect(driver.calls.filter(([name]) => name !== 'list_windows')).toEqual([['invoke_menu', { pid: 20, window_id: 2, path: ['File', 'Save As...'] }]])
+    expect(driver.calls.filter(([name]) => name !== 'list_windows'))
+      .toEqual([['invoke_menu', { pid: 20, window_id: 2, path: ['File', 'Save As...'] }]])
   })
 
   it('reads and writes the clipboard', async () => {
@@ -225,7 +233,123 @@ describe('computer-cua', () => {
       ['click', { pid: 10, window_id: 1, x: 40, y: 60, delivery_mode: 'foreground' }],
     ])
     await computer.act({ op: 'click', windowId: 1, x: 1, y: 1 })
-    expect(driver.calls.filter(([name]) => name === 'get_window_state')).toHaveLength(1)
+    const captures = driver.calls.filter(([name, args]) => name === 'get_window_state' && 'max_image_dimension' in args)
+    expect(captures).toHaveLength(1)
+  })
+
+  it('reports what changed when it could not confirm the effect', async () => {
+    const { driver, computer } = await mount((name, args) => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      if (name === 'get_window_state') {
+        if (args.since) {
+          return ok({
+            since_status: 'diff',
+            diff_counts: { added: 2, changed: 1, removed: 1 },
+            tree_diff: 'since s00000001: 2 added, 1 changed, 1 removed.\n+ Text "beta"\n~ Text "gamma"\n- Text "alpha"',
+          })
+        }
+        return ok({ snapshot_id: 's00000001', screenshot_width: 1280, screenshot_height: 800 }, { image: IMAGE })
+      }
+      return ok({ effect: 'unverifiable', route: 'synthetic_events' }, { text: 'Posted click' })
+    })
+    // The comparison is against the caller's own read, addressed by snapshot id.
+    await computer.tree(1)
+    const result = await computer.act({ op: 'click', windowId: 1, element: 's00000001:4' })
+    expect(result.effect).toBe('unverifiable')
+    expect(result.route).toBe('synthetic_events')
+    expect(result.change).toEqual({
+      status: 'diff',
+      added: 2,
+      changed: 1,
+      removed: 1,
+      diff: 'since s00000001: 2 added, 1 changed, 1 removed.\n+ Text "beta"\n~ Text "gamma"\n- Text "alpha"',
+    })
+    // The read is bounded, carries no screenshot, and names the basis exactly.
+    const read = driver.calls.find(([name, args]) => name === 'get_window_state' && args.since !== undefined)
+    expect(read?.[1]).toMatchObject({ pid: 10, window_id: 1, include_screenshot: false, since: 's00000001' })
+  })
+
+  it('does not read the window again when the driver confirmed the effect', async () => {
+    const { driver, computer } = await mount((name) => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      if (name === 'get_window_state') return ok({ screenshot_width: 1280, screenshot_height: 800 }, { image: IMAGE })
+      return ok({ effect: 'confirmed', route: 'accessibility' }, { text: 'Clicked' })
+    })
+    const result = await computer.act({ op: 'click', windowId: 1, element: 's00000001:4' })
+    expect(result.route).toBe('accessibility')
+    expect(result.change).toBeUndefined()
+    expect(driver.calls.filter(([name, args]) => name === 'get_window_state' && args.since !== undefined)).toHaveLength(0)
+  })
+
+  it('skips the change read when observation is off', async () => {
+    const { driver, computer } = await mount((name) => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      if (name === 'get_window_state') return ok({ snapshot_id: 's00000001', screenshot_width: 1280, screenshot_height: 800 }, { image: IMAGE })
+      return ok({ effect: 'unverifiable' }, { text: 'Posted click' })
+    }, { observe: 'off' })
+    await computer.tree(1)
+    await computer.act({ op: 'click', windowId: 1, element: 's00000001:4' })
+    expect(driver.calls.filter(([name, args]) => name === 'get_window_state' && args.since !== undefined)).toHaveLength(0)
+  })
+
+  it('puts each row box in the pixels an action takes', async () => {
+    const { driver, computer } = await mount(name => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      return ok({
+        snapshot_id: 's00000001',
+        tree_markdown: '- [0] Button "One" [actions=[invoke]]\n- [1] Button "Two" [actions=[invoke]]\n',
+        total_element_count: 2,
+        returned_element_count: 2,
+        truncated: false,
+        window_bounds: { x: 0, y: 0, width: 1280, height: 800 },
+        screenshot_width: 640,
+        screenshot_height: 400,
+        elements: [
+          { element_index: 0, frame: { x: 100, y: 200, w: 40, h: 20 } },
+          { element_index: 1, frame: { x: 300, y: 400, w: 80, h: 40 } },
+        ],
+      })
+    })
+    const tree = await computer.tree(1, { frames: true })
+    // Window 1280x800, screenshot 640x400: the driver's window-pixel frames halve.
+    expect(tree.markdown).toContain('[0] Button "One" [actions=[invoke]] @50,100 20x10')
+    expect(tree.markdown).toContain('[1] Button "Two" [actions=[invoke]] @150,200 40x20')
+    // Boxes are only meaningful against the image they were measured in.
+    const read = driver.calls.find(([name, args]) => name === 'get_window_state' && args.tree_format === 'both')
+    expect(read?.[1]).toMatchObject({ pid: 10, window_id: 1, include_screenshot: true })
+  })
+
+  it('leaves the read cheap when the caller does not want boxes', async () => {
+    const { driver, computer } = await mount(name => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      return ok({ ...TREE })
+    })
+    const tree = await computer.tree(1)
+    expect(tree.markdown).not.toContain('@')
+    expect(driver.calls.some(([name, args]) => name === 'get_window_state' && args.tree_format === 'both')).toBe(false)
+  })
+
+  it('passes on why a tree read stopped, not just that it did', async () => {
+    const { computer } = await mount(name => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      return ok({
+        ...TREE,
+        total_element_count: 153,
+        returned_element_count: 153,
+        truncated: true,
+        elements_complete: false,
+        truncation_reason: 'node_budget',
+        truncation_hint: 'Tree truncated at max_elements=250 (57 more node(s) not shown).',
+      })
+    })
+    const tree = await computer.tree(1)
+    // The counts can agree while the walk still stopped early: the hint says what.
+    expect(tree.returned).toBe(tree.total)
+    expect(tree.complete).toBe(false)
+    expect(tree.truncation).toEqual({
+      reason: 'node_budget',
+      hint: 'Tree truncated at max_elements=250 (57 more node(s) not shown).',
+    })
   })
 
   it('does not resend input it could not confirm, since the first attempt may have landed', async () => {

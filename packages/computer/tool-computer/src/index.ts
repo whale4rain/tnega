@@ -3,6 +3,7 @@ import {
   COMPUTER_MAX_STEPS,
   ComputerError,
   type ComputerAction,
+  type ComputerActionResult,
   type ComputerAim,
   type ComputerApp,
   type ComputerStep,
@@ -274,6 +275,40 @@ function shotResult(lead: string, shot: ComputerScreenshot): unknown {
   )
 }
 
+/** Most differing rows quoted back: enough to recognise the change, not a tree. */
+const MAX_DIFF_ROWS = 6
+const MAX_DIFF_ROW_CHARS = 120
+
+/**
+ * An action's note, plus what the window did when the driver could not confirm
+ * the effect. The change is the point: a posted click and a silent no-op look
+ * identical from outside otherwise.
+ */
+function describeOutcome(result: ComputerActionResult): string {
+  const change = result.change
+  if (!change) return result.note
+  if (change.status === 'diff') {
+    const rows = (change.diff ?? '')
+      .split('\n')
+      .filter((line: string) => /^[+~-] /.test(line))
+      .slice(0, MAX_DIFF_ROWS)
+      .map((line: string) => line.length > MAX_DIFF_ROW_CHARS ? `${line.slice(0, MAX_DIFF_ROW_CHARS)}…` : line)
+    const head = `Changed: ${change.added} added, ${change.changed} changed, ${change.removed} removed.`
+    return [result.note, head, ...rows].join('\n')
+  }
+  if (change.status === 'no_change') {
+    return [
+      result.note,
+      result.route === 'synthetic_events'
+        ? 'The window did not change, and this input went out as posted events: that target may ignore posted input. Read the tree again and aim at the element.'
+        : 'The window did not change.',
+    ].join('\n')
+  }
+  // The window moved on in a way the driver names but does not break into rows,
+  // e.g. `view_changed`: still worth saying, in one line.
+  return `${result.note}\nThe window changed (${change.status}).`
+}
+
 function treeResult(tree: ComputerTree): string {
   const shown = tree.returned < tree.total ? `${tree.returned} of ${tree.total} elements` : `${tree.total} elements`
   const lines = [
@@ -354,32 +389,33 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
 
   const act = async (action: ComputerAction, options: ToolExecuteOptions): Promise<unknown> => {
     const result = await computer.act(action, signalOf(options))
+    const lead = describeOutcome(result)
     const windowId = result.windowId
-    if (windowId === undefined) return result.note
+    if (windowId === undefined) return lead
     // The action has happened: from here on, failing to look must not read as failing to act.
     let reserved: boolean
     try {
-      if (!await sees()) return `${result.note}\n${await blind(windowId, options)}`
+      if (!await sees()) return `${lead}\n${await blind(windowId, options)}`
       reserved = await budget.reserve()
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      return `${result.note}\nNo screenshot: could not check whether to take one (${reason}). Call computer_read_tree before acting again.`
+      return `${lead}\nNo screenshot: could not check whether to take one (${reason}). Call computer_read_tree before acting again.`
     }
-    if (!reserved) return `${result.note}\nNo screenshot: ${await spentNote()}`
+    if (!reserved) return `${lead}\nNo screenshot: ${await spentNote()}`
     try {
       await sleep(settleMs, options.signal)
-      return shotResult(result.note, await computer.screenshot(windowId, signalOf(options)))
+      return shotResult(lead, await computer.screenshot(windowId, signalOf(options)))
     } catch (error) {
       budget.release()
       if (options.signal?.aborted) throw error
       if (error instanceof ComputerError && error.code === 'COMPUTER_NO_WINDOW') {
         return action.op === 'launch'
-          ? `${result.note}\nIts window is not ready yet; call computer_list_windows.`
-          : `${result.note}\nWindow ${windowId} has closed.`
+          ? `${lead}\nIts window is not ready yet; call computer_list_windows.`
+          : `${lead}\nWindow ${windowId} has closed.`
       }
       // The action already happened; say so, so it is not repeated.
       const reason = error instanceof Error ? error.message : String(error)
-      return `${result.note}\nThe action was done, but the screenshot after it failed (${reason}). Call computer_screenshot before acting again.`
+      return `${lead}\nThe action was done, but the screenshot after it failed (${reason}). Call computer_screenshot before acting again.`
     }
   }
 
@@ -435,6 +471,7 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     tool('computer_read_tree', `Read a window's accessibility tree as text: buttons, fields, links and their names, each actionable row tagged [N]. Cheaper than a screenshot and the reliable way to aim: pass "<snapshot>:N" as element_token to computer_click, computer_type, computer_key or computer_scroll. Use query to keep only matching rows, and since (an earlier snapshot id) to see only what changed. ${UNTRUSTED}`, {
       window_id: WINDOW_ID,
       query: { type: 'string', description: 'Keep rows containing this text (case-insensitive), with their parents' },
+      frames: { type: 'boolean', description: 'Add each row\'s box in screenshot pixels, e.g. "@96,664 273x154", when position is the point: grids, rows and columns, or popup rows that carry no element_token. Costs a screenshot per read.' },
       since: { type: 'string', description: 'Snapshot id of an earlier read of this window, to get only what changed' },
       max_elements: { type: 'number', description: 'Budget of elements to walk (default 250)' },
       max_depth: { type: 'number', description: 'How deep to walk the tree' },
@@ -445,6 +482,7 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
         ...signalOf(options),
         ...(query ? { query } : {}),
         ...(since ? { since } : {}),
+        ...(input.frames === true ? { frames: true } : {}),
         ...(input.max_elements !== undefined ? { maxElements: number(input, 'max_elements') } : {}),
         ...(input.max_depth !== undefined ? { maxDepth: number(input, 'max_depth') } : {}),
       })
@@ -508,7 +546,7 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
       x: { ...X, description: 'Pixels from the left of the window\'s latest screenshot' },
       y: { ...Y, description: 'Pixels from the top of the window\'s latest screenshot' },
     }, ['window_id', 'x', 'y'], (input, options) => act(hoverOf(input, number(input, 'window_id')), options)),
-    tool('computer_menu', 'Choose an item from a window\'s native menu bar by its labels, from the top menu down, e.g. ["File", "Save As..."]. Exact labels as the app shows them; nothing is clicked if a label is missing or ambiguous. Use it for commands whose shortcut the app ignores. Not for menus drawn inside web pages. Returns a fresh screenshot.', {
+    tool('computer_menu', 'Choose an item from an application menu bar by its labels, from the top menu down. Exact labels as the app shows them; nothing is clicked if a label is missing or ambiguous. Only works where the menu is a real accessibility menu: classic Win32 menu bars work, while menus a page or an Electron or WinUI app draws itself do not, and the driver then answers that a later segment was not found. For those, read the tree and click the row (frames help when rows carry no element_token). Use it for commands whose shortcut the app ignores. Returns a fresh screenshot.', {
       window_id: WINDOW_ID,
       path: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 16, description: 'Menu labels from the top-level menu to the item' },
     }, ['window_id', 'path'], (input, options) => {

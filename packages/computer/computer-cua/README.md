@@ -11,6 +11,11 @@
 - `launch` 动作：应用名里没有路径分隔符时用 `name`（+ `urls`，URL 由驱动交给系统默认浏览器）；给了带路径的可执行文件时改用 `path`，并把 URL 当 `additional_arguments` 传给该应用，所以能指定用 Chrome 而不是默认浏览器打开。
 - 子进程继承宿主的完整环境（`DISPLAY`、`DBUS_SESSION_BUS_ADDRESS` 等桌面会话变量）。
 - 窗口最小化时驱动截不到图（图标化窗口没有可渲染内容）；Provider 先 `bring_to_front` 把窗口恢复再截一次，恢复不了才报错。
+- 动作的反馈：驱动对每个动作给出 `effect`（`confirmed` / `unverifiable` / `suspected_noop` / `partial`）与 `route`（`accessibility` 是 UIA/MSAA，`synthetic_events` 是投递事件，后者在部分 UWP 目标上会静默无效）。两者都进 `ComputerActionResult`。
+- 效果没被确认时，Provider 再读一次窗口，把**驱动自己算出的**变化放进 `change`（`status`、`added` / `changed` / `removed`、`diff` 只含 `+` `~` `-` 行）。这次读有界（`max_elements` 与基线读一致、不带截图），且只在 effect 不是 `confirmed` 时发生；`observe: 'off'` 可整体关掉。比较的基线是**调用方自己上一次 `tree` 读**的 snapshot id：驱动的 `since: "latest"` 只认同参数的读，参数一变就静默返回 `no_baseline`。没有基线时不读、不报，免得每个动作都多一个空字段。
+- `tree` 的 `frames: true`：给每行追加该行的框（`@x,y wxh`，单位就是动作要的**截图像素**）。驱动报的是窗口像素，Provider 按 `截图尺寸 / 窗口尺寸` 归一化；因为需要这个比例，带框的读会顺带取一张截图（图片不返回给模型）。不传则读保持纯文本。
+- 截断：`truncated` 按**全部节点**算，`total` 只数带标记的可操作元素，所以 `returned == total` 与 `truncated` 可以同时成立；Provider 一并转出 `complete` 与 `truncation: { reason, hint }`。
+- `invoke_menu` 只对真正的无障碍应用菜单有效：经典 Win32 菜单栏可以，网页自绘的、Electron / WinUI 自己画的菜单不行（驱动答 `segment N was not found`；实测 cua-driver 0.38.0 在 Windows 上经典 Win32 的两段路径同样解析不到弹层，属于驱动侧限制）。那类目标改用 `element_token`，弹层里没有令牌的行用 `frames` 拿坐标。
 
 ## 坐标（Windows 实测量）
 

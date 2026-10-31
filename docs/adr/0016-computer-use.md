@@ -49,6 +49,29 @@
 
 长任务可能拿几百张截图，所以 `computerMaxScreenshots` 给一个 Session 的截图张数设上限。计数归 Consumer（`tool-computer`），因为截图是它附进结果的；计数从 durable Session 里重建（之前的 `computer_*` 结果的图片数），这样重启后不会重置。用完后观察退回文本：动作不带截图，看图的工具拒绝并指向 `computer_read_tree`。Provider 返回的截图超过 `maxImageDimension` 时记一条警告。
 
+## 动作的反馈回路（2026-10-31）
+
+计划是「动作后附一张新截图，模型据此确认效果」，但截图只给出结果，不给因果关系：点了「最小化」回报成功、窗口却还在原处（WinUI 目标忽略投递事件），点赞是否生效只能靠外部计数变化反推。驱动其实给了三样东西，之前一样没用：
+
+- `effect`：`confirmed` / `unverifiable` / `suspected_noop` / `partial`。
+- `route`：`accessibility`（UIA/MSAA 调用）或 `synthetic_events`（投递事件）。后者在部分 UWP 目标上静默无效，这是「回报成功但没生效」的根因。
+- `next_call` / `hint`：驱动直接建议下一步读什么。
+
+决策：两者进结果；effect 没被确认时再读一次窗口，把驱动**自己算出的**变化（`diff_counts` + `tree_diff`）带给模型，工具层渲染成「Changed: A added, C removed」加最多 6 行 `+`/`~`/`-`；没变化时说没变化，若这次是投递事件则点明该目标可能忽略投递输入。
+
+- 只在 effect ≠ `confirmed` 时读，所以普通点击没有额外成本；`observe: 'off'` 可整体关掉。
+- 基线用**调用方上一次 `tree` 读**的 snapshot id，不用 `since: "latest"`：后者只认同参数的读，`max_elements` 一变就静默返回 `no_baseline`（实测踩到过）。
+- 没有基线就不读、不报，避免每个动作都多一个空字段。
+- 没采用驱动的 `verify_state`：它对本例最需要的浏览器内容返回 `unknown`（`capture_coverage.browser_chrome` 为 `not_observable_in_window_scope`），且要为每种控件写断言，收益不如 diff 直接。
+
+## 按位置读树（2026-10-31）
+
+`tree` 增加 `frames: true`：每行后附 `@x,y wxh`，单位是动作要的截图像素。驱动报的框是窗口像素，Provider 按 `截图尺寸 / 窗口尺寸` 归一化，因此带框的读会顺带取一张截图（不返回给模型）。默认关闭：纯文本读 +0 字符，带框读实测 +5%（15688 → 16484 字符）。这一项同时解决了「弹层里没有 `element_token` 的行怎么点」——用它给的坐标即可。
+
+## 菜单的边界（2026-10-31）
+
+`invoke_menu` 只对真正的无障碍应用菜单有效。实测（Windows 11 26300，cua-driver 0.38.0）：经典 Win32 单段路径成功，两段路径一律 `segment 1 was not found`，绕过 tnega 直接对驱动发同样失败，属驱动侧限制；Electron / WinUI 自绘菜单不受支持；WPF（PowerShell ISE）的菜单项暴露 `expand` 却无原生 menu pattern，驱动明确拒绝。因此不做自动回退（弹层项在 UIA 读取时是否出现不稳定，实测出现过读不到的情况），改为在工具说明里写清边界，让模型改用元素令牌或 `frames` 坐标。
+
 ## 授权
 
 - 设置里的 **Computer use** 默认关闭；关闭时工具不注册，模型看不到。

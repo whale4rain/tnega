@@ -6,6 +6,7 @@ import {
   type ComputerActionResult,
   type ComputerApp,
   type ComputerCallOptions,
+  type ComputerChange,
   type ComputerEffect,
   type ComputerRegion,
   type ComputerScreenshot,
@@ -29,6 +30,12 @@ export interface Config {
    * legibility the task needs; raise it when a task needs finer detail.
    */
   maxImageDimension?: number
+  /**
+   * Ask what changed after an action whose effect the driver could not confirm
+   * (`auto`, the default: one bounded, text-only read), or skip that read
+   * (`off`) when the caller looks at the window itself anyway.
+   */
+  observe?: 'auto' | 'off'
   /** Replace how the driver is started, for tests. */
   connect?: DriverConnector
 }
@@ -84,6 +91,57 @@ export function backgroundUnconfirmed(result: DriverResult): boolean {
   const escalation = result.structured.escalation
   return isRecord(escalation) && escalation.target === 'foreground'
 }
+
+/** How the driver says it delivered the input. */
+const ROUTES = ['accessibility', 'synthetic_events'] as const
+
+/**
+ * `synthetic_events` is posted input: it works on plain Win32 and silently
+ * no-ops on some UWP targets, which is why the driver reports it instead of
+ * calling the action done.
+ */
+function routeOf(result: DriverResult): 'accessibility' | 'synthetic_events' | undefined {
+  const route = result.structured.route
+  return ROUTES.find(known => known === route)
+}
+
+/**
+ * Append each row's box, in the pixels an action takes, after its label.
+ *
+ * The driver reports element frames in window pixels; an action's x and y are
+ * pixels of the window's screenshot. The two differ by the capture's own scale,
+ * which the read only knows when it brought an image, so this is only reachable
+ * with `frames: true`.
+ */
+function withFrames(markdown: string, structured: Record<string, unknown>, window: ComputerWindow): string {
+  const elements = Array.isArray(structured.elements) ? structured.elements : []
+  const bounds = isRecord(structured.window_bounds) ? structured.window_bounds : undefined
+  const width = num(bounds?.width) || window.bounds.width
+  const height = num(bounds?.height) || window.bounds.height
+  const shotWidth = num(structured.screenshot_width)
+  const shotHeight = num(structured.screenshot_height)
+  if (!width || !height || !shotWidth || !shotHeight) return markdown
+  const sx = shotWidth / width
+  const sy = shotHeight / height
+  const boxes = new Map<number, { x: number; y: number; w: number; h: number }>()
+  for (const element of elements) {
+    if (!isRecord(element) || typeof element.element_index !== 'number' || !isRecord(element.frame)) continue
+    const { x, y, w, h } = element.frame
+    if (typeof x !== 'number' || typeof y !== 'number' || typeof w !== 'number' || typeof h !== 'number') continue
+    boxes.set(element.element_index, { x, y, w, h })
+  }
+  if (!boxes.size) return markdown
+  return markdown.split('\n').map(line => {
+    const tagged = line.match(/\[(\d+)\]/)
+    const box = tagged?.[1] !== undefined ? boxes.get(Number(tagged[1])) : undefined
+    if (!box) return line
+    const round = (value: number): number => Math.round(value)
+    return `${line} @${round(box.x * sx)},${round(box.y * sy)} ${round(box.w * sx)}x${round(box.h * sy)}`
+  }).join('\n')
+}
+
+/** Most elements a change read may walk: this is a summary, not another tree. */
+const CHANGE_READ_ELEMENTS = 120
 
 const EFFECTS: readonly ComputerEffect[] = ['confirmed', 'unverifiable', 'suspected_noop', 'partial']
 
@@ -265,6 +323,9 @@ export class CuaComputer extends ComputerService {
     return this.capture(window, options)
   }
 
+  /** The caller's last tree read of each window, which a change read compares against. */
+  private readonly _reads = new Map<number, { snapshotId: string; maxElements?: number; query?: string }>()
+
   private async capture(window: ComputerWindow, options?: ComputerCallOptions): Promise<ComputerScreenshot> {
     const read = () => this.call('get_window_state', {
       pid: window.pid,
@@ -299,11 +360,14 @@ export class CuaComputer extends ComputerService {
 
   override async tree(windowId: number, options: ComputerTreeOptions = {}): Promise<ComputerTree> {
     const window = await this.target(windowId, options)
+    // Rows can carry their boxes only if the read knows the image they are in.
+    const wantFrames = options.frames === true
     const result = await this.call('get_window_state', {
       pid: window.pid,
       window_id: window.id,
       // Tree only: the screenshot is its own call, and a tree read is the cheap one.
-      include_screenshot: false,
+      include_screenshot: wantFrames,
+      ...(wantFrames ? { tree_format: 'both' } : {}),
       ...(options.query ? { query: options.query } : {}),
       ...(options.since ? { since: options.since } : {}),
       ...(options.maxElements ? { max_elements: options.maxElements } : {}),
@@ -311,15 +375,32 @@ export class CuaComputer extends ComputerService {
     }, options)
     const s = result.structured
     if (result.isError || typeof s.snapshot_id !== 'string') throw failure(result, `reading the element tree of window ${window.id}`)
+    // Remembered for the next action's change read: it is the baseline a diff needs.
+    this._reads.set(window.id, {
+      snapshotId: s.snapshot_id,
+      ...(options.maxElements !== undefined ? { maxElements: options.maxElements } : {}),
+      ...(options.query ? { query: options.query } : {}),
+    })
     return {
       windowId: window.id,
       app: window.app,
       title: typeof s.window_title === 'string' ? s.window_title : window.title,
       snapshotId: s.snapshot_id,
-      markdown: typeof s.tree_markdown === 'string' ? s.tree_markdown : result.text,
+      markdown: wantFrames
+        ? withFrames(typeof s.tree_markdown === 'string' ? s.tree_markdown : result.text, s, window)
+        : typeof s.tree_markdown === 'string' ? s.tree_markdown : result.text,
       total: num(s.total_element_count, num(s.element_count)),
       returned: num(s.returned_element_count, num(s.element_count)),
       truncated: s.truncated === true,
+      ...(typeof s.elements_complete === 'boolean' ? { complete: s.elements_complete } : {}),
+      ...(typeof s.truncation_reason === 'string' || typeof s.truncation_hint === 'string'
+        ? {
+          truncation: {
+            ...(typeof s.truncation_reason === 'string' ? { reason: s.truncation_reason } : {}),
+            ...(typeof s.truncation_hint === 'string' ? { hint: s.truncation_hint } : {}),
+          },
+        }
+        : {}),
       ...(typeof s.since_status === 'string' ? { sinceStatus: s.since_status } : {}),
     }
   }
@@ -395,7 +476,59 @@ export class CuaComputer extends ComputerService {
       ? `${result.text}\n(The driver sent this in the background but could not confirm it took effect. Check the screenshot before repeating it.)`
       : result.text
     const effect = effectOf(result)
-    return { note, windowId: window.id, ...(effect ? { effect } : {}) }
+    const route = routeOf(result)
+    // An unconfirmed action is the one case where a click and a no-op look the
+    // same from outside. The read is bounded and text-only, and only taken then.
+    const change = effect === 'confirmed' || this._config.observe === 'off'
+      ? undefined
+      : await this.changeAfter(window, options)
+    return {
+      note,
+      windowId: window.id,
+      ...(effect ? { effect } : {}),
+      ...(route ? { route } : {}),
+      ...(change !== undefined ? { change } : {}),
+    }
+  }
+
+  /**
+   * What the window did while the action ran, from the driver's own comparison.
+   * Asked only after an effect it could not confirm, so an ordinary click pays
+   * nothing for it; a bounded read keeps it a summary rather than a second tree.
+   *
+   * The comparison is against the caller's own last tree read of this window,
+   * addressed by snapshot id and walked with that read's own parameters: the
+   * driver's `latest` shortcut only matches a read with identical arguments,
+   * and a mismatched one silently answers `no_baseline`.
+   */
+  private async changeAfter(window: ComputerWindow, options?: ComputerCallOptions): Promise<ComputerChange | undefined> {
+    // Nothing to compare with: say nothing rather than add an empty field to
+    // every action of a caller that works from screenshots alone.
+    const basis = this._reads.get(window.id)
+    if (!basis) return undefined
+    const result = await this.call('get_window_state', {
+      pid: window.pid,
+      window_id: window.id,
+      include_screenshot: false,
+      max_elements: basis.maxElements ?? CHANGE_READ_ELEMENTS,
+      ...(basis.query ? { query: basis.query } : {}),
+      since: basis.snapshotId,
+    }, options)
+    if (result.isError) return undefined
+    const status = result.structured.since_status
+    // `no_baseline` here would mean our own read did not match the basis; that
+    // is our problem to fix, not something to hand the model as a fact.
+    if (typeof status !== 'string' || status === 'no_baseline') return undefined
+    const counts = isRecord(result.structured.diff_counts) ? result.structured.diff_counts : undefined
+    const count = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0
+    const diff = result.structured.tree_diff
+    return {
+      status,
+      added: count(counts?.added),
+      changed: count(counts?.changed),
+      removed: count(counts?.removed),
+      ...(typeof diff === 'string' && diff ? { diff } : {}),
+    }
   }
 
   private async launch(action: Extract<ComputerAction, { op: 'launch' }>, options: ComputerCallOptions): Promise<ComputerActionResult> {

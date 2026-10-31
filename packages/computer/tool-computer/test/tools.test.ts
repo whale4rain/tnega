@@ -9,6 +9,7 @@ import {
   type ComputerApp,
   type ComputerScreenshot,
   type ComputerTree,
+  type ComputerTreeOptions,
   type ComputerWindow,
 } from '@tnega/computer'
 import { tools, type ToolResult } from '@tnega/tools'
@@ -24,6 +25,8 @@ class FakeComputer extends ComputerService {
   performed: ComputerAction[] = []
   open = [...WINDOWS]
   shotFails = false
+  /** What the last action reports beyond its note, e.g. an unconfirmed change. */
+  outcome: Partial<ComputerActionResult> = {}
 
   async windows(): Promise<ComputerWindow[]> {
     return this.open
@@ -48,7 +51,10 @@ class FakeComputer extends ComputerService {
     ]
   }
 
-  override async tree(windowId: number): Promise<ComputerTree> {
+  treeOptions: Array<ComputerTreeOptions | undefined> = []
+
+  override async tree(windowId: number, options?: ComputerTreeOptions): Promise<ComputerTree> {
+    this.treeOptions.push(options)
     return { windowId, app: 'chrome.exe', title: 'Example', snapshotId: 's00000002', markdown: '- [5] button "Save"\n', total: 40, returned: 3, truncated: true }
   }
 
@@ -60,7 +66,7 @@ class FakeComputer extends ComputerService {
     if (action.op === 'steps') return { note: `Ran ${action.steps.length} steps`, windowId: action.windowId, steps: action.steps.map(step => ({ ok: true, note: step.op })) }
     // Ctrl+W closes the window.
     if (action.op === 'key' && action.keys.join('+') === 'ctrl+w') this.open = this.open.filter(window => window.id !== action.windowId)
-    return { note: `${action.op} done`, windowId: action.windowId }
+    return { note: `${action.op} done`, windowId: action.windowId, ...this.outcome }
   }
 }
 
@@ -81,6 +87,50 @@ describe('tool-computer', () => {
     expect(computer.performed).toEqual([{ op: 'click', windowId: 1, x: 40, y: 60, count: 2 }])
     expect(String(result.output)).toMatch(/click done\nScreenshot of window 1 · chrome.exe · "Example", 1280x800 px/)
     expect(result.attachments).toEqual([{ type: 'image', mediaType: 'image/png', data: 'cG5n', name: 'window-1.png' }])
+  })
+
+  it('says what changed when the driver could not confirm the action', async () => {
+    const { computer, run } = await setup()
+    computer.outcome = {
+      effect: 'unverifiable',
+      route: 'synthetic_events',
+      change: {
+        status: 'diff',
+        added: 2,
+        changed: 0,
+        removed: 1,
+        diff: 'since s00000001: 2 added, 0 changed, 1 removed.\n+ Text "beta"\n+ [9] Button "two"\n- Text "alpha"',
+      },
+    }
+    const result = await run('computer_click', { window_id: 1, x: 40, y: 60 })
+    const text = String(result.output)
+    expect(text).toContain('Changed: 2 added, 0 changed, 1 removed.')
+    // The differing rows travel, the "since ..." header line does not.
+    expect(text).toContain('+ Text "beta"')
+    expect(text).toContain('- Text "alpha"')
+    expect(text).not.toContain('since s00000001')
+  })
+
+  it('reads an unchanged window with posted input as a likely ignored click', async () => {
+    const { computer, run } = await setup()
+    computer.outcome = {
+      effect: 'unverifiable',
+      route: 'synthetic_events',
+      change: { status: 'no_change', added: 0, changed: 0, removed: 0 },
+    }
+    const text = String((await run('computer_click', { window_id: 1, x: 40, y: 60 })).output)
+    // This is the case that used to look like success on a WinUI target.
+    expect(text).toContain('may ignore posted input')
+    expect(text).toContain('aim at the element')
+  })
+
+  it('asks for row boxes only when the caller does', async () => {
+    const { computer, run } = await setup()
+    await run('computer_read_tree', { window_id: 1 })
+    await run('computer_read_tree', { window_id: 1, frames: true })
+    expect(computer.treeOptions).toHaveLength(2)
+    expect(computer.treeOptions[0]).not.toHaveProperty('frames')
+    expect(computer.treeOptions[1]).toMatchObject({ frames: true })
   })
 
   it('types, then presses Enter for submit, and says when the window closed', async () => {
