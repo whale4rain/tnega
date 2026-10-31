@@ -174,7 +174,11 @@ export function driverCall(action: ComputerStep | Extract<ComputerAction, { op: 
         args: { pid, window_id: action.windowId, from_x: action.from.x, from_y: action.from.y, to_x: action.to.x, to_y: action.to.y },
       }
     case 'hover': {
-      if (!frame) throw new ComputerError('COMPUTER_FAILED', `take a screenshot of window ${action.windowId} before hovering in it`)
+      if (!frame || frame.width <= 0 || frame.height <= 0) throw new ComputerError('COMPUTER_FAILED', `take a screenshot of window ${action.windowId} before hovering in it`)
+      // The real pointer outside the screenshot would hover another app's window, which this grant does not cover.
+      if (action.x < 0 || action.y < 0 || action.x >= frame.width || action.y >= frame.height) {
+        throw new ComputerError('COMPUTER_FAILED', `hover point (${action.x}, ${action.y}) is outside the ${frame.width}x${frame.height} screenshot of window ${action.windowId}`)
+      }
       // Window scope only moves the driver's overlay cursor, which apps never see.
       return { tool: 'move_cursor', args: { target: { kind: 'desktop', display_id: 'primary' }, ...desktopPoint(frame, action.x, action.y) } }
     }

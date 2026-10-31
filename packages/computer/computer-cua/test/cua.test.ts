@@ -132,6 +132,11 @@ describe('computer-cua actions', () => {
   it('maps screenshot pixels to the desktop and needs a screenshot to hover', () => {
     expect(desktopPoint({ bounds: { x: 100, y: 50, width: 1280, height: 800 }, width: 1024, height: 640 }, 512, 320)).toEqual({ x: 740, y: 450 })
     expect(() => driverCall({ op: 'hover', windowId: 1, x: 1, y: 1 }, 10)).toThrow(/screenshot/)
+    const frame = { bounds: { x: 0, y: 0, width: 600, height: 400 }, width: 300, height: 200 }
+    // Outside the screenshot the real pointer would hover another app's window.
+    expect(() => driverCall({ op: 'hover', windowId: 1, x: 300, y: 10 }, 10, frame)).toThrow(/outside the 300x200 screenshot/)
+    expect(() => driverCall({ op: 'hover', windowId: 1, x: 10, y: -1 }, 10, frame)).toThrow(/outside/)
+    expect(() => driverCall({ op: 'hover', windowId: 1, x: 1, y: 1 }, 10, { ...frame, width: 0 })).toThrow(/screenshot/)
   })
 
   it('invokes a menu by its path without a screenshot', async () => {
