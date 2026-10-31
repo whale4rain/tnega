@@ -178,7 +178,11 @@ async function main() {
     rmSync(errorsFile, { force: true })
     const require = createRequire(import.meta.url)
     const vitest = join(dirname(require.resolve('vitest/package.json')), 'vitest.mjs')
-    const result = spawnSync(process.execPath, [vitest, 'run', '--maxWorkers', '2', '--reporter=default', '--reporter=json', '--reporter=./scripts/release-test-reporter.mjs', `--outputFile.json=${reportFile}`], { cwd: root, stdio: 'inherit' })
+    // The gate must see the package artifact tests, and `vitest.config.ts` (the
+    // code layer) leaves those to the host layer by design, so the gate runs the
+    // everything-in-one-pass configuration. Without it the report carries no
+    // `test/publish.test.ts` and the gate refuses an otherwise green suite.
+    const result = spawnSync(process.execPath, [vitest, 'run', '--config', 'vitest.full.config.ts', '--maxWorkers', '2', '--reporter=default', '--reporter=json', '--reporter=./scripts/release-test-reporter.mjs', `--outputFile.json=${reportFile}`], { cwd: root, stdio: 'inherit' })
     if (result.error || result.signal || ![0, 1].includes(result.status)) throw new Error(`Vitest process failed: ${result.error ?? result.signal ?? result.status}`)
     const runtime = readJson(errorsFile)
     if (runtime.errors.length || !['passed', 'failed'].includes(runtime.reason)) throw new Error(`Test runtime error or interrupted run: ${JSON.stringify(runtime)}`)
