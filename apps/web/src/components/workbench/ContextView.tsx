@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { errorText } from '../../lib/hooks'
 import { formatTokens } from '../../lib/timeline'
-import type { SessionContextReport } from '../../lib/types'
+import { formatBytes } from '../../lib/project-model'
+import type { ContextToolUse, SessionContextReport } from '../../lib/types'
 import { formatCost, formatRate } from '../../lib/usage'
 import { Section, Stat } from '../context/charts'
 import { ContextTrend, CurrentContext, TimingStats, TokenStats } from '../context/ContextParts'
@@ -92,6 +93,32 @@ export function ContextReport({ report }: { report: SessionContextReport }) {
       <ContextTrend steps={report.steps} window={report.window} />
       <TokenStats billed={report.billed} cacheHitRate={stats.cacheHitRate} />
       <TimingStats timing={report.timing} />
+      {report.tools.length > 0 && <ToolStats tools={report.tools} />}
     </div>
+  )
+}
+
+/** What each tool cost: its calls and images, and the requests that read its results. */
+function ToolStats({ tools }: { tools: readonly ContextToolUse[] }) {
+  return (
+    <Section title="By tool">
+      <div className="ctx-table-scroll">
+        <table className="ctx-models">
+          <thead><tr><th scope="col">Tool</th><th scope="col">Calls</th><th scope="col">Images</th><th scope="col">Input</th><th scope="col">Cost</th></tr></thead>
+          <tbody>
+            {tools.map(tool => (
+              <tr key={tool.name}>
+                <th scope="row" className="mono" title={tool.name}>{tool.name}</th>
+                <td>{tool.calls.toLocaleString()}{tool.failed ? <span className="muted"> · {tool.failed} failed</span> : null}</td>
+                <td>{tool.images ? `${tool.images.toLocaleString()} · ${formatBytes(tool.imageBytes)}` : '—'}</td>
+                <td title={`${tool.cachedTokens.toLocaleString()} cached, ${tool.completionTokens.toLocaleString()} output`}>{formatTokens(tool.promptTokens)}</td>
+                <td>{formatCost(tool.cost) ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small ctx-footnote">Input and cost are those of the requests that read each tool’s results, split evenly when one request read several.</p>
+    </Section>
   )
 }

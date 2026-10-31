@@ -20,7 +20,12 @@ const report: SessionContextReport = {
     timing: { waitingMs: 1000, thinkingMs: 0, respondingMs: 1000, toolMs: 2000, toolRuns: 1 },
     ...(index === 3 ? { compacted: true } : {}),
   })),
-  turns: [], updatedAt: 3000,
+  turns: [],
+  tools: [
+    { name: 'computer_screenshot', calls: 3, failed: 0, durationMs: 300, images: 3, imageBytes: 300 * 1024, promptTokens: 1500, cachedTokens: 600, completionTokens: 30, cost: [{ amount: 0.0012, currency: 'CNY' }] },
+    { name: 'read_file', calls: 1, failed: 1, durationMs: 20, images: 0, imageBytes: 0, promptTokens: 400, cachedTokens: 200, completionTokens: 40 },
+  ],
+  updatedAt: 3000,
 }
 
 it('asks for a session before showing anything', () => {
@@ -37,6 +42,11 @@ it('shows the session’s stats, window and trend, and follows the picked bar', 
   expect(load).toHaveBeenCalledWith('/work', 's1', expect.anything())
   expect(view.getByRole('region', { name: 'Context stats' }).textContent).toContain('1 failed')
   expect(view.getByText('¥0.0021')).toBeTruthy()
+  const tools = view.getByRole('region', { name: 'By tool' })
+  expect(tools.querySelectorAll('tbody tr')).toHaveLength(2)
+  expect(tools.textContent).toContain('3 · 300.0 KB')
+  expect(tools.textContent).toContain('1 failed')
+  expect(tools.textContent).toContain('¥0.0012')
   expect(view.getByRole('img', { name: '1,000 of 128,000 tokens used' })).toBeTruthy()
   // The latest request is described until another bar is picked.
   expect(view.getByText('Turn 2 · step 1')).toBeTruthy()
