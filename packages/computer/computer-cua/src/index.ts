@@ -51,6 +51,27 @@ function toWindow(row: unknown): { window: ComputerWindow; z: number | undefined
   }
 }
 
+/**
+ * Whether the driver refused the background attempt before sending anything,
+ * because the target's input stack does not take this event kind in the
+ * background. Nothing was delivered, so sending it again in front is safe.
+ */
+export function backgroundRefused(result: DriverResult): boolean {
+  return result.isError && result.structured.code === 'background_unavailable'
+}
+
+/**
+ * Whether the driver sent the event but could not confirm the effect, because
+ * it cannot read the target's field back. It may well have landed: resending
+ * is exactly how a doubled character or a double click happens, so the result
+ * says so and the caller checks the screenshot instead.
+ */
+export function backgroundUnconfirmed(result: DriverResult): boolean {
+  if (result.isError) return false
+  const escalation = result.structured.escalation
+  return isRecord(escalation) && escalation.target === 'foreground'
+}
+
 function failure(result: DriverResult, what: string): ComputerError {
   const code = typeof result.structured.code === 'string' ? ` (${result.structured.code})` : ''
   return new ComputerError('COMPUTER_FAILED', `${what} failed${code}: ${result.text || 'no detail from the driver'}`)
@@ -86,8 +107,16 @@ export function driverCall(action: ComputerAction, pid: number): { tool: string;
         tool: 'drag',
         args: { pid, window_id: action.windowId, from_x: action.from.x, from_y: action.from.y, to_x: action.to.x, to_y: action.to.y },
       }
-    case 'launch':
-      return { tool: 'launch_app', args: { name: action.app, ...(action.urls?.length ? { urls: action.urls } : {}) } }
+    case 'launch': {
+      const urls = action.urls ?? []
+      // The driver hands `urls` to the system's default browser, whatever app
+      // is being launched. Naming the executable instead lets the URLs reach
+      // that app as its own arguments.
+      if (!/[\\/]/.test(action.app)) {
+        return { tool: 'launch_app', args: { name: action.app, ...(urls.length ? { urls } : {}) } }
+      }
+      return { tool: 'launch_app', args: { path: action.app, ...(urls.length ? { additional_arguments: urls } : {}) } }
+    }
   }
 }
 
@@ -157,12 +186,19 @@ export class CuaComputer extends ComputerService {
   }
 
   private async capture(window: ComputerWindow, options?: ComputerCallOptions): Promise<ComputerScreenshot> {
-    const result = await this.call('get_window_state', {
+    const read = () => this.call('get_window_state', {
       pid: window.pid,
       window_id: window.id,
       include_accessibility_tree: false,
       ...(this._config.maxImageDimension ? { max_image_dimension: this._config.maxImageDimension } : {}),
     }, options)
+    let result = await read()
+    // An iconic window has nothing to render; restoring it is the only way to see
+    // or act in it, and every later pixel action would fail the same way.
+    if (!result.image && /minimi[sz]ed/i.test(`${result.text} ${String(result.structured.screenshot_error ?? '')}`)) {
+      await this.call('bring_to_front', { pid: window.pid, window_id: window.id }, options)
+      result = await read()
+    }
     if (result.isError || !result.image) throw failure(result, `capturing window ${window.id}`)
     this._captured.add(window.id)
     return {
@@ -204,11 +240,14 @@ export class CuaComputer extends ComputerService {
     if (!this._captured.has(window.id)) await this.capture(window, options)
     const { tool, args } = driverCall(action, window.pid)
     let result = await this.call(tool, args, options)
-    if (result.isError && result.structured.code === 'background_unavailable') {
-      result = await this.call(tool, { ...args, delivery_mode: 'foreground' }, options)
-    }
+    // Only a refusal means nothing was delivered. An unconfirmed result may
+    // already have landed, and resending it is how one keystroke becomes two.
+    if (backgroundRefused(result)) result = await this.call(tool, { ...args, delivery_mode: 'foreground' }, options)
     if (result.isError) throw failure(result, `${action.op} in window ${window.id}`)
-    return { note: result.text, windowId: window.id }
+    const note = backgroundUnconfirmed(result)
+      ? `${result.text}\n(The driver sent this in the background but could not confirm it took effect. Check the screenshot before repeating it.)`
+      : result.text
+    return { note, windowId: window.id }
   }
 }
 

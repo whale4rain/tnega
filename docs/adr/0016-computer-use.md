@@ -11,8 +11,8 @@
 新增电脑操作（computer use）能力缝，让 Agent 看屏幕并操作本机应用。第一版以 Windows 为目标平台、截图优先，安全层保持最薄。
 
 - **Service Definition** `@tnega/computer`：拥有 `ctx.computer`。观察（`windows` / `screenshot` / `zoom`）无副作用；动作只经 `act()`，它先解析目标窗口，再派发 `computer/pre-action`（可改写、可 `deny`）与 `computer/action`。坐标一律是该窗口最近一次截图的像素。
-- **Provider** `@tnega/computer-cua`：用 [cua-driver](https://cua.ai/docs/cua-driver)（MIT）经 MCP stdio 驱动系统，不自研驱动。Windows 上它走 UI Automation 与窗口消息、默认后台投递；某个表面只接受前台输入时（报 `background_unavailable`），Provider 以 `delivery_mode: foreground` 重试一次。驱动首次使用时启动、随插件停止；找不到驱动时一律抛 `COMPUTER_UNAVAILABLE` 并给出安装命令，不回退到其他输入方式。tnega 不打包驱动，查找顺序：配置 `computerDriverPath` → `TNEGA_CUA_DRIVER` → PATH → 安装器默认目录。驱动的遥测默认开启，tnega 启动它时设置 `CUA_DRIVER_RS_TELEMETRY_ENABLED=false` 关掉这一进程的遥测，不改用户保存的选择。
-- **Consumer** `@tnega/tool-computer`：`computer_*` 工具（列窗口、启动应用、截图、局部放大、点击、输入、按键、滚动、拖拽、等待）。每个动作返回该窗口的新截图（图片附件），模型据此确认效果。
+- **Provider** `@tnega/computer-cua`：用 [cua-driver](https://cua.ai/docs/cua-driver)（MIT）经 MCP stdio 驱动系统，不自研驱动。Windows 上它走 UI Automation 与窗口消息、默认后台投递；某个表面只接受前台输入时（报 `background_unavailable`），Provider 以 `delivery_mode: foreground` 重试一次。驱动投递了却无法确认效果时（`effect: unverifiable`）不重发——Chromium 这类表面会接受投递的事件，重发就成了重复输入——只在结果说明里提醒看截图再决定。驱动首次使用时启动、随插件停止；找不到驱动时一律抛 `COMPUTER_UNAVAILABLE` 并给出安装命令，不回退到其他输入方式。tnega 不打包驱动，查找顺序：配置 `computerDriverPath` → `TNEGA_CUA_DRIVER` → PATH → 安装器默认目录。驱动的遥测默认开启，tnega 启动它时设置 `CUA_DRIVER_RS_TELEMETRY_ENABLED=false` 关掉这一进程的遥测，不改用户保存的选择。
+- **Consumer** `@tnega/tool-computer`：`computer_*` 工具（列窗口、启动应用、截图、局部放大、点击、输入、按键、滚动、拖拽、等待）。每个动作返回该窗口的新截图（图片附件），模型据此确认效果。启动应用的 `urls`：给的是应用名时，驱动把它们交给系统默认浏览器；给的是可执行文件全路径时，URL 作为该应用的参数，因此能指定用哪个浏览器。
 - **组合**：`packages/runtime` 的 `capability:computer` 挂 Provider 与 Consumer；Web 宿主与 `tnega run` 只在 System Config 的 `computerUse` 为真时传入。Project 线程不挂载（无人值守）。
 
 ## 授权
@@ -28,7 +28,23 @@
 
 ## 已验证（2026-10-30，Linux / Xvfb + openbox，Chromium，cua-driver 0.38.0，deepseek-v4-flash）
 
-7 个真实任务全部完成：维基百科查生日、维基站内搜索、httpbin 表单填写并提交、长页面跳到 Z 段并列出条目、新开标签查 Python 版本再关闭、启动 xterm 运行命令并关闭、TodoMVC 添加三项并勾选一项。每个任务 5–22 次工具调用。Windows 实机尚未验证。
+7 个真实任务全部完成：维基百科查生日、维基站内搜索、httpbin 表单填写并提交、长页面跳到 Z 段并列出条目、新开标签查 Python 版本再关闭、启动 xterm 运行命令并关闭、TodoMVC 添加三项并勾选一项。每个任务 5–22 次工具调用。
+
+## 已验证（2026-11，Windows 11 26300，cua-driver 0.38.0，经缝直接调用）
+
+列窗口（隐藏驱动自己的遮罩）、启动应用、截图、局部放大、UIA 点击、输入全部走通；在 Windows Terminal 上验证了前台重试确实把文字投进了 cmd。**已验证的坑**：Chromium 接受后台 PostMessage 的文字，驱动却报效果不可验证；拿到这种结果自动重发就会把文字打两遍（本机实测重现），所以现在只在明确拒绝时重试。
+
+已知限制：现代 XAML / WinUI 目标（如 Windows 11 记事本）的 `hotkey` 只做 UIA AcceleratorKey 匹配、不走 SendInput，`ctrl+z` 这类组合在记事本上必然失败，`delivery_mode: foreground` 也无效；这类目标上的少量文字也常报效果不可验证（可能被丢掉）。没有模型的端到端任务尚未在 Windows 上跑。
+
+### 坐标与精度
+
+模型只给截图像素，换算全在驱动里，调用方不做 DPI 修正。在 3200×1904 窗口、Chrome 页面缩放 220%（dpr 2.2）上，用 35 个网格点拟合出：
+
+- 截图是全窗口缩小版（1568×933）；驱动按 `窗口物理宽 / 截图像素宽` = 2.0408 乘回物理坐标，再除 dpr 得页面 CSS 坐标。
+- 图片与页面 CSS 几乎 1:1：`css_x = 0.9276 × image_x`，`css_y = 0.9276 × image_y − 79.6`。常数项是窗口顶部浏览器界面的高度（标签栏 + 地址栏≈175 物理像素）——截图含浏览器界面，y 从窗口顶端算。
+- 残差 ≤ 0.6 CSS 像素；另用 12 个 300×60 的输入框做验证，按上式换算后全部点中。精度约 ±1 图片像素，小目标靠 `computer_zoom` 瞄准。
+- 曾把“点不中”误判成 DPI 偏移，实际是拿放大/带黑边的渲染图估坐标；模型看到的是原图，按原图像素给点就准。
+- 最小化（图标化）窗口没有可渲染内容，驱动截不到图；Provider 先 `bring_to_front` 恢复再重截，恢复不了才报错。后台 `PostMessage` 点击会把焦点移到输入框，但文字落不落要看目标，所以输入后一律靠新截图确认。
 
 ## 后果与后续
 

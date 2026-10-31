@@ -153,9 +153,9 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
       if (!windows.length) return 'No windows are open. Start an app with computer_open_app.'
       return windows.map(window => `${describeWindow(window)} · ${window.bounds.width}x${window.bounds.height}${window.onScreen ? '' : ' · hidden'}`).join('\n')
     }, () => ({ scope: 'computer:windows', label: 'see the titles of your open windows for the rest of this session' })),
-    tool('computer_open_app', 'Start an app by name or command (e.g. "chrome", "msedge", "notepad"), optionally opening URLs in it. Returns a screenshot when the driver names the new window; otherwise call computer_list_windows to find it.', {
-      name: { type: 'string', description: 'App name or command' },
-      urls: { type: 'array', items: { type: 'string' }, description: 'URLs to open, for a browser' },
+    tool('computer_open_app', 'Start an app by name or command (e.g. "notepad", "chrome") or by full executable path. With urls, a name opens them in the default browser, not necessarily in the app you named; give a full path (e.g. "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe") to open them in that app instead. Returns a screenshot when the driver names the new window; otherwise call computer_list_windows to find it.', {
+      name: { type: 'string', description: 'App name, command, or full executable path' },
+      urls: { type: 'array', items: { type: 'string' }, description: 'URLs to open in the app, or in the default browser when only a name is given' },
     }, ['name'], async (input, options) => {
       const urls = Array.isArray(input.urls) ? input.urls.filter((url): url is string => typeof url === 'string' && url.length > 0) : []
       const note = await act({ op: 'launch', app: text(input, 'name'), ...(urls.length ? { urls } : {}) }, options)
@@ -165,7 +165,7 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
       const name = String(args(input).name ?? '')
       return { scope: `computer:launch:${name.toLowerCase()}`, label: `start ${name || 'an app'} on this computer for the rest of this session` }
     }),
-    tool('computer_screenshot', `Take a screenshot of one window. ${UNTRUSTED}`, {
+    tool('computer_screenshot', `Take a screenshot of one window. The image covers the whole window, so its top is the app's own title bar and, in a browser, the tab strip and address bar. ${UNTRUSTED}`, {
       window_id: WINDOW_ID,
     }, ['window_id'], async (input, options) => shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options)))),
     tool('computer_zoom', 'Look closer at a region of the window\'s latest screenshot, to read small text or aim a click. The zoomed image has its own pixels: keep using full-window points for actions.', {
