@@ -108,7 +108,12 @@ function treeResult(tree: ComputerTree): string {
     `Act on a row tagged [N] with element_token "${tree.snapshotId}:N". A newer read of this window makes these tokens stale.`,
   ]
   if (tree.truncated) lines.push('The read stopped at its budget: narrow it with query, or raise max_elements.')
-  if (tree.sinceStatus) lines.push(`Diff since the earlier snapshot: ${tree.sinceStatus}.`)
+  if (tree.sinceStatus) {
+    lines.push(
+      `Diff since the earlier snapshot: ${tree.sinceStatus}. Rows marked - are gone and their [N] belong to the old snapshot: never act on them. `
+      + `Added (+), changed (~) and unlisted rows keep their [N] under ${tree.snapshotId}, unless a "reindexed:" line gives them a new one.`,
+    )
+  }
   return `${lines.join('\n')}\n\n${tree.markdown.trimEnd()}`
 }
 

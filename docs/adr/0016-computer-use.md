@@ -21,7 +21,7 @@
 
 像素点击是驱动所说的“盲落”，只有按元素操作驱动才能确认效果。`ctx.computer.tree()` 读窗口的无障碍树（只要树、不要图），工具 `computer_read_tree` 把它作为文本交给模型；点击、滚动、输入、单键都可以带 `element_token`（`<snapshot>:N`）。点击与滚动的元素和像素互斥，`act()` 派发前检查。令牌过期报 `COMPUTER_STALE_ELEMENT`，不自动重读——窗口变了可能有原因，要让模型看到。
 
-已验证（Linux / Xvfb，Chromium，cua-driver 0.38.0）：12 个输入框按元素令牌逐个点击，页面自己的焦点读数 12/12 命中，全程 0 张截图；按元素输入文字落入目标框。deepseek-v4-flash 端到端任务“在 Field 9 输入 tnega 并报告焦点”用 6 次工具调用完成，全程用树和令牌，没有猜坐标。
+已验证（Linux / Xvfb，Chromium，cua-driver 0.38.0）：12 个输入框按元素令牌逐个点击，页面自己的焦点读数 12/12 命中，全程 0 张截图；按元素输入文字落入目标框。deepseek-v4-flash 端到端任务“在 Field 9 输入 tnega 并报告焦点”用 6 次工具调用完成，全程用树和令牌，没有猜坐标。动作后仍返回截图，所以本次验证只覆盖能读图的模型（deepseek-v4-flash）；V4 Pro 等只收文本的模型要等“只用树”的模式（计划 A.4）。差异读取（`since`）里标 `-` 的行已删除、其行号属于旧快照，工具文案明确禁止对它们操作。
 
 ## 授权
 
@@ -32,7 +32,7 @@
 ## 原因
 
 - cua-driver 已经解决了后台投递、DPI、截图与坐标换算、UIPI（提权窗口直接拒绝）等平台细节，并以 MCP 暴露，作为 Provider 最省；换成别的驱动只换这一个包。
-- 截图优先，元素更准：DeepSeek V4 Flash 能读图并给出接近的坐标（实测 400×200 图上误差约 10 px），配合 `computer_zoom` 足以完成常见网页任务；V4 Pro 不接受图片，第一版不为它做文本树模式。
+- 截图优先：DeepSeek V4 Flash 能读图并给出接近的坐标（实测 400×200 图上误差约 10 px），配合 `computer_zoom` 足以完成常见网页任务；V4 Pro 不接受图片，第一版不为它做文本树模式。
 
 ## 已验证（2026-10-30，Linux / Xvfb + openbox，Chromium，cua-driver 0.38.0，deepseek-v4-flash）
 

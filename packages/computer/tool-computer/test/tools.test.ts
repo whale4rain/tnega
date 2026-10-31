@@ -104,6 +104,15 @@ describe('tool-computer', () => {
     expect(String(result.output)).toMatch(/\[5\] button "Save"$/)
   })
 
+  it('warns not to act on rows a diff read marks as removed', async () => {
+    const { computer, run } = await setup()
+    const tree = computer.tree.bind(computer)
+    computer.tree = async windowId => ({ ...await tree(windowId), sinceStatus: 'diff' })
+    const result = await run('computer_read_tree', { window_id: 1, since: 's00000001' })
+    expect(String(result.output)).toMatch(/Rows marked - are gone .* never act on them/)
+    expect(String(result.output)).toMatch(/"reindexed:" line/)
+  })
+
   it('aims at an element or a point, never both', async () => {
     const { computer, run } = await setup()
     await run('computer_click', { window_id: 1, element_token: 's00000002:5' })
