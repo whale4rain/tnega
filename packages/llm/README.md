@@ -44,6 +44,25 @@ durable `assistant/chunk`，并在 `llm/stream` waterfall 上让插件可改写�
 - `filesApi`: `auto`（默认）/ `off` / `required`（上传失败即报错，不回退内联）/ 
   `openai` / `anthropic`（强制形状）。`filesUrl` / `filesPurpose` 可覆盖端点与 purpose。
 
+## 图片窗口：`maxImages`
+
+每次请求只带最近 `maxImages` 张图（默认 8），更早的换成一行文字说明；Session 本身保留所有图片。
+配置文件里可在顶层设 `maxImages`（对所有路由生效），也可在某条模型路由上单独设，路由上的优先。
+
+实测（2026-10-31，deepseek-v4-flash，chat/completions，1024×640 截图每张约 410 token，
+每步一次截图；“新增”指请求里未命中缓存的 prompt token）：
+
+| `maxImages` | 第 4 步 prompt / 新增 | 第 6 步 prompt / 新增 |
+|---|---|---|
+| 8 | 2540 / 492 | 3510 / 566 |
+| 2 | 1716 / 1204 | 1862 / 1222 |
+| 1 | 1304 / 664 | 1450 / 682 |
+
+窗口没装满时，旧消息不变，缓存一直命中，每步只付新截图那一份。窗口一旦开始滑动，被换成文字的那条消息改写了历史，
+缓存在它之前断开，此后每步都要重付窗口里所有图片：稳定后每步新增约为 `maxImages × 410` 加上断点之后的文字。
+所以长任务（电脑操作动辄几十步）建议 2：保留“动作前 / 动作后”两张，稳定后每步约 1.2k 新增 token，而 8 在第 8 步后
+每步约 3.5k；只在乎成本时用 1。
+
 ## Responses：服务端保存的对话
 
 `store` + `previous_response_id` 让服务端保存历史，后续只发新增的轮次。适配器对每条

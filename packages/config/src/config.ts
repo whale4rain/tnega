@@ -78,6 +78,8 @@ export interface ConfiguredModel {
   contextWindow?: number
   /** Override the model-id heuristic for image input. */
   vision?: boolean
+  /** Most recent images a request carries; older ones become a text note. Overrides the top-level `maxImages`. */
+  maxImages?: number
   pricing?: ModelPricing
   /** `chatgpt`: authenticate with the ChatGPT sign-in instead of an API key (see chatgpt-auth.ts). */
   auth?: 'chatgpt'
@@ -158,6 +160,13 @@ export interface SystemConfig {
   contextWindow?: number
   /** Override the image-input heuristic for the default route. */
   vision?: boolean
+  /**
+   * Most recent images a request carries, for every route without its own;
+   * older ones become a text note. Each image is billed again on every
+   * request, so a screenshot-heavy task wants a small number (2 is plenty for
+   * computer use). Absent means the client default (8).
+   */
+  maxImages?: number
   models?: ConfiguredModel[]
   workspaces?: string[]
   /** Browser launched for the agent's `browser_*` tools outside the desktop app. */
@@ -342,6 +351,7 @@ export interface EffectiveLlmConfig {
   reasoningEffort?: ReasoningEffort
   contextWindow?: number
   vision: boolean
+  maxImages?: number
   pricing?: ModelPricing
   /** Signs in with ChatGPT instead of an API key; see `llmAuthOptions`. */
   auth?: 'chatgpt'
@@ -462,6 +472,8 @@ export interface ModelRouteInput {
   apiKeyEnv?: string
   contextWindow?: number
   vision?: boolean
+  /** `null` clears the route's own budget, so the top-level one applies. */
+  maxImages?: number | null
   /** Prices per million tokens; `null` clears them. */
   pricing?: ModelPricing | null
   auth?: 'chatgpt'
@@ -507,6 +519,11 @@ export function parseModelRouteInput(value: unknown): ModelRouteInput {
     if (typeof record.vision !== 'boolean') throw new ModelRouteError('vision must be a boolean')
     input.vision = record.vision
   }
+  if (record.maxImages === null) input.maxImages = null
+  else if (record.maxImages !== undefined) {
+    if (!isImageBudget(record.maxImages)) throw new ModelRouteError('maxImages must be a whole number of images, 0 or more')
+    input.maxImages = record.maxImages
+  }
   if (record.pricing === null) input.pricing = null
   else if (record.pricing !== undefined) {
     const pricing = parseModelPricing(record.pricing)
@@ -544,6 +561,7 @@ export async function upsertModelRoute(id: string, input: ModelRouteInput, file 
     if (current.apiKeyHeader) legacy.apiKeyHeader = current.apiKeyHeader
     if (current.contextWindow !== undefined) legacy.contextWindow = current.contextWindow
     if (current.vision !== undefined) legacy.vision = current.vision
+    if (current.maxImages !== undefined) legacy.maxImages = current.maxImages
     routes.push(legacy)
   }
   const index = routes.findIndex(route => route.id === id)
@@ -576,6 +594,8 @@ export async function upsertModelRoute(id: string, input: ModelRouteInput, file 
   }
   if (input.contextWindow !== undefined) next.contextWindow = input.contextWindow
   if (input.vision !== undefined) next.vision = input.vision
+  if (input.maxImages === null) delete next.maxImages
+  else if (input.maxImages !== undefined) next.maxImages = input.maxImages
   if (input.pricing === null) delete next.pricing
   else if (input.pricing) next.pricing = input.pricing
   if (input.auth) next.auth = input.auth
@@ -633,6 +653,8 @@ export function effectiveLlmConfig(
   if (contextWindow !== undefined) result.contextWindow = contextWindow
   const capabilities = modelCapabilities(model, protocol, profile?.reasoningEfforts, profile ? profile.vision : config.vision)
   result.vision = capabilities.vision
+  const maxImages = profile?.maxImages ?? config.maxImages
+  if (maxImages !== undefined) result.maxImages = maxImages
   const supported = capabilities.reasoningEfforts
   const defaultEffort = profile?.reasoningEffort ?? config.reasoningEffort
   if (defaultEffort && supported.includes(defaultEffort)) result.reasoningEffort = defaultEffort
@@ -738,6 +760,7 @@ function normalizeConfig(value: unknown): SystemConfig {
   }
   if (isContextWindow(record.contextWindow)) config.contextWindow = record.contextWindow
   if (typeof record.vision === 'boolean') config.vision = record.vision
+  if (isImageBudget(record.maxImages)) config.maxImages = record.maxImages
   if (record.reasoningEffort === 'low' || record.reasoningEffort === 'medium' || record.reasoningEffort === 'high') {
     config.reasoningEffort = record.reasoningEffort
   }
@@ -762,6 +785,8 @@ function normalizeConfig(value: unknown): SystemConfig {
       if (isContextWindow(contextWindow)) model.contextWindow = contextWindow
       const vision = fieldOf(entry, 'vision')
       if (typeof vision === 'boolean') model.vision = vision
+      const maxImages = fieldOf(entry, 'maxImages')
+      if (isImageBudget(maxImages)) model.maxImages = maxImages
       const pricing = parseModelPricing(fieldOf(entry, 'pricing'))
       if (pricing) model.pricing = pricing
       if (fieldOf(entry, 'auth') === 'chatgpt') model.auth = 'chatgpt'
@@ -794,6 +819,10 @@ function normalizeConfig(value: unknown): SystemConfig {
       .filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))
   }
   return config
+}
+
+function isImageBudget(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
 function isContextWindow(value: unknown): value is number {
