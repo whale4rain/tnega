@@ -85,15 +85,22 @@ export class ScreenshotBudget {
 
   constructor(readonly max: number | undefined, private readonly session?: () => ScreenshotSource | undefined) {}
 
-  /** Whether one more screenshot fits. */
-  async allows(): Promise<boolean> {
-    if (this.max === undefined) return true
-    await this.seed()
-    return this.taken < this.max
+  /**
+   * Hold a slot for one screenshot, or say none is left. Checking and holding
+   * are one step, so calls running side by side cannot overrun the budget.
+   */
+  async reserve(): Promise<boolean> {
+    if (this.max !== undefined) {
+      await this.seed()
+      if (this.taken >= this.max) return false
+    }
+    this.taken += 1
+    return true
   }
 
-  spend(): void {
-    this.taken += 1
+  /** Give back a slot whose screenshot never came. */
+  release(): void {
+    this.taken = Math.max(0, this.taken - 1)
   }
 
   async used(): Promise<number> {
@@ -326,11 +333,6 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
 
   const budget = new ScreenshotBudget(config.maxScreenshots, config.session)
   const spentNote = async () => `${SCREENSHOT_SPENT} (${await budget.used()} of ${budget.max} this session). Read the window with computer_read_tree instead.`
-  /** A screenshot result, counted against the budget. */
-  const shot = (lead: string, taken: ComputerScreenshot): unknown => {
-    budget.spend()
-    return shotResult(lead, taken)
-  }
   const sees = async (): Promise<boolean> => (await config.vision?.()) ?? true
   /** What a text-only model gets instead of a screenshot. */
   const blind = async (windowId: number, options: ToolExecuteOptions): Promise<string> => {
@@ -341,22 +343,34 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
   /** Run a tool that exists to look, or refuse once the budget is spent. */
   const look = async (windowId: number, options: ToolExecuteOptions, take: () => Promise<unknown>): Promise<unknown> => {
     if (!await sees()) return blind(windowId, options)
-    if (!await budget.allows()) throw new Error(await spentNote())
-    const result = await take()
-    budget.spend()
-    return result
+    if (!await budget.reserve()) throw new Error(await spentNote())
+    try {
+      return await take()
+    } catch (error) {
+      budget.release()
+      throw error
+    }
   }
 
   const act = async (action: ComputerAction, options: ToolExecuteOptions): Promise<unknown> => {
     const result = await computer.act(action, signalOf(options))
     const windowId = result.windowId
     if (windowId === undefined) return result.note
-    if (!await sees()) return `${result.note}\n${await blind(windowId, options)}`
-    if (!await budget.allows()) return `${result.note}\nNo screenshot: ${await spentNote()}`
-    await sleep(settleMs, options.signal)
+    // The action has happened: from here on, failing to look must not read as failing to act.
+    let reserved: boolean
     try {
-      return shot(result.note, await computer.screenshot(windowId, signalOf(options)))
+      if (!await sees()) return `${result.note}\n${await blind(windowId, options)}`
+      reserved = await budget.reserve()
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      return `${result.note}\nNo screenshot: could not check whether to take one (${reason}). Call computer_read_tree before acting again.`
+    }
+    if (!reserved) return `${result.note}\nNo screenshot: ${await spentNote()}`
+    try {
+      await sleep(settleMs, options.signal)
+      return shotResult(result.note, await computer.screenshot(windowId, signalOf(options)))
+    } catch (error) {
+      budget.release()
       if (options.signal?.aborted) throw error
       if (error instanceof ComputerError && error.code === 'COMPUTER_NO_WINDOW') {
         return action.op === 'launch'
