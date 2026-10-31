@@ -97,7 +97,8 @@ export async function runAgentCommand(
     ?? profileBaseUrl
     ?? envConfig.baseUrl
     ?? systemConfig.baseUrl
-  const route = effectiveLlmConfig(systemConfig, process.env, options.model)
+  // The route of the model this run uses, whichever of flag, profile, env or config named it.
+  const route = effectiveLlmConfig(systemConfig, process.env, typeof model === 'string' && model ? model : undefined)
   const adapter = createLlmAdapter({
     apiKey,
     ...(route.maxImages !== undefined ? { maxImages: route.maxImages } : {}),
