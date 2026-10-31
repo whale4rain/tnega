@@ -46,7 +46,7 @@ describe('ComputerService.act', () => {
     const events: ComputerActionEvent[] = []
     ctx.on('computer/pre-action', (event: ComputerPreActionEvent, next: () => Promise<unknown>) => {
       seen.push({ ...event })
-      if (event.action.op === 'click') event.action = { ...event.action, x: 1, y: 1 }
+      if (event.action.op === 'click') event.action = { op: 'click', windowId: event.action.windowId, x: 1, y: 1 }
       return next()
     })
     ctx.on('computer/action', (event: ComputerActionEvent) => { events.push(event) })
@@ -96,6 +96,25 @@ describe('ComputerService.act', () => {
     })
     expect(await computer.act({ op: 'click', windowId: 7, x: 0, y: 0 })).toEqual({ note: 'done', windowId: 7 })
     expect(outcomes).toEqual([true])
+  })
+
+  it('refuses a policy rewrite that aims at both an element and a point, or at neither', async () => {
+    const ctx = new Context()
+    const computer = new FakeComputer(ctx)
+    // Policy rewrites (and tool input) are untyped at run time; act() checks the aim again.
+    ctx.on('computer/pre-action', (event: ComputerPreActionEvent, next: () => Promise<unknown>) => {
+      if (event.action.op === 'click') Object.assign(event.action, { x: 1, y: 1 })
+      if (event.action.op === 'scroll') { Reflect.deleteProperty(event.action, 'x'); Reflect.deleteProperty(event.action, 'y') }
+      return next()
+    })
+    await expect(computer.act({ op: 'click', windowId: 7, element: 's1:2' })).rejects.toThrow(/not both/)
+    await expect(computer.act({ op: 'scroll', windowId: 7, x: 1, y: 1, direction: 'down' })).rejects.toThrow(/element or both x and y/)
+    expect(computer.performed).toEqual([])
+  })
+
+  it('has no element tree unless the Provider brings one', async () => {
+    const computer = new FakeComputer(new Context())
+    await expect(computer.tree(7)).rejects.toMatchObject({ code: 'COMPUTER_UNAVAILABLE' })
   })
 
   it('launches without a target window', async () => {

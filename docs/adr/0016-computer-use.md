@@ -17,6 +17,12 @@
 - **图片不进请求体**：截图默认上传到 `@tnega/llm` 的 Files API 通道，之后只用 file id 引用（chat/completions 用 `{type:"file"}`，responses 用 `input_image.file_id`，anthropic 用 `source.type:"file"` + `files-api-2025-04-14` beta）。实测同一张 1024 截图：上传 402 KiB 一次，请求体从 400 KiB 级降到 **138 字节**；按 SHA-256 去重后的 file id 跨轮稳定，图片窗口滑动再也不会因为字节改变而換掉前缀。
 - **截图默认 1024 长边**：在 3200×1904 窗口上，1568 为 724 KiB / 约 950 图片 token，1024 为 402 KiB / 约 400 token；密集页面（arXiv 摘要页）在 1024 仍能读摘要、分类与 arXiv 编号，768 边缘（小字粘连、字段标签缺字），512 会丢信息（模型在 512 上把地址栏数字读成别的编号）。需要更细时用 `computer_zoom`，而不是把整图放大。
 
+## 元素通道（2026-10-31）
+
+像素点击是驱动所说的“盲落”，只有按元素操作驱动才能确认效果。`ctx.computer.tree()` 读窗口的无障碍树（只要树、不要图），工具 `computer_read_tree` 把它作为文本交给模型；点击、滚动、输入、单键都可以带 `element_token`（`<snapshot>:N`）。点击与滚动的元素和像素互斥，`act()` 派发前检查。令牌过期报 `COMPUTER_STALE_ELEMENT`，不自动重读——窗口变了可能有原因，要让模型看到。
+
+已验证（Linux / Xvfb，Chromium，cua-driver 0.38.0）：12 个输入框按元素令牌逐个点击，页面自己的焦点读数 12/12 命中，全程 0 张截图；按元素输入文字落入目标框。deepseek-v4-flash 端到端任务“在 Field 9 输入 tnega 并报告焦点”用 6 次工具调用完成，全程用树和令牌，没有猜坐标。
+
 ## 授权
 
 - 设置里的 **Computer use** 默认关闭；关闭时工具不注册，模型看不到。
@@ -26,7 +32,7 @@
 ## 原因
 
 - cua-driver 已经解决了后台投递、DPI、截图与坐标换算、UIPI（提权窗口直接拒绝）等平台细节，并以 MCP 暴露，作为 Provider 最省；换成别的驱动只换这一个包。
-- 截图优先：DeepSeek V4 Flash 能读图并给出接近的坐标（实测 400×200 图上误差约 10 px），配合 `computer_zoom` 足以完成常见网页任务；V4 Pro 不接受图片，第一版不为它做文本树模式。
+- 截图优先，元素更准：DeepSeek V4 Flash 能读图并给出接近的坐标（实测 400×200 图上误差约 10 px），配合 `computer_zoom` 足以完成常见网页任务；V4 Pro 不接受图片，第一版不为它做文本树模式。
 
 ## 已验证（2026-10-30，Linux / Xvfb + openbox，Chromium，cua-driver 0.38.0，deepseek-v4-flash）
 

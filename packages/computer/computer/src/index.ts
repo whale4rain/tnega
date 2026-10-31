@@ -8,6 +8,8 @@ import {
   type ComputerPreActionEvent,
   type ComputerRegion,
   type ComputerScreenshot,
+  type ComputerTree,
+  type ComputerTreeOptions,
   type ComputerWindow,
 } from './types.js'
 
@@ -38,6 +40,30 @@ export function actionWindowId(action: ComputerAction): number | undefined {
 }
 
 /**
+ * Throws a `TypeError` unless a pointer action aims at exactly one of an
+ * element or a point. Typed callers cannot get this wrong; tool input and
+ * policy rewrites can.
+ */
+export function assertAim(action: ComputerAction): void {
+  const op = action.op
+  if (action.op === 'type' || action.op === 'key') {
+    if (action.element !== undefined && (typeof action.element !== 'string' || !action.element)) {
+      throw new TypeError(`${op}: element must be an element token`)
+    }
+    return
+  }
+  if (action.op !== 'click' && action.op !== 'scroll') return
+  const element = action.element !== undefined
+  const point = action.x !== undefined || action.y !== undefined
+  if (element && point) throw new TypeError(`${op}: give an element or a point, not both`)
+  if (element) {
+    if (typeof action.element !== 'string' || !action.element) throw new TypeError(`${op}: element must be an element token`)
+    return
+  }
+  if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) throw new TypeError(`${op}: give an element or both x and y`)
+}
+
+/**
  * Service Definition of the computer seam: the agent sees and uses the apps
  * on this machine. Owns `ctx.computer` and the `computer/*` event surface; a
  * Service Provider supplies the mechanism (a driver process), and the
@@ -49,9 +75,11 @@ export function actionWindowId(action: ComputerAction): number | undefined {
  *   window, dispatches `computer/pre-action` (waterfall: rewrite the action or
  *   set `deny`) and then `computer/action` for every outcome, so a Provider
  *   cannot bypass policy or auditing.
- * - **Looking is side-effect free.** `windows`, `screenshot` and `zoom` never
- *   send input.
- * - **Points are window pixels** of the latest screenshot of that window.
+ * - **Looking is side-effect free.** `windows`, `screenshot`, `zoom` and
+ *   `tree` never send input.
+ * - **Aim at an element or a point, never both.** Element tokens come from the
+ *   latest `tree` read of the window; points are window pixels of the latest
+ *   screenshot of that window.
  * - **Fail closed.** With no working driver every call throws
  *   `COMPUTER_UNAVAILABLE`; nothing falls back to another input path.
  */
@@ -69,6 +97,16 @@ export abstract class ComputerService extends Service {
   /** A sharper crop of a region of the window's latest screenshot. */
   abstract zoom(windowId: number, region: ComputerRegion, options?: ComputerCallOptions): Promise<ComputerScreenshot>
 
+  /**
+   * The window's accessibility tree, whose rows give element tokens for
+   * actions. A Provider without one fails with `COMPUTER_UNAVAILABLE`, and the
+   * caller falls back to screenshots and points.
+   */
+  async tree(windowId: number, options?: ComputerTreeOptions): Promise<ComputerTree> {
+    if (options?.signal?.aborted) throw new ComputerError('COMPUTER_ABORTED', 'computer call was cancelled')
+    throw new ComputerError('COMPUTER_UNAVAILABLE', `this computer cannot read the element tree of window ${windowId}; use screenshots and points`)
+  }
+
   /** Perform one action. Only called by {@link ComputerService.act}. */
   protected abstract runAction(action: ComputerAction, options: ComputerCallOptions): Promise<ComputerActionResult>
 
@@ -85,8 +123,10 @@ export abstract class ComputerService extends Service {
    *
    * @throws ComputerError `COMPUTER_NO_WINDOW` when the target window is gone,
    *   `COMPUTER_DENIED` when policy refused; otherwise the Provider's failure.
+   * @throws TypeError when a click or scroll aims at both an element and a point, or neither.
    */
   async act(action: ComputerAction, options: ComputerCallOptions = {}): Promise<ComputerActionResult> {
+    assertAim(action)
     const startedAt = Date.now()
     let active = action
     let window: ComputerWindow | undefined
@@ -119,6 +159,7 @@ export abstract class ComputerService extends Service {
       if (actionWindowId(resolved.action) !== windowId) {
         throw new ComputerError('COMPUTER_DENIED', 'computer/pre-action may not move the action to another window')
       }
+      assertAim(resolved.action)
       active = resolved.action
       if (options.signal?.aborted) throw new ComputerError('COMPUTER_ABORTED', 'computer action was cancelled')
       result = await this.runAction(active, options)
