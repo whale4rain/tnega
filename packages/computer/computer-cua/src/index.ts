@@ -5,8 +5,11 @@ import {
   type ComputerAction,
   type ComputerActionResult,
   type ComputerCallOptions,
+  type ComputerEffect,
   type ComputerRegion,
   type ComputerScreenshot,
+  type ComputerTree,
+  type ComputerTreeOptions,
   type ComputerWindow,
 } from '@tnega/computer'
 import { DRIVER_INSTALL_HINT, connectDriver, findDriver, type DriverConnection, type DriverConnector, type DriverResult } from './driver.js'
@@ -79,9 +82,32 @@ export function backgroundUnconfirmed(result: DriverResult): boolean {
   return isRecord(escalation) && escalation.target === 'foreground'
 }
 
+const EFFECTS: readonly ComputerEffect[] = ['confirmed', 'unverifiable', 'suspected_noop', 'partial']
+
+function effectOf(result: DriverResult): ComputerEffect | undefined {
+  const effect = result.structured.effect
+  return EFFECTS.find(known => known === effect)
+}
+
+/** Whether the driver refused an element token because a newer read replaced its snapshot. */
+export function staleElement(result: DriverResult): boolean {
+  if (!result.isError) return false
+  const refusal = isRecord(result.structured.refusal) ? result.structured.refusal : {}
+  return result.structured.code === 'stale_element_token' || refusal.code === 'stale_element_token'
+}
+
+/** Whether an action addresses an element, which needs no prior screenshot. */
+function aimsAtElement(action: ComputerAction): boolean {
+  return 'element' in action && typeof action.element === 'string'
+}
+
 function failure(result: DriverResult, what: string): ComputerError {
   const code = typeof result.structured.code === 'string' ? ` (${result.structured.code})` : ''
   return new ComputerError('COMPUTER_FAILED', `${what} failed${code}: ${result.text || 'no detail from the driver'}`)
+}
+
+function aim(action: { element?: string | undefined; x?: number | undefined; y?: number | undefined }): Record<string, unknown> {
+  return action.element ? { element_token: action.element } : { x: action.x, y: action.y }
 }
 
 /** The driver tool and arguments for one action, without the delivery mode. */
@@ -90,24 +116,25 @@ export function driverCall(action: ComputerAction, pid: number): { tool: string;
     case 'click':
       return {
         tool: 'click',
-        args: { pid, window_id: action.windowId, x: action.x, y: action.y, ...(action.button ? { button: action.button } : {}), ...(action.count ? { count: action.count } : {}) },
+        args: { pid, window_id: action.windowId, ...aim(action), ...(action.button ? { button: action.button } : {}), ...(action.count ? { count: action.count } : {}) },
       }
     case 'type':
-      return { tool: 'type_text', args: { pid, window_id: action.windowId, text: action.text } }
+      return { tool: 'type_text', args: { pid, window_id: action.windowId, ...(action.element ? { element_token: action.element } : {}), text: action.text } }
     case 'key': {
       const keys = action.keys.map(key => key.trim().toLowerCase()).filter(Boolean)
       const last = keys.at(-1)
       if (!last) throw new ComputerError('COMPUTER_FAILED', 'no key to press')
       const modifiers = keys.slice(0, -1)
       if (modifiers.some(key => !MODIFIERS.has(key))) throw new ComputerError('COMPUTER_FAILED', `only the last key of a chord may be a non-modifier: ${keys.join('+')}`)
+      if (modifiers.length && action.element) throw new ComputerError('COMPUTER_FAILED', 'a chord goes to the focused window; click the element first, then press the chord without element_token')
       return modifiers.length
         ? { tool: 'hotkey', args: { pid, window_id: action.windowId, keys } }
-        : { tool: 'press_key', args: { pid, window_id: action.windowId, key: last } }
+        : { tool: 'press_key', args: { pid, window_id: action.windowId, ...(action.element ? { element_token: action.element } : {}), key: last } }
     }
     case 'scroll':
       return {
         tool: 'scroll',
-        args: { pid, window_id: action.windowId, x: action.x, y: action.y, direction: action.direction, ...(action.amount ? { amount: action.amount } : {}) },
+        args: { pid, window_id: action.windowId, ...aim(action), direction: action.direction, ...(action.amount ? { amount: action.amount } : {}) },
       }
     case 'drag':
       return {
@@ -219,6 +246,33 @@ export class CuaComputer extends ComputerService {
     }
   }
 
+  override async tree(windowId: number, options: ComputerTreeOptions = {}): Promise<ComputerTree> {
+    const window = await this.target(windowId, options)
+    const result = await this.call('get_window_state', {
+      pid: window.pid,
+      window_id: window.id,
+      // Tree only: the screenshot is its own call, and a tree read is the cheap one.
+      include_screenshot: false,
+      ...(options.query ? { query: options.query } : {}),
+      ...(options.since ? { since: options.since } : {}),
+      ...(options.maxElements ? { max_elements: options.maxElements } : {}),
+      ...(options.maxDepth ? { max_depth: options.maxDepth } : {}),
+    }, options)
+    const s = result.structured
+    if (result.isError || typeof s.snapshot_id !== 'string') throw failure(result, `reading the element tree of window ${window.id}`)
+    return {
+      windowId: window.id,
+      app: window.app,
+      title: typeof s.window_title === 'string' ? s.window_title : window.title,
+      snapshotId: s.snapshot_id,
+      markdown: typeof s.tree_markdown === 'string' ? s.tree_markdown : result.text,
+      total: num(s.total_element_count, num(s.element_count)),
+      returned: num(s.returned_element_count, num(s.element_count)),
+      truncated: s.truncated === true,
+      ...(typeof s.since_status === 'string' ? { sinceStatus: s.since_status } : {}),
+    }
+  }
+
   async zoom(windowId: number, region: ComputerRegion, options?: ComputerCallOptions): Promise<ComputerScreenshot> {
     const window = await this.target(windowId, options)
     if (!this._captured.has(window.id)) await this.capture(window, options)
@@ -244,17 +298,21 @@ export class CuaComputer extends ComputerService {
       return { note: result.text || `Launched ${action.app}`, ...(launched !== undefined ? { windowId: launched } : {}) }
     }
     const window = await this.target(action.windowId, options)
-    if (!this._captured.has(window.id)) await this.capture(window, options)
+    // The driver refuses pixel input on a window it never captured; an element needs no picture.
+    if (!aimsAtElement(action) && !this._captured.has(window.id)) await this.capture(window, options)
     const { tool, args } = driverCall(action, window.pid)
     let result = await this.call(tool, args, options)
     // Only a refusal means nothing was delivered. An unconfirmed result may
     // already have landed, and resending it is how one keystroke becomes two.
     if (backgroundRefused(result)) result = await this.call(tool, { ...args, delivery_mode: 'foreground' }, options)
+    // Not retried with a fresh read: the window may have changed for a reason the caller must see.
+    if (staleElement(result)) throw new ComputerError('COMPUTER_STALE_ELEMENT', `element ${String(args.element_token)} is from an older read of window ${window.id}; read the element tree again and use a new token`)
     if (result.isError) throw failure(result, `${action.op} in window ${window.id}`)
     const note = backgroundUnconfirmed(result)
       ? `${result.text}\n(The driver sent this in the background but could not confirm it took effect. Check the screenshot before repeating it.)`
       : result.text
-    return { note, windowId: window.id }
+    const effect = effectOf(result)
+    return { note, windowId: window.id, ...(effect ? { effect } : {}) }
   }
 }
 

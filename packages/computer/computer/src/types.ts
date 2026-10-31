@@ -1,8 +1,9 @@
 /**
  * Vocabulary of the computer seam. The agent works on one top-level window at
- * a time; points are pixels of that window's latest screenshot, never screen
- * coordinates, so display scaling and window position stay the Provider's
- * business.
+ * a time. It aims either at an element of the window's latest element tree
+ * (preferred: the driver can confirm it) or at a point in pixels of the
+ * window's latest screenshot, never screen coordinates, so display scaling and
+ * window position stay the Provider's business.
  */
 
 export interface ComputerPoint {
@@ -10,13 +11,21 @@ export interface ComputerPoint {
   y: number
 }
 
+/**
+ * Where a pointer action lands: an element token from {@link ComputerTree}
+ * (`<snapshotId>:<index>`), or a point of the latest screenshot. Never both.
+ */
+export type ComputerAim =
+  | { element: string; x?: undefined; y?: undefined }
+  | { element?: undefined; x: number; y: number }
+
 export type ComputerAction =
-  | { op: 'click'; windowId: number; x: number; y: number; button?: 'left' | 'right' | 'middle'; count?: number }
-  /** Types into whatever has the keyboard focus in the window. */
-  | { op: 'type'; windowId: number; text: string }
-  /** One key (`['enter']`) or a chord (`['ctrl', 'l']`), modifiers first. */
-  | { op: 'key'; windowId: number; keys: string[] }
-  | { op: 'scroll'; windowId: number; x: number; y: number; direction: 'up' | 'down' | 'left' | 'right'; amount?: number }
+  | ({ op: 'click'; windowId: number; button?: 'left' | 'right' | 'middle'; count?: number } & ComputerAim)
+  /** Types into `element`, or into whatever has the keyboard focus in the window. */
+  | { op: 'type'; windowId: number; text: string; element?: string }
+  /** One key (`['enter']`) or a chord (`['ctrl', 'l']`), modifiers first. A single key may target `element`. */
+  | { op: 'key'; windowId: number; keys: string[]; element?: string }
+  | ({ op: 'scroll'; windowId: number; direction: 'up' | 'down' | 'left' | 'right'; amount?: number } & ComputerAim)
   | { op: 'drag'; windowId: number; from: ComputerPoint; to: ComputerPoint }
   /** Start an app by name or command, optionally opening URLs in it. */
   | { op: 'launch'; app: string; urls?: string[] }
@@ -52,11 +61,45 @@ export interface ComputerRegion {
   y2: number
 }
 
+/** What the driver could tell about an action's effect. Only `confirmed` means it checked. */
+export type ComputerEffect = 'confirmed' | 'unverifiable' | 'suspected_noop' | 'partial'
+
 export interface ComputerActionResult {
   /** Short human-readable note from the driver, e.g. how the click was delivered. */
   note: string
   /** The window the action landed in; a launch reports the app's new window when it knows one. */
   windowId?: number
+  effect?: ComputerEffect
+}
+
+export interface ComputerTreeOptions extends ComputerCallOptions {
+  /** Keep only rows whose text contains this (case-insensitive), with their ancestors. */
+  query?: string
+  /** An earlier `snapshotId` of the same window: answer with what changed since. */
+  since?: string
+  maxElements?: number
+  maxDepth?: number
+}
+
+/**
+ * One read of a window's accessibility tree. Rows tagged `[N]` can be acted on
+ * with the element token `<snapshotId>:N`; a newer read of the window makes
+ * older tokens stale.
+ */
+export interface ComputerTree {
+  windowId: number
+  app: string
+  title: string
+  snapshotId: string
+  /** Indented rows as the driver renders them. */
+  markdown: string
+  /** Elements in the whole window, and how many this read returned. */
+  total: number
+  returned: number
+  /** The walk stopped at its budget; narrow with `query` or raise `maxElements`. */
+  truncated: boolean
+  /** With `since`: how the driver answered, e.g. `diff` or why it fell back to a full read. */
+  sinceStatus?: string
 }
 
 export interface ComputerCallOptions {
@@ -89,6 +132,8 @@ export type ComputerErrorCode =
   /** The window id is not an open window any more. */
   | 'COMPUTER_NO_WINDOW'
   | 'COMPUTER_ABORTED'
+  /** The element token is from an older read; read the tree again. */
+  | 'COMPUTER_STALE_ELEMENT'
   | 'COMPUTER_FAILED'
 
 export class ComputerError extends Error {

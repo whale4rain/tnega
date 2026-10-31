@@ -7,6 +7,7 @@ import {
   type ComputerAction,
   type ComputerActionResult,
   type ComputerScreenshot,
+  type ComputerTree,
   type ComputerWindow,
 } from '@tnega/computer'
 import { tools, type ToolResult } from '@tnega/tools'
@@ -36,6 +37,10 @@ class FakeComputer extends ComputerService {
 
   async zoom(windowId: number): Promise<ComputerScreenshot> {
     return this.screenshot(windowId)
+  }
+
+  override async tree(windowId: number): Promise<ComputerTree> {
+    return { windowId, app: 'chrome.exe', title: 'Example', snapshotId: 's00000002', markdown: '- [5] button "Save"\n', total: 40, returned: 3, truncated: true }
   }
 
   protected async runAction(action: ComputerAction): Promise<ComputerActionResult> {
@@ -86,6 +91,39 @@ describe('tool-computer', () => {
     expect(result.ok).toBe(true)
     expect(String(result.output)).toMatch(/click done\nThe action was done, but the screenshot after it failed \(capture timed out\)/)
     expect(computer.performed).toHaveLength(1)
+  })
+
+  it('reads the element tree as text only, with the token to use', async () => {
+    const { run } = await setup()
+    const result = await run('computer_read_tree', { window_id: 1, query: 'Save' })
+    expect(result.ok).toBe(true)
+    expect(result.attachments).toBeUndefined()
+    expect(String(result.output)).toMatch(/snapshot s00000002, 3 of 40 elements/)
+    expect(String(result.output)).toMatch(/element_token "s00000002:N"/)
+    expect(String(result.output)).toMatch(/stopped at its budget/)
+    expect(String(result.output)).toMatch(/\[5\] button "Save"$/)
+  })
+
+  it('warns not to act on rows a diff read marks as removed', async () => {
+    const { computer, run } = await setup()
+    const tree = computer.tree.bind(computer)
+    computer.tree = async windowId => ({ ...await tree(windowId), sinceStatus: 'diff' })
+    const result = await run('computer_read_tree', { window_id: 1, since: 's00000001' })
+    expect(String(result.output)).toMatch(/Rows marked - are gone .* never act on them/)
+    expect(String(result.output)).toMatch(/"reindexed:" line/)
+  })
+
+  it('aims at an element or a point, never both', async () => {
+    const { computer, run } = await setup()
+    await run('computer_click', { window_id: 1, element_token: 's00000002:5' })
+    await run('computer_type', { window_id: 1, element_token: 's00000002:5', text: 'hi' })
+    expect(computer.performed).toEqual([
+      { op: 'click', windowId: 1, element: 's00000002:5' },
+      { op: 'type', windowId: 1, element: 's00000002:5', text: 'hi' },
+    ])
+    expect((await run('computer_click', { window_id: 1, element_token: 's00000002:5', x: 1, y: 2 })).ok).toBe(false)
+    expect((await run('computer_scroll', { window_id: 1, direction: 'down' })).ok).toBe(false)
+    expect(computer.performed).toHaveLength(2)
   })
 
   it('lists windows with their ids', async () => {

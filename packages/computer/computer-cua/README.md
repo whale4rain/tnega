@@ -5,6 +5,7 @@
 - 驱动在第一次调用时启动，随插件 dispose 停止；启动失败不缓存，装好驱动后下一次调用即可用。
 - 查找顺序：配置 `driverPath` → `TNEGA_CUA_DRIVER` → PATH → 安装器默认目录（Windows `%LOCALAPPDATA%\Programs\Cua\cua-driver\bin`，其他 `~/.local/bin`）。找不到时抛 `COMPUTER_UNAVAILABLE` 并附安装命令。
 - 默认后台投递；驱动在送出前就拒绝该事件类型（`background_unavailable`）时，以前台模式重试一次。驱动投递了却无法回读、自报效果不可验证时（`effect: unverifiable` + `escalation.target: foreground`）**不重发**：第一次可能已经生效，重发就是把一个字符打成两个；结果说明里提示先看截图再决定是否重做。对从未截图的窗口，先截一次图再发像素输入（驱动要求）。
+- 元素通道：`tree` 用 `get_window_state` 且 `include_screenshot: false`（只读树，便宜），原样转发 `query` / `since` / `max_elements` / `max_depth`。带元素的动作发 `element_token`、不发 `x/y`，也不需要先截图。只截图的读取（`include_accessibility_tree: false`）不会让令牌失效；新的树读取会。令牌过期时驱动拒绝（`stale_element_token`），Provider 报 `COMPUTER_STALE_ELEMENT` 并提示重读，不自动重试。
 - 启动驱动时设置 `CUA_DRIVER_RS_TELEMETRY_ENABLED=false`，关掉这一进程的遥测（不改用户保存的选择）。
 - 截图长边默认 1024（可配 `maxImageDimension`）：3200×1904 窗口下 1568 是 724 KiB / 约 950 图片 token，1024 是 402 KiB / 约 400 token，而摘要页级别的密集文字在 1024 仍可读。小字靠 `computer_zoom` 而不是放大整图。
 - `launch` 动作：应用名里没有路径分隔符时用 `name`（+ `urls`，URL 由驱动交给系统默认浏览器）；给了带路径的可执行文件时改用 `path`，并把 URL 当 `additional_arguments` 传给该应用，所以能指定用 Chrome 而不是默认浏览器打开。

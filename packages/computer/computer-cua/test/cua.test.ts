@@ -58,6 +58,61 @@ async function mount(answer: (name: string, args: Record<string, unknown>) => Dr
 
 const IMAGE = { mediaType: 'image/png', data: 'cG5n' }
 
+const TREE = {
+  snapshot_id: 's00000001',
+  tree_markdown: '- [0] frame "Form"\n  - [31] entry "Field 3" [actions=[activate]]\n',
+  total_element_count: 74,
+  returned_element_count: 8,
+  truncated: false,
+  window_title: 'Form',
+}
+
+describe('computer-cua elements', () => {
+  it('reads a tree without a screenshot and forwards query, since and budgets verbatim', async () => {
+    const { driver, computer } = await mount(name => name === 'list_windows' ? ok(WINDOWS) : ok({ ...TREE, since_status: 'diff' }))
+    const tree = await computer.tree(1, { query: 'Field', since: 's00000000', maxElements: 500, maxDepth: 12 })
+    expect(tree).toEqual({
+      windowId: 1, app: 'Chromium-browser', title: 'Form', snapshotId: 's00000001',
+      markdown: TREE.tree_markdown, total: 74, returned: 8, truncated: false, sinceStatus: 'diff',
+    })
+    expect(driver.calls.at(-1)).toEqual(['get_window_state', {
+      pid: 10, window_id: 1, include_screenshot: false, query: 'Field', since: 's00000000', max_elements: 500, max_depth: 12,
+    }])
+  })
+
+  it('acts on an element by token, with no screenshot first and no x or y', async () => {
+    const { driver, computer } = await mount(name => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      return ok({ effect: 'confirmed' }, { text: 'Clicked element [31]' })
+    })
+    const result = await computer.act({ op: 'click', windowId: 1, element: 's00000001:31' })
+    expect(result).toEqual({ note: 'Clicked element [31]', windowId: 1, effect: 'confirmed' })
+    await computer.act({ op: 'type', windowId: 1, element: 's00000001:31', text: 'hi' })
+    expect(driver.calls.filter(([name]) => name !== 'list_windows')).toEqual([
+      ['click', { pid: 10, window_id: 1, element_token: 's00000001:31' }],
+      ['type_text', { pid: 10, window_id: 1, element_token: 's00000001:31', text: 'hi' }],
+    ])
+  })
+
+  it('reports a stale token with a hint to read the tree again, without retrying', async () => {
+    const { driver, computer } = await mount(name => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      return { isError: true, text: 'element_token is stale', structured: { status: 'refused', refusal: { code: 'stale_element_token' } } }
+    })
+    await expect(computer.act({ op: 'click', windowId: 1, element: 's00000001:31' })).rejects.toMatchObject({
+      code: 'COMPUTER_STALE_ELEMENT',
+      message: expect.stringMatching(/read the element tree again/),
+    })
+    expect(driver.calls.filter(([name]) => name === 'click')).toHaveLength(1)
+  })
+
+  it('maps element forms of key and scroll, and refuses a chord aimed at an element', () => {
+    expect(driverCall({ op: 'key', windowId: 1, keys: ['enter'], element: 's1:2' }, 10)).toEqual({ tool: 'press_key', args: { pid: 10, window_id: 1, element_token: 's1:2', key: 'enter' } })
+    expect(driverCall({ op: 'scroll', windowId: 1, element: 's1:2', direction: 'down' }, 10)).toEqual({ tool: 'scroll', args: { pid: 10, window_id: 1, element_token: 's1:2', direction: 'down' } })
+    expect(() => driverCall({ op: 'key', windowId: 1, keys: ['ctrl', 'a'], element: 's1:2' }, 10)).toThrow(/click the element first/)
+  })
+})
+
 describe('computer-cua', () => {
   it('lists windows front-most first and hides the driver\'s own overlay', async () => {
     const { computer } = await mount(() => ok(WINDOWS))
