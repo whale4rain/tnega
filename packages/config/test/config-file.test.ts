@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { availableModels, ModelRouteError, parseModelRouteInput, parseSandboxConfig, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
+import { availableModels, effectiveLlmConfig, ModelRouteError, parseModelRouteInput, parseSandboxConfig, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
 
 const dirs: string[] = []
 
@@ -93,6 +93,31 @@ describe('chat model routes', () => {
       ['pinned', ['high']],
       ['plain', []],
     ])
+  })
+
+  it('bounds the images a request carries: a route\'s own budget, else the top-level one', async () => {
+    const file = await configFile(JSON.stringify({
+      maxImages: 2,
+      models: [
+        { id: 'flash', model: 'deepseek-v4-flash', maxImages: 1 },
+        { id: 'sonnet', model: 'claude-sonnet-5-5' },
+        { id: 'broken', model: 'gpt-5', maxImages: -3 },
+      ],
+    }))
+    const config = await readSystemConfig(file)
+    expect(config.maxImages).toBe(2)
+    expect(config.models?.find(route => route.id === 'broken')?.maxImages).toBeUndefined()
+    expect(effectiveLlmConfig(config, {}, 'flash').maxImages).toBe(1)
+    expect(effectiveLlmConfig(config, {}, 'sonnet').maxImages).toBe(2)
+    // A malformed route budget falls back to the top-level one rather than failing the read.
+    expect(effectiveLlmConfig(config, {}, 'broken').maxImages).toBe(2)
+    expect(effectiveLlmConfig({}, {}).maxImages).toBeUndefined()
+
+    await upsertModelRoute('sonnet', parseModelRouteInput({ model: 'claude-sonnet-5-5', maxImages: 0 }), file)
+    expect(effectiveLlmConfig(await readSystemConfig(file), {}, 'sonnet').maxImages).toBe(0)
+    await upsertModelRoute('sonnet', parseModelRouteInput({ model: 'claude-sonnet-5-5', maxImages: null }), file)
+    expect(effectiveLlmConfig(await readSystemConfig(file), {}, 'sonnet').maxImages).toBe(2)
+    expect(() => parseModelRouteInput({ model: 'x', maxImages: 1.5 })).toThrow(/maxImages/)
   })
 
   it('registers several models, keeps a saved key when the form leaves it blank, and removes one', async () => {

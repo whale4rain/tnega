@@ -100,12 +100,14 @@ export function adapterFromConfig(
     temperature?: number
     reasoningEffort?: 'low' | 'medium' | 'high'
     vision?: boolean
+    maxImages?: number
   } = {
     apiKey,
     baseUrl: effective.baseUrl,
     model: effective.model,
     vision: effective.vision,
   }
+  if (effective.maxImages !== undefined) options.maxImages = effective.maxImages
   if (effective.protocol) options.protocol = effective.protocol
   if (effective.apiKeyHeader) options.apiKeyHeader = effective.apiKeyHeader
   if (effective.temperature !== undefined) options.temperature = effective.temperature
@@ -305,6 +307,7 @@ export function compactionAdapter(effective: EffectiveLlmConfig, apiKey: string)
     baseUrl: effective.baseUrl,
     model: effective.model,
     ...(effective.protocol ? { protocol: effective.protocol } : {}),
+    ...(effective.maxImages !== undefined ? { maxImages: effective.maxImages } : {}),
     // A thinking model bills its reasoning against this cap, so the budget has
     // to cover the reasoning *plus* the summary it is the point of asking for.
     maxTokens: 8192,
