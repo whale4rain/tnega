@@ -182,4 +182,67 @@ describe('image fallback', () => {
     const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0, filesApi: 'off' })
     await expect(adapter.complete(conversation, [], {})).rejects.toThrow()
   })
+
+  it('does not take vision away because one image was refused', async () => {
+    // The provider's own wording for an upload it cannot decode; the model
+    // itself reads images fine, so this must surface instead of going text-only.
+    const detail = '.messages[0].image[0]: You have uploaded an unsupported image. Please make sure your image is valid and has one of the following formats: webp, png, jpeg, and gif.'
+    const bodies: string[] = []
+    const fetchMock = vi.fn(async (_url: unknown, init: RequestInit) => {
+      bodies.push(String(init.body))
+      return new Response(JSON.stringify({ error: { message: detail } }), { status: 400 })
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0, filesApi: 'off' })
+
+    // The provider's wording travels in the error's detail, not its message.
+    await expect(adapter.complete(conversation, [], {})).rejects.toMatchObject({
+      status: 400,
+      detail: expect.stringContaining('unsupported image') as unknown as string,
+    })
+    // One attempt, still carrying the image: no silent downgrade.
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]).toContain('image_url')
+  })
+
+  it('treats an oversized or unowned image as a problem with that image', async () => {
+    for (const detail of [
+      'image dimensions exceed the maximum allowed size for this model',
+      '.messages: the following file_ids do not exist or are not created under your account: file-api-1234',
+    ]) {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { message: detail } }), { status: 400 })) as FetchMock
+      vi.stubGlobal('fetch', fetchMock)
+      const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0, filesApi: 'off' })
+      await expect(adapter.complete(conversation, [], {})).rejects.toThrow()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('tries again with a different image once the route refused the last one', async () => {
+    const bodies: string[] = []
+    const fetchMock = vi.fn(async (_url: unknown, init: RequestInit) => {
+      const body = String(init.body)
+      bodies.push(body)
+      if (body.includes('image_url')) {
+        return new Response(JSON.stringify({ error: { message: 'This model does not support image input' } }), { status: 400 })
+      }
+      return jsonResponse({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] })
+    }) as FetchMock
+    vi.stubGlobal('fetch', fetchMock)
+    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0, filesApi: 'off' })
+
+    // Refused, then answered without images.
+    expect((await adapter.complete(conversation, [], {})).content).toBe('ok')
+    expect(bodies).toHaveLength(2)
+
+    // The same images do not pay for that lesson twice.
+    await adapter.complete(conversation, [], {})
+    expect(bodies).toHaveLength(3)
+
+    // A different image gets its own attempt, which is what lets a route that
+    // merely refused one upload recover.
+    await adapter.complete([{ role: 'user', content: 'another', attachments: [JPEG] }], [], {})
+    expect(bodies).toHaveLength(5)
+    expect(bodies[4]).not.toContain('image_url')
+  })
 })

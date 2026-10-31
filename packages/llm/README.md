@@ -11,8 +11,9 @@
 | `anthropicMessagesAdapter` | Anthropic Messages API | `minimax-m3` |
 
 `createLlmAdapter` 按模型表选择协议，未知模型回退 OpenAI。
-Responses 适配器接受可选 `fetch` 传输函数，由 composition 层接入宿主网络配置；
-未配置时使用原生 fetch，其余协议的默认行为不变。
+所有适配器都接受可选 `fetch` 传输函数，由 composition 层接入宿主网络配置。它覆盖这条路由
+发出的每一个请求——补全、Files API 上传、模型列表——所以一个请求不会被拆到两条通路上。
+未配置时使用原生 fetch。
 `modelCapabilities` 向配置与会话选择器提供协议及思考强度能力。支持的模型可设置
 `reasoningEffort`（low / medium / high）：OpenAI compatible 使用
 `reasoning_effort`，Anthropic Messages 使用 adaptive thinking 和
@@ -23,6 +24,16 @@ Responses 适配器接受可选 `fetch` 传输函数，由 composition 层接入
 `LLMAdapter.stream()` 返回归一化事件流：`message_start` / `message_delta` /
 `message_stop` / `toolcall_start` / `toolcall_end`。agent 层把 `message_delta` 落成
 durable `assistant/chunk`，并在 `llm/stream` waterfall 上让插件可改写最终请求。
+
+## 坏图不会让路由失明
+
+「这个模型不接收图片」与「这一张图不被接受」是两件事：上传被拒（`You have uploaded an
+unsupported image`）、file id 不属于本账号、图片尺寸超限，都只说明某一张图有问题。早先的判定只看
+错误文本里有没有 `image`，于是一张坏图会让该适配器**永久**切成纯文本。
+
+现在只认「模型自身不接受图片」的措辞（`does not support image/vision`、`image input is not
+supported` 等），并记住是被哪一组图片教会的：同一组图之后直接走文字注，**换了一组图会再试一次**，
+所以一次误判也能自己恢复。
 
 ## 图片：Files API
 
