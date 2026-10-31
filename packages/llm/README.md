@@ -24,6 +24,33 @@ Responses 适配器接受可选 `fetch` 传输函数，由 composition 层接入
 `message_stop` / `toolcall_start` / `toolcall_end`。agent 层把 `message_delta` 落成
 durable `assistant/chunk`，并在 `llm/stream` waterfall 上让插件可改写最终请求。
 
+## 图片：Files API
+
+图片默认**不进请求体**。`prepareWireImages` 把每张图的字节按 SHA-256 去重，
+上传到路由的 Files API 一次（OpenAI 形状 `POST <base>/files`，Anthropic 形状
+`POST <base>/v1/files` 并带 `files-api-2025-04-14` beta），之后只用 file id：
+
+| 协议 | 引用形状 |
+|---|---|
+| chat/completions | `{ "type": "file", "file_id": "…" }` |
+| responses | `{ "type": "input_image", "file_id": "…" }` |
+| anthropic messages | `{ "type": "image", "source": { "type": "file", "file_id": "…" } }` |
+
+- multipart 的 `purpose` 默认 `vision`，被拒后改用 `user_data` 并记住该端点的选择
+  （DeepSeek 只接受 `user_data`）。
+- file id 按内容缓存并跨轮稳定，所以重复截图不会重复上传，prompt 前缀也不会因为
+  图片字节重新编码而抖动。
+- 端点没有 Files API（404/405/501）时记下来，之后直接走内联 base64，不再每轮试一次。
+- `filesApi`: `auto`（默认）/ `off` / `required`（上传失败即报错，不回退内联）/ 
+  `openai` / `anthropic`（强制形状）。`filesUrl` / `filesPurpose` 可覆盖端点与 purpose。
+
+## Responses：服务端保存的对话
+
+`store` + `previous_response_id` 让服务端保存历史，后续只发新增的轮次。适配器对每条
+消息取指纹，只有当前历史是上次的严格前缀时才链式续写（压缩、编辑、图片窗口滑动都会
+让它退回全量重发）；响应里 `store` 为 false 的路由（DeepSeek 当前如此）自动关掉状态化，
+之后一律全量。`stateful: false` 可强制关闭。
+
 ## 超时与重试
 
 `timeoutMs` / `maxRetries` / `retryDelayMs` 配置。默认 120s、最多 2 次重试、指数退避。

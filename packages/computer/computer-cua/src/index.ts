@@ -16,11 +16,18 @@ export { DRIVER_INSTALL_HINT, connectDriver, driverCandidates, findDriver, readR
 export interface Config {
   /** Path to the `cua-driver` binary; else `TNEGA_CUA_DRIVER`, PATH, then the installer's folder. */
   driverPath?: string
-  /** Long edge of screenshots in pixels; the driver's own cap applies when unset. */
+  /**
+   * Long edge of screenshots in pixels. Defaults to 1024: on a 3200×1904 window
+   * that is 402 KiB and about 400 image tokens, still legible for abstract-size
+   * text. 1568 (the driver's cap) costs 724 KiB and ~950 tokens for no
+   * legibility the task needs; raise it when a task needs finer detail.
+   */
   maxImageDimension?: number
   /** Replace how the driver is started, for tests. */
   connect?: DriverConnector
 }
+
+const DEFAULT_MAX_IMAGE_DIMENSION = 1024
 
 const MODIFIERS = new Set(['ctrl', 'control', 'shift', 'alt', 'option', 'cmd', 'command', 'super', 'win', 'meta'])
 
@@ -190,7 +197,7 @@ export class CuaComputer extends ComputerService {
       pid: window.pid,
       window_id: window.id,
       include_accessibility_tree: false,
-      ...(this._config.maxImageDimension ? { max_image_dimension: this._config.maxImageDimension } : {}),
+      max_image_dimension: this._config.maxImageDimension ?? DEFAULT_MAX_IMAGE_DIMENSION,
     }, options)
     let result = await read()
     // An iconic window has nothing to render; restoring it is the only way to see

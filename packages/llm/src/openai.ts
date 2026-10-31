@@ -12,7 +12,6 @@ import { OpenAICompatibleError } from './errors.js'
 import { DEFAULT_DEEPSEEK_MODEL } from './models.js'
 import {
   imageDataUrl,
-  prepareImages,
   assertOk,
   combineSignal,
   DEFAULT_LLM_MAX_RETRIES,
@@ -30,6 +29,7 @@ import {
   stringifyArguments,
   withCallOverrides,
 } from './shared.js'
+import { prepareWireImages } from './files.js'
 import type { OpenAICompatibleConfig } from './types.js'
 
 interface OpenAICompatibleToolCall {
@@ -101,7 +101,7 @@ export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAda
       const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
       const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-        const request = buildRequest(
+        const request = await buildRequest(
           messages,
           tools,
           effective,
@@ -134,7 +134,7 @@ export function openaiCompatAdapter(config: OpenAICompatibleConfig = {}): LLMAda
       const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
       const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; ; attempt += 1) {
-        const request = buildRequest(
+        const request = await buildRequest(
           messages,
           tools,
           effective,
@@ -228,16 +228,17 @@ export async function listModels(config: OpenAICompatibleConfig = {}): Promise<s
     .filter(Boolean)
 }
 
-function buildRequest(
+async function buildRequest(
   messages: readonly ModelMessage[],
   tools: readonly ToolDefinition[],
   config: OpenAICompatibleConfig,
   signal: AbortSignal | undefined,
   stream = false,
-): RequestPayload {
+): Promise<RequestPayload> {
+  const wire = await prepareWireImages(messages, config)
   const body: Record<string, unknown> = {
     model: config.model ?? DEFAULT_DEEPSEEK_MODEL,
-    messages: toOpenAIMessages(prepareImages(messages, config)),
+    messages: toOpenAIMessages(wire.messages, wire.fileId),
   }
   if (stream) {
     body.stream = true
@@ -276,7 +277,7 @@ function authHeaders(apiKey: string | undefined): Record<string, string> {
  * Chat Completions only accepts images in user messages, so images a tool
  * returned follow its run of tool messages as one synthetic user message.
  */
-function toOpenAIMessages(messages: readonly ModelMessage[]): Record<string, unknown>[] {
+function toOpenAIMessages(messages: readonly ModelMessage[], fileId?: (attachment: ModelAttachment) => string | undefined): Record<string, unknown>[] {
   const result: Record<string, unknown>[] = []
   let pendingToolImages: ModelAttachment[] = []
   const flushToolImages = (): void => {
@@ -285,7 +286,7 @@ function toOpenAIMessages(messages: readonly ModelMessage[]): Record<string, unk
       role: 'user',
       content: [
         { type: 'text', text: 'Images returned by the tool calls above:' },
-        ...pendingToolImages.map(toOpenAIImage),
+        ...pendingToolImages.map(image => toOpenAIImage(image, fileId)),
       ],
     })
     pendingToolImages = []
@@ -296,7 +297,7 @@ function toOpenAIMessages(messages: readonly ModelMessage[]): Record<string, unk
   for (const [index, message] of messages.entries()) if (message.role === 'user') lastUser = index
   for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool') flushToolImages()
-    const payload = toOpenAIMessage(message)
+    const payload = toOpenAIMessage(message, fileId)
     if (message.role === 'assistant' && message.reasoning && index > lastUser) {
       payload.reasoning_content = message.reasoning
     }
@@ -309,17 +310,20 @@ function toOpenAIMessages(messages: readonly ModelMessage[]): Record<string, unk
   return result
 }
 
-function toOpenAIImage(attachment: ModelAttachment): Record<string, unknown> {
+function toOpenAIImage(attachment: ModelAttachment, fileId?: (attachment: ModelAttachment) => string | undefined): Record<string, unknown> {
+  const id = fileId?.(attachment)
+  // A Files API reference keeps the body small and the prompt prefix stable.
+  if (id) return { type: 'file', file_id: id }
   return { type: 'image_url', image_url: { url: imageDataUrl(attachment) } }
 }
 
-function toOpenAIMessage(message: ModelMessage): Record<string, unknown> {
+function toOpenAIMessage(message: ModelMessage, fileId?: (attachment: ModelAttachment) => string | undefined): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     role: message.role,
     content: message.role === 'user' && message.attachments?.length
       ? [
         ...(message.content ? [{ type: 'text', text: message.content }] : []),
-        ...message.attachments.map(toOpenAIImage),
+        ...message.attachments.map(image => toOpenAIImage(image, fileId)),
       ]
       : message.content,
   }

@@ -87,7 +87,7 @@ describe('openaiCompatAdapter images', () => {
     })) as FetchMock
     vi.stubGlobal('fetch', fetchMock)
 
-    await openaiCompatAdapter({ apiKey: 'k', model: 'gpt-4o' }).complete(conversation, [], {})
+    await openaiCompatAdapter({ apiKey: 'k', model: 'gpt-4o', filesApi: 'off' }).complete(conversation, [], {})
 
     const { messages } = requestBody(fetchMock)
     expect(messages[0]).toEqual({
@@ -113,7 +113,7 @@ describe('openaiCompatAdapter images', () => {
     })) as FetchMock
     vi.stubGlobal('fetch', fetchMock)
 
-    await openaiCompatAdapter({ apiKey: 'k', model: 'deepseek-flash', vision: false }).complete(conversation, [], {})
+    await openaiCompatAdapter({ apiKey: 'k', model: 'deepseek-flash', vision: false, filesApi: 'off' }).complete(conversation, [], {})
 
     const { messages } = requestBody(fetchMock)
     expect(messages).toHaveLength(3)
@@ -131,7 +131,7 @@ describe('anthropicMessagesAdapter images', () => {
     })) as FetchMock
     vi.stubGlobal('fetch', fetchMock)
 
-    await anthropicMessagesAdapter({ apiKey: 'k', model: 'claude-sonnet-4-6' }).complete(conversation, [], {})
+    await anthropicMessagesAdapter({ apiKey: 'k', model: 'claude-sonnet-4-6', filesApi: 'off' }).complete(conversation, [], {})
 
     const { messages } = requestBody(fetchMock)
     expect(messages[0]).toEqual({
@@ -167,7 +167,7 @@ describe('image fallback', () => {
       return jsonResponse({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] })
     }) as FetchMock
     vi.stubGlobal('fetch', fetchMock)
-    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0 })
+    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0, filesApi: 'off' })
 
     expect((await adapter.complete(conversation, [], {})).content).toBe('ok')
     expect(bodies).toHaveLength(2)
@@ -179,7 +179,7 @@ describe('image fallback', () => {
 
   it('leaves other failures alone', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 })))
-    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0 })
+    const adapter = createLlmAdapter({ apiKey: 'k', model: 'new-model', protocol: 'openai', maxRetries: 0, filesApi: 'off' })
     await expect(adapter.complete(conversation, [], {})).rejects.toThrow()
   })
 })

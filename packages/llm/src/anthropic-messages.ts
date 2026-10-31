@@ -8,10 +8,10 @@ import type {
 } from '@tnega/agent'
 import type { ModelAttachment, ModelMessage, ModelUsage } from '@tnega/session'
 import type { ToolDefinition } from '@tnega/tools'
+import { prepareWireImages } from './files.js'
 import { OpenAICompatibleError } from './errors.js'
 import { DEFAULT_MODEL } from './models.js'
 import {
-  prepareImages,
   assertOk,
   combineSignal,
   DEFAULT_LLM_MAX_RETRIES,
@@ -86,6 +86,8 @@ interface RequestPayload {
 }
 
 const ANTHROPIC_VERSION = '2023-06-01'
+/** Required when an image travels as a Files API id instead of base64. */
+const FILES_BETA = 'files-api-2025-04-14'
 
 export function anthropicMessagesAdapter(
   config: AnthropicMessagesConfig = {},
@@ -97,7 +99,7 @@ export function anthropicMessagesAdapter(
       const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
       const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-        const request = buildRequest(
+        const request = await buildRequest(
           messages,
           tools,
           effective,
@@ -130,7 +132,7 @@ export function anthropicMessagesAdapter(
       const maxRetries = effective.maxRetries ?? DEFAULT_LLM_MAX_RETRIES
       const retryDelayMs = effective.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS
       for (let attempt = 0; ; attempt += 1) {
-        const request = buildRequest(
+        const request = await buildRequest(
           messages,
           tools,
           effective,
@@ -195,17 +197,18 @@ export function anthropicMessagesAdapter(
   }
 }
 
-function buildRequest(
+async function buildRequest(
   messages: readonly ModelMessage[],
   tools: readonly ToolDefinition[],
   config: AnthropicMessagesConfig,
   signal: AbortSignal | undefined,
   stream = false,
-): RequestPayload {
+): Promise<RequestPayload> {
+  const wire = await prepareWireImages(messages, config)
   const body: Record<string, unknown> = {
     model: config.model ?? DEFAULT_MODEL,
     max_tokens: config.maxTokens ?? 4096,
-    messages: toAnthropicMessages(prepareImages(messages, config)),
+    messages: toAnthropicMessages(wire.messages, wire.fileId),
   }
   if (stream) body.stream = true
   const system = systemPrompt(messages)
@@ -226,6 +229,7 @@ function buildRequest(
       headers: {
         'content-type': 'application/json',
         'anthropic-version': ANTHROPIC_VERSION,
+        ...(wire.referenced ? { 'anthropic-beta': FILES_BETA } : {}),
         ...(config.apiKey ? { [config.apiKeyHeader ?? 'x-api-key']: config.apiKey } : {}),
       },
       body: JSON.stringify(body),
@@ -246,7 +250,7 @@ function systemPrompt(messages: readonly ModelMessage[]): string {
     .join('\n\n')
 }
 
-function toAnthropicMessages(messages: readonly ModelMessage[]): unknown[] {
+function toAnthropicMessages(messages: readonly ModelMessage[], fileId?: (attachment: ModelAttachment) => string | undefined): unknown[] {
   const result: unknown[] = []
   for (const message of messages) {
     if (message.role === 'system') continue
@@ -256,7 +260,7 @@ function toAnthropicMessages(messages: readonly ModelMessage[]): unknown[] {
         type: 'tool_result',
         tool_use_id: message.tool_call_id ?? '',
         content: message.attachments?.length
-          ? [{ type: 'text', text }, ...message.attachments.map(toAnthropicImage)]
+          ? [{ type: 'text', text }, ...message.attachments.map(image => toAnthropicImage(image, fileId))]
           : text,
       }
       if (message.toolError) toolResult.is_error = true
@@ -288,7 +292,7 @@ function toAnthropicMessages(messages: readonly ModelMessage[]): unknown[] {
       result.push({
         role: 'user',
         content: [
-          ...message.attachments.map(toAnthropicImage),
+          ...message.attachments.map(image => toAnthropicImage(image, fileId)),
           ...(text ? [{ type: 'text', text }] : []),
         ],
       })
@@ -302,7 +306,10 @@ function toAnthropicMessages(messages: readonly ModelMessage[]): unknown[] {
   return result
 }
 
-function toAnthropicImage(attachment: ModelAttachment): Record<string, unknown> {
+function toAnthropicImage(attachment: ModelAttachment, fileId?: (attachment: ModelAttachment) => string | undefined): Record<string, unknown> {
+  const id = fileId?.(attachment)
+  // A Files API reference keeps the body small and the prompt prefix stable.
+  if (id) return { type: 'image', source: { type: 'file', file_id: id } }
   return {
     type: 'image',
     source: { type: 'base64', media_type: attachment.mediaType, data: attachment.data },

@@ -14,6 +14,8 @@
 - **Provider** `@tnega/computer-cua`：用 [cua-driver](https://cua.ai/docs/cua-driver)（MIT）经 MCP stdio 驱动系统，不自研驱动。Windows 上它走 UI Automation 与窗口消息、默认后台投递；某个表面只接受前台输入时（报 `background_unavailable`），Provider 以 `delivery_mode: foreground` 重试一次。驱动投递了却无法确认效果时（`effect: unverifiable`）不重发——Chromium 这类表面会接受投递的事件，重发就成了重复输入——只在结果说明里提醒看截图再决定。驱动首次使用时启动、随插件停止；找不到驱动时一律抛 `COMPUTER_UNAVAILABLE` 并给出安装命令，不回退到其他输入方式。tnega 不打包驱动，查找顺序：配置 `computerDriverPath` → `TNEGA_CUA_DRIVER` → PATH → 安装器默认目录。驱动的遥测默认开启，tnega 启动它时设置 `CUA_DRIVER_RS_TELEMETRY_ENABLED=false` 关掉这一进程的遥测，不改用户保存的选择。
 - **Consumer** `@tnega/tool-computer`：`computer_*` 工具（列窗口、启动应用、截图、局部放大、点击、输入、按键、滚动、拖拽、等待）。每个动作返回该窗口的新截图（图片附件），模型据此确认效果。启动应用的 `urls`：给的是应用名时，驱动把它们交给系统默认浏览器；给的是可执行文件全路径时，URL 作为该应用的参数，因此能指定用哪个浏览器。
 - **组合**：`packages/runtime` 的 `capability:computer` 挂 Provider 与 Consumer；Web 宿主与 `tnega run` 只在 System Config 的 `computerUse` 为真时传入。Project 线程不挂载（无人值守）。
+- **图片不进请求体**：截图默认上传到 `@tnega/llm` 的 Files API 通道，之后只用 file id 引用（chat/completions 用 `{type:"file"}`，responses 用 `input_image.file_id`，anthropic 用 `source.type:"file"` + `files-api-2025-04-14` beta）。实测同一张 1024 截图：上传 402 KiB 一次，请求体从 400 KiB 级降到 **138 字节**；按 SHA-256 去重后的 file id 跨轮稳定，图片窗口滑动再也不会因为字节改变而換掉前缀。
+- **截图默认 1024 长边**：在 3200×1904 窗口上，1568 为 724 KiB / 约 950 图片 token，1024 为 402 KiB / 约 400 token；密集页面（arXiv 摘要页）在 1024 仍能读摘要、分类与 arXiv 编号，768 边缘（小字粘连、字段标签缺字），512 会丢信息（模型在 512 上把地址栏数字读成别的编号）。需要更细时用 `computer_zoom`，而不是把整图放大。
 
 ## 授权
 

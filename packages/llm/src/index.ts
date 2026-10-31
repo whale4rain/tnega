@@ -4,6 +4,14 @@ export {
 } from './anthropic-messages.js'
 export { OpenAICompatibleError } from './errors.js'
 export {
+  filesShape,
+  imageKey,
+  prepareWireImages,
+  resetImageFiles,
+  type FilesShape,
+  type WireImages,
+} from './files.js'
+export {
   DEFAULT_DEEPSEEK_MODEL,
   DEFAULT_MODEL,
   MODEL_CATALOG,

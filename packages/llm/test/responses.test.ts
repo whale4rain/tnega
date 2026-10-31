@@ -53,7 +53,7 @@ describe('OpenAI Responses adapter', () => {
     vi.stubGlobal('fetch', fetchMock)
     let token = 0
     const adapter = createLlmAdapter({
-      protocol: 'responses', baseUrl: 'https://chatgpt.example/backend-api/codex', model: 'gpt-5-codex', reasoningEffort: 'medium',
+      protocol: 'responses', baseUrl: 'https://chatgpt.example/backend-api/codex', model: 'gpt-5-codex', reasoningEffort: 'medium', store: false,
       requestHeaders: () => ({ authorization: `Bearer t${++token}`, 'chatgpt-account-id': 'acct' }),
     })
     const events = []

@@ -76,7 +76,7 @@ describe('computer-cua', () => {
     const result = await computer.act({ op: 'click', windowId: 1, x: 40, y: 60 })
     expect(result).toEqual({ note: 'Clicked', windowId: 1 })
     expect(driver.calls.filter(([name]) => name !== 'list_windows')).toEqual([
-      ['get_window_state', { pid: 10, window_id: 1, include_accessibility_tree: false }],
+      ['get_window_state', { pid: 10, window_id: 1, include_accessibility_tree: false, max_image_dimension: 1024 }],
       ['click', { pid: 10, window_id: 1, x: 40, y: 60 }],
       ['click', { pid: 10, window_id: 1, x: 40, y: 60, delivery_mode: 'foreground' }],
     ])
