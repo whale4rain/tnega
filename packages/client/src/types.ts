@@ -235,6 +235,20 @@ export interface ContextCurrent {
   source: 'provider' | 'estimate'
 }
 
+/** One tool's share of a session; tokens are those of the requests that read its results. */
+export interface ContextToolUse {
+  name: string
+  calls: number
+  failed: number
+  durationMs: number
+  images: number
+  imageBytes: number
+  promptTokens: number
+  cachedTokens: number
+  completionTokens: number
+  cost?: CostList
+}
+
 /** One session's context (`GET /api/context`). */
 export interface SessionContextReport {
   title: string
@@ -261,6 +275,8 @@ export interface SessionContextReport {
   timing: ContextTiming
   steps: ContextStep[]
   turns: Array<{ turn: number; start: number; end: number }>
+  /** Per tool name, most tokens first. */
+  tools: ContextToolUse[]
   lastMessage?: string
   updatedAt: number
 }
