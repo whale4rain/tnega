@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -43,6 +44,23 @@ it('rejects oversized project memory without replacing the previous version', as
       .toThrowError(new MemoryError('project memory exceeds its 4000 character limit', 'MEMORY_FULL'))
     expect(await root.memory.read('project')).toBe('- Keep this\n')
   } finally {
+    await root.fiber.dispose()
+  }
+})
+it('keeps global memory in the Tnega home so TNEGA_HOME can isolate it', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'tnega-memory-'))
+  const home = await mkdtemp(join(tmpdir(), 'tnega-memory-home-'))
+  directories.push(cwd, home)
+  const previous = process.env.TNEGA_HOME
+  process.env.TNEGA_HOME = home
+  const root = new Context()
+  try {
+    await root.plugin(memoryLocal, { cwd })
+    await root.memory.rememberGlobal('Lives in the home')
+    expect(readFileSync(join(home, 'MEMORY.md'), 'utf8')).toContain('- Lives in the home')
+  } finally {
+    if (previous === undefined) delete process.env.TNEGA_HOME
+    else process.env.TNEGA_HOME = previous
     await root.fiber.dispose()
   }
 })

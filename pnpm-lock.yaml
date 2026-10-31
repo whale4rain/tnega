@@ -937,6 +937,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../../home
       '@tnega/memory':
         specifier: workspace:*
         version: link:../memory

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
+import { resolveTnegaHome } from '@tnega/home'
 import {
   MAX_GLOBAL_MEMORY_CHARS,
   MAX_PROJECT_MEMORY_CHARS,
@@ -13,7 +13,7 @@ import {
 
 export interface LocalMemoryConfig {
   cwd?: string
-  /** Defaults to ~/.tnega/MEMORY.md. Useful for isolated installations and tests. */
+  /** Defaults to MEMORY.md in the Tnega home (`TNEGA_HOME`). Useful for isolated installations and tests. */
   globalFile?: string
 }
 
@@ -86,7 +86,7 @@ export class LocalMemoryService extends MemoryService {
 
   constructor(ctx: Context, config: LocalMemoryConfig = {}) {
     super(ctx)
-    this.globalFile = resolve(config.globalFile ?? join(homedir(), '.tnega', 'MEMORY.md'))
+    this.globalFile = resolve(config.globalFile ?? join(resolveTnegaHome(), 'MEMORY.md'))
     this.projectFile = resolve(config.cwd ?? process.cwd(), '.tnega', 'MEMORY.md')
   }
 
@@ -113,7 +113,7 @@ export class LocalMemoryService extends MemoryService {
       if (current.split('\n').some(existing => existing.trim() === line)) return current
       const next = current ? `${current}\n${line}\n` : `# User preferences\n\n${line}\n`
       if (next.length > MAX_GLOBAL_MEMORY_CHARS) {
-        throw new MemoryError('global memory is full; edit ~/.tnega/MEMORY.md before adding more', 'MEMORY_FULL')
+        throw new MemoryError(`global memory is full; edit ${this.globalFile} before adding more`, 'MEMORY_FULL')
       }
       await writeAtomic(this.globalFile, next)
       return next
