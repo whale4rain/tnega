@@ -57,6 +57,13 @@ export interface ToolComputerConfig {
    * so the agent reads windows with computer_read_tree. Absent: no limit.
    */
   maxScreenshots?: number
+  /**
+   * Whether the model reading the results can see images, asked before each
+   * screenshot because the model can change mid-run. When it cannot, no
+   * screenshot is taken: results describe the window in text and point at
+   * computer_read_tree. Absent: it can.
+   */
+  vision?: () => boolean | Promise<boolean>
   /** The Session's log, read once to count earlier screenshots. */
   session?: () => ScreenshotSource | undefined
 }
@@ -324,8 +331,16 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     budget.spend()
     return shotResult(lead, taken)
   }
+  const sees = async (): Promise<boolean> => (await config.vision?.()) ?? true
+  /** What a text-only model gets instead of a screenshot. */
+  const blind = async (windowId: number, options: ToolExecuteOptions): Promise<string> => {
+    const window = await computer.window(windowId, signalOf(options))
+    if (!window) return `Window ${windowId} has closed.`
+    return `${describeWindow(window)} · ${window.bounds.width}x${window.bounds.height}. This model cannot see images, so no screenshot was taken: read the window with computer_read_tree.`
+  }
   /** Run a tool that exists to look, or refuse once the budget is spent. */
-  const look = async (take: () => Promise<unknown>): Promise<unknown> => {
+  const look = async (windowId: number, options: ToolExecuteOptions, take: () => Promise<unknown>): Promise<unknown> => {
+    if (!await sees()) return blind(windowId, options)
     if (!await budget.allows()) throw new Error(await spentNote())
     const result = await take()
     budget.spend()
@@ -336,6 +351,7 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     const result = await computer.act(action, signalOf(options))
     const windowId = result.windowId
     if (windowId === undefined) return result.note
+    if (!await sees()) return `${result.note}\n${await blind(windowId, options)}`
     if (!await budget.allows()) return `${result.note}\nNo screenshot: ${await spentNote()}`
     await sleep(settleMs, options.signal)
     try {
@@ -422,13 +438,13 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     }),
     tool('computer_screenshot', `Take a screenshot of one window. The image covers the whole window, so its top is the app's own title bar and, in a browser, the tab strip and address bar. ${UNTRUSTED}`, {
       window_id: WINDOW_ID,
-    }, ['window_id'], (input, options) => look(async () => shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options))))),
+    }, ['window_id'], (input, options) => look(number(input, 'window_id'), options, async () => shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options))))),
     tool('computer_zoom', 'Look closer at a region of the window\'s latest screenshot, to read small text or aim a click. The zoomed image has its own pixels: keep using full-window points for actions.', {
       window_id: WINDOW_ID,
       x1: X, y1: Y,
       x2: { ...X, description: 'Right edge, window pixels' },
       y2: { ...Y, description: 'Bottom edge, window pixels' },
-    }, ['window_id', 'x1', 'y1', 'x2', 'y2'], (input, options) => look(async () => {
+    }, ['window_id', 'x1', 'y1', 'x2', 'y2'], (input, options) => look(number(input, 'window_id'), options, async () => {
       const region = { x1: number(input, 'x1'), y1: number(input, 'y1'), x2: number(input, 'x2'), y2: number(input, 'y2') }
       const zoomed = await computer.zoom(number(input, 'window_id'), region, signalOf(options))
       return withAttachments(
@@ -518,10 +534,11 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     tool('computer_wait', 'Wait for a window to finish loading or animating (up to 10 seconds), then take a screenshot.', {
       window_id: WINDOW_ID,
       seconds: { type: 'number' },
-    }, ['window_id', 'seconds'], (input, options) => look(async () => {
+    }, ['window_id', 'seconds'], async (input, options) => {
+      // Waiting is the point even when the model cannot look afterwards.
       await sleep(Math.min(10, Math.max(0, number(input, 'seconds'))) * 1000, options.signal)
-      return shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options)))
-    })),
+      return look(number(input, 'window_id'), options, async () => shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options))))
+    }),
     tool('computer_clipboard_read', `Read the text on the clipboard, which every app shares: for example after copying in one app, to use the text in another. ${UNTRUSTED}`, {}, [], async (_input, options) => {
       const result = await computer.act({ op: 'clipboard-read' }, signalOf(options))
       return result.text === undefined ? result.note : `${result.note}\n\n${result.text}`

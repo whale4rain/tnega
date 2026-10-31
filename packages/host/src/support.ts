@@ -66,11 +66,15 @@ export function processesFor(
 }
 
 /** Computer use for a run, only when the person turned it on in Settings. */
-export function computerSpec(config: SystemConfig): { computer: { driverPath?: string; maxScreenshots?: number } | false } {
+export function computerSpec(
+  config: SystemConfig,
+  vision?: () => Promise<boolean>,
+): { computer: { driverPath?: string; maxScreenshots?: number; vision?: () => Promise<boolean> } | false } {
   // `false`, not absent: the Settings switch wins over an agent profile's options.
   if (!config.computerUse) return { computer: false }
   return {
     computer: {
+      ...(vision ? { vision } : {}),
       ...(config.computerDriverPath ? { driverPath: config.computerDriverPath } : {}),
       ...(config.computerMaxScreenshots !== undefined ? { maxScreenshots: config.computerMaxScreenshots } : {}),
     },
@@ -233,9 +237,15 @@ export function resolveSessionLlm(
 export function sessionModelRoute(configFile: string | undefined, workspace: string, id: string): {
   selection: () => Promise<ModelSelection>
   adapterFor: (selection: ModelSelection) => Promise<LLMAdapter>
+  /** Whether the model the next step uses can see images. */
+  vision: () => Promise<boolean>
 } {
   const adapters = new Map<string, LLMAdapter>()
   return {
+    async vision() {
+      const summary = await readSessionSummary(workspace, id)
+      return resolveSessionLlm(await readSystemConfig(configFile), summary.model, summary.reasoningEffort).effective.vision
+    },
     async selection() {
       const summary = await readSessionSummary(workspace, id)
       const { effective } = resolveSessionLlm(await readSystemConfig(configFile), summary.model, summary.reasoningEffort)

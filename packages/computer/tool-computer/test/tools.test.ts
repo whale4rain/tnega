@@ -128,6 +128,27 @@ describe('tool-computer', () => {
     expect((await run('computer_read_tree', { window_id: 1 })).ok).toBe(true)
   })
 
+  it('describes windows in text for a model that cannot see images', async () => {
+    let vision = false
+    const { computer, run } = await setup({ maxScreenshots: 1, vision: () => vision })
+    let shots = 0
+    const capture = computer.screenshot.bind(computer)
+    computer.screenshot = async (windowId: number) => { shots += 1; return capture(windowId) }
+    const clicked = await run('computer_click', { window_id: 1, x: 1, y: 1 })
+    expect(clicked.attachments).toBeUndefined()
+    expect(String(clicked.output)).toBe('click done\nwindow 1 · chrome.exe · "Example" · 1280x800. This model cannot see images, so no screenshot was taken: read the window with computer_read_tree.')
+    for (const [name, input] of [['computer_screenshot', { window_id: 1 }], ['computer_zoom', { window_id: 1, x1: 0, y1: 0, x2: 9, y2: 9 }], ['computer_wait', { window_id: 2, seconds: 0 }]] as const) {
+      const result = await run(name, input)
+      expect(result.ok).toBe(true)
+      expect(result.attachments).toBeUndefined()
+      expect(String(result.output)).toMatch(/This model cannot see images/)
+    }
+    expect(shots).toBe(0)
+    // Switching to a model that sees picks screenshots up again, and the budget was not spent.
+    vision = true
+    expect((await run('computer_screenshot', { window_id: 1 })).attachments).toHaveLength(1)
+  })
+
   it('takes screenshots without limit when no budget is set', async () => {
     const { run } = await setup()
     for (let index = 0; index < 3; index += 1) expect((await run('computer_screenshot', { window_id: 1 })).attachments).toHaveLength(1)
