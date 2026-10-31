@@ -5,6 +5,7 @@ import { Context } from '@tnega/core'
 import {
   ComputerError,
   ComputerService,
+  actionWindowId,
   type ComputerAction,
   type ComputerActionEvent,
   type ComputerActionResult,
@@ -34,7 +35,10 @@ class FakeComputer extends ComputerService {
   protected async runAction(action: ComputerAction): Promise<ComputerActionResult> {
     this.performed.push(action)
     if (action.op === 'type' && action.text === 'boom') throw new Error('driver crashed')
-    return { note: 'done', ...(action.op === 'launch' ? {} : { windowId: action.windowId }) }
+    const windowId = actionWindowId(action)
+    if (action.op === 'steps') return { note: 'batch', windowId: action.windowId, steps: action.steps.map((step, index) => ({ ok: index < 2, note: `${step.op} ${index < 2 ? 'ok' : 'failed'}` })) }
+    if (action.op === 'clipboard-read') return { note: 'clip', text: 'copied' }
+    return { note: 'done', ...(windowId !== undefined ? { windowId } : {}) }
   }
 }
 
@@ -120,5 +124,85 @@ describe('ComputerService.act', () => {
   it('launches without a target window', async () => {
     const computer = new FakeComputer(new Context())
     expect(await computer.act({ op: 'launch', app: 'notepad' })).toEqual({ note: 'done' })
+  })
+
+  it('judges every step of a batch before any runs, and audits each step that ran', async () => {
+    const ctx = new Context()
+    const computer = new FakeComputer(ctx)
+    const judged: string[] = []
+    const events: ComputerActionEvent[] = []
+    ctx.on('computer/pre-action', (event: ComputerPreActionEvent, next: () => Promise<unknown>) => {
+      judged.push(event.action.op)
+      // A policy written for single actions still applies inside a batch.
+      if (event.action.op === 'hover') event.action = { ...event.action, x: 5 }
+      return next()
+    })
+    ctx.on('computer/action', (event: ComputerActionEvent) => { events.push(event) })
+
+    const result = await computer.act({ op: 'steps', windowId: 7, steps: [
+      { op: 'click', windowId: 7, element: 's1:2' },
+      { op: 'hover', windowId: 7, x: 40, y: 50 },
+      { op: 'key', windowId: 7, keys: ['enter'] },
+    ] })
+
+    expect(judged).toEqual(['click', 'hover', 'key'])
+    expect(computer.performed[0]).toMatchObject({ op: 'steps', steps: [{ op: 'click' }, { op: 'hover', x: 5, y: 50 }, { op: 'key' }] })
+    expect(result.steps?.map(step => step.ok)).toEqual([true, true, false])
+    expect(events.map(event => [event.action.op, event.ok, event.window?.id])).toEqual([
+      ['click', true, 7],
+      ['hover', true, 7],
+      ['key', false, 7],
+    ])
+  })
+
+  it('runs no step of a batch when policy refuses one, or turns one into something a batch cannot carry', async () => {
+    const ctx = new Context()
+    const computer = new FakeComputer(ctx)
+    const events: ComputerActionEvent[] = []
+    ctx.on('computer/pre-action', (event: ComputerPreActionEvent, next: () => Promise<unknown>) => {
+      if (event.action.op === 'type') event.deny = 'no typing here'
+      if (event.action.op === 'scroll') event.action = { op: 'menu', windowId: 7, path: ['File', 'Quit'] }
+      return next()
+    })
+    ctx.on('computer/action', (event: ComputerActionEvent) => { events.push(event) })
+
+    await expect(computer.act({ op: 'steps', windowId: 7, steps: [
+      { op: 'click', windowId: 7, x: 1, y: 1 },
+      { op: 'type', windowId: 7, text: 'hi' },
+    ] })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
+    await expect(computer.act({ op: 'steps', windowId: 7, steps: [
+      { op: 'scroll', windowId: 7, x: 1, y: 1, direction: 'down' },
+    ] })).rejects.toThrow(/cannot run inside a batch/)
+
+    expect(computer.performed).toEqual([])
+    expect(events.map(event => [event.action.op, event.ok])).toEqual([['steps', false], ['steps', false]])
+  })
+
+  it('refuses a malformed batch, hover or menu before policy sees it', async () => {
+    const ctx = new Context()
+    const computer = new FakeComputer(ctx)
+    let judged = 0
+    ctx.on('computer/pre-action', (_event: ComputerPreActionEvent, next: () => Promise<unknown>) => { judged += 1; return next() })
+    await expect(computer.act({ op: 'steps', windowId: 7, steps: [] })).rejects.toThrow(/at least one step/)
+    await expect(computer.act({ op: 'steps', windowId: 7, steps: [{ op: 'click', windowId: 2, x: 1, y: 1 }] })).rejects.toThrow(/batch's window/)
+    await expect(computer.act({ op: 'hover', windowId: 7, x: 1, y: Number.NaN })).rejects.toThrow(/both x and y/)
+    await expect(computer.act({ op: 'menu', windowId: 7, path: ['File', ' '] })).rejects.toThrow(/menu labels/)
+    expect(judged).toBe(0)
+    expect(computer.performed).toEqual([])
+  })
+
+  it('reads and writes the clipboard through policy, with no target window', async () => {
+    const ctx = new Context()
+    const computer = new FakeComputer(ctx)
+    const seen: ComputerPreActionEvent[] = []
+    ctx.on('computer/pre-action', (event: ComputerPreActionEvent, next: () => Promise<unknown>) => { seen.push({ ...event }); return next() })
+    expect(await computer.act({ op: 'clipboard-read' })).toEqual({ note: 'clip', text: 'copied' })
+    await computer.act({ op: 'clipboard-write', text: 'hello' })
+    expect(seen.map(event => [event.action.op, event.window])).toEqual([['clipboard-read', undefined], ['clipboard-write', undefined]])
+  })
+
+  it('has no app list unless the Provider brings one', async () => {
+    const computer = new FakeComputer(new Context())
+    await expect(computer.apps()).rejects.toMatchObject({ code: 'COMPUTER_UNAVAILABLE' })
   })
 })

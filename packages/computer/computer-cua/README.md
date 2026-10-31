@@ -1,6 +1,6 @@
 # `@tnega/computer-cua`
 
-电脑操作缝的 Provider：经 MCP stdio 启动 [cua-driver](https://cua.ai/docs/cua-driver)（`cua-driver mcp`），把 `ctx.computer` 的调用映射到它的工具（`list_windows`、`get_window_state`、`click`、`type_text`、`press_key` / `hotkey`、`scroll`、`drag`、`zoom`、`launch_app`）。
+电脑操作缝的 Provider：经 MCP stdio 启动 [cua-driver](https://cua.ai/docs/cua-driver)（`cua-driver mcp`），把 `ctx.computer` 的调用映射到它的工具（`list_windows`、`get_window_state`、`click`、`type_text`、`press_key` / `hotkey`、`scroll`、`drag`、`zoom`、`launch_app`、`move_cursor`、`invoke_menu`、`run_steps`、`clipboard_read` / `clipboard_write`、`list_apps`）。
 
 - 驱动在第一次调用时启动，随插件 dispose 停止；启动失败不缓存，装好驱动后下一次调用即可用。
 - 查找顺序：配置 `driverPath` → `TNEGA_CUA_DRIVER` → PATH → 安装器默认目录（Windows `%LOCALAPPDATA%\Programs\Cua\cua-driver\bin`，其他 `~/.local/bin`）。找不到时抛 `COMPUTER_UNAVAILABLE` 并附安装命令。
@@ -20,3 +20,6 @@
 - 图片与页面 CSS 几乎 1:1：`css_x = 0.9276 × image_x`，`css_y = 0.9276 × image_y − 79.6`；后一项是窗口顶部浏览器界面的高度（标签栏 + 地址栏，约 175 物理像素）。截图含浏览器界面，所以 y 从窗口顶端算起。
 - 35 个网格点拟合残差 ≤ 0.6 CSS 像素，12 个 300×60 的目标全部命中：单次像素点击精度约 ±1 图片像素。
 - 截图给出的是窗口自身坐标系，与屏幕位置、多显示器无关；窗口换了显示器缩放不同导致偏移时，驱动返回的说明里会给出它实际投递的物理坐标。
+- 悬停：窗口范围的 `move_cursor` 只动驱动的叠加光标，应用看不到；所以先 `bring_to_front`，再按窗口在桌面上的位置与最近一次截图的尺寸把像素换算成桌面坐标（`desktopPoint`），以 `target: {kind: "desktop"}` 移动真实指针。
+- 批量：`run_steps` 带 `foreground_fallback: true`，后台被拒的步骤由驱动单步前台重试；Provider 不整批重发。结果逐步转成 `steps`，说明里写明第几步失败、之前执行了几步。
+- 应用：`list_apps` 只保留有 `bundle_id`、`launch_path` 或窗口的条目；`launch` 带 `id` 时，按上一次列表里的 `bundle_id` / `launch_path` 启动。

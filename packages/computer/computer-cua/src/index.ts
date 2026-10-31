@@ -4,10 +4,13 @@ import {
   ComputerService,
   type ComputerAction,
   type ComputerActionResult,
+  type ComputerApp,
   type ComputerCallOptions,
   type ComputerEffect,
   type ComputerRegion,
   type ComputerScreenshot,
+  type ComputerStep,
+  type ComputerStepResult,
   type ComputerTree,
   type ComputerTreeOptions,
   type ComputerWindow,
@@ -101,6 +104,31 @@ function aimsAtElement(action: ComputerAction): boolean {
   return 'element' in action && typeof action.element === 'string'
 }
 
+/** Whether the driver needs a screenshot of the window first: it refuses pixel input on a window it never captured. */
+function needsCapture(action: ComputerAction): boolean {
+  if (action.op === 'steps') return action.steps.some(needsCapture)
+  if (action.op === 'menu' || action.op === 'launch' || action.op === 'clipboard-read' || action.op === 'clipboard-write') return false
+  return !aimsAtElement(action)
+}
+
+function hovers(action: ComputerAction): boolean {
+  return action.op === 'hover' || (action.op === 'steps' && action.steps.some(step => step.op === 'hover'))
+}
+
+/** Where a window is on the desktop, and the size of its latest screenshot, to place the real pointer. */
+export interface HoverFrame {
+  bounds: ComputerWindow['bounds']
+  width: number
+  height: number
+}
+
+/** A point of the window's latest screenshot in desktop coordinates, which is where the real pointer goes. */
+export function desktopPoint(frame: HoverFrame, x: number, y: number): { x: number; y: number } {
+  const sx = frame.width > 0 ? frame.bounds.width / frame.width : 1
+  const sy = frame.height > 0 ? frame.bounds.height / frame.height : 1
+  return { x: Math.round(frame.bounds.x + x * sx), y: Math.round(frame.bounds.y + y * sy) }
+}
+
 function failure(result: DriverResult, what: string): ComputerError {
   const code = typeof result.structured.code === 'string' ? ` (${result.structured.code})` : ''
   return new ComputerError('COMPUTER_FAILED', `${what} failed${code}: ${result.text || 'no detail from the driver'}`)
@@ -110,8 +138,12 @@ function aim(action: { element?: string | undefined; x?: number | undefined; y?:
   return action.element ? { element_token: action.element } : { x: action.x, y: action.y }
 }
 
-/** The driver tool and arguments for one action, without the delivery mode. */
-export function driverCall(action: ComputerAction, pid: number): { tool: string; args: Record<string, unknown> } {
+/**
+ * The driver tool and arguments for one step, without the delivery mode. A
+ * hover needs `frame`: the driver only hovers with the real pointer, in
+ * desktop coordinates.
+ */
+export function driverCall(action: ComputerStep | Extract<ComputerAction, { op: 'menu' | 'launch' }>, pid: number, frame?: HoverFrame): { tool: string; args: Record<string, unknown> } {
   switch (action.op) {
     case 'click':
       return {
@@ -141,6 +173,17 @@ export function driverCall(action: ComputerAction, pid: number): { tool: string;
         tool: 'drag',
         args: { pid, window_id: action.windowId, from_x: action.from.x, from_y: action.from.y, to_x: action.to.x, to_y: action.to.y },
       }
+    case 'hover': {
+      if (!frame || frame.width <= 0 || frame.height <= 0) throw new ComputerError('COMPUTER_FAILED', `take a screenshot of window ${action.windowId} before hovering in it`)
+      // The real pointer outside the screenshot would hover another app's window, which this grant does not cover.
+      if (action.x < 0 || action.y < 0 || action.x >= frame.width || action.y >= frame.height) {
+        throw new ComputerError('COMPUTER_FAILED', `hover point (${action.x}, ${action.y}) is outside the ${frame.width}x${frame.height} screenshot of window ${action.windowId}`)
+      }
+      // Window scope only moves the driver's overlay cursor, which apps never see.
+      return { tool: 'move_cursor', args: { target: { kind: 'desktop', display_id: 'primary' }, ...desktopPoint(frame, action.x, action.y) } }
+    }
+    case 'menu':
+      return { tool: 'invoke_menu', args: { pid, window_id: action.windowId, path: action.path } }
     case 'launch': {
       const urls = action.urls ?? []
       // The driver hands `urls` to the system's default browser, whatever app
@@ -162,8 +205,10 @@ export function driverCall(action: ComputerAction, pid: number): { tool: string;
  */
 export class CuaComputer extends ComputerService {
   private _connection: Promise<DriverConnection> | undefined
-  /** Windows read in this connection; the driver refuses pixel input on a window it never captured. */
-  private readonly _captured = new Set<number>()
+  /** Windows read in this connection, with their latest screenshot size; the driver refuses pixel input on a window it never captured. */
+  private readonly _captured = new Map<number, { width: number; height: number }>()
+  /** How to start each app of the latest `apps()` read, by its id. */
+  private readonly _apps = new Map<string, { bundleId?: string; launchPath?: string }>()
 
   constructor(ctx: Context, private readonly _config: Config = {}) {
     super(ctx)
@@ -173,6 +218,7 @@ export class CuaComputer extends ComputerService {
     const connection = this._connection
     this._connection = undefined
     this._captured.clear()
+    this._apps.clear()
     if (connection) await connection.then(open => open.close(), () => undefined)
   }
 
@@ -234,13 +280,15 @@ export class CuaComputer extends ComputerService {
       result = await read()
     }
     if (result.isError || !result.image) throw failure(result, `capturing window ${window.id}`)
-    this._captured.add(window.id)
+    const width = num(result.structured.screenshot_width)
+    const height = num(result.structured.screenshot_height)
+    this._captured.set(window.id, { width, height })
     return {
       windowId: window.id,
       app: window.app,
       title: typeof result.structured.window_title === 'string' ? result.structured.window_title : window.title,
-      width: num(result.structured.screenshot_width),
-      height: num(result.structured.screenshot_height),
+      width,
+      height,
       mediaType: result.image.mediaType === 'image/jpeg' ? 'image/jpeg' : 'image/png',
       data: result.image.data,
     }
@@ -273,6 +321,21 @@ export class CuaComputer extends ComputerService {
     }
   }
 
+  override async apps(options?: ComputerCallOptions): Promise<ComputerApp[]> {
+    const result = await this.call('list_apps', {}, options)
+    if (result.isError) throw failure(result, 'listing apps')
+    const rows = Array.isArray(result.structured.apps) ? result.structured.apps : []
+    this._apps.clear()
+    const apps: ComputerApp[] = []
+    for (const row of rows) {
+      const app = toApp(row)
+      if (!app) continue
+      apps.push(app.app)
+      if (app.app.id) this._apps.set(app.app.id, app.launch)
+    }
+    return apps
+  }
+
   async zoom(windowId: number, region: ComputerRegion, options?: ComputerCallOptions): Promise<ComputerScreenshot> {
     const window = await this.target(windowId, options)
     if (!this._captured.has(window.id)) await this.capture(window, options)
@@ -290,17 +353,34 @@ export class CuaComputer extends ComputerService {
   }
 
   protected async runAction(action: ComputerAction, options: ComputerCallOptions): Promise<ComputerActionResult> {
-    if (action.op === 'launch') {
-      const { tool, args } = driverCall(action, 0)
-      const result = await this.call(tool, args, options)
-      if (result.isError) throw failure(result, `launching ${action.app}`)
-      const launched = launchedWindow(result.structured)
-      return { note: result.text || `Launched ${action.app}`, ...(launched !== undefined ? { windowId: launched } : {}) }
+    switch (action.op) {
+      case 'launch':
+        return this.launch(action, options)
+      case 'clipboard-read': {
+        const result = await this.call('clipboard_read', { include_text: true }, options)
+        if (result.isError) throw failure(result, 'reading the clipboard')
+        const text = typeof result.structured.text === 'string' ? result.structured.text : undefined
+        return { note: text === undefined ? 'The clipboard holds no text.' : `The clipboard holds ${text.length} characters of text.`, ...(text !== undefined ? { text } : {}) }
+      }
+      case 'clipboard-write': {
+        const result = await this.call('clipboard_write', { text: action.text }, options)
+        if (result.isError) throw failure(result, 'writing the clipboard')
+        return { note: `Put ${action.text.length} characters on the clipboard; paste with ctrl+v (cmd+v on a Mac).` }
+      }
+      default:
+        break
     }
     const window = await this.target(action.windowId, options)
-    // The driver refuses pixel input on a window it never captured; an element needs no picture.
-    if (!aimsAtElement(action) && !this._captured.has(window.id)) await this.capture(window, options)
-    const { tool, args } = driverCall(action, window.pid)
+    if (needsCapture(action) && !this._captured.has(window.id)) await this.capture(window, options)
+    // The real pointer hovers whatever is on top, so the window comes forward first.
+    if (hovers(action)) {
+      const front = await this.call('bring_to_front', { pid: window.pid, window_id: window.id }, options)
+      if (front.isError) throw failure(front, `bringing window ${window.id} to the front to hover`)
+    }
+    const shot = this._captured.get(window.id)
+    const frame = shot ? { bounds: window.bounds, ...shot } : undefined
+    if (action.op === 'steps') return this.steps(action.steps, window, frame, options)
+    const { tool, args } = driverCall(action, window.pid, frame)
     let result = await this.call(tool, args, options)
     // Only a refusal means nothing was delivered. An unconfirmed result may
     // already have landed, and resending it is how one keystroke becomes two.
@@ -313,6 +393,60 @@ export class CuaComputer extends ComputerService {
       : result.text
     const effect = effectOf(result)
     return { note, windowId: window.id, ...(effect ? { effect } : {}) }
+  }
+
+  private async launch(action: Extract<ComputerAction, { op: 'launch' }>, options: ComputerCallOptions): Promise<ComputerActionResult> {
+    const { tool, args } = driverCall(action, 0)
+    const known = action.id ? this._apps.get(action.id) : undefined
+    const result = await this.call(tool, {
+      ...args,
+      ...(known?.bundleId ? { bundle_id: known.bundleId } : {}),
+      ...(known?.launchPath ? { launch_path: known.launchPath } : {}),
+      // An id from an older list: the driver may still know it.
+      ...(action.id && !known ? { bundle_id: action.id } : {}),
+    }, options)
+    if (result.isError) throw failure(result, `launching ${action.app}`)
+    const launched = launchedWindow(result.structured)
+    return { note: result.text || `Launched ${action.app}`, ...(launched !== undefined ? { windowId: launched } : {}) }
+  }
+
+  /**
+   * One `run_steps` call. The driver checks every step before the first runs
+   * and stops at the first failure; a step its target refuses in the
+   * background is retried once in front by the driver itself, never the whole
+   * batch, since earlier steps already happened.
+   */
+  private async steps(steps: ComputerStep[], window: ComputerWindow, frame: HoverFrame | undefined, options: ComputerCallOptions): Promise<ComputerActionResult> {
+    const calls = steps.map(step => driverCall(step, window.pid, frame))
+    const result = await this.call('run_steps', { pid: window.pid, window_id: window.id, foreground_fallback: true, steps: calls }, options)
+    const rows = Array.isArray(result.structured.steps) ? result.structured.steps : []
+    if (result.isError && !rows.length) throw failure(result, `steps in window ${window.id}`)
+    const outcomes: ComputerStepResult[] = rows.flatMap(row => isRecord(row)
+      ? [{ ok: row.ok === true, note: typeof row.message === 'string' ? row.message : row.ok === true ? 'ok' : 'failed' }]
+      : [])
+    const ran = outcomes.filter(step => step.ok).length
+    const failed = outcomes.find(step => !step.ok)
+    const lead = failed
+      ? `Step ${outcomes.length} of ${steps.length} failed; ${ran} ran before it and the rest did not run.`
+      : `Ran ${ran} of ${steps.length} steps.`
+    const lines = outcomes.map((step, index) => `${index + 1}. ${steps[index]?.op ?? 'step'} ${step.ok ? 'ok' : 'FAILED'}: ${step.note}`)
+    return { note: [lead, ...lines].join('\n'), windowId: window.id, steps: outcomes }
+  }
+}
+
+/** One `list_apps` row that the agent could start or switch to; plain background processes are left out. */
+function toApp(row: unknown): { app: ComputerApp; launch: { bundleId?: string; launchPath?: string } } | undefined {
+  if (!isRecord(row) || typeof row.name !== 'string' || !row.name) return undefined
+  const bundleId = typeof row.bundle_id === 'string' && row.bundle_id ? row.bundle_id : undefined
+  const launchPath = typeof row.launch_path === 'string' && row.launch_path ? row.launch_path : undefined
+  const windows = Array.isArray(row.windows) ? row.windows : []
+  const windowIds = windows.flatMap(item => isRecord(item) && typeof item.window_id === 'number' && !String(item.title ?? '').startsWith('Cua.') ? [item.window_id] : [])
+  if (!bundleId && !launchPath && !windowIds.length) return undefined
+  const id = bundleId ?? launchPath
+  const running = row.running === true
+  return {
+    app: { name: row.name, ...(id ? { id } : {}), running, ...(running && typeof row.pid === 'number' && row.pid > 0 ? { pid: row.pid } : {}), windowIds },
+    launch: { ...(bundleId ? { bundleId } : {}), ...(launchPath ? { launchPath } : {}) },
   }
 }
 
