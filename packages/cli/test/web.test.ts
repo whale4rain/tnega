@@ -38,9 +38,12 @@ async function startMockLlm(
   close: () => Promise<void>
   requestCount: () => number
   bodies: () => Array<{ stream?: boolean; messages?: Array<{ role: string; content?: string }> }>
+  /** Raw multipart bodies posted to the Files API, one per uploaded image. */
+  uploads: () => string[]
 }> {
   let count = 0
   const recorded: Array<{ stream?: boolean; messages?: Array<{ role: string; content?: string }> }> = []
+  const uploaded: string[] = []
   const chunks = [
     {
       id: 'chatcmpl-mock',
@@ -76,6 +79,14 @@ async function startMockLlm(
       body += String(chunk)
     })
     req.on('end', () => {
+      if (req.url?.endsWith('/files')) {
+        // Images travel as Files API references, so the adapter uploads first and
+        // the completion request only carries the file id.
+        uploaded.push(body)
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ id: `file-mock-${uploaded.length}`, object: 'file' }))
+        return
+      }
       if (body.includes('Name this Session from the first user intent.')) {
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Mock session title' }, finish_reason: 'stop' }] }))
@@ -137,6 +148,7 @@ async function startMockLlm(
     url,
     requestCount: () => count,
     bodies: () => recorded,
+    uploads: () => uploaded,
     close: () => new Promise<void>((resolve, reject) => {
       server.close(error => error ? reject(error) : resolve())
     }),
@@ -1788,7 +1800,12 @@ describe('web server with resident agents', () => {
     }
     expect(detail.events.filter(event => event.type === 'user/message').map(event => event.payload.content)).toEqual(['start', 'change direction'])
     expect(JSON.stringify(mock.bodies())).toContain('change direction')
-    expect(JSON.stringify(mock.bodies())).toContain('aGVsbG8=')
+    // The steered turn's image is uploaded once, as bytes in a multipart body,
+    // and every completion request after that carries only the file id.
+    expect(mock.uploads()).toHaveLength(1)
+    expect(mock.uploads()[0]).toContain('hello')
+    expect(JSON.stringify(mock.bodies())).toContain('file-mock-1')
+    expect(JSON.stringify(mock.bodies())).not.toContain('aGVsbG8=')
     const completed = await apiFetch(server.url, `${path}/steer${scope}`, { method: 'POST', body: JSON.stringify({ prompt: 'too late' }) })
     expect(completed.status).toBe(409)
   })
