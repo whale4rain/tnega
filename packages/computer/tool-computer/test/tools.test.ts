@@ -128,6 +128,28 @@ describe('tool-computer', () => {
     expect((await run('computer_read_tree', { window_id: 1 })).ok).toBe(true)
   })
 
+  it('never lets screenshots taken side by side overrun the budget', async () => {
+    const { run } = await setup({ maxScreenshots: 1 })
+    const results = await Promise.all([run('computer_screenshot', { window_id: 1 }), run('computer_screenshot', { window_id: 2 })])
+    expect(results.filter(result => result.ok)).toHaveLength(1)
+  })
+
+  it('gives a slot back when a screenshot fails', async () => {
+    const { computer, run } = await setup({ maxScreenshots: 1 })
+    computer.shotFails = true
+    expect((await run('computer_screenshot', { window_id: 1 })).ok).toBe(false)
+    computer.shotFails = false
+    expect((await run('computer_screenshot', { window_id: 1 })).attachments).toHaveLength(1)
+  })
+
+  it('reports a done action as done when the budget cannot be read', async () => {
+    const { computer, run } = await setup({ maxScreenshots: 5, session: () => ({ read: async () => { throw new Error('log locked') } }) })
+    const result = await run('computer_click', { window_id: 1, x: 1, y: 1 })
+    expect(computer.performed).toHaveLength(1)
+    expect(result.ok).toBe(true)
+    expect(String(result.output)).toMatch(/click done\nNo screenshot: the screenshot budget could not be read \(log locked\)/)
+  })
+
   it('takes screenshots without limit when no budget is set', async () => {
     const { run } = await setup()
     for (let index = 0; index < 3; index += 1) expect((await run('computer_screenshot', { window_id: 1 })).attachments).toHaveLength(1)
