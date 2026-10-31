@@ -319,6 +319,8 @@ export const ptcCapability: Plugin = {
 export interface ComputerCapabilitySpec {
   /** Path to the `cua-driver` binary; found on PATH or in the installer's folder otherwise. */
   driverPath?: string
+  /** Screenshots one Session may take (see `ToolComputerConfig.maxScreenshots`). */
+  maxScreenshots?: number
 }
 
 /**
@@ -331,7 +333,7 @@ export const computerCapability: Plugin = {
   inject: ['tools'],
   async apply(ctx: Context, spec: ComputerCapabilitySpec) {
     await ctx.plugin(computerCua, spec.driverPath ? { driverPath: spec.driverPath } : {})
-    await ctx.plugin(toolComputer)
+    await ctx.plugin(toolComputer, spec.maxScreenshots !== undefined ? { maxScreenshots: spec.maxScreenshots } : {})
   },
 }
 

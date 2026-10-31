@@ -66,10 +66,15 @@ export function processesFor(
 }
 
 /** Computer use for a run, only when the person turned it on in Settings. */
-export function computerSpec(config: SystemConfig): { computer: { driverPath?: string } | false } {
+export function computerSpec(config: SystemConfig): { computer: { driverPath?: string; maxScreenshots?: number } | false } {
   // `false`, not absent: the Settings switch wins over an agent profile's options.
   if (!config.computerUse) return { computer: false }
-  return { computer: config.computerDriverPath ? { driverPath: config.computerDriverPath } : {} }
+  return {
+    computer: {
+      ...(config.computerDriverPath ? { driverPath: config.computerDriverPath } : {}),
+      ...(config.computerMaxScreenshots !== undefined ? { maxScreenshots: config.computerMaxScreenshots } : {}),
+    },
+  }
 }
 
 /** Mount the browser Provider over the shared host and the model-visible tools. */

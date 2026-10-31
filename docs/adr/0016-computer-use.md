@@ -35,6 +35,10 @@
 
 已验证（Linux / Xvfb，Chromium，cua-driver 0.38.0，经缝直接调用）：悬停让页面的提示框出现，移开后消失；四步批量（元素点击、`ctrl+a`、输入、悬停）一次调用完成并逐步审计；批量里按元素输入的文字落入输入框；剪贴板写后读回原文；应用列表 10 项。附带发现：Linux Chromium 上按元素的**点击**由驱动换算成真实指针点击，落点比输入框低几像素；按元素**输入**不受影响。
 
+## 截图预算（2026-10-31）
+
+长任务可能拿几百张截图，所以 `computerMaxScreenshots` 给一个 Session 的截图张数设上限。计数归 Consumer（`tool-computer`），因为截图是它附进结果的；计数从 durable Session 里重建（之前的 `computer_*` 结果的图片数），这样重启后不会重置。用完后观察退回文本：动作不带截图，看图的工具拒绝并指向 `computer_read_tree`。Provider 返回的截图超过 `maxImageDimension` 时记一条警告。
+
 ## 授权
 
 - 设置里的 **Computer use** 默认关闭；关闭时工具不注册，模型看不到。

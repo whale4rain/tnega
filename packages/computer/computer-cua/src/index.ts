@@ -282,6 +282,9 @@ export class CuaComputer extends ComputerService {
     if (result.isError || !result.image) throw failure(result, `capturing window ${window.id}`)
     const width = num(result.structured.screenshot_width)
     const height = num(result.structured.screenshot_height)
+    const limit = this._config.maxImageDimension ?? DEFAULT_MAX_IMAGE_DIMENSION
+    // The driver scales down to the limit; a bigger image costs more tokens than asked for.
+    if (Math.max(width, height) > limit) this.ctx.logger('computer').warn(`screenshot of window ${window.id} is ${width}x${height}, over the ${limit} px limit`)
     this._captured.set(window.id, { width, height })
     return {
       windowId: window.id,

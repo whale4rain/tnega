@@ -13,7 +13,7 @@ import {
 } from '@tnega/computer'
 import { tools, type ToolResult } from '@tnega/tools'
 
-import { parseKeys, toolComputer } from '../src/index.js'
+import { parseKeys, toolComputer, type ToolComputerConfig } from '../src/index.js'
 
 const WINDOWS: ComputerWindow[] = [
   { id: 1, pid: 10, app: 'chrome.exe', title: 'Example', bounds: { x: 0, y: 0, width: 1280, height: 800 }, onScreen: true },
@@ -64,11 +64,11 @@ class FakeComputer extends ComputerService {
   }
 }
 
-async function setup() {
+async function setup(config: ToolComputerConfig = {}) {
   const ctx = new Context()
   await ctx.plugin(tools)
   const computer = new FakeComputer(ctx)
-  await ctx.plugin(toolComputer, { settleMs: 0 })
+  await ctx.plugin(toolComputer, { settleMs: 0, ...config })
   const run = (name: string, input: unknown): Promise<ToolResult> => ctx.get('tools').execute(name, input)
   return { ctx, computer, run }
 }
@@ -103,6 +103,34 @@ describe('tool-computer', () => {
     expect(result.ok).toBe(true)
     expect(String(result.output)).toMatch(/click done\nThe action was done, but the screenshot after it failed \(capture timed out\)/)
     expect(computer.performed).toHaveLength(1)
+  })
+
+  it('stops taking screenshots once the Session spent its budget, counting earlier ones', async () => {
+    // One screenshot is already in the Session from before a restart.
+    const earlier = [
+      { type: 'tool/result', payload: { name: 'computer_screenshot', ok: true, attachments: [{ type: 'image' }] } },
+      { type: 'tool/result', payload: { name: 'browser_screenshot', ok: true, attachments: [{ type: 'image' }] } },
+    ]
+    const { computer, run } = await setup({ maxScreenshots: 2, session: () => ({ read: async () => earlier }) })
+    const first = await run('computer_click', { window_id: 1, x: 1, y: 1 })
+    expect(first.attachments).toHaveLength(1)
+    // The action still happens; only the picture is left out.
+    const second = await run('computer_click', { window_id: 1, x: 2, y: 2 })
+    expect(computer.performed).toHaveLength(2)
+    expect(second.ok).toBe(true)
+    expect(second.attachments).toBeUndefined()
+    expect(String(second.output)).toMatch(/click done\nNo screenshot: screenshot budget exhausted \(2 of 2 this session\)\. Read the window with computer_read_tree instead\./)
+    for (const [name, input] of [['computer_screenshot', { window_id: 1 }], ['computer_zoom', { window_id: 1, x1: 0, y1: 0, x2: 9, y2: 9 }], ['computer_wait', { window_id: 1, seconds: 0 }]] as const) {
+      const refused = await run(name, input)
+      expect(refused.ok).toBe(false)
+      expect(refused.error?.message).toMatch(/screenshot budget exhausted/)
+    }
+    expect((await run('computer_read_tree', { window_id: 1 })).ok).toBe(true)
+  })
+
+  it('takes screenshots without limit when no budget is set', async () => {
+    const { run } = await setup()
+    for (let index = 0; index < 3; index += 1) expect((await run('computer_screenshot', { window_id: 1 })).attachments).toHaveLength(1)
   })
 
   it('reads the element tree as text only, with the token to use', async () => {

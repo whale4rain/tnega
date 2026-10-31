@@ -51,6 +51,75 @@ export interface ToolComputerConfig {
   /** Pause after an action before the fresh screenshot, so the app can repaint (default 700 ms). */
   settleMs?: number
   timeoutMs?: number
+  /**
+   * Screenshots one Session may take, counting those taken before a restart.
+   * Once spent, actions answer without one and the screenshot tools refuse,
+   * so the agent reads windows with computer_read_tree. Absent: no limit.
+   */
+  maxScreenshots?: number
+  /** The Session's log, read once to count earlier screenshots. */
+  session?: () => ScreenshotSource | undefined
+}
+
+/** What the budget reads from a Session log: its events, loosely typed. */
+export interface ScreenshotSource {
+  read(): Promise<readonly unknown[]>
+}
+
+const SCREENSHOT_SPENT = 'screenshot budget exhausted'
+
+/**
+ * Screenshots left in this Session. Earlier ones are counted once from the
+ * Session's computer tool results, so a restart does not refill the budget.
+ */
+export class ScreenshotBudget {
+  private taken = 0
+  private seeded: Promise<void> | undefined
+
+  constructor(readonly max: number | undefined, private readonly session?: () => ScreenshotSource | undefined) {}
+
+  /** Whether one more screenshot fits. */
+  async allows(): Promise<boolean> {
+    if (this.max === undefined) return true
+    await this.seed()
+    return this.taken < this.max
+  }
+
+  spend(): void {
+    this.taken += 1
+  }
+
+  async used(): Promise<number> {
+    await this.seed()
+    return this.taken
+  }
+
+  private async seed(): Promise<void> {
+    if (this.seeded === undefined) {
+      const log = this.session?.()
+      // No Session yet: count from zero now and try again next time.
+      if (log === undefined) return
+      this.seeded = this.count(log).catch((error: unknown) => {
+        this.seeded = undefined
+        throw error
+      })
+    }
+    await this.seeded
+  }
+
+  private async count(log: ScreenshotSource): Promise<void> {
+    let earlier = 0
+    for (const event of await log.read()) {
+      if (!isRecord(event) || event.type !== 'tool/result' || !isRecord(event.payload)) continue
+      const { name, attachments } = event.payload
+      if (typeof name === 'string' && name.startsWith('computer_') && Array.isArray(attachments)) earlier += attachments.length
+    }
+    this.taken += earlier
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 type Args = Record<string, unknown>
@@ -248,13 +317,29 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
   // The clipboard is shared by every app, so it has one scope of its own.
   const clipboardGrant = (): ToolGrant => ({ scope: 'computer:clipboard', label: 'read and replace your clipboard for the rest of this session' })
 
+  const budget = new ScreenshotBudget(config.maxScreenshots, config.session)
+  const spentNote = async () => `${SCREENSHOT_SPENT} (${await budget.used()} of ${budget.max} this session). Read the window with computer_read_tree instead.`
+  /** A screenshot result, counted against the budget. */
+  const shot = (lead: string, taken: ComputerScreenshot): unknown => {
+    budget.spend()
+    return shotResult(lead, taken)
+  }
+  /** Run a tool that exists to look, or refuse once the budget is spent. */
+  const look = async (take: () => Promise<unknown>): Promise<unknown> => {
+    if (!await budget.allows()) throw new Error(await spentNote())
+    const result = await take()
+    budget.spend()
+    return result
+  }
+
   const act = async (action: ComputerAction, options: ToolExecuteOptions): Promise<unknown> => {
     const result = await computer.act(action, signalOf(options))
     const windowId = result.windowId
     if (windowId === undefined) return result.note
+    if (!await budget.allows()) return `${result.note}\nNo screenshot: ${await spentNote()}`
     await sleep(settleMs, options.signal)
     try {
-      return shotResult(result.note, await computer.screenshot(windowId, signalOf(options)))
+      return shot(result.note, await computer.screenshot(windowId, signalOf(options)))
     } catch (error) {
       if (options.signal?.aborted) throw error
       if (error instanceof ComputerError && error.code === 'COMPUTER_NO_WINDOW') {
@@ -337,20 +422,20 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     }),
     tool('computer_screenshot', `Take a screenshot of one window. The image covers the whole window, so its top is the app's own title bar and, in a browser, the tab strip and address bar. ${UNTRUSTED}`, {
       window_id: WINDOW_ID,
-    }, ['window_id'], async (input, options) => shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options)))),
+    }, ['window_id'], (input, options) => look(async () => shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options))))),
     tool('computer_zoom', 'Look closer at a region of the window\'s latest screenshot, to read small text or aim a click. The zoomed image has its own pixels: keep using full-window points for actions.', {
       window_id: WINDOW_ID,
       x1: X, y1: Y,
       x2: { ...X, description: 'Right edge, window pixels' },
       y2: { ...Y, description: 'Bottom edge, window pixels' },
-    }, ['window_id', 'x1', 'y1', 'x2', 'y2'], async (input, options) => {
+    }, ['window_id', 'x1', 'y1', 'x2', 'y2'], (input, options) => look(async () => {
       const region = { x1: number(input, 'x1'), y1: number(input, 'y1'), x2: number(input, 'x2'), y2: number(input, 'y2') }
-      const shot = await computer.zoom(number(input, 'window_id'), region, signalOf(options))
+      const zoomed = await computer.zoom(number(input, 'window_id'), region, signalOf(options))
       return withAttachments(
-        `Zoom of (${region.x1},${region.y1})-(${region.x2},${region.y2}) in ${describeWindow({ id: shot.windowId, app: shot.app, title: shot.title })}. Use full-window points, not this image's pixels, for actions.`,
-        [{ type: 'image', mediaType: shot.mediaType, data: shot.data, name: `zoom-${shot.windowId}.${shot.mediaType === 'image/jpeg' ? 'jpg' : 'png'}` }],
+        `Zoom of (${region.x1},${region.y1})-(${region.x2},${region.y2}) in ${describeWindow({ id: zoomed.windowId, app: zoomed.app, title: zoomed.title })}. Use full-window points, not this image's pixels, for actions.`,
+        [{ type: 'image', mediaType: zoomed.mediaType, data: zoomed.data, name: `zoom-${zoomed.windowId}.${zoomed.mediaType === 'image/jpeg' ? 'jpg' : 'png'}` }],
       )
-    }),
+    })),
     tool('computer_click', 'Click an element (element_token from computer_read_tree) or a point (x, y) in a window. Returns a fresh screenshot.', {
       window_id: WINDOW_ID,
       element_token: ELEMENT,
@@ -433,10 +518,10 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     tool('computer_wait', 'Wait for a window to finish loading or animating (up to 10 seconds), then take a screenshot.', {
       window_id: WINDOW_ID,
       seconds: { type: 'number' },
-    }, ['window_id', 'seconds'], async (input, options) => {
+    }, ['window_id', 'seconds'], (input, options) => look(async () => {
       await sleep(Math.min(10, Math.max(0, number(input, 'seconds'))) * 1000, options.signal)
       return shotResult('', await computer.screenshot(number(input, 'window_id'), signalOf(options)))
-    }),
+    })),
     tool('computer_clipboard_read', `Read the text on the clipboard, which every app shares: for example after copying in one app, to use the text in another. ${UNTRUSTED}`, {}, [], async (_input, options) => {
       const result = await computer.act({ op: 'clipboard-read' }, signalOf(options))
       return result.text === undefined ? result.note : `${result.note}\n\n${result.text}`
@@ -456,7 +541,8 @@ export const name = 'tool-computer'
 export function apply(ctx: Context, config: ToolComputerConfig = {}): void {
   const registry = ctx.tools
   const disabled = new Set(config.disabled ?? [])
-  for (const definition of computerTools(ctx.computer, config)) {
+  const session = config.session ?? (() => ctx.get('session', false))
+  for (const definition of computerTools(ctx.computer, { ...config, session })) {
     if (!disabled.has(definition.schema.name)) registry.register(definition)
   }
 }
