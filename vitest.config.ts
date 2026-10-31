@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config'
+import { ignoredByDefault } from './vitest.layers.js'
 
+// The code layer: deterministic, host-independent. `pnpm test -- --全量`
+// switches to `vitest.full.config.ts`, which adds the host layer.
 export default defineConfig({
   test: {
     setupFiles: ['./vitest.setup.ts'],
@@ -12,5 +15,6 @@ export default defineConfig({
       'apps/**/test/**/*.test.ts',
       'apps/web/src/**/*.test.ts',
     ],
+    exclude: ignoredByDefault,
   },
 })

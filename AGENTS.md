@@ -65,8 +65,12 @@ Tnega 的一切能力都是插件。动手前先想清楚它挂在哪个插件�
 
 - 使用 Node.js 22+ 与 pnpm；保持 TypeScript strict 配置，不通过 `any`、类型断言或 lint disable 绕过错误。
 - 将测试放在修改包的 `test/` 目录；Web 测试与源文件同目录。优先覆盖用户可观察行为、生命周期边界和失败路径。
+- 测试分两层，见 `vitest.layers.ts`：
+  - **代码层**（`pnpm test`，默认）：只依赖仓库本身。任何改动都要让它保持通过。
+  - **宿主层**（`pnpm test -- --全量`，或 `pnpm test:all`；单跑用 `pnpm test -- --host`）：需要真实构建、真实 API key、Chromium/Electron 或 Windows ACL 权限。它以「`*.e2e.test.ts` / `*.smoke.test.ts`」命名即自动归入，不必登记；它的失败只说明这台机器，不直接说明代码。
+  - `--全量` 分两趟顺序执行：宿主层的整套构建与 GUI 用例在 280 个文件并行时会被拖到超时，那是环境红、不是代码红。
 - 改动后运行最小充分验证：
-  - 单个测试：`pnpm test -- path/to/file.test.ts`
+  - 单个测试：`pnpm test -- path/to/file.test.ts`（宿主层文件加 `--host`）
   - 跨包、公共类型或构建改动：`pnpm typecheck`，必要时再运行 `pnpm test`
   - 代码风格或导入范围较大：`pnpm lint`
   - 发布入口、打包或 Web 产物改动：`pnpm build`；发布行为再运行 `pnpm test:package`
