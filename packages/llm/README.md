@@ -48,8 +48,15 @@ durable `assistant/chunk`，并在 `llm/stream` waterfall 上让插件可改写�
 
 `store` + `previous_response_id` 让服务端保存历史，后续只发新增的轮次。适配器对每条
 消息取指纹，只有当前历史是上次的严格前缀时才链式续写（压缩、编辑、图片窗口滑动都会
-让它退回全量重发）；响应里 `store` 为 false 的路由（DeepSeek 当前如此）自动关掉状态化，
-之后一律全量。`stateful: false` 可强制关闭。
+让它退回全量重发）；响应里 `store` 为 false 的路由自动关掉状态化。
+`stateful: false` / `store: false` 可强制关闭。
+
+**DeepSeek 是无状态的**：`https://api.deepseek.com/responses` 可用（文本、流式、
+`input_image.file_id`、`usage.input_tokens_details.cached_tokens` 均正常），但官方写明
+“The API is stateless: responses and conversations are not stored on the server”。实测同样：发
+`store: true` 回来的 `store` 仍为 false，`GET /responses/{id}` 是 404，假的
+`previous_response_id` 返回 200 但丢弃上下文。所以对这类端点（`statelessResponses()`，
+目前就是 DeepSeek）**不发** `store` / `previous_response_id` / `conversation`，而是直接重发完整历史。
 
 ## 超时与重试
 

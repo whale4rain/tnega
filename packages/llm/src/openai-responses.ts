@@ -17,6 +17,7 @@ import {
   normalizeBaseUrl,
   parseArguments,
   sleep,
+  statelessResponses,
   stringifyArguments,
   withCallOverrides,
 } from './shared.js'
@@ -158,8 +159,10 @@ async function buildRequest(
 export function openaiResponsesAdapter(config: OpenAIResponsesConfig): LLMAdapter {
   // Learned once per adapter: the endpoint wants fixed instructions.
   let fixedInstructions = config.instructions
-  // Server-side conversation state, when the route actually keeps it.
-  let stateful = config.stateful !== false && config.store !== false
+  // Server-side conversation state, when the route actually keeps it. DeepSeek's
+  // Responses endpoint documents itself as stateless, so stateful parameters are
+  // never sent there; other routes are trusted until a reply says otherwise.
+  let stateful = config.stateful !== false && config.store !== false && !statelessResponses(config.baseUrl)
   let last: { id: string; prints: string[] } | undefined
   const stream = async function* (
     messages: readonly ModelMessage[],

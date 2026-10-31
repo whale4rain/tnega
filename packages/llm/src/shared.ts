@@ -46,6 +46,17 @@ export function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status >= 500
 }
 
+/**
+ * A Responses endpoint that keeps nothing: DeepSeek documents its Responses API
+ * as stateless ("responses and conversations are not stored on the server"),
+ * and answers `store: true` with `store: false`. `store`,
+ * `previous_response_id` and `conversation` can never be honoured there, so
+ * they are not sent at all — the caller replays the conversation instead.
+ */
+export function statelessResponses(baseUrl: string | undefined): boolean {
+  return isDeepSeekApi(baseUrl)
+}
+
 export function isExternalAbort(
   error: unknown,
   signal: AbortSignal | undefined,

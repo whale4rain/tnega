@@ -198,6 +198,24 @@ describe('server-kept conversations', () => {
     expect(secondBody.input.map(item => item.role).filter(Boolean)).toEqual(['assistant', 'user'])
   })
 
+  it('sends no stateful parameter to a stateless Responses endpoint', async () => {
+    const fetchMock = responsesMock(true, ['resp-a', 'resp-b'])
+    vi.stubGlobal('fetch', fetchMock)
+    // DeepSeek documents its Responses API as stateless; the reply claiming store
+    // must not talk us into a chain it would silently ignore.
+    const adapter = openaiResponsesAdapter({ baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', fetch: fetchMock })
+    await adapter.complete(first, [], {})
+    await adapter.complete(second, [], {})
+    for (const call of fetchMock.mock.calls) {
+      const body = JSON.parse(String(call[1]!.body)) as Record<string, unknown> & { input: Array<{ role?: string }> }
+      expect(body.store).toBe(false)
+      expect(body.previous_response_id).toBeUndefined()
+      void body
+    }
+    const secondBody = JSON.parse(String(fetchMock.mock.calls[1]![1]!.body)) as { input: Array<{ role?: string }> }
+    expect(secondBody.input.filter(item => item.role === 'user')).toHaveLength(2)
+  })
+
   it('resends the whole conversation when the provider did not store it', async () => {
     const fetchMock = responsesMock(false, ['resp-a', 'resp-b'])
     const adapter = openaiResponsesAdapter({ baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', fetch: fetchMock }); vi.stubGlobal('fetch', fetchMock)
