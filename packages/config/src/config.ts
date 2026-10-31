@@ -141,6 +141,11 @@ export interface SystemConfig {
   /** Path to the `cua-driver` binary when it is not on PATH or in the installer's folder. */
   computerDriverPath?: string
   /**
+   * Screenshots one Session may take with computer use; then actions answer
+   * without one and the agent reads windows as text. Absent: no limit.
+   */
+  computerMaxScreenshots?: number
+  /**
    * How strictly a file write must match what this Session already read of that
    * path. `warn` (the default) records and proceeds with a note, `enforce`
    * refuses an unread or externally changed target, `off` does neither.
@@ -736,6 +741,7 @@ function normalizeConfig(value: unknown): SystemConfig {
   if (typeof record.codeMode === 'boolean') config.codeMode = record.codeMode
   if (typeof record.computerUse === 'boolean') config.computerUse = record.computerUse
   if (typeof record.computerDriverPath === 'string' && record.computerDriverPath.trim()) config.computerDriverPath = record.computerDriverPath.trim()
+  if (Number.isSafeInteger(record.computerMaxScreenshots) && Number(record.computerMaxScreenshots) >= 0) config.computerMaxScreenshots = Number(record.computerMaxScreenshots)
   if (isFsGuardMode(record.fsGuard)) config.fsGuard = record.fsGuard
   const memory = normalizeProjectMemory(record.projectMemory)
   if (memory) config.projectMemory = memory

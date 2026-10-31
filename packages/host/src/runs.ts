@@ -123,7 +123,7 @@ export async function handleRun(
       sandboxNetwork: sandboxNetworkFrom(context.configFile),
       office: agentType === 'work' ? true : 'auto',
       ...(context.secrets ? { secrets: { vault: context.secrets, sessionId: id } } : {}),
-      ...computerSpec(config),
+      ...computerSpec(config, route.vision),
       builtinTools: {
         cwd: workspace,
         allowNetwork: true,
@@ -390,7 +390,7 @@ export async function createResidentRuntime(
     // conditional on finding one first.
     office: req.agentType === 'work' ? true : 'auto',
     ...(req.secrets ? { secrets: { vault: req.secrets, sessionId: req.sessionId } } : {}),
-    ...computerSpec(req.config),
+    ...computerSpec(req.config, req.route.vision),
     // Long turns are fine while they keep moving; a turn that stalls is nudged, then parked.
     loopGuard: true,
     jobs: { resolveSession: sessionOf },
@@ -503,7 +503,7 @@ export function residentSignature(req: ResidentRunRequest): string {
     // The file tools read their guard mode when they are built.
     req.config.fsGuard ?? 'warn',
     // Turning computer use on or off rebuilds the runtime, so its tools follow the switch.
-    req.config.computerUse ? `computer:${req.config.computerDriverPath ?? ''}` : 'no-computer',
+    req.config.computerUse ? `computer:${req.config.computerDriverPath ?? ''}:${req.config.computerMaxScreenshots ?? ''}` : 'no-computer',
     req.agentType,
     req.permission,
     'auto',

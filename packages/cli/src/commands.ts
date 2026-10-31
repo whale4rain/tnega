@@ -141,6 +141,7 @@ export async function runAgentCommand(
   // The window the route actually has: auto compaction needs it, and a run
   // without one compacts against a generic default instead of its own model.
   const contextWindow = route.contextWindow
+  const vision = route.vision
   const profileRuntimeOptions = runtimeOptionsFromProfile(profileOptions)
   configureSystemShell(systemConfig.shell)
   // The saved proxy, for http_get and for sandboxed commands' allowed traffic.
@@ -165,7 +166,14 @@ export async function runAgentCommand(
     ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
     // Computer use only when turned on in Settings; off also overrides a profile.
-    computer: systemConfig.computerUse ? (systemConfig.computerDriverPath ? { driverPath: systemConfig.computerDriverPath } : {}) : false,
+    computer: systemConfig.computerUse
+      ? {
+          ...(systemConfig.computerDriverPath ? { driverPath: systemConfig.computerDriverPath } : {}),
+          ...(systemConfig.computerMaxScreenshots !== undefined ? { maxScreenshots: systemConfig.computerMaxScreenshots } : {}),
+          // One model for the whole run: a text-only one gets the tools without screenshots.
+          vision: () => vision,
+        }
+      : false,
   })
   try {
     const loop = context.root.get('agentLoop')

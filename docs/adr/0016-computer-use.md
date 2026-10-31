@@ -41,6 +41,14 @@
 宿主、`tnega run`、压缩与审批模型都按它组装请求。客户端默认仍是 8；实测（见 `packages/llm/README.md`）窗口开始滑动后，
 每步要重付窗口里的全部图片（约 410 token 一张），所以电脑操作建议设 2。
 
+## 只收文本的模型（2026-10-31）
+
+工具集不变，变的是结果的形状。宿主给 Consumer 一个 `vision()`，问「下一步用的模型能不能读图」——按 Session 当前选中的路由（`EffectiveLlmConfig.vision`，即路由上配置的 `vision`，否则按模型名推断），每次要截图前都问，因为模型可以在运行中途切换。不能读图时根本不截图：动作的结果是动作说明加一行窗口描述（窗口、应用、标题、尺寸），`computer_screenshot` / `computer_zoom` / `computer_wait` 也只回这行描述，都指向 `computer_read_tree`；不计入截图预算。切回能读图的模型，下一次就重新带截图。`tnega run` 只用一个模型，开始时定下。
+
+## 截图预算（2026-10-31）
+
+长任务可能拿几百张截图，所以 `computerMaxScreenshots` 给一个 Session 的截图张数设上限。计数归 Consumer（`tool-computer`），因为截图是它附进结果的；计数从 durable Session 里重建（之前的 `computer_*` 结果的图片数），这样重启后不会重置。用完后观察退回文本：动作不带截图，看图的工具拒绝并指向 `computer_read_tree`。Provider 返回的截图超过 `maxImageDimension` 时记一条警告。
+
 ## 授权
 
 - 设置里的 **Computer use** 默认关闭；关闭时工具不注册，模型看不到。
@@ -50,7 +58,7 @@
 ## 原因
 
 - cua-driver 已经解决了后台投递、DPI、截图与坐标换算、UIPI（提权窗口直接拒绝）等平台细节，并以 MCP 暴露，作为 Provider 最省；换成别的驱动只换这一个包。
-- 截图优先：DeepSeek V4 Flash 能读图并给出接近的坐标（实测 400×200 图上误差约 10 px），配合 `computer_zoom` 足以完成常见网页任务；V4 Pro 不接受图片，第一版不为它做文本树模式。
+- 截图优先：DeepSeek V4 Flash 能读图并给出接近的坐标（实测 400×200 图上误差约 10 px），配合 `computer_zoom` 足以完成常见网页任务；V4 Pro 不接受图片，第一版不为它做文本树模式（2026-10-31 起有了，见「只收文本的模型」）。
 
 ## 已验证（2026-10-30，Linux / Xvfb + openbox，Chromium，cua-driver 0.38.0，deepseek-v4-flash）
 

@@ -19,4 +19,8 @@
 
 每个工具声明 `grant`：对窗口的操作按拥有窗口的应用授权（`computer:app:<应用>`），列窗口、列应用、启动应用各有范围，剪贴板读写共用 `computer:clipboard`；审批宿主在用户允许后，本 Session 内同一范围不再询问。
 
+只收文本的模型：`ToolComputerConfig.vision()` 返回 false 时（宿主按 Session 当前模型回答，每次截图前都问），不截图，动作与看图的工具只回一行窗口描述（窗口、应用、标题、尺寸），并指向 `computer_read_tree`；这时不计截图预算。
+
+截图预算：配置文件里的 `computerMaxScreenshots`（经 `ToolComputerConfig.maxScreenshots`）限制一个 Session 能拿到的截图张数（截图、放大、等待与动作后的截图都算）。第一次用到时从 Session 里已有的 `computer_*` 结果数出之前的图片，所以重启不会把额度补满。用完后动作照常执行，只是不再附截图；`computer_screenshot` / `computer_zoom` / `computer_wait` 直接拒绝（`screenshot budget exhausted`），提示改用 `computer_read_tree`。不设即不限。
+
 中断后能否直接重跑：只看不动的工具（`COMPUTER_OBSERVE_TOOLS`）与悬停是 `retry`，其余动作是 `confirm`（`COMPUTER_REPEATABLE_TOOLS`）。

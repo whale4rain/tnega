@@ -19,6 +19,15 @@ async function configFile(text?: string): Promise<string> {
 }
 
 describe('system config file', () => {
+  it('keeps a whole screenshot budget for computer use and drops anything else', async () => {
+    const file = await configFile(JSON.stringify({ computerUse: true, computerMaxScreenshots: 40 }))
+    expect((await readSystemConfig(file)).computerMaxScreenshots).toBe(40)
+    for (const bad of [-1, 2.5, '40']) {
+      await writeFile(file, JSON.stringify({ computerMaxScreenshots: bad }))
+      expect((await readSystemConfig(file)).computerMaxScreenshots).toBeUndefined()
+    }
+  })
+
   it('persists memory limits and disables extraction for an invalid budget file setting', async () => {
     const file = await configFile()
     await updateSystemConfig({ memoryDream: { enabled: false, modelId: 'economical', idleMinutes: 30 } }, file)
