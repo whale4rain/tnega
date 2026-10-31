@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.6-beta.2 | [`v0.5.6-beta.1...v0.5.6-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.6-beta.1...v0.5.6-beta.2) | 38 |
 | 0.5.6-beta.1 | [`v0.5.5...v0.5.6-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6-beta.1) | 12 |
 | 0.5.5 | [`v0.5.4...v0.5.5`](https://github.com/whale4rain/tnega/compare/v0.5.4...v0.5.5) | 6 |
 | 0.5.4 | [`v0.5.3...v0.5.4`](https://github.com/whale4rain/tnega/compare/v0.5.3...v0.5.4) | 29 |
@@ -68,6 +69,97 @@ compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
 
+## [0.5.6-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.6-beta.2) — 2026-10-31
+
+### Features
+
+- Computer use: the agent can see and use desktop apps through `ctx.computer` and
+  the `computer_*` tools — list windows and apps, start an app by name, id or
+  executable path, screenshot and zoom a window, then click, type, press a key,
+  scroll, drag, hover, invoke a menu item, run a batch of steps, and read or
+  write the clipboard. Off until **Settings → Computer use** is on, and it needs
+  the `cua-driver` binary, which is not bundled: the host looks for
+  `computerDriverPath`, then `TNEGA_CUA_DRIVER`, then `PATH`, then the
+  installer's folder, and fails with an install command instead of falling back
+  to another input path. Actions default to background delivery and retry in
+  front only when the driver refuses the event kind.
+- Aim at elements instead of pixels: `computer_read_tree` reads a window's
+  accessibility tree as text with `[N]` rows and element tokens
+  (`<snapshot>:N`), and click, scroll, type and single keys accept a token, so
+  the driver invokes the element itself and can confirm the result. Element and
+  point are mutually exclusive, and a token from an older read is refused with a
+  hint to read again rather than retried. `frames: true` appends each row's box
+  in the pixels an action takes, for grids and for popup rows without a token.
+- An action reports what it changed: when the driver cannot confirm an effect,
+  the result carries its comparison with the caller's previous read — added,
+  changed and removed counts plus the differing rows, or an explicit "the window
+  did not change", with a warning when posted input may have been ignored and a
+  renumbering note when old tokens moved. A confirmed action pays nothing extra.
+- Hover moves the real pointer; clipboard read and write share a
+  `computer:clipboard` grant; `computer_list_apps` names app ids;
+  `computer_menu` resolves a native application menu by label path; and
+  `computer_steps` runs several actions in one call, judged step by step and
+  audited per step.
+- `computerMaxScreenshots` bounds a Session's screenshots, counting screenshots,
+  zooms, waits and the image after each action. The count is rebuilt from the
+  Session's own results, so a restart does not refill it; once spent, actions
+  still run without an image and the looking tools point at
+  `computer_read_tree`. A text-only model gets the tools without screenshots and
+  spends no budget.
+- Images no longer travel in the request body: they are uploaded once to the
+  route's Files API (keyed by SHA-256, so ids stay stable across turns) and
+  referenced by id — `{type:"file"}` for chat completions, `input_image.file_id`
+  for Responses, a file source with the `files-api-2025-04-14` beta for
+  Anthropic. Measured on a 1024 screenshot: 402 KiB uploaded once and the
+  request body down from about 400 KiB to 138 bytes. `filesApi`, `filesUrl` and
+  `filesPurpose` control it, and an endpoint without a Files API is remembered
+  rather than retried every turn.
+- `maxImages` bounds the images a request carries, at the top of the config or on
+  one model route (the route wins); each image is billed again on every request,
+  so a screenshot-heavy task wants a small number.
+- Responses turns chain when the route keeps state: `store` plus
+  `previous_response_id` and only the new turns, but only while the history is a
+  strict prefix, so a compaction or an edit resends everything. A route that
+  reports it did not store the response turns state off, and DeepSeek's stateless
+  Responses endpoint is never sent those parameters at all.
+- The Context tool lists what each tool cost: calls, failures, time, the images
+  its results carried, and the prompt and completion tokens of the requests that
+  read those results, split evenly when one request read several.
+
+### Fixes
+
+- One refused image no longer costs a route its vision. Only an error about the
+  model's own input counts; a rejected upload, an unowned file id or an oversized
+  image is a problem with that image, and a different set of images is tried
+  again instead of staying text-only for the life of the adapter.
+- A route's `fetch` covers every request it makes — completion, upload and model
+  list — instead of only the upload, so a request can no longer escape to the
+  global transport.
+- A minimized window is restored before it is read or acted in, and input the
+  driver delivered but could not confirm is never re-sent.
+- Hover is refused outside the window's screenshot rather than moving the user's
+  pointer onto another window, and no action targets rows a diff read marks as
+  removed.
+- A screenshot slot is held before capturing, so screenshots taken side by side
+  cannot overrun the budget.
+- `tnega run` reads the image budget from the route it actually uses, not the
+  top-level setting.
+- Global memory lives in the Tnega home (`TNEGA_HOME`), so an isolated
+  installation or a test run no longer reads and writes the user's own
+  `~/.tnega/MEMORY.md`, and the "memory is full" error names the file it refused.
+
+### Other
+
+- The suite has two layers: `pnpm test` runs the code layer, which needs no
+  credentials, build artifact, GUI or elevated privilege, and
+  `pnpm test -- --全量` (or `pnpm test:all`) adds the host layer as a second
+  sequential pass. A test joins the host layer by being named `*.e2e.test.ts` or
+  `*.smoke.test.ts`.
+- New packages `@tnega/computer`, `@tnega/computer-cua` and
+  `@tnega/tool-computer`, and `@tnega/llm`'s Files API module, are published as
+  `tnega/*` subpaths; ADR 0016 records the seam, the element pathway, the
+  feedback loop and the driver's menu limits.
+
 ## [0.5.6-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.6-beta.1) — 2026-10-27
 
 ### Features
