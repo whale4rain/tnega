@@ -5228,4 +5228,5 @@ button.composer-file:hover {
 .ctx-models { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .ctx-models th, .ctx-models td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
 .ctx-models th:first-child { overflow: hidden; max-width: 220px; text-align: left; text-overflow: ellipsis; font-weight: 500; }
+.ctx-table-scroll { overflow-x: auto; }
 .ctx-models thead th { color: var(--text-3); font-weight: 500; }

@@ -103,6 +103,28 @@ describe('session context report', () => {
     expect(timing.activeMs).toBeGreaterThanOrEqual(timing.waitingMs + timing.thinkingMs + timing.respondingMs + timing.toolMs)
   })
 
+  it('gives each tool the requests that read its results, and counts its images', () => {
+    const b = session()
+    b.push('turn/start', { turn: 2 })
+    b.push('user/message', { content: 'click it' }, { surfaceOp: 'append' })
+    b.push('assistant/message', {
+      content: '',
+      toolCalls: [{ id: 'c2', name: 'computer_screenshot', arguments: {} }, { id: 'c3', name: 'computer_click', arguments: { x: 1, y: 2 } }],
+      usage: { promptTokens: 700, completionTokens: 10 },
+    }, { surfaceOp: 'append' })
+    b.push('tool/result', { id: 'r2', toolCallId: 'c2', name: 'computer_screenshot', ok: true, output: 'shot', durationMs: 90, attachments: [{ type: 'image', mediaType: 'image/png', data: 'QUJDRA==' }] }, { surfaceOp: 'append' })
+    b.push('tool/result', { id: 'r3', toolCallId: 'c3', name: 'computer_click', ok: false, error: { message: 'gone' }, durationMs: 10 }, { surfaceOp: 'append' })
+    b.push('assistant/message', { content: 'done', usage: { promptTokens: 1_000, completionTokens: 30, cachedTokens: 400 } }, { surfaceOp: 'append' })
+    b.push('turn/end', { turn: 2 })
+    const { tools } = sessionContextReport(b.events, config)
+    expect(tools.map(tool => tool.name)).toEqual(['read', 'computer_click', 'computer_screenshot'])
+    expect(tools[0]).toMatchObject({ calls: 1, promptTokens: 650, cachedTokens: 600, completionTokens: 40, images: 0 })
+    const shot = tools.find(tool => tool.name === 'computer_screenshot')!
+    expect(shot).toMatchObject({ calls: 1, failed: 0, durationMs: 90, images: 1, imageBytes: 4, promptTokens: 500, cachedTokens: 200, completionTokens: 15 })
+    expect(shot.cost?.[0]).toMatchObject({ currency: 'CNY' })
+    expect(tools.find(tool => tool.name === 'computer_click')).toMatchObject({ calls: 1, failed: 1, images: 0, promptTokens: 500 })
+  })
+
   it('counts a plugin’s nudge as injected context, not as something you wrote', () => {
     const b = session()
     b.push('user/message', { content: text(30), name: 'plugin:continue' }, { surfaceOp: 'append' })
