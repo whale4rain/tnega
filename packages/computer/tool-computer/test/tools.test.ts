@@ -111,6 +111,24 @@ describe('tool-computer', () => {
     expect(text).not.toContain('since s00000001')
   })
 
+  it('keeps the driver note that rows were renumbered, since a stale number misaims', async () => {
+    const { computer, run } = await setup()
+    computer.outcome = {
+      effect: 'unverifiable',
+      route: 'synthetic_events',
+      change: {
+        status: 'diff',
+        added: 3,
+        changed: 0,
+        removed: 1,
+        diff: 'since s00000001: 3 added, 0 changed, 1 removed.\n+ [17] Button "fresh 1"\n- Text "probe"\nreindexed: [17-20] -> [20-23]',
+      },
+    }
+    const text = String((await run('computer_click', { window_id: 1, x: 40, y: 60 })).output)
+    // Dropping this line would leave the model aiming at the old rows.
+    expect(text).toContain('reindexed: [17-20] -> [20-23] — old tokens for those rows are stale.')
+  })
+
   it('reads an unchanged window with posted input as a likely ignored click', async () => {
     const { computer, run } = await setup()
     computer.outcome = {

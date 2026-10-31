@@ -278,6 +278,8 @@ function shotResult(lead: string, shot: ComputerScreenshot): unknown {
 /** Most differing rows quoted back: enough to recognise the change, not a tree. */
 const MAX_DIFF_ROWS = 6
 const MAX_DIFF_ROW_CHARS = 120
+/** Most renumbering notes quoted back: each one moves a whole range of rows. */
+const MAX_REINDEX_NOTES = 3
 
 /**
  * An action's note, plus what the window did when the driver could not confirm
@@ -288,13 +290,19 @@ function describeOutcome(result: ComputerActionResult): string {
   const change = result.change
   if (!change) return result.note
   if (change.status === 'diff') {
-    const rows = (change.diff ?? '')
-      .split('\n')
+    const all = (change.diff ?? '').split('\n')
+    const rows = all
       .filter((line: string) => /^[+~-] /.test(line))
       .slice(0, MAX_DIFF_ROWS)
       .map((line: string) => line.length > MAX_DIFF_ROW_CHARS ? `${line.slice(0, MAX_DIFF_ROW_CHARS)}…` : line)
+    // The driver renumbers rows when the change shifts them, and a stale number
+    // aims at the wrong element: that note outranks the rows it describes.
+    const reindexed = all
+      .filter((line: string) => /^reindexed:/i.test(line))
+      .slice(0, MAX_REINDEX_NOTES)
+      .map((line: string) => `${line} — old tokens for those rows are stale.`)
     const head = `Changed: ${change.added} added, ${change.changed} changed, ${change.removed} removed.`
-    return [result.note, head, ...rows].join('\n')
+    return [result.note, head, ...rows, ...reindexed].join('\n')
   }
   if (change.status === 'no_change') {
     return [
