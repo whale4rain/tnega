@@ -6,6 +6,7 @@ import {
   ComputerService,
   type ComputerAction,
   type ComputerActionResult,
+  type ComputerApp,
   type ComputerScreenshot,
   type ComputerTree,
   type ComputerWindow,
@@ -39,13 +40,24 @@ class FakeComputer extends ComputerService {
     return this.screenshot(windowId)
   }
 
+  override async apps(): Promise<ComputerApp[]> {
+    return [
+      { name: 'Notepad', id: 'Microsoft.WindowsNotepad', running: true, pid: 20, windowIds: [2] },
+      { name: 'Google Chrome', id: 'Chrome', running: true, pid: 10, windowIds: [1] },
+      { name: 'Calculator', id: 'Microsoft.WindowsCalculator', running: false, windowIds: [] },
+    ]
+  }
+
   override async tree(windowId: number): Promise<ComputerTree> {
     return { windowId, app: 'chrome.exe', title: 'Example', snapshotId: 's00000002', markdown: '- [5] button "Save"\n', total: 40, returned: 3, truncated: true }
   }
 
   protected async runAction(action: ComputerAction): Promise<ComputerActionResult> {
     this.performed.push(action)
-    if (action.op === 'launch') return { note: `Launched ${action.app}` }
+    if (action.op === 'launch') return { note: `Launched ${action.app}${action.id ? ` (${action.id})` : ''}` }
+    if (action.op === 'clipboard-read') return { note: 'The clipboard holds 6 characters of text.', text: 'copied' }
+    if (action.op === 'clipboard-write') return { note: `Put ${action.text.length} characters on the clipboard` }
+    if (action.op === 'steps') return { note: `Ran ${action.steps.length} steps`, windowId: action.windowId, steps: action.steps.map(step => ({ ok: true, note: step.op })) }
     // Ctrl+W closes the window.
     if (action.op === 'key' && action.keys.join('+') === 'ctrl+w') this.open = this.open.filter(window => window.id !== action.windowId)
     return { note: `${action.op} done`, windowId: action.windowId }
@@ -146,6 +158,77 @@ describe('tool-computer', () => {
     expect(await grantOf('computer_open_app', { name: 'Notepad' })).toMatchObject({ scope: 'computer:launch:notepad' })
     // A closed window offers no Session-long scope; the call is asked about on its own.
     expect(await grantOf('computer_click', { window_id: 9, x: 0, y: 0 })).toBeUndefined()
+  })
+
+  it('runs a batch of steps in one window and answers with one screenshot', async () => {
+    const { computer, run } = await setup()
+    const result = await run('computer_steps', { window_id: 1, steps: [
+      { action: 'click', element_token: 's00000002:5' },
+      { action: 'type', text: 'ada', submit: true },
+      { action: 'hover', x: 3, y: 4 },
+    ] })
+    expect(result.ok).toBe(true)
+    expect(computer.performed).toEqual([{ op: 'steps', windowId: 1, steps: [
+      { op: 'click', windowId: 1, element: 's00000002:5' },
+      { op: 'type', windowId: 1, text: 'ada' },
+      { op: 'key', windowId: 1, keys: ['enter'] },
+      { op: 'hover', windowId: 1, x: 3, y: 4 },
+    ] }])
+    expect(result.attachments).toHaveLength(1)
+    const bad = await run('computer_steps', { window_id: 1, steps: [{ action: 'click', element_token: 's1:2' }, { action: 'launch' }] })
+    expect(bad.ok).toBe(false)
+    expect(JSON.stringify(bad)).toMatch(/steps.\[1\].action must be one of/)
+    expect(computer.performed).toHaveLength(1)
+  })
+
+  it('hovers and invokes menus in a window', async () => {
+    const { computer, run } = await setup()
+    await run('computer_hover', { window_id: 2, x: 10, y: 20 })
+    await run('computer_menu', { window_id: 2, path: ['File', 'Save As...'] })
+    expect(computer.performed).toEqual([
+      { op: 'hover', windowId: 2, x: 10, y: 20 },
+      { op: 'menu', windowId: 2, path: ['File', 'Save As...'] },
+    ])
+  })
+
+  it('lists apps with their windows and ids, and opens one by id', async () => {
+    const { computer, run } = await setup()
+    const all = await run('computer_list_apps', {})
+    expect(all.output).toBe([
+      'Google Chrome · running, window 1 · app_id "Chrome"',
+      'Notepad · running, window 2 · app_id "Microsoft.WindowsNotepad"',
+      'Calculator · not running · app_id "Microsoft.WindowsCalculator"',
+    ].join('\n'))
+    expect((await run('computer_list_apps', { query: 'calc' })).output).toBe('Calculator · not running · app_id "Microsoft.WindowsCalculator"')
+    await run('computer_open_app', { name: 'Calculator', app_id: 'Microsoft.WindowsCalculator' })
+    expect(computer.performed.at(-1)).toEqual({ op: 'launch', app: 'Calculator', id: 'Microsoft.WindowsCalculator' })
+  })
+
+  it('reads and writes the clipboard under one approval of its own', async () => {
+    const { ctx, computer, run } = await setup()
+    expect((await run('computer_clipboard_read', {})).output).toBe('The clipboard holds 6 characters of text.\n\ncopied')
+    expect((await run('computer_clipboard_write', { text: 'hello' })).output).toBe('Put 5 characters on the clipboard')
+    expect(computer.performed).toEqual([{ op: 'clipboard-read' }, { op: 'clipboard-write', text: 'hello' }])
+    const registry = ctx.get('tools')
+    const definition = (name: string) => registry.list().find(tool => tool.schema.name === name)
+    expect(await definition('computer_clipboard_read')?.grant?.({}, {})).toMatchObject({ scope: 'computer:clipboard' })
+    expect(await definition('computer_clipboard_write')?.grant?.({ text: 'x' }, {})).toMatchObject({ scope: 'computer:clipboard' })
+    expect(await definition('computer_list_apps')?.grant?.({}, {})).toMatchObject({ scope: 'computer:apps' })
+  })
+
+  it('asks before repeating anything but looking and hovering after an interruption', async () => {
+    const { ctx } = await setup()
+    const interruption = Object.fromEntries(ctx.get('tools').list().map(tool => [tool.schema.name, tool.interruption]))
+    expect(interruption).toMatchObject({
+      computer_hover: 'retry',
+      computer_clipboard_read: 'retry',
+      computer_list_apps: 'retry',
+      computer_read_tree: 'retry',
+      computer_clipboard_write: 'confirm',
+      computer_menu: 'confirm',
+      computer_steps: 'confirm',
+      computer_click: 'confirm',
+    })
   })
 
   it('rejects malformed input before acting', async () => {

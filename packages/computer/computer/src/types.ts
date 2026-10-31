@@ -19,7 +19,8 @@ export type ComputerAim =
   | { element: string; x?: undefined; y?: undefined }
   | { element?: undefined; x: number; y: number }
 
-export type ComputerAction =
+/** An action inside one window that a batch can carry. */
+export type ComputerStep =
   | ({ op: 'click'; windowId: number; button?: 'left' | 'right' | 'middle'; count?: number } & ComputerAim)
   /** Types into `element`, or into whatever has the keyboard focus in the window. */
   | { op: 'type'; windowId: number; text: string; element?: string }
@@ -27,8 +28,32 @@ export type ComputerAction =
   | { op: 'key'; windowId: number; keys: string[]; element?: string }
   | ({ op: 'scroll'; windowId: number; direction: 'up' | 'down' | 'left' | 'right'; amount?: number } & ComputerAim)
   | { op: 'drag'; windowId: number; from: ComputerPoint; to: ComputerPoint }
-  /** Start an app by name or command, optionally opening URLs in it. */
-  | { op: 'launch'; app: string; urls?: string[] }
+  /**
+   * Rest the pointer on a point, for menus that open on hover, tooltips and
+   * drag handles. Hover needs the real pointer: the window comes to the front
+   * and the user's mouse moves.
+   */
+  | ({ op: 'hover'; windowId: number } & ComputerPoint)
+
+export const COMPUTER_STEP_OPS: ReadonlySet<string> = new Set<ComputerStep['op']>(['click', 'type', 'key', 'scroll', 'drag', 'hover'])
+
+/** Most steps a batch may carry. */
+export const COMPUTER_MAX_STEPS = 64
+
+export type ComputerAction =
+  | ComputerStep
+  /** Invoke a native menu item by its labels, e.g. `['File', 'Save As...']`. */
+  | { op: 'menu'; windowId: number; path: string[] }
+  /**
+   * Run steps in one window in order, stopping at the first that fails.
+   * `computer/pre-action` judges every step before any runs.
+   */
+  | { op: 'steps'; windowId: number; steps: ComputerStep[] }
+  /** Start an app by name or command, or by `id` from {@link ComputerService.apps}, optionally opening URLs in it. */
+  | { op: 'launch'; app: string; id?: string; urls?: string[] }
+  /** The clipboard is shared by every app, so it is not tied to a window. */
+  | { op: 'clipboard-read' }
+  | { op: 'clipboard-write'; text: string }
 
 export type ComputerActionOp = ComputerAction['op']
 
@@ -40,6 +65,17 @@ export interface ComputerWindow {
   title: string
   bounds: { x: number; y: number; width: number; height: number }
   onScreen: boolean
+}
+
+/** An app on this machine, running or only installed. */
+export interface ComputerApp {
+  name: string
+  /** Pass as `id` of a launch to start exactly this app. */
+  id?: string
+  running: boolean
+  pid?: number
+  /** Its open top-level windows. */
+  windowIds: number[]
 }
 
 export interface ComputerScreenshot {
@@ -70,6 +106,15 @@ export interface ComputerActionResult {
   /** The window the action landed in; a launch reports the app's new window when it knows one. */
   windowId?: number
   effect?: ComputerEffect
+  /** What a clipboard read found. */
+  text?: string
+  /** A batch: one entry per step that ran, the failed one last. */
+  steps?: ComputerStepResult[]
+}
+
+export interface ComputerStepResult {
+  ok: boolean
+  note: string
 }
 
 export interface ComputerTreeOptions extends ComputerCallOptions {
@@ -106,15 +151,19 @@ export interface ComputerCallOptions {
   signal?: AbortSignal
 }
 
-/** `computer/pre-action`: rewrite `action`, or set `deny` to refuse it. */
+/** `computer/pre-action`: rewrite `action`, or set `deny` to refuse it. A batch is judged step by step. */
 export interface ComputerPreActionEvent {
   action: ComputerAction
-  /** The target window, resolved before policy runs; absent for a launch. */
+  /** The target window, resolved before policy runs; absent for a launch or the clipboard. */
   window?: ComputerWindow
   deny?: string
 }
 
-/** `computer/action`: every outcome of {@link ComputerService.act}. */
+/**
+ * `computer/action`: every outcome of {@link ComputerService.act}. A batch that
+ * ran reports each step that ran as its own event; a batch that failed before
+ * running reports once, as itself.
+ */
 export interface ComputerActionEvent {
   action: ComputerAction
   window?: ComputerWindow

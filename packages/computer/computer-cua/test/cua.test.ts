@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import '@tnega/computer'
 
-import { computerCua, driverCall, findDriver, launchedWindow, readResult, type DriverConnection, type DriverResult } from '../src/index.js'
+import { computerCua, desktopPoint, driverCall, findDriver, launchedWindow, readResult, type DriverConnection, type DriverResult } from '../src/index.js'
 
 const WINDOWS = {
   windows: [
@@ -110,6 +110,90 @@ describe('computer-cua elements', () => {
     expect(driverCall({ op: 'key', windowId: 1, keys: ['enter'], element: 's1:2' }, 10)).toEqual({ tool: 'press_key', args: { pid: 10, window_id: 1, element_token: 's1:2', key: 'enter' } })
     expect(driverCall({ op: 'scroll', windowId: 1, element: 's1:2', direction: 'down' }, 10)).toEqual({ tool: 'scroll', args: { pid: 10, window_id: 1, element_token: 's1:2', direction: 'down' } })
     expect(() => driverCall({ op: 'key', windowId: 1, keys: ['ctrl', 'a'], element: 's1:2' }, 10)).toThrow(/click the element first/)
+  })
+})
+
+describe('computer-cua actions', () => {
+  it('hovers with the real pointer at the desktop point of a screenshot pixel, with the window in front', async () => {
+    const { driver, computer } = await mount(name => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      if (name === 'get_window_state') return ok({ screenshot_width: 300, screenshot_height: 200 }, { image: IMAGE })
+      return ok({ effect: 'unverifiable' }, { text: 'Moved the real desktop pointer' })
+    })
+    // Window 2 sits at (5, 5) and is 600x400 on the desktop; its screenshot is 300x200.
+    await computer.act({ op: 'hover', windowId: 2, x: 100, y: 50 })
+    expect(driver.calls.filter(([name]) => name !== 'list_windows').map(([name, args]) => [name, name === 'get_window_state' ? {} : args])).toEqual([
+      ['get_window_state', {}],
+      ['bring_to_front', { pid: 20, window_id: 2 }],
+      ['move_cursor', { target: { kind: 'desktop', display_id: 'primary' }, x: 205, y: 105 }],
+    ])
+  })
+
+  it('maps screenshot pixels to the desktop and needs a screenshot to hover', () => {
+    expect(desktopPoint({ bounds: { x: 100, y: 50, width: 1280, height: 800 }, width: 1024, height: 640 }, 512, 320)).toEqual({ x: 740, y: 450 })
+    expect(() => driverCall({ op: 'hover', windowId: 1, x: 1, y: 1 }, 10)).toThrow(/screenshot/)
+  })
+
+  it('invokes a menu by its path without a screenshot', async () => {
+    const { driver, computer } = await mount(name => name === 'list_windows' ? ok(WINDOWS) : ok({}, { text: 'Invoked File > Save As...' }))
+    await computer.act({ op: 'menu', windowId: 2, path: ['File', 'Save As...'] })
+    expect(driver.calls.filter(([name]) => name !== 'list_windows')).toEqual([['invoke_menu', { pid: 20, window_id: 2, path: ['File', 'Save As...'] }]])
+  })
+
+  it('reads and writes the clipboard', async () => {
+    const { driver, computer } = await mount(name => name === 'clipboard_read' ? ok({ text: 'copied', types: ['UTF8_STRING'] }) : ok({ types: ['UTF8_STRING'] }))
+    expect(await computer.act({ op: 'clipboard-read' })).toEqual({ note: 'The clipboard holds 6 characters of text.', text: 'copied' })
+    await computer.act({ op: 'clipboard-write', text: 'hello' })
+    expect(driver.calls).toEqual([['clipboard_read', { include_text: true }], ['clipboard_write', { text: 'hello' }]])
+  })
+
+  it('lists apps that can be started or switched to, and starts one by its id', async () => {
+    const { driver, computer } = await mount(name => {
+      if (name === 'list_apps') {
+        return ok({ apps: [
+          { name: 'chrome', pid: 10, running: true, bundle_id: null, launch_path: null, windows: [{ window_id: 1, title: 'Example' }] },
+          { name: 'kworker/0:0', pid: 9, running: true, bundle_id: null, launch_path: null, windows: [] },
+          { name: 'LibreOffice Calc', pid: 0, running: false, bundle_id: 'libreoffice-calc', launch_path: 'libreoffice --calc', windows: [] },
+        ] })
+      }
+      return ok({ windows: [{ window_id: 44 }] }, { text: 'Launched' })
+    })
+    expect(await computer.apps()).toEqual([
+      { name: 'chrome', running: true, pid: 10, windowIds: [1] },
+      { name: 'LibreOffice Calc', id: 'libreoffice-calc', running: false, windowIds: [] },
+    ])
+    expect(await computer.act({ op: 'launch', app: 'LibreOffice Calc', id: 'libreoffice-calc' })).toMatchObject({ windowId: 44 })
+    expect(driver.calls.at(-1)).toEqual(['launch_app', { name: 'LibreOffice Calc', bundle_id: 'libreoffice-calc', launch_path: 'libreoffice --calc' }])
+  })
+
+  it('runs a batch in one call, lets the driver retry refused steps in front, and reports each step', async () => {
+    const { driver, computer } = await mount(name => {
+      if (name === 'list_windows') return ok(WINDOWS)
+      if (name === 'get_window_state') return ok({ screenshot_width: 1280, screenshot_height: 800 }, { image: IMAGE })
+      return {
+        isError: true,
+        text: 'run_steps: step 2 of 3 failed',
+        structured: { ok: false, failed_step: 1, steps: [{ index: 0, ok: true, message: 'Clicked' }, { index: 1, ok: false, message: 'foreground_unavailable' }] },
+      }
+    })
+    const result = await computer.act({ op: 'steps', windowId: 1, steps: [
+      { op: 'click', windowId: 1, element: 's1:4' },
+      { op: 'scroll', windowId: 1, x: 10, y: 10, direction: 'down' },
+      { op: 'key', windowId: 1, keys: ['enter'] },
+    ] })
+    expect(result.steps).toEqual([{ ok: true, note: 'Clicked' }, { ok: false, note: 'foreground_unavailable' }])
+    expect(result.note).toMatch(/^Step 2 of 3 failed; 1 ran before it/)
+    const batches = driver.calls.filter(([name]) => name === 'run_steps')
+    // A batch is never resent whole: earlier steps already happened.
+    expect(batches).toHaveLength(1)
+    expect(batches[0]?.[1]).toEqual({
+      pid: 10, window_id: 1, foreground_fallback: true,
+      steps: [
+        { tool: 'click', args: { pid: 10, window_id: 1, element_token: 's1:4' } },
+        { tool: 'scroll', args: { pid: 10, window_id: 1, x: 10, y: 10, direction: 'down' } },
+        { tool: 'press_key', args: { pid: 10, window_id: 1, key: 'enter' } },
+      ],
+    })
   })
 })
 
