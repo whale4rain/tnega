@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { Context } from '@tnega/core'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { startWebServer } from '@tnega/host'
 import { createHotPluginHost, type HotPluginEvent, type HotPluginHost } from '@tnega/plugin-host'
 
 const execFileAsync = promisify(execFile)
@@ -128,8 +129,11 @@ describe('hot plugin host', () => {
 })
 
 describe('web server plugin profile', () => {
+  // The host arrives with the file's static imports, not inside the test body:
+  // loading its module graph measured 26s under vitest (5s under plain Node) and
+  // would be charged against this test's own timeout, which is how it failed
+  // whenever the machine was busy.
   it('reports and reloads the hot plugin profile', async () => {
-    const { startWebServer } = await import('@tnega/host')
     const dir = await tempDir()
     await writePlugin(dir, 'served')
     const file = join(dir, 'default.yaml')

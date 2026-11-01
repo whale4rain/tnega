@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { startWebServer } from '@tnega/host'
 import { fileDiff, listChanges, parsePorcelain } from '@tnega/workspace-files'
 import { TerminalManager, type PtyLike, type TerminalEvent } from '@tnega/terminal'
 
@@ -120,8 +121,10 @@ describe('workbench changes', () => {
 })
 
 describe('terminal over the web server', () => {
+  // Loaded with the file's static imports: the host module graph costs about
+  // half a minute under vitest, and inside a test body that is charged against
+  // the test's own timeout.
   it('runs a real shell command through the API', async () => {
-    const { startWebServer } = await import('@tnega/host')
     const dir = await tempDir('tnega-term-')
     const server = await startWebServer({ port: 0, browser: false, configFile: join(dir, 'config.json') })
     const headers = { 'x-tnega-client': '1', 'content-type': 'application/json' }
