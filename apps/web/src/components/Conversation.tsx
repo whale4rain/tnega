@@ -32,6 +32,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
 import { sessionLink } from '@tnega/client/session-link'
+import { ComputerHint } from './ComputerHint'
+
 import { MxcHint } from './MxcHint'
 import { copyToClipboard, errorText, folderName, useScrollPinning } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
@@ -896,6 +898,8 @@ export function Conversation({
 
       <div className="conv-scroll" ref={scroller} onScroll={onScrollWithPaging}>
         <div className="conv-column">
+          <ComputerHint enabled={config?.config.computerUse === true} />
+
           <MxcHint />
           {loading && entries.length === 0 && <TimelineSkeleton />}
           {busy === 'Compacting context…' && <div className="notice notice-info" role="status">Compacting context…</div>}

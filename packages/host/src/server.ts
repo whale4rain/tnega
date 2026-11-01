@@ -22,6 +22,7 @@ import { folderPickerRoutes } from '@tnega/directory-picker'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
 import { sandboxSetupRoutes } from '@tnega/sandbox-local'
+import { computerSetupRoutes } from '@tnega/computer-cua'
 import { SecretVault, secretRoutes } from '@tnega/secrets-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
@@ -147,6 +148,11 @@ export async function startWebServer(
   await root.plugin(usageRoutes, { configFile })
   await root.plugin(contextInsightsRoutes, { configFile })
   await root.plugin(sandboxSetupRoutes)
+  // Registered whether or not computer use is on: the hint's job is to explain
+  // the missing driver before someone wonders why the tools are absent.
+  await root.plugin(computerSetupRoutes, {
+    ...(startConfig.computerDriverPath ? { driverPath: startConfig.computerDriverPath } : {}),
+  })
   await root.plugin(workspacePromptRoutes)
   if (context.secrets) await root.plugin(secretRoutes, { vault: context.secrets })
   await root.plugin(pluginRoutes, {

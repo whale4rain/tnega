@@ -321,6 +321,17 @@ export interface SandboxSetup {
  * Whether this machine's sandbox can filter command network by domain (`GET /api/sandbox/network`).
  * When `filtering` is false, "listed domains only" and "off" make commands refuse to run; `detail` says why.
  */
+/**
+ * Whether this machine has the driver computer use needs (GET /api/computer/setup).
+ * Without it the computer_* tools fail closed on their first call.
+ */
+export interface ComputerSetup {
+  driver: 'installed' | 'missing'
+  /** The binary that was found, when one was. */
+  path?: string
+  install: { command: string; url: string }
+}
+
 export interface SandboxNetworkSupport {
   filtering: boolean
   runner?: string

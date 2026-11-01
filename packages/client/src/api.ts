@@ -36,6 +36,7 @@ import type {
   CommandNetworkSettings,
   SandboxNetworkSupport,
   SandboxSetup,
+  ComputerSetup,
   InsightsRange,
   ChatGptLoginState,
 } from './types.js'
@@ -219,6 +220,8 @@ export function createClient(options: ClientOptions = {}) {
     /** Whether a better sandbox (Windows MXC) could be installed on this machine. */
     sandboxSetup: (signal?: AbortSignal) => call<SandboxSetup>('/api/sandbox/setup', { signal }),
     sandboxNetwork: (signal?: AbortSignal) => call<SandboxNetworkSupport>('/api/sandbox/network', { signal }),
+    /** Whether this machine has the driver computer use needs. */
+    computerSetup: (signal?: AbortSignal) => call<ComputerSetup>('/api/computer/setup', { signal }),
     workspacePrompt: (workspace: string, signal?: AbortSignal) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { signal }),
     saveWorkspacePrompt: (workspace: string, prompt: string) => call<{ prompt: string }>(scoped('/api/workspace-prompt', workspace), { method: 'PUT', body: { prompt } }),
     /** Add or replace one chat model route. */

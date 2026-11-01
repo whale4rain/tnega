@@ -19,6 +19,7 @@ import {
 import { DRIVER_INSTALL_HINT, connectDriver, findDriver, type DriverConnection, type DriverConnector, type DriverResult } from './driver.js'
 
 export { DRIVER_INSTALL_HINT, connectDriver, driverCandidates, findDriver, readResult, type DriverConnection, type DriverConnector, type DriverResult } from './driver.js'
+export { computerSetupRoutes, DRIVER_INSTALL_COMMAND, DRIVER_INSTALL_URL, type ComputerSetup } from './routes.js'
 
 export interface Config {
   /** Path to the `cua-driver` binary; else `TNEGA_CUA_DRIVER`, PATH, then the installer's folder. */

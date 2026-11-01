@@ -13,6 +13,7 @@
     "@tnega/browser-playwright": "workspace:*",
     "@tnega/coding-agent": "workspace:*",
     "@tnega/compaction": "workspace:*",
+    "@tnega/computer-cua": "workspace:*",
     "@tnega/config": "workspace:*",
     "@tnega/context-insights": "workspace:*",
     "@tnega/core": "workspace:*",

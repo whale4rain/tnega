@@ -536,6 +536,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
 
   packages/computer/tool-computer:
     dependencies:
@@ -685,6 +688,9 @@ importers:
       '@tnega/compaction':
         specifier: workspace:*
         version: link:../compaction
+      '@tnega/computer-cua':
+        specifier: workspace:*
+        version: link:../computer/computer-cua
       '@tnega/config':
         specifier: workspace:*
         version: link:../config

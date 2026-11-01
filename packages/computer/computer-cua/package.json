@@ -9,6 +9,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "@tnega/computer": "workspace:*",
-    "@tnega/core": "workspace:*"
+    "@tnega/core": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }
