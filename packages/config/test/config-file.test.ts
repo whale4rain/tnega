@@ -1,8 +1,9 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { availableModels, effectiveLlmConfig, ModelRouteError, parseModelRouteInput, parseSandboxConfig, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
+import { availableModels, effectiveLlmConfig, ModelRouteError, parseModelRouteInput, parseSandboxConfig, readSystemConfig, removeModelRoute, SystemConfigError, systemConfigPath, systemConfigProblem, updateSystemConfig, upsertModelRoute } from '../src/index.js'
 
 const dirs: string[] = []
 
@@ -17,6 +18,32 @@ async function configFile(text?: string): Promise<string> {
   if (text !== undefined) await writeFile(file, text, 'utf8')
   return file
 }
+
+describe('systemConfigPath', () => {
+  const saved = process.env.TNEGA_HOME
+  afterEach(() => {
+    if (saved === undefined) delete process.env.TNEGA_HOME
+    else process.env.TNEGA_HOME = saved
+  })
+
+  it('follows an explicitly isolated home, so nothing reads or writes the real settings', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'tnega-home-'))
+    dirs.push(home)
+    process.env.TNEGA_HOME = home
+    expect(systemConfigPath()).toBe(join(home, 'config.json'))
+    // Writing through the default path lands in the isolated home.
+    await updateSystemConfig({ computerUse: true })
+    expect(JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'))).toMatchObject({ computerUse: true })
+  })
+
+  it('keeps the platform convention when no home was set', () => {
+    delete process.env.TNEGA_HOME
+    const expected = process.platform === 'win32'
+      ? join(homedir(), '.tnega', 'config.json')
+      : join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'tnega', 'config.json')
+    expect(systemConfigPath()).toBe(expected)
+  })
+})
 
 describe('system config file', () => {
   it('keeps a whole screenshot budget for computer use and drops anything else', async () => {

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { runAgentCommand } from '../packages/cli/src/index.js'
+import { smokeBaseUrl, smokeConfigFile, smokeModel } from './smoke-config.js'
 import { SESSION_FORMAT_VERSION } from '../packages/session/src/index.js'
 
 const hasApiKey = Boolean(
@@ -14,12 +15,14 @@ const hasApiKey = Boolean(
 )
 
 describe('OpenCode Go real smoke', () => {
-  it.runIf(hasApiKey)('calls DeepSeek and persists a session without the key', async () => {
+  it.runIf(hasApiKey)(`calls ${smokeBaseUrl} with ${smokeModel} and persists a session without the key`, async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tnega-deepseek-'))
     try {
       const result = await runAgentCommand({
         prompt: 'Reply with exactly: tnega-deepseek-ok',
         cwd: dir,
+        // The endpoint is named here, so the run never depends on personal settings.
+        configFile: await smokeConfigFile(),
         maxTokens: 64,
       })
       expect(result.run.output).toContain('tnega-deepseek-ok')

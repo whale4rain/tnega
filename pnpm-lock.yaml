@@ -563,6 +563,9 @@ importers:
       '@tnega/execution':
         specifier: workspace:*
         version: link:../execution
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../home
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm

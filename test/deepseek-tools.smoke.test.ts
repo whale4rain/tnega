@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runAgentCommand } from '../packages/cli/src/index.js'
+import { smokeConfigFile } from './smoke-config.js'
 
 const hasApiKey = Boolean(
   process.env.TNEGA_API_KEY
@@ -22,6 +23,7 @@ describe('OpenCode Go real tool smoke', () => {
           prompt: 'Use the list_dir tool on the current workspace root. '
             + 'After the tool result, reply with only the names you saw, one per line.',
           cwd: dir,
+          configFile: await smokeConfigFile(),
           maxTokens: 256,
           maxSteps: 4,
           maxTurns: 4,
@@ -55,6 +57,7 @@ describe('OpenCode Go real tool smoke', () => {
           prompt: 'Use the read_file tool to read "note.txt" in the current workspace. '
             + 'After the tool result, reply with exactly the file content.',
           cwd: dir,
+          configFile: await smokeConfigFile(),
           maxTokens: 256,
           maxSteps: 4,
           maxTurns: 4,
@@ -80,6 +83,7 @@ describe('OpenCode Go real tool smoke', () => {
           prompt: 'Use the shell tool to run "echo tnega-tool-shell-ok". '
             + 'After the tool result, reply with exactly the stdout.',
           cwd: dir,
+          configFile: await smokeConfigFile(),
           allowShell: true,
           maxTokens: 256,
           maxSteps: 4,

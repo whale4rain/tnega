@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { resolveTnegaHome } from '@tnega/home'
 import { dirname, join } from 'node:path'
 import { DEFAULT_MODEL, DEFAULT_OPENCODE_GO_BASE_URL, lookupModel, modelCapabilities, type LlmProtocol, type ReasoningEffort } from '@tnega/llm'
 import type { ApprovalMode } from '@tnega/approval-review'
@@ -371,7 +372,16 @@ export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort
   sandbox?: SandboxConfig | undefined
 }
 
+/**
+ * Where the settings file lives.
+ *
+ * A `TNEGA_HOME` that was set on purpose wins on every platform, so an isolated
+ * installation — or a test — never reads and writes the person's own settings.
+ * Without it the platform convention applies: `~/.tnega` on Windows and the
+ * XDG config directory elsewhere.
+ */
 export function systemConfigPath(): string {
+  if (process.env.TNEGA_HOME?.trim()) return join(resolveTnegaHome(), 'config.json')
   if (process.platform === 'win32') {
     return join(homedir(), '.tnega', 'config.json')
   }
@@ -380,6 +390,9 @@ export function systemConfigPath(): string {
 }
 
 function legacyWindowsConfigPath(): string | undefined {
+  // An isolated home is deliberate: importing the person's real settings into it
+  // would defeat the isolation that asked for it.
+  if (process.env.TNEGA_HOME?.trim()) return undefined
   if (process.platform !== 'win32' || !process.env.APPDATA) return undefined
   const legacy = join(process.env.APPDATA, 'tnega', 'config.json')
   return legacy === systemConfigPath() ? undefined : legacy
