@@ -106,6 +106,20 @@ describe('permissionGuard', () => {
     expect(asked).toHaveLength(2)
   })
 
+  it('never lets a grant, reviewer or delegate answer a flagged call for an agent with no person to ask', async () => {
+    const broker = new ApprovalBroker()
+    broker.grant('thread', 'computer:app:Notepad')
+    const review = vi.fn(async () => ({ decision: 'allow' as const, risk: 'low' as const, reason: 'fine' }))
+    const delegateApproval = vi.fn(async () => ({ decision: 'allow' as const, risk: 'low' as const, reason: 'fine' }))
+    const guard = permissionGuard('workspace-write', 'thread', broker, { workspace: process.cwd(), review, delegateApproval, delegated: () => true })
+    const next = request('computer_click', {})
+    next.tool.grant = () => ({ scope: 'computer:app:Notepad', label: 'use Notepad' })
+    next.tool.approval = () => ({ need: 'person', reason: 'sends the email' })
+    expect(await guard(next)).toMatch(/needs the user's own approval \(sends the email\)/)
+    expect(review).not.toHaveBeenCalled()
+    expect(delegateApproval).not.toHaveBeenCalled()
+  })
+
   it('asks a person when the tool cannot say whether a call is safe', async () => {
     const broker = new ApprovalBroker()
     const asked: Array<Record<string, unknown>> = []

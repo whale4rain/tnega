@@ -246,9 +246,12 @@ export function permissionGuard(
     const delegated = options.delegated?.(request.options.agentId) === true
     const own = await approvalOf(request)
     if (own?.need === 'none' && effective === 'workspace-write') return undefined
-    // The tool says a person must decide this call: no grant or reviewer answers
-    // for them. Agents with nobody to ask keep their usual delegated path.
-    if (own?.need === 'person' && !delegated) return await askPerson(request, own.reason, parentMode)
+    // The tool says a person must decide this call: no grant, reviewer or
+    // delegate answers for them. An agent with no person to ask cannot run it.
+    if (own?.need === 'person') {
+      if (!delegated) return await askPerson(request, own.reason, parentMode)
+      return `${request.name} needs the user's own approval (${own.reason}), which cannot be asked from here. Do not retry it; report it to your coordinator so the user can do or approve it.`
+    }
     const grant = await grantOf(request)
     if (grant && approvals.granted(key, grant.scope)) return undefined
     let reviewed: ApprovalDecision | undefined

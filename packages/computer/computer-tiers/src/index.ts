@@ -74,16 +74,10 @@ export const name = 'computer-tiers'
  * might have applied. Listing the process name settles it.
  */
 export function apply(ctx: Context, config: ComputerTiersConfig = {}): void {
-  // Display names by process id and process name, so a reused pid of another
-  // program looks its owner up again. Only found names are kept, since a new
-  // app may not be listed yet.
-  const displayNames = new Map<string, string>()
+  // Looked up on every action, not cached: a pid can be reused by another
+  // install of the same program, and only the live app list can tell.
   const displayName = async (window: ComputerWindow): Promise<string | undefined> => {
-    const key = `${window.pid}:${appKey(window.app)}`
-    const known = displayNames.get(key)
-    if (known !== undefined) return known
     const owner = (await ctx.computer.apps()).find(app => app.windowIds.includes(window.id) || (app.pid !== undefined && app.pid === window.pid))
-    if (owner) displayNames.set(key, owner.name)
     return owner?.name
   }
   const tierFor = async (window: ComputerWindow): Promise<ComputerTier | string> => {

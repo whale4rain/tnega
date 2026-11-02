@@ -82,7 +82,7 @@
 
 用户的取舍：默认全部放行；Agent 自己判断某一步会造成损害或涉及用户安全时，弹审批卡让用户点头；另可按应用设上限。
 
-- 工具定义新增通用的 `approval(input)`（`ToolApproval`）：`{ need: 'none' }` 表示这次调用不必问人，与工作区写入同级，只在 `workspace-write` 下生效，`read-only` 照常询问；`{ need: 'person', reason }` 表示这次调用必须由人允许，审批卡写出 `reason`、只给 “Allow once”，**不被 Session 授权范围或自动审核放行**（没有人可问的 Project 线程仍走原委托路径）。查询本身出错时按 `person` 处理。
+- 工具定义新增通用的 `approval(input)`（`ToolApproval`）：`{ need: 'none' }` 表示这次调用不必问人，与工作区写入同级，只在 `workspace-write` 下生效，`read-only` 照常询问；`{ need: 'person', reason }` 表示这次调用必须由人允许，审批卡写出 `reason`、只给 “Allow once”，**不被 Session 授权范围或自动审核放行**；没有人可问的 Agent（Project 线程）遇到它直接拒绝，委托方也不能代答。查询本身出错时按 `person` 处理。
 - 电脑工具：设置 `computerApproval` 默认 `auto`，即所有电脑工具返回 `none`，不再按应用询问；设为 `per-app` 恢复上面的每应用一问。每个动作工具都多一个可选参数 `risk`：Agent 判断这一步可能删除或覆盖数据、发送或发布内容、花钱、登录、改密码或安全 / 隐私 / 账号设置、装卸软件时，用一句话写明后果，这次调用就要用户允许。只看的工具没有 `risk`。
 - 按应用分级是独立的策略插件 `@tnega/computer-tiers`，挂在 `computer/pre-action` 上：`look` 拒绝该应用窗口里的一切动作，`click` 只放行点击、滚动、悬停、菜单，`full` 不限；未列出的应用是 `full`。启动应用不分级：它不是对应用的输入，附带的 URL 只是导航（按名称启动时 URL 交给默认浏览器，这里也无从知道是哪个应用接收）。应用名不区分大小写、忽略目录与 `.exe` / `.app`，并且进程名（`chrome.exe`）与应用列表里的显示名（`Google Chrome`）都能匹配；设了上限而窗口的进程名不匹配、应用列表里又找不到所属应用或读不到列表时，动作被拒（fail closed），提示用户把进程名写进 App limits。批量动作逐步判断，一步被拒整批不执行。剪贴板不属于任何应用，不分级。设置项 `computerApps`（Settings 的 App limits，每行 `应用: 级别`）。
 - `risk` 依赖模型自觉，是提示而不是围栏；硬性的边界是分级（由策略插件强制）与权限级别。

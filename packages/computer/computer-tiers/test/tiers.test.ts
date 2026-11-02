@@ -113,8 +113,8 @@ describe('computer tiers', () => {
     await expect(computer.act({ op: 'click', windowId: 1, x: 1, y: 1 })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
     await expect(computer.act({ op: 'click', windowId: 1, x: 1, y: 1 })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
     await computer.act({ op: 'type', windowId: 2, text: 'x' })
-    // The owner of a window is looked up once per process.
-    expect(computer.listings).toBe(2)
+    // The owner is looked up on every action: a reused pid must not inherit an old answer.
+    expect(computer.listings).toBe(3)
     expect(computer.performed.map(action => action.op)).toEqual(['type'])
   })
 

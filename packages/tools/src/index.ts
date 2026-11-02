@@ -107,8 +107,9 @@ export interface ToolDefinition {
  *
  * - `none`: no prompt, at the same tier as a workspace write. A `read-only`
  *   permission level still asks.
- * - `person`: a person must allow this one call, with `reason` on the card.
- *   Session grants and the automatic reviewer do not answer it.
+ * - `person`: a person must allow this one call, with `reason` on the card;
+ *   an agent with no person to ask (a Project thread) is refused.
+ *   Session grants, the automatic reviewer and delegates do not answer it.
  */
 export type ToolApproval =
   | { need: 'none' }
