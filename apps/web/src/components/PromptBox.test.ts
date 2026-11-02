@@ -174,3 +174,20 @@ it('carries a markdown list on with Shift+Enter and paints it under the text', (
   fireEvent.keyDown(box, { key: 'Enter' })
   expect(onSubmit).toHaveBeenCalledWith('1. first', [])
 })
+
+it('keeps an unsent draft with its conversation and drops it once sent', async () => {
+  const onSubmit = vi.fn(() => true)
+  const props = { onSubmit, placeholder: 'Reply…' }
+  const view = render(createElement(PromptBox, { ...props, resetKey: 'draft-a' }))
+  type(messageBox(view), 'half a thought')
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-b' }))
+  expect(messageBox(view).value).toBe('')
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-a' }))
+  expect(messageBox(view).value).toBe('half a thought')
+
+  await act(async () => { fireEvent.keyDown(messageBox(view), { key: 'Enter' }) })
+  expect(onSubmit).toHaveBeenCalledWith('half a thought', [])
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-b' }))
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-a' }))
+  expect(messageBox(view).value).toBe('')
+})

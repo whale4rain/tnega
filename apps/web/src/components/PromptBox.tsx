@@ -40,6 +40,12 @@ interface AttachedFile {
   error?: string
 }
 
+/** Unsent text per conversation (`resetKey`), kept while the app is open. */
+const drafts = new Map<string, string>()
+
+/** Whether the browser sizes a textarea to its content (`field-sizing: content`). */
+const SIZES_ITSELF = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content')
+
 function triggerKey(trigger: Trigger | undefined): string {
   if (!trigger) return ''
   return trigger.kind === 'argument' ? `${trigger.kind}:${trigger.command}:${trigger.start}` : `${trigger.kind}:${trigger.start}`
@@ -150,9 +156,16 @@ export function PromptBox({
     const el = input.current
     // Without a width (hidden or not laid out yet) the text would wrap per character.
     if (!el || el.clientWidth === 0) return
-    el.style.height = '0px'
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+    // Where the browser sizes the box to its text (`field-sizing` in app.css), measuring
+    // is not needed: collapsing the box to read its height re-lays out the whole page,
+    // which on a long conversation made every keystroke slow.
+    if (!SIZES_ITSELF) {
+      el.style.height = '0px'
+      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+    }
     mirror()
+    // A new line scrolls the box to the caret after this; follow it in the same frame.
+    requestAnimationFrame(mirror)
   }, [maxHeight, mirror])
 
   useLayoutEffect(fit, [text, fit])
@@ -184,15 +197,27 @@ export function PromptBox({
     input.current?.focus()
   }, [autoFocusKey])
 
-  // Unsent text belongs to the session, project or thread it was typed in: leaving it clears the draft.
+  // Unsent text belongs to the session, project or thread it was typed in: leaving it
+  // keeps the draft there, and coming back brings it back.
+  const textRef = useRef(text)
+  textRef.current = text
+  const keyRef = useRef(resetKey)
+  keyRef.current = resetKey
   useEffect(() => {
-    setText('')
+    const key = resetKey
+    const draft = key === undefined ? '' : drafts.get(key) ?? ''
+    setText(draft)
     setImages([])
     setContexts([])
     setFiles([])
-    setCaret(0)
+    setCaret(draft.length)
     setDismissed('')
     setAsyncItems(undefined)
+    return () => {
+      if (key === undefined) return
+      if (textRef.current.trim()) drafts.set(key, textRef.current)
+      else drafts.delete(key)
+    }
   }, [resetKey])
 
   // Things handed over from elsewhere in the app, e.g. an element picked in the browser.
@@ -352,8 +377,11 @@ export function PromptBox({
     if (!canSend || (showStop && !allowWhileRunning) || disabledReason) return
     const send = how === 'interrupt' ? onInterruptSubmit : how === 'steer' ? onSteerSubmit : onSubmit
     if (!send) return
+    const key = keyRef.current
     const accepted = await send(value, images)
     if (accepted) {
+      // Sending can move to another conversation (a new session gets its id) before it settles.
+      if (key !== undefined) drafts.delete(key)
       setText('')
       setImages([])
       setContexts([])

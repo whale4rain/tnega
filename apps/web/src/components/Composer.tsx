@@ -1,5 +1,5 @@
 import { Briefcase, Code2, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, Sparkles, Target, ListChecks, X, Zap } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import type { CommandSpec } from '../lib/completion'
 import type { AgentType, ApprovalMode, ConfigSnapshot, ImageAttachment, ModelOption, Permission, SessionEffort, SessionMode } from '../lib/types'
 import { Choice, SectionChoice, choiceSection, type ChoiceOption } from './Menu'
@@ -43,8 +43,12 @@ export const APPROVAL_OPTIONS: ReadonlyArray<ChoiceOption<ApprovalMode>> = [
 
 export const EFFORT_LABEL: Record<SessionEffort, string> = { default: 'Default effort', low: 'Low effort', medium: 'Medium effort', high: 'High effort' }
 
-/** Session composer: the prompt box plus the per-session run settings. */
-export function Composer({
+/**
+ * Session composer: the prompt box plus the per-session run settings.
+ * Memoized: the conversation re-renders on every streamed frame, and the box
+ * you type in should not re-render with it.
+ */
+export const Composer = memo(function Composer({
   settings,
   onSettingsChange,
   models,
@@ -125,7 +129,7 @@ export function Composer({
       }
     />
   )
-}
+})
 
 /**
  * Plan and Goal have no button of their own: `/plan` and `/goal` turn them
