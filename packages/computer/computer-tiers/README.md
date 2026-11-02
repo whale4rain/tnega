@@ -9,7 +9,7 @@
 | `full` | 不限（未列出的应用默认如此） |
 
 - 配置：`apps`（应用名 → 级别，可以是每次动作都读的函数）与 `fallback`（未列出应用的级别，默认 `full`）。宿主从设置的 `computerApps` 传入。
-- 应用名不区分大小写，忽略目录与 `.exe` / `.app`：`Notepad`、`notepad.exe`、`C:\Windows\notepad.exe` 是同一个应用。窗口按进程名或 `ctx.computer.apps()` 里的显示名（如 `Google Chrome` 对 `chrome.exe`）匹配；显示名按进程缓存。设了上限、进程名不匹配、应用列表又读不到时拒绝动作（fail closed）。
+- 应用名不区分大小写，忽略目录与 `.exe` / `.app`：`Notepad`、`notepad.exe`、`C:\Windows\notepad.exe` 是同一个应用。窗口按进程名或 `ctx.computer.apps()` 里的显示名（如 `Google Chrome` 对 `chrome.exe`）匹配；显示名按进程缓存。设了上限、进程名不匹配、应用列表里又找不到所属应用（或读不到列表）时拒绝动作（fail closed），提示把进程名加进 App limits。缓存键是进程号加进程名，进程号被别的程序复用时重新查找。
 - 批量动作（`steps`）逐步判断，一步被拒整批不执行。剪贴板不属于任何应用，启动应用不是对它的输入（附带 URL 只是导航），都不分级。
 - 拒绝说明写明应用、级别与允许的范围，并告诉模型不要绕过、需要时去问用户。
 

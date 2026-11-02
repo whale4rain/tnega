@@ -122,6 +122,12 @@ describe('computer tiers', () => {
     const computer = await setup({ apps: { 'Google Chrome': 'look' } })
     computer.listed = new Error('driver is gone')
     await expect(computer.act({ op: 'type', windowId: 3, text: '1' })).rejects.toMatchObject({ code: 'COMPUTER_DENIED', message: expect.stringMatching(/driver is gone/) })
+    // An owner missing from the app list is refused too, until its process name is listed.
+    const unlisted = await setup({ apps: { 'Google Chrome': 'look' } })
+    await expect(unlisted.act({ op: 'type', windowId: 3, text: '1' })).rejects.toMatchObject({ code: 'COMPUTER_DENIED', message: expect.stringMatching(/"Calculator: full"/) })
+    const listed = await setup({ apps: { 'Google Chrome': 'look', Calculator: 'full' } })
+    await listed.act({ op: 'type', windowId: 3, text: '1' })
+    expect(listed.performed).toHaveLength(1)
     // Without limits nothing is looked up.
     const open = await setup({})
     open.listed = new Error('driver is gone')

@@ -69,17 +69,21 @@ export const name = 'computer-tiers'
  * A window matches a limit by its process name (`chrome.exe`) or by its
  * display name from `ctx.computer.apps()` (`Google Chrome`), so either name
  * from the app list works in Settings. When limits are set, the window's
- * process name matches none of them, and the app list cannot be read, the
- * action is refused: the limit might have applied.
+ * process name matches none of them, and the owner cannot be found in the
+ * app list (or the list cannot be read), the action is refused: a limit
+ * might have applied. Listing the process name settles it.
  */
 export function apply(ctx: Context, config: ComputerTiersConfig = {}): void {
-  // Display names by process id; only found names are kept, since a new app may not be listed yet.
-  const displayNames = new Map<number, string>()
+  // Display names by process id and process name, so a reused pid of another
+  // program looks its owner up again. Only found names are kept, since a new
+  // app may not be listed yet.
+  const displayNames = new Map<string, string>()
   const displayName = async (window: ComputerWindow): Promise<string | undefined> => {
-    const known = displayNames.get(window.pid)
+    const key = `${window.pid}:${appKey(window.app)}`
+    const known = displayNames.get(key)
     if (known !== undefined) return known
     const owner = (await ctx.computer.apps()).find(app => app.windowIds.includes(window.id) || (app.pid !== undefined && app.pid === window.pid))
-    if (owner) displayNames.set(window.pid, owner.name)
+    if (owner) displayNames.set(key, owner.name)
     return owner?.name
   }
   const tierFor = async (window: ComputerWindow): Promise<ComputerTier | string> => {
@@ -92,7 +96,11 @@ export function apply(ctx: Context, config: ComputerTiersConfig = {}): void {
       const reason = error instanceof Error ? error.message : String(error)
       return `App limits are set in Settings, and it could not be checked which app owns this window (${reason}), so the action was not done.`
     }
-    return tierOf(name === undefined ? [window.app] : [window.app, name], config)
+    // Unlisted owner: its display name, which a limit may use, is unknown.
+    if (name === undefined) {
+      return `App limits are set in Settings, and the app that owns this window (${window.app}) is not in the app list, so it cannot be told whether a limit applies; the action was not done. The user can add "${window.app}: full" (or another level) to App limits.`
+    }
+    return tierOf([window.app, name], config)
   }
   ctx.on('computer/pre-action', async (event: ComputerPreActionEvent, next: () => Promise<unknown>) => {
     if (event.window && event.deny === undefined) {
