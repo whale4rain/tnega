@@ -535,6 +535,10 @@ export interface ConfigSnapshot {
     codeMode?: boolean
     /** Whether the agent may see and use apps on this computer. */
     computerUse?: boolean
+    /** Whether computer use asks about no app (`auto`) or once per app per session. */
+    computerApproval?: ComputerApprovalMode
+    /** How far the agent may go in each app; unlisted apps are `full`. */
+    computerApps?: Record<string, ComputerTier>
     /** How strictly a file write must match what the Session already read. */
     fsGuard?: FsGuardMode
     /** Saved shell preference; empty means detect automatically. */
@@ -615,7 +619,7 @@ export type StreamEvent =
   | { type: 'plan/done'; plan: PlanPayload }
   | { type: 'plan/error'; message: string }
   | { type: 'run/end'; run: { output: string; finishReason: string } }
-  | { type: 'approval/request'; id: string; tool: string; input: string; via?: 'run_code'; grant?: ApprovalGrant }
+  | { type: 'approval/request'; id: string; tool: string; input: string; via?: 'run_code'; grant?: ApprovalGrant; reason?: string }
   | { type: 'assistant/stream' }
   | { type: 'done' }
   | { type: 'error'; message: string }
@@ -666,4 +670,35 @@ export type FsGuardMode = typeof FS_GUARD_MODES[number]
 
 export function isFsGuardMode(value: unknown): value is FsGuardMode {
   return FS_GUARD_MODES.some(mode => mode === value)
+}
+
+/** How computer use asks (mirrors `@tnega/config`). */
+export type ComputerApprovalMode = 'auto' | 'per-app'
+
+/** How far the agent may go in one app (mirrors `@tnega/config`). */
+export const COMPUTER_TIERS = ['look', 'click', 'full'] as const
+export type ComputerTier = typeof COMPUTER_TIERS[number]
+
+export function isComputerTier(value: unknown): value is ComputerTier {
+  return COMPUTER_TIERS.some(tier => tier === value)
+}
+
+/** App tiers as Settings shows them: one `App: tier` per line. */
+export function formatComputerApps(apps: Readonly<Record<string, ComputerTier>> | undefined): string {
+  return Object.entries(apps ?? {}).map(([app, tier]) => `${app}: ${tier}`).join('\n')
+}
+
+/** Read `App: tier` lines back; the first line that is not one comes back as `bad`. */
+export function parseComputerApps(text: string): { apps: Record<string, ComputerTier> } | { bad: string } {
+  const apps: Record<string, ComputerTier> = {}
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const split = line.lastIndexOf(':')
+    const app = split > 0 ? line.slice(0, split).trim() : ''
+    const tier = split > 0 ? line.slice(split + 1).trim().toLowerCase() : ''
+    if (!app || !isComputerTier(tier)) return { bad: line }
+    apps[app] = tier
+  }
+  return { apps }
 }

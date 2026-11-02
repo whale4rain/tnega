@@ -83,6 +83,21 @@ describe('App', () => {
     await until(() => !controller.state.running)
   })
 
+  it('shows the risk the agent flagged on an approval', async () => {
+    const { server, type, frame, controller } = await mount()
+    const release = deferred()
+    server.state.release = release.promise
+    server.state.run = [{ type: 'approval/request', id: 'a2', tool: 'computer_click', input: '{"window_id":1}', reason: 'Sends the email' }]
+    await type('send it')
+    await type('\r')
+    await until(() => frame().includes('Allow computer_click?'))
+    expect(frame()).toContain('Flagged risk: Sends the email')
+    await type('n')
+    await until(() => server.calls.some(call => call.path.endsWith('/approvals/a2')))
+    release.resolve()
+    await until(() => !controller.state.running)
+  })
+
   it('shows key hints under the composer and every key on ?', async () => {
     const { type, frame } = await mount()
     expect(frame()).toContain('enter send')

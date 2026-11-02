@@ -135,10 +135,17 @@ export interface SystemConfig {
   codeMode?: boolean
   /**
    * Let the agent see and use apps on this computer (`computer_*` tools,
-   * through cua-driver). Off unless chosen; each app still needs the person's
-   * approval once per Session.
+   * through cua-driver). Off unless chosen.
    */
   computerUse?: boolean
+  /**
+   * `auto` (default): computer tools run without asking. `per-app`: the first
+   * use of each app in a Session asks. Either way, an action the agent flags as
+   * risky asks for that one call.
+   */
+  computerApproval?: ComputerApprovalMode
+  /** How far the agent may go in each app, by app name; unlisted apps are `full`. */
+  computerApps?: Record<string, ComputerTier>
   /** Path to the `cua-driver` binary when it is not on PATH or in the installer's folder. */
   computerDriverPath?: string
   /**
@@ -363,7 +370,9 @@ export interface EffectiveLlmConfig {
   auth?: 'chatgpt'
 }
 
-export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort' | 'network' | 'sandbox'> & {
+export type SystemConfigPatch = Omit<SystemConfig, 'protocol' | 'reasoningEffort' | 'network' | 'sandbox' | 'computerApps'> & {
+  /** `undefined` written explicitly clears the app tiers (every app full). */
+  computerApps?: Record<string, ComputerTier> | undefined
   protocol?: 'anthropic' | 'openai' | ''
   reasoningEffort?: ReasoningEffort | ''
   /** `undefined` written explicitly clears the network settings. */
@@ -743,6 +752,31 @@ export function resolveLlmEnv(env: NodeJS.ProcessEnv = process.env): LlmEnvConfi
 export const FS_GUARD_MODES = ['off', 'warn', 'enforce'] as const
 export type FsGuardMode = typeof FS_GUARD_MODES[number]
 
+export type ComputerApprovalMode = 'auto' | 'per-app'
+export const COMPUTER_APPROVAL_MODES: readonly ComputerApprovalMode[] = ['auto', 'per-app']
+
+export function isComputerApprovalMode(value: unknown): value is ComputerApprovalMode {
+  return COMPUTER_APPROVAL_MODES.some(mode => mode === value)
+}
+
+/** `look`: screenshots and reading only; `click`: no typing, keys or drags; `full`: everything. */
+export type ComputerTier = 'look' | 'click' | 'full'
+export const COMPUTER_TIERS: readonly ComputerTier[] = ['look', 'click', 'full']
+
+export function isComputerTier(value: unknown): value is ComputerTier {
+  return COMPUTER_TIERS.some(tier => tier === value)
+}
+
+/** App tiers with trimmed, non-empty names and known tiers; `undefined` when the value is not an object. */
+export function normalizeComputerApps(value: unknown): Record<string, ComputerTier> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const apps: Record<string, ComputerTier> = {}
+  for (const [name, tier] of Object.entries(value)) {
+    if (name.trim() && isComputerTier(tier)) apps[name.trim()] = tier
+  }
+  return apps
+}
+
 export function isFsGuardMode(value: unknown): value is FsGuardMode {
   return FS_GUARD_MODES.some(mode => mode === value)
 }
@@ -755,6 +789,9 @@ function normalizeConfig(value: unknown): SystemConfig {
   if (typeof record.computerUse === 'boolean') config.computerUse = record.computerUse
   if (typeof record.computerDriverPath === 'string' && record.computerDriverPath.trim()) config.computerDriverPath = record.computerDriverPath.trim()
   if (Number.isSafeInteger(record.computerMaxScreenshots) && Number(record.computerMaxScreenshots) >= 0) config.computerMaxScreenshots = Number(record.computerMaxScreenshots)
+  if (isComputerApprovalMode(record.computerApproval)) config.computerApproval = record.computerApproval
+  const computerApps = normalizeComputerApps(record.computerApps)
+  if (computerApps && Object.keys(computerApps).length) config.computerApps = computerApps
   if (isFsGuardMode(record.fsGuard)) config.fsGuard = record.fsGuard
   const memory = normalizeProjectMemory(record.projectMemory)
   if (memory) config.projectMemory = memory

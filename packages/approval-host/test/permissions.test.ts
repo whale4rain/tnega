@@ -60,6 +60,65 @@ describe('permissionGuard', () => {
     expect(broker.granted('session', 'computer:app:Notepad')).toBe(true)
   })
 
+  it('lets a tool waive the prompt in workspace-write, but never in read-only', async () => {
+    const broker = new ApprovalBroker()
+    const asked: Array<Record<string, unknown>> = []
+    broker.attach('session', event => {
+      asked.push(event)
+      queueMicrotask(() => broker.decide(String(event.id), 'session', false))
+    })
+    const call = (): ToolRequest => {
+      const next = request('computer_click', {})
+      next.tool.approval = () => ({ need: 'none' })
+      return next
+    }
+    expect(await permissionGuard('workspace-write', 'session', broker, { workspace: process.cwd() })(call())).toBeUndefined()
+    expect(asked).toHaveLength(0)
+    expect(await permissionGuard('read-only', 'session', broker, { workspace: process.cwd() })(call())).toMatch(/approval/)
+    expect(asked).toHaveLength(1)
+  })
+
+  it('asks a person, with the reason, when a tool flags a call, past grants and the reviewer', async () => {
+    const broker = new ApprovalBroker()
+    const asked: Array<Record<string, unknown>> = []
+    let allow = false
+    broker.attach('session', event => {
+      asked.push(event)
+      queueMicrotask(() => broker.decide(String(event.id), 'session', allow))
+    })
+    broker.grant('session', 'computer:app:Notepad')
+    const review = vi.fn(async () => ({ decision: 'allow' as const, risk: 'low' as const, reason: 'fine' }))
+    const guard = permissionGuard('workspace-write', 'session', broker, { workspace: process.cwd(), review })
+    const call = (): ToolRequest => {
+      const next = request('computer_click', { risk: 'deletes the draft' })
+      next.tool.grant = () => ({ scope: 'computer:app:Notepad', label: 'use Notepad' })
+      next.tool.approval = () => ({ need: 'person', reason: 'deletes the draft' })
+      return next
+    }
+    expect(await guard(call())).toMatch(/did not allow computer_click \(deletes the draft\)/)
+    expect(asked[0]?.reason).toBe('deletes the draft')
+    expect(asked[0]?.grant).toBeUndefined()
+    expect(review).not.toHaveBeenCalled()
+    allow = true
+    const allowed = call()
+    expect(await guard(allowed)).toBeUndefined()
+    expect(allowed.options.approvedElevation).toBe(true)
+    expect(asked).toHaveLength(2)
+  })
+
+  it('asks a person when the tool cannot say whether a call is safe', async () => {
+    const broker = new ApprovalBroker()
+    const asked: Array<Record<string, unknown>> = []
+    broker.attach('session', event => {
+      asked.push(event)
+      queueMicrotask(() => broker.decide(String(event.id), 'session', true))
+    })
+    const next = request('computer_click', {})
+    next.tool.approval = () => { throw new Error('no settings') }
+    expect(await permissionGuard('workspace-write', 'session', broker, { workspace: process.cwd() })(next)).toBeUndefined()
+    expect(String(asked[0]?.reason)).toMatch(/no settings/)
+  })
+
   it('allows job controls while child execution retains its own permission check', async () => {
     const guard = permissionGuard('read-only', 'session', new ApprovalBroker(), { workspace: process.cwd() })
     for (const name of ['job_list', 'job_output', 'job_kill']) {

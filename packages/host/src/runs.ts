@@ -503,7 +503,9 @@ export function residentSignature(req: ResidentRunRequest): string {
     // The file tools read their guard mode when they are built.
     req.config.fsGuard ?? 'warn',
     // Turning computer use on or off rebuilds the runtime, so its tools follow the switch.
-    req.config.computerUse ? `computer:${req.config.computerDriverPath ?? ''}:${req.config.computerMaxScreenshots ?? ''}` : 'no-computer',
+    req.config.computerUse
+      ? `computer:${req.config.computerDriverPath ?? ''}:${req.config.computerMaxScreenshots ?? ''}:${req.config.computerApproval ?? 'auto'}:${JSON.stringify(req.config.computerApps ?? {})}`
+      : 'no-computer',
     req.agentType,
     req.permission,
     'auto',

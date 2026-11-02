@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { resolveInside, type ToolGrant, type ToolGuard, type ToolRequest } from '@tnega/tools'
+import { resolveInside, type ToolApproval, type ToolGrant, type ToolGuard, type ToolRequest } from '@tnega/tools'
 import { isLocalUrl, normalizeBrowserUrl } from '@tnega/browser'
 import { BROWSER_OBSERVE_TOOLS } from '@tnega/tool-browser'
 import type { ApprovalDecision } from '@tnega/approval-review'
@@ -79,6 +79,19 @@ async function grantOf(request: ToolRequest): Promise<ToolGrant | undefined> {
   }
 }
 
+/**
+ * What the tool itself asks for this call. A failing lookup asks a person:
+ * the tool meant to say something about this call and could not.
+ */
+async function approvalOf(request: ToolRequest): Promise<ToolApproval | undefined> {
+  if (!request.tool.approval) return undefined
+  try {
+    return await request.tool.approval(request.input, request.options)
+  } catch (error) {
+    return { need: 'person', reason: `could not check whether this call is safe (${error instanceof Error ? error.message : String(error)})` }
+  }
+}
+
 /** How an approval request ended. */
 export type ApprovalOutcome = 'allow' | 'deny' | 'timeout' | 'cancelled'
 
@@ -147,7 +160,7 @@ export class ApprovalBroker {
    * cancelled. With `grant`, the card offers that scope for the rest of the
    * Session, and an allow is remembered for it.
    */
-  ask(key: string, request: ToolRequest, options: { fullInput?: boolean; grant?: ToolGrant } = {}): Promise<ApprovalOutcome> {
+  ask(key: string, request: ToolRequest, options: { fullInput?: boolean; grant?: ToolGrant; reason?: string } = {}): Promise<ApprovalOutcome> {
     const emit = this.runs.get(key)
     if (!emit || request.options.signal?.aborted) return Promise.resolve('cancelled')
     const id = randomUUID()
@@ -168,6 +181,7 @@ export class ApprovalBroker {
           // A call a CodeMode script made: the model only called run_code.
           ...(typeof request.options.ptcParentCallId === 'string' ? { via: 'run_code' } : {}),
           ...(options.grant ? { grant: { scope: options.grant.scope, label: options.grant.label } } : {}),
+          ...(options.reason ? { reason: options.reason } : {}),
         })
       } catch {
         this.settle(id, 'cancelled')
@@ -229,10 +243,15 @@ export function permissionGuard(
     if (BROWSER_PASSIVE.has(request.name)) return undefined
     if (effective === 'workspace-write' && browserInteractionIsLocal(request, options.browserUrl?.())) return undefined
     if (request.options.signal?.aborted) return 'Tool approval cancelled'
+    const delegated = options.delegated?.(request.options.agentId) === true
+    const own = await approvalOf(request)
+    if (own?.need === 'none' && effective === 'workspace-write') return undefined
+    // The tool says a person must decide this call: no grant or reviewer answers
+    // for them. Agents with nobody to ask keep their usual delegated path.
+    if (own?.need === 'person' && !delegated) return await askPerson(request, own.reason, parentMode)
     const grant = await grantOf(request)
     if (grant && approvals.granted(key, grant.scope)) return undefined
     let reviewed: ApprovalDecision | undefined
-    const delegated = options.delegated?.(request.options.agentId) === true
     // A narrower child cannot use the parent's automatic elevation policy, unless
     // the reviewer is the only one who decides for it (a project thread).
     if (delegated || !(childMode && rank[childMode] < rank[parentMode])) {
@@ -265,9 +284,23 @@ export function permissionGuard(
       request.options.approvedElevation = true
       return undefined
     }
-    if (outcome === 'timeout') {
-      return `${request.name} was not approved: nobody answered the approval request within ${APPROVAL_TIMEOUT_MS / 60_000} minutes. Do not retry it now; if it is still needed, say so in your reply so the user can approve it.`
-    }
+    if (outcome === 'timeout') return unanswered(request)
     return `${request.name} requires human approval in ${effective} mode`
   }
+
+  async function askPerson(request: ToolRequest, reason: string, parentMode: PermissionMode): Promise<string | undefined> {
+    const outcome = await approvals.ask(key, request, { reason })
+    if (request.options.signal?.aborted) return 'Tool approval cancelled'
+    if (typeof mode === 'function' && await mode() !== parentMode) return 'Tool permission changed during approval'
+    if (outcome === 'allow') {
+      request.options.approvedElevation = true
+      return undefined
+    }
+    if (outcome === 'timeout') return unanswered(request)
+    return `The user did not allow ${request.name} (${reason}). Do not retry it; find another way, or ask the user in your reply.`
+  }
+}
+
+function unanswered(request: ToolRequest): string {
+  return `${request.name} was not approved: nobody answered the approval request within ${APPROVAL_TIMEOUT_MS / 60_000} minutes. Do not retry it now; if it is still needed, say so in your reply so the user can approve it.`
 }

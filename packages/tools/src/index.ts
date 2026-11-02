@@ -94,7 +94,25 @@ export interface ToolDefinition {
    * means the approval covers this one call only. Never model-visible.
    */
   grant?: (input: unknown, options: ToolExecuteOptions) => ToolGrant | undefined | Promise<ToolGrant | undefined>
+  /**
+   * The tool's own say on whether this call needs a person, on top of the
+   * permission level; `undefined` leaves it to the approval host's rules.
+   * Never model-visible.
+   */
+  approval?: (input: unknown, options: ToolExecuteOptions) => ToolApproval | undefined | Promise<ToolApproval | undefined>
 }
+
+/**
+ * What a tool asks of the approval host for one call (see {@link ToolDefinition.approval}).
+ *
+ * - `none`: no prompt, at the same tier as a workspace write. A `read-only`
+ *   permission level still asks.
+ * - `person`: a person must allow this one call, with `reason` on the card.
+ *   Session grants and the automatic reviewer do not answer it.
+ */
+export type ToolApproval =
+  | { need: 'none' }
+  | { need: 'person'; reason: string }
 
 /** A Session-long approval scope a tool offers; see {@link ToolDefinition.grant}. */
 export interface ToolGrant {

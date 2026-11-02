@@ -29,6 +29,7 @@
     "@tnega/session": "workspace:*",
     "@tnega/spill-local": "workspace:*",
     "@tnega/tool-computer": "workspace:*",
+    "@tnega/computer-tiers": "workspace:*",
     "@tnega/tool-fs": "workspace:*",
     "@tnega/tool-jobs": "workspace:*",
     "@tnega/tool-memory": "workspace:*",

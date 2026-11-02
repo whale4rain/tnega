@@ -41,3 +41,21 @@ it('offers a Session-long grant in words and allows it with one press', () => {
   view.getByRole('button', { name: 'Allow in this session' }).click()
   expect(answers).toEqual([true])
 })
+
+it('shows the risk the agent flagged and allows only this one call', () => {
+  const answers: boolean[] = []
+  const view = render(createElement(ApprovalCard, {
+    approval: {
+      id: 'approval',
+      tool: 'computer_click',
+      input: JSON.stringify({ window_id: 7, element_token: 's1:4', risk: 'Empties the trash for good' }),
+      reason: 'Empties the trash for good',
+    },
+    onAnswer: allow => answers.push(allow),
+  }))
+  const text = view.getByRole('alertdialog').textContent
+  expect(text).toContain('The agent flagged a risk: Empties the trash for good')
+  expect(text).toContain('Asks you about this one call')
+  view.getByRole('button', { name: 'Allow once' }).click()
+  expect(answers).toEqual([true])
+})
