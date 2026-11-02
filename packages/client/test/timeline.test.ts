@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSseFrame } from '../src/api.js'
-import { applyStream, beginRun, fromEvents, noteSettingChange, presentOutcome, presentRun, settingChangeText, type Entry } from '../src/timeline.js'
+import { applyStream, beginRun, fromEvents, keepUnchanged, noteSettingChange, presentOutcome, presentRun, settingChangeText, type Entry } from '../src/timeline.js'
 import { presentTool, readableOutput } from '../src/tools.js'
 import type { SessionEvent, StreamEvent } from '../src/types.js'
 
@@ -26,6 +26,27 @@ describe('fromEvents', () => {
       { kind: 'notice', tone: 'info', process: true, text: 'Noticed the agent repeating itself and nudged it' },
       { kind: 'notice', tone: 'warn', text: 'Paused the agent: it was stuck, so it reports instead' },
     ] })
+  })
+
+  it('shows a background job reporting back as a notice in the turn it wakes, not as a user message', () => {
+    const entries = fromEvents([
+      ev('turn/start', { turn: 1 }),
+      ev('user/message', { content: 'start the dev server' }),
+      ev('assistant/message', { content: 'Started it.' }),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+      ev('turn/start', { turn: 2 }),
+      ev('user/message', { content: 'Background job job_1 (npm run dev) finished: failed. Collect its result with job_output.', name: 'plugin:tool-jobs' }),
+      ev('assistant/message', { content: 'The server failed.' }),
+      ev('turn/end', { turn: 2, finishReason: 'stop' }),
+      ev('turn/start', { turn: 3 }),
+      ev('user/message', { content: 'Some future plugin note\nwith detail', name: 'plugin:something-new' }),
+    ])
+    expect(entries.map(entry => entry.kind)).toEqual(['user', 'agent', 'agent', 'agent'])
+    expect(entries[2]).toMatchObject({ blocks: [
+      { kind: 'notice', tone: 'info', text: 'Background job failed: npm run dev' },
+      { kind: 'text', text: 'The server failed.' },
+    ] })
+    expect(entries[3]).toMatchObject({ blocks: [{ kind: 'notice', process: true, text: 'Some future plugin note' }] })
   })
 
   it('does not split Agent activity at request rewrite checkpoints', () => {
@@ -486,5 +507,29 @@ describe('settings changes', () => {
     expect(live).toHaveLength(running.length)
     expect(live.at(-1)?.kind === 'agent' && live.at(-1)).toMatchObject({ blocks: [{ kind: 'text' }, { kind: 'setting', text: 'Effort set to high · applies from the next step' }] })
     expect(noteSettingChange(running, 'n2', 'Effort set to high', false).at(-1)).toEqual({ kind: 'setting', id: 'n2', text: 'Effort set to high' })
+  })
+})
+
+describe('keepUnchanged', () => {
+  it('keeps the objects of entries a reload rebuilt unchanged, so they do not re-render', () => {
+    const events = [
+      ev('turn/start', { turn: 1 }),
+      ev('user/message', { content: 'one' }),
+      ev('assistant/message', { content: 'first', toolCalls: [{ id: 'k1', name: 'shell', arguments: { command: 'ls' } }] }),
+      ev('tool/result', { id: 'r1', toolCallId: 'k1', name: 'shell', ok: true, output: 'a\nb' }),
+      ev('turn/end', { turn: 1, finishReason: 'stop' }),
+      ev('turn/start', { turn: 2 }),
+      ev('user/message', { content: 'two' }),
+      ev('assistant/message', { content: 'second' }),
+    ]
+    const before = fromEvents(events)
+    expect(keepUnchanged(before, fromEvents(events))).toBe(before)
+
+    const after = fromEvents([...events, ev('turn/end', { turn: 2, finishReason: 'stop' })])
+    const merged = keepUnchanged(before, after)
+    expect(merged).not.toBe(before)
+    expect(merged.slice(0, 3)).toEqual(before.slice(0, 3))
+    merged.slice(0, 3).forEach((entry, index) => expect(entry).toBe(before[index]))
+    expect(merged[3]).toBe(after[3])
   })
 })
