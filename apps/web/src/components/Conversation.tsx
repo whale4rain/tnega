@@ -168,7 +168,7 @@ export function Conversation({
   /** Bumped whenever a read replaces the window, so an older page fetched against the old one is dropped. */
   const detailGeneration = useRef(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
-  /** The session whose older page is in flight; polling that session waits for it so the page is not dropped. */
+  /** The session (workspace and id) whose older page is in flight; polling that session waits for it so the page is not dropped. */
   const olderInFlight = useRef<string | undefined>(undefined)
   /**
    * Messages typed while a run goes, per session: they wait for the run to end
@@ -300,6 +300,13 @@ export function Conversation({
       } else {
         entriesFor.current = undefined
         setEntries([])
+        // Nothing of the session left stays: a settings change made while the read
+        // is on its way must not land on it.
+        setSummary(undefined)
+        setContext(undefined)
+        setMetrics(undefined)
+        setUsage(undefined)
+        setGoal(null)
         setPlan(undefined)
         setRecovery(undefined)
         setRemoteRunning(false)
@@ -329,7 +336,7 @@ export function Conversation({
     // stacked reads would keep the host busy and replace the window out of order.
     let polling = false
     const timer = setInterval(() => {
-      if (polling || olderInFlight.current === sessionId) return
+      if (polling || olderInFlight.current === detailKey(workspace, sessionId)) return
       polling = true
       reload(sessionId).then(detail => {
         if (detail.running) return
@@ -811,11 +818,12 @@ export function Conversation({
     const id = sessionId
     const generation = detailGeneration.current
     setLoadingOlder(true)
-    olderInFlight.current = id
+    const key = detailKey(workspace, id)
+    olderInFlight.current = key
     try {
       const detail = await api.session(workspace, id, { beforeSeq: page.beforeSeq, maxMessages: HISTORY_PAGE })
-      // The reader may have switched sessions while the page was in flight.
-      if (shown.current.sessionId !== id) return
+      // The reader may have switched sessions or workspaces while the page was in flight.
+      if (shown.current.sessionId !== id || shown.current.workspace !== workspace) return
       // A reload replaced the window meanwhile (a run ended, a remote run was polled): this
       // page may no longer join it. Drop it; the fill effect asks again from the new window.
       if (detailGeneration.current !== generation) {
@@ -835,7 +843,7 @@ export function Conversation({
     } catch (reason) {
       setError(errorText(reason))
     } finally {
-      if (olderInFlight.current === id) olderInFlight.current = undefined
+      if (olderInFlight.current === key) olderInFlight.current = undefined
       setLoadingOlder(false)
     }
   }
