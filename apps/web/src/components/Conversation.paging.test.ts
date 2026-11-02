@@ -86,10 +86,12 @@ it('polls a run started elsewhere one read at a time', async () => {
   try {
     const running = { ...detail(turnEvents(3, 9), { hasMore: false }), running: true }
     let calls = 0
-    // The first read answers; every poll after it hangs, like a slow read of a long log.
+    let settle: (value: SessionDetail) => void = () => {}
+    // The first read answers; the poll after it hangs, like a slow read of a long log.
     const session = vi.spyOn(api, 'session').mockImplementation(() => {
       calls += 1
-      return calls === 1 ? Promise.resolve(running) : new Promise<SessionDetail>(() => {})
+      if (calls === 1) return Promise.resolve(running)
+      return new Promise<SessionDetail>(resolve => { settle = resolve })
     })
     vi.spyOn(api, 'questions').mockResolvedValue({ questions: [] })
     const view = renderConversation()
@@ -98,6 +100,11 @@ it('polls a run started elsewhere one read at a time', async () => {
     await vi.advanceTimersByTimeAsync(1500 * 4)
     // One poll started and is still reading; the later ticks wait for it.
     expect(session).toHaveBeenCalledTimes(2)
+
+    // Once the slow read settles, the next tick polls again.
+    settle(running)
+    await vi.advanceTimersByTimeAsync(1500 * 2)
+    expect(session.mock.calls.length).toBeGreaterThan(2)
   } finally {
     vi.useRealTimers()
   }
