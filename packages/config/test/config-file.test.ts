@@ -63,6 +63,8 @@ describe('system config file', () => {
     const config = await readSystemConfig(file)
     expect(config.computerApproval).toBe('per-app')
     expect(config.computerApps).toEqual({ Notepad: 'look', chrome: 'click' })
+    await writeFile(file, '{"computerApps":{"__proto__":"look"}}')
+    expect(Object.entries((await readSystemConfig(file)).computerApps ?? {})).toEqual([['__proto__', 'look']])
     await writeFile(file, JSON.stringify({ computerApproval: 'never', computerApps: ['look'] }))
     const dropped = await readSystemConfig(file)
     expect(dropped.computerApproval).toBeUndefined()

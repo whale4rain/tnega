@@ -690,7 +690,8 @@ export function formatComputerApps(apps: Readonly<Record<string, ComputerTier>> 
 
 /** Read `App: tier` lines back; the first line that is not one comes back as `bad`. */
 export function parseComputerApps(text: string): { apps: Record<string, ComputerTier> } | { bad: string } {
-  const apps: Record<string, ComputerTier> = {}
+  // Entries, not assignment: an app named __proto__ stays an own entry.
+  const apps: Array<[string, ComputerTier]> = []
   for (const raw of text.split('\n')) {
     const line = raw.trim()
     if (!line) continue
@@ -698,7 +699,7 @@ export function parseComputerApps(text: string): { apps: Record<string, Computer
     const app = split > 0 ? line.slice(0, split).trim() : ''
     const tier = split > 0 ? line.slice(split + 1).trim().toLowerCase() : ''
     if (!app || !isComputerTier(tier)) return { bad: line }
-    apps[app] = tier
+    apps.push([app, tier])
   }
-  return { apps }
+  return { apps: Object.fromEntries(apps) }
 }

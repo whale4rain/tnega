@@ -6,6 +6,7 @@ import {
   actionWindowId,
   type ComputerAction,
   type ComputerActionResult,
+  type ComputerApp,
   type ComputerScreenshot,
   type ComputerWindow,
 } from '@tnega/computer'
@@ -20,6 +21,17 @@ const WINDOWS: ComputerWindow[] = [
 
 class FakeComputer extends ComputerService {
   performed: ComputerAction[] = []
+  listed: ComputerApp[] | Error = [
+    { name: 'Google Chrome', running: true, pid: 10, windowIds: [1] },
+    { name: 'Notepad', running: true, pid: 20, windowIds: [2] },
+  ]
+  listings = 0
+
+  override async apps(): Promise<ComputerApp[]> {
+    this.listings += 1
+    if (this.listed instanceof Error) throw this.listed
+    return this.listed
+  }
 
   async windows(): Promise<ComputerWindow[]> {
     return WINDOWS
@@ -68,9 +80,8 @@ describe('computer tiers', () => {
   it('refuses every action in a look-only app and says why', async () => {
     const computer = await setup({ apps: { Chrome: 'look' } })
     await expect(computer.act({ op: 'click', windowId: 1, x: 1, y: 1 })).rejects.toMatchObject({ code: 'COMPUTER_DENIED', message: expect.stringMatching(/chrome\.exe is set to "look"/) })
-    await expect(computer.act({ op: 'launch', app: 'chrome', urls: ['https://example.com'] })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
-    // Starting it without URLs and other apps are untouched.
-    await computer.act({ op: 'launch', app: 'chrome' })
+    // Starting an app is not input to it, and its URLs are navigation; other apps are untouched.
+    await computer.act({ op: 'launch', app: 'chrome', urls: ['https://example.com'] })
     await computer.act({ op: 'type', windowId: 2, text: 'x' })
     expect(computer.performed.map(action => action.op)).toEqual(['launch', 'type'])
   })
@@ -95,6 +106,27 @@ describe('computer tiers', () => {
     await computer.act({ op: 'type', windowId: 3, text: '1+1' })
     apps = { calculator: 'look' }
     await expect(computer.act({ op: 'type', windowId: 3, text: '1+1' })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
+  })
+
+  it('matches a limit written with the display name from the app list', async () => {
+    const computer = await setup({ apps: { 'Google Chrome': 'look' } })
+    await expect(computer.act({ op: 'click', windowId: 1, x: 1, y: 1 })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
+    await expect(computer.act({ op: 'click', windowId: 1, x: 1, y: 1 })).rejects.toMatchObject({ code: 'COMPUTER_DENIED' })
+    await computer.act({ op: 'type', windowId: 2, text: 'x' })
+    // The owner of a window is looked up once per process.
+    expect(computer.listings).toBe(2)
+    expect(computer.performed.map(action => action.op)).toEqual(['type'])
+  })
+
+  it('refuses when limits are set and the owning app cannot be told', async () => {
+    const computer = await setup({ apps: { 'Google Chrome': 'look' } })
+    computer.listed = new Error('driver is gone')
+    await expect(computer.act({ op: 'type', windowId: 3, text: '1' })).rejects.toMatchObject({ code: 'COMPUTER_DENIED', message: expect.stringMatching(/driver is gone/) })
+    // Without limits nothing is looked up.
+    const open = await setup({})
+    open.listed = new Error('driver is gone')
+    await open.act({ op: 'type', windowId: 3, text: '1' })
+    expect(open.listings).toBe(0)
   })
 
   it('leaves the clipboard alone: it belongs to no app', async () => {

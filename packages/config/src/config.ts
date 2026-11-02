@@ -770,11 +770,12 @@ export function isComputerTier(value: unknown): value is ComputerTier {
 /** App tiers with trimmed, non-empty names and known tiers; `undefined` when the value is not an object. */
 export function normalizeComputerApps(value: unknown): Record<string, ComputerTier> | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const apps: Record<string, ComputerTier> = {}
+  // Entries, not assignment: an app named __proto__ stays an own entry.
+  const apps: Array<[string, ComputerTier]> = []
   for (const [name, tier] of Object.entries(value)) {
-    if (name.trim() && isComputerTier(tier)) apps[name.trim()] = tier
+    if (name.trim() && isComputerTier(tier)) apps.push([name.trim(), tier])
   }
-  return apps
+  return Object.fromEntries(apps)
 }
 
 export function isFsGuardMode(value: unknown): value is FsGuardMode {
