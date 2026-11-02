@@ -227,7 +227,8 @@ function ResizeHandle({ onResize }: { onResize: (width: number) => void }) {
       onPointerMove={event => {
         if (!dragging) return
         const max = window.innerWidth * WORKBENCH_MAX_SHARE
-        onResize(Math.round(Math.min(max, Math.max(WORKBENCH_MIN_WIDTH, window.innerWidth - event.clientX))))
+        // Below 640 px half the window is narrower than the minimum; the minimum wins there.
+        onResize(Math.round(Math.max(WORKBENCH_MIN_WIDTH, Math.min(max, window.innerWidth - event.clientX))))
       }}
       onPointerUp={event => {
         event.currentTarget.releasePointerCapture(event.pointerId)

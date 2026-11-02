@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { applyFade, canMoveViewport, followsEnd, metricsOf, scrollsViewport, takesKeys, type ScrollEdges } from './scroll'
 import { workbenchApi } from './workbench-api'
 
@@ -269,6 +269,9 @@ export function useScrollFade(ref: React.RefObject<HTMLElement | null>, edges: S
  */
 export function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
   const latest = useRef(fn)
-  latest.current = fn
+  // After commit: a render React discards must not leave its callback behind.
+  useLayoutEffect(() => {
+    latest.current = fn
+  })
   return useCallback((...args: A) => latest.current(...args), [])
 }

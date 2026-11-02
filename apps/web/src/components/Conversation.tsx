@@ -163,6 +163,8 @@ export function Conversation({
   const [page, setPage] = useState<SessionPageRange | undefined>()
   /** Transcript messages on screen: a reload asks for at least these, so older pages the reader opened stay. */
   const loadedMessages = useRef(0)
+  /** Bumped whenever a read replaces the window, so an older page fetched against the old one is dropped. */
+  const detailGeneration = useRef(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
   /**
    * Messages typed while a run goes, per session: they wait for the run to end
@@ -230,6 +232,7 @@ export function Conversation({
     // history; that answer must not replace the transcript on screen.
     if (shown.current.sessionId !== detail.summary.id || shown.current.workspace !== workspace) return false
     const sameSession = entriesFor.current === detail.summary.id
+    detailGeneration.current += 1
     entriesFor.current = detail.summary.id
     loadedMessages.current = countMessages(detail.events)
     setSummary(detail.summary)
@@ -794,13 +797,18 @@ export function Conversation({
   const loadOlder = async () => {
     if (!sessionId || !page?.hasMore || loadingOlder) return
     const element = scroller.current
-    const anchor = element ? readingAnchor(element) : undefined
     const id = sessionId
+    const generation = detailGeneration.current
     setLoadingOlder(true)
     try {
       const detail = await api.session(workspace, id, { beforeSeq: page.beforeSeq, maxMessages: HISTORY_PAGE })
       // The reader may have switched sessions while the page was in flight.
       if (shown.current.sessionId !== id) return
+      // A reload replaced the window meanwhile (a run ended, a remote run was polled): this
+      // page may no longer join it. Drop it; reaching the top asks again from the new window.
+      if (detailGeneration.current !== generation) return
+      // Measured now, not before the request: the reader may have scrolled while it ran.
+      const anchor = element ? readingAnchor(element) : undefined
       const older = toEntries(detail.events)
       loadedMessages.current += countMessages(detail.events)
       setEntries(current => [...older, ...current])
@@ -881,7 +889,9 @@ export function Conversation({
   // identity across renders let a streamed frame re-render only the live turn,
   // instead of every message (and its markdown) in a long session.
   const actionsRef = useRef({ resend, fork, onOpenSubagent, onOpenFile, onOpenChange })
-  actionsRef.current = { resend, fork, onOpenSubagent, onOpenFile, onOpenChange }
+  useLayoutEffect(() => {
+    actionsRef.current = { resend, fork, onOpenSubagent, onOpenFile, onOpenChange }
+  })
   const canOpenChange = Boolean(onOpenChange)
   const timelineActions = useMemo<TimelineActions>(() => ({
     onEdit: (entryId, text) => void actionsRef.current.resend(entryId, text),

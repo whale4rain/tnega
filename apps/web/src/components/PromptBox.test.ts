@@ -191,3 +191,19 @@ it('keeps an unsent draft with its conversation and drops it once sent', async (
   view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-a' }))
   expect(messageBox(view).value).toBe('')
 })
+
+it('keeps a draft edited while an earlier send from the same conversation is still settling', async () => {
+  let settle: (value: boolean) => void = () => {}
+  const onSubmit = vi.fn(() => new Promise<boolean>(resolve => { settle = resolve }))
+  const props = { onSubmit, placeholder: 'Reply…' }
+  const view = render(createElement(PromptBox, { ...props, resetKey: 'pending-a' }))
+  type(messageBox(view), 'first')
+  fireEvent.keyDown(messageBox(view), { key: 'Enter' })
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-b' }))
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-a' }))
+  type(messageBox(view), 'second thought')
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-b' }))
+  await act(async () => { settle(true) })
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-a' }))
+  expect(messageBox(view).value).toBe('second thought')
+})

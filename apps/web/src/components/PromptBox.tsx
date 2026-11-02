@@ -206,6 +206,8 @@ export function PromptBox({
   useEffect(() => {
     const key = resetKey
     const draft = key === undefined ? '' : drafts.get(key) ?? ''
+    // Set before the render, so a cleanup that runs first (StrictMode) keeps the draft.
+    textRef.current = draft
     setText(draft)
     setImages([])
     setContexts([])
@@ -378,10 +380,13 @@ export function PromptBox({
     const send = how === 'interrupt' ? onInterruptSubmit : how === 'steer' ? onSteerSubmit : onSubmit
     if (!send) return
     const key = keyRef.current
+    const sent = text
     const accepted = await send(value, images)
     if (accepted) {
-      // Sending can move to another conversation (a new session gets its id) before it settles.
-      if (key !== undefined) drafts.delete(key)
+      // Sending can move to another conversation (a new session gets its id) before it
+      // settles. Only the text that was sent is dropped: a draft edited since stays.
+      if (key !== undefined && drafts.get(key) === sent) drafts.delete(key)
+      if (keyRef.current !== key) return
       setText('')
       setImages([])
       setContexts([])
