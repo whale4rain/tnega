@@ -284,7 +284,10 @@ export interface SessionSnapshot {
   surface: SessionEvent[]
   context: ContextUsage
   metrics: SessionMetrics
-  /** Every event, for folds that need the whole history (usage, recovery). */
+  /**
+   * Every event, for folds that need the whole history (usage, recovery). An
+   * assistant message's `stream` copy keeps only its reasoning bounds.
+   */
   log: SessionEvent[]
   /** Where the returned transcript starts: a long history is read a page at a time. */
   page: SessionPageRange
@@ -371,6 +374,49 @@ function pageWindow(
   }
 }
 
+/** Events only the replay of a live stream reads; a reader of the history never shows them. */
+const STREAM_ONLY_TYPES = new Set(['assistant/chunk'])
+
+/**
+ * Trim the transcript to what a reader of the history shows. Each assistant
+ * message carries a copy of every streamed chunk for reconnecting streams;
+ * on a long session that copy is over 90% of the log and a page of history
+ * was tens of MB. A view only reads when the reasoning started and ended, so
+ * the copy keeps just those records (see `reasoningDuration` in
+ * `@tnega/client`). The log on disk is unchanged.
+ */
+export function viewEvents(events: readonly SessionEvent[]): SessionEvent[] {
+  return trimStreams(events.filter(event => !STREAM_ONLY_TYPES.has(event.type)))
+}
+
+/** Each assistant message's stream copy cut to its reasoning bounds; every other event as it is. */
+function trimStreams(events: readonly SessionEvent[]): SessionEvent[] {
+  return events.map(event => {
+    if (event.type !== 'assistant/message' || !event.payload.stream) return event
+    const { stream, ...payload } = event.payload
+    const kept = reasoningBounds(stream)
+    return { ...event, payload: kept.length ? { ...payload, stream: kept } : payload }
+  })
+}
+
+type StreamRecords = NonNullable<Extract<SessionEvent, { type: 'assistant/message' }>['payload']['stream']>
+
+/** The first and last reasoning chunk, and the first chunk of anything after it. */
+function reasoningBounds(stream: StreamRecords): StreamRecords {
+  let first: StreamRecords[number] | undefined
+  let last: StreamRecords[number] | undefined
+  for (const record of stream) {
+    if (record.chunk.type === 'reasoning_delta') {
+      first ??= record
+      last = record
+    } else if (first && record.chunk.type !== 'message_start') {
+      return last && last !== first ? [first, last, record] : [first, record]
+    }
+  }
+  if (!first) return []
+  return last && last !== first ? [first, last] : [first]
+}
+
 /**
  * A session log and its two folds, kept between views. Reopening a session the
  * reader just left is the common case, and re-deriving it costs as much as the
@@ -384,7 +430,8 @@ interface CachedSessionLog {
   messages: Awaited<ReturnType<SessionLog['deriveMessages']>>
 }
 
-const SESSION_LOG_CACHE_SIZE = 3
+/** The cached folds keep only the reasoning bounds of each stream copy, so a long log is small enough to keep several. */
+const SESSION_LOG_CACHE_SIZE = 8
 const sessionLogCache = new Map<string, CachedSessionLog>()
 
 function rememberSessionLog(file: string, cached: CachedSessionLog): void {
@@ -423,8 +470,9 @@ export async function readSessionSnapshot(
     : await withSessionLog(file, async (log) => {
       const fresh: CachedSessionLog = {
         stamp: stamp ?? '',
-        log: await log.read(),
-        surface: await log.surfaceEvents(),
+        // The stream copies are over 90% of a long log and no fold here reads them.
+        log: trimStreams(await log.read()),
+        surface: trimStreams(await log.surfaceEvents()),
         messages: await log.deriveMessages(),
       }
       if (stamp !== undefined) rememberSessionLog(file, fresh)
@@ -446,7 +494,7 @@ export async function readSessionSnapshot(
     const window = pageWindow(logEvents, pageOptions)
     return {
       summary,
-      events: transcriptEvents(window.events),
+      events: viewEvents(transcriptEvents(window.events)),
       surface,
       context,
       metrics: foldUsage(logEvents),
