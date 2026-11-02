@@ -80,3 +80,25 @@ it('hides the pager when the whole history fits in one page', async () => {
   expect(await view.findByText('answer 1')).toBeTruthy()
   expect(view.queryByRole('button', { name: 'Load older messages' })).toBeNull()
 })
+
+it('polls a run started elsewhere one read at a time', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    const running = { ...detail(turnEvents(3, 9), { hasMore: false }), running: true }
+    let calls = 0
+    // The first read answers; every poll after it hangs, like a slow read of a long log.
+    const session = vi.spyOn(api, 'session').mockImplementation(() => {
+      calls += 1
+      return calls === 1 ? Promise.resolve(running) : new Promise<SessionDetail>(() => {})
+    })
+    vi.spyOn(api, 'questions').mockResolvedValue({ questions: [] })
+    const view = renderConversation()
+    expect(await view.findByText('answer 3')).toBeTruthy()
+
+    await vi.advanceTimersByTimeAsync(1500 * 4)
+    // One poll started and is still reading; the later ticks wait for it.
+    expect(session).toHaveBeenCalledTimes(2)
+  } finally {
+    vi.useRealTimers()
+  }
+})

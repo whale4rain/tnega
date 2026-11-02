@@ -166,6 +166,8 @@ export function Conversation({
   /** Bumped whenever a read replaces the window, so an older page fetched against the old one is dropped. */
   const detailGeneration = useRef(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  /** True while an older page is in flight; remote-run polling waits for it so the page is not dropped. */
+  const olderInFlight = useRef(false)
   /**
    * Messages typed while a run goes, per session: they wait for the run to end
    * and go as the next prompt, unless steered into the run first.
@@ -321,12 +323,17 @@ export function Conversation({
   // Poll while a run started elsewhere (another tab, the CLI) is still going.
   useEffect(() => {
     if (!remoteRunning || !sessionId) return
+    // One poll at a time: reading a long log can take longer than the interval, and
+    // stacked reads would keep the host busy and replace the window out of order.
+    let polling = false
     const timer = setInterval(() => {
+      if (polling || olderInFlight.current) return
+      polling = true
       reload(sessionId).then(detail => {
         if (detail.running) return
         onSessionsChanged()
         setSettled({ id: sessionId, natural: stopRequested.current !== sessionId, at: Date.now() })
-      }, () => {})
+      }, () => {}).finally(() => { polling = false })
     }, 1500)
     return () => clearInterval(timer)
   }, [remoteRunning, sessionId, reload, onSessionsChanged])
@@ -802,6 +809,7 @@ export function Conversation({
     const id = sessionId
     const generation = detailGeneration.current
     setLoadingOlder(true)
+    olderInFlight.current = true
     try {
       const detail = await api.session(workspace, id, { beforeSeq: page.beforeSeq, maxMessages: HISTORY_PAGE })
       // The reader may have switched sessions while the page was in flight.
@@ -825,6 +833,7 @@ export function Conversation({
     } catch (reason) {
       setError(errorText(reason))
     } finally {
+      olderInFlight.current = false
       setLoadingOlder(false)
     }
   }
