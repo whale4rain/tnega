@@ -110,6 +110,9 @@ export interface ToolDefinition {
  * - `person`: a person must allow this one call, with `reason` on the card;
  *   an agent with no person to ask (a Project thread) is refused.
  *   Session grants, the automatic reviewer and delegates do not answer it.
+ *
+ * In `bypass` permission mode the approval host asks nothing, so neither
+ * applies: a `person` call runs unasked there too, Project threads included.
  */
 export type ToolApproval =
   | { need: 'none' }

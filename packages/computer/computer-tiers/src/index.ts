@@ -76,16 +76,16 @@ export const name = 'computer-tiers'
 export function apply(ctx: Context, config: ComputerTiersConfig = {}): void {
   // Looked up on every action, not cached: a pid can be reused by another
   // install of the same program, and only the live app list can tell.
-  const displayName = async (window: ComputerWindow): Promise<string | undefined> => {
-    const owner = (await ctx.computer.apps()).find(app => app.windowIds.includes(window.id) || (app.pid !== undefined && app.pid === window.pid))
+  const displayName = async (window: ComputerWindow, signal: AbortSignal | undefined): Promise<string | undefined> => {
+    const owner = (await ctx.computer.apps(signal ? { signal } : {})).find(app => app.windowIds.includes(window.id) || (app.pid !== undefined && app.pid === window.pid))
     return owner?.name
   }
-  const tierFor = async (window: ComputerWindow): Promise<ComputerTier | string> => {
+  const tierFor = async (window: ComputerWindow, signal: AbortSignal | undefined): Promise<ComputerTier | string> => {
     const direct = listedTier([window.app], config)
     if (direct !== undefined || limitsOf(config).length === 0) return direct ?? config.fallback ?? 'full'
     let name: string | undefined
     try {
-      name = await displayName(window)
+      name = await displayName(window, signal)
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       return `App limits are set in Settings, and it could not be checked which app owns this window (${reason}), so the action was not done.`
@@ -98,7 +98,7 @@ export function apply(ctx: Context, config: ComputerTiersConfig = {}): void {
   }
   ctx.on('computer/pre-action', async (event: ComputerPreActionEvent, next: () => Promise<unknown>) => {
     if (event.window && event.deny === undefined) {
-      const tier = await tierFor(event.window)
+      const tier = await tierFor(event.window, event.signal)
       const reason = isTier(tier) ? refusal(event.action, event.window.app, tier) : tier
       if (reason) event.deny = reason
     }

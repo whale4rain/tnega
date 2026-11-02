@@ -7,6 +7,7 @@ import {
   type ComputerAction,
   type ComputerActionResult,
   type ComputerApp,
+  type ComputerCallOptions,
   type ComputerScreenshot,
   type ComputerWindow,
 } from '@tnega/computer'
@@ -26,9 +27,13 @@ class FakeComputer extends ComputerService {
     { name: 'Notepad', running: true, pid: 20, windowIds: [2] },
   ]
   listings = 0
+  signals: (AbortSignal | undefined)[] = []
+  onList: (() => void) | undefined
 
-  override async apps(): Promise<ComputerApp[]> {
+  override async apps(options?: ComputerCallOptions): Promise<ComputerApp[]> {
     this.listings += 1
+    this.signals.push(options?.signal)
+    this.onList?.()
     if (this.listed instanceof Error) throw this.listed
     return this.listed
   }
@@ -116,6 +121,18 @@ describe('computer tiers', () => {
     // The owner is looked up on every action: a reused pid must not inherit an old answer.
     expect(computer.listings).toBe(3)
     expect(computer.performed.map(action => action.op)).toEqual(['type'])
+  })
+
+  it('passes the call\'s cancellation to the owner lookup and stops judging a cancelled batch', async () => {
+    const computer = await setup({ apps: { 'Google Chrome': 'click' } })
+    const controller = new AbortController()
+    computer.onList = () => controller.abort()
+    await expect(computer.act(
+      { op: 'steps', windowId: 1, steps: [{ op: 'click', windowId: 1, x: 1, y: 1 }, { op: 'scroll', windowId: 1, x: 1, y: 1, direction: 'down' }] },
+      { signal: controller.signal },
+    )).rejects.toMatchObject({ code: 'COMPUTER_ABORTED' })
+    expect(computer.signals).toEqual([controller.signal])
+    expect(computer.performed).toEqual([])
   })
 
   it('refuses when limits are set and the owning app cannot be told', async () => {
