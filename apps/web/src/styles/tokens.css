@@ -62,7 +62,7 @@
   --sidebar-width: 264px;
   --reading-width: 780px;
   /* The Workbench opens about as wide as the conversation it sits beside, until it is dragged. */
-  --workbench-default: clamp(420px, 40vw, 760px);
+  --workbench-default: clamp(320px, 40vw, 760px);
   /* How far the edge fade of a long list reaches (.scroll-fade in app.css). */
   --scroll-fade: 28px;
 

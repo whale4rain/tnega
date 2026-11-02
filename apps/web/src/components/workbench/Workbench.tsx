@@ -25,8 +25,8 @@ export interface WorkbenchProject {
 }
 
 /** Narrowest and widest the panel may be dragged, in CSS pixels. */
-export const WORKBENCH_MIN_WIDTH = 420
-export const WORKBENCH_MAX_SHARE = 0.72
+export const WORKBENCH_MIN_WIDTH = 320
+export const WORKBENCH_MAX_SHARE = 0.5
 
 const TOOL_META: Record<ToolId, { label: string; icon: LucideIcon; hint: string }> = {
   files: { label: 'Files', icon: FolderTree, hint: 'Browse and edit workspace files' },
