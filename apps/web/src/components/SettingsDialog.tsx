@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import { DISPLAY_DEFAULTS, PALETTES, type DisplayChange, type DisplayPreferences } from '../lib/display'
-import { isFsGuardMode, type ApprovalMode, type ApprovalReviewerSettings, type CommandNetworkMode, type ConfigSnapshot, type Effort, type FsGuardMode, type InsightsSession, type Protocol, type SandboxNetworkSupport } from '../lib/types'
+import { formatComputerApps, isFsGuardMode, parseComputerApps, type ApprovalMode, type ComputerApprovalMode, type ApprovalReviewerSettings, type CommandNetworkMode, type ConfigSnapshot, type Effort, type FsGuardMode, type InsightsSession, type Protocol, type SandboxNetworkSupport } from '../lib/types'
 import { Dialog } from './Dialog'
 import { ModelRoutes } from './ModelRoutes'
 import { ContextInsights } from './context/ContextInsights'
@@ -67,6 +67,10 @@ export function SettingsDialog({
   // Follows the stored value until the person picks one, so a late config is not overwritten.
   const [computerUsePicked, setComputerUse] = useState<boolean | undefined>(undefined)
   const computerUse = computerUsePicked ?? stored?.computerUse ?? false
+  const [computerApprovalPicked, setComputerApproval] = useState<ComputerApprovalMode | undefined>(undefined)
+  const computerApproval = computerApprovalPicked ?? stored?.computerApproval ?? 'auto'
+  const [computerAppsPicked, setComputerApps] = useState<string | undefined>(undefined)
+  const computerApps = computerAppsPicked ?? formatComputerApps(stored?.computerApps)
   const [fsGuard, setFsGuard] = useState<FsGuardMode>(stored?.fsGuard ?? 'warn')
   const [memoryEnabled, setMemoryEnabled] = useState(stored?.projectMemory?.enabled ?? true)
   const [memoryModel, setMemoryModel] = useState(stored?.projectMemory?.coldModelId ?? '')
@@ -134,6 +138,12 @@ export function SettingsDialog({
     // cannot write the default over a stored `off` or `enforce`.
     if (fsGuard !== (stored?.fsGuard ?? 'warn')) patch.fsGuard = fsGuard
     if (computerUsePicked !== undefined && computerUsePicked !== (stored?.computerUse ?? false)) patch.computerUse = computerUsePicked
+    if (computerApprovalPicked !== undefined && computerApprovalPicked !== (stored?.computerApproval ?? 'auto')) patch.computerApproval = computerApprovalPicked
+    if (computerAppsPicked !== undefined) {
+      const parsed = parseComputerApps(computerAppsPicked)
+      if ('bad' in parsed) return fail(`"${parsed.bad}" is not an app limit; write one per line, such as Notepad: look`, 'tools')
+      if (formatComputerApps(parsed.apps) !== formatComputerApps(stored?.computerApps)) patch.computerApps = parsed.apps
+    }
     patch.projectMemory = { enabled: memoryEnabled, coldModelId: memoryModel, maxCallsPerDay: memoryCalls, maxInputTokens: memoryInput, maxOutputTokens: memoryOutput, maxTokensPerDay: memoryDaily, minIntervalSeconds: memoryInterval }
     if (!Number.isSafeInteger(dreamIdle) || dreamIdle < 1 || dreamIdle > 1440) return fail('Quiet minutes must be a whole number from 1 to 1440', 'model')
     patch.memoryDream = { enabled: dreamEnabled, modelId: dreamModel, idleMinutes: dreamIdle }
@@ -397,8 +407,23 @@ export function SettingsDialog({
                 <option value="disabled">Off</option>
                 <option value="enabled">On · the agent can see and use your apps</option>
               </select>
-              <span className="muted small">Uses cua-driver, which must be installed. Screenshots of the windows it works in go to the model. You approve each app once per session. Takes effect from the next run.</span>
+              <span className="muted small">Uses cua-driver, which must be installed. Screenshots of the windows it works in go to the model. Takes effect from the next run.</span>
             </label>
+            {computerUse && <>
+              <label className="field span-2">
+                <span className="field-label">Computer use approvals</span>
+                <select aria-label="Computer use approvals" value={computerApproval} onChange={event => setComputerApproval(event.target.value === 'per-app' ? 'per-app' : 'auto')}>
+                  <option value="auto">Don't ask · only steps the agent flags as risky</option>
+                  <option value="per-app">Ask once per app in each session</option>
+                </select>
+                <span className="muted small">Either way, the agent asks you first before a step it judges could do damage or touch your security, such as deleting, sending, paying or changing a password.</span>
+              </label>
+              <label className="field span-2">
+                <span className="field-label">App limits</span>
+                <textarea aria-label="App limits" rows={3} value={computerApps} onChange={event => setComputerApps(event.target.value)} spellCheck={false} placeholder="Notepad: look&#10;Chrome: click" />
+                <span className="muted small">One app per line. look: screenshots and reading only. click: click, scroll and menus, no typing. full: everything. Apps not listed are full.</span>
+              </label>
+            </>}
             <label className="field span-2">
               <span className="field-label">File write guard · 实验性</span>
               <select aria-label="File write guard" value={fsGuard} onChange={event => { const next = event.target.value; if (isFsGuardMode(next)) setFsGuard(next) }}>

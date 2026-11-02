@@ -17,7 +17,8 @@ import type { SessionLog } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
 import { runSummary } from '@tnega/run-summary'
 import { loopGuard, type LoopGuardConfig } from '@tnega/loop-guard'
-import { toolComputer } from '@tnega/tool-computer'
+import { toolComputer, type ComputerApprovalMode } from '@tnega/tool-computer'
+import { computerTiers, type ComputerTier } from '@tnega/computer-tiers'
 import { toolJobs } from '@tnega/tool-jobs'
 import { toolMemory } from '@tnega/tool-memory'
 import { toolPtc } from '@tnega/tool-ptc'
@@ -332,21 +333,28 @@ export interface ComputerCapabilitySpec {
   maxScreenshots?: number
   /** Whether the current model can see images (see `ToolComputerConfig.vision`). */
   vision?: () => boolean | Promise<boolean>
+  /** Prompt for no app (`auto`, default) or once per app (see `ToolComputerConfig.approval`). */
+  approval?: ComputerApprovalMode
+  /** How far the agent may go in each app (see `@tnega/computer-tiers`); unlisted apps are `full`. */
+  apps?: Readonly<Record<string, ComputerTier>>
 }
 
 /**
  * Computer seam: cua-driver is the Provider, the `computer_*` tools the
- * Consumer. Mount it only when the person turned computer use on; the tools
- * ask for each app once per Session through the approval host.
+ * Consumer, app tiers a policy on `computer/pre-action`. Mount it only when
+ * the person turned computer use on. The tools run without asking unless
+ * `approval` is `per-app`; an action the agent flags as risky always asks.
  */
 export const computerCapability: Plugin = {
   name: 'capability:computer',
   inject: ['tools'],
   async apply(ctx: Context, spec: ComputerCapabilitySpec) {
     await ctx.plugin(computerCua, spec.driverPath ? { driverPath: spec.driverPath } : {})
+    await ctx.plugin(computerTiers, spec.apps ? { apps: spec.apps } : {})
     await ctx.plugin(toolComputer, {
       ...(spec.maxScreenshots !== undefined ? { maxScreenshots: spec.maxScreenshots } : {}),
       ...(spec.vision ? { vision: spec.vision } : {}),
+      ...(spec.approval ? { approval: spec.approval } : {}),
     })
   },
 }

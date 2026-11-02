@@ -195,6 +195,8 @@ export interface ComputerPreActionEvent {
   action: ComputerAction
   /** The target window, resolved before policy runs; absent for a launch or the clipboard. */
   window?: ComputerWindow
+  /** The call's cancellation, for policy that does its own lookups. */
+  signal?: AbortSignal
   deny?: string
 }
 

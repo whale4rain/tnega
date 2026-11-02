@@ -26,7 +26,7 @@ import { ProjectHost } from '@tnega/project-host'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { resolveLlmEnv } from '@tnega/config'
-import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
+import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, COMPUTER_APPROVAL_MODES, isComputerApprovalMode, normalizeComputerApps, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
 import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun, sandboxNetworkFrom } from './runs.js'
@@ -128,6 +128,18 @@ const apiRoutes: ApiRoute[] = [
       if (body.computerUse !== undefined) {
             if (typeof body.computerUse !== 'boolean') { sendError(res, 400, 'computerUse must be a boolean'); return }
             patch.computerUse = body.computerUse
+          }
+      if (body.computerApproval !== undefined) {
+            if (!isComputerApprovalMode(body.computerApproval)) {
+              sendError(res, 400, `computerApproval must be one of ${COMPUTER_APPROVAL_MODES.join(', ')}`); return
+            }
+            patch.computerApproval = body.computerApproval
+          }
+      if (body.computerApps !== undefined) {
+            const apps = normalizeComputerApps(body.computerApps)
+            if (!apps) { sendError(res, 400, 'computerApps must map app names to look, click or full'); return }
+            // An empty list clears the setting: every app is full again.
+            patch.computerApps = Object.keys(apps).length ? apps : undefined
           }
       if (body.fsGuard !== undefined) {
             if (!isFsGuardMode(body.fsGuard)) {
@@ -868,6 +880,8 @@ export function configSnapshot(config: SystemConfig, path = systemConfigPath()):
       apiKeySet: Boolean(config.apiKey),
       codeMode: config.codeMode ?? false,
       computerUse: config.computerUse ?? false,
+      computerApproval: config.computerApproval ?? 'auto',
+      computerApps: config.computerApps ?? {},
       fsGuard: config.fsGuard ?? 'warn',
       projectMemory: { ...PROJECT_MEMORY_DEFAULTS, ...config.projectMemory },
       memoryDream: { ...MEMORY_DREAM_DEFAULTS, ...config.memoryDream },

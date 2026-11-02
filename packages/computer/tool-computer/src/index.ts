@@ -12,7 +12,7 @@ import {
   type ComputerService,
   type ComputerWindow,
 } from '@tnega/computer'
-import { withAttachments, type ToolDefinition, type ToolExecuteOptions, type ToolGrant } from '@tnega/tools'
+import { withAttachments, type ToolApproval, type ToolDefinition, type ToolExecuteOptions, type ToolGrant } from '@tnega/tools'
 
 /** Tools that only look: they send no input. */
 export const COMPUTER_OBSERVE_TOOLS: readonly string[] = [
@@ -67,6 +67,24 @@ export interface ToolComputerConfig {
   vision?: () => boolean | Promise<boolean>
   /** The Session's log, read once to count earlier screenshots. */
   session?: () => ScreenshotSource | undefined
+  /**
+   * `auto` (default): computer tools run without a prompt in workspace-write.
+   * `per-app`: the first use of each app asks, and the answer lasts for the
+   * Session. Either way, an action the agent flags with `risk` asks a person,
+   * for that one call.
+   */
+  approval?: ComputerApprovalMode
+}
+
+export type ComputerApprovalMode = 'auto' | 'per-app'
+
+/** Said on every acting tool, so the model weighs it at the moment it acts. */
+const RISK_RULE = 'Before a step that deletes or overwrites the user\'s data, sends or posts anything, buys or pays, signs in, or changes a password or security, privacy or account setting, set risk: the user is asked first.'
+
+/** What makes an action worth asking about first; the model fills `risk` against this. */
+const RISK = {
+  type: 'string',
+  description: 'Leave this out for ordinary steps. Fill it in when this action could do harm the user would want to be asked about first: delete or overwrite their data, send, post or publish something, spend money, sign in, change passwords or security, privacy or account settings, or install or remove software. Say in one sentence what could happen; the user is asked before the action runs.',
 }
 
 /** What the budget reads from a Session log: its events, loosely typed. */
@@ -374,6 +392,11 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
   // The clipboard is shared by every app, so it has one scope of its own.
   const clipboardGrant = (): ToolGrant => ({ scope: 'computer:clipboard', label: 'read and replace your clipboard for the rest of this session' })
 
+  const approvalOf = (name: string, input: Args): ToolApproval | undefined => {
+    const risk = typeof input.risk === 'string' ? input.risk.trim() : ''
+    if (risk && COMPUTER_ACT_TOOLS.includes(name)) return { need: 'person', reason: risk }
+    return config.approval === 'per-app' ? undefined : { need: 'none' }
+  }
   const budget = new ScreenshotBudget(config.maxScreenshots, config.session)
   const spentNote = async () => `${SCREENSHOT_SPENT} (${await budget.used()} of ${budget.max} this session). Read the window with computer_read_tree instead.`
   const sees = async (): Promise<boolean> => (await config.vision?.()) ?? true
@@ -435,12 +458,21 @@ export function computerTools(computer: ComputerService, config: ToolComputerCon
     execute: (input: Args, options: ToolExecuteOptions) => unknown,
     grant: NonNullable<ToolDefinition['grant']> = appGrant,
   ): ToolDefinition => ({
-    schema: { name, description, parameters: { type: 'object', properties, ...(required.length ? { required } : {}) } },
+    schema: {
+      name,
+      description: COMPUTER_ACT_TOOLS.includes(name) ? `${description} ${RISK_RULE}` : description,
+      parameters: {
+        type: 'object',
+        properties: COMPUTER_ACT_TOOLS.includes(name) ? { ...properties, risk: RISK } : properties,
+        ...(required.length ? { required } : {}),
+      },
+    },
     timeoutMs,
     metadata: { computer: COMPUTER_OBSERVE_TOOLS.includes(name) ? 'observe' : 'act' },
     // Looking is safe to repeat after a restart; an action may already have happened.
     interruption: COMPUTER_REPEATABLE_TOOLS.includes(name) ? 'retry' : 'confirm',
     grant,
+    approval: input => approvalOf(name, args(input)),
     execute: (input, options) => execute(args(input), options),
   })
 

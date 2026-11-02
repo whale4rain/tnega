@@ -55,6 +55,22 @@ describe('system config file', () => {
     }
   })
 
+  it('keeps computer approval and app tiers it knows and drops the rest', async () => {
+    const file = await configFile(JSON.stringify({
+      computerApproval: 'per-app',
+      computerApps: { ' Notepad ': 'look', chrome: 'click', calc: 'admin', '': 'full' },
+    }))
+    const config = await readSystemConfig(file)
+    expect(config.computerApproval).toBe('per-app')
+    expect(config.computerApps).toEqual({ Notepad: 'look', chrome: 'click' })
+    await writeFile(file, '{"computerApps":{"__proto__":"look"}}')
+    expect(Object.entries((await readSystemConfig(file)).computerApps ?? {})).toEqual([['__proto__', 'look']])
+    await writeFile(file, JSON.stringify({ computerApproval: 'never', computerApps: ['look'] }))
+    const dropped = await readSystemConfig(file)
+    expect(dropped.computerApproval).toBeUndefined()
+    expect(dropped.computerApps).toBeUndefined()
+  })
+
   it('persists memory limits and disables extraction for an invalid budget file setting', async () => {
     const file = await configFile()
     await updateSystemConfig({ memoryDream: { enabled: false, modelId: 'economical', idleMinutes: 30 } }, file)

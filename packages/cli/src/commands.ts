@@ -170,6 +170,8 @@ export async function runAgentCommand(
       ? {
           ...(systemConfig.computerDriverPath ? { driverPath: systemConfig.computerDriverPath } : {}),
           ...(systemConfig.computerMaxScreenshots !== undefined ? { maxScreenshots: systemConfig.computerMaxScreenshots } : {}),
+          ...(systemConfig.computerApproval ? { approval: systemConfig.computerApproval } : {}),
+          ...(systemConfig.computerApps ? { apps: systemConfig.computerApps } : {}),
           // One model for the whole run: a text-only one gets the tools without screenshots.
           vision: () => vision,
         }

@@ -16,6 +16,7 @@ import { sessionSearchSqlite, type SqliteSessionIndex } from '@tnega/session-sea
 import { toolSessionSearch } from '@tnega/tool-session-search'
 import { defaultWorkspace } from '@tnega/home'
 import { ProcessRegistry } from '@tnega/tools'
+import type { ComputerCapabilitySpec } from '@tnega/runtime'
 import { resolve } from 'node:path'
 
 export const MAX_RUN_ATTACHMENTS = 8
@@ -69,7 +70,7 @@ export function processesFor(
 export function computerSpec(
   config: SystemConfig,
   vision?: () => Promise<boolean>,
-): { computer: { driverPath?: string; maxScreenshots?: number; vision?: () => Promise<boolean> } | false } {
+): { computer: ComputerCapabilitySpec | false } {
   // `false`, not absent: the Settings switch wins over an agent profile's options.
   if (!config.computerUse) return { computer: false }
   return {
@@ -77,6 +78,8 @@ export function computerSpec(
       ...(vision ? { vision } : {}),
       ...(config.computerDriverPath ? { driverPath: config.computerDriverPath } : {}),
       ...(config.computerMaxScreenshots !== undefined ? { maxScreenshots: config.computerMaxScreenshots } : {}),
+      ...(config.computerApproval ? { approval: config.computerApproval } : {}),
+      ...(config.computerApps ? { apps: config.computerApps } : {}),
     },
   }
 }

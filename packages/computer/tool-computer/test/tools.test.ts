@@ -14,7 +14,7 @@ import {
 } from '@tnega/computer'
 import { tools, type ToolResult } from '@tnega/tools'
 
-import { parseKeys, toolComputer, type ToolComputerConfig } from '../src/index.js'
+import { COMPUTER_ACT_TOOLS, parseKeys, toolComputer, type ToolComputerConfig } from '../src/index.js'
 
 const WINDOWS: ComputerWindow[] = [
   { id: 1, pid: 10, app: 'chrome.exe', title: 'Example', bounds: { x: 0, y: 0, width: 1280, height: 800 }, onScreen: true },
@@ -297,6 +297,31 @@ describe('tool-computer', () => {
     expect(await grantOf('computer_open_app', { name: 'Notepad' })).toMatchObject({ scope: 'computer:launch:notepad' })
     // A closed window offers no Session-long scope; the call is asked about on its own.
     expect(await grantOf('computer_click', { window_id: 9, x: 0, y: 0 })).toBeUndefined()
+  })
+
+  it('runs without a prompt by default and asks a person about an action flagged with risk', async () => {
+    const approvalOf = async (config: ToolComputerConfig, name: string, input: unknown) => {
+      const { ctx } = await setup(config)
+      const definition = ctx.get('tools').list().find(tool => tool.schema.name === name)
+      return definition?.approval?.(input, {})
+    }
+    expect(await approvalOf({}, 'computer_click', { window_id: 1, x: 0, y: 0 })).toEqual({ need: 'none' })
+    expect(await approvalOf({}, 'computer_screenshot', { window_id: 1 })).toEqual({ need: 'none' })
+    expect(await approvalOf({}, 'computer_click', { window_id: 1, x: 0, y: 0, risk: ' deletes the email ' }))
+      .toEqual({ need: 'person', reason: 'deletes the email' })
+    expect(await approvalOf({}, 'computer_click', { window_id: 1, x: 0, y: 0, risk: '  ' })).toEqual({ need: 'none' })
+    // Per app: the approval host asks once per app, and a flagged action still asks on its own.
+    expect(await approvalOf({ approval: 'per-app' }, 'computer_click', { window_id: 1, x: 0, y: 0 })).toBeUndefined()
+    expect(await approvalOf({ approval: 'per-app' }, 'computer_steps', { window_id: 1, steps: [], risk: 'pays' }))
+      .toEqual({ need: 'person', reason: 'pays' })
+  })
+
+  it('offers risk on every acting tool and on no tool that only looks', async () => {
+    const { ctx } = await setup()
+    for (const definition of ctx.get('tools').list()) {
+      const properties = definition.schema.parameters?.properties ?? {}
+      expect('risk' in properties, definition.schema.name).toBe(COMPUTER_ACT_TOOLS.includes(definition.schema.name))
+    }
   })
 
   it('runs a batch of steps in one window and answers with one screenshot', async () => {
