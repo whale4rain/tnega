@@ -1,4 +1,5 @@
 import type { Context } from '@tnega/core'
+import { ComputerError } from '@tnega/computer'
 import type { ComputerAction, ComputerPreActionEvent, ComputerWindow } from '@tnega/computer'
 
 /**
@@ -87,6 +88,8 @@ export function apply(ctx: Context, config: ComputerTiersConfig = {}): void {
     try {
       name = await displayName(window, signal)
     } catch (error) {
+      // A lookup cut short by cancellation is a cancelled call, not a refusal.
+      if (signal?.aborted) throw new ComputerError('COMPUTER_ABORTED', 'computer action was cancelled')
       const reason = error instanceof Error ? error.message : String(error)
       return `App limits are set in Settings, and it could not be checked which app owns this window (${reason}), so the action was not done.`
     }

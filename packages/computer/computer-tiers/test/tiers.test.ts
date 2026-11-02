@@ -133,6 +133,15 @@ describe('computer tiers', () => {
     )).rejects.toMatchObject({ code: 'COMPUTER_ABORTED' })
     expect(computer.signals).toEqual([controller.signal])
     expect(computer.performed).toEqual([])
+    // A lookup that fails because of the cancellation reports the cancellation, not a refusal.
+    const failing = await setup({ apps: { 'Google Chrome': 'click' } })
+    const stop = new AbortController()
+    failing.onList = () => {
+      stop.abort()
+      throw new Error('lookup cancelled')
+    }
+    await expect(failing.act({ op: 'click', windowId: 1, x: 1, y: 1 }, { signal: stop.signal })).rejects.toMatchObject({ code: 'COMPUTER_ABORTED' })
+    expect(failing.performed).toEqual([])
   })
 
   it('refuses when limits are set and the owning app cannot be told', async () => {
