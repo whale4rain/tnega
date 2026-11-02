@@ -20,7 +20,6 @@ import { loopGuard, type LoopGuardConfig } from '@tnega/loop-guard'
 import { toolComputer } from '@tnega/tool-computer'
 import { toolJobs } from '@tnega/tool-jobs'
 import { toolMemory } from '@tnega/tool-memory'
-import { toolOffice } from '@tnega/tool-office'
 import { toolPtc } from '@tnega/tool-ptc'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSecrets } from '@tnega/tool-secrets'
@@ -266,10 +265,20 @@ export const spillCapability: Plugin = {
   },
 }
 
+/**
+ * Office tools, loaded when a workspace actually has an office file.
+ *
+ * `@tnega/tool-office` drags in exceljs, docx, pptxgenjs and jszip: about 30
+ * seconds of module graph under vitest, and a visible cost at every CLI start
+ * that never touches a spreadsheet. The capability is only mounted when
+ * `hasOfficeFiles` already said the files are there, so the import belongs
+ * here rather than at the top of this barrel.
+ */
 export const officeCapability: Plugin = {
   name: 'capability:office',
   inject: ['tools'],
   async apply(ctx: Context, spec: WorkspaceCapabilitySpec) {
+    const { toolOffice } = await import('@tnega/tool-office')
     await ctx.plugin(toolOffice, { cwd: spec.workspace })
   },
 }
