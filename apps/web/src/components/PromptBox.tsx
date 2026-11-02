@@ -387,11 +387,14 @@ export function PromptBox({
       // settles. Only the text that was sent is dropped: a draft edited since stays.
       if (key !== undefined && drafts.get(key) === sent) drafts.delete(key)
       if (keyRef.current !== key) return
-      setText('')
+      // Text typed while the send was pending is kept.
+      if (textRef.current === sent) {
+        setText('')
+        setCaret(0)
+      }
       setImages([])
       setContexts([])
       setFiles([])
-      setCaret(0)
       setDismissed('')
     }
   }

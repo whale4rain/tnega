@@ -691,7 +691,8 @@
   .app,
   .app.workbench-open {
     --workbench-col: 0px;
-    --workbench-panel: min(var(--workbench-width, 640px), 100vw);
+    /* Half the window as well, unless half is narrower than the 320px minimum. */
+    --workbench-panel: min(var(--workbench-width, var(--workbench-default)), max(320px, 50vw), 100vw);
   }
 
   .workbench,

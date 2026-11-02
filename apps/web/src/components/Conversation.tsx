@@ -793,6 +793,8 @@ export function Conversation({
     }
   }
 
+  /** Set when a reload made an older page stale, so the fill effect asks again. */
+  const droppedOlder = useRef(false)
   /** Prepend the page before the window on screen, holding the reader in place. */
   const loadOlder = async () => {
     if (!sessionId || !page?.hasMore || loadingOlder) return
@@ -805,8 +807,11 @@ export function Conversation({
       // The reader may have switched sessions while the page was in flight.
       if (shown.current.sessionId !== id) return
       // A reload replaced the window meanwhile (a run ended, a remote run was polled): this
-      // page may no longer join it. Drop it; reaching the top asks again from the new window.
-      if (detailGeneration.current !== generation) return
+      // page may no longer join it. Drop it; the fill effect asks again from the new window.
+      if (detailGeneration.current !== generation) {
+        droppedOlder.current = true
+        return
+      }
       // Measured now, not before the request: the reader may have scrolled while it ran.
       const anchor = element ? readingAnchor(element) : undefined
       const older = toEntries(detail.events)
@@ -867,13 +872,17 @@ export function Conversation({
 
   // Older history loads when the reader reaches the top, not on a button. A page
   // that does not fill the viewport has no scroll event to wait for, so it keeps
-  // filling until the transcript can scroll or the history ends.
+  // filling until the transcript can scroll or the history ends. A reader still at
+  // the top asks again too, so a page dropped by a reload does not wait for a scroll.
   const loadOlderRef = useRef(loadOlder)
   loadOlderRef.current = loadOlder
   useEffect(() => {
     const element = scroller.current
     if (!element || !page?.hasMore || loadingOlder) return
-    if (element.scrollHeight > 0 && element.scrollHeight <= element.clientHeight + 1) {
+    const fits = element.scrollHeight > 0 && element.scrollHeight <= element.clientHeight + 1
+    const retry = droppedOlder.current && element.scrollTop <= 96
+    droppedOlder.current = false
+    if (fits || retry) {
       void loadOlderRef.current()
     }
   }, [entries.length, page, loadingOlder])
@@ -1085,7 +1094,7 @@ export function Conversation({
             onStop={onComposerStop}
             placeholder={live ? 'Queue a message for after this run… (Ctrl+Enter steers now)' : sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
             autoFocusKey={sessionId ?? 'draft'}
-            resetKey={sessionId ?? 'draft'}
+            resetKey={`${workspace}:${sessionId ?? 'draft'}`}
           />
         </div>
       </div>
