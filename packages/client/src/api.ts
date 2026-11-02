@@ -4,6 +4,8 @@
  * in-process server on a loopback port).
  */
 import type {
+  ComputerApprovalMode,
+  ComputerTier,
   FsGuardMode,
   ModelRouteInput,
   ModelDiscovery,
@@ -74,6 +76,10 @@ export interface ConfigPatch {
   codeMode?: boolean
   /** Let the agent see and use apps on this computer. */
   computerUse?: boolean
+  /** Ask about no app (`auto`) or once per app per session (`per-app`). */
+  computerApproval?: ComputerApprovalMode
+  /** How far the agent may go in each app; an empty object clears the list. */
+  computerApps?: Record<string, ComputerTier>
   /** How strictly a file write must match what the Session already read. */
   fsGuard?: FsGuardMode
   /** Shell name or path; empty restores automatic detection. */
@@ -237,6 +243,9 @@ export function createClient(options: ClientOptions = {}) {
         throw new ApiError(409, 'CodeMode 设置未保存：后端没有确认该设置，请重启或更新 Tnega 后端后重试。')
       }
       if (patch.computerUse !== undefined && saved.config.computerUse !== patch.computerUse) {
+        throw new ApiError(409, '电脑操作设置未保存：后端没有确认该设置，请重启或更新 Tnega 后端后重试。')
+      }
+      if (patch.computerApproval !== undefined && saved.config.computerApproval !== patch.computerApproval) {
         throw new ApiError(409, '电脑操作设置未保存：后端没有确认该设置，请重启或更新 Tnega 后端后重试。')
       }
       if (patch.fsGuard !== undefined && saved.config.fsGuard !== patch.fsGuard) {

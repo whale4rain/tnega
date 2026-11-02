@@ -17,7 +17,7 @@
 | `computer_clipboard_read` / `computer_clipboard_write` | 读写剪贴板文本 |
 | `computer_wait` | 等待后截图 |
 
-每个工具声明 `grant`：对窗口的操作按拥有窗口的应用授权（`computer:app:<应用>`），列窗口、列应用、启动应用各有范围，剪贴板读写共用 `computer:clipboard`；审批宿主在用户允许后，本 Session 内同一范围不再询问。
+审批：每个工具声明 `approval`。默认（`ToolComputerConfig.approval` 为 `auto`）返回 `{ need: 'none' }`，`workspace-write` 下不询问。每个动作工具有可选参数 `risk`：Agent 判断这一步可能造成损害或涉及用户安全时用一句话写明，这次调用返回 `{ need: 'person', reason }`，必须由人允许，Session 授权与自动审核都不能代答。`approval: 'per-app'` 时改按 `grant` 询问：对窗口的操作按拥有窗口的应用授权（`computer:app:<应用>`），列窗口、列应用、启动应用各有范围，剪贴板读写共用 `computer:clipboard`；审批宿主在用户允许后，本 Session 内同一范围不再询问。按应用的上限（只看 / 只点击 / 完整）由 `@tnega/computer-tiers` 负责，不在本包。
 
 只收文本的模型：`ToolComputerConfig.vision()` 返回 false 时（宿主按 Session 当前模型回答，每次截图前都问），不截图，动作与看图的工具只回一行窗口描述（窗口、应用、标题、尺寸），并指向 `computer_read_tree`；这时不计截图预算。
 

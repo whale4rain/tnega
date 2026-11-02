@@ -196,13 +196,14 @@ export abstract class ComputerService extends Service {
         // Every step is judged before the first runs, so a refusal changes nothing.
         const steps = []
         for (const step of action.steps) {
-          const judged = await this.judge(step, window)
+          if (options.signal?.aborted) throw new ComputerError('COMPUTER_ABORTED', 'computer action was cancelled')
+          const judged = await this.judge(step, window, options.signal)
           if (!isStep(judged)) throw new ComputerError('COMPUTER_DENIED', `computer/pre-action turned a ${step.op} step into ${judged.op}, which cannot run inside a batch`)
           steps.push(judged)
         }
         active = { ...action, steps }
       } else {
-        active = await this.judge(action, window)
+        active = await this.judge(action, window, options.signal)
       }
       assertAction(active)
       if (options.signal?.aborted) throw new ComputerError('COMPUTER_ABORTED', 'computer action was cancelled')
@@ -223,8 +224,8 @@ export abstract class ComputerService extends Service {
   }
 
   /** `computer/pre-action` for one action: the action to run, or a `COMPUTER_DENIED` throw. */
-  private async judge(action: ComputerAction, window: ComputerWindow | undefined): Promise<ComputerAction> {
-    const pre: ComputerPreActionEvent = { action, ...(window ? { window } : {}) }
+  private async judge(action: ComputerAction, window: ComputerWindow | undefined, signal: AbortSignal | undefined): Promise<ComputerAction> {
+    const pre: ComputerPreActionEvent = { action, ...(window ? { window } : {}), ...(signal ? { signal } : {}) }
     const resolved: unknown = await this.ctx.waterfallAsync(
       'computer/pre-action',
       pre,

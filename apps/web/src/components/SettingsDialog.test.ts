@@ -111,6 +111,40 @@ it('does not overwrite computer use with a default when the config arrives late'
   expect(save.mock.calls[0]?.[0].computerUse).toBeUndefined()
 })
 
+it('asks about no app by default, and saves the approval choice and app limits once picked', async () => {
+  const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(snapshot)
+  const stored: ConfigSnapshot = { ...snapshot, config: { ...snapshot.config, computerUse: true, computerApps: { Notepad: 'look' } } }
+  const view = render(createElement(SettingsDialog, { config: stored, onClose: vi.fn(), onSaved: vi.fn() }))
+  expect(view.getByLabelText('Computer use approvals')).toHaveProperty('value', 'auto')
+  expect(view.getByLabelText('App limits')).toHaveProperty('value', 'Notepad: look')
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0].computerApproval).toBeUndefined()
+  expect(save.mock.calls[0]?.[0].computerApps).toBeUndefined()
+
+  fireEvent.change(view.getByLabelText('Computer use approvals'), { target: { value: 'per-app' } })
+  fireEvent.change(view.getByLabelText('App limits'), { target: { value: 'Notepad: look\nnot a limit' } })
+  fireEvent.click(view.getByText('Save changes'))
+  expect(view.getByText('"not a limit" is not an app limit; write one per line, such as Notepad: look')).toBeTruthy()
+  expect(save).toHaveBeenCalledOnce()
+
+  fireEvent.change(view.getByLabelText('App limits'), { target: { value: 'Notepad: look\nGoogle Chrome: Click\n' } })
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2))
+  expect(save.mock.calls[1]?.[0]).toMatchObject({ computerApproval: 'per-app', computerApps: { Notepad: 'look', 'Google Chrome': 'click' } })
+
+  // Clearing the box clears the list: every app is full again.
+  fireEvent.change(view.getByLabelText('App limits'), { target: { value: '' } })
+  fireEvent.click(view.getByText('Save changes'))
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(3))
+  expect(save.mock.calls[2]?.[0].computerApps).toEqual({})
+})
+
+it('hides the computer use limits while computer use is off', () => {
+  const view = render(createElement(SettingsDialog, { config: snapshot, onClose: vi.fn(), onSaved: vi.fn() }))
+  expect(view.queryByLabelText('App limits')).toBeNull()
+})
+
 it('shows the stored file write guard and saves the one chosen', async () => {
   const stored: ConfigSnapshot = { ...snapshot, config: { ...snapshot.config, fsGuard: 'off' } }
   const save = vi.spyOn(api, 'saveConfig').mockResolvedValue(stored)

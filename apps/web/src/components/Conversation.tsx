@@ -83,6 +83,8 @@ export interface Approval {
   via?: 'run_code'
   /** Set when allowing covers this scope for the rest of the Session. */
   grant?: { scope: string; label: string }
+  /** Why the tool asks a person about this one call, e.g. what it could damage. */
+  reason?: string
 }
 
 export function Conversation({
@@ -408,7 +410,7 @@ export function Conversation({
     switch (event.type) {
       case 'approval/request':
         notifyDesktopWaiting(event.id)
-        setApprovals(list => [...list, { id: event.id, tool: event.tool, input: event.input, ...(event.via ? { via: event.via } : {}), ...(event.grant ? { grant: event.grant } : {}) }])
+        setApprovals(list => [...list, { id: event.id, tool: event.tool, input: event.input, ...(event.via ? { via: event.via } : {}), ...(event.grant ? { grant: event.grant } : {}), ...(event.reason ? { reason: event.reason } : {}) }])
         return
       case 'plan/start':
         setPlan({ items: [], status: 'pending' })
@@ -1111,13 +1113,16 @@ export function ApprovalCard({ approval, onAnswer }: { approval: Approval; onAns
           : <span>The agent wants to use <strong>{approval.tool}</strong>{approval.via === 'run_code' ? ' from a CodeMode script' : ''}</span>}
       </div>
       {approval.input && <pre className="approval-input">{approvalText(approval.input)}</pre>}
+      {approval.reason && (
+        <p className="approval-escalation"><strong>The agent flagged a risk</strong>: {approval.reason}</p>
+      )}
       {escalation(approval.input) && (
         <p className="approval-escalation">
           <strong>Runs outside the sandbox</strong>, with your full access{escalation(approval.input)?.justification ? `: ${escalation(approval.input)?.justification}` : '.'}
         </p>
       )}
       <div className="approval-actions">
-        <span className="muted small">{approval.grant ? `First call: ${approval.tool}` : escalation(approval.input) ? 'Asks to leave the sandbox for this one call' : 'Outside the current permission level'}</span>
+        <span className="muted small">{approval.grant ? `First call: ${approval.tool}` : approval.reason ? 'Asks you about this one call' : escalation(approval.input) ? 'Asks to leave the sandbox for this one call' : 'Outside the current permission level'}</span>
         <button type="button" className="button ghost small" onClick={() => onAnswer(false)}>Deny</button>
         <button type="button" className="button primary small" onClick={() => onAnswer(true)}>{approval.grant ? 'Allow in this session' : 'Allow once'}</button>
       </div>

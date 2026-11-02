@@ -540,6 +540,15 @@ importers:
         specifier: workspace:*
         version: link:../../web-kit
 
+  packages/computer/computer-tiers:
+    dependencies:
+      '@tnega/computer':
+        specifier: workspace:*
+        version: link:../computer
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
   packages/computer/tool-computer:
     dependencies:
       '@tnega/computer':
@@ -1495,6 +1504,9 @@ importers:
       '@tnega/computer-cua':
         specifier: workspace:*
         version: link:../computer/computer-cua
+      '@tnega/computer-tiers':
+        specifier: workspace:*
+        version: link:../computer/computer-tiers
       '@tnega/core':
         specifier: workspace:*
         version: link:../core

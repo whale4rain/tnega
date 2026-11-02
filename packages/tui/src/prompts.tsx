@@ -31,6 +31,7 @@ export function ApprovalPanel({ approval, more, onAnswer, width }: {
       {approval.grant
         ? <Text bold>Let the agent {approval.grant.label}?</Text>
         : <Text bold>Allow {approval.tool}{approval.via === 'run_code' ? ' from a CodeMode script' : ''}?</Text>}
+      {approval.reason && <Text><Text color={color.warn}>Flagged risk:</Text> {approval.reason}</Text>}
       {preview && <Text dimColor>{firstLines(preview, 8)}</Text>}
       <Text><Text bold>y</Text><Text dimColor>{approval.grant ? ' allow in this session · ' : ' allow · '}</Text><Text bold>n</Text><Text dimColor> or esc deny</Text></Text>
     </Box>

@@ -54,6 +54,8 @@ export interface Approval {
   via?: 'run_code'
   /** Set when allowing covers this scope for the rest of the Session. */
   grant?: { scope: string; label: string }
+  /** Why the tool asks a person about this one call, e.g. what it could damage. */
+  reason?: string
 }
 
 export interface Notice {
@@ -405,7 +407,7 @@ export class TuiController {
   private onStreamEvent(event: StreamEvent): void {
     switch (event.type) {
       case 'approval/request':
-        this.set({ approvals: [...this.state.approvals, { id: event.id, tool: event.tool, input: event.input, ...(event.via ? { via: event.via } : {}), ...(event.grant ? { grant: event.grant } : {}) }] })
+        this.set({ approvals: [...this.state.approvals, { id: event.id, tool: event.tool, input: event.input, ...(event.via ? { via: event.via } : {}), ...(event.grant ? { grant: event.grant } : {}), ...(event.reason ? { reason: event.reason } : {}) }] })
         return
       case 'plan/start':
         this.set({ plan: { items: [], status: 'pending' } })
