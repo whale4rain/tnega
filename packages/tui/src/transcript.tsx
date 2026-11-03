@@ -8,6 +8,7 @@
 import {
   formatDuration,
   formatTokens,
+  parseAction,
   presentLive,
   presentRun,
   presentTool,
@@ -65,7 +66,19 @@ export function EntryView({ entry, width, verbose = false }: EntryProps) {
   }
 }
 
-function UserMessage({ text, images, width }: { text: string; images: number; width: number }) {
+/** A form answer from the app reads as what was pressed and what was sent, not as its wire text. */
+function actionText(text: string): string {
+  const action = parseAction(text)
+  if (!action) return text
+  const values = Object.entries(action.values)
+    .map(([key, value]) => [key, typeof value === 'boolean' ? (value ? 'yes' : 'no') : Array.isArray(value) ? value.join(', ') : value] as const)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}: ${value}`)
+  return [`Pressed ${action.label}`, ...values].join('\n')
+}
+
+function UserMessage({ text: raw, images, width }: { text: string; images: number; width: number }) {
+  const text = actionText(raw)
   return (
     <Box marginTop={1} flexDirection="row" width={width}>
       <Box width={2} flexShrink={0}><Text dimColor>{glyph.user}</Text></Box>

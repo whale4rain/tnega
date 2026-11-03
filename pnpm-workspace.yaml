@@ -17,6 +17,7 @@ packages:
   - packages/ptc/*
   - packages/questions/*
   - packages/web/*
+  - packages/reply/*
   - apps/*
 
 onlyBuiltDependencies:

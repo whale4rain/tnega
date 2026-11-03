@@ -916,9 +916,9 @@ export function Conversation({
   // The Timeline and each of its turns are memoized: props that keep their
   // identity across renders let a streamed frame re-render only the live turn,
   // instead of every message (and its markdown) in a long session.
-  const actionsRef = useRef({ resend, fork, onOpenSubagent, onOpenFile, onOpenChange })
+  const actionsRef = useRef({ resend, fork, onOpenSubagent, onOpenFile, onOpenChange, send })
   useLayoutEffect(() => {
-    actionsRef.current = { resend, fork, onOpenSubagent, onOpenFile, onOpenChange }
+    actionsRef.current = { resend, fork, onOpenSubagent, onOpenFile, onOpenChange, send }
   })
   const canOpenChange = Boolean(onOpenChange)
   const timelineActions = useMemo<TimelineActions>(() => ({
@@ -927,6 +927,7 @@ export function Conversation({
     onFork: messageId => void actionsRef.current.fork(messageId),
     onOpenSubagent: (id, label) => actionsRef.current.onOpenSubagent(id, label),
     onOpenFile: path => actionsRef.current.onOpenFile(path),
+    onUiAction: text => void actionsRef.current.send(text),
     ...(canOpenChange ? { onOpenChange: (path: string) => actionsRef.current.onOpenChange?.(path) } : {}),
   }), [canOpenChange])
   const agentId = summary?.id ?? streamingFor.current ?? 'draft'

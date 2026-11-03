@@ -23,12 +23,13 @@ export function ImageStrip({ images, className }: { images: readonly ImageAttach
           </button>
         ))}
       </div>
-      {current && <ImageViewer image={current} onClose={() => setOpen(undefined)} />}
+      {current && <ImageViewer src={imageSrc(current)} name={current.name ?? 'Image'} onClose={() => setOpen(undefined)} />}
     </>
   )
 }
 
-function ImageViewer({ image, onClose }: { image: ImageAttachment; onClose: () => void }) {
+/** One image at full size over the page; Escape or a click outside closes it. */
+export function ImageViewer({ src, name, onClose }: { src: string; name: string; onClose: () => void }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -37,8 +38,8 @@ function ImageViewer({ image, onClose }: { image: ImageAttachment; onClose: () =
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
   return (
-    <div className="image-viewer" role="dialog" aria-modal="true" aria-label={image.name ?? 'Image'} onPointerDown={event => event.target === event.currentTarget && onClose()}>
-      <img src={imageSrc(image)} alt={image.name ?? 'Image'} />
+    <div className="image-viewer" role="dialog" aria-modal="true" aria-label={name} onPointerDown={event => event.target === event.currentTarget && onClose()}>
+      <img src={src} alt={name} />
       <button type="button" className="icon-button image-viewer-close" aria-label="Close" onClick={onClose}>
         <X size={14} />
       </button>

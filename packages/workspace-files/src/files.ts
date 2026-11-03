@@ -18,6 +18,12 @@ export const FILE_MEDIA_TYPES: Readonly<Record<string, string>> = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
+  // Images an agent sends in a reply (`send_file`); shown through <img>, which never runs an SVG's scripts.
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
 }
 
 export const MAX_SERVED_FILE_BYTES = 32 * 1024 * 1024
