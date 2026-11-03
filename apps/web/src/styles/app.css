@@ -1803,7 +1803,9 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overflow-anchor: none;
+  /* Anchoring keeps the row you read in place when a turn above it renders for the first time
+     (see the content-visibility rule on .timeline) or older history arrives. */
+  overflow-anchor: auto;
   scroll-padding-bottom: 24px;
 }
 
@@ -2035,6 +2037,14 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* A long session is hundreds of turns. Those off screen skip style, layout and paint until they
+   scroll near, which keeps typing and streaming smooth (design §5.1). The newest two stay ordinary:
+   the live turn and its menus are never clipped by the containment. */
+.timeline > :not(:nth-last-child(-n + 2)) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }
 
 .user-row {
@@ -3132,6 +3142,8 @@ kbd {
   font-size: var(--text-lg);
   line-height: 1.6;
   padding: 2px 0;
+  /* Grows with its text up to max-height; browsers without it are sized in PromptBox. */
+  field-sizing: content;
 }
 
 .composer textarea::placeholder {

@@ -6,7 +6,9 @@
 
 /* The app frame's third column (app.css): the panel's width while open, 0 while folded. */
 .app {
-  --workbench-panel: var(--workbench-width, var(--workbench-default));
+  /* Never more than half the window, even when the window shrinks after the width was saved
+     (WORKBENCH_MAX_SHARE in Workbench.tsx). */
+  --workbench-panel: min(var(--workbench-width, var(--workbench-default)), 50vw);
 }
 
 .app.workbench-open {
@@ -689,7 +691,8 @@
   .app,
   .app.workbench-open {
     --workbench-col: 0px;
-    --workbench-panel: min(var(--workbench-width, 640px), 100vw);
+    /* Half the window as well, unless half is narrower than the 320px minimum. */
+    --workbench-panel: min(var(--workbench-width, var(--workbench-default)), max(320px, 50vw), 100vw);
   }
 
   .workbench,

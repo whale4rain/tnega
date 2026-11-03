@@ -93,9 +93,11 @@ export function App() {
     return Number.isFinite(saved) && saved > 0 ? Math.max(WORKBENCH_MIN_WIDTH, saved) : undefined
   })
   const appRoot = useRef<HTMLDivElement>(null)
+  // The frame mounts after the splash, so the saved width is applied again once it exists.
+  const framed = workspaces !== undefined
   useEffect(() => {
     if (workbenchWidth) appRoot.current?.style.setProperty('--workbench-width', `${workbenchWidth}px`)
-  }, [workbenchWidth])
+  }, [workbenchWidth, framed])
   const resizeWorkbench = useCallback((width: number) => {
     setWorkbenchWidth(width)
     localStorage.setItem('tnega.workbenchWidth', String(width))

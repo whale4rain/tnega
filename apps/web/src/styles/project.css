@@ -405,6 +405,7 @@
 }
 
 .composer.compact textarea {
+  max-height: 180px;
   font-size: var(--text-md);
 }
 
@@ -1161,6 +1162,7 @@
   flex: 1;
   min-width: 0;
   min-height: 24px;
+  max-height: 180px;
   padding: 5px 0;
   font-size: var(--text-md);
   line-height: 1.5;

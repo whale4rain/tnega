@@ -25,8 +25,8 @@ export interface WorkbenchProject {
 }
 
 /** Narrowest and widest the panel may be dragged, in CSS pixels. */
-export const WORKBENCH_MIN_WIDTH = 420
-export const WORKBENCH_MAX_SHARE = 0.72
+export const WORKBENCH_MIN_WIDTH = 320
+export const WORKBENCH_MAX_SHARE = 0.5
 
 const TOOL_META: Record<ToolId, { label: string; icon: LucideIcon; hint: string }> = {
   files: { label: 'Files', icon: FolderTree, hint: 'Browse and edit workspace files' },
@@ -227,7 +227,8 @@ function ResizeHandle({ onResize }: { onResize: (width: number) => void }) {
       onPointerMove={event => {
         if (!dragging) return
         const max = window.innerWidth * WORKBENCH_MAX_SHARE
-        onResize(Math.round(Math.min(max, Math.max(WORKBENCH_MIN_WIDTH, window.innerWidth - event.clientX))))
+        // Below 640 px half the window is narrower than the minimum; the minimum wins there.
+        onResize(Math.round(Math.max(WORKBENCH_MIN_WIDTH, Math.min(max, window.innerWidth - event.clientX))))
       }}
       onPointerUp={event => {
         event.currentTarget.releasePointerCapture(event.pointerId)

@@ -147,8 +147,9 @@ async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
-    minWidth: 960,
-    minHeight: 640,
+    // Small enough to sit beside another window on a laptop screen; narrow layouts fold the panels.
+    minWidth: 640,
+    minHeight: 520,
     backgroundColor: initial.background,
     titleBarStyle: 'hidden',
     ...(isMac

@@ -193,3 +193,15 @@ it('shows no reply from a run you left when a new session starts a run of its ow
   await waitFor(() => expect(view.getByText('reply from B')).toBeTruthy())
   expect(view.queryByText('reply from A')).toBeNull()
 })
+
+it('drops the session you left while a session never opened before is still loading', async () => {
+  vi.spyOn(api, 'session').mockImplementation((_workspace, id) =>
+    id === 'never-opened' ? new Promise<SessionDetail>(() => {}) : Promise.resolve(detailFor('a', 'Session A')))
+  vi.spyOn(api, 'questions').mockResolvedValue({ questions: [] })
+  const view = render(createElement(Conversation, props('a')))
+  await view.findByText('Session A')
+
+  view.rerender(createElement(Conversation, props('never-opened')))
+  // Its title and settings are gone, so a change made now cannot reach it.
+  await waitFor(() => expect(view.queryByText('Session A')).toBeNull())
+})

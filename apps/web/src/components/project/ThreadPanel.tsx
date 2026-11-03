@@ -72,6 +72,7 @@ export function ThreadPanel({
 
   // The parent's brief is the thread's first input; it is shown folded above, not as a message.
   const goal = thread?.goal
+  const timelineAgent = useMemo(() => ({ id: threadId }), [threadId])
   const entries = useMemo<Entry[]>(() => {
     const all = events ? fromEvents(events) : []
     return goal ? all.filter(entry => !(entry.kind === 'user' && entry.text.startsWith(goal))) : all
@@ -168,7 +169,7 @@ export function ThreadPanel({
         <ThreadMessages messages={messages} label={thread.label} running={working} threadId={threadId} goal={thread.goal} authorOf={authorOf} workspace={workspace} state={state} />
         <details className="thread-execution">
           <summary>Execution details</summary>
-          <Timeline entries={entries} running={working} actions={{}} agent={{ id: threadId }} outcomeFirst />
+          <Timeline entries={entries} running={working} actions={NO_ACTIONS} agent={timelineAgent} outcomeFirst />
         </details>
       </div>
       <div className="side-dock">
@@ -229,3 +230,6 @@ function Brief({ goal }: { goal: string }) {
     </div>
   )
 }
+
+/** Thread turns offer no actions; one object keeps the memoized Timeline from re-rendering. */
+const NO_ACTIONS = {}

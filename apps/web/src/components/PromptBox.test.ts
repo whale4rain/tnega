@@ -174,3 +174,47 @@ it('carries a markdown list on with Shift+Enter and paints it under the text', (
   fireEvent.keyDown(box, { key: 'Enter' })
   expect(onSubmit).toHaveBeenCalledWith('1. first', [])
 })
+
+it('keeps an unsent draft with its conversation and drops it once sent', async () => {
+  const onSubmit = vi.fn(() => true)
+  const props = { onSubmit, placeholder: 'Reply…' }
+  const view = render(createElement(PromptBox, { ...props, resetKey: 'draft-a' }))
+  type(messageBox(view), 'half a thought')
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-b' }))
+  expect(messageBox(view).value).toBe('')
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-a' }))
+  expect(messageBox(view).value).toBe('half a thought')
+
+  await act(async () => { fireEvent.keyDown(messageBox(view), { key: 'Enter' }) })
+  expect(onSubmit).toHaveBeenCalledWith('half a thought', [])
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-b' }))
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'draft-a' }))
+  expect(messageBox(view).value).toBe('')
+})
+
+it('keeps a draft edited while an earlier send from the same conversation is still settling', async () => {
+  let settle: (value: boolean) => void = () => {}
+  const onSubmit = vi.fn(() => new Promise<boolean>(resolve => { settle = resolve }))
+  const props = { onSubmit, placeholder: 'Reply…' }
+  const view = render(createElement(PromptBox, { ...props, resetKey: 'pending-a' }))
+  type(messageBox(view), 'first')
+  fireEvent.keyDown(messageBox(view), { key: 'Enter' })
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-b' }))
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-a' }))
+  type(messageBox(view), 'second thought')
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-b' }))
+  await act(async () => { settle(true) })
+  view.rerender(createElement(PromptBox, { ...props, resetKey: 'pending-a' }))
+  expect(messageBox(view).value).toBe('second thought')
+})
+
+it('keeps text typed in the same conversation while a send is still settling', async () => {
+  let settle: (value: boolean) => void = () => {}
+  const onSubmit = vi.fn(() => new Promise<boolean>(resolve => { settle = resolve }))
+  const view = render(createElement(PromptBox, { onSubmit, placeholder: 'Reply…', resetKey: 'typing-a' }))
+  type(messageBox(view), 'first')
+  fireEvent.keyDown(messageBox(view), { key: 'Enter' })
+  type(messageBox(view), 'first, and more')
+  await act(async () => { settle(true) })
+  expect(messageBox(view).value).toBe('first, and more')
+})

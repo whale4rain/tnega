@@ -81,6 +81,26 @@ const SPAWN_TOOL = 'spawn_subagent'
 const CONTINUATION_NAME = 'plugin:continue'
 /** Author of the input that continues a run the app stopped (`RECOVERY_NUDGE_NAME` in @tnega/agent). */
 const RECOVERY_NAME = 'plugin:recover'
+/** Author of a background job's completion notice (`tool-jobs` in @tnega/tool-jobs). */
+const JOBS_NAME = 'plugin:tool-jobs'
+/** Every harness plugin writes into the inbox under a `plugin:` name; a person never does. */
+const PLUGIN_PREFIX = 'plugin:'
+const JOB_DONE = /^Background job (\S+) \((.*)\) finished: (\w+)\./s
+
+/** "Background job finished: npm run dev (failed)" from the notice tool-jobs writes. */
+function jobNotice(content: string): string {
+  const match = content.match(JOB_DONE)
+  if (!match) return firstLine(content)
+  const [, , label, status] = match
+  const verb = status === 'completed' ? 'finished' : status === 'killed' ? 'stopped' : status
+  return `Background job ${verb}: ${label}`
+}
+
+function firstLine(text: string): string {
+  const line = text.trim().split('\n', 1)[0] ?? ''
+  return line.length > 160 ? `${line.slice(0, 159)}…` : line
+}
+
 /** Authors of the loop guard's messages (`LOOP_GUARD_*_NAME` in @tnega/loop-guard; its tests check these stay in sync), and what each one tells the person. */
 const LOOP_GUARD_NOTICES: Readonly<Record<string, { text: string; tone: 'info' | 'warn'; process?: boolean }>> = {
   'plugin:loop-guard': { text: 'Noticed the agent repeating itself and nudged it', tone: 'info', process: true },
@@ -225,6 +245,16 @@ export function fromEvents(
         }
         if (name === RECOVERY_NAME) {
           agent(event.id).blocks.push({ kind: 'notice', id: event.id, tone: 'info', text: 'Continued the run that stopped when the app closed' })
+          break
+        }
+        if (name === JOBS_NAME) {
+          // A background job reporting back wakes the agent; it is not something the person said.
+          agent(event.id).blocks.push({ kind: 'notice', id: event.id, tone: 'info', text: jobNotice(content) })
+          break
+        }
+        if (name?.startsWith(PLUGIN_PREFIX)) {
+          // Any other harness plugin speaking to the agent is part of the process, never a user bubble.
+          agent(event.id).blocks.push({ kind: 'notice', id: event.id, tone: 'info', process: true, text: firstLine(content) })
           break
         }
         const agentId = name?.match(AGENT_NAME)?.[1] ?? content.match(TERMINAL_REPLY)?.[1]
@@ -739,6 +769,47 @@ function replaceAt<T>(items: readonly T[], index: number, value: T): T[] {
   const copy = items.slice()
   copy[index] = value
   return copy
+}
+
+// ---------------------------------------------------------------------------
+// Reloads
+// ---------------------------------------------------------------------------
+
+/**
+ * Keep the entries of `previous` that a reload rebuilt unchanged, so a view
+ * that memoizes per entry re-renders only what changed. A reload rebuilds
+ * every entry as a new object; on a long session that re-rendered (and
+ * re-parsed the markdown of) every turn each time a run ended or a remote
+ * run was polled. Returns `previous` itself when nothing changed at all.
+ */
+export function keepUnchanged(previous: readonly Entry[], next: readonly Entry[]): readonly Entry[] {
+  if (!previous.length) return next
+  const byId = new Map(previous.map(entry => [entry.id, entry] as const))
+  let same = previous.length === next.length
+  const merged = next.map((entry, index) => {
+    const old = byId.get(entry.id)
+    const kept = old && sameValue(old, entry) ? old : entry
+    if (kept !== previous[index]) same = false
+    return kept
+  })
+  return same ? previous : merged
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false
+    for (let index = 0; index < a.length; index += 1) if (!sameValue(a[index], b[index])) return false
+    return true
+  }
+  if (Array.isArray(b)) return false
+  const keysA = Object.keys(a)
+  if (keysA.length !== Object.keys(b).length) return false
+  for (const key of keysA) {
+    if (!Object.hasOwn(b, key) || !sameValue(Reflect.get(a, key), Reflect.get(b, key))) return false
+  }
+  return true
 }
 
 // ---------------------------------------------------------------------------

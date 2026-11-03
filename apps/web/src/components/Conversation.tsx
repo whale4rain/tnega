@@ -29,18 +29,18 @@ import {
   Table2,
   PanelRight,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
 import { sessionLink } from '@tnega/client/session-link'
 import { ComputerHint } from './ComputerHint'
 
 import { MxcHint } from './MxcHint'
-import { copyToClipboard, errorText, folderName, useScrollPinning } from '../lib/hooks'
+import { copyToClipboard, errorText, folderName, useScrollPinning, useStableCallback } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
 import { MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
 import { base64FromFile } from '../lib/attached-files'
-import { applyStream, beginRun, formatTokens, fromEvents, noteSettingChange, settingChangeText, type Entry } from '../lib/timeline'
+import { applyStream, beginRun, formatTokens, fromEvents, keepUnchanged, noteSettingChange, settingChangeText, type Entry } from '../lib/timeline'
 import type {
   AgentType,
   ConfigSnapshot,
@@ -64,7 +64,7 @@ import { useProcessView } from '../lib/process-view'
 import { Composer, SessionControls, type RunSettings } from './Composer'
 import type { ArgumentSuggestion } from './PromptBox'
 import { Menu } from './Menu'
-import { Timeline } from './Timeline'
+import { Timeline, type TimelineActions, type TimelineAgent, type TimelineSky } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
 import { QueuedMessages, type QueuedMessage } from './QueuedMessages'
 import { BackgroundJobs } from './BackgroundJobs'
@@ -74,6 +74,9 @@ import { formatCost, formatRate } from '../lib/usage'
 
 /** Transcript messages per history page; one page opens a long session. */
 const HISTORY_PAGE = 50
+
+/** Least time between two renders of a streaming run, in ms. */
+const STREAM_FLUSH_MS = 80
 
 export interface Approval {
   id: string
@@ -160,7 +163,13 @@ export function Conversation({
   const [recovery, setRecovery] = useState<SessionRecovery | undefined>()
   /** The newest transcript page: how much older history is left behind it. */
   const [page, setPage] = useState<SessionPageRange | undefined>()
+  /** Transcript messages on screen: a reload asks for at least these, so older pages the reader opened stay. */
+  const loadedMessages = useRef(0)
+  /** Bumped whenever a read replaces the window, so an older page fetched against the old one is dropped. */
+  const detailGeneration = useRef(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  /** The session (workspace and id) whose older page is in flight; polling that session waits for it so the page is not dropped. */
+  const olderInFlight = useRef<string | undefined>(undefined)
   /**
    * Messages typed while a run goes, per session: they wait for the run to end
    * and go as the next prompt, unless steered into the run first.
@@ -178,7 +187,9 @@ export function Conversation({
   const streamingFor = useRef<string | undefined>(undefined)
   const abort = useRef<AbortController | undefined>(undefined)
   const queue = useRef<StreamEvent[]>([])
-  const frame = useRef<number | undefined>(undefined)
+  /** Cancels the pending flush of streamed frames, when one is scheduled. */
+  const frame = useRef<(() => void) | undefined>(undefined)
+  const lastFlush = useRef(0)
   /** The session the entries state belongs to: a switch must never show another session history. */
   const entriesFor = useRef<string | undefined>(undefined)
   /** What is on screen right now; a late response for another session must not land here. */
@@ -224,9 +235,14 @@ export function Conversation({
     // A run finishing while the user reads another session reloads its own
     // history; that answer must not replace the transcript on screen.
     if (shown.current.sessionId !== detail.summary.id || shown.current.workspace !== workspace) return false
+    const sameSession = entriesFor.current === detail.summary.id
+    detailGeneration.current += 1
     entriesFor.current = detail.summary.id
+    loadedMessages.current = countMessages(detail.events)
     setSummary(detail.summary)
-    setEntries(toEntries(detail.events))
+    // Unchanged turns keep their objects, so only what the reload changed re-renders.
+    const next = toEntries(detail.events)
+    setEntries(current => sameSession ? keepUnchanged(current, next) : next)
     setPage(detail.page)
     setContext(detail.context)
     setMetrics(detail.metrics)
@@ -234,11 +250,13 @@ export function Conversation({
     setPlan(latestPlan(detail.events))
     setRemoteRunning(detail.running && streamingFor.current !== detail.summary.id)
     setRecovery(detail.recovery)
+    rememberDetail(detailKey(workspace, detail.summary.id), detail)
     return true
   }, [workspace, toEntries])
 
   const reload = useCallback(async (id: string) => {
-    const detail = await api.session(workspace, id, { maxMessages: HISTORY_PAGE })
+    const maxMessages = entriesFor.current === id ? Math.max(HISTORY_PAGE, loadedMessages.current) : HISTORY_PAGE
+    const detail = await api.session(workspace, id, { maxMessages })
     if (!applyDetail(detail)) return detail
     if (detail.summary.mode === 'goal') {
       api.goal(workspace, id).then(result => setGoal(result.goal), () => setGoal(null))
@@ -270,6 +288,31 @@ export function Conversation({
     // started it); there is nothing to load over it. A switch back does load,
     // because the entries on screen belong to the session that was left.
     if (streamingFor.current === sessionId && entriesFor.current === sessionId) return
+    if (entriesFor.current !== sessionId) {
+      // A session viewed a moment ago shows at once from memory while the fresh
+      // read is on its way; any other never shows the one that was left.
+      const cached = recentDetails.get(detailKey(workspace, sessionId))
+      if (cached) {
+        // Only the transcript: whether it runs or needs recovering comes from the fresh read.
+        const fresh: SessionDetail = { ...cached, running: false }
+        delete fresh.recovery
+        applyDetail(fresh)
+      } else {
+        entriesFor.current = undefined
+        setEntries([])
+        // Nothing of the session left stays: a settings change made while the read
+        // is on its way must not land on it.
+        setSummary(undefined)
+        setContext(undefined)
+        setMetrics(undefined)
+        setUsage(undefined)
+        setGoal(null)
+        setPlan(undefined)
+        setRecovery(undefined)
+        setRemoteRunning(false)
+        setPage(undefined)
+      }
+    }
     let cancelled = false
     setLoading(true)
     api.session(workspace, sessionId, { maxMessages: HISTORY_PAGE })
@@ -289,12 +332,17 @@ export function Conversation({
   // Poll while a run started elsewhere (another tab, the CLI) is still going.
   useEffect(() => {
     if (!remoteRunning || !sessionId) return
+    // One poll at a time: reading a long log can take longer than the interval, and
+    // stacked reads would keep the host busy and replace the window out of order.
+    let polling = false
     const timer = setInterval(() => {
+      if (polling || olderInFlight.current === detailKey(workspace, sessionId)) return
+      polling = true
       reload(sessionId).then(detail => {
         if (detail.running) return
         onSessionsChanged()
         setSettled({ id: sessionId, natural: stopRequested.current !== sessionId, at: Date.now() })
-      }, () => {})
+      }, () => {}).finally(() => { polling = false })
     }, 1500)
     return () => clearInterval(timer)
   }, [remoteRunning, sessionId, reload, onSessionsChanged])
@@ -314,16 +362,17 @@ export function Conversation({
 
   // --- settings -----------------------------------------------------------
 
-  const settings: RunSettings = summary
+  const defaultApproval = config?.config.approvalReview?.defaultMode
+  const settings: RunSettings = useMemo(() => summary
     ? {
         agentType: summary.agentType ?? 'general',
         mode: summary.mode ?? 'auto',
         permission: summary.permission ?? 'read-only',
-        approvalMode: summary.approvalMode ?? config?.config.approvalReview?.defaultMode ?? 'manual',
+        approvalMode: summary.approvalMode ?? defaultApproval ?? 'manual',
         model: summary.model,
         reasoningEffort: summary.reasoningEffort ?? 'default',
       }
-    : draftSettings
+    : draftSettings, [summary, defaultApproval, draftSettings])
 
   // Client commands work everywhere; coding sessions add the agent's own (skills, MCP).
   const allCommands = useMemo(() => mergeCommands(commands), [commands])
@@ -390,6 +439,7 @@ export function Conversation({
 
   const flush = useCallback(() => {
     frame.current = undefined
+    lastFlush.current = performance.now()
     const events = queue.current
     if (!events.length) return
     queue.current = []
@@ -432,11 +482,20 @@ export function Conversation({
         break
     }
     queue.current.push(event)
-    frame.current ??= requestAnimationFrame(flush)
+    if (frame.current) return
+    // A long reply re-renders its markdown on every flush; a few flushes a
+    // second read as smooth streaming and leave the page free for typing.
+    const wait = Math.max(0, lastFlush.current + STREAM_FLUSH_MS - performance.now())
+    let paint: number | undefined
+    const timer = setTimeout(() => { paint = requestAnimationFrame(flush) }, wait)
+    frame.current = () => {
+      clearTimeout(timer)
+      if (paint !== undefined) cancelAnimationFrame(paint)
+    }
   }, [flush])
 
   useEffect(() => () => {
-    if (frame.current !== undefined) cancelAnimationFrame(frame.current)
+    frame.current?.()
     abort.current?.abort()
   }, [])
 
@@ -482,7 +541,7 @@ export function Conversation({
       // A newer run may own the view's live state by now; only the run that
       // owns it may settle it and close its own transcript.
       if (streamingFor.current === id) {
-        if (frame.current !== undefined) cancelAnimationFrame(frame.current)
+        frame.current?.()
         flush()
         streamingFor.current = undefined
         abort.current = undefined
@@ -750,27 +809,41 @@ export function Conversation({
     }
   }
 
+  /** Set when a reload made an older page stale, so the fill effect asks again. */
+  const droppedOlder = useRef(false)
   /** Prepend the page before the window on screen, holding the reader in place. */
   const loadOlder = async () => {
     if (!sessionId || !page?.hasMore || loadingOlder) return
     const element = scroller.current
-    const heightBefore = element?.scrollHeight ?? 0
     const id = sessionId
+    const generation = detailGeneration.current
     setLoadingOlder(true)
+    const key = detailKey(workspace, id)
+    olderInFlight.current = key
     try {
       const detail = await api.session(workspace, id, { beforeSeq: page.beforeSeq, maxMessages: HISTORY_PAGE })
-      // The reader may have switched sessions while the page was in flight.
-      if (shown.current.sessionId !== id) return
+      // The reader may have switched sessions or workspaces while the page was in flight.
+      if (shown.current.sessionId !== id || shown.current.workspace !== workspace) return
+      // A reload replaced the window meanwhile (a run ended, a remote run was polled): this
+      // page may no longer join it. Drop it; the fill effect asks again from the new window.
+      if (detailGeneration.current !== generation) {
+        droppedOlder.current = true
+        return
+      }
+      // Measured now, not before the request: the reader may have scrolled while it ran.
+      const anchor = element ? readingAnchor(element) : undefined
       const older = toEntries(detail.events)
+      loadedMessages.current += countMessages(detail.events)
       setEntries(current => [...older, ...current])
       setPage(detail.page)
-      // Keep what the reader was looking at where they left it.
-      requestAnimationFrame(() => {
-        if (element) element.scrollTop += element.scrollHeight - heightBefore
-      })
+      // Keep what the reader was looking at where they left it. The browser's
+      // own scroll anchoring may already have done so; measuring the element
+      // itself keeps this right either way.
+      if (element && anchor) pendingAnchor.current = { element, ...anchor }
     } catch (reason) {
       setError(errorText(reason))
     } finally {
+      if (olderInFlight.current === key) olderInFlight.current = undefined
       setLoadingOlder(false)
     }
   }
@@ -805,17 +878,30 @@ export function Conversation({
   // --- scrolling ----------------------------------------------------------
 
   const { scroller, showJump, onScroll, jump, pinToEnd } = useScrollPinning()
+  const pendingAnchor = useRef<{ element: HTMLElement; node: Element; offset: number } | undefined>(undefined)
+  useLayoutEffect(() => {
+    const pending = pendingAnchor.current
+    if (!pending) return
+    pendingAnchor.current = undefined
+    if (!pending.node.isConnected) return
+    const drift = pending.node.getBoundingClientRect().top - pending.element.getBoundingClientRect().top - pending.offset
+    if (drift) pending.element.scrollTop += drift
+  }, [entries])
   useEffect(() => { pinToEnd() }, [sessionId, pinToEnd])
 
   // Older history loads when the reader reaches the top, not on a button. A page
   // that does not fill the viewport has no scroll event to wait for, so it keeps
-  // filling until the transcript can scroll or the history ends.
+  // filling until the transcript can scroll or the history ends. A reader still at
+  // the top asks again too, so a page dropped by a reload does not wait for a scroll.
   const loadOlderRef = useRef(loadOlder)
   loadOlderRef.current = loadOlder
   useEffect(() => {
     const element = scroller.current
     if (!element || !page?.hasMore || loadingOlder) return
-    if (element.scrollHeight > 0 && element.scrollHeight <= element.clientHeight + 1) {
+    const fits = element.scrollHeight > 0 && element.scrollHeight <= element.clientHeight + 1
+    const retry = droppedOlder.current && element.scrollTop <= 96
+    droppedOlder.current = false
+    if (fits || retry) {
       void loadOlderRef.current()
     }
   }, [entries.length, page, loadingOlder])
@@ -827,6 +913,31 @@ export function Conversation({
 
   // --- render -------------------------------------------------------------
 
+  // The Timeline and each of its turns are memoized: props that keep their
+  // identity across renders let a streamed frame re-render only the live turn,
+  // instead of every message (and its markdown) in a long session.
+  const actionsRef = useRef({ resend, fork, onOpenSubagent, onOpenFile, onOpenChange })
+  useLayoutEffect(() => {
+    actionsRef.current = { resend, fork, onOpenSubagent, onOpenFile, onOpenChange }
+  })
+  const canOpenChange = Boolean(onOpenChange)
+  const timelineActions = useMemo<TimelineActions>(() => ({
+    onEdit: (entryId, text) => void actionsRef.current.resend(entryId, text),
+    onRetry: (entryId, text) => void actionsRef.current.resend(entryId, text),
+    onFork: messageId => void actionsRef.current.fork(messageId),
+    onOpenSubagent: (id, label) => actionsRef.current.onOpenSubagent(id, label),
+    onOpenFile: path => actionsRef.current.onOpenFile(path),
+    ...(canOpenChange ? { onOpenChange: (path: string) => actionsRef.current.onOpenChange?.(path) } : {}),
+  }), [canOpenChange])
+  const agentId = summary?.id ?? streamingFor.current ?? 'draft'
+  const timelineAgent = useMemo<TimelineAgent>(() => ({ id: agentId, role: 'coordinator' }), [agentId])
+  const waiting = approvals.length > 0
+  const contextRatio = context && context.limit > 0 ? context.ratio : undefined
+  const sky = useMemo<TimelineSky>(() => ({
+    waiting,
+    ...(contextRatio !== undefined ? { contextRatio } : {}),
+  }), [waiting, contextRatio])
+
   const links = useMemo<LinkHandlers>(() => ({
     workspace,
     ...(onOpenPath ? { openPath: onOpenPath } : {}),
@@ -836,9 +947,14 @@ export function Conversation({
   const empty = !loading && entries.length === 0
   const title = summary?.title || (sessionId ? 'Untitled session' : 'New session')
 
-  const disabledReason = apiKeyMissing
+  const disabledReason = useMemo(() => apiKeyMissing
     ? <>No model API key is configured. <button type="button" className="link-button inline" onClick={onOpenSettings}>Open settings</button></>
-    : busy
+    : busy, [apiKeyMissing, busy, onOpenSettings])
+  // The composer is memoized so a streamed frame or a scroll does not re-render it while you type.
+  const onComposerSettings = useStableCallback((patch: Partial<RunSettings>) => void changeSettings(patch))
+  const onComposerSubmit = useStableCallback(send)
+  const onComposerSteer = useStableCallback(steer)
+  const onComposerStop = useStableCallback(() => void stop())
 
   return (
     <main className="conversation">
@@ -920,21 +1036,11 @@ export function Conversation({
           <Timeline
             entries={entries}
             running={live}
-            actions={{
-              onEdit: resend,
-              onRetry: resend,
-              onFork: messageId => void fork(messageId),
-              onOpenSubagent,
-              onOpenFile,
-              ...(onOpenChange ? { onOpenChange } : {}),
-            }}
-            agent={{ id: summary?.id ?? streamingFor.current ?? 'draft', role: 'coordinator' }}
+            actions={timelineActions}
+            agent={timelineAgent}
             processView={processView}
             onProcessViewChange={setProcessView}
-            sky={{
-              waiting: approvals.length > 0,
-              ...(context && context.limit > 0 ? { contextRatio: context.ratio } : {}),
-            }}
+            sky={sky}
           />
           </LinkContext.Provider>
           {remoteRunning && !streamingHere && (
@@ -988,8 +1094,8 @@ export function Conversation({
           )}
           <Composer
             settings={settings}
-            onSettingsChange={patch => void changeSettings(patch)}
-            models={config?.models ?? []}
+            onSettingsChange={onComposerSettings}
+            models={config?.models ?? NO_MODELS}
             defaultModelId={config?.effective.modelId}
             config={config}
             onConfigChanged={onConfigSaved}
@@ -1002,17 +1108,51 @@ export function Conversation({
             locked={live || Boolean(busy)}
             modelLocked={Boolean(busy)}
             disabledReason={disabledReason}
-            onSubmit={send}
-            onSteerSubmit={steer}
-            onStop={() => void stop()}
+            onSubmit={onComposerSubmit}
+            onSteerSubmit={onComposerSteer}
+            onStop={onComposerStop}
             placeholder={live ? 'Queue a message for after this run… (Ctrl+Enter steers now)' : sessionId ? 'Reply… (/ for commands, @ for files)' : PLACEHOLDERS[settings.agentType]}
             autoFocusKey={sessionId ?? 'draft'}
-            resetKey={sessionId ?? 'draft'}
+            resetKey={`${workspace}:${sessionId ?? 'draft'}`}
           />
         </div>
       </div>
     </main>
   )
+}
+
+const NO_MODELS: ConfigSnapshot['models'] = []
+
+/** The newest page of the sessions viewed last, so switching back to one shows it at once. */
+const recentDetails = new Map<string, SessionDetail>()
+const RECENT_DETAILS = 6
+
+function detailKey(workspace: string, id: string): string {
+  return `${workspace}\n${id}`
+}
+
+function rememberDetail(key: string, detail: SessionDetail): void {
+  recentDetails.delete(key)
+  recentDetails.set(key, detail)
+  while (recentDetails.size > RECENT_DETAILS) {
+    const oldest = recentDetails.keys().next().value
+    if (oldest === undefined) break
+    recentDetails.delete(oldest)
+  }
+}
+
+/** The first transcript row in view, and how far below the top of the viewport it sits. */
+function readingAnchor(scroller: HTMLElement): { node: Element; offset: number } | undefined {
+  const top = scroller.getBoundingClientRect().top
+  for (const node of scroller.querySelectorAll('.timeline > *')) {
+    const rect = node.getBoundingClientRect()
+    if (rect.bottom > top) return { node, offset: rect.top - top }
+  }
+  return undefined
+}
+
+function countMessages(events: readonly SessionEvent[]): number {
+  return events.filter(event => event.type === 'user/message' || event.type === 'assistant/message').length
 }
 
 function latestPlan(events: readonly SessionEvent[]): PlanPayload | undefined {

@@ -295,6 +295,38 @@ describe('history paging', () => {
   })
 })
 
+describe('session view events', () => {
+  it('leaves the streamed chunk copies out of the history it sends, keeping when reasoning ran', async () => {
+    const workspace = await tempDir('tnega-store-view-')
+    const created = await createSession(workspace, { title: 'view' })
+    const writer = new SessionLog(sessionFile(workspace, created.id))
+    await writer.init()
+    await writer.append('turn/start', { turn: 1 })
+    await writer.append('user/message', { content: 'hi' })
+    await writer.append('assistant/chunk', { id: 'm1', content: 'hel' })
+    const stream = [
+      { time: 100, chunk: { type: 'message_start' as const, id: 'm1' } },
+      { time: 110, chunk: { type: 'reasoning_delta' as const, id: 'm1', delta: 'a' } },
+      { time: 120, chunk: { type: 'reasoning_delta' as const, id: 'm1', delta: 'b' } },
+      { time: 130, chunk: { type: 'reasoning_delta' as const, id: 'm1', delta: 'c' } },
+      { time: 150, chunk: { type: 'message_delta' as const, id: 'm1', delta: 'hel' } },
+      { time: 160, chunk: { type: 'message_delta' as const, id: 'm1', delta: 'lo' } },
+    ]
+    await writer.append('assistant/message', { content: 'hello', reasoning: 'abc', stream })
+    await writer.append('assistant/message', { content: 'plain', stream: [stream[0]!, stream[4]!] })
+    await writer.append('turn/end', { turn: 1, finishReason: 'stop' })
+    await writer.close()
+
+    const snapshot = await readSessionSnapshot(workspace, created.id, () => 1000)
+    expect(snapshot.events.some(event => event.type === 'assistant/chunk')).toBe(false)
+    const replies = snapshot.events.filter(event => event.type === 'assistant/message')
+    expect(replies.map(event => event.type === 'assistant/message' ? event.payload.stream?.map(record => record.time) : undefined))
+      .toEqual([[110, 130, 150], undefined])
+    // The log on disk keeps every record.
+    expect(snapshot.log.some(event => event.type === 'assistant/chunk')).toBe(true)
+  })
+})
+
 describe('searchSessions', () => {
   it('finds sessions by user and assistant messages, newest match first, with a one-line snippet', async () => {
     const workspace = await tempDir('tnega-store-search-')

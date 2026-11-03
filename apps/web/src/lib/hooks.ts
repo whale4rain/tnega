@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { applyFade, canMoveViewport, followsEnd, metricsOf, scrollsViewport, takesKeys, type ScrollEdges } from './scroll'
 import { workbenchApi } from './workbench-api'
 
@@ -181,10 +181,16 @@ export function useScrollPinning(): {
 
   // Every scroll position decides on its own: the user may arrive back at the end
   // by scrolling, by the jump button or by shrinking the content.
+  /** When the jump button started a smooth scroll to the end; its own scroll events must not stop following. */
+  const jumpedAt = useRef<number | undefined>(undefined)
+
   const onScroll = useCallback(() => {
     const element = scroller.current
     if (!element) return
-    following.current = followsEnd(metricsOf(element))
+    const atEnd = followsEnd(metricsOf(element))
+    const jumping = jumpedAt.current !== undefined && lastUserInput.current < jumpedAt.current
+    if (atEnd || !jumping) jumpedAt.current = undefined
+    following.current = atEnd || jumping
     setShowJump(!following.current)
   }, [])
 
@@ -195,9 +201,24 @@ export function useScrollPinning(): {
     element.scrollTop = element.scrollHeight
   })
 
+  // Content also grows without a render: a code block or diagram finishing, an image loading,
+  // an off-screen turn rendering for the first time, the composer growing. Follow those too.
+  useEffect(() => {
+    const element = scroller.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      if (!following.current || !canMoveViewport(performance.now(), lastUserInput.current)) return
+      element.scrollTop = element.scrollHeight
+    })
+    observer.observe(element)
+    for (const child of element.children) observer.observe(child)
+    return () => observer.disconnect()
+  }, [])
+
   const jump = useCallback(() => {
     const element = scroller.current
     following.current = true
+    jumpedAt.current = performance.now()
     setShowJump(false)
     element?.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
   }, [])
@@ -239,4 +260,18 @@ export function useScrollFade(ref: React.RefObject<HTMLElement | null>, edges: S
   }, [update])
 
   useEffect(update)
+}
+
+/**
+ * A function that keeps one identity across renders and always calls the
+ * latest `fn`. For callbacks handed to memoized children, which would
+ * otherwise re-render whenever the parent does.
+ */
+export function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn)
+  // After commit: a render React discards must not leave its callback behind.
+  useLayoutEffect(() => {
+    latest.current = fn
+  })
+  return useCallback((...args: A) => latest.current(...args), [])
 }

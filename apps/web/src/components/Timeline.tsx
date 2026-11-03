@@ -63,7 +63,13 @@ export interface TimelineSky {
   contextRatio?: number
 }
 
-export function Timeline({ entries, running, actions, agent, sky, outcomeFirst = false, processView = 'steps', onProcessViewChange }: {
+/**
+ * Memoized, like each turn in it: a long session renders hundreds of turns, and
+ * a parent re-render that changes none of these props (a scroll, a keystroke,
+ * a queue change) must not walk them again. Pass stable `actions`, `agent` and
+ * `sky` objects for this to hold.
+ */
+export const Timeline = memo(function Timeline({ entries, running, actions, agent, sky, outcomeFirst = false, processView = 'steps', onProcessViewChange }: {
   entries: readonly Entry[]
   running: boolean
   actions: TimelineActions
@@ -116,7 +122,7 @@ export function Timeline({ entries, running, actions, agent, sky, outcomeFirst =
       })}
     </div>
   )
-}
+})
 
 function findLastUser(entries: readonly Entry[]): string | undefined {
   for (let i = entries.length - 1; i >= 0; i -= 1) {
