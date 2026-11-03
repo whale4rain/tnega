@@ -81,6 +81,8 @@ export interface AgentRuntimeOptions {
   secrets?: SecretsCapabilitySpec
   /** Computer use (see `capability:computer`); off unless given. `false` also overrides a profile. */
   computer?: ComputerCapabilitySpec | false
+  /** Mount `send_file` and `show_ui` for a client that renders them. */
+  reply?: boolean
 }
 
 export interface AgentRuntime {

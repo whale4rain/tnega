@@ -4156,6 +4156,191 @@ kbd {
   flex-shrink: 0;
 }
 
+/* Reply outputs: files and forms an agent hands over under its answer (§5.1). */
+.reply-outputs {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.reply-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.reply-image {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color var(--duration-fast);
+}
+
+.reply-image:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.reply-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+.reply-image-placeholder {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: 160px;
+  background: var(--surface-active);
+}
+
+.a2ui-surface {
+  display: grid;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.a2ui-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.a2ui-column,
+.a2ui-card {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.a2ui-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A button keeps its own width; a column does not stretch it across the form. */
+.a2ui-column > .button,
+.a2ui-card > .button {
+  justify-self: start;
+}
+
+.a2ui-row > .a2ui-field {
+  flex: 1 1 180px;
+}
+
+.a2ui-card {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.a2ui-text {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.a2ui-text.variant-title { font-size: var(--text-xl); font-weight: 600; line-height: 1.3; }
+.a2ui-text.variant-subtitle { font-size: var(--text-lg); font-weight: 600; }
+.a2ui-text.variant-body { font-size: var(--text-lg); }
+.a2ui-text.variant-caption { font-size: var(--text-sm); color: var(--text-3); }
+
+.a2ui-image {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: var(--radius-md);
+}
+
+.a2ui-divider {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.a2ui-choices {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.a2ui-choices .question-options {
+  margin-bottom: 0;
+}
+
+.a2ui-choices:disabled .question-option {
+  cursor: default;
+}
+
+.a2ui-field input:disabled,
+.a2ui-field textarea:disabled {
+  opacity: 1;
+  color: var(--text-2);
+  background-color: var(--surface-sunken);
+}
+
+.a2ui-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.ui-action-bubble {
+  display: grid;
+  gap: 4px;
+}
+
+.ui-action-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.ui-action-label svg {
+  color: var(--text-3);
+}
+
+.ui-action-values {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.ui-action-values div {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ui-action-values dt {
+  color: var(--text-3);
+}
+
+.ui-action-values dd {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
 .file-preview-status {
   display: flex;
   align-items: center;

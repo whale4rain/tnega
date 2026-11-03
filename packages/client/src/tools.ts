@@ -54,6 +54,8 @@ const VERB: Record<string, [running: string, done: string]> = {
   remember_global: ['Remembering', 'Remembered'],
   write_memory: ['Saving memory', 'Saved memory'],
   update_goal: ['Updating goal', 'Updated goal'],
+  send_file: ['Sending', 'Sent'],
+  show_ui: ['Showing a form', 'Showed a form'],
 }
 
 /** Failures a person has to act on: setup, permissions or a missing tool. */
@@ -97,9 +99,12 @@ function toolTarget(args: unknown): string | undefined {
     const value = record[key]
     if (typeof value === 'string' && value.trim()) return key === 'path' && /^\.\/?$/.test(value.trim()) ? 'workspace root' : value
   }
-  // request_network_access names its domains as a list.
-  const domains = record.domains
-  if (Array.isArray(domains) && domains.length > 0 && domains.every(entry => typeof entry === 'string')) return domains.join(', ')
+  // request_network_access names its domains as a list, send_file its paths.
+  for (const key of ['domains', 'paths']) {
+    const list = record[key]
+    if (Array.isArray(list) && list.length > 0 && list.every(entry => typeof entry === 'string')) return list.join(', ')
+  }
+  if (typeof record.title === 'string' && Array.isArray(record.components)) return record.title
   return undefined
 }
 

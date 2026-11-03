@@ -113,6 +113,12 @@ _Avoid_: computer use（那指整个桌面）、headless browser（它通常是�
 随用户消息或工具结果一起进入模型上下文的图片。以 base64 内联在 Session 事件里，文本仍是 `content`；不支持图片的模型收到一行说明而不是图片。
 _Avoid_: file（工作区文件）、artifact（Project 产物）
 
+**Agent 界面 (Agent UI)**:
+Agent 用 `show_ui` 在答复里画的一小块界面，组件取自 A2UI 基础目录的子集（`@tnega/a2ui`）。
+它就是 durable 的工具调用参数，客户端据此渲染；按钮把整份取值作为一条 `[ui-action] {...}`
+用户消息发回，所以重放与实时一致。带按钮的界面结束本回合。
+_Avoid_: widget、card（Project 里另有含义）、artifact
+
 **Timeline**:
 一个 Agent Run 的可视化事件序列，展示消息、工具调用与工具结果。
 _Avoid_: log view

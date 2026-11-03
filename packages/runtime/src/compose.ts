@@ -22,6 +22,8 @@ import { computerTiers, type ComputerTier } from '@tnega/computer-tiers'
 import { toolJobs } from '@tnega/tool-jobs'
 import { toolMemory } from '@tnega/tool-memory'
 import { toolPtc } from '@tnega/tool-ptc'
+import { toolSendFile } from '@tnega/tool-send-file'
+import { toolUi } from '@tnega/tool-ui'
 import { toolSearch } from '@tnega/tool-search'
 import { toolSecrets } from '@tnega/tool-secrets'
 import { toolSpill } from '@tnega/tool-spill'
@@ -162,6 +164,8 @@ export interface RuntimeSpec {
   secrets?: SecretsCapabilitySpec
   /** Let the agent see and use apps on this machine; only when the person turned it on. */
   computer?: ComputerCapabilitySpec
+  /** Let replies carry files and small interfaces (`send_file`, `show_ui`); only for a client that renders them. */
+  reply?: boolean
 }
 
 async function permissionOf(permission: Permission): Promise<PermissionMode> {
@@ -384,6 +388,20 @@ export const computerCapability: Plugin = {
 }
 
 /**
+ * Replies that carry more than words: workspace files shown in the chat and
+ * small agent-rendered interfaces (A2UI). Both are durable tool calls the
+ * clients render, so only a host with a person looking mounts them.
+ */
+export const replyCapability: Plugin = {
+  name: 'capability:reply',
+  inject: ['tools'],
+  async apply(ctx: Context, spec: { workspace: string }) {
+    await ctx.plugin(toolSendFile, { cwd: spec.workspace })
+    await ctx.plugin(toolUi)
+  },
+}
+
+/**
  * The capability slice of one Agent scope, assembled from a spec.
  *
  * Mount it on the scope's own context — a Project thread passes the context it
@@ -431,6 +449,7 @@ export const runtimeCapabilities: Plugin = {
     }
     if (spec.ptc) await ctx.plugin(ptcCapability, spec.ptc)
     if (spec.computer) await ctx.plugin(computerCapability, spec.computer)
+    if (spec.reply) await ctx.plugin(replyCapability, { workspace: spec.workspace })
 
     // Every executable tool is a schema provider, so the assembled prompt and
     // the registry can never disagree about what the model may call.

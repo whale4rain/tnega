@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/tool-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/a2ui": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/tools": "workspace:*"
+  }
+}

@@ -20,6 +20,7 @@ import {
   X,
   Network,
   SquareMousePointer,
+  MousePointerClick,
 } from 'lucide-react'
 import { memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Choice, type ChoiceOption } from './Menu'
@@ -37,6 +38,8 @@ import { fileName, splitAttachedFiles } from '../lib/attached-files'
 import { LinkContext } from '../lib/links'
 import { CodeBlock, Markdown } from './Markdown'
 import { OfficeFiles } from './OfficeFiles'
+import { ReplyOutputs } from './ReplyOutputs'
+import { isReplyTool, parseAction, replyItems, type A2uiAction } from '../lib/reply'
 import { useFileMenu } from './FileMenu'
 
 export interface TimelineActions {
@@ -47,6 +50,8 @@ export interface TimelineActions {
   onOpenFile?: (path: string) => void
   /** Show a file this turn changed in the Workbench diff. */
   onOpenChange?: (path: string) => void
+  /** Send what a person did on an agent-rendered form, as their next message. */
+  onUiAction?: (text: string) => void
 }
 
 /** Whose avatar the agent turns in this timeline wear. */
@@ -100,8 +105,12 @@ export const Timeline = memo(function Timeline({ entries, running, actions, agen
                 actions={actions}
               />
             )
-          case 'agent':
-            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} processView={processView} onProcessViewChange={onProcessViewChange} />
+          case 'agent': {
+            const next = entries[index + 1]
+            // A form in this turn was answered by the message after it, or still waits when nothing came after.
+            const answer = next?.kind === 'user' && parseAction(next.text) ? next.text : undefined
+            return <AgentTurn key={entry.id} entry={entry} live={running && index === entries.length - 1} actions={actions} agent={agent} sky={entry.id === lastAgent ? sky : undefined} latest={entry.id === lastAgent} justFinished={entry.id === lastAgent && justFinished} outcomeFirst={outcomeFirst} processView={processView} onProcessViewChange={onProcessViewChange} answerable={!running && index === entries.length - 1} answer={answer} />
+          }
           case 'compaction':
             return <CompactionMarker key={entry.id} summary={entry.summary} tokensBefore={entry.tokensBefore} />
           case 'setting':
@@ -151,6 +160,7 @@ const UserMessage = memo(function UserMessage({
   const picked = splitPickedContext(entry.text)
   const attached = splitAttachedFiles(picked.rest)
   const links = useContext(LinkContext)
+  const action = parseAction(entry.text)
 
   if (editing) {
     const submit = () => {
@@ -205,12 +215,14 @@ const UserMessage = memo(function UserMessage({
           ))}
         </div>
       )}
-      {attached.rest && <div className="user-bubble"><Markdown text={attached.rest} breaks /></div>}
+      {action
+        ? <UiActionBubble action={action} />
+        : attached.rest && <div className="user-bubble"><Markdown text={attached.rest} breaks /></div>}
       <div className="row-actions">
         <IconAction label={copied ? 'Copied' : 'Copy'} onClick={() => copy(entry.text)}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </IconAction>
-        {editable && (
+        {editable && !action && (
           <IconAction label="Edit and resend" onClick={() => { setDraft(entry.text); setEditing(true) }}>
             <Pencil size={14} />
           </IconAction>
@@ -224,6 +236,26 @@ const UserMessage = memo(function UserMessage({
     </div>
   )
 })
+
+/** A button pressed on an agent's form: what was pressed, then the values sent with it. */
+function UiActionBubble({ action }: { action: A2uiAction }) {
+  const values = Object.entries(action.values).flatMap(([key, value]) => {
+    const text = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? value.join(', ') : value
+    return text ? [[key, text] as const] : []
+  })
+  return (
+    <div className="user-bubble ui-action-bubble">
+      <div className="ui-action-label"><MousePointerClick size={12} aria-hidden />{action.label}</div>
+      {values.length > 0 && (
+        <dl className="ui-action-values">
+          {values.map(([key, text]) => (
+            <div key={key}><dt>{key}</dt><dd>{text}</dd></div>
+          ))}
+        </dl>
+      )}
+    </div>
+  )
+}
 
 /** A file sent with the message: its name, and a click opens it in the Workbench. */
 function AttachedFileChip({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
@@ -340,6 +372,8 @@ const AgentTurn = memo(function AgentTurn({
   outcomeFirst = false,
   processView = 'steps',
   onProcessViewChange,
+  answerable = false,
+  answer,
 }: {
   entry: Extract<Entry, { kind: 'agent' }>
   live: boolean
@@ -353,11 +387,18 @@ const AgentTurn = memo(function AgentTurn({
   /** While the turn streams: every step, or one progress line (see `Timeline`). */
   processView?: ProcessView
   onProcessViewChange?: ((value: ProcessView) => void) | undefined
+  /** The newest turn with nothing after it: a form it showed still takes an answer. */
+  answerable?: boolean
+  /** The user message right after this turn, when it answered one of its forms. */
+  answer?: string | undefined
 }) {
   const weather = sky || live || justFinished || entry.status === 'error'
     ? turnWeather(entry, { live, justFinished, ...(sky?.waiting ? { waiting: true } : {}), ...(sky?.contextRatio !== undefined ? { contextRatio: sky.contextRatio } : {}) })
     : undefined
-  const presentation = present(entry, live, outcomeFirst, processView)
+  // Sent files and forms are part of the answer, not steps: they show under it.
+  const replies = replyItems(entry.blocks)
+  const shown = replies.length ? { ...entry, blocks: entry.blocks.filter(block => !(block.kind === 'tool' && isReplyTool(block.tool))) } : entry
+  const presentation = present(shown, live, outcomeFirst, processView)
   const segments = segment(presentation.visible)
   const [processOpen, setProcessOpen] = useState(false)
   const [copied, copy] = useCopy()
@@ -409,6 +450,7 @@ const AgentTurn = memo(function AgentTurn({
           </div>
         )}
         {segments.map(renderSegment)}
+        {replies.length > 0 && <ReplyOutputs items={replies} onOpen={actions.onOpenFile} answerable={answerable} answer={answer} onAction={actions.onUiAction} />}
         {files.length > 0 && <OfficeFiles files={files} onOpen={actions.onOpenFile} />}
         {thinking && <ThinkingLine hasContent={entry.blocks.length > 0} />}
         {live && onProcessViewChange && (

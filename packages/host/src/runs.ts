@@ -124,6 +124,8 @@ export async function handleRun(
       office: agentType === 'work' ? true : 'auto',
       ...(context.secrets ? { secrets: { vault: context.secrets, sessionId: id } } : {}),
       ...computerSpec(config, route.vision),
+      // The web and desktop clients render sent files and agent UI.
+      reply: true,
       builtinTools: {
         cwd: workspace,
         allowNetwork: true,
@@ -391,6 +393,8 @@ export async function createResidentRuntime(
     office: req.agentType === 'work' ? true : 'auto',
     ...(req.secrets ? { secrets: { vault: req.secrets, sessionId: req.sessionId } } : {}),
     ...computerSpec(req.config, req.route.vision),
+    // The web and desktop clients render sent files and agent UI.
+    reply: true,
     // Long turns are fine while they keep moving; a turn that stalls is nudged, then parked.
     loopGuard: true,
     jobs: { resolveSession: sessionOf },

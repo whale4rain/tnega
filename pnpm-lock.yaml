@@ -481,7 +481,11 @@ importers:
         specifier: workspace:*
         version: link:../workspace-files
 
-  packages/client: {}
+  packages/client:
+    dependencies:
+      '@tnega/a2ui':
+        specifier: workspace:*
+        version: link:../reply/a2ui
 
   packages/coding-agent:
     dependencies:
@@ -1455,6 +1459,29 @@ importers:
         specifier: workspace:*
         version: link:../../session
 
+  packages/reply/a2ui: {}
+
+  packages/reply/tool-send-file:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
+  packages/reply/tool-ui:
+    dependencies:
+      '@tnega/a2ui':
+        specifier: workspace:*
+        version: link:../a2ui
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/tools':
+        specifier: workspace:*
+        version: link:../../tools
+
   packages/run-settings:
     dependencies:
       '@tnega/agent':
@@ -1582,12 +1609,18 @@ importers:
       '@tnega/tool-secrets':
         specifier: workspace:*
         version: link:../secrets/tool-secrets
+      '@tnega/tool-send-file':
+        specifier: workspace:*
+        version: link:../reply/tool-send-file
       '@tnega/tool-shell':
         specifier: workspace:*
         version: link:../shell/tool-shell
       '@tnega/tool-spill':
         specifier: workspace:*
         version: link:../spill/tool-spill
+      '@tnega/tool-ui':
+        specifier: workspace:*
+        version: link:../reply/tool-ui
       '@tnega/tool-web-fetch':
         specifier: workspace:*
         version: link:../web/tool-web-fetch
