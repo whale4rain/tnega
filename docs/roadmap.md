@@ -5,6 +5,9 @@ place today. Each entry links to the research or design that backs it. When
 an item ships, delete it here; the release-prep pull request records it in the
 CHANGELOG.
 
+The longer-range plan (v1.0 gate and v2: running beyond one computer) is in
+[plans/v2-plan.md](plans/v2-plan.md).
+
 ## Open problems
 
 ### Windows sandbox: confined programs cannot pipe their own children
