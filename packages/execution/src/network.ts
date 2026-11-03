@@ -17,11 +17,17 @@ const loadUndici = (): Promise<Undici> => undici ??= import('undici')
  *   `HTTPS_PROXY` family, so where GitHub is only reachable through one the
  *   request times out or is reset.
  * - **DNS that answers with a reserved address.** Proxies in fake-IP mode
- *   (Clash and friends) answer every name with `198.18.x.x`, and polluted DNS
- *   answers `0.0.0.0`; the private-address guard then rejects the host.
+ *   (Clash and friends) answer names with `198.18.x.x`, and polluted DNS
+ *   answers `0.0.0.0`.
  *
  * `proxy` (or the environment) routes requests through a proxy, and
  * `allowedHosts` lists hosts trusted whatever their DNS says.
+ *
+ * A fake-IP answer is passed through rather than refused: the resolver answered
+ * on the proxy's behalf, so it says nothing about where the request is going and
+ * the proxy resolves the name for real. Which names a fake-IP resolver answers
+ * this way depends on the proxy's current rules, so refusing them made the same
+ * call work and fail by turns. Every other reserved address still fails.
  */
 export interface NetworkPolicy {
   /** `host` or `*.domain` entries trusted even when DNS answers with a private or reserved address. */
@@ -123,8 +129,9 @@ function reason(error: unknown): string {
 
 /**
  * Refuse destinations inside the private network unless the host is trusted.
- * The messages say which address the name resolved to and what to do, since
- * a proxy's fake-IP DNS makes a public site look private.
+ * The messages say which address the name resolved to and what to do. A
+ * proxy's fake-IP DNS makes a public site look private, so an answer inside the
+ * fake-IP range is passed through instead of refused: see {@link isFakeIpAddress}.
  */
 export async function assertPublicHttpUrl(url: URL): Promise<void> {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
@@ -143,12 +150,32 @@ export async function assertPublicHttpUrl(url: URL): Promise<void> {
     const code = (error as { code?: unknown }).code
     throw new Error(`DNS lookup for ${host} failed${typeof code === 'string' ? ` (${code})` : ''}. Check the network connection, DNS or proxy settings.`, { cause: error })
   }
+  // A blocking answer whose only problem is a fake-IP address is not a
+  // statement about the destination at all: the resolver answered on the
+  // proxy's behalf and the connection goes there for a real lookup. Refusing it
+  // would make every public site look internal for as long as the proxy runs,
+  // and the only workaround - allow-listing names one by one - would teach
+  // people to widen the list until the guard meant nothing. Every other
+  // reserved address still fails: a real 10.x or 127.x answer is about the
+  // destination, and no proxy invents addresses outside its own range.
   const blocked = addresses.find(({ address }) => !isPublicAddress(address))
+  if (blocked && isFakeIpAddress(blocked.address)) return
   if (!addresses.length || blocked) {
     const address = blocked?.address ?? 'no address'
-    const fakeIp = blocked && /^198\.1[89]\./.test(blocked.address)
-    throw new Error(`HTTP destination must be public: ${host} resolves to ${address}, a private or reserved address.${fakeIp ? ' This is how a proxy in fake-IP mode answers DNS.' : ''} If you trust ${host}, add it to Allowed hosts in Settings → Tools & shell → Network.`)
+    throw new Error(`HTTP destination must be public: ${host} resolves to ${address}, a private or reserved address. If you trust ${host}, add it to Allowed hosts in Settings → Tools & shell → Network.`)
   }
+}
+
+/**
+ * Whether an address is in the range Clash and its relatives hand out in
+ * fake-IP mode (`198.18.0.0/15`, RFC 2544). Nothing on a real network is
+ * addressed there, so an answer inside it means "the resolver did not resolve".
+ */
+export function isFakeIpAddress(address: string): boolean {
+  const bytes = address.split('.').map(Number)
+  if (bytes.length !== 4) return false
+  const [a, b] = bytes
+  return a === 198 && (b === 18 || b === 19)
 }
 
 export function isPublicAddress(address: string): boolean {
