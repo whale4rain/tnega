@@ -34,4 +34,6 @@ it('mounts the office tools on demand, and only for a workspace that has office 
     await rm(withFiles, { recursive: true, force: true })
     await rm(without, { recursive: true, force: true })
   }
-})
+// Loading the office tools pulls in exceljs, docx and pptxgenjs: 30s of module
+// graph on a cold machine, which is exactly the cost the lazy import moved here.
+}, 120_000)

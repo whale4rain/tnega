@@ -267,6 +267,30 @@ export const spillCapability: Plugin = {
 }
 
 /**
+ * Mount a capability whose absence should not take the Agent scope down.
+ *
+ * `ctx.plugin()` rejects with whatever its `apply` threw, and an unhandled
+ * rejection here would abandon every capability queued behind it — one broken
+ * package would leave the person with no tools at all and no explanation. The
+ * fiber has already rolled its own effects back by the time this catches, so
+ * what is left behind is the absence of that one capability.
+ *
+ * It fails loudly rather than silently: the reason reaches the host's stderr
+ * (the same channel a failed hot reload uses) and the context logger. Turning
+ * that into an interface element belongs to whichever client is showing the
+ * run — this layer cannot know what a person is looking at.
+ */
+export async function mountOptional(ctx: Context, name: string, mount: () => PromiseLike<unknown>): Promise<void> {
+  try {
+    await mount()
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    ctx.logger.error(`capability ${name} is unavailable: ${reason}`)
+    console.error(`[tnega] capability ${name} is unavailable: ${reason}`)
+  }
+}
+
+/**
  * Office tools, loaded when a workspace actually has an office file.
  *
  * `@tnega/tool-office` drags in exceljs, docx, pptxgenjs and jszip: about 30
@@ -390,7 +414,9 @@ export const runtimeCapabilities: Plugin = {
     if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace })
     if (spec.spill ?? builtinOn) await ctx.plugin(spillCapability, { workspace: spec.workspace })
     if (office === true || (office === 'auto' && builtinOn && await hasOfficeFiles(spec.workspace))) {
-      await ctx.plugin(officeCapability, { workspace: spec.workspace })
+      // Optional by nature: a workspace with a spreadsheet should get the tools,
+      // and a broken one of them must not cost the run every other tool.
+      await mountOptional(ctx, 'office', () => ctx.plugin(officeCapability, { workspace: spec.workspace }))
     }
     if (spec.skills ?? builtinOn) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
     if (spec.memory) {
