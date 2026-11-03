@@ -272,6 +272,14 @@ export function Sidebar({
   const [picked, setPicked] = useState<Map<string, PickedSession>>(() => new Map())
   const [anchor, setAnchor] = useState<string>()
   const [deleting, setDeleting] = useState(false)
+  // The window listener must read the settling state directly: re-subscribing it
+  // on every change leaves the old closure answering an Escape pressed in the
+  // same beat the batch settled, which reads as "still deleting, ignore it".
+  const deletingRef = useRef(false)
+  const markDeleting = (value: boolean) => {
+    deletingRef.current = value
+    setDeleting(value)
+  }
   const stopSelecting = () => {
     setSelecting(false)
     setPicked(new Map())
@@ -309,22 +317,22 @@ export function Sidebar({
   const deletePicked = () => {
     if (!onDeleteSessions || picked.size === 0 || deleting) return
     const batch = [...picked.values()]
-    setDeleting(true)
+    markDeleting(true)
     void onDeleteSessions(batch).then(deleted => {
-      setDeleting(false)
+      markDeleting(false)
       if (!deleted) return
       stopSelecting()
       for (const path of new Set(batch.map(item => item.path))) if (path !== workspace) load(path)
-    }, () => setDeleting(false))
+    }, () => markDeleting(false))
   }
   useEffect(() => {
     if (!selecting) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !deleting && !event.defaultPrevented) stopSelecting()
+      if (event.key === 'Escape' && !deletingRef.current && !event.defaultPrevented) stopSelecting()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selecting, deleting])
+  }, [selecting])
 
   // Every project, from every workspace, is pinned above the sessions; archived ones wait behind "more".
   const [showArchived, setShowArchived] = useState(false)
