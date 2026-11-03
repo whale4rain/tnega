@@ -135,7 +135,7 @@ Gate:
 - **Chat**: images and files in agent replies; simple A2UI.
 - **Docs**: user guide, plugin author guide, upgrade notes.
 
-Groundwork shipped in 1.x previews, each with a local Provider only:
+Groundwork shipped in the 0.x previews, each with a local Provider only:
 `ctx.execution` / `ctx.workspace`; `ctx.sessionStore` with seq-checked append;
 blob store (old inline images still readable); `WorkspaceRef`; durable jobs and
 a desktop scheduler for routines; the environment spec run locally in a worktree.
@@ -166,7 +166,7 @@ target, so review auth before M3.
 
 ## Open decisions (owner)
 
-- Version numbers: proposed `1.0.0-beta.N` from the next release, then `1.0.0`.
+- Version numbers: decided 2026-11-03, stay on 0.x previews (0.6, 0.7 …) and jump to `1.0.0` when the gate passes.
 - v2.0 target: self-hosted first.
 - First box: Docker or Podman; microVM later.
 - Database: SQLite first, Postgres later.
