@@ -392,6 +392,21 @@ authorized automatic path.
   change to either layer set with the workflow's own command,
   `node scripts/release-ci.mjs test`, which must end with
   `Release gate: <n> tests passed with no failures`.
+- **One web test failed the gate on a same-beat Escape (0.5.6):** the first
+  `v0.5.6` gate run reported one failure out of 292 files / 2318 tests,
+  `apps/web/src/components/Sidebar.test.ts > keeps the selection when the delete
+  is cancelled, and Escape leaves it`: after a batch delete settled, the
+  selection toolbar was still there. The keydown listener was re-subscribed
+  whenever the settling flag changed, so an Escape fired in the same beat the
+  promise resolved — which is what the test does, since it dispatches right
+  after `waitFor` sees the button enabled, before React flushes the new
+  listener — was answered by the old closure that still said "deleting, ignore
+  it". The listener now reads a ref the settle sets before any render and is
+  subscribed once per selection, so no effect pass sits between the settle and
+  the key. Nothing was published (`bundle` and `publish` were skipped), so the
+  unpublished tag moved to the fix commit and the run was repeated; a flake like
+  this is diagnosed from the run's own report (`validation-<run_id>-<attempt>`
+  artifact), not by rerunning to see whether it passes.
 - **Unhandled write after a test removed its temp folder (0.5.3):** the first
   `v0.5.3` gate run reported one unhandled rejection, `ENOENT` on
   `agents/<id>/session.jsonl` from `packages/loop/project-loop/test/loop.test.ts`
