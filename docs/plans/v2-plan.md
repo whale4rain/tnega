@@ -1,8 +1,8 @@
 # Tnega v2 plan
 
-Status: proposal, 2026-11-03, written against 0.5.6. The readable version with a
-diagram is the project report `tnega-v2-plan.html`; this file is the copy kept
-with the code.
+> 状态：进行中（提案，2026-11-03，基线 0.5.6）
+> 取代关系：无
+> 当前实现：尚未实现；现状见 `packages/session/README.md`、`packages/execution/README.md`、`docs/adr/0006-capability-seams.md`、`docs/adr/0008-sandbox-seam.md`
 
 ## Goal
 
@@ -51,7 +51,7 @@ Ties tnega to one machine today:
 
 ## Design
 
-**Control plane** (thin; never runs tools, never sees workspace files): accounts
+**Control plane** (thin; never runs tools and never opens the workspace): accounts
 and device tokens, session store, Blackboard and blob stores, run router (start,
 stop, sleep, wake), scheduler, secrets vault, environment specs and snapshots.
 
@@ -84,6 +84,32 @@ through the existing screencast; computer use stays local in v2.0.
 Deployment: **local** (default, offline, unchanged), **self-hosted** via
 `docker compose` (the v2.0 target), **hosted** (later, not blocked).
 
+## Rules to settle before building
+
+- **What the control plane stores.** It never opens the workspace, but the
+  Session log holds tool results, and tool results quote file contents. So the
+  control plane does store workspace excerpts (in the log, spills and uploads).
+  Before `ctx.sessionStore` is frozen, define who can read a session (owner and
+  project members only), how long logs and blobs are kept, deletion with the
+  session, and encryption at rest for the server store.
+- **Credentials on the wire.** The egress proxy (not the runner, not git)
+  holds model keys and the scoped git token. It attaches them only to
+  allowlisted hosts, only over TLS with a validated certificate, never to
+  plain HTTP, and drops them when a redirect leaves the host. Today's
+  `sandbox-network-proxy` filters hosts but injects no keys; this is new work.
+- **Setup script trust.** The setup script is repository content, so whoever
+  can change the repo can change it. Secrets reach it only after the user
+  approves the environment, and approval is asked again whenever the setup
+  script or the secret list changes (by hash). Only the secrets the spec names
+  are exposed, for the setup phase only. Setup egress is filtered too: an
+  allowlist of package registries by default, wider only by the user's choice.
+- **Runner append and replay.** Each durable event carries an id; the control
+  plane deduplicates retries by id, and an append answers `committed` (with
+  its seq) or `conflict` (with the current seq). A runner that loses its
+  connection and cannot tell whether an append landed reads the log back from
+  its last committed seq before sending anything else. M1 ships tests for
+  retry, duplicate, gap and reconnect.
+
 Unchanged invariants: Session log is the only source of model history;
 `renderToolResult` is the only tool-result text; the sandbox fails closed; new
 behaviour arrives as plugins.
@@ -102,7 +128,10 @@ Gate:
   Windows, macOS, Linux.
 - **Agent quality**: Terminal-Bench on each beta; goal at least double the
   2026-10-24 score (9.1% plain, 12.1% with retries).
-- **Sandbox**: Windows piped children solved or the sandbox-user spike done.
+- **Sandbox**: Windows piped children solved, or the dedicated sandbox user
+  designed and proven as `docs/roadmap.md` asks: a design note (account
+  lifecycle, credential storage, grant set, uninstall) and a clean Windows VM
+  spike running `npm run dev` with piped children.
 - **Chat**: images and files in agent replies; simple A2UI.
 - **Docs**: user guide, plugin author guide, upgrade notes.
 
@@ -114,9 +143,11 @@ a desktop scheduler for routines; the environment spec run locally in a worktree
 ## v2 milestones
 
 1. **M1 Runner protocol**: `tnega runner`; start, stream, append, cancel,
-   heartbeat; local host uses it in-process; replay from a runner equals local.
+   heartbeat; idempotent append and reconnect as above; local host uses it
+   in-process; replay from a runner equals local.
 2. **M2 Container box**: Docker Box Provider, environment setup phase, egress
-   proxy with keys, git through the proxy with a scoped token, compose file.
+   proxy that holds the keys and the scoped git token (TLS only, allowlisted
+   hosts, dropped on cross-host redirect), compose file.
 3. **M3 Remote state and sign-in**: SQLite store, blob store, device tokens;
    connection profiles in web, desktop, TUI.
 4. **M4 Projects on the server**: a runner per thread, sleep and wake, routines
