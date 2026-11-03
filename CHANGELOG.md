@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.6 | [`v0.5.5...v0.5.6`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6) | 85 |
 | 0.5.6-beta.2 | [`v0.5.6-beta.1...v0.5.6-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.6-beta.1...v0.5.6-beta.2) | 38 |
 | 0.5.6-beta.1 | [`v0.5.5...v0.5.6-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6-beta.1) | 12 |
 | 0.5.5 | [`v0.5.4...v0.5.5`](https://github.com/whale4rain/tnega/compare/v0.5.4...v0.5.5) | 6 |
@@ -68,6 +69,197 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.6](https://github.com/whale4rain/tnega/releases/tag/v0.5.6) — 2026-11-03
+
+### Features
+
+- The agent can ask for a secret it can use but never see: `ask_user_question`
+  with a `secret` name such as `GITHUB_TOKEN` shows a hidden input with
+  show/hide and **Remember**, the value goes only to the host's secret store,
+  and commands get it as an environment variable. A session secret lives until
+  the session is deleted or tnega exits; **Remember** saves it for the workspace
+  in `~/.tnega/secrets.json` (owner-only). Settings → Secrets lists names and
+  removes one. Values are masked in tool output and live progress as
+  `[secret: NAME]`, including base64, base64url and URL-encoded forms, and a
+  value a command was given stays masked after the secret is removed or
+  replaced.
+- Command network rules: Settings → Tools & shell → Command network chooses
+  `open`, `off`, or `allowlist` with allowed and denied domains
+  (`example.com`, `*.example.com`, an IP literal, each with an optional `:port`
+  or `:*`). Deny wins over allow and anything unlisted is refused. **No port
+  means every port** in both lists; `example.com:443` matches only 443. Commands
+  reach the network through a host-side filter proxy, and allowed connections
+  can chain through the network proxy already configured in Settings.
+- The agent can ask for a blocked domain with `request_network_access`, on the
+  usual approval card. An approved host applies to the rest of the session, and
+  **remember** also writes it to Settings. `off` and the deny list cannot be
+  opened by an approval, and `*` is never granted.
+- Computer use: the agent can see and use desktop apps through `ctx.computer` and
+  the `computer_*` tools — list windows and apps, start an app by name, id or
+  executable path, screenshot and zoom a window, then click, type, press a key,
+  scroll, drag, hover, invoke a menu item, run a batch of steps, and read or
+  write the clipboard. Off until **Settings → Computer use** is on, and it needs
+  the `cua-driver` binary, which is not bundled: the host looks for
+  `computerDriverPath`, then `TNEGA_CUA_DRIVER`, then `PATH`, then the
+  installer's folder, and fails with an install command instead of falling back
+  to another input path. Actions default to background delivery and retry in
+  front only when the driver refuses the event kind.
+- The tools run without a prompt: by default computer use asks nothing in
+  workspace-write, a call the agent flags with a `risk` reason needs a person's
+  approval for that one call with the reason on the card, and **Settings →
+  Computer use** can restore the once-per-app prompt or cap an app at `look`
+  (screenshots and reading), `click` (no typing, keys or drags) or `full`. App
+  names ignore case, folder and `.exe`, a display name such as `Google Chrome`
+  covers `chrome.exe`, and with limits set a window whose app cannot be
+  identified is refused.
+- Aim at elements instead of pixels: `computer_read_tree` reads a window's
+  accessibility tree as text with `[N]` rows and element tokens
+  (`<snapshot>:N`), and click, scroll, type and single keys accept a token, so
+  the driver invokes the element itself and can confirm the result. Element and
+  point are mutually exclusive, and a token from an older read is refused with a
+  hint to read again rather than retried. `frames: true` appends each row's box
+  in the pixels an action takes, for grids and for popup rows without a token.
+- An action reports what it changed: when the driver cannot confirm an effect,
+  the result carries its comparison with the caller's previous read — added,
+  changed and removed counts plus the differing rows, or an explicit "the window
+  did not change", with a warning when posted input may have been ignored and a
+  renumbering note when old tokens moved. A confirmed action pays nothing extra.
+- Hover moves the real pointer; clipboard read and write share a
+  `computer:clipboard` grant; `computer_list_apps` names app ids;
+  `computer_menu` resolves a native application menu by label path; and
+  `computer_steps` runs several actions in one call, judged step by step and
+  audited per step.
+- A dismissible line above the chat names the `cua-driver` install command and
+  links to the docs when the driver is missing, and adds the Settings switch to
+  its wording when computer use is off. `GET /api/computer/setup` answers from a
+  filesystem check alone, without starting the driver.
+- `computerMaxScreenshots` bounds a Session's screenshots, counting screenshots,
+  zooms, waits and the image after each action. The count is rebuilt from the
+  Session's own results, so a restart does not refill it; once spent, actions
+  still run without an image and the looking tools point at
+  `computer_read_tree`. A text-only model gets the tools without screenshots and
+  spends no budget.
+- Images no longer travel in the request body: they are uploaded once to the
+  route's Files API (keyed by SHA-256, so ids stay stable across turns) and
+  referenced by id — `{type:"file"}` for chat completions, `input_image.file_id`
+  for Responses, a file source with the `files-api-2025-04-14` beta for
+  Anthropic. Measured on a 1024 screenshot: 402 KiB uploaded once and the
+  request body down from about 400 KiB to 138 bytes. `filesApi`, `filesUrl` and
+  `filesPurpose` control it, and an endpoint without a Files API is remembered
+  rather than retried every turn.
+- `maxImages` bounds the images a request carries, at the top of the config or on
+  one model route (the route wins); each image is billed again on every request,
+  so a screenshot-heavy task wants a small number.
+- Responses turns chain when the route keeps state: `store` plus
+  `previous_response_id` and only the new turns, but only while the history is a
+  strict prefix, so a compaction or an edit resends everything. A route that
+  reports it did not store the response turns state off, and DeepSeek's stateless
+  Responses endpoint is never sent those parameters at all.
+- The Context tool lists what each tool cost: calls, failures, time, the images
+  its results carried, and the prompt and completion tokens of the requests that
+  read those results, split evenly when one request read several.
+
+### Fixes
+
+- Projects mode no longer lists the secrets of a session that is not on screen.
+- A saved secret named `__proto__` is kept, and inherited names such as
+  `toString` are no longer reported as removed when they were never stored.
+- Secret names that would change what a command loads or runs are refused:
+  families `LD_`, `DYLD_`, `NPM_CONFIG_`, `JAVA_`, `_JAVA_`, `GIT_CONFIG_`, plus
+  `JDK_JAVA_OPTIONS` and the Git variables that steer execution. `GIT_TOKEN` and
+  similar names still work.
+- A damaged or unexpected `secrets.json` reports its path instead of being
+  silently dropped on the next save, and rewriting it keeps every workspace's
+  keys.
+- The filter proxy refuses a host it is about to block before resolving it, so a
+  blocked name never leaks to DNS, and it also refuses cloud instance-metadata
+  endpoints outside link-local (`100.100.100.200`, `168.63.129.16`,
+  `192.0.0.192`, `fd00:ec2::/32` and similar) and the host's own interface
+  addresses. Both stay recoverable: a rule that names the host literally skips
+  that check.
+- WebSocket traffic works through the filter proxy: an upgrade request used to
+  reach the origin as an ordinary request and come back `200`, leaving the
+  client stuck after "connected".
+- A refused command's note describes only that command; a background job hitting
+  a different host no longer appears in it.
+- Sandbox grants, upstream checks and settings loaded late are hardened: an
+  approval cannot widen a narrower policy, and a network setting saved after a
+  run starts is still honoured.
+- One refused image no longer costs a route its vision. Only an error about the
+  model's own input (`does not support image`) counts; a rejected upload, an
+  unowned file id or an oversized image is a problem with that image, and a
+  different set of images is tried again instead of staying text-only for the
+  life of the adapter.
+- A route's `fetch` covers every request it makes — completion, upload and model
+  list — instead of only the upload, so a request can no longer escape to the
+  global transport.
+- A minimized window is restored before it is read or acted in, and input the
+  driver delivered but could not confirm is never re-sent.
+- Hover is refused outside the window's screenshot rather than moving the user's
+  pointer onto another window, no action targets rows a diff read marks as
+  removed, and a change summary keeps the driver's renumbering note.
+- A screenshot slot is held before capturing, so screenshots taken side by side
+  cannot overrun the budget, and a cancelled app-limit lookup reports itself as
+  cancelled.
+- A call the agent flags as risky is never answered by a grant, reviewer or
+  delegate: with nobody to ask it is refused, and a window's owner is looked up
+  on every action so a reused process id cannot inherit an old answer.
+- A capability that fails to load no longer takes the whole scope with it: a
+  broken office package would have abandoned every capability queued behind it,
+  leaving a run with no tools. The failure stays inside that one capability and
+  its reason goes to stderr and the context logger.
+- `TNEGA_HOME` isolates the settings file too: `systemConfigPath()` went straight
+  to the home directory, and Windows ignored `TNEGA_HOME` entirely, so a
+  throwaway or isolated installation read and wrote the person's own
+  `config.json`. The legacy `%APPDATA%` import now skips an isolated home.
+- Global memory lives in the Tnega home (`TNEGA_HOME`), so an isolated
+  installation or a test run no longer reads and writes the user's own
+  `~/.tnega/MEMORY.md`, and the "memory is full" error names the file it refused.
+- `tnega run` reads the image budget from the route it actually uses, not the
+  top-level setting.
+- A live browser view whose screencast lost the navigation race recovers instead
+  of staying blank, and an agent's teardown is awaited when its Context is
+  disposed.
+- Leaving a session no longer keeps its summary on screen while the next one
+  loads, so a settings change made then reaches the right session; an older page
+  still loading for the session just left no longer holds back polling of the
+  session now open; and a remote run is polled one read at a time instead of
+  stacking reads that replace the window out of order.
+- Text typed while a send settles is kept, new-conversation drafts are kept per
+  workspace, and a history page dropped by a reload is asked for again while the
+  reader is still at the top.
+- The Workbench stays within half the window (320 px floor) and its saved width
+  applies after a reload; the desktop window can shrink to 640 px. A background
+  job's report is shown as a notice in the turn it wakes instead of a message
+  from the person.
+
+### Other
+
+- The suite has two layers: `pnpm test` runs the code layer, which needs no
+  credentials, build artifact, GUI or elevated privilege, and
+  `pnpm test -- --全量` (or `pnpm test:all`) adds the host layer as a second
+  sequential pass. A test joins the host layer by being named `*.e2e.test.ts` or
+  `*.smoke.test.ts`, and the release gate runs both layers with the default
+  per-test budget.
+- Long sessions are lighter: a page of history reaches the web client without the
+  streamed chunk copies that made up over 90% of it (39.5 MB to 1.6 MB for one
+  40 MB session), the web client re-renders only the live turn while streaming
+  and keeps off-screen turns out of layout, and the office tools load only when a
+  workspace has an office file.
+- New packages `@tnega/secrets`, `@tnega/secrets-local`,
+  `@tnega/execution-secrets`, `@tnega/tool-secrets`,
+  `@tnega/sandbox-network-proxy`, `@tnega/tool-network-access`,
+  `@tnega/computer`, `@tnega/computer-cua`, `@tnega/computer-tiers`,
+  `@tnega/tool-computer` and `@tnega/llm`'s Files API module are published as
+  `tnega/*` subpaths; `@tnega/sandbox` gains the `network` policy dimension,
+  `decideNetworkAccess` and the `sandbox/network` event.
+- ADR 0015 records the secret store's format, lifecycle and permission boundary.
+  ADR 0016 records the computer seam, the element pathway, the feedback loop, the
+  default-allow policy with app tiers, and the driver's menu limits. ADR 0008
+  records the command-network dimension and its local address set.
+- This stable release promotes both 0.5.6 previews; npm publishes it to `latest`
+  and desktop clients on the Stable channel update from `latest.yml`.
 
 ## [0.5.6-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.6-beta.2) — 2026-10-31
 
