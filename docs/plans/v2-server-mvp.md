@@ -169,6 +169,14 @@ the runtime that owns a session renews `lease_until` every 5 seconds, and a leas
 untouched for 30 seconds can be taken over, the same numbers the lock file uses
 today (`HEARTBEAT_MS`, `STALE_MS`).
 
+Append-only is enforced by grants, not only by code: the server's database role
+has `INSERT` and `SELECT` on `session_event` and no `UPDATE` or `DELETE`;
+deleting a session runs under a separate admin role. Event payloads over about
+2 KB are compressed by Postgres (TOAST), and large tool outputs already spill to
+the blob store. `NOTIFY` payloads are capped at 8 KB, so they carry only
+`session:seq`. If the table grows to hundreds of millions of rows it is
+partitioned by a hash of `session_id`; the MVP does not need it.
+
 ### 3.4 What the server stores about a workspace
 
 Tool results in the log quote file contents, so the server does hold workspace
