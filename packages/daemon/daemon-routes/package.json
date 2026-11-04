@@ -1,0 +1,22 @@
+{
+  "name": "@tnega/daemon-routes",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/browser-playwright": "workspace:*",
+    "@tnega/computer-cua": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/directory-picker": "workspace:*",
+    "@tnega/fs-local": "workspace:*",
+    "@tnega/sandbox-local": "workspace:*",
+    "@tnega/terminal": "workspace:*",
+    "@tnega/workspace-files": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/web-kit": "workspace:*"
+  }
+}

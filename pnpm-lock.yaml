@@ -664,6 +664,37 @@ importers:
         specifier: workspace:*
         version: link:../process-remote
 
+  packages/daemon/daemon-routes:
+    dependencies:
+      '@tnega/browser-playwright':
+        specifier: workspace:*
+        version: link:../../browser/browser-playwright
+      '@tnega/computer-cua':
+        specifier: workspace:*
+        version: link:../../computer/computer-cua
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/directory-picker':
+        specifier: workspace:*
+        version: link:../../directory-picker
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../../fs/fs-local
+      '@tnega/sandbox-local':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox-local
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../../terminal
+      '@tnega/workspace-files':
+        specifier: workspace:*
+        version: link:../../workspace-files
+    devDependencies:
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
+
   packages/daemon/fs-remote:
     dependencies:
       '@tnega/core':
@@ -810,9 +841,6 @@ importers:
       '@tnega/compaction':
         specifier: workspace:*
         version: link:../compaction
-      '@tnega/computer-cua':
-        specifier: workspace:*
-        version: link:../computer/computer-cua
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
@@ -822,12 +850,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/directory-picker':
+      '@tnega/daemon-routes':
         specifier: workspace:*
-        version: link:../directory-picker
-      '@tnega/fs-local':
-        specifier: workspace:*
-        version: link:../fs/fs-local
+        version: link:../daemon/daemon-routes
       '@tnega/goal':
         specifier: workspace:*
         version: link:../goal
@@ -873,9 +898,6 @@ importers:
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox/sandbox
-      '@tnega/sandbox-local':
-        specifier: workspace:*
-        version: link:../sandbox/sandbox-local
       '@tnega/secrets-local':
         specifier: workspace:*
         version: link:../secrets/secrets-local
@@ -894,9 +916,6 @@ importers:
       '@tnega/subagent-local':
         specifier: workspace:*
         version: link:../subagent/subagent-local
-      '@tnega/terminal':
-        specifier: workspace:*
-        version: link:../terminal
       '@tnega/tool-browser':
         specifier: workspace:*
         version: link:../browser/tool-browser

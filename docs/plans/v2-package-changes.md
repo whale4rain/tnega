@@ -430,6 +430,19 @@ browser host; `apps/desktop/src/main.ts` starts the in-process daemon next to
 **Done when:** `packages/host` imports no machine-side package, every web and
 desktop route test passes unchanged, and the desktop app runs as before.
 
+**As built (2026-11-04):** `packages/daemon/daemon-routes` mounts `fsLocal`
+with the file routes, the terminal routes with their own `TerminalManager`,
+the browser view, the folder picker and the sandbox and computer-use setup
+routes; `startWebServer` mounts that one plugin, so `host/server.ts` no longer
+imports `@tnega/terminal`, `@tnega/directory-picker`, `@tnega/sandbox-local`,
+`@tnega/computer-cua` or `@tnega/fs-local`, and `ServerContext` loses
+`terminals`. URLs and responses are unchanged. Two things stay in the host
+until `browser-remote` exists: the `PlaywrightBrowserHost` (the agent's
+`browser_*` tools drive the same page the Workbench shows, so the host creates
+it and passes it to the routes), and `@tnega/workspace-files` for the file-edit
+baselines in `runs.ts`. The desktop app needs no change: it already starts the
+host in process, which mounts the routes.
+
 **Hand-off prompt:**
 
 ```text
