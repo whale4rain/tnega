@@ -80,11 +80,10 @@ create table workspace (
   id uuid primary key, account_id uuid not null references account,
   kind text not null check (kind in ('daemon_path','git')),
   daemon_id uuid references device,       -- daemon_path: a folder on that daemon
-  path text, repo_url text, branch text,  -- git: cloned into a box
-  environment_id uuid
+  path text, repo_url text, branch text   -- git: cloned into a box
 );
 create table environment (
-  id uuid primary key, workspace_id uuid references workspace,
+  id uuid primary key, workspace_id uuid not null unique references workspace on delete cascade,  -- one per workspace
   spec jsonb not null, spec_hash text not null,
   approved_hash text, approved_at timestamptz   -- setup secrets only when spec_hash = approved_hash
 );
@@ -157,11 +156,17 @@ create table audit (id bigserial primary key, at timestamptz not null default no
 
 One transaction:
 
-1. `update session set head_seq = head_seq + n, updated_at = now() where id = $1 and head_seq = $expected and lease_owner = $me returning head_seq`.
+1. `select seq, event_id from session_event where session_id = $1 and event_id = any($ids)`.
+   If every event is already stored, this is a retry: answer `committed` with
+   the stored seqs and stop. If only some are, answer `conflict` (a batch is
+   all or nothing, so this means a different writer).
+2. `update session set head_seq = head_seq + n, updated_at = now() where id = $1 and head_seq = $expected and lease_owner = $me returning head_seq`.
    No row means `conflict`: answer with the current `head_seq`.
-2. `insert into session_event ... on conflict (session_id, event_id) do nothing`.
-   A retry of an event that already landed returns its stored seq as `committed`.
-3. `notify session_events, '<session id>:<head_seq>'` so other connections can
+3. `insert into session_event ...` with seqs `$expected + 1 … $expected + n`.
+   The unique `(session_id, event_id)` is a backstop: a duplicate here aborts
+   the transaction, so `head_seq` never moves without its rows and there are no
+   gaps.
+4. `notify session_events, '<session id>:<head_seq>'` so other connections can
    push it to clients.
 
 The lease replaces today's pid + hostname lock file (`packages/session/src/lock.ts`):
@@ -207,6 +212,14 @@ dsh-superagent's `Effects`). The loop takes due rows with
 failure sets `due_at` with backoff from 2 seconds doubling to 60. Three failures
 in a row show as a problem in Settings.
 
+A crash after the outside action succeeds but before the row is deleted runs the
+effect again, so every handler must be safe to repeat. The rule: each effect has
+a stable `kind` + `key`, the handler passes the key to the outside system, and
+the outside system answers a repeat with the first result. For `machine.start`
+the key is the `machine` row id: the Docker Machine Provider labels the
+container with it and `start` first looks for a container with that label, so a
+repeat returns the same box instead of a second one.
+
 | Kind | Does |
 |---|---|
 | `machine.start` / `machine.stop` | Ask the Machine Provider for a box, or release one |
@@ -237,7 +250,8 @@ The diagrams keep the word box.
 
 ```ts
 interface MachineProvider {
-  start(spec: BoxSpec): Promise<{ ref: string }>   // image, env, resources, one-time daemon token
+  // key = machine row id; a second start with the same key returns the same box
+  start(key: string, spec: BoxSpec): Promise<{ ref: string }>   // image, env, resources, one-time daemon token
   stop(ref: string): Promise<void>
   status(ref: string): Promise<'running' | 'exited' | 'missing'>
 }

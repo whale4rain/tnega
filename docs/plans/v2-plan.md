@@ -51,8 +51,7 @@ Ties tnega to one machine today:
 
 ## Design
 
-Revised 2026-11-04 with the owner. Supersedes the first draft, which put the
-whole runtime inside each box. The diagram is the project report
+Revised 2026-11-04 with the owner. The diagram is the project report
 `reports/v2-plan/tnega-v2-architecture.html`; the state and control MVP is
 [v2-server-mvp.md](v2-server-mvp.md).
 
@@ -99,9 +98,10 @@ Deployment: **local** (default, offline, unchanged), **self-hosted** via
 - **What the control plane stores.** It never opens the workspace, but the
   Session log holds tool results, and tool results quote file contents. So the
   control plane does store workspace excerpts (in the log, spills and uploads).
-  Before `ctx.sessionStore` is frozen, define who can read a session (owner and
-  project members only), how long logs and blobs are kept, deletion with the
-  session, and encryption at rest for the server store.
+  The MVP rules (owner-only access, deletion with the session, encrypted disks)
+  are in [v2-server-mvp.md §3.4](v2-server-mvp.md#34-what-the-server-stores-about-a-workspace);
+  retention periods and project-member access are settled there before
+  `ctx.sessionStore` is frozen.
 - **Credentials on the wire.** The egress proxy (not the daemon, not git)
   holds model keys and the scoped git token. It attaches them only to
   allowlisted hosts, only over TLS with a validated certificate, never to
