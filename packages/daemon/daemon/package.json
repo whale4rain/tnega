@@ -1,0 +1,26 @@
+{
+  "name": "@tnega/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/daemon-protocol": "workspace:*",
+    "@tnega/execution-sandbox": "workspace:*",
+    "@tnega/fs": "workspace:*",
+    "@tnega/fs-local": "workspace:*",
+    "@tnega/fs-sandbox": "workspace:*",
+    "@tnega/process": "workspace:*",
+    "@tnega/process-local": "workspace:*",
+    "@tnega/sandbox": "workspace:*",
+    "@tnega/sandbox-local": "workspace:*",
+    "undici": "7.29.1"
+  },
+  "devDependencies": {
+    "@tnega/fs-remote": "workspace:*",
+    "@tnega/process-remote": "workspace:*"
+  }
+}

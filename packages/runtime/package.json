@@ -14,16 +14,19 @@
     "@tnega/computer-cua": "workspace:*",
     "@tnega/computer-tiers": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/daemon-protocol": "workspace:*",
     "@tnega/execution-sandbox": "workspace:*",
     "@tnega/execution-secrets": "workspace:*",
     "@tnega/fs": "workspace:*",
     "@tnega/fs-local": "workspace:*",
+    "@tnega/fs-remote": "workspace:*",
     "@tnega/jobs-local": "workspace:*",
     "@tnega/loop-guard": "workspace:*",
     "@tnega/memory-local": "workspace:*",
     "@tnega/persona": "workspace:*",
     "@tnega/process": "workspace:*",
     "@tnega/process-local": "workspace:*",
+    "@tnega/process-remote": "workspace:*",
     "@tnega/ptc-runtime-quickjs": "workspace:*",
     "@tnega/run-summary": "workspace:*",
     "@tnega/sandbox": "workspace:*",
@@ -48,5 +51,8 @@
     "@tnega/tool-web-fetch": "workspace:*",
     "@tnega/tools": "workspace:*",
     "@tnega/workspace-prompt": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/daemon": "workspace:*"
   }
 }

@@ -79,6 +79,7 @@ export async function createAgentRuntime(
       workspace: merged.cwd,
       permission: merged.sandboxMode ?? (merged.allowShell ? 'workspace-write' : 'read-only'),
       ...(merged.sandboxNetwork !== undefined ? { sandboxNetwork: merged.sandboxNetwork } : {}),
+      ...(merged.machine ? { machine: merged.machine } : {}),
       sessionId: merged.sessionFile,
       tools: merged.toolPolicy ?? {},
       builtin: builtinConfig,

@@ -84,6 +84,22 @@
       "types": "./dist/types/packages/process/process-local/src/index.d.ts",
       "import": "./dist/process-local.js"
     },
+    "./daemon-protocol": {
+      "types": "./dist/types/packages/daemon/protocol/src/index.d.ts",
+      "import": "./dist/daemon-protocol.js"
+    },
+    "./daemon": {
+      "types": "./dist/types/packages/daemon/daemon/src/index.d.ts",
+      "import": "./dist/daemon.js"
+    },
+    "./fs-remote": {
+      "types": "./dist/types/packages/daemon/fs-remote/src/index.d.ts",
+      "import": "./dist/fs-remote.js"
+    },
+    "./process-remote": {
+      "types": "./dist/types/packages/daemon/process-remote/src/index.d.ts",
+      "import": "./dist/process-remote.js"
+    },
     "./execution": {
       "types": "./dist/types/packages/execution/src/index.d.ts",
       "import": "./dist/execution.js"

@@ -401,6 +401,9 @@ importers:
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
+      '@tnega/daemon':
+        specifier: workspace:*
+        version: link:../daemon/daemon
       '@tnega/home':
         specifier: workspace:*
         version: link:../home
@@ -617,6 +620,72 @@ importers:
         version: link:../web-kit
 
   packages/core: {}
+
+  packages/daemon/daemon:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/execution-sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/execution-sandbox
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../../fs/fs
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../../fs/fs-local
+      '@tnega/fs-sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/fs-sandbox
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../../process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../../process/process-local
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox
+      '@tnega/sandbox-local':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox-local
+      undici:
+        specifier: 7.29.1
+        version: 7.29.1
+    devDependencies:
+      '@tnega/fs-remote':
+        specifier: workspace:*
+        version: link:../fs-remote
+      '@tnega/process-remote':
+        specifier: workspace:*
+        version: link:../process-remote
+
+  packages/daemon/fs-remote:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../../fs/fs
+
+  packages/daemon/process-remote:
+    dependencies:
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../../process/process
+
+  packages/daemon/protocol: {}
 
   packages/directory-picker:
     dependencies:
@@ -1605,6 +1674,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../daemon/protocol
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
@@ -1617,6 +1689,9 @@ importers:
       '@tnega/fs-local':
         specifier: workspace:*
         version: link:../fs/fs-local
+      '@tnega/fs-remote':
+        specifier: workspace:*
+        version: link:../daemon/fs-remote
       '@tnega/jobs-local':
         specifier: workspace:*
         version: link:../jobs/jobs-local
@@ -1635,6 +1710,9 @@ importers:
       '@tnega/process-local':
         specifier: workspace:*
         version: link:../process/process-local
+      '@tnega/process-remote':
+        specifier: workspace:*
+        version: link:../daemon/process-remote
       '@tnega/ptc-runtime-quickjs':
         specifier: workspace:*
         version: link:../ptc/ptc-runtime-quickjs
@@ -1707,6 +1785,10 @@ importers:
       '@tnega/workspace-prompt':
         specifier: workspace:*
         version: link:../workspace-prompt
+    devDependencies:
+      '@tnega/daemon':
+        specifier: workspace:*
+        version: link:../daemon/daemon
 
   packages/sandbox/execution-sandbox:
     dependencies:

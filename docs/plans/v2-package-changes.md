@@ -364,6 +364,27 @@ sending the token. A test covers the refusal.
 against `fs-remote` + `process-remote` over the in-process transport, and a
 recorded session replayed through it equals the local run.
 
+**As built (2026-11-04):** `protocol`, `daemon`, `fs-remote` and
+`process-remote` are in. The WebSocket client uses undici's `WebSocket`
+(Node 22's global one cannot send an `Authorization` header). The runtime takes
+`machine: { link }`: files, commands and search go to the daemon, and spill,
+office and skills stay off in that mode because they still read this machine's
+disk. The runtime sends the sandbox mode with each command and the daemon
+enforces it (read-only when none is sent); the daemon always fences paths, so
+`bypass` does not reach outside the workspace remotely. Background processes
+report their output with `process/tail` (every 500 ms) instead of
+`process/write`. A mutating call carries a `callId` and the daemon answers a
+retry from memory (last 512). Checks: the `tool-fs` suites and the runtime
+`builtins` shell suite run unchanged through a loopback daemon
+(`packages/daemon/daemon/test/contract-*.test.ts`), and
+`packages/runtime/test/machine-parity.test.ts` runs the same tool calls locally
+and through the daemon and compares the model-visible text. **Not yet:**
+`terminal/*`, `browser-remote`, `computer-remote` and `process/write`; local mode
+still calls the local Providers directly rather than through an in-process
+daemon. The server side that accepts daemons over WebSocket arrives with M3
+(device tokens), so `tnega daemon` has nothing to dial until then except a test
+or a hand-built runtime.
+
 **Hand-off prompt:**
 
 ```text

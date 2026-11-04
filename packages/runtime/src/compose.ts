@@ -13,6 +13,9 @@ import { canonicalPath, resolveSandboxPolicy, type SandboxExecutionPolicy, type 
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { fsLocal } from '@tnega/fs-local'
+import { announcedWorkspace, fsRemote } from '@tnega/fs-remote'
+import { remoteExecutionProvider } from '@tnega/process-remote'
+import type { DaemonLink, SandboxParams } from '@tnega/daemon-protocol'
 import { secretsLocal, type SecretVault } from '@tnega/secrets-local'
 import type { SessionLog } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
@@ -118,8 +121,20 @@ async function networkOf(source: SandboxNetworkSource | undefined): Promise<Sand
   return isNetworkSettings(source) ? await source.read() : source
 }
 
+/**
+ * Where a scope's files and commands live. Absent is this machine. A daemon
+ * link puts `ctx.fs`, `ctx.process` and search on the daemon; the sandbox is
+ * then the daemon's to enforce, at the permission this scope sends with each
+ * command.
+ */
+export interface MachineSpec {
+  link: DaemonLink
+}
+
 export interface RuntimeSpec {
   workspace: string
+  /** Run files, commands and search on a daemon instead of this machine. */
+  machine?: MachineSpec
   /** Sandbox mode for builtin tools. Defaults to `read-only`. */
   permission?: Permission
   /** Network access for sandboxed commands. Defaults to open. */
@@ -177,6 +192,7 @@ async function permissionOf(permission: Permission): Promise<PermissionMode> {
 
 export interface SandboxCapabilitySpec {
   workspace: string
+  machine?: MachineSpec
   permission: Permission
   network?: SandboxNetworkSource
   sessionId?: string
@@ -194,6 +210,10 @@ export const sandboxCapability: Plugin = {
   name: 'capability:sandbox',
   inject: ['tools'],
   async apply(ctx: Context, spec: SandboxCapabilitySpec) {
+    if (spec.machine) {
+      await ctx.plugin(remoteSandboxCapability, { ...spec, machine: spec.machine })
+      return
+    }
     const workspaceRoot = canonicalPath(resolve(spec.workspace))
     await ctx.plugin(sandboxLocal, {
       workspaceRoot,
@@ -233,6 +253,44 @@ export const sandboxCapability: Plugin = {
   },
 }
 
+/** The sandbox a remote scope asks the daemon to enforce for one command. */
+async function remoteSandbox(spec: SandboxCapabilitySpec, grants: NetworkGrants): Promise<SandboxParams> {
+  const network = await withGrants(await networkOf(spec.network), grants)
+  return {
+    mode: await permissionOf(spec.permission),
+    sessionId: spec.sessionId ?? spec.workspace,
+    ...(network !== undefined ? { network } : {}),
+  }
+}
+
+/**
+ * The sandbox capability for a scope on a daemon: commands run there, and the
+ * daemon confines them with its own mechanism at the mode sent per call. The
+ * secrets decorator still applies here, before the call leaves.
+ */
+const remoteSandboxCapability: Plugin = {
+  name: 'capability:sandbox-remote',
+  inject: ['tools'],
+  async apply(ctx: Context, spec: SandboxCapabilitySpec & { machine: MachineSpec }) {
+    const { link } = spec.machine
+    const grants = new NetworkGrants(() => ctx.get('session', false))
+    const boundary = remoteExecutionProvider(link, {
+      workspaceId: announcedWorkspace(link, spec.workspace).id,
+      sandbox: () => remoteSandbox(spec, grants),
+    })
+    await ctx.plugin(processBoundary, { boundary: secretEnvExecution(ctx, boundary) })
+    await ctx.plugin(builtinTools, { ...(spec.builtin ?? {}), cwd: spec.workspace, execution: ctx.get('process') })
+    const source = spec.network
+    if (source !== undefined && isNetworkSettings(source)) {
+      await ctx.plugin(toolNetworkAccess, {
+        grants,
+        network: () => networkOf(source),
+        ...(source.remember ? { remember: source.remember } : {}),
+      })
+    }
+  },
+}
+
 export interface SecretsCapabilitySpec {
   /** The host's vault; it outlives this scope. */
   vault: SecretVault
@@ -253,7 +311,7 @@ export const secretsCapability: Plugin = {
   },
 }
 
-export interface WorkspaceCapabilitySpec { workspace: string }
+export interface WorkspaceCapabilitySpec { workspace: string; machine?: MachineSpec }
 
 /**
  * File system seam: the Provider of `ctx.fs` for this scope. The file tools,
@@ -262,8 +320,9 @@ export interface WorkspaceCapabilitySpec { workspace: string }
  */
 export const fsCapability: Plugin = {
   name: 'capability:fs',
-  async apply(ctx: Context) {
-    await ctx.plugin(fsLocal)
+  async apply(ctx: Context, spec: { machine?: MachineSpec } = {}) {
+    if (spec.machine) await ctx.plugin(fsRemote, { link: spec.machine.link })
+    else await ctx.plugin(fsLocal)
   },
 }
 
@@ -272,7 +331,20 @@ export const searchCapability: Plugin = {
   name: 'capability:search',
   inject: ['tools'],
   async apply(ctx: Context, spec: WorkspaceCapabilitySpec) {
-    await ctx.plugin(searchRipgrep, { cwd: spec.workspace })
+    if (spec.machine) {
+      const { link } = spec.machine
+      // Search reads only and ran unconfined locally too; on a daemon `rg` is found there.
+      await ctx.plugin(searchRipgrep, {
+        cwd: spec.workspace,
+        locateBinary: false,
+        execution: remoteExecutionProvider(link, {
+          workspaceId: announcedWorkspace(link, spec.workspace).id,
+          sandbox: () => ({ mode: 'bypass' }),
+        }),
+      })
+    } else {
+      await ctx.plugin(searchRipgrep, { cwd: spec.workspace })
+    }
     await ctx.plugin(toolSearch, { cwd: spec.workspace })
   },
 }
@@ -431,7 +503,7 @@ export const runtimeCapabilities: Plugin = {
     const office = spec.office ?? 'auto'
     const builtin = spec.builtin === false ? false : spec.builtin ?? {}
     await ctx.plugin(tools, spec.tools ?? {})
-    await ctx.plugin(fsCapability)
+    await ctx.plugin(fsCapability, spec.machine ? { machine: spec.machine } : {})
     await ctx.plugin(systemPrompt)
     await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? spec.workspace })
     if (spec.summary) await ctx.plugin(runSummary)
@@ -445,16 +517,20 @@ export const runtimeCapabilities: Plugin = {
         ...(spec.sessionId !== undefined ? { sessionId: spec.sessionId } : {}),
         ...(spec.sandboxNetwork !== undefined ? { network: spec.sandboxNetwork } : {}),
         ...(builtin ? { builtin } : {}),
+        ...(spec.machine ? { machine: spec.machine } : {}),
       })
     }
-    if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace })
-    if (spec.spill ?? builtinOn) await ctx.plugin(spillCapability, { workspace: spec.workspace })
-    if (office === true || (office === 'auto' && builtinOn && await hasOfficeFiles(spec.workspace))) {
+    if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace, ...(spec.machine ? { machine: spec.machine } : {}) })
+    // Spill, office, skills and memory still read and write this machine's
+    // disk, so a scope on a daemon leaves them off unless asked.
+    const local = !spec.machine
+    if (spec.spill ?? (builtinOn && local)) await ctx.plugin(spillCapability, { workspace: spec.workspace })
+    if (office === true || (office === 'auto' && builtinOn && local && await hasOfficeFiles(spec.workspace))) {
       // Optional by nature: a workspace with a spreadsheet should get the tools,
       // and a broken one of them must not cost the run every other tool.
       await mountOptional(ctx, 'office', () => ctx.plugin(officeCapability, { workspace: spec.workspace }))
     }
-    if (spec.skills ?? builtinOn) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
+    if (spec.skills ?? (builtinOn && local)) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
     if (spec.memory) {
       await ctx.plugin(memoryCapability, { workspace: spec.workspace, writeTool: builtinOn })
     }
