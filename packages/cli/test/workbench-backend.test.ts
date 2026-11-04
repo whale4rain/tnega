@@ -7,7 +7,7 @@ import { LocalWorkspaceFs } from '@tnega/fs-local'
 
 import { startWebServer } from '@tnega/host'
 import { fileDiff, listChanges, parsePorcelain } from '@tnega/workspace-files'
-import { TerminalManager, type PtyLike, type TerminalEvent } from '@tnega/terminal'
+import { TerminalManager, type PtyLike, type TerminalEvent } from '@tnega/terminal-local'
 
 const dirs: string[] = []
 

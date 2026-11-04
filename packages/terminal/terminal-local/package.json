@@ -1,5 +1,5 @@
 {
-  "name": "@tnega/terminal",
+  "name": "@tnega/terminal-local",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@tnega/core": "workspace:*",
-    "@tnega/web-kit": "workspace:*"
+    "@tnega/terminal": "workspace:*"
   }
 }

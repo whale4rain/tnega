@@ -477,9 +477,9 @@ importers:
       '@tnega/session-store':
         specifier: workspace:*
         version: link:../session-store
-      '@tnega/terminal':
+      '@tnega/terminal-local':
         specifier: workspace:*
-        version: link:../terminal
+        version: link:../terminal/terminal-local
       '@tnega/thread-local':
         specifier: workspace:*
         version: link:../project/thread-local
@@ -653,6 +653,9 @@ importers:
       '@tnega/sandbox-local':
         specifier: workspace:*
         version: link:../../sandbox/sandbox-local
+      '@tnega/terminal-local':
+        specifier: workspace:*
+        version: link:../../terminal/terminal-local
       undici:
         specifier: 7.29.1
         version: 7.29.1
@@ -663,6 +666,18 @@ importers:
       '@tnega/process-remote':
         specifier: workspace:*
         version: link:../process-remote
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../../terminal/terminal
+      '@tnega/terminal-remote':
+        specifier: workspace:*
+        version: link:../terminal-remote
+      '@tnega/terminal-routes':
+        specifier: workspace:*
+        version: link:../../terminal/terminal-routes
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
 
   packages/daemon/daemon-routes:
     dependencies:
@@ -684,9 +699,12 @@ importers:
       '@tnega/sandbox-local':
         specifier: workspace:*
         version: link:../../sandbox/sandbox-local
-      '@tnega/terminal':
+      '@tnega/terminal-local':
         specifier: workspace:*
-        version: link:../../terminal
+        version: link:../../terminal/terminal-local
+      '@tnega/terminal-routes':
+        specifier: workspace:*
+        version: link:../../terminal/terminal-routes
       '@tnega/workspace-files':
         specifier: workspace:*
         version: link:../../workspace-files
@@ -717,6 +735,18 @@ importers:
         version: link:../../process/process
 
   packages/daemon/protocol: {}
+
+  packages/daemon/terminal-remote:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../../terminal/terminal
 
   packages/directory-picker:
     dependencies:
@@ -2078,14 +2108,32 @@ importers:
         specifier: workspace:*
         version: link:../../tools
 
-  packages/terminal:
+  packages/terminal/terminal:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
+
+  packages/terminal/terminal-local:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../terminal
+
+  packages/terminal/terminal-routes:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       '@tnega/web-kit':
         specifier: workspace:*
-        version: link:../web-kit
+        version: link:../../web-kit
 
   packages/tools:
     dependencies:

@@ -1,4 +1,4 @@
-/** Client for the Workbench's Changes and Terminal endpoints (see packages/workspace-files/src/index.ts, packages/terminal/src/index.ts). */
+/** Client for the Workbench's Changes and Terminal endpoints (see packages/workspace-files/src/index.ts, packages/terminal/terminal/src/index.ts). */
 
 export type ChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
 

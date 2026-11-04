@@ -39,8 +39,8 @@ export interface PeerOptions {
 
 function errorData(error: unknown): RpcErrorData {
   if (!(error instanceof Error)) return {}
-  const code = (error as { code?: unknown }).code
-  return { name: error.name, ...(typeof code === 'string' ? { code } : {}) }
+  const { code, status } = error as { code?: unknown; status?: unknown }
+  return { name: error.name, ...(typeof code === 'string' ? { code } : {}), ...(typeof status === 'number' ? { status } : {}) }
 }
 
 /** An error thrown on purpose by a handler, with its own protocol code. */
@@ -54,7 +54,7 @@ export class RpcError extends Error {
 function toResponseError(error: unknown): NonNullable<ResponseMessage['error']> {
   if (error instanceof RpcError) return { code: error.rpcCode, message: error.message, data: error.data }
   if (error instanceof RemoteError) {
-    return { code: error.rpcCode, message: error.message, data: { name: error.name, ...(error.code ? { code: error.code } : {}) } }
+    return { code: error.rpcCode, message: error.message, data: { name: error.name, ...(error.code ? { code: error.code } : {}), ...(error.status !== undefined ? { status: error.status } : {}) } }
   }
   const message = error instanceof Error ? error.message : String(error)
   return { code: RpcErrorCode.CALL_FAILED, message, data: errorData(error) }

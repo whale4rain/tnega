@@ -15,9 +15,14 @@ import {
 } from '@tnega/daemon-protocol'
 import type { ExecutionProvider } from '@tnega/process'
 import { describeShell, systemShell } from '@tnega/process-local'
+import { TerminalManager, type TerminalLocalConfig } from '@tnega/terminal-local'
 import { DaemonService } from './serve.js'
+import type { ExposedService, StreamHubOptions } from './services.js'
+import { exposeTerminals } from './terminals.js'
 
 export { DaemonService, type ServeOptions } from './serve.js'
+export { StreamHub, type ExposedService, type StreamHubOptions } from './services.js'
+export { exposeTerminals } from './terminals.js'
 export { assertSecureServerUrl, connectWebSocket, type WebSocketTransportOptions } from './websocket.js'
 
 export interface DaemonWorkspaceInput {
@@ -38,6 +43,12 @@ export interface StartDaemonOptions {
   heartbeat?: PeerOptions['heartbeat']
   /** The undecorated boundary; defaults to this machine (see `ServeOptions.execution`). */
   execution?: ExecutionProvider
+  /**
+   * The person's terminals in these workspaces (`ctx.terminals` over the
+   * protocol). On by default; `false` serves none. Tests pass a fake PTY.
+   */
+  terminals?: TerminalLocalConfig | false
+  streams?: StreamHubOptions
   /** The protocol version sent in `initialize`; only tests change it. */
   protocolVersion?: number
   onState?: (state: DaemonState, detail?: string) => void
@@ -61,13 +72,14 @@ export function workspaceId(path: string): string {
   return `ws_${createHash('sha256').update(resolve(path)).digest('hex').slice(0, 16)}`
 }
 
-export function daemonCapabilities(): DaemonCapabilities {
+export function daemonCapabilities(services: readonly string[] = []): DaemonCapabilities {
   return {
     fs: true,
     process: true,
     http: true,
     shell: describeShell(systemShell()),
     platform: process.platform,
+    ...(services.length ? { services: [...services] } : {}),
   }
 }
 
@@ -83,7 +95,16 @@ export function startDaemon(options: StartDaemonOptions): Daemon {
     path: resolve(item.path),
   }))
   const deviceId = options.deviceId ?? `dev_${createHash('sha256').update(hostname()).digest('hex').slice(0, 12)}`
-  const service = new DaemonService({ workspaces, ...(options.execution ? { execution: options.execution } : {}) })
+  const services: Record<string, ExposedService> = {}
+  const terminals = options.terminals === false ? undefined : new TerminalManager(options.terminals ?? {})
+  if (terminals) services.terminals = exposeTerminals(terminals, workspaces)
+  const service = new DaemonService({
+    workspaces,
+    services,
+    ...(options.execution ? { execution: options.execution } : {}),
+    ...(options.streams ? { streams: options.streams } : {}),
+    onClose: () => terminals?.dispose(),
+  })
   const minDelay = options.reconnect === false ? 0 : options.reconnect?.minDelayMs ?? 500
   const maxDelay = options.reconnect === false ? 0 : options.reconnect?.maxDelayMs ?? 30_000
   let state: DaemonState = 'connecting'
@@ -124,7 +145,7 @@ export function startDaemon(options: StartDaemonOptions): Daemon {
       const result = await initialize(current, {
         protocolVersion: options.protocolVersion ?? PROTOCOL_VERSION,
         deviceId,
-        capabilities: daemonCapabilities(),
+        capabilities: daemonCapabilities(service.services),
         workspaces,
       })
       setState('ready')

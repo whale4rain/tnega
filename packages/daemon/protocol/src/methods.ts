@@ -40,6 +40,8 @@ export const RpcErrorCode = {
   WORKSPACE_DENIED: -32002,
   CONNECTION_LOST: -32003,
   NOT_INITIALIZED: -32004,
+  /** A stream to resume is gone, or its missed events no longer fit the buffer: open it again. */
+  STREAM_LOST: -32005,
   REQUEST_CANCELLED: -32800,
 } as const
 
@@ -50,6 +52,8 @@ export interface RpcErrorData {
   name?: string
   /** The thrown error's string `code`, if it had one. */
   code?: string
+  /** The thrown error's numeric `status` (an HTTP status), if it had one. */
+  status?: number
 }
 
 /**
@@ -60,11 +64,13 @@ export interface RpcErrorData {
 export class RemoteError extends Error {
   override name: string
   readonly code: string | undefined
+  readonly status: number | undefined
 
   constructor(message: string, readonly rpcCode: number, data: RpcErrorData = {}) {
     super(message)
     this.name = data.name ?? 'RemoteError'
     this.code = data.code
+    this.status = data.status
   }
 }
 
@@ -95,6 +101,8 @@ export interface DaemonCapabilities {
   platform?: string
   /** Sandbox mechanisms the daemon can enforce; empty when it can confine nothing. */
   sandbox?: string[]
+  /** Services reachable through `service/call` and `stream/open` (`terminals`, …). */
+  services?: string[]
 }
 
 export interface DaemonWorkspace {
@@ -216,6 +224,29 @@ export interface HttpFetchParams {
  * The method table: name → params and result. Requests flow runtime → daemon,
  * except `initialize`, which the daemon sends first.
  */
+/**
+ * One method of a service the daemon exposes (see `forward.ts`). The daemon
+ * answers only the methods it lists for that service.
+ */
+export interface ServiceCallParams {
+  service: string
+  method: string
+  args: unknown[]
+}
+
+/** One event of an open stream, numbered from 1 so a gap or a replay is visible. */
+export interface StreamEventNotification {
+  stream: string
+  seq: number
+  event: unknown
+}
+
+/** The stream stopped on the daemon's side (its source ended, or it was not resumed in time). */
+export interface StreamEndNotification {
+  stream: string
+  reason: string
+}
+
 export interface DaemonMethods {
   'initialize': { params: InitializeParams; result: InitializeResult }
   'fs/realRoot': { params: WorkspaceParams; result: string }
@@ -232,6 +263,10 @@ export interface DaemonMethods {
   'process/start': { params: StartParams; result: StartResult }
   'process/kill': { params: { handle: string }; result: null }
   'http/fetch': { params: HttpFetchParams; result: { status: number; ok: boolean; headers: Record<string, string>; body: string; truncated: boolean } }
+  'service/call': { params: ServiceCallParams; result: unknown }
+  'stream/open': { params: ServiceCallParams & { stream: string }; result: null }
+  'stream/resume': { params: { stream: string; after: number }; result: { replayed: number } }
+  'stream/close': { params: { stream: string }; result: null }
 }
 
 export type DaemonMethod = keyof DaemonMethods
@@ -245,9 +280,12 @@ export interface DaemonNotifications {
   'process/output': OutputNotification
   'process/tail': TailNotification
   'process/exit': ExitNotification
+  'stream/event': StreamEventNotification
+  'stream/end': StreamEndNotification
 }
 
 /** Methods whose effect must not happen twice; they carry a `callId`. */
 export const MUTATING_METHODS: ReadonlySet<DaemonMethod> = new Set<DaemonMethod>([
   'fs/write', 'fs/mkdir', 'fs/remove', 'fs/rename', 'process/shell', 'process/run', 'process/start',
+  'service/call', 'stream/open',
 ])

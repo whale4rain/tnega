@@ -1,32 +1,18 @@
 import { existsSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
+import type { Context } from '@tnega/core'
+import { TerminalError, TerminalService, type TerminalEvent, type TerminalInfo, type TerminalSize } from '@tnega/terminal'
+
+export { TerminalError, type TerminalEvent, type TerminalInfo } from '@tnega/terminal'
+
 /**
- * The Workbench terminal: the user's own shell, in a workspace, on a real PTY.
- *
- * This is not an agent tool — it runs with the user's rights, outside the
- * sandbox, the same as the terminal they would open themselves. It is only
- * reachable through the loopback server's API, behind its client header.
+ * This machine's terminals, on real PTYs.
  *
  * Each terminal keeps a bounded scrollback, so a panel that reattaches (after
  * switching tabs or reloading) replays what it missed. Terminals end with the
- * server.
+ * manager.
  */
-
-export interface TerminalInfo {
-  id: string
-  workspace: string
-  title: string
-  shell: string
-  cols: number
-  rows: number
-  createdAt: number
-  exited?: { code: number }
-}
-
-export type TerminalEvent =
-  | { type: 'data'; data: string }
-  | { type: 'exit'; code: number }
 
 /** The part of node-pty's `IPty` this module uses. */
 export interface PtyLike {
@@ -47,12 +33,6 @@ export type PtySpawn = (shell: string, args: string[], options: {
 
 const SCROLLBACK_BYTES = 256 * 1024
 const MAX_TERMINALS = 12
-
-export class TerminalError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message)
-  }
-}
 
 interface Entry {
   info: TerminalInfo
@@ -93,7 +73,7 @@ export class TerminalManager {
       .filter(info => workspace === undefined || info.workspace === resolve(workspace))
   }
 
-  async create(workspace: string, size: { cols?: number; rows?: number } = {}): Promise<TerminalInfo> {
+  async create(workspace: string, size: TerminalSize = {}): Promise<TerminalInfo> {
     if (this.entries.size >= MAX_TERMINALS) throw new TerminalError(`at most ${MAX_TERMINALS} terminals can be open`, 429)
     const spawn = this.options.spawn ?? await (this.spawner ??= loadSpawn())
     const { shell, args } = this.options.shell ?? defaultShell()
@@ -163,6 +143,35 @@ export class TerminalManager {
 function clamp(value: number | undefined, min: number, max: number, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback
 }
-export const name = '@tnega/terminal'
 
-export * from './routes.js'
+/** `ctx.terminals` on this machine. */
+export class LocalTerminals extends TerminalService {
+  constructor(ctx: Context, readonly manager: TerminalManager) {
+    super(ctx)
+  }
+
+  async list(workspace?: string): Promise<TerminalInfo[]> { return this.manager.list(workspace) }
+  async create(workspace: string, size?: TerminalSize): Promise<TerminalInfo> { return await this.manager.create(workspace, size) }
+  async attach(id: string, listener: (event: TerminalEvent) => void): Promise<() => void> { return this.manager.attach(id, listener) }
+  async write(id: string, data: string): Promise<void> { this.manager.write(id, data) }
+  async resize(id: string, cols: number, rows: number): Promise<void> { this.manager.resize(id, cols, rows) }
+  async close(id: string): Promise<void> { this.manager.close(id) }
+}
+
+export interface TerminalLocalConfig {
+  /** Tests pass a fake PTY. */
+  spawn?: PtySpawn
+  shell?: { shell: string; args: string[] }
+}
+
+/** Provide `ctx.terminals` from this machine; the terminals die with the plugin. */
+export const terminalLocal = {
+  name: 'terminal-local',
+  apply(ctx: Context, config: TerminalLocalConfig = {}): void {
+    const manager = new TerminalManager(config)
+    ctx.effect(() => () => manager.dispose())
+    new LocalTerminals(ctx, manager)
+  },
+}
+
+export const name = '@tnega/terminal-local'

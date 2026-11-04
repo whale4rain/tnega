@@ -4,7 +4,8 @@ import { computerSetupRoutes } from '@tnega/computer-cua'
 import { folderPickerRoutes } from '@tnega/directory-picker'
 import { fsLocal } from '@tnega/fs-local'
 import { sandboxSetupRoutes } from '@tnega/sandbox-local'
-import { TerminalManager, terminalRoutes } from '@tnega/terminal'
+import { terminalLocal } from '@tnega/terminal-local'
+import { terminalRoutes } from '@tnega/terminal-routes'
 import { fileRoutes } from '@tnega/workspace-files'
 
 export interface DaemonRoutesConfig {
@@ -38,10 +39,9 @@ export const daemonRoutes = {
     // Registered whether or not computer use is on: the hint's job is to explain
     // the missing driver before someone wonders why the tools are absent.
     await ctx.plugin(computerSetupRoutes, config.computerDriverPath ? { driverPath: config.computerDriverPath } : {})
-    const terminals = new TerminalManager()
     // Terminals die with this plugin, after their routes are gone.
-    ctx.effect(() => () => terminals.dispose())
-    await ctx.plugin(terminalRoutes, { terminals })
+    await ctx.plugin(terminalLocal)
+    await ctx.plugin(terminalRoutes)
   },
 }
 

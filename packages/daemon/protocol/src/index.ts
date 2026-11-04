@@ -5,7 +5,9 @@
  *
  * Plain JSON only: bytes travel as base64 with a size cap, long output as
  * notifications, cancellation as `$/cancel` with the request id. Method
- * namespaces mirror the seams (`fs/*`, `process/*`, `http/*`).
+ * namespaces mirror the seams (`fs/*`, `process/*`, `http/*`); other
+ * Services (terminals, …) are forwarded generically with `service/call` and
+ * resumable `stream/*`.
  *
  * See docs/plans/v2-plan.md ("Daemon protocol") and v2-package-changes.md (P4).
  */
@@ -14,5 +16,6 @@ export * from './methods.js'
 export * from './peer.js'
 export * from './transport.js'
 export * from './link.js'
+export * from './forward.js'
 
 export const name = '@tnega/daemon-protocol'

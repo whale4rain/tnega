@@ -24,6 +24,7 @@ import type { BackgroundProcess, ExecutionProvider, OutputListener } from '@tneg
 import { localExecutionProvider, networkPolicy } from '@tnega/process-local'
 import { canonicalPath, resolveSandboxPolicy, type SandboxNetworkRequest } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
+import { StreamHub, type ExposedService, type StreamHubOptions } from './services.js'
 
 /** How many mutating calls a daemon remembers by `callId`, for retries. */
 const REMEMBERED_CALLS = 512
@@ -39,6 +40,11 @@ export interface ServeOptions {
    * runs a command looser than asked.
    */
   execution?: ExecutionProvider
+  /** Other Services this daemon answers through `service/call` and `stream/*`, by name. */
+  services?: Readonly<Record<string, ExposedService>>
+  streams?: StreamHubOptions
+  /** Run when the daemon closes, after its streams stop (the services' own teardown). */
+  onClose?: () => void | Promise<void>
 }
 
 interface Served {
@@ -61,9 +67,16 @@ export class DaemonService {
   private readonly execution: ExecutionProvider
   private peer: Peer | undefined
   private closed = false
+  private readonly streams: StreamHub
 
   constructor(private readonly options: ServeOptions) {
     this.execution = options.execution ?? localExecutionProvider
+    this.streams = new StreamHub(options.streams)
+  }
+
+  /** The names of the Services this daemon forwards. */
+  get services(): string[] {
+    return Object.keys(this.options.services ?? {})
   }
 
   get workspaces(): readonly DaemonWorkspace[] {
@@ -73,6 +86,7 @@ export class DaemonService {
   /** Serve on this peer; notifications for background processes go to the latest one. */
   attach(peer: Peer): void {
     this.peer = peer
+    this.streams.attach(peer)
   }
 
   async handle(method: string, params: unknown, context: HandlerContext): Promise<unknown> {
@@ -96,6 +110,8 @@ export class DaemonService {
     await Promise.all([...this.background.values()].map(entry => entry.process.kill().catch(() => undefined)))
     this.background.clear()
     this.calls.clear()
+    this.streams.dispose()
+    await this.options.onClose?.()
     await this.root.fiber.dispose()
   }
 
@@ -248,11 +264,41 @@ export class DaemonService {
           ...(params.allowPrivate ? { allowPrivate: true } : {}),
         })
       }
+      case 'service/call': {
+        const calls = this.exposed(param(raw, 'service')).calls
+        const name = text(param(raw, 'method'), 'method')
+        const call = Object.hasOwn(calls, name) ? calls[name] : undefined
+        if (!call) throw new RpcError(`${String(param(raw, 'service'))} has no method ${name}`, RpcErrorCode.METHOD_NOT_FOUND)
+        return (await call(argsOf(param(raw, 'args')))) ?? null
+      }
+      case 'stream/open': {
+        const streams = this.exposed(param(raw, 'service')).streams ?? {}
+        const name = text(param(raw, 'method'), 'method')
+        const source = Object.hasOwn(streams, name) ? streams[name] : undefined
+        if (!source) throw new RpcError(`${String(param(raw, 'service'))} has no stream ${name}`, RpcErrorCode.METHOD_NOT_FOUND)
+        await this.streams.open(text(param(raw, 'stream'), 'stream'), source, argsOf(param(raw, 'args')))
+        return null
+      }
+      case 'stream/resume': {
+        const after = param(raw, 'after')
+        return { replayed: this.streams.resume(text(param(raw, 'stream'), 'stream'), typeof after === 'number' ? after : 0) } satisfies ResultOf<'stream/resume'>
+      }
+      case 'stream/close': {
+        this.streams.close(text(param(raw, 'stream'), 'stream'))
+        return null
+      }
       case 'initialize':
         throw new RpcError('the daemon sends initialize, it does not answer it', RpcErrorCode.INVALID_REQUEST)
       default:
         throw new RpcError(`unknown method ${String(method)}`, RpcErrorCode.METHOD_NOT_FOUND)
     }
+  }
+
+  private exposed(name: unknown): ExposedService {
+    const services = this.options.services ?? {}
+    const service = typeof name === 'string' && Object.hasOwn(services, name) ? services[name] : undefined
+    if (!service) throw new RpcError(`this daemon does not serve ${String(name)}`, RpcErrorCode.METHOD_NOT_FOUND)
+    return service
   }
 
   private async start(params: StartParams): Promise<ResultOf<'process/start'>> {
@@ -339,3 +385,9 @@ function text(value: unknown, name: string): string {
   return value
 }
 
+
+function argsOf(value: unknown): unknown[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new RpcError('args must be an array', RpcErrorCode.INVALID_PARAMS)
+  return value
+}

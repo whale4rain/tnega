@@ -17,10 +17,15 @@
     "@tnega/process-local": "workspace:*",
     "@tnega/sandbox": "workspace:*",
     "@tnega/sandbox-local": "workspace:*",
+    "@tnega/terminal-local": "workspace:*",
     "undici": "7.29.1"
   },
   "devDependencies": {
     "@tnega/fs-remote": "workspace:*",
-    "@tnega/process-remote": "workspace:*"
+    "@tnega/process-remote": "workspace:*",
+    "@tnega/terminal": "workspace:*",
+    "@tnega/terminal-remote": "workspace:*",
+    "@tnega/terminal-routes": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
   }
 }

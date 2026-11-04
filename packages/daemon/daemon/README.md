@@ -18,4 +18,6 @@ await daemon.close() // 不再重连、取消进行中的调用、杀掉它启�
 - **重连**：断线后按指数退避重新拨号并重新宣告；握手被拒（版本、设备）就停止。
 - **传输安全**：`connectWebSocket` 只接受 `wss://`，或连本机的 `ws://localhost`，在发出 token 之前就拒绝。
 
+- **其他 Service**：`services` 里列出的 Service（目前是 `terminals`，`exposeTerminals` 只在宣告过的工作区里开终端）经 `service/call` 与 `stream/*` 转发。每条流的事件编号并留最近 512 个；连接断开后等 30 s 续传，没人续传就退订。
+
 `test/loopback.ts` 用进程内的内存传输跑一个 Daemon；`contract-*.test.ts` 用它把 `tool-fs` 与 shell 的现有测试原样跑一遍。

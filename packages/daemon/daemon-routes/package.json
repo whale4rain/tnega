@@ -13,7 +13,8 @@
     "@tnega/directory-picker": "workspace:*",
     "@tnega/fs-local": "workspace:*",
     "@tnega/sandbox-local": "workspace:*",
-    "@tnega/terminal": "workspace:*",
+    "@tnega/terminal-local": "workspace:*",
+    "@tnega/terminal-routes": "workspace:*",
     "@tnega/workspace-files": "workspace:*"
   },
   "devDependencies": {

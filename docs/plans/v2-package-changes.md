@@ -455,6 +455,20 @@ mounted from the in-process daemon in local mode. URLs and responses must not
 change; the web tests and desktop smoke test are the check. No CHANGELOG edits.
 ```
 
+### P4 follow-up: forwarded Services (2026-11-04)
+
+Agreed with the owner: terminal, browser and computer use reach a daemon
+through two shared pieces instead of one protocol method each. `service/call`
+forwards any method of a Service the daemon lists in `capabilities.services`,
+and `stream/open` / `stream/event` / `stream/resume` / `stream/close` carry a
+listener method as a numbered stream that a new connection can resume (512
+events kept, 30 s grace, then the daemon unsubscribes). Errors keep a numeric
+`status`. The terminal is first: `packages/terminal/{terminal,terminal-local,
+terminal-routes}` is the seam, `daemon/terminal-remote` the remote Provider,
+and the daemon serves only folders inside its announced workspaces. Next:
+browser (separate profile by default, frames only while watched) and computer
+use (off unless the device opts in, local stop key).
+
 ## P6 Client profiles
 
 **Changes:**
