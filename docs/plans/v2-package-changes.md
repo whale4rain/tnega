@@ -2,7 +2,7 @@
 
 > 状态：进行中（提案，2026-11-04，基线 0.5.6）
 > 取代关系：无
-> 当前实现：尚未实现；设计见 [v2-plan.md](v2-plan.md) 与 [v2-server-mvp.md](v2-server-mvp.md)
+> 当前实现：尚未实现；现状见 `packages/fs/tool-fs/README.md`、`packages/execution/src/index.ts`、`packages/session-store/src/index.ts`、`packages/host/src/server.ts`、`packages/runtime/src/compose.ts`
 
 This is the work list for v2: which packages change and how, which packages
 are new, and the expected file layout. It turns the design in
@@ -37,7 +37,7 @@ the previous format.
 | P1 `ctx.fs` | `fs/fs`, `fs/fs-local` | `tool-fs`, `workspace-files`, `tool-send-file`, `fs-sandbox` use | No |
 | P2 `ctx.process` | `process/process`, `process/process-local` | `execution` folded in; `tool-shell`, `tool-web-fetch`, `search-ripgrep`, `jobs-local`, sandbox and secrets decorators | No |
 | P3 Session and blob seams | `session-store/session-store` (Definition), `session-store-jsonl`, `blobs/blobs`, `blobs/blobs-local` | `session` (`SessionLog` writes through a backend), `host` routes, `usage`, `context-insights`, `memory-dream`, `spill-local` | No |
-| P4 Daemon protocol | `daemon/protocol`, `daemon/daemon`, `daemon/fs-remote`, `daemon/process-remote`, `cli daemon` | `runtime/compose.ts` picks local or remote | `tnega daemon` command |
+| P4 Daemon protocol | `daemon/protocol`, `daemon/daemon`, `daemon/{fs,process,browser,computer}-remote`, `cli daemon` | `runtime/compose.ts` picks local or remote | `tnega daemon` command |
 | P5 Host split | `daemon/daemon-routes` | `host/server.ts` stops mounting machine routes itself | No |
 | P6 Client profiles | none | `client` (`ServerProfile`, protocol version), `apps/web`, `apps/desktop`, `tui` | Connection setting |
 | P7 Server | `server/*` packages, `deploy/` | none in harness | `tnega-server` image |
@@ -75,6 +75,8 @@ packages/
     daemon-routes/      NEW  machine-side HTTP routes moved out of host (files, terminal, browser, folder picker)
     fs-remote/          NEW  Provider of ctx.fs over the protocol
     process-remote/     NEW  Provider of ctx.process over the protocol
+    browser-remote/     NEW  Provider of ctx.browser over the protocol
+    computer-remote/    NEW  Provider of ctx.computer over the protocol
   server/               (P7, server release line)
     server/             NEW  `tnega server`: API, runtimes, control loop
     session-store-pg/   NEW  Provider of ctx.sessionStore on Postgres
@@ -240,6 +242,8 @@ abstract class SessionStore extends Service {
   abstract patchMeta(id: string, patch: SessionMetaPatch): Promise<void>
   abstract lease(id: string, owner: string): Promise<Lease>   // replaces lock.ts
 }
+// The server API checks that the caller owns the session before calling the
+// store; the store takes no principal in the single-owner MVP.
 ```
 
 `WorkspaceRef` = `{ kind: 'local'; path } | { kind: 'daemon'; daemonId; path } | { kind: 'git'; repoUrl; branch }`.
@@ -311,12 +315,23 @@ serves every method by calling the local Providers (`fs-local`,
 transports: in-process (a pair of message ports) and WebSocket client
 (Node 22's built-in `WebSocket`; dials out, reconnects with backoff).
 
-**New `packages/daemon/fs-remote`, `packages/daemon/process-remote`**: Providers
-of `ctx.fs` and `ctx.process` that send protocol calls over a connection.
+**New `packages/daemon/{fs,process,browser,computer}-remote`**: Providers of
+`ctx.fs`, `ctx.process`, `ctx.browser` and `ctx.computer` that send protocol
+calls over a connection.
+
+**Workspace binding:** every `fs/*`, `process/*` and `terminal/*` call carries a
+`workspaceId`. The daemon accepts only ids it announced in `initialize`, and
+applies that workspace's fence; anything else fails with `WORKSPACE_DENIED`.
+Each remote Provider is created for one `WorkspaceRef` and always sends its id.
+A test proves a call for another workspace is refused.
+
+**Transport security:** the WebSocket transport accepts only `wss://` (or
+`ws://localhost` for development), checks the certificate, and refuses before
+sending the token. A test covers the refusal.
 
 **Changes:** `cli` gets `tnega daemon --server URL --token T --workspace PATH`;
 `runtime/compose.ts` takes a `machine` option: `local` (today) or
-`{ connection }` (remote Providers).
+`{ connection, workspace }` (remote Providers bound to that workspace).
 
 **Done when:** the loopback contract test runs the existing tool test suites
 against `fs-remote` + `process-remote` over the in-process transport, and a
@@ -332,7 +347,9 @@ daemon protocol. P1 (ctx.fs) and P2 (ctx.process) are merged.
    packages/browser/browser, packages/computer/computer.
 2. Add packages/daemon/protocol (JSON-RPC 2.0 types, version, method table),
    packages/daemon/daemon (serves methods from local Providers; in-process and
-   WebSocket transports), packages/daemon/fs-remote and process-remote.
+   WebSocket transports), packages/daemon/{fs,process,browser,computer}-remote. Every call carries a
+   workspaceId the daemon announced; remote URLs must be wss:// with a checked
+   certificate.
 3. Add `tnega daemon` to packages/cli. compose.ts chooses local or remote
    Providers from an option; nothing else in runtime knows which.
 4. Contract test: run the fs and shell tool tests against the remote Providers
@@ -350,8 +367,11 @@ daemon protocol. P1 (ctx.fs) and P2 (ctx.process) are merged.
 
 **New `packages/daemon/daemon-routes`**: one plugin that registers those routes
 from the daemon's side. In local mode `startWebServer` mounts it from the
-in-process daemon; on a server the routes are proxied to the right daemon by
-workspace.
+in-process daemon. On a server, files, terminal and browser are served by the
+server's own routes calling the daemon's `fs/*`, `terminal/*` and `browser/*`
+methods for the session's workspace (no HTTP proxying). Folder picker, sandbox
+setup and computer setup stay **local only** in v2.0: they configure the
+machine you sit at, and the server answers them with 404.
 
 **Changes:** `host/server.ts` drops the direct imports of `@tnega/terminal`,
 `@tnega/browser-playwright`, `@tnega/directory-picker`, `@tnega/sandbox-local`

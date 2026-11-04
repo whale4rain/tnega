@@ -80,8 +80,12 @@ create table workspace (
   id uuid primary key, account_id uuid not null references account,
   kind text not null check (kind in ('daemon_path','git')),
   daemon_id uuid references device,       -- daemon_path: a folder on that daemon
-  path text, repo_url text, branch text   -- git: cloned into a box
+  path text, repo_url text, branch text,  -- git: cloned into a box
+  check ((kind = 'daemon_path' and daemon_id is not null and path is not null and repo_url is null and branch is null)
+      or (kind = 'git' and repo_url is not null and daemon_id is null and path is null))
 );
+-- daemon_id must name a device of kind 'daemon': checked by the API on insert
+-- (a composite FK on (id, kind) is possible but adds a column for little gain).
 create table environment (
   id uuid primary key, workspace_id uuid not null unique references workspace on delete cascade,  -- one per workspace
   spec jsonb not null, spec_hash text not null,
@@ -108,6 +112,7 @@ create table session_event (
   session_id uuid not null references session on delete cascade,
   seq bigint not null, event_id text not null,
   type text not null, event jsonb not null,    -- the whole JSONL line
+  content_hash bytea not null,                 -- sha-256 of the canonical event, for retry checks
   primary key (session_id, seq),
   unique (session_id, event_id)
 );
@@ -140,8 +145,10 @@ create table effect (
   unique (kind, key)
 );
 create table schedule (
-  id uuid primary key, project_id uuid references project on delete cascade,
-  spec jsonb not null, next_run_at timestamptz not null
+  id uuid primary key, project_id uuid not null references project on delete cascade,
+  routine_id text not null,                    -- the Blackboard routine fact id
+  spec jsonb not null, next_run_at timestamptz not null,
+  unique (project_id, routine_id)              -- mirroring is an upsert
 );
 create table secret (
   id uuid primary key, account_id uuid not null references account,
@@ -157,9 +164,11 @@ create table audit (id bigserial primary key, at timestamptz not null default no
 One transaction:
 
 1. `select seq, event_id from session_event where session_id = $1 and event_id = any($ids)`.
-   If every event is already stored, this is a retry: answer `committed` with
-   the stored seqs and stop. If only some are, answer `conflict` (a batch is
-   all or nothing, so this means a different writer).
+   If every event is already stored **and** each stored `content_hash` equals
+   the incoming one, this is a retry: answer `committed` with the stored seqs
+   and stop. If only some are stored, or an id is reused with different
+   contents, answer `conflict` (a batch is all or nothing). Tests cover exact
+   retry, changed payload and partial overlap.
 2. `update session set head_seq = head_seq + n, updated_at = now() where id = $1 and head_seq = $expected and lease_owner = $me returning head_seq`.
    No row means `conflict`: answer with the current `head_seq`.
 3. `insert into session_event ...` with seqs `$expected + 1 … $expected + n`.
@@ -268,8 +277,11 @@ person's message is never stuck behind new work.
 ### 4.5 Scheduler
 
 Routines are already Blackboard facts. The server mirrors each into `schedule`
-with its `next_run_at`; the control loop turns a due row into a `run.wake`
-effect and computes the next time. This removes today's limit that routines run
+with its `next_run_at`, keyed by `(project_id, routine_id)` so a repeated
+mirror updates the same row. One transaction claims a due row
+(`for update skip locked`), advances `next_run_at` and inserts the `run.wake`
+effect with key `routine_id:<run time>`, so a routine cannot run twice for the
+same time. This removes today's limit that routines run
 only while their project is open.
 
 ### 4.6 Identity and secrets
@@ -278,6 +290,13 @@ only while their project is open.
   code. `tnega login URL` on a client or `tnega daemon --server URL` exchanges
   the code for a device token. Tokens are stored hashed; revoking sets
   `revoked_at`.
+- Pairing codes are random (at least 128 bits), single-use, valid for 10
+  minutes and bound to one device kind (client or daemon). Exchanges are rate
+  limited per source address (5 failures a minute, then a lockout). Tests cover
+  failed, expired, reused and rate-limited exchanges.
+- The API checks that the caller's account owns a session before it calls
+  `ctx.sessionStore`; the store itself takes no principal. Several accounts will
+  need their own ownership tests.
 - Secrets are encrypted with AES-256-GCM under a master key from the server's
   environment (`TNEGA_MASTER_KEY`). Model keys are used by the server's own
   model calls; git and API keys reach a box only through the egress proxy.
@@ -292,8 +311,18 @@ services:
               environment: [DATABASE_URL, TNEGA_MASTER_KEY] }
   postgres: { image: postgres:17, volumes: [pg:/var/lib/postgresql/data] }
   proxy:    { image: ghcr.io/whale4rain/tnega-egress }
-# boxes are started by the server on a network that can reach only the proxy
+# boxes are started by the server on an internal Docker network whose only
+# route out is the proxy
 ```
+
+- **Transport:** the server serves HTTPS itself, or runs behind a TLS reverse
+  proxy with port 8765 bound to a private interface. Clients and daemons refuse
+  `http://` and `ws://` URLs except to `localhost`, before sending any code or
+  token, and check the certificate.
+- **Box network fails closed:** if the Machine Provider cannot create or attach
+  the internal network, the box start fails with `SANDBOX_UNAVAILABLE`; it never
+  falls back to Docker's default network. An unrestricted box is an explicit
+  opt-in in the environment spec, like `bypass` today.
 
 Mounting the Docker socket gives the server root on its host; that is accepted
 for a self-hosted MVP and documented. The hosted version uses a Kubernetes or
