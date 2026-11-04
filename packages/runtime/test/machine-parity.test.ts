@@ -107,3 +107,25 @@ it('refuses to open a scope on a workspace the daemon does not serve', async () 
     search: false,
   })).rejects.toThrow(/does not serve/)
 })
+
+it('never mounts tools that read this machine\'s disk on a daemon scope, even when asked', async () => {
+  const dir = await tempDir()
+  const loopback = await loopbackDaemon([dir])
+  cleanups.push(() => loopback.close())
+  const ctx = new Context()
+  const fiber = ctx.plugin(runtimeCapabilities, {
+    workspace: dir,
+    machine: { link: loopback.link },
+    builtin: {},
+    search: false, office: true, skills: true,
+  })
+  await fiber
+  try {
+    const names = ctx.get('tools').list().map(tool => tool.schema.name)
+    expect(names).toContain('read_file')
+    expect(names.some(name => name.startsWith('office_'))).toBe(false)
+    expect(names).not.toContain('skill')
+  } finally {
+    await fiber.dispose()
+  }
+})

@@ -521,16 +521,16 @@ export const runtimeCapabilities: Plugin = {
       })
     }
     if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace, ...(spec.machine ? { machine: spec.machine } : {}) })
-    // Spill, office, skills and memory still read and write this machine's
-    // disk, so a scope on a daemon leaves them off unless asked.
+    // Office and skills read the workspace from this machine's disk, so a scope
+    // on a daemon never mounts them; spill keeps runtime-side records and is off unless asked.
     const local = !spec.machine
     if (spec.spill ?? (builtinOn && local)) await ctx.plugin(spillCapability, { workspace: spec.workspace })
-    if (office === true || (office === 'auto' && builtinOn && local && await hasOfficeFiles(spec.workspace))) {
+    if (local && (office === true || (office === 'auto' && builtinOn && await hasOfficeFiles(spec.workspace)))) {
       // Optional by nature: a workspace with a spreadsheet should get the tools,
       // and a broken one of them must not cost the run every other tool.
       await mountOptional(ctx, 'office', () => ctx.plugin(officeCapability, { workspace: spec.workspace }))
     }
-    if (spec.skills ?? (builtinOn && local)) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
+    if (local && (spec.skills ?? builtinOn)) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
     if (spec.memory) {
       await ctx.plugin(memoryCapability, { workspace: spec.workspace, writeTool: builtinOn })
     }

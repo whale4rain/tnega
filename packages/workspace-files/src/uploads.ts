@@ -55,6 +55,8 @@ export async function saveUpload(fs: WorkspaceFs, name: string, bytes: Uint8Arra
   await fs.mkdir(UPLOADS_DIR)
   for (let index = 1; index < 1000; index += 1) {
     const path = `${UPLOADS_DIR}/${numbered(safe, index)}`
+    // Skip names already taken before sending the bytes; the create-only write still settles a race.
+    if (await fs.stat(path)) continue
     // A `create` write fails when the name is taken, so two drops of the same file never race onto one name.
     const saved = await fs.writeFile(path, bytes, { mode: 'create' }).then(() => true, (error: unknown) => {
       if (error instanceof FsError && error.code === 'FS_EXISTS') return false

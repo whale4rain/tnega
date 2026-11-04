@@ -49,8 +49,9 @@ export function writeFileTool(config: FileToolsConfig): ToolDefinition {
           // Appending to a missing file creates it; a concurrent creator
           // surfaces as a conflict instead of being silently extended.
           await writeThrough(config.fs, target, content, { mode: current.kind === 'present' ? 'append' : 'create', ...signal })
-          const after = await config.fs.readFile(target)
-          const sha256 = fingerprint(after)
+          // The new version is what was there plus what we added; no read after the write,
+          // which could fail on a large remote file after the append has landed.
+          const sha256 = fingerprint(before ? Buffer.concat([before, Buffer.from(content, 'utf8')]) : content)
           config.observations.record(options.agentId, target, { kind: 'present', sha256 })
           return { path: display, bytes, appended: true, sha256 }
         }

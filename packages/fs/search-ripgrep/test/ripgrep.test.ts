@@ -179,6 +179,11 @@ describe('search exit classification', () => {
     expect(() => assertSearchSucceeded('findFiles', { ...base, exitCode: 1 }, 1000)).not.toThrow()
   })
 
+  it('tells a missing ripgrep from "no matches", though both exit 1', () => {
+    expect(() => assertSearchSucceeded('findFiles', { ...base, exitCode: 1, stderr: 'spawn rg ENOENT' }, 1000))
+      .toThrow(/could not start ripgrep/)
+  })
+
   it('classifies a rejected pattern as SEARCH_INVALID_PATTERN', () => {
     expect(() => assertSearchSucceeded(
       'searchText',

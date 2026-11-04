@@ -51,23 +51,37 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
   const parsed = parseDaemonArgs(args)
   // A refused address is a mistake to report, not a connection to retry.
   assertSecureServerUrl(parsed.server)
+  let interrupted = false
+  let settle: (code: number) => void = () => {}
+  // Ends with 0 on SIGINT / SIGTERM, with 1 when the daemon stops by itself (a refused reconnect).
+  const finished = new Promise<number>(done => { settle = done })
   const daemon: Daemon = startDaemon({
     connect: () => connectWebSocket(parsed.server, { token: parsed.token }),
     workspaces: parsed.workspaces.map(path => ({ path })),
     ...(parsed.deviceId ? { deviceId: parsed.deviceId } : {}),
-    onState: (state, detail) => process.stderr.write(`tnega daemon: ${state}${detail ? ` (${detail})` : ''}\n`),
+    onState: (state, detail) => {
+      process.stderr.write(`tnega daemon: ${state}${detail ? ` (${detail})` : ''}\n`)
+      if (state === 'stopped' && !interrupted) settle(1)
+    },
   })
-  for (const workspace of daemon.workspaces) process.stderr.write(`tnega daemon: serving ${workspace.path} as ${workspace.id}\n`)
-  const stopped = new Promise<number>(done => {
-    const stop = (): void => { void daemon.close().then(() => done(0)) }
-    process.once('SIGINT', stop)
-    process.once('SIGTERM', stop)
-  })
+  const stop = (): void => {
+    interrupted = true
+    void daemon.close().then(() => settle(0))
+  }
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
   try {
-    await daemon.ready
+    for (const workspace of daemon.workspaces) process.stderr.write(`tnega daemon: serving ${workspace.path} as ${workspace.id}\n`)
+    // Interrupted before the first handshake is a normal stop, not a failure.
+    const first = await Promise.race([daemon.ready.then(() => undefined), finished])
+    if (first !== undefined) return first
+    return await finished
   } catch (error) {
+    if (interrupted) return await finished
     await daemon.close()
     throw error
+  } finally {
+    process.off('SIGINT', stop)
+    process.off('SIGTERM', stop)
   }
-  return await stopped
 }
