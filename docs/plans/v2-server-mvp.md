@@ -110,8 +110,10 @@ create table session (
 );
 create table session_event (
   session_id uuid not null references session on delete cascade,
-  seq bigint not null, event_id text not null,
-  type text not null, event jsonb not null,    -- the whole JSONL line
+  event jsonb not null,                        -- the whole JSONL line: the only source
+  seq bigint generated always as ((event->>'seq')::bigint) stored,
+  event_id text generated always as (event->>'id') stored,
+  type text generated always as (event->>'type') stored,
   content_hash bytea not null,                 -- sha-256 of the canonical event, for retry checks
   primary key (session_id, seq),
   unique (session_id, event_id)

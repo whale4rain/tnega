@@ -319,6 +319,13 @@ transports: in-process (a pair of message ports) and WebSocket client
 `ctx.fs`, `ctx.process`, `ctx.browser` and `ctx.computer` that send protocol
 calls over a connection.
 
+**Lifecycle:** `startDaemon` returns `{ close(): Promise<void> }` and every
+remote Provider and `daemon-routes` registers on its own Fiber. Close or dispose
+undoes in reverse order: stop reconnect attempts, cancel in-flight calls, kill
+child processes the daemon started, close the transport, unregister routes. A
+test disposes mid-call and checks that no listener, timer or child process is
+left.
+
 **Workspace binding:** every `fs/*`, `process/*` and `terminal/*` call carries a
 `workspaceId`. The daemon accepts only ids it announced in `initialize`, and
 applies that workspace's fence; anything else fails with `WORKSPACE_DENIED`.
