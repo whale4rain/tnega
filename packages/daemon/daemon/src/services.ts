@@ -27,6 +27,13 @@ interface OpenStream {
   unsubscribe: (() => void) | undefined
   orphanTimer: NodeJS.Timeout | undefined
   ended: boolean
+  /**
+   * The connection that owned the stream dropped. Events are only buffered
+   * until the stream's owner resumes it, so a replay is never overtaken by a
+   * live event, and an end that happens meanwhile waits for the resume.
+   */
+  awaitingResume: boolean
+  pendingEnd: string | undefined
 }
 
 /**
@@ -58,23 +65,29 @@ export class StreamHub {
 
   async open(id: string, source: NonNullable<ExposedService['streams']>[string], args: readonly unknown[]): Promise<void> {
     if (this.streams.has(id)) throw new RpcError(`stream ${id} is already open`, RpcErrorCode.INVALID_PARAMS)
-    const stream: OpenStream = { seq: 0, buffer: [], unsubscribe: undefined, orphanTimer: undefined, ended: false }
+    const stream: OpenStream = { seq: 0, buffer: [], unsubscribe: undefined, orphanTimer: undefined, ended: false, awaitingResume: false, pendingEnd: undefined }
     this.streams.set(id, stream)
     const emit = (event: unknown): void => {
-      if (stream.ended) return
+      if (stream.ended || stream.pendingEnd !== undefined) return
       stream.seq += 1
       stream.buffer.push({ seq: stream.seq, event })
       if (stream.buffer.length > this.bufferEvents) stream.buffer.shift()
-      this.peer?.notify('stream/event', { stream: id, seq: stream.seq, event })
+      if (!stream.awaitingResume) this.peer?.notify('stream/event', { stream: id, seq: stream.seq, event })
     }
     const end = (reason: string): void => {
-      if (stream.ended) return
+      if (stream.ended || stream.pendingEnd !== undefined) return
+      if (stream.awaitingResume) {
+        // Keep the stream (and its buffer) until the resume or the grace period.
+        stream.pendingEnd = reason
+        this.unsubscribe(stream)
+        return
+      }
       this.peer?.notify('stream/end', { stream: id, reason })
       this.drop(id)
     }
     try {
       const unsubscribe = await source(args, emit, end)
-      if (stream.ended) unsubscribe()
+      if (stream.ended || stream.pendingEnd !== undefined) unsubscribe()
       else stream.unsubscribe = unsubscribe
     } catch (error) {
       this.drop(id)
@@ -91,6 +104,11 @@ export class StreamHub {
     this.clearOrphan(stream)
     const missed = stream.buffer.filter(item => item.seq > after)
     for (const item of missed) this.peer?.notify('stream/event', { stream: id, seq: item.seq, event: item.event })
+    stream.awaitingResume = false
+    if (stream.pendingEnd !== undefined) {
+      this.peer?.notify('stream/end', { stream: id, reason: stream.pendingEnd })
+      this.drop(id)
+    }
     return missed.length
   }
 
@@ -108,6 +126,7 @@ export class StreamHub {
 
   private orphan(id: string, stream: OpenStream): void {
     this.clearOrphan(stream)
+    stream.awaitingResume = true
     stream.orphanTimer = setTimeout(() => this.drop(id), this.graceMs)
     stream.orphanTimer.unref()
   }
@@ -123,6 +142,12 @@ export class StreamHub {
     this.streams.delete(id)
     stream.ended = true
     this.clearOrphan(stream)
-    try { stream.unsubscribe?.() } catch { /* the source is going away anyway */ }
+    this.unsubscribe(stream)
+  }
+
+  private unsubscribe(stream: OpenStream): void {
+    const unsubscribe = stream.unsubscribe
+    stream.unsubscribe = undefined
+    try { unsubscribe?.() } catch { /* the source is going away anyway */ }
   }
 }

@@ -137,9 +137,13 @@ describe('terminals over the daemon', () => {
     ptys[0]!.emit('c')
     await tick(40)
     const second = await links[1]!
-    await resumeStream(second, stream.id, stream.lastSeq, { onEvent: event => seen.push(event) })
+    // Output while the resume is on its way waits for it, so the replay comes first.
+    const resuming = resumeStream(second, stream.id, stream.lastSeq, { onEvent: event => seen.push(event) })
+    ptys[0]!.emit('d')
+    await resuming
+    ptys[0]!.emit('e')
     await tick()
-    expect(seen).toEqual([{ type: 'data', data: 'a' }, { type: 'data', data: 'b' }, { type: 'data', data: 'c' }])
+    expect(seen).toEqual(['a', 'b', 'c', 'd', 'e'].map(data => ({ type: 'data', data })))
   })
 
   it('drops a stream nobody resumes within the grace period', async () => {

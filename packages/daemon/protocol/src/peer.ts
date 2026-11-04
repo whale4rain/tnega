@@ -231,7 +231,14 @@ export class Peer {
     this.running.set(id, controller)
     try {
       const result = await handle(method, params, { signal: controller.signal, id })
-      if (!this.transport.closed) this.safeSend({ jsonrpc: '2.0', id, result: result ?? null })
+      if (!this.transport.closed) {
+        try {
+          this.send({ jsonrpc: '2.0', id, result: result ?? null })
+        } catch (error) {
+          // A result over the size limit still answers the call, with a bounded error.
+          this.safeSend({ jsonrpc: '2.0', id, error: toResponseError(error) })
+        }
+      }
     } catch (error) {
       if (controller.signal.aborted && this.transport.closed) return
       const response = controller.signal.aborted

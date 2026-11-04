@@ -60,9 +60,35 @@ function listen(link: DaemonLink, callId: string, onOutput: OutputListener | und
   })
 }
 
+/**
+ * Collect background-process notifications while `process/start` is on its
+ * way: a process that ends at once has its last output and exit sent before
+ * the reply that names its handle.
+ */
+function collectEarly(link: DaemonLink): { take(handle: string): Early; stop(): void } {
+  const tails = new Map<string, string>()
+  const exits = new Map<string, number | null>()
+  const offTail = link.onNotification('process/tail', params => { if (isTail(params)) tails.set(params.handle, params.output) })
+  const offExit = link.onNotification('process/exit', params => { if (isExit(params)) exits.set(params.handle, params.exitCode) })
+  const stop = (): void => { offTail(); offExit() }
+  return {
+    take(handle) {
+      stop()
+      const output = tails.get(handle)
+      return {
+        ...(output !== undefined ? { output } : {}),
+        ...(exits.has(handle) ? { exitCode: exits.get(handle) ?? null } : {}),
+      }
+    },
+    stop,
+  }
+}
+
+interface Early { output?: string; exitCode?: number | null }
+
 /** A background process on the daemon, followed through its notifications. */
-function remoteBackground(link: DaemonLink, handle: string, pid: number | undefined, sandboxed: boolean): BackgroundProcess {
-  let output = ''
+function remoteBackground(link: DaemonLink, handle: string, pid: number | undefined, sandboxed: boolean, early: Early = {}): BackgroundProcess {
+  let output = early.output ?? ''
   let code: number | null | undefined
   let settle: (code: number | null) => void = () => {}
   const exited = new Promise<number | null>(done => { settle = done })
@@ -85,6 +111,7 @@ function remoteBackground(link: DaemonLink, handle: string, pid: number | undefi
     if (code === undefined) output += '\n[tnega] lost the connection to the daemon running this process'
     finish(null)
   })
+  if (early.exitCode !== undefined) finish(early.exitCode)
   return {
     pid,
     ...(sandboxed ? { sandboxed: true } : {}),
@@ -151,25 +178,35 @@ export function remoteExecutionProvider(link: DaemonLink, options: RemoteExecuti
       }, request.signal ? { signal: request.signal } : {})
     },
     async startShell(request: BackgroundShellRequest): Promise<BackgroundProcess> {
-      const started = await link.call('process/start', {
-        workspaceId: options.workspaceId,
-        cwd: request.cwd,
-        command: request.command,
-        ...(request.env ? { env: { ...request.env } } : {}),
-        ...(request.unsandboxed ? { unsandboxed: true } : {}),
-        ...await sandbox(),
-      })
-      return remoteBackground(link, started.handle, started.pid, started.sandboxed === true)
+      const early = collectEarly(link)
+      try {
+        const started = await link.call('process/start', {
+          workspaceId: options.workspaceId,
+          cwd: request.cwd,
+          command: request.command,
+          ...(request.env ? { env: { ...request.env } } : {}),
+          ...(request.unsandboxed ? { unsandboxed: true } : {}),
+          ...await sandbox(),
+        })
+        return remoteBackground(link, started.handle, started.pid, started.sandboxed === true, early.take(started.handle))
+      } finally {
+        early.stop()
+      }
     },
     async startProcess(request: BackgroundProcessRequest): Promise<BackgroundProcess> {
-      const started = await link.call('process/start', {
-        workspaceId: options.workspaceId,
-        cwd: request.cwd,
-        argv: [...request.argv],
-        ...(request.env ? { env: { ...request.env } } : {}),
-        ...await sandbox(),
-      })
-      return remoteBackground(link, started.handle, started.pid, started.sandboxed === true)
+      const early = collectEarly(link)
+      try {
+        const started = await link.call('process/start', {
+          workspaceId: options.workspaceId,
+          cwd: request.cwd,
+          argv: [...request.argv],
+          ...(request.env ? { env: { ...request.env } } : {}),
+          ...await sandbox(),
+        })
+        return remoteBackground(link, started.handle, started.pid, started.sandboxed === true, early.take(started.handle))
+      } finally {
+        early.stop()
+      }
     },
   }
   const shell = link.capabilities.shell

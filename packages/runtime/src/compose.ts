@@ -484,8 +484,10 @@ export const computerCapability: Plugin = {
 export const replyCapability: Plugin = {
   name: 'capability:reply',
   inject: ['tools'],
-  async apply(ctx: Context, spec: { workspace: string }) {
-    await ctx.plugin(toolSendFile, { cwd: spec.workspace })
+  async apply(ctx: Context, spec: { workspace: string; local?: boolean }) {
+    // The chat serves a shown file from this machine's disk, so a scope on a
+    // daemon cannot show one yet; it keeps the agent-rendered interfaces.
+    if (spec.local !== false) await ctx.plugin(toolSendFile, { cwd: spec.workspace })
     await ctx.plugin(toolUi)
   },
 }
@@ -522,9 +524,10 @@ export const runtimeCapabilities: Plugin = {
     }
     if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace, ...(spec.machine ? { machine: spec.machine } : {}) })
     // Office and skills read the workspace from this machine's disk, so a scope
-    // on a daemon never mounts them; spill keeps runtime-side records and is off unless asked.
+    // on a daemon never mounts them. Spill stores the full result on this machine
+    // where `read_file` (on the daemon) cannot reach it, so it is local only too.
     const local = !spec.machine
-    if (spec.spill ?? (builtinOn && local)) await ctx.plugin(spillCapability, { workspace: spec.workspace })
+    if (local && (spec.spill ?? builtinOn)) await ctx.plugin(spillCapability, { workspace: spec.workspace })
     if (local && (office === true || (office === 'auto' && builtinOn && await hasOfficeFiles(spec.workspace)))) {
       // Optional by nature: a workspace with a spreadsheet should get the tools,
       // and a broken one of them must not cost the run every other tool.
@@ -543,7 +546,7 @@ export const runtimeCapabilities: Plugin = {
     }
     if (spec.ptc) await ctx.plugin(ptcCapability, spec.ptc)
     if (spec.computer) await ctx.plugin(computerCapability, spec.computer)
-    if (spec.reply) await ctx.plugin(replyCapability, { workspace: spec.workspace })
+    if (spec.reply) await ctx.plugin(replyCapability, { workspace: spec.workspace, local })
 
     // Every executable tool is a schema provider, so the assembled prompt and
     // the registry can never disagree about what the model may call.

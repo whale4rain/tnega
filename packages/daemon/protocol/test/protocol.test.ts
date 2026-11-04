@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_MESSAGE_BYTES,
   MAX_PAYLOAD_BYTES,
   PROTOCOL_VERSION,
   Peer,
@@ -89,6 +90,14 @@ describe('peer', () => {
     expect(a.closed).toBe(false)
     expect(b.closed).toBe(false)
     a.close()
+  })
+
+  it('answers with a bounded error when a result is over the message limit', async () => {
+    const [left, right] = memoryTransportPair()
+    const client = new Peer(left, { heartbeat: false })
+    new Peer(right, { heartbeat: false, handle: async () => 'x'.repeat(MAX_MESSAGE_BYTES + 1) })
+    await expect(client.request('big', {})).rejects.toMatchObject({ rpcCode: RpcErrorCode.INVALID_PARAMS })
+    left.close()
   })
 
   it('refuses a payload over the cap before sending it', () => {
