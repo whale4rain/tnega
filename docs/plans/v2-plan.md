@@ -65,7 +65,7 @@ Revised 2026-11-04 with the owner. The diagram is the project report
 | Daemon protocol | JSON-RPC 2.0 over one WebSocket that the daemon opens. Method namespaces mirror the seams (`fs/*`, `process/*`, `terminal/*`, `browser/*`, `computer/*`). Plain JSON only: cancel by request id, output as notifications. Handshake: protocol version, device id, capabilities. Server accepts versions N and N-1. |
 | Client protocol | Keep HTTP + SSE; add a protocol version and typed schema to `@tnega/client`. Revisit JSON-RPC for clients at M3 only if server push needs it. |
 | Repos and releases | One repo, two release lines: harness (`v*` tags: npm `tnega`, desktop, CLI/TUI, `tnega daemon`) and server (`server-v*` tags: `tnega-server` and `tnega-daemon` images, `deploy/` compose then Helm). Operations for a hosted service may live in a private repo later. |
-| Versions | Stay on 0.x previews until the 1.0 gate passes. |
+| Versions | Stay on 0.x previews; 1.0 waits until v2 has landed (2026-11-04). Breaking changes allowed with migrations. |
 | Local mode | Desktop, CLI and TUI start server and daemon in one process with an in-process transport and the JSONL / file Providers. Works offline. |
 
 ### How it is built today and what changes
@@ -126,29 +126,34 @@ behaviour arrives as plugins.
 
 ## Road to 1.0
 
-1.0 freezes the contracts v2 speaks: Session format, Blackboard journal, plugin
-and seam APIs, wire types. Young features ship in 1.0 marked Preview.
+Changed 2026-11-04 (owner): **stability is not the first promise.** v2 changes
+the seams, storage and host split, so the contracts are not frozen first.
+0.x minor releases (0.6, 0.7 …) may change the Session format, seam APIs and
+wire types; each change ships with a migration and a test that reads the
+previous format. 1.0 comes after the v2 shape has landed and settled.
 
-Gate:
+The work list, package by package, with hand-off prompts:
+[v2-package-changes.md](v2-package-changes.md).
+
+Gate for 1.0, once v2 has landed:
 
 - **Contracts**: versioned formats with migration tests from every release;
-  documented plugin and seam APIs; versioned `@tnega/client` wire types.
+  documented plugin and seam APIs; versioned `@tnega/client` wire types and
+  daemon protocol.
 - **Reliability**: kill-and-restart tests for runs, jobs, project threads; the
   open project message items closed; two release gates in a row pass on
   Windows, macOS, Linux.
 - **Agent quality**: Terminal-Bench on each beta; goal at least double the
   2026-10-24 score (9.1% plain, 12.1% with retries).
 - **Sandbox**: Windows piped children solved, or the dedicated sandbox user
-  designed and proven as `docs/roadmap.md` asks: a design note (account
-  lifecycle, credential storage, grant set, uninstall) and a clean Windows VM
-  spike running `npm run dev` with piped children.
+  designed and proven as `docs/roadmap.md` asks.
 - **Chat**: images and files in agent replies; simple A2UI.
 - **Docs**: user guide, plugin author guide, upgrade notes.
 
-Groundwork shipped in the 0.x previews, each with a local Provider only:
-`ctx.execution` / `ctx.workspace`; `ctx.sessionStore` with seq-checked append;
-blob store (old inline images still readable); `WorkspaceRef`; durable jobs and
-a desktop scheduler for routines; the environment spec run locally in a worktree.
+Groundwork in the 0.x previews, each with a local Provider only: `ctx.fs`,
+`ctx.process`, `ctx.sessionStore` with seq-checked append, `ctx.blobs` (old
+inline images still readable), `WorkspaceRef`, durable jobs and a desktop
+scheduler for routines.
 
 ## v2 milestones
 
@@ -165,9 +170,9 @@ a desktop scheduler for routines; the environment spec run locally in a worktree
 4. **M4 Projects on the server**: a Docker box per thread, sleep and wake, routines
    without a window, branch per thread with a pull request card.
 5. **M5 Hand-off and hardening** (2.x): laptop/server hand-off, snapshots,
-   budgets, audit, Postgres, microVM Provider, several people in one project.
+   budgets, audit, several server instances, microVM Provider, several people in one project.
 
-v2.0 = M1 to M4.
+v2.0 = M1 to M4. "v2" names the architecture; the release that ships it may be 1.0.0 or later, decided then. Phases P1–P8 in [v2-package-changes.md](v2-package-changes.md) map to the milestones: P1–P3 groundwork, P4–P5 = M1, P8 = M2, P6–P7 = M3.
 
 ## Risks
 
@@ -178,7 +183,7 @@ target, so review auth before M3.
 
 ## Open decisions (owner)
 
-- Version numbers: decided 2026-11-03, stay on 0.x previews (0.6, 0.7 …) and jump to `1.0.0` when the gate passes.
+- Version numbers: decided 2026-11-03, stay on 0.x previews (0.6, 0.7 …); changed 2026-11-04, `1.0.0` comes after v2 lands, not before.
 - v2.0 target: self-hosted first.
 - First box: Docker or Podman; microVM later.
 - Database: Postgres for the server from the start (changed 2026-11-04, see
