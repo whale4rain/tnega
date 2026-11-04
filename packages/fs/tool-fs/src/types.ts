@@ -1,3 +1,4 @@
+import type { WorkspaceFs } from '@tnega/fs'
 import type { ObservationStore } from './observed.js'
 
 /** How strictly a write must match what this Agent has already read. */
@@ -9,6 +10,8 @@ export type FsGuardMode = 'off' | 'warn' | 'enforce'
  * place: this package never decides what "inside the workspace" means.
  */
 export interface FileToolsConfig {
+  /** The workspace's file system (`ctx.fs`); every read and write goes through it. */
+  fs: WorkspaceFs
   /** Absolute path for a workspace-relative path, or a rejection for an escape. */
   resolve(path: string): Promise<string>
   /** The path as the model wrote it, normalised for display. */

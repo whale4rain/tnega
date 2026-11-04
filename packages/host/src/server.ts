@@ -17,6 +17,7 @@ import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
 import { compactionAdapter } from './support.js'
 import { fileRoutes } from '@tnega/workspace-files'
+import { fsLocal } from '@tnega/fs-local'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { folderPickerRoutes } from '@tnega/directory-picker'
 import { usageRoutes } from '@tnega/usage'
@@ -141,6 +142,8 @@ export async function startWebServer(
     web,
   }
 
+  // Workbench files are this machine's; a remote daemon will provide `ctx.fs` instead.
+  await root.plugin(fsLocal)
   await root.plugin(fileRoutes)
   await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })
   await root.plugin(browserRoutes, { browser: () => browser })

@@ -12,6 +12,7 @@ import { networkPolicy } from '@tnega/execution'
 import { canonicalPath, resolveSandboxPolicy, type SandboxExecutionPolicy, type SandboxNetworkRequest } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { fsLocal } from '@tnega/fs-local'
 import { secretsLocal, type SecretVault } from '@tnega/secrets-local'
 import type { SessionLog } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
@@ -44,6 +45,7 @@ import { workspacePrompt } from '@tnega/workspace-prompt'
  * mount their Provider and their model-facing Consumer together:
  *
  * ```text
+ * @tnega/fs-local ─→ capability:fs ─→ @tnega/tool-fs, @tnega/tool-send-file
  * @tnega/sandbox-local ─→ capability:sandbox ─→ @tnega/execution-sandbox
  * @tnega/search-ripgrep ─→ capability:search ─→ @tnega/tool-search
  * @tnega/spill-local ─→ capability:spill ─→ @tnega/tool-spill
@@ -250,6 +252,18 @@ export const secretsCapability: Plugin = {
 
 export interface WorkspaceCapabilitySpec { workspace: string }
 
+/**
+ * File system seam: the Provider of `ctx.fs` for this scope. The file tools,
+ * `send_file` and anything else that touches the workspace's files open it
+ * from here, so pointing it at another machine moves them all.
+ */
+export const fsCapability: Plugin = {
+  name: 'capability:fs',
+  async apply(ctx: Context) {
+    await ctx.plugin(fsLocal)
+  },
+}
+
 /** Search seam: provider then the model-facing `glob` / `grep`. */
 export const searchCapability: Plugin = {
   name: 'capability:search',
@@ -414,6 +428,7 @@ export const runtimeCapabilities: Plugin = {
     const office = spec.office ?? 'auto'
     const builtin = spec.builtin === false ? false : spec.builtin ?? {}
     await ctx.plugin(tools, spec.tools ?? {})
+    await ctx.plugin(fsCapability)
     await ctx.plugin(systemPrompt)
     await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? spec.workspace })
     if (spec.summary) await ctx.plugin(runSummary)

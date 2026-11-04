@@ -37,6 +37,7 @@
     "@tnega/terminal": "workspace:*",
     "@tnega/thread-local": "workspace:*",
     "@tnega/tools": "workspace:*",
-    "@tnega/workspace-files": "workspace:*"
+    "@tnega/workspace-files": "workspace:*",
+    "@tnega/fs-local": "workspace:*"
   }
 }

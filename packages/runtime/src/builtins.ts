@@ -1,5 +1,7 @@
 import type { Context } from '@tnega/core'
 import { ProcessRegistry, type ExecutionProvider } from '@tnega/execution'
+import type { WorkspaceFs } from '@tnega/fs'
+import { LocalWorkspaceFs } from '@tnega/fs-local'
 import { createFsTools, type FsGuardMode } from '@tnega/tool-fs'
 import { createShellTool } from '@tnega/tool-shell'
 import { createWebFetchTool } from '@tnega/tool-web-fetch'
@@ -44,8 +46,17 @@ export interface BuiltinToolsConfig {
   /** Directory names a recursive `list_dir` skips. */
   searchExcludes?: readonly string[]
   execution?: ExecutionProvider
+  /**
+   * The workspace's file system. The plugin opens it from `ctx.fs` when a
+   * Provider is mounted; without one (a bare test scope) it is this machine.
+   */
+  fs?: WorkspaceFs
   /** Background processes shared beyond this scope (see ProcessRegistry). */
   processes?: ProcessRegistry
+}
+
+function outsideOption(config: BuiltinToolsConfig): { allowOutside?: boolean | (() => boolean | Promise<boolean>) } {
+  return config.allowOutsideWorkspace !== undefined ? { allowOutside: config.allowOutsideWorkspace } : {}
 }
 
 /** Build the default tools without registering them. */
@@ -55,9 +66,8 @@ export function createBuiltinToolDefinitions(
   ownedProcesses?: ProcessRegistry,
 ): ToolDefinition[] {
   const disabled = new Set(config.disabled ?? [])
-  const definitions = createFsTools({
-    ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
-    ...(config.allowOutsideWorkspace !== undefined ? { allowOutsideWorkspace: config.allowOutsideWorkspace } : {}),
+  const files = config.fs ?? new LocalWorkspaceFs(config.cwd ?? process.cwd(), outsideOption(config))
+  const definitions = createFsTools(files, {
     disabled: [...disabled],
     ...(config.maxReadFileBytes !== undefined ? { maxReadBytes: config.maxReadFileBytes } : {}),
     ...(config.maxWriteBytes !== undefined ? { maxWriteBytes: config.maxWriteBytes } : {}),
@@ -96,6 +106,8 @@ export const builtinTools = {
     // Without a shared registry, background processes die with this plugin.
     const owned = config.processes || !config.allowShell ? undefined : new ProcessRegistry()
     if (owned) ctx.fiber.effect(() => () => { void owned.dispose() }, 'builtinTools/processes')
-    for (const definition of createBuiltinToolDefinitions(config, owned)) ctx.tools.register(definition)
+    const provider = config.fs ? undefined : ctx.get('fs', false)
+    const fs = provider?.workspace(config.cwd ?? process.cwd(), outsideOption(config))
+    for (const definition of createBuiltinToolDefinitions(fs ? { ...config, fs } : config, owned)) ctx.tools.register(definition)
   },
 }

@@ -17,7 +17,7 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 - `packages/agent`：Agent loop、durable inbox、live agent、prompt 组装和 LLM service seam。
 - `packages/tools`：工具注册表、执行管线与 policy，以及各工具包共用的词汇（入参读取、`ToolInputError`、路径围栏转发、按路径锁、后台进程交接 `ADOPT_BACKGROUND_PROCESS`）。它本身**不注册任何模型可见工具**；工具按能力域放在各自的包里，由 `packages/runtime` 的 `builtinTools` bundle 决定一个作用域挂哪些。
 - `packages/execution`：本机执行边界（shell / 无 shell 的 argv 进程 / HTTP）的词汇与实现，以及后台进程登记表 `ProcessRegistry`。纯库，无 ctx key，不是缝。
-- `packages/fs/` 是文件域：`tool-fs` 是模型可见的 `read_file` / `write_file` / `edit_file` / `list_dir`（按行分页、原子写入、读后写守卫）；同域还有搜索缝的三个角色 —— `search-definition` 是 Service Definition（`ctx.search`，事件面 `search/*` 也由它拥有）、`search-ripgrep` 是 Provider、`tool-search` 是 Consumer（模型可见的 `glob` / `grep`）。
+- `packages/fs/` 是文件域：`fs` 是文件系统缝的 Service Definition（`ctx.fs`，工作区文件的唯一入口，v2 让文件可以在另一台机器上）、`fs-local` 是本机 Provider（围栏 + 原子写）；`tool-fs` 是模型可见的 `read_file` / `write_file` / `edit_file` / `list_dir`（按行分页、原子写入、读后写守卫）；同域还有搜索缝的三个角色 —— `search-definition` 是 Service Definition（`ctx.search`，事件面 `search/*` 也由它拥有）、`search-ripgrep` 是 Provider、`tool-search` 是 Consumer（模型可见的 `glob` / `grep`）。
 - `packages/shell/tool-shell` 是模型可见的 `shell`（`runInBackground` 由 `jobs/tool-jobs` 接管）；`packages/web/` 是网络域：`tool-web-fetch`（`http_get`）与 `tool-web-search`（DeepSeek Search & Fetch API 上的 `web_search` 与 `web_fetch`）。`now` 属于 Project 域（`packages/project/host/src/clock.ts`）。
 - `packages/reply/` 是回复域：`a2ui` 是 Agent 界面的词汇（A2UI 子集，工具与客户端共用）、`tool-ui` 是模型可见的 `show_ui`、`tool-send-file` 是模型可见的 `send_file`；由 `packages/runtime` 的 `reply` 能力挂载，只有带界面的宿主打开。
 - `packages/spill/` 是工具输出溢出缝三个角色的容器：`spill` 是 Service Definition（`ctx.spillStore`）、`spill-local` 是文件系统 Provider、`tool-spill` 是 Consumer（`tools/post-execute` 策略，把过大结果换成头尾预览加定位符）。

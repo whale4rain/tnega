@@ -1,5 +1,3 @@
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
 import {
   optionalBoolean, record, stringField,
   ToolInputError,
@@ -7,7 +5,7 @@ import {
   type ToolDefinition,
   type ToolExecuteOptions,
 } from '@tnega/tools'
-import { exists, writeFileAtomic } from './atomic.js'
+import { readCurrent, writeThrough } from './files.js'
 import { checkObserved, type CurrentVersion } from './guards.js'
 import { fingerprint } from './observed.js'
 import type { FileToolsConfig } from './types.js'
@@ -45,25 +43,19 @@ export function writeFileTool(config: FileToolsConfig): ToolDefinition {
       const display = config.displayPath(target)
       const signal = options.signal ? { signal: options.signal } : {}
       return await withPathLock(target, async () => {
-        const current: CurrentVersion = await exists(target)
-          ? { kind: 'present', sha256: fingerprint(await readFile(target)) }
-          : { kind: 'absent' }
+        const before = await readCurrent(config.fs, target)
+        const current: CurrentVersion = before ? { kind: 'present', sha256: fingerprint(before) } : { kind: 'absent' }
         if (append) {
-          if (current.kind === 'present') {
-            await appendFile(target, content, { encoding: 'utf8', ...signal })
-          } else {
-            // Appending to a missing file creates it; a concurrent creator
-            // surfaces as a conflict instead of being silently extended.
-            await mkdir(dirname(target), { recursive: true })
-            await writeFileAtomic(target, content, { createOnly: true, ...signal })
-          }
-          const after = await readFile(target)
+          // Appending to a missing file creates it; a concurrent creator
+          // surfaces as a conflict instead of being silently extended.
+          await writeThrough(config.fs, target, content, { mode: current.kind === 'present' ? 'append' : 'create', ...signal })
+          const after = await config.fs.readFile(target)
           const sha256 = fingerprint(after)
           config.observations.record(options.agentId, target, { kind: 'present', sha256 })
           return { path: display, bytes, appended: true, sha256 }
         }
         const verdict = checkObserved(config, options.agentId, target, display, current)
-        await writeFileAtomic(target, content, { createOnly: current.kind === 'absent', ...signal })
+        await writeThrough(config.fs, target, content, { mode: current.kind === 'absent' ? 'create' : 'replace', ...signal })
         const sha256 = fingerprint(content)
         config.observations.record(options.agentId, target, { kind: 'present', sha256 })
         return {

@@ -19,6 +19,7 @@
     "@tnega/core": "workspace:*",
     "@tnega/directory-picker": "workspace:*",
     "@tnega/execution": "workspace:*",
+    "@tnega/fs-local": "workspace:*",
     "@tnega/goal": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/jobs": "workspace:*",

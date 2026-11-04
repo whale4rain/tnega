@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { chmod, link, mkdir, open, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { ToolInputError } from '@tnega/tools'
+import { FsError } from '@tnega/fs'
 
 /** Errors a hard link raises on filesystems that have none (exFAT, some shares). */
 const NO_LINK = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'])
@@ -47,7 +47,7 @@ const pause = async (ms: number): Promise<void> => await new Promise(done => set
  */
 export async function writeFileAtomic(
   target: string,
-  content: string,
+  content: string | Uint8Array,
   options: { createOnly?: boolean; signal?: AbortSignal } = {},
 ): Promise<void> {
   const { createOnly = false, signal } = options
@@ -68,7 +68,7 @@ export async function writeFileAtomic(
     try {
       // `open` applies the umask; an existing file keeps exactly its bits.
       if (mode !== undefined) await handle.chmod(mode).catch(() => undefined)
-      await handle.writeFile(content, { encoding: 'utf8', ...signal ? { signal } : {} })
+      await handle.writeFile(content, { ...typeof content === 'string' ? { encoding: 'utf8' as const } : {}, ...signal ? { signal } : {} })
       await handle.sync()
     } finally {
       await handle.close()
@@ -90,14 +90,14 @@ async function publishNew(tempPath: string, target: string): Promise<void> {
     // Another writer created the target after we looked: report the race
     // instead of the raw EEXIST, which reads as a tool bug to a model.
     if (code(error) === 'EEXIST') {
-      throw new ToolInputError(`${basename(target)} appeared while it was being created; read it, then retry`)
+      throw new FsError(`${basename(target)} appeared while it was being created; read it, then retry`, 'FS_EXISTS')
     }
     if (!NO_LINK.has(code(error) ?? '')) throw error
   }
   // No hard links here: a rename is still atomic, it just cannot refuse a file
   // that appeared in the last instant.
   if (await exists(target)) {
-    throw new ToolInputError(`${basename(target)} appeared while it was being created; read it, then retry`)
+    throw new FsError(`${basename(target)} appeared while it was being created; read it, then retry`, 'FS_EXISTS')
   }
   await rename(tempPath, target)
 }
@@ -117,7 +117,7 @@ async function replace(tempPath: string, target: string): Promise<void> {
   }
   // Still held open after the retries (an editor, a watcher, an antivirus
   // scan, or a real permission denial). Fail with the old content intact.
-  throw new ToolInputError(`${basename(target)} is open in another program or not writable; close it and retry`)
+  throw new FsError(`${basename(target)} is open in another program or not writable; close it and retry`, 'FS_BUSY')
 }
 
 /** Whether the path exists at all, without following it into a directory. */

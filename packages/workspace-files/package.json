@@ -7,12 +7,16 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@tnega/core": "workspace:*",
     "@tnega/execution": "workspace:*",
+    "@tnega/fs": "workspace:*",
     "@tnega/search": "workspace:*",
     "@tnega/search-ripgrep": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/tools": "workspace:*",
-    "@tnega/core": "workspace:*",
     "@tnega/web-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/fs-local": "workspace:*"
   }
 }

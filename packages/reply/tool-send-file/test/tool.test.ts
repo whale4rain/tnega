@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
+import { fsLocal } from '@tnega/fs-local'
 import { tools, type ToolsService } from '@tnega/tools'
 import { toolSendFile } from '../src/index.js'
 
@@ -26,6 +27,7 @@ afterEach(async () => {
 async function setup() {
   const root = new Context()
   await root.plugin(tools)
+  await root.plugin(fsLocal)
   const plugin = root.plugin(toolSendFile, { cwd: workspace })
   await plugin
   return { registry: root.get('tools') as ToolsService, plugin }

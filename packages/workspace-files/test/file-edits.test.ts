@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
+import { LocalWorkspaceFs } from '@tnega/fs-local'
 import { captureFileEditBaseline, editedFiles, listChanges } from '../src/index.js'
 import type { SessionEvent } from '@tnega/session'
 
@@ -42,5 +43,5 @@ it('excludes runtime persistence from turn edits and workbench changes while ret
   const baseline = await captureFileEditBaseline(workspace)
   await Promise.all([...runtime, ...visible].map(path => write(path, 'after\n')))
   expect((await editedFiles(workspace, baseline, [], 0)).map(file => file.path)).toEqual([...visible].sort())
-  expect((await listChanges(workspace)).files.map(file => file.path).sort()).toEqual([...visible].sort())
+  expect((await listChanges(new LocalWorkspaceFs(workspace))).files.map(file => file.path).sort()).toEqual([...visible].sort())
 })

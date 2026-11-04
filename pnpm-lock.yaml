@@ -450,6 +450,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs/fs-local
       '@tnega/persona':
         specifier: workspace:*
         version: link:../persona
@@ -627,6 +630,24 @@ importers:
         specifier: 7.29.1
         version: 7.29.1
 
+  packages/fs/fs:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/fs/fs-local:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs
+      '@tnega/fs-sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/fs-sandbox
+
   packages/fs/search-definition:
     dependencies:
       '@tnega/core':
@@ -650,12 +671,19 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs
       '@tnega/search':
         specifier: workspace:*
         version: link:../search-definition
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs-local
 
   packages/fs/tool-search:
     dependencies:
@@ -722,6 +750,9 @@ importers:
       '@tnega/execution':
         specifier: workspace:*
         version: link:../execution
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs/fs-local
       '@tnega/goal':
         specifier: workspace:*
         version: link:../goal
@@ -1466,9 +1497,16 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../../fs/fs
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../../fs/fs-local
 
   packages/reply/tool-ui:
     dependencies:
@@ -1546,6 +1584,12 @@ importers:
       '@tnega/execution-secrets':
         specifier: workspace:*
         version: link:../secrets/execution-secrets
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs/fs
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs/fs-local
       '@tnega/jobs-local':
         specifier: workspace:*
         version: link:../jobs/jobs-local
@@ -2005,6 +2049,9 @@ importers:
       '@tnega/execution':
         specifier: workspace:*
         version: link:../execution
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs/fs
       '@tnega/search':
         specifier: workspace:*
         version: link:../fs/search-definition
@@ -2020,6 +2067,10 @@ importers:
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit
+    devDependencies:
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs/fs-local
 
   packages/workspace-prompt:
     dependencies:

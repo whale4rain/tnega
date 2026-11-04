@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
+import { fsLocal } from '@tnega/fs-local'
 import { tools, type ToolsService } from '@tnega/tools'
 import { toolFs, type ToolFsConfig } from '../src/index.js'
 
@@ -12,6 +13,7 @@ afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { re
 async function mount(config: ToolFsConfig = {}): Promise<ToolsService> {
   const root = new Context()
   await root.plugin(tools)
+  await root.plugin(fsLocal)
   await root.plugin(toolFs, config)
   return root.get('tools')
 }

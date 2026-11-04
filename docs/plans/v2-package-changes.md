@@ -143,6 +143,15 @@ config. Those read tnega's own state, not the workspace.
 `packages/workspace-files/src` imports `node:fs`; existing tool tests pass
 unchanged; new Provider tests pass on Linux and Windows.
 
+**As built (2026-11-04):** `ctx.fs.workspace(root, { allowOutside })` returns a
+`WorkspaceFs` handle, so one Provider serves every workspace of a scope (host
+routes open one per request). The handle also has `resolve` (symlinks followed,
+fenced again) and `realRoot`, which the file tools need for their locks and
+display paths. The read-after-write guard keeps comparing content hashes
+rather than `mtimeMs` (no behaviour change). `workspace-files/src/file-edits.ts`
+still uses `node:fs` with `git`; it moves together with git in P2, when
+commands go through `ctx.process`.
+
 **Hand-off prompt:**
 
 ```text
