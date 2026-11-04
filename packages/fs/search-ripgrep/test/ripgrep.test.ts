@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import type { ExecutionProvider, ProcessResult } from '@tnega/execution'
+import type { ExecutionProvider, ProcessResult } from '@tnega/process'
 import { SearchError } from '@tnega/search'
 import {
   assertSearchSucceeded,

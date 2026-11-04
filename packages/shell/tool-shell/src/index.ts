@@ -1,11 +1,5 @@
 import type { Context } from '@tnega/core'
-import {
-  describeShell,
-  localExecutionProvider,
-  ProcessRegistry,
-  systemShell,
-  type ExecutionProvider,
-} from '@tnega/execution'
+import { ProcessRegistry, type ExecutionProvider } from '@tnega/process'
 import {
   ESCALATE_HINT,
   ESCALATE_PROPERTIES,
@@ -62,7 +56,8 @@ const BACKGROUND_HINT = 'Long commands (downloads, installs, builds, full test s
 export function createShellTool(config: ToolShellConfig = {}, owned?: ProcessRegistry): ToolDefinition {
   const cwdRoot = config.cwd ?? process.cwd()
   const outside = config.allowOutsideWorkspace ?? false
-  const execution = config.execution ?? localExecutionProvider
+  const execution = config.execution
+  if (!execution) throw new Error('shell needs an execution boundary: mount a ctx.process Provider or pass execution')
   const processes = config.processes ?? owned
   const shared = config.processes !== undefined
   const timeoutDefault = config.timeoutMs ?? 15_000
@@ -90,7 +85,7 @@ export function createShellTool(config: ToolShellConfig = {}, owned?: ProcessReg
   const tool: ToolDefinition = {
     schema: {
       name: 'shell',
-      description: `Run a shell command inside the workspace and return { exitCode, stdout, stderr }. ${describeShell(systemShell())} ${BACKGROUND_HINT} ${ESCALATE_HINT}`,
+      description: `Run a shell command inside the workspace and return { exitCode, stdout, stderr }. ${[execution.describeShell?.(), BACKGROUND_HINT, ESCALATE_HINT].filter(Boolean).join(' ')}`,
       parameters: {
         type: 'object',
         properties: { ...properties, ...ESCALATE_PROPERTIES },
@@ -141,7 +136,8 @@ export function createShellTool(config: ToolShellConfig = {}, owned?: ProcessReg
  * The shell domain's model-visible tool. High privilege: a composition mounts
  * it only when shell access was explicitly turned on.
  *
- * Mount: `await ctx.plugin(toolShell, { cwd, execution })`.
+ * Mount: `await ctx.plugin(toolShell, { cwd })` after a `ctx.process` Provider,
+ * or pass `execution` to run on a boundary directly.
  */
 export const toolShell = {
   name: 'tool-shell',
@@ -150,6 +146,7 @@ export const toolShell = {
     // Without a shared registry, background processes die with this plugin.
     const owned = config.processes ? undefined : new ProcessRegistry()
     if (owned) ctx.fiber.effect(() => () => { void owned.dispose() }, 'tool-shell/processes')
-    ctx.tools.register(createShellTool(config, owned))
+    const execution = config.execution ?? ctx.get('process', false)
+    ctx.tools.register(createShellTool(execution ? { ...config, execution } : config, owned))
   },
 }

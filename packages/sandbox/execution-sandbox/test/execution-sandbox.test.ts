@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import type { BackgroundProcessRequest, ExecutionProvider, ProcessRequest, ShellRequest } from '@tnega/execution'
-import { shellCommandArgv, systemShell, type SystemShell } from '@tnega/execution'
+import type { BackgroundProcessRequest, ExecutionProvider, ProcessRequest, ShellRequest } from '@tnega/process'
+import { shellCommandArgv, systemShell, type SystemShell } from '@tnega/process-local'
 import {
   SandboxService,
   SandboxUnavailableError,

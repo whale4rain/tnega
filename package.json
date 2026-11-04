@@ -76,6 +76,14 @@
       "types": "./dist/types/src/events.d.ts",
       "import": "./dist/events.js"
     },
+    "./process": {
+      "types": "./dist/types/packages/process/process/src/index.d.ts",
+      "import": "./dist/process.js"
+    },
+    "./process-local": {
+      "types": "./dist/types/packages/process/process-local/src/index.d.ts",
+      "import": "./dist/process-local.js"
+    },
     "./execution": {
       "types": "./dist/types/packages/execution/src/index.d.ts",
       "import": "./dist/execution.js"

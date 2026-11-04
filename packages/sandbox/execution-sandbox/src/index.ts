@@ -1,19 +1,21 @@
 import type { Context } from '@tnega/core'
 import {
-  isMsysShell,
   isSandboxPipeDenial,
   SANDBOX_PIPE_HINT,
   type BackgroundProcess,
-  localExecutionProvider,
-  shellCommandArgv,
-  systemShell,
-  type SystemShell,
   type BackgroundProcessRequest,
   type BackgroundShellRequest,
   type ExecutionProvider,
   type ProcessRequest,
   type ShellRequest,
-} from '@tnega/execution'
+} from '@tnega/process'
+import {
+  isMsysShell,
+  localExecutionProvider,
+  shellCommandArgv,
+  systemShell,
+  type SystemShell,
+} from '@tnega/process-local'
 import {
   SandboxService,
   type SandboxExecutionPolicy,
@@ -188,6 +190,8 @@ export function sandboxedExecution(
       return inner.fetchHttp(request)
     },
 
+    ...(inner.describeShell ? { describeShell: () => inner.describeShell!() } : {}),
+
     // A background process is confined exactly like a foreground one; with no
     // usable mechanism `confine` throws and nothing is started.
     ...(inner.startProcess
@@ -216,4 +220,4 @@ export function sandboxedExecution(
   }
 }
 
-export type { ExecutionProvider } from '@tnega/execution'
+export type { ExecutionProvider } from '@tnega/process'

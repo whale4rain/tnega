@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - packages/fs/*
+  - packages/process/*
   - packages/shell/*
   - packages/session-search/*
   - packages/browser/*

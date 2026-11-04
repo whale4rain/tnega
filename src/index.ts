@@ -149,20 +149,27 @@ export {
 } from '../packages/tools/src/index.js'
 
 export {
-  localExecutionProvider,
-  resolveSystemShell,
-  shellCommandArgv,
-  systemShell,
+  ProcessBoundary,
+  ProcessService,
+  processBoundary,
   type ExecutionProvider,
-  type SystemShell,
-  type SystemShellKind,
   type HttpRequest,
   type HttpResponse,
   type ProcessRequest,
   type ProcessResult,
   type ShellRequest,
   type ShellResult,
-} from '../packages/execution/src/index.js'
+} from '../packages/process/process/src/index.js'
+
+export {
+  localExecutionProvider,
+  processLocal,
+  resolveSystemShell,
+  shellCommandArgv,
+  systemShell,
+  type SystemShell,
+  type SystemShellKind,
+} from '../packages/process/process-local/src/index.js'
 
 export {
   SearchError,

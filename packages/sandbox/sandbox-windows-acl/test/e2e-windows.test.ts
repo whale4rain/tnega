@@ -24,7 +24,7 @@ import { isWindowsAclAvailable, win32 } from '../src/ffi.js'
 import type { Win32Api } from '../src/ffi.js'
 import { AclWriteGrant, DENIAL_SIGNATURES, RUNNER_FAILURE_EXIT_CODE, resolveRunnerCommand, tempWriteSid, workspaceWriteSid } from '../src/index.js'
 import { writeIsAmbientlyAllowed } from './support/acl-reader.js'
-import { isMsysShell, shellCommandArgv, systemShell } from '../../../execution/src/shell.js'
+import { isMsysShell, shellCommandArgv, systemShell } from '../../../process/process-local/src/shell.js'
 import { decodeOutput } from '../../../execution/src/index.js'
 
 // Hosted GitHub runners launch without the interactive console that restricted

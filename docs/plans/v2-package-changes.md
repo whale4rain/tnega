@@ -212,6 +212,17 @@ with the types.
 package; sandbox and secrets tests pass unchanged; a test proves that a scope
 with a sandbox never sees the raw local Provider.
 
+**As built (2026-11-04):** `ProcessService` implements `ExecutionProvider`;
+`ProcessBoundary` / the `processBoundary` plugin provide `ctx.process` from
+one boundary value, so `capability:sandbox` mounts the local boundary wrapped
+by the secrets and sandbox decorators, and `shell` / `http_get` take it from
+`ctx.process`. `ProcessRegistry` moved to the Definition (it is machine-free).
+`ExecutionProvider.describeShell()` replaces the tool's direct `systemShell()`
+call. Still on `@tnega/process-local` directly, because they are machine-side
+until P4/P5: `search-ripgrep` (runs `rg` on the raw local boundary, as before),
+`execution-sandbox` (builds confined argv for the local shell), `workspace-files`
+(`@` file search and `git`), and the host / CLI / desktop configuration calls.
+
 **Hand-off prompt:**
 
 ```text

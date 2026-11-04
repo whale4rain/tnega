@@ -1,10 +1,12 @@
 import { isAbsolute } from 'node:path'
 import type { Context } from '@tnega/core'
 import {
-  localExecutionProvider,
   type ExecutionProvider,
   type ProcessResult,
-} from '@tnega/execution'
+} from '@tnega/process'
+import {
+  localExecutionProvider,
+} from '@tnega/process-local'
 import {
   DEFAULT_SEARCH_EXCLUDES,
   DEFAULT_SEARCH_MAX_RESULTS,

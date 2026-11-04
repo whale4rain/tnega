@@ -15,6 +15,7 @@
     "@tnega/subagent": "workspace:*"
   },
   "devDependencies": {
-    "@tnega/tool-shell": "workspace:*"
+    "@tnega/tool-shell": "workspace:*",
+    "@tnega/process-local": "workspace:*"
   }
 }

@@ -8,8 +8,9 @@
   },
   "dependencies": {
     "@tnega/core": "workspace:*",
-    "@tnega/execution": "workspace:*",
     "@tnega/fs-sandbox": "workspace:*",
+    "@tnega/process": "workspace:*",
+    "@tnega/process-local": "workspace:*",
     "@tnega/search": "workspace:*"
   }
 }

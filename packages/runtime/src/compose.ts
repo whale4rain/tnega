@@ -1,14 +1,14 @@
 import type { Context, Plugin } from '@tnega/core'
 import { systemPrompt } from '@tnega/agent'
 import { skillTools } from '@tnega/coding-agent'
-import { localExecutionProvider } from '@tnega/execution'
+import { localExecutionProvider, networkPolicy } from '@tnega/process-local'
+import { processBoundary } from '@tnega/process'
 import { secretEnvExecution } from '@tnega/execution-secrets'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { computerCua } from '@tnega/computer-cua'
 import { jobsLocal } from '@tnega/jobs-local'
 import { memoryLocal } from '@tnega/memory-local'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
-import { networkPolicy } from '@tnega/execution'
 import { canonicalPath, resolveSandboxPolicy, type SandboxExecutionPolicy, type SandboxNetworkRequest } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
@@ -46,6 +46,7 @@ import { workspacePrompt } from '@tnega/workspace-prompt'
  *
  * ```text
  * @tnega/fs-local ─→ capability:fs ─→ @tnega/tool-fs, @tnega/tool-send-file
+ * @tnega/process-local ─→ capability:sandbox (+ secrets, sandbox decorators) ─→ ctx.process ─→ @tnega/tool-shell, @tnega/tool-web-fetch
  * @tnega/sandbox-local ─→ capability:sandbox ─→ @tnega/execution-sandbox
  * @tnega/search-ripgrep ─→ capability:search ─→ @tnega/tool-search
  * @tnega/spill-local ─→ capability:spill ─→ @tnega/tool-spill
@@ -183,9 +184,11 @@ export interface SandboxCapabilitySpec {
 }
 
 /**
- * Sandbox seam: pick the local provider, then hand the execution boundary to
- * the builtin tools. `shell` only knows the boundary it stands on, so pointing
- * the provider elsewhere moves it without touching the tool.
+ * Sandbox seam: pick the local provider, then provide `ctx.process` as the
+ * local boundary wrapped by the secrets and sandbox decorators, and mount the
+ * builtin tools on it. `shell` only knows the boundary it stands on, so
+ * pointing the provider elsewhere moves it without touching the tool, and
+ * nothing in a sandboxed scope can reach the undecorated boundary.
  */
 export const sandboxCapability: Plugin = {
   name: 'capability:sandbox',
@@ -208,16 +211,16 @@ export const sandboxCapability: Plugin = {
         ...(network !== undefined ? { network } : {}),
       })
     }
-    await ctx.plugin(builtinTools, {
-      ...(spec.builtin ?? {}),
-      cwd: spec.workspace,
-      execution: sandboxedExecution(ctx, {
+    await ctx.plugin(processBoundary, {
+      boundary: sandboxedExecution(ctx, {
         // Commands get this scope's secrets as variables when a store is mounted.
         inner: secretEnvExecution(ctx, localExecutionProvider),
         policy: await policy(),
         resolvePolicy: policy,
       }),
     })
+    // Always the decorated boundary, whatever the builtin config says.
+    await ctx.plugin(builtinTools, { ...(spec.builtin ?? {}), cwd: spec.workspace, execution: ctx.get('process') })
     // Only hosts that read live settings (and so have a person to approve) get the tool.
     const source = spec.network
     if (source !== undefined && isNetworkSettings(source)) {

@@ -7,10 +7,10 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@tnega/execution": "workspace:*",
+    "@tnega/core": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/llm": "workspace:*",
-    "@tnega/core": "workspace:*",
+    "@tnega/process-local": "workspace:*",
     "@tnega/web-kit": "workspace:*"
   }
 }

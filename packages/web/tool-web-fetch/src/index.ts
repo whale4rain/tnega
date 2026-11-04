@@ -1,5 +1,5 @@
 import type { Context } from '@tnega/core'
-import { localExecutionProvider, type ExecutionProvider } from '@tnega/execution'
+import type { ExecutionProvider } from '@tnega/process'
 import {
   optionalNumber,
   optionalRecord,
@@ -25,7 +25,8 @@ const DEFAULT_MAX_BYTES = 256 * 1024
 
 /** Build `http_get` without registering it. */
 export function createWebFetchTool(config: ToolWebFetchConfig = {}): ToolDefinition {
-  const execution = config.execution ?? localExecutionProvider
+  const execution = config.execution
+  if (!execution) throw new Error('http_get needs an execution boundary: mount a ctx.process Provider or pass execution')
   const defaultMax = config.maxBytes ?? DEFAULT_MAX_BYTES
   const allowPrivate = config.allowPrivateNetwork ?? false
   return {
@@ -75,12 +76,13 @@ export function createWebFetchTool(config: ToolWebFetchConfig = {}): ToolDefinit
  * The web domain's `http_get`. Network access is high privilege: a composition
  * mounts it only when the network was explicitly turned on.
  *
- * Mount: `await ctx.plugin(toolWebFetch, { execution })`.
+ * Mount: `await ctx.plugin(toolWebFetch)` after a `ctx.process` Provider, or pass `execution`.
  */
 export const toolWebFetch = {
   name: 'tool-web-fetch',
   inject: ['tools'],
   apply(ctx: Context, config: ToolWebFetchConfig = {}): void {
-    ctx.tools.register(createWebFetchTool(config))
+    const execution = config.execution ?? ctx.get('process', false)
+    ctx.tools.register(createWebFetchTool(execution ? { ...config, execution } : config))
   },
 }

@@ -16,7 +16,8 @@ export * from './input.js'
 export * from './lock.js'
 export * from './path.js'
 export { closestToolNames, describeError, describeParameters, ToolAbortError, ToolInputError, toToolError } from './errors.js'
-export * from '@tnega/execution'
+export * from '@tnega/process'
+export * from '@tnega/process-local'
 export {
   ToolAuthorizationError,
   validateSchema,

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, shell, utilityProcess, type NativeImage, type OpenDialogOptions } from 'electron'
-import { configureProcessLauncher } from '@tnega/execution'
+import { configureProcessLauncher } from '@tnega/process-local'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

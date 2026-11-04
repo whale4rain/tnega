@@ -1,4 +1,4 @@
-import { networkFetch } from '@tnega/execution'
+import { networkFetch } from '@tnega/process-local'
 import { lookupModel } from '@tnega/llm'
 import { CHATGPT_CODEX_BASE_URL, chatgptHeaders } from '@tnega/auth-chatgpt'
 import { modelConnection, modelSource, ModelRouteError, type SystemConfig } from './config.js'

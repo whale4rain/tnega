@@ -9,11 +9,11 @@
   "dependencies": {
     "@tnega/agent": "workspace:*",
     "@tnega/config": "workspace:*",
-    "@tnega/execution": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/host": "workspace:*",
     "@tnega/llm": "workspace:*",
     "@tnega/plugin-host": "workspace:*",
+    "@tnega/process-local": "workspace:*",
     "@tnega/profile": "workspace:*",
     "@tnega/project-host": "workspace:*",
     "@tnega/runtime": "workspace:*",
@@ -28,6 +28,7 @@
     "@tnega/box": "workspace:*",
     "@tnega/box-blackboard": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/fs-local": "workspace:*",
     "@tnega/persona": "workspace:*",
     "@tnega/project-http": "workspace:*",
     "@tnega/project-loop": "workspace:*",
@@ -37,7 +38,6 @@
     "@tnega/terminal": "workspace:*",
     "@tnega/thread-local": "workspace:*",
     "@tnega/tools": "workspace:*",
-    "@tnega/workspace-files": "workspace:*",
-    "@tnega/fs-local": "workspace:*"
+    "@tnega/workspace-files": "workspace:*"
   }
 }

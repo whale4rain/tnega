@@ -1,4 +1,4 @@
-import type { ProcessResult } from '@tnega/execution'
+import type { ProcessResult } from '@tnega/process'
 import { SearchError, type SearchMatch } from '@tnega/search'
 
 /** ripgrep's stderr signatures for "the pattern you gave me is not valid". */

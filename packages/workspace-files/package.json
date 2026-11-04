@@ -8,8 +8,8 @@
   },
   "dependencies": {
     "@tnega/core": "workspace:*",
-    "@tnega/execution": "workspace:*",
     "@tnega/fs": "workspace:*",
+    "@tnega/process-local": "workspace:*",
     "@tnega/search": "workspace:*",
     "@tnega/search-ripgrep": "workspace:*",
     "@tnega/session": "workspace:*",

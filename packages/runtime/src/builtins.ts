@@ -1,5 +1,6 @@
 import type { Context } from '@tnega/core'
-import { ProcessRegistry, type ExecutionProvider } from '@tnega/execution'
+import { ProcessRegistry, type ExecutionProvider } from '@tnega/process'
+import { localExecutionProvider } from '@tnega/process-local'
 import type { WorkspaceFs } from '@tnega/fs'
 import { LocalWorkspaceFs } from '@tnega/fs-local'
 import { createFsTools, type FsGuardMode } from '@tnega/tool-fs'
@@ -45,6 +46,10 @@ export interface BuiltinToolsConfig {
   timeoutMs?: number
   /** Directory names a recursive `list_dir` skips. */
   searchExcludes?: readonly string[]
+  /**
+   * The execution boundary for `shell` and `http_get`. The plugin takes
+   * `ctx.process` when a Provider is mounted; without one it is this machine.
+   */
   execution?: ExecutionProvider
   /**
    * The workspace's file system. The plugin opens it from `ctx.fs` when a
@@ -67,6 +72,8 @@ export function createBuiltinToolDefinitions(
 ): ToolDefinition[] {
   const disabled = new Set(config.disabled ?? [])
   const files = config.fs ?? new LocalWorkspaceFs(config.cwd ?? process.cwd(), outsideOption(config))
+  // Without a provided boundary (a bare scope or a test), commands run on this machine.
+  const execution = config.execution ?? localExecutionProvider
   const definitions = createFsTools(files, {
     disabled: [...disabled],
     ...(config.maxReadFileBytes !== undefined ? { maxReadBytes: config.maxReadFileBytes } : {}),
@@ -81,7 +88,7 @@ export function createBuiltinToolDefinitions(
     definitions.push(createWebFetchTool({
       ...(config.allowPrivateNetwork !== undefined ? { allowPrivateNetwork: config.allowPrivateNetwork } : {}),
       ...(config.maxReadBytes !== undefined ? { maxBytes: config.maxReadBytes } : {}),
-      ...(config.execution ? { execution: config.execution } : {}),
+      execution,
     }))
   }
   if (config.allowShell && !disabled.has('shell')) {
@@ -90,7 +97,7 @@ export function createBuiltinToolDefinitions(
       ...(config.allowOutsideWorkspace !== undefined ? { allowOutsideWorkspace: config.allowOutsideWorkspace } : {}),
       ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
       ...(config.maxWriteBytes !== undefined ? { maxOutputBytes: config.maxWriteBytes } : {}),
-      ...(config.execution ? { execution: config.execution } : {}),
+      execution,
       ...(config.processes ? { processes: config.processes } : {}),
       ...(config.backgroundJobs !== undefined ? { backgroundJobs: config.backgroundJobs } : {}),
     }, ownedProcesses))
@@ -108,6 +115,8 @@ export const builtinTools = {
     if (owned) ctx.fiber.effect(() => () => { void owned.dispose() }, 'builtinTools/processes')
     const provider = config.fs ? undefined : ctx.get('fs', false)
     const fs = provider?.workspace(config.cwd ?? process.cwd(), outsideOption(config))
-    for (const definition of createBuiltinToolDefinitions(fs ? { ...config, fs } : config, owned)) ctx.tools.register(definition)
+    const execution = config.execution ?? ctx.get('process', false)
+    const resolved = { ...config, ...fs ? { fs } : {}, ...execution ? { execution } : {} }
+    for (const definition of createBuiltinToolDefinitions(resolved, owned)) ctx.tools.register(definition)
   },
 }

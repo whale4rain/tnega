@@ -5,7 +5,7 @@ import type {
   ExecutionProvider,
   ProcessRequest,
   ShellRequest,
-} from '@tnega/execution'
+} from '@tnega/process'
 import { secretEnv } from '@tnega/secrets'
 
 /**
@@ -49,6 +49,7 @@ export function secretEnvExecution(ctx: Context, inner: ExecutionProvider): Exec
     fetchHttp(request) {
       return inner.fetchHttp(request)
     },
+    ...(inner.describeShell ? { describeShell: () => inner.describeShell!() } : {}),
     ...(startShell
       ? { startShell: async (request: BackgroundShellRequest) => startShell(await withEnv(request)) }
       : {}),

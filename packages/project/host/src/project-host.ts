@@ -721,7 +721,7 @@ export class ProjectHost {
         this.permissions.set(thread.id, thread.permission)
         this.roles.set(thread.id, projectAgentRole(thread, maxDepth))
         const cwd = thread.workspace?.cwd ?? this.workspace
-        const local = agentCtx.isolate('fs').isolate('search').isolate('spillStore').isolate('sandbox').isolate('skills')
+        const local = agentCtx.isolate('fs').isolate('process').isolate('search').isolate('spillStore').isolate('sandbox').isolate('skills')
         const config = this.options.builtinTools
         await local.plugin(runtimeCapabilities, {
           workspace: cwd,
