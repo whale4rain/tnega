@@ -64,15 +64,26 @@ async function handleTerminal(
     sendJson(res, 200, { ok: true })
   } else if (action === 'stream' && req.method === 'GET') {
     const events: TerminalEvent[] = []
-    // Attach first so an unknown id fails before the stream opens.
+    // Attach first so an unknown id fails before the stream opens. The
+    // response's close (not the request's) says the client went away, and it
+    // can happen while a remote attach is still on its way.
     let open = false
+    let gone = false
+    let ended = false
+    res.on('close', () => { gone = true })
     const send = (event: TerminalEvent) => { if (!res.destroyed && !res.writableEnded) writeSse(res, event) }
     const detach = await terminals.attach(
       id,
       event => { if (open) send(event); else events.push(event) },
-      // The machine behind the terminal went away: end the stream so the panel reattaches.
-      () => { if (!res.writableEnded) res.end() },
+      // The machine behind the terminal went away: end the stream so the panel
+      // reattaches. Before the headers are out, only note it.
+      () => { ended = true; if (open && !res.writableEnded) res.end() },
     )
+    if (gone) {
+      detach()
+      return
+    }
+    res.on('close', detach)
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
@@ -82,7 +93,7 @@ async function handleTerminal(
     res.flushHeaders()
     open = true
     for (const event of events) send(event)
-    req.on('close', detach)
+    if (ended) res.end()
   } else if (action === 'input' && req.method === 'POST') {
     const body = await readJsonBody(req)
     if (typeof body.data !== 'string') {
