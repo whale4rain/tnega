@@ -41,7 +41,7 @@ the previous format.
 | P5 Host split | `daemon/daemon-routes` | `host/server.ts` stops mounting machine routes itself | No |
 | P6 Client profiles | none | `client` (`ServerProfile`, protocol version), `apps/web`, `apps/desktop`, `tui` | Connection setting |
 | P7 Server | `server/*` packages, `deploy/` | none in harness | `tnega-server` image |
-| P8 Machines | `machine/*` packages, egress proxy | `sandbox-network-proxy` reused | Docker boxes |
+| P8 Machines | `machine/*` packages, egress proxy | `sandbox-network-proxy` reused | MicroVM boxes on E2B's runtime |
 
 P1 to P3 are the groundwork and can run in parallel. P4 needs P1 and P2. P5
 needs P4. P6 can start after P3. P7 needs P3 and P4. P8 needs P7.
@@ -88,11 +88,12 @@ packages/
     db/                 NEW  schema, migrations, PGlite test helper
   machine/              (P8)
     machine/            NEW  Service Definition ctx.machines
-    machine-docker/     NEW  Provider: Docker Engine API
+    machine-e2b/        NEW  Provider: E2B runtime API (microVM boxes, ADR 0018)
     egress-proxy/       NEW  key-injecting proxy built on sandbox-network-proxy
 deploy/
   compose.yaml          NEW
-  docker/server.Dockerfile, docker/daemon.Dockerfile   NEW
+  docker/server.Dockerfile   NEW  (the server's own image)
+  e2b/template/        NEW  box template: base image, setup step, tnega daemon
 ```
 
 ## P1 `ctx.fs`
@@ -517,20 +518,24 @@ local mode. No CHANGELOG edits.
 ## P8 Machines
 
 New `packages/machine/machine` (Definition `ctx.machines`, `MachineProvider`
-with `start(key, spec)`, `stop`, `status`), `machine-docker` (Docker Engine API,
-labels containers with the machine id) and `egress-proxy` (built on
+with `start(key, spec)`, `pause`, `stop`, `status`), `machine-e2b` (E2B runtime
+API: Firecracker microVMs from a template, pause with memory, resume; stores the
+machine id in sandbox metadata) and `egress-proxy` (built on
 `sandbox-network-proxy`, injects keys for allowlisted hosts over TLS only, drops
-them on cross-host redirect). The daemon image is `deploy/docker/daemon.Dockerfile`.
+them on cross-host redirect). The box template is `deploy/e2b/template/`. No
+Docker box Provider ([ADR 0018](../adr/0018-microvm-box-layer.md)).
 
 **Hand-off prompt:**
 
 ```text
-Build phase P8 of docs/plans/v2-package-changes.md: Docker boxes. P7 is merged.
-Read v2-server-mvp.md sections 4.2 and 4.4, packages/sandbox/sandbox-network-proxy
-and docs/adr/0008. Add packages/machine/machine, machine-docker and egress-proxy.
-start(key, spec) must return the same box on a repeat. The setup phase gets
-only approved secrets; the agent phase reaches the network only through the
-proxy. Host-layer tests need Docker and are named *.e2e.test.ts. No CHANGELOG edits.
+Build phase P8 of docs/plans/v2-package-changes.md: microVM boxes on E2B's
+open-source runtime (e2b-dev/runtime). P7 is merged. Read v2-server-mvp.md
+sections 4.2, 4.4 and 4.7, docs/adr/0018, packages/sandbox/sandbox-network-proxy
+and docs/adr/0008. Add packages/machine/machine, machine-e2b and egress-proxy,
+and deploy/e2b/template with tnega daemon. start(key, spec) must return the
+same box on a repeat (resume a paused one). The setup step gets only approved
+secrets; the box's egress rule allows only the proxy. Host-layer tests need a
+KVM host with the runtime and are named *.e2e.test.ts. No CHANGELOG edits.
 ```
 
 ## Sizes and splits

@@ -60,7 +60,7 @@ Revised 2026-11-04 with the owner. The diagram is the project report
 | Topic | Decision |
 |---|---|
 | Shape | **tnega server** (headless runtime + state + control) and **daemons** (files, commands, environment). The agent loop runs in the server; a model call takes seconds, so one network hop per tool call is cheap, and a laptop or edge device only runs a thin daemon. |
-| Daemons | Local (your machine as it is, sandbox bwrap / seatbelt / MXC, browser, computer use), Docker box (built from `.tnega/environment.toml`, started by the server), edge (fixed device). A daemon keeps no history. |
+| Daemons | Local (your machine as it is, sandbox bwrap / seatbelt / MXC, browser, computer use), box (a microVM on E2B's open-source runtime, built from `.tnega/environment.toml`, started by the server; see [ADR 0018](../adr/0018-microvm-box-layer.md)), edge (fixed device). A daemon keeps no history. |
 | Seams | Two new low-level seams like DSH's `ctx.fs` / `ctx.subprocess`: **`ctx.fs`** (new) and **`ctx.process`** (promotes `ExecutionProvider`). Local Provider = today's code; remote Provider = the daemon. Search, jobs, sandbox and secrets decorators sit on top; browser and computer get a remote Provider. Rejected: a remote twin of every existing Provider (about six protocols, and `read_file` / `shell` have no seam to extend). |
 | Daemon protocol | JSON-RPC 2.0 over one WebSocket that the daemon opens. Method namespaces mirror the seams (`fs/*`, `process/*`, `terminal/*`, `browser/*`, `computer/*`). Plain JSON only: cancel by request id, output as notifications. Handshake: protocol version, device id, capabilities. Server accepts versions N and N-1. |
 | Client protocol | Keep HTTP + SSE; add a protocol version and typed schema to `@tnega/client`. Revisit JSON-RPC for clients at M3 only if server push needs it. |
@@ -161,23 +161,23 @@ scheduler for routines.
    capabilities, cancel, heartbeat; idempotent calls and reconnect as above;
    local mode uses it in-process; a session run through the loopback equals one
    run locally.
-2. **M2 Container box**: Docker Machine Provider (a "box"; `ctx.box` is already the Project message channel), environment setup phase, egress
+2. **M2 MicroVM box**: `machine-e2b` Machine Provider on E2B's open-source runtime (a "box"; `ctx.box` is already the Project message channel; no Docker box, ADR 0018), environment setup phase as an E2B template, egress
    proxy that holds the keys and the scoped git token (TLS only, allowlisted
    hosts, dropped on cross-host redirect), compose file.
 3. **M3 Server state and sign-in**: Postgres store, blob store, device tokens
    (see [v2-server-mvp.md](v2-server-mvp.md));
    connection profiles in web, desktop, TUI.
-4. **M4 Projects on the server**: a Docker box per thread, sleep and wake, routines
+4. **M4 Projects on the server**: a box per thread, pause and resume, routines
    without a window, branch per thread with a pull request card.
 5. **M5 Hand-off and hardening** (2.x): laptop/server hand-off, snapshots,
-   budgets, audit, several server instances, microVM Provider, several people in one project.
+   budgets, audit, several server instances, an Agent Substrate Provider for a large hosted fleet, several people in one project.
 
 v2.0 = M1 to M4. "v2" names the architecture; the release that ships it may be 1.0.0 or later, decided then. Phases P1–P8 in [v2-package-changes.md](v2-package-changes.md) map to the milestones: P1–P3 groundwork, P4–P5 = M1, P8 = M2, P6–P7 = M3.
 
 ## Risks
 
 Size for a small team (each milestone ships alone; local mode untouched);
-Docker boxes are Linux, so Windows-only features stay local; existing sessions need a
+boxes are Linux microVMs and need a KVM host, so Windows-only features stay local; existing sessions need a
 one-time import that keeps the old files; a server that runs code is a larger
 target, so review auth before M3.
 
@@ -185,6 +185,6 @@ target, so review auth before M3.
 
 - Version numbers: decided 2026-11-03, stay on 0.x previews (0.6, 0.7 …); changed 2026-11-04, `1.0.0` comes after v2 lands, not before.
 - v2.0 target: self-hosted first.
-- First box: Docker or Podman; microVM later.
+- First box: decided 2026-11-05, microVM only, on E2B's open-source runtime (`e2b-dev/runtime`); no Docker box. Agent Substrate later for a hosted fleet. See [ADR 0018](../adr/0018-microvm-box-layer.md).
 - Database: Postgres for the server from the start (changed 2026-11-04, see
   [v2-server-mvp.md](v2-server-mvp.md)); local mode keeps JSONL and files.
