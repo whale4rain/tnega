@@ -266,8 +266,9 @@ The diagrams keep the word box.
 
 ```ts
 interface MachineProvider {
-  // key = machine row id; a second start with the same key returns the same box
-  // (a paused box is resumed, not recreated)
+  // key = machine row id. A second start with the same key returns the same box
+  // when its spec_hash matches (a paused box is resumed, not recreated);
+  // a different spec_hash replaces the box (§4.2)
   start(key: string, spec: BoxSpec): Promise<{ ref: string }>   // template, env, resources, isolation, one-time daemon token
   pause(ref: string): Promise<void>                              // keep memory and disk
   stop(ref: string): Promise<void>                               // kill and release
@@ -319,6 +320,13 @@ files and commands, so the server tracks two lifecycles separately.
   is kept 7 days; before it is reclaimed the server saves a work bundle to the
   blob store. The work bundle has two parts: a `git bundle` of local commits,
   and a separate archive of uncommitted and untracked files.
+- **Restore**: the next box for that workspace clones `repo_url` at `branch`
+  as usual, fetches the local commits from the `git bundle` and checks out the
+  saved HEAD, then unpacks the archive over the working tree. Only after both
+  steps succeed is the bundle marked used; it stays in the blob store for 7
+  more days. If a step fails, the box start fails with the reason, the box is
+  not marked `ready`, the bundle is kept for a retry, and the person sees the
+  error instead of an empty workspace.
 - **Limits**: a headless turn has a wall-time cap (default 60 minutes) and a
   routine run a token budget; the loop guard and continuation nudge apply;
   nothing that asks is auto-approved.
