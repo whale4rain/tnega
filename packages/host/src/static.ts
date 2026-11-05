@@ -78,16 +78,24 @@ export function contentType(file: string): string {
   }
 }
 
+/**
+ * The first of `candidates` that is a directory, else the second one: a build
+ * that has not run yet still reports the checkout's own dist, which is where a
+ * person can put it.
+ */
+export function firstExistingDir(candidates: readonly string[]): string {
+  for (const path of candidates) if (existsSync(path)) return path
+  return candidates[1] ?? candidates[0] ?? ''
+}
+
 export function defaultWebRoot(): string {
   const candidates = [
     // Bundled package layout: dist/bin.js serves dist/web.
     new URL('../dist/web/', import.meta.url),
     // Source checkout layout: packages/host/src/server.ts serves <repo>/dist/web.
     new URL('../../../dist/web/', import.meta.url),
+    // A checkout where only the web app was built (`pnpm --filter @tnega/web build`).
+    new URL('../../../apps/web/dist/', import.meta.url),
   ]
-  for (const candidate of candidates) {
-    const path = fileURLToPath(candidate)
-    if (existsSync(path)) return path
-  }
-  return fileURLToPath(candidates[1]!)
+  return firstExistingDir(candidates.map(candidate => fileURLToPath(candidate)))
 }
