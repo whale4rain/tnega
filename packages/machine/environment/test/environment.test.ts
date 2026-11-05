@@ -117,6 +117,13 @@ describe('runSetup', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it('refuses a secret with a NUL, and hides secrets in an error from a command that could not start', async () => {
+    const { execution } = fakeExecution(0)
+    await expect(runSetup(execution, { cwd: '/w', script: 'x', secrets: { TOKEN: 'abcdefgh\0tail' } })).rejects.toMatchObject({ code: 'ENVIRONMENT_INVALID', message: expect.not.stringContaining('abcdefgh') })
+    const failing = { runShell: async (): Promise<never> => { throw new Error('spawn failed with TOKEN=npm_abcdef') } }
+    await expect(runSetup(failing, { cwd: '/w', script: 'x', secrets: { TOKEN: 'npm_abcdef' } })).rejects.toMatchObject({ code: 'SETUP_FAILED', message: expect.stringContaining('TOKEN=[secret]') })
+  })
+
   it('fails with the output tail, secrets hidden', async () => {
     const { execution } = fakeExecution(1, 'auth failed for npm_abcdef\n')
     await expect(runSetup(execution, { cwd: '/w', script: 'x', secrets: { NPM_TOKEN: 'npm_abcdef' } }))

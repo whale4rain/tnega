@@ -242,20 +242,29 @@ export async function runSetup(execution: Pick<ExecutionProvider, 'runShell'>, r
   for (const [name, value] of Object.entries(run.secrets)) {
     // A value this short cannot be hidden in output without hiding ordinary text too.
     if (value.length < MIN_SECRET_LENGTH) throw new EnvironmentError(`secret ${name} is shorter than ${MIN_SECRET_LENGTH} characters and could not be kept out of the setup output`, 'ENVIRONMENT_INVALID')
+    // Starting a process with a NUL in its environment fails with an error that quotes the value.
+    if (value.includes('\0')) throw new EnvironmentError(`secret ${name} contains a NUL character`, 'ENVIRONMENT_INVALID')
   }
   const env: Record<string, string> = { ...run.secrets }
   if (run.proxyUrl) {
     for (const name of ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy']) env[name] = run.proxyUrl
   }
   const stream = run.onOutput ? redactingStream(run.secrets, run.onOutput) : undefined
-  const result = await execution.runShell({
-    command: run.script,
-    cwd: run.cwd,
-    env,
-    timeoutMs: run.timeoutMs ?? SETUP_TIMEOUT_MS,
-    ...(run.signal ? { signal: run.signal } : {}),
-    ...(stream ? { onOutput: stream.write } : {}),
-  })
+  let result: ShellResult
+  try {
+    result = await execution.runShell({
+      command: run.script,
+      cwd: run.cwd,
+      env,
+      timeoutMs: run.timeoutMs ?? SETUP_TIMEOUT_MS,
+      ...(run.signal ? { signal: run.signal } : {}),
+      ...(stream ? { onOutput: stream.write } : {}),
+    })
+  } catch (error) {
+    // The command could not run; its error may quote the environment.
+    const message = error instanceof Error ? error.message : String(error)
+    throw new EnvironmentError(`setup could not run: ${redact(message, run.secrets)}`, 'SETUP_FAILED')
+  }
   stream?.flush()
   if (result.exitCode !== 0) {
     const tail = `${result.stdout}\n${result.stderr}`.trim().split('\n').slice(-20).join('\n')
