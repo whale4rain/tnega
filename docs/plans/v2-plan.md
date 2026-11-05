@@ -172,7 +172,7 @@ scheduler for routines.
 5. **M5 Hand-off and hardening** (2.x): laptop/server hand-off, snapshots,
    budgets, audit, several server instances, an Agent Substrate Provider for a large hosted fleet, several people in one project.
 
-v2.0 = M1 to M4. "v2" names the architecture; the release that ships it may be 1.0.0 or later, decided then. Phases P1–P8 in [v2-package-changes.md](v2-package-changes.md) map to the milestones: P1–P3 groundwork, P4–P5 = M1, P8 = M2, P6–P7 = M3.
+v2.0 = M1 to M4. "v2" names the architecture; the release that ships it may be 1.0.0 or later, decided then. Phases P1–P8 in [v2-package-changes.md](v2-package-changes.md) map to the milestones: P1–P3 groundwork, P4–P5 = M1, P8 = M2, P6–P7 = M3. P8 is built first as the M2 product milestone: the Provider, template and egress proxy are tested against the M1 host. Its control-loop parts (effects, idle pause, reclaim) need P7 and are wired up in M3.
 
 ## Risks
 

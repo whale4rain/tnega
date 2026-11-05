@@ -1,6 +1,6 @@
 # 0018 v2 的 box 用 microVM：E2B 开源 runtime 作底层，不做 Docker box
 
-> 状态：已决定，尚未实现
+> 状态：当前
 > 取代关系：取代 `docs/plans/v2-plan.md` 里「First box: Docker or Podman; microVM later」
 > 当前实现：尚未实现；设计见 `docs/plans/v2-server-mvp.md` §4.4、§4.7，分包见 `docs/plans/v2-package-changes.md` P8
 
@@ -24,14 +24,26 @@ v2 里 tnega server 为每个线程 / 会话启动一个 box（代码里叫 mach
 
 ## 决策
 
+决策已定，尚未实现（2026-11-05）。
+
 - **box 只用 microVM，不做 Docker Provider。** 第一个 Provider 是 `machine-e2b`，对接自托管的 E2B runtime；同一个 Provider 换一个 URL 就能对接 E2B 云。
 - **`BoxSpec` 带 `isolation` 字段**（`"microvm"` 起步）。Provider 给不了要求的隔离级别时以 `SANDBOX_UNAVAILABLE` 失败，不回退。
 - **box 里仍跑 `tnega daemon`**：M1 的协议、终端与可续传 stream 不变。E2B 自带的 `envd` 只用于启动 daemon，文件与命令都走 daemon。
 - **钥匙不进 box**：模型调用在 server；git token 与 API key 由我们的 egress proxy 注入。E2B 的出口规则只放行这个 proxy。
 - **暂停即睡眠**：box 空闲后暂停（内存与进程保留），下一条消息恢复。headless 的生命周期与默认值见 `v2-server-mvp.md` §4.7。
 
-## 代价
+## 后果
 
 - 主机需要 Linux + KVM（独立服务器或支持嵌套虚拟化的云主机）；很多便宜 VPS 与 Mac 不行。本机模式不受影响：不用 box，仍是今天的本地沙箱。
 - E2B runtime 是多服务的 Go 系统；我们部署、不修改。它的单机包官方定位是评估用，生产形态是 GCP Terraform 或 Kubernetes。
-- 自托管的 compose 不再挂 Docker socket，server 也就不再拿到宿主 root。
+- 自托管的 compose 不再挂 Docker socket，少了 Docker Engine 这条控制宿主的路径；server 只持有作用于自己沙箱的 E2B API key。
+
+## 验证
+
+实现 P8 时用宿主层测试（`*.e2e.test.ts`，需要装好 E2B runtime 的 KVM 主机）证明：
+
+- **启动与幂等**：同一个 machine id 两次 `start` 得到同一个 box；`spec_hash` 变化时旧 box 先存工作包再销毁，新 box 从新模板创建。
+- **暂停与恢复**：box 里起一个后台进程并写一个未提交文件，`pause` 后再 `start`，进程仍在、文件仍在、`tnega daemon` 重新连上。
+- **只经 proxy 出网**：box 里直连任意外部地址失败；经 proxy 访问白名单主机成功，非白名单主机被拒；box 内环境变量与磁盘里找不到模型 key 和 git token。
+- **fail closed**：要求的 `isolation` 给不了、或出口规则设不上时，`start` 以 `SANDBOX_UNAVAILABLE` 失败。
+- **无 KVM**：在没有 `/dev/kvm` 的主机上，部署检查给出明确报错，而不是退回容器。

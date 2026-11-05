@@ -521,8 +521,11 @@ New `packages/machine/machine` (Definition `ctx.machines`, `MachineProvider`
 with `start(key, spec)`, `pause`, `stop`, `status`), `machine-e2b` (E2B runtime
 API: Firecracker microVMs from a template, pause with memory, resume; stores the
 machine id in sandbox metadata) and `egress-proxy` (built on
-`sandbox-network-proxy`, injects keys for allowlisted hosts over TLS only, drops
-them on cross-host redirect). The box template is `deploy/e2b/template/`. No
+`sandbox-network-proxy`, which today only tunnels HTTPS with CONNECT; for hosts
+that get a key the egress proxy terminates TLS with a per-deployment CA trusted
+only by the box template, validates the upstream certificate, injects the key
+over TLS only and drops it on cross-host redirect; other hosts stay plain
+tunnels). The box template is `deploy/e2b/template/`. No
 Docker box Provider ([ADR 0018](../adr/0018-microvm-box-layer.md)).
 
 **Hand-off prompt:**

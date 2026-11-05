@@ -229,8 +229,12 @@ effect again, so every handler must be safe to repeat. The rule: each effect has
 a stable `kind` + `key`, the handler passes the key to the outside system, and
 the outside system answers a repeat with the first result. For `machine.start`
 the key is the `machine` row id: the E2B Machine Provider puts it in the
-sandbox metadata and `start` first looks for a sandbox (running or paused) with
-that id, so a repeat returns the same box instead of a second one.
+sandbox metadata together with the environment's `spec_hash`. `start` first
+looks for a sandbox (running or paused) with that id: if its `spec_hash`
+matches, a repeat returns the same box instead of a second one; if the spec
+changed, the old box is saved as a work bundle (§4.7) and killed, and a new box
+is made from the new template, so setup secrets from an old spec never carry
+over in a paused box's memory or disk.
 
 | Kind | Does |
 |---|---|
@@ -285,7 +289,13 @@ template's setup step ran with the approved secrets and the registry
 allowlist) → `ready` (daemon connected; agent phase under the network policy)
 → `sleeping` after the environment's idle timeout (sandbox paused, memory and
 disk kept) → `ready` again on the next message → `stopped` when the workspace
-is deleted or the paused box is reclaimed (§4.7). The MVP caps running boxes
+is deleted or the paused box is reclaimed (§4.7). Only the server writes
+`machine.state`; Provider answers map to it as `running` + daemon connected →
+`ready`, `running` without a daemon → `starting`, `paused` → `sleeping`,
+`exited` or `missing` while a session needs the box → `lost` (and a
+`machine.start` effect), `missing` after a `stop` → `stopped`. A daemon that
+misses heartbeats moves a `ready` row to `lost` even if the Provider still says
+`running`. The MVP caps running boxes
 per account (default 4) and queues the rest, like dsh-superagent's worker
 slots, with one extra slot so a person's message is never stuck behind new
 work.
@@ -306,9 +316,9 @@ files and commands, so the server tracks two lifecycles separately.
   then a routine.
 - **Idle**: the in-memory runtime unloads after 10 idle minutes. A box pauses
   after 5 minutes with no tool call, open terminal or running job. A paused box
-  is kept 7 days; before it is reclaimed the server saves a work bundle (a
-  `git bundle` of local commits plus uncommitted and untracked files) to the
-  blob store.
+  is kept 7 days; before it is reclaimed the server saves a work bundle to the
+  blob store. The work bundle has two parts: a `git bundle` of local commits,
+  and a separate archive of uncommitted and untracked files.
 - **Limits**: a headless turn has a wall-time cap (default 60 minutes) and a
   routine run a token budget; the loop guard and continuation nudge apply;
   nothing that asks is auto-approved.
@@ -316,7 +326,12 @@ files and commands, so the server tracks two lifecycles separately.
   restart reloads runs from the log and `findInterruptedTurn` decides whether a
   turn resumes; paused boxes are untouched.
 - **Secrets**: model keys never enter a box; the egress proxy adds git and API
-  keys, and the box's E2B egress rule allows only the proxy.
+  keys, and the box's E2B egress rule allows only the proxy. To add a key the
+  proxy terminates TLS for the hosts that get one: it presents a certificate
+  from a per-deployment CA that only the box template trusts, opens its own
+  TLS connection upstream with normal certificate validation, adds the key,
+  and drops it if a redirect leaves the host. Hosts that get no key stay
+  plain CONNECT tunnels that the proxy does not open.
 
 ### 4.5 Scheduler
 
@@ -369,8 +384,10 @@ services:
   box is an explicit opt-in in the environment spec, like `bypass` today.
 - **Box host:** E2B's runtime needs Linux with KVM (a dedicated server or a
   cloud VM with nested virtualization). Its one-host package is meant for
-  evaluation; production uses its multi-host setup. The server holds no Docker
-  socket and so no root on its host.
+  evaluation; production uses its multi-host setup. The server mounts no
+  Docker socket, which removes that path to control its host; it holds an E2B
+  API key scoped to its own sandboxes. The server's own user, capabilities and
+  mounts are set in its image and checked by a deploy test.
 
 ## 6. Scaling out later
 
@@ -399,4 +416,5 @@ The server MVP is then:
 
 - Whether a client may hold a session open on two servers (no in the MVP).
 - Box volumes: one per workspace or per session (MVP: per workspace).
-- How long sleeping boxes keep their volume before they are reclaimed.
+- How long sleeping boxes keep their volume: decided 2026-11-05, 7 days in the
+  MVP, then a work bundle and reclaim (§4.7).
