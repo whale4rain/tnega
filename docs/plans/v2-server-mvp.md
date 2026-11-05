@@ -328,9 +328,10 @@ files and commands, so the server tracks two lifecycles separately.
   `machine` row for one, so restore always has a `repo_url` to start from.
 - **No secrets in a bundle**: the bundle covers only the workspace folder, and
   setup secrets exist only in the setup step's environment. Before saving, the
-  server checks the archive for the exact values in the secret store. If a
-  file contains one, no bundle is saved and the box is not reclaimed: it stays
-  paused and the person is asked to remove the value or discard the file.
+  server checks the archive and the local commits in the `git bundle` for the
+  exact values in the secret store. If either contains one, no bundle is saved and the box is not reclaimed: it stays
+  paused and the person is asked to remove the value (or rewrite the commit)
+  or discard the file.
   Restore refuses a bundle that still contains a secret value.
 - **Restore**: the next box for that workspace clones `repo_url` at `branch`
   as usual, fetches the local commits from the `git bundle` and checks out the
