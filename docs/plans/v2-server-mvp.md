@@ -15,12 +15,13 @@ state, control) and **daemons** that own files, commands and environments.
 
 - One server instance (one container), one Postgres, one blob directory.
 - One owner account, device tokens for clients and daemons.
-- Sessions on a local daemon (your laptop) or in a Docker box the server starts.
+- Sessions on a local daemon (your laptop) or in a microVM box the server starts
+  on E2B's open-source runtime ([ADR 0018](../adr/0018-microvm-box-layer.md)).
 - Durable jobs, the effects queue, routines with no window open.
 - Import of existing `~/.tnega` sessions.
 
-**Out (later):** several server instances, several people, Kubernetes or microVM
-boxes, snapshots, laptop/server hand-off, S3, Projects on the server (that is
+**Out (later):** several server instances, several people, an Agent Substrate
+(Kubernetes) box Provider, snapshots, laptop/server hand-off, S3, Projects on the server (that is
 M4, right after the MVP).
 
 Elastic in the MVP means **boxes** scale up and down; the server itself is one
@@ -93,9 +94,9 @@ create table environment (
 );
 create table machine (   -- a "box" in the diagrams
   id uuid primary key, workspace_id uuid not null references workspace,
-  provider text not null,                  -- 'docker' in the MVP
+  provider text not null,                  -- 'e2b' in the MVP
   state text not null check (state in ('starting','ready','sleeping','stopped','lost')),
-  daemon_id uuid references device, provider_ref text,   -- container id
+  daemon_id uuid references device, provider_ref text,   -- E2B sandbox id
   last_active timestamptz not null default now()
 );
 
@@ -212,7 +213,7 @@ disk. Per-member access arrives with multi-person projects.
 | API | HTTP + SSE for clients (today's routes, now behind auth); WebSocket JSON-RPC for daemons |
 | Runtimes | One resident `createAgentRuntime` per active session, as today, with the Postgres session store and remote `ctx.fs` / `ctx.process` bound to that session's daemon |
 | Control loop | Every 2 seconds and on demand: due effects, due schedules, idle boxes, lost daemons |
-| Machine Provider | Starts and stops Docker boxes through the Docker Engine API |
+| Machine Provider | Starts, pauses, resumes and kills microVM boxes through the E2B runtime API |
 
 ### 4.2 Effects: store first, act after
 
@@ -227,9 +228,13 @@ A crash after the outside action succeeds but before the row is deleted runs the
 effect again, so every handler must be safe to repeat. The rule: each effect has
 a stable `kind` + `key`, the handler passes the key to the outside system, and
 the outside system answers a repeat with the first result. For `machine.start`
-the key is the `machine` row id: the Docker Machine Provider labels the
-container with it and `start` first looks for a container with that label, so a
-repeat returns the same box instead of a second one.
+the key is the `machine` row id: the E2B Machine Provider puts it in the
+sandbox metadata together with the environment's `spec_hash`. `start` first
+looks for a sandbox (running or paused) with that id: if its `spec_hash`
+matches, a repeat returns the same box instead of a second one; if the spec
+changed, the old box is saved as a work bundle (§4.7) and killed, and a new box
+is made from the new template, so setup secrets from an old spec never carry
+over in a paused box's memory or disk.
 
 | Kind | Does |
 |---|---|
@@ -261,20 +266,95 @@ The diagrams keep the word box.
 
 ```ts
 interface MachineProvider {
-  // key = machine row id; a second start with the same key returns the same box
-  start(key: string, spec: BoxSpec): Promise<{ ref: string }>   // image, env, resources, one-time daemon token
-  stop(ref: string): Promise<void>
-  status(ref: string): Promise<'running' | 'exited' | 'missing'>
+  // key = machine row id. A second start with the same key returns the same box
+  // when its spec_hash matches (a paused box is resumed, not recreated);
+  // a different spec_hash replaces the box (§4.2). Every start that returns a
+  // box also makes sure `tnega daemon` runs in it: if the daemon is gone it is
+  // relaunched with a fresh one-time token and the old token is revoked
+  start(key: string, spec: BoxSpec): Promise<{ ref: string }>   // template, env, resources, isolation, one-time daemon token
+  pause(ref: string): Promise<void>                              // keep memory and disk
+  stop(ref: string): Promise<void>                               // kill and release
+  status(ref: string): Promise<'running' | 'paused' | 'exited' | 'missing'>
 }
+// BoxSpec.isolation: 'microvm' in the MVP; a Provider that cannot give the
+// asked level fails with SANDBOX_UNAVAILABLE
 ```
 
-Lifecycle: `starting` (container created; setup phase runs with the approved
-secrets and the registry allowlist) → `ready` (daemon connected; agent phase
-under the network policy) → `sleeping` after the environment's idle timeout
-(container stopped, volume kept) → `ready` again on the next message → `stopped`
-when the workspace is deleted. The MVP caps boxes per account (default 4) and
-queues the rest, like dsh-superagent's worker slots, with one extra slot so a
-person's message is never stuck behind new work.
+The first Provider is `machine-e2b` on E2B's open-source runtime
+(`e2b-dev/runtime`, Firecracker). Boxes are restored from a snapshot instead
+of booted, and a paused box keeps its memory, so its shell, dev server and
+jobs are still running when it resumes. The same Provider talks to a
+self-hosted runtime or to E2B's cloud by URL. Docker boxes are not built
+([ADR 0018](../adr/0018-microvm-box-layer.md)).
+
+Lifecycle: `starting` (sandbox created from the environment's template; the
+template's setup step ran with the approved secrets and the registry
+allowlist) → `ready` (daemon connected; agent phase under the network policy)
+→ `sleeping` after the environment's idle timeout (sandbox paused, memory and
+disk kept) → `ready` again on the next message → `stopped` when the workspace
+is deleted or the paused box is reclaimed (§4.7). Only the server writes
+`machine.state`; Provider answers map to it as `running` + daemon connected →
+`ready`, `running` without a daemon → `starting`, `paused` → `sleeping`,
+`exited` or `missing` while a session needs the box → `lost` (and a
+`machine.start` effect), `missing` after a `stop` → `stopped`. A daemon that
+misses heartbeats moves a `ready` row to `lost` even if the Provider still says
+`running`. The MVP caps running boxes
+per account (default 4) and queues the rest, like dsh-superagent's worker
+slots, with one extra slot so a person's message is never stuck behind new
+work.
+
+### 4.7 Headless runs
+
+A headless run is a turn with no client open: a routine, a Project thread, or a
+session the person left. The agent loop stays in the server; the box only does
+files and commands, so the server tracks two lifecycles separately.
+
+- **Run** (in the server, rebuilt from the Session log): `unloaded` → `queued`
+  → `running` → `waiting` (approval, question, secret request) → `idle` →
+  `unloaded`. A waiting run keeps no box running: the box pauses and resumes
+  when the person answers.
+- **Start**: every wake is a `run.wake` effect. The server resumes the box and
+  starts the first model call together. Queue order when slots are full: a
+  person's message, then a resumed approval, then a Project thread message,
+  then a routine.
+- **Idle**: the in-memory runtime unloads after 10 idle minutes. A box pauses
+  after 5 minutes with no tool call, open terminal or running job. A paused box
+  is kept 7 days; before it is reclaimed the server saves a work bundle to the
+  blob store. The work bundle has three parts: a `git bundle` of local commits,
+  an archive of uncommitted and untracked files, and a list of tracked paths
+  deleted from the working tree.
+- **Boxes are for `git` workspaces only.** A `daemon_path` workspace lives on
+  the person's own daemon and never gets a box; the API refuses to create a
+  `machine` row for one, so restore always has a `repo_url` to start from.
+- **No secrets in a bundle**: the bundle covers only the workspace folder, and
+  setup secrets exist only in the setup step's environment. Before saving, the
+  server decodes every archive entry and every Git object reachable from the
+  local commits, and checks that content for the exact values in the secret
+  store. If a value is found, or extraction or the scan fails, no bundle is
+  saved and the box is not reclaimed: it stays paused and the person is asked
+  to remove the value (or rewrite the commit) or discard the file. Restore
+  refuses a bundle that still contains a secret value.
+- **Restore**: the next box for that workspace clones `repo_url` at `branch`
+  as usual, fetches the local commits from the `git bundle` and checks out the
+  saved HEAD, unpacks the archive over the working tree, then deletes the
+  listed paths. Only after every step succeeds is the bundle marked used; it
+  stays in the blob store for 7 more days. If a step fails, the box start
+  fails with the reason, the half-restored box is destroyed (never reused),
+  the bundle is kept, and the next start restores it into a fresh box. The
+  person sees the error instead of an empty or partial workspace.
+- **Limits**: a headless turn has a wall-time cap (default 60 minutes) and a
+  routine run a token budget; the loop guard and continuation nudge apply;
+  nothing that asks is auto-approved.
+- **Crashes**: a lost daemon ends its calls as interrupted (§4.3); a server
+  restart reloads runs from the log and `findInterruptedTurn` decides whether a
+  turn resumes; paused boxes are untouched.
+- **Secrets**: model keys never enter a box; the egress proxy adds git and API
+  keys, and the box's E2B egress rule allows only the proxy. To add a key the
+  proxy terminates TLS for the hosts that get one: it presents a certificate
+  from a per-deployment CA that only the box template trusts, opens its own
+  TLS connection upstream with normal certificate validation, adds the key,
+  and drops it if a redirect leaves the host. Hosts that get no key stay
+  plain CONNECT tunnels that the proxy does not open.
 
 ### 4.5 Scheduler
 
@@ -309,26 +389,28 @@ only while their project is open.
 # deploy/compose.yaml (sketch)
 services:
   server:   { image: ghcr.io/whale4rain/tnega-server, ports: ["8765:8765"],
-              volumes: [blobs:/data/blobs, /var/run/docker.sock:/var/run/docker.sock],
-              environment: [DATABASE_URL, TNEGA_MASTER_KEY] }
+              volumes: [blobs:/data/blobs],
+              environment: [DATABASE_URL, TNEGA_MASTER_KEY, E2B_API_URL, E2B_API_KEY] }
   postgres: { image: postgres:17, volumes: [pg:/var/lib/postgresql/data] }
   proxy:    { image: ghcr.io/whale4rain/tnega-egress }
-# boxes are started by the server on an internal Docker network whose only
-# route out is the proxy
+# boxes are microVMs on E2B's open-source runtime, on the same or another
+# Linux host with KVM; each box's egress rule allows only the proxy
 ```
 
 - **Transport:** the server serves HTTPS itself, or runs behind a TLS reverse
   proxy with port 8765 bound to a private interface. Clients and daemons refuse
   `http://` and `ws://` URLs except to `localhost`, before sending any code or
   token, and check the certificate.
-- **Box network fails closed:** if the Machine Provider cannot create or attach
-  the internal network, the box start fails with `SANDBOX_UNAVAILABLE`; it never
-  falls back to Docker's default network. An unrestricted box is an explicit
-  opt-in in the environment spec, like `bypass` today.
-
-Mounting the Docker socket gives the server root on its host; that is accepted
-for a self-hosted MVP and documented. The hosted version uses a Kubernetes or
-microVM Machine Provider instead.
+- **Box network fails closed:** if the Machine Provider cannot set the box's
+  egress rule to the proxy only, the box start fails with
+  `SANDBOX_UNAVAILABLE`; it never falls back to open egress. An unrestricted
+  box is an explicit opt-in in the environment spec, like `bypass` today.
+- **Box host:** E2B's runtime needs Linux with KVM (a dedicated server or a
+  cloud VM with nested virtualization). Its one-host package is meant for
+  evaluation; production uses its multi-host setup. The server mounts no
+  Docker socket, which removes that path to control its host; it holds an E2B
+  API key scoped to its own sandboxes. The server's own user, capabilities and
+  mounts are set in its image and checked by a deploy test.
 
 ## 6. Scaling out later
 
@@ -336,7 +418,8 @@ microVM Machine Provider instead.
   that holds its lease; others route its client to that instance, or relay its
   live stream through `LISTEN/NOTIFY`.
 - The control loop already uses `skip locked`, so several instances can run it.
-- Blobs move to S3; the Machine Provider becomes Kubernetes or a microVM service.
+- Blobs move to S3; the E2B runtime moves from one host to its multi-host setup,
+  or an Agent Substrate Provider is added for a large hosted fleet.
 
 ## 7. Build order
 
@@ -348,7 +431,7 @@ The server MVP is then:
 2. `tnega server` with auth, client routes, daemon WebSocket and the local
    daemon from the laptop.
 3. Effects queue and control loop; durable jobs.
-4. Docker Machine Provider, environment approval, egress proxy.
+4. E2B Machine Provider, environment approval, egress proxy.
 5. Scheduler for routines; `tnega server import`.
 6. `deploy/compose.yaml`, the `server-v*` release workflow and images.
 
@@ -356,4 +439,5 @@ The server MVP is then:
 
 - Whether a client may hold a session open on two servers (no in the MVP).
 - Box volumes: one per workspace or per session (MVP: per workspace).
-- How long sleeping boxes keep their volume before they are reclaimed.
+- How long sleeping boxes keep their volume: decided 2026-11-05, 7 days in the
+  MVP, then a work bundle and reclaim (§4.7).
