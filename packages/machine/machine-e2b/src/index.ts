@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIPv4 } from 'node:net'
+import { join } from 'node:path'
 import type { Context } from '@tnega/core'
+import { defaultBuildLogger, Sandbox, Template, type BuildInfo } from 'e2b'
 import {
   boxEnvironment,
   MachineError,
@@ -39,6 +41,14 @@ import {
  *   server's name is resolved here and written to the box's `/etc/hosts`
  *   (`TNEGA_HOSTS`, read by the template's start script); everything else is
  *   resolved by the egress proxy.
+ * - The daemon starts after the box does, not as the template's start
+ *   command: E2B runs that command once, when the template is built, and
+ *   every box resumes from that snapshot, so it would never see a box's own
+ *   token. Each start runs the template's start script through E2B's command
+ *   API (as root, with the box's daemon and proxy settings in that one
+ *   command's environment), unless the daemon is running already. The box's
+ *   own environment stays empty, so the agent's commands do not inherit the
+ *   daemon token.
  * - CPU and memory come from the template on E2B; `BoxSpec.resources` cannot
  *   change them per box and are not sent.
  */
@@ -58,6 +68,38 @@ export interface E2BMachineConfig {
   fetch?: typeof globalThis.fetch
   /** Replace DNS for the server's name (tests). Default: the system resolver. */
   resolve?: (host: string) => Promise<string[]>
+  /** Replace how the daemon is started in a box (tests). Default: E2B's command API. */
+  launch?: DaemonLauncher
+}
+
+/** Start the daemon in a running box, with these variables in its environment; nothing when it runs already. */
+export type DaemonLauncher = (ref: string, env: Readonly<Record<string, string>>) => Promise<void>
+
+/** Where the template puts its start script (deploy/e2b/template). */
+export const BOX_START_SCRIPT = '/usr/local/bin/tnega-box-start'
+/**
+ * Start the daemon unless it runs. `[t]nega` keeps the pattern from matching
+ * this shell's own command line; `setsid -f` detaches the daemon, so it
+ * outlives the command that started it.
+ */
+export const LAUNCH_COMMAND = `pgrep -f '[t]nega daemon --server' >/dev/null || setsid -f ${BOX_START_SCRIPT} >>/var/log/tnega-daemon.log 2>&1 </dev/null`
+
+/** E2B's domain for an API URL: `https://api.e2b.app` serves boxes at `*.e2b.app`. */
+export function e2bDomain(apiUrl: string): string {
+  const host = new URL(apiUrl).host
+  return host.startsWith('api.') ? host.slice(4) : host
+}
+
+/** The default launcher: E2B's command API, through its SDK. */
+export function e2bLauncher(config: Pick<E2BMachineConfig, 'apiUrl' | 'apiKey' | 'requestTimeoutMs'>): DaemonLauncher {
+  return async (ref, env) => {
+    try {
+      const box = await Sandbox.connect(ref, { apiKey: config.apiKey, apiUrl: config.apiUrl, domain: e2bDomain(config.apiUrl), requestTimeoutMs: config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS })
+      await box.commands.run(LAUNCH_COMMAND, { user: 'root', envs: { ...env }, timeoutMs: 60_000 })
+    } catch (error) {
+      throw new MachineError(`could not start the daemon in box ${ref}: ${error instanceof Error ? error.message : String(error)}`, 'MACHINE_FAILED', { ref, cause: error })
+    }
+  }
 }
 
 /** Metadata key holding the machine key on each sandbox. */
@@ -105,11 +147,13 @@ export class E2BMachines extends MachineService {
   private readonly fetch: typeof globalThis.fetch
   /** The start running for each key, so starts for one key never overlap. */
   private readonly starting = new Map<string, Promise<unknown>>()
+  private readonly launch: DaemonLauncher
 
   constructor(ctx: Context, private readonly config: E2BMachineConfig) {
     super(ctx)
     this.apiUrl = config.apiUrl.replace(/\/+$/u, '')
     this.fetch = config.fetch ?? globalThis.fetch
+    this.launch = config.launch ?? e2bLauncher(config)
     if (!/^https:\/\//u.test(this.apiUrl) && !/^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/u.test(this.apiUrl)) {
       throw new MachineError('the E2B API URL must use https:// (http:// only to this machine)', 'MACHINE_INVALID')
     }
@@ -130,23 +174,29 @@ export class E2BMachines extends MachineService {
   private async startOnce(key: string, spec: BoxSpec): Promise<MachineRef> {
     // A microVM is the strongest level there is, so every level is met.
     const existing = await this.find(key)
-    if (existing) {
-      if ((existing.specHash ?? '') !== (spec.specHash ?? '')) {
-        throw new MachineError(`machine ${key} runs an older environment; save its work, stop it and start again`, 'MACHINE_SPEC_CHANGED', { ref: existing.sandboxID })
-      }
-      if (existing.state === 'paused') await this.resume(existing.sandboxID)
-      return { ref: existing.sandboxID }
+    if (existing && (existing.specHash ?? '') !== (spec.specHash ?? '')) {
+      throw new MachineError(`machine ${key} runs an older environment; save its work, stop it and start again`, 'MACHINE_SPEC_CHANGED', { ref: existing.sandboxID })
     }
-    const created = await this.call('POST', '/v2/sandboxes', {
-      templateID: spec.template,
-      timeout: this.timeout,
-      autoPause: true,
-      autoPauseMemory: true,
-      metadata: { ...spec.labels, [MACHINE_KEY_METADATA]: key, ...(spec.specHash ? { [SPEC_HASH_METADATA]: spec.specHash } : {}) },
-      ...(await this.network(spec)),
-    }, { 'idempotency-key': createAttempt(key, spec) })
-    if (!isRecord(created) || typeof created.sandboxID !== 'string') throw new MachineError('E2B answered a create without a sandbox id', 'MACHINE_FAILED')
-    return { ref: created.sandboxID }
+    const { env, firewall } = await this.network(spec)
+    let ref: string
+    if (existing) {
+      if (existing.state === 'paused') await this.resume(existing.sandboxID)
+      ref = existing.sandboxID
+    } else {
+      const created = await this.call('POST', '/v2/sandboxes', {
+        templateID: spec.template,
+        timeout: this.timeout,
+        autoPause: true,
+        autoPauseMemory: true,
+        metadata: { ...spec.labels, [MACHINE_KEY_METADATA]: key, ...(spec.specHash ? { [SPEC_HASH_METADATA]: spec.specHash } : {}) },
+        ...firewall,
+      }, { 'idempotency-key': createAttempt(key, spec) })
+      if (!isRecord(created) || typeof created.sandboxID !== 'string') throw new MachineError('E2B answered a create without a sandbox id', 'MACHINE_FAILED')
+      ref = created.sandboxID
+    }
+    // A resumed box still runs its daemon; a new one, or one whose daemon died, gets it started here.
+    await this.launch(ref, env)
+    return { ref }
   }
 
   async pause(ref: string): Promise<void> {
@@ -183,10 +233,10 @@ export class E2BMachines extends MachineService {
     return matches[0]
   }
 
-  /** The box's env and firewall, from its network. E2B applies the firewall outside the VM. */
-  private async network(spec: BoxSpec): Promise<Record<string, unknown>> {
-    const envVars = boxEnvironment(spec)
-    if (spec.network.mode === 'open') return { envVars, allow_internet_access: true }
+  /** The daemon's env and the box's firewall, from its network. E2B applies the firewall outside the VM. */
+  private async network(spec: BoxSpec): Promise<{ env: Record<string, string>; firewall: Record<string, unknown> }> {
+    const env = boxEnvironment(spec)
+    if (spec.network.mode === 'open') return { env, firewall: { allow_internet_access: true } }
     const host = new URL(spec.daemon.serverUrl).hostname.replace(/^\[|\]$/gu, '')
     let server: string[]
     if (isIPv4(host)) {
@@ -198,14 +248,16 @@ export class E2BMachines extends MachineService {
         throw new MachineError(`could not resolve the server ${host}: ${error instanceof Error ? error.message : String(error)}`, 'MACHINE_UNAVAILABLE', { cause: error })
       }
       if (!server.length) throw new MachineError(`the server ${host} has no IPv4 address for the box firewall`, 'MACHINE_INVALID')
-      envVars.TNEGA_HOSTS = server.map(address => `${address} ${host}`).join('\n')
+      env.TNEGA_HOSTS = server.map(address => `${address} ${host}`).join('\n')
     }
     const proxy = spec.network.mode === 'egress' ? spec.network.egress.proxyAddresses : []
     return {
-      envVars,
-      allow_internet_access: false,
-      // Addresses only, and no DNS servers: a name here would open DNS to the internet.
-      network: { allowOut: [...proxy, ...server], denyOut: ['0.0.0.0/0'], dnsServers: [] },
+      env,
+      firewall: {
+        allow_internet_access: false,
+        // Addresses only, and no DNS servers: a name here would open DNS to the internet.
+        network: { allowOut: [...proxy, ...server], denyOut: ['0.0.0.0/0'], dnsServers: [] },
+      },
     }
   }
 
@@ -240,6 +292,34 @@ export class E2BMachines extends MachineService {
       throw new MachineError(`E2B ${method} ${path.split('?')[0]} answered with text that is not JSON`, 'MACHINE_FAILED')
     }
   }
+}
+
+export interface BoxTemplateBuild {
+  apiUrl: string
+  apiKey: string
+  /** The template's name, `name` or `name:tag`. */
+  name: string
+  /** deploy/e2b/template, with a packed `tnega-*.tgz` in it. */
+  directory: string
+  cpuCount?: number
+  memoryMB?: number
+}
+
+/**
+ * Build the box template on E2B from deploy/e2b/template's Dockerfile (E2B's
+ * template build v2; the old `e2b template build` stopped working in 2026).
+ * It has no start command: the daemon starts per box, see above.
+ */
+export async function buildBoxTemplate(build: BoxTemplateBuild): Promise<BuildInfo> {
+  const template = Template({ fileContextPath: build.directory }).fromDockerfile(join(build.directory, 'e2b.Dockerfile'))
+  return await Template.build(template, build.name, {
+    apiKey: build.apiKey,
+    apiUrl: build.apiUrl,
+    domain: e2bDomain(build.apiUrl),
+    cpuCount: build.cpuCount ?? 2,
+    memoryMB: build.memoryMB ?? 4096,
+    onBuildLogs: defaultBuildLogger(),
+  })
 }
 
 /** Plugin: provide `ctx.machines` from E2B. The composition layer mounts it. */

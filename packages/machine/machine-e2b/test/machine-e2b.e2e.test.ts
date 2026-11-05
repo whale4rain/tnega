@@ -18,8 +18,8 @@ describe.skipIf(!apiUrl || !apiKey || !template)('E2B machines on a real runtime
     const key = `tnega-e2e-${Date.now()}`
     const spec: BoxSpec = {
       template: template ?? '',
-      // Nothing listens here; the box only has to exist.
-      daemon: { serverUrl: 'wss://tnega.invalid/daemon', token: 'e2e' },
+      // A documentation address that nothing answers: the box only has to exist. A name would need resolving first.
+      daemon: { serverUrl: 'wss://192.0.2.1/daemon', token: 'e2e' },
       workspacePath: '/workspace',
       network: { mode: 'none' },
       isolation: 'microvm',
