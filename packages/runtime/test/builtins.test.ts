@@ -25,8 +25,8 @@ async function removeTempDir(dir: string): Promise<void> {
       return
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
-      if (attempt >= 5 || (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY')) throw error
-      await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)))
+      if (attempt >= 10 || (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY')) throw error
+      await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)))
     }
   }
 }

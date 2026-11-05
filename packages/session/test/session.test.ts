@@ -115,14 +115,31 @@ function withFormatMeta(events: SessionEvent[]): SessionEvent[] {
   ]
 }
 
-async function writeV5(file: string, events: SessionEvent[]): Promise<void> {
-  const all = withFormatMeta(events)
+async function writeV5(file: string, events: SessionEvent[]): Promise<void> {  const all = withFormatMeta(events)
   await writeFile(file, `${all.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
 }
 
 afterEach(async () => {
-  await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  await Promise.all(dirs.splice(0).map(removeTempDir))
 })
+
+/**
+ * Windows can hold a directory for a moment after a writer closes it, so a
+ * plain recursive remove fails with EBUSY/EPERM/ENOTEMPTY and turns a passing
+ * test into a failing one once the suite runs in parallel.
+ */
+async function removeTempDir(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt >= 5 || (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY')) throw error
+      await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)))
+    }
+  }
+}
 
 describe('SessionLog append', () => {
   it('persists both atomic inbox claim counts as one log-only event', async () => {

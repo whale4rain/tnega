@@ -39,8 +39,26 @@ async function tempFile(name: string): Promise<string> {
 }
 
 afterEach(async () => {
-  await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  await Promise.all(dirs.splice(0).map(removeTempDir))
 })
+
+/**
+ * Windows can hold a directory for a moment after a writer closes it, so a
+ * plain recursive remove fails with EBUSY/EPERM/ENOTEMPTY and turns a passing
+ * test into a failing one once the suite runs in parallel.
+ */
+async function removeTempDir(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt >= 5 || (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY')) throw error
+      await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)))
+    }
+  }
+}
 
 async function mountRoot(
   llm: LLMAdapter = fakeLLM([{ content: 'ok', finishReason: 'stop' }]),
