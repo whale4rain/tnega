@@ -1,3 +1,4 @@
+import { StringDecoder } from 'node:string_decoder'
 import { createHash } from 'node:crypto'
 import type { ExecutionProvider, ShellResult } from '@tnega/process'
 import { parse as parseToml, TomlError } from 'smol-toml'
@@ -186,12 +187,14 @@ export function secretNames(environment: Environment): string[] {
 }
 
 /**
- * What the person approves: the setup script, the hosts it may reach, every
+ * What the person approves: the template, the setup script, the hosts it may reach, every
  * secret name and where each key is sent, and whether the box is open. A
  * change to any of these asks again; resources and idle time do not.
  */
 export function approvalHash(environment: Environment): string {
   const covered = {
+    // The image setup secrets run in.
+    template: environment.template ?? null,
     setup: environment.setup ? { script: environment.setup.script, secrets: environment.setup.secrets, hosts: [...environment.setup.hosts].sort() } : null,
     secrets: secretNames(environment),
     open: environment.network.open,
@@ -231,25 +234,56 @@ const SETUP_TIMEOUT_MS = 30 * 60_000
  * ExecutionProvider). Secrets travel in this one command's environment, so
  * they are never written into the box's environment, its template or a file.
  * Fails with `SETUP_FAILED` on a non-zero exit, with the tail of the output.
+ * Secret values are hidden in the streamed output, the result and the error.
  */
 export async function runSetup(execution: Pick<ExecutionProvider, 'runShell'>, run: SetupRun): Promise<ShellResult> {
   const env: Record<string, string> = { ...run.secrets }
   if (run.proxyUrl) {
     for (const name of ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy']) env[name] = run.proxyUrl
   }
+  const stream = run.onOutput ? redactingStream(run.secrets, run.onOutput) : undefined
   const result = await execution.runShell({
     command: run.script,
     cwd: run.cwd,
     env,
     timeoutMs: run.timeoutMs ?? SETUP_TIMEOUT_MS,
     ...(run.signal ? { signal: run.signal } : {}),
-    ...(run.onOutput ? { onOutput: run.onOutput } : {}),
+    ...(stream ? { onOutput: stream.write } : {}),
   })
+  stream?.flush()
   if (result.exitCode !== 0) {
     const tail = `${result.stdout}\n${result.stderr}`.trim().split('\n').slice(-20).join('\n')
     throw new EnvironmentError(`setup exited with ${result.exitCode}:\n${redact(tail, run.secrets)}`, 'SETUP_FAILED')
   }
-  return result
+  return { ...result, stdout: redact(result.stdout, run.secrets), stderr: redact(result.stderr, run.secrets) }
+}
+
+type OutputSink = (chunk: Buffer, stream: 'stdout' | 'stderr') => void
+
+/**
+ * Redact streamed output. Each stream holds back as many characters as the
+ * longest secret minus one, so a secret split across two chunks is still
+ * caught; `flush` sends what is held back once the command ends.
+ */
+function redactingStream(secrets: Readonly<Record<string, string>>, sink: OutputSink): { write: OutputSink; flush: () => void } {
+  const hold = Math.max(0, ...Object.values(secrets).filter(value => value.length >= 4).map(value => value.length - 1))
+  const state = { stdout: { decoder: new StringDecoder('utf8'), pending: '' }, stderr: { decoder: new StringDecoder('utf8'), pending: '' } }
+  const write: OutputSink = (chunk, name) => {
+    const entry = state[name]
+    const text = redact(entry.pending + entry.decoder.write(chunk), secrets)
+    const cut = Math.max(0, text.length - hold)
+    entry.pending = text.slice(cut)
+    if (cut > 0) sink(Buffer.from(text.slice(0, cut), 'utf8'), name)
+  }
+  const flush = (): void => {
+    for (const name of ['stdout', 'stderr'] as const) {
+      const entry = state[name]
+      const text = redact(entry.pending + entry.decoder.end(), secrets)
+      entry.pending = ''
+      if (text) sink(Buffer.from(text, 'utf8'), name)
+    }
+  }
+  return { write, flush }
 }
 
 /** Hide secret values that a script echoed, before the text reaches a person or a log. */

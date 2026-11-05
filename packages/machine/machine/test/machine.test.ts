@@ -26,6 +26,8 @@ describe('validateBoxSpec', () => {
     ['a bad env name', { env: { 'A-B': '1' } }, /not a valid variable name/],
     ['egress without the proxy address', { network: { mode: 'egress', egress: { proxyUrl: 'http://10.0.0.2:3128', proxyAddresses: [], token: 't', caCertificate: CA } } }, /proxyAddresses/],
     ['egress without a CA', { network: { mode: 'egress', egress: { proxyUrl: 'http://10.0.0.2:3128', proxyAddresses: ['10.0.0.2'], token: 't', caCertificate: 'x' } } }, /PEM/],
+    ['a proxy address that is a name', { network: { mode: 'egress', egress: { proxyUrl: 'http://10.0.0.2:3128', proxyAddresses: ['proxy.internal'], token: 't', caCertificate: CA } } }, /IPv4/],
+    ['a proxy URL with a name', { network: { mode: 'egress', egress: { proxyUrl: 'http://proxy.internal:3128', proxyAddresses: ['10.0.0.2'], token: 't', caCertificate: CA } } }, /no DNS/],
     ['too little memory', { resources: { memoryMb: 64 } }, /memoryMb/],
   ])('refuses %s', (_name, overrides, message) => {
     expect(() => validateBoxSpec(spec(overrides))).toThrow(message)

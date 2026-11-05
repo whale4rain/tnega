@@ -83,9 +83,9 @@ function spec(network: BoxSpec['network'] = { mode: 'egress', egress: { proxyUrl
 }
 
 describe('E2B machines', () => {
-  it('creates a box with its env, its key in metadata and a firewall that only reaches the proxy and the server', async () => {
+  it('creates a box with its env, its key in metadata and a firewall of addresses only: the proxy and the server, no DNS', async () => {
     const api = await fakeE2B()
-    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'e2b_test', timeoutSeconds: 600 })
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test', timeoutSeconds: 600 })
     const { ref } = await machines.start('box-1', spec())
     expect(ref).toBe('sbx1')
     const create = api.seen.find(call => call.method === 'POST' && call.url === '/v2/sandboxes')
@@ -96,19 +96,20 @@ describe('E2B machines', () => {
       autoPause: true,
       metadata: { project: 'p1', [MACHINE_KEY_METADATA]: 'box-1' },
       allow_internet_access: false,
-      network: { allowOut: ['10.0.0.2', 'tnega.example.com'], denyOut: ['0.0.0.0/0'] },
+      network: { allowOut: ['10.0.0.2', '203.0.113.7'], denyOut: ['0.0.0.0/0'], dnsServers: [] },
       envVars: {
         TNEGA_SERVER: 'wss://tnega.example.com/daemon',
         TNEGA_DAEMON_TOKEN: 'daemon-token',
         HTTPS_PROXY: 'http://box:egress-token@10.0.0.2:3128',
         TNEGA_EGRESS_CA: CA,
+        TNEGA_HOSTS: '203.0.113.7 tnega.example.com',
       },
     })
   })
 
   it('finds the same box again and resumes it when it is paused', async () => {
     const api = await fakeE2B()
-    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'e2b_test' })
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test' })
     const { ref } = await machines.start('box-1', spec())
     await machines.pause(ref)
     expect(await machines.status(ref)).toBe('paused')
@@ -121,7 +122,7 @@ describe('E2B machines', () => {
 
   it('stops a box for good and reports it missing; stopping twice is fine', async () => {
     const api = await fakeE2B()
-    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'e2b_test' })
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test' })
     const { ref } = await machines.start('box-1', spec())
     await machines.stop(ref)
     await machines.stop(ref)
@@ -132,19 +133,19 @@ describe('E2B machines', () => {
 
   it('opens the network only when asked, and gives a no-network box just the server', async () => {
     const api = await fakeE2B()
-    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'e2b_test' })
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test' })
     await machines.start('open', spec({ mode: 'open' }))
     await machines.start('none', spec({ mode: 'none' }))
     const [open, none] = api.seen.filter(call => call.method === 'POST' && call.url === '/v2/sandboxes').map(call => call.body)
     expect(open).toMatchObject({ allow_internet_access: true })
     expect(open).not.toHaveProperty('network')
     expect(open).not.toHaveProperty('envVars.HTTPS_PROXY')
-    expect(none).toMatchObject({ allow_internet_access: false, network: { allowOut: ['tnega.example.com'], denyOut: ['0.0.0.0/0'] } })
+    expect(none).toMatchObject({ allow_internet_access: false, network: { allowOut: ['203.0.113.7'], denyOut: ['0.0.0.0/0'], dnsServers: [] } })
   })
 
   it('refuses to reuse a box built from another environment and names it, so its work can be saved first', async () => {
     const api = await fakeE2B()
-    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'e2b_test' })
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test' })
     const old = await machines.start('box-1', { ...spec(), specHash: 'v1' })
     await machines.pause(old.ref)
     await expect(machines.start('box-1', { ...spec(), specHash: 'v2' })).rejects.toMatchObject({ code: 'MACHINE_SPEC_CHANGED', ref: old.ref })
@@ -159,7 +160,7 @@ describe('E2B machines', () => {
 
   it('never takes another machine\'s box, even when the API ignores the metadata filter', async () => {
     const api = await fakeE2B({ ignoreMetadataFilter: true })
-    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'e2b_test' })
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test' })
     const first = await machines.start('box-1', spec())
     const second = await machines.start('box-2', spec())
     expect(second.ref).not.toBe(first.ref)
@@ -169,12 +170,20 @@ describe('E2B machines', () => {
     const api = await fakeE2B()
     const wrongKey = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'nope' })
     await expect(wrongKey.start('box-1', spec())).rejects.toMatchObject({ code: 'MACHINE_UNAVAILABLE', message: expect.stringContaining('Invalid API key') })
-    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, apiKey: 'e2b_test' })
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test' })
     const calls = api.seen.length
     await expect(machines.start('box-1', { ...spec(), workspacePath: 'workspace' })).rejects.toMatchObject({ code: 'MACHINE_INVALID' })
     expect(api.seen).toHaveLength(calls)
     const unreachable = new E2BMachines(new Context(), { apiUrl: 'http://127.0.0.1:1', apiKey: 'e2b_test' })
     await expect(unreachable.status('sbx1')).rejects.toMatchObject({ code: 'MACHINE_UNAVAILABLE' })
+  })
+
+  it('gives up on a call E2B never answers', async () => {
+    const hanging: typeof globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+    })
+    const machines = new E2BMachines(new Context(), { apiUrl: 'https://e2b.example', apiKey: 'k', fetch: hanging, requestTimeoutMs: 20 })
+    await expect(machines.status('sbx1')).rejects.toMatchObject({ code: 'MACHINE_UNAVAILABLE' })
   })
 
   it('refuses a plain-HTTP API URL to another machine, which would send the key in the clear', () => {

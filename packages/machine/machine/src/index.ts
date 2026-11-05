@@ -167,8 +167,11 @@ export function validateBoxSpec(spec: BoxSpec): void {
   }
   if (spec.network.mode === 'egress') {
     const { egress } = spec.network
-    if (!/^http:\/\/[^/]+$/u.test(egress.proxyUrl.replace(/\/$/u, ''))) fail('egress.proxyUrl must be http://host:port')
+    if (!/^http:\/\/(?:\d{1,3}\.){3}\d{1,3}:\d+$/u.test(egress.proxyUrl.replace(/\/$/u, ''))) fail('egress.proxyUrl must be http://<IPv4>:port: the box has no DNS of its own')
     if (!egress.proxyAddresses.length) fail('egress.proxyAddresses must name the proxy, the only allowed destination')
+    for (const address of egress.proxyAddresses) {
+      if (!/^(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?$/u.test(address)) fail(`egress.proxyAddresses must be IPv4 addresses or CIDRs, not ${address}: a name would open DNS past the proxy`)
+    }
     if (!egress.token) fail('the box needs an egress token')
     if (!egress.caCertificate.includes('BEGIN CERTIFICATE')) fail('egress.caCertificate must be a PEM certificate')
   }

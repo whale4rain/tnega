@@ -1,3 +1,5 @@
+import { lookup } from 'node:dns/promises'
+import { isIPv4 } from 'node:net'
 import type { Context } from '@tnega/core'
 import {
   boxEnvironment,
@@ -23,7 +25,12 @@ import {
  *   dies, so nothing is lost when the server forgets to pause it.
  * - Network: with `egress`, the sandbox's firewall denies everything except
  *   the egress proxy and the server the daemon dials. E2B enforces it outside
- *   the VM, so a command inside cannot route around it.
+ *   the VM, so a command inside cannot route around it. Only IP addresses go
+ *   in the firewall, never names: E2B opens DNS to 8.8.8.8 as soon as one
+ *   name is allowed, and DNS queries could carry data out past the proxy. The
+ *   server's name is resolved here and written to the box's `/etc/hosts`
+ *   (`TNEGA_HOSTS`, read by the template's start script); everything else is
+ *   resolved by the egress proxy.
  * - CPU and memory come from the template on E2B; `BoxSpec.resources` cannot
  *   change them per box and are not sent.
  */
@@ -37,8 +44,12 @@ export interface E2BMachineConfig {
    * server pauses it sooner (§4.7). Default one hour.
    */
   timeoutSeconds?: number
+  /** Milliseconds one API call may take. Default 60 seconds. */
+  requestTimeoutMs?: number
   /** Replace `fetch` (tests). */
   fetch?: typeof globalThis.fetch
+  /** Replace DNS for the server's name (tests). Default: the system resolver. */
+  resolve?: (host: string) => Promise<string[]>
 }
 
 /** Metadata key holding the machine key on each sandbox. */
@@ -69,6 +80,11 @@ function listedSandbox(value: unknown): ListedSandbox | undefined {
 }
 
 const DEFAULT_TIMEOUT_SECONDS = 3_600
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000
+
+async function systemResolve(host: string): Promise<string[]> {
+  return (await lookup(host, { all: true, family: 4 })).map(entry => entry.address)
+}
 
 export class E2BMachines extends MachineService {
   readonly kind = 'e2b'
@@ -101,8 +117,7 @@ export class E2BMachines extends MachineService {
       autoPause: true,
       autoPauseMemory: true,
       metadata: { ...spec.labels, [MACHINE_KEY_METADATA]: key, ...(spec.specHash ? { [SPEC_HASH_METADATA]: spec.specHash } : {}) },
-      envVars: boxEnvironment(spec),
-      ...this.network(spec),
+      ...(await this.network(spec)),
     }, { 'idempotency-key': key })
     if (!isRecord(created) || typeof created.sandboxID !== 'string') throw new MachineError('E2B answered a create without a sandbox id', 'MACHINE_FAILED')
     return { ref: created.sandboxID }
@@ -142,19 +157,29 @@ export class E2BMachines extends MachineService {
     return matches[0]
   }
 
-  /** The sandbox's firewall, from the box's network. E2B applies it outside the VM. */
-  private network(spec: BoxSpec): Record<string, unknown> {
-    const server = new URL(spec.daemon.serverUrl).hostname.replace(/^\[|\]$/gu, '')
-    switch (spec.network.mode) {
-      case 'open':
-        return { allow_internet_access: true }
-      case 'none':
-        return { allow_internet_access: false, network: { allowOut: [server], denyOut: ['0.0.0.0/0'] } }
-      case 'egress':
-        return {
-          allow_internet_access: false,
-          network: { allowOut: [...spec.network.egress.proxyAddresses, server], denyOut: ['0.0.0.0/0'] },
-        }
+  /** The box's env and firewall, from its network. E2B applies the firewall outside the VM. */
+  private async network(spec: BoxSpec): Promise<Record<string, unknown>> {
+    const envVars = boxEnvironment(spec)
+    if (spec.network.mode === 'open') return { envVars, allow_internet_access: true }
+    const host = new URL(spec.daemon.serverUrl).hostname.replace(/^\[|\]$/gu, '')
+    let server: string[]
+    if (isIPv4(host)) {
+      server = [host]
+    } else {
+      try {
+        server = [...new Set((await (this.config.resolve ?? systemResolve)(host)).filter(address => isIPv4(address)))]
+      } catch (error) {
+        throw new MachineError(`could not resolve the server ${host}: ${error instanceof Error ? error.message : String(error)}`, 'MACHINE_UNAVAILABLE', { cause: error })
+      }
+      if (!server.length) throw new MachineError(`the server ${host} has no IPv4 address for the box firewall`, 'MACHINE_INVALID')
+      envVars.TNEGA_HOSTS = server.map(address => `${address} ${host}`).join('\n')
+    }
+    const proxy = spec.network.mode === 'egress' ? spec.network.egress.proxyAddresses : []
+    return {
+      envVars,
+      allow_internet_access: false,
+      // Addresses only, and no DNS servers: a name here would open DNS to the internet.
+      network: { allowOut: [...proxy, ...server], denyOut: ['0.0.0.0/0'], dnsServers: [] },
     }
   }
 
@@ -163,6 +188,7 @@ export class E2BMachines extends MachineService {
     try {
       response = await this.fetch(`${this.apiUrl}${path}`, {
         method,
+        signal: AbortSignal.timeout(this.config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS),
         headers: { 'x-api-key': this.config.apiKey, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       })
