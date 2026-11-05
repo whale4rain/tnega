@@ -320,20 +320,22 @@ files and commands, so the server tracks two lifecycles separately.
 - **Idle**: the in-memory runtime unloads after 10 idle minutes. A box pauses
   after 5 minutes with no tool call, open terminal or running job. A paused box
   is kept 7 days; before it is reclaimed the server saves a work bundle to the
-  blob store. The work bundle has two parts: a `git bundle` of local commits,
-  and a separate archive of uncommitted and untracked files.
+  blob store. The work bundle has three parts: a `git bundle` of local commits,
+  an archive of uncommitted and untracked files, and a list of tracked paths
+  deleted from the working tree.
 - **Boxes are for `git` workspaces only.** A `daemon_path` workspace lives on
   the person's own daemon and never gets a box; the API refuses to create a
   `machine` row for one, so restore always has a `repo_url` to start from.
 - **No secrets in a bundle**: the bundle covers only the workspace folder, and
   setup secrets exist only in the setup step's environment. Before saving, the
-  server checks the archive for the exact values in the secret store; a file
-  that contains one is left out and named in the restore note. Restore refuses
-  a bundle that still contains a secret value.
+  server checks the archive for the exact values in the secret store. If a
+  file contains one, no bundle is saved and the box is not reclaimed: it stays
+  paused and the person is asked to remove the value or discard the file.
+  Restore refuses a bundle that still contains a secret value.
 - **Restore**: the next box for that workspace clones `repo_url` at `branch`
   as usual, fetches the local commits from the `git bundle` and checks out the
-  saved HEAD, then unpacks the archive over the working tree. Only after both
-  steps succeed is the bundle marked used; it stays in the blob store for 7
+  saved HEAD, unpacks the archive over the working tree, then deletes the
+  listed paths. Only after every step succeeds is the bundle marked used; it stays in the blob store for 7
   more days. If a step fails, the box start fails with the reason, the box is
   not marked `ready`, the bundle is kept for a retry, and the person sees the
   error instead of an empty workspace.
