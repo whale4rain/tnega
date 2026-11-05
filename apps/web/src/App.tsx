@@ -15,7 +15,7 @@ import { fileOpenKind, fileUrl } from './lib/file-open'
 import { FileActionsContext, type FileActions } from './components/FileMenu'
 import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
-import { errorText, useStoredState, useTheme } from './lib/hooks'
+import { errorText, folderName, useStoredState, useTheme } from './lib/hooks'
 import { useDisplay } from './lib/display'
 import { isDesktopChrome, useDesktopChrome } from './lib/desktop-chrome'
 import { useHeldWhileClosing, useMediaQuery, usePanelMotion, WORKBENCH_OVERLAY_QUERY } from './lib/panels'
@@ -196,11 +196,16 @@ export function App() {
         if (cancelled) return
         setSessions(result.sessions)
         setSessionsFor(workspace)
-        // A linked session from another workspace can't be opened here.
+        // A linked session from another workspace can't be opened here: say so
+        // once, and drop the link so a reload does not ask again.
         const linked = sessionFromHash()
         if (linked && !result.sessions.some(s => s.id === linked)) {
           setSelectedId(undefined)
           history.replaceState(null, '', `${location.pathname}${location.search}`)
+          void noticeDialog(
+            'Session not in this folder',
+            `${folderName(workspace)} has no session ${linked}. It may belong to another workspace: switch to that folder in the sidebar to open it.`,
+          )
         }
       }, reason => !cancelled && setFatal(errorText(reason)))
       .finally(() => !cancelled && setSessionsLoading(false))
