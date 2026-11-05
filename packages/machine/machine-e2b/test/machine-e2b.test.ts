@@ -167,6 +167,17 @@ describe('E2B machines', () => {
     expect(api.sandboxes.get(fresh.ref)?.metadata).toMatchObject({ tnega_spec_hash: 'v2' })
   })
 
+  it('makes one box when two starts for the same key race, even with different tokens', async () => {
+    const api = await fakeE2B()
+    const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7'], apiKey: 'e2b_test' })
+    const [first, second] = await Promise.all([
+      machines.start('box-1', spec()),
+      machines.start('box-1', { ...spec(), daemon: { serverUrl: 'wss://tnega.example.com/daemon', token: 'other-token' } }),
+    ])
+    expect(second).toEqual(first)
+    expect(api.sandboxes.size).toBe(1)
+  })
+
   it('never takes another machine\'s box, even when the API ignores the metadata filter', async () => {
     const api = await fakeE2B({ ignoreMetadataFilter: true })
     const machines = new E2BMachines(new Context(), { apiUrl: api.apiUrl, resolve: async () => ['203.0.113.7', '2001:db8::1'], apiKey: 'e2b_test' })

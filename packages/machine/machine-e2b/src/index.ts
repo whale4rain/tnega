@@ -23,8 +23,11 @@ import {
  *   one-time daemon token, so two racing or retried starts of one box make
  *   one sandbox, while the next box for the same key (a new token) is a new
  *   create rather than a replay of a deleted one (E2B keeps keys for a day).
- *   Callers therefore mint a new daemon token for every new box. Two racing starts
- *   make one box. A box from another spec hash is refused, not reused.
+ *   Callers therefore mint a new daemon token for every new box. Starts for
+ *   one key in this process run one after another, so a second start finds
+ *   the first one's box; across processes the server's effect queue runs one
+ *   `machine.start` per machine at a time. A box from another spec hash is
+ *   refused, not reused.
  * - Pause keeps memory and disk; the box's shell, dev servers and jobs are
  *   still running when it resumes. A sandbox that times out pauses rather than
  *   dies, so nothing is lost when the server forgets to pause it.
@@ -100,6 +103,8 @@ export class E2BMachines extends MachineService {
   readonly kind = 'e2b'
   private readonly apiUrl: string
   private readonly fetch: typeof globalThis.fetch
+  /** The start running for each key, so starts for one key never overlap. */
+  private readonly starting = new Map<string, Promise<unknown>>()
 
   constructor(ctx: Context, private readonly config: E2BMachineConfig) {
     super(ctx)
@@ -112,6 +117,17 @@ export class E2BMachines extends MachineService {
 
   async start(key: string, spec: BoxSpec): Promise<MachineRef> {
     validateBoxSpec(spec)
+    const previous = this.starting.get(key) ?? Promise.resolve()
+    const run = previous.catch(() => undefined).then(() => this.startOnce(key, spec))
+    this.starting.set(key, run)
+    try {
+      return await run
+    } finally {
+      if (this.starting.get(key) === run) this.starting.delete(key)
+    }
+  }
+
+  private async startOnce(key: string, spec: BoxSpec): Promise<MachineRef> {
     // A microVM is the strongest level there is, so every level is met.
     const existing = await this.find(key)
     if (existing) {
