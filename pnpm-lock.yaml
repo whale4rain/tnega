@@ -1081,6 +1081,36 @@ importers:
         specifier: workspace:*
         version: link:../../project/thread
 
+  packages/machine/egress-proxy:
+    dependencies:
+      '@tnega/sandbox-network-proxy':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox-network-proxy
+
+  packages/machine/environment:
+    dependencies:
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../../process/process
+      smol-toml:
+        specifier: 1.9.1
+        version: 1.9.1
+
+  packages/machine/machine:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/machine/machine-e2b:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/machine':
+        specifier: workspace:*
+        version: link:../machine
+
   packages/memory/memory:
     dependencies:
       '@tnega/core':
@@ -5647,6 +5677,10 @@ packages:
     resolution: {integrity: sha512-aBY19bn/XA+hKOKX0qL7Z0UfdBsbQvc9hn993U8ALUjzxCvDcuZqLoRXjGJrUARWAlwMnsRVD9sw2AFNOYvalA==}
     engines: {node: '>=22'}
 
+  smol-toml@1.9.1:
+    resolution: {integrity: sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==}
+    engines: {node: '>= 18'}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -10192,6 +10226,8 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
+
+  smol-toml@1.9.1: {}
 
   source-map-js@1.2.1: {}
 

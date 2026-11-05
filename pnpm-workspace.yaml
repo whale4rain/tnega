@@ -4,6 +4,7 @@ packages:
   - packages/process/*
   - packages/daemon/*
   - packages/terminal/*
+  - packages/machine/*
   - packages/shell/*
   - packages/session-search/*
   - packages/browser/*

@@ -39,6 +39,23 @@ export interface ProxyVerdict {
 
 export type ProxyProtocol = 'http' | 'connect' | 'socks5' | 'upgrade'
 
+/**
+ * Who is asking, as far as the proxy can tell: the `Proxy-Authorization`
+ * header of an HTTP or CONNECT request. SOCKS5 carries none. A proxy shared by
+ * several clients (the egress proxy in front of boxes) decides per client.
+ */
+export interface ProxyClient {
+  proxyAuthorization?: string
+}
+
+/**
+ * Takes over an allowed CONNECT tunnel after the proxy has answered `200`.
+ * `dial` opens the checked TCP connection to the target (direct or through the
+ * upstream, local addresses refused as usual); it throws when the target turns
+ * out to be refused, with the explanation as the message.
+ */
+export type ProxyInterceptor = (client: Socket, head: Buffer, dial: () => Promise<Socket>) => void
+
 /** 每次判定（含解析之后的本机地址拦截）报告一次。 */
 export interface ProxyDecision extends ProxyTarget {
   protocol: ProxyProtocol
@@ -49,7 +66,13 @@ export interface ProxyDecision extends ProxyTarget {
 }
 
 export interface NetworkProxyOptions {
-  decide: (target: ProxyTarget) => ProxyVerdict
+  decide: (target: ProxyTarget, client: ProxyClient) => ProxyVerdict
+  /**
+   * Handle an allowed CONNECT tunnel here instead of splicing it to the target
+   * (the egress proxy terminates TLS for hosts it adds credentials to).
+   * Return undefined to splice as usual. Only CONNECT is offered.
+   */
+  intercept?: (target: ProxyTarget, client: ProxyClient) => ProxyInterceptor | undefined
   /** 每次连接时读一次的上游代理 URL（`http://host:port`）；缺席或空串即直连。 */
   upstream?: () => string | undefined
   /** 每次连接时读一次的 `NO_PROXY`；命中的目标不走上游。 */
@@ -93,6 +116,11 @@ function parseAuthority(value: string | undefined): ProxyTarget | undefined {
   const port = Number(match[2])
   if (!Number.isInteger(port) || port < 1 || port > 65_535) return undefined
   return { host: (match[1] ?? '').toLowerCase(), port }
+}
+
+function clientOf(req: IncomingMessage): ProxyClient {
+  const value = req.headers['proxy-authorization']
+  return typeof value === 'string' ? { proxyAuthorization: value } : {}
 }
 
 const HOP_BY_HOP = ['proxy-connection', 'proxy-authorization', 'connection', 'keep-alive', 'upgrade', 'te', 'trailer']
@@ -143,9 +171,9 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
     return decision
   }
 
-  function judge(target: ProxyTarget): ProxyVerdict {
+  function judge(target: ProxyTarget, client: ProxyClient): ProxyVerdict {
     try {
-      return options.decide(target)
+      return options.decide(target, client)
     } catch {
       return { allowed: false, reason: 'decide-failed' }
     }
@@ -203,9 +231,14 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
   }
 
   /** 判定并打通到目标的 TCP 隧道（CONNECT 与 SOCKS5）；被拒时返回拒绝的结论。 */
-  async function open(target: ProxyTarget, protocol: ProxyProtocol): Promise<{ socket: Socket } | { denied: ProxyDecision }> {
-    const verdict = judge(target)
+  async function open(target: ProxyTarget, protocol: ProxyProtocol, client: ProxyClient): Promise<{ socket: Socket } | { denied: ProxyDecision }> {
+    const verdict = judge(target, client)
     if (!verdict.allowed) return { denied: record(target, protocol, verdict) }
+    return connectAllowed(target, protocol, verdict)
+  }
+
+  /** 已放行的目标：经上游或直连接通。 */
+  async function connectAllowed(target: ProxyTarget, protocol: ProxyProtocol, verdict: ProxyVerdict): Promise<{ socket: Socket } | { denied: ProxyDecision }> {
     const upstream = upstreamFor(target)
     if (upstream === undefined) return dial(target, protocol, verdict)
     const local = await localViaUpstream(target, protocol, verdict)
@@ -238,8 +271,27 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
       client.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
       return
     }
+    const who = clientOf(req)
     try {
-      const opened = await open(target, 'connect')
+      const verdict = judge(target, who)
+      if (!verdict.allowed) {
+        const message = explain(record(target, 'connect', verdict))
+        client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nX-Tnega-Sandbox: blocked\r\nContent-Length: ${Buffer.byteLength(message) + 1}\r\nConnection: close\r\n\r\n${message}\n`)
+        return
+      }
+      const interceptor = options.intercept?.(target, who)
+      if (interceptor !== undefined) {
+        client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+        interceptor(client, head, async () => {
+          const opened = await connectAllowed(target, 'connect', verdict)
+          if ('denied' in opened) throw new Error(explain(opened.denied))
+          sockets.add(opened.socket)
+          opened.socket.once('close', () => sockets.delete(opened.socket))
+          return opened.socket
+        })
+        return
+      }
+      const opened = await connectAllowed(target, 'connect', verdict)
       if ('denied' in opened) {
         const message = explain(opened.denied)
         client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nX-Tnega-Sandbox: blocked\r\nContent-Length: ${Buffer.byteLength(message) + 1}\r\nConnection: close\r\n\r\n${message}\n`)
@@ -280,7 +332,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
     const headers: IncomingHttpHeaders = { ...req.headers, host: url.host }
     for (const name of HOP_BY_HOP) delete headers[name]
     try {
-      const verdict = judge(target)
+      const verdict = judge(target, clientOf(req))
       if (!verdict.allowed) {
         sendText(res, 403, explain(record(target, 'http', verdict)))
         return
@@ -359,7 +411,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
     }
     const target = { host: url.hostname.replace(/^\[|\]$/gu, '').toLowerCase(), port: url.port === '' ? 80 : Number(url.port) }
     try {
-      const opened = await open(target, 'upgrade')
+      const opened = await open(target, 'upgrade', clientOf(req))
       if ('denied' in opened) {
         const message = explain(opened.denied)
         client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nX-Tnega-Sandbox: blocked\r\nContent-Length: ${Buffer.byteLength(message) + 1}\r\nConnection: close\r\n\r\n${message}\n`)
@@ -385,7 +437,7 @@ export async function startNetworkProxy(listen: ProxyListen, options: NetworkPro
       return
     }
     try {
-      const opened = await open(target, 'socks5')
+      const opened = await open(target, 'socks5', {})
       if ('denied' in opened) {
         socksReply(client, SOCKS_REPLY.notAllowed)
         client.end()

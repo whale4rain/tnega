@@ -49,6 +49,8 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
  */
 export async function runDaemonCommand(args: readonly string[]): Promise<number> {
   const parsed = parseDaemonArgs(args)
+  // Commands the daemon runs inherit its environment; the token is not theirs.
+  delete process.env[DAEMON_TOKEN_ENV]
   // A refused address is a mistake to report, not a connection to retry.
   assertSecureServerUrl(parsed.server)
   let interrupted = false

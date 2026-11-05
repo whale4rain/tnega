@@ -1,0 +1,13 @@
+{
+  "name": "@tnega/environment",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/process": "workspace:*",
+    "smol-toml": "1.9.1"
+  }
+}
