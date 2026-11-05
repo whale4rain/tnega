@@ -1,7 +1,7 @@
-import { mkdir, open } from 'node:fs/promises'
-import { extname, join, relative } from 'node:path'
-import { resolveInside } from '@tnega/tools'
+import { extname } from 'node:path'
+import { FsError, type WorkspaceFs } from '@tnega/fs'
 import { FileServeError } from './files.js'
+import { checkInside } from './workspace-files.js'
 
 /**
  * Files a person drops onto the message box. They are saved inside the
@@ -48,30 +48,21 @@ export interface SavedUpload {
   size: number
 }
 
-export async function saveUpload(workspace: string, name: string, bytes: Uint8Array): Promise<SavedUpload> {
+export async function saveUpload(fs: WorkspaceFs, name: string, bytes: Uint8Array): Promise<SavedUpload> {
   if (bytes.byteLength > MAX_UPLOAD_BYTES) throw new FileServeError(`file exceeds ${MAX_UPLOAD_BYTES} bytes`, 413)
   const safe = safeUploadName(name)
-  let folder: string
-  try {
-    folder = await resolveInside(workspace, UPLOADS_DIR)
-  } catch (error) {
-    throw new FileServeError(error instanceof Error ? error.message : String(error), 400)
-  }
-  await mkdir(folder, { recursive: true })
+  await checkInside(fs, UPLOADS_DIR)
+  await fs.mkdir(UPLOADS_DIR)
   for (let index = 1; index < 1000; index += 1) {
-    const target = join(folder, numbered(safe, index))
-    // `wx` fails when the name is taken, so two drops of the same file never race onto one name.
-    const handle = await open(target, 'wx').catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'EEXIST') return undefined
+    const path = `${UPLOADS_DIR}/${numbered(safe, index)}`
+    // Skip names already taken before sending the bytes; the create-only write still settles a race.
+    if (await fs.stat(path)) continue
+    // A `create` write fails when the name is taken, so two drops of the same file never race onto one name.
+    const saved = await fs.writeFile(path, bytes, { mode: 'create' }).then(() => true, (error: unknown) => {
+      if (error instanceof FsError && error.code === 'FS_EXISTS') return false
       throw error
     })
-    if (!handle) continue
-    try {
-      await handle.writeFile(bytes)
-    } finally {
-      await handle.close()
-    }
-    return { path: relative(workspace, target).replaceAll('\\', '/'), size: bytes.byteLength }
+    if (saved) return { path, size: bytes.byteLength }
   }
   throw new FileServeError(`too many files named ${safe}`, 409)
 }

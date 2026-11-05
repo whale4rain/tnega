@@ -11,11 +11,14 @@
   多处编辑不得重叠，全部成功或一个都不改。
 - **读后写守卫** `fsGuard`：`off` / `warn`（默认）/ `enforce`。观测记录默认是进程级
   的 `sharedObservations`，重建的运行时仍认得读过的文件；可注入独立的 `ObservationStore`。
-- **路径**：一律经 `@tnega/tools` 的 `resolveWorkspacePath` / `resolveInside`（`@tnega/fs-sandbox` 的唯一实现）
-  围在工作区内，除非组合层给了 `allowOutsideWorkspace`（`bypass` 权限）。
+- **文件访问**：所有读写都经 `ctx.fs`（`@tnega/fs`），本包不 import `node:fs`。路径解析与围栏由
+  Provider 做（本机是 `@tnega/fs-local`，即 `@tnega/fs-sandbox` 的唯一实现），除非组合层给了
+  `allowOutsideWorkspace`（`bypass` 权限）；这个放行只对本机 `@tnega/fs-local` 有效，Daemon 上的
+  `@tnega/fs-remote` 总是围在宣告过的工作区里。原子写在 Provider 里。
 
 `glob` / `grep` 在同域的 `@tnega/tool-search`，它是搜索缝的 Consumer。
 
 ```ts
+await ctx.plugin(fsLocal) // composition picks the Provider
 await ctx.plugin(toolFs, { cwd: workspace, fsGuard: 'warn' })
 ```

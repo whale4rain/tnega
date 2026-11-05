@@ -9,9 +9,9 @@
   "dependencies": {
     "@tnega/approval-review": "workspace:*",
     "@tnega/auth-chatgpt": "workspace:*",
-    "@tnega/execution": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/llm": "workspace:*",
+    "@tnega/process-local": "workspace:*",
     "@tnega/sandbox": "workspace:*"
   }
 }

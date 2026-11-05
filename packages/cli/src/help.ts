@@ -17,6 +17,7 @@ const COMMANDS: readonly Row[] = [
   ['tnega tui [options]', 'terminal client for this folder'],
   ['tnega web [options]', 'start the local web app'],
   ['tnega run "<prompt>"', 'run one prompt and print the answer'],
+  ['tnega daemon [options]', 'serve this machine\'s files and commands to a server'],
 ]
 
 const CONFIG: Row = ['--config <file>', 'config file (default: ~/.tnega/config.json)']
@@ -52,6 +53,17 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       PROFILE,
       NO_PLUGINS,
       PLUGIN_DEV,
+      HELP,
+    ],
+  },
+  daemon: {
+    usage: 'tnega daemon --server <url> [options]',
+    summary: 'Serve folders on this machine to a tnega server, so its agents read files and\nrun commands here. Dials out over wss:// (ws:// only to this machine) and\nreconnects until stopped.',
+    options: [
+      ['--server <url>', 'the server to dial, wss://host/daemon'],
+      ['--token <token>', 'device token (or set TNEGA_DAEMON_TOKEN)'],
+      ['--workspace <dir>', 'folder to serve; repeat for more (default: here)'],
+      ['--device-id <id>', 'name this machine (default: from the host name)'],
       HELP,
     ],
   },

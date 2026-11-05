@@ -1,10 +1,12 @@
 import { isAbsolute } from 'node:path'
 import type { Context } from '@tnega/core'
 import {
-  localExecutionProvider,
   type ExecutionProvider,
   type ProcessResult,
-} from '@tnega/execution'
+} from '@tnega/process'
+import {
+  localExecutionProvider,
+} from '@tnega/process-local'
 import {
   DEFAULT_SEARCH_EXCLUDES,
   DEFAULT_SEARCH_MAX_RESULTS,
@@ -31,6 +33,11 @@ export interface Config {
   cwd?: string
   /** ripgrep 二进制路径；未给时在 `PATH` 上找 `rg`。 */
   ripgrepPath?: string
+  /**
+   * 是否在本机检查 / 查找二进制。执行边界在另一台机器上（daemon）时设为 `false`：
+   * `ripgrepPath`（默认 `rg`）原样交给那台机器解析。
+   */
+  locateBinary?: boolean
   /** 是否让工作区 `.gitignore` 过滤搜索。 */
   respectGitignore?: boolean
   /** 遍历时跳过的目录名。 */
@@ -48,6 +55,7 @@ export interface Config {
 interface ResolvedConfig {
   cwd: string
   ripgrepPath: string | undefined
+  locateBinary: boolean
   respectGitignore: boolean
   excludes: readonly string[]
   timeoutMs: number
@@ -60,6 +68,7 @@ function normalizeConfig(config: Config): ResolvedConfig {
   return {
     cwd: config.cwd ?? process.cwd(),
     ripgrepPath: config.ripgrepPath,
+    locateBinary: config.locateBinary ?? true,
     respectGitignore: config.respectGitignore ?? true,
     excludes: [...(config.excludes ?? DEFAULT_SEARCH_EXCLUDES)],
     timeoutMs: config.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
@@ -185,7 +194,9 @@ export class RipgrepSearch extends SearchService {
     argv: readonly string[],
     spec: SearchSpecBase,
   ): Promise<string> {
-    const binary = await resolveRipgrepPath(this._config.ripgrepPath)
+    const binary = this._config.locateBinary
+      ? await resolveRipgrepPath(this._config.ripgrepPath)
+      : this._config.ripgrepPath ?? 'rg'
     if (spec.signal?.aborted) {
       throw new SearchError(`${label} was aborted before it could start`, 'SEARCH_ABORTED')
     }

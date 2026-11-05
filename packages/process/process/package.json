@@ -1,5 +1,5 @@
 {
-  "name": "@tnega/terminal",
+  "name": "@tnega/process",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@tnega/core": "workspace:*",
-    "@tnega/web-kit": "workspace:*"
+    "@tnega/core": "workspace:*"
   }
 }

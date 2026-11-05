@@ -1,7 +1,7 @@
-import { stat } from 'node:fs/promises'
 import { basename, extname, relative, sep } from 'node:path'
 import type { Context } from '@tnega/core'
-import { PathSandboxError, ToolInputError, record, resolveInside, type ToolDefinition } from '@tnega/tools'
+import type { WorkspaceFs } from '@tnega/fs'
+import { PathSandboxError, ToolInputError, record, type ToolDefinition } from '@tnega/tools'
 
 export const SEND_FILE_TOOL_NAME = 'send_file'
 export const MAX_SENT_FILES = 10
@@ -40,8 +40,7 @@ function paths(input: unknown): string[] {
  * durable call is the record, and the clients load the bytes from the
  * workspace when they render it.
  */
-export function createSendFileTool(config: ToolSendFileConfig = {}): ToolDefinition {
-  const cwd = config.cwd ?? process.cwd()
+export function createSendFileTool(fs: WorkspaceFs): ToolDefinition {
   return {
     schema: {
       name: SEND_FILE_TOOL_NAME,
@@ -61,15 +60,16 @@ export function createSendFileTool(config: ToolSendFileConfig = {}): ToolDefinit
       for (const path of paths(input)) {
         let target: string
         try {
-          target = await resolveInside(cwd, path)
+          target = await fs.resolve(path)
         } catch (error) {
           if (error instanceof PathSandboxError) throw new ToolInputError(`${path} is outside the workspace; copy it into the workspace first`)
           throw error
         }
-        const info = await stat(target).catch(() => undefined)
+        const info = await fs.stat(target).catch(() => undefined)
         if (!info) throw new ToolInputError(`${path} does not exist`)
-        if (!info.isFile()) throw new ToolInputError(`${path} is not a file`)
-        const shown = relative(cwd, target).split(sep).join('/')
+        if (info.kind !== 'file') throw new ToolInputError(`${path} is not a file`)
+        // `resolve` follows symlinks, so the path is shown from the followed root.
+        const shown = relative(await fs.realRoot(), target).split(sep).join('/')
         files.push({
           path: shown,
           name: basename(target),
@@ -84,8 +84,9 @@ export function createSendFileTool(config: ToolSendFileConfig = {}): ToolDefinit
 
 export const toolSendFile = {
   name: 'tool-send-file',
-  inject: ['tools'],
+  inject: ['tools', 'fs'],
   apply(ctx: Context, config: ToolSendFileConfig = {}): void {
-    ctx.tools.register(createSendFileTool(config))
+    // Always fenced, whatever the permission: the clients read the file from the workspace.
+    ctx.tools.register(createSendFileTool(ctx.fs.workspace(config.cwd ?? process.cwd())))
   },
 }

@@ -1,4 +1,4 @@
-import type { ProcessEntry } from '@tnega/execution'
+import type { ProcessEntry } from '@tnega/process'
 
 /**
  * Execute option the jobs plugin passes to `shell` when the call asked for

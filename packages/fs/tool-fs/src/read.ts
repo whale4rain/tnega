@@ -1,10 +1,10 @@
-import { open, readFile, stat } from 'node:fs/promises'
 import {
   optionalNumber, record, stringField,
   ToolInputError,
   type ToolDefinition,
   type ToolExecuteOptions,
 } from '@tnega/tools'
+import { asBuffer } from './files.js'
 import { fingerprint } from './observed.js'
 import { READ_WHOLE_FILE_LIMIT, type FileToolsConfig } from './types.js'
 
@@ -22,17 +22,6 @@ export function trimPartialUtf8(buffer: Buffer): Buffer {
     }
   }
   return buffer
-}
-
-async function readPrefix(target: string, maxBytes: number): Promise<Buffer> {
-  const handle = await open(target, 'r')
-  try {
-    const buffer = Buffer.allocUnsafe(maxBytes)
-    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0)
-    return buffer.subarray(0, bytesRead)
-  } finally {
-    await handle.close()
-  }
 }
 
 /** How many lines a text has, without counting a trailing newline as one. */
@@ -66,8 +55,9 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
     async execute(input, options: ToolExecuteOptions) {
       const args = record(input)
       const target = await config.resolve(stringField(args.path, 'path'))
-      const stats = await stat(target)
-      if (stats.isDirectory()) throw new ToolInputError(`not a file: ${args.path}`)
+      const stats = await config.fs.stat(target)
+      if (!stats) throw new ToolInputError(`file not found: ${args.path}`)
+      if (stats.kind === 'dir') throw new ToolInputError(`not a file: ${args.path}`)
       const offset = optionalNumber(args.offset, 'offset') ?? 1
       if (!Number.isInteger(offset) || offset < 1) throw new ToolInputError(`offset must be a positive whole number: ${offset}`)
       const requested = optionalNumber(args.limit, 'limit') ?? config.maxReadLines
@@ -83,7 +73,7 @@ export function readFileTool(config: FileToolsConfig): ToolDefinition {
       // read; its hash is then incomplete, so the read does not authorize a
       // guarded overwrite.
       const whole = stats.size <= READ_WHOLE_FILE_LIMIT
-      const buffer = whole ? await readFile(target) : await readPrefix(target, READ_WHOLE_FILE_LIMIT)
+      const buffer = asBuffer(await config.fs.readFile(target, whole ? undefined : { start: 0, end: READ_WHOLE_FILE_LIMIT }))
       if (buffer.includes(0)) throw new ToolInputError(`file is binary: ${args.path}`)
       if (whole) config.observations.record(options.agentId, target, { kind: 'present', sha256: fingerprint(buffer) })
 

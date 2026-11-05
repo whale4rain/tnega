@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { LocalWorkspaceFs } from '@tnega/fs-local'
 
 import { FileServeError, listDirectory, readTextFile, writeTextFile } from '../src/index.js'
 
@@ -38,21 +39,21 @@ async function status(promise: Promise<unknown>): Promise<number | undefined> {
 describe('workspace files panel', () => {
   it('lists one directory at a time, folders first, without VCS and dependency trees', async () => {
     const dir = await workspace()
-    expect((await listDirectory(dir)).map(entry => `${entry.type}:${entry.path}`)).toEqual([
+    expect((await listDirectory(new LocalWorkspaceFs(dir))).map(entry => `${entry.type}:${entry.path}`)).toEqual([
       'dir:src', 'file:logo.png', 'file:README.md',
     ])
-    expect((await listDirectory(dir, 'src')).map(entry => entry.name)).toEqual(['lib', 'file9.ts', 'file10.ts', 'index.ts'])
+    expect((await listDirectory(new LocalWorkspaceFs(dir), 'src')).map(entry => entry.name)).toEqual(['lib', 'file9.ts', 'file10.ts', 'index.ts'])
   })
 
   it('opens text, declines binary files, and refuses paths outside the workspace', async () => {
     const dir = await workspace()
-    expect(await readTextFile(dir, 'src/index.ts')).toMatchObject({ path: 'src/index.ts', content: 'export const a = 1\n' })
-    const binary = await readTextFile(dir, 'logo.png')
+    expect(await readTextFile(new LocalWorkspaceFs(dir), 'src/index.ts')).toMatchObject({ path: 'src/index.ts', content: 'export const a = 1\n' })
+    const binary = await readTextFile(new LocalWorkspaceFs(dir), 'logo.png')
     expect(binary.reason).toBe('binary')
     expect(binary.content).toBeUndefined()
-    expect(await status(readTextFile(dir, '../outside.txt'))).toBe(400)
-    expect(await status(listDirectory(dir, '../..'))).toBe(400)
-    expect(await status(readTextFile(dir, 'missing.ts'))).toBe(404)
+    expect(await status(readTextFile(new LocalWorkspaceFs(dir), '../outside.txt'))).toBe(400)
+    expect(await status(listDirectory(new LocalWorkspaceFs(dir), '../..'))).toBe(400)
+    expect(await status(readTextFile(new LocalWorkspaceFs(dir), 'missing.ts'))).toBe(404)
   })
 
   it('refuses to follow a symlink out of the workspace', async () => {
@@ -65,20 +66,20 @@ describe('workspace files panel', () => {
     } catch {
       return // Creating links can need privileges on Windows.
     }
-    expect(await status(readTextFile(dir, 'escape/secret.txt'))).toBe(400)
+    expect(await status(readTextFile(new LocalWorkspaceFs(dir), 'escape/secret.txt'))).toBe(400)
   })
 
   it('saves edits, and refuses a save over a newer change on disk', async () => {
     const dir = await workspace()
-    const opened = await readTextFile(dir, 'README.md')
-    const saved = await writeTextFile(dir, 'README.md', '# edited\n', opened.mtimeMs)
+    const opened = await readTextFile(new LocalWorkspaceFs(dir), 'README.md')
+    const saved = await writeTextFile(new LocalWorkspaceFs(dir), 'README.md', '# edited\n', opened.mtimeMs)
     expect(await readFile(join(dir, 'README.md'), 'utf8')).toBe('# edited\n')
     expect(saved.mtimeMs).toBe((await stat(join(dir, 'README.md'))).mtimeMs)
 
     // Someone else (the agent) writes after the editor loaded `saved`.
     await new Promise(resolveWait => setTimeout(resolveWait, 20))
     await writeFile(join(dir, 'README.md'), '# agent\n')
-    expect(await status(writeTextFile(dir, 'README.md', '# mine\n', saved.mtimeMs))).toBe(409)
+    expect(await status(writeTextFile(new LocalWorkspaceFs(dir), 'README.md', '# mine\n', saved.mtimeMs))).toBe(409)
     expect(await readFile(join(dir, 'README.md'), 'utf8')).toBe('# agent\n')
   })
 })

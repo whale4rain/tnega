@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { configureNetwork } from '@tnega/execution'
+import { configureNetwork } from '@tnega/process-local'
 import { createLlmAdapter } from '@tnega/llm'
 import { authorizeUrl, chatgptHeaders, ChatGptLogin, CHATGPT_CLIENT_ID, jwtClaims, pkcePair, tokensFrom } from '../src/index.js'
 

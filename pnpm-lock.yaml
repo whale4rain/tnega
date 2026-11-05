@@ -61,9 +61,12 @@ importers:
       '@tnega/cli':
         specifier: workspace:*
         version: link:../../packages/cli
-      '@tnega/execution':
+      '@tnega/process':
         specifier: workspace:*
-        version: link:../../packages/execution
+        version: link:../../packages/process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../../packages/process/process-local
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9(supports-color@7.2.0)
@@ -322,15 +325,15 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../execution
       '@tnega/home':
         specifier: workspace:*
         version: link:../home
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit
@@ -398,9 +401,9 @@ importers:
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
-      '@tnega/execution':
+      '@tnega/daemon':
         specifier: workspace:*
-        version: link:../execution
+        version: link:../daemon/daemon
       '@tnega/home':
         specifier: workspace:*
         version: link:../home
@@ -413,6 +416,9 @@ importers:
       '@tnega/plugin-host':
         specifier: workspace:*
         version: link:../plugin-host
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
       '@tnega/profile':
         specifier: workspace:*
         version: link:../profile
@@ -450,6 +456,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs/fs-local
       '@tnega/persona':
         specifier: workspace:*
         version: link:../persona
@@ -468,9 +477,9 @@ importers:
       '@tnega/session-store':
         specifier: workspace:*
         version: link:../session-store
-      '@tnega/terminal':
+      '@tnega/terminal-local':
         specifier: workspace:*
-        version: link:../terminal
+        version: link:../terminal/terminal-local
       '@tnega/thread-local':
         specifier: workspace:*
         version: link:../project/thread-local
@@ -573,15 +582,15 @@ importers:
       '@tnega/auth-chatgpt':
         specifier: workspace:*
         version: link:../auth-chatgpt
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../execution
       '@tnega/home':
         specifier: workspace:*
         version: link:../home
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox/sandbox
@@ -612,6 +621,133 @@ importers:
 
   packages/core: {}
 
+  packages/daemon/daemon:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/execution-sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/execution-sandbox
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../../fs/fs
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../../fs/fs-local
+      '@tnega/fs-sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/fs-sandbox
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../../process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../../process/process-local
+      '@tnega/sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox
+      '@tnega/sandbox-local':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox-local
+      '@tnega/terminal-local':
+        specifier: workspace:*
+        version: link:../../terminal/terminal-local
+      undici:
+        specifier: 7.29.1
+        version: 7.29.1
+    devDependencies:
+      '@tnega/fs-remote':
+        specifier: workspace:*
+        version: link:../fs-remote
+      '@tnega/process-remote':
+        specifier: workspace:*
+        version: link:../process-remote
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../../terminal/terminal
+      '@tnega/terminal-remote':
+        specifier: workspace:*
+        version: link:../terminal-remote
+      '@tnega/terminal-routes':
+        specifier: workspace:*
+        version: link:../../terminal/terminal-routes
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
+
+  packages/daemon/daemon-routes:
+    dependencies:
+      '@tnega/browser-playwright':
+        specifier: workspace:*
+        version: link:../../browser/browser-playwright
+      '@tnega/computer-cua':
+        specifier: workspace:*
+        version: link:../../computer/computer-cua
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/directory-picker':
+        specifier: workspace:*
+        version: link:../../directory-picker
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../../fs/fs-local
+      '@tnega/sandbox-local':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox-local
+      '@tnega/terminal-local':
+        specifier: workspace:*
+        version: link:../../terminal/terminal-local
+      '@tnega/terminal-routes':
+        specifier: workspace:*
+        version: link:../../terminal/terminal-routes
+      '@tnega/workspace-files':
+        specifier: workspace:*
+        version: link:../../workspace-files
+    devDependencies:
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
+
+  packages/daemon/fs-remote:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../../fs/fs
+
+  packages/daemon/process-remote:
+    dependencies:
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../../process/process
+
+  packages/daemon/protocol: {}
+
+  packages/daemon/terminal-remote:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../../terminal/terminal
+
   packages/directory-picker:
     dependencies:
       '@tnega/core':
@@ -623,9 +759,30 @@ importers:
 
   packages/execution:
     dependencies:
-      undici:
-        specifier: 7.29.1
-        version: 7.29.1
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
+
+  packages/fs/fs:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/fs/fs-local:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs
+      '@tnega/fs-sandbox':
+        specifier: workspace:*
+        version: link:../../sandbox/fs-sandbox
 
   packages/fs/search-definition:
     dependencies:
@@ -638,9 +795,12 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
-      '@tnega/execution':
+      '@tnega/process':
         specifier: workspace:*
-        version: link:../../execution
+        version: link:../../process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../../process/process-local
       '@tnega/search':
         specifier: workspace:*
         version: link:../search-definition
@@ -650,12 +810,19 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs
       '@tnega/search':
         specifier: workspace:*
         version: link:../search-definition
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs-local
 
   packages/fs/tool-search:
     dependencies:
@@ -704,9 +871,6 @@ importers:
       '@tnega/compaction':
         specifier: workspace:*
         version: link:../compaction
-      '@tnega/computer-cua':
-        specifier: workspace:*
-        version: link:../computer/computer-cua
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
@@ -716,12 +880,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/directory-picker':
+      '@tnega/daemon-routes':
         specifier: workspace:*
-        version: link:../directory-picker
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../execution
+        version: link:../daemon/daemon-routes
       '@tnega/goal':
         specifier: workspace:*
         version: link:../goal
@@ -746,6 +907,9 @@ importers:
       '@tnega/plugin-host':
         specifier: workspace:*
         version: link:../plugin-host
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
       '@tnega/project-host':
         specifier: workspace:*
         version: link:../project/host
@@ -764,9 +928,6 @@ importers:
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox/sandbox
-      '@tnega/sandbox-local':
-        specifier: workspace:*
-        version: link:../sandbox/sandbox-local
       '@tnega/secrets-local':
         specifier: workspace:*
         version: link:../secrets/secrets-local
@@ -785,9 +946,6 @@ importers:
       '@tnega/subagent-local':
         specifier: workspace:*
         version: link:../subagent/subagent-local
-      '@tnega/terminal':
-        specifier: workspace:*
-        version: link:../terminal
       '@tnega/tool-browser':
         specifier: workspace:*
         version: link:../browser/tool-browser
@@ -867,6 +1025,9 @@ importers:
         specifier: workspace:*
         version: link:../../tools
     devDependencies:
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../../process/process-local
       '@tnega/tool-shell':
         specifier: workspace:*
         version: link:../../shell/tool-shell
@@ -1050,6 +1211,24 @@ importers:
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
+
+  packages/process/process:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/process/process-local:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../process
+      undici:
+        specifier: 7.29.1
+        version: 7.29.1
 
   packages/profile:
     dependencies:
@@ -1466,9 +1645,16 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../../fs/fs
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../../fs/fs-local
 
   packages/reply/tool-ui:
     dependencies:
@@ -1537,15 +1723,24 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/execution':
+      '@tnega/daemon-protocol':
         specifier: workspace:*
-        version: link:../execution
+        version: link:../daemon/protocol
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
       '@tnega/execution-secrets':
         specifier: workspace:*
         version: link:../secrets/execution-secrets
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs/fs
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs/fs-local
+      '@tnega/fs-remote':
+        specifier: workspace:*
+        version: link:../daemon/fs-remote
       '@tnega/jobs-local':
         specifier: workspace:*
         version: link:../jobs/jobs-local
@@ -1558,6 +1753,15 @@ importers:
       '@tnega/persona':
         specifier: workspace:*
         version: link:../persona
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
+      '@tnega/process-remote':
+        specifier: workspace:*
+        version: link:../daemon/process-remote
       '@tnega/ptc-runtime-quickjs':
         specifier: workspace:*
         version: link:../ptc/ptc-runtime-quickjs
@@ -1630,15 +1834,22 @@ importers:
       '@tnega/workspace-prompt':
         specifier: workspace:*
         version: link:../workspace-prompt
+    devDependencies:
+      '@tnega/daemon':
+        specifier: workspace:*
+        version: link:../daemon/daemon
 
   packages/sandbox/execution-sandbox:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
-      '@tnega/execution':
+      '@tnega/process':
         specifier: workspace:*
-        version: link:../../execution
+        version: link:../../process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../../process/process-local
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox
@@ -1660,12 +1871,12 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../../execution
       '@tnega/fs-sandbox':
         specifier: workspace:*
         version: link:../fs-sandbox
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../../process/process-local
       '@tnega/sandbox':
         specifier: workspace:*
         version: link:../sandbox
@@ -1709,9 +1920,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
-      '@tnega/execution':
+      '@tnega/process':
         specifier: workspace:*
-        version: link:../../execution
+        version: link:../../process/process
       '@tnega/secrets':
         specifier: workspace:*
         version: link:../secrets
@@ -1821,9 +2032,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
-      '@tnega/execution':
+      '@tnega/process':
         specifier: workspace:*
-        version: link:../../execution
+        version: link:../../process/process
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
@@ -1897,26 +2108,47 @@ importers:
         specifier: workspace:*
         version: link:../../tools
 
-  packages/terminal:
+  packages/terminal/terminal:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
+
+  packages/terminal/terminal-local:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../terminal
+
+  packages/terminal/terminal-routes:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       '@tnega/web-kit':
         specifier: workspace:*
-        version: link:../web-kit
+        version: link:../../web-kit
 
   packages/tools:
     dependencies:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/execution':
-        specifier: workspace:*
-        version: link:../execution
       '@tnega/fs-sandbox':
         specifier: workspace:*
         version: link:../sandbox/fs-sandbox
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../process/process
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
       '@tnega/search':
         specifier: workspace:*
         version: link:../fs/search-definition
@@ -1981,9 +2213,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
-      '@tnega/execution':
+      '@tnega/process':
         specifier: workspace:*
-        version: link:../../execution
+        version: link:../../process/process
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
@@ -2002,9 +2234,12 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
-      '@tnega/execution':
+      '@tnega/fs':
         specifier: workspace:*
-        version: link:../execution
+        version: link:../fs/fs
+      '@tnega/process-local':
+        specifier: workspace:*
+        version: link:../process/process-local
       '@tnega/search':
         specifier: workspace:*
         version: link:../fs/search-definition
@@ -2020,6 +2255,10 @@ importers:
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit
+    devDependencies:
+      '@tnega/fs-local':
+        specifier: workspace:*
+        version: link:../fs/fs-local
 
   packages/workspace-prompt:
     dependencies:

@@ -5,6 +5,7 @@ import { Context } from '@tnega/core'
 import { localUrls, ProcessRegistry, stripAnsi, tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
 import { jobsLocal } from '../../jobs-local/src/index.js'
 import { toolShell } from '@tnega/tool-shell'
+import { processLocal } from '@tnega/process-local'
 import { toolJobs } from '../src/index.js'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -16,6 +17,7 @@ async function setup(options: { processes?: ProcessRegistry; execution?: Executi
   dirs.push(cwd)
   const root = new Context()
   await root.plugin(tools)
+  await root.plugin(processLocal)
   const builtins = await root.plugin(toolShell, { cwd, ...options })
   const jobs = await root.plugin(jobsLocal)
   await root.plugin(toolJobs)

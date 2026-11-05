@@ -1,4 +1,4 @@
-import type { ProcessResult } from '@tnega/execution'
+import type { ProcessResult } from '@tnega/process'
 import { SearchError, type SearchMatch } from '@tnega/search'
 
 /** ripgrep's stderr signatures for "the pattern you gave me is not valid". */
@@ -12,12 +12,19 @@ const INVALID_PATTERN_PATTERN = /regex parse error|error parsing glob/i
  * @throws SearchError with `SEARCH_INVALID_PATTERN`, `SEARCH_OUTPUT_OVERFLOW`,
  *   or `SEARCH_FAILED`.
  */
+/** Node's message when the binary is missing or not runnable (`spawn rg ENOENT`, `spawn rg EACCES`). */
+const SPAWN_FAILED_PATTERN = /^spawn \S+ (ENOENT|EACCES|ENOEXEC)\b/
+
 export function assertSearchSucceeded(
   label: string,
   result: ProcessResult,
   maxBytes: number,
 ): void {
   const stderr = result.stderr.trim()
+  // A boundary reports a spawn failure as exit 1, the same code as "no matches"; tell them apart.
+  if (result.exitCode === 1 && SPAWN_FAILED_PATTERN.test(stderr)) {
+    throw new SearchError(`${label} could not start ripgrep on this machine: ${stderr}`, 'SEARCH_FAILED')
+  }
   if (result.exitCode === 0 || result.exitCode === 1) {
     if (result.stdoutTruncated) {
       throw new SearchError(

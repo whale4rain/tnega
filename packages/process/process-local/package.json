@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/process-local",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/core": "workspace:*",
+    "@tnega/process": "workspace:*",
+    "undici": "7.29.1"
+  }
+}

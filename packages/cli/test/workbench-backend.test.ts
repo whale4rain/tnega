@@ -3,10 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { LocalWorkspaceFs } from '@tnega/fs-local'
 
 import { startWebServer } from '@tnega/host'
 import { fileDiff, listChanges, parsePorcelain } from '@tnega/workspace-files'
-import { TerminalManager, type PtyLike, type TerminalEvent } from '@tnega/terminal'
+import { TerminalManager, type PtyLike, type TerminalEvent } from '@tnega/terminal-local'
 
 const dirs: string[] = []
 
@@ -102,7 +103,7 @@ describe('workbench changes', () => {
     await writeFile(join(workspace, 'new.md'), '# new\nline\n')
     await writeFile(join(repo, 'outside.txt'), 'changed outside the workspace\n')
 
-    const summary = await listChanges(workspace)
+    const summary = await listChanges(new LocalWorkspaceFs(workspace))
     expect(summary.git).toBe(true)
     expect(summary.files).toEqual([
       { path: 'gone.txt', status: 'deleted', additions: 0, deletions: 1 },
@@ -110,13 +111,13 @@ describe('workbench changes', () => {
       { path: 'src/a.ts', status: 'modified', additions: 2, deletions: 1 },
     ])
 
-    expect(await fileDiff(workspace, 'src/a.ts')).toEqual({ path: 'src/a.ts', status: 'modified', original: 'one\ntwo\n', modified: 'one\n2\nthree\n' })
-    expect(await fileDiff(workspace, 'new.md')).toMatchObject({ original: null, modified: '# new\nline\n' })
-    expect(await fileDiff(workspace, 'gone.txt')).toMatchObject({ original: 'bye\n', modified: null })
+    expect(await fileDiff(new LocalWorkspaceFs(workspace), 'src/a.ts')).toEqual({ path: 'src/a.ts', status: 'modified', original: 'one\ntwo\n', modified: 'one\n2\nthree\n' })
+    expect(await fileDiff(new LocalWorkspaceFs(workspace), 'new.md')).toMatchObject({ original: null, modified: '# new\nline\n' })
+    expect(await fileDiff(new LocalWorkspaceFs(workspace), 'gone.txt')).toMatchObject({ original: 'bye\n', modified: null })
   })
 
   it('reports a workspace outside git', async () => {
-    expect(await listChanges(await tempDir('tnega-nogit-'))).toEqual({ git: false, files: [] })
+    expect(await listChanges(new LocalWorkspaceFs(await tempDir('tnega-nogit-')))).toEqual({ git: false, files: [] })
   })
 })
 

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { dirname, join } from 'node:path'
-import { localExecutionProvider, networkFetch } from '@tnega/execution'
+import { localExecutionProvider, networkFetch } from '@tnega/process-local'
 import type { LlmConfig } from '@tnega/llm'
 import { resolveTnegaHome } from '@tnega/home'
 

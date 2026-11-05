@@ -4,7 +4,7 @@ import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@tnega/core'
-import { localExecutionProvider } from '@tnega/execution'
+import { localExecutionProvider } from '@tnega/process-local'
 import { containsDirectory } from '@tnega/fs-sandbox'
 import { startNetworkProxy, type NetworkProxy, type ProxyDecision } from '@tnega/sandbox-network-proxy'
 import {

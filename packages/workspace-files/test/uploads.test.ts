@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { LocalWorkspaceFs } from '@tnega/fs-local'
 
 import { FileServeError, MAX_UPLOAD_BYTES, isRuntimeFile, safeUploadName, saveUpload } from '../src/index.js'
 
@@ -20,8 +21,8 @@ afterEach(async () => {
 describe('dropped files', () => {
   it('saves the bytes under .tnega/uploads and never overwrites an earlier drop', async () => {
     const dir = await workspace()
-    const first = await saveUpload(dir, 'notes.md', Buffer.from('# one\n'))
-    const second = await saveUpload(dir, 'notes.md', Buffer.from('# two\n'))
+    const first = await saveUpload(new LocalWorkspaceFs(dir), 'notes.md', Buffer.from('# one\n'))
+    const second = await saveUpload(new LocalWorkspaceFs(dir), 'notes.md', Buffer.from('# two\n'))
     expect(first).toEqual({ path: '.tnega/uploads/notes.md', size: 6 })
     expect(second.path).toBe('.tnega/uploads/notes (2).md')
     expect(await readFile(join(dir, '.tnega', 'uploads', 'notes.md'), 'utf8')).toBe('# one\n')
@@ -43,7 +44,7 @@ describe('dropped files', () => {
 
   it('refuses a file over the size limit', async () => {
     const dir = await workspace()
-    const error = await saveUpload(dir, 'big.bin', new Uint8Array(MAX_UPLOAD_BYTES + 1)).catch((reason: unknown) => reason)
+    const error = await saveUpload(new LocalWorkspaceFs(dir), 'big.bin', new Uint8Array(MAX_UPLOAD_BYTES + 1)).catch((reason: unknown) => reason)
     expect(error).toBeInstanceOf(FileServeError)
     expect(error).toMatchObject({ status: 413 })
   })

@@ -7,6 +7,7 @@ import { session, type SessionLog } from '@tnega/session'
 import { tools, type ExecutionProvider, type ToolsService } from '@tnega/tools'
 import { jobsLocal } from '../../jobs-local/src/index.js'
 import { toolShell } from '@tnega/tool-shell'
+import { processLocal } from '@tnega/process-local'
 import { toolJobs } from '../src/index.js'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -46,6 +47,7 @@ async function setup(options: { execution?: ExecutionProvider } = {}) {
   const root = new Context()
   await root.plugin(session, { file: join(cwd, 'session.jsonl') })
   await root.plugin(tools)
+  await root.plugin(processLocal)
   await root.plugin(toolShell, { cwd, ...options })
   await root.plugin(jobsLocal)
   const log: SessionLog = root.get('session')

@@ -3,7 +3,7 @@ import { createAgentRuntime, type AgentRuntimeOptions } from '@tnega/runtime'
 import type { AgentRunOptions, AgentRunResult } from '@tnega/agent'
 import { createLlmAdapter } from '@tnega/llm'
 import { isSandboxMode, type SandboxMode } from '@tnega/sandbox'
-import { configureNetwork, configureSystemShell } from '@tnega/execution'
+import { configureNetwork, configureSystemShell } from '@tnega/process-local'
 import { SESSION_FORMAT_VERSION } from '@tnega/session'
 import {
   effectiveApiKey,

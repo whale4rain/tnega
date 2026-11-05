@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import type { ExecutionProvider, ProcessRequest, ShellRequest } from '@tnega/execution'
+import type { ExecutionProvider, ProcessRequest, ShellRequest } from '@tnega/process'
 import { SecretStore, type SecretEntry, type SecretInfo } from '@tnega/secrets'
 import { secretEnvExecution } from '../src/index.js'
 

@@ -8,6 +8,10 @@
   },
   "dependencies": {
     "@tnega/core": "workspace:*",
+    "@tnega/fs": "workspace:*",
     "@tnega/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/fs-local": "workspace:*"
   }
 }

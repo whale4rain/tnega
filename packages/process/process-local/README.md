@@ -1,18 +1,15 @@
-# `@tnega/execution`
+# `@tnega/process-local`
 
-本机执行边界：shell 命令、无 shell 的 argv 进程，以及 HTTP 抓取。
+`ctx.process` 的本机 **Provider**（Service Definition 见 `@tnega/process`）：shell 命令、无 shell 的
+argv 进程，以及 HTTP 抓取，都在这台电脑上执行。原来的 `@tnega/execution` 搬到这里；
+`@tnega/execution` 只剩一层带 `@deprecated` 的转发，保留一个版本。
 
-## 这不是一条缝
-
-本包是**纯库，没有 ctx key**，按 dsh 的措辞属于「library — no ctx key」那一类，不叫
-Service Definition，也不构成能力缝。它导出的是词汇（`ShellRequest` / `ProcessRequest` /
-`HttpRequest` 与对应结果类型）、`ExecutionProvider` 契约，以及一份本机实现
-`localExecutionProvider`。
-
-它当前通过 `BuiltinToolsConfig.execution` 以配置方式传给消费者（`shell` / `http_get` /
-`glob` / `grep` 的旧路径），而不是通过 `ctx.<key>` 注入。把它提升成真正的进程缝
-（抽象 `Service` + `ctx.execution` + 独立的 provider 包）是后续工作；本包的存在就是为了
-让那一步是「在本包上加一个抽象 Service」，而不是再一次搬家。
+- `localExecutionProvider`：未装饰的本机边界。composition 层（`packages/runtime` 的
+  `capability:sandbox`）用 secrets 与 sandbox 装饰器包好它，再以 `processBoundary` 提供
+  `ctx.process`，所以带沙箱的作用域拿不到未装饰的边界。
+- `processLocal` 插件：直接提供未装饰的本机边界，只给没有沙箱的场景与测试用。
+- 机器侧的配置（`configureSystemShell`、`configureProcessLauncher`、`configureNetwork`）
+  也在这里，由宿主进程调用。
 
 ## 为什么单独成包
 
@@ -20,7 +17,7 @@ Service Definition，也不构成能力缝。它导出的是词汇（`ShellReque
 条执行边界，Windows 下的进程树终止（`taskkill /t /f`）这类逻辑会有两份并必然漂移。把执行
 边界收在本包，`@tnega/tools` 与 `@tnega/search-ripgrep` 共用同一份实现。
 
-`@tnega/tools` 仍然 re-export 本包，所以 `@tnega/tools` 的公共面没有变化。
+`@tnega/tools` 仍然 re-export `@tnega/process` 与本包，所以 `@tnega/tools` 的公共面没有变化。
 
 ## 语义
 

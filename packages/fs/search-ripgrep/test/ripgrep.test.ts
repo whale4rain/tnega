@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
-import type { ExecutionProvider, ProcessResult } from '@tnega/execution'
+import type { ExecutionProvider, ProcessResult } from '@tnega/process'
 import { SearchError } from '@tnega/search'
 import {
   assertSearchSucceeded,
@@ -177,6 +177,11 @@ describe('search exit classification', () => {
   it('accepts exits 0 and 1', () => {
     expect(() => assertSearchSucceeded('findFiles', { ...base, exitCode: 0 }, 1000)).not.toThrow()
     expect(() => assertSearchSucceeded('findFiles', { ...base, exitCode: 1 }, 1000)).not.toThrow()
+  })
+
+  it('tells a missing ripgrep from "no matches", though both exit 1', () => {
+    expect(() => assertSearchSucceeded('findFiles', { ...base, exitCode: 1, stderr: 'spawn rg ENOENT' }, 1000))
+      .toThrow(/could not start ripgrep/)
   })
 
   it('classifies a rejected pattern as SEARCH_INVALID_PATTERN', () => {

@@ -1,4 +1,4 @@
-import { localExecutionProvider } from '@tnega/execution'
+import { localExecutionProvider } from '@tnega/process-local'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import { resolveRipgrepPath } from '@tnega/search-ripgrep'
 

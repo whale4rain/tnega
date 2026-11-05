@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { Duplex, PassThrough, type Readable } from 'node:stream'
-import type { BackgroundProcessRequest, ExecutionChild, ProcessLauncher } from '@tnega/execution'
+import type { BackgroundProcessRequest } from '@tnega/process'
+import type { ExecutionChild, ProcessLauncher } from '@tnega/process-local'
 
 export interface NodeUtilityProcess extends EventEmitter {
   readonly pid: number | undefined

@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import {
   record, stringField,
   ToolInputError,
@@ -6,7 +5,7 @@ import {
   type ToolDefinition,
   type ToolExecuteOptions,
 } from '@tnega/tools'
-import { exists, writeFileAtomic } from './atomic.js'
+import { readCurrent, writeThrough } from './files.js'
 import { checkObserved, type CurrentVersion } from './guards.js'
 import { fingerprint } from './observed.js'
 import type { FileToolsConfig } from './types.js'
@@ -137,10 +136,10 @@ export function editFileTool(config: FileToolsConfig): ToolDefinition {
       const edits = parseEdits(args.edits)
       const display = config.displayPath(target)
       return await withPathLock(target, async () => {
-        if (!await exists(target)) {
+        const before = await readCurrent(config.fs, target)
+        if (!before) {
           throw new ToolInputError(`${display} does not exist; use write_file to create it`)
         }
-        const before = await readFile(target)
         if (before.includes(0)) throw new ToolInputError(`file is binary: ${display}`)
         const text = before.toString('utf8')
         const current: CurrentVersion = { kind: 'present', sha256: fingerprint(before) }
@@ -151,7 +150,7 @@ export function editFileTool(config: FileToolsConfig): ToolDefinition {
         if (bytes > config.maxWriteBytes) {
           throw new ToolInputError(`edited file would exceed ${config.maxWriteBytes} bytes`)
         }
-        await writeFileAtomic(target, updated, { ...(options.signal ? { signal: options.signal } : {}) })
+        await writeThrough(config.fs, target, updated, { mode: 'replace', ...(options.signal ? { signal: options.signal } : {}) })
         const sha256 = fingerprint(updated)
         config.observations.record(options.agentId, target, { kind: 'present', sha256 })
         const removed = placements.reduce((total, item) => total + item.edit.oldText.length, 0)

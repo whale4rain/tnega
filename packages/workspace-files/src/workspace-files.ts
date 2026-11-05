@@ -1,13 +1,13 @@
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { relative } from 'node:path'
+import { relative, resolve } from 'node:path'
+import { FsError, isMissingError, type WorkspaceFs } from '@tnega/fs'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
-import { resolveInside } from '@tnega/tools'
 import { FileServeError } from './files.js'
 
 /**
  * The Files panel: browse the workspace one directory at a time, open text files
- * and save edits. Every path goes through `resolveInside`, so the panel cannot
- * reach outside the workspace, symlinks included.
+ * and save edits. Every path goes through the workspace's `ctx.fs` handle,
+ * which fences it, so the panel cannot reach outside the workspace, symlinks
+ * included.
  */
 
 export interface DirectoryEntry {
@@ -31,36 +31,47 @@ export const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024
 const MAX_DIRECTORY_ENTRIES = 2000
 const HIDDEN = new Set(DEFAULT_SEARCH_EXCLUDES)
 
-async function inside(workspace: string, path: string): Promise<string> {
+/** The fence's refusal as a 400; a path error is the caller's, not the server's. */
+export async function fenced<T>(run: () => Promise<T>): Promise<T> {
   try {
-    return await resolveInside(workspace, path || '.')
+    return await run()
   } catch (error) {
-    throw new FileServeError(error instanceof Error ? error.message : String(error), 400)
+    if (error instanceof Error && error.name === 'PathSandboxError') throw new FileServeError(error.message, 400)
+    throw error
   }
 }
 
-function relativePath(workspace: string, target: string): string {
-  return relative(workspace, target).replaceAll('\\', '/')
+/** The workspace-relative, `/`-separated form of a path as it was named (symlinks not followed). */
+export function workspacePath(fs: WorkspaceFs, path: string): string {
+  return relative(fs.root, resolve(fs.root, path || '.')).replaceAll('\\', '/')
 }
 
-export async function listDirectory(workspace: string, path = ''): Promise<DirectoryEntry[]> {
-  const target = await inside(workspace, path)
-  const entries = await readdir(target, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw new FileServeError(`directory not found: ${path || '.'}`, 404)
+/** Refuse a path outside the workspace with a 400 before anything reads it. */
+export async function checkInside(fs: WorkspaceFs, path: string): Promise<void> {
+  await fenced(() => fs.resolve(path || '.'))
+}
+
+/** Where a workspace-relative path lands, joined with `/` (the seam accepts it on every platform). */
+function child(path: string, name: string): string {
+  return path && path !== '.' ? `${path.replace(/\/+$/, '')}/${name}` : name
+}
+
+export async function listDirectory(fs: WorkspaceFs, path = ''): Promise<DirectoryEntry[]> {
+  const entries = await fenced(() => fs.list(path)).catch((error: unknown) => {
+    if (isMissingError(error)) throw new FileServeError(`directory not found: ${path || '.'}`, 404)
     throw error
   })
   const listed: DirectoryEntry[] = []
   for (const entry of entries) {
     if (HIDDEN.has(entry.name)) continue
-    const isDir = entry.isDirectory()
-    if (!isDir && !entry.isFile() && !entry.isSymbolicLink()) continue
-    const childPath = relativePath(workspace, `${target}/${entry.name}`)
-    if (isDir) {
+    if (entry.kind === 'other') continue
+    const childPath = workspacePath(fs, child(path, entry.name))
+    if (entry.kind === 'dir') {
       listed.push({ name: entry.name, path: childPath, type: 'dir' })
     } else {
-      const info = await stat(`${target}/${entry.name}`).catch(() => undefined)
+      const info = await fs.stat(child(path, entry.name)).catch(() => undefined)
       if (!info) continue
-      listed.push(info.isDirectory()
+      listed.push(info.kind === 'dir'
         ? { name: entry.name, path: childPath, type: 'dir' }
         : { name: entry.name, path: childPath, type: 'file', size: info.size })
     }
@@ -74,13 +85,13 @@ function looksBinary(bytes: Buffer): boolean {
   return bytes.subarray(0, 8192).includes(0)
 }
 
-export async function readTextFile(workspace: string, path: string): Promise<TextFile> {
-  const target = await inside(workspace, path)
-  const info = await stat(target).catch(() => undefined)
-  if (!info?.isFile()) throw new FileServeError(`file not found: ${path}`, 404)
-  const base = { path: relativePath(workspace, target), size: info.size, mtimeMs: info.mtimeMs }
+export async function readTextFile(fs: WorkspaceFs, path: string): Promise<TextFile> {
+  await checkInside(fs, path)
+  const info = await fs.stat(path).catch(() => undefined)
+  if (info?.kind !== 'file') throw new FileServeError(`file not found: ${path}`, 404)
+  const base = { path: workspacePath(fs, path), size: info.size, mtimeMs: info.mtimeMs }
   if (info.size > MAX_TEXT_FILE_BYTES) return { ...base, reason: 'too-large' }
-  const bytes = await readFile(target)
+  const bytes = Buffer.from(await fs.readFile(path))
   if (looksBinary(bytes)) return { ...base, reason: 'binary' }
   return { ...base, content: bytes.toString('utf8') }
 }
@@ -91,7 +102,7 @@ export async function readTextFile(workspace: string, path: string): Promise<Tex
  * than silently overwriting that change.
  */
 export async function writeTextFile(
-  workspace: string,
+  fs: WorkspaceFs,
   path: string,
   content: string,
   expectedMtimeMs?: number,
@@ -99,13 +110,19 @@ export async function writeTextFile(
   if (Buffer.byteLength(content, 'utf8') > MAX_TEXT_FILE_BYTES) {
     throw new FileServeError(`file exceeds ${MAX_TEXT_FILE_BYTES} bytes`, 413)
   }
-  const target = await inside(workspace, path)
-  const info = await stat(target).catch(() => undefined)
-  if (info && !info.isFile()) throw new FileServeError(`not a file: ${path}`, 400)
+  await checkInside(fs, path)
+  const info = await fs.stat(path).catch(() => undefined)
+  if (info && info.kind !== 'file') throw new FileServeError(`not a file: ${path}`, 400)
   if (expectedMtimeMs !== undefined && info && Math.abs(info.mtimeMs - expectedMtimeMs) > 1) {
     throw new FileServeError(`${path} changed on disk since it was opened`, 409)
   }
-  await writeFile(target, content, 'utf8')
-  const saved = await stat(target)
-  return { path: relativePath(workspace, target), content, size: saved.size, mtimeMs: saved.mtimeMs }
+  try {
+    await fs.writeFile(path, content)
+  } catch (error) {
+    if (error instanceof FsError && error.code === 'FS_BUSY') throw new FileServeError(error.message, 409)
+    throw error
+  }
+  const saved = await fs.stat(path)
+  if (!saved) throw new FileServeError(`file not found: ${path}`, 404)
+  return { path: workspacePath(fs, path), content, size: saved.size, mtimeMs: saved.mtimeMs }
 }

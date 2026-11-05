@@ -143,6 +143,15 @@ config. Those read tnega's own state, not the workspace.
 `packages/workspace-files/src` imports `node:fs`; existing tool tests pass
 unchanged; new Provider tests pass on Linux and Windows.
 
+**As built (2026-11-04):** `ctx.fs.workspace(root, { allowOutside })` returns a
+`WorkspaceFs` handle, so one Provider serves every workspace of a scope (host
+routes open one per request). The handle also has `resolve` (symlinks followed,
+fenced again) and `realRoot`, which the file tools need for their locks and
+display paths. The read-after-write guard keeps comparing content hashes
+rather than `mtimeMs` (no behaviour change). `workspace-files/src/file-edits.ts`
+still uses `node:fs` with `git`; it moves together with git in P2, when
+commands go through `ctx.process`.
+
 **Hand-off prompt:**
 
 ```text
@@ -202,6 +211,17 @@ with the types.
 **Done when:** `grep -r "@tnega/execution'" packages` finds only the re-export
 package; sandbox and secrets tests pass unchanged; a test proves that a scope
 with a sandbox never sees the raw local Provider.
+
+**As built (2026-11-04):** `ProcessService` implements `ExecutionProvider`;
+`ProcessBoundary` / the `processBoundary` plugin provide `ctx.process` from
+one boundary value, so `capability:sandbox` mounts the local boundary wrapped
+by the secrets and sandbox decorators, and `shell` / `http_get` take it from
+`ctx.process`. `ProcessRegistry` moved to the Definition (it is machine-free).
+`ExecutionProvider.describeShell()` replaces the tool's direct `systemShell()`
+call. Still on `@tnega/process-local` directly, because they are machine-side
+until P4/P5: `search-ripgrep` (runs `rg` on the raw local boundary, as before),
+`execution-sandbox` (builds confined argv for the local shell), `workspace-files`
+(`@` file search and `git`), and the host / CLI / desktop configuration calls.
 
 **Hand-off prompt:**
 
@@ -344,6 +364,27 @@ sending the token. A test covers the refusal.
 against `fs-remote` + `process-remote` over the in-process transport, and a
 recorded session replayed through it equals the local run.
 
+**As built (2026-11-04):** `protocol`, `daemon`, `fs-remote` and
+`process-remote` are in. The WebSocket client uses undici's `WebSocket`
+(Node 22's global one cannot send an `Authorization` header). The runtime takes
+`machine: { link }`: files, commands and search go to the daemon, and spill,
+office and skills stay off in that mode because they still read this machine's
+disk. The runtime sends the sandbox mode with each command and the daemon
+enforces it (read-only when none is sent); the daemon always fences paths, so
+`bypass` does not reach outside the workspace remotely. Background processes
+report their output with `process/tail` (every 500 ms) instead of
+`process/write`. A mutating call carries a `callId` and the daemon answers a
+retry from memory (last 512). Checks: the `tool-fs` suites and the runtime
+`builtins` shell suite run unchanged through a loopback daemon
+(`packages/daemon/daemon/test/contract-*.test.ts`), and
+`packages/runtime/test/machine-parity.test.ts` runs the same tool calls locally
+and through the daemon and compares the model-visible text. **Not yet:**
+`terminal/*`, `browser-remote`, `computer-remote` and `process/write`; local mode
+still calls the local Providers directly rather than through an in-process
+daemon. The server side that accepts daemons over WebSocket arrives with M3
+(device tokens), so `tnega daemon` has nothing to dial until then except a test
+or a hand-built runtime.
+
 **Hand-off prompt:**
 
 ```text
@@ -389,6 +430,19 @@ browser host; `apps/desktop/src/main.ts` starts the in-process daemon next to
 **Done when:** `packages/host` imports no machine-side package, every web and
 desktop route test passes unchanged, and the desktop app runs as before.
 
+**As built (2026-11-04):** `packages/daemon/daemon-routes` mounts `fsLocal`
+with the file routes, the terminal routes with their own `TerminalManager`,
+the browser view, the folder picker and the sandbox and computer-use setup
+routes; `startWebServer` mounts that one plugin, so `host/server.ts` no longer
+imports `@tnega/terminal`, `@tnega/directory-picker`, `@tnega/sandbox-local`,
+`@tnega/computer-cua` or `@tnega/fs-local`, and `ServerContext` loses
+`terminals`. URLs and responses are unchanged. Two things stay in the host
+until `browser-remote` exists: the `PlaywrightBrowserHost` (the agent's
+`browser_*` tools drive the same page the Workbench shows, so the host creates
+it and passes it to the routes), and `@tnega/workspace-files` for the file-edit
+baselines in `runs.ts`. The desktop app needs no change: it already starts the
+host in process, which mounts the routes.
+
 **Hand-off prompt:**
 
 ```text
@@ -400,6 +454,20 @@ sandbox setup and computer setup routes into packages/daemon/daemon-routes,
 mounted from the in-process daemon in local mode. URLs and responses must not
 change; the web tests and desktop smoke test are the check. No CHANGELOG edits.
 ```
+
+### P4 follow-up: forwarded Services (2026-11-04)
+
+Agreed with the owner: terminal, browser and computer use reach a daemon
+through two shared pieces instead of one protocol method each. `service/call`
+forwards any method of a Service the daemon lists in `capabilities.services`,
+and `stream/open` / `stream/event` / `stream/resume` / `stream/close` carry a
+listener method as a numbered stream that a new connection can resume (512
+events kept, 30 s grace, then the daemon unsubscribes). Errors keep a numeric
+`status`. The terminal is first: `packages/terminal/{terminal,terminal-local,
+terminal-routes}` is the seam, `daemon/terminal-remote` the remote Provider,
+and the daemon serves only folders inside its announced workspaces. Next:
+browser (separate profile by default, frames only while watched) and computer
+use (off unless the device opts in, local stop key).
 
 ## P6 Client profiles
 

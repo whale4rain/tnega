@@ -1,17 +1,21 @@
 import type { Context, Plugin } from '@tnega/core'
 import { systemPrompt } from '@tnega/agent'
 import { skillTools } from '@tnega/coding-agent'
-import { localExecutionProvider } from '@tnega/execution'
+import { localExecutionProvider, networkPolicy } from '@tnega/process-local'
+import { processBoundary } from '@tnega/process'
 import { secretEnvExecution } from '@tnega/execution-secrets'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { computerCua } from '@tnega/computer-cua'
 import { jobsLocal } from '@tnega/jobs-local'
 import { memoryLocal } from '@tnega/memory-local'
 import { ptcRuntimeQuickjs, type PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
-import { networkPolicy } from '@tnega/execution'
 import { canonicalPath, resolveSandboxPolicy, type SandboxExecutionPolicy, type SandboxNetworkRequest } from '@tnega/sandbox'
 import { sandboxLocal } from '@tnega/sandbox-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
+import { fsLocal } from '@tnega/fs-local'
+import { announcedWorkspace, fsRemote } from '@tnega/fs-remote'
+import { remoteExecutionProvider } from '@tnega/process-remote'
+import type { DaemonLink, SandboxParams } from '@tnega/daemon-protocol'
 import { secretsLocal, type SecretVault } from '@tnega/secrets-local'
 import type { SessionLog } from '@tnega/session'
 import { spillLocal } from '@tnega/spill-local'
@@ -44,6 +48,8 @@ import { workspacePrompt } from '@tnega/workspace-prompt'
  * mount their Provider and their model-facing Consumer together:
  *
  * ```text
+ * @tnega/fs-local ─→ capability:fs ─→ @tnega/tool-fs, @tnega/tool-send-file
+ * @tnega/process-local ─→ capability:sandbox (+ secrets, sandbox decorators) ─→ ctx.process ─→ @tnega/tool-shell, @tnega/tool-web-fetch
  * @tnega/sandbox-local ─→ capability:sandbox ─→ @tnega/execution-sandbox
  * @tnega/search-ripgrep ─→ capability:search ─→ @tnega/tool-search
  * @tnega/spill-local ─→ capability:spill ─→ @tnega/tool-spill
@@ -115,8 +121,20 @@ async function networkOf(source: SandboxNetworkSource | undefined): Promise<Sand
   return isNetworkSettings(source) ? await source.read() : source
 }
 
+/**
+ * Where a scope's files and commands live. Absent is this machine. A daemon
+ * link puts `ctx.fs`, `ctx.process` and search on the daemon; the sandbox is
+ * then the daemon's to enforce, at the permission this scope sends with each
+ * command.
+ */
+export interface MachineSpec {
+  link: DaemonLink
+}
+
 export interface RuntimeSpec {
   workspace: string
+  /** Run files, commands and search on a daemon instead of this machine. */
+  machine?: MachineSpec
   /** Sandbox mode for builtin tools. Defaults to `read-only`. */
   permission?: Permission
   /** Network access for sandboxed commands. Defaults to open. */
@@ -174,6 +192,7 @@ async function permissionOf(permission: Permission): Promise<PermissionMode> {
 
 export interface SandboxCapabilitySpec {
   workspace: string
+  machine?: MachineSpec
   permission: Permission
   network?: SandboxNetworkSource
   sessionId?: string
@@ -181,14 +200,20 @@ export interface SandboxCapabilitySpec {
 }
 
 /**
- * Sandbox seam: pick the local provider, then hand the execution boundary to
- * the builtin tools. `shell` only knows the boundary it stands on, so pointing
- * the provider elsewhere moves it without touching the tool.
+ * Sandbox seam: pick the local provider, then provide `ctx.process` as the
+ * local boundary wrapped by the secrets and sandbox decorators, and mount the
+ * builtin tools on it. `shell` only knows the boundary it stands on, so
+ * pointing the provider elsewhere moves it without touching the tool, and
+ * nothing in a sandboxed scope can reach the undecorated boundary.
  */
 export const sandboxCapability: Plugin = {
   name: 'capability:sandbox',
   inject: ['tools'],
   async apply(ctx: Context, spec: SandboxCapabilitySpec) {
+    if (spec.machine) {
+      await ctx.plugin(remoteSandboxCapability, { ...spec, machine: spec.machine })
+      return
+    }
     const workspaceRoot = canonicalPath(resolve(spec.workspace))
     await ctx.plugin(sandboxLocal, {
       workspaceRoot,
@@ -206,17 +231,55 @@ export const sandboxCapability: Plugin = {
         ...(network !== undefined ? { network } : {}),
       })
     }
-    await ctx.plugin(builtinTools, {
-      ...(spec.builtin ?? {}),
-      cwd: spec.workspace,
-      execution: sandboxedExecution(ctx, {
+    await ctx.plugin(processBoundary, {
+      boundary: sandboxedExecution(ctx, {
         // Commands get this scope's secrets as variables when a store is mounted.
         inner: secretEnvExecution(ctx, localExecutionProvider),
         policy: await policy(),
         resolvePolicy: policy,
       }),
     })
+    // Always the decorated boundary, whatever the builtin config says.
+    await ctx.plugin(builtinTools, { ...(spec.builtin ?? {}), cwd: spec.workspace, execution: ctx.get('process') })
     // Only hosts that read live settings (and so have a person to approve) get the tool.
+    const source = spec.network
+    if (source !== undefined && isNetworkSettings(source)) {
+      await ctx.plugin(toolNetworkAccess, {
+        grants,
+        network: () => networkOf(source),
+        ...(source.remember ? { remember: source.remember } : {}),
+      })
+    }
+  },
+}
+
+/** The sandbox a remote scope asks the daemon to enforce for one command. */
+async function remoteSandbox(spec: SandboxCapabilitySpec, grants: NetworkGrants): Promise<SandboxParams> {
+  const network = await withGrants(await networkOf(spec.network), grants)
+  return {
+    mode: await permissionOf(spec.permission),
+    sessionId: spec.sessionId ?? spec.workspace,
+    ...(network !== undefined ? { network } : {}),
+  }
+}
+
+/**
+ * The sandbox capability for a scope on a daemon: commands run there, and the
+ * daemon confines them with its own mechanism at the mode sent per call. The
+ * secrets decorator still applies here, before the call leaves.
+ */
+const remoteSandboxCapability: Plugin = {
+  name: 'capability:sandbox-remote',
+  inject: ['tools'],
+  async apply(ctx: Context, spec: SandboxCapabilitySpec & { machine: MachineSpec }) {
+    const { link } = spec.machine
+    const grants = new NetworkGrants(() => ctx.get('session', false))
+    const boundary = remoteExecutionProvider(link, {
+      workspaceId: announcedWorkspace(link, spec.workspace).id,
+      sandbox: () => remoteSandbox(spec, grants),
+    })
+    await ctx.plugin(processBoundary, { boundary: secretEnvExecution(ctx, boundary) })
+    await ctx.plugin(builtinTools, { ...(spec.builtin ?? {}), cwd: spec.workspace, execution: ctx.get('process') })
     const source = spec.network
     if (source !== undefined && isNetworkSettings(source)) {
       await ctx.plugin(toolNetworkAccess, {
@@ -248,14 +311,40 @@ export const secretsCapability: Plugin = {
   },
 }
 
-export interface WorkspaceCapabilitySpec { workspace: string }
+export interface WorkspaceCapabilitySpec { workspace: string; machine?: MachineSpec }
+
+/**
+ * File system seam: the Provider of `ctx.fs` for this scope. The file tools,
+ * `send_file` and anything else that touches the workspace's files open it
+ * from here, so pointing it at another machine moves them all.
+ */
+export const fsCapability: Plugin = {
+  name: 'capability:fs',
+  async apply(ctx: Context, spec: { machine?: MachineSpec } = {}) {
+    if (spec.machine) await ctx.plugin(fsRemote, { link: spec.machine.link })
+    else await ctx.plugin(fsLocal)
+  },
+}
 
 /** Search seam: provider then the model-facing `glob` / `grep`. */
 export const searchCapability: Plugin = {
   name: 'capability:search',
   inject: ['tools'],
   async apply(ctx: Context, spec: WorkspaceCapabilitySpec) {
-    await ctx.plugin(searchRipgrep, { cwd: spec.workspace })
+    if (spec.machine) {
+      const { link } = spec.machine
+      // Search reads only and ran unconfined locally too; on a daemon `rg` is found there.
+      await ctx.plugin(searchRipgrep, {
+        cwd: spec.workspace,
+        locateBinary: false,
+        execution: remoteExecutionProvider(link, {
+          workspaceId: announcedWorkspace(link, spec.workspace).id,
+          sandbox: () => ({ mode: 'bypass' }),
+        }),
+      })
+    } else {
+      await ctx.plugin(searchRipgrep, { cwd: spec.workspace })
+    }
     await ctx.plugin(toolSearch, { cwd: spec.workspace })
   },
 }
@@ -395,8 +484,10 @@ export const computerCapability: Plugin = {
 export const replyCapability: Plugin = {
   name: 'capability:reply',
   inject: ['tools'],
-  async apply(ctx: Context, spec: { workspace: string }) {
-    await ctx.plugin(toolSendFile, { cwd: spec.workspace })
+  async apply(ctx: Context, spec: { workspace: string; local?: boolean }) {
+    // The chat serves a shown file from this machine's disk, so a scope on a
+    // daemon cannot show one yet; it keeps the agent-rendered interfaces.
+    if (spec.local !== false) await ctx.plugin(toolSendFile, { cwd: spec.workspace })
     await ctx.plugin(toolUi)
   },
 }
@@ -414,6 +505,7 @@ export const runtimeCapabilities: Plugin = {
     const office = spec.office ?? 'auto'
     const builtin = spec.builtin === false ? false : spec.builtin ?? {}
     await ctx.plugin(tools, spec.tools ?? {})
+    await ctx.plugin(fsCapability, spec.machine ? { machine: spec.machine } : {})
     await ctx.plugin(systemPrompt)
     await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? spec.workspace })
     if (spec.summary) await ctx.plugin(runSummary)
@@ -427,16 +519,21 @@ export const runtimeCapabilities: Plugin = {
         ...(spec.sessionId !== undefined ? { sessionId: spec.sessionId } : {}),
         ...(spec.sandboxNetwork !== undefined ? { network: spec.sandboxNetwork } : {}),
         ...(builtin ? { builtin } : {}),
+        ...(spec.machine ? { machine: spec.machine } : {}),
       })
     }
-    if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace })
-    if (spec.spill ?? builtinOn) await ctx.plugin(spillCapability, { workspace: spec.workspace })
-    if (office === true || (office === 'auto' && builtinOn && await hasOfficeFiles(spec.workspace))) {
+    if (spec.search ?? builtinOn) await ctx.plugin(searchCapability, { workspace: spec.workspace, ...(spec.machine ? { machine: spec.machine } : {}) })
+    // Office and skills read the workspace from this machine's disk, so a scope
+    // on a daemon never mounts them. Spill stores the full result on this machine
+    // where `read_file` (on the daemon) cannot reach it, so it is local only too.
+    const local = !spec.machine
+    if (local && (spec.spill ?? builtinOn)) await ctx.plugin(spillCapability, { workspace: spec.workspace })
+    if (local && (office === true || (office === 'auto' && builtinOn && await hasOfficeFiles(spec.workspace)))) {
       // Optional by nature: a workspace with a spreadsheet should get the tools,
       // and a broken one of them must not cost the run every other tool.
       await mountOptional(ctx, 'office', () => ctx.plugin(officeCapability, { workspace: spec.workspace }))
     }
-    if (spec.skills ?? builtinOn) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
+    if (local && (spec.skills ?? builtinOn)) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
     if (spec.memory) {
       await ctx.plugin(memoryCapability, { workspace: spec.workspace, writeTool: builtinOn })
     }
@@ -449,7 +546,7 @@ export const runtimeCapabilities: Plugin = {
     }
     if (spec.ptc) await ctx.plugin(ptcCapability, spec.ptc)
     if (spec.computer) await ctx.plugin(computerCapability, spec.computer)
-    if (spec.reply) await ctx.plugin(replyCapability, { workspace: spec.workspace })
+    if (spec.reply) await ctx.plugin(replyCapability, { workspace: spec.workspace, local })
 
     // Every executable tool is a schema provider, so the assembled prompt and
     // the registry can never disagree about what the model may call.

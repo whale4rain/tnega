@@ -1,5 +1,5 @@
-import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { FsEntry, WorkspaceFs } from '@tnega/fs'
 import {
   optionalBoolean,
   optionalString,
@@ -11,7 +11,7 @@ import {
 } from '@tnega/tools'
 
 export interface ListDirConfig {
-  cwd: string
+  fs: WorkspaceFs
   resolve(path: string): Promise<string>
   displayPath(target: string): string
   maxResults: number
@@ -25,11 +25,11 @@ interface DirectoryEntry {
   type: 'file' | 'directory'
 }
 
-function toEntry(config: ListDirConfig, dir: string, entry: { name: string; isDirectory(): boolean }): DirectoryEntry {
+function toEntry(config: ListDirConfig, dir: string, entry: FsEntry): DirectoryEntry {
   return {
     name: entry.name,
     path: config.displayPath(join(dir, entry.name)),
-    type: entry.isDirectory() ? 'directory' : 'file',
+    type: entry.kind === 'dir' ? 'directory' : 'file',
   }
 }
 
@@ -39,11 +39,11 @@ async function collectEntries(
   signal?: AbortSignal,
 ): Promise<DirectoryEntry[]> {
   const entries: DirectoryEntry[] = []
-  const children = await readdir(dir, { withFileTypes: true })
+  const children = await config.fs.list(dir)
   for (const entry of children) {
     if (entries.length >= config.maxResults) break
     if (signal?.aborted) throw new ToolAbortError()
-    const isDirectory = entry.isDirectory()
+    const isDirectory = entry.kind === 'dir'
     if (isDirectory && config.excludes.has(entry.name)) continue
     entries.push(toEntry(config, dir, entry))
     if (isDirectory) entries.push(...await collectEntries(config, join(dir, entry.name), signal))
@@ -70,12 +70,13 @@ export function listDirTool(config: ListDirConfig): ToolDefinition {
     async execute(input, options: ToolExecuteOptions) {
       const args = record(input)
       const base = await config.resolve(optionalString(args.path, 'path') ?? '.')
-      const stats = await stat(base)
-      if (!stats.isDirectory()) throw new ToolInputError(`not a directory: ${String(args.path ?? '.')}`)
+      const stats = await config.fs.stat(base)
+      if (!stats) throw new ToolInputError(`directory not found: ${String(args.path ?? '.')}`)
+      if (stats.kind !== 'dir') throw new ToolInputError(`not a directory: ${String(args.path ?? '.')}`)
       const recursive = optionalBoolean(args.recursive, 'recursive') ?? false
       const entries = recursive
         ? await collectEntries(config, base, options.signal)
-        : (await readdir(base, { withFileTypes: true })).map(entry => toEntry(config, base, entry))
+        : (await config.fs.list(base)).map(entry => toEntry(config, base, entry))
       return entries.slice(0, config.maxResults)
     },
   }

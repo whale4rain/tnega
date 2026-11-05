@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@tnega/core'
+import type { WorkspaceFs } from '@tnega/fs'
 import { HttpError, readJsonBody, sendError, sendJson, workspaceParam } from '@tnega/web-kit'
 import { fileDiff, listChanges } from './changes.js'
 import { searchWorkspaceFiles } from './file-search.js'
@@ -10,9 +11,16 @@ import { MAX_TEXT_FILE_BYTES, listDirectory, readTextFile, writeTextFile } from 
 /** The workspace file browsing endpoints; this package owns what it serves. */
 export const fileRoutes = {
   name: 'workspace-file-routes',
-  inject: ['webServer'],
+  inject: ['webServer', 'fs'],
   apply(ctx: Context): void {
     const web = ctx.webServer
+    // Always fenced: the Workbench never reaches outside the workspace it names.
+    const open = (workspace: string): WorkspaceFs => ctx.fs.workspace(workspace)
+    const changes = changesRoute(open)
+    const tree = treeRoute(open)
+    const text = textRoute(open)
+    const file = fileRoute(open)
+    const upload = uploadRoute(open)
 
     ctx.fiber.effect(() => web.register({
       kind: 'exact',
@@ -67,7 +75,10 @@ export const fileRoutes = {
   },
 }
 
-async function changes(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+type Open = (workspace: string) => WorkspaceFs
+type Handler = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>
+
+const changesRoute = (open: Open): Handler => async (req, res, url) => {
   const workspace = workspaceParam(url)
   if (!workspace || req.method !== 'GET') {
     sendError(res, workspace ? 405 : 400, workspace ? 'method not allowed' : 'workspace query parameter is required')
@@ -75,14 +86,14 @@ async function changes(req: IncomingMessage, res: ServerResponse, url: URL): Pro
   }
   try {
     if (url.pathname === '/api/changes') {
-      sendJson(res, 200, await listChanges(workspace))
+      sendJson(res, 200, await listChanges(open(workspace)))
     } else {
       const path = url.searchParams.get('path')
       if (!path) {
         sendError(res, 400, 'path query parameter is required')
         return
       }
-      sendJson(res, 200, await fileDiff(workspace, path))
+      sendJson(res, 200, await fileDiff(open(workspace), path))
     }
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
@@ -90,7 +101,7 @@ async function changes(req: IncomingMessage, res: ServerResponse, url: URL): Pro
   }
 }
 
-async function tree(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+const treeRoute = (open: Open): Handler => async (req, res, url) => {
   const workspace = workspaceParam(url)
   if (!workspace) {
     sendError(res, 400, 'workspace query parameter is required')
@@ -102,14 +113,14 @@ async function tree(req: IncomingMessage, res: ServerResponse, url: URL): Promis
   }
   const path = url.searchParams.get('path') ?? ''
   try {
-    sendJson(res, 200, { path, entries: await listDirectory(workspace, path) })
+    sendJson(res, 200, { path, entries: await listDirectory(open(workspace), path) })
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
   }
 }
 
-async function text(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+const textRoute = (open: Open): Handler => async (req, res, url) => {
   const workspace = workspaceParam(url)
   const path = url.searchParams.get('path') ?? ''
   if (!workspace) {
@@ -122,7 +133,7 @@ async function text(req: IncomingMessage, res: ServerResponse, url: URL): Promis
   }
   try {
     if (req.method === 'GET') {
-      sendJson(res, 200, await readTextFile(workspace, path))
+      sendJson(res, 200, await readTextFile(open(workspace), path))
       return
     }
     if (req.method !== 'PUT') {
@@ -135,14 +146,14 @@ async function text(req: IncomingMessage, res: ServerResponse, url: URL): Promis
       return
     }
     const expected = typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined
-    sendJson(res, 200, await writeTextFile(workspace, path, body.content, expected))
+    sendJson(res, 200, await writeTextFile(open(workspace), path, body.content, expected))
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
   }
 }
 
-async function file(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+const fileRoute = (open: Open): Handler => async (_req, res, url) => {
   const workspace = workspaceParam(url)
   const path = url.searchParams.get('path')
   if (!workspace || !path) {
@@ -150,7 +161,7 @@ async function file(req: IncomingMessage, res: ServerResponse, url: URL): Promis
     return
   }
   try {
-    sendFile(res, await readWorkspaceFile(workspace, path))
+    sendFile(res, await readWorkspaceFile(open(workspace), path))
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
@@ -162,7 +173,7 @@ async function file(req: IncomingMessage, res: ServerResponse, url: URL): Promis
  * write to `/api` (the content-type check is what keeps other pages out), so
  * the bytes travel as base64: `{ name, data }`.
  */
-async function upload(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+const uploadRoute = (open: Open): Handler => async (req, res, url) => {
   const workspace = workspaceParam(url)
   if (!workspace) {
     sendError(res, 400, 'workspace query parameter is required')
@@ -174,7 +185,7 @@ async function upload(req: IncomingMessage, res: ServerResponse, url: URL): Prom
       sendError(res, 400, 'name and data (base64) are required')
       return
     }
-    sendJson(res, 200, await saveUpload(workspace, body.name, Buffer.from(body.data, 'base64')))
+    sendJson(res, 200, await saveUpload(open(workspace), body.name, Buffer.from(body.data, 'base64')))
   } catch (error) {
     if (error instanceof FileServeError || error instanceof HttpError) {
       sendError(res, error.status, error.message)

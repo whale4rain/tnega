@@ -76,6 +76,30 @@
       "types": "./dist/types/src/events.d.ts",
       "import": "./dist/events.js"
     },
+    "./process": {
+      "types": "./dist/types/packages/process/process/src/index.d.ts",
+      "import": "./dist/process.js"
+    },
+    "./process-local": {
+      "types": "./dist/types/packages/process/process-local/src/index.d.ts",
+      "import": "./dist/process-local.js"
+    },
+    "./daemon-protocol": {
+      "types": "./dist/types/packages/daemon/protocol/src/index.d.ts",
+      "import": "./dist/daemon-protocol.js"
+    },
+    "./daemon": {
+      "types": "./dist/types/packages/daemon/daemon/src/index.d.ts",
+      "import": "./dist/daemon.js"
+    },
+    "./fs-remote": {
+      "types": "./dist/types/packages/daemon/fs-remote/src/index.d.ts",
+      "import": "./dist/fs-remote.js"
+    },
+    "./process-remote": {
+      "types": "./dist/types/packages/daemon/process-remote/src/index.d.ts",
+      "import": "./dist/process-remote.js"
+    },
     "./execution": {
       "types": "./dist/types/packages/execution/src/index.d.ts",
       "import": "./dist/execution.js"
@@ -199,6 +223,14 @@
     "./tool-search": {
       "types": "./dist/types/packages/fs/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"
+    },
+    "./fs": {
+      "types": "./dist/types/packages/fs/fs/src/index.d.ts",
+      "import": "./dist/fs.js"
+    },
+    "./fs-local": {
+      "types": "./dist/types/packages/fs/fs-local/src/index.d.ts",
+      "import": "./dist/fs-local.js"
     },
     "./tool-fs": {
       "types": "./dist/types/packages/fs/tool-fs/src/index.d.ts",

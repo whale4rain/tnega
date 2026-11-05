@@ -4,9 +4,8 @@ import { defaultWebRoot, handleStatic } from './static.js'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { installBuiltinSkills } from '@tnega/coding-agent'
 import { launchPageSource, PlaywrightBrowserHost } from '@tnega/browser-playwright'
-import { configureSystemShell } from '@tnega/execution'
+import { configureSystemShell } from '@tnega/process-local'
 import { ApprovalBroker, type PermissionMode } from '@tnega/approval-host'
-import { TerminalManager } from '@tnega/terminal'
 import { createHotPluginHost, type HotPluginEvent } from '@tnega/plugin-host'
 import { createPluginWorkshop } from '@tnega/plugin-host'
 import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
@@ -16,19 +15,14 @@ import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
 import { compactionAdapter } from './support.js'
-import { fileRoutes } from '@tnega/workspace-files'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
-import { folderPickerRoutes } from '@tnega/directory-picker'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
-import { sandboxSetupRoutes } from '@tnega/sandbox-local'
-import { computerSetupRoutes } from '@tnega/computer-cua'
 import { SecretVault, secretRoutes } from '@tnega/secrets-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
-import { browserRoutes } from '@tnega/browser-playwright'
 import { projectApi } from '@tnega/project-http'
-import { terminalRoutes } from '@tnega/terminal'
+import { daemonRoutes } from '@tnega/daemon-routes'
 import { Context } from '@tnega/core'
 import type { ResidentAgentEntry, ProjectHostEntry, ServerContext } from './context.js'
 import { CHATGPT_DEFAULT_MODEL, applyNetwork, handleApi, projectHostFor, registerApiRoutes, rejectsApiRequest } from './routes.js'
@@ -135,24 +129,20 @@ export async function startWebServer(
     ...(hotPlugins ? { hotPlugins } : {}),
     ...(pluginWorkshop ? { pluginWorkshop } : {}),
     processes: new Map(),
-    terminals: new TerminalManager(),
     sessionIndex,
     secrets: new SecretVault(),
     web,
   }
 
-  await root.plugin(fileRoutes)
+  // Files, terminals, browser view and setup hints act on this machine: the
+  // in-process daemon's routes serve them.
+  await root.plugin(daemonRoutes, {
+    browser: () => browser,
+    ...(startConfig.computerDriverPath ? { computerDriverPath: startConfig.computerDriverPath } : {}),
+  })
   await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })
-  await root.plugin(browserRoutes, { browser: () => browser })
-  await root.plugin(folderPickerRoutes)
   await root.plugin(usageRoutes, { configFile })
   await root.plugin(contextInsightsRoutes, { configFile })
-  await root.plugin(sandboxSetupRoutes)
-  // Registered whether or not computer use is on: the hint's job is to explain
-  // the missing driver before someone wonders why the tools are absent.
-  await root.plugin(computerSetupRoutes, {
-    ...(startConfig.computerDriverPath ? { driverPath: startConfig.computerDriverPath } : {}),
-  })
   await root.plugin(workspacePromptRoutes)
   if (context.secrets) await root.plugin(secretRoutes, { vault: context.secrets })
   await root.plugin(pluginRoutes, {
@@ -171,7 +161,6 @@ export async function startWebServer(
       }
     },
   })
-  await root.plugin(terminalRoutes, { terminals: context.terminals })
   // Dreaming: quiet sessions are folded into their workspace's project memory
   // in the background. Composition picks the memory provider and the model.
   await root.plugin(memoryDream, {
@@ -232,7 +221,6 @@ export async function startWebServer(
       const hosts = [...projectHosts.values()]
       projectHosts.clear()
       await Promise.all(hosts.map(entry => entry.host.dispose()))
-      context.terminals.dispose()
       await hotPlugins?.close()
       await pluginWorkshop?.close()
       await ownedBrowser?.close()
@@ -305,5 +293,4 @@ function logHotPluginEvent(event: HotPluginEvent): void {
   }
 }
 
-/** The Workbench terminal endpoints; see `terminals.ts`. */
 

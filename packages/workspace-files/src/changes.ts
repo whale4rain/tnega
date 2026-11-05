@@ -1,9 +1,8 @@
 import { execFile } from 'node:child_process'
-import { readFile, stat } from 'node:fs/promises'
 import { promisify } from 'node:util'
-import { resolveInside } from '@tnega/tools'
+import type { WorkspaceFs } from '@tnega/fs'
+import { MAX_TEXT_FILE_BYTES, checkInside } from './workspace-files.js'
 import { FileServeError } from './files.js'
-import { MAX_TEXT_FILE_BYTES } from './workspace-files.js'
 import { isRuntimeFile } from './runtime-files.js'
 
 /**
@@ -90,7 +89,8 @@ function countLines(text: string): number {
   return text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
 }
 
-export async function listChanges(workspace: string): Promise<ChangeSummary> {
+export async function listChanges(fs: WorkspaceFs): Promise<ChangeSummary> {
+  const workspace = fs.root
   const repo = await repository(workspace)
   if (!repo) return { git: false, files: [] }
   const branch = (await git(workspace, ['branch', '--show-current']).catch(() => '')).trim()
@@ -119,10 +119,10 @@ export async function listChanges(workspace: string): Promise<ChangeSummary> {
     const stats = numstat.get(path)
     if (stats) Object.assign(file, stats)
     else if (file.status === 'untracked' || !repo.head) {
-      const target = await resolveInside(workspace, path).catch(() => undefined)
-      const info = target ? await stat(target).catch(() => undefined) : undefined
-      if (target && info?.isFile() && info.size <= MAX_TEXT_FILE_BYTES) {
-        const bytes = await readFile(target)
+      const inside = await fs.resolve(path).then(() => true, () => false)
+      const info = inside ? await fs.stat(path).catch(() => undefined) : undefined
+      if (info?.kind === 'file' && info.size <= MAX_TEXT_FILE_BYTES) {
+        const bytes = Buffer.from(await fs.readFile(path))
         if (bytes.subarray(0, 8192).includes(0)) file.binary = true
         else Object.assign(file, { additions: countLines(bytes.toString('utf8')), deletions: 0 })
       }
@@ -138,19 +138,15 @@ export async function listChanges(workspace: string): Promise<ChangeSummary> {
   }
 }
 
-export async function fileDiff(workspace: string, path: string): Promise<FileDiff> {
+export async function fileDiff(fs: WorkspaceFs, path: string): Promise<FileDiff> {
+  const workspace = fs.root
   const repo = await repository(workspace)
   if (!repo) throw new FileServeError('workspace is not a git repository', 409)
-  let target: string
-  try {
-    target = await resolveInside(workspace, path)
-  } catch (error) {
-    throw new FileServeError(error instanceof Error ? error.message : String(error), 400)
-  }
-  const change = (await listChanges(workspace)).files.find(file => file.path === path)
+  await checkInside(fs, path)
+  const change = (await listChanges(fs)).files.find(file => file.path === path)
   const status = change?.status ?? 'modified'
-  const info = await stat(target).catch(() => undefined)
-  const working = info?.isFile() ? await readFile(target) : undefined
+  const info = await fs.stat(path).catch(() => undefined)
+  const working = info?.kind === 'file' ? Buffer.from(await fs.readFile(path)) : undefined
   const fromPath = `${repo.prefix}${change?.previousPath ?? path}`
   const committed = repo.head && status !== 'untracked' && status !== 'added'
     ? await run('git', ['show', `HEAD:${fromPath}`], { cwd: workspace, encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, windowsHide: true })

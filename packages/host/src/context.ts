@@ -5,7 +5,6 @@ import { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { ProcessRegistry, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, type PermissionMode } from '@tnega/approval-host'
 import { ProjectHost } from '@tnega/project-host'
-import { TerminalManager } from '@tnega/terminal'
 import type { HotPluginHost } from '@tnega/plugin-host'
 import type { PluginWorkshop } from '@tnega/plugin-host'
 import type { WebServerService } from '@tnega/web-kit'
@@ -48,7 +47,6 @@ export interface ServerContext {
   processes: Map<string, ProcessRegistry>
   hotPlugins?: HotPluginHost
   pluginWorkshop?: PluginWorkshop
-  terminals: TerminalManager
   /** The shared index behind the agent's session search tools. */
   sessionIndex?: SqliteSessionIndex
   /** Secrets users gave their Sessions; outlives every Agent runtime. */

@@ -149,20 +149,27 @@ export {
 } from '../packages/tools/src/index.js'
 
 export {
-  localExecutionProvider,
-  resolveSystemShell,
-  shellCommandArgv,
-  systemShell,
+  ProcessBoundary,
+  ProcessService,
+  processBoundary,
   type ExecutionProvider,
-  type SystemShell,
-  type SystemShellKind,
   type HttpRequest,
   type HttpResponse,
   type ProcessRequest,
   type ProcessResult,
   type ShellRequest,
   type ShellResult,
-} from '../packages/execution/src/index.js'
+} from '../packages/process/process/src/index.js'
+
+export {
+  localExecutionProvider,
+  processLocal,
+  resolveSystemShell,
+  shellCommandArgv,
+  systemShell,
+  type SystemShell,
+  type SystemShellKind,
+} from '../packages/process/process-local/src/index.js'
 
 export {
   SearchError,
@@ -199,10 +206,25 @@ export {
   TOOL_FS_NAMES,
   createFsTools,
   toolFs,
-  writeFileAtomic,
   type FsGuardMode,
   type ToolFsConfig,
 } from '../packages/fs/tool-fs/src/index.js'
+
+export {
+  FsError,
+  FsService,
+  type FsEntry,
+  type FsErrorCode,
+  type FsKind,
+  type FsRange,
+  type FsStat,
+  type FsWriteMode,
+  type FsWriteOptions,
+  type WorkspaceFs,
+  type WorkspaceFsOptions,
+} from '../packages/fs/fs/src/index.js'
+
+export { LocalFs, LocalWorkspaceFs, fsLocal, writeFileAtomic } from '../packages/fs/fs-local/src/index.js'
 
 export { createShellTool, toolShell, type ToolShellConfig } from '../packages/shell/tool-shell/src/index.js'
 

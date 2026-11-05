@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { ProcessRegistry } from '../src/processes.js'
+import { ProcessRegistry } from '../src/index.js'
 
 it('exposes live process output and retains stopped output', async () => {
   const registry = new ProcessRegistry()
