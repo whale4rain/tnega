@@ -27,7 +27,7 @@ import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, COMPUTER_APPROVAL_MODES, isComputerApprovalMode, normalizeComputerApps, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
-import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt } from '@tnega/session-store'
+import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt, SessionNotFoundError } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun, sandboxNetworkFrom } from './runs.js'
 import type { WebServerService } from '@tnega/web-kit'
@@ -75,6 +75,27 @@ export function rejectsApiRequest(req: IncomingMessage, res: ServerResponse): bo
 interface ApiRoute {
   match: (req: IncomingMessage, url: URL) => boolean
   handle: (req: IncomingMessage, res: ServerResponse, url: URL, context: ServerContext) => Promise<void>
+}
+
+/**
+ * Read an existing Session's log. An unknown id — a stale link, or another
+ * workspace's Session — answers 404 instead of leaving an empty log behind.
+ */
+async function withExistingLog<T>(
+  workspace: string,
+  id: string,
+  run: (log: SessionLog) => Promise<T>,
+): Promise<T> {
+  const log = SessionLog.readOnly(sessionFilePath(workspace, id))
+  try {
+    await log.init()
+    return await run(log)
+  } catch (error) {
+    if (error instanceof SessionNotFoundError) throw new HttpError(404, `no session ${id} in this workspace`)
+    throw error
+  } finally {
+    await log.close()
+  }
 }
 
 const apiRoutes: ApiRoute[] = [
@@ -455,13 +476,9 @@ const apiRoutes: ApiRoute[] = [
       await readSessionSummary(workspace, id)
       const key = runKey(workspace, id)
       if (req.method === 'GET' && !questionMatch[2]) {
-            const log = new SessionLog(sessionFilePath(workspace, id))
-            try {
-              await log.init()
-              const questions = pendingQuestionsFromEvents(await log.read())
-                .filter(question => question.agentId === id && (question.mode === 'nonblocking' || isActive(context.activeRuns, workspace, id)))
-              sendJson(res, 200, { questions })
-            } finally { await log.close() }
+            const questions = await withExistingLog(workspace, id, async log => pendingQuestionsFromEvents(await log.read())
+              .filter(question => question.agentId === id && (question.mode === 'nonblocking' || isActive(context.activeRuns, workspace, id))))
+            sendJson(res, 200, { questions })
             return
           }
       if (req.method === 'POST' && questionMatch[2]) {
@@ -525,6 +542,11 @@ const apiRoutes: ApiRoute[] = [
               effectiveLlmConfig(config, process.env, model).contextWindow, {
               ...(beforeSeq !== undefined ? { beforeSeq } : {}),
               ...(maxMessages !== undefined ? { maxMessages } : {}),
+            }).catch((error: unknown) => {
+              // Reading must never create a log: an unknown id (a stale link, another
+              // workspace's session) answers 404 instead of leaving an empty one behind.
+              if (error instanceof SessionNotFoundError) throw new HttpError(404, `no session ${id} in this workspace`)
+              throw error
             })
             sendJson(res, 200, {
               summary: snapshot.summary,
@@ -587,13 +609,8 @@ const apiRoutes: ApiRoute[] = [
             return
           }
       if (action === 'goal' && req.method === 'GET') {
-            const log = new SessionLog(sessionFilePath(workspace, id))
-            await log.init()
-            try {
-              sendJson(res, 200, { goal: await readGoal(log) ?? null })
-            } finally {
-              await log.close()
-            }
+            const goal = await withExistingLog(workspace, id, log => readGoal(log))
+            sendJson(res, 200, { goal: goal ?? null })
             return
           }
       if (action === undefined && req.method === 'PATCH') {

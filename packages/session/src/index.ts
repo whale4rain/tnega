@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { appendFile, copyFile, mkdir, open, readFile, rename, truncate } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, open, readFile, rename, rm, truncate } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
@@ -137,7 +137,31 @@ async function writeFileDurably(file: string, text: string): Promise<void> {
   } finally {
     await handle.close()
   }
-  await rename(temporary, file)
+  try {
+    await renameOver(temporary, file)
+  } catch (error) {
+    // A failed rename leaves the temporary behind; the next reader would see it too.
+    await rm(temporary, { force: true }).catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Rename over the target, giving way to a holder for a moment: on Windows an
+ * indexer, a scanner or another tnega process reading the log can keep it
+ * locked, and the rename then fails with EPERM/EBUSY/EACCES rather than waiting.
+ */
+async function renameOver(temporary: string, file: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(temporary, file)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if ((code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') || attempt >= 9) throw error
+      await new Promise(done => setTimeout(done, 20 * (attempt + 1)))
+    }
+  }
 }
 
 export type ModelRole = 'system' | 'user' | 'assistant' | 'tool'
@@ -1431,7 +1455,29 @@ export function estimateContextUsage(
   }
 }
 
+/**
+ * A read that found no log. Reading a Session must never write one: a stale
+ * link or the wrong workspace should report that nothing is there instead of
+ * leaving an empty Session behind.
+ */
+export class SessionNotFoundError extends Error {
+  readonly code = 'SESSION_NOT_FOUND'
+
+  constructor(readonly file: string) {
+    super(`no session log at ${file}`)
+    this.name = 'SessionNotFoundError'
+  }
+}
+
 export class SessionLog {
+  /**
+   * Open an existing log for reading. A missing or empty file is
+   * `SessionNotFoundError`; nothing is created.
+   */
+  static readOnly(file: string): SessionLog {
+    return new SessionLog(file, undefined, undefined, false)
+  }
+
   /** Flush an existing writer without loading a historical Session. */
   static async flushLive(file: string): Promise<void> {
     await liveSessions.get(sessionFileKey(file))?.flush()
@@ -1465,6 +1511,8 @@ export class SessionLog {
     readonly file: string,
     private _broadcast?: SessionBroadcast,
     publicationContext?: Context,
+    /** Writers create a missing log; a reader must not. */
+    private readonly _create = true,
   ) {
     if (!this._broadcast && publicationContext) {
       this._broadcast = (type, payload) => {
@@ -1477,7 +1525,9 @@ export class SessionLog {
   init(): Promise<void> {
     return this._run(async () => {
       const key = sessionFileKey(this.file)
-      if (!liveSessions.has(key)) liveSessions.set(key, this)
+      // A reader never becomes the owner: a writer must not send appends to it.
+      const claimed = this._create && !liveSessions.has(key)
+      if (claimed) liveSessions.set(key, this)
       try {
         await this._ensureLoaded()
         await this._drainWrite()
@@ -1487,7 +1537,7 @@ export class SessionLog {
           throw error
         }
       } catch (error) {
-        if (liveSessions.get(key) === this) liveSessions.delete(key)
+        if (claimed && liveSessions.get(key) === this) liveSessions.delete(key)
         await releaseSessionLock(key, this)
         throw error
       }
@@ -1876,9 +1926,10 @@ export class SessionLog {
       this._loaded = true
       return
     }
-    await mkdir(dirname(resolve(this.file)), { recursive: true })
+    if (this._create) await mkdir(dirname(resolve(this.file)), { recursive: true })
     const read = await this._read()
     if (!read.existing) {
+      if (!this._create) throw new SessionNotFoundError(this.file)
       const meta: SessionEvent = {
         id: randomUUID(),
         seq: 1,

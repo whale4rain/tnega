@@ -13,6 +13,7 @@ import { foldApprovalMode, type ApprovalMode } from '@tnega/approval-review'
 import {
   SESSION_FORMAT_VERSION,
   SessionLog,
+  SessionNotFoundError,
   estimateContextUsage as estimateSessionContextUsage,
   estimateMessageTokens,
   foldUsage,
@@ -31,6 +32,9 @@ import {
   type SessionPermission,
 } from '@tnega/session'
 import { importLegacyFile, workspaceSessionDir } from '@tnega/home'
+
+/** A Session the store was asked about but does not have. */
+export { SessionNotFoundError }
 
 export interface SessionMetaPayload {
   approvalMode?: ApprovalMode
@@ -99,11 +103,13 @@ export function isSessionId(value: string): boolean {
 async function withSessionLog<T>(
   file: string,
   run: (log: SessionLog) => Promise<T>,
+  /** A read passes `create: false`: a missing log is reported, not created. */
+  options: { create?: boolean } = {},
 ): Promise<T> {
   // A live writer (a running turn or a resident Agent) owns the sequence.
   const live = SessionLog.live(file)
   if (live) return run(live)
-  const log = new SessionLog(file)
+  const log = options.create === false ? SessionLog.readOnly(file) : new SessionLog(file)
   await log.init()
   try {
     return await run(log)
@@ -477,7 +483,7 @@ export async function readSessionSnapshot(
       }
       if (stamp !== undefined) rememberSessionLog(file, fresh)
       return fresh
-    })
+    }, { create: false })
   const logEvents = fold.log
   {
     const summary = summaryFromEvents(workspaceDir, id, logEvents, logEvents.length, mtimeMs)
@@ -585,7 +591,7 @@ export async function forkSession(
   const { allEvents, events } = await withSessionLog(source, async (log) => {
     const allEvents = await log.read()
     return { allEvents, events: options.messageId ? await log.forkAt(options.messageId) : allEvents }
-  })
+  }, { create: false })
   const headMeta = allEvents.find(event => event.type === 'meta')
   const createdAt = headMeta && (headMeta.payload as Record<string, unknown>).createdAt
   // A fork is a new session: its head meta carries the source's current
@@ -651,7 +657,7 @@ export async function readSessionMessages(
   workspace: string,
   id: string,
 ): Promise<ModelMessage[]> {
-  return withSessionLog(sessionFile(workspace, id), log => log.deriveMessages())
+  return withSessionLog(sessionFile(workspace, id), log => log.deriveMessages(), { create: false })
 }
 
 export async function estimateContextUsage(
@@ -678,12 +684,12 @@ export async function estimateContextUsage(
       ratio: estimate.limit > 0 ? tokens / estimate.limit : 0,
       source: 'provider',
     }
-  })
+  }, { create: false })
 }
 
 /** Every event of a session's log, for reports that fold over its history. */
 export async function readSessionLog(workspace: string, id: string): Promise<SessionEvent[]> {
-  return withSessionLog(sessionFile(workspace, id), log => log.read())
+  return withSessionLog(sessionFile(workspace, id), log => log.read(), { create: false })
 }
 
 /**
@@ -706,7 +712,7 @@ export async function readSessionMetrics(
   workspace: string,
   id: string,
 ): Promise<SessionMetrics> {
-  return withSessionLog(sessionFile(workspace, id), async log => foldUsage(await log.read()))
+  return withSessionLog(sessionFile(workspace, id), async log => foldUsage(await log.read()), { create: false })
 }
 
 export interface CompactSessionOptions {
@@ -755,7 +761,7 @@ export async function prepareSessionCompact(
       previousSummary,
       tokensBefore,
     }
-  })
+  }, { create: false })
 }
 
 export async function compactSession(

@@ -322,7 +322,16 @@ export function Conversation({
         if (detail.summary.mode === 'goal') api.goal(workspace, sessionId).then(r => !cancelled && setGoal(r.goal), () => {})
         else setGoal(null)
       })
-      .catch(reason => !cancelled && setError(errorText(reason)))
+      .catch(reason => {
+        if (cancelled) return
+        // A link to a Session this folder does not have (another workspace, or one
+        // that was deleted) says so instead of showing the route's status line.
+        if (reason instanceof ApiError && reason.status === 404) {
+          setError(`No session ${sessionId} in this folder. It may belong to another workspace.`)
+          return
+        }
+        setError(errorText(reason))
+      })
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
