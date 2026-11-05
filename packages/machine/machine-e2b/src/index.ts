@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIPv4 } from 'node:net'
 import type { Context } from '@tnega/core'
@@ -18,7 +19,11 @@ import {
  *
  * - The machine key and spec hash are kept in the sandbox's metadata, so a
  *   repeated start finds the same sandbox and resumes it if it was paused; a
- *   create carries the key as its `Idempotency-Key` too, so two racing starts
+ *   create carries an `Idempotency-Key` made from the key and the box's
+ *   one-time daemon token, so two racing or retried starts of one box make
+ *   one sandbox, while the next box for the same key (a new token) is a new
+ *   create rather than a replay of a deleted one (E2B keeps keys for a day).
+ *   Callers therefore mint a new daemon token for every new box. Two racing starts
  *   make one box. A box from another spec hash is refused, not reused.
  * - Pause keeps memory and disk; the box's shell, dev servers and jobs are
  *   still running when it resumes. A sandbox that times out pauses rather than
@@ -82,6 +87,11 @@ function listedSandbox(value: unknown): ListedSandbox | undefined {
 const DEFAULT_TIMEOUT_SECONDS = 3_600
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000
 
+/** One create attempt: stable across retries of the same box, new for the next box (lowercase hex, as E2B accepts). */
+function createAttempt(key: string, spec: BoxSpec): string {
+  return createHash('sha256').update(`${key}\n${spec.daemon.token}`).digest('hex')
+}
+
 async function systemResolve(host: string): Promise<string[]> {
   return (await lookup(host, { all: true, family: 4 })).map(entry => entry.address)
 }
@@ -118,7 +128,7 @@ export class E2BMachines extends MachineService {
       autoPauseMemory: true,
       metadata: { ...spec.labels, [MACHINE_KEY_METADATA]: key, ...(spec.specHash ? { [SPEC_HASH_METADATA]: spec.specHash } : {}) },
       ...(await this.network(spec)),
-    }, { 'idempotency-key': key })
+    }, { 'idempotency-key': createAttempt(key, spec) })
     if (!isRecord(created) || typeof created.sandboxID !== 'string') throw new MachineError('E2B answered a create without a sandbox id', 'MACHINE_FAILED')
     return { ref: created.sandboxID }
   }

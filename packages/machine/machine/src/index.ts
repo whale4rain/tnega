@@ -22,7 +22,7 @@ declare module '@tnega/core' {
 export interface BoxSpec {
   /** The template the box starts from: the tnega box image with `tnega daemon` in it. */
   template: string
-  /** The daemon inside the box dials this runtime with this one-time token. */
+  /** The daemon inside the box dials this runtime with this one-time token. Mint a new one for every new box. */
   daemon: { serverUrl: string; token: string }
   /** Where the workspace lives inside the box; it outlives the box (sleep, wake). */
   workspacePath: string

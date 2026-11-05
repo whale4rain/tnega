@@ -18,6 +18,8 @@ async function fakeE2B(options: { ignoreMetadataFilter?: boolean } = {}) {
   const sandboxes = new Map<string, FakeSandbox>()
   const seen: Seen[] = []
   let next = 1
+  // E2B replays a create with a key it has seen, even after that sandbox is gone.
+  const replays = new Map<string, string>()
   const server = createServer((req, res) => {
     let raw = ''
     req.on('data', chunk => { raw += chunk.toString() })
@@ -44,7 +46,11 @@ async function fakeE2B(options: { ignoreMetadataFilter?: boolean } = {}) {
         if (typeof body === 'object' && body !== null && 'metadata' in body && typeof body.metadata === 'object' && body.metadata !== null) {
           for (const [name, value] of Object.entries(body.metadata)) if (typeof value === 'string') metadata[name] = value
         }
+        const idempotency = req.headers['idempotency-key']
+        const replayed = typeof idempotency === 'string' ? replays.get(idempotency) : undefined
+        if (replayed) { json(201, { sandboxID: replayed }); return }
         const sandboxID = `sbx${next++}`
+        if (typeof idempotency === 'string') replays.set(idempotency, sandboxID)
         sandboxes.set(sandboxID, { sandboxID, state: 'running', metadata })
         json(201, { sandboxID, templateID: 'tnega', clientID: 'c', envdVersion: '0.2.0' })
         return
@@ -89,7 +95,7 @@ describe('E2B machines', () => {
     const { ref } = await machines.start('box-1', spec())
     expect(ref).toBe('sbx1')
     const create = api.seen.find(call => call.method === 'POST' && call.url === '/v2/sandboxes')
-    expect(create?.headers['idempotency-key']).toBe('box-1')
+    expect(create?.headers['idempotency-key']).toMatch(/^[0-9a-f]{64}$/u)
     expect(create?.body).toMatchObject({
       templateID: 'tnega-box',
       timeout: 600,
@@ -128,7 +134,10 @@ describe('E2B machines', () => {
     await machines.stop(ref)
     expect(await machines.status(ref)).toBe('missing')
     await expect(machines.pause(ref)).resolves.toBeUndefined()
-    expect((await machines.start('box-1', spec())).ref).not.toBe(ref)
+    // The next box gets a new daemon token, so E2B does not replay the deleted sandbox.
+    const next = await machines.start('box-1', { ...spec(), daemon: { serverUrl: 'wss://tnega.example.com/daemon', token: 'second-token' } })
+    expect(next.ref).not.toBe(ref)
+    expect(await machines.status(next.ref)).toBe('running')
   })
 
   it('opens the network only when asked, and gives a no-network box just the server', async () => {
@@ -153,7 +162,7 @@ describe('E2B machines', () => {
     // The server's path: resume with the old spec, save the work, stop, start again.
     expect(await machines.start('box-1', { ...spec(), specHash: 'v1' })).toEqual(old)
     await machines.stop(old.ref)
-    const fresh = await machines.start('box-1', { ...spec(), specHash: 'v2' })
+    const fresh = await machines.start('box-1', { ...spec(), specHash: 'v2', daemon: { serverUrl: 'wss://tnega.example.com/daemon', token: 'v2-token' } })
     expect(fresh.ref).not.toBe(old.ref)
     expect(api.sandboxes.get(fresh.ref)?.metadata).toMatchObject({ tnega_spec_hash: 'v2' })
   })
