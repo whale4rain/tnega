@@ -1,5 +1,8 @@
 #!/bin/sh
-# Start command of the tnega box. The Machine Provider sets, through E2B:
+# Starts the daemon in a tnega box. Not the template's start command: E2B runs
+# that once at build time and snapshots it, so it would never see a box's own
+# token. The Machine Provider runs this script as root through E2B's command API
+# on each start (unless the daemon already runs), with these in its environment:
 #   TNEGA_SERVER        where the daemon dials (wss://)
 #   TNEGA_DAEMON_TOKEN  the box's one-time daemon token
 #   TNEGA_WORKSPACE     the workspace inside the box

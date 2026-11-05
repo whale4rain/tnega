@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@tnega/core": "workspace:*",
-    "@tnega/machine": "workspace:*"
+    "@tnega/machine": "workspace:*",
+    "e2b": "2.60.0"
   }
 }
