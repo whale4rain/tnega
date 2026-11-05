@@ -328,18 +328,20 @@ files and commands, so the server tracks two lifecycles separately.
   `machine` row for one, so restore always has a `repo_url` to start from.
 - **No secrets in a bundle**: the bundle covers only the workspace folder, and
   setup secrets exist only in the setup step's environment. Before saving, the
-  server checks the archive and the local commits in the `git bundle` for the
-  exact values in the secret store. If either contains one, no bundle is saved and the box is not reclaimed: it stays
-  paused and the person is asked to remove the value (or rewrite the commit)
-  or discard the file.
-  Restore refuses a bundle that still contains a secret value.
+  server decodes every archive entry and every Git object reachable from the
+  local commits, and checks that content for the exact values in the secret
+  store. If a value is found, or extraction or the scan fails, no bundle is
+  saved and the box is not reclaimed: it stays paused and the person is asked
+  to remove the value (or rewrite the commit) or discard the file. Restore
+  refuses a bundle that still contains a secret value.
 - **Restore**: the next box for that workspace clones `repo_url` at `branch`
   as usual, fetches the local commits from the `git bundle` and checks out the
   saved HEAD, unpacks the archive over the working tree, then deletes the
-  listed paths. Only after every step succeeds is the bundle marked used; it stays in the blob store for 7
-  more days. If a step fails, the box start fails with the reason, the box is
-  not marked `ready`, the bundle is kept for a retry, and the person sees the
-  error instead of an empty workspace.
+  listed paths. Only after every step succeeds is the bundle marked used; it
+  stays in the blob store for 7 more days. If a step fails, the box start
+  fails with the reason, the half-restored box is destroyed (never reused),
+  the bundle is kept, and the next start restores it into a fresh box. The
+  person sees the error instead of an empty or partial workspace.
 - **Limits**: a headless turn has a wall-time cap (default 60 minutes) and a
   routine run a token budget; the loop guard and continuation nudge apply;
   nothing that asks is auto-approved.
