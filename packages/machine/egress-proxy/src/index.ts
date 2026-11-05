@@ -163,6 +163,11 @@ export async function startEgressProxy(listen: ProxyListen, options: EgressProxy
       res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', connection: 'close' })
       res.end(`${message}\n`)
     }
+    // Only a path: a full URL as the request target could name another host.
+    if (!req.url?.startsWith('/')) {
+      reply(400, 'tnega egress: the request target must be a path')
+      return
+    }
     // The key goes only to the host the tunnel was opened for.
     const named = (req.headers.host ?? '').toLowerCase().replace(/:\d+$/u, '')
     if (named !== host) {

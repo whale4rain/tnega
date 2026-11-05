@@ -93,8 +93,8 @@ describe('runSetup', () => {
 
   it('passes secrets and the setup proxy in that one command\'s environment', async () => {
     const { execution, calls } = fakeExecution(0)
-    await runSetup(execution, { cwd: '/workspace', script: 'pnpm install', secrets: { NPM_TOKEN: 'npm_abc' }, proxyUrl: 'http://box:setup@10.0.0.2:3128' })
-    expect(calls[0]).toMatchObject({ command: 'pnpm install', cwd: '/workspace', env: { NPM_TOKEN: 'npm_abc', HTTPS_PROXY: 'http://box:setup@10.0.0.2:3128' } })
+    await runSetup(execution, { cwd: '/workspace', script: 'pnpm install', secrets: { NPM_TOKEN: 'npm_abc123' }, proxyUrl: 'http://box:setup@10.0.0.2:3128' })
+    expect(calls[0]).toMatchObject({ command: 'pnpm install', cwd: '/workspace', env: { NPM_TOKEN: 'npm_abc123', HTTPS_PROXY: 'http://box:setup@10.0.0.2:3128' } })
   })
 
   it('hides secrets in the result and in streamed output, even when a secret is split across chunks', async () => {
@@ -109,6 +109,12 @@ describe('runSetup', () => {
     const result = await runSetup(execution, { cwd: '/w', script: 'x', secrets: { NPM_TOKEN: 'npm_abcdef' }, onOutput: chunk => chunks.push(chunk.toString()) })
     expect(result.stdout).toBe('token [secret] done\n')
     expect(chunks.join('')).toBe('token [secret] done\n')
+  })
+
+  it('refuses a secret too short to hide in the output', async () => {
+    const { execution, calls } = fakeExecution(0)
+    await expect(runSetup(execution, { cwd: '/w', script: 'x', secrets: { PIN: 'abc' } })).rejects.toMatchObject({ code: 'ENVIRONMENT_INVALID', message: expect.stringContaining('PIN') })
+    expect(calls).toHaveLength(0)
   })
 
   it('fails with the output tail, secrets hidden', async () => {

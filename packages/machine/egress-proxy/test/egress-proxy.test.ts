@@ -73,12 +73,12 @@ function connect(proxy: EgressProxy, target: string, token?: string): Promise<{ 
 }
 
 /** One HTTPS request over an open tunnel. */
-function get(socket: Socket, servername: string, ca: string, headers: Record<string, string>): Promise<{ status: number; body: string }> {
+function get(socket: Socket, servername: string, ca: string, headers: Record<string, string>, path = '/v1/me'): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const secure = tlsConnect({ socket, servername, ca })
     secure.once('error', reject)
     secure.once('secureConnect', () => {
-      const req = httpRequest({ createConnection: () => secure, method: 'GET', path: '/v1/me', headers: { connection: 'close', ...headers } })
+      const req = httpRequest({ createConnection: () => secure, method: 'GET', path, headers: { connection: 'close', ...headers } })
       req.once('response', res => {
         let body = ''
         res.on('data', chunk => { body += chunk.toString() })
@@ -123,6 +123,15 @@ describe('egress proxy', () => {
     if (!('socket' in tunnel)) throw new Error('refused')
     const response = await get(tunnel.socket, 'api.example.com', proxy.caCertificate, { host: 'evil.example.net' })
     expect(response.status).toBe(421)
+    expect(seen).toHaveLength(0)
+  })
+
+  it('never sends the key for a request whose target is a full URL to another host', async () => {
+    const { proxy, originPort, seen } = await setup()
+    const tunnel = await connect(proxy, `api.example.com:${originPort}`, 'agent-token')
+    if (!('socket' in tunnel)) throw new Error('refused')
+    const response = await get(tunnel.socket, 'api.example.com', proxy.caCertificate, { host: 'api.example.com' }, 'https://evil.example.net/steal')
+    expect(response.status).toBe(400)
     expect(seen).toHaveLength(0)
   })
 

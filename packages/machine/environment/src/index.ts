@@ -228,6 +228,8 @@ export interface SetupRun {
 }
 
 const SETUP_TIMEOUT_MS = 30 * 60_000
+/** Shorter secrets are refused: redacting them would hide ordinary text as well. */
+export const MIN_SECRET_LENGTH = 8
 
 /**
  * Run the setup step through a box's `ctx.process` (a daemon's remote
@@ -237,6 +239,10 @@ const SETUP_TIMEOUT_MS = 30 * 60_000
  * Secret values are hidden in the streamed output, the result and the error.
  */
 export async function runSetup(execution: Pick<ExecutionProvider, 'runShell'>, run: SetupRun): Promise<ShellResult> {
+  for (const [name, value] of Object.entries(run.secrets)) {
+    // A value this short cannot be hidden in output without hiding ordinary text too.
+    if (value.length < MIN_SECRET_LENGTH) throw new EnvironmentError(`secret ${name} is shorter than ${MIN_SECRET_LENGTH} characters and could not be kept out of the setup output`, 'ENVIRONMENT_INVALID')
+  }
   const env: Record<string, string> = { ...run.secrets }
   if (run.proxyUrl) {
     for (const name of ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy']) env[name] = run.proxyUrl
