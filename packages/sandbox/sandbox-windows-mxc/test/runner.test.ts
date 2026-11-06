@@ -207,6 +207,16 @@ describe('request', () => {
     })
   })
 
+  it('adds extra write roots after the workspace and the private temp', () => {
+    const request = buildMxcRequest({
+      ...base, mode: 'workspace-write', privateTemp: 'D:\\tmp\\tnega-mxc-1',
+      writeRoots: ['C:\\Users\\u\\AppData\\Local\\Temp'],
+    })
+    expect(request.filesystem).toMatchObject({
+      readwritePaths: ['C:\\ws', 'D:\\tmp\\tnega-mxc-1', 'C:\\Users\\u\\AppData\\Local\\Temp'],
+    })
+  })
+
   it('withholds runner-only variables and points TMP/TEMP at the private temp', () => {
     const env = childEnvironment({ Path: 'p', Temp: 'old', tmp: 'old', ELECTRON_RUN_AS_NODE: '1', TNEGA_DESKTOP_ACL_RUNNER: '1' }, 'D:\\t')
     expect(env).toEqual({ Path: 'p', TMP: 'D:\\t', TEMP: 'D:\\t' })
@@ -247,7 +257,7 @@ describe('runner process against a fake executor', () => {
     const [granted, privateTemp] = request.filesystem.readwritePaths
     expect(granted).toBe(workspace)
     expect(privateTemp?.startsWith(join(tempRoot, 'tnega-mxc-'))).toBe(true)
-    expect(grantsExist).toEqual([true, true])
+    expect(grantsExist.every(Boolean)).toBe(true)
     expect(request.process.env).toContain(`TEMP=${privateTemp}`)
     expect(existsSync(privateTemp!)).toBe(false)
   })

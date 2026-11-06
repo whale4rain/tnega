@@ -251,6 +251,28 @@ export function childEnvironment(env: NodeJS.ProcessEnv, privateTemp?: string): 
   return out
 }
 
+/**
+ * 宿主真实的临时目录根（`TEMP` / `TMP`），用做**写**授权。
+ *
+ * 子进程的 `TMP`/`TEMP` 指向私有 temp，按环境变量写的工具因此落在授权范围内；但不少工具
+ * （pip 的 unpack 目录、各类安装器、直连 `GetTempPath` 的代码）会把真实临时目录的绝对路径
+ * 硬拼出来再往里写 —— 那在工作区之外，会被策略拒绝。把真实临时根也授成可写，与「工作区 +
+ * 系统临时目录可写」的通行口径一致。
+ *
+ * 只取存在的绝对目录：不存在的路径交给策略只会在启动时被拒。
+ */
+export function ambientTempRoots(env: NodeJS.ProcessEnv): string[] {
+  const roots: string[] = []
+  for (const key of Object.keys(env)) {
+    if (!TEMP_ENV.has(key.toUpperCase())) continue
+    const value = env[key]?.trim()
+    if (value === undefined || value === '' || !isAbsolute(value)) continue
+    if (statSync(value, { throwIfNoEntry: false })?.isDirectory() !== true) continue
+    roots.push(canonical(value))
+  }
+  return [...new Set(roots)]
+}
+
 /** MXC 在显式环境里要求的平台变量；缺了它会拒绝启动。 */
 export function missingLaunchVariables(env: Readonly<Record<string, string>>): string[] {
   const names = new Set(Object.keys(env).map(name => name.toUpperCase()))
@@ -308,6 +330,8 @@ export interface MxcRequestOptions {
   workspace: string
   /** `workspace-write` 下被授予读写的私有 temp 目录。 */
   privateTemp?: string
+  /** 除工作区与私有 temp 之外额外的可写根（宿主真实临时目录）。 */
+  writeRoots?: readonly string[]
   readOnlyRoots: readonly string[]
   /** 缺席等同于 `open`。 */
   network?: MxcNetwork
@@ -339,9 +363,11 @@ function uniquePaths(paths: readonly (string | undefined)[]): string[] {
  * - `preservePolicy: false`：本次请求落下的 ACE 在结束时撤销，不留常驻宿主状态。
  */
 export function buildMxcRequest(options: MxcRequestOptions): Record<string, unknown> {
-  const { contract, mode, workspace, privateTemp, readOnlyRoots, commandLine, cwd, env, containerId } = options
+  const { contract, mode, workspace, privateTemp, writeRoots, readOnlyRoots, commandLine, cwd, env, containerId } = options
   const network = options.network ?? 'open'
-  const readwritePaths = mode === 'workspace-write' ? uniquePaths([workspace, privateTemp]) : []
+  const readwritePaths = mode === 'workspace-write'
+    ? uniquePaths([workspace, privateTemp, ...(writeRoots ?? [])])
+    : []
   const readonlyPaths = mode === 'workspace-write'
     ? uniquePaths(readOnlyRoots)
     : uniquePaths([workspace, ...readOnlyRoots])
@@ -538,6 +564,7 @@ export async function main(rawArgs: readonly string[]): Promise<number> {
       mode: invocation.mode,
       workspace,
       ...(privateTemp === undefined ? {} : { privateTemp }),
+      writeRoots: ambientTempRoots(process.env),
       readOnlyRoots: invocation.readOnlyRoots.map(canonical),
       ...(invocation.network === undefined ? {} : { network: invocation.network }),
       commandLine: buildCommandLine(invocation.argv),

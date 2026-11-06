@@ -53,7 +53,7 @@ Provider 拼出 runner argv（见 `src/runner.ts` 的契约），runner 为这�
 
 | 请求字段 | read-only | workspace-write |
 |---|---|---|
-| `filesystem.readwritePaths` | `[]` | `[工作区, 本次的私有 temp]` |
+| `filesystem.readwritePaths` | `[]` | `[工作区, 本次的私有 temp, 宿主真实的 TEMP/TMP]` |
 | `filesystem.readonlyPaths` | `[工作区, ...读根]` | `[...读根]` |
 | `process.commandLine` | cmd 的 `/c` 之后原样包进引号，其余程序按 CRT 规则加引号 | 同左 |
 | `process.cwd` / `process.env` | 命令的工作目录 / 执行层组装的环境（去掉 runner 专属变量） | 同左，TMP/TEMP 指向私有 temp |
@@ -70,6 +70,7 @@ Provider 拼出 runner argv（见 `src/runner.ts` 的契约），runner 为这�
   连加载都做不到（pwsh 7.7 之前还要求能读 `C:\` 根）。需要读侧隔离时由 Provider 传
   `mxcRead: 'roots'`，只交工作区与显式列出的目录。
 - 不设执行超时：命令期限属于执行层。
+- 真实临时目录（宿主 `TEMP` / `TMP`）在 `workspace-write` 下也授**写**：子进程的 `TMP` / `TEMP` 已改指私有 temp，但 pip 的 unpack、各类安装器、直连 `GetTempPath` 的代码会自行拼出绝对路径往真实临时目录写，不授就会被策略拒成 `EPERM`。只取存在的绝对目录。
 - 请求里带着子进程的完整环境，所以请求文件只在本次调用期间存在于私有目录里，结束即删。
 
 ## 失败
