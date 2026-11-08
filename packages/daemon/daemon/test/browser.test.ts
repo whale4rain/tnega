@@ -24,8 +24,8 @@ class FakeBrowser implements DaemonBrowser {
   readonly signals: AbortSignal[] = []
   url = 'about:blank'
   title = ''
-  private readonly liveListeners = new Set<(event: { type: string }) => void>()
-  private readonly logListeners = new Set<(event: BrowserLogEvent) => void>()
+  readonly liveListeners = new Set<(event: { type: string }) => void>()
+  readonly logListeners = new Set<(event: BrowserLogEvent) => void>()
   private readonly consoleLog: BrowserConsoleEntry[] = []
   /** Holds `wait` actions until released, to test cancelling. */
   release: () => void = () => {}
@@ -170,6 +170,21 @@ describe('a browser on a daemon', () => {
     await expect(raw.call('run', [{ op: 'click' }])).rejects.toMatchObject({ rpcCode: RpcErrorCode.INVALID_PARAMS })
     await expect(raw.call('run', [{ op: 'format_disk' }])).rejects.toMatchObject({ rpcCode: RpcErrorCode.INVALID_PARAMS })
     expect(browser.actions).toEqual([])
+  })
+
+  it('stops following the daemon\'s browser when the scope is disposed', async () => {
+    const browser = new FakeBrowser()
+    const link = await connect(browser)
+    const ctx = new Context()
+    const mounted = await ctx.plugin(browserRemote, { link })
+    await tick()
+    expect(browser.liveListeners.size).toBe(1)
+    expect(browser.logListeners.size).toBe(1)
+    await mounted.dispose()
+    await tick()
+    expect(browser.liveListeners.size).toBe(0)
+    expect(browser.logListeners.size).toBe(0)
+    expect(ctx.get('browser', false)).toBeUndefined()
   })
 
   it('fails to mount when the daemon serves no browser', async () => {

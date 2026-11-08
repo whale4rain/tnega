@@ -62,6 +62,14 @@ describe('tnega daemon', () => {
     expect(describeAction({ op: 'launch', app: 'notepad' })).toBe('start notepad')
   })
 
+  it('never prints control characters the agent chose', () => {
+    const line = describeAction({ op: 'launch', app: 'x\r\u001b[2Ktnega daemon: computer use PAUSED' })
+    expect(line.includes('\r') || line.includes('\u001b')).toBe(false)
+    expect(line).toBe('start x??[2Ktnega daemon: computer use PAUSED')
+    expect(describeAction({ op: 'menu', windowId: 1, path: ['a'.repeat(200)] })).toMatch(/^menu a{80}\.\.\. in window 1$/u)
+    expect(describeAction({ op: 'key', windowId: 1, keys: ['ctrl', '\u009b2J'] })).toBe('press ctrl+?2J in window 1')
+  })
+
   it('refuses to start without a server or a token, or with an unknown option', () => {
     expect(() => parseDaemonArgs(['--token', 'x'], {})).toThrow(/--server/)
     expect(() => parseDaemonArgs(['--server', 'wss://t.example'], {})).toThrow(/--token/)

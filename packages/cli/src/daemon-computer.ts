@@ -16,15 +16,28 @@ export interface ComputerSwitchOptions {
   onQuit: () => void
 }
 
+/**
+ * Text the agent chose, safe to print: control characters (CR, ESC, ...)
+ * become `?` so they cannot rewrite the terminal or fake a status line, and
+ * long text is cut.
+ */
+export function plain(text: string, max = 80): string {
+  const clean = Array.from(text, char => {
+    const code = char.codePointAt(0) ?? 0
+    return code < 0x20 || (code >= 0x7f && code <= 0x9f) ? '?' : char
+  })
+  return clean.length > max ? `${clean.slice(0, max).join('')}...` : clean.join('')
+}
+
 /** What an action does, in a few words, without the text it types. */
 export function describeAction(action: ComputerAction): string {
   switch (action.op) {
-    case 'launch': return `start ${action.app}`
+    case 'launch': return `start ${plain(action.app)}`
     case 'clipboard-read': return 'read the clipboard'
     case 'clipboard-write': return 'write the clipboard'
     case 'type': return `type ${action.text.length} characters in window ${action.windowId}`
-    case 'key': return `press ${action.keys.join('+')} in window ${action.windowId}`
-    case 'menu': return `menu ${action.path.join(' > ')} in window ${action.windowId}`
+    case 'key': return `press ${plain(action.keys.join('+'))} in window ${action.windowId}`
+    case 'menu': return `menu ${plain(action.path.join(' > '))} in window ${action.windowId}`
     case 'steps': return `${action.steps.length} steps in window ${action.windowId}`
     default: return `${action.op} in window ${action.windowId}`
   }
