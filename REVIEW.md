@@ -14,9 +14,9 @@ Windows) only runs when a release tag is pushed, and one failing job there
 blocks every installer. So do report what CI would normally catch: type
 errors, a public type or export changed without updating its consumers,
 tests that cannot pass, imports that cannot resolve, and lint-level problems
-that hide a bug. The only exception is
-`.github/workflows/desktop-packages.yml`, which packages the desktop app on
-PRs that touch `apps/desktop/**`.
+that hide a bug. GitHub Actions is paused for now
+(no free minutes left): `.github/workflows/desktop-packages.yml` no longer runs
+on PRs and the release workflow only runs by hand.
 
 ## What Important means here
 

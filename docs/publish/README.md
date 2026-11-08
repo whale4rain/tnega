@@ -6,6 +6,15 @@ installers with their update feeds.
 Prepare the version and notes first; no local packaging or OTP is needed after
 the one-time npm Trusted Publisher configuration below.
 
+> **GitHub Actions is paused (2026-11).** The free Actions minutes ran out, so
+> both workflows only run by hand: pushing a tag does not start **Release**, and
+> pull requests do not start **Desktop packages**. To release while paused,
+> push the tag as usual, then open Actions → Release → **Run workflow** and pick
+> the tag under "Use workflow from" (a manual run still uses minutes), or use the
+> local fallback below. To re-enable, restore the `push: tags` trigger in
+> `release.yml` and the `pull_request` trigger in `desktop-packages.yml`; both
+> are kept as comments at the top of each file.
+
 Desktop 0.4.6 and later already support in-app updates. Users install an
 update-capable client once; later upgrades happen through Settings → Check for
 updates or the sidebar's Update action. Maintainers still build and publish

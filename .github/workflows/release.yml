@@ -1,9 +1,14 @@
 name: Release
 
+# Paused (2026-11): GitHub Actions minutes ran out, so pushing a tag no longer
+# starts a release. Run it by hand from the Actions tab: Run workflow, and pick
+# the tag (not a branch) under "Use workflow from", so GITHUB_REF_NAME is the tag.
+# To re-enable tag releases, put the push trigger back:
+#   push:
+#     tags:
+#       - 'v[0-9]*'
 on:
-  push:
-    tags:
-      - 'v[0-9]*'
+  workflow_dispatch:
 
 permissions:
   contents: read
