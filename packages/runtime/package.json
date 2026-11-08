@@ -12,6 +12,7 @@
     "@tnega/coding-agent": "workspace:*",
     "@tnega/compaction": "workspace:*",
     "@tnega/browser-remote": "workspace:*",
+    "@tnega/computer-remote": "workspace:*",
     "@tnega/computer-cua": "workspace:*",
     "@tnega/computer-tiers": "workspace:*",
     "@tnega/core": "workspace:*",

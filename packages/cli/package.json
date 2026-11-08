@@ -9,6 +9,9 @@
   "dependencies": {
     "@tnega/agent": "workspace:*",
     "@tnega/browser-playwright": "workspace:*",
+    "@tnega/computer": "workspace:*",
+    "@tnega/computer-cua": "workspace:*",
+    "@tnega/core": "workspace:*",
     "@tnega/config": "workspace:*",
     "@tnega/daemon": "workspace:*",
     "@tnega/home": "workspace:*",
@@ -29,7 +32,6 @@
     "@tnega/blackboard-local": "workspace:*",
     "@tnega/box": "workspace:*",
     "@tnega/box-blackboard": "workspace:*",
-    "@tnega/core": "workspace:*",
     "@tnega/fs-local": "workspace:*",
     "@tnega/persona": "workspace:*",
     "@tnega/project-http": "workspace:*",

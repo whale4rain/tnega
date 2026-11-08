@@ -65,6 +65,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       ['--workspace <dir>', 'folder to serve; repeat for more (default: here)'],
       ['--device-id <id>', 'name this machine (default: from the host name)'],
       ['--browser', 'let the agent drive a browser here (its own profile, not yours)'],
+      ['--computer', 'let the agent see and use the apps here; press p to pause'],
       HELP,
     ],
   },

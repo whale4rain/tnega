@@ -401,9 +401,18 @@ importers:
       '@tnega/browser-playwright':
         specifier: workspace:*
         version: link:../browser/browser-playwright
+      '@tnega/computer':
+        specifier: workspace:*
+        version: link:../computer/computer
+      '@tnega/computer-cua':
+        specifier: workspace:*
+        version: link:../computer/computer-cua
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
       '@tnega/daemon':
         specifier: workspace:*
         version: link:../daemon/daemon
@@ -456,9 +465,6 @@ importers:
       '@tnega/box-blackboard':
         specifier: workspace:*
         version: link:../project/box-blackboard
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
       '@tnega/fs-local':
         specifier: workspace:*
         version: link:../fs/fs-local
@@ -636,11 +642,26 @@ importers:
         specifier: workspace:*
         version: link:../protocol
 
+  packages/daemon/computer-remote:
+    dependencies:
+      '@tnega/computer':
+        specifier: workspace:*
+        version: link:../../computer/computer
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/daemon/daemon:
     dependencies:
       '@tnega/browser':
         specifier: workspace:*
         version: link:../../browser/browser
+      '@tnega/computer':
+        specifier: workspace:*
+        version: link:../../computer/computer
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
@@ -681,6 +702,9 @@ importers:
       '@tnega/browser-remote':
         specifier: workspace:*
         version: link:../browser-remote
+      '@tnega/computer-remote':
+        specifier: workspace:*
+        version: link:../computer-remote
       '@tnega/fs-remote':
         specifier: workspace:*
         version: link:../fs-remote
@@ -1777,6 +1801,9 @@ importers:
       '@tnega/computer-cua':
         specifier: workspace:*
         version: link:../computer/computer-cua
+      '@tnega/computer-remote':
+        specifier: workspace:*
+        version: link:../daemon/computer-remote
       '@tnega/computer-tiers':
         specifier: workspace:*
         version: link:../computer/computer-tiers

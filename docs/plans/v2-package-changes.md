@@ -496,6 +496,20 @@ and approvals stay where they were. `packages/runtime` mounts it with
 `tool-browser` for a scope on a daemon that lists `browser`; `browser: false`
 turns it off. A scope on this machine still gets its browser from its host.
 
+### Computer use on a daemon (2026-11-08)
+
+Off unless the person at that machine starts `tnega daemon --computer`. The
+daemon then mounts its own `computer-cua` and serves `computer`: `windows`,
+`apps`, `screenshot`, `zoom`, `tree` and `act` (shape-checked with
+`parseComputerAction` and `assertAction` before the driver sees it). The
+daemon's terminal says computer use is on, prints every action (never the text
+it types), and `p` pauses it: while paused every call is refused with
+`COMPUTER_DENIED`, screenshots included. `daemon/computer-remote` is the
+Provider of `ctx.computer`; the base class still runs `computer/pre-action`
+in the runtime, so app tiers and approvals stay there. `packages/runtime`
+mounts it for a daemon scope only when computer use is on in the settings and
+the daemon offers it; a daemon scope never mounts this machine's `computer-cua`.
+
 ## P6 Client profiles
 
 **Changes:**

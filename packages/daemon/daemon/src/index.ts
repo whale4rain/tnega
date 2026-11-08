@@ -20,11 +20,13 @@ import { DaemonService } from './serve.js'
 import type { ExposedService, StreamHubOptions } from './services.js'
 import { exposeTerminals } from './terminals.js'
 import { exposeBrowser, type DaemonBrowser } from './browser.js'
+import { exposeComputer, type DaemonComputer, type DaemonComputerGuard } from './computer.js'
 
 export { DaemonService, type ServeOptions } from './serve.js'
 export { StreamHub, type ExposedService, type StreamHubOptions } from './services.js'
 export { exposeTerminals } from './terminals.js'
 export { exposeBrowser, type BrowserWatchEvent, type DaemonBrowser } from './browser.js'
+export { exposeComputer, type DaemonComputer, type DaemonComputerGuard } from './computer.js'
 export { assertSecureServerUrl, connectWebSocket, type WebSocketTransportOptions } from './websocket.js'
 
 export interface DaemonWorkspaceInput {
@@ -55,6 +57,12 @@ export interface StartDaemonOptions {
    * protocol). Off unless given; the daemon does not close it.
    */
   browser?: DaemonBrowser
+  /**
+   * Computer use on this machine (`ctx.computer` over the protocol). Off
+   * unless the person here turned it on; `guard` keeps them able to pause it.
+   * The daemon does not close it.
+   */
+  computer?: { computer: DaemonComputer; guard?: DaemonComputerGuard }
   streams?: StreamHubOptions
   /** The protocol version sent in `initialize`; only tests change it. */
   protocolVersion?: number
@@ -106,6 +114,7 @@ export function startDaemon(options: StartDaemonOptions): Daemon {
   const terminals = options.terminals === false ? undefined : new TerminalManager(options.terminals ?? {})
   if (terminals) services.terminals = exposeTerminals(terminals, workspaces)
   if (options.browser) services.browser = exposeBrowser(options.browser)
+  if (options.computer) services.computer = exposeComputer(options.computer.computer, options.computer.guard)
   const service = new DaemonService({
     workspaces,
     services,
