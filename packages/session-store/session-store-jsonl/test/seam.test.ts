@@ -108,6 +108,20 @@ describe('the JSONL session store', () => {
     expect(await readFile(sessionFile(workspace, id), 'utf8')).not.toContain('half')
   })
 
+  it('lets an append under way finish before its lease lets go of the lock', async () => {
+    const { store, workspace, id } = await setup()
+    const lease = await store.lease(workspace, id, 'runtime-a')
+    let settled = false
+    const pending = store.append(workspace, id, { expectedSeq: 1, events: [message(2, 'in flight')], owner: 'runtime-a' })
+    void pending.then(() => { settled = true }, () => { settled = true })
+    // Past the lease check and into reading the log.
+    await new Promise(done => setImmediate(done))
+    expect(settled).toBe(false)
+    await lease.release()
+    expect(settled).toBe(true)
+    expect(await pending).toEqual({ status: 'committed', seqs: [2] })
+  })
+
   it('takes over a lease another process stopped renewing 30 seconds ago', async () => {
     const { store, workspace, id } = await setup()
     const lock = sessionLockPath(sessionFile(workspace, id))

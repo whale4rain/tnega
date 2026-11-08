@@ -174,6 +174,8 @@ export class JsonlSessionStore extends SessionStore {
   private async letGo(file: string, lease: HeldLease): Promise<void> {
     // A lease still being taken is let go once it is held; one that failed holds nothing.
     if (!await lease.ready.then(() => true, () => false)) return
+    // An append already writing under this lease finishes before the lock file goes.
+    await this.tails.get(file)
     await new JsonlSessionBackend(file).release(lease.holder)
   }
 
