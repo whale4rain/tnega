@@ -5,16 +5,20 @@ name: Desktop packages
 # Nobody on the team has a Mac or Linux machine, so this is where those builds
 # are checked before a release. Run it from the Actions tab (Run workflow) or
 # let a pull request that touches the desktop app or release scripts start it.
+
+# Paused (2026-11): GitHub Actions minutes ran out, so pull requests no longer
+# start this workflow. Run it by hand from the Actions tab (Run workflow).
+# To re-enable it on pull requests, put this trigger back under `on:`:
+#   pull_request:
+#     paths:
+#       - apps/desktop/**
+#       - apps/web/src/lib/desktop-*.ts
+#       - scripts/release*.mjs
+#       - pnpm-lock.yaml
+#       - .github/workflows/desktop-packages.yml
+#       - .github/workflows/release.yml
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - apps/desktop/**
-      - apps/web/src/lib/desktop-*.ts
-      - scripts/release*.mjs
-      - pnpm-lock.yaml
-      - .github/workflows/desktop-packages.yml
-      - .github/workflows/release.yml
 
 permissions:
   contents: read

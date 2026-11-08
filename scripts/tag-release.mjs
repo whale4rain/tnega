@@ -32,4 +32,7 @@ if (!existsSync(resolve(root, `docs/releases/${tag}.md`))) fail(`docs/releases/$
 
 git('tag', tag)
 git('push', 'origin', tag)
-console.log(`Pushed ${tag}. Follow the Release run in GitHub Actions.`)
+console.log(
+  `Pushed ${tag}. Tag pushes no longer start Release while Actions is paused: ` +
+    'run it from Actions → Release → Run workflow and pick this tag.',
+)
