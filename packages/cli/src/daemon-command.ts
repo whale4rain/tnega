@@ -114,7 +114,7 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
   })
   const stop = (): void => {
     interrupted = true
-    void daemon.close().then(closeExtras).then(() => settle(0))
+    void daemon.close().catch(() => undefined).then(closeExtras).then(() => settle(0))
   }
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)

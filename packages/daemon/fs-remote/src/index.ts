@@ -96,7 +96,10 @@ export class RemoteWorkspaceFs implements WorkspaceFs {
  */
 export function announcedWorkspace(link: DaemonLink, root: string): DaemonWorkspace {
   const windows = link.capabilities.platform === 'win32'
-  const key = (path: string): string => windows ? win32.resolve(path).toLowerCase() : posix.resolve(path)
+  // Normalised, not resolved: resolving would read a relative root against this process's folder.
+  const key = (path: string): string => windows
+    ? win32.normalize(path).replace(/[\\/]+$/u, '').toLowerCase()
+    : posix.normalize(path).replace(/\/+$/u, '')
   const wanted = key(root)
   const found = link.workspaces.find(item => item.path === root || key(item.path) === wanted)
   if (!found) throw new RemoteError(`daemon ${link.deviceId} does not serve ${root}`, -32002, { name: 'WorkspaceDeniedError', code: 'WORKSPACE_DENIED' })

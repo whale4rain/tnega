@@ -118,4 +118,6 @@ it('finds a Windows daemon workspace however its root is spelled', () => {
   expect(announcedWorkspace(link, 'C:\\Repo').id).toBe('w1')
   expect(announcedWorkspace(link, 'c:/repo/').id).toBe('w1')
   expect(() => announcedWorkspace(link, 'C:\\Other')).toThrow(/does not serve/)
+  // A relative root is not read against this process's folder.
+  expect(() => announcedWorkspace(link, 'Repo')).toThrow(/does not serve/)
 })
