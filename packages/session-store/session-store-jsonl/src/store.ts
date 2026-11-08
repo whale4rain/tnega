@@ -28,6 +28,8 @@ interface HeldLease {
   owner: string
   /** The lock file's owner in this process; the lease holds it while it lives. */
   holder: object
+  /** Settles once the lock file is taken; a second caller waits on it instead of taking another. */
+  ready: Promise<void>
 }
 
 /**
@@ -85,11 +87,16 @@ export class JsonlSessionStore extends SessionStore {
   ): Promise<SessionAppendResult> {
     const lease = this.leases.get(file)
     if (lease?.owner !== owner) throw new SessionLeaseError(id, lease?.owner ?? 'nobody: take a lease before appending')
+    await lease.ready
     const ids = new Set(events.map(event => event.id))
     if (ids.size !== events.length) throw new TypeError('append: a batch repeats an event id')
 
-    if (!await stat(file).catch(() => undefined)) throw new SessionNotFoundError(file)
-    const stored = await readSessionEventsReadOnly(workspace, id)
+    const backend = new JsonlSessionBackend(file)
+    const loaded = await backend.load()
+    if (!loaded) throw new SessionNotFoundError(file)
+    // A torn last line (a crash mid-write) would swallow the next event: cut it first.
+    if (loaded.damaged) await backend.repair([])
+    const stored = loaded.events
     const headSeq = stored.at(-1)?.seq ?? 0
     const byId = new Map(stored.map(event => [event.id, event] as const))
     const seen = events.map(event => byId.get(event.id))
@@ -103,7 +110,6 @@ export class JsonlSessionStore extends SessionStore {
     events.forEach((event, index) => {
       if (event.seq !== expectedSeq + index + 1) throw new TypeError(`append: event ${event.id} has seq ${event.seq}, expected ${expectedSeq + index + 1}`)
     })
-    const backend = new JsonlSessionBackend(file)
     await backend.append(events)
     await backend.sync()
     return { status: 'committed', seqs: events.map(event => event.seq) }
@@ -116,20 +122,25 @@ export class JsonlSessionStore extends SessionStore {
   async lease(workspace: string, id: string, owner: string): Promise<SessionLease> {
     const file = sessionFile(workspace, id)
     const current = this.leases.get(file)
-    if (current && current.owner !== owner) throw new SessionLeaseError(id, current.owner)
-    if (!current) {
-      // A Session open for writing in this process writes past the store.
-      if (SessionLog.live(file)) throw new SessionLeaseError(id, 'a running session in this process')
-      const holder = {}
-      try {
-        await new JsonlSessionBackend(file).hold(holder)
-      } catch (error) {
-        if (error instanceof SessionLockedError) {
-          throw new SessionLeaseError(id, `process ${error.holder.pid} on ${error.holder.host}`, { cause: error })
-        }
-        throw error
+    if (current) {
+      if (current.owner !== owner) throw new SessionLeaseError(id, current.owner)
+      await current.ready
+      return { owner, release: () => this.release(file, owner) }
+    }
+    // A Session open for writing in this process writes past the store.
+    if (SessionLog.live(file)) throw new SessionLeaseError(id, 'a running session in this process')
+    const holder = {}
+    // In the table before the lock file is taken, so a second caller cannot take its own.
+    const lease: HeldLease = { owner, holder, ready: new JsonlSessionBackend(file).hold(holder) }
+    this.leases.set(file, lease)
+    try {
+      await lease.ready
+    } catch (error) {
+      if (this.leases.get(file) === lease) this.leases.delete(file)
+      if (error instanceof SessionLockedError) {
+        throw new SessionLeaseError(id, `process ${error.holder.pid} on ${error.holder.host}`, { cause: error })
       }
-      this.leases.set(file, { owner, holder })
+      throw error
     }
     return { owner, release: () => this.release(file, owner) }
   }
@@ -138,6 +149,8 @@ export class JsonlSessionStore extends SessionStore {
     const lease = this.leases.get(file)
     if (lease?.owner !== owner) return
     this.leases.delete(file)
+    // A lease still being taken is let go once it is held; one that failed holds nothing.
+    if (!await lease.ready.then(() => true, () => false)) return
     await new JsonlSessionBackend(file).release(lease.holder)
   }
 

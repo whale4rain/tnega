@@ -52,7 +52,8 @@ export class LocalBlobStore extends BlobStore {
     const file = this.file(hash)
     try {
       await mkdir(join(this.root, hash.slice(0, 2)), { recursive: true })
-      // The description first: a blob is only there once its bytes are.
+      // The description first: a blob is only there once its bytes are. Two
+      // first writes of the same bytes race on it, and the last media type wins.
       await writeOnce(`${file}.json`, JSON.stringify({ size: info.size, mediaType }))
       await writeOnce(file, bytes)
     } catch (error) {
@@ -68,7 +69,12 @@ export class LocalBlobStore extends BlobStore {
     let described: unknown
     try {
       bytes = new Uint8Array(await readFile(file))
-      described = JSON.parse(await readFile(`${file}.json`, 'utf8'))
+      // The bytes are the blob; a lost description only loses its media type.
+      const description = await readFile(`${file}.json`, 'utf8').catch((error: unknown) => {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return 'null'
+        throw error
+      })
+      described = JSON.parse(description)
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
       throw new BlobError('BLOB_FAILED', `could not read blob ${hash}`, { cause: error })

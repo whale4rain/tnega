@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -49,6 +49,14 @@ it('answers a missing blob with nothing, and a damaged one with an error', async
   const info = await blobs.put(bytes, 'image/png')
   await writeFile(join(root, info.hash.slice(0, 2), info.hash), 'tampered')
   await expect(blobs.get(info.hash)).rejects.toMatchObject({ code: 'BLOB_FAILED' })
+})
+
+it('still gives back a blob whose description was lost', async () => {
+  const { blobs, root } = await mount()
+  const info = await blobs.put(bytes, 'image/png')
+  await unlink(join(root, info.hash.slice(0, 2), `${info.hash}.json`))
+  expect(await blobs.has(info.hash)).toBe(true)
+  expect(await blobs.get(info.hash)).toMatchObject({ hash: info.hash, mediaType: 'application/octet-stream' })
 })
 
 it('refuses what is not a blob or a hash', async () => {

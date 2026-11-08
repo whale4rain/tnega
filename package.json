@@ -220,6 +220,22 @@
       "types": "./dist/types/packages/session/src/index.d.ts",
       "import": "./dist/session.js"
     },
+    "./session-store": {
+      "types": "./dist/types/packages/session-store/session-store/src/index.d.ts",
+      "import": "./dist/session-store.js"
+    },
+    "./session-store-jsonl": {
+      "types": "./dist/types/packages/session-store/session-store-jsonl/src/index.d.ts",
+      "import": "./dist/session-store-jsonl.js"
+    },
+    "./blobs": {
+      "types": "./dist/types/packages/blobs/blobs/src/index.d.ts",
+      "import": "./dist/blobs.js"
+    },
+    "./blobs-local": {
+      "types": "./dist/types/packages/blobs/blobs-local/src/index.d.ts",
+      "import": "./dist/blobs-local.js"
+    },
     "./tool-search": {
       "types": "./dist/types/packages/fs/tool-search/src/index.d.ts",
       "import": "./dist/tool-search.js"

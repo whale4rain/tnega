@@ -74,19 +74,38 @@ async function appendDurably(file: string, text: string): Promise<void> {
 
 async function writeFileDurably(file: string, text: string): Promise<void> {
   const temporary = `${file}.${randomUUID()}.tmp`
-  const handle = await open(temporary, 'w')
   try {
-    await handle.writeFile(text, 'utf8')
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-  try {
+    const handle = await open(temporary, 'w')
+    try {
+      await handle.writeFile(text, 'utf8')
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
     await renameOver(temporary, file)
   } catch (error) {
-    // A failed rename leaves the temporary behind; the next reader would see it too.
+    // A temporary left behind would be seen by the next reader too.
     await rm(temporary, { force: true }).catch(() => undefined)
     throw error
+  }
+  await syncDirectory(dirname(file))
+}
+
+/**
+ * Make a rename in `directory` durable. Best effort: Windows cannot open a
+ * folder for syncing, and some file systems refuse it.
+ */
+async function syncDirectory(directory: string): Promise<void> {
+  if (process.platform === 'win32') return
+  try {
+    const handle = await open(directory, 'r')
+    try {
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+  } catch {
+    // The rename itself is done; only its durability across a power loss is less certain.
   }
 }
 

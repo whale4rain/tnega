@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { appendFile, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -84,6 +84,28 @@ describe('the JSONL session store', () => {
     await expect(store.append(workspace, id, { expectedSeq: 1, events: [message(2, 'x')], owner: 'runtime-b' })).rejects.toBeInstanceOf(SessionLeaseError)
     await lease.release()
     await store.lease(workspace, id, 'runtime-b')
+  })
+
+  it('gives one lease to one of two owners asking at once', async () => {
+    const { store, workspace, id } = await setup()
+    const asks = await Promise.allSettled([store.lease(workspace, id, 'runtime-a'), store.lease(workspace, id, 'runtime-b')])
+    expect(asks.map(ask => ask.status)).toEqual(['fulfilled', 'rejected'])
+    const [won] = asks
+    if (won?.status !== 'fulfilled') throw new Error('the first ask should win')
+    await won.value.release()
+    // Released fully: nothing of the lost ask stays behind in the lock.
+    const lease = await store.lease(workspace, id, 'runtime-b')
+    await lease.release()
+  })
+
+  it('cuts a torn last line before appending, so no event is swallowed', async () => {
+    const { store, workspace, id } = await setup()
+    await store.lease(workspace, id, 'runtime-a')
+    await appendFile(sessionFile(workspace, id), '{"id":"half","seq":2,"ty')
+    const next = message(2, 'after the crash')
+    expect(await store.append(workspace, id, { expectedSeq: 1, events: [next], owner: 'runtime-a' })).toEqual({ status: 'committed', seqs: [2] })
+    expect((await all(store.read(workspace, id))).at(-1)).toEqual(next)
+    expect(await readFile(sessionFile(workspace, id), 'utf8')).not.toContain('half')
   })
 
   it('takes over a lease another process stopped renewing 30 seconds ago', async () => {
