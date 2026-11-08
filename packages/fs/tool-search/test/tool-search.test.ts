@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, type Plugin } from '@tnega/core'
+import { FsService, type WorkspaceFs } from '@tnega/fs'
 import { resolveRipgrepPath, searchRipgrep } from '@tnega/search-ripgrep'
 import {
   SearchService,
@@ -250,5 +251,42 @@ describe('the seam survives a provider swap', () => {
     expect(await ok(service, 'glob', { pattern: '*' })).toEqual(['top.ts'])
     expect((await ok(service, 'glob', { pattern: '**/*.ts' }) as string[]).sort())
       .toEqual(['src/a.ts', 'src/deep/b.ts', 'top.ts'])
+  })
+})
+
+describe('a workspace on another machine', () => {
+  it('fences the search root with the workspace\'s own fs and shows it by its own path rules', async () => {
+    const provider = fakeProvider({})
+    const root = new Context()
+    await root.plugin(tools)
+    // A Windows daemon's workspace: the runtime's node:path must not take these apart.
+    const resolved: string[] = []
+    const windowsFs: WorkspaceFs = {
+      root: 'C:\\Repo',
+      realRoot: async () => 'C:\\Repo',
+      resolve: async (path: string) => {
+        const target = win32.resolve('C:\\Repo', path)
+        if (win32.relative('C:\\Repo', target).startsWith('..')) throw new Error(`${path} is outside the workspace`)
+        resolved.push(target)
+        return target
+      },
+      stat: async () => undefined,
+      readFile: async () => new Uint8Array(),
+      writeFile: async () => {},
+      list: async () => [],
+      mkdir: async () => {},
+      remove: async () => {},
+      rename: async () => {},
+    }
+    await root.plugin({ name: 'windows-fs', apply: (ctx: Context) => { new (class extends FsService { workspace(): WorkspaceFs { return windowsFs } })(ctx) } })
+    await root.plugin(provider.plugin, { cwd: 'C:\\Repo' })
+    await root.plugin(toolSearch, { cwd: 'C:\\Repo' })
+    const service = root.get('tools')
+
+    await ok(service, 'grep', { pattern: 'value', path: 'src\\lib' })
+    expect(resolved).toEqual(['C:\\Repo\\src\\lib'])
+    expect(provider.instances[0]!.textSpecs[0]!.root).toBe('src/lib')
+    const outside = await service.execute('grep', { pattern: 'value', path: '..\\other' })
+    expect(outside.ok).toBe(false)
   })
 })

@@ -19,6 +19,12 @@ export interface ToolShellConfig {
   cwd?: string
   /** Let `cwd` leave the workspace (the `bypass` permission). */
   allowOutsideWorkspace?: boolean | (() => boolean | Promise<boolean>)
+  /**
+   * Resolve and fence a command's `cwd`, the way the file tools resolve their
+   * paths (the workspace's `ctx.fs` handle), so a workspace on another machine
+   * is fenced there. Without it, `cwd` is fenced on this machine.
+   */
+  resolveCwd?: (path: string) => Promise<string>
   /** Default timeout of one command. */
   timeoutMs?: number
   /** Byte cap for captured stdout plus stderr. */
@@ -63,7 +69,7 @@ export function createShellTool(config: ToolShellConfig = {}, owned?: ProcessReg
   const timeoutDefault = config.timeoutMs ?? 15_000
   const maxBuffer = config.maxOutputBytes ?? 1024 * 1024
   const background = config.backgroundJobs ?? Boolean(processes && execution.startShell)
-  const resolveCwd = async (path: string): Promise<string> => await resolveWorkspacePath(cwdRoot, outside, path)
+  const resolveCwd = config.resolveCwd ?? (async (path: string): Promise<string> => await resolveWorkspacePath(cwdRoot, outside, path))
 
   const properties: Record<string, unknown> = {
     command: { type: 'string', description: 'shell command to run' },

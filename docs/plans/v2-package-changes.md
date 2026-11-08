@@ -470,6 +470,46 @@ and the daemon serves only folders inside its announced workspaces. Next:
 browser (separate profile by default, frames only while watched) and computer
 use (off unless the device opts in, local stop key).
 
+### Cross-OS daemon paths (2026-11-08)
+
+A daemon may run another OS than the runtime (a Windows PC serving a Linux
+server). Paths stay in the daemon's form end to end: `@tnega/fs` has
+`workspacePath(root)`, which picks `path.win32` or `path.posix` from how the
+root is written, and the file tools and `glob` / `grep` show paths with it.
+`shell` resolves its `cwd` through the workspace's `ctx.fs` handle (the same
+fence as the file tools, on the machine that holds the files), `glob` / `grep`
+fence their root the same way, and `announcedWorkspace` compares roots by the
+daemon's rules (case-insensitive on Windows).
+
+### Browser on a daemon (2026-11-08)
+
+`tnega daemon --browser` serves a browser on that machine: its own profile,
+started on first use, never the person's browser. The daemon's `browser`
+Service forwards `run` (one `BrowserAction`, shape-checked on the daemon),
+`snapshot`, `screenshot`, `evaluate`, `console`, `network` and a `watch`
+stream with page, tab and log changes (no frames yet).
+`daemon/browser-remote` is the Provider of `ctx.browser`: it keeps page, tabs
+and logs from `watch` so the synchronous reads stay local, and turns a
+`BrowserError` from the daemon back into one with the same code.
+`browser/pre-action` runs in the runtime before anything is sent, so policy
+and approvals stay where they were. `packages/runtime` mounts it with
+`tool-browser` for a scope on a daemon that lists `browser`; `browser: false`
+turns it off. A scope on this machine still gets its browser from its host.
+
+### Computer use on a daemon (2026-11-08)
+
+Off unless the person at that machine starts `tnega daemon --computer`. The
+daemon then mounts its own `computer-cua` and serves `computer`: `windows`,
+`apps`, `screenshot`, `zoom`, `tree` and `act` (shape-checked with
+`parseComputerAction` and `assertAction` before the driver sees it). The
+daemon's terminal says computer use is on, prints every action (never the text
+it types), and `p` pauses it: while paused every call is refused with
+`COMPUTER_DENIED`, screenshots included. `daemon/computer-remote` is the
+Provider of `ctx.computer`; the base class still runs `computer/pre-action`
+in the runtime, so app tiers and approvals stay there. `packages/runtime`
+mounts it for a daemon scope only when computer use is on in the settings and
+the daemon offers it; a daemon scope never mounts this machine's `computer-cua`.
+
 ## P6 Client profiles
 
 **Changes:**

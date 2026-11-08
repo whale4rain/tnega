@@ -398,9 +398,21 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/browser-playwright':
+        specifier: workspace:*
+        version: link:../browser/browser-playwright
+      '@tnega/computer':
+        specifier: workspace:*
+        version: link:../computer/computer
+      '@tnega/computer-cua':
+        specifier: workspace:*
+        version: link:../computer/computer-cua
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
       '@tnega/daemon':
         specifier: workspace:*
         version: link:../daemon/daemon
@@ -453,9 +465,6 @@ importers:
       '@tnega/box-blackboard':
         specifier: workspace:*
         version: link:../project/box-blackboard
-      '@tnega/core':
-        specifier: workspace:*
-        version: link:../core
       '@tnega/fs-local':
         specifier: workspace:*
         version: link:../fs/fs-local
@@ -621,8 +630,38 @@ importers:
 
   packages/core: {}
 
+  packages/daemon/browser-remote:
+    dependencies:
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../../browser/browser
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/daemon/computer-remote:
+    dependencies:
+      '@tnega/computer':
+        specifier: workspace:*
+        version: link:../../computer/computer
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/daemon/daemon:
     dependencies:
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../../browser/browser
+      '@tnega/computer':
+        specifier: workspace:*
+        version: link:../../computer/computer
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
@@ -660,6 +699,12 @@ importers:
         specifier: 7.29.1
         version: 7.29.1
     devDependencies:
+      '@tnega/browser-remote':
+        specifier: workspace:*
+        version: link:../browser-remote
+      '@tnega/computer-remote':
+        specifier: workspace:*
+        version: link:../computer-remote
       '@tnega/fs-remote':
         specifier: workspace:*
         version: link:../fs-remote
@@ -829,6 +874,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/fs':
+        specifier: workspace:*
+        version: link:../fs
       '@tnega/search':
         specifier: workspace:*
         version: link:../search-definition
@@ -1741,6 +1789,9 @@ importers:
       '@tnega/approval-host':
         specifier: workspace:*
         version: link:../approval-host
+      '@tnega/browser-remote':
+        specifier: workspace:*
+        version: link:../daemon/browser-remote
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
@@ -1750,6 +1801,9 @@ importers:
       '@tnega/computer-cua':
         specifier: workspace:*
         version: link:../computer/computer-cua
+      '@tnega/computer-remote':
+        specifier: workspace:*
+        version: link:../daemon/computer-remote
       '@tnega/computer-tiers':
         specifier: workspace:*
         version: link:../computer/computer-tiers
@@ -1819,6 +1873,9 @@ importers:
       '@tnega/spill-local':
         specifier: workspace:*
         version: link:../spill/spill-local
+      '@tnega/tool-browser':
+        specifier: workspace:*
+        version: link:../browser/tool-browser
       '@tnega/tool-computer':
         specifier: workspace:*
         version: link:../computer/tool-computer
@@ -5967,10 +6024,6 @@ packages:
     resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
     engines: {node: '>=20.18.1'}
 
-  undici@8.10.2:
-    resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
-    engines: {node: '>=22.19.0'}
-
   undici@8.12.3:
     resolution: {integrity: sha512-+fdndUTwBP86cVjihTp21hZHo7d6oj1c/47XPA3lL8mM0XHs+C4EkcjmgRsFnFk2f/UONGDy9ItBItmXsLOQHw==}
     engines: {node: '>=22.19.0'}
@@ -9146,7 +9199,7 @@ snapshots:
       parse5: 8.0.1
       saxes: 6.0.0
       tough-cookie: 6.0.2
-      undici: 8.10.2
+      undici: 8.12.3
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -10551,9 +10604,6 @@ snapshots:
   undici@6.28.1: {}
 
   undici@7.29.1: {}
-
-  undici@8.10.2:
-    optional: true
 
   undici@8.12.3: {}
 

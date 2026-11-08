@@ -1,0 +1,14 @@
+{
+  "name": "@tnega/computer-remote",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/computer": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/daemon-protocol": "workspace:*"
+  }
+}

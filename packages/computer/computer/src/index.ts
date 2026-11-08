@@ -4,10 +4,12 @@ import {
   COMPUTER_STEP_OPS,
   ComputerError,
   type ComputerAction,
+  type ComputerAim,
   type ComputerApp,
   type ComputerActionEvent,
   type ComputerActionResult,
   type ComputerCallOptions,
+  type ComputerPoint,
   type ComputerPreActionEvent,
   type ComputerRegion,
   type ComputerScreenshot,
@@ -100,6 +102,105 @@ export function assertAction(action: ComputerAction): void {
     case 'launch':
     case 'clipboard-read':
       return
+  }
+}
+
+function parsePoint(value: unknown): ComputerPoint | undefined {
+  if (!isRecord(value) || typeof value.x !== 'number' || typeof value.y !== 'number') return undefined
+  return { x: value.x, y: value.y }
+}
+
+/** An element or a point; both, or neither, is not an aim. */
+function parseAim(value: Record<string, unknown>): ComputerAim | undefined {
+  const point = value.x !== undefined || value.y !== undefined
+  if (typeof value.element === 'string') return point ? undefined : { element: value.element }
+  if (typeof value.x === 'number' && typeof value.y === 'number') return { x: value.x, y: value.y }
+  return undefined
+}
+
+function parseStep(value: Record<string, unknown>, windowId: number): ComputerStep | undefined {
+  const element = typeof value.element === 'string' ? { element: value.element } : {}
+  switch (value.op) {
+    case 'click': {
+      const aim = parseAim(value)
+      if (!aim) return undefined
+      const button: { button?: 'left' | 'right' | 'middle' } = {}
+      if (value.button === 'left' || value.button === 'right' || value.button === 'middle') button.button = value.button
+      const count = typeof value.count === 'number' ? { count: value.count } : {}
+      return { op: 'click', windowId, ...button, ...count, ...aim }
+    }
+    case 'type':
+      return typeof value.text === 'string' ? { op: 'type', windowId, text: value.text, ...element } : undefined
+    case 'key': {
+      const keys = value.keys
+      if (!Array.isArray(keys) || !keys.length) return undefined
+      const names = keys.filter((key): key is string => typeof key === 'string')
+      return names.length === keys.length ? { op: 'key', windowId, keys: names, ...element } : undefined
+    }
+    case 'scroll': {
+      const aim = parseAim(value)
+      const direction = value.direction
+      if (!aim || (direction !== 'up' && direction !== 'down' && direction !== 'left' && direction !== 'right')) return undefined
+      return { op: 'scroll', windowId, direction, ...(typeof value.amount === 'number' ? { amount: value.amount } : {}), ...aim }
+    }
+    case 'drag': {
+      const from = parsePoint(value.from)
+      const to = parsePoint(value.to)
+      return from && to ? { op: 'drag', windowId, from, to } : undefined
+    }
+    case 'hover': {
+      const point = parsePoint(value)
+      return point ? { op: 'hover', windowId, ...point } : undefined
+    }
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Read a `ComputerAction` that arrived as data (over a wire, from a file):
+ * `undefined` when it is not one. Only the shape is checked here;
+ * {@link assertAction} still judges what a typed action may not do.
+ */
+export function parseComputerAction(value: unknown): ComputerAction | undefined {
+  if (!isRecord(value)) return undefined
+  switch (value.op) {
+    case 'launch': {
+      if (typeof value.app !== 'string') return undefined
+      const urls = value.urls
+      if (urls !== undefined && (!Array.isArray(urls) || !urls.every(url => typeof url === 'string'))) return undefined
+      return {
+        op: 'launch',
+        app: value.app,
+        ...(typeof value.id === 'string' ? { id: value.id } : {}),
+        ...(Array.isArray(urls) ? { urls: urls.filter((url): url is string => typeof url === 'string') } : {}),
+      }
+    }
+    case 'clipboard-read': return { op: 'clipboard-read' }
+    case 'clipboard-write': return typeof value.text === 'string' ? { op: 'clipboard-write', text: value.text } : undefined
+  }
+  const windowId = value.windowId
+  if (typeof windowId !== 'number' || !Number.isInteger(windowId)) return undefined
+  switch (value.op) {
+    case 'menu': {
+      const path = value.path
+      if (!Array.isArray(path)) return undefined
+      const labels = path.filter((label): label is string => typeof label === 'string')
+      return labels.length === path.length ? { op: 'menu', windowId, path: labels } : undefined
+    }
+    case 'steps': {
+      if (!Array.isArray(value.steps)) return undefined
+      const steps: ComputerStep[] = []
+      for (const step of value.steps) {
+        if (!isRecord(step) || step.windowId !== windowId) return undefined
+        const parsed = parseStep(step, windowId)
+        if (!parsed) return undefined
+        steps.push(parsed)
+      }
+      return { op: 'steps', windowId, steps }
+    }
+    default:
+      return parseStep(value, windowId)
   }
 }
 

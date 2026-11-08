@@ -6,6 +6,7 @@ import {
   ComputerError,
   ComputerService,
   actionWindowId,
+  parseComputerAction,
   type ComputerAction,
   type ComputerActionEvent,
   type ComputerActionResult,
@@ -204,5 +205,36 @@ describe('ComputerService.act', () => {
   it('has no app list unless the Provider brings one', async () => {
     const computer = new FakeComputer(new Context())
     await expect(computer.apps()).rejects.toMatchObject({ code: 'COMPUTER_UNAVAILABLE' })
+  })
+})
+
+describe('parseComputerAction', () => {
+  it('reads every action that arrives as data', () => {
+    const actions: ComputerAction[] = [
+      { op: 'click', windowId: 7, element: 's1:0' },
+      { op: 'click', windowId: 7, x: 1, y: 2, button: 'right', count: 2 },
+      { op: 'type', windowId: 7, text: 'hi', element: 's1:3' },
+      { op: 'key', windowId: 7, keys: ['ctrl', 's'] },
+      { op: 'scroll', windowId: 7, direction: 'down', amount: 3, x: 5, y: 5 },
+      { op: 'drag', windowId: 7, from: { x: 1, y: 1 }, to: { x: 9, y: 9 } },
+      { op: 'hover', windowId: 7, x: 4, y: 4 },
+      { op: 'menu', windowId: 7, path: ['File', 'Save'] },
+      { op: 'steps', windowId: 7, steps: [{ op: 'key', windowId: 7, keys: ['enter'] }] },
+      { op: 'launch', app: 'notepad', id: 'np', urls: ['https://example.com/'] },
+      { op: 'clipboard-read' },
+      { op: 'clipboard-write', text: 'x' },
+    ]
+    for (const action of actions) expect(parseComputerAction(JSON.parse(JSON.stringify(action)))).toEqual(action)
+  })
+
+  it('refuses what is not an action', () => {
+    for (const value of [
+      null, 'click', { op: 'rm' }, { op: 'click', windowId: '7', x: 1, y: 1 }, { op: 'click', windowId: 7 },
+      { op: 'click', windowId: 7, element: 's1:0', x: 1 }, { op: 'key', windowId: 7, keys: [1] },
+      { op: 'scroll', windowId: 7, direction: 'sideways', x: 1, y: 1 },
+      { op: 'steps', windowId: 7, steps: [{ op: 'key', windowId: 8, keys: ['a'] }] },
+      { op: 'steps', windowId: 7, steps: [{ op: 'launch', windowId: 7, app: 'x' }] },
+      { op: 'launch', app: 'x', urls: [1] },
+    ]) expect(parseComputerAction(value)).toBeUndefined()
   })
 })

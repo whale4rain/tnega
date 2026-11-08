@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { posix, win32 } from 'node:path'
 import type { Context } from '@tnega/core'
 import {
   FsError,
@@ -89,10 +89,19 @@ export class RemoteWorkspaceFs implements WorkspaceFs {
   }
 }
 
-/** Find the announced workspace for a root path, or refuse. */
+/**
+ * Find the announced workspace for a root path, or refuse. The path is
+ * compared by the daemon's rules, not this machine's: a Windows daemon's
+ * `C:\\Repo` and `c:/repo/` are the same folder.
+ */
 export function announcedWorkspace(link: DaemonLink, root: string): DaemonWorkspace {
-  const wanted = resolve(root)
-  const found = link.workspaces.find(item => item.path === wanted || item.path === root)
+  const windows = link.capabilities.platform === 'win32'
+  // Normalised, not resolved: resolving would read a relative root against this process's folder.
+  const key = (path: string): string => windows
+    ? win32.normalize(path).replace(/[\\/]+$/u, '').toLowerCase()
+    : posix.normalize(path).replace(/\/+$/u, '')
+  const wanted = key(root)
+  const found = link.workspaces.find(item => item.path === root || key(item.path) === wanted)
   if (!found) throw new RemoteError(`daemon ${link.deviceId} does not serve ${root}`, -32002, { name: 'WorkspaceDeniedError', code: 'WORKSPACE_DENIED' })
   return found
 }

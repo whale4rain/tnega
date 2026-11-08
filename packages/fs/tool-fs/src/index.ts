@@ -1,6 +1,5 @@
-import { isAbsolute, relative, sep } from 'node:path'
 import type { Context } from '@tnega/core'
-import type { WorkspaceFs } from '@tnega/fs'
+import { workspacePath, type WorkspaceFs } from '@tnega/fs'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import type { ToolDefinition } from '@tnega/tools'
 import { editFileTool } from './edit.js'
@@ -62,6 +61,8 @@ export function createFsTools(fs: WorkspaceFs, config: Omit<ToolFsConfig, 'cwd' 
     root ??= await fs.realRoot()
     return target
   }
+  // The workspace's own path rules: its files may sit on a machine with another OS.
+  const { isAbsolute, relative, sep } = workspacePath(cwd)
   const displayPath = (target: string): string => {
     const fromRoot = root === undefined ? undefined : relative(root, target)
     const rel = fromRoot !== undefined && !fromRoot.startsWith('..') && !isAbsolute(fromRoot) ? fromRoot : relative(cwd, target)

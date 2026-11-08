@@ -24,5 +24,6 @@
 - `stat` 跟随 symlink，路径不存在时返回 `undefined`；`list` 返回条目自身的类型（symlink 仍是 `symlink`）。
 - `writeFile` 的 `mode`：`replace`（默认，原子替换并保留权限位）、`create`（原子且不覆盖，
   已存在时抛 `FsError` `FS_EXISTS`）、`append`。父目录按需创建。目标被别的程序占用而替换放弃时抛 `FS_BUSY`，旧内容不变。
+- 绝对路径是持有文件那台机器的形式。Consumer 要拆路径（比如显示成相对工作区根的路径）时用 `workspacePath(root)`，按根的写法选 `path.win32`（盘符或 `\\server`）或 `path.posix`，不用本机的 `node:path`：daemon 可能在另一种操作系统上。
 - 其它失败保留平台自己的错误和 `code`（`ENOENT`、`EACCES` …）。
 - 一个作用域只挂一个 Provider；同一作用域第二个会在挂载时失败。Project 线程用 `isolate('fs')` 拿到自己的作用域。

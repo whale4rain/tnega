@@ -7,6 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@tnega/browser": "workspace:*",
+    "@tnega/computer": "workspace:*",
     "@tnega/core": "workspace:*",
     "@tnega/daemon-protocol": "workspace:*",
     "@tnega/execution-sandbox": "workspace:*",
@@ -21,6 +23,8 @@
     "undici": "7.29.1"
   },
   "devDependencies": {
+    "@tnega/browser-remote": "workspace:*",
+    "@tnega/computer-remote": "workspace:*",
     "@tnega/fs-remote": "workspace:*",
     "@tnega/process-remote": "workspace:*",
     "@tnega/terminal": "workspace:*",
