@@ -92,21 +92,31 @@ async function writeFileDurably(file: string, text: string): Promise<void> {
 }
 
 /**
- * Make a rename in `directory` durable. Best effort: Windows cannot open a
- * folder for syncing, and some file systems refuse it.
+ * Make a rename in `directory` durable. Windows cannot open a folder for
+ * syncing and some file systems refuse it; those skip. A real I/O error
+ * means the new file may not survive a power loss, so it is reported.
  */
 async function syncDirectory(directory: string): Promise<void> {
   if (process.platform === 'win32') return
+  let handle
   try {
-    const handle = await open(directory, 'r')
-    try {
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-  } catch {
-    // The rename itself is done; only its durability across a power loss is less certain.
+    handle = await open(directory, 'r')
+  } catch (error) {
+    if (unsupportedSync(error)) return
+    throw error
   }
+  try {
+    await handle.sync()
+  } catch (error) {
+    if (!unsupportedSync(error)) throw error
+  } finally {
+    await handle.close()
+  }
+}
+
+function unsupportedSync(error: unknown): boolean {
+  const code = error instanceof Error && 'code' in error ? error.code : undefined
+  return code === 'EINVAL' || code === 'ENOTSUP' || code === 'EOPNOTSUPP' || code === 'EISDIR' || code === 'EPERM' || code === 'EACCES'
 }
 
 /**

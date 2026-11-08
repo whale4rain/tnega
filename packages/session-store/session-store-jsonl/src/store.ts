@@ -42,6 +42,8 @@ export class JsonlSessionStore extends SessionStore {
   private readonly leases = new Map<string, HeldLease>()
   /** Appends to one file run one at a time, so the head check and the write agree. */
   private readonly tails = new Map<string, Promise<unknown>>()
+  /** Set once the plugin is disposed: a lease taken after would outlive it. */
+  private closed = false
 
   create(workspace: string, options?: CreateSessionOptions): Promise<SessionSummary> {
     return createSession(workspace, options)
@@ -87,7 +89,9 @@ export class JsonlSessionStore extends SessionStore {
   ): Promise<SessionAppendResult> {
     const lease = this.leases.get(file)
     if (lease?.owner !== owner) throw new SessionLeaseError(id, lease?.owner ?? 'nobody: take a lease before appending')
-    await lease.ready
+    await this.held(id, lease)
+    // Released while it was still being taken: this append has no lease any more.
+    if (this.leases.get(file) !== lease) throw new SessionLeaseError(id, 'nobody: the lease was released')
     const ids = new Set(events.map(event => event.id))
     if (ids.size !== events.length) throw new TypeError('append: a batch repeats an event id')
 
@@ -121,10 +125,11 @@ export class JsonlSessionStore extends SessionStore {
 
   async lease(workspace: string, id: string, owner: string): Promise<SessionLease> {
     const file = sessionFile(workspace, id)
+    if (this.closed) throw new SessionLeaseError(id, 'nobody: the store is closed')
     const current = this.leases.get(file)
     if (current) {
       if (current.owner !== owner) throw new SessionLeaseError(id, current.owner)
-      await current.ready
+      await this.held(id, current)
       return { owner, release: () => this.release(file, owner) }
     }
     // A Session open for writing in this process writes past the store.
@@ -134,15 +139,24 @@ export class JsonlSessionStore extends SessionStore {
     const lease: HeldLease = { owner, holder, ready: new JsonlSessionBackend(file).hold(holder) }
     this.leases.set(file, lease)
     try {
-      await lease.ready
+      await this.held(id, lease)
     } catch (error) {
       if (this.leases.get(file) === lease) this.leases.delete(file)
+      throw error
+    }
+    return { owner, release: () => this.release(file, owner) }
+  }
+
+  /** Wait until `lease` holds the lock file; another process holding it is a lease error. */
+  private async held(id: string, lease: HeldLease): Promise<void> {
+    try {
+      await lease.ready
+    } catch (error) {
       if (error instanceof SessionLockedError) {
         throw new SessionLeaseError(id, `process ${error.holder.pid} on ${error.holder.host}`, { cause: error })
       }
       throw error
     }
-    return { owner, release: () => this.release(file, owner) }
   }
 
   private async release(file: string, owner: string): Promise<void> {
@@ -154,8 +168,9 @@ export class JsonlSessionStore extends SessionStore {
     await new JsonlSessionBackend(file).release(lease.holder)
   }
 
-  /** Let go of every lease this store holds. */
+  /** Let go of every lease this store holds, and take no more. */
   async releaseAll(): Promise<void> {
+    this.closed = true
     for (const [file, lease] of [...this.leases]) await this.release(file, lease.owner)
   }
 

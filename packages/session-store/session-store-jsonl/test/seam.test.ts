@@ -138,7 +138,11 @@ describe('the JSONL session store', () => {
     const mounted = await ctx.plugin(sessionStoreJsonl)
     const { id } = await ctx.get('sessionStore').create(workspace)
     await ctx.get('sessionStore').lease(workspace, id, 'runtime-a')
+    // A lease asked for while the plugin goes away is refused, not left holding the lock.
+    const late = ctx.get('sessionStore')
+    const { id: second } = await late.create(workspace)
     await mounted.dispose()
+    await expect(late.lease(workspace, second, 'runtime-a')).rejects.toBeInstanceOf(SessionLeaseError)
     expect(ctx.get('sessionStore', false)).toBeUndefined()
     const other = new Context()
     new JsonlSessionStore(other)
