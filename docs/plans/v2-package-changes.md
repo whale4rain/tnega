@@ -470,6 +470,17 @@ and the daemon serves only folders inside its announced workspaces. Next:
 browser (separate profile by default, frames only while watched) and computer
 use (off unless the device opts in, local stop key).
 
+### Cross-OS daemon paths (2026-11-08)
+
+A daemon may run another OS than the runtime (a Windows PC serving a Linux
+server). Paths stay in the daemon's form end to end: `@tnega/fs` has
+`workspacePath(root)`, which picks `path.win32` or `path.posix` from how the
+root is written, and the file tools and `glob` / `grep` show paths with it.
+`shell` resolves its `cwd` through the workspace's `ctx.fs` handle (the same
+fence as the file tools, on the machine that holds the files), `glob` / `grep`
+fence their root the same way, and `announcedWorkspace` compares roots by the
+daemon's rules (case-insensitive on Windows).
+
 ## P6 Client profiles
 
 **Changes:**

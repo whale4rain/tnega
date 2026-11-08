@@ -94,6 +94,8 @@ export function createBuiltinToolDefinitions(
   if (config.allowShell && !disabled.has('shell')) {
     definitions.push(createShellTool({
       ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
+      // One fence for files and commands: a workspace on a daemon is fenced there, in its own path form.
+      resolveCwd: path => files.resolve(path),
       ...(config.allowOutsideWorkspace !== undefined ? { allowOutsideWorkspace: config.allowOutsideWorkspace } : {}),
       ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
       ...(config.maxWriteBytes !== undefined ? { maxOutputBytes: config.maxWriteBytes } : {}),

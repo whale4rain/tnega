@@ -1,3 +1,4 @@
+import { posix, win32 } from 'node:path'
 import { Service, type Context } from '@tnega/core'
 
 declare module '@tnega/core' {
@@ -144,5 +145,16 @@ export function isMissingError(error: unknown): boolean {
 }
 
 export default FsService
+
+/**
+ * The path rules of the machine that holds a workspace, read from its root:
+ * a drive letter or a `\\server` share is Windows, anything else POSIX. A
+ * Consumer that takes paths apart (to show one relative to the root) uses
+ * these, not `node:path`, because the files may live on a machine with
+ * another operating system than the one running the agent.
+ */
+export function workspacePath(root: string): typeof posix {
+  return /^(?:[A-Za-z]:[\\/]|\\\\)/u.test(root) ? win32 : posix
+}
 
 export const name = '@tnega/fs'

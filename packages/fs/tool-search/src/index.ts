@@ -1,5 +1,5 @@
-import { relative, sep } from 'node:path'
 import type { Context } from '@tnega/core'
+import { workspacePath, type WorkspaceFs } from '@tnega/fs'
 import {
   DEFAULT_SEARCH_MAX_RESULTS,
   DEFAULT_SEARCH_TIMEOUT_MS,
@@ -26,6 +26,8 @@ export interface ToolSearchConfig {
 
 interface ResolvedConfig {
   cwd: string
+  /** The workspace as `ctx.fs` opened it, when a Provider is mounted. */
+  fs?: WorkspaceFs
   disabled: ReadonlySet<string>
   searchTimeoutMs: number
   maxResults: number
@@ -40,8 +42,10 @@ function normalizeConfig(config: ToolSearchConfig): ResolvedConfig {
   }
 }
 
-function displayPath(cwd: string, target: string): string {
-  const rel = relative(cwd, target)
+/** `target` relative to `root`, with `/`, by the workspace's own path rules (it may be on another OS). */
+function displayPath(root: string, target: string): string {
+  const { relative, sep } = workspacePath(root)
+  const rel = relative(root, target)
   return (rel === '' ? '.' : rel).split(sep).join('/')
 }
 
@@ -55,6 +59,8 @@ async function searchRoot(
   input: string | undefined,
 ): Promise<string | undefined> {
   if (input === undefined) return undefined
+  // With `ctx.fs`, the workspace's own fence decides, on the machine that holds it.
+  if (config.fs) return displayPath(await config.fs.realRoot(), await config.fs.resolve(input))
   return displayPath(config.cwd, await resolveInside(config.cwd, input))
 }
 
@@ -132,7 +138,9 @@ function grepTool(service: SearchService, config: ResolvedConfig): ToolDefinitio
 export const name = 'tool-search'
 
 export function apply(ctx: Context, config: ToolSearchConfig = {}): void {
-  const resolved = normalizeConfig(config)
+  const normalized = normalizeConfig(config)
+  const fs = ctx.get('fs', false)?.workspace(normalized.cwd)
+  const resolved = fs ? { ...normalized, fs } : normalized
   const registry = ctx.tools
   if (!resolved.disabled.has('glob')) registry.register(globTool(ctx.search, resolved))
   if (!resolved.disabled.has('grep')) registry.register(grepTool(ctx.search, resolved))

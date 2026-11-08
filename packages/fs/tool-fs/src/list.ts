@@ -1,5 +1,4 @@
-import { join } from 'node:path'
-import type { FsEntry, WorkspaceFs } from '@tnega/fs'
+import { workspacePath, type FsEntry, type WorkspaceFs } from '@tnega/fs'
 import {
   optionalBoolean,
   optionalString,
@@ -28,7 +27,7 @@ interface DirectoryEntry {
 function toEntry(config: ListDirConfig, dir: string, entry: FsEntry): DirectoryEntry {
   return {
     name: entry.name,
-    path: config.displayPath(join(dir, entry.name)),
+    path: config.displayPath(workspacePath(dir).join(dir, entry.name)),
     type: entry.kind === 'dir' ? 'directory' : 'file',
   }
 }
@@ -46,7 +45,7 @@ async function collectEntries(
     const isDirectory = entry.kind === 'dir'
     if (isDirectory && config.excludes.has(entry.name)) continue
     entries.push(toEntry(config, dir, entry))
-    if (isDirectory) entries.push(...await collectEntries(config, join(dir, entry.name), signal))
+    if (isDirectory) entries.push(...await collectEntries(config, workspacePath(dir).join(dir, entry.name), signal))
   }
   return entries
 }
