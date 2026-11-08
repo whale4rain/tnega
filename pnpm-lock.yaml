@@ -398,6 +398,9 @@ importers:
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
+      '@tnega/browser-playwright':
+        specifier: workspace:*
+        version: link:../browser/browser-playwright
       '@tnega/config':
         specifier: workspace:*
         version: link:../config
@@ -621,8 +624,23 @@ importers:
 
   packages/core: {}
 
+  packages/daemon/browser-remote:
+    dependencies:
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../../browser/browser
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/daemon/daemon:
     dependencies:
+      '@tnega/browser':
+        specifier: workspace:*
+        version: link:../../browser/browser
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
@@ -660,6 +678,9 @@ importers:
         specifier: 7.29.1
         version: 7.29.1
     devDependencies:
+      '@tnega/browser-remote':
+        specifier: workspace:*
+        version: link:../browser-remote
       '@tnega/fs-remote':
         specifier: workspace:*
         version: link:../fs-remote
@@ -1744,6 +1765,9 @@ importers:
       '@tnega/approval-host':
         specifier: workspace:*
         version: link:../approval-host
+      '@tnega/browser-remote':
+        specifier: workspace:*
+        version: link:../daemon/browser-remote
       '@tnega/coding-agent':
         specifier: workspace:*
         version: link:../coding-agent
@@ -1822,6 +1846,9 @@ importers:
       '@tnega/spill-local':
         specifier: workspace:*
         version: link:../spill/spill-local
+      '@tnega/tool-browser':
+        specifier: workspace:*
+        version: link:../browser/tool-browser
       '@tnega/tool-computer':
         specifier: workspace:*
         version: link:../computer/tool-computer

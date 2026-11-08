@@ -19,10 +19,12 @@ import { TerminalManager, type TerminalLocalConfig } from '@tnega/terminal-local
 import { DaemonService } from './serve.js'
 import type { ExposedService, StreamHubOptions } from './services.js'
 import { exposeTerminals } from './terminals.js'
+import { exposeBrowser, type DaemonBrowser } from './browser.js'
 
 export { DaemonService, type ServeOptions } from './serve.js'
 export { StreamHub, type ExposedService, type StreamHubOptions } from './services.js'
 export { exposeTerminals } from './terminals.js'
+export { exposeBrowser, type BrowserWatchEvent, type DaemonBrowser } from './browser.js'
 export { assertSecureServerUrl, connectWebSocket, type WebSocketTransportOptions } from './websocket.js'
 
 export interface DaemonWorkspaceInput {
@@ -48,6 +50,11 @@ export interface StartDaemonOptions {
    * protocol). On by default; `false` serves none. Tests pass a fake PTY.
    */
   terminals?: TerminalLocalConfig | false
+  /**
+   * A browser on this machine for the runtime to drive (`ctx.browser` over the
+   * protocol). Off unless given; the daemon does not close it.
+   */
+  browser?: DaemonBrowser
   streams?: StreamHubOptions
   /** The protocol version sent in `initialize`; only tests change it. */
   protocolVersion?: number
@@ -98,6 +105,7 @@ export function startDaemon(options: StartDaemonOptions): Daemon {
   const services: Record<string, ExposedService> = {}
   const terminals = options.terminals === false ? undefined : new TerminalManager(options.terminals ?? {})
   if (terminals) services.terminals = exposeTerminals(terminals, workspaces)
+  if (options.browser) services.browser = exposeBrowser(options.browser)
   const service = new DaemonService({
     workspaces,
     services,

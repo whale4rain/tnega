@@ -76,6 +76,11 @@ export interface BrowserNetworkEntry {
   time: number
 }
 
+/** One console or network entry as the browser records it. */
+export type BrowserLogEvent =
+  | { kind: 'console'; entry: BrowserConsoleEntry }
+  | { kind: 'network'; entry: BrowserNetworkEntry }
+
 export interface BrowserLogQuery {
   /** Only entries recorded after this time (ms since epoch). */
   since?: number
@@ -125,6 +130,80 @@ export class BrowserError extends Error {
   constructor(readonly code: BrowserErrorCode, message: string, options?: { cause?: unknown }) {
     super(message, options)
   }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * Read an action that crossed a wire (a daemon gets it from the runtime): the
+ * action when every field it needs has the right type, else `undefined`.
+ */
+export function parseBrowserAction(value: unknown): BrowserAction | undefined {
+  if (!isObject(value)) return undefined
+  const text = (key: string): string | undefined => typeof value[key] === 'string' ? value[key] : undefined
+  const num = (key: string): number | undefined => typeof value[key] === 'number' && Number.isFinite(value[key]) ? value[key] : undefined
+  const element = text('element')
+  const named = element === undefined ? {} : { element }
+  const ref = text('ref')
+  switch (value.op) {
+    case 'navigate': { const url = text('url'); return url === undefined ? undefined : { op: 'navigate', url } }
+    case 'back': return { op: 'back' }
+    case 'forward': return { op: 'forward' }
+    case 'reload': return { op: 'reload' }
+    case 'click': {
+      if (ref === undefined) return undefined
+      const button = value.button === 'left' || value.button === 'right' || value.button === 'middle' ? value.button : undefined
+      return { op: 'click', ref, ...named, ...(button ? { button } : {}), ...(value.doubleClick === true ? { doubleClick: true } : {}) }
+    }
+    case 'hover': return ref === undefined ? undefined : { op: 'hover', ref, ...named }
+    case 'type': {
+      const typed = text('text')
+      if (ref === undefined || typed === undefined) return undefined
+      return { op: 'type', ref, ...named, text: typed, ...(value.submit === true ? { submit: true } : {}) }
+    }
+    case 'select': {
+      const values = value.values
+      if (ref === undefined || !Array.isArray(values) || !values.every(item => typeof item === 'string')) return undefined
+      return { op: 'select', ref, ...named, values: values.filter((item): item is string => typeof item === 'string') }
+    }
+    case 'press': { const key = text('key'); return key === undefined ? undefined : { op: 'press', key } }
+    case 'scroll': {
+      const deltaY = num('deltaY')
+      const deltaX = num('deltaX')
+      return deltaY === undefined ? undefined : { op: 'scroll', deltaY, ...(deltaX !== undefined ? { deltaX } : {}) }
+    }
+    case 'wait': {
+      const waitText = text('text')
+      const textGone = text('textGone')
+      const ms = num('ms')
+      return { op: 'wait', ...(waitText !== undefined ? { text: waitText } : {}), ...(textGone !== undefined ? { textGone } : {}), ...(ms !== undefined ? { ms } : {}) }
+    }
+    case 'resize': {
+      const width = num('width')
+      const height = num('height')
+      return width === undefined || height === undefined ? undefined : { op: 'resize', width, height }
+    }
+    case 'tab_new': { const url = text('url'); return { op: 'tab_new', ...(url !== undefined ? { url } : {}) } }
+    case 'tab_select': { const id = text('id'); return id === undefined ? undefined : { op: 'tab_select', id } }
+    case 'tab_close': { const id = text('id'); return { op: 'tab_close', ...(id !== undefined ? { id } : {}) } }
+    default: return undefined
+  }
+}
+
+/** The console entries a query asks for, newest last. Shared by every Provider so they answer alike. */
+export function queryConsole(entries: readonly BrowserConsoleEntry[], query: BrowserLogQuery, limit: number): BrowserConsoleEntry[] {
+  const matching = entries.filter(entry => (query.since === undefined || entry.time > query.since)
+    && (!query.onlyProblems || entry.type === 'error' || entry.type === 'warning'))
+  return matching.slice(-(query.limit ?? limit))
+}
+
+/** The network entries a query asks for, newest last. */
+export function queryNetwork(entries: readonly BrowserNetworkEntry[], query: BrowserLogQuery, limit: number): BrowserNetworkEntry[] {
+  const matching = entries.filter(entry => (query.since === undefined || entry.time > query.since)
+    && (!query.onlyProblems || entry.failure !== undefined || (entry.status ?? 0) >= 400))
+  return matching.slice(-(query.limit ?? limit))
 }
 
 /** Snapshot text beyond this many characters is truncated. */

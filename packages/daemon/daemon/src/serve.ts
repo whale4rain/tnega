@@ -269,7 +269,7 @@ export class DaemonService {
         const name = text(param(raw, 'method'), 'method')
         const call = Object.hasOwn(calls, name) ? calls[name] : undefined
         if (!call) throw new RpcError(`${String(param(raw, 'service'))} has no method ${name}`, RpcErrorCode.METHOD_NOT_FOUND)
-        return (await call(argsOf(param(raw, 'args')))) ?? null
+        return (await call(argsOf(param(raw, 'args')), { signal: context.signal })) ?? null
       }
       case 'stream/open': {
         const streams = this.exposed(param(raw, 'service')).streams ?? {}

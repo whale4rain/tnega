@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { assertSecureServerUrl, connectWebSocket, startDaemon, type Daemon } from '@tnega/daemon'
+import type { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { CliError } from './commands.js'
 
 export interface DaemonArgs {
@@ -7,6 +8,8 @@ export interface DaemonArgs {
   token: string
   workspaces: string[]
   deviceId?: string
+  /** Serve a browser on this machine for the runtime to drive. */
+  browser?: boolean
 }
 
 /** Environment variable for the token, so it stays out of the process list. */
@@ -16,6 +19,7 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
   let server: string | undefined
   let token: string | undefined = env[DAEMON_TOKEN_ENV]
   let deviceId: string | undefined
+  let browser = false
   const workspaces: string[] = []
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]!
@@ -30,6 +34,10 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
       case '--token': token = value(); break
       case '--workspace': workspaces.push(resolve(value())); break
       case '--device-id': deviceId = value(); break
+      case '--browser':
+        if (inline !== undefined) throw new CliError('--browser takes no value')
+        browser = true
+        break
       default: throw new CliError(`unknown option for tnega daemon: ${arg}`)
     }
   }
@@ -40,7 +48,13 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
     token,
     workspaces: workspaces.length ? workspaces : [resolve(process.cwd())],
     ...(deviceId ? { deviceId } : {}),
+    ...(browser ? { browser: true } : {}),
   }
+}
+
+async function openBrowser(): Promise<PlaywrightBrowserHost> {
+  const { PlaywrightBrowserHost, launchPageSource } = await import('@tnega/browser-playwright')
+  return new PlaywrightBrowserHost(launchPageSource())
 }
 
 /**
@@ -57,7 +71,10 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
   let settle: (code: number) => void = () => {}
   // Ends with 0 on SIGINT / SIGTERM, with 1 when the daemon stops by itself (a refused reconnect).
   const finished = new Promise<number>(done => { settle = done })
+  // A browser of its own (a fresh profile, not the person's), started on first use.
+  const browser = parsed.browser ? await openBrowser() : undefined
   const daemon: Daemon = startDaemon({
+    ...(browser ? { browser } : {}),
     connect: () => connectWebSocket(parsed.server, { token: parsed.token }),
     workspaces: parsed.workspaces.map(path => ({ path })),
     ...(parsed.deviceId ? { deviceId: parsed.deviceId } : {}),
@@ -68,7 +85,7 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
   })
   const stop = (): void => {
     interrupted = true
-    void daemon.close().then(() => settle(0))
+    void daemon.close().then(() => browser?.close()).then(() => settle(0))
   }
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)
@@ -83,6 +100,7 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
     await daemon.close()
     throw error
   } finally {
+    if (!interrupted) await browser?.close().catch(() => undefined)
     process.off('SIGINT', stop)
     process.off('SIGTERM', stop)
   }

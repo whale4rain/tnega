@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { DaemonLink } from './link.js'
+import type { RequestOptions } from './peer.js'
 import type { StreamEndNotification, StreamEventNotification } from './methods.js'
 
 /**
@@ -8,8 +9,8 @@ import type { StreamEndNotification, StreamEventNotification } from './methods.j
  * checks what comes back. Methods that hand a listener back become streams.
  */
 export interface ServiceForwarder {
-  /** Call one of the service's methods on the daemon. */
-  call(method: string, args: unknown[]): Promise<unknown>
+  /** Call one of the service's methods on the daemon; `signal` cancels it there too. */
+  call(method: string, args: unknown[], options?: RequestOptions): Promise<unknown>
   /** Open one of the service's streaming methods; events arrive in order, once each. */
   stream(method: string, args: unknown[], handlers: StreamHandlers): Promise<RemoteStream>
 }
@@ -76,8 +77,8 @@ function follow(link: DaemonLink, id: string, after: number, handlers: StreamHan
 
 export function forwardService(link: DaemonLink, service: string): ServiceForwarder {
   return {
-    async call(method, args) {
-      return await link.call('service/call', { service, method, args })
+    async call(method, args, options) {
+      return await link.call('service/call', { service, method, args }, options)
     },
     async stream(method, args, handlers) {
       // The id is chosen here so no early event (a replayed scrollback) can arrive before we listen.

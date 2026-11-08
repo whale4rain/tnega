@@ -481,6 +481,21 @@ fence as the file tools, on the machine that holds the files), `glob` / `grep`
 fence their root the same way, and `announcedWorkspace` compares roots by the
 daemon's rules (case-insensitive on Windows).
 
+### Browser on a daemon (2026-11-08)
+
+`tnega daemon --browser` serves a browser on that machine: its own profile,
+started on first use, never the person's browser. The daemon's `browser`
+Service forwards `run` (one `BrowserAction`, shape-checked on the daemon),
+`snapshot`, `screenshot`, `evaluate`, `console`, `network` and a `watch`
+stream with page, tab and log changes (no frames yet).
+`daemon/browser-remote` is the Provider of `ctx.browser`: it keeps page, tabs
+and logs from `watch` so the synchronous reads stay local, and turns a
+`BrowserError` from the daemon back into one with the same code.
+`browser/pre-action` runs in the runtime before anything is sent, so policy
+and approvals stay where they were. `packages/runtime` mounts it with
+`tool-browser` for a scope on a daemon that lists `browser`; `browser: false`
+turns it off. A scope on this machine still gets its browser from its host.
+
 ## P6 Client profiles
 
 **Changes:**

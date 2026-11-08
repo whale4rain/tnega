@@ -5,11 +5,14 @@ import {
   DEFAULT_BROWSER_LOG_LIMIT,
   DEFAULT_BROWSER_SNAPSHOT_MAX_CHARS,
   normalizeBrowserUrl,
+  queryConsole,
+  queryNetwork,
   type BrowserAction,
   type BrowserActionResult,
   type BrowserCallOptions,
   type BrowserConsoleEntry,
   type BrowserLogQuery,
+  type BrowserLogEvent,
   type BrowserNetworkEntry,
   type BrowserPageState,
   type BrowserScreenshot,
@@ -123,6 +126,7 @@ export class PlaywrightBrowserHost {
   private _nextTab = 1
   private _console: BrowserConsoleEntry[] = []
   private _network: BrowserNetworkEntry[] = []
+  private readonly _logListeners = new Set<(entry: BrowserLogEvent) => void>()
   private _starting: Promise<Page> | undefined
   private _viewport: { width: number; height: number } | undefined
   private readonly _snapshotMaxChars: number
@@ -315,16 +319,18 @@ export class PlaywrightBrowserHost {
     }
   }
 
+  /** Each console and network entry as it is recorded (a daemon forwards them). Returns the unsubscribe. */
+  onLog(listener: (entry: BrowserLogEvent) => void): () => void {
+    this._logListeners.add(listener)
+    return () => { this._logListeners.delete(listener) }
+  }
+
   console(query: BrowserLogQuery = {}): BrowserConsoleEntry[] {
-    const entries = this._console.filter(entry => (query.since === undefined || entry.time > query.since)
-      && (!query.onlyProblems || entry.type === 'error' || entry.type === 'warning'))
-    return entries.slice(-(query.limit ?? this._logLimit))
+    return queryConsole(this._console, query, this._logLimit)
   }
 
   network(query: BrowserLogQuery = {}): BrowserNetworkEntry[] {
-    const entries = this._network.filter(entry => (query.since === undefined || entry.time > query.since)
-      && (!query.onlyProblems || entry.failure !== undefined || (entry.status ?? 0) >= 400))
-    return entries.slice(-(query.limit ?? this._logLimit))
+    return queryNetwork(this._network, query, this._logLimit)
   }
 
   async evaluate(expression: string, options: BrowserCallOptions = {}): Promise<unknown> {
@@ -448,16 +454,30 @@ export class PlaywrightBrowserHost {
 
   private _watch(tab: Tab): void {
     const { page } = tab
-    const push = <T>(list: T[], entry: T) => {
-      list.push(entry)
+    const trim = <T>(list: T[]) => {
       if (list.length > this._logLimit) list.splice(0, list.length - this._logLimit)
+    }
+    const emit = (event: BrowserLogEvent) => {
+      for (const listener of this._logListeners) {
+        try { listener(event) } catch { /* an observer must not break the page */ }
+      }
+    }
+    const pushConsole = (entry: BrowserConsoleEntry) => {
+      this._console.push(entry)
+      trim(this._console)
+      emit({ kind: 'console', entry })
+    }
+    const pushNetwork = (entry: BrowserNetworkEntry) => {
+      this._network.push(entry)
+      trim(this._network)
+      emit({ kind: 'network', entry })
     }
     page.on('load', () => { void this._refresh(page) })
     page.on('domcontentloaded', () => { void this._refresh(page) })
     page.on('console', (entry: ConsoleMessage) => {
       if (this._ignoreConsole?.(entry.text())) return
       const { url, lineNumber, columnNumber } = entry.location()
-      push(this._console, {
+      pushConsole({
         type: entry.type(),
         text: entry.text(),
         ...(url ? { location: `${url}:${lineNumber + 1}:${columnNumber + 1}` } : {}),
@@ -465,11 +485,11 @@ export class PlaywrightBrowserHost {
       })
     })
     page.on('pageerror', error => {
-      push(this._console, { type: 'error', text: `Uncaught ${error.name}: ${error.message}`, time: Date.now() })
+      pushConsole({ type: 'error', text: `Uncaught ${error.name}: ${error.message}`, time: Date.now() })
     })
     const record = (request: Request, failure?: string) => {
       const response = failure === undefined ? request.response() : Promise.resolve(null)
-      void response.then(result => push(this._network, {
+      void response.then(result => pushNetwork({
         method: request.method(),
         url: request.url(),
         resourceType: request.resourceType(),

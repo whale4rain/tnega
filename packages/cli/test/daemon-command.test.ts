@@ -15,6 +15,12 @@ describe('tnega daemon', () => {
     expect(parsed.workspaces).toEqual([resolve('a'), resolve('b')])
   })
 
+  it('serves a browser only when asked, and --browser takes no value', () => {
+    expect(parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x'], {}).browser).toBeUndefined()
+    expect(parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x', '--browser'], {}).browser).toBe(true)
+    expect(() => parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x', '--browser=yes'], {})).toThrow(/takes no value/)
+  })
+
   it('refuses to start without a server or a token, or with an unknown option', () => {
     expect(() => parseDaemonArgs(['--token', 'x'], {})).toThrow(/--server/)
     expect(() => parseDaemonArgs(['--server', 'wss://t.example'], {})).toThrow(/--token/)

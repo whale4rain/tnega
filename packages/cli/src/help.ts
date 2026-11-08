@@ -64,6 +64,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       ['--token <token>', 'device token (or set TNEGA_DAEMON_TOKEN)'],
       ['--workspace <dir>', 'folder to serve; repeat for more (default: here)'],
       ['--device-id <id>', 'name this machine (default: from the host name)'],
+      ['--browser', 'let the agent drive a browser here (its own profile, not yours)'],
       HELP,
     ],
   },

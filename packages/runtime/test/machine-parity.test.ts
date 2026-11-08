@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { renderToolResult } from '@tnega/session'
 import { acceptDaemon, memoryTransportPair } from '@tnega/daemon-protocol'
-import { startDaemon } from '@tnega/daemon'
+import { startDaemon, type DaemonBrowser } from '@tnega/daemon'
 import { RemoteWorkspaceFs } from '@tnega/fs-remote'
 import { runtimeCapabilities, type RuntimeSpec } from '../src/compose.js'
 
@@ -26,7 +26,7 @@ afterEach(async () => {
 })
 
 /** A daemon in this process on a memory transport: every call still goes through JSON. */
-async function loopbackDaemon(workspaces: readonly string[]) {
+async function loopbackDaemon(workspaces: readonly string[], browser?: DaemonBrowser) {
   const [runtimeSide, daemonSide] = memoryTransportPair()
   const accepted = acceptDaemon(runtimeSide, { heartbeat: false })
   const daemon = startDaemon({
@@ -34,6 +34,7 @@ async function loopbackDaemon(workspaces: readonly string[]) {
     workspaces: workspaces.map(path => ({ path })),
     reconnect: false,
     heartbeat: false,
+    ...(browser ? { browser } : {}),
   })
   const link = await accepted
   await daemon.ready
@@ -127,5 +128,54 @@ it('never mounts tools that read this machine\'s disk on a daemon scope, even wh
     expect(names).not.toContain('skill')
   } finally {
     await fiber.dispose()
+  }
+})
+
+/** Just enough of a browser on the daemon for the tools to mount and one action to run. */
+function idleBrowser(ran: string[]): DaemonBrowser {
+  const page = { url: 'about:blank', title: '' }
+  return {
+    state: () => page,
+    tabs: () => [],
+    run: async action => { ran.push(action.op); return page },
+    snapshot: async () => ({ ...page, snapshot: '', truncated: false }),
+    screenshot: async () => ({ ...page, mediaType: 'image/jpeg', data: '' }),
+    evaluate: async () => undefined,
+    console: () => [],
+    network: () => [],
+    onLog: () => () => {},
+    live: { subscribe: () => () => {} },
+  }
+}
+
+it('gives a daemon scope the daemon\'s browser only when the daemon serves one', async () => {
+  const dir = await tempDir()
+  const ran: string[] = []
+  const withBrowser = await loopbackDaemon([dir], idleBrowser(ran))
+  const without = await loopbackDaemon([dir])
+  cleanups.push(() => withBrowser.close(), () => without.close())
+  const spec = { workspace: dir, builtin: {}, search: false, office: false, skills: false, spill: false }
+
+  const ctx = new Context()
+  const fiber = ctx.plugin(runtimeCapabilities, { ...spec, permission: 'bypass', machine: { link: withBrowser.link } })
+  await fiber
+  try {
+    expect(ctx.get('tools').list().map(tool => tool.schema.name)).toContain('browser_navigate')
+    const result = await ctx.get('tools').execute('browser_reload', {})
+    expect(result.ok).toBe(true)
+    expect(ran).toEqual(['reload'])
+  } finally {
+    await fiber.dispose()
+  }
+
+  for (const [link, browser] of [[without.link, undefined], [withBrowser.link, false]] as const) {
+    const scope = new Context()
+    const mounted = scope.plugin(runtimeCapabilities, { ...spec, machine: { link }, ...(browser === false ? { browser } : {}) })
+    await mounted
+    try {
+      expect(scope.get('tools').list().some(tool => tool.schema.name.startsWith('browser_'))).toBe(false)
+    } finally {
+      await mounted.dispose()
+    }
   }
 })

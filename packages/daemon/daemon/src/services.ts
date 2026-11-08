@@ -6,7 +6,8 @@ import { RpcError, RpcErrorCode, type Peer } from '@tnega/daemon-protocol'
  * daemon answers nothing that is not listed.
  */
 export interface ExposedService {
-  calls: Readonly<Record<string, (args: readonly unknown[]) => unknown>>
+  /** `signal` aborts when the caller cancels or the connection drops. */
+  calls: Readonly<Record<string, (args: readonly unknown[], context: { signal: AbortSignal }) => unknown>>
   /**
    * Methods that hand events to a listener. `emit` takes the next event; `end`
    * stops the stream from the source's side. Returns the unsubscribe.

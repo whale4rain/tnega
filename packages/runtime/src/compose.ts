@@ -14,6 +14,8 @@ import { sandboxLocal } from '@tnega/sandbox-local'
 import { searchRipgrep } from '@tnega/search-ripgrep'
 import { fsLocal } from '@tnega/fs-local'
 import { announcedWorkspace, fsRemote } from '@tnega/fs-remote'
+import { browserRemote } from '@tnega/browser-remote'
+import { toolBrowser } from '@tnega/tool-browser'
 import { remoteExecutionProvider } from '@tnega/process-remote'
 import type { DaemonLink, SandboxParams } from '@tnega/daemon-protocol'
 import { secretsLocal, type SecretVault } from '@tnega/secrets-local'
@@ -184,6 +186,11 @@ export interface RuntimeSpec {
   computer?: ComputerCapabilitySpec
   /** Let replies carry files and small interfaces (`send_file`, `show_ui`); only for a client that renders them. */
   reply?: boolean
+  /**
+   * On a daemon that serves a browser, give the agent that browser. Defaults
+   * to on there; a scope on this machine gets its browser from its host.
+   */
+  browser?: boolean
 }
 
 async function permissionOf(permission: Permission): Promise<PermissionMode> {
@@ -477,6 +484,19 @@ export const computerCapability: Plugin = {
 }
 
 /**
+ * Browser seam on a daemon: the daemon's browser (its own profile, on that
+ * machine), then the same model-visible tools a scope on this machine gets.
+ */
+export const remoteBrowserCapability: Plugin = {
+  name: 'capability:browser-remote',
+  inject: ['tools'],
+  async apply(ctx: Context, spec: { machine: MachineSpec }) {
+    await ctx.plugin(browserRemote, { link: spec.machine.link })
+    await ctx.plugin(toolBrowser)
+  },
+}
+
+/**
  * Replies that carry more than words: workspace files shown in the chat and
  * small agent-rendered interfaces (A2UI). Both are durable tool calls the
  * clients render, so only a host with a person looking mounts them.
@@ -547,6 +567,9 @@ export const runtimeCapabilities: Plugin = {
     if (spec.ptc) await ctx.plugin(ptcCapability, spec.ptc)
     if (spec.computer) await ctx.plugin(computerCapability, spec.computer)
     if (spec.reply) await ctx.plugin(replyCapability, { workspace: spec.workspace, local })
+    if (spec.machine && spec.browser !== false && spec.machine.link.capabilities.services?.includes('browser')) {
+      await ctx.plugin(remoteBrowserCapability, { machine: spec.machine })
+    }
 
     // Every executable tool is a schema provider, so the assembled prompt and
     // the registry can never disagree about what the model may call.

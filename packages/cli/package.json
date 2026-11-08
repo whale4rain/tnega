@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@tnega/agent": "workspace:*",
+    "@tnega/browser-playwright": "workspace:*",
     "@tnega/config": "workspace:*",
     "@tnega/daemon": "workspace:*",
     "@tnega/home": "workspace:*",
