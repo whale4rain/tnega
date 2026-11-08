@@ -353,6 +353,24 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
+  packages/blobs/blobs:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/blobs/blobs-local:
+    dependencies:
+      '@tnega/blobs':
+        specifier: workspace:*
+        version: link:../blobs
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../../home
+
   packages/browser/browser:
     dependencies:
       '@tnega/core':

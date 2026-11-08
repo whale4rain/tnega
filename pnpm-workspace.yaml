@@ -8,6 +8,7 @@ packages:
   - packages/shell/*
   - packages/session-search/*
   - packages/session-store/*
+  - packages/blobs/*
   - packages/browser/*
   - packages/computer/*
   - packages/sandbox/*

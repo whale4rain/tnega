@@ -307,6 +307,14 @@ replay test proves events read back equal events written.
   answers committed / conflict and dedupes by id with `canonicalEvent`; the
   lock file is the lease. The old function exports stay until the consumers
   move (step 3).
+- Step 2 (same PR): `packages/blobs/blobs` (`ctx.blobs`: `put`, `get`, `has`,
+  SHA-256 names, `get` checks the bytes) and `blobs-local`
+  (`~/.tnega/blobs/<aa>/<hash>` plus a `.json` description). Not changed yet:
+  spill files stay in the workspace, because the model reads them back with
+  `read_file`, which cannot reach `~/.tnega`; moving them needs a way to read
+  a blob back (a tool or a workspace view) and belongs with the server. Images
+  in events move to blob hashes in step 3, where a store-given backend can
+  swap bytes for hashes on write and back on load, with the format bump.
 
 **Hand-off prompt:**
 
