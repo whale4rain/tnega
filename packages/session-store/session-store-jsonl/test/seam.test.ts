@@ -131,6 +131,21 @@ describe('the JSONL session store', () => {
     await log.close()
   })
 
+  it('waits for a release already under way before it is disposed', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'tnega-store-seam-'))
+    dirs.push(workspace)
+    const ctx = new Context()
+    const mounted = await ctx.plugin(sessionStoreJsonl)
+    const store = ctx.get('sessionStore')
+    const { id } = await store.create(workspace)
+    const lease = await store.lease(workspace, id, 'runtime-a')
+    const releasing = lease.release()
+    await mounted.dispose()
+    // Disposed means the lock file is gone, not that it soon will be.
+    await expect(readFile(sessionLockPath(sessionFile(workspace, id)), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await releasing
+  })
+
   it('releases its leases when the plugin is disposed', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'tnega-store-seam-'))
     dirs.push(workspace)

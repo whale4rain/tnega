@@ -44,6 +44,8 @@ export class JsonlSessionStore extends SessionStore {
   private readonly tails = new Map<string, Promise<unknown>>()
   /** Set once the plugin is disposed: a lease taken after would outlive it. */
   private closed = false
+  /** Releases still letting go of their lock file; closing waits for them. */
+  private readonly releasing = new Set<Promise<void>>()
 
   create(workspace: string, options?: CreateSessionOptions): Promise<SessionSummary> {
     return createSession(workspace, options)
@@ -159,10 +161,17 @@ export class JsonlSessionStore extends SessionStore {
     }
   }
 
-  private async release(file: string, owner: string): Promise<void> {
+  private release(file: string, owner: string): Promise<void> {
     const lease = this.leases.get(file)
-    if (lease?.owner !== owner) return
+    if (lease?.owner !== owner) return Promise.resolve()
     this.leases.delete(file)
+    const done = this.letGo(file, lease)
+    this.releasing.add(done)
+    void done.then(() => this.releasing.delete(done), () => this.releasing.delete(done))
+    return done
+  }
+
+  private async letGo(file: string, lease: HeldLease): Promise<void> {
     // A lease still being taken is let go once it is held; one that failed holds nothing.
     if (!await lease.ready.then(() => true, () => false)) return
     await new JsonlSessionBackend(file).release(lease.holder)
@@ -172,6 +181,8 @@ export class JsonlSessionStore extends SessionStore {
   async releaseAll(): Promise<void> {
     this.closed = true
     for (const [file, lease] of [...this.leases]) await this.release(file, lease.owner)
+    // A release that started before closing still holds its lock file until it ends.
+    await Promise.allSettled([...this.releasing])
   }
 
   async delete(workspace: string, id: string): Promise<void> {
