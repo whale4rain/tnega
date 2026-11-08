@@ -5,7 +5,7 @@ import { SessionLog } from '@tnega/session'
 import { effectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { workspaceSessionDir, workspaceStateDir } from '@tnega/home'
 import { workspaceProjectStateRoot } from '@tnega/home'
-import { ensureSessionDir, isSessionId } from '@tnega/session-store'
+import { ensureSessionDir, isSessionId } from '@tnega/session-store-jsonl'
 import { summarizeUsage, workspaceUsageFromSummaries, type SessionUsageSummary, type UsageTotals, type WorkspaceUsage } from './usage.js'
 
 interface CachedLog {

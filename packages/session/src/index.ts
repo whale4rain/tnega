@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { appendFile, copyFile, mkdir, open, readFile, rename, rm, truncate } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import type { Context } from '@tnega/core'
+import type { SessionBackend } from './backend.js'
 import { checkSessionInvariants, type SessionInvariantFailure } from './invariant.js'
-import { holdSessionLock, releaseSessionLock, sessionLockHolder } from './lock.js'
+import { JsonlSessionBackend } from './jsonl.js'
 
 export { SessionLockedError, sessionLockHolder, sessionLockPath, type SessionLockHolder } from './lock.js'
+export { isSessionEvent, type SessionBackend, type SessionLoad } from './backend.js'
+export { JsonlSessionBackend } from './jsonl.js'
 
 /**
  * v7 derives model-visible messages from the *folded surface* instead of from
@@ -56,112 +58,9 @@ export class SessionFormatError extends Error {
 
 const liveSessions = new Map<string, SessionLog>()
 
-function sessionFileKey(file: string): string {
-  return resolve(file)
-}
-
-interface SessionLineScan {
-  events: SessionEvent[]
-  /** Byte offset just past the last valid record (and its newline, if any). */
-  validEnd: number
-  /** Byte offset of the first unreadable record, if any. */
-  tornAt?: number
-  /** A valid record follows the first unreadable one: damage, not a torn tail. */
-  validAfterTorn: boolean
-}
-
-function scanSessionLines(buffer: Buffer): SessionLineScan {
-  const events: SessionEvent[] = []
-  let validEnd = 0
-  let tornAt: number | undefined
-  let validAfterTorn = false
-  let offset = 0
-  while (offset < buffer.length) {
-    const newline = buffer.indexOf(0x0a, offset)
-    const lineEnd = newline < 0 ? buffer.length : newline
-    const next = newline < 0 ? buffer.length : newline + 1
-    const line = buffer.subarray(offset, lineEnd).toString('utf8')
-    if (line.trim()) {
-      const event = parseSessionLine(line)
-      if (tornAt !== undefined) {
-        if (event) validAfterTorn = true
-      } else if (event) {
-        events.push(event)
-        validEnd = next
-      } else {
-        tornAt = offset
-      }
-    } else if (tornAt === undefined) {
-      validEnd = next
-    }
-    offset = next
-  }
-  return { events, validEnd, ...(tornAt !== undefined ? { tornAt } : {}), validAfterTorn }
-}
-
-function parseSessionLine(line: string): SessionEvent | undefined {
-  try {
-    const parsed: unknown = JSON.parse(line)
-    return isSessionEvent(parsed) ? parsed : undefined
-  } catch {
-    return undefined
-  }
-}
-
-async function syncFile(file: string): Promise<void> {
-  const handle = await open(file, 'r+')
-  try {
-    await handle.datasync()
-  } finally {
-    await handle.close()
-  }
-}
-
-async function appendDurably(file: string, text: string): Promise<void> {
-  const handle = await open(file, 'a')
-  try {
-    if (text) await handle.appendFile(text, 'utf8')
-    await handle.datasync()
-  } finally {
-    await handle.close()
-  }
-}
-
-/** Write a whole file through a synced temporary, so readers never see half of it. */
-async function writeFileDurably(file: string, text: string): Promise<void> {
-  const temporary = `${file}.${randomUUID()}.tmp`
-  const handle = await open(temporary, 'w')
-  try {
-    await handle.writeFile(text, 'utf8')
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-  try {
-    await renameOver(temporary, file)
-  } catch (error) {
-    // A failed rename leaves the temporary behind; the next reader would see it too.
-    await rm(temporary, { force: true }).catch(() => undefined)
-    throw error
-  }
-}
-
-/**
- * Rename over the target, giving way to a holder for a moment: on Windows an
- * indexer, a scanner or another tnega process reading the log can keep it
- * locked, and the rename then fails with EPERM/EBUSY/EACCES rather than waiting.
- */
-async function renameOver(temporary: string, file: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await rename(temporary, file)
-      return
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if ((code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') || attempt >= 9) throw error
-      await new Promise(done => setTimeout(done, 20 * (attempt + 1)))
-    }
-  }
+/** The key a log is known by in this process: a backend's own, or a resolved file path. */
+function sessionFileKey(target: string | SessionBackend): string {
+  return typeof target === 'string' ? resolve(target) : target.key
 }
 
 export type ModelRole = 'system' | 'user' | 'assistant' | 'tool'
@@ -676,15 +575,6 @@ export const DEFAULT_CONTEXT_HARD_RATIO = 0.9
  */
 export const DEFAULT_CONTEXT_RETAIN_RATIO = 0.16
 
-function isSessionEvent(value: unknown): value is SessionEvent {
-  if (typeof value !== 'object' || value === null) return false
-  const record = value as Record<string, unknown>
-  return typeof record.id === 'string'
-    && typeof record.seq === 'number'
-    && typeof record.ts === 'number'
-    && typeof record.type === 'string'
-    && 'payload' in record
-}
 
 /** Replay committed streams in raw durable order, including shadowed messages. */
 export function assistantStreams(events: readonly SessionEvent[]): AssistantStreamRecord[][] {
@@ -1474,13 +1364,13 @@ export class SessionLog {
    * Open an existing log for reading. A missing or empty file is
    * `SessionNotFoundError`; nothing is created.
    */
-  static readOnly(file: string): SessionLog {
-    return new SessionLog(file, undefined, undefined, false)
+  static readOnly(target: string | SessionBackend): SessionLog {
+    return new SessionLog(target, undefined, undefined, false)
   }
 
   /** Flush an existing writer without loading a historical Session. */
-  static async flushLive(file: string): Promise<void> {
-    await liveSessions.get(sessionFileKey(file))?.flush()
+  static async flushLive(target: string | SessionBackend): Promise<void> {
+    await liveSessions.get(sessionFileKey(target))?.flush()
   }
 
   /**
@@ -1489,8 +1379,8 @@ export class SessionLog {
    * short write to a Session that may be live (a running turn, a resident
    * Agent) goes through this one instead.
    */
-  static live(file: string): SessionLog | undefined {
-    const owner = liveSessions.get(sessionFileKey(file))
+  static live(target: string | SessionBackend): SessionLog | undefined {
+    const owner = liveSessions.get(sessionFileKey(target))
     return owner?._loaded ? owner : undefined
   }
 
@@ -1507,13 +1397,20 @@ export class SessionLog {
   private _drainScheduled = false
   private _writeError: unknown
 
+  /** The log's name: the file it was opened with, or its backend's key. */
+  readonly file: string
+  /** Where the events are stored: a JSONL file unless a store gave another backend. */
+  readonly backend: SessionBackend
+
   constructor(
-    readonly file: string,
+    target: string | SessionBackend,
     private _broadcast?: SessionBroadcast,
     publicationContext?: Context,
     /** Writers create a missing log; a reader must not. */
     private readonly _create = true,
   ) {
+    this.file = typeof target === 'string' ? target : target.key
+    this.backend = typeof target === 'string' ? new JsonlSessionBackend(target) : target
     if (!this._broadcast && publicationContext) {
       this._broadcast = (type, payload) => {
         if (type === 'event') publicationContext.emit('session/event', payload)
@@ -1524,7 +1421,7 @@ export class SessionLog {
 
   init(): Promise<void> {
     return this._run(async () => {
-      const key = sessionFileKey(this.file)
+      const key = this.backend.key
       // A reader never becomes the owner: a writer must not send appends to it.
       const claimed = this._create && !liveSessions.has(key)
       if (claimed) liveSessions.set(key, this)
@@ -1538,7 +1435,7 @@ export class SessionLog {
         }
       } catch (error) {
         if (claimed && liveSessions.get(key) === this) liveSessions.delete(key)
-        await releaseSessionLock(key, this)
+        await this.backend.release(this)
         throw error
       }
     })
@@ -1571,7 +1468,7 @@ export class SessionLog {
     return this._run(async () => {
       await this._ensureLoaded()
       // One process writes a Session at a time; a second one fails here.
-      await holdSessionLock(sessionFileKey(this.file), this)
+      await this.backend.hold(this)
       const event = this._buildEvent(type, payload)
       this._commitEvent(event)
       return event
@@ -1616,7 +1513,7 @@ export class SessionLog {
   private _commitEvent(event: SessionEvent): void {
     // init() may have found a short-lived reader as the owner. The object
     // committing events must own the live log before readers can close it.
-    liveSessions.set(sessionFileKey(this.file), this)
+    liveSessions.set(this.backend.key, this)
     this._events.push(event)
     this._refreshSurface()
     if (event.type === 'request/header') this._requestHeader = clone(event.payload)
@@ -1649,11 +1546,7 @@ export class SessionLog {
   private _drainWrite(): Promise<void> {
     const events = this._pending.splice(0)
     if (!events.length) return this._writeTail
-    const write = this._writeTail.then(() => appendFile(
-      this.file,
-      `${events.map(event => JSON.stringify(event)).join('\n')}\n`,
-      'utf8',
-    ))
+    const write = this._writeTail.then(() => this.backend.append(events))
     this._writeTail = write.catch((error) => {
       this._writeError ??= error
     })
@@ -1670,7 +1563,7 @@ export class SessionLog {
         throw error
       }
       // flush() is the durability barrier: the appended batches reach the disk.
-      await syncFile(this.file)
+      await this.backend.sync()
       const seq = this._nextSeq - 1
       this._broadcast?.('flush', { file: this.file, seq })
       return seq
@@ -1871,7 +1764,7 @@ export class SessionLog {
         ? { start: shadowed[0]!.seq, end: shadowed[shadowed.length - 1]!.seq }
         : undefined
       const boundary = split
-      await holdSessionLock(sessionFileKey(this.file), this)
+      await this.backend.hold(this)
       this._commitEvent(this._buildEvent('compaction/start', {
         ...(boundary > 0 ? { boundary } : {}),
         ...(options.keep !== undefined ? { keep: options.keep } : {}),
@@ -1900,9 +1793,9 @@ export class SessionLog {
         this._writeError = undefined
         throw error
       }
-      const key = sessionFileKey(this.file)
+      const key = this.backend.key
       if (liveSessions.get(key) === this) liveSessions.delete(key)
-      await releaseSessionLock(key, this)
+      await this.backend.release(this)
     })
   }
 
@@ -1914,7 +1807,7 @@ export class SessionLog {
 
   private async _ensureLoaded(): Promise<void> {
     if (this._loaded) return
-    const key = sessionFileKey(this.file)
+    const key = this.backend.key
     const owner = liveSessions.get(key)
     if (owner && owner !== this && owner._loaded) {
       this._events = owner._events.map(event => clone(event))
@@ -1926,7 +1819,6 @@ export class SessionLog {
       this._loaded = true
       return
     }
-    if (this._create) await mkdir(dirname(resolve(this.file)), { recursive: true })
     const read = await this._read()
     if (!read.existing) {
       if (!this._create) throw new SessionNotFoundError(this.file)
@@ -1937,7 +1829,7 @@ export class SessionLog {
         type: 'meta',
         payload: { formatVersion: SESSION_FORMAT_VERSION },
       }
-      await writeFileDurably(this.file, `${JSON.stringify(meta)}\n`)
+      await this.backend.create(meta)
       this._events = [meta]
       this._refreshSurface()
       this._nextSeq = 2
@@ -1953,50 +1845,27 @@ export class SessionLog {
   }
 
   private async _read(): Promise<{ existing: boolean; events: SessionEvent[] }> {
-    let buffer: Buffer
-    try {
-      buffer = await readFile(this.file)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { existing: false, events: [] }
-      }
-      throw error
-    }
-    if (!buffer.toString('utf8').trim()) return { existing: false, events: [] }
-
-    const scan = scanSessionLines(buffer)
-    const events = scan.events
+    const loaded = await this.backend.load()
+    if (!loaded) return { existing: false, events: [] }
+    const events = loaded.events
     this._assertFormat(events)
 
-    const key = sessionFileKey(this.file)
-    const owner = liveSessions.get(key)
+    const owner = liveSessions.get(this.backend.key)
     if (owner && owner !== this) {
       // A live writer owns this log; never synthesize closures over its active turn.
       return { existing: true, events }
     }
 
     // Another process is writing this log: its turn is live, not crashed.
-    if (await sessionLockHolder(key)) return { existing: true, events }
+    if (await this.backend.heldElsewhere()) return { existing: true, events }
     const synthetic = repairUnclosed(events)
-    const missingNewline = scan.validEnd > 0 && buffer[scan.validEnd - 1] !== 0x0a
-    if (scan.tornAt === undefined && !synthetic.length && !missingNewline) return { existing: true, events }
+    if (!loaded.damaged && !synthetic.length) return { existing: true, events }
 
-    await holdSessionLock(key, this)
-    // Repair never rewrites history: an unreadable tail is cut at the end of
-    // the last valid line and the closers are appended after it, so a crash
-    // during repair leaves either the old file or a valid prefix of the new one.
-    if (scan.tornAt !== undefined) {
-      if (scan.validAfterTorn) {
-        // Valid records after an unreadable line mean the file was damaged in
-        // the middle, not torn at the tail. Keep the original beside it.
-        await copyFile(this.file, `${this.file}.corrupt-${Date.now()}`)
-      }
-      await truncate(this.file, scan.validEnd)
-    }
-    await appendDurably(
-      this.file,
-      `${missingNewline ? '\n' : ''}${synthetic.map(event => `${JSON.stringify(event)}\n`).join('')}`,
-    )
+    await this.backend.hold(this)
+    // Repair never rewrites history: damage is cut at the last valid event and
+    // the closers are stored after it, so a crash during repair leaves either
+    // the old log or a valid prefix of the new one.
+    await this.backend.repair(synthetic)
     return { existing: true, events: [...events, ...synthetic] }
   }
 

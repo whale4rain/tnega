@@ -11,7 +11,7 @@
     "@tnega/core": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/session": "workspace:*",
-    "@tnega/session-store": "workspace:*",
+    "@tnega/session-store-jsonl": "workspace:*",
     "@tnega/usage": "workspace:*",
     "@tnega/web-kit": "workspace:*"
   }

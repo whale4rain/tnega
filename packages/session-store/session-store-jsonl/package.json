@@ -1,0 +1,16 @@
+{
+  "name": "@tnega/session-store-jsonl",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/approval-review": "workspace:*",
+    "@tnega/home": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/session-store": "workspace:*"
+  }
+}

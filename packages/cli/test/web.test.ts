@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startWebServer, type WebServer } from '@tnega/host'
 import { SessionLog, deriveSurfaceMessages } from '@tnega/session'
-import { sessionFile } from '@tnega/session-store'
+import { sessionFile } from '@tnega/session-store-jsonl'
 
 const dirs: string[] = []
 const servers: WebServer[] = []

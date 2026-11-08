@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { SessionLog } from '@tnega/session'
 import { workspaceSessionDir, workspaceStateDir } from '@tnega/home'
-import { createSession, sessionFile } from '@tnega/session-store'
+import { createSession, sessionFile } from '@tnega/session-store-jsonl'
 import { storedWorkspaceUsage } from '../src/index.js'
 
 it('includes durable Project Thread responses with their identities', async () => {

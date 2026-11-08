@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/p
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSession, deleteSession, listSessions, sessionFile, setSessionTitle } from '@tnega/session-store'
+import { createSession, deleteSession, listSessions, sessionFile, setSessionTitle } from '@tnega/session-store-jsonl'
 import { defaultRunSessionFile } from '@tnega/home'
 
 let root: string

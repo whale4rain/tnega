@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { SessionLog } from '@tnega/session'
-import { createSession, readSessionEventsReadOnly, sessionFile } from '@tnega/session-store'
+import { createSession, readSessionEventsReadOnly, sessionFile } from '@tnega/session-store-jsonl'
 import { SqliteSessionIndex } from '../src/index.js'
 
 let root: string

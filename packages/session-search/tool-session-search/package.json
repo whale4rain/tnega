@@ -12,6 +12,6 @@
   "devDependencies": {
     "@tnega/session": "workspace:*",
     "@tnega/session-search-sqlite": "workspace:*",
-    "@tnega/session-store": "workspace:*"
+    "@tnega/session-store-jsonl": "workspace:*"
   }
 }

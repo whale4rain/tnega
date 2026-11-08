@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { effectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { workspaceProjectStateRoot, workspaceSessionDir } from '@tnega/home'
 import { SessionLog } from '@tnega/session'
-import { ensureSessionDir, isSessionId, sessionFile } from '@tnega/session-store'
+import { ensureSessionDir, isSessionId, sessionFile } from '@tnega/session-store-jsonl'
 import { sessionContextReport, type SessionContextReport } from './report.js'
 import type { InsightsSource } from './insights.js'
 

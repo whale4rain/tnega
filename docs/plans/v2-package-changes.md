@@ -291,6 +291,23 @@ moved; the lock file becomes the lease implementation.
 the Session format version bump has a test that reads version 10 files; a
 replay test proves events read back equal events written.
 
+### P3 as built, step 1 (2026-11-08)
+
+- `@tnega/session` gains `SessionBackend` (`load`, `create`, `append`, `sync`,
+  `repair`, `hold`, `release`, `heldElsewhere`). `SessionLog` keeps the format,
+  invariants, repair decisions and folds; all file I/O moved to
+  `JsonlSessionBackend`. `new SessionLog(file)` behaves as before;
+  `new SessionLog(backend)` writes anywhere.
+- `packages/session-store/` is a container. `session-store` is the Definition
+  (`ctx.sessionStore`: `create`, `list`, `summary`, `snapshot`, `read`,
+  `append`, `patchMeta`, `lease`, `delete`, `backend`). The workspace is a
+  `WorkspaceKey` string (a folder locally, a workspace id on the server) rather
+  than the `WorkspaceRef` union above; the union can come with the server.
+- `session-store-jsonl` is today's code plus `JsonlSessionStore`: `append`
+  answers committed / conflict and dedupes by id with `canonicalEvent`; the
+  lock file is the lease. The old function exports stay until the consumers
+  move (step 3).
+
 **Hand-off prompt:**
 
 ```text

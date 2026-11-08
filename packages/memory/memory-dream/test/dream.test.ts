@@ -6,7 +6,7 @@ import type { LLMAdapter } from '@tnega/agent'
 import { Context } from '@tnega/core'
 import { memoryLocal } from '@tnega/memory-local'
 import { SessionLog, type ModelMessage } from '@tnega/session'
-import { createSession, sessionFile } from '@tnega/session-store'
+import { createSession, sessionFile } from '@tnega/session-store-jsonl'
 import { dreamWorkspace, memoryDream, readDreamLedger } from '../src/index.js'
 
 const directories: string[] = []

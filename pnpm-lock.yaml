@@ -483,9 +483,9 @@ importers:
       '@tnega/project-worktrees':
         specifier: workspace:*
         version: link:../project/worktrees
-      '@tnega/session-store':
+      '@tnega/session-store-jsonl':
         specifier: workspace:*
-        version: link:../session-store
+        version: link:../session-store/session-store-jsonl
       '@tnega/terminal-local':
         specifier: workspace:*
         version: link:../terminal/terminal-local
@@ -618,9 +618,9 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
-      '@tnega/session-store':
+      '@tnega/session-store-jsonl':
         specifier: workspace:*
-        version: link:../session-store
+        version: link:../session-store/session-store-jsonl
       '@tnega/usage':
         specifier: workspace:*
         version: link:../usage
@@ -985,9 +985,9 @@ importers:
       '@tnega/session-search-sqlite':
         specifier: workspace:*
         version: link:../session-search/session-search-sqlite
-      '@tnega/session-store':
+      '@tnega/session-store-jsonl':
         specifier: workspace:*
-        version: link:../session-store
+        version: link:../session-store/session-store-jsonl
       '@tnega/subagent':
         specifier: workspace:*
         version: link:../subagent/subagent
@@ -1185,9 +1185,9 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../../session
-      '@tnega/session-store':
+      '@tnega/session-store-jsonl':
         specifier: workspace:*
-        version: link:../../session-store
+        version: link:../../session-store/session-store-jsonl
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../../web-kit
@@ -2079,9 +2079,9 @@ importers:
       '@tnega/session-search':
         specifier: workspace:*
         version: link:../session-search
-      '@tnega/session-store':
+      '@tnega/session-store-jsonl':
         specifier: workspace:*
-        version: link:../../session-store
+        version: link:../../session-store/session-store-jsonl
 
   packages/session-search/tool-session-search:
     dependencies:
@@ -2101,21 +2101,39 @@ importers:
       '@tnega/session-search-sqlite':
         specifier: workspace:*
         version: link:../session-search-sqlite
-      '@tnega/session-store':
+      '@tnega/session-store-jsonl':
         specifier: workspace:*
-        version: link:../../session-store
+        version: link:../../session-store/session-store-jsonl
 
-  packages/session-store:
+  packages/session-store/session-store:
     dependencies:
       '@tnega/approval-review':
         specifier: workspace:*
-        version: link:../approval-review
-      '@tnega/home':
+        version: link:../../approval-review
+      '@tnega/core':
         specifier: workspace:*
-        version: link:../home
+        version: link:../../core
       '@tnega/session':
         specifier: workspace:*
-        version: link:../session
+        version: link:../../session
+
+  packages/session-store/session-store-jsonl:
+    dependencies:
+      '@tnega/approval-review':
+        specifier: workspace:*
+        version: link:../../approval-review
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../../home
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../session-store
 
   packages/shell/tool-shell:
     dependencies:
@@ -2285,9 +2303,9 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
-      '@tnega/session-store':
+      '@tnega/session-store-jsonl':
         specifier: workspace:*
-        version: link:../session-store
+        version: link:../session-store/session-store-jsonl
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit

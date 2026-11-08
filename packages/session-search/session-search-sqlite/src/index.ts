@@ -20,7 +20,7 @@ import {
   type SessionSearchResult,
   type SessionTextKind,
 } from '@tnega/session-search'
-import { isSessionId, readSessionEventsReadOnly, sessionDir } from '@tnega/session-store'
+import { isSessionId, readSessionEventsReadOnly, sessionDir } from '@tnega/session-store-jsonl'
 
 export interface SqliteSessionIndexOptions {
   /** Defaults to `session-index.sqlite` in the tnega home. */

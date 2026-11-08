@@ -24,56 +24,39 @@ import {
   suffixStartIndexForTokens,
   type ContextUsage,
   type SessionMetrics,
-  type AgentType,
   type MetaPatchPayload,
   type ModelMessage,
   type SessionEvent,
-  type SessionMode,
   type SessionPermission,
 } from '@tnega/session'
 import { importLegacyFile, workspaceSessionDir } from '@tnega/home'
+import type {
+  CreateSessionOptions,
+  SessionMetaPatch,
+  SessionMetaPayload,
+  SessionPageOptions,
+  SessionPageRange,
+  SessionSnapshot,
+  SessionSummary,
+} from '@tnega/session-store'
+
+export type {
+  CreateSessionOptions,
+  SessionMetaPatch,
+  SessionMetaPayload,
+  SessionPageOptions,
+  SessionPageRange,
+  SessionSnapshot,
+  SessionSummary,
+} from '@tnega/session-store'
+export { JsonlSessionStore, sessionStoreJsonl } from './store.js'
 
 /** A Session the store was asked about but does not have. */
 export { SessionNotFoundError }
 
-export interface SessionMetaPayload {
-  approvalMode?: ApprovalMode
-  title: string
-  workspace: string
-  createdAt: number
-  parentSessionId?: string
-  forkedAtMessageId?: string
-  agentType?: AgentType
-  mode?: SessionMode
-  model?: string
-  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
-  permission?: SessionPermission
-}
 
-export interface SessionSummary extends SessionMetaPayload {
-  id: string
-  updatedAt: number
-  eventCount: number
-}
 
-export interface CreateSessionOptions {
-  title?: string
-  createdAt?: number
-  parentSessionId?: string
-  forkedAtMessageId?: string
-  agentType?: AgentType
-  mode?: SessionMode
-  model?: string
-  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
-}
 
-export interface SessionMetaPatch {
-  title?: string
-  agentType?: AgentType
-  mode?: SessionMode
-  model?: string
-  reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
-}
 
 interface SessionMetaEvent {
   id: string
@@ -282,38 +265,8 @@ export async function readSessionSummary(
   return summary
 }
 
-export interface SessionSnapshot {
-  summary: SessionSummary
-  /** The human transcript, with compaction markers in place. */
-  events: SessionEvent[]
-  /** The model view: shadowed messages removed. */
-  surface: SessionEvent[]
-  context: ContextUsage
-  metrics: SessionMetrics
-  /**
-   * Every event, for folds that need the whole history (usage, recovery). An
-   * assistant message's `stream` copy keeps only its reasoning bounds.
-   */
-  log: SessionEvent[]
-  /** Where the returned transcript starts: a long history is read a page at a time. */
-  page: SessionPageRange
-}
 
-/** One read of a history: the window returned and how to ask for the one before it. */
-export interface SessionPageRange {
-  /** Earlier events exist before the window. */
-  hasMore: boolean
-  /** Pass as beforeSeq for the next older page; absent once the log is covered. */
-  beforeSeq?: number
-}
 
-/** A request for one page of history, newest last. */
-export interface SessionPageOptions {
-  /** Return events strictly before this seq; omit for the newest page. */
-  beforeSeq?: number
-  /** Transcript messages per page; a page never splits a turn. */
-  maxMessages?: number
-}
 
 /** The context window the log itself recorded (a provider/limit change writes one). */
 function requestContextWindowOf(events: readonly SessionEvent[]): number | undefined {
@@ -907,4 +860,4 @@ function parseSessionEvent(line: string): SessionEvent | undefined {
   return value as SessionEvent
 }
 
-export const name = '@tnega/session-store'
+export const name = '@tnega/session-store-jsonl'

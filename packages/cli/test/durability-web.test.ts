@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { SessionLog } from '@tnega/session'
 import { startWebServer } from '@tnega/host'
-import { sessionFile } from '@tnega/session-store'
+import { sessionFile } from '@tnega/session-store-jsonl'
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => {
