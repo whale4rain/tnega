@@ -5,7 +5,8 @@ import { SessionLog } from '@tnega/session'
 import { effectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { workspaceSessionDir, workspaceStateDir } from '@tnega/home'
 import { workspaceProjectStateRoot } from '@tnega/home'
-import { ensureSessionDir, isSessionId } from '@tnega/session-store-jsonl'
+import type { SessionStore } from '@tnega/session-store'
+import type { SessionEvent } from '@tnega/session'
 import { summarizeUsage, workspaceUsageFromSummaries, type SessionUsageSummary, type UsageTotals, type WorkspaceUsage } from './usage.js'
 
 interface CachedLog {
@@ -100,9 +101,26 @@ function mergeTotals(values: readonly UsageTotals[], bases?: readonly number[]):
   return sum
 }
 
-/** The composition layer locates Session and Project Thread histories and caches usage facts. */
-export async function storedWorkspaceUsage(workspace: string, config: SystemConfig): Promise<WorkspaceUsage> {
-  const dir = await ensureSessionDir(workspace)
+/** Where a history's events come from, and what tells whether it changed since it was last read. */
+interface UsageSource {
+  id: string
+  projectId?: string
+  threadId?: string
+  /** Undefined once the history is gone. */
+  fingerprint(): Promise<string | undefined>
+  events(): Promise<SessionEvent[]>
+}
+
+/** A summary changes whenever its Session gains an event. */
+function summaryStamp(summary: { eventCount: number; updatedAt: number }): string {
+  return JSON.stringify(['session', summary.eventCount, summary.updatedAt])
+}
+
+/**
+ * Usage of a workspace: its Sessions read from the Session store, its Project
+ * Thread histories from their files, the folds cached in the workspace state.
+ */
+export async function storedWorkspaceUsage(workspace: string, config: SystemConfig, sessions: SessionStore): Promise<WorkspaceUsage> {
   workspaceProjectStateRoot(workspace)
   const cacheFile = join(workspaceStateDir(workspace), 'usage-cache.json')
   const cache = await readCache(cacheFile)
@@ -113,40 +131,66 @@ export async function storedWorkspaceUsage(workspace: string, config: SystemConf
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     offset: new Date().getTimezoneOffset(),
   })).digest('hex')
-  const files: { id: string; file: string; projectId?: string; threadId?: string }[] = []
-  for (const entry of await entries(dir)) {
-    if (entry.isFile() && entry.name.endsWith('.jsonl') && isSessionId(entry.name.slice(0, -6))) files.push({ id: entry.name.slice(0, -6), file: join(dir, entry.name) })
+  const sources: UsageSource[] = []
+  for (const summary of await sessions.list(workspace)) {
+    sources.push({
+      id: summary.id,
+      fingerprint: async () => {
+        try { return summaryStamp(await sessions.summary(workspace, summary.id)) }
+        catch { return undefined }
+      },
+      events: async () => {
+        const events: SessionEvent[] = []
+        for await (const event of sessions.read(workspace, summary.id)) events.push(event)
+        return events
+      },
+    })
   }
+  // Project Threads keep their own logs; the Project family will store them.
   const projects = join(workspaceSessionDir(workspace), 'projects')
   for (const project of await entries(projects)) {
     if (!project.isDirectory()) continue
     const agents = join(projects, project.name, 'agents')
     for (const thread of await entries(agents)) {
-      if (thread.isDirectory()) files.push({ id: `${project.name}/${thread.name}`, file: join(agents, thread.name, 'session.jsonl'), projectId: project.name, threadId: thread.name })
+      if (!thread.isDirectory()) continue
+      const file = join(agents, thread.name, 'session.jsonl')
+      sources.push({
+        id: `${project.name}/${thread.name}`,
+        projectId: project.name,
+        threadId: thread.name,
+        fingerprint: async () => {
+          await SessionLog.flushLive(file)
+          return fingerprint(file)
+        },
+        events: async () => {
+          const log = new SessionLog(file)
+          try {
+            await log.init()
+            return await log.read()
+          } finally { await log.close() }
+        },
+      })
     }
   }
   const next: UsageCache = { version: 1, logs: {} }
   let changed = false
   const included: CachedLog[] = []
-  for (const source of files) {
-    await SessionLog.flushLive(source.file)
-    const before = await fingerprint(source.file)
+  for (const source of sources) {
+    const before = await source.fingerprint()
     if (!before) continue
     let cached = Object.hasOwn(cache.logs, source.id) ? cache.logs[source.id] : undefined
     if (!cached || cached.fingerprint !== before) {
       changed = true
-      const log = new SessionLog(source.file)
       try {
-        await log.init()
-        const summary = summarizeUsage(await log.read())
+        const summary = summarizeUsage(await source.events())
         cached = { fingerprint: before, summary, pricingKey: '', usage: workspaceUsageFromSummaries([], config), days: [], cacheBases: { total: 0, models: {}, days: {} } }
       } catch (error) {
         // Session listings have always skipped invalid histories; Thread failures stay explicit.
         if (source.projectId) throw error
         continue
-      } finally { await log.close() }
+      }
       // Do not reuse a snapshot if a concurrent writer changed its source while it was read.
-      if (await fingerprint(source.file) !== before) cached.fingerprint = ''
+      if (await source.fingerprint() !== before) cached.fingerprint = ''
     }
     if (cached.pricingKey !== pricingKey) {
       changed = true

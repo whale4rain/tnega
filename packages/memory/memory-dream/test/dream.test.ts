@@ -6,7 +6,7 @@ import type { LLMAdapter } from '@tnega/agent'
 import { Context } from '@tnega/core'
 import { memoryLocal } from '@tnega/memory-local'
 import { SessionLog, type ModelMessage } from '@tnega/session'
-import { createSession, sessionFile } from '@tnega/session-store-jsonl'
+import { createSession, sessionFile, sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { dreamWorkspace, memoryDream, readDreamLedger } from '../src/index.js'
 
 const directories: string[] = []
@@ -22,7 +22,8 @@ async function setup() {
   const root = new Context()
   roots.push(root)
   await root.plugin(memoryLocal, { cwd: workspace, globalFile: join(workspace, 'global.md') })
-  return { workspace, memory: root.get('memory'), ledgerFile: join(workspace, 'ledger.json') }
+  await root.plugin(sessionStoreJsonl)
+  return { workspace, memory: root.get('memory'), sessions: root.get('sessionStore'), ledgerFile: join(workspace, 'ledger.json') }
 }
 
 async function session(workspace: string, title: string, write: (log: SessionLog) => Promise<void>): Promise<string> {
@@ -51,7 +52,7 @@ function model(replies: Array<string | Error>): LLMAdapter & { calls: ModelMessa
 const later = () => Date.now() + 60 * 60_000
 
 it('folds quiet sessions into project memory and reads only what is new next time', async () => {
-  const { workspace, memory, ledgerFile } = await setup()
+  const { workspace, memory, sessions, ledgerFile } = await setup()
   const id = await session(workspace, 'Release', async log => {
     await log.append('user/message', { content: 'From now on, release notes go in docs/releases.' })
     await log.append('tool/call', { id: 'c1', name: 'shell', arguments: { command: 'ls' } })
@@ -64,7 +65,7 @@ it('folds quiet sessions into project memory and reads only what is new next tim
   const before = await readFile(sessionFile(workspace, id), 'utf8')
   const llm = model(['# Project memory\n\n- Release notes live in docs/releases.'])
 
-  const first = await dreamWorkspace({ workspace, memory, llm, ledgerFile, now: later })
+  const first = await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, now: later })
   expect(first).toMatchObject({ status: 'updated', sessions: 1 })
   expect(await memory.read('project')).toContain('docs/releases')
   const prompt = llm.calls[0]?.[1]?.content ?? ''
@@ -76,7 +77,7 @@ it('folds quiet sessions into project memory and reads only what is new next tim
   expect(await readFile(sessionFile(workspace, id), 'utf8')).toBe(before)
 
   // Nothing changed: no request at all.
-  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'idle' })
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'idle' })
   expect(llm.calls).toHaveLength(1)
 
   // A later turn is read on its own, with the memory as it now stands.
@@ -85,7 +86,7 @@ it('folds quiet sessions into project memory and reads only what is new next tim
   await log.append('user/message', { content: 'Also, always run pnpm lint before a PR.' })
   await log.close()
   llm.calls.length = 0
-  await dreamWorkspace({ workspace, memory, llm, ledgerFile, now: later })
+  await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, now: later })
   const second = llm.calls[0]?.[1]?.content ?? ''
   expect(second).toContain('pnpm lint')
   expect(second).not.toContain('From now on')
@@ -93,37 +94,37 @@ it('folds quiet sessions into project memory and reads only what is new next tim
 })
 
 it('waits for a session to go quiet', async () => {
-  const { workspace, memory, ledgerFile } = await setup()
+  const { workspace, memory, sessions, ledgerFile } = await setup()
   await session(workspace, 'Busy', log => log.append('user/message', { content: 'Use tabs.' }).then(() => {}))
   const llm = model([])
-  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile })).toMatchObject({ status: 'idle' })
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile })).toMatchObject({ status: 'idle' })
   expect(llm.calls).toHaveLength(0)
   // An explicit dream does not wait.
-  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile, idleMs: 0 })).toMatchObject({ status: 'unchanged' })
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, idleMs: 0 })).toMatchObject({ status: 'unchanged' })
   expect(llm.calls).toHaveLength(1)
 })
 
 it('treats a session whose file time runs ahead of the clock as just written', async () => {
-  const { workspace, memory, ledgerFile } = await setup()
+  const { workspace, memory, sessions, ledgerFile } = await setup()
   await session(workspace, 'Skewed', log => log.append('user/message', { content: 'Use tabs.' }).then(() => {}))
   const llm = model([])
   // Windows rounds file times up, so a session written now can look newer than
   // `now`; an explicit dream must still read it instead of calling it idle.
-  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile, idleMs: 0, now: () => 0 })).toMatchObject({ status: 'unchanged' })
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, idleMs: 0, now: () => 0 })).toMatchObject({ status: 'unchanged' })
   expect(llm.calls).toHaveLength(1)
 })
 
 it('keeps the sessions pending when the request fails or the reply is too long', async () => {
-  const { workspace, memory, ledgerFile } = await setup()
+  const { workspace, memory, sessions, ledgerFile } = await setup()
   const id = await session(workspace, 'Prefs', log => log.append('user/message', { content: 'Answer in Chinese.' }).then(() => {}))
   const llm = model([new Error('rate limited'), 'x'.repeat(5000), '- Answer in Chinese.'])
 
-  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'failed', reason: 'rate limited' })
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'failed', reason: 'rate limited' })
   expect((await readDreamLedger(ledgerFile)).sessions[id]).toBeUndefined()
-  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'failed' })
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'failed' })
   expect(await memory.read('project')).toBe('')
 
-  expect(await dreamWorkspace({ workspace, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'updated' })
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'updated' })
   expect((await readDreamLedger(ledgerFile)).sessions[id]).toBeDefined()
   expect(await readFile(join(workspace, '.tnega', 'MEMORY.md'), 'utf8')).toBe('- Answer in Chinese.\n')
 })
@@ -135,6 +136,7 @@ it('runs dreams in the background service and stops them on dispose', async () =
   const root = new Context()
   let opened = 0
   let closed = 0
+  await root.plugin(sessionStoreJsonl)
   await root.plugin(memoryDream, {
     workspaces: async () => [workspace],
     settings: async () => ({ enabled: true, idleMinutes: 10 }),
@@ -168,6 +170,7 @@ it('does nothing while dreaming is turned off', async () => {
   const root = new Context()
   roots.push(root)
   let asked = 0
+  await root.plugin(sessionStoreJsonl)
   await root.plugin(memoryDream, {
     workspaces: async () => [workspace],
     settings: async () => ({ enabled: false, idleMinutes: 10 }),

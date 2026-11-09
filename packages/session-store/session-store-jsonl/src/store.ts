@@ -1,4 +1,5 @@
-import { stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Context } from '@tnega/core'
 import { JsonlSessionBackend, SessionLockedError, SessionLog, SessionNotFoundError, type SessionBackend, type SessionEvent } from '@tnega/session'
 import {
@@ -16,6 +17,8 @@ import {
 import {
   createSession,
   deleteSession,
+  ensureSessionDir,
+  isSessionId,
   listSessions,
   patchSessionMeta,
   readSessionEventsReadOnly,
@@ -51,11 +54,17 @@ export class JsonlSessionStore extends SessionStore {
     return createSession(workspace, options)
   }
 
-  list(workspace: string): Promise<SessionSummary[]> {
+  async list(workspace: string): Promise<SessionSummary[]> {
+    // A live writer in this process may still hold events in memory: a summary counts them.
+    const dir = await ensureSessionDir(workspace)
+    for (const entry of await readdir(dir).catch(() => [])) {
+      if (entry.endsWith('.jsonl') && isSessionId(entry.slice(0, -'.jsonl'.length))) await SessionLog.flushLive(join(dir, entry))
+    }
     return listSessions(workspace)
   }
 
-  summary(workspace: string, id: string): Promise<SessionSummary> {
+  async summary(workspace: string, id: string): Promise<SessionSummary> {
+    await SessionLog.flushLive(sessionFile(workspace, id))
     return readSessionSummary(workspace, id)
   }
 

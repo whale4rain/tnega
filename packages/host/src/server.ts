@@ -11,6 +11,7 @@ import { createPluginWorkshop } from '@tnega/plugin-host'
 import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
 import { memoryDream, memoryDreamRoutes } from '@tnega/memory-dream'
 import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
+import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
@@ -105,10 +106,12 @@ export async function startWebServer(
   const pluginWorkshop = pluginDev
     ? await createPluginWorkshop(...(typeof pluginDev === 'string' ? [pluginDev] : []))
     : undefined
-  // One session index per host, in the tnega home; it opens on the first search.
-  const sessionIndex = new SqliteSessionIndex()
   const root = new Context()
   await root.plugin(webServer)
+  // Sessions live in JSONL files under the tnega home on this machine.
+  await root.plugin(sessionStoreJsonl)
+  // One session index per host, in the tnega home; it opens on the first search.
+  const sessionIndex = new SqliteSessionIndex({ sessions: root.get('sessionStore') })
   const web = root.get('webServer')
   const context: ServerContext = {
     ...(options.fetch ? { hostFetch: options.fetch } : {}),

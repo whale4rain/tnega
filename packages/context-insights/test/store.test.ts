@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { SessionLog } from '@tnega/session'
 import { workspaceSessionDir } from '@tnega/home'
-import { createSession, deleteSession, sessionFile } from '@tnega/session-store-jsonl'
+import { Context } from '@tnega/core'
+import { createSession, deleteSession, sessionFile, sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { ContextReportStore } from '../src/index.js'
 
 const config = { model: 'mock', models: [{ id: 'mock', model: 'mock', contextWindow: 50_000, pricing: { input: 1, output: 2 } }] }
@@ -17,7 +18,9 @@ async function write(file: string, fill: (log: SessionLog) => Promise<unknown>) 
 
 it('reports sessions and Project threads, and rebuilds a report only when its log changes', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-context-store-'))
-  const store = new ContextReportStore()
+  const root = new Context()
+  await root.plugin(sessionStoreJsonl)
+  const store = new ContextReportStore(root.get('sessionStore'))
   try {
     const session = await createSession(workspace, { title: 'Parser fix', model: 'mock' })
     await write(sessionFile(workspace, session.id), async log => {
@@ -47,6 +50,7 @@ it('reports sessions and Project threads, and rebuilds a report only when its lo
     expect((await store.workspace(workspace, config)).map(source => source.kind)).toEqual(['thread'])
   } finally {
     store.clear()
+    await root.fiber.dispose()
     await rm(workspace, { recursive: true, force: true })
   }
 })

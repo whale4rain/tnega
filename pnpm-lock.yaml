@@ -636,15 +636,19 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
-      '@tnega/session-store-jsonl':
+      '@tnega/session-store':
         specifier: workspace:*
-        version: link:../session-store/session-store-jsonl
+        version: link:../session-store/session-store
       '@tnega/usage':
         specifier: workspace:*
         version: link:../usage
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit
+    devDependencies:
+      '@tnega/session-store-jsonl':
+        specifier: workspace:*
+        version: link:../session-store/session-store-jsonl
 
   packages/core: {}
 
@@ -1203,9 +1207,9 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../../session
-      '@tnega/session-store-jsonl':
+      '@tnega/session-store':
         specifier: workspace:*
-        version: link:../../session-store/session-store-jsonl
+        version: link:../../session-store/session-store
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../../web-kit
@@ -1213,6 +1217,9 @@ importers:
       '@tnega/memory-local':
         specifier: workspace:*
         version: link:../memory-local
+      '@tnega/session-store-jsonl':
+        specifier: workspace:*
+        version: link:../../session-store/session-store-jsonl
 
   packages/memory/memory-local:
     dependencies:
@@ -2097,6 +2104,10 @@ importers:
       '@tnega/session-search':
         specifier: workspace:*
         version: link:../session-search
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../../session-store/session-store
+    devDependencies:
       '@tnega/session-store-jsonl':
         specifier: workspace:*
         version: link:../../session-store/session-store-jsonl
@@ -2321,12 +2332,16 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
-      '@tnega/session-store-jsonl':
+      '@tnega/session-store':
         specifier: workspace:*
-        version: link:../session-store/session-store-jsonl
+        version: link:../session-store/session-store
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit
+    devDependencies:
+      '@tnega/session-store-jsonl':
+        specifier: workspace:*
+        version: link:../session-store/session-store-jsonl
 
   packages/web-kit:
     dependencies:

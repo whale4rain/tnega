@@ -9,6 +9,9 @@
     "@tnega/home": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/session-search": "workspace:*",
+    "@tnega/session-store": "workspace:*"
+  },
+  "devDependencies": {
     "@tnega/session-store-jsonl": "workspace:*"
   }
 }

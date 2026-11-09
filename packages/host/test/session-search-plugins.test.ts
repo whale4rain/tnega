@@ -4,13 +4,16 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
+import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { SESSION_TOOL_NAMES } from '@tnega/tool-session-search'
 import { tools } from '@tnega/tools'
 import { hostPlugins } from '../src/support.js'
 
 it('mounts the session search tools on every run over the shared index, and removes them with the run', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'tnega-host-session-search-'))
-  const index = new SqliteSessionIndex({ path: join(directory, 'index.sqlite') })
+  const stores = new Context()
+  await stores.plugin(sessionStoreJsonl)
+  const index = new SqliteSessionIndex({ sessions: stores.get('sessionStore'), path: join(directory, 'index.sqlite') })
   const run = new Context()
   try {
     await run.plugin(tools)
@@ -26,6 +29,7 @@ it('mounts the session search tools on every run over the shared index, and remo
     expect(names().some(name => SESSION_TOOL_NAMES.some(tool => tool === name))).toBe(false)
   } finally {
     await index.close()
+    await stores.fiber.dispose()
     await rm(directory, { recursive: true, force: true })
   }
 })

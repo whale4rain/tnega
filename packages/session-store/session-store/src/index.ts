@@ -22,6 +22,13 @@ declare module '@tnega/core' {
  */
 export type WorkspaceKey = string
 
+const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** A Session id is a UUID in every store; anything else is refused before it reaches one. */
+export function isSessionId(value: string): boolean {
+  return SESSION_ID_PATTERN.test(value)
+}
+
 export interface SessionMetaPayload {
   approvalMode?: ApprovalMode
   title: string
@@ -162,7 +169,11 @@ export abstract class SessionStore extends Service {
   }
 
   abstract create(workspace: WorkspaceKey, options?: CreateSessionOptions): Promise<SessionSummary>
-  /** The workspace's Sessions, most recently updated first. */
+  /**
+   * The workspace's Sessions, most recently updated first. A summary counts
+   * every event appended so far, so `eventCount` and `updatedAt` together tell
+   * a reader whether a Session changed since it last looked.
+   */
   abstract list(workspace: WorkspaceKey): Promise<SessionSummary[]>
   abstract summary(workspace: WorkspaceKey, id: string): Promise<SessionSummary>
   abstract snapshot(workspace: WorkspaceKey, id: string, options?: SessionSnapshotOptions): Promise<SessionSnapshot>

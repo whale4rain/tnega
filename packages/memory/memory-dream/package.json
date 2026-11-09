@@ -10,8 +10,8 @@
     "@tnega/home": "workspace:*",
     "@tnega/memory": "workspace:*",
     "@tnega/session": "workspace:*",
-    "@tnega/session-store-jsonl": "workspace:*",
+    "@tnega/session-store": "workspace:*",
     "@tnega/web-kit": "workspace:*"
   },
-  "devDependencies": { "@tnega/memory-local": "workspace:*" }
+  "devDependencies": { "@tnega/memory-local": "workspace:*", "@tnega/session-store-jsonl": "workspace:*" }
 }

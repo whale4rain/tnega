@@ -6,7 +6,7 @@ import { Context } from '@tnega/core'
 import { SessionLog } from '@tnega/session'
 import { formatSessionLink } from '@tnega/session-search'
 import { SqliteSessionIndex, sessionSearchSqlite } from '@tnega/session-search-sqlite'
-import { createSession, sessionFile } from '@tnega/session-store-jsonl'
+import { createSession, sessionFile, sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { tools, type ToolsService } from '@tnega/tools'
 import { SESSION_TOOL_NAMES, toolSessionSearch } from '../src/index.js'
 
@@ -16,6 +16,10 @@ let alpha: string
 let beta: string
 let index: SqliteSessionIndex
 
+const stores = new Context()
+await stores.plugin(sessionStoreJsonl)
+const sessions = stores.get('sessionStore')
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'tnega-session-tools-'))
   previousHome = process.env.TNEGA_HOME
@@ -24,7 +28,7 @@ beforeEach(async () => {
   beta = join(root, 'beta')
   await mkdir(alpha, { recursive: true })
   await mkdir(beta, { recursive: true })
-  index = new SqliteSessionIndex()
+  index = new SqliteSessionIndex({ sessions })
 })
 
 afterEach(async () => {

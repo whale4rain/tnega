@@ -75,6 +75,19 @@ describe('the JSONL session store', () => {
     expect(await all(store.read(workspace, id))).toHaveLength(1)
   })
 
+  it('counts events a live writer in this process has not written out yet', async () => {
+    const { store, workspace, id } = await setup()
+    const log = new SessionLog(sessionFile(workspace, id))
+    await log.init()
+    try {
+      // Not awaited: the event is committed in memory before it is written.
+      void log.append('user/message', { content: 'still in memory' })
+      expect((await store.summary(workspace, id)).eventCount).toBe(2)
+      void log.append('user/message', { content: 'and another' })
+      expect((await store.list(workspace)).map(summary => summary.eventCount)).toEqual([3])
+    } finally { await log.close() }
+  })
+
   it('lets one writer append at a time', async () => {
     const { store, workspace, id } = await setup()
     await expect(store.append(workspace, id, { expectedSeq: 1, events: [message(2, 'x')], owner: 'runtime-a' })).rejects.toBeInstanceOf(SessionLeaseError)
