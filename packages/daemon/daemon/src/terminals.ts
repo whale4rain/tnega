@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { resolveInside } from '@tnega/fs-sandbox'
 import { RpcError, RpcErrorCode, type DaemonWorkspace } from '@tnega/daemon-protocol'
 import type { TerminalManager } from '@tnega/terminal-local'
@@ -34,6 +35,10 @@ export function exposeTerminals(manager: TerminalManager, workspaces: readonly D
       list: async ([workspace]) => manager.list(workspace === undefined || workspace === null ? undefined : await inside(text(workspace, 'workspace'))),
       create: async ([workspace, size]) => {
         const cwd = await inside(text(workspace, 'workspace'))
+        // A shell started in a missing folder dies at once with a chdir error; say why instead.
+        if (!(await stat(cwd).catch(() => undefined))?.isDirectory()) {
+          throw new RpcError(`${text(workspace, 'workspace')} is not a folder`, RpcErrorCode.INVALID_PARAMS)
+        }
         const shape = size !== null && typeof size === 'object' ? size as { cols?: unknown; rows?: unknown } : {}
         return await manager.create(cwd, {
           ...(typeof shape.cols === 'number' ? { cols: shape.cols } : {}),
