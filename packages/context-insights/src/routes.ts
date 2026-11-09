@@ -1,6 +1,6 @@
 import { readSystemConfig } from '@tnega/config'
 import type { Context } from '@tnega/core'
-import { isSessionId } from '@tnega/session-store'
+import { isSessionId } from '@tnega/session-store-jsonl'
 import { sendError, sendJson, workspaceParam } from '@tnega/web-kit'
 import { contextInsights, isInsightsRange } from './insights.js'
 import { ContextReportStore } from './store.js'

@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@tnega/approval-review": "workspace:*",
-    "@tnega/home": "workspace:*",
+    "@tnega/core": "workspace:*",
     "@tnega/session": "workspace:*"
   }
 }

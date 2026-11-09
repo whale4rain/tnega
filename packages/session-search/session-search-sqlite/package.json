@@ -9,6 +9,6 @@
     "@tnega/home": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/session-search": "workspace:*",
-    "@tnega/session-store": "workspace:*"
+    "@tnega/session-store-jsonl": "workspace:*"
   }
 }

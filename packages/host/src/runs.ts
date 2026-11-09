@@ -31,7 +31,7 @@ import { toolWebSearch } from '@tnega/tool-web-search'
 import { builtinTools, createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
 import { readSystemConfig, updateSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import type { SandboxNetworkRequest } from '@tnega/sandbox'
-import { patchSessionMeta, readSessionSummary } from '@tnega/session-store'
+import { patchSessionMeta, readSessionSummary } from '@tnega/session-store-jsonl'
 
 export async function handleRun(
   req: IncomingMessage,

@@ -6,7 +6,7 @@ import { Context } from '@tnega/core'
 import { SessionLog } from '@tnega/session'
 import { formatSessionLink } from '@tnega/session-search'
 import { SqliteSessionIndex, sessionSearchSqlite } from '@tnega/session-search-sqlite'
-import { createSession, sessionFile } from '@tnega/session-store'
+import { createSession, sessionFile } from '@tnega/session-store-jsonl'
 import { tools, type ToolsService } from '@tnega/tools'
 import { SESSION_TOOL_NAMES, toolSessionSearch } from '../src/index.js'
 

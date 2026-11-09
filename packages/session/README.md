@@ -130,6 +130,12 @@ mtime；锁的进程已退出（同主机）或 30 秒未刷新即视为遗弃�
 即使先初始化，其关闭也不会移除正在写入的对象。后续读取从 live owner 取得
 快照，不对运行中的 call、step 或 turn 补写中断事件。跨进程互斥由上面的写锁负责。
 
+存储是可替换的：`SessionLog` 只管格式、不变量与内存中的折叠，事件存在哪里由 `SessionBackend`
+决定（`load` / `create` / `append` / `sync` / `repair`，以及写入者的 `hold` / `release`）。
+`new SessionLog(file)` 用本机的 `JsonlSessionBackend`（上面的 JSONL 文件与锁文件）；
+`new SessionLog(backend)` 用调用方给的后端，例如 `ctx.sessionStore.backend(workspace, id)`。
+v2 服务端的 Postgres 存储实现同一个接口，修复语义不变：只截断损坏处之后、再追加闭合事件。
+
 `forkAt()` / `lineage()` 基于事件 id 与 `parentId` 构造可复用的 fork 前缀，
 不依赖全量 raw 顺序。
 

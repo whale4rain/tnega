@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { SessionLog } from '@tnega/session'
 import { workspaceSessionDir } from '@tnega/home'
-import { createSession, deleteSession, sessionFile } from '@tnega/session-store'
+import { createSession, deleteSession, sessionFile } from '@tnega/session-store-jsonl'
 import { ContextReportStore } from '../src/index.js'
 
 const config = { model: 'mock', models: [{ id: 'mock', model: 'mock', contextWindow: 50_000, pricing: { input: 1, output: 2 } }] }

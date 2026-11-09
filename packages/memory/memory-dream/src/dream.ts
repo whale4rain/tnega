@@ -5,7 +5,7 @@ import type { LLMAdapter } from '@tnega/agent'
 import { workspaceStateDir } from '@tnega/home'
 import { MAX_PROJECT_MEMORY_CHARS, type MemoryService } from '@tnega/memory'
 import type { SessionEvent } from '@tnega/session'
-import { listSessions, readSessionEventsReadOnly, type SessionSummary } from '@tnega/session-store'
+import { listSessions, readSessionEventsReadOnly, type SessionSummary } from '@tnega/session-store-jsonl'
 
 const NO_CHANGE = 'NO_CHANGE'
 const MAX_MESSAGE_CHARS = 1_500

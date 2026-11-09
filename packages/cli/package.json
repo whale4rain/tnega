@@ -38,7 +38,7 @@
     "@tnega/project-loop": "workspace:*",
     "@tnega/project-routines": "workspace:*",
     "@tnega/project-worktrees": "workspace:*",
-    "@tnega/session-store": "workspace:*",
+    "@tnega/session-store-jsonl": "workspace:*",
     "@tnega/terminal-local": "workspace:*",
     "@tnega/thread-local": "workspace:*",
     "@tnega/tools": "workspace:*",
