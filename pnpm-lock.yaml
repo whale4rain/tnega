@@ -1007,6 +1007,9 @@ importers:
       '@tnega/session-search-sqlite':
         specifier: workspace:*
         version: link:../session-search/session-search-sqlite
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../session-store/session-store
       '@tnega/session-store-jsonl':
         specifier: workspace:*
         version: link:../session-store/session-store-jsonl

@@ -7,6 +7,7 @@ import {
   SessionStore,
   canonicalEvent,
   type CreateSessionOptions,
+  type ForkSessionOptions,
   type SessionAppendResult,
   type SessionLease,
   type SessionMetaPatch,
@@ -18,6 +19,7 @@ import {
   createSession,
   deleteSession,
   ensureSessionDir,
+  forkSession,
   isSessionId,
   listSessions,
   patchSessionMeta,
@@ -25,6 +27,9 @@ import {
   readSessionSnapshot,
   readSessionSummary,
   sessionFile,
+  setSessionApprovalMode,
+  setSessionPermission,
+  truncateSessionAt,
 } from './index.js'
 
 interface HeldLease {
@@ -130,8 +135,19 @@ export class JsonlSessionStore extends SessionStore {
     return { status: 'committed', seqs: events.map(event => event.seq) }
   }
 
-  patchMeta(workspace: string, id: string, patch: SessionMetaPatch): Promise<SessionSummary> {
-    return patchSessionMeta(workspace, id, patch)
+  async patchMeta(workspace: string, id: string, { permission, approvalMode, ...meta }: SessionMetaPatch): Promise<SessionSummary> {
+    let summary = await patchSessionMeta(workspace, id, meta)
+    if (approvalMode !== undefined) summary = await setSessionApprovalMode(workspace, id, approvalMode)
+    if (permission !== undefined) summary = await setSessionPermission(workspace, id, permission)
+    return summary
+  }
+
+  fork(workspace: string, id: string, options?: ForkSessionOptions): Promise<SessionSummary> {
+    return forkSession(workspace, id, options)
+  }
+
+  rewind(workspace: string, id: string, messageId: string): Promise<SessionSummary> {
+    return truncateSessionAt(workspace, id, messageId)
   }
 
   async lease(workspace: string, id: string, owner: string): Promise<SessionLease> {

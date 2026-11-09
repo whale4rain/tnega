@@ -88,6 +88,27 @@ describe('the JSONL session store', () => {
     } finally { await log.close() }
   })
 
+  it('patches permission and approvals with the metadata, and stores nothing for what is already in force', async () => {
+    const { store, workspace, id } = await setup()
+    const patched = await store.patchMeta(workspace, id, { title: 'Renamed', permission: 'workspace-write', approvalMode: 'auto' })
+    expect(patched).toMatchObject({ title: 'Renamed', permission: 'workspace-write', approvalMode: 'auto', eventCount: 4 })
+    expect((await store.patchMeta(workspace, id, { permission: 'workspace-write', approvalMode: 'auto' })).eventCount).toBe(4)
+  })
+
+  it('forks a Session through a message, and rewinds one to before a message', async () => {
+    const { store, workspace, id } = await setup()
+    await store.lease(workspace, id, 'runtime-a')
+    const first = message(2, 'first')
+    const second = message(3, 'second')
+    await store.append(workspace, id, { expectedSeq: 1, events: [first, second], owner: 'runtime-a' })
+    const fork = await store.fork(workspace, id, { messageId: first.id })
+    expect(fork).toMatchObject({ parentSessionId: id, forkedAtMessageId: first.id, title: 'Seam fork' })
+    expect((await all(store.read(workspace, fork.id))).filter(event => event.type === 'user/message').map(event => event.id)).toEqual([first.id])
+    const rewound = await store.rewind(workspace, id, second.id)
+    expect(rewound.eventCount).toBe(2)
+    expect((await all(store.read(workspace, id))).map(event => event.seq)).toEqual([1, 2])
+  })
+
   it('lets one writer append at a time', async () => {
     const { store, workspace, id } = await setup()
     await expect(store.append(workspace, id, { expectedSeq: 1, events: [message(2, 'x')], owner: 'runtime-a' })).rejects.toBeInstanceOf(SessionLeaseError)

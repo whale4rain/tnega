@@ -67,6 +67,16 @@ export interface SessionMetaPatch {
   mode?: SessionMode
   model?: string
   reasoningEffort?: 'default' | 'low' | 'medium' | 'high'
+  /** What the Session's tools may do. Asking for the one in force stores nothing. */
+  permission?: SessionPermission
+  /** Who answers approval cards. Asking for the one in force stores nothing. */
+  approvalMode?: ApprovalMode
+}
+
+export interface ForkSessionOptions {
+  title?: string
+  /** End the fork's history at this message (it included) instead of the whole history. */
+  messageId?: string
 }
 
 export interface SessionSnapshot {
@@ -152,7 +162,8 @@ export function canonicalEvent(event: SessionEvent): string {
  *
  * - **Append-only.** Events are never rewritten; `append` stores a batch
  *   all or nothing at `expectedSeq + 1 …`, or answers `conflict` with the
- *   current head and stores nothing.
+ *   current head and stores nothing. `rewind` is the one exception: the user
+ *   asked to take a message back, and everything from it on is dropped.
  * - **Retries are safe.** A batch whose ids are all stored already, with the
  *   same contents ({@link canonicalEvent}), answers `committed` with the
  *   stored seqs. An id stored with other contents, or only part of a batch
@@ -181,6 +192,13 @@ export abstract class SessionStore extends Service {
   abstract read(workspace: WorkspaceKey, id: string, afterSeq?: number): AsyncIterable<SessionEvent>
   abstract append(workspace: WorkspaceKey, id: string, request: { expectedSeq: number; events: readonly SessionEvent[]; owner: string }): Promise<SessionAppendResult>
   abstract patchMeta(workspace: WorkspaceKey, id: string, patch: SessionMetaPatch): Promise<SessionSummary>
+  /** A new Session that starts with this one's history (through `messageId`) and its current metadata. */
+  abstract fork(workspace: WorkspaceKey, id: string, options?: ForkSessionOptions): Promise<SessionSummary>
+  /**
+   * Drop the user message `messageId` and every event after it. Its events'
+   * seqs are free again; a reader that cached the Session sees its count fall.
+   */
+  abstract rewind(workspace: WorkspaceKey, id: string, messageId: string): Promise<SessionSummary>
   /** Take the right to append. Asking again with the same owner keeps it. */
   abstract lease(workspace: WorkspaceKey, id: string, owner: string): Promise<SessionLease>
   abstract delete(workspace: WorkspaceKey, id: string): Promise<void>

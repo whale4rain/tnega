@@ -35,6 +35,7 @@
     "@tnega/secrets-local": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/session-search-sqlite": "workspace:*",
+    "@tnega/session-store": "workspace:*",
     "@tnega/session-store-jsonl": "workspace:*",
     "@tnega/subagent": "workspace:*",
     "@tnega/subagent-local": "workspace:*",

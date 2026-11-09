@@ -10,6 +10,7 @@ import type { PluginWorkshop } from '@tnega/plugin-host'
 import type { WebServerService } from '@tnega/web-kit'
 import type { SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import type { SecretVault } from '@tnega/secrets-local'
+import type { SessionStore } from '@tnega/session-store'
 
 export interface ResidentAgentEntry {
   root: Context
@@ -53,4 +54,6 @@ export interface ServerContext {
   secrets?: SecretVault
   /** The named-route table requests are dispatched through. */
   web: WebServerService
+  /** Where Sessions are listed, read and changed (`ctx.sessionStore` on the host root). */
+  sessions: SessionStore
 }

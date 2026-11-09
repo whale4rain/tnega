@@ -135,6 +135,7 @@ export async function startWebServer(
     sessionIndex,
     secrets: new SecretVault(),
     web,
+    sessions: root.get('sessionStore'),
   }
 
   // Files, terminals, browser view and setup hints act on this machine: the
