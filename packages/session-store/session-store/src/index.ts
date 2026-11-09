@@ -196,9 +196,9 @@ export abstract class SessionStore extends Service {
   abstract read(workspace: WorkspaceKey, id: string, afterSeq?: number): AsyncIterable<SessionEvent>
   abstract append(workspace: WorkspaceKey, id: string, request: { expectedSeq: number; events: readonly SessionEvent[]; owner: string }): Promise<SessionAppendResult>
   /**
-   * Store each field that changes. The fields are separate events, so a
-   * failure part way through leaves the ones before it stored; asking again
-   * stores only what is still missing.
+   * Store each field that changes; a field already in force stores nothing.
+   * A store may write the fields in more than one step, so a failure part way
+   * through can leave some stored; asking again stores only what is missing.
    */
   abstract patchMeta(workspace: WorkspaceKey, id: string, patch: SessionMetaPatch): Promise<SessionSummary>
   /** A new Session that starts with this one's history (through `messageId`) and its current metadata. */

@@ -20,7 +20,7 @@ import {
   type SessionSearchResult,
   type SessionTextKind,
 } from '@tnega/session-search'
-import { isSessionId, type SessionStore, type SessionSummary } from '@tnega/session-store'
+import { isSessionId, SessionNotFoundError, type SessionStore, type SessionSummary } from '@tnega/session-store'
 
 export interface SqliteSessionIndexOptions {
   /** Where the indexed Sessions are read from (`ctx.sessionStore`). */
@@ -210,7 +210,13 @@ export class SqliteSessionIndex {
 
   /** A Session's summary, or undefined when the store has no such Session. */
   private async summary(workspace: string, sessionId: string): Promise<SessionSummary | undefined> {
-    const summary = await this.sessions.summary(workspace, sessionId).catch(() => undefined)
+    let summary: SessionSummary
+    try {
+      summary = await this.sessions.summary(workspace, sessionId)
+    } catch (error) {
+      if (error instanceof SessionNotFoundError) return undefined
+      throw error
+    }
     // Every Session starts with its meta event: no events means no Session.
     return summary?.eventCount ? summary : undefined
   }
@@ -300,12 +306,8 @@ export class SqliteSessionIndex {
   /** Brings one workspace's sessions up to date, skipping dropped ones that have not changed. */
   private async reconcileWorkspace(db: DatabaseSync, workspace: string): Promise<void> {
     const workspaceKey = workspaceStorageKey(workspace)
-    let summaries: SessionSummary[]
-    try {
-      summaries = await this.sessions.list(workspace)
-    } catch {
-      summaries = []
-    }
+    // A listing that fails says nothing about which sessions are gone: keep the index.
+    const summaries = await this.sessions.list(workspace)
     const present = new Set<string>()
     const select = db.prepare('SELECT * FROM sessions WHERE key = ?')
     for (const summary of summaries) {

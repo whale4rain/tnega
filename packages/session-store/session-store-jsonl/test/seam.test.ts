@@ -92,7 +92,8 @@ describe('the JSONL session store', () => {
     const { store, workspace, id } = await setup()
     const patched = await store.patchMeta(workspace, id, { title: 'Renamed', permission: 'workspace-write', approvalMode: 'auto' })
     expect(patched).toMatchObject({ title: 'Renamed', permission: 'workspace-write', approvalMode: 'auto', eventCount: 4 })
-    expect((await store.patchMeta(workspace, id, { permission: 'workspace-write', approvalMode: 'auto' })).eventCount).toBe(4)
+    // A retry of the whole patch stores nothing new.
+    expect((await store.patchMeta(workspace, id, { title: 'Renamed', permission: 'workspace-write', approvalMode: 'auto' })).eventCount).toBe(4)
   })
 
   it('forks a Session through a message, and rewinds one to before a message', async () => {
