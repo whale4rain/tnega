@@ -1,16 +1,23 @@
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { BlobStore } from '@tnega/blobs'
 import type { Context } from '@tnega/core'
 import { JsonlSessionBackend, SessionLockedError, SessionLog, SessionNotFoundError, type SessionBackend, type SessionEvent } from '@tnega/session'
 import {
+  BlobImagesBackend,
+  ImageCache,
   SessionLeaseError,
   SessionStore,
   canonicalEvent,
+  keepsImagesAsBlobs,
+  restoreImages,
+  storeImages,
   type CreateSessionOptions,
   type ForkSessionOptions,
   type SessionAppendResult,
   type SessionLease,
   type SessionMetaPatch,
+  type SessionSearchHit,
   type SessionSnapshot,
   type SessionSnapshotOptions,
   type SessionSummary,
@@ -26,6 +33,7 @@ import {
   readSessionEventsReadOnly,
   readSessionSnapshot,
   readSessionSummary,
+  searchSessions,
   sessionFile,
   setSessionApprovalMode,
   setSessionPermission,
@@ -54,18 +62,24 @@ export class JsonlSessionStore extends SessionStore {
   private closed = false
   /** Releases still letting go of their lock file; closing waits for them. */
   private readonly releasing = new Set<Promise<void>>()
+  /** Restored images, shared by every read and log this store opens. */
+  private readonly images = new ImageCache()
 
   create(workspace: string, options?: CreateSessionOptions): Promise<SessionSummary> {
     return createSession(workspace, options)
   }
 
   async list(workspace: string): Promise<SessionSummary[]> {
-    // A live writer in this process may still hold events in memory: a summary counts them.
+    await this.flushLive(workspace)
+    return listSessions(workspace)
+  }
+
+  /** A live writer in this process may still hold events in memory: listings and searches count them. */
+  private async flushLive(workspace: string): Promise<void> {
     const dir = await ensureSessionDir(workspace)
     for (const entry of await readdir(dir).catch(() => [])) {
       if (entry.endsWith('.jsonl') && isSessionId(entry.slice(0, -'.jsonl'.length))) await SessionLog.flushLive(join(dir, entry))
     }
-    return listSessions(workspace)
   }
 
   async summary(workspace: string, id: string): Promise<SessionSummary> {
@@ -73,9 +87,31 @@ export class JsonlSessionStore extends SessionStore {
     return readSessionSummary(workspace, id)
   }
 
-  snapshot(workspace: string, id: string, options: SessionSnapshotOptions = {}): Promise<SessionSnapshot> {
+  async search(workspace: string, query: string, options?: { limit?: number }): Promise<SessionSearchHit[]> {
+    await this.flushLive(workspace)
+    return searchSessions(workspace, query, options)
+  }
+
+  /**
+   * Where image bytes go when this machine has `ctx.blobs` (format-11 logs).
+   * Without it, images stay inline and a log that keeps them as blobs is read
+   * without their bytes.
+   */
+  private get blobs(): BlobStore | undefined {
+    return this.ctx.get('blobs')
+  }
+
+  async snapshot(workspace: string, id: string, options: SessionSnapshotOptions = {}): Promise<SessionSnapshot> {
     const { windowFor, ...page } = options
-    return readSessionSnapshot(workspace, id, windowFor, page)
+    const snapshot = await readSessionSnapshot(workspace, id, windowFor, page)
+    const blobs = this.blobs
+    if (!blobs) return snapshot
+    return {
+      ...snapshot,
+      events: await restoreImages(snapshot.events, blobs, this.images),
+      surface: await restoreImages(snapshot.surface, blobs, this.images),
+      log: await restoreImages(snapshot.log, blobs, this.images),
+    }
   }
 
   async *read(workspace: string, id: string, afterSeq = 0): AsyncIterable<SessionEvent> {
@@ -83,9 +119,9 @@ export class JsonlSessionStore extends SessionStore {
     // A live writer in this process may still hold events in memory.
     await SessionLog.flushLive(file)
     if (!await stat(file).catch(() => undefined)) throw new SessionNotFoundError(file)
-    for (const event of await readSessionEventsReadOnly(workspace, id)) {
-      if (event.seq > afterSeq) yield event
-    }
+    const events = (await readSessionEventsReadOnly(workspace, id)).filter(event => event.seq > afterSeq)
+    const blobs = this.blobs
+    yield* blobs ? await restoreImages(events, blobs, this.images) : events
   }
 
   append(workspace: string, id: string, request: { expectedSeq: number; events: readonly SessionEvent[]; owner: string }): Promise<SessionAppendResult> {
@@ -101,15 +137,15 @@ export class JsonlSessionStore extends SessionStore {
     workspace: string,
     id: string,
     file: string,
-    { expectedSeq, events, owner }: { expectedSeq: number; events: readonly SessionEvent[]; owner: string },
+    { expectedSeq, events: given, owner }: { expectedSeq: number; events: readonly SessionEvent[]; owner: string },
   ): Promise<SessionAppendResult> {
     const lease = this.leases.get(file)
     if (lease?.owner !== owner) throw new SessionLeaseError(id, lease?.owner ?? 'nobody: take a lease before appending')
     await this.held(id, lease)
     // Released while it was still being taken: this append has no lease any more.
     if (this.leases.get(file) !== lease) throw new SessionLeaseError(id, 'nobody: the lease was released')
-    const ids = new Set(events.map(event => event.id))
-    if (ids.size !== events.length) throw new TypeError('append: a batch repeats an event id')
+    const ids = new Set(given.map(event => event.id))
+    if (ids.size !== given.length) throw new TypeError('append: a batch repeats an event id')
 
     const backend = new JsonlSessionBackend(file)
     const loaded = await backend.load()
@@ -117,6 +153,9 @@ export class JsonlSessionStore extends SessionStore {
     // A torn last line (a crash mid-write) would swallow the next event: cut it first.
     if (loaded.damaged) await backend.repair([])
     const stored = loaded.events
+    // Compared and stored as the log keeps them: a format-11 log keeps image bytes as blobs.
+    const blobs = this.blobs
+    const events = blobs && keepsImagesAsBlobs(stored) ? await storeImages(given, blobs) : given
     const headSeq = stored.at(-1)?.seq ?? 0
     const byId = new Map(stored.map(event => [event.id, event] as const))
     const seen = events.map(event => byId.get(event.id))
@@ -228,7 +267,9 @@ export class JsonlSessionStore extends SessionStore {
   }
 
   backend(workspace: string, id: string): SessionBackend {
-    return new JsonlSessionBackend(sessionFile(workspace, id))
+    const file = new JsonlSessionBackend(sessionFile(workspace, id))
+    const blobs = this.blobs
+    return blobs ? new BlobImagesBackend(file, blobs, this.images) : file
   }
 }
 

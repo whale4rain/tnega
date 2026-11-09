@@ -1,3 +1,4 @@
+import type { SessionBackend } from '@tnega/session'
 import type {
   AgentContextBudget,
   AgentDefinition,
@@ -27,7 +28,8 @@ export interface AgentProfile {
 /** One assembled Agent scope: a Session, the capability slice, and the role plugins. */
 export interface AgentRuntimeOptions {
   cwd: string
-  sessionFile: string
+  /** The Session log: a JSONL file path, or a store's backend (`ctx.sessionStore.backend`). */
+  sessionFile: string | SessionBackend
   /**
    * Stable identity this scope's one Agent answers to. Defaults to the session
    * file's name: a run that resumes the same file keeps the same id, which is

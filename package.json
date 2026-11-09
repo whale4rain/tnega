@@ -348,6 +348,7 @@
     "package:desktop": "node scripts/package-desktop.mjs",
     "release": "node scripts/release.mjs",
     "release:tag": "node scripts/tag-release.mjs",
+    "try:v2": "node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/ts-import-loader.mjs scripts/try-v2.ts",
     "try:boxes": "node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/ts-import-loader.mjs scripts/try-boxes.ts",
     "tnega": "node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/ts-import-loader.mjs scripts/tnega.ts",
     "test": "node scripts/test.mjs",

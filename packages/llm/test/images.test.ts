@@ -246,3 +246,19 @@ describe('image fallback', () => {
     expect(bodies[4]).not.toContain('image_url')
   })
 })
+
+describe('an image without bytes', () => {
+  // A Session opened on its bare file keeps only the blob hash of each image.
+  const stored: ModelAttachment = { type: 'image', mediaType: 'image/png', data: '', blob: 'a'.repeat(64) }
+  const messages: ModelMessage[] = [{ role: 'user', content: 'look', attachments: [stored] }]
+
+  it('fails the request instead of sending an empty image', async () => {
+    const fetchMock: FetchMock = vi.fn(async () => jsonResponse({}))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(anthropicMessagesAdapter({ apiKey: 'k', model: 'claude-sonnet-4-6', filesApi: 'off' }).complete(messages, [], {}))
+      .rejects.toThrow('has no bytes')
+    await expect(openaiCompatAdapter({ apiKey: 'k', model: 'gpt-4o', filesApi: 'off' }).complete(messages, [], {}))
+      .rejects.toThrow('has no bytes')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

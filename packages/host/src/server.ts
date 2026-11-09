@@ -12,6 +12,7 @@ import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemC
 import { memoryDream, memoryDreamRoutes } from '@tnega/memory-dream'
 import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
+import { blobsLocal } from '@tnega/blobs-local'
 import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
@@ -108,6 +109,8 @@ export async function startWebServer(
     : undefined
   const root = new Context()
   await root.plugin(webServer)
+  // Image bytes live once under the tnega home; Sessions keep their hashes.
+  await root.plugin(blobsLocal)
   // Sessions live in JSONL files under the tnega home on this machine.
   await root.plugin(sessionStoreJsonl)
   // One session index per host, in the tnega home; it opens on the first search.

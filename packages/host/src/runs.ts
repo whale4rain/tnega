@@ -1,6 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { HttpError, errorMessage, readJsonBody, sendError, sendJson, writeSse } from '@tnega/web-kit'
-import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, computerSpec, hostPlugins, isActive, mountBrowser, parseRunAttachments, permissionNotice, processesFor, resolveSessionLlm, runKey, searchApiKey, sessionFilePath, sessionModelRoute, userMessage } from './support.js'
+import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, computerSpec, hostPlugins, isActive, mountBrowser, parseRunAttachments, permissionNotice, processesFor, resolveSessionLlm, runKey, searchApiKey, sessionModelRoute, userMessage, withSessionLog } from './support.js'
 import type { ResidentAgentEntry, ServerContext } from './context.js'
 import { agents, continuationNudge, findInterruptedTurn, type AgentCreationOptions, type AgentHandle, type AgentRegistry, type AgentStreamEvent, type LiveAgent } from '@tnega/agent'
 import { Context, type Fiber, type Plugin } from '@tnega/core'
@@ -31,7 +31,7 @@ import { toolWebSearch } from '@tnega/tool-web-search'
 import { builtinTools, createAgentRuntime, type AgentRuntime } from '@tnega/runtime'
 import { readSystemConfig, updateSystemConfig, type EffectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import type { SandboxNetworkRequest } from '@tnega/sandbox'
-import { patchSessionMeta, readSessionSummary } from '@tnega/session-store-jsonl'
+import type { SessionStore } from '@tnega/session-store'
 
 export async function handleRun(
   req: IncomingMessage,
@@ -57,7 +57,7 @@ export async function handleRun(
   }
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   const requestId = submissionId(body.requestId)
-  const summary = await readSessionSummary(workspace, id)
+  const summary = await context.sessions.summary(workspace, id)
   const permission: PermissionMode = summary.permission ?? 'read-only'
   const agentType = summary.agentType ?? 'general'
   const coding = agentType === 'coding'
@@ -85,7 +85,8 @@ export async function handleRun(
       goalMode: mode === 'goal',
       effective,
       apiKey,
-      route: sessionModelRoute(context.configFile, workspace, id),
+      route: sessionModelRoute(context.sessions, context.configFile, workspace, id),
+      sessions: context.sessions,
       config,
       sandboxNetwork: sandboxNetworkFrom(context.configFile),
       resumeQueued,
@@ -104,13 +105,13 @@ export async function handleRun(
 
   const controller = new AbortController()
   const adapter = adapterFromConfig(effective, apiKey)
-  const route = sessionModelRoute(context.configFile, workspace, id)
+  const route = sessionModelRoute(context.sessions, context.configFile, workspace, id)
   let runtime: AgentRuntime | undefined
   let approvalFiber: { dispose(): Promise<void> } | undefined
   try {
     runtime = await createAgentRuntime({
       cwd: workspace,
-      sessionFile: sessionFilePath(workspace, id),
+      sessionFile: context.sessions.backend(workspace, id),
       durableInbox: true,
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ptc: { mode: config.codeMode ? 'ptc' : 'native' },
@@ -153,7 +154,7 @@ export async function handleRun(
     approvalFiber = await mountApprovalReview(runtime.root, {
       config, workspace, adapter, model: effective.model,
       session: () => runtime?.root.get('session'),
-      mode: async () => (await readSessionSummary(workspace, id)).approvalMode ?? config.approvalReview?.defaultMode ?? 'manual',
+      mode: async () => (await context.sessions.summary(workspace, id)).approvalMode ?? config.approvalReview?.defaultMode ?? 'manual',
     })
     const root = runtime.root
     const questionInbox = runtime.inbox
@@ -353,6 +354,8 @@ export interface ResidentRunRequest {
   apiKey: string
   /** The Session's live model selection, read at every step. */
   route: ReturnType<typeof sessionModelRoute>
+  /** Where the Session lives (`ctx.sessionStore` on the host root). */
+  sessions: SessionStore
 }
 
 export async function evictResident(context: ServerContext, workspace: string, id: string): Promise<void> {
@@ -369,7 +372,7 @@ export async function createResidentRuntime(
 ): Promise<{ root: Context; dispose: () => Promise<void> }> {
   const root = new Context()
   const currentPermission = async (): Promise<PermissionMode> => {
-    return (await readSessionSummary(workspace, req.sessionId)).permission ?? 'read-only'
+    return (await req.sessions.summary(workspace, req.sessionId)).permission ?? 'read-only'
   }
   const sessionOf = (agentId?: string) => root.get('agents', false)?.get(agentId ?? req.sessionId)?.session
 
@@ -429,7 +432,7 @@ export async function createResidentRuntime(
     config: req.config, workspace,
     adapter: adapterFromConfig(req.effective, req.apiKey), model: req.effective.model,
     session: agentId => registry?.get(agentId ?? req.sessionId)?.session,
-    mode: async () => (await readSessionSummary(workspace, req.sessionId)).approvalMode ?? req.config.approvalReview?.defaultMode ?? 'manual',
+    mode: async () => (await req.sessions.summary(workspace, req.sessionId)).approvalMode ?? req.config.approvalReview?.defaultMode ?? 'manual',
   })
   await root.plugin(toolWebSearch, { apiKey: searchApiKey(req.effective, req.apiKey) })
   await mountBrowser(root, req.browser)
@@ -537,7 +540,7 @@ export async function createResidentAgent(
   try {
     const registry = (runtime.root as unknown as { agents: AgentRegistry }).agents
     const options: AgentCreationOptions = {
-      file: sessionFilePath(workspace, id),
+      file: req.sessions.backend(workspace, id),
       sessionId: id,
       id,
       mode: 'auto',
@@ -608,7 +611,7 @@ export function recoveryField(events: readonly SessionEvent[]): { recovery?: { s
 }
 
 export async function residentQuestionRequest(context: ServerContext, workspace: string, id: string): Promise<ResidentRunRequest> {
-  const summary = await readSessionSummary(workspace, id)
+  const summary = await context.sessions.summary(workspace, id)
   const config = await readSystemConfig(context.configFile)
   const { effective, apiKey } = resolveSessionLlm(config, summary.model, summary.reasoningEffort)
   if (!apiKey) throw new HttpError(400, 'API key is not configured')
@@ -616,7 +619,8 @@ export async function residentQuestionRequest(context: ServerContext, workspace:
     prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
     approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
     effective, apiKey, config, sandboxNetwork: sandboxNetworkFrom(context.configFile), resumeQueued: true,
-    route: sessionModelRoute(context.configFile, workspace, id),
+    route: sessionModelRoute(context.sessions, context.configFile, workspace, id),
+    sessions: context.sessions,
     processes: processesFor(context, workspace),
     ...(context.secrets ? { secrets: context.secrets } : {}),
     ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
@@ -788,11 +792,12 @@ export function planPayload(plan: Plan): PlanPayload {
 }
 
 export async function handleCodingCommands(
+  sessions: SessionStore,
   res: ServerResponse,
   workspace: string,
   id: string,
 ): Promise<void> {
-  const summary = await readSessionSummary(workspace, id)
+  const summary = await sessions.summary(workspace, id)
   sendJson(res, 200, {
     commands: createSlashRegistry().list(),
     agentType: summary.agentType ?? 'general',
@@ -801,12 +806,13 @@ export async function handleCodingCommands(
 }
 
 export async function handleCodingSlash(
+  sessions: SessionStore,
   req: IncomingMessage,
   res: ServerResponse,
   workspace: string,
   id: string,
 ): Promise<void> {
-  const summary = await readSessionSummary(workspace, id)
+  const summary = await sessions.summary(workspace, id)
   if (summary.agentType !== 'coding') {
     sendError(res, 400, 'session is not a coding session')
     return
@@ -828,15 +834,15 @@ export async function handleCodingSlash(
     return
   }
   if (name === '/plan') {
-    await patchSessionMeta(workspace, id, { mode: 'plan' })
+    await sessions.patchMeta(workspace, id, { mode: 'plan' })
     const result: SlashCommandResult = { kind: 'text', text: 'Plan mode selected. Send a request to generate a plan.' }
-    await appendSlashMeta(workspace, id, name, args, result)
+    await appendSlashMeta(sessions, workspace, id, name, args, result)
     sendJson(res, 200, { result, mode: 'plan' })
     return
   }
 
   if (name === '/goal') {
-    const result = await withCodingAgent(workspace, id, async (_coding, log): Promise<SlashCommandResult> => {
+    const result = await withCodingAgent(sessions, workspace, id, async (_coding, log): Promise<SlashCommandResult> => {
       const action = args[0]?.toLowerCase()
       if (!action) {
         return { kind: 'json', value: await readGoal(log) ?? { status: 'none' } }
@@ -860,11 +866,11 @@ export async function handleCodingSlash(
       await log.flush()
       return { kind: 'json', value: goal }
     })
-    await appendSlashMeta(workspace, id, name, args, result)
-    sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
+    await appendSlashMeta(sessions, workspace, id, name, args, result)
+    sendJson(res, 200, { result, mode: (await sessions.summary(workspace, id)).mode ?? 'auto' })
     return
   }
-  const result = await withCodingAgent(workspace, id, async (coding, sessionLog) => {
+  const result = await withCodingAgent(sessions, workspace, id, async (coding, sessionLog) => {
     const result: SlashCommandResult = await coding.runCommand(name, args)
     await sessionLog.append('meta', {
       kind: 'slash',
@@ -874,16 +880,17 @@ export async function handleCodingSlash(
     })
     return result
   })
-  sendJson(res, 200, { result, mode: (await readSessionSummary(workspace, id)).mode ?? 'auto' })
+  sendJson(res, 200, { result, mode: (await sessions.summary(workspace, id)).mode ?? 'auto' })
 }
 
 export async function handleCodingSlashCandidates(
+  sessions: SessionStore,
   req: IncomingMessage,
   res: ServerResponse,
   workspace: string,
   id: string,
 ): Promise<void> {
-  const summary = await readSessionSummary(workspace, id)
+  const summary = await sessions.summary(workspace, id)
   if (summary.agentType !== 'coding') {
     sendError(res, 400, 'session is not a coding session')
     return
@@ -896,20 +903,21 @@ export async function handleCodingSlashCandidates(
     sendError(res, 400, 'name is required')
     return
   }
-  const candidates = await withCodingAgent(workspace, id, coding => coding.suggestCommand(name))
+  const candidates = await withCodingAgent(sessions, workspace, id, coding => coding.suggestCommand(name))
   sendJson(res, 200, { candidates })
 }
 
 export async function withCodingAgent<T>(
+  sessions: SessionStore,
   workspace: string,
   id: string,
   run: (coding: CodingService, sessionLog: SessionLog) => Promise<T>,
 ): Promise<T> {
-  const summary = await readSessionSummary(workspace, id)
+  const summary = await sessions.summary(workspace, id)
   const root = new Context()
   let fiber: { dispose: () => Promise<void> } | undefined
   try {
-    await root.plugin(session, { file: sessionFilePath(workspace, id) })
+    await root.plugin(session, { file: sessions.backend(workspace, id) })
     await root.plugin(tools)
     const registry = root.get('tools')
     registry.guard(permissionGuard(summary.permission ?? 'read-only', runKey(workspace, id), new ApprovalBroker(), { workspace }))
@@ -952,14 +960,10 @@ export async function handleStopRun(
 }
 
 export async function appendSlashMeta(
-  workspace: string, id: string, name: string, args: string[], result: SlashCommandResult,
+  sessions: SessionStore, workspace: string, id: string, name: string, args: string[], result: SlashCommandResult,
 ): Promise<void> {
-  const log = new SessionLog(sessionFilePath(workspace, id))
-  await log.init()
-  try {
+  await withSessionLog(sessions, workspace, id, async log => {
     await log.append('meta', { kind: 'slash', command: name, args, result })
     await log.flush()
-  } finally {
-    await log.close()
-  }
+  })
 }

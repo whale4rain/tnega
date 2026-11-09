@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Context, symbols, type Plugin } from '@tnega/core'
-import { SessionLog, isAgentType, type AgentType, type SessionEvent } from '@tnega/session'
+import { SessionLog, isAgentType, type AgentType, type SessionBackend, type SessionEvent } from '@tnega/session'
 import type { ModelMessage } from '@tnega/session'
 import { AgentInbox, AgentService } from './service.js'
 import { AgentError } from './service.js'
@@ -120,7 +120,8 @@ export interface AgentHandle {
 }
 
 export interface AgentCreationOptions {
-  file: string
+  /** The Session log: a JSONL file path, or a store's backend (`ctx.sessionStore.backend`). */
+  file: string | SessionBackend
   /** Stable identity shared by this process and future resumes. */
   sessionId?: string
   agentType?: AgentType
@@ -796,7 +797,7 @@ async function buildHandle(
 ): Promise<AgentHandle> {
   const fileMeta = await readAgentMeta(options.file)
   if (resume && !fileMeta) {
-    throw new AgentError(`no agent session meta found for resume: ${options.file}`)
+    throw new AgentError(`no agent session meta found for resume: ${typeof options.file === 'string' ? options.file : options.file.key}`)
   }
   const requestedId = options.id ?? options.sessionId ?? randomUUID()
   if (fileMeta?.agentId && fileMeta.agentId !== requestedId) {
@@ -994,8 +995,24 @@ function hasRestoredWakeReservation(events: readonly SessionEvent[]): boolean {
 }
 
 async function readAgentMeta(
-  file: string,
+  target: string | SessionBackend,
 ): Promise<{ agentId?: string; createdAt?: number } | undefined> {
+  if (typeof target !== 'string') {
+    const loaded = await target.load()
+    for (const event of loaded?.events ?? []) {
+      if (event.type !== 'meta') continue
+      const kind: unknown = Reflect.get(event.payload, 'kind')
+      if (kind !== 'agent') continue
+      const agentId: unknown = Reflect.get(event.payload, 'agentId')
+      const createdAt: unknown = Reflect.get(event.payload, 'createdAt')
+      return {
+        ...(typeof agentId === 'string' ? { agentId } : {}),
+        ...(typeof createdAt === 'number' ? { createdAt } : {}),
+      }
+    }
+    return undefined
+  }
+  const file = target
   const lines = await import('node:fs/promises').then(fs => fs.readFile(file, 'utf8'))
     .catch((error: unknown) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined

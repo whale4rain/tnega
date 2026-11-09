@@ -110,6 +110,17 @@ describe('the JSONL session store', () => {
     expect((await all(store.read(workspace, id))).map(event => event.seq)).toEqual([1, 2])
   })
 
+  it('finds Sessions by message text, counting what a live writer still holds', async () => {
+    const { store, workspace, id } = await setup()
+    const log = SessionLog.live(store.backend(workspace, id)) ?? new SessionLog(store.backend(workspace, id))
+    await log.init()
+    try {
+      void log.append('user/message', { content: 'Where is the Parser config?' })
+      expect(await store.search(workspace, 'parser CONFIG')).toEqual([{ id, snippet: 'Where is the Parser config?' }])
+      expect(await store.search(workspace, 'nothing like this')).toEqual([])
+    } finally { await log.close() }
+  })
+
   it('lets one writer append at a time', async () => {
     const { store, workspace, id } = await setup()
     await expect(store.append(workspace, id, { expectedSeq: 1, events: [message(2, 'x')], owner: 'runtime-a' })).rejects.toBeInstanceOf(SessionLeaseError)

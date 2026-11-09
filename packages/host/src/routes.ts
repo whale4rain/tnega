@@ -1,14 +1,12 @@
-import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { dedupe, errorMessage, readJsonBody, sendError, sendJson, HttpError } from '@tnega/web-kit'
-import { KEEP_RECENT_TOKENS, MAX_RUN_BODY_BYTES, adapterFromConfig, appendPermissionNotice, canonicalWorkspace, compactionAdapter, isActive, optionalCount, optionalSeq, parseRunAttachments, processesFor, runKey, sessionFilePath, userMessage, workspaceParam } from './support.js'
+import { KEEP_RECENT_TOKENS, MAX_RUN_BODY_BYTES, adapterFromConfig, appendPermissionNotice, canonicalWorkspace, compactionAdapter, isActive, optionalCount, optionalSeq, parseRunAttachments, processesFor, runKey, userMessage, withSessionLog, workspaceFolder, workspaceParam } from './support.js'
 import { Context } from '@tnega/core'
 import { configureNetwork } from '@tnega/process-local'
 import { modelCapabilities } from '@tnega/llm'
 import { memoryLocal } from '@tnega/memory-local'
 import { buildCompactionPrompt, SUMMARY_PREFIX, SUMMARIZATION_SYSTEM_PROMPT } from '@tnega/compaction'
-import { compactSession, prepareSessionCompact, readSessionMessages, type SessionSummary } from '@tnega/session-store-jsonl'
 import { consolidateProjectMemory } from '@tnega/tool-memory'
 import { resolve } from 'node:path'
 import { recoverInterruptedTurn } from '@tnega/agent'
@@ -16,7 +14,7 @@ import { sessionUsage } from '@tnega/usage'
 import { discoverModels, ModelDiscoveryError, parseModelDiscoveryInput } from '@tnega/config'
 import { pendingQuestionsFromEvents, UserQuestionError } from '@tnega/user-questions'
 import { readGoal } from '@tnega/goal'
-import { isAgentType, SessionLog } from '@tnega/session'
+import { isAgentType, prepareCompaction, SessionLog, type CompactOptions } from '@tnega/session'
 import { availableShells, configureSystemShell, DEFAULT_ALLOWED_HOSTS, systemShell } from '@tnega/process-local'
 import { isSandboxNetworkMode, resolveNetworkPolicy, SandboxError } from '@tnega/sandbox'
 import { listStoredSubagents, readSubagentEvents } from '@tnega/subagent-local'
@@ -27,8 +25,7 @@ import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, COMPUTER_APPROVAL_MODES, isComputerApprovalMode, normalizeComputerApps, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
-import { ensureWorkspace, searchSessions } from '@tnega/session-store-jsonl'
-import { isSessionId, SessionNotFoundError, type SessionMetaPatch } from '@tnega/session-store'
+import { isSessionId, SessionNotFoundError, type SessionMetaPatch, type SessionSummary } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun, sandboxNetworkFrom } from './runs.js'
 import type { WebServerService } from '@tnega/web-kit'
@@ -83,20 +80,26 @@ interface ApiRoute {
  * workspace's Session — answers 404 instead of leaving an empty log behind.
  */
 async function withExistingLog<T>(
+  context: ServerContext,
   workspace: string,
   id: string,
   run: (log: SessionLog) => Promise<T>,
 ): Promise<T> {
-  const log = SessionLog.readOnly(sessionFilePath(workspace, id))
   try {
-    await log.init()
-    return await run(log)
+    return await withSessionLog(context.sessions, workspace, id, run, { create: false })
   } catch (error) {
     if (error instanceof SessionNotFoundError) throw new HttpError(404, `no session ${id} in this workspace`)
     throw error
-  } finally {
-    await log.close()
   }
+}
+
+/** Compact a Session's log and answer its summary afterwards. */
+async function compactLog(context: ServerContext, workspace: string, id: string, options: CompactOptions): Promise<SessionSummary> {
+  await withSessionLog(context.sessions, workspace, id, async log => {
+    await log.compact(options)
+    await log.flush()
+  })
+  return context.sessions.summary(workspace, id)
 }
 
 const apiRoutes: ApiRoute[] = [
@@ -293,7 +296,7 @@ const apiRoutes: ApiRoute[] = [
       const config = await readSystemConfig(context.configFile)
       const fallback = defaultWorkspace()
       await mkdir(fallback, { recursive: true })
-      sendJson(res, 200, { workspaces: config.workspaces ?? [], defaultWorkspace: await ensureWorkspace(fallback) })
+      sendJson(res, 200, { workspaces: config.workspaces ?? [], defaultWorkspace: await workspaceFolder(fallback) })
       return
     },
   },
@@ -306,7 +309,7 @@ const apiRoutes: ApiRoute[] = [
             sendError(res, 400, 'path is required')
             return
           }
-      const workspace = await ensureWorkspace(body.path)
+      const workspace = await workspaceFolder(body.path)
       const config = await readSystemConfig(context.configFile)
       const workspaces = dedupe([...(config.workspaces ?? []), workspace])
       await updateSystemConfig({ workspaces }, context.configFile)
@@ -354,7 +357,7 @@ const apiRoutes: ApiRoute[] = [
   },
 {
     match: (req, url) => Boolean(url.pathname === '/api/sessions/search' && req.method === 'GET'),
-    handle: async (req, res, url) => {
+    handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/sessions/search' && req.method === 'GET')) return
       const workspace = workspaceParam(url)
       if (!workspace) {
@@ -362,7 +365,7 @@ const apiRoutes: ApiRoute[] = [
             return
           }
       const query = url.searchParams.get('q') ?? ''
-      sendJson(res, 200, { workspace, hits: await searchSessions(workspace, query) })
+      sendJson(res, 200, { workspace, hits: await context.sessions.search(workspace, query) })
       return
     },
   },
@@ -410,7 +413,7 @@ const apiRoutes: ApiRoute[] = [
             return
           }
       if (action === 'commands' && req.method === 'GET') {
-            await handleCodingCommands(res, workspace, id)
+            await handleCodingCommands(context.sessions, res, workspace, id)
             return
           }
       if (action === 'slash' && req.method === 'POST') {
@@ -419,11 +422,11 @@ const apiRoutes: ApiRoute[] = [
               return
             }
             await evictResident(context, workspace, id)
-            await handleCodingSlash(req, res, workspace, id)
+            await handleCodingSlash(context.sessions, req, res, workspace, id)
             return
           }
       if (action === 'slash-candidates' && req.method === 'POST') {
-            await handleCodingSlashCandidates(req, res, workspace, id)
+            await handleCodingSlashCandidates(context.sessions, req, res, workspace, id)
             return
           }
       sendError(res, 405, 'method not allowed')
@@ -477,7 +480,7 @@ const apiRoutes: ApiRoute[] = [
       await context.sessions.summary(workspace, id)
       const key = runKey(workspace, id)
       if (req.method === 'GET' && !questionMatch[2]) {
-            const questions = await withExistingLog(workspace, id, async log => pendingQuestionsFromEvents(await log.read())
+            const questions = await withExistingLog(context, workspace, id, async log => pendingQuestionsFromEvents(await log.read())
               .filter(question => question.agentId === id && (question.mode === 'nonblocking' || isActive(context.activeRuns, workspace, id))))
             sendJson(res, 200, { questions })
             return
@@ -580,7 +583,7 @@ const apiRoutes: ApiRoute[] = [
             return
           }
       if (action === 'jobs' && (req.method === 'GET' || req.method === 'POST')) {
-            if (!existsSync(sessionFilePath(workspace, id))) {
+            if (!(await context.sessions.summary(workspace, id)).eventCount) {
               sendError(res, 404, 'session not found')
               return
             }
@@ -610,7 +613,7 @@ const apiRoutes: ApiRoute[] = [
             return
           }
       if (action === 'goal' && req.method === 'GET') {
-            const goal = await withExistingLog(workspace, id, log => readGoal(log))
+            const goal = await withExistingLog(context, workspace, id, log => readGoal(log))
             sendJson(res, 200, { goal: goal ?? null })
             return
           }
@@ -659,7 +662,7 @@ const apiRoutes: ApiRoute[] = [
               ...(permission !== undefined ? { permission } : {}),
             })
             // Mid-turn, the next step tells the model (see @tnega/run-settings).
-            if (permission !== undefined && !running) await appendPermissionNotice(workspace, id)
+            if (permission !== undefined && !running) await appendPermissionNotice(context.sessions, workspace, id)
             sendJson(res, 200, { summary })
             return
           }
@@ -974,14 +977,15 @@ export async function compactContext(
   if (!effective.apiKeySet || !apiKey) {
     throw new HttpError(400, 'API key is not configured')
   }
-  const preparation = await prepareSessionCompact(workspace, id, KEEP_RECENT_TOKENS)
+  const { preparation, allMessages } = await withExistingLog(context, workspace, id, async log => ({
+    preparation: await prepareCompaction(log, KEEP_RECENT_TOKENS),
+    allMessages: await log.deriveMessages(),
+  }))
   const hasPrefix = preparation.prefixMessages.length > 0
-  const messages = hasPrefix
-    ? preparation.prefixMessages
-    : await readSessionMessages(workspace, id)
+  const messages = hasPrefix ? preparation.prefixMessages : allMessages
   const previousSummary = hasPrefix ? preparation.previousSummary : undefined
   if (!messages.length) {
-    return compactSession(workspace, id, { keep })
+    return compactLog(context, workspace, id, { keep })
   }
   const adapter = compactionAdapter(effective, apiKey)
   const completion = await adapter.complete(
@@ -1000,18 +1004,12 @@ export async function compactContext(
   )
   const summary = completion.content?.trim()
   if (!summary) throw new HttpError(500, 'compression returned no summary')
-  const result = await compactSession(
-    workspace,
-    id,
-    {
-      ...(hasPrefix ? { keepTokens: KEEP_RECENT_TOKENS } : { keep }),
-      checkpointMessages: [
-        { role: 'system', content: `${SUMMARY_PREFIX}${summary}` },
-      ],
-      summary,
-      tokensBefore: preparation.tokensBefore,
-    },
-  )
+  const result = await compactLog(context, workspace, id, {
+    ...(hasPrefix ? { keepTokens: KEEP_RECENT_TOKENS } : { keep }),
+    messages: [{ role: 'system', content: `${SUMMARY_PREFIX}${summary}` }],
+    summary,
+    tokensBefore: preparation.tokensBefore,
+  })
   const memoryRoot = new Context()
   try {
     await memoryRoot.plugin(memoryLocal, { cwd: workspace })

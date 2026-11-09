@@ -121,6 +121,13 @@ export interface SessionSnapshotOptions extends SessionPageOptions {
   windowFor?: (model: string | undefined) => number | undefined
 }
 
+/** One Session whose messages matched a {@link SessionStore.search}. */
+export interface SessionSearchHit {
+  id: string
+  /** A short stretch of the matching message, on one line. */
+  snippet: string
+}
+
 /** {@link SessionStore.append}: the events stored, or why not. */
 export type SessionAppendResult =
   | { status: 'committed'; seqs: number[] }
@@ -191,6 +198,12 @@ export abstract class SessionStore extends Service {
    */
   abstract list(workspace: WorkspaceKey): Promise<SessionSummary[]>
   abstract summary(workspace: WorkspaceKey, id: string): Promise<SessionSummary>
+  /**
+   * The Sessions whose user or assistant messages contain `query`, ignoring
+   * case, newest match first; each once, with a snippet around its latest
+   * match. Titles are not searched: clients already hold them.
+   */
+  abstract search(workspace: WorkspaceKey, query: string, options?: { limit?: number }): Promise<SessionSearchHit[]>
   abstract snapshot(workspace: WorkspaceKey, id: string, options?: SessionSnapshotOptions): Promise<SessionSnapshot>
   /** Events after `afterSeq`, in order. A missing Session is `SessionNotFoundError`. */
   abstract read(workspace: WorkspaceKey, id: string, afterSeq?: number): AsyncIterable<SessionEvent>
@@ -217,5 +230,7 @@ export abstract class SessionStore extends Service {
    */
   abstract backend(workspace: WorkspaceKey, id: string): SessionBackend
 }
+
+export { BlobImagesBackend, ImageCache, keepsImagesAsBlobs, restoreImages, sessionFormatOf, storeImages } from './images.js'
 
 export const name = '@tnega/session-store'

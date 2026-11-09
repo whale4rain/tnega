@@ -12,11 +12,16 @@ import {
 import { autoContextBudget } from '@tnega/compaction'
 import { Context } from '@tnega/core'
 import { GENERAL_SYSTEM_PROMPT } from '@tnega/persona'
-import { isModelAttachment, session } from '@tnega/session'
+import { isModelAttachment, session, type SessionBackend } from '@tnega/session'
 import type { BuiltinToolsConfig } from './builtins.js'
 import { basename } from 'node:path'
 import { ptcCapability, runtimeCapabilities } from './compose.js'
 import type { AgentRuntime, AgentRuntimeOptions } from './types.js'
+
+/** Where the Session log lives, as one string: its file path, or its backend's key. */
+function sessionKey(target: string | SessionBackend): string {
+  return typeof target === 'string' ? target : target.key
+}
 
 /**
  * The id this scope's Agent answers to. Everything keyed by agent — the loop
@@ -26,7 +31,7 @@ import type { AgentRuntime, AgentRuntimeOptions } from './types.js'
  */
 export function agentIdFor(options: AgentRuntimeOptions): string {
   if (options.agentId) return options.agentId
-  const base = basename(options.sessionFile)
+  const base = basename(sessionKey(options.sessionFile))
   return base.replace(/\.[^.]*$/, '') || base
 }
 
@@ -80,7 +85,7 @@ export async function createAgentRuntime(
       permission: merged.sandboxMode ?? (merged.allowShell ? 'workspace-write' : 'read-only'),
       ...(merged.sandboxNetwork !== undefined ? { sandboxNetwork: merged.sandboxNetwork } : {}),
       ...(merged.machine ? { machine: merged.machine } : {}),
-      sessionId: merged.sessionFile,
+      sessionId: sessionKey(merged.sessionFile),
       tools: merged.toolPolicy ?? {},
       builtin: builtinConfig,
       memory: true,

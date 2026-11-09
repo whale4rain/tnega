@@ -114,6 +114,8 @@ describe('terminals over the daemon', () => {
     const { links } = await reconnectingDaemon(dir, config)
     const remote = forwardService(await links[0]!, 'terminals')
     await expect(remote.call('create', [outside, {}])).rejects.toMatchObject({ rpcCode: RpcErrorCode.WORKSPACE_DENIED })
+    // Inside the workspace but not a folder: refused, not a shell that dies in chdir.
+    await expect(remote.call('create', [join(dir, 'missing'), {}])).rejects.toMatchObject({ rpcCode: RpcErrorCode.INVALID_PARAMS })
     await expect(remote.call('spawnAnything', [])).rejects.toMatchObject({ rpcCode: RpcErrorCode.METHOD_NOT_FOUND })
     await expect(forwardService(await links[0]!, 'nothing').call('list', [])).rejects.toMatchObject({ rpcCode: RpcErrorCode.METHOD_NOT_FOUND })
     expect(ptys).toHaveLength(0)

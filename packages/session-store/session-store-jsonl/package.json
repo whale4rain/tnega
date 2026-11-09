@@ -11,6 +11,10 @@
     "@tnega/home": "workspace:*",
     "@tnega/core": "workspace:*",
     "@tnega/session": "workspace:*",
+    "@tnega/blobs": "workspace:*",
     "@tnega/session-store": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/blobs-local": "workspace:*"
   }
 }

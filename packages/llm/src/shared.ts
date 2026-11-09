@@ -140,8 +140,18 @@ export async function parseJson(response: Response): Promise<unknown> {
 /** Default number of most recent images a request carries. */
 export const DEFAULT_MAX_IMAGES = 8
 
+/**
+ * The image's base64 bytes. An image without them (its Session keeps the bytes
+ * in a blob store the log was not opened through) is an error, never an empty
+ * image sent to a provider.
+ */
+export function imageData(attachment: ModelAttachment): string {
+  if (!attachment.data) throw new Error(`image ${attachment.name ?? attachment.mediaType} has no bytes`)
+  return attachment.data
+}
+
 export function imageDataUrl(attachment: ModelAttachment): string {
-  return `data:${attachment.mediaType};base64,${attachment.data}`
+  return `data:${attachment.mediaType};base64,${imageData(attachment)}`
 }
 
 /**

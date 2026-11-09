@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { ModelAttachment, ModelMessage } from '@tnega/session'
 import { OpenAICompatibleError } from './errors.js'
-import { assertOk, normalizeBaseUrl, prepareImages } from './shared.js'
+import { assertOk, imageData, normalizeBaseUrl, prepareImages } from './shared.js'
 import type { LlmConfig } from './types.js'
 
 /** Wire shape of the provider's Files API: OpenAI multipart vs Anthropic multipart. */
@@ -78,7 +78,7 @@ async function send(config: LlmConfig, target: UploadTarget, purpose: string, at
   const extension = attachment.mediaType.split('/')[1] ?? 'png'
   const form = new FormData()
   form.append('purpose', purpose)
-  form.append('file', new Blob([Buffer.from(attachment.data, 'base64')], { type: attachment.mediaType }), attachment.name ?? `image.${extension}`)
+  form.append('file', new Blob([Buffer.from(imageData(attachment), 'base64')], { type: attachment.mediaType }), attachment.name ?? `image.${extension}`)
   const response = await (config.fetch ?? fetch)(target.url, { method: 'POST', headers: headersFor(config, target), body: form })
   await assertOk(response, config.apiKey)
   const payload = await response.json() as { id?: unknown }

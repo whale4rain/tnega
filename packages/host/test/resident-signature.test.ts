@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { ApprovalBroker } from '@tnega/approval-host'
 import type { SystemConfig } from '@tnega/config'
+import { Context } from '@tnega/core'
+import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { residentSignature, type ResidentRunRequest } from '../src/runs.js'
 import { permissionNotice, sessionModelRoute } from '../src/support.js'
+
+const stores = new Context()
+await stores.plugin(sessionStoreJsonl)
+const sessions = stores.get('sessionStore')
 
 const request: ResidentRunRequest = {
   config: {} as SystemConfig,
@@ -20,7 +26,8 @@ const request: ResidentRunRequest = {
     vision: false,
   },
   apiKey: 'key',
-  route: sessionModelRoute(undefined, 'workspace', 'session'),
+  route: sessionModelRoute(sessions, undefined, 'workspace', 'session'),
+  sessions,
 }
 
 describe('residentSignature', () => {

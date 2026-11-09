@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Context } from '@tnega/core'
-import { SessionLog, type ModelMessage, type SessionEvent } from '@tnega/session'
+import { JsonlSessionBackend, SessionLog, type ModelMessage, type SessionEvent } from '@tnega/session'
 import { tools, ToolsService } from '@tnega/tools'
 
 import {
@@ -1641,6 +1641,31 @@ describe('live agent resume', () => {
     expect(seen?.filter(message => message.role !== 'system')
       .map(message => message.content)).toEqual(['user context'])
     await resumed.dispose()
+  })
+
+  it('resumes an agent from a session backend as it does from a file', async () => {
+    const backend = new JsonlSessionBackend(await tempFile('resume-backend.jsonl'))
+    const prior = new SessionLog(backend)
+    await prior.init()
+    await prior.append('meta', { kind: 'agent', agentId: 'resume-backend' })
+    await prior.flush()
+    await prior.close()
+
+    const root = await mountRoot()
+    const registry = dynamic(root).agents as AgentRegistry
+    const resumed = await registry.resume({
+      id: 'resume-backend',
+      file: backend,
+      llm: { async complete() { return { content: 'done', finishReason: 'stop' } } },
+    })
+    expect(resumed.agent.id).toBe('resume-backend')
+    await resumed.dispose()
+    // Another id is refused: the backend's meta names the owner.
+    await expect(registry.resume({
+      id: 'someone-else',
+      file: backend,
+      llm: { async complete() { return { content: 'done', finishReason: 'stop' } } },
+    })).rejects.toThrow(/agent id mismatch/)
   })
 
   it('does not wake an inject-only inbox after resume', async () => {

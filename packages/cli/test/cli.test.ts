@@ -12,6 +12,7 @@ import {
   runAgentCommand,
 } from '../src/index.js'
 import { defaultRunSessionFile } from '@tnega/home'
+import { SESSION_FORMAT_VERSION } from '@tnega/session'
 import { main as runExecutable } from '../src/entry.js'
 
 type FetchMock = Mock<(...args: [unknown, RequestInit]) => Promise<Response>>
@@ -105,7 +106,7 @@ describe('agent run command', () => {
 
     expect(result.run.output).toBe('agent says hi')
     expect(result.run.finishReason).toBe('stop')
-    expect(result.sessionFile).toBe(defaultRunSessionFile(dir, 10))
+    expect(result.sessionFile).toBe(defaultRunSessionFile(dir, SESSION_FORMAT_VERSION))
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const init = fetchMock.mock.calls[0]![1]!
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer test-key')
@@ -141,9 +142,9 @@ describe('agent run command', () => {
       maxTokens: 16,
     })
 
-    expect(result.sessionFile).toBe(defaultRunSessionFile(dir, 10))
+    expect(result.sessionFile).toBe(defaultRunSessionFile(dir, SESSION_FORMAT_VERSION))
     expect(await readFile(legacyFile, 'utf8')).toBe(`${legacy}\n`)
-    expect(await readFile(result.sessionFile, 'utf8')).toContain('"formatVersion":10')
+    expect(await readFile(result.sessionFile, 'utf8')).toContain(`"formatVersion":${SESSION_FORMAT_VERSION}`)
   })
 
   it('defaults to deepseek-v4-flash through the OpenAI compatible endpoint', async () => {

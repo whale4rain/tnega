@@ -18,6 +18,7 @@ import {
   DEFAULT_LLM_RETRY_DELAY_MS,
   DEFAULT_LLM_TIMEOUT_MS,
   errorMessage,
+  imageData,
   isAbortLike,
   isExternalAbort,
   isRetryableStatus,
@@ -312,7 +313,7 @@ function toAnthropicImage(attachment: ModelAttachment, fileId?: (attachment: Mod
   if (id) return { type: 'image', source: { type: 'file', file_id: id } }
   return {
     type: 'image',
-    source: { type: 'base64', media_type: attachment.mediaType, data: attachment.data },
+    source: { type: 'base64', media_type: attachment.mediaType, data: imageData(attachment) },
   }
 }
 
