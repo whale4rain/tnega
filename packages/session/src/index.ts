@@ -24,6 +24,11 @@ export { JsonlSessionBackend } from './jsonl.js'
  * its own `toolCalls` (the assistant turn is not reassembled from separate
  * `tool/call` events at projection time).
  *
+ * v11 lets storage keep an image's bytes outside the log: a stored image
+ * attachment may carry `blob` (the SHA-256 of its bytes in `ctx.blobs`) and
+ * an empty `data`, which the backend restores before `SessionLog` reads it.
+ * v10 logs (bytes always inline) are still read and appended to as v10.
+ *
  * v10 extends the all-queue splice with explicit prefix delete counts, so a
  * mixed next-step/next-turn claim commits as one fact. v9 and older logs are
  * rejected without in-place migration.
@@ -34,7 +39,10 @@ export { JsonlSessionBackend } from './jsonl.js'
  * v8 adds terminal, log-only `assistant/attempt` records for attempts without
  * a surface message. Stream chunks are normalized before entering Session.
  */
-export const SESSION_FORMAT_VERSION = 10
+export const SESSION_FORMAT_VERSION = 11
+
+/** Formats this build reads; new logs are written as {@link SESSION_FORMAT_VERSION}. */
+export const SUPPORTED_SESSION_FORMATS: readonly number[] = [10, 11]
 
 /** Serialized tool schema, structurally compatible with @tnega/tools ToolSchema. */
 export interface ToolSchemaSnapshot {
@@ -86,6 +94,13 @@ export interface ImageAttachment {
   mediaType: ImageMediaType
   /** Base64 without a `data:` prefix. */
   data: string
+  /**
+   * Only in storage (format 11): the bytes live in `ctx.blobs` under this
+   * SHA-256 and `data` is empty. The store's backend restores `data` and drops
+   * `blob` before the log is read; a log opened on the bare file keeps both,
+   * which folds that never look at bytes (meta, fork, rewind) do not mind.
+   */
+  blob?: string
   name?: string
 }
 
@@ -1882,9 +1897,9 @@ export class SessionLog {
         `session log is missing formatVersion; expected ${SESSION_FORMAT_VERSION}`,
       )
     }
-    if (version !== SESSION_FORMAT_VERSION) {
+    if (!SUPPORTED_SESSION_FORMATS.includes(version)) {
       throw new SessionFormatError(
-        `unsupported session format version ${version}; expected ${SESSION_FORMAT_VERSION}`,
+        `unsupported session format version ${version}; expected ${SUPPORTED_SESSION_FORMATS.join(' or ')}`,
       )
     }
   }

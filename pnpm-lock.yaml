@@ -932,6 +932,9 @@ importers:
       '@tnega/auth-chatgpt':
         specifier: workspace:*
         version: link:../auth-chatgpt
+      '@tnega/blobs-local':
+        specifier: workspace:*
+        version: link:../blobs/blobs-local
       '@tnega/browser-playwright':
         specifier: workspace:*
         version: link:../browser/browser-playwright
@@ -2142,6 +2145,9 @@ importers:
       '@tnega/approval-review':
         specifier: workspace:*
         version: link:../../approval-review
+      '@tnega/blobs':
+        specifier: workspace:*
+        version: link:../../blobs/blobs
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
@@ -2154,6 +2160,9 @@ importers:
       '@tnega/approval-review':
         specifier: workspace:*
         version: link:../../approval-review
+      '@tnega/blobs':
+        specifier: workspace:*
+        version: link:../../blobs/blobs
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
@@ -2166,6 +2175,10 @@ importers:
       '@tnega/session-store':
         specifier: workspace:*
         version: link:../session-store
+    devDependencies:
+      '@tnega/blobs-local':
+        specifier: workspace:*
+        version: link:../../blobs/blobs-local
 
   packages/shell/tool-shell:
     dependencies:

@@ -85,7 +85,16 @@ DurableInbox 内部串行化每次修改和领取的读取、append 与队列更
 恢复 inbox 和唤醒状态时使用相同删除计数。append 仍是 Session 内存事实提交边界，
 JSONL 落盘仍由 `flush()` 完成。
 
-当前 `SESSION_FORMAT_VERSION = 10`。v10 新增 atomic inbox claim；v9 及更早日志在
+## 图片存为 blob（v11）
+
+当前 `SESSION_FORMAT_VERSION = 11`，v10 日志照常读取并继续按 v10 追加（图片内联）。
+v11 日志在存储里可以把图片字节放进 `ctx.blobs`：附件保留 `blob`（字节的 SHA-256）
+和空的 `data`。`@tnega/session-store` 的 `BlobImagesBackend` 在写入时存 blob、
+读出时还原 `data` 并去掉 `blob`，所以 `SessionLog`、模型与客户端看到的始终是内联字节，
+回放与在线运行一致。直接打开裸文件的读者只看到哈希；LLM 适配器遇到没有字节的图片会
+报错，不会发出空图片。
+
+v10 新增 atomic inbox claim；v9 及更早日志在
 `init()` 时会被 `SessionFormatError` 拒绝，原文件保持不变，明确不做原地迁移。
 新工作使用新 Session，旧日志留存归档。决策背景见
 [ADR 0005](../../docs/adr/0005-assistant-attempt-ledger.md)。
