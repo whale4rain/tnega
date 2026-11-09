@@ -5,6 +5,7 @@ import type { Context } from '@tnega/core'
 import { JsonlSessionBackend, SessionLockedError, SessionLog, SessionNotFoundError, type SessionBackend, type SessionEvent } from '@tnega/session'
 import {
   BlobImagesBackend,
+  ImageCache,
   SessionLeaseError,
   SessionStore,
   canonicalEvent,
@@ -61,6 +62,8 @@ export class JsonlSessionStore extends SessionStore {
   private closed = false
   /** Releases still letting go of their lock file; closing waits for them. */
   private readonly releasing = new Set<Promise<void>>()
+  /** Restored images, shared by every read and log this store opens. */
+  private readonly images = new ImageCache()
 
   create(workspace: string, options?: CreateSessionOptions): Promise<SessionSummary> {
     return createSession(workspace, options)
@@ -103,12 +106,11 @@ export class JsonlSessionStore extends SessionStore {
     const snapshot = await readSessionSnapshot(workspace, id, windowFor, page)
     const blobs = this.blobs
     if (!blobs) return snapshot
-    const cache = new Map<string, Promise<string>>()
     return {
       ...snapshot,
-      events: await restoreImages(snapshot.events, blobs, cache),
-      surface: await restoreImages(snapshot.surface, blobs, cache),
-      log: await restoreImages(snapshot.log, blobs, cache),
+      events: await restoreImages(snapshot.events, blobs, this.images),
+      surface: await restoreImages(snapshot.surface, blobs, this.images),
+      log: await restoreImages(snapshot.log, blobs, this.images),
     }
   }
 
@@ -119,7 +121,7 @@ export class JsonlSessionStore extends SessionStore {
     if (!await stat(file).catch(() => undefined)) throw new SessionNotFoundError(file)
     const events = (await readSessionEventsReadOnly(workspace, id)).filter(event => event.seq > afterSeq)
     const blobs = this.blobs
-    yield* blobs ? await restoreImages(events, blobs) : events
+    yield* blobs ? await restoreImages(events, blobs, this.images) : events
   }
 
   append(workspace: string, id: string, request: { expectedSeq: number; events: readonly SessionEvent[]; owner: string }): Promise<SessionAppendResult> {
@@ -267,7 +269,7 @@ export class JsonlSessionStore extends SessionStore {
   backend(workspace: string, id: string): SessionBackend {
     const file = new JsonlSessionBackend(sessionFile(workspace, id))
     const blobs = this.blobs
-    return blobs ? new BlobImagesBackend(file, blobs) : file
+    return blobs ? new BlobImagesBackend(file, blobs, this.images) : file
   }
 }
 

@@ -18,17 +18,17 @@ import { basename } from 'node:path'
 import { ptcCapability, runtimeCapabilities } from './compose.js'
 import type { AgentRuntime, AgentRuntimeOptions } from './types.js'
 
+/** Where the Session log lives, as one string: its file path, or its backend's key. */
+function sessionKey(target: string | SessionBackend): string {
+  return typeof target === 'string' ? target : target.key
+}
+
 /**
  * The id this scope's Agent answers to. Everything keyed by agent — the loop
  * guard's turn state, the continuation nudge's per-turn budget, a tool call's
  * attribution — reads it from events, so a run without one silently skips all
  * of them. The session file's name is stable across resumes of the same run.
  */
-/** Where the Session log lives, as one string: its file path, or its backend's key. */
-function sessionKey(target: string | SessionBackend): string {
-  return typeof target === 'string' ? target : target.key
-}
-
 export function agentIdFor(options: AgentRuntimeOptions): string {
   if (options.agentId) return options.agentId
   const base = basename(sessionKey(options.sessionFile))

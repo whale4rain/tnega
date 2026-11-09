@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { blobsLocal } from '@tnega/blobs-local'
 import { Context } from '@tnega/core'
 import { JsonlSessionBackend, SessionLog, type ImageAttachment, type SessionEvent } from '@tnega/session'
+import { ImageCache, restoreImages, storeImages } from '@tnega/session-store'
 import { sessionFile, sessionStoreJsonl } from '../src/index.js'
 
 const dirs: string[] = []
@@ -30,7 +31,7 @@ async function setup(options: { blobs?: boolean } = {}) {
   }
   const mounted = await ctx.plugin(sessionStoreJsonl)
   cleanups.push(() => mounted.dispose())
-  return { store: ctx.get('sessionStore'), workspace }
+  return { store: ctx.get('sessionStore'), workspace, ctx }
 }
 
 // A different image each run, so no earlier blob can answer for it.
@@ -128,5 +129,32 @@ describe('images in a Session', () => {
     await log.append('user/message', { content: 'look', attachments: [png] })
     await log.close()
     expect(await readFile(sessionFile(workspace, id), 'utf8')).toContain(png.data)
+  })
+
+  it('keeps the images a compaction checkpoint carries as blobs too', async () => {
+    const { ctx } = await setup()
+    const blobs = ctx.get('blobs')
+    const checkpoint: SessionEvent = {
+      id: randomUUID(), seq: 5, ts: 5, type: 'checkpoint',
+      payload: { messages: [{ role: 'user', content: 'kept', attachments: [png] }], summary: 'earlier' },
+    }
+    const [stored] = await storeImages([checkpoint], blobs)
+    expect(JSON.stringify(stored)).not.toContain(png.data)
+    expect(await restoreImages(stored ? [stored] : [], blobs)).toEqual([checkpoint])
+  })
+
+  it('does not remember a blob it could not read', async () => {
+    const { ctx } = await setup()
+    const blobs = ctx.get('blobs')
+    const bytes = Buffer.from(`late ${randomUUID()}`)
+    const [stored] = await storeImages([{ id: 'a', seq: 2, ts: 2, type: 'user/message', payload: { content: '', attachments: [{ ...png, data: bytes.toString('base64') }] } }], blobs)
+    const hash = stored && imagesOf([stored])[0]?.blob
+    if (!hash) throw new Error('expected a stored hash')
+    const cache = new ImageCache()
+    const empty = new Context()
+    await empty.plugin(blobsLocal, { root: await temp('tnega-blobs-empty-') })
+    await expect(cache.data(hash, empty.get('blobs'))).rejects.toThrow('missing')
+    // The failure is not cached: the store that has it answers next time.
+    expect(await cache.data(hash, blobs)).toBe(bytes.toString('base64'))
   })
 })

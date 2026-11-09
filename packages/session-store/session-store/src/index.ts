@@ -231,6 +231,6 @@ export abstract class SessionStore extends Service {
   abstract backend(workspace: WorkspaceKey, id: string): SessionBackend
 }
 
-export { BlobImagesBackend, keepsImagesAsBlobs, restoreImages, sessionFormatOf, storeImages } from './images.js'
+export { BlobImagesBackend, ImageCache, keepsImagesAsBlobs, restoreImages, sessionFormatOf, storeImages } from './images.js'
 
 export const name = '@tnega/session-store'
