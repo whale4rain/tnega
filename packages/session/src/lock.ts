@@ -33,6 +33,12 @@ interface HeldLock {
 
 const held = new Map<string, HeldLock>()
 const acquiring = new Map<string, Promise<HeldLock>>()
+/**
+ * Lock files this process is letting go of. A new writer waits for the file
+ * to be gone: taking it over meanwhile would let the release remove the new
+ * writer's file, and leave a Session written with no lock on disk.
+ */
+const releasing = new Map<string, Promise<void>>()
 const self = { pid: process.pid, host: hostname() }
 
 let exitHook = false
@@ -145,6 +151,10 @@ async function acquire(file: string): Promise<HeldLock> {
  */
 export async function holdSessionLock(file: string, owner: object): Promise<void> {
   let lock = held.get(file)
+  while (!lock && releasing.has(file)) {
+    await releasing.get(file)
+    lock = held.get(file)
+  }
   if (!lock) {
     let pending = acquiring.get(file)
     if (!pending) {
@@ -164,6 +174,14 @@ export async function releaseSessionLock(file: string, owner: object): Promise<v
   if (!lock || !lock.owners.delete(owner) || lock.owners.size) return
   held.delete(file)
   clearInterval(lock.heartbeat)
+  const done = removeOwnLock(lock)
+  const settled = done.then(() => undefined, () => undefined)
+  releasing.set(file, settled)
+  void settled.then(() => { if (releasing.get(file) === settled) releasing.delete(file) })
+  await done
+}
+
+async function removeOwnLock(lock: HeldLock): Promise<void> {
   try {
     if (parseHolder(await readFile(lock.path, 'utf8'))?.token === lock.token) await unlink(lock.path)
   } catch (error) {
