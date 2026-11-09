@@ -4,8 +4,8 @@ import { dirname, join } from 'node:path'
 import type { LLMAdapter } from '@tnega/agent'
 import { workspaceStateDir } from '@tnega/home'
 import { MAX_PROJECT_MEMORY_CHARS, type MemoryService } from '@tnega/memory'
-import type { SessionEvent } from '@tnega/session'
-import { listSessions, readSessionEventsReadOnly, type SessionSummary } from '@tnega/session-store-jsonl'
+import { SessionNotFoundError, type SessionEvent } from '@tnega/session'
+import type { SessionStore, SessionSummary } from '@tnega/session-store'
 
 const NO_CHANGE = 'NO_CHANGE'
 const MAX_MESSAGE_CHARS = 1_500
@@ -159,6 +159,8 @@ export function pendingSessions(
 
 export interface DreamOptions {
   workspace: string
+  /** Where the workspace's Sessions are read from (`ctx.sessionStore`). */
+  sessions: SessionStore
   memory: MemoryService
   llm: LLMAdapter
   /** Defaults to the workspace's state folder under the tnega home. */
@@ -180,7 +182,7 @@ export async function dreamWorkspace(options: DreamOptions): Promise<DreamOutcom
   const now = options.now ?? Date.now
   const ledgerFile = options.ledgerFile ?? dreamLedgerFile(options.workspace)
   const ledger = await readDreamLedger(ledgerFile)
-  const all = await listSessions(options.workspace)
+  const all = await options.sessions.list(options.workspace)
   const pending = pendingSessions(all, ledger, now(), options.idleMs ?? DREAM_DEFAULTS.idleMs)
     .slice(0, options.maxSessions ?? DREAM_DEFAULTS.maxSessions)
 
@@ -201,8 +203,16 @@ export async function dreamWorkspace(options: DreamOptions): Promise<DreamOutcom
   const advanced = new Map<string, LedgerEntry>()
   for (const session of pending) {
     options.signal?.throwIfAborted()
-    const events = await readSessionEventsReadOnly(options.workspace, session.id)
-    const { lines, lastSeq } = conversationSince(events, ledger.sessions[session.id]?.seq ?? 0)
+    const since = ledger.sessions[session.id]?.seq ?? 0
+    const events: SessionEvent[] = []
+    try {
+      for await (const event of options.sessions.read(options.workspace, session.id, since)) events.push(event)
+    } catch (error) {
+      // Deleted since it was listed: the other sessions still dream.
+      if (error instanceof SessionNotFoundError) continue
+      throw error
+    }
+    const { lines, lastSeq } = conversationSince(events, since)
     advanced.set(session.id, { seq: lastSeq, eventCount: session.eventCount })
     if (!lines.length) continue
     // Keep the newest turns when a session is longer than its share.

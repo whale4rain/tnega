@@ -27,7 +27,8 @@ import { workspaceSubagentRoot } from '@tnega/home'
 import { defaultWorkspace } from '@tnega/home'
 import { resolveLlmEnv } from '@tnega/config'
 import { effectiveApiKey, effectiveLlmConfig, availableModels, readSystemConfig, systemConfigPath, systemConfigProblem, updateSystemConfig, normalizeApprovalReviewer, normalizeProjectMemory, PROJECT_MEMORY_DEFAULTS, normalizeMemoryDream, MEMORY_DREAM_DEFAULTS, ModelRouteError, parseModelRouteInput, parseNetworkConfig, removeModelRoute, upsertModelRoute, FS_GUARD_MODES, isFsGuardMode, COMPUTER_APPROVAL_MODES, isComputerApprovalMode, normalizeComputerApps, type SystemConfig, type SystemConfigPatch } from '@tnega/config'
-import { createSession, deleteSession, ensureWorkspace, forkSession, isSessionId, listSessions, searchSessions, patchSessionMeta, readSessionSnapshot, readSessionSummary, setSessionPermission, setSessionApprovalMode, truncateSessionAt, SessionNotFoundError } from '@tnega/session-store-jsonl'
+import { ensureWorkspace, searchSessions } from '@tnega/session-store-jsonl'
+import { isSessionId, SessionNotFoundError, type SessionMetaPatch } from '@tnega/session-store'
 import type { ServerContext } from './context.js'
 import { evictResident, ensureResidentAgent, submissionId, recoveryField, residentQuestionRequest, handleRun, handleCodingCommands, handleCodingSlash, handleCodingSlashCandidates, handleStopRun, sandboxNetworkFrom } from './runs.js'
 import type { WebServerService } from '@tnega/web-kit'
@@ -342,7 +343,7 @@ const apiRoutes: ApiRoute[] = [
             return
           }
       // The sidebar's light says what needs you: a run going now, or an approval card waiting on you.
-      const sessions = (await listSessions(workspace)).map(session => {
+      const sessions = (await context.sessions.list(workspace)).map(session => {
             const running = isActive(context.activeRuns, workspace, session.id)
             const waiting = context.approvals.pendingFor(runKey(workspace, session.id))
             return { ...session, ...(running ? { running } : {}), ...(waiting ? { waiting } : {}) }
@@ -367,7 +368,7 @@ const apiRoutes: ApiRoute[] = [
   },
 {
     match: (req, url) => Boolean(url.pathname === '/api/sessions' && req.method === 'POST'),
-    handle: async (req, res, url) => {
+    handle: async (req, res, url, context) => {
       if (!(url.pathname === '/api/sessions' && req.method === 'POST')) return
       const workspace = workspaceParam(url)
       if (!workspace) {
@@ -380,7 +381,7 @@ const apiRoutes: ApiRoute[] = [
       const mode = body.mode === 'auto' || body.mode === 'plan' || body.mode === 'goal'
             ? body.mode
             : undefined
-      const session = await createSession(workspace, {
+      const session = await context.sessions.create(workspace, {
             ...(title !== undefined ? { title } : {}),
             ...(agentType ? { agentType } : {}),
             ...(mode ? { mode } : {}),
@@ -473,7 +474,7 @@ const apiRoutes: ApiRoute[] = [
             sendError(res, 400, 'workspace and valid session id are required')
             return
           }
-      await readSessionSummary(workspace, id)
+      await context.sessions.summary(workspace, id)
       const key = runKey(workspace, id)
       if (req.method === 'GET' && !questionMatch[2]) {
             const questions = await withExistingLog(workspace, id, async log => pendingQuestionsFromEvents(await log.read())
@@ -538,8 +539,8 @@ const apiRoutes: ApiRoute[] = [
             const config = await readSystemConfig(context.configFile)
             const beforeSeq = optionalSeq(url.searchParams.get('beforeSeq'))
             const maxMessages = optionalCount(url.searchParams.get('maxMessages'))
-            const snapshot = await readSessionSnapshot(workspace, id, model =>
-              effectiveLlmConfig(config, process.env, model).contextWindow, {
+            const snapshot = await context.sessions.snapshot(workspace, id, {
+              windowFor: model => effectiveLlmConfig(config, process.env, model).contextWindow,
               ...(beforeSeq !== undefined ? { beforeSeq } : {}),
               ...(maxMessages !== undefined ? { maxMessages } : {}),
             }).catch((error: unknown) => {
@@ -616,7 +617,7 @@ const apiRoutes: ApiRoute[] = [
       if (action === undefined && req.method === 'PATCH') {
             const running = isActive(context.activeRuns, workspace, id)
             const body = await readJsonBody(req)
-            const patch: Parameters<typeof patchSessionMeta>[2] = {}
+            const patch: SessionMetaPatch = {}
             const permission = body.permission === 'workspace-write' || body.permission === 'bypass'
               ? body.permission : body.permission === 'read-only' ? 'read-only' : undefined
             const approvalMode = body.approvalMode === 'auto' || body.approvalMode === 'manual' ? body.approvalMode : undefined
@@ -641,7 +642,7 @@ const apiRoutes: ApiRoute[] = [
               sendError(res, 409, 'session is running: change the agent or mode after the current turn ends')
               return
             }
-            const previous = await readSessionSummary(workspace, id)
+            const previous = await context.sessions.summary(workspace, id)
             // Choosing what is already in force is not a change: it writes nothing,
             // so the transcript does not report it either.
             if (patch.model !== undefined && patch.model === previous.model) delete patch.model
@@ -652,11 +653,11 @@ const apiRoutes: ApiRoute[] = [
             // permission-only change has to retire it too. A running turn keeps its
             // runtime: the next run sees the new signature and rebuilds it then.
             if (!running && (Object.keys(patch).length || permission !== undefined)) await evictResident(context, workspace, id)
-            if (Object.keys(patch).length) await patchSessionMeta(workspace, id, patch)
-            if (approvalMode) await setSessionApprovalMode(workspace, id, approvalMode)
-            const summary = permission === undefined
-              ? await readSessionSummary(workspace, id)
-              : await setSessionPermission(workspace, id, permission)
+            const summary = await context.sessions.patchMeta(workspace, id, {
+              ...patch,
+              ...(approvalMode ? { approvalMode } : {}),
+              ...(permission !== undefined ? { permission } : {}),
+            })
             // Mid-turn, the next step tells the model (see @tnega/run-settings).
             if (permission !== undefined && !running) await appendPermissionNotice(workspace, id)
             sendJson(res, 200, { summary })
@@ -668,7 +669,7 @@ const apiRoutes: ApiRoute[] = [
               return
             }
             await evictResident(context, workspace, id)
-            await deleteSession(workspace, id)
+            await context.sessions.delete(workspace, id)
             context.secrets?.forgetSession({ workspace, sessionId: id })
             res.writeHead(204)
             res.end()
@@ -676,7 +677,7 @@ const apiRoutes: ApiRoute[] = [
           }
       if (action === 'fork' && req.method === 'POST') {
             const body = await readJsonBody(req)
-            const summary = await forkSession(workspace, id, {
+            const summary = await context.sessions.fork(workspace, id, {
               ...(typeof body.title === 'string' ? { title: body.title } : {}),
               ...(typeof body.messageId === 'string' && body.messageId
                 ? { messageId: body.messageId }
@@ -696,7 +697,7 @@ const apiRoutes: ApiRoute[] = [
               sendError(res, 400, 'messageId is required')
               return
             }
-            const summary = await truncateSessionAt(workspace, id, body.messageId)
+            const summary = await context.sessions.rewind(workspace, id, body.messageId)
             sendJson(res, 200, { summary })
             return
           }
@@ -957,7 +958,7 @@ export async function compactContext(
   id: string,
   keep: number,
 ): Promise<SessionSummary> {
-  const sessionSummary = await readSessionSummary(workspace, id)
+  const sessionSummary = await context.sessions.summary(workspace, id)
   const config = await readSystemConfig(context.configFile)
   const effective = effectiveLlmConfig(config, process.env, sessionSummary.model)
   const capabilities = availableModels(config).find(model => model.id === effective.modelId)

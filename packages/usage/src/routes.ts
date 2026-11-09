@@ -1,5 +1,6 @@
 import { readSystemConfig } from '@tnega/config'
 import type { Context } from '@tnega/core'
+import '@tnega/session-store'
 import { sendError, sendJson, workspaceParam } from '@tnega/web-kit'
 import { storedWorkspaceUsage } from './index.js'
 
@@ -7,10 +8,10 @@ export interface UsageRoutesConfig {
   configFile?: string
 }
 
-/** Workspace usage rollups; this package owns the usage store. */
+/** Workspace usage rollups; this package owns the usage cache and reads Sessions from `ctx.sessionStore`. */
 export const usageRoutes = {
   name: 'usage-routes',
-  inject: ['webServer'],
+  inject: ['webServer', 'sessionStore'],
   apply(ctx: Context, config: UsageRoutesConfig): void {
     ctx.fiber.effect(() => ctx.webServer.register({
       kind: 'exact',
@@ -22,7 +23,7 @@ export const usageRoutes = {
           sendError(res, 400, 'workspace query parameter is required')
           return
         }
-        sendJson(res, 200, await storedWorkspaceUsage(workspace, await readSystemConfig(config.configFile)))
+        sendJson(res, 200, await storedWorkspaceUsage(workspace, await readSystemConfig(config.configFile), ctx.sessionStore))
       },
     }))
   },

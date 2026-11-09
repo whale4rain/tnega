@@ -1,4 +1,5 @@
-import { stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Context } from '@tnega/core'
 import { JsonlSessionBackend, SessionLockedError, SessionLog, SessionNotFoundError, type SessionBackend, type SessionEvent } from '@tnega/session'
 import {
@@ -6,6 +7,7 @@ import {
   SessionStore,
   canonicalEvent,
   type CreateSessionOptions,
+  type ForkSessionOptions,
   type SessionAppendResult,
   type SessionLease,
   type SessionMetaPatch,
@@ -16,12 +18,18 @@ import {
 import {
   createSession,
   deleteSession,
+  ensureSessionDir,
+  forkSession,
+  isSessionId,
   listSessions,
   patchSessionMeta,
   readSessionEventsReadOnly,
   readSessionSnapshot,
   readSessionSummary,
   sessionFile,
+  setSessionApprovalMode,
+  setSessionPermission,
+  truncateSessionAt,
 } from './index.js'
 
 interface HeldLease {
@@ -51,11 +59,17 @@ export class JsonlSessionStore extends SessionStore {
     return createSession(workspace, options)
   }
 
-  list(workspace: string): Promise<SessionSummary[]> {
+  async list(workspace: string): Promise<SessionSummary[]> {
+    // A live writer in this process may still hold events in memory: a summary counts them.
+    const dir = await ensureSessionDir(workspace)
+    for (const entry of await readdir(dir).catch(() => [])) {
+      if (entry.endsWith('.jsonl') && isSessionId(entry.slice(0, -'.jsonl'.length))) await SessionLog.flushLive(join(dir, entry))
+    }
     return listSessions(workspace)
   }
 
-  summary(workspace: string, id: string): Promise<SessionSummary> {
+  async summary(workspace: string, id: string): Promise<SessionSummary> {
+    await SessionLog.flushLive(sessionFile(workspace, id))
     return readSessionSummary(workspace, id)
   }
 
@@ -121,8 +135,27 @@ export class JsonlSessionStore extends SessionStore {
     return { status: 'committed', seqs: events.map(event => event.seq) }
   }
 
-  patchMeta(workspace: string, id: string, patch: SessionMetaPatch): Promise<SessionSummary> {
-    return patchSessionMeta(workspace, id, patch)
+  async patchMeta(workspace: string, id: string, { permission, approvalMode, ...meta }: SessionMetaPatch): Promise<SessionSummary> {
+    // A field already in force stores nothing, so a retried patch adds no events.
+    const current = await this.summary(workspace, id)
+    const changed: SessionMetaPatch = {}
+    if (meta.title !== undefined && (meta.title.trim() || 'New session') !== current.title) changed.title = meta.title
+    if (meta.agentType !== undefined && meta.agentType !== current.agentType) changed.agentType = meta.agentType
+    if (meta.mode !== undefined && meta.mode !== current.mode) changed.mode = meta.mode
+    if (meta.model !== undefined && meta.model !== current.model) changed.model = meta.model
+    if (meta.reasoningEffort !== undefined && meta.reasoningEffort !== (current.reasoningEffort ?? 'default')) changed.reasoningEffort = meta.reasoningEffort
+    let summary = await patchSessionMeta(workspace, id, changed)
+    if (approvalMode !== undefined) summary = await setSessionApprovalMode(workspace, id, approvalMode)
+    if (permission !== undefined) summary = await setSessionPermission(workspace, id, permission)
+    return summary
+  }
+
+  fork(workspace: string, id: string, options?: ForkSessionOptions): Promise<SessionSummary> {
+    return forkSession(workspace, id, options)
+  }
+
+  rewind(workspace: string, id: string, messageId: string): Promise<SessionSummary> {
+    return truncateSessionAt(workspace, id, messageId)
   }
 
   async lease(workspace: string, id: string, owner: string): Promise<SessionLease> {

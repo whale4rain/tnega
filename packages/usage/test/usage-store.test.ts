@@ -1,11 +1,19 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it, vi } from 'vitest'
+import { afterAll, expect, it, vi } from 'vitest'
 import { SessionLog } from '@tnega/session'
 import { workspaceSessionDir, workspaceStateDir } from '@tnega/home'
-import { createSession, sessionFile } from '@tnega/session-store-jsonl'
-import { storedWorkspaceUsage } from '../src/index.js'
+import { Context } from '@tnega/core'
+import { createSession, sessionFile, sessionStoreJsonl } from '@tnega/session-store-jsonl'
+import type { SystemConfig } from '@tnega/config'
+import { storedWorkspaceUsage as usageWith } from '../src/index.js'
+
+const root = new Context()
+await root.plugin(sessionStoreJsonl)
+const store = root.get('sessionStore')
+afterAll(() => root.fiber.dispose())
+const storedWorkspaceUsage = (workspace: string, config: SystemConfig) => usageWith(workspace, config, store)
 
 it('includes durable Project Thread responses with their identities', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-thread-usage-'))
@@ -39,7 +47,7 @@ it('persists token-only summaries and reuses unchanged histories across pricing 
     const first = await storedWorkspaceUsage(workspace, config)
     const cache = await readFile(cacheFile, 'utf8')
     expect(cache).not.toContain('private conversation')
-    const read = vi.spyOn(SessionLog.prototype, 'read')
+    const read = vi.spyOn(store, 'read')
     try {
       expect(await storedWorkspaceUsage(workspace, config)).toEqual(first)
       expect(read).not.toHaveBeenCalled()
@@ -75,7 +83,7 @@ it('rebuilds day buckets when the local timezone changes', async () => {
     clock.mockReturnValue(Date.UTC(2026, 9, 6, 12))
     expect((await storedWorkspaceUsage(workspace, { model: 'mock' })).today.responses).toBe(1)
     process.env.TZ = 'America/New_York'
-    const read = vi.spyOn(SessionLog.prototype, 'read')
+    const read = vi.spyOn(store, 'read')
     try {
       expect((await storedWorkspaceUsage(workspace, { model: 'mock' })).today.responses).toBe(0)
       expect(read).not.toHaveBeenCalled()
@@ -103,7 +111,7 @@ it('reuses old day aggregates across midnight and preserves partial cache accoun
     expect(first.today.responses).toBe(2)
     const cacheFile = join(workspaceStateDir(workspace), 'usage-cache.json')
     const previousCache = await readFile(cacheFile, 'utf8')
-    const read = vi.spyOn(SessionLog.prototype, 'read')
+    const read = vi.spyOn(store, 'read')
     try {
       clock.mockReturnValue(new Date(2026, 9, 6, 12).getTime())
       const next = await storedWorkspaceUsage(workspace, { model: 'mock' })

@@ -1,6 +1,6 @@
 import { readSystemConfig } from '@tnega/config'
 import type { Context } from '@tnega/core'
-import { isSessionId } from '@tnega/session-store-jsonl'
+import { isSessionId } from '@tnega/session-store'
 import { sendError, sendJson, workspaceParam } from '@tnega/web-kit'
 import { contextInsights, isInsightsRange } from './insights.js'
 import { ContextReportStore } from './store.js'
@@ -17,9 +17,9 @@ export interface ContextInsightsConfig {
  */
 export const contextInsightsRoutes = {
   name: 'context-insights',
-  inject: ['webServer'],
+  inject: ['webServer', 'sessionStore'],
   apply(ctx: Context, config: ContextInsightsConfig): void {
-    const store = new ContextReportStore()
+    const store = new ContextReportStore(ctx.sessionStore)
     ctx.fiber.effect(() => () => store.clear())
     ctx.fiber.effect(() => ctx.webServer.register({
       kind: 'exact',

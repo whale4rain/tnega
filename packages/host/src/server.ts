@@ -11,6 +11,7 @@ import { createPluginWorkshop } from '@tnega/plugin-host'
 import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
 import { memoryDream, memoryDreamRoutes } from '@tnega/memory-dream'
 import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
+import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
@@ -105,10 +106,12 @@ export async function startWebServer(
   const pluginWorkshop = pluginDev
     ? await createPluginWorkshop(...(typeof pluginDev === 'string' ? [pluginDev] : []))
     : undefined
-  // One session index per host, in the tnega home; it opens on the first search.
-  const sessionIndex = new SqliteSessionIndex()
   const root = new Context()
   await root.plugin(webServer)
+  // Sessions live in JSONL files under the tnega home on this machine.
+  await root.plugin(sessionStoreJsonl)
+  // One session index per host, in the tnega home; it opens on the first search.
+  const sessionIndex = new SqliteSessionIndex({ sessions: root.get('sessionStore') })
   const web = root.get('webServer')
   const context: ServerContext = {
     ...(options.fetch ? { hostFetch: options.fetch } : {}),
@@ -132,6 +135,7 @@ export async function startWebServer(
     sessionIndex,
     secrets: new SecretVault(),
     web,
+    sessions: root.get('sessionStore'),
   }
 
   // Files, terminals, browser view and setup hints act on this machine: the
@@ -214,6 +218,8 @@ export async function startWebServer(
       await new Promise<void>((resolveClose, rejectClose) => {
         server.close(error => error ? rejectClose(error) : resolveClose())
       })
+      // The index reads through the store: close it before the store goes.
+      await sessionIndex.close()
       await root.fiber.dispose()
       const entries = [...residentAgents.values()]
       residentAgents.clear()
@@ -224,7 +230,6 @@ export async function startWebServer(
       await hotPlugins?.close()
       await pluginWorkshop?.close()
       await ownedBrowser?.close()
-      await sessionIndex.close()
       const registries = [...context.processes.values()]
       context.processes.clear()
       await Promise.all(registries.map(registry => registry.dispose()))

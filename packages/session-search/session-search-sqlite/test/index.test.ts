@@ -3,8 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { SessionLog } from '@tnega/session'
-import { createSession, readSessionEventsReadOnly, sessionFile } from '@tnega/session-store-jsonl'
+import { Context } from '@tnega/core'
+import { createSession, readSessionEventsReadOnly, sessionFile, sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { SqliteSessionIndex } from '../src/index.js'
+
+const stores = new Context()
+await stores.plugin(sessionStoreJsonl)
+const sessions = stores.get('sessionStore')
 
 let root: string
 let previousHome: string | undefined
@@ -22,7 +27,7 @@ beforeEach(async () => {
   await mkdir(alpha, { recursive: true })
   await mkdir(beta, { recursive: true })
   clock = 1_000_000_000
-  index = new SqliteSessionIndex({ now: () => clock })
+  index = new SqliteSessionIndex({ sessions, now: () => clock })
 })
 
 afterEach(async () => {
@@ -107,7 +112,7 @@ it('searches inside one session and reads around a match', async () => {
 it('drops the sessions used least when it grows past its size, and indexes a dropped one again when it is named', async () => {
   await index.close()
   const big = 'x'.repeat(2_000)
-  index = new SqliteSessionIndex({ now: () => clock, maxChars: 5_500, keepUsedWithinMs: 1_000 })
+  index = new SqliteSessionIndex({ sessions, now: () => clock, maxChars: 5_500, keepUsedWithinMs: 1_000 })
   const used = await seed(alpha, 'Used', [`${big} alpha`])
   const unused = await seed(alpha, 'Unused', [`${big} beta`])
   // Read the first one often; the other is never touched.

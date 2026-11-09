@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import type { LLMAdapter } from '@tnega/agent'
 import { Service, type Context } from '@tnega/core'
 import type { MemoryService } from '@tnega/memory'
+import '@tnega/session-store'
 import { DREAM_DEFAULTS, dreamLedgerFile, dreamWorkspace, readDreamLedger, type DreamOutcome } from './dream.js'
 
 declare module '@tnega/core' {
@@ -136,6 +137,7 @@ export class MemoryDreamService extends Service {
       handle = await this.config.openMemory(workspace)
       const outcome = await dreamWorkspace({
         workspace,
+        sessions: this.ctx.sessionStore,
         memory: handle.memory,
         llm,
         idleMs,
@@ -167,6 +169,7 @@ export class MemoryDreamService extends Service {
 
 export const memoryDream = {
   name: 'memory-dream',
+  inject: ['sessionStore'],
   apply(ctx: Context, config: MemoryDreamOptions): void {
     new MemoryDreamService(ctx, config)
   },

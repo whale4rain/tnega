@@ -1,4 +1,4 @@
-import { mkdir, readdir, stat } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import type { Context } from '@tnega/core'
@@ -20,9 +20,11 @@ import {
   type SessionSearchResult,
   type SessionTextKind,
 } from '@tnega/session-search'
-import { isSessionId, readSessionEventsReadOnly, sessionDir } from '@tnega/session-store-jsonl'
+import { isSessionId, SessionNotFoundError, type SessionStore, type SessionSummary } from '@tnega/session-store'
 
 export interface SqliteSessionIndexOptions {
+  /** Where the indexed Sessions are read from (`ctx.sessionStore`). */
+  sessions: SessionStore
   /** Defaults to `session-index.sqlite` in the tnega home. */
   path?: string
   /**
@@ -37,7 +39,7 @@ export interface SqliteSessionIndexOptions {
 
 export const DEFAULT_MAX_INDEXED_CHARS = 20_000_000
 const DEFAULT_KEEP_USED_MS = 60 * 60 * 1000
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 /** How much of one message the index keeps. */
 const INDEXED_EVENT_CHARS = 4_000
 /** How much of one message a read returns. */
@@ -55,8 +57,9 @@ interface SessionRow {
   session_id: string
   title: string
   updated_at: number
-  file_size: number
-  file_mtime: number
+  /** The summary this row was indexed from: a Session that gained events has a new count or time. */
+  event_count: number
+  changed_at: number
   last_seq: number
   chars: number
   uses: number
@@ -90,8 +93,10 @@ export class SqliteSessionIndex {
   private db: DatabaseSync | undefined
   private queue: Promise<unknown> = Promise.resolve()
   private closed = false
+  private readonly sessions: SessionStore
 
-  constructor(options: SqliteSessionIndexOptions = {}) {
+  constructor(options: SqliteSessionIndexOptions) {
+    this.sessions = options.sessions
     this.path = options.path ?? join(resolveTnegaHome(), 'session-index.sqlite')
     this.maxChars = options.maxChars ?? DEFAULT_MAX_INDEXED_CHARS
     this.keepUsedWithinMs = options.keepUsedWithinMs ?? DEFAULT_KEEP_USED_MS
@@ -167,7 +172,7 @@ export class SqliteSessionIndex {
     return this.serial(async db => {
       const session = await this.ensureIndexed(db, request.session)
       this.markUsed(db, [session.key], USE.read)
-      const events = await readSessionEventsReadOnly(session.workspace, session.session_id)
+      const events = await this.events(session.workspace, session.session_id)
       const entries: SessionReadEntry[] = []
       for (const event of events) {
         const text = sessionEventText(event, READ_EVENT_CHARS)
@@ -198,10 +203,28 @@ export class SqliteSessionIndex {
   async locate(sessionId: string, workspaces: readonly string[]): Promise<SessionRef | undefined> {
     if (!isSessionId(sessionId)) return undefined
     for (const workspace of uniqueWorkspaces(workspaces)) {
-      const info = await stat(join(sessionDir(workspace), `${sessionId}.jsonl`)).catch(() => undefined)
-      if (info?.isFile()) return { workspace, sessionId }
+      if (await this.summary(workspace, sessionId)) return { workspace, sessionId }
     }
     return undefined
+  }
+
+  /** A Session's summary, or undefined when the store has no such Session. */
+  private async summary(workspace: string, sessionId: string): Promise<SessionSummary | undefined> {
+    let summary: SessionSummary
+    try {
+      summary = await this.sessions.summary(workspace, sessionId)
+    } catch (error) {
+      if (error instanceof SessionNotFoundError) return undefined
+      throw error
+    }
+    // Every Session starts with its meta event: no events means no Session.
+    return summary?.eventCount ? summary : undefined
+  }
+
+  private async events(workspace: string, sessionId: string): Promise<SessionEvent[]> {
+    const events: SessionEvent[] = []
+    for await (const event of this.sessions.read(workspace, sessionId)) events.push(event)
+    return events
   }
 
   /** Index size and contents, for tests and diagnostics. */
@@ -257,8 +280,8 @@ export class SqliteSessionIndex {
           session_id TEXT NOT NULL,
           title TEXT NOT NULL,
           updated_at INTEGER NOT NULL,
-          file_size INTEGER NOT NULL,
-          file_mtime REAL NOT NULL,
+          event_count INTEGER NOT NULL,
+          changed_at REAL NOT NULL,
           last_seq INTEGER NOT NULL,
           chars INTEGER NOT NULL,
           uses REAL NOT NULL DEFAULT 0,
@@ -283,26 +306,16 @@ export class SqliteSessionIndex {
   /** Brings one workspace's sessions up to date, skipping dropped ones that have not changed. */
   private async reconcileWorkspace(db: DatabaseSync, workspace: string): Promise<void> {
     const workspaceKey = workspaceStorageKey(workspace)
-    const dir = sessionDir(workspace)
-    let entries: string[]
-    try {
-      entries = await readdir(dir)
-    } catch {
-      entries = []
-    }
+    // A listing that fails says nothing about which sessions are gone: keep the index.
+    const summaries = await this.sessions.list(workspace)
     const present = new Set<string>()
     const select = db.prepare('SELECT * FROM sessions WHERE key = ?')
-    for (const entry of entries) {
-      if (!entry.endsWith('.jsonl')) continue
-      const sessionId = entry.slice(0, -'.jsonl'.length)
-      if (!isSessionId(sessionId)) continue
-      const key = keyOf(workspace, sessionId)
+    for (const summary of summaries) {
+      const key = keyOf(workspace, summary.id)
       present.add(key)
-      const info = await stat(join(dir, entry)).catch(() => undefined)
-      if (!info) continue
       const row = sessionRow(select.get(key))
-      if (row && row.file_size === info.size && row.file_mtime === info.mtimeMs) continue
-      await this.indexSession(db, { workspace, sessionId }, workspaceKey, info, row)
+      if (row && row.event_count === summary.eventCount && row.changed_at === summary.updatedAt) continue
+      await this.indexSession(db, { workspace, sessionId: summary.id }, workspaceKey, summary, row)
     }
     for (const row of db.prepare('SELECT key FROM sessions WHERE workspace_key = ?').all(workspaceKey)) {
       const key = str(row.key)
@@ -315,14 +328,14 @@ export class SqliteSessionIndex {
     const workspace = resolve(ref.workspace)
     const key = keyOf(workspace, ref.sessionId)
     if (!isSessionId(ref.sessionId)) throw new SessionSearchError(`not a session id: ${ref.sessionId}`, 'SESSION_NOT_FOUND')
-    const info = await stat(join(sessionDir(workspace), `${ref.sessionId}.jsonl`)).catch(() => undefined)
-    if (!info?.isFile()) {
+    const summary = await this.summary(workspace, ref.sessionId)
+    if (!summary) {
       this.forget(db, key)
       throw new SessionSearchError(`no session ${ref.sessionId} in ${workspace}`, 'SESSION_NOT_FOUND')
     }
     let row = sessionRow(db.prepare('SELECT * FROM sessions WHERE key = ?').get(key))
-    if (!row || row.evicted || row.file_size !== info.size || row.file_mtime !== info.mtimeMs) {
-      await this.indexSession(db, { workspace, sessionId: ref.sessionId }, workspaceStorageKey(workspace), info, row?.evicted ? undefined : row)
+    if (!row || row.evicted || row.event_count !== summary.eventCount || row.changed_at !== summary.updatedAt) {
+      await this.indexSession(db, { workspace, sessionId: ref.sessionId }, workspaceStorageKey(workspace), summary, row?.evicted ? undefined : row)
       row = sessionRow(db.prepare('SELECT * FROM sessions WHERE key = ?').get(key))
     }
     if (!row) throw new SessionSearchError(`no session ${ref.sessionId} in ${workspace}`, 'SESSION_NOT_FOUND')
@@ -338,22 +351,20 @@ export class SqliteSessionIndex {
     db: DatabaseSync,
     ref: SessionRef,
     workspaceKey: string,
-    info: { size: number; mtimeMs: number },
+    summary: SessionSummary,
     previous: SessionRow | undefined,
   ): Promise<void> {
     let events: SessionEvent[]
     try {
-      events = await readSessionEventsReadOnly(ref.workspace, ref.sessionId)
+      events = await this.events(ref.workspace, ref.sessionId)
     } catch {
       return
     }
     const key = keyOf(ref.workspace, ref.sessionId)
-    const append = previous !== undefined && !previous.evicted && info.size > previous.file_size
+    const append = previous !== undefined && !previous.evicted && summary.eventCount > previous.event_count
     const fromSeq = append ? previous.last_seq : 0
     const title = foldSessionMeta(events).title ?? 'New session'
-    const head = events.find(event => event.type === 'meta')
-    const headCreated = head?.type === 'meta' ? head.payload.createdAt : undefined
-    const createdAt = typeof headCreated === 'number' ? headCreated : info.mtimeMs
+    const createdAt = summary.createdAt
     const insert = db.prepare('INSERT INTO docs (text, key, seq, ts, kind) VALUES (?, ?, ?, ?, ?)')
     db.exec('BEGIN')
     try {
@@ -371,15 +382,15 @@ export class SqliteSessionIndex {
         chars += text.text.length
       }
       db.prepare(`
-        INSERT INTO sessions (key, workspace, workspace_key, session_id, title, updated_at, file_size, file_mtime, last_seq, chars, uses, last_used, evicted)
+        INSERT INTO sessions (key, workspace, workspace_key, session_id, title, updated_at, event_count, changed_at, last_seq, chars, uses, last_used, evicted)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
         ON CONFLICT (key) DO UPDATE SET
           workspace = excluded.workspace, title = excluded.title, updated_at = excluded.updated_at,
-          file_size = excluded.file_size, file_mtime = excluded.file_mtime, last_seq = excluded.last_seq,
+          event_count = excluded.event_count, changed_at = excluded.changed_at, last_seq = excluded.last_seq,
           chars = excluded.chars, evicted = 0
       `).run(
-        key, ref.workspace, workspaceKey, ref.sessionId, title, Math.round(Math.max(createdAt, info.mtimeMs)),
-        info.size, info.mtimeMs, lastSeq, chars, 0, null,
+        key, ref.workspace, workspaceKey, ref.sessionId, title, Math.round(summary.updatedAt),
+        summary.eventCount, summary.updatedAt, lastSeq, chars, 0, null,
       )
       db.exec('COMMIT')
     } catch (error) {
@@ -518,7 +529,7 @@ function sessionRow(row: Row | undefined): SessionRow | undefined {
   return {
     key: str(row.key), workspace: str(row.workspace), workspace_key: str(row.workspace_key),
     session_id: str(row.session_id), title: str(row.title), updated_at: num(row.updated_at),
-    file_size: num(row.file_size), file_mtime: num(row.file_mtime), last_seq: num(row.last_seq),
+    event_count: num(row.event_count), changed_at: num(row.changed_at), last_seq: num(row.last_seq),
     chars: num(row.chars), uses: num(row.uses), last_used: row.last_used === null ? null : num(row.last_used),
     evicted: num(row.evicted),
   }

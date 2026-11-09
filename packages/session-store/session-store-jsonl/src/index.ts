@@ -30,6 +30,7 @@ import {
   type SessionPermission,
 } from '@tnega/session'
 import { importLegacyFile, workspaceSessionDir } from '@tnega/home'
+import { isSessionId } from '@tnega/session-store'
 import type {
   CreateSessionOptions,
   SessionMetaPatch,
@@ -50,6 +51,7 @@ export type {
   SessionSummary,
 } from '@tnega/session-store'
 export { JsonlSessionStore, sessionStoreJsonl } from './store.js'
+export { isSessionId }
 
 /** A Session the store was asked about but does not have. */
 export { SessionNotFoundError }
@@ -66,8 +68,6 @@ interface SessionMetaEvent {
   payload: SessionMetaPayload & { formatVersion?: number }
 }
 
-const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
 export function sessionDir(workspace: string): string {
   return workspaceSessionDir(workspace)
 }
@@ -77,10 +77,6 @@ export function sessionFile(workspace: string, id: string): string {
   const target = join(sessionDir(workspace), `${id}.jsonl`)
   importLegacyFile(join(resolve(workspace), '.tnega', 'sessions', `${id}.jsonl`), target)
   return target
-}
-
-export function isSessionId(value: string): boolean {
-  return SESSION_ID_PATTERN.test(value)
 }
 
 async function withSessionLog<T>(
