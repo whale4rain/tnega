@@ -218,6 +218,8 @@ export async function startWebServer(
       await new Promise<void>((resolveClose, rejectClose) => {
         server.close(error => error ? rejectClose(error) : resolveClose())
       })
+      // The index reads through the store: close it before the store goes.
+      await sessionIndex.close()
       await root.fiber.dispose()
       const entries = [...residentAgents.values()]
       residentAgents.clear()
@@ -228,7 +230,6 @@ export async function startWebServer(
       await hotPlugins?.close()
       await pluginWorkshop?.close()
       await ownedBrowser?.close()
-      await sessionIndex.close()
       const registries = [...context.processes.values()]
       context.processes.clear()
       await Promise.all(registries.map(registry => registry.dispose()))

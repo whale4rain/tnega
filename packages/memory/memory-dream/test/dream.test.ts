@@ -1,12 +1,12 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { LLMAdapter } from '@tnega/agent'
 import { Context } from '@tnega/core'
 import { memoryLocal } from '@tnega/memory-local'
 import { SessionLog, type ModelMessage } from '@tnega/session'
-import { createSession, sessionFile, sessionStoreJsonl } from '@tnega/session-store-jsonl'
+import { createSession, deleteSession, sessionFile, sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { dreamWorkspace, memoryDream, readDreamLedger } from '../src/index.js'
 
 const directories: string[] = []
@@ -102,6 +102,19 @@ it('waits for a session to go quiet', async () => {
   // An explicit dream does not wait.
   expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, idleMs: 0 })).toMatchObject({ status: 'unchanged' })
   expect(llm.calls).toHaveLength(1)
+})
+
+it('dreams the other sessions when one is deleted after it was listed', async () => {
+  const { workspace, memory, sessions, ledgerFile } = await setup()
+  const gone = await session(workspace, 'Gone', log => log.append('user/message', { content: 'Forget me.' }).then(() => {}))
+  await session(workspace, 'Kept', log => log.append('user/message', { content: 'Prefer pnpm.' }).then(() => {}))
+  // The listing still names the deleted session; reading it finds nothing.
+  const listed = await sessions.list(workspace)
+  await deleteSession(workspace, gone)
+  vi.spyOn(sessions, 'list').mockResolvedValue(listed)
+  const llm = model(['- Prefer pnpm.'])
+  expect(await dreamWorkspace({ workspace, sessions, memory, llm, ledgerFile, now: later })).toMatchObject({ status: 'updated', sessions: 2 })
+  expect(llm.calls[0]?.[1]?.content).toContain('Prefer pnpm.')
 })
 
 it('treats a session whose file time runs ahead of the clock as just written', async () => {

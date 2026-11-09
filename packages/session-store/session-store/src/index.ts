@@ -1,5 +1,6 @@
 import { Service, type Context } from '@tnega/core'
 import type { ApprovalMode } from '@tnega/approval-review'
+import { SessionNotFoundError } from '@tnega/session'
 import type {
   AgentType,
   ContextUsage,
@@ -21,6 +22,9 @@ declare module '@tnega/core' {
  * the local store, a workspace id on a server.
  */
 export type WorkspaceKey = string
+
+/** A Session the store was asked about but does not have. */
+export { SessionNotFoundError }
 
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -191,6 +195,11 @@ export abstract class SessionStore extends Service {
   /** Events after `afterSeq`, in order. A missing Session is `SessionNotFoundError`. */
   abstract read(workspace: WorkspaceKey, id: string, afterSeq?: number): AsyncIterable<SessionEvent>
   abstract append(workspace: WorkspaceKey, id: string, request: { expectedSeq: number; events: readonly SessionEvent[]; owner: string }): Promise<SessionAppendResult>
+  /**
+   * Store each field that changes. The fields are separate events, so a
+   * failure part way through leaves the ones before it stored; asking again
+   * stores only what is still missing.
+   */
   abstract patchMeta(workspace: WorkspaceKey, id: string, patch: SessionMetaPatch): Promise<SessionSummary>
   /** A new Session that starts with this one's history (through `messageId`) and its current metadata. */
   abstract fork(workspace: WorkspaceKey, id: string, options?: ForkSessionOptions): Promise<SessionSummary>

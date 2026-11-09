@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it, vi } from 'vitest'
+import { afterAll, expect, it, vi } from 'vitest'
 import { SessionLog } from '@tnega/session'
 import { workspaceSessionDir, workspaceStateDir } from '@tnega/home'
 import { Context } from '@tnega/core'
@@ -12,6 +12,7 @@ import { storedWorkspaceUsage as usageWith } from '../src/index.js'
 const root = new Context()
 await root.plugin(sessionStoreJsonl)
 const store = root.get('sessionStore')
+afterAll(() => root.fiber.dispose())
 const storedWorkspaceUsage = (workspace: string, config: SystemConfig) => usageWith(workspace, config, store)
 
 it('includes durable Project Thread responses with their identities', async () => {

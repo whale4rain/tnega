@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import type { LLMAdapter } from '@tnega/agent'
 import { workspaceStateDir } from '@tnega/home'
 import { MAX_PROJECT_MEMORY_CHARS, type MemoryService } from '@tnega/memory'
-import type { SessionEvent } from '@tnega/session'
+import { SessionNotFoundError, type SessionEvent } from '@tnega/session'
 import type { SessionStore, SessionSummary } from '@tnega/session-store'
 
 const NO_CHANGE = 'NO_CHANGE'
@@ -205,7 +205,13 @@ export async function dreamWorkspace(options: DreamOptions): Promise<DreamOutcom
     options.signal?.throwIfAborted()
     const since = ledger.sessions[session.id]?.seq ?? 0
     const events: SessionEvent[] = []
-    for await (const event of options.sessions.read(options.workspace, session.id, since)) events.push(event)
+    try {
+      for await (const event of options.sessions.read(options.workspace, session.id, since)) events.push(event)
+    } catch (error) {
+      // Deleted since it was listed: the other sessions still dream.
+      if (error instanceof SessionNotFoundError) continue
+      throw error
+    }
     const { lines, lastSeq } = conversationSince(events, since)
     advanced.set(session.id, { seq: lastSeq, eventCount: session.eventCount })
     if (!lines.length) continue

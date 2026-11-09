@@ -5,7 +5,7 @@ import { SessionLog } from '@tnega/session'
 import { effectiveLlmConfig, type SystemConfig } from '@tnega/config'
 import { workspaceSessionDir, workspaceStateDir } from '@tnega/home'
 import { workspaceProjectStateRoot } from '@tnega/home'
-import type { SessionStore } from '@tnega/session-store'
+import { SessionNotFoundError, type SessionStore } from '@tnega/session-store'
 import type { SessionEvent } from '@tnega/session'
 import { summarizeUsage, workspaceUsageFromSummaries, type SessionUsageSummary, type UsageTotals, type WorkspaceUsage } from './usage.js'
 
@@ -136,8 +136,14 @@ export async function storedWorkspaceUsage(workspace: string, config: SystemConf
     sources.push({
       id: summary.id,
       fingerprint: async () => {
-        try { return summaryStamp(await sessions.summary(workspace, summary.id)) }
-        catch { return undefined }
+        try {
+          const current = await sessions.summary(workspace, summary.id)
+          // Every Session starts with its meta event: no events means it is gone.
+          return current.eventCount ? summaryStamp(current) : undefined
+        } catch (error) {
+          if (error instanceof SessionNotFoundError) return undefined
+          throw error
+        }
       },
       events: async () => {
         const events: SessionEvent[] = []
