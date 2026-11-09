@@ -10,7 +10,7 @@ import { PERMISSION_NOTICE_NAME, pendingPermission, type ModelSelection } from '
 import type { HotPluginHost, PluginWorkshop } from '@tnega/plugin-host'
 import type { PermissionMode } from '@tnega/approval-host'
 import { SessionLog, isModelAttachment, type ModelAttachment, type ModelMessage } from '@tnega/session'
-import { readSessionSummary, sessionFile } from '@tnega/session-store-jsonl'
+import type { SessionStore } from '@tnega/session-store'
 import { toolBrowser } from '@tnega/tool-browser'
 import { sessionSearchSqlite, type SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import { toolSessionSearch } from '@tnega/tool-session-search'
@@ -18,6 +18,7 @@ import { defaultWorkspace } from '@tnega/home'
 import { ProcessRegistry } from '@tnega/tools'
 import type { ComputerCapabilitySpec } from '@tnega/runtime'
 import { resolve } from 'node:path'
+import { stat } from 'node:fs/promises'
 
 export const MAX_RUN_ATTACHMENTS = 8
 export const MAX_RUN_BODY_BYTES = 24 * 1024 * 1024
@@ -160,8 +161,36 @@ export function isActive(
   return active.has(runKey(workspace, id))
 }
 
-export function sessionFilePath(workspace: string, id: string): string {
-  return sessionFile(workspace, id)
+/** A workspace folder the user picked: resolved, and refused unless it is a directory. */
+export async function workspaceFolder(value: string): Promise<string> {
+  const workspace = resolve(value)
+  const info = await stat(workspace)
+  if (!info.isDirectory()) throw new TypeError(`not a directory: ${value}`)
+  return workspace
+}
+
+/**
+ * Run `use` on a Session's log: the live writer in this process when there is
+ * one (it owns the sequence), otherwise a log opened on the store for this
+ * call. `create: false` reads an existing Session and never makes one.
+ */
+export async function withSessionLog<T>(
+  sessions: SessionStore,
+  workspace: string,
+  id: string,
+  use: (log: SessionLog) => Promise<T>,
+  options: { create?: boolean } = {},
+): Promise<T> {
+  const backend = sessions.backend(workspace, id)
+  const live = SessionLog.live(backend)
+  if (live) return use(live)
+  const log = options.create === false ? SessionLog.readOnly(backend) : new SessionLog(backend)
+  await log.init()
+  try {
+    return await use(log)
+  } finally {
+    await log.close()
+  }
 }
 
 /**
@@ -194,19 +223,13 @@ export function permissionNotice(permission: PermissionMode, workspace: string):
  * the next step boundary (see `@tnega/run-settings`), which carries it in the
  * same request it records.
  */
-export async function appendPermissionNotice(workspace: string, id: string): Promise<void> {
-  const file = sessionFilePath(workspace, id)
-  const live = SessionLog.live(file)
-  const log = live ?? new SessionLog(file)
-  if (!live) await log.init()
-  try {
+export async function appendPermissionNotice(sessions: SessionStore, workspace: string, id: string): Promise<void> {
+  await withSessionLog(sessions, workspace, id, async log => {
     const level = pendingPermission(await log.read())
     if (!level) return
     await log.append('system/message', { content: permissionNotice(level, workspace), name: PERMISSION_NOTICE_NAME })
     await log.flush()
-  } finally {
-    if (!live) await log.close()
-  }
+  })
 }
 
 type SessionEffort = 'default' | 'low' | 'medium' | 'high'
@@ -239,7 +262,7 @@ export function resolveSessionLlm(
  * next step should use, and an adapter for each route it names. Adapters are
  * kept per route and effort for the life of the runtime.
  */
-export function sessionModelRoute(configFile: string | undefined, workspace: string, id: string): {
+export function sessionModelRoute(sessions: SessionStore, configFile: string | undefined, workspace: string, id: string): {
   selection: () => Promise<ModelSelection>
   adapterFor: (selection: ModelSelection) => Promise<LLMAdapter>
   /** Whether the model the next step uses can see images. */
@@ -248,11 +271,11 @@ export function sessionModelRoute(configFile: string | undefined, workspace: str
   const adapters = new Map<string, LLMAdapter>()
   return {
     async vision() {
-      const summary = await readSessionSummary(workspace, id)
+      const summary = await sessions.summary(workspace, id)
       return resolveSessionLlm(await readSystemConfig(configFile), summary.model, summary.reasoningEffort).effective.vision
     },
     async selection() {
-      const summary = await readSessionSummary(workspace, id)
+      const summary = await sessions.summary(workspace, id)
       const { effective } = resolveSessionLlm(await readSystemConfig(configFile), summary.model, summary.reasoningEffort)
       return {
         route: effective.modelId,

@@ -14,14 +14,13 @@ import {
   SESSION_FORMAT_VERSION,
   SessionLog,
   SessionNotFoundError,
+  prepareCompaction,
+  type CompactionPreparation,
   estimateContextUsage as estimateSessionContextUsage,
-  estimateMessageTokens,
   foldUsage,
   foldSessionMeta,
   transcriptEvents,
   foldSessionPermission,
-  projectEvents,
-  suffixStartIndexForTokens,
   type ContextUsage,
   type SessionMetrics,
   type MetaPatchPayload,
@@ -33,6 +32,7 @@ import { importLegacyFile, workspaceSessionDir } from '@tnega/home'
 import { isSessionId } from '@tnega/session-store'
 import type {
   CreateSessionOptions,
+  SessionSearchHit,
   SessionMetaPatch,
   SessionMetaPayload,
   SessionPageOptions,
@@ -43,6 +43,7 @@ import type {
 
 export type {
   CreateSessionOptions,
+  SessionSearchHit,
   SessionMetaPatch,
   SessionMetaPayload,
   SessionPageOptions,
@@ -672,45 +673,14 @@ export interface CompactSessionOptions {
   tokensBefore?: number
 }
 
-export interface SessionCompactPreparation {
-  prefixMessages: ModelMessage[]
-  previousSummary: string | undefined
-  tokensBefore: number
-}
+export type SessionCompactPreparation = CompactionPreparation
 
 export async function prepareSessionCompact(
   workspace: string,
   id: string,
   keepTokens: number,
 ): Promise<SessionCompactPreparation> {
-  return withSessionLog(sessionFile(workspace, id), async (log) => {
-    // Compaction shadows a head span of the *surface*; prepare the summarizer
-    // input from the same folded surface so it sees exactly what will be
-    // replaced.
-    const surface = await log.surfaceEvents()
-    const split = suffixStartIndexForTokens(surface, keepTokens)
-    const prefix = surface.slice(0, split)
-    let previousSummary: string | undefined
-    let summaryStart = 0
-    for (let index = prefix.length - 1; index >= 0; index -= 1) {
-      const event = prefix[index]
-      if (
-        event?.type === 'checkpoint'
-        && typeof event.payload.summary === 'string'
-        && event.payload.summary
-      ) {
-        previousSummary = event.payload.summary
-        summaryStart = index + 1
-        break
-      }
-    }
-    const tokensBefore = estimateMessageTokens(await log.deriveMessages())
-    return {
-      prefixMessages: projectEvents(prefix.slice(summaryStart)),
-      previousSummary,
-      tokensBefore,
-    }
-  }, { create: false })
+  return withSessionLog(sessionFile(workspace, id), log => prepareCompaction(log, keepTokens), { create: false })
 }
 
 export async function compactSession(
@@ -734,12 +704,6 @@ export async function compactSession(
     await log.flush()
     return readSessionSummary(workspace, id)
   })
-}
-
-export interface SessionSearchHit {
-  id: string
-  /** A short stretch of the matching message, on one line. */
-  snippet: string
 }
 
 const SEARCH_MESSAGE_TYPES = ['"type":"user/message"', '"type":"assistant/message"']

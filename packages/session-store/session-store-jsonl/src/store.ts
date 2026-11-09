@@ -11,6 +11,7 @@ import {
   type SessionAppendResult,
   type SessionLease,
   type SessionMetaPatch,
+  type SessionSearchHit,
   type SessionSnapshot,
   type SessionSnapshotOptions,
   type SessionSummary,
@@ -26,6 +27,7 @@ import {
   readSessionEventsReadOnly,
   readSessionSnapshot,
   readSessionSummary,
+  searchSessions,
   sessionFile,
   setSessionApprovalMode,
   setSessionPermission,
@@ -60,17 +62,26 @@ export class JsonlSessionStore extends SessionStore {
   }
 
   async list(workspace: string): Promise<SessionSummary[]> {
-    // A live writer in this process may still hold events in memory: a summary counts them.
+    await this.flushLive(workspace)
+    return listSessions(workspace)
+  }
+
+  /** A live writer in this process may still hold events in memory: listings and searches count them. */
+  private async flushLive(workspace: string): Promise<void> {
     const dir = await ensureSessionDir(workspace)
     for (const entry of await readdir(dir).catch(() => [])) {
       if (entry.endsWith('.jsonl') && isSessionId(entry.slice(0, -'.jsonl'.length))) await SessionLog.flushLive(join(dir, entry))
     }
-    return listSessions(workspace)
   }
 
   async summary(workspace: string, id: string): Promise<SessionSummary> {
     await SessionLog.flushLive(sessionFile(workspace, id))
     return readSessionSummary(workspace, id)
+  }
+
+  async search(workspace: string, query: string, options?: { limit?: number }): Promise<SessionSearchHit[]> {
+    await this.flushLive(workspace)
+    return searchSessions(workspace, query, options)
   }
 
   snapshot(workspace: string, id: string, options: SessionSnapshotOptions = {}): Promise<SessionSnapshot> {

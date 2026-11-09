@@ -526,7 +526,8 @@ function isMessageEvent(
 }
 
 export interface SessionConfig {
-  file: string
+  /** The log: a JSONL file path, or a store's backend (`ctx.sessionStore.backend`). */
+  file: string | SessionBackend
   broadcast?: SessionBroadcast
 }
 
@@ -1914,6 +1915,41 @@ export class SessionLog {
       cursorId = index > 0 ? messages[index - 1]!.id : undefined
     }
     return chain
+  }
+}
+
+/** What a summarizer needs to compact a Session: the head it will replace. */
+export interface CompactionPreparation {
+  /** The surface messages a summary replaces, after any earlier summary. */
+  prefixMessages: ModelMessage[]
+  /** The summary already in that head, for the summarizer to extend. */
+  previousSummary: string | undefined
+  tokensBefore: number
+}
+
+/**
+ * The summarizer input for compacting `log` down to its newest `keepTokens`.
+ * Compaction shadows a head span of the *surface*, so the input comes from the
+ * same folded surface and sees exactly what will be replaced.
+ */
+export async function prepareCompaction(log: SessionLog, keepTokens: number): Promise<CompactionPreparation> {
+  const surface = await log.surfaceEvents()
+  const split = suffixStartIndexForTokens(surface, keepTokens)
+  const prefix = surface.slice(0, split)
+  let previousSummary: string | undefined
+  let summaryStart = 0
+  for (let index = prefix.length - 1; index >= 0; index -= 1) {
+    const event = prefix[index]
+    if (event?.type === 'checkpoint' && typeof event.payload.summary === 'string' && event.payload.summary) {
+      previousSummary = event.payload.summary
+      summaryStart = index + 1
+      break
+    }
+  }
+  return {
+    prefixMessages: projectEvents(prefix.slice(summaryStart)),
+    previousSummary,
+    tokensBefore: estimateMessageTokens(await log.deriveMessages()),
   }
 }
 
