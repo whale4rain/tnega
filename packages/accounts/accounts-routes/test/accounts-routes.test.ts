@@ -108,6 +108,14 @@ describe('sign-in over HTTP', () => {
     // Another address is not held up.
     expect((await call('POST', '/api/auth/session', { from: '203.0.113.10', body: { login: 'ben', password: PASSWORD } })).status).toBe(200)
   })
+
+  it('counts the address the proxy saw, not one the client wrote in front of it', async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const spoofed = `198.51.100.${attempt}, 203.0.113.20`
+      expect((await call('POST', '/api/auth/session', { from: spoofed, body: { login: 'ben', password: 'not the password' } })).status).toBe(401)
+    }
+    expect((await call('POST', '/api/auth/session', { from: '198.51.100.99, 203.0.113.20', body: { login: 'ben', password: PASSWORD } })).status).toBe(429)
+  })
 })
 
 describe('what a member may reach', () => {

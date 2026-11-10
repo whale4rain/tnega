@@ -134,9 +134,11 @@ export const accountsRoutes = {
     const membersRoot = resolve(config.membersRoot)
 
     const address = (req: IncomingMessage): string => {
+      // The last entry is the one our proxy added; earlier ones are whatever the client sent.
       const forwarded = config.trustProxy ? req.headers['x-forwarded-for'] : undefined
-      const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim()
-      return first || req.socket.remoteAddress || 'unknown'
+      const header = Array.isArray(forwarded) ? forwarded.join(',') : forwarded
+      const last = header?.split(',').map(entry => entry.trim()).filter(Boolean).at(-1)
+      return last || req.socket.remoteAddress || 'unknown'
     }
     const secure = (req: IncomingMessage): boolean => {
       if (config.secureCookie === true || config.secureCookie === false) return config.secureCookie
