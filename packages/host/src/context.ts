@@ -43,6 +43,11 @@ export interface ServerContext {
   residentCreation?: Map<string, Promise<ResidentAgentEntry>>
   projectHosts?: Map<string, ProjectHostEntry>
   projectPermission: PermissionMode
+  /**
+   * Workspaces whose commands always run in the sandbox (server members'
+   * folders): no `bypass`, and approved escalations stay confined.
+   */
+  sandboxRequired?: (workspace: string) => boolean
   browser?: PlaywrightBrowserHost
   /** Background processes per workspace; they outlive the runs that start them. */
   processes: Map<string, ProcessRegistry>

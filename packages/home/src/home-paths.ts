@@ -42,7 +42,9 @@ export function importLegacyFile(source: string, target: string): void {
   try {
     sourceInfo = statSync(source)
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+    // A legacy folder this user cannot reach (a box's workspace, another
+    // user's checkout) has nothing to import for them.
+    if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'EACCES' || error.code === 'EPERM')) return
     throw error
   }
   if (!sourceInfo.isFile()) return

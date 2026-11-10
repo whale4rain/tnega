@@ -121,6 +121,31 @@ TNEGA_E2B_API_URL=https://api.e2b.app TNEGA_E2B_API_KEY=e2b_... TNEGA_E2B_TEMPLA
   npx vitest run --config vitest.host.config.ts packages/machine/machine-e2b
 ```
 
+## 5. A gVisor box (a host without KVM)
+
+On a Linux host without `/dev/kvm` (a cloud VM with no nested
+virtualization), boxes run in gVisor instead (issue #85). As root:
+
+```sh
+# gVisor: copy runsc and the whole gvisor-bin/ directory, not runsc alone
+tar -xjf gvisor.tar.bz2 && cp -r runsc gvisor-bin /usr/local/bin/
+apt install debootstrap iproute2 nftables
+npm pack                                   # tnega-<version>.tgz
+UBUNTU_MIRROR=http://mirrors.aliyun.com/ubuntu NODE_MIRROR=https://npmmirror.com/mirrors/node \
+  deploy/gvisor/build-rootfs.sh tnega-*.tgz  # mirrors only where the defaults are slow
+pnpm try:boxes gvisor                      # host check, then start, pause, resume, stop
+pnpm try:boxes gvisor --keep               # leave it running and look inside
+```
+
+The first lines say whether `/dev/kvm` exists and what is missing for gVisor;
+nothing starts until all of it is there. A `microvm` box must be refused with
+`SANDBOX_UNAVAILABLE`. The host-layer test runs the same checks plus "the
+host's `/home` is not in the box" and "a direct connection fails":
+
+```sh
+TNEGA_GVISOR_TEMPLATE=tnega-box npx vitest run --config vitest.host.config.ts packages/machine/machine-gvisor
+```
+
 ## Not testable yet
 
 - An agent run inside a box, files and commands over the daemon from a box,

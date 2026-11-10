@@ -157,6 +157,31 @@ export abstract class SecretStore extends Service {
   }
 }
 
+/**
+ * Where a host keeps the secrets a person chose to remember for a workspace:
+ * a file on this machine, or encrypted rows on a server. Session-only
+ * secrets never reach it. A store holds the plain values only in memory;
+ * what it writes down is its own business (owner-only file, AES-GCM rows).
+ */
+export interface RememberedSecrets {
+  /** The workspace's remembered secrets, by name. A damaged store throws `SECRET_FAILED` rather than answering empty. */
+  read(workspace: string): Promise<Record<string, string>>
+  /** Keep `value` under `name` for the workspace, replacing an earlier one. */
+  set(workspace: string, name: string, value: string): Promise<void>
+  /** Forget `name` for the workspace; resolves whether anything was removed. */
+  remove(workspace: string, name: string): Promise<boolean>
+}
+
+/**
+ * The value a command sees for a secret the egress proxy adds instead (a box,
+ * v2): tools that only send a key when the variable is set still send a
+ * request, and the proxy puts the real key on it. Not a secret: it may appear
+ * in output.
+ */
+export function proxiedSecretPlaceholder(name: string): string {
+  return `tnega-egress-adds-${name}`
+}
+
 /** Environment variables for a child process. */
 export function secretEnv(entries: readonly SecretEntry[]): Record<string, string> {
   return Object.fromEntries(entries.map(entry => [entry.name, entry.value]))

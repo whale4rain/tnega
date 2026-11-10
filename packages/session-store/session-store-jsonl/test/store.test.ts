@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -15,6 +15,7 @@ import {
   searchSessions,
   sessionFile,
   setSessionPermission,
+  listSessions,
   setSessionTitle,
   truncateSessionAt,
 } from '../src/index.js'
@@ -353,5 +354,26 @@ describe('searchSessions', () => {
 
     expect(await searchSessions(workspace, '"quotes"')).toHaveLength(1)
     expect(await searchSessions(workspace, '   ')).toEqual([])
+  })
+})
+
+// Root reads any folder, and Windows ignores these mode bits.
+const cannotLockOut = process.platform === 'win32' || process.getuid?.() === 0
+
+describe('legacy Sessions in the workspace', () => {
+  it.skipIf(cannotLockOut)('ignores a legacy folder this user cannot read instead of failing', async () => {
+    const workspace = await tempDir('tnega-locked-workspace-')
+    const legacy = join(workspace, '.tnega', 'sessions')
+    await mkdir(legacy, { recursive: true })
+    await writeFile(join(legacy, '00000000-0000-4000-8000-000000000000.jsonl'), '')
+    // Another user's box workspace: the folder is there, its contents are not ours.
+    await chmod(legacy, 0o000)
+    try {
+      await expect(listSessions(workspace)).resolves.toEqual([])
+      const created = await createSession(workspace, { title: 'Still works' })
+      expect((await listSessions(workspace)).map(summary => summary.id)).toEqual([created.id])
+    } finally {
+      await chmod(legacy, 0o700)
+    }
   })
 })

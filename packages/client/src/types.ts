@@ -658,6 +658,32 @@ export interface QuestionAnswerItem {
 }
 
 /** A secret by name; values never come back from the server. */
+/** Owners and admins run the server; members work in a folder of their own. */
+export type AccountRole = 'owner' | 'admin' | 'member'
+
+/** A person who can sign in to a tnega server (`/api/auth/*`). */
+export interface AccountInfo {
+  id: string
+  login: string
+  name: string
+  role: AccountRole
+  disabled: boolean
+  createdAt: string
+}
+
+/** Who is signed in, on a server that asks people to sign in. */
+export interface AuthSession {
+  account: AccountInfo
+  /** A member's own folder; owners and admins have none. */
+  workspace?: string
+}
+
+export interface InviteCode {
+  code: string
+  expiresAt: string
+  role?: AccountRole
+}
+
 export interface SecretInfo {
   name: string
   /** Saved for the workspace rather than kept for this session only. */

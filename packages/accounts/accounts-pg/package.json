@@ -1,0 +1,18 @@
+{
+  "name": "@tnega/accounts-pg",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/accounts": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.12",
+    "@types/pg": "8.23.1"
+  }
+}

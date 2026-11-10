@@ -186,6 +186,55 @@ export function secretNames(environment: Environment): string[] {
   return [...names].sort()
 }
 
+/** The secrets the egress proxy adds to requests: a box's commands get only placeholders for these. */
+export function proxiedSecretNames(environment: Environment): string[] {
+  const names = new Set<string>()
+  for (const credential of environment.network.credentials) {
+    for (const match of credential.value.matchAll(SECRET_REF)) names.add(match[1] ?? '')
+  }
+  return [...names].sort()
+}
+
+/** One host's key for the egress proxy (`@tnega/egress-proxy`'s `EgressCredential`). */
+export interface ResolvedCredential {
+  host: string
+  headers: Record<string, string>
+}
+
+/**
+ * The egress proxy's keys for an environment, with each `${NAME}` filled from
+ * the user's secrets. A credential naming a secret the user has not given is
+ * left out and reported in `missing`, never sent with the reference in it.
+ * Credentials for one host are merged into one entry.
+ */
+export function egressCredentials(
+  environment: Environment,
+  secrets: ReadonlyArray<{ name: string; value: string }>,
+): { credentials: ResolvedCredential[]; missing: string[] } {
+  const values: Record<string, string> = Object.create(null)
+  for (const secret of secrets) values[secret.name] = secret.value
+  const byHost = new Map<string, Record<string, string>>()
+  const missing = new Set<string>()
+  for (const credential of environment.network.credentials) {
+    const names = [...credential.value.matchAll(SECRET_REF)].map(match => match[1] ?? '')
+    const absent = names.filter(name => values[name] === undefined)
+    if (absent.length) {
+      for (const name of absent) missing.add(name)
+      continue
+    }
+    const value = resolveCredential(credential, values)
+    // A value with a line break would let a secret add headers of its own.
+    if (/[\r\n]/u.test(value)) throw new EnvironmentError(`a secret for ${credential.host} holds a line break and cannot go in a header`, 'ENVIRONMENT_INVALID')
+    const headers = byHost.get(credential.host) ?? {}
+    headers[credential.header] = value
+    byHost.set(credential.host, headers)
+  }
+  return {
+    credentials: [...byHost].map(([host, headers]) => ({ host, headers })),
+    missing: [...missing].sort(),
+  }
+}
+
 /**
  * What the person approves: the template, the setup script, the hosts it may reach, every
  * secret name and where each key is sent, and whether the box is open. A

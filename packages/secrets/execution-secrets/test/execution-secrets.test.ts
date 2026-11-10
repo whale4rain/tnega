@@ -60,3 +60,20 @@ it('records what it handed over, so masking still catches it once removed', asyn
   expect(await ctx.secrets.maskingEntries()).toEqual([{ name: 'API_KEY', value: 'value-1234' }])
   await fiber.dispose()
 })
+
+it('keeps keys the egress proxy adds out of a box: commands see a placeholder, never the value', async () => {
+  const ctx = new Context()
+  const fiber = ctx.plugin({ name: 'fake-secrets', apply: (child: Context) => { new FakeStore(child) } })
+  await fiber
+  const { inner, shells } = recorder()
+  const execution = secretEnvExecution(ctx, inner, { proxied: () => ['GITHUB_TOKEN'], withholdOthers: true })
+  await ctx.secrets.set('GITHUB_TOKEN', 'ghp_real_value')
+  await ctx.secrets.set('OTHER_KEY', 'other-value')
+  await execution.runShell({ command: 'gh api user', cwd: '.' })
+  expect(shells[0]?.env).toEqual({ GITHUB_TOKEN: 'tnega-egress-adds-GITHUB_TOKEN' })
+  expect(JSON.stringify(shells[0])).not.toContain('ghp_real_value')
+  expect(JSON.stringify(shells[0])).not.toContain('other-value')
+  // Nothing was handed over, so nothing new needs masking.
+  expect(ctx.secrets.injectedEntries()).toEqual([])
+  await fiber.dispose()
+})

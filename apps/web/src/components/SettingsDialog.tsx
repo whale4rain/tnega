@@ -1,4 +1,4 @@
-import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, ShieldCheck, SquareTerminal, Sun } from 'lucide-react'
+import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, ShieldCheck, SquareTerminal, Sun, UserRound } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
@@ -9,6 +9,10 @@ import { ModelRoutes } from './ModelRoutes'
 import { ContextInsights } from './context/ContextInsights'
 import { WorkspacePrompt } from './WorkspacePrompt'
 import { SecretsSettings } from './SecretsSettings'
+import { AccountSettings } from './AccountSettings'
+import { ChoiceField } from './ChoiceField'
+import { runsServer, useAccount } from '../lib/account'
+import type { AuthSession } from '../lib/types'
 import { UpdateSettings } from './UpdateButton'
 import type { DesktopUpdates } from '../lib/desktop-updates'
 
@@ -18,7 +22,7 @@ import type { DesktopUpdates } from '../lib/desktop-updates'
  * entry in `SECTIONS` plus its panel below. Form fields are saved together
  * with "Save changes"; appearance and updates apply immediately.
  */
-type SectionId = 'model' | 'usage' | 'instructions' | 'secrets' | 'approvals' | 'tools' | 'appearance' | 'about'
+type SectionId = 'model' | 'usage' | 'instructions' | 'secrets' | 'approvals' | 'tools' | 'appearance' | 'account' | 'about'
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: string; icon: typeof Cpu }> = [
   { id: 'model', label: 'Models', description: 'Chat models that run sessions, projects and threads. Register several, choose the default, and switch per session from the composer. Approval reviewers such as TypeSafe Jev are not chat models; set them under Approvals.', icon: Cpu },
@@ -28,10 +32,19 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: strin
   { id: 'approvals', label: 'Approvals', description: 'Who reviews actions that need permission.', icon: ShieldCheck },
   { id: 'tools', label: 'Tools & shell', description: 'How the agent runs commands and calls its tools.', icon: SquareTerminal },
   { id: 'appearance', label: 'Appearance', description: 'Colours and how much information fits on screen, on this device. Changes apply right away.', icon: Palette },
+  { id: 'account', label: 'Account', description: 'Who is signed in to this server, your password, and the people who can sign in.', icon: UserRound },
   { id: 'about', label: 'About & updates', description: 'Version, updates and where settings are stored.', icon: Info },
 ]
 
 const SECTION_IDS = SECTIONS.map(section => section.id)
+
+/** Server settings only owners and admins change; a member sees the rest. */
+const HOST_SECTIONS: ReadonlySet<SectionId> = new Set(['model', 'approvals', 'tools'])
+
+/** The sections this person sees: Account only on a server, host settings only for those who run it. */
+function visibleSections(session: AuthSession | undefined) {
+  return SECTIONS.filter(entry => entry.id === 'account' ? session !== undefined : runsServer(session) || !HOST_SECTIONS.has(entry.id))
+}
 
 export function SettingsDialog({
   config,
@@ -62,7 +75,12 @@ export function SettingsDialog({
   onOpenSession?: (session: InsightsSession) => void
 }) {
   const stored = config?.config
-  const [section, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
+  const session = useAccount()
+  const sections = visibleSections(session)
+  const [storedSection, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
+  // A section this person cannot see (a member, a local host) falls back to the first they can.
+  const section = sections.some(entry => entry.id === storedSection) ? storedSection : sections[0]!.id
+  const hostSettings = runsServer(session)
   const [codeMode, setCodeMode] = useState(stored?.codeMode ?? false)
   // Follows the stored value until the person picks one, so a late config is not overwritten.
   const [computerUsePicked, setComputerUse] = useState<boolean | undefined>(undefined)
@@ -181,7 +199,7 @@ export function SettingsDialog({
   }
 
   const effective = config?.effective
-  const current = SECTIONS.find(entry => entry.id === section) ?? SECTIONS[0]!
+  const current = sections.find(entry => entry.id === section) ?? sections[0]!
   const panel = (id: SectionId, children: ReactNode) => (
     <section
       key={id}
@@ -204,7 +222,7 @@ export function SettingsDialog({
         <>
           {error && <span className="form-error" role="alert">{error}</span>}
           <button type="button" className="button ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="button primary" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+          {hostSettings && <button type="button" className="button primary" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>}
         </>
       }
     >
@@ -215,7 +233,7 @@ export function SettingsDialog({
       )}
       <div className="settings-layout">
         <nav className="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
-          {SECTIONS.map(entry => {
+          {sections.map(entry => {
             const Icon = entry.icon
             return (
               <button
@@ -239,7 +257,7 @@ export function SettingsDialog({
             <p className="muted small">{current.description}</p>
           </header>
 
-          {panel('model', <>
+          {hostSettings && panel('model', <>
             <h4>Project memory</h4>
             <div className="form-grid">
               <label className="field-check span-2"><input type="checkbox" checked={memoryEnabled} onChange={event => setMemoryEnabled(event.target.checked)} />Automatic project memory</label>
@@ -341,7 +359,8 @@ export function SettingsDialog({
           {panel('usage', section === 'usage' ? <ContextInsights workspace={workspace} onOpenSession={onOpenSession} /> : null)}
           {panel('instructions', section === 'instructions' ? <WorkspacePrompt key={workspace} workspace={workspace} /> : null)}
           {panel('secrets', section === 'secrets' ? <SecretsSettings workspace={workspace} sessionId={sessionId} /> : null)}
-          {panel('approvals', <div className="form-grid">
+          {session && panel('account', section === 'account' ? <AccountSettings session={session} onSignedOut={() => location.assign('/')} /> : null)}
+          {hostSettings && panel('approvals', <div className="form-grid">
             <label className="field">
               <span className="field-label">Approval reviewer</span>
               <select value={reviewProvider} onChange={event => {
@@ -383,7 +402,7 @@ export function SettingsDialog({
             <p className="muted small span-2">Auto review keeps your selected permissions. Uncertain or unavailable reviews return to you. Applies to Project threads by default; sessions can choose their own approval mode.</p>
           </div>)}
 
-          {panel('tools', <div className="form-grid">
+          {hostSettings && panel('tools', <div className="form-grid">
             <label className="field span-2">
               <span className="field-label">Shell</span>
               <select aria-label="Shell" value={shell} onChange={event => setShell(event.target.value)}>
@@ -596,34 +615,3 @@ function useNetworkSupport(wanted: boolean): SandboxNetworkSupport | undefined {
   return support
 }
 
-function ChoiceField<T extends string>({ id, label, value, options, disabled, onChange, hint }: {
-  id: string
-  label: string
-  value: T | undefined
-  options: ReadonlyArray<readonly [T, string, typeof Cpu?]>
-  disabled?: boolean
-  onChange: (value: T) => void
-  hint?: string
-}) {
-  return (
-    <div className="field span-2">
-      <span className="field-label" id={`settings-${id}-label`}>{label}</span>
-      <div className="settings-choice-row" role="radiogroup" aria-labelledby={`settings-${id}-label`}>
-        {options.map(([option, text, Icon]) => (
-          <button
-            key={option}
-            type="button"
-            role="radio"
-            aria-checked={value === option}
-            className={`settings-choice${value === option ? ' active' : ''}`}
-            disabled={disabled}
-            onClick={() => onChange(option)}
-          >
-            {Icon && <Icon size={14} aria-hidden />}{text}
-          </button>
-        ))}
-      </div>
-      {hint && <span className="muted small">{hint}</span>}
-    </div>
-  )
-}

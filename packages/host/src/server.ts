@@ -1,4 +1,6 @@
+import { accountsCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
 import { defaultWebRoot, handleStatic } from './static.js'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
@@ -11,8 +13,6 @@ import { createPluginWorkshop } from '@tnega/plugin-host'
 import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
 import { memoryDream, memoryDreamRoutes } from '@tnega/memory-dream'
 import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
-import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
-import { blobsLocal } from '@tnega/blobs-local'
 import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
@@ -20,7 +20,7 @@ import { compactionAdapter } from './support.js'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
-import { SecretVault, secretRoutes } from '@tnega/secrets-local'
+import { secretRoutes } from '@tnega/secrets-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
 import { projectApi } from '@tnega/project-http'
@@ -33,7 +33,23 @@ import { webServer } from '@tnega/web-kit'
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
 
+/** Whether a workspace is the folder or inside it (members' folders on a server). */
+function insideFolder(folder: string): (workspace: string) => boolean {
+  const root = resolve(folder)
+  return workspace => {
+    const rel = relative(root, resolve(workspace))
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+  }
+}
+
 export interface WebServerOptions {
+  /** Where Sessions are kept; default from the environment (`stateSpecFromEnv`). */
+  state?: StateCapabilitySpec
+  /**
+   * Ask everyone to sign in (`tnega server start`): accounts on the same
+   * Postgres as the Sessions. Off in local mode.
+   */
+  accounts?: AccountsCapabilitySpec
   /** Runtime assets for hosts which bundle the server away from its worker/WASM. */
   ptcRuntime?: PtcRuntimeQuickjsConfig
   port?: number
@@ -109,10 +125,14 @@ export async function startWebServer(
     : undefined
   const root = new Context()
   await root.plugin(webServer)
-  // Image bytes live once under the tnega home; Sessions keep their hashes.
-  await root.plugin(blobsLocal)
-  // Sessions live in JSONL files under the tnega home on this machine.
-  await root.plugin(sessionStoreJsonl)
+  // On a server, sign-in comes first: its guard sees every request.
+  if (options.accounts) await root.plugin(accountsCapability, options.accounts)
+  // Image bytes under the tnega home; Sessions in JSONL files there, or on
+  // Postgres when TNEGA_SESSION_STORE=postgres and DATABASE_URL say so.
+  const state = options.state ?? stateSpecFromEnv()
+  await root.plugin(stateCapability, state)
+  // Remembered secrets go with the state: sealed in Postgres with a master key, else the owner-only file.
+  const secretVault = await openSecretVault(state)
   // One session index per host, in the tnega home; it opens on the first search.
   const sessionIndex = new SqliteSessionIndex({ sessions: root.get('sessionStore') })
   const web = root.get('webServer')
@@ -129,6 +149,8 @@ export async function startWebServer(
     steeringReady: new Map(),
     residentCreation: new Map(),
     projectPermission: options.projectPermission ?? 'workspace-write',
+    // A member's folder: the sandbox stays on, whatever the Session asks for.
+    ...(options.accounts ? { sandboxRequired: insideFolder(options.accounts.membersRoot) } : {}),
     ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),
@@ -136,7 +158,7 @@ export async function startWebServer(
     ...(pluginWorkshop ? { pluginWorkshop } : {}),
     processes: new Map(),
     sessionIndex,
-    secrets: new SecretVault(),
+    secrets: secretVault.vault,
     web,
     sessions: root.get('sessionStore'),
   }
@@ -236,6 +258,7 @@ export async function startWebServer(
       const registries = [...context.processes.values()]
       context.processes.clear()
       await Promise.all(registries.map(registry => registry.dispose()))
+      await secretVault.close()
     },
   }
 }
@@ -248,6 +271,8 @@ async function handleRequest(
   try {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (url.pathname.startsWith('/api/') && rejectsApiRequest(req, res)) return
+    // Plugins check requests here (sign-in on a server) before any route runs.
+    if (await context.web.guard(req, res, url)) return
     const match = context.web.match(req.method ?? 'GET', url.pathname)
     if (match.kind === 'route' || match.kind === 'fallback') {
       await match.handler(req, res, url)

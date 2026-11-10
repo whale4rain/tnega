@@ -18,6 +18,7 @@ const COMMANDS: readonly Row[] = [
   ['tnega web [options]', 'start the local web app'],
   ['tnega run "<prompt>"', 'run one prompt and print the answer'],
   ['tnega daemon [options]', 'serve this machine\'s files and commands to a server'],
+  ['tnega server <command>', 'run or deploy a tnega server that several people sign in to'],
 ]
 
 const CONFIG: Row = ['--config <file>', 'config file (default: ~/.tnega/config.json)']
@@ -66,6 +67,28 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       ['--device-id <id>', 'name this machine (default: from the host name)'],
       ['--browser', 'let the agent drive a browser here (its own profile, not yours)'],
       ['--computer', 'let the agent see and use the apps here; press p to pause'],
+      HELP,
+    ],
+  },
+  server: {
+    usage: 'tnega server <init|start|deploy|user|invite|pair> [options]',
+    summary: 'A tnega server on Postgres that people sign in to. Settings are in\n~/.tnega/server/server.env (or --dir); the environment wins over the file.\n\n  init     write settings, create tables, print the first owner\'s invite\n  start    run the server; members work only in their own folder\n  deploy   write a Docker Compose setup (Postgres, server, HTTPS) and start it\n  user     list | add <login> | set <login> | passwd <login>\n  invite   print an invite link for a new person\n  pair     print a pairing code for <login>\'s client or --daemon',
+    options: [
+      ['--dir <dir>', 'settings folder (default: ~/.tnega/server)'],
+      ['--database-url <url>', 'init: the Postgres database (or DATABASE_URL)'],
+      ['--owner <login>', 'init: create the owner now (asks for a password)'],
+      ['--host, --port', 'init / start: where to listen (default 127.0.0.1:8765)'],
+      ['--public-url <url>', 'init: the address people open (for links)'],
+      ['--trust-proxy', 'init: behind your own HTTPS proxy'],
+      ['--domain <name>', 'deploy: get a certificate and serve HTTPS (Caddy)'],
+      ['--no-start', 'deploy: write the files only'],
+      ['--mirror <registry>', 'deploy: pull base images from here, not Docker Hub'],
+      ['--npm-registry <url>', 'deploy: install tnega from this npm registry'],
+      ['--apt-mirror <url>', 'deploy: Debian packages from this mirror'],
+      ['--package <file.tgz>', 'deploy: install this packed tnega instead'],
+      ['--role <role>', 'user / invite: owner, admin or member'],
+      ['--password-stdin', 'read the password from stdin instead of asking'],
+      ['--daemon', 'pair: a code for a daemon instead of a client'],
       HELP,
     ],
   },

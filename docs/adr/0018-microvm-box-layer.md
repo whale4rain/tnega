@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 取代关系：取代 `docs/plans/v2-plan.md` 里「First box: Docker or Podman; microVM later」
-> 当前实现：尚未实现；设计见 `docs/plans/v2-server-mvp.md` §4.4、§4.7，分包见 `docs/plans/v2-package-changes.md` P8
+> 当前实现：`machine-e2b`（microVM）与 `machine-gvisor`（没有 KVM 的主机，见文末补充）；设计见 `docs/plans/v2-server-mvp.md` §4.4、§4.7，分包见 `docs/plans/v2-package-changes.md` P8
 
 日期：2026-11-05
 
@@ -47,3 +47,12 @@ v2 里 tnega server 为每个线程 / 会话启动一个 box（代码里叫 mach
 - **只经 proxy 出网**：box 里直连任意外部地址失败；经 proxy 访问白名单主机成功，非白名单主机被拒；box 内环境变量与磁盘里找不到模型 key 和 git token。
 - **fail closed**：要求的 `isolation` 给不了、或出口规则设不上时，`start` 以 `SANDBOX_UNAVAILABLE` 失败。
 - **无 KVM**：在没有 `/dev/kvm` 的主机上，部署检查给出明确报错，而不是退回容器。
+
+## 补充（2026-11-10）：没有 KVM 的主机用 gVisor
+
+第一台云主机（阿里云 ECS，本身是 KVM 客户机）没有 `/dev/kvm`，也没有嵌套虚拟化：Firecracker、自托管的 E2B runtime 和 microsandbox 都跑不起来（issue #85）。补充决定：
+
+- `microvm` 仍是首选级别；`gvisor` 成为**允许**的级别，但必须由 composition 层按主机显式选择（运维为这台主机选 `machine-gvisor`，server 为它的 box 要 `isolation: "gvisor"`），**绝不是** Provider 内部的回退。要 `microvm` 的 box 在 gVisor 主机上仍以 `SANDBOX_UNAVAILABLE` 失败。
+- `machine-gvisor`：gVisor 的 `systrap` 平台不需要 KVM。它不是虚拟机，但有真正的系统调用边界（用户态内核）和自己的网络命名空间；出口由主机上的 nftables 只放行 egress proxy 与 server，规则设不上就不启动。
+- E2B 仍是有 KVM 的主机和 E2B 云的 Provider。
+- 部署检查（`probeGvisorHost`，`pnpm try:boxes gvisor`）说清楚缺什么、有没有 `/dev/kvm`，而不是悄悄退回容器。

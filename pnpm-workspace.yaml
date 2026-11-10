@@ -14,6 +14,7 @@ packages:
   - packages/sandbox/*
   - packages/spill/*
   - packages/secrets/*
+  - packages/accounts/*
   - packages/memory/*
   - packages/subagent/*
   - packages/jobs/*

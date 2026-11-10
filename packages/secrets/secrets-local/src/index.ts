@@ -7,6 +7,7 @@ import {
   assertSecretName,
   SecretError,
   SecretStore,
+  type RememberedSecrets,
   type SecretEntry,
   type SecretInfo,
   type SetSecretOptions,
@@ -23,6 +24,8 @@ export interface SecretScope {
 export interface SecretVaultOptions {
   /** Where remembered secrets live; defaults to `<tnega home>/secrets.json`. */
   file?: string
+  /** Keep remembered secrets somewhere else (a server's encrypted rows). Wins over `file`. */
+  remembered?: RememberedSecrets
 }
 
 interface SavedWorkspace { path: string; secrets: Record<string, string> }
@@ -60,25 +63,15 @@ function parseSaved(text: string): SavedFile {
 }
 
 /**
- * The host's secrets: session ones in memory, remembered ones in one file
- * only the user can read.
- *
- * A host keeps one vault for its whole life and mounts {@link secretsLocal}
- * into each Agent scope with that scope's workspace and Session, because Agent
- * runtimes are rebuilt (a model or permission change, an idle resident) while
- * the user expects a key they typed to stay.
+ * Remembered secrets in one file only the user can read
+ * (`<tnega home>/secrets.json`, mode 0600), rewritten whole on each change.
  */
-export class SecretVault {
+export class FileRememberedSecrets implements RememberedSecrets {
   readonly file: string
-  private readonly session = new Map<string, Map<string, string>>()
   private writing: Promise<void> = Promise.resolve()
 
-  constructor(options: SecretVaultOptions = {}) {
-    this.file = options.file ?? join(resolveTnegaHome(), 'secrets.json')
-  }
-
-  private sessionKey(scope: SecretScope): string {
-    return `${workspaceStorageKey(scope.workspace)}\0${scope.sessionId}`
+  constructor(file: string = join(resolveTnegaHome(), 'secrets.json')) {
+    this.file = file
   }
 
   private async readSaved(): Promise<SavedFile> {
@@ -96,7 +89,7 @@ export class SecretVault {
     }
   }
 
-  private async remembered(workspace: string): Promise<Record<string, string>> {
+  async read(workspace: string): Promise<Record<string, string>> {
     return (await this.readSaved()).workspaces[workspaceStorageKey(workspace)]?.secrets ?? {}
   }
 
@@ -127,20 +120,66 @@ export class SecretVault {
     return changed
   }
 
+  async set(workspace: string, name: string, value: string): Promise<void> {
+    const workspaceKey = workspaceStorageKey(workspace)
+    await this.updateSaved(saved => {
+      const entry = saved.workspaces[workspaceKey] ??= {
+        path: resolve(workspace),
+        secrets: Object.create(null) as Record<string, string>,
+      }
+      entry.secrets[name] = value
+      return true
+    })
+  }
+
+  remove(workspace: string, name: string): Promise<boolean> {
+    const workspaceKey = workspaceStorageKey(workspace)
+    return this.updateSaved(saved => {
+      const entry = saved.workspaces[workspaceKey]
+      // Own keys only: `toString` and `constructor` are not stored secrets.
+      if (!entry || !Object.hasOwn(entry.secrets, name)) return false
+      delete entry.secrets[name]
+      return true
+    })
+  }
+}
+
+/**
+ * The host's secrets: session ones in memory, remembered ones in a
+ * {@link RememberedSecrets} store (by default the owner-only file).
+ *
+ * A host keeps one vault for its whole life and mounts {@link secretsLocal}
+ * into each Agent scope with that scope's workspace and Session, because Agent
+ * runtimes are rebuilt (a model or permission change, an idle resident) while
+ * the user expects a key they typed to stay.
+ */
+export class SecretVault {
+  /** The remembered-secrets file, when the vault keeps them in one. */
+  readonly file: string | undefined
+  private readonly saved: RememberedSecrets
+  private readonly session = new Map<string, Map<string, string>>()
+
+  constructor(options: SecretVaultOptions = {}) {
+    if (options.remembered) {
+      this.saved = options.remembered
+      this.file = undefined
+    } else {
+      const file = new FileRememberedSecrets(options.file)
+      this.saved = file
+      this.file = file.file
+    }
+  }
+
+  private sessionKey(scope: SecretScope): string {
+    return `${workspaceStorageKey(scope.workspace)}\0${scope.sessionId}`
+  }
+
   async set(scope: SecretScope, name: string, value: string, options: SetSecretOptions = {}): Promise<SecretInfo> {
     assertSecretName(name)
     if (!value) throw new SecretError('A secret needs a value', 'SECRET_INVALID')
     const key = this.sessionKey(scope)
     if (options.remember) {
-      const workspaceKey = workspaceStorageKey(scope.workspace)
-      await this.updateSaved(saved => {
-        const entry = saved.workspaces[workspaceKey] ??= {
-          path: resolve(scope.workspace),
-          secrets: Object.create(null) as Record<string, string>,
-        }
-        entry.secrets[name] = value
-        return true
-      })
+      await this.saved.set(scope.workspace, name, value)
       // The saved value is now the one; a session value would hide it.
       this.session.get(key)?.delete(name)
       return { name, remembered: true }
@@ -154,26 +193,19 @@ export class SecretVault {
   async remove(scope: SecretScope, name: string): Promise<boolean> {
     const values = this.session.get(this.sessionKey(scope))
     const fromSession = values?.delete(name) ?? false
-    const workspaceKey = workspaceStorageKey(scope.workspace)
-    const fromFile = await this.updateSaved(saved => {
-      const entry = saved.workspaces[workspaceKey]
-      // Own keys only: `toString` and `constructor` are not stored secrets.
-      if (!entry || !Object.hasOwn(entry.secrets, name)) return false
-      delete entry.secrets[name]
-      return true
-    })
-    return fromSession || fromFile
+    const fromSaved = await this.saved.remove(scope.workspace, name)
+    return fromSession || fromSaved
   }
 
   /** Values for this scope: remembered ones, with this session's own on top. */
   async entries(scope: SecretScope): Promise<SecretEntry[]> {
-    const merged = new Map(Object.entries(await this.remembered(scope.workspace)))
+    const merged = new Map(Object.entries(await this.saved.read(scope.workspace)))
     for (const [name, value] of this.session.get(this.sessionKey(scope)) ?? []) merged.set(name, value)
     return [...merged].map(([name, value]) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name))
   }
 
   async list(scope: SecretScope): Promise<SecretInfo[]> {
-    const saved = await this.remembered(scope.workspace)
+    const saved = await this.saved.read(scope.workspace)
     const session = this.session.get(this.sessionKey(scope))
     const names = new Set([...Object.keys(saved), ...(session?.keys() ?? [])])
     return [...names].sort().map(name => ({ name, remembered: !session?.has(name) }))

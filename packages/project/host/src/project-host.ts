@@ -58,6 +58,8 @@ export interface ProjectHostOptions {
   contextWindow?: number
   /** Project 授权：所有 Thread 的上限。 */
   permission: PermissionMode
+  /** Commands always run in the sandbox: no `bypass`, no escalation (a server member's workspace). */
+  sandboxRequired?: boolean
   /** 沙箱命令的网络（允许 / 拒绝的域名）；缺席即不限制。 */
   sandboxNetwork?: SandboxNetworkSource
   approvals: ApprovalBroker
@@ -689,6 +691,7 @@ export class ProjectHost {
     await ctx.plugin(runtimeCapabilities, {
       workspace: this.workspace,
       permission: this.options.permission,
+      ...(this.options.sandboxRequired ? { sandboxRequired: true } : {}),
       ...(this.options.sandboxNetwork !== undefined ? { sandboxNetwork: this.options.sandboxNetwork } : {}),
       sessionId: record.id,
       builtin: config === false ? false : { ...(config ?? {}) },
@@ -726,6 +729,7 @@ export class ProjectHost {
         await local.plugin(runtimeCapabilities, {
           workspace: cwd,
           permission: thread.permission,
+          ...(this.options.sandboxRequired ? { sandboxRequired: true } : {}),
           ...(this.options.sandboxNetwork !== undefined ? { sandboxNetwork: this.options.sandboxNetwork } : {}),
           sessionId: thread.id,
           promptWorkspace: this.workspace,

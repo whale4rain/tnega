@@ -231,6 +231,21 @@ export abstract class SessionStore extends Service {
   abstract backend(workspace: WorkspaceKey, id: string): SessionBackend
 }
 
+export {
+  SUMMARY_EVENT_TYPES,
+  changedMeta,
+  contextUsageOf,
+  forkBody,
+  metaPatchPayload,
+  pageWindow,
+  requestContextWindowOf,
+  searchSnippet,
+  snapshotFromFolds,
+  summaryFromEvents,
+  trimStreams,
+  viewEvents,
+  type SnapshotFolds,
+} from './folds.js'
 export { BlobImagesBackend, ImageCache, keepsImagesAsBlobs, restoreImages, sessionFormatOf, storeImages } from './images.js'
 
 export const name = '@tnega/session-store'

@@ -4072,6 +4072,23 @@ kbd {
 .question-secret-foot .muted { flex: 1; min-width: 0; }
 .question-remember[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); }
 
+/* Sign-in page: the splash with a narrow form under it. */
+.signin-form { display: grid; gap: 12px; width: min(340px, 100%); text-align: left; }
+.signin-form .button { justify-self: stretch; }
+
+/* Settings → Account: who is signed in, the password, and People for owners and admins. */
+.account-settings { display: grid; gap: 16px; }
+.people { display: grid; gap: 10px; }
+.people h4 { margin: 0; font-size: var(--text-lg); font-weight: 600; }
+.people-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.people-row { display: flex; align-items: center; gap: 10px; min-height: var(--control-lg); padding: 0 4px 0 10px; border-radius: var(--radius-sm); }
+.people-row:hover { background: var(--surface-hover); }
+.people-row > svg { color: var(--text-3); flex: none; }
+.people-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-login { flex: 1; min-width: 0; color: var(--text-3); font-family: var(--font-mono); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-invite { display: flex; align-items: center; gap: 6px; }
+.people-invite input { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--text-sm); }
+
 /* Settings → Secrets: one quiet row per name. */
 .secret-settings { display: grid; gap: 12px; }
 .secret-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }

@@ -26,6 +26,7 @@ export async function main(argv: readonly string[], options: EntryOptions = {}):
   if (hasCommandHelp(command) && rest.some(isHelpFlag)) return print(commandHelp(command), 0)
   if (command === 'tui') return runTui(rest)
   if (command === 'daemon') return runDaemon(rest)
+  if (command === 'server') return runServer(rest)
   // `tnega --continue`, `tnega --cwd x`: options without a command are the TUI's.
   if (command.startsWith('-')) return runTui(argv)
   return runCommand(argv)
@@ -46,6 +47,17 @@ async function runDaemon(args: readonly string[]): Promise<number> {
   try {
     const { runDaemonCommand } = await import('./daemon-command.js')
     return await runDaemonCommand(args)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stdout.write(`error: ${message}\n`)
+    return 2
+  }
+}
+
+async function runServer(args: readonly string[]): Promise<number> {
+  try {
+    const { runServerCommand, terminalIo } = await import('./server-command.js')
+    return await runServerCommand(args, terminalIo())
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     process.stdout.write(`error: ${message}\n`)
