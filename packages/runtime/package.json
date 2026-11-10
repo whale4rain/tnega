@@ -53,7 +53,10 @@
     "@tnega/tool-ui": "workspace:*",
     "@tnega/tool-web-fetch": "workspace:*",
     "@tnega/tools": "workspace:*",
-    "@tnega/workspace-prompt": "workspace:*"
+    "@tnega/workspace-prompt": "workspace:*",
+    "@tnega/blobs-local": "workspace:*",
+    "@tnega/session-store-jsonl": "workspace:*",
+    "@tnega/session-store-pg": "workspace:*"
   },
   "devDependencies": {
     "@tnega/daemon": "workspace:*"

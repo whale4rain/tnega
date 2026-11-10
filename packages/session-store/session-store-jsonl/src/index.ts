@@ -16,27 +16,32 @@ import {
   SessionNotFoundError,
   prepareCompaction,
   type CompactionPreparation,
-  estimateContextUsage as estimateSessionContextUsage,
   foldUsage,
   foldSessionMeta,
-  transcriptEvents,
   foldSessionPermission,
   type ContextUsage,
   type SessionMetrics,
-  type MetaPatchPayload,
   type ModelMessage,
   type SessionEvent,
   type SessionPermission,
 } from '@tnega/session'
 import { importLegacyFile, workspaceSessionDir } from '@tnega/home'
-import { isSessionId } from '@tnega/session-store'
+import {
+  contextUsageOf,
+  forkBody,
+  isSessionId,
+  metaPatchPayload,
+  searchSnippet,
+  snapshotFromFolds,
+  summaryFromEvents,
+  trimStreams,
+} from '@tnega/session-store'
 import type {
   CreateSessionOptions,
   SessionSearchHit,
   SessionMetaPatch,
   SessionMetaPayload,
   SessionPageOptions,
-  SessionPageRange,
   SessionSnapshot,
   SessionSummary,
 } from '@tnega/session-store'
@@ -53,6 +58,7 @@ export type {
 } from '@tnega/session-store'
 export { JsonlSessionStore, sessionStoreJsonl } from './store.js'
 export { isSessionId }
+export { viewEvents } from '@tnega/session-store'
 
 /** A Session the store was asked about but does not have. */
 export { SessionNotFoundError }
@@ -106,7 +112,9 @@ export async function ensureSessionDir(workspace: string): Promise<string> {
   try {
     entries = await readdir(legacy)
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return dir
+    // Missing, or a folder this user cannot read (the server and a box run as
+    // different users): no legacy Sessions to import, never a crash.
+    if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'EACCES' || error.code === 'EPERM')) return dir
     throw error
   }
   for (const entry of entries) {
@@ -191,45 +199,6 @@ export async function listSessions(workspace: string): Promise<SessionSummary[]>
  */
 const summaryCache = new Map<string, { stamp: string; summary: SessionSummary }>()
 
-/** Folds a summary out of events that are already parsed. */
-function summaryFromEvents(
-  workspaceDir: string,
-  id: string,
-  events: readonly SessionEvent[],
-  eventCount: number,
-  mtimeMs: number,
-): SessionSummary {
-  const headMeta = events.find(event => event.type === 'meta')
-  const headPayload = headMeta?.payload as Record<string, unknown> | undefined
-  const createdAt = headPayload && typeof headPayload.createdAt === 'number'
-    ? headPayload.createdAt
-    : Date.now()
-  const folded = foldSessionMeta(events)
-  const updatedAt = Math.max(createdAt, mtimeMs)
-  const summary: SessionSummary = {
-    id,
-    title: folded.title ?? 'New session',
-    workspace: workspaceDir,
-    createdAt,
-    updatedAt,
-    eventCount,
-  }
-  if (folded.agentType) summary.agentType = folded.agentType
-  if (folded.mode) summary.mode = folded.mode
-  if (folded.model) summary.model = folded.model
-  if (folded.reasoningEffort) summary.reasoningEffort = folded.reasoningEffort
-  summary.permission = foldSessionPermission(events)
-  const approvalMode = foldApprovalMode(events)
-  if (approvalMode) summary.approvalMode = approvalMode
-  if (headPayload && typeof headPayload.parentSessionId === 'string') {
-    summary.parentSessionId = headPayload.parentSessionId
-  }
-  if (headPayload && typeof headPayload.forkedAtMessageId === 'string') {
-    summary.forkedAtMessageId = headPayload.forkedAtMessageId
-  }
-  return summary
-}
-
 /**
  * Only metadata events can change a summary, and they are a small fraction of a
  * log: parsing a tool result (hundreds of bytes, most of the file) cannot affect
@@ -264,114 +233,6 @@ export async function readSessionSummary(
 
 
 
-
-/** The context window the log itself recorded (a provider/limit change writes one). */
-function requestContextWindowOf(events: readonly SessionEvent[]): number | undefined {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]!
-    if (event.type !== 'request/context') continue
-    const payload = event.payload as { contextWindow?: unknown }
-    return typeof payload.contextWindow === 'number' ? payload.contextWindow : undefined
-  }
-  return undefined
-}
-
-const PAGE_MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
-
-/**
- * Cut the newest page of at most maxMessages transcript messages out of a log.
- * The cut lands on a turn/start so a turn is never split: a page that began
- * mid-turn would render a tool result without the call that produced it.
- */
-function pageWindow(
-  events: readonly SessionEvent[],
-  options: SessionPageOptions,
-): { events: SessionEvent[]; page: SessionPageRange } {
-  const asked = options.beforeSeq
-  const end = asked === undefined
-    ? events.length
-    : Math.max(0, events.findIndex(event => event.seq >= asked))
-  const limit = options.maxMessages !== undefined && options.maxMessages > 0 ? options.maxMessages : undefined
-  // Without a page size the whole history up to the cursor is the window.
-  let start = 0
-  if (limit !== undefined) {
-    let count = 0
-    let cut = end
-    for (let index = end - 1; index >= 0; index -= 1) {
-      const event = events[index]!
-      if (PAGE_MESSAGE_TYPES.has(event.type)) {
-        count += 1
-        cut = index
-        if (count >= limit) break
-      }
-    }
-    if (count >= limit) {
-      // Keep the turn whole: back up to the turn/start that owns the cut message.
-      let turnStart = cut
-      for (let index = cut; index >= 0; index -= 1) {
-        if (events[index]!.type === 'turn/start') {
-          turnStart = index
-          break
-        }
-      }
-      start = turnStart
-    }
-  }
-  // The oldest page absorbs the session preamble (head meta and any durable
-  // system message); a page of nothing but preamble is not worth a request.
-  const firstTurn = events.findIndex(event => event.type === 'turn/start')
-  if (start > 0 && firstTurn >= 0 && start <= firstTurn) start = 0
-  const window = events.slice(start, end)
-  const hasMore = start > 0
-  const beforeSeq = window[0]?.seq
-  return {
-    events: window,
-    page: hasMore && beforeSeq !== undefined ? { hasMore, beforeSeq } : { hasMore },
-  }
-}
-
-/** Events only the replay of a live stream reads; a reader of the history never shows them. */
-const STREAM_ONLY_TYPES = new Set(['assistant/chunk'])
-
-/**
- * Trim the transcript to what a reader of the history shows. Each assistant
- * message carries a copy of every streamed chunk for reconnecting streams;
- * on a long session that copy is over 90% of the log and a page of history
- * was tens of MB. A view only reads when the reasoning started and ended, so
- * the copy keeps just those records (see `reasoningDuration` in
- * `@tnega/client`). The log on disk is unchanged.
- */
-export function viewEvents(events: readonly SessionEvent[]): SessionEvent[] {
-  return trimStreams(events.filter(event => !STREAM_ONLY_TYPES.has(event.type)))
-}
-
-/** Each assistant message's stream copy cut to its reasoning bounds; every other event as it is. */
-function trimStreams(events: readonly SessionEvent[]): SessionEvent[] {
-  return events.map(event => {
-    if (event.type !== 'assistant/message' || !event.payload.stream) return event
-    const { stream, ...payload } = event.payload
-    const kept = reasoningBounds(stream)
-    return { ...event, payload: kept.length ? { ...payload, stream: kept } : payload }
-  })
-}
-
-type StreamRecords = NonNullable<Extract<SessionEvent, { type: 'assistant/message' }>['payload']['stream']>
-
-/** The first and last reasoning chunk, and the first chunk of anything after it. */
-function reasoningBounds(stream: StreamRecords): StreamRecords {
-  let first: StreamRecords[number] | undefined
-  let last: StreamRecords[number] | undefined
-  for (const record of stream) {
-    if (record.chunk.type === 'reasoning_delta') {
-      first ??= record
-      last = record
-    } else if (first && record.chunk.type !== 'message_start') {
-      return last && last !== first ? [first, last, record] : [first, record]
-    }
-  }
-  if (!first) return []
-  return last && last !== first ? [first, last] : [first]
-}
 
 /**
  * A session log and its two folds, kept between views. Reopening a session the
@@ -434,30 +295,7 @@ export async function readSessionSnapshot(
       if (stamp !== undefined) rememberSessionLog(file, fresh)
       return fresh
     }, { create: false })
-  const logEvents = fold.log
-  {
-    const summary = summaryFromEvents(workspaceDir, id, logEvents, logEvents.length, mtimeMs)
-    const surface = fold.surface
-    const limit = windowFor?.(summary.model) ?? requestContextWindowOf(logEvents)
-    const estimate = estimateSessionContextUsage(fold.messages, limit)
-    const latestSurfaceEvent = surface.reduce<SessionEvent | undefined>(
-      (latest, event) => !latest || event.seq > latest.seq ? event : latest,
-      undefined,
-    )
-    const context: ContextUsage = latestSurfaceEvent?.type === 'assistant/message' && latestSurfaceEvent.payload.usage
-      ? { ...estimate, tokens: latestSurfaceEvent.payload.usage.promptTokens, ratio: estimate.limit > 0 ? latestSurfaceEvent.payload.usage.promptTokens / estimate.limit : 0, source: 'provider' }
-      : { ...estimate, source: 'estimate' }
-    const window = pageWindow(logEvents, pageOptions)
-    return {
-      summary,
-      events: viewEvents(transcriptEvents(window.events)),
-      surface,
-      context,
-      metrics: foldUsage(logEvents),
-      log: logEvents,
-      page: window.page,
-    }
-  }
+  return snapshotFromFolds(workspaceDir, id, fold, mtimeMs, windowFor, pageOptions)
 }
 
 export async function setSessionTitle(
@@ -502,29 +340,8 @@ export async function patchSessionMeta(
   patch: SessionMetaPatch,
 ): Promise<SessionSummary> {
   const file = sessionFile(workspace, id)
-  const fields: MetaPatchPayload['fields'] = []
-  const payload: MetaPatchPayload = { fields }
-  if (patch.title !== undefined) {
-    fields.push('title')
-    payload.title = patch.title.trim() || 'New session'
-  }
-  if (patch.agentType !== undefined) {
-    fields.push('agentType')
-    payload.agentType = patch.agentType
-  }
-  if (patch.mode !== undefined) {
-    fields.push('mode')
-    payload.mode = patch.mode
-  }
-  if (patch.model !== undefined) {
-    fields.push('model')
-    payload.model = patch.model
-  }
-  if (patch.reasoningEffort !== undefined) {
-    fields.push('reasoningEffort')
-    payload.reasoningEffort = patch.reasoningEffort
-  }
-  if (!fields.length) return readSessionSummary(workspace, id)
+  const payload = metaPatchPayload(patch)
+  if (!payload) return readSessionSummary(workspace, id)
   await withSessionLog(file, async (log) => {
     await log.append('meta/patch', payload)
     await log.flush()
@@ -549,12 +366,7 @@ export async function forkSession(
   // the source's meta/patch events need no replay here. A message fork drops
   // the source's meta events, so fold over the whole source log.
   const folded = foldSessionMeta(allEvents)
-  const body = events.filter(event => {
-    if (event.type === 'meta/patch') return false
-    if (event.type !== 'meta') return true
-    const kind: unknown = Reflect.get(event.payload, 'kind')
-    return kind === 'approval/mode' || kind === 'approval/review' || kind === 'run/summary'
-  })
+  const body = forkBody(events)
   const fork = await createSession(workspace, {
     title: options.title?.trim() || `${folded.title ?? 'New session'} fork`,
     ...(typeof createdAt === 'number' ? { createdAt } : {}),
@@ -617,23 +429,7 @@ export async function estimateContextUsage(
 ): Promise<ContextUsage> {
   return withSessionLog(sessionFile(workspace, id), async log => {
     const surface = await log.surfaceEvents()
-    const estimate = estimateSessionContextUsage(
-      await log.deriveMessages(), configuredWindow ?? log.requestContext()?.contextWindow,
-    )
-    const latestSurfaceEvent = surface.reduce<SessionEvent | undefined>(
-      (latest, event) => !latest || event.seq > latest.seq ? event : latest,
-      undefined,
-    )
-    if (latestSurfaceEvent?.type !== 'assistant/message' || !latestSurfaceEvent.payload.usage) {
-      return { ...estimate, source: 'estimate' }
-    }
-    const tokens = latestSurfaceEvent.payload.usage.promptTokens
-    return {
-      ...estimate,
-      tokens,
-      ratio: estimate.limit > 0 ? tokens / estimate.limit : 0,
-      source: 'provider',
-    }
+    return contextUsageOf(surface, await log.deriveMessages(), configuredWindow ?? log.requestContext()?.contextWindow)
   }, { create: false })
 }
 
@@ -758,15 +554,6 @@ export async function searchSessions(
     .sort((a, b) => b.at - a.at)
     .slice(0, limit)
     .map(({ id, snippet }) => ({ id, snippet }))
-}
-
-function searchSnippet(content: string, needle: string): string | undefined {
-  const text = content.replace(/\s+/g, ' ').trim()
-  const at = text.toLowerCase().indexOf(needle)
-  if (at < 0) return undefined
-  const start = Math.max(0, at - 30)
-  const end = Math.min(text.length, at + needle.length + 70)
-  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
 }
 
 export async function deleteSession(workspace: string, id: string): Promise<void> {

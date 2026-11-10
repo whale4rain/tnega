@@ -1,3 +1,4 @@
+import { stateCapability, stateSpecFromEnv, type StateCapabilitySpec } from '@tnega/runtime'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
 import { defaultWebRoot, handleStatic } from './static.js'
@@ -11,8 +12,6 @@ import { createPluginWorkshop } from '@tnega/plugin-host'
 import { effectiveApiKey, effectiveLlmConfig, MEMORY_DREAM_DEFAULTS, readSystemConfig, SystemConfigError, upsertModelRoute } from '@tnega/config'
 import { memoryDream, memoryDreamRoutes } from '@tnega/memory-dream'
 import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
-import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
-import { blobsLocal } from '@tnega/blobs-local'
 import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
@@ -34,6 +33,8 @@ const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
 
 export interface WebServerOptions {
+  /** Where Sessions are kept; default from the environment (`stateSpecFromEnv`). */
+  state?: StateCapabilitySpec
   /** Runtime assets for hosts which bundle the server away from its worker/WASM. */
   ptcRuntime?: PtcRuntimeQuickjsConfig
   port?: number
@@ -109,10 +110,9 @@ export async function startWebServer(
     : undefined
   const root = new Context()
   await root.plugin(webServer)
-  // Image bytes live once under the tnega home; Sessions keep their hashes.
-  await root.plugin(blobsLocal)
-  // Sessions live in JSONL files under the tnega home on this machine.
-  await root.plugin(sessionStoreJsonl)
+  // Image bytes under the tnega home; Sessions in JSONL files there, or on
+  // Postgres when TNEGA_SESSION_STORE=postgres and DATABASE_URL say so.
+  await root.plugin(stateCapability, options.state ?? stateSpecFromEnv())
   // One session index per host, in the tnega home; it opens on the first search.
   const sessionIndex = new SqliteSessionIndex({ sessions: root.get('sessionStore') })
   const web = root.get('webServer')

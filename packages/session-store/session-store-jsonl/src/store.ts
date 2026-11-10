@@ -9,6 +9,7 @@ import {
   SessionLeaseError,
   SessionStore,
   canonicalEvent,
+  changedMeta,
   keepsImagesAsBlobs,
   restoreImages,
   storeImages,
@@ -177,12 +178,7 @@ export class JsonlSessionStore extends SessionStore {
   async patchMeta(workspace: string, id: string, { permission, approvalMode, ...meta }: SessionMetaPatch): Promise<SessionSummary> {
     // A field already in force stores nothing, so a retried patch adds no events.
     const current = await this.summary(workspace, id)
-    const changed: SessionMetaPatch = {}
-    if (meta.title !== undefined && (meta.title.trim() || 'New session') !== current.title) changed.title = meta.title
-    if (meta.agentType !== undefined && meta.agentType !== current.agentType) changed.agentType = meta.agentType
-    if (meta.mode !== undefined && meta.mode !== current.mode) changed.mode = meta.mode
-    if (meta.model !== undefined && meta.model !== current.model) changed.model = meta.model
-    if (meta.reasoningEffort !== undefined && meta.reasoningEffort !== (current.reasoningEffort ?? 'default')) changed.reasoningEffort = meta.reasoningEffort
+    const changed = changedMeta(current, meta)
     let summary = await patchSessionMeta(workspace, id, changed)
     if (approvalMode !== undefined) summary = await setSessionApprovalMode(workspace, id, approvalMode)
     if (permission !== undefined) summary = await setSessionPermission(workspace, id, permission)
