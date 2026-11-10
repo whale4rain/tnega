@@ -8,7 +8,7 @@ import type { WorkspaceResolver } from './workspaces.js'
 export { PgSessionStore, type PgSessionStoreOptions } from './store.js'
 export { bootstrapSchema } from './schema.js'
 export { poolClient, type PgPoolLike, type SqlClient, type SqlQueryable } from './sql.js'
-export { LOCAL_ACCOUNT_ID, LOCAL_DEVICE_ID, localWorkspaces, type WorkspaceResolver, type WorkspaceRow } from './workspaces.js'
+export { LOCAL_ACCOUNT_ID, LOCAL_DEVICE_ID, localWorkspaces, ownedLocalWorkspaces, type WorkspaceResolver, type WorkspaceRow } from './workspaces.js'
 
 export interface SessionStorePgConfig {
   /** `postgresql://…`; the plugin opens a pool on it and closes it with the plugin. */

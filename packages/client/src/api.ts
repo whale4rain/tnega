@@ -21,6 +21,10 @@ import type {
   PendingQuestionRequest,
   QuestionAnswerItem,
   SecretInfo,
+  AccountInfo,
+  AccountRole,
+  AuthSession,
+  InviteCode,
   SessionDetail,
   SessionEffort,
   SessionEvent,
@@ -287,6 +291,23 @@ export function createClient(options: ClientOptions = {}) {
     answerQuestions: (workspace: string, id: string, requestId: string, answers: QuestionAnswerItem[], signal?: AbortSignal) =>
       call<{ accepted: boolean; resumeQueued?: boolean }>(scoped(`/api/sessions/${id}/questions/${requestId}`, workspace), { method: 'POST', body: { answers }, signal }),
     /** Secrets of a session (names only), plus the ones saved for its workspace. */
+    /**
+     * Who is signed in. A local host has no sign-in and answers 404; a server
+     * answers 401 until someone signs in.
+     */
+    authSession: (signal?: AbortSignal) => call<AuthSession>('/api/auth/session', { signal }),
+    /** `device` names this browser or app in the person's device list. */
+    signIn: (login: string, password: string, device?: string) =>
+      call<{ account: AccountInfo }>('/api/auth/session', { method: 'POST', body: { login, password, ...(device ? { device } : {}) } }),
+    signOut: () => call<{ signedOut: boolean }>('/api/auth/session', { method: 'DELETE' }),
+    acceptInvite: (input: { code: string; login: string; name?: string; password: string; device?: string }) =>
+      call<{ account: AccountInfo }>('/api/auth/invite', { method: 'POST', body: input }),
+    changePassword: (current: string, next: string) =>
+      call<{ changed: boolean }>('/api/auth/password', { method: 'PUT', body: { current, next } }),
+    people: (signal?: AbortSignal) => call<{ users: AccountInfo[] }>('/api/auth/users', { signal }),
+    invitePerson: (role: AccountRole) => call<InviteCode>('/api/auth/codes', { method: 'POST', body: { purpose: 'invite', role } }),
+    updatePerson: (id: string, patch: { role?: AccountRole; disabled?: boolean }) =>
+      call<{ user: AccountInfo }>(`/api/auth/users?${new URLSearchParams({ id }).toString()}`, { method: 'PATCH', body: patch }),
     secrets: (workspace: string, sessionId?: string, signal?: AbortSignal) =>
       call<{ secrets: SecretInfo[] }>(scoped('/api/secrets', workspace, sessionId ? { session: sessionId } : {}), { signal }),
     removeSecret: (workspace: string, name: string, sessionId?: string) =>

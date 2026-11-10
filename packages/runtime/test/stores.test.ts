@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { stateSpecFromEnv } from '../src/index.js'
+import { join } from 'node:path'
+import { memberLoginOf, stateSpecFromEnv } from '../src/index.js'
 
 describe('picking the Session store from the environment', () => {
   it('keeps Sessions in files unless asked otherwise', () => {
@@ -22,5 +23,16 @@ describe('picking the Session store from the environment', () => {
   it('refuses Postgres without a URL, and a store it does not know, instead of falling back to files', () => {
     expect(() => stateSpecFromEnv({ TNEGA_SESSION_STORE: 'postgres' })).toThrow(/DATABASE_URL/)
     expect(() => stateSpecFromEnv({ TNEGA_SESSION_STORE: 'mysql' })).toThrow(/unknown TNEGA_SESSION_STORE/)
+  })
+})
+
+describe('whose folder a Session is in', () => {
+  it('names the member whose own folder holds the path, and nobody outside it', () => {
+    const root = join('/srv', 'tnega', 'members')
+    expect(memberLoginOf(root, join(root, 'mia'))).toBe('mia')
+    expect(memberLoginOf(root, join(root, 'mia', 'app', 'src'))).toBe('mia')
+    expect(memberLoginOf(root, root)).toBeUndefined()
+    expect(memberLoginOf(root, join(root, '..', 'other'))).toBeUndefined()
+    expect(memberLoginOf(root, join('/home', 'mia'))).toBeUndefined()
   })
 })

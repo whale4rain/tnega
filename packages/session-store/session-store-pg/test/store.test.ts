@@ -9,7 +9,7 @@ import { SessionLog, renderToolResult, type SessionEvent } from '@tnega/session'
 import { SessionLeaseError, type SessionStore } from '@tnega/session-store'
 import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { blobsLocal } from '@tnega/blobs-local'
-import { sessionStorePg, type SessionStorePgConfig } from '../src/index.js'
+import { ownedLocalWorkspaces, sessionStorePg, type SessionStorePgConfig } from '../src/index.js'
 
 let db: PGlite
 const cleanups: Array<() => Promise<void>> = []
@@ -318,5 +318,18 @@ describe('the Postgres session store', () => {
     const jsonlResult = resultOf(fromJsonl)
     if (pgResult?.type !== 'tool/result' || jsonlResult?.type !== 'tool/result') throw new Error('a tool result was stored')
     expect(renderToolResult(pgResult.payload)).toBe(renderToolResult(jsonlResult.payload))
+  })
+
+  it('gives a member\'s folder to their account when the accounts table knows the login', async () => {
+    await db.query(`alter table account add column if not exists login text`)
+    const accountId = randomUUID()
+    await db.query(`insert into account (id, name, login) values ($1, 'Mia', 'mia-owner-test')`, [accountId])
+    const { store } = await mount({ workspaces: ownedLocalWorkspaces(key => key.startsWith(join(tmpdir(), 'members', 'mia')) ? 'mia-owner-test' : undefined) })
+    const mine = join(tmpdir(), 'members', 'mia', randomUUID())
+    const theirs = join(tmpdir(), `tnega-pg-${randomUUID()}`)
+    await store.create(mine, { title: 'Mine' })
+    await store.create(theirs, { title: 'Host' })
+    const owners = await db.query<{ path: string; account_id: string }>(`select path, account_id::text as account_id from workspace where path = any($1)`, [[mine, theirs]])
+    expect(Object.fromEntries(owners.rows.map(row => [row.path, row.account_id]))).toEqual({ [mine]: accountId, [theirs]: '7e9a0000-0000-4000-8000-000000000001' })
   })
 })

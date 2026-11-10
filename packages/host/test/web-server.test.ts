@@ -1,3 +1,5 @@
+import { IncomingMessage, ServerResponse } from 'node:http'
+import { Socket } from 'node:net'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { WebServerService } from '@tnega/web-kit'
@@ -70,6 +72,23 @@ describe('web server route table', () => {
     expect(() => web.registerUpgrade('/api/remote.mux', upgrade)).toThrow(/already registered/)
     dispose()
     expect(web.upgrade('/api/remote.mux')).toBeUndefined()
+  })
+
+  it('runs guards in order, stops at the first that answers, and withdraws a disposed one', async () => {
+    const web = new WebServerService(new Context())
+    const seen: string[] = []
+    const req = new IncomingMessage(new Socket())
+    const res = new ServerResponse(req)
+    const url = new URL('http://localhost/api/x')
+    web.registerGuard(() => { seen.push('first'); return false })
+    const dispose = web.registerGuard(async () => { seen.push('second'); return true })
+    web.registerGuard(() => { seen.push('third'); return false })
+    expect(await web.guard(req, res, url)).toBe(true)
+    expect(seen).toEqual(['first', 'second'])
+    dispose()
+    seen.length = 0
+    expect(await web.guard(req, res, url)).toBe(false)
+    expect(seen).toEqual(['first', 'third'])
   })
 
   it('requires absolute paths', () => {

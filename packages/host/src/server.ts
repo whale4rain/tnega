@@ -1,4 +1,4 @@
-import { openSecretVault, stateCapability, stateSpecFromEnv, type StateCapabilitySpec } from '@tnega/runtime'
+import { accountsCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
 import { defaultWebRoot, handleStatic } from './static.js'
@@ -35,6 +35,11 @@ const DEFAULT_PORT = 3080
 export interface WebServerOptions {
   /** Where Sessions are kept; default from the environment (`stateSpecFromEnv`). */
   state?: StateCapabilitySpec
+  /**
+   * Ask everyone to sign in (`tnega server start`): accounts on the same
+   * Postgres as the Sessions. Off in local mode.
+   */
+  accounts?: AccountsCapabilitySpec
   /** Runtime assets for hosts which bundle the server away from its worker/WASM. */
   ptcRuntime?: PtcRuntimeQuickjsConfig
   port?: number
@@ -110,6 +115,8 @@ export async function startWebServer(
     : undefined
   const root = new Context()
   await root.plugin(webServer)
+  // On a server, sign-in comes first: its guard sees every request.
+  if (options.accounts) await root.plugin(accountsCapability, options.accounts)
   // Image bytes under the tnega home; Sessions in JSONL files there, or on
   // Postgres when TNEGA_SESSION_STORE=postgres and DATABASE_URL say so.
   const state = options.state ?? stateSpecFromEnv()
@@ -252,6 +259,8 @@ async function handleRequest(
   try {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (url.pathname.startsWith('/api/') && rejectsApiRequest(req, res)) return
+    // Plugins check requests here (sign-in on a server) before any route runs.
+    if (await context.web.guard(req, res, url)) return
     const match = context.web.match(req.method ?? 'GET', url.pathname)
     if (match.kind === 'route' || match.kind === 'fallback') {
       await match.handler(req, res, url)

@@ -433,6 +433,8 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 - 选项的标签用名词（“Text size”），选项值用短词（“Large”）；后果写在下方一行 `.muted.small` 说明里。
 - 每个新设置至少有一个测试（`SettingsDialog.test.ts` 或对应 lib 的测试）覆盖“选了之后发生什么”。
 - **Secrets**（2026-10-26 起）：打开的会话与当前工作区的密钥，**只列名字**：每行 `KeyRound` · 名字（等宽）· “This session only” / “Saved for this workspace”（`.muted.small`）· Remove（`.button.ghost.small`，`aria-label` 写 “Remove NAME”，先 `confirmDialog`）。没有时一行 `.muted.small` 说明密钥从哪来。这里不能新增或查看值：新增只能回答 Agent 的密钥问题（§5.1）。
+- **Account**（2026-11-10 起，只在要求登录的 tnega server 上出现）：`.effective-card` 写登录名、角色（成员还有自己的文件夹）；Sign out（`.button.secondary.small`）；改密码表单（当前密码 + 新密码，`.form-grid`）。Owner / Admin 另有 **People**：每人一行 `UserRound` · 名字 · 登录名（等宽、`--text-3`）· 角色 `<select>`（`aria-label` 写 “Role of NAME”；每行一个，单选按钮会把列表挤满，所以这里用 select）· 停用时 `.pill.pill-danger` “Disabled” · Disable / Enable（`.button.ghost.small`，停用先 `confirmDialog`）。自己那行只读。下面是邀请：`ChoiceField` 选角色、“Create invite link”，链接放在只读输入框里，旁边 `Copy` 图标按钮。**成员**看不到 Models、Approvals、Tools & shell，也没有 “Save changes”：那些是服务器的设置。
+- **登录页**（2026-11-10 起）：服务器回答 401 时，在应用之前出现。沿用 `.splash`：品牌云、`--font-display` 标题 “Sign in to tnega”、一行 `.muted` 说明、窄表单（`.signin-form`，`.field` 堆叠，主按钮占满宽）。链接带 `?invite=` 时同一页变成建账号的表单（Login、Name 可选、Password 两次，“Create account”），成功后从地址里去掉邀请码。本地模式没有登录。
 - **Context insights**（2026-10-21 起，取代原 Usage 分区，保留它的按模型表）：当前工作区所有会话与 Project Thread 的上下文概览。右上角是范围（Today / Last 7 days / Last 30 days / All，按设备记住，`tnega.insightsRange`，默认 30 天）；依次是 Overview 数字、Last 7 days 柱（中性 `--text-3`，下面写当天费用）与 12 周 Activity 热力图（`--usage-*`，点某天筛选下方会话）、Token stats、Timing、Sessions 卡片（构成小环图、窗口占比、轮次 / 步数、tokens、费用、最后一条你写的消息；可搜索，按最近 / tokens / 当前上下文排序，有 Thread 时可按类型筛选；点卡片关闭设置并打开那个会话或 Thread），最后是 By model。不做 dsh-context 的 Context Browser 及其下方各块。
 
 ## 10. 动效与无障碍

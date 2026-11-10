@@ -46,7 +46,18 @@ async function byPath(tx: SqlQueryable, path: string): Promise<WorkspaceRow | un
  * folder on this machine, kept as a `daemon_path` workspace of the local
  * device and account.
  */
-export const localWorkspaces: WorkspaceResolver = async (tx, key, create) => {
+export const localWorkspaces: WorkspaceResolver = (tx, key, create) => ownedLocalWorkspaces(() => undefined)(tx, key, create)
+
+/**
+ * {@link localWorkspaces} on a server where people sign in: a new folder's
+ * row belongs to the account whose login `loginOf` names for it (a member's
+ * own folder), and to the local account otherwise.
+ */
+export function ownedLocalWorkspaces(loginOf: (key: string) => string | undefined): WorkspaceResolver {
+  return async (tx, key, create) => resolveLocal(tx, key, create, loginOf(key))
+}
+
+async function resolveLocal(tx: SqlQueryable, key: string, create: boolean, login: string | undefined): Promise<WorkspaceRow | undefined> {
   if (UUID.test(key)) {
     const found = await byId(tx, key)
     if (found) return found
@@ -60,9 +71,15 @@ export const localWorkspaces: WorkspaceResolver = async (tx, key, create) => {
     [LOCAL_DEVICE_ID, LOCAL_ACCOUNT_ID, LOCAL_DEVICE_TOKEN_HASH],
   )
   await tx.query(
-    `insert into workspace (id, account_id, kind, daemon_id, path) values (gen_random_uuid(), $1, 'daemon_path', $2, $3)
-     on conflict (daemon_id, path) where kind = 'daemon_path' do nothing`,
-    [LOCAL_ACCOUNT_ID, LOCAL_DEVICE_ID, key],
+    // `account.login` exists only where `@tnega/accounts-pg` made it, so it is
+    // named only when a login is asked for.
+    login === undefined
+      ? `insert into workspace (id, account_id, kind, daemon_id, path) values (gen_random_uuid(), $1, 'daemon_path', $2, $3)
+         on conflict (daemon_id, path) where kind = 'daemon_path' do nothing`
+      : `insert into workspace (id, account_id, kind, daemon_id, path)
+         values (gen_random_uuid(), coalesce((select id from account where login = $4), $1), 'daemon_path', $2, $3)
+         on conflict (daemon_id, path) where kind = 'daemon_path' do nothing`,
+    login === undefined ? [LOCAL_ACCOUNT_ID, LOCAL_DEVICE_ID, key] : [LOCAL_ACCOUNT_ID, LOCAL_DEVICE_ID, key, login],
   )
   return byPath(tx, key)
 }

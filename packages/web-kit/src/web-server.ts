@@ -19,6 +19,29 @@ export type RouteHandler = (
 
 export type UpgradeHandler = (req: IncomingMessage, socket: Socket, head: Buffer) => void
 
+/** Who sent a request, when a sign-in guard knows. */
+export interface RequestPrincipal {
+  accountId: string
+  login: string
+  role: string
+}
+
+/**
+ * Facts a guard learned about one request, for the routes that run after it.
+ * A feature adds what it needs here instead of each route asking it directly.
+ */
+export interface RequestAttributes {
+  principal?: RequestPrincipal
+  /** The sender may not turn the sandbox off (`bypass`) for a Session. */
+  sandboxRequired?: boolean
+}
+
+/**
+ * Runs before routing. Answer the request and resolve `true` to stop it there
+ * (a sign-in check refusing it, say); resolve `false` to let routing go on.
+ */
+export type RequestGuard = (req: IncomingMessage, res: ServerResponse, url: URL) => boolean | Promise<boolean>
+
 export interface Route {
   /** `exact` compares the whole pathname; `prefix` claims everything below it. */
   kind: 'exact' | 'prefix'
@@ -53,6 +76,8 @@ export class WebServerService extends Service {
   private readonly exact = new Map<string, RouteHandler>()
   private readonly prefixes = new Map<string, Route>()
   private readonly upgrades = new Map<string, UpgradeHandler>()
+  private readonly guards: RequestGuard[] = []
+  private readonly requestAttributes = new WeakMap<IncomingMessage, RequestAttributes>()
   private readonly registered: Array<() => void> = []
   private fallback: RouteHandler | undefined
 
@@ -107,6 +132,34 @@ export class WebServerService extends Service {
     return this.track(() => {
       if (this.upgrades.get(path) === handler) this.upgrades.delete(path)
     })
+  }
+
+  /**
+   * Add a check every request passes before routing, in registration order.
+   * The host calls {@link guard}; a feature such as sign-in hooks in here
+   * instead of the host knowing about it.
+   */
+  registerGuard(guard: RequestGuard): () => void {
+    this.guards.push(guard)
+    return this.track(() => {
+      const index = this.guards.indexOf(guard)
+      if (index >= 0) this.guards.splice(index, 1)
+    })
+  }
+
+  /** Run the guards; `true` means one of them answered and routing must not run. */
+  async guard(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+    for (const guard of [...this.guards]) {
+      if (await guard(req, res, url)) return true
+    }
+    return false
+  }
+
+  /** This request's attributes; guards write them, routes read them. */
+  attributes(req: IncomingMessage): RequestAttributes {
+    let found = this.requestAttributes.get(req)
+    if (!found) this.requestAttributes.set(req, found = {})
+    return found
   }
 
   upgrade(pathname: string): UpgradeHandler | undefined {

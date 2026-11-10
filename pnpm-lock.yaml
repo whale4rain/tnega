@@ -221,6 +221,50 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.6.3)(jsdom@26.1.0(supports-color@7.2.0))(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.33.0))
 
+  packages/accounts/accounts:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/accounts/accounts-pg:
+    dependencies:
+      '@tnega/accounts':
+        specifier: workspace:*
+        version: link:../accounts
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+
+  packages/accounts/accounts-routes:
+    dependencies:
+      '@tnega/accounts':
+        specifier: workspace:*
+        version: link:../accounts
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@tnega/accounts-pg':
+        specifier: workspace:*
+        version: link:../accounts-pg
+
   packages/agent:
     dependencies:
       '@tnega/core':
@@ -413,6 +457,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@tnega/accounts':
+        specifier: workspace:*
+        version: link:../accounts/accounts
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent
@@ -467,6 +514,9 @@ importers:
       '@tnega/tui':
         specifier: workspace:*
         version: link:../tui
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
     devDependencies:
       '@tnega/approval-host':
         specifier: workspace:*
@@ -516,6 +566,12 @@ importers:
       '@tnega/workspace-files':
         specifier: workspace:*
         version: link:../workspace-files
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/client:
     dependencies:
@@ -1823,6 +1879,15 @@ importers:
 
   packages/runtime:
     dependencies:
+      '@tnega/accounts':
+        specifier: workspace:*
+        version: link:../accounts/accounts
+      '@tnega/accounts-pg':
+        specifier: workspace:*
+        version: link:../accounts/accounts-pg
+      '@tnega/accounts-routes':
+        specifier: workspace:*
+        version: link:../accounts/accounts-routes
       '@tnega/agent':
         specifier: workspace:*
         version: link:../agent

@@ -634,6 +634,10 @@ const apiRoutes: ApiRoute[] = [
               || body.reasoningEffort === 'medium' || body.reasoningEffort === 'high') {
               patch.reasoningEffort = body.reasoningEffort
             }
+            if (permission === 'bypass' && context.web.attributes(req).sandboxRequired) {
+              sendError(res, 403, 'this account cannot turn the sandbox off')
+              return
+            }
             if (!Object.keys(patch).length && permission === undefined && approvalMode === undefined) {
               sendError(res, 400, 'session metadata is required')
               return

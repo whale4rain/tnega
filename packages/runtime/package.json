@@ -57,7 +57,10 @@
     "@tnega/blobs-local": "workspace:*",
     "@tnega/session-store-jsonl": "workspace:*",
     "@tnega/session-store-pg": "workspace:*",
-    "@tnega/secrets-pg": "workspace:*"
+    "@tnega/secrets-pg": "workspace:*",
+    "@tnega/accounts": "workspace:*",
+    "@tnega/accounts-pg": "workspace:*",
+    "@tnega/accounts-routes": "workspace:*"
   },
   "devDependencies": {
     "@tnega/daemon": "workspace:*"
