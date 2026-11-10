@@ -1,7 +1,9 @@
 import type { Context, Plugin } from '@tnega/core'
 import { blobsLocal } from '@tnega/blobs-local'
 import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
-import { sessionStorePg } from '@tnega/session-store-pg'
+import { LOCAL_ACCOUNT_ID, sessionStorePg } from '@tnega/session-store-pg'
+import { SecretVault } from '@tnega/secrets-local'
+import { openPgRememberedSecrets, parseMasterKey } from '@tnega/secrets-pg'
 
 /** Where a host keeps Sessions: JSONL files under the tnega home, or a Postgres database. */
 export type SessionStoreSpec =
@@ -10,6 +12,12 @@ export type SessionStoreSpec =
 
 export interface StateCapabilitySpec {
   sessions: SessionStoreSpec
+  /**
+   * Remembered secrets sealed with this master key in the same database
+   * (AES-256-GCM). Only with a Postgres store; without it they stay in the
+   * owner-only file under the tnega home.
+   */
+  masterKey?: Buffer
 }
 
 /**
@@ -23,7 +31,8 @@ export function stateSpecFromEnv(env: NodeJS.ProcessEnv = process.env): StateCap
   if (kind === 'postgres' || kind === 'pg') {
     const url = env.DATABASE_URL?.trim()
     if (!url) throw new Error('TNEGA_SESSION_STORE=postgres needs DATABASE_URL')
-    return { sessions: { kind: 'postgres', url } }
+    const masterKey = env.TNEGA_MASTER_KEY?.trim()
+    return { sessions: { kind: 'postgres', url }, ...(masterKey ? { masterKey: parseMasterKey(masterKey) } : {}) }
   }
   throw new Error(`unknown TNEGA_SESSION_STORE: ${env.TNEGA_SESSION_STORE}; use jsonl or postgres`)
 }
@@ -40,4 +49,15 @@ export const stateCapability: Plugin = {
     if (spec.sessions.kind === 'postgres') await ctx.plugin(sessionStorePg, { url: spec.sessions.url })
     else await ctx.plugin(sessionStoreJsonl)
   },
+}
+
+/**
+ * The host's secret vault for a state spec: remembered secrets sealed in
+ * Postgres when the spec has a database and a master key, otherwise in the
+ * owner-only file. `close` lets go of the database.
+ */
+export async function openSecretVault(spec: StateCapabilitySpec): Promise<{ vault: SecretVault; close(): Promise<void> }> {
+  if (spec.sessions.kind !== 'postgres' || !spec.masterKey) return { vault: new SecretVault(), close: async () => {} }
+  const remembered = await openPgRememberedSecrets({ url: spec.sessions.url, masterKey: spec.masterKey, accountId: LOCAL_ACCOUNT_ID })
+  return { vault: new SecretVault({ remembered }), close: () => remembered.close() }
 }

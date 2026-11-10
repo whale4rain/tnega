@@ -3,7 +3,7 @@ import { systemPrompt } from '@tnega/agent'
 import { skillTools } from '@tnega/coding-agent'
 import { localExecutionProvider, networkPolicy } from '@tnega/process-local'
 import { processBoundary } from '@tnega/process'
-import { secretEnvExecution } from '@tnega/execution-secrets'
+import { secretEnvExecution, type SecretEnvOptions } from '@tnega/execution-secrets'
 import { sandboxedExecution } from '@tnega/execution-sandbox'
 import { computerCua } from '@tnega/computer-cua'
 import { jobsLocal } from '@tnega/jobs-local'
@@ -132,6 +132,13 @@ async function networkOf(source: SandboxNetworkSource | undefined): Promise<Sand
  */
 export interface MachineSpec {
   link: DaemonLink
+  /**
+   * How this machine's commands get secrets. A person's own daemon gets them
+   * as variables, as on this machine. A box (v2) keeps keys out: names the
+   * egress proxy adds come through as placeholders, and `withholdOthers`
+   * keeps every other value out too.
+   */
+  secrets?: SecretEnvOptions
 }
 
 export interface RuntimeSpec {
@@ -286,7 +293,7 @@ const remoteSandboxCapability: Plugin = {
       workspaceId: announcedWorkspace(link, spec.workspace).id,
       sandbox: () => remoteSandbox(spec, grants),
     })
-    await ctx.plugin(processBoundary, { boundary: secretEnvExecution(ctx, boundary) })
+    await ctx.plugin(processBoundary, { boundary: secretEnvExecution(ctx, boundary, spec.machine.secrets) })
     await ctx.plugin(builtinTools, { ...(spec.builtin ?? {}), cwd: spec.workspace, execution: ctx.get('process') })
     const source = spec.network
     if (source !== undefined && isNetworkSettings(source)) {

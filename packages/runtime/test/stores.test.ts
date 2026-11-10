@@ -12,6 +12,13 @@ describe('picking the Session store from the environment', () => {
       .toEqual({ sessions: { kind: 'postgres', url: 'postgresql://db/tnega' } })
   })
 
+  it('seals remembered secrets with the master key only on Postgres, and refuses a malformed key', () => {
+    const key = Buffer.alloc(32, 7)
+    expect(stateSpecFromEnv({ TNEGA_SESSION_STORE: 'postgres', DATABASE_URL: 'postgresql://db/tnega', TNEGA_MASTER_KEY: key.toString('base64') }).masterKey).toEqual(key)
+    expect(stateSpecFromEnv({ TNEGA_MASTER_KEY: key.toString('base64') }).masterKey).toBeUndefined()
+    expect(() => stateSpecFromEnv({ TNEGA_SESSION_STORE: 'postgres', DATABASE_URL: 'postgresql://db/tnega', TNEGA_MASTER_KEY: 'short' })).toThrow(/32 bytes/)
+  })
+
   it('refuses Postgres without a URL, and a store it does not know, instead of falling back to files', () => {
     expect(() => stateSpecFromEnv({ TNEGA_SESSION_STORE: 'postgres' })).toThrow(/DATABASE_URL/)
     expect(() => stateSpecFromEnv({ TNEGA_SESSION_STORE: 'mysql' })).toThrow(/unknown TNEGA_SESSION_STORE/)

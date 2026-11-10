@@ -1910,6 +1910,9 @@ importers:
       '@tnega/secrets-local':
         specifier: workspace:*
         version: link:../secrets/secrets-local
+      '@tnega/secrets-pg':
+        specifier: workspace:*
+        version: link:../secrets/secrets-pg
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
@@ -2086,6 +2089,31 @@ importers:
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../../web-kit
+
+  packages/secrets/secrets-pg:
+    dependencies:
+      '@tnega/home':
+        specifier: workspace:*
+        version: link:../../home
+      '@tnega/secrets':
+        specifier: workspace:*
+        version: link:../secrets
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/secrets-local':
+        specifier: workspace:*
+        version: link:../secrets-local
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/secrets/tool-secrets:
     dependencies:

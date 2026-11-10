@@ -1,4 +1,4 @@
-import { stateCapability, stateSpecFromEnv, type StateCapabilitySpec } from '@tnega/runtime'
+import { openSecretVault, stateCapability, stateSpecFromEnv, type StateCapabilitySpec } from '@tnega/runtime'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
 import { defaultWebRoot, handleStatic } from './static.js'
@@ -19,7 +19,7 @@ import { compactionAdapter } from './support.js'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
-import { SecretVault, secretRoutes } from '@tnega/secrets-local'
+import { secretRoutes } from '@tnega/secrets-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
 import { projectApi } from '@tnega/project-http'
@@ -112,7 +112,10 @@ export async function startWebServer(
   await root.plugin(webServer)
   // Image bytes under the tnega home; Sessions in JSONL files there, or on
   // Postgres when TNEGA_SESSION_STORE=postgres and DATABASE_URL say so.
-  await root.plugin(stateCapability, options.state ?? stateSpecFromEnv())
+  const state = options.state ?? stateSpecFromEnv()
+  await root.plugin(stateCapability, state)
+  // Remembered secrets go with the state: sealed in Postgres with a master key, else the owner-only file.
+  const secretVault = await openSecretVault(state)
   // One session index per host, in the tnega home; it opens on the first search.
   const sessionIndex = new SqliteSessionIndex({ sessions: root.get('sessionStore') })
   const web = root.get('webServer')
@@ -136,7 +139,7 @@ export async function startWebServer(
     ...(pluginWorkshop ? { pluginWorkshop } : {}),
     processes: new Map(),
     sessionIndex,
-    secrets: new SecretVault(),
+    secrets: secretVault.vault,
     web,
     sessions: root.get('sessionStore'),
   }
@@ -236,6 +239,7 @@ export async function startWebServer(
       const registries = [...context.processes.values()]
       context.processes.clear()
       await Promise.all(registries.map(registry => registry.dispose()))
+      await secretVault.close()
     },
   }
 }

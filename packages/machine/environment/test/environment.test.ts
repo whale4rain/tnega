@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExecutionProvider, ShellRequest } from '@tnega/process'
-import { approvalHash, parseEnvironment, resolveCredential, runSetup, secretNames } from '../src/index.js'
+import { approvalHash, egressCredentials, parseEnvironment, proxiedSecretNames, resolveCredential, runSetup, secretNames } from '../src/index.js'
 
 const FULL = `
 version = 1
@@ -128,5 +128,34 @@ describe('runSetup', () => {
     const { execution } = fakeExecution(1, 'auth failed for npm_abcdef\n')
     await expect(runSetup(execution, { cwd: '/w', script: 'x', secrets: { NPM_TOKEN: 'npm_abcdef' } }))
       .rejects.toMatchObject({ code: 'SETUP_FAILED', message: expect.stringContaining('auth failed for [secret]') })
+  })
+})
+
+describe('egressCredentials', () => {
+  const environment = parseEnvironment([
+    '[[network.credentials]]',
+    'host = "api.github.com"',
+    'header = "authorization"',
+    'value = "Bearer ${GITHUB_TOKEN}"',
+    '[[network.credentials]]',
+    'host = "api.github.com"',
+    'header = "x-extra"',
+    'value = "${EXTRA_KEY}"',
+    '[[network.credentials]]',
+    'host = "registry.npmjs.org"',
+    'header = "authorization"',
+    'value = "Bearer ${NPM_TOKEN}"',
+  ].join('\n'))
+
+  it('fills the proxy keys from the secrets, one entry per host, and names what is missing', () => {
+    expect(proxiedSecretNames(environment)).toEqual(['EXTRA_KEY', 'GITHUB_TOKEN', 'NPM_TOKEN'])
+    expect(egressCredentials(environment, [{ name: 'GITHUB_TOKEN', value: 'ghp_1' }, { name: 'EXTRA_KEY', value: 'x-1' }])).toEqual({
+      credentials: [{ host: 'api.github.com', headers: { authorization: 'Bearer ghp_1', 'x-extra': 'x-1' } }],
+      missing: ['NPM_TOKEN'],
+    })
+  })
+
+  it('refuses a secret that would break out of its header', () => {
+    expect(() => egressCredentials(environment, [{ name: 'GITHUB_TOKEN', value: 'ghp_1\r\nx-evil: 1' }, { name: 'EXTRA_KEY', value: 'x' }, { name: 'NPM_TOKEN', value: 'n' }])).toThrow(/line break/)
   })
 })
