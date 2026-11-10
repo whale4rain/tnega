@@ -19,7 +19,7 @@ Auto review 与 Tool Permission、Sandbox 分开：用户可让模型审查需�
 
 ### 输入及持久化
 
-待审批 action 保留准确工具名、原始输入、schema 和 workspace。历史证据预算 24,000 字符，action 16,000，约束最多 8,000。优先保留可信用户请求；带名字的 Agent 请求不能变成用户授权，Project 可信来源由 composition 分类。
+待审批 action 保留准确工具名、原始输入、schema 和 workspace。历史证据预算 24,000 字符，action 16,000，约束最多 50,000。优先保留可信用户请求；带名字的 Agent 请求不能变成用户授权，Project 可信来源由 composition 分类。
 
 保留用户历史指令以承接约束，仅提供当前任务的工具调用记录。整个 `run_code` 源码不作为工具执行事实；PTC 根据当前用户请求之后的 `ptc/dispatch-start` 和 `ptc/dispatch` 配对，提供输入、成功/失败及 shell 退出码。未完成步骤不冒充已经执行。普通 assistant 工具调用仍是调用意图，不能据此证明成功。
 

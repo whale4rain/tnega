@@ -3,6 +3,7 @@ import type { ApprovalEvidence } from '@tnega/approval-review'
 
 export const REVIEW_CONTEXT_CHARS = 24_000
 export const REVIEW_ACTION_CHARS = 16_000
+export const REVIEW_CONSTRAINTS_CHARS = 50_000
 
 function historicalInput(tool: string, input: unknown): unknown {
   if (tool === 'write_file' && input && typeof input === 'object' && 'content' in input && typeof input.content === 'string') {

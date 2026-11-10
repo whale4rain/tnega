@@ -2,7 +2,7 @@ import type { Context } from '@tnega/core'
 import type { SessionLog, ModelMessage } from '@tnega/session'
 import type { ToolRequest } from '@tnega/tools'
 import { boundedReview, type ApprovalDecision, type ApprovalMode } from '@tnega/approval-review'
-import { buildReviewContext, REVIEW_ACTION_CHARS } from './context.js'
+import { buildReviewContext, REVIEW_ACTION_CHARS, REVIEW_CONSTRAINTS_CHARS } from './context.js'
 export { buildReviewContext } from './context.js'
 
 export interface AutoApprovalRequest { tool: ToolRequest; decision?: ApprovalDecision }
@@ -36,7 +36,7 @@ export const autoApproval = {
         const context = buildReviewContext(messages, await session.read())
         const latestHuman = [...messages].reverse().find(message => message.role === 'user' && !message.name)
         const constraints = await config.constraints?.() ?? ''
-        if ((latestHuman && !context.evidence.some(item => item.source === 'human' && item.content === latestHuman.content)) || constraints.length > 8_000) {
+        if ((latestHuman && !context.evidence.some(item => item.source === 'human' && item.content === latestHuman.content)) || constraints.length > REVIEW_CONSTRAINTS_CHARS) {
           event.decision = { decision: 'ask', reason: 'Current request or project constraints exceed automatic review budget.' }
         } else {
           if (constraints) context.evidence.push({ source: 'constraint', content: constraints })

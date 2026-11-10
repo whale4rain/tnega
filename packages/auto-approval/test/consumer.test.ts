@@ -9,7 +9,11 @@ import { autoApproval, type AutoApprovalRequest } from '../src/index.js'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
-async function setup(review: (request: ApprovalReviewRequest) => Promise<ApprovalDecision>, initial: ApprovalMode = 'auto') {
+async function setup(
+  review: (request: ApprovalReviewRequest) => Promise<ApprovalDecision>,
+  initial: ApprovalMode = 'auto',
+  constraints?: () => Promise<string>,
+) {
   const dir = await mkdtemp(join(tmpdir(), 'tnega-approval-consumer-'))
   const ctx = new Context()
   const session = new SessionLog(join(dir, 'session.jsonl'))
@@ -20,7 +24,12 @@ async function setup(review: (request: ApprovalReviewRequest) => Promise<Approva
     new Reviewer(scope)
   })
   await provider
-  const consumer = ctx.plugin(autoApproval, { workspace: dir, mode: () => mode, session: () => session })
+  const consumer = ctx.plugin(autoApproval, {
+    workspace: dir,
+    mode: () => mode,
+    session: () => session,
+    ...(constraints ? { constraints } : {}),
+  })
   await consumer
   cleanups.push(async () => { await consumer.dispose(); await provider.dispose(); await session.close(); await rm(dir, { recursive: true, force: true }) })
   const event: AutoApprovalRequest = { tool: { name: 'shell', input: { command: 'pnpm test' }, tool: { schema: { name: 'shell', description: 'Run shell' }, execute: async () => '' }, options: { agentId: 'agent-1', callId: 'call-1' }, startedAt: Date.now() } }
@@ -68,6 +77,25 @@ it.each(['action', 'human'])('overlong %s evidence bypasses reviewer and records
   expect(calls).toBe(0)
   expect(state.event.decision?.decision).toBe('ask')
   expect(await readFile(state.session.file, 'utf8')).toContain('approval/review')
+})
+it.each([
+  ['stay within', 50_000, 1],
+  ['exceed', 50_001, 0],
+])('project constraints %s the review budget', async (_label, length, expectedCalls) => {
+  let calls = 0
+  const state = await setup(
+    async request => {
+      calls++
+      expect(request.evidence).toContainEqual({ source: 'constraint', content: 'x'.repeat(length) })
+      return { decision: 'allow', reason: 'ok' }
+    },
+    'auto',
+    async () => 'x'.repeat(length),
+  )
+  await state.session.append('user/message', { content: 'Run tests' })
+  await state.ctx.parallel('approval/review', state.event)
+  expect(calls).toBe(expectedCalls)
+  expect(state.event.decision?.decision).toBe(expectedCalls === 1 ? 'allow' : 'ask')
 })
 it.each(['box:unknown', 'agent:child', 'named-user'])('named sender %s cannot become human consent', async name => {
   const state = await setup(async request => {
