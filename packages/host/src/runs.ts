@@ -24,7 +24,7 @@ import { toolSubagent } from '@tnega/tool-subagent'
 import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import type { SecretVault } from '@tnega/secrets-local'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
-import { runtimeCapabilities, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
+import { runtimeCapabilities, sandboxedPermission, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { toolWebSearch } from '@tnega/tool-web-search'
@@ -58,7 +58,8 @@ export async function handleRun(
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   const requestId = submissionId(body.requestId)
   const summary = await context.sessions.summary(workspace, id)
-  const permission: PermissionMode = summary.permission ?? 'read-only'
+  const sandboxRequired = context.sandboxRequired?.(workspace) === true
+  const permission: PermissionMode = sandboxRequired ? sandboxedPermission(summary.permission ?? 'read-only') : summary.permission ?? 'read-only'
   const agentType = summary.agentType ?? 'general'
   const coding = agentType === 'coding'
   const persona = `${personaFor(agentType)}\n\n${await renderSkillIndex(workspace)}`
@@ -79,6 +80,7 @@ export async function handleRun(
     await runResidentTurn(context, res, workspace, id, {
       prompt,
       permission,
+      ...(sandboxRequired ? { sandboxRequired: true } : {}),
       sessionId: id,
       approvals: context.approvals,
       agentType,
@@ -121,6 +123,7 @@ export async function handleRun(
       allowNetwork: true,
       allowShell: true,
       sandboxMode: permission,
+      ...(sandboxRequired ? { sandboxRequired: true } : {}),
       sandboxNetwork: sandboxNetworkFrom(context.configFile),
       office: agentType === 'work' ? true : 'auto',
       ...(context.secrets ? { secrets: { vault: context.secrets, sessionId: id } } : {}),
@@ -346,6 +349,8 @@ export interface ResidentRunRequest {
   config: SystemConfig
   prompt: string
   permission: PermissionMode
+  /** Commands always run in the sandbox (see `ServerContext.sandboxRequired`). */
+  sandboxRequired?: boolean
   sessionId: string
   approvals: ApprovalBroker
   agentType: AgentType
@@ -372,13 +377,15 @@ export async function createResidentRuntime(
 ): Promise<{ root: Context; dispose: () => Promise<void> }> {
   const root = new Context()
   const currentPermission = async (): Promise<PermissionMode> => {
-    return (await req.sessions.summary(workspace, req.sessionId)).permission ?? 'read-only'
+    const permission = (await req.sessions.summary(workspace, req.sessionId)).permission ?? 'read-only'
+    return req.sandboxRequired ? sandboxedPermission(permission) : permission
   }
   const sessionOf = (agentId?: string) => root.get('agents', false)?.get(agentId ?? req.sessionId)?.session
 
   await root.plugin(runtimeCapabilities, {
     workspace,
     permission: currentPermission,
+    ...(req.sandboxRequired ? { sandboxRequired: true } : {}),
     ...(req.sandboxNetwork ?? req.config.sandbox?.network ? { sandboxNetwork: req.sandboxNetwork ?? req.config.sandbox?.network } : {}),
     sessionId: req.sessionId,
     builtin: {
@@ -515,6 +522,7 @@ export function residentSignature(req: ResidentRunRequest): string {
       : 'no-computer',
     req.agentType,
     req.permission,
+    req.sandboxRequired ? 'sandbox-required' : '',
     'auto',
   ].join('|')
 }
@@ -615,8 +623,11 @@ export async function residentQuestionRequest(context: ServerContext, workspace:
   const config = await readSystemConfig(context.configFile)
   const { effective, apiKey } = resolveSessionLlm(config, summary.model, summary.reasoningEffort)
   if (!apiKey) throw new HttpError(400, 'API key is not configured')
+  const sandboxRequired = context.sandboxRequired?.(workspace) === true
+  const permission = summary.permission ?? 'read-only'
   return {
-    prompt: '', permission: summary.permission ?? 'read-only', sessionId: id,
+    prompt: '', permission: sandboxRequired ? sandboxedPermission(permission) : permission, sessionId: id,
+    ...(sandboxRequired ? { sandboxRequired: true } : {}),
     approvals: context.approvals, agentType: summary.agentType ?? 'general', goalMode: false,
     effective, apiKey, config, sandboxNetwork: sandboxNetworkFrom(context.configFile), resumeQueued: true,
     route: sessionModelRoute(context.sessions, context.configFile, workspace, id),

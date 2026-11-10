@@ -1,5 +1,6 @@
 import { accountsCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
 import { defaultWebRoot, handleStatic } from './static.js'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
@@ -31,6 +32,15 @@ import { webServer } from '@tnega/web-kit'
 
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
+
+/** Whether a workspace is the folder or inside it (members' folders on a server). */
+function insideFolder(folder: string): (workspace: string) => boolean {
+  const root = resolve(folder)
+  return workspace => {
+    const rel = relative(root, resolve(workspace))
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+  }
+}
 
 export interface WebServerOptions {
   /** Where Sessions are kept; default from the environment (`stateSpecFromEnv`). */
@@ -139,6 +149,8 @@ export async function startWebServer(
     steeringReady: new Map(),
     residentCreation: new Map(),
     projectPermission: options.projectPermission ?? 'workspace-write',
+    // A member's folder: the sandbox stays on, whatever the Session asks for.
+    ...(options.accounts ? { sandboxRequired: insideFolder(options.accounts.membersRoot) } : {}),
     ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),

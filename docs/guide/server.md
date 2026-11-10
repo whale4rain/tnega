@@ -97,7 +97,9 @@ disabled.
   for five minutes.
 - Members reach only the workspace routes, and only with a folder inside their
   own; a link that leads out of it is refused. They cannot turn the sandbox
-  off. Their Sessions belong to their account in the database.
+  off: in their folder `bypass` acts as `workspace-write`, and a command the
+  agent asks to escalate still runs in the sandbox, even once approved. Their
+  Sessions belong to their account in the database.
 - `tnega server start` removes `DATABASE_URL` and `TNEGA_MASTER_KEY` from its
   own environment before any agent runs, so commands do not inherit them.
 

@@ -3,6 +3,7 @@ import { IncomingMessage, ServerResponse } from 'node:http'
 import { dedupe, errorMessage, readJsonBody, sendError, sendJson, HttpError } from '@tnega/web-kit'
 import { KEEP_RECENT_TOKENS, MAX_RUN_BODY_BYTES, adapterFromConfig, appendPermissionNotice, canonicalWorkspace, compactionAdapter, isActive, optionalCount, optionalSeq, parseRunAttachments, processesFor, runKey, userMessage, withSessionLog, workspaceFolder, workspaceParam } from './support.js'
 import { Context } from '@tnega/core'
+import { sandboxedPermission } from '@tnega/runtime'
 import { configureNetwork } from '@tnega/process-local'
 import { modelCapabilities } from '@tnega/llm'
 import { memoryLocal } from '@tnega/memory-local'
@@ -792,13 +793,16 @@ export async function projectHostFor(
   const config = await readSystemConfig(context.configFile)
   const effective = effectiveLlmConfig(config, process.env)
   const apiKey = effectiveApiKey(config, process.env, effective.modelId) ?? ''
+  const sandboxRequired = context.sandboxRequired?.(path) === true
+  const permission = sandboxRequired ? sandboxedPermission(context.projectPermission) : context.projectPermission
   const signature = [
     path,
     effective.baseUrl,
     effective.model,
     apiKey,
     effective.reasoningEffort ?? '',
-    context.projectPermission,
+    permission,
+    sandboxRequired ? 'sandbox-required' : '',
     JSON.stringify(config.approvalReview ?? {}),
     JSON.stringify(config.projectMemory ?? {}),
     JSON.stringify(config.models ?? []),
@@ -816,7 +820,8 @@ export async function projectHostFor(
     workspace: path,
     llm: adapterFromConfig(effective, apiKey),
     ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
-    permission: context.projectPermission,
+    permission,
+    ...(sandboxRequired ? { sandboxRequired: true } : {}),
     approvals: context.approvals,
     systemConfig: config,
     sandboxNetwork: sandboxNetworkFrom(context.configFile),
@@ -825,8 +830,8 @@ export async function projectHostFor(
       processes: processesFor(context, path),
       allowNetwork: true,
       allowShell: true,
-      allowOutsideWorkspace: context.projectPermission === 'bypass',
-      allowPrivateNetwork: context.projectPermission === 'bypass',
+      allowOutsideWorkspace: permission === 'bypass',
+      allowPrivateNetwork: permission === 'bypass',
       fsGuard: config.fsGuard ?? 'warn',
     },
   })

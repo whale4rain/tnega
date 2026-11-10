@@ -41,6 +41,7 @@ import { readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { PermissionMode } from '@tnega/approval-host'
 import { workspacePrompt } from '@tnega/workspace-prompt'
+import { sandboxedPermission, withoutEscalation } from './sandbox-floor.js'
 
 /**
  * Composition of one Agent scope.
@@ -147,6 +148,11 @@ export interface RuntimeSpec {
   machine?: MachineSpec
   /** Sandbox mode for builtin tools. Defaults to `read-only`. */
   permission?: Permission
+  /**
+   * Commands always run in the sandbox (a server member's scope): `bypass`
+   * acts as `workspace-write` and approved escalations stay confined.
+   */
+  sandboxRequired?: boolean
   /** Network access for sandboxed commands. Defaults to open. */
   sandboxNetwork?: SandboxNetworkSource
   /** Identity for the sandbox policy; defaults to the workspace. */
@@ -209,9 +215,23 @@ export interface SandboxCapabilitySpec {
   workspace: string
   machine?: MachineSpec
   permission: Permission
+  /** See {@link RuntimeSpec.sandboxRequired}. */
+  sandboxRequired?: boolean
   network?: SandboxNetworkSource
   sessionId?: string
   builtin?: BuiltinToolsConfig
+}
+
+/** The spec with `bypass` floored when the scope requires the sandbox. */
+function flooredSpec<T extends SandboxCapabilitySpec>(spec: T): T {
+  if (!spec.sandboxRequired) return spec
+  const permission = spec.permission
+  return {
+    ...spec,
+    permission: typeof permission === 'function'
+      ? async () => sandboxedPermission(await permission())
+      : sandboxedPermission(permission),
+  }
 }
 
 /**
@@ -224,7 +244,8 @@ export interface SandboxCapabilitySpec {
 export const sandboxCapability: Plugin = {
   name: 'capability:sandbox',
   inject: ['tools'],
-  async apply(ctx: Context, spec: SandboxCapabilitySpec) {
+  async apply(ctx: Context, given: SandboxCapabilitySpec) {
+    const spec = flooredSpec(given)
     if (spec.machine) {
       await ctx.plugin(remoteSandboxCapability, { ...spec, machine: spec.machine })
       return
@@ -246,14 +267,13 @@ export const sandboxCapability: Plugin = {
         ...(network !== undefined ? { network } : {}),
       })
     }
-    await ctx.plugin(processBoundary, {
-      boundary: sandboxedExecution(ctx, {
-        // Commands get this scope's secrets as variables when a store is mounted.
-        inner: secretEnvExecution(ctx, localExecutionProvider),
-        policy: await policy(),
-        resolvePolicy: policy,
-      }),
+    const sandboxed = sandboxedExecution(ctx, {
+      // Commands get this scope's secrets as variables when a store is mounted.
+      inner: secretEnvExecution(ctx, localExecutionProvider),
+      policy: await policy(),
+      resolvePolicy: policy,
     })
+    await ctx.plugin(processBoundary, { boundary: spec.sandboxRequired ? withoutEscalation(sandboxed) : sandboxed })
     // Always the decorated boundary, whatever the builtin config says.
     await ctx.plugin(builtinTools, { ...(spec.builtin ?? {}), cwd: spec.workspace, execution: ctx.get('process') })
     // Only hosts that read live settings (and so have a person to approve) get the tool.
@@ -286,14 +306,16 @@ async function remoteSandbox(spec: SandboxCapabilitySpec, grants: NetworkGrants)
 const remoteSandboxCapability: Plugin = {
   name: 'capability:sandbox-remote',
   inject: ['tools'],
-  async apply(ctx: Context, spec: SandboxCapabilitySpec & { machine: MachineSpec }) {
+  async apply(ctx: Context, given: SandboxCapabilitySpec & { machine: MachineSpec }) {
+    const spec = flooredSpec(given)
     const { link } = spec.machine
     const grants = new NetworkGrants(() => ctx.get('session', false))
     const boundary = remoteExecutionProvider(link, {
       workspaceId: announcedWorkspace(link, spec.workspace).id,
       sandbox: () => remoteSandbox(spec, grants),
     })
-    await ctx.plugin(processBoundary, { boundary: secretEnvExecution(ctx, boundary, spec.machine.secrets) })
+    const withSecrets = secretEnvExecution(ctx, boundary, spec.machine.secrets)
+    await ctx.plugin(processBoundary, { boundary: spec.sandboxRequired ? withoutEscalation(withSecrets) : withSecrets })
     await ctx.plugin(builtinTools, { ...(spec.builtin ?? {}), cwd: spec.workspace, execution: ctx.get('process') })
     const source = spec.network
     if (source !== undefined && isNetworkSettings(source)) {
@@ -558,6 +580,7 @@ export const runtimeCapabilities: Plugin = {
       await ctx.plugin(sandboxCapability, {
         workspace: spec.workspace,
         permission: spec.permission ?? 'read-only',
+        ...(spec.sandboxRequired ? { sandboxRequired: true } : {}),
         ...(spec.sessionId !== undefined ? { sessionId: spec.sessionId } : {}),
         ...(spec.sandboxNetwork !== undefined ? { network: spec.sandboxNetwork } : {}),
         ...(builtin ? { builtin } : {}),

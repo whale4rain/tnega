@@ -48,6 +48,8 @@ export interface AgentRuntimeOptions {
    * closed（拒绝执行），而不是悄悄退回非受限执行。
    */
   sandboxMode?: SandboxMode
+  /** Commands always run in the sandbox: `bypass` acts as `workspace-write`, escalations stay confined (a server member). */
+  sandboxRequired?: boolean
   /** Network access for sandboxed commands (allowed / denied domains). Defaults to open. */
   sandboxNetwork?: SandboxNetworkSource
   /** Run files, commands and search on a daemon (`cwd` is then the daemon's path). */
