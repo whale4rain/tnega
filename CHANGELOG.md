@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.7-beta.1 | [`v0.5.6...v0.5.7-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.6...v0.5.7-beta.1) | 77 |
 | 0.5.6 | [`v0.5.5...v0.5.6`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6) | 85 |
 | 0.5.6-beta.2 | [`v0.5.6-beta.1...v0.5.6-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.6-beta.1...v0.5.6-beta.2) | 38 |
 | 0.5.6-beta.1 | [`v0.5.5...v0.5.6-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6-beta.1) | 12 |
@@ -69,6 +70,83 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.7-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.7-beta.1) — 2026-11-10
+
+### Features
+
+- **Run the agent on another machine.** `tnega daemon` serves a machine's
+  folders, commands, terminals, browser and (opt-in) computer use to a tnega
+  host over WebSocket. The daemon protocol covers handshake, protocol version
+  and capabilities, cancellation, heartbeats and reconnects; a dropped socket
+  resumes queued streams, and services that are not files or commands travel
+  through one generic forwarding path instead of a protocol method each.
+- **Files, processes and state behind seams.** `ctx.fs` owns workspace file
+  access, `ctx.process` owns shell and argv execution, `ctx.sessionStore` owns
+  Session lookup and append, and `ctx.blobs` owns content-addressed bytes.
+  Local Providers keep the existing local behaviour, while the daemon adds
+  remote Providers for files, processes and terminals; the host and four other
+  consumers now read Sessions through `ctx.sessionStore`.
+- **Session images live in the blob store.** Session format 11 writes image
+  bytes once to `ctx.blobs` and keeps only the hash in the log. A replay
+  restores the same images, and a byte-bounded cache stops views of a long
+  Session from reading every screenshot blob again. Older Sessions are read
+  without migration.
+- **MicroVM boxes.** `ctx.machines` starts, pauses, resumes, inspects and kills
+  boxes; the first Provider runs Firecracker microVMs on E2B's runtime. A box
+  is built from `.tnega/environment.toml`, its setup runs through the daemon,
+  and it reaches the network only through a per-box egress proxy that allows
+  listed hosts and can add provider keys. A paused box keeps memory and disk,
+  and a repeated start for the same machine key returns the same box instead of
+  creating a second one.
+- **The agent can reply with files and interfaces.** `send_file` attaches a
+  workspace file to the reply, and `show_ui` renders an A2UI subset — text,
+  choices, forms, tables and cards — in clients that have a surface for it.
+
+### Fixes
+
+- Session storage serializes leases, cuts a torn tail before appending, lets an
+  append under way finish before release or disposal, refuses leases after
+  close, and rechecks the lease after waiting. Concurrent writers no longer
+  lose a new writer's lock file, a Session deleted mid-read is skipped while
+  other errors stay loud, reading a missing Session answers 404 instead of
+  creating it, and `patchMeta` is safe to retry. A search index stays usable
+  when listing one entry fails.
+- The daemon matches workspace roots without relying on its own current
+  directory, exits when close fails, holds resumed streams and early process
+  exits in order, tracks terminal stream disconnects on the response, refuses a
+  terminal that opens a folder which does not exist, reads daemon paths by the
+  daemon's own OS rules, and drops its device token from the environment before
+  serving. Agent-chosen text can no longer rewrite the daemon terminal.
+- The E2B Provider starts one daemon per box from the v2 template, keys each
+  create on the box's daemon token, serializes starts for one machine key,
+  accepts path-only targets for keyed hosts, refuses short secrets and NUL in
+  setup secrets, redacts setup-start errors, applies an address-only box
+  firewall, and gives API calls a timeout.
+- The MXC sandbox makes the host temp roots writable, the web app is served
+  from a checkout built on its own, and a Session link from another workspace
+  explains the mismatch instead of failing silently.
+- Automatic approval keeps up to 50,000 characters of project constraints in
+  the review context, up from 8,000, so a long project brief no longer forces
+  every call to a person.
+
+### Other
+
+- New packages `@tnega/fs`, `@tnega/fs-local`, `@tnega/process`,
+  `@tnega/process-local`, `@tnega/daemon-protocol`, `@tnega/daemon`, the
+  `fs-remote` / `process-remote` / `terminal-remote` Providers, the
+  `session-store` / `session-store-jsonl` and `blobs` / `blobs-local` seams,
+  and the `machine` / `machine-e2b` / `environment` / `egress-proxy` box layer
+  are published as `tnega/*` subpaths. `@tnega/execution` remains as a
+  deprecated forwarding package for one version.
+- ADR 0018 records the microVM box layer, ADR 0016 the computer seam, ADR 0008
+  the sandbox dimensions, and ADR 0009 the automatic-approval budget. The v2
+  plans record the daemon protocol, the server MVP and the 1.0 gate.
+- `pnpm try:v2` runs the daemon, a DeepSeek agent, the JSONL Session store, the
+  blob store, a terminal and a reconnect against real processes.
+- GitHub Actions stays paused to manual runs: pushing this tag does not start
+  a release. When it is published by hand, npm serves it under `preview` and
+  desktop preview clients update from `beta.yml`.
 
 ## [0.5.6](https://github.com/whale4rain/tnega/releases/tag/v0.5.6) — 2026-11-03
 
