@@ -7,4 +7,4 @@ Box 缝的 Service Definition：`ctx.machines`（`MachineService` / `MachineProv
 - `BoxSpec.network`：`egress`（只能经 egress proxy 出网，box 带自己的 proxy token 与 CA）、`open`（显式放开）、`none`（只有 daemon 连 server）。
 - `validateBoxSpec` 与 `boxEnvironment` 让所有 Provider 拒绝同样的东西、给 box 同样的环境变量；`spec.env` 不能覆盖 daemon 与 proxy 的变量。
 
-Provider 见 `@tnega/machine-e2b`；选哪个属于 composition 层。
+Provider 见 `@tnega/machine-e2b`（microVM）与 `@tnega/machine-gvisor`（没有 KVM 的主机）；选哪个属于 composition 层，gVisor 只在运维为一台主机显式选择时使用。

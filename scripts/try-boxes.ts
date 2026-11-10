@@ -7,6 +7,9 @@
  *   pnpm try:boxes template         build the box template on E2B (needs E2B_API_KEY)
  *   pnpm try:boxes box --template <name> [--keep]
  *                                   start, pause, resume and stop a real E2B microVM
+ *   pnpm try:boxes gvisor [--template <name>] [--keep]
+ *                                   check this host for gVisor boxes (no KVM needed), then
+ *                                   start, pause, resume and stop one (as root)
  *
  * See docs/test/try-boxes.md for what each part shows and what to look for.
  */
@@ -19,6 +22,7 @@ import { startEgressProxy, createRootCertificate, tokenPolicies } from '../packa
 import { approvalHash, ENVIRONMENT_FILE, parseEnvironment, runSetup } from '../packages/machine/environment/src/index.js'
 import { MachineError, type BoxSpec } from '../packages/machine/machine/src/index.js'
 import { buildBoxTemplate, E2BMachines } from '../packages/machine/machine-e2b/src/index.js'
+import { GvisorMachines, probeGvisorHost } from '../packages/machine/machine-gvisor/src/index.js'
 import { localExecutionProvider } from '../packages/process/process-local/src/index.js'
 
 const OUT = resolve('.tnega-try')
@@ -211,11 +215,80 @@ Stop it afterwards with: e2b sandbox kill ${ref}`)
   await step('status', () => machines.status(ref))
 }
 
+/**
+ * The same lifecycle on gVisor, for a host without KVM (issue #85). First the
+ * host check: it says what is missing instead of starting anything.
+ */
+async function gvisor(args: readonly string[]): Promise<void> {
+  const probe = await probeGvisorHost()
+  console.log(`/dev/kvm                           ${probe.kvm ? 'present: microVM boxes (E2B) could run here' : 'absent: no microVMs on this host'}`)
+  for (const problem of probe.problems) console.log(`missing                            ${problem}`)
+  if (!probe.ready) {
+    console.log('This host cannot run gVisor boxes yet. See packages/machine/machine-gvisor/README.md.')
+    process.exitCode = 1
+    return
+  }
+  console.log('gVisor boxes                       ready')
+  const machines = new GvisorMachines(new Context(), {})
+  const key = `try-${Date.now()}`
+  const spec: BoxSpec = {
+    template: option(args, '--template') ?? 'tnega-box',
+    // A documentation address: nothing answers, so the daemon keeps retrying. The box only has to exist.
+    daemon: { serverUrl: 'ws://192.0.2.1:4555/daemon', token: randomBytes(16).toString('hex') },
+    workspacePath: '/workspace',
+    network: { mode: 'none' },
+    isolation: 'gvisor',
+    specHash: 'try-1',
+    labels: { purpose: 'tnega-try' },
+  }
+  const step = async <T>(label: string, run: () => Promise<T>): Promise<T> => {
+    const started = Date.now()
+    const value = await run()
+    console.log(`${label.padEnd(34)} ${String(value ?? 'ok').padEnd(24)} ${Date.now() - started} ms`)
+    return value
+  }
+  const { ref } = await step('start a new box and its daemon', () => machines.start(key, spec))
+  await step('status', () => machines.status(ref))
+  await step('start again (finds the same box)', async () => (await machines.start(key, spec)).ref)
+  await step('pause (checkpoint, or cold)', () => machines.pause(ref))
+  await step('status', () => machines.status(ref))
+  await step('start again (restores it)', async () => (await machines.start(key, spec)).ref)
+  try {
+    await machines.start(`${key}-vm`, { ...spec, isolation: 'microvm' })
+    console.log('a microVM box                      NOT refused: this is a bug')
+  } catch (error) {
+    console.log(`a microVM box                      refused with ${error instanceof MachineError ? error.code : String(error)}`)
+  }
+  if (args.includes('--keep')) {
+    console.log(`
+The box is still running. Look inside with:
+  runsc --root /run/tnega-runsc exec ${ref} sh
+Then try:
+  uname -a                            a 4.19 gVisor kernel, not the host's
+  ls /home                            empty: the host's /home is not in the box
+  curl -m 5 http://1.1.1.1            fails: the host rule allows only the server address
+Stop it afterwards with: pnpm try:boxes gvisor-stop ${ref}`)
+    return
+  }
+  await step('stop', () => machines.stop(ref))
+  await step('status', () => machines.status(ref))
+}
+
+async function gvisorStop(args: readonly string[]): Promise<void> {
+  const ref = args[0]
+  if (!ref) {
+    console.log('Usage: pnpm try:boxes gvisor-stop <box id>')
+    process.exitCode = 1
+    return
+  }
+  await new GvisorMachines(new Context(), {}).stop(ref)
+}
+
 const [command, ...rest] = process.argv.slice(2)
-const commands: Record<string, (args: readonly string[]) => Promise<void>> = { proxy, setup, template, box }
+const commands: Record<string, (args: readonly string[]) => Promise<void>> = { proxy, setup, template, box, gvisor, 'gvisor-stop': gvisorStop }
 const run = command ? commands[command] : undefined
 if (!run) {
-  console.log('Usage: pnpm try:boxes proxy | setup [folder] | template [--name <name>] | box --template <name> [--keep]\nSee docs/test/try-boxes.md.')
+  console.log('Usage: pnpm try:boxes proxy | setup [folder] | template [--name <name>] | box --template <name> [--keep] | gvisor [--template <name>] [--keep]\nSee docs/test/try-boxes.md.')
   process.exitCode = 1
 } else {
   await run(rest)

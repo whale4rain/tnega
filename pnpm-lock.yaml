@@ -1190,6 +1190,15 @@ importers:
         specifier: 2.60.0
         version: 2.60.0
 
+  packages/machine/machine-gvisor:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/machine':
+        specifier: workspace:*
+        version: link:../machine
+
   packages/memory/memory:
     dependencies:
       '@tnega/core':
