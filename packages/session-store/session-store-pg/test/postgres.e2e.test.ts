@@ -79,7 +79,8 @@ describe.skipIf(!url)('the Postgres session store on a real database', () => {
     const log = new SessionLog(store.backend(workspace, id))
     await log.init()
     for (let index = 0; index < 999; index += 1) {
-      void log.append(index % 2 ? 'assistant/message' : 'user/message', { content: `message ${index}` })
+      if (index % 2) void log.append('assistant/message', { content: `message ${index}` })
+      else void log.append('user/message', { content: `message ${index}` })
     }
     await log.flush()
     await log.close()
