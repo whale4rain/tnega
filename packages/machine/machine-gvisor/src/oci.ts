@@ -12,6 +12,11 @@ export interface BoxPaths {
   /** The workspace volume, mounted at `spec.workspacePath`; it outlives a cold pause. */
   workspace: string
   checkpoint: string
+  /**
+   * runsc's own log for the calls that detach. Their output goes nowhere (a
+   * pipe would kill the box), so this is where a failed start says why.
+   */
+  log: string
   /** The network namespace the box's netstack copies its interface from. */
   netns: string
 }
@@ -94,7 +99,7 @@ export function runscGlobals(globals: RunscGlobals): string[] {
  * upper layer, a directory on the host (`dir=`; runsc takes no bare path).
  */
 function overlay(paths: BoxPaths): string[] {
-  return ['--overlay2', `root:dir=${paths.upper}`]
+  return ['--overlay2', `root:dir=${paths.upper}`, '--log', paths.log]
 }
 
 /**

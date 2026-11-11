@@ -35,7 +35,7 @@ function spec(overrides: Partial<BoxSpec> = {}): BoxSpec {
 }
 
 /** A stand-in for runsc, ip, nft and sysctl: records each command and keeps the sandboxes runsc would. */
-function fakeHost(options: { runsc?: boolean; failOn?: (command: HostCommand) => boolean; checkpoint?: boolean } = {}) {
+function fakeHost(options: { runsc?: boolean; failOn?: (command: HostCommand) => boolean; checkpoint?: boolean; runLogs?: string } = {}) {
   const commands: HostCommand[] = []
   const sandboxes = new Map<string, 'running'>()
   const exec = async (command: HostCommand): Promise<CommandResult> => {
@@ -50,7 +50,12 @@ function fakeHost(options: { runsc?: boolean; failOn?: (command: HostCommand) =>
     const id = args.at(-1) === 'KILL' ? args.at(-2) ?? '' : args.at(-1) ?? ''
     switch (verb) {
       case '--version': return ok('runsc version release-20261102.0\n')
-      case 'run': sandboxes.set(id, 'running'); return ok()
+      case 'run': {
+        if (options.runLogs === undefined) { sandboxes.set(id, 'running'); return ok() }
+        // A failed detached start: nothing on our streams, the reason in runsc's log.
+        await writeFile(args[args.indexOf('--log') + 1] ?? '', options.runLogs)
+        return { code: 128, stdout: '', stderr: '' }
+      }
       case 'restore': sandboxes.set(id, 'running'); return ok()
       case 'state': return sandboxes.has(id) ? ok(JSON.stringify({ id, status: sandboxes.get(id) })) : fail('no such container')
       case 'kill': return sandboxes.has(id) ? ok() : fail('no such container')
@@ -169,6 +174,16 @@ describe('gVisor machines', () => {
     expect(await readFile(join(workspace, 'notes.txt'), 'utf8')).toBe('not committed')
   })
 
+  it('gives boxes started at the same time networks of their own', async () => {
+    const { machines, root } = await host()
+    const refs = await Promise.all(['member-a', 'member-b', 'member-c'].map(key => machines.start(key, spec())))
+    const indexes = await Promise.all(refs.map(async ({ ref }) => {
+      const record: unknown = JSON.parse(await readFile(join(root, 'state', 'records', `${ref}.json`), 'utf8'))
+      return typeof record === 'object' && record !== null && 'netIndex' in record ? record.netIndex : undefined
+    }))
+    expect(new Set(indexes).size).toBe(3)
+  })
+
   it('stops a box with its workspace, and answers missing afterwards', async () => {
     const { machines, root } = await host()
     const { ref } = await machines.start('machine-1', spec())
@@ -180,6 +195,11 @@ describe('gVisor machines', () => {
     await machines.pause(ref)
   })
 
+  it('says why a detached start failed, from runsc\'s log', async () => {
+    const { machines } = await host({ runLogs: 'W1111 starting\nE1111 creating container: cannot read client sync file\n' })
+    await expect(machines.start('machine-1', spec())).rejects.toThrow(/cannot read client sync file/u)
+  })
+
   it('refuses a template without a root filesystem', async () => {
     const { machines } = await host()
     await expect(machines.start('machine-1', spec({ template: 'missing' }))).rejects.toMatchObject({ code: 'MACHINE_INVALID' })
@@ -187,7 +207,7 @@ describe('gVisor machines', () => {
   })
 
   it('maps resources into the cgroup and mounts the workspace', () => {
-    const paths = { rootfs: '/t/rootfs', box: '/b', bundle: '/b/bundle', upper: '/b/upper', workspace: '/b/workspace', checkpoint: '/b/cp', netns: '/var/run/netns/x' }
+    const paths = { rootfs: '/t/rootfs', box: '/b', bundle: '/b/bundle', upper: '/b/upper', workspace: '/b/workspace', checkpoint: '/b/cp', log: '/b/runsc.log', netns: '/var/run/netns/x' }
     const config = ociConfig(spec({ resources: { cpus: 1, memoryMb: 512, pids: 64 } }), paths, {}, '/tnega/x')
     expect(config).toMatchObject({
       root: { path: '/t/rootfs' },

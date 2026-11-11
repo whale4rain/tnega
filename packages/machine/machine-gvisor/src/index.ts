@@ -161,6 +161,8 @@ export class GvisorMachines extends MachineService {
   private readonly globals: RunscGlobals
   private readonly exec: CommandRunner
   private readonly starting = new Map<string, Promise<unknown>>()
+  /** Network indexes are handed out one at a time, so two new boxes never share one. */
+  private allocating: Promise<unknown> = Promise.resolve()
   /** Settles once runsc answered `--version`; a host without it starts nothing. */
   private checked: Promise<void> | undefined
 
@@ -182,6 +184,7 @@ export class GvisorMachines extends MachineService {
       upper: join(box, 'upper'),
       workspace: join(box, 'workspace'),
       checkpoint: join(box, 'checkpoint'),
+      log: join(box, 'runsc.log'),
       netns: netnsPath(net),
     }
   }
@@ -203,6 +206,20 @@ export class GvisorMachines extends MachineService {
     await rename(temporary, file)
   }
 
+  /**
+   * Run `claim` with the lowest free network index and write the record it
+   * returns, before another start may look for a free index.
+   */
+  private claimNetIndex(claim: (netIndex: number) => BoxRecord): Promise<BoxRecord> {
+    const claimed = this.allocating.catch(() => undefined).then(async () => {
+      const record = claim(await this.freeNetIndex())
+      await this.writeRecord(record)
+      return record
+    })
+    this.allocating = claimed
+    return claimed
+  }
+
   /** The lowest network index no other box holds. */
   private async freeNetIndex(): Promise<number> {
     const taken = new Set<number>()
@@ -221,6 +238,16 @@ export class GvisorMachines extends MachineService {
       throw new MachineError(`${command.command} ${command.args.join(' ')} failed (${result.code}): ${result.stderr.trim().slice(0, 300)}`, code)
     }
     return result.stdout
+  }
+
+  /** A runsc call that leaves a box running: no pipes, and its log says why when it fails. */
+  private async runDetached(args: string[], log: string): Promise<void> {
+    await rm(log, { force: true })
+    const result = await this.exec(this.runscCommand(args, 'ignore'))
+    if (result.code === 0) return
+    const logged = await readFile(log, 'utf8').catch(() => '')
+    const why = logged.trim().split('\n').slice(-3).join(' ').slice(-300) || `nothing in ${log}`
+    throw new MachineError(`runsc could not start the box (exit ${result.code}): ${why}`, 'MACHINE_FAILED')
   }
 
   private runscCommand(args: string[], stdio?: HostCommand['stdio']): HostCommand {
@@ -268,12 +295,15 @@ export class GvisorMachines extends MachineService {
       throw new MachineError(`template ${spec.template} has no root filesystem at ${rootfs}; build it with deploy/gvisor/build-rootfs.sh`, 'MACHINE_INVALID')
     }
     const { env, allow } = await this.network(spec)
-    const netIndex = existing?.netIndex ?? await this.freeNetIndex()
-    const record: BoxRecord = { version: 1, key, id, template: spec.template, specHash: spec.specHash ?? '', state: 'running', netIndex, allow }
-    const net = boxNet(id.slice('tnega-'.length), netIndex)
-    const paths = this.paths(id, spec.template, net)
+    const recordWith = (netIndex: number): BoxRecord => ({ version: 1, key, id, template: spec.template, specHash: spec.specHash ?? '', state: 'running', netIndex, allow })
     // Kept before anything is made, so a failed start can always be undone by stop.
-    await this.writeRecord({ ...record, state: existing?.state ?? 'cold' })
+    const netIndex = existing
+      ? existing.netIndex
+      : (await this.claimNetIndex(index => ({ ...recordWith(index), state: 'cold' }))).netIndex
+    const record = recordWith(netIndex)
+    if (existing) await this.writeRecord({ ...record, state: existing.state })
+    const net = boxNet(id.slice('tnega-'.length), record.netIndex)
+    const paths = this.paths(id, spec.template, net)
     try {
       await this.clearSandbox(id, net)
       await mkdir(paths.bundle, { recursive: true, mode: 0o700 })
@@ -287,7 +317,7 @@ export class GvisorMachines extends MachineService {
       const restored = existing?.state === 'paused' && await this.restore(id, paths)
       if (!restored) {
         // The box outlives this call, so it must not inherit our pipes.
-        await this.run(this.runscCommand(runscRun(this.globals, paths, id), 'ignore'))
+        await this.runDetached(runscRun(this.globals, paths, id), paths.log)
       }
     } catch (error) {
       // Nothing half made stays behind: no sandbox, no namespace, no rule. The workspace stays.
