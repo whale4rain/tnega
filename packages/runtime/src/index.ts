@@ -3,6 +3,7 @@ export * from './builtins.js'
 export * from './compose.js'
 export * from './agent-runtime.js'
 export * from './stores.js'
+export * from './machines.js'
 
 export const name = '@tnega/runtime'
 export { sandboxedPermission } from './sandbox-floor.js'

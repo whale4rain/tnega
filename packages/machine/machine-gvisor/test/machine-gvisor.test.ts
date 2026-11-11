@@ -195,6 +195,18 @@ describe('gVisor machines', () => {
     await machines.pause(ref)
   })
 
+  it('mounts a host folder as the workspace when asked, and stopping the box keeps that folder', async () => {
+    const { machines, root } = await host()
+    const folder = join(root, 'members', 'mia')
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'work.txt'), 'kept')
+    const { ref } = await machines.start('machine-1', spec({ hostWorkspace: folder }))
+    const config = await readFile(join(root, 'state', 'boxes', ref, 'bundle', 'config.json'), 'utf8')
+    expect(JSON.stringify(JSON.parse(config))).toContain(`"destination":"/workspace","type":"bind","source":${JSON.stringify(folder)}`)
+    await machines.stop(ref)
+    expect(await readFile(join(folder, 'work.txt'), 'utf8')).toBe('kept')
+  })
+
   it('says why a detached start failed, from runsc\'s log', async () => {
     const { machines } = await host({ runLogs: 'W1111 starting\nE1111 creating container: cannot read client sync file\n' })
     await expect(machines.start('machine-1', spec())).rejects.toThrow(/cannot read client sync file/u)

@@ -52,5 +52,8 @@
     "@tnega/web-kit": "workspace:*",
     "@tnega/workspace-files": "workspace:*",
     "@tnega/workspace-prompt": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/daemon-protocol": "workspace:*"
   }
 }

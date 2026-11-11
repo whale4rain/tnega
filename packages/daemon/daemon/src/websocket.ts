@@ -8,7 +8,7 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
  * validated certificate), or `ws://` to this machine for development. The
  * token never goes over plain text to another host.
  */
-export function assertSecureServerUrl(raw: string): URL {
+export function assertSecureServerUrl(raw: string, options: { allowPlain?: boolean } = {}): URL {
   let url: URL
   try {
     url = new URL(raw)
@@ -16,7 +16,7 @@ export function assertSecureServerUrl(raw: string): URL {
     throw new Error(`not a server URL: ${raw}`)
   }
   if (url.protocol === 'wss:') return url
-  if (url.protocol === 'ws:' && LOCAL_HOSTS.has(url.hostname)) return url
+  if (url.protocol === 'ws:' && (LOCAL_HOSTS.has(url.hostname) || options.allowPlain)) return url
   throw new Error(`refusing ${url.protocol}//${url.host}: a daemon connects only over wss:// (or ws://localhost for development)`)
 }
 
@@ -52,11 +52,16 @@ export interface WebSocketTransportOptions {
   token?: string
   /** Give up on the connection after this long. */
   connectTimeoutMs?: number
+  /**
+   * Allow `ws://` to a host other than localhost. Only for a link that never
+   * leaves the machine, such as a box dialling the server on its own host.
+   */
+  allowPlain?: boolean
 }
 
 /** Dial a runtime over WebSocket. Resolves once the socket is open. */
 export async function connectWebSocket(serverUrl: string, options: WebSocketTransportOptions = {}): Promise<Transport> {
-  const url = assertSecureServerUrl(serverUrl)
+  const url = assertSecureServerUrl(serverUrl, { allowPlain: options.allowPlain === true })
   const socket = new WebSocket(url, {
     ...(options.token ? { headers: { authorization: `Bearer ${options.token}` } } : {}),
   })

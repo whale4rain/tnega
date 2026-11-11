@@ -62,7 +62,8 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
     summary: 'Serve folders on this machine to a tnega server, so its agents read files and\nrun commands here. Dials out over wss:// (ws:// only to this machine) and\nreconnects until stopped.',
     options: [
       ['--server <url>', 'the server to dial, wss://host/daemon'],
-      ['--token <token>', 'device token (or set TNEGA_DAEMON_TOKEN)'],
+      ['--pair <code>', 'trade a code from tnega server pair --daemon for a token, kept in ~/.tnega/daemon.token'],
+      ['--token <token>', 'device token (or set TNEGA_DAEMON_TOKEN; default: the saved one)'],
       ['--workspace <dir>', 'folder to serve; repeat for more (default: here)'],
       ['--device-id <id>', 'name this machine (default: from the host name)'],
       ['--browser', 'let the agent drive a browser here (its own profile, not yours)'],
@@ -72,7 +73,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
   },
   server: {
     usage: 'tnega server <init|start|deploy|user|invite|pair> [options]',
-    summary: 'A tnega server on Postgres that people sign in to. Settings are in\n~/.tnega/server/server.env (or --dir); the environment wins over the file.\n\n  init     write settings, create tables, print the first owner\'s invite\n  start    run the server; members work only in their own folder\n  deploy   write a Docker Compose setup (Postgres, server, HTTPS) and start it\n  user     list | add <login> | set <login> | passwd <login>\n  invite   print an invite link for a new person\n  pair     print a pairing code for <login>\'s client or --daemon',
+    summary: 'A tnega server on Postgres that people sign in to. Settings are in\n~/.tnega/server/server.env (or --dir); the environment wins over the file.\n\n  init     write settings, create tables, print the first owner\'s invite\n  start    run the server; members work only in their own folder\n  deploy   write a Docker Compose setup (Postgres, server, HTTPS) and start it\n  user     list | add <login> | set <login> | passwd <login> | devices <login> | revoke <login> <id>\n  invite   print an invite link for a new person\n  pair     print a pairing code for <login>\'s client or --daemon',
     options: [
       ['--dir <dir>', 'settings folder (default: ~/.tnega/server)'],
       ['--database-url <url>', 'init: the Postgres database (or DATABASE_URL)'],

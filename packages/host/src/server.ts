@@ -1,5 +1,6 @@
-import { accountsCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
+import { accountsCapability, boxMachine, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import type { Duplex } from 'node:stream'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
 import { defaultWebRoot, handleStatic } from './static.js'
@@ -50,6 +51,11 @@ export interface WebServerOptions {
    * Postgres as the Sessions. Off in local mode.
    */
   accounts?: AccountsCapabilitySpec
+  /**
+   * Run each signed-in person's sessions in a box of their own (needs
+   * `accounts`): the Provider, the daemon door and the box pool.
+   */
+  machines?: MachinesCapabilitySpec
   /** Runtime assets for hosts which bundle the server away from its worker/WASM. */
   ptcRuntime?: PtcRuntimeQuickjsConfig
   port?: number
@@ -87,6 +93,24 @@ export interface WebServerOptions {
    * turns it on when the host passes nothing.
    */
   pluginDev?: string | boolean
+}
+
+/** Runs in boxes: a lease on the person's box for the workspace, ended when the run ends. */
+function boxRuns(root: Context): NonNullable<ServerContext['machineFor']> {
+  const pool = root.get('machinePool')
+  const ids = new WeakMap<object, number>()
+  let next = 0
+  return async ({ workspace, sessionId, accountId, signal }) => {
+    const lease = await pool.acquire({ accountId, workspace, sessionId, ...(signal ? { signal } : {}) })
+    let id = ids.get(lease.link)
+    if (id === undefined) ids.set(lease.link, id = ++next)
+    return {
+      machine: boxMachine(lease, workspace),
+      cwd: lease.workspacePath,
+      identity: `${lease.machineId}:${id}`,
+      release: lease.release,
+    }
+  }
 }
 
 export interface WebServer {
@@ -127,6 +151,13 @@ export async function startWebServer(
   await root.plugin(webServer)
   // On a server, sign-in comes first: its guard sees every request.
   if (options.accounts) await root.plugin(accountsCapability, options.accounts)
+  if (options.machines && !options.accounts) throw new Error('boxes need sign-in: pass accounts with machines')
+  // Daemons dial in with a daemon token: people's own machines, and boxes.
+  if (options.accounts) {
+    const listen = options.machines?.gatewayListen
+    await root.plugin(daemonDoorCapability, listen ? { listen } : {})
+  }
+  if (options.machines) await root.plugin(machinesCapability, options.machines)
   // Image bytes under the tnega home; Sessions in JSONL files there, or on
   // Postgres when TNEGA_SESSION_STORE=postgres and DATABASE_URL say so.
   const state = options.state ?? stateSpecFromEnv()
@@ -151,6 +182,7 @@ export async function startWebServer(
     projectPermission: options.projectPermission ?? 'workspace-write',
     // A member's folder: the sandbox stays on, whatever the Session asks for.
     ...(options.accounts ? { sandboxRequired: insideFolder(options.accounts.membersRoot) } : {}),
+    ...(options.machines ? { machineFor: boxRuns(root) } : {}),
     ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),
@@ -224,6 +256,16 @@ export async function startWebServer(
 
   const server = createServer((req, res) => {
     void handleRequest(req, res, context)
+  })
+  // WebSocket upgrades go to whichever plugin registered the path (a daemon dialling in).
+  server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const pathname = new URL(req.url ?? '/', 'http://localhost').pathname
+    const handler = context.web.upgrade(pathname)
+    if (!handler) {
+      socket.end('HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n')
+      return
+    }
+    handler(req, socket, head)
   })
 
   await new Promise<void>((resolveListen, rejectListen) => {

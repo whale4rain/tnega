@@ -314,6 +314,18 @@ export class PgAccountService extends AccountService {
     })
   }
 
+  async createDevice(accountId: string, input: { kind: DeviceKind; name: string }, actor?: string): Promise<IssuedToken> {
+    return this.sql.transaction(async tx => {
+      const { rows } = await tx.query(`select ${ACCOUNT_COLUMNS} from account a where a.id = $1::uuid and a.login is not null`, [accountId])
+      if (rows[0] === undefined) throw new AccountError('no such account', 'ACCOUNT_NOT_FOUND')
+      const account = accountFrom(rows[0])
+      if (account.disabled) throw new AccountError('this account is disabled', 'FORBIDDEN')
+      const { token, device } = await this.newDevice(tx, accountId, input.kind, input.name)
+      await this.audit(tx, actor ?? accountId, `device.create.${input.kind}`, device.id)
+      return { token, principal: { account, device } }
+    })
+  }
+
   async issueCode(input: IssueCodeInput): Promise<IssuedCode> {
     const role: AccountRole | undefined = input.purpose === 'invite' ? input.role ?? 'member' : undefined
     if (role !== undefined && !isAccountRole(role)) throw new AccountError(`unknown role ${String(role)}`, 'ACCOUNT_INVALID')

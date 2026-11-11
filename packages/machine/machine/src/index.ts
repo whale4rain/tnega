@@ -27,6 +27,14 @@ export interface BoxSpec {
   /** Where the workspace lives inside the box; it outlives the box (sleep, wake). */
   workspacePath: string
   /**
+   * A folder on the server's own host to use as the workspace, so the server's
+   * file views and the box see the same files. Only a Provider whose boxes run
+   * on the server's host can honour it (gVisor); one that cannot (E2B) keeps
+   * the box's own workspace. Never a way out of the box: it is the one folder
+   * mounted, at {@link workspacePath}.
+   */
+  hostWorkspace?: string
+  /**
    * Plain environment for everything in the box. Never secrets: an approved
    * secret reaches only the setup step, through that one command's environment.
    */
@@ -162,6 +170,7 @@ export function validateBoxSpec(spec: BoxSpec): void {
   if (!/^(?:wss|ws):\/\//u.test(spec.daemon.serverUrl)) fail('daemon.serverUrl must be a ws:// or wss:// URL')
   if (!spec.daemon.token) fail('the box needs a daemon token')
   if (!spec.workspacePath.startsWith('/')) fail('workspacePath must be an absolute path inside the box')
+  if (spec.hostWorkspace !== undefined && !spec.hostWorkspace.startsWith('/')) fail('hostWorkspace must be an absolute path on the host')
   for (const name of Object.keys(spec.env ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) fail(`env name ${name} is not a valid variable name`)
   }

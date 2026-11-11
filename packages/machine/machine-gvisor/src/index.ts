@@ -175,14 +175,15 @@ export class GvisorMachines extends MachineService {
     this.exec = config.exec ?? runHostCommand
   }
 
-  private paths(id: string, template: string, net: BoxNet): BoxPaths {
+  private paths(id: string, template: string, net: BoxNet, hostWorkspace?: string): BoxPaths {
     const box = join(this.stateDir, 'boxes', id)
     return {
       rootfs: join(this.templatesDir, template, 'rootfs'),
       box,
       bundle: join(box, 'bundle'),
       upper: join(box, 'upper'),
-      workspace: join(box, 'workspace'),
+      // The server's own folder when the spec names one: the server's file views then see the box's work.
+      workspace: hostWorkspace ?? join(box, 'workspace'),
       checkpoint: join(box, 'checkpoint'),
       log: join(box, 'runsc.log'),
       netns: netnsPath(net),
@@ -303,7 +304,7 @@ export class GvisorMachines extends MachineService {
     const record = recordWith(netIndex)
     if (existing) await this.writeRecord({ ...record, state: existing.state })
     const net = boxNet(id.slice('tnega-'.length), record.netIndex)
-    const paths = this.paths(id, spec.template, net)
+    const paths = this.paths(id, spec.template, net, spec.hostWorkspace)
     try {
       await this.clearSandbox(id, net)
       await mkdir(paths.bundle, { recursive: true, mode: 0o700 })

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CliError } from '../src/commands.js'
+import { openAccounts, openSecretVault, parseMasterKey } from '@tnega/runtime'
 import { runServerCommand, type ServerIo } from '../src/server-command.js'
 
 /**
@@ -74,5 +75,46 @@ describe.skipIf(!url)('tnega server on a real database', () => {
     const pair = io()
     await runServerCommand(['pair', 'ocean', '--daemon', '--dir', dir], pair, {})
     expect(pair.written).toMatch(/ocean's daemon/u)
+
+    // The code buys one daemon token; the devices list shows it and revoke ends it.
+    const code = /^\s+(\S+)\s*$/mu.exec(pair.written)?.[1] ?? ''
+    const opened = await openAccounts(urlWithSchema)
+    try {
+      const issued = await opened.accounts.redeemCode(code, { purpose: 'daemon', deviceName: 'laptop' })
+      expect(issued.principal.device.kind).toBe('daemon')
+      await expect(opened.accounts.redeemCode(code, { purpose: 'daemon', deviceName: 'again' })).rejects.toThrow()
+      const devices = io()
+      await runServerCommand(['user', 'devices', 'ocean', '--dir', dir], devices, {})
+      expect(devices.written).toContain(issued.principal.device.id)
+      expect(devices.written).toMatch(/daemon\s/u)
+      await runServerCommand(['user', 'revoke', 'ocean', issued.principal.device.id, '--dir', dir], io(), {})
+      expect(await opened.accounts.authenticate(issued.token)).toBeUndefined()
+
+      // passwd signs the person's devices out.
+      await runServerCommand(['user', 'set', 'mia', '--enable', '--dir', dir], io(), {})
+      const signedIn = await opened.accounts.signIn('mia', 'a long member password', { name: 'browser' })
+      await runServerCommand(['user', 'passwd', 'mia', '--password-stdin', '--dir', dir], io('another long password'), {})
+      expect(await opened.accounts.authenticate(signedIn.token)).toBeUndefined()
+      expect(await opened.accounts.checkPassword((await opened.accounts.findAccount('mia'))?.id ?? '', 'another long password')).toBe(true)
+    } finally {
+      await opened.close()
+    }
+
+    // Remembered secrets are sealed with the master key: readable with it, not stored in the clear.
+    const masterKey = parseMasterKey(key)
+    const vault = await openSecretVault({ sessions: { kind: 'postgres', url: urlWithSchema }, masterKey })
+    try {
+      await vault.vault.set({ workspace: '/work', sessionId: 's1' }, 'GITHUB_TOKEN', 'ghp_e2e_value', { remember: true })
+      const reopened = await openSecretVault({ sessions: { kind: 'postgres', url: urlWithSchema }, masterKey })
+      try {
+        expect(await reopened.vault.entries({ workspace: '/work', sessionId: 'other' })).toEqual([{ name: 'GITHUB_TOKEN', value: 'ghp_e2e_value' }])
+      } finally {
+        await reopened.close()
+      }
+      const dump = JSON.stringify((await admin.query(`select * from ${schema}.secret`)).rows)
+      expect(dump).not.toContain('ghp_e2e_value')
+    } finally {
+      await vault.close()
+    }
   })
 })
