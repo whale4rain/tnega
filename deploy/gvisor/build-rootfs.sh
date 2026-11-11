@@ -57,6 +57,9 @@ install -m 0755 "$here/../e2b/template/start.sh" "$work/rootfs/usr/local/bin/tne
 mkdir -p "$work/rootfs/workspace"
 # No DNS in a box: the start script maps the server's name, the proxy resolves the rest.
 : > "$work/rootfs/etc/resolv.conf"
+# debootstrap copies the build host's name; the box has its own (the OCI spec's hostname).
+echo tnega-box > "$work/rootfs/etc/hostname"
+printf '127.0.0.1 localhost\n127.0.1.1 tnega-box\n' > "$work/rootfs/etc/hosts"
 
 rm -f "$work/$node_tar" "$work/SHASUMS256.txt"
 rm -rf "$target"

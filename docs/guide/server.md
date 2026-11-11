@@ -91,8 +91,9 @@ disabled.
 
 - Passwords are scrypt hashes; device tokens and codes are stored as SHA-256.
 - Browsers keep the token in an `HttpOnly`, `SameSite=Strict` cookie
-  (`Secure` behind HTTPS). Every API request also needs the `x-tnega-client`
-  header, which a page on another site cannot send.
+  (`Secure` behind HTTPS). Every API request also needs the `x-tnega-client: 1`
+  header, which a page on another site cannot send: without it the answer is
+  `403` before the token is looked at; with it and no token, `401`.
 - Five failed sign-ins or code exchanges a minute from one address lock it out
   for five minutes.
 - Members reach only the workspace routes, and only with a folder inside their
