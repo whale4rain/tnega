@@ -1,9 +1,9 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
-import { access, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { isIPv4 } from 'node:net'
-import { join } from 'node:path'
+import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import type { Context } from '@tnega/core'
 import {
   boxEnvironment,
@@ -15,10 +15,10 @@ import {
   type MachineState,
 } from '@tnega/machine'
 import { boxNet, MAX_BOXES, netnsPath, networkDown, networkUp, type BoxNet, type HostCommand } from './network.js'
-import { ociConfig, runscCreate, runscGlobals, runscRestore, type BoxPaths, type RunscGlobals } from './oci.js'
+import { ociConfig, runscGlobals, runscRestore, runscRun, type BoxPaths, type RunscGlobals } from './oci.js'
 
 export { boxNet, netnsPath, networkDown, networkUp, nftRuleset, type BoxNet, type HostCommand } from './network.js'
-export { DEFAULT_RESOURCES, ociConfig, runscCreate, runscGlobals, runscRestore, type BoxPaths, type RunscGlobals } from './oci.js'
+export { DEFAULT_RESOURCES, ociConfig, runscGlobals, runscRestore, runscRun, type BoxPaths, type RunscGlobals } from './oci.js'
 
 /**
  * `@tnega/machine-gvisor`: boxes as gVisor sandboxes, for hosts without KVM
@@ -70,15 +70,36 @@ export interface GvisorMachineConfig {
 export interface CommandResult { code: number; stdout: string; stderr: string }
 export type CommandRunner = (command: HostCommand) => Promise<CommandResult>
 
-/** The default runner: no shell, standard input when given, every exit code reported. */
+/** How long output may still arrive after a command exits. */
+const OUTPUT_GRACE_MS = 50
+
+/**
+ * The default runner: no shell, standard input when given, every exit code
+ * reported. It answers on `exit`, not `close`: a detached sandbox keeps the
+ * command's output pipes open, so `close` would never come. Output still in
+ * flight gets a short grace, then the pipes are let go.
+ */
 export const runHostCommand: CommandRunner = command => new Promise(done => {
   const child = spawn(command.command, command.args, { stdio: ['pipe', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
+  let finished = false
+  const finish = (result: CommandResult): void => {
+    if (finished) return
+    finished = true
+    child.stdout.destroy()
+    child.stderr.destroy()
+    done(result)
+  }
   child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
   child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
-  child.on('error', error => done({ code: 127, stdout, stderr: stderr || error.message }))
-  child.on('close', code => done({ code: code ?? 1, stdout, stderr }))
+  child.on('error', error => finish({ code: 127, stdout, stderr: stderr || error.message }))
+  child.on('close', code => finish({ code: code ?? 1, stdout, stderr }))
+  child.on('exit', code => {
+    setTimeout(() => finish({ code: code ?? 1, stdout, stderr }), OUTPUT_GRACE_MS)
+  })
+  // A command that exits without reading its input is not an error here.
+  child.stdin.on('error', () => undefined)
   child.stdin.end(command.input ?? '')
 })
 
@@ -263,8 +284,7 @@ export class GvisorMachines extends MachineService {
       }
       const restored = existing?.state === 'paused' && await this.restore(id, paths)
       if (!restored) {
-        await this.run(this.runscCommand(runscCreate(this.globals, paths, id)))
-        await this.run(this.runscCommand([...runscGlobals(this.globals), 'start', id]))
+        await this.run(this.runscCommand(runscRun(this.globals, paths, id)))
       }
     } catch (error) {
       // Nothing half made stays behind: no sandbox, no namespace, no rule. The workspace stays.
@@ -374,6 +394,28 @@ function execText(command: string, args: string[]): Promise<{ ok: boolean; text:
   })
 }
 
+/** Where a command runs from: itself when it is a path, else the first match on `PATH`. */
+async function locate(command: string, path: string): Promise<string | undefined> {
+  if (isAbsolute(command) || command.includes('/')) return await exists(command) ? command : undefined
+  for (const dir of path.split(delimiter)) {
+    if (dir && await exists(join(dir, command))) return join(dir, command)
+  }
+  return undefined
+}
+
+/**
+ * Why runsc's sidecars cannot be found, or `undefined` when they can. The
+ * release ships `gvisor-bin/` next to `runsc`; with `runsc` copied alone,
+ * `--version` still works but every sandbox fails to start.
+ */
+export async function missingSidecars(runsc: string, path = process.env.PATH ?? ''): Promise<string | undefined> {
+  const found = await locate(runsc, path)
+  if (!found) return undefined
+  const sidecars = join(dirname(await realpath(found).catch(() => found)), 'gvisor-bin')
+  const isDir = await stat(sidecars).then(entry => entry.isDirectory(), () => false)
+  return isDir ? undefined : `runsc has no gvisor-bin/ directory beside it (${sidecars}); copy the whole release, not runsc alone`
+}
+
 /**
  * Check a host for gVisor boxes: root, runsc with its sidecars, `ip`, `nft`
  * and cgroup v2. Reports `kvm` too, so a deployment can say plainly why a
@@ -385,6 +427,8 @@ export async function probeGvisorHost(config: Pick<GvisorMachineConfig, 'runsc'>
   if (process.getuid?.() !== 0) problems.push('the box host must run as root to make namespaces, rules and sandboxes')
   const runsc = await execText(config.runsc ?? 'runsc', ['--version'])
   if (!runsc.ok) problems.push('runsc is missing or broken; install the gVisor release with its gvisor-bin/ directory')
+  const sidecars = runsc.ok ? await missingSidecars(config.runsc ?? 'runsc') : undefined
+  if (sidecars) problems.push(sidecars)
   if (!(await execText('ip', ['-V'])).ok) problems.push('ip (iproute2) is missing')
   if (!(await execText('nft', ['--version'])).ok) problems.push('nft (nftables) is missing: without it egress cannot be enforced')
   if (!await exists('/sys/fs/cgroup/cgroup.controllers')) problems.push('cgroup v2 is not mounted at /sys/fs/cgroup')

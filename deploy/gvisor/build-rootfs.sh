@@ -35,7 +35,7 @@ command -v debootstrap >/dev/null || { echo "needs debootstrap (apt install debo
 
 rm -rf "$work"
 mkdir -p "$work"
-debootstrap --variant=minbase --include=ca-certificates,curl,git,ripgrep,procps,python3,xz-utils jammy "$work/rootfs" "$ubuntu"
+debootstrap --variant=minbase --components=main,universe --include=ca-certificates,curl,git,ripgrep,procps,python3,xz-utils jammy "$work/rootfs" "$ubuntu"
 
 arch="$(uname -m)"
 case "$arch" in

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,7 +8,9 @@ import {
   boxId,
   boxNet,
   GvisorMachines,
+  missingSidecars,
   nftRuleset,
+  runHostCommand,
   ociConfig,
   type CommandResult,
   type HostCommand,
@@ -35,7 +37,7 @@ function spec(overrides: Partial<BoxSpec> = {}): BoxSpec {
 /** A stand-in for runsc, ip, nft and sysctl: records each command and keeps the sandboxes runsc would. */
 function fakeHost(options: { runsc?: boolean; failOn?: (command: HostCommand) => boolean; checkpoint?: boolean } = {}) {
   const commands: HostCommand[] = []
-  const sandboxes = new Map<string, 'created' | 'running'>()
+  const sandboxes = new Map<string, 'running'>()
   const exec = async (command: HostCommand): Promise<CommandResult> => {
     commands.push(command)
     const ok = (stdout = ''): CommandResult => ({ code: 0, stdout, stderr: '' })
@@ -44,12 +46,11 @@ function fakeHost(options: { runsc?: boolean; failOn?: (command: HostCommand) =>
     if (command.command !== 'runsc') return ok()
     if (options.runsc === false) return { code: 127, stdout: '', stderr: 'spawn runsc ENOENT' }
     const args = command.args
-    const verb = args.find(arg => ['--version', 'create', 'start', 'state', 'kill', 'delete', 'checkpoint', 'restore'].includes(arg))
+    const verb = args.find(arg => ['--version', 'run', 'state', 'kill', 'delete', 'checkpoint', 'restore'].includes(arg))
     const id = args.at(-1) === 'KILL' ? args.at(-2) ?? '' : args.at(-1) ?? ''
     switch (verb) {
       case '--version': return ok('runsc version release-20261102.0\n')
-      case 'create': sandboxes.set(id, 'created'); return ok()
-      case 'start': sandboxes.set(id, 'running'); return ok()
+      case 'run': sandboxes.set(id, 'running'); return ok()
       case 'restore': sandboxes.set(id, 'running'); return ok()
       case 'state': return sandboxes.has(id) ? ok(JSON.stringify({ id, status: sandboxes.get(id) })) : fail('no such container')
       case 'kill': return sandboxes.has(id) ? ok() : fail('no such container')
@@ -81,11 +82,13 @@ describe('gVisor machines', () => {
     expect(ref).toBe(boxId('machine-1'))
     const run = commands.map(line)
     const nft = run.findIndex(text => text.startsWith('nft -f -'))
-    const create = run.findIndex(text => text.includes(' create '))
+    const create = run.findIndex(text => text.includes(' run --detach '))
     expect(nft).toBeGreaterThan(-1)
     expect(create).toBeGreaterThan(nft)
     expect(run[create]).toContain('--network sandbox')
-    expect(run[create]).toContain(`--overlay2 root:${join(root, 'state', 'boxes', ref, 'upper')}`)
+    expect(run[create]).toContain(`--overlay2 root:dir=${join(root, 'state', 'boxes', ref, 'upper')}`)
+    // One detached call: `runsc start` would wait in the foreground.
+    expect(run.some(text => text.includes(' start '))).toBe(false)
     const config: unknown = JSON.parse(await readFile(join(root, 'state', 'boxes', ref, 'bundle', 'config.json'), 'utf8'))
     expect(config).toMatchObject({
       process: { args: ['/usr/local/bin/tnega-box-start'], noNewPrivileges: true, capabilities: { bounding: [] } },
@@ -128,7 +131,7 @@ describe('gVisor machines', () => {
   it('fails closed when the egress rule cannot be set: no sandbox, no namespace left', async () => {
     const { machines, commands, sandboxes } = await host({ failOn: command => command.command === 'nft' && command.args[0] === '-f' })
     await expect(machines.start('machine-1', spec())).rejects.toMatchObject({ code: 'SANDBOX_UNAVAILABLE' })
-    expect(commands.some(command => command.args.includes('create'))).toBe(false)
+    expect(commands.some(command => command.args.includes('run'))).toBe(false)
     expect(sandboxes.size).toBe(0)
     expect(commands.map(line).at(-1)).toMatch(/^ip netns delete tnega-/)
   })
@@ -136,7 +139,7 @@ describe('gVisor machines', () => {
   it('returns the same box for the same key, and refuses one built from another spec', async () => {
     const { machines, commands } = await host()
     const first = await machines.start('machine-1', spec({ specHash: 'a' }))
-    const creates = () => commands.filter(command => command.args.includes('create')).length
+    const creates = () => commands.filter(command => command.args.includes('run')).length
     expect(await machines.start('machine-1', spec({ specHash: 'a' }))).toEqual(first)
     expect(creates()).toBe(1)
     const refused = await machines.start('machine-1', spec({ specHash: 'b' })).catch((error: unknown) => error)
@@ -162,7 +165,7 @@ describe('gVisor machines', () => {
     await machines.pause(ref)
     expect(await machines.status(ref)).toBe('paused')
     await machines.start('machine-1', spec())
-    expect(commands.filter(command => command.args.includes('create'))).toHaveLength(2)
+    expect(commands.filter(command => command.args.includes('run'))).toHaveLength(2)
     expect(await readFile(join(workspace, 'notes.txt'), 'utf8')).toBe('not committed')
   })
 
@@ -192,5 +195,38 @@ describe('gVisor machines', () => {
     })
     expect(JSON.stringify(config)).toContain('"destination":"/workspace","type":"bind","source":"/b/workspace"')
     expect(JSON.stringify(config)).toContain('"path":"/var/run/netns/x"')
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('the host command runner', () => {
+  it('answers when the command exits, even if something it started keeps its output open', async () => {
+    const started = Date.now()
+    // The background sleep holds stdout open the way a detached sandbox does.
+    const result = await runHostCommand({ command: 'sh', args: ['-c', 'sleep 5 & echo up'] })
+    expect(result).toMatchObject({ code: 0, stdout: 'up\n' })
+    expect(Date.now() - started).toBeLessThan(3_000)
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('the sidecar check', () => {
+  it('finds gvisor-bin beside runsc, through a link and on PATH', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tnega-gvisor-bin-'))
+    dirs.push(root)
+    const release = join(root, 'release')
+    const bin = join(root, 'bin')
+    await mkdir(join(release, 'gvisor-bin'), { recursive: true })
+    await mkdir(bin)
+    await writeFile(join(release, 'runsc'), '#!/bin/sh\n')
+    await chmod(join(release, 'runsc'), 0o755)
+    await symlink(join(release, 'runsc'), join(bin, 'runsc'))
+    expect(await missingSidecars('runsc', bin)).toBeUndefined()
+    expect(await missingSidecars(join(release, 'runsc'))).toBeUndefined()
+  })
+
+  it('says so when runsc was copied alone', async () => {
+    const bin = await mkdtemp(join(tmpdir(), 'tnega-runsc-alone-'))
+    dirs.push(bin)
+    await writeFile(join(bin, 'runsc'), '#!/bin/sh\n')
+    expect(await missingSidecars('runsc', bin)).toContain('gvisor-bin')
   })
 })

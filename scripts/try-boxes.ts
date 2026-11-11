@@ -183,7 +183,7 @@ async function box(args: readonly string[]): Promise<void> {
     console.log(`${label.padEnd(34)} ${String(value ?? 'ok').padEnd(24)} ${Date.now() - started} ms`)
     return value
   }
-  const { ref } = await step('start a new box and its daemon', () => machines.start(key, spec))
+  const ref = await step('start a new box and its daemon', async () => (await machines.start(key, spec)).ref)
   console.log(`  sandbox id ${ref}`)
   await step('status', () => machines.status(ref))
   await step('start again (finds the same box)', async () => (await machines.start(key, spec)).ref)
@@ -234,7 +234,8 @@ async function gvisor(args: readonly string[]): Promise<void> {
   const spec: BoxSpec = {
     template: option(args, '--template') ?? 'tnega-box',
     // A documentation address: nothing answers, so the daemon keeps retrying. The box only has to exist.
-    daemon: { serverUrl: 'ws://192.0.2.1:4555/daemon', token: randomBytes(16).toString('hex') },
+    // wss: the daemon refuses plain ws:// to anything but this machine and would exit.
+    daemon: { serverUrl: 'wss://192.0.2.1/daemon', token: randomBytes(16).toString('hex') },
     workspacePath: '/workspace',
     network: { mode: 'none' },
     isolation: 'gvisor',
@@ -247,7 +248,7 @@ async function gvisor(args: readonly string[]): Promise<void> {
     console.log(`${label.padEnd(34)} ${String(value ?? 'ok').padEnd(24)} ${Date.now() - started} ms`)
     return value
   }
-  const { ref } = await step('start a new box and its daemon', () => machines.start(key, spec))
+  const ref = await step('start a new box and its daemon', async () => (await machines.start(key, spec)).ref)
   await step('status', () => machines.status(ref))
   await step('start again (finds the same box)', async () => (await machines.start(key, spec)).ref)
   await step('pause (checkpoint, or cold)', () => machines.pause(ref))
