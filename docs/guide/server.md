@@ -135,6 +135,34 @@ egress proxy. Do not open ports 7778 and 7779 to the internet in your cloud
 firewall. Rebuild the template after upgrading tnega, so the daemon in it
 matches.
 
+gVisor boxes need `tnega server start` to run as **root**: runsc, the
+network namespaces, the nftables rules and the cgroups all need it. Rootless
+runsc cannot put a box behind a firewall rule on the host, so tnega does not
+use it. Run the server from a root systemd unit and keep the database and the
+members' folders as they are:
+
+```ini
+# /etc/systemd/system/tnega.service
+[Unit]
+Description=tnega server
+After=network-online.target postgresql.service
+
+[Service]
+Environment=TNEGA_SERVER_DIR=/home/tnega-server/.tnega/server
+ExecStart=/usr/bin/tnega server start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Root is only the server's own process. A box runs as the owner of the folder
+it mounts (for example `tnega-server`, uid 1001), with no capabilities, so
+what an agent writes in `/workspace` belongs to that owner, and the box cannot
+write anything else of the host's. A box is its own sandbox: commands in it
+run without an inner sandbox at every Session permission, and approvals still
+apply as they do on the host.
+
 **E2B**: set `E2B_API_KEY` (and `E2B_API_URL` for a self-hosted runtime).
 The box dials `wss://<TNEGA_PUBLIC_URL host>/daemon`, so the server must be on
 HTTPS, and `TNEGA_BOX_ADDRESS` must be the server's public IPv4 for the egress

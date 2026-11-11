@@ -213,3 +213,18 @@ describe('machine pool', () => {
     expect(pool.egressPolicy(spec.network.egress.token)).toBeUndefined()
   })
 })
+
+describe('machine pool after a restart', () => {
+  it('pauses a box that was running when the server stopped, on the same idle clock', async () => {
+    const pool = await openPool({ idlePauseMs: 60_000 })
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    lease.release()
+    // The server stops (timers gone) and comes back after the box has been idle long enough.
+    pool.dispose()
+    await db.query(`update machine set last_used = now() - interval '2 minutes'`)
+    // What a new pool does at mount.
+    await pool.restore()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect((await pool.row(lease.machineId))?.state).toBe('paused')
+  })
+})

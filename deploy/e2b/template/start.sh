@@ -10,10 +10,22 @@
 #   TNEGA_EGRESS_CA     the CA the egress proxy signs key-carrying hosts with
 #   TNEGA_HOSTS         "address name" lines for the server: the box firewall
 #                       allows addresses only and no DNS, so its name is mapped here
+#                       (gVisor boxes get a ready /etc/hosts from the host instead)
 # The CA goes to a file every tool trusts, then leaves the environment, so no
 # command the agent runs sees it twice. The daemon removes its own token from
 # its environment before it runs anything.
+#
+# A gVisor box runs as the owner of the folder it mounts, not root: then the
+# certificates go to a folder of the box's own and HOME is created on /tmp.
 set -eu
+
+if [ "$(id -u)" = 0 ]; then
+  certs=/etc/ssl/certs
+else
+  mkdir -p "${HOME:-/tmp/home}"
+  certs=/tmp/tnega-certs
+  mkdir -p "$certs"
+fi
 
 : "${TNEGA_SERVER:?TNEGA_SERVER is not set}"
 : "${TNEGA_DAEMON_TOKEN:?TNEGA_DAEMON_TOKEN is not set}"
@@ -26,10 +38,10 @@ if [ -n "${TNEGA_HOSTS:-}" ]; then
 fi
 
 if [ -n "${TNEGA_EGRESS_CA:-}" ]; then
-  ca=/etc/ssl/certs/tnega-egress.pem
+  ca="$certs/tnega-egress.pem"
   printf '%s\n' "$TNEGA_EGRESS_CA" > "$ca"
   # One bundle with the system roots and the egress CA, for tools that take a single file.
-  bundle=/etc/ssl/certs/tnega-bundle.pem
+  bundle="$certs/tnega-bundle.pem"
   cat /etc/ssl/certs/ca-certificates.crt "$ca" > "$bundle"
   export NODE_EXTRA_CA_CERTS="$ca"
   export SSL_CERT_FILE="$bundle"

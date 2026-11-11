@@ -12,6 +12,8 @@ export interface BoxPaths {
   /** The workspace volume, mounted at `spec.workspacePath`; it outlives a cold pause. */
   workspace: string
   checkpoint: string
+  /** The box's `/etc/hosts`, written on the host and mounted read-only (the box has no DNS). */
+  hosts: string
   /**
    * runsc's own log for the calls that detach. Their output goes nowhere (a
    * pipe would kill the box), so this is where a failed start says why.
@@ -26,16 +28,21 @@ export const DEFAULT_RESOURCES = { cpus: 1.5, memoryMb: 768, pids: 512 } as cons
 
 const CPU_PERIOD = 100_000
 
+/** Who the box's processes run as, inside the sentry. */
+export interface BoxUser { uid: number; gid: number }
+
 /**
- * The OCI runtime spec of a box. The daemon starts as uid 0 inside the
- * sentry with no capabilities and no new privileges: it owns `/etc/hosts`
- * and the CA files the start script writes, and nothing more.
+ * The OCI runtime spec of a box. The daemon starts with no capabilities and
+ * no new privileges, as `user`: the owner of a mounted host folder (so it can
+ * write its workspace and nothing of anyone else's), else uid 0, which then
+ * owns only what the box itself made.
  */
-export function ociConfig(spec: BoxSpec, paths: BoxPaths, env: Readonly<Record<string, string>>, cgroup: string): Record<string, unknown> {
+export function ociConfig(spec: BoxSpec, paths: BoxPaths, env: Readonly<Record<string, string>>, cgroup: string, user: BoxUser = { uid: 0, gid: 0 }): Record<string, unknown> {
   const resources = { ...DEFAULT_RESOURCES, ...spec.resources }
   const variables = {
     PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-    HOME: '/root',
+    // Another user has no home in the template; /tmp is the box's own tmpfs.
+    HOME: user.uid === 0 ? '/root' : '/tmp/home',
     LANG: 'C.UTF-8',
     ...env,
   }
@@ -43,7 +50,7 @@ export function ociConfig(spec: BoxSpec, paths: BoxPaths, env: Readonly<Record<s
     ociVersion: '1.0.2',
     process: {
       terminal: false,
-      user: { uid: 0, gid: 0 },
+      user: { uid: user.uid, gid: user.gid },
       args: ['/usr/local/bin/tnega-box-start'],
       env: Object.entries(variables).map(([name, value]) => `${name}=${value}`),
       cwd: '/',
@@ -59,6 +66,7 @@ export function ociConfig(spec: BoxSpec, paths: BoxPaths, env: Readonly<Record<s
       { destination: '/dev', type: 'tmpfs', source: 'tmpfs', options: ['nosuid', 'strictatime', 'mode=755', 'size=65536k'] },
       { destination: '/tmp', type: 'tmpfs', source: 'tmpfs', options: ['nosuid', 'nodev', 'mode=1777'] },
       { destination: spec.workspacePath, type: 'bind', source: paths.workspace, options: ['rbind', 'rw'] },
+      { destination: '/etc/hosts', type: 'bind', source: paths.hosts, options: ['rbind', 'ro'] },
     ],
     linux: {
       cgroupsPath: cgroup,

@@ -58,7 +58,7 @@ export const machinesCapability: Plugin = {
 
 /** The `MachineSpec` a run in a box gets: its daemon's link, and no secret values in the box. */
 export function boxMachine(lease: MachineLease, hostWorkspace: string): MachineSpec {
-  return { link: lease.link, secrets: { withholdOthers: true }, hostWorkspace }
+  return { link: lease.link, secrets: { withholdOthers: true }, hostWorkspace, isolated: true }
 }
 
 /** This host's first private IPv4 address: where its boxes reach it. */

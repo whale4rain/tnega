@@ -6,7 +6,7 @@
  * `TNEGA_BOX_ADDRESS` when the host's first private IPv4 is not the right one.
  */
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { chown, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
@@ -60,6 +60,10 @@ describe.skipIf(!runnable)('boxes on a real host (gVisor)', () => {
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), 'tnega-boxes-e2e-'))
     workspace = join(dir, 'members', 'mia')
+    await mkdir(workspace, { recursive: true })
+    // A member folder owned by someone other than root, as on a server that runs as root.
+    const uid = Number(process.env.TNEGA_BOX_TEST_UID ?? 0)
+    if (uid) await chown(workspace, uid, uid)
     db = new PGlite()
     pool = await openServer()
     const accounts = scope?.get('accounts')
@@ -88,6 +92,9 @@ describe.skipIf(!runnable)('boxes on a real host (gVisor)', () => {
     // The workspace is the server's own folder.
     await sh(lease.link, 'echo from-the-box > /workspace/note.txt')
     expect(await readdir(workspace)).toContain('note.txt')
+    // The box runs as the folder's owner: what it wrote belongs to them.
+    expect((await stat(join(workspace, 'note.txt'))).uid).toBe((await stat(workspace)).uid)
+    expect(Number((await sh(lease.link, 'id -u')).stdout.trim())).toBe((await stat(workspace)).uid)
     lease.release()
   }, 180_000)
 

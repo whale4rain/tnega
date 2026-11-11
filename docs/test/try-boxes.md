@@ -166,7 +166,9 @@ a file in `/workspace` is in the server folder; a direct connection to
 refused; after the server scope is disposed and opened again, the same box's
 daemon dials back with the same device; after a pause, a background `sleep`
 is still running. It prints how long the start and the resume took. Set
-`TNEGA_BOX_ADDRESS` when the host's first private IPv4 is not the one to use.
+`TNEGA_BOX_ADDRESS` when the host's first private IPv4 is not the one to use,
+and `TNEGA_BOX_TEST_UID=1001` to give the member folder to a non-root owner
+(the box must then run as that uid and still write `/workspace`).
 
 Then the whole server, by hand:
 

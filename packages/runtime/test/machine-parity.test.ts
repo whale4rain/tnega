@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { renderToolResult } from '@tnega/session'
-import { acceptDaemon, memoryTransportPair } from '@tnega/daemon-protocol'
+import { acceptDaemon, memoryTransportPair, type DaemonLink } from '@tnega/daemon-protocol'
 import { startDaemon, type DaemonBrowser, type DaemonComputer } from '@tnega/daemon'
 import { RemoteWorkspaceFs } from '@tnega/fs-remote'
 import { runtimeCapabilities, type RuntimeSpec } from '../src/compose.js'
@@ -228,5 +228,44 @@ it('gives a daemon scope that daemon\'s computer, and never this machine\'s', as
     expect(scope.get('tools').list().some(tool => tool.schema.name.startsWith('computer_'))).toBe(false)
   } finally {
     await mounted.dispose()
+  }
+})
+
+it('runs commands in a box without an inner sandbox, whatever the Session permission', async () => {
+  const dir = await tempDir()
+  const loopback = await loopbackDaemon([dir])
+  cleanups.push(() => loopback.close())
+  const inner = loopback.link
+  const sent: unknown[] = []
+  const recording: DaemonLink = {
+    get deviceId() { return inner.deviceId },
+    get protocolVersion() { return inner.protocolVersion },
+    get capabilities() { return inner.capabilities },
+    get workspaces() { return inner.workspaces },
+    get closed() { return inner.closed },
+    call: (method, params, options) => {
+      if (method === 'process/shell') sent.push(params)
+      return inner.call(method, params, options)
+    },
+    onNotification: (method, listener) => inner.onNotification(method, listener),
+    onClose: listener => inner.onClose(listener),
+    close: reason => inner.close(reason),
+  }
+  const ctx = new Context()
+  const fiber = ctx.plugin(runtimeCapabilities, {
+    workspace: dir,
+    machine: { link: recording, isolated: true },
+    permission: 'read-only',
+    sandboxRequired: true,
+    builtin: { allowShell: true },
+    search: false,
+  })
+  await fiber
+  try {
+    const result = await ctx.get('tools').execute('shell', { command: 'node -e "console.log(41 + 1)"' })
+    expect(renderToolResult(result)).toContain('42')
+    expect(sent).toMatchObject([{ sandbox: { mode: 'bypass' } }])
+  } finally {
+    await fiber.dispose()
   }
 })

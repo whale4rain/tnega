@@ -147,6 +147,12 @@ export interface MachineSpec {
    * the machine, which is the same `/workspace` in every box.
    */
   hostWorkspace?: string
+  /**
+   * The machine is itself the sandbox (a box): its commands run without an
+   * inner one, which a box template does not have. The box's own walls and its
+   * egress rule confine them, and approvals still apply on this side.
+   */
+  isolated?: boolean
 }
 
 export interface RuntimeSpec {
@@ -296,7 +302,9 @@ export const sandboxCapability: Plugin = {
 }
 
 /** The sandbox a remote scope asks the daemon to enforce for one command. */
-async function remoteSandbox(spec: SandboxCapabilitySpec, grants: NetworkGrants): Promise<SandboxParams> {
+async function remoteSandbox(spec: SandboxCapabilitySpec, grants: NetworkGrants, isolated: boolean): Promise<SandboxParams> {
+  // A box is the boundary: an inner sandbox would only fail for want of a mechanism in it.
+  if (isolated) return { mode: 'bypass', sessionId: spec.sessionId ?? spec.workspace }
   const network = await withGrants(await networkOf(spec.network), grants)
   return {
     mode: await permissionOf(spec.permission),
@@ -319,7 +327,7 @@ const remoteSandboxCapability: Plugin = {
     const grants = new NetworkGrants(() => ctx.get('session', false))
     const boundary = remoteExecutionProvider(link, {
       workspaceId: announcedWorkspace(link, spec.workspace).id,
-      sandbox: () => remoteSandbox(spec, grants),
+      sandbox: () => remoteSandbox(spec, grants, spec.machine.isolated === true),
     })
     const withSecrets = secretEnvExecution(ctx, boundary, spec.machine.secrets)
     await ctx.plugin(processBoundary, { boundary: spec.sandboxRequired ? withoutEscalation(withSecrets) : withSecrets })

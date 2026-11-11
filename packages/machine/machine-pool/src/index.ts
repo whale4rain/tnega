@@ -241,6 +241,9 @@ export class MachinePool extends Service {
       if (row.egressHash) this.policies.set(row.egressHash, await this.policyFor(row))
       if (row.state === 'running' && row.ref && await this.machines.status(row.ref) !== 'running') {
         await this.setState(row.id, 'cold')
+      } else if (row.state === 'running' && !this.busy.get(row.id)) {
+        // A box that ran when the server stopped pauses on the same clock as before.
+        this.pauseWhenIdle(row.id, row.lastUsed + this.idleMs - Date.now())
       }
     }
   }
@@ -319,10 +322,21 @@ export class MachinePool extends Service {
     }
     this.busy.delete(id)
     void this.sql.query(`update machine set last_used = now() where id = $1::uuid`, [id]).catch(() => undefined)
+    this.pauseWhenIdle(id, this.idleMs)
+  }
+
+  private get idleMs(): number {
+    return this.config.idlePauseMs ?? 10 * 60_000
+  }
+
+  /** Pause the box after `delayMs` unless a lease comes first. */
+  private pauseWhenIdle(id: string, delayMs: number): void {
+    const previous = this.idleTimers.get(id)
+    if (previous) clearTimeout(previous)
     const timer = setTimeout(() => {
       this.idleTimers.delete(id)
       if (!this.busy.get(id)) void this.pause(id).catch(() => undefined)
-    }, this.config.idlePauseMs ?? 10 * 60_000)
+    }, Math.max(0, delayMs))
     timer.unref()
     this.idleTimers.set(id, timer)
   }
