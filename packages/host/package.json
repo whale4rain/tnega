@@ -38,6 +38,7 @@
     "@tnega/blobs-local": "workspace:*",
     "@tnega/session-store": "workspace:*",
     "@tnega/session-store-jsonl": "workspace:*",
+    "@tnega/side-chat": "workspace:*",
     "@tnega/subagent": "workspace:*",
     "@tnega/subagent-local": "workspace:*",
     "@tnega/tool-browser": "workspace:*",

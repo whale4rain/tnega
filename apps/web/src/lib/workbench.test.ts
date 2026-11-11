@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_KEY, closeDoc, enterProject, INITIAL_WORKBENCH, openDoc, openTool, persisted, restore, select, toggle } from './workbench'
+import { BOARD_KEY, closeDoc, enterProject, INITIAL_WORKBENCH, openDoc, openSideChat, openTool, SIDE_CHAT_KEY, persisted, restore, select, toggle } from './workbench'
 
 describe('workbench state', () => {
   it('opens tools, focusing a path for files and changes', () => {
@@ -76,5 +76,25 @@ describe('workbench in a project', () => {
     expect(state.docs.map(doc => doc.kind === 'thread' && doc.label)).toEqual(['Draft notes'])
     state = closeDoc(state, 'thread:t1', BOARD_KEY)
     expect(state.active).toBe(BOARD_KEY)
+  })
+})
+
+describe('temporary chat tab', () => {
+  it('opens once, asks each /btw question once, and survives entering a project', () => {
+    const opened = openSideChat(INITIAL_WORKBENCH)
+    expect(opened).toMatchObject({ open: true, active: SIDE_CHAT_KEY })
+    expect(opened.docs).toEqual([{ key: SIDE_CHAT_KEY, kind: 'sidechat', label: 'Temporary chat' }])
+
+    const first = openSideChat(opened, { question: 'what is it doing?', session: { id: 's1', title: 'Fix parser' } })
+    expect(first.docs).toHaveLength(1)
+    expect(first.docs[0]).toMatchObject({ ask: { question: 'what is it doing?', session: { id: 's1' }, nonce: 1 } })
+    // Showing the chat again does not ask again.
+    expect(openSideChat(openTool(first, 'files')).docs[0]).toMatchObject({ ask: { nonce: 1 } })
+    // The same question twice is asked twice.
+    expect(openSideChat(first, { question: 'what is it doing?' }).docs[0]).toMatchObject({ ask: { nonce: 2 } })
+
+    const inProject = enterProject(first, 'p1', undefined)
+    expect(inProject.docs.map(doc => doc.key)).toEqual([SIDE_CHAT_KEY])
+    expect(closeDoc(first, SIDE_CHAT_KEY).docs).toEqual([])
   })
 })

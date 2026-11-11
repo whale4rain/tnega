@@ -41,6 +41,10 @@ export function fakeServer() {
         ],
       })
     }
+    if (path === '/api/side-chat') {
+      const frames = [{ type: 'side/delta', text: 'It is ' }, { type: 'side/delta', text: 'writing tests.' }, { type: 'side/done', finishReason: 'stop' }]
+      return new Response(frames.map(frame => `event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } })
+    }
     if (path === '/api/workspaces') return json({ path: '/w', workspaces: ['/w'] })
     if (path === '/api/sessions' && method === 'GET') return json({ sessions: state.sessions })
     if (path === '/api/sessions' && method === 'POST') {

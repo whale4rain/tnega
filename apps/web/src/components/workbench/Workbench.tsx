@@ -1,9 +1,10 @@
-import { BookOpen, Bot, CalendarClock, FileText, FolderTree, Gauge, GitCompareArrows, Globe, KanbanSquare, MessagesSquare, Settings2, SquareTerminal, X, type LucideIcon } from 'lucide-react'
+import { BookOpen, Bot, CalendarClock, FileText, FolderTree, Gauge, GitCompareArrows, Globe, KanbanSquare, MessageCircleDashed, MessagesSquare, Settings2, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fileName } from '../../lib/office'
 import { revealInRail } from '../../lib/rail'
 import { BOARD_KEY, closeDoc, isProjectKey, isTool, openDoc, openTool, projectTabKey, select, type DocTab, type ProjectTabId, type ToolId, type WorkbenchState } from '../../lib/workbench'
 import { PreviewView } from '../preview/FilePreview'
+import { SideChatView, type SideSession } from './SideChatView'
 import { BrowserView } from './BrowserView'
 import { ChangesView } from './ChangesView'
 import { ContextView } from './ContextView'
@@ -61,6 +62,7 @@ export function Workbench({
   project,
   titleSlot,
   sessionId,
+  session,
 }: {
   /** False while folded away: the panel keeps its content but shows nothing and takes no focus. */
   open?: boolean
@@ -79,12 +81,15 @@ export function Workbench({
   titleSlot?: ((element: HTMLDivElement | null) => void) | undefined
   /** The open session, for the Context tool. */
   sessionId?: string | undefined
+  /** The open session with its title, offered to the temporary chat. */
+  session?: SideSession | undefined
 }) {
   const [visited, setVisited] = useState<ReadonlySet<ToolId>>(() => new Set(isTool(state.active) ? [state.active] : []))
   // Outside a project its tabs do not exist; show the first tool instead.
   const active = !project && isProjectKey(state.active) ? 'files' : project && state.active === 'context' ? BOARD_KEY : state.active
   const projectDocs = project ? state.docs.filter(doc => doc.kind === 'artifact' || doc.kind === 'thread' || doc.kind === 'exchange' || doc.kind === 'settings') : []
-  const otherDocs = state.docs.filter(doc => doc.kind === 'preview' || doc.kind === 'subagent')
+  const otherDocs = state.docs.filter(doc => doc.kind === 'preview' || doc.kind === 'subagent' || doc.kind === 'sidechat')
+  const sideChat = state.docs.find(item => item.kind === 'sidechat')
   if (isTool(active) && !visited.has(active)) setVisited(new Set([...visited, active]))
   // Context belongs to a session; a project screen has its own panels instead.
   const tools = (['files', 'changes', 'terminal', 'browser', 'context'] as const).filter(tool => (tool !== 'browser' || browser) && (tool !== 'context' || !project))
@@ -173,6 +178,12 @@ export function Workbench({
         {keep('terminal', <TerminalView workspace={workspace} visible={open && active === 'terminal'} />)}
         {open && active === 'browser' && browser && <div className="wb-pane"><BrowserView width={width} /></div>}
         {active === 'context' && !project && <div className="wb-pane"><ContextView workspace={workspace} sessionId={sessionId} visible={open} /></div>}
+        {/* Mounted while its tab exists, so the chat survives switching tabs; closing the tab ends it. */}
+        {sideChat?.kind === 'sidechat' && (
+          <div className="wb-pane" hidden={active !== sideChat.key}>
+            <SideChatView workspace={workspace} ask={sideChat.ask} current={session} visible={open && active === sideChat.key} />
+          </div>
+        )}
         {doc?.kind === 'preview' && <div className="wb-pane" key={doc.key}><PreviewView workspace={workspace} path={doc.path} /></div>}
         {doc?.kind === 'subagent' && (
           <div className="wb-pane" key={doc.key}>
@@ -192,6 +203,7 @@ const DOC_ICON: Record<DocTab['kind'], LucideIcon> = {
   thread: MessagesSquare,
   exchange: MessagesSquare,
   settings: Settings2,
+  sidechat: MessageCircleDashed,
 }
 
 function DocTabButton({ doc, active, onSelect, onClose }: { doc: DocTab; active: boolean; onSelect: () => void; onClose: () => void }) {

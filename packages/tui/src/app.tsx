@@ -22,7 +22,7 @@ import {
 import { Box, Static, Text, useApp, useInput, useStdout, useWindowSize, type DOMElement } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Composer } from './composer.js'
-import { TUI_COMMANDS, type TuiController, type TuiState } from './controller.js'
+import { TUI_COMMANDS, type Aside, type TuiController, type TuiState } from './controller.js'
 import { EMPTY, History, type EditorState } from './editor.js'
 import { KeyHints, KeySheet } from './hints.js'
 import { Picker, type PickerItem } from './picker.js'
@@ -202,6 +202,7 @@ export function App({ controller, webUrl, openUrl, shiftEnter = false }: AppProp
     }
     if (key.escape && showKeys) return setShowKeys(false)
     if (key.escape && !completing && !overlay && !waiting) {
+      if (controller.dismissAside()) return
       if (live) void controller.stop()
       else controller.clearNotice()
     }
@@ -224,7 +225,8 @@ export function App({ controller, webUrl, openUrl, shiftEnter = false }: AppProp
   // --- layout ------------------------------------------------------------------
 
   const composerRows = editor.text.split('\n').length + 2
-  const reserved = composerRows + 5 + state.queued.length + (state.notice ? 1 : 0) + (state.busy ? 1 : 0) + (completing ? Math.min(6, suggestions.length) : 0)
+  const asideLines = state.aside ? asideText(state.aside, width).length + 1 : 0
+  const reserved = composerRows + 5 + asideLines + state.queued.length + (state.notice ? 1 : 0) + (state.busy ? 1 : 0) + (completing ? Math.min(6, suggestions.length) : 0)
   const liveRows = Math.max(4, rows - reserved - 2)
   const overlayRows = Math.max(5, rows - 6)
   const approval = state.approvals[0]
@@ -296,10 +298,34 @@ export function App({ controller, webUrl, openUrl, shiftEnter = false }: AppProp
                       )}
                 </Box>
               )}
+      {state.aside && (
+        <Box flexDirection="column">
+          <Text dimColor>btw · {truncate(state.aside.question, width - 20)} · not saved, Esc closes</Text>
+          {asideText(state.aside, width).map((line, index) => (
+            <Text key={index} {...tint(state.aside?.error ? color.danger : undefined)}>{line || ' '}</Text>
+          ))}
+        </Box>
+      )}
       {state.notice && <Text {...tint(state.notice.tone === 'error' ? color.danger : state.notice.tone === 'warn' ? color.warn : undefined)} dimColor={state.notice.tone === 'info'}>{truncate(state.notice.text, width * 3)}</Text>}
       <StatusLine state={state} controller={controller} width={width} />
     </Box>
   )
+}
+
+/** The side answer's lines, the newest ones when it is long. */
+const ASIDE_MAX_LINES = 10
+
+function asideText(aside: Aside, width: number): string[] {
+  const text = aside.error ?? (aside.answer || (aside.pending ? 'Thinking…' : 'No answer.'))
+  const lines = text.split('\n').flatMap(line => {
+    const parts: string[] = []
+    for (let rest = line; ; rest = rest.slice(Math.max(1, width - 2))) {
+      parts.push(rest.slice(0, Math.max(1, width - 2)))
+      if (rest.length <= width - 2) break
+    }
+    return parts
+  })
+  return lines.length > ASIDE_MAX_LINES ? ['…', ...lines.slice(-(ASIDE_MAX_LINES - 1))] : lines
 }
 
 /** Index of the entry still being written, which stays out of the scrollback. */

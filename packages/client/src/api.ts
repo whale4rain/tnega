@@ -426,7 +426,56 @@ export function createClient(options: ClientOptions = {}) {
     await readSse(response.body, onEvent)
   }
 
-  return { api, call, fetchWorkspaceFile, streamRun }
+  /**
+   * Ask a side question (`/btw`, the temporary chat) and feed the answer's
+   * frames to `onEvent`. Nothing is saved and no run is touched; aborting
+   * `signal` stops the answer.
+   */
+  async function streamSideChat(
+    workspace: string,
+    request: SideChatRequest,
+    onEvent: (event: SideChatEvent) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const response = await doFetch(scoped('/api/side-chat', workspace), {
+      method: 'POST',
+      headers: { 'x-tnega-client': '1', 'content-type': 'application/json', accept: 'text/event-stream' },
+      body: JSON.stringify(request),
+      signal,
+    })
+    if (!response.ok) throw await errorFrom(response)
+    if (!response.body) throw new ApiError(0, 'stream response has no body')
+    await readSse(response.body, event => {
+      const side = sideChatEvent(event)
+      if (side) onEvent(side)
+    })
+  }
+
+  return { api, call, fetchWorkspaceFile, streamRun, streamSideChat }
+}
+
+/** A side question: the turns so far (the question last), and the session it is about. */
+export interface SideChatRequest {
+  messages: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>
+  session?: string
+  model?: string
+}
+
+export type SideChatEvent =
+  | { type: 'side/delta'; text: string }
+  | { type: 'side/done'; finishReason: string }
+  | { type: 'side/error'; message: string }
+
+/** The side-chat frame a parsed SSE frame carries, if it is one. */
+export function sideChatEvent(frame: object): SideChatEvent | undefined {
+  const type = Reflect.get(frame, 'type')
+  const text = Reflect.get(frame, 'text')
+  const finishReason = Reflect.get(frame, 'finishReason')
+  const message = Reflect.get(frame, 'message')
+  if (type === 'side/delta' && typeof text === 'string') return { type, text }
+  if (type === 'side/done' && typeof finishReason === 'string') return { type, finishReason }
+  if (type === 'side/error' && typeof message === 'string') return { type, message }
+  return undefined
 }
 
 export type Client = ReturnType<typeof createClient>

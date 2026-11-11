@@ -56,7 +56,14 @@ export const CLIENT_COMMANDS: readonly CommandSpec[] = [
   { name: '/compact', description: 'Summarise the conversation so far to free up context.', source: 'client' },
   { name: '/codemode', usage: '[on|off]', description: 'Enable or disable CodeMode (PTC) for subsequent runs.', source: 'client', hasArguments: true },
   { name: '/rename', usage: '<title>', description: 'Rename this session.', source: 'client' },
+  { name: '/btw', usage: '<question>', description: 'Ask a quick side question about this session. It is not saved and does not interrupt the agent.', source: 'client' },
 ]
+
+/** The question of a `/btw` message (empty when none was typed), or undefined when `text` is not one. */
+export function asideQuestion(text: string): string | undefined {
+  const parsed = parseCommand(text)
+  return parsed?.name === '/btw' ? parsed.rest : undefined
+}
 
 /** Server commands the client already covers better (mode switching lives in the UI). */
 const SHADOWED = new Set(['/plan', '/goal', '/mode'])

@@ -7,6 +7,7 @@
 import {
   ApiError,
   applyStream,
+  asideQuestion,
   beginRun,
   CLIENT_COMMANDS,
   fromEvents,
@@ -97,6 +98,15 @@ export interface TuiState {
   finishedAt?: number | undefined
   /** Messages held back until the current run ends, oldest first. */
   queued: string[]
+  /** A `/btw` side question and its answer: never saved, never seen by the agent. */
+  aside?: Aside | undefined
+}
+
+export interface Aside {
+  question: string
+  answer: string
+  pending: boolean
+  error?: string
 }
 
 export interface ControllerOptions {
@@ -126,6 +136,7 @@ export class TuiController {
   private readonly remotePollMs: number
   private readonly questionPollMs: number
   private abort: AbortController | undefined
+  private asideAbort: AbortController | undefined
   /** Session id the local stream is writing into. */
   private streamingFor: string | undefined
   private queue: StreamEvent[] = []
@@ -508,7 +519,7 @@ export class TuiController {
   async enqueue(text: string): Promise<boolean> {
     const trimmed = text.trim()
     if (!trimmed) return false
-    if (!this.state.running) return this.send(trimmed)
+    if (!this.state.running || asideQuestion(trimmed) !== undefined) return this.send(trimmed)
     this.set({ queued: [...this.state.queued, trimmed], notice: undefined })
     return true
   }
@@ -540,6 +551,7 @@ export class TuiController {
     const queued = typed ? [] : this.state.queued
     const message = typed || queued.join('\n\n')
     if (!message) return false
+    if (typed && asideQuestion(typed) !== undefined) return this.send(typed)
     if (!this.live) return typed ? this.send(typed) : this.sendQueued()
     const id = this.streamingFor ?? this.state.session?.id
     if (!id) return false
@@ -583,6 +595,8 @@ export class TuiController {
   async send(text: string): Promise<boolean> {
     const trimmed = text.trim()
     if (!trimmed) return false
+    const question = asideQuestion(trimmed)
+    if (question !== undefined) return this.ask(question)
     this.set({ notice: undefined })
     if (this.live) {
       this.set({ queued: [...this.state.queued, trimmed] })
@@ -809,7 +823,48 @@ export class TuiController {
     }
   }
 
+  /**
+   * `/btw`: a quick question on the side about this session. It goes to the
+   * side chat, not the session, so the running agent is neither interrupted
+   * nor told; the answer shows above the composer until Esc.
+   */
+  async ask(question: string): Promise<boolean> {
+    if (!question) return this.reject('Type your question after /btw.')
+    this.asideAbort?.abort()
+    const controller = new AbortController()
+    this.asideAbort = controller
+    const session = this.state.session?.id
+    this.set({ aside: { question, answer: '', pending: true }, notice: undefined })
+    const update = (change: (aside: Aside) => Aside) => {
+      if (this.asideAbort === controller && this.state.aside) this.set({ aside: change(this.state.aside) })
+    }
+    try {
+      await this.client.streamSideChat(this.state.workspace, {
+        messages: [{ role: 'user', content: question }],
+        ...(session ? { session } : {}),
+      }, event => {
+        if (event.type === 'side/delta') update(aside => ({ ...aside, answer: aside.answer + event.text }))
+        else if (event.type === 'side/error') update(aside => ({ ...aside, error: event.message }))
+      }, controller.signal)
+    } catch (reason) {
+      if (!controller.signal.aborted) update(aside => ({ ...aside, error: errorText(reason) }))
+    } finally {
+      update(aside => ({ ...aside, pending: false }))
+    }
+    return true
+  }
+
+  /** Put the side answer away (Esc); stops it if it is still coming. */
+  dismissAside(): boolean {
+    if (!this.state.aside) return false
+    this.asideAbort?.abort()
+    this.asideAbort = undefined
+    this.set({ aside: undefined })
+    return true
+  }
+
   dispose(): void {
+    this.asideAbort?.abort()
     this.abort?.abort()
     this.stopPolling()
     if (this.flushTimer) clearTimeout(this.flushTimer)

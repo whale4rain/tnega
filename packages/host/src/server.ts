@@ -16,10 +16,11 @@ import { SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import { memoryLocal } from '@tnega/memory-local'
 import { defaultWorkspace } from '@tnega/home'
 import { dedupe } from '@tnega/web-kit'
-import { compactionAdapter } from './support.js'
+import { adapterFromConfig, compactionAdapter, resolveSessionLlm } from './support.js'
 import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
+import { sideChatRoutes, type SideChatModelRequest } from '@tnega/side-chat'
 import { secretRoutes } from '@tnega/secrets-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
@@ -172,6 +173,15 @@ export async function startWebServer(
   await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })
   await root.plugin(usageRoutes, { configFile })
   await root.plugin(contextInsightsRoutes, { configFile })
+  // /btw and the temporary chat: answered by the session's model (or the one picked), never saved.
+  await root.plugin(sideChatRoutes, {
+    resolveAdapter: async ({ workspace, session, model }: SideChatModelRequest) => {
+      const summary = session ? await context.sessions.summary(workspace, session) : undefined
+      const { effective, apiKey } = resolveSessionLlm(await readSystemConfig(configFile), model ?? summary?.model, model ? undefined : summary?.reasoningEffort)
+      if (!apiKey && effective.auth !== 'chatgpt') throw new HttpError(400, 'API key is not configured')
+      return adapterFromConfig(effective, apiKey ?? '')
+    },
+  })
   await root.plugin(workspacePromptRoutes)
   if (context.secrets) await root.plugin(secretRoutes, { vault: context.secrets })
   await root.plugin(pluginRoutes, {
