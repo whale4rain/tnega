@@ -12,6 +12,11 @@ export interface BoxPaths {
   /** The workspace volume, mounted at `spec.workspacePath`; it outlives a cold pause. */
   workspace: string
   checkpoint: string
+  /**
+   * runsc's own log for the calls that detach. Their output goes nowhere (a
+   * pipe would kill the box), so this is where a failed start says why.
+   */
+  log: string
   /** The network namespace the box's netstack copies its interface from. */
   netns: string
 }
@@ -89,11 +94,22 @@ export function runscGlobals(globals: RunscGlobals): string[] {
   return ['--root', globals.root, '--platform', globals.platform, '--network', 'sandbox', '--host-uds', 'none']
 }
 
-/** `runsc create`: the overlay keeps every write outside the workspace in the box's own upper layer. */
-export function runscCreate(globals: RunscGlobals, paths: BoxPaths, id: string): string[] {
-  return [...runscGlobals(globals), '--overlay2', `root:${paths.upper}`, 'create', '--bundle', paths.bundle, id]
+/**
+ * The root overlay: every write outside the workspace goes to the box's own
+ * upper layer, a directory on the host (`dir=`; runsc takes no bare path).
+ */
+function overlay(paths: BoxPaths): string[] {
+  return ['--overlay2', `root:dir=${paths.upper}`, '--log', paths.log]
+}
+
+/**
+ * `runsc run --detach`: create and start in one call that returns once the
+ * box runs. (`runsc start` is the OCI foreground call and has no `--detach`.)
+ */
+export function runscRun(globals: RunscGlobals, paths: BoxPaths, id: string): string[] {
+  return [...runscGlobals(globals), ...overlay(paths), 'run', '--detach', '--bundle', paths.bundle, id]
 }
 
 export function runscRestore(globals: RunscGlobals, paths: BoxPaths, id: string): string[] {
-  return [...runscGlobals(globals), '--overlay2', `root:${paths.upper}`, 'restore', '--detach', '--image-path', paths.checkpoint, '--bundle', paths.bundle, id]
+  return [...runscGlobals(globals), ...overlay(paths), 'restore', '--detach', '--image-path', paths.checkpoint, '--bundle', paths.bundle, id]
 }

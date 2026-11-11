@@ -82,6 +82,12 @@ export interface HostCommand {
   args: string[]
   /** Written to the command's standard input. */
   input?: string
+  /**
+   * `ignore`: the command's output goes to `/dev/null` and it never sees our
+   * pipes. Needed by `runsc run --detach`, which leaves the box holding those
+   * pipes: closing them later kills the box with SIGPIPE on its next write.
+   */
+  stdio?: 'pipe' | 'ignore'
 }
 
 /** Make the namespace, the veth pair and the rules. Each step must succeed, or the box does not start. */

@@ -138,7 +138,9 @@ pnpm try:boxes gvisor --keep               # leave it running and look inside
 ```
 
 The first lines say whether `/dev/kvm` exists and what is missing for gVisor;
-nothing starts until all of it is there. A `microvm` box must be refused with
+nothing starts until all of it is there. A box's own output goes nowhere (a pipe would
+kill it once the caller exits); when a start fails, the error quotes runsc's
+log, `/var/lib/tnega/machines/boxes/<id>/runsc.log`. A `microvm` box must be refused with
 `SANDBOX_UNAVAILABLE`. The host-layer test runs the same checks plus "the
 host's `/home` is not in the box" and "a direct connection fails":
 
