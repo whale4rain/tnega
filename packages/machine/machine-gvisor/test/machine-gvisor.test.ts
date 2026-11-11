@@ -206,6 +206,15 @@ describe.skipIf(process.platform === 'win32')('the host command runner', () => {
     expect(result).toMatchObject({ code: 0, stdout: 'up\n' })
     expect(Date.now() - started).toBeLessThan(3_000)
   })
+
+  it('never lets the box hold our pipes: a detached start is spawned with its output ignored', async () => {
+    const { machines, commands } = await host()
+    await machines.start('machine-1', spec())
+    const run = commands.find(command => command.args.includes('run'))
+    expect(run).toMatchObject({ stdio: 'ignore' })
+    // Everything that ends with the command keeps its output, so failures stay readable.
+    expect(commands.find(command => command.args.includes('state'))?.stdio).toBeUndefined()
+  })
 })
 
 describe.skipIf(process.platform === 'win32')('the sidecar check', () => {

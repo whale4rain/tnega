@@ -80,27 +80,29 @@ const OUTPUT_GRACE_MS = 50
  * flight gets a short grace, then the pipes are let go.
  */
 export const runHostCommand: CommandRunner = command => new Promise(done => {
-  const child = spawn(command.command, command.args, { stdio: ['pipe', 'pipe', 'pipe'] })
+  const child = command.stdio === 'ignore'
+    ? spawn(command.command, command.args, { stdio: ['pipe', 'ignore', 'ignore'] })
+    : spawn(command.command, command.args, { stdio: ['pipe', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
   let finished = false
   const finish = (result: CommandResult): void => {
     if (finished) return
     finished = true
-    child.stdout.destroy()
-    child.stderr.destroy()
+    child.stdout?.destroy()
+    child.stderr?.destroy()
     done(result)
   }
-  child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
-  child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+  child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+  child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
   child.on('error', error => finish({ code: 127, stdout, stderr: stderr || error.message }))
   child.on('close', code => finish({ code: code ?? 1, stdout, stderr }))
   child.on('exit', code => {
     setTimeout(() => finish({ code: code ?? 1, stdout, stderr }), OUTPUT_GRACE_MS)
   })
   // A command that exits without reading its input is not an error here.
-  child.stdin.on('error', () => undefined)
-  child.stdin.end(command.input ?? '')
+  child.stdin?.on('error', () => undefined)
+  child.stdin?.end(command.input ?? '')
 })
 
 type RecordState = 'running' | 'paused' | 'cold'
@@ -221,8 +223,8 @@ export class GvisorMachines extends MachineService {
     return result.stdout
   }
 
-  private runscCommand(args: string[]): HostCommand {
-    return { command: this.runsc, args }
+  private runscCommand(args: string[], stdio?: HostCommand['stdio']): HostCommand {
+    return stdio === undefined ? { command: this.runsc, args } : { command: this.runsc, args, stdio }
   }
 
   /** runsc must answer before anything is made; without it the host has no gVisor. */
@@ -284,7 +286,8 @@ export class GvisorMachines extends MachineService {
       }
       const restored = existing?.state === 'paused' && await this.restore(id, paths)
       if (!restored) {
-        await this.run(this.runscCommand(runscRun(this.globals, paths, id)))
+        // The box outlives this call, so it must not inherit our pipes.
+        await this.run(this.runscCommand(runscRun(this.globals, paths, id), 'ignore'))
       }
     } catch (error) {
       // Nothing half made stays behind: no sandbox, no namespace, no rule. The workspace stays.
@@ -299,7 +302,8 @@ export class GvisorMachines extends MachineService {
   /** Bring a checkpoint back; `false` when it cannot be, and the box starts cold on its workspace. */
   private async restore(id: string, paths: BoxPaths): Promise<boolean> {
     if (!await exists(paths.checkpoint)) return false
-    const result = await this.exec(this.runscCommand(runscRestore(this.globals, paths, id)))
+    // A restored box outlives this call too: keep it off our pipes.
+    const result = await this.exec(this.runscCommand(runscRestore(this.globals, paths, id), 'ignore'))
     await rm(paths.checkpoint, { recursive: true, force: true })
     if (result.code === 0) return true
     await this.exec(this.runscCommand([...runscGlobals(this.globals), 'delete', '--force', id]))
