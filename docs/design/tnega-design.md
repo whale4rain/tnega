@@ -221,6 +221,13 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 - **密钥问题**（2026-10-26 起）：Agent 用 `ask_user_question` 的 `secret`（环境变量名，如 `GITHUB_TOKEN`）要密钥时，问题卡里是一行**隐藏输入**（复用 `.input-with-icon`：`KeyRound` 图标 · `password` 输入框，等宽字体 · 显示 / 隐藏的 `.icon-button.tiny`，`aria-pressed`），没有选项与补充文本框。下面一行 `.muted.small` 写去向（“只在这个会话里使用……命令里用 `$NAME` 读取”），右侧是 **记住** 按钮（`.button.ghost.small`，`aria-pressed`，按下时 `--accent-soft` 底、`--accent-text` 字）：按下则保存到这个工作区（重启后同一工作区的会话都能用），说明文字随之改写。值只交给宿主的密钥库，不进 Session、不回到时间线；Agent 只知道名字。设置里的 **Secrets** 分区（§9）列出名字并可移除。
 
+- **新会话的欢迎**（2026-11-12 起，`components/Welcome.tsx`，取代“云 + 问候 + 输入框下方的四张卡”的空白页）：会话还没有消息时，`.conversation` 加 `is-welcome`，**问候与输入框在页面中间相遇**——问候区沉到输入框上方，输入框在中线略下，四个起手式（`.starter`）排在输入框**下方**；第一条消息发出后回到“时间线在上、输入区在下”。从上到下：
+  - **活的云**（`WelcomeCloud`）：64px 的品牌云（与 `--brand-cloud` / `--brand-eyes` 同一画法，眼睛从云上镂空），缓慢上下浮动，下方一块随之伸缩的柔和投影；和所有头像一样偶尔眨眼（`av-blink`）；**眼睛跟着指针看**（最多偏 3 个单位，不出云）。这是空闲的生气，不是天气：欢迎页不画任何天气。背后一团很淡的 `--accent-soft` 径向光，只是光，不是色块。`prefers-reduced-motion` 下不浮、不眨、不跟随。首次打开的欢迎页（没有工作区时）用同一朵云。
+  - **问候**：`--font-display`、`--text-3xl`、400 字重，两段：按时间的问好（Good morning / Good afternoon / Good evening / Working late）用 `--text`，按 Agent 类型的问句用 `--text-3`（coding “What are we building?”，work “What can I take off your plate?”，general “What’s on your mind?”；`lib/welcome.ts`）。窄时两段各占一行（`text-wrap: balance`）。
+  - 一行 `--text-2` 说明在哪里、以什么身份工作（“Working in `scratch` as a coding agent.”）。
+  - 输入框，下面是起手式：无底色的描边卡（悬停才有 `--surface` 底），说明文字 `--text-3`，让输入框是唯一的实卡。窗口窄（≤860px）或矮（≤640px）时起手式只留标题，保持两列。
+  - 各部分依次淡入（每段晚 70ms）。提示条（如 cua-driver）留在顶部，不跟着问候下沉。
+
 ### 5.2 输入区与图片
 
 - Project 输入区只显示一个主按钮：有内容时是发送（异步消息）；内容为空时，只有收件方正在运行才是停止，空闲时是禁用的发送——不显示一个用不了的停止按钮。`Ctrl+Enter` 可停止当前运行并发送改向消息，`Esc` 停止当前运行。
@@ -343,10 +350,11 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 | `--text-lg` | 13px | 14px | 15.5px | 对话正文与输入（行高 1.6）、侧栏行 |
 | `--text-xl` | 18.5px | 18.5px | 20.5px | 区块标题 |
 | `--text-2xl` | 24px | 24px | 26.5px | 页面标题、欢迎页 |
+| `--text-3xl` | 32px | 34px | 37px | 只用于新会话空白页的问候语 |
 
 **界面字体是 Geist + Noto Sans SC，代码用 JetBrains Mono**（2026-10-12 起；三者都由 `@fontsource-variable/*` 随应用打包，桌面端离线与各操作系统显示一致）。`--font-sans` 里 Geist 在前：拉丁字母、数字和标点总由 Geist 显示；Geist 没有中文字形，中文落到 Noto Sans SC，两者不会争同一个字符，混排不会忽大忽小或换来换去。Noto Sans SC 按 unicode-range 分片，只有出现中文时才加载需要的分片。`body` 字重 400。
 
-**展示衬线 `--font-display` = Fraunces**（2026-10-12 起，`@fontsource-variable/fraunces` 的 opsz 轴：大字号时自动变成高对比衬线）。它只给几句表达情绪的字：Board 的问候语、新会话空白页的问候语（“Good afternoon. What are we building?”）与首次打开的欢迎标题，`--text-2xl`、500 字重；正文、标题栏、按钮与列表永远不用它。中文落到 Noto Sans SC。
+**展示衬线 `--font-display` = Fraunces**（2026-10-12 起，`@fontsource-variable/fraunces` 的 opsz 轴：大字号时自动变成高对比衬线）。它只给几句表达情绪的字：Board 的问候语与首次打开的欢迎标题用 `--text-2xl`、500 字重；新会话空白页的问候语（“Good afternoon. What are we building?”，§5.1）用 `--text-3xl`、400 字重，是全应用唯一用到 `--text-3xl` 的地方；正文、标题栏、按钮与列表永远不用它。中文落到 Noto Sans SC。
 
 字重以 400 / 500 / 600 为主；700 只留给极小的徽标数字。等宽字体（`--font-mono`）只给代码、路径、命令、哈希与对齐的数字列。
 

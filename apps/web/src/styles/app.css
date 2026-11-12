@@ -1946,6 +1946,25 @@ kbd {
   margin-top: 32px;
 }
 
+/* Under the composer of an empty session the starters follow it closely and
+ * stay quiet: an outline until hovered, so the composer is the one card. */
+.conv-dock .starter-grid {
+  max-width: none;
+  margin-top: 10px;
+}
+
+.conv-dock .starter {
+  background: transparent;
+}
+
+.conv-dock .starter:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.conv-dock .starter-prompt {
+  color: var(--text-3);
+}
+
 .starter {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1988,6 +2007,156 @@ kbd {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* --- welcome: an empty session ------------------------------------------
+ * The greeting and the composer meet in the middle of the page, like the
+ * start of a conversation, and the starters sit under the composer. When the
+ * first message lands the layout returns to transcript-above-dock.
+ */
+
+.conversation.is-welcome .conv-scroll {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Notices stay at the top; the hero sinks to the composer. An auto margin, not
+ * justify-content, so the hero stays reachable when the window is short. */
+.conversation.is-welcome .conv-scroll > .conv-column {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  padding-bottom: 28px;
+}
+
+.conversation.is-welcome .welcome-hero {
+  margin-top: auto;
+}
+
+.conversation.is-welcome .conv-dock {
+  flex: 1.1 1 0;
+  min-height: min-content;
+  margin-top: 0;
+  padding-top: 0;
+  background: none;
+}
+
+.welcome-hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* A faint glow of the palette's accent behind the cloud: light, not a block of colour. */
+.welcome-hero::before {
+  content: "";
+  position: absolute;
+  top: -70px;
+  left: 50%;
+  width: 420px;
+  height: 240px;
+  margin-left: -210px;
+  background: radial-gradient(closest-side, var(--accent-soft), transparent);
+  pointer-events: none;
+  z-index: -1;
+  animation: fade-up calc(var(--duration-med) * 5) var(--ease-out) both;
+}
+
+.welcome-beat {
+  /* Each piece sets its own delay, a beat after the one above it. */
+  animation: fade-up calc(var(--duration-med) * 2.5) var(--ease-out) both;
+}
+
+.welcome-greeting {
+  max-width: 18em;
+  margin: 22px 0 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.welcome-ask {
+  color: var(--text-3);
+}
+
+.welcome-where {
+  margin: 0;
+  color: var(--text-2);
+}
+
+/* The cloud floats over its own soft shadow; the eyes blink and follow the pointer. */
+.welcome-cloud {
+  position: relative;
+  width: 64px;
+  height: 72px;
+}
+
+.welcome-cloud svg {
+  display: block;
+  width: 64px;
+  height: 64px;
+  overflow: visible;
+  animation: welcome-float 6s ease-in-out infinite;
+}
+
+.welcome-cloud-body {
+  fill: var(--accent);
+}
+
+.welcome-cloud-look {
+  transform: translate(var(--look-x, 0), var(--look-y, 0));
+  transition: transform var(--duration-med) var(--ease-out);
+}
+
+.welcome-cloud-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  /* The same blink as every agent avatar: idle life, not a state. */
+  animation: av-blink 6s 1.2s infinite;
+}
+
+.welcome-cloud-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 44px;
+  height: 8px;
+  margin-left: -22px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--surface-active), transparent);
+  animation: welcome-shadow 6s ease-in-out infinite;
+}
+
+@keyframes welcome-float {
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes welcome-shadow {
+  50% { transform: scaleX(0.82); opacity: 0.7; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-cloud svg,
+  .welcome-cloud-shadow,
+  .welcome-cloud-eyes { animation: none; }
+}
+
+/* A short or narrow window keeps the composer in view: starters lose their second line. */
+@media (max-width: 860px) {
+  .conversation.is-welcome .starter-prompt { display: none; }
+  .conv-dock .starter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-height: 640px) {
+  .conversation.is-welcome .starter-prompt { display: none; }
+  .welcome-greeting { margin-top: 12px; }
 }
 
 @keyframes fade-up {
@@ -3824,7 +3993,7 @@ kbd {
   font-size: var(--text-sm);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .settings-layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
