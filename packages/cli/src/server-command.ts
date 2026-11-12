@@ -36,12 +36,12 @@ export interface ServerSettings {
   publicUrl: string
   trustProxy: boolean
   allowHttp: boolean
-  /** The box settings (`TNEGA_MACHINE`, `TNEGA_BOX_*`, `E2B_*`), file then environment. */
+  /** The box settings (`TNEGA_MACHINE`, `TNEGA_BOX_*`, `TNEGA_BOXD_SOCKET`, `E2B_*`), file then environment. */
   boxes: Record<string, string>
 }
 
 /** Settings that pick and shape the boxes; see `machinesSpecFromEnv` in `@tnega/runtime`. */
-const BOX_SETTING = /^(?:TNEGA_MACHINE|TNEGA_BOX_[A-Z_]+|TNEGA_EGRESS_PORT|E2B_API_KEY|E2B_API_URL)$/u
+const BOX_SETTING = /^(?:TNEGA_MACHINE|TNEGA_BOX_[A-Z_]+|TNEGA_BOXD_SOCKET|TNEGA_EGRESS_PORT|E2B_API_KEY|E2B_API_URL)$/u
 
 export interface ServerIo {
   out(text: string): void

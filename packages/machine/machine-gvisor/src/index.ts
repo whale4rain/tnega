@@ -15,9 +15,26 @@ import {
   type MachineState,
 } from '@tnega/machine'
 import { boxNet, MAX_BOXES, netnsPath, networkDown, networkUp, type BoxNet, type HostCommand } from './network.js'
+import { GvisorMachinesClient } from './boxd.js'
 import { ociConfig, runscGlobals, runscRestore, runscRun, type BoxPaths, type RunscGlobals } from './oci.js'
 
 export { boxNet, netnsPath, networkDown, networkUp, nftRuleset, type BoxNet, type HostCommand } from './network.js'
+export {
+  assertBoxKey,
+  assertBoxRef,
+  assertHostWorkspace,
+  BOX_REF,
+  BOXD_METHODS,
+  groupId,
+  GvisorMachinesClient,
+  MAX_KEY_LENGTH,
+  parseBoxSpec,
+  startBoxd,
+  type Boxd,
+  type BoxdMethod,
+  type BoxdOptions,
+  type GvisorClientConfig,
+} from './boxd.js'
 export { DEFAULT_RESOURCES, ociConfig, runscGlobals, runscRestore, runscRun, type BoxPaths, type RunscGlobals } from './oci.js'
 
 /**
@@ -48,10 +65,17 @@ export { DEFAULT_RESOURCES, ociConfig, runscGlobals, runscRestore, runscRun, typ
  *   1.5 CPUs, 768 MiB and 512 processes.
  *
  * Needs root on the host, `runsc` (with its `gvisor-bin/` sidecars), `ip`,
- * `nft` and cgroup v2.
+ * `nft` and cgroup v2. A server that is not root mounts
+ * {@link GvisorMachinesClient} instead (`socket` set), which asks `tnega boxd`
+ * (see `./boxd.ts`), the one root process, to run the boxes.
  */
 
 export interface GvisorMachineConfig {
+  /**
+   * boxd's unix socket. When set, this process runs nothing on the host: every
+   * call goes to `tnega boxd`, and the other settings are boxd's.
+   */
+  socket?: string
   /** The runsc binary. Default `runsc` on PATH. */
   runsc?: string
   /** Box records, bundles and workspaces. Default `/var/lib/tnega/machines`. */
@@ -478,11 +502,16 @@ export async function probeGvisorHost(config: Pick<GvisorMachineConfig, 'runsc'>
   return { ready: problems.length === 0, problems, kvm: await exists('/dev/kvm') }
 }
 
-/** Plugin: provide `ctx.machines` from gVisor. The composition layer mounts it, only on a host that opted in. */
+/**
+ * Plugin: provide `ctx.machines` from gVisor. The composition layer mounts it,
+ * only on a host that opted in: with `socket`, as a client of `tnega boxd`;
+ * without, running the boxes in this (root) process.
+ */
 export const machineGvisor = {
   name: 'machine-gvisor',
   apply(ctx: Context, config: GvisorMachineConfig = {}): void {
-    new GvisorMachines(ctx, config)
+    if (config.socket) new GvisorMachinesClient(ctx, { socket: config.socket })
+    else new GvisorMachines(ctx, config)
   },
 }
 

@@ -118,6 +118,8 @@ function positive(env: NodeJS.ProcessEnv, name: string, fallback: number): numbe
  *   for E2B the `wss://` form of `TNEGA_PUBLIC_URL`.
  * - `TNEGA_BOX_DAEMON_PORT` (default 7779) and `TNEGA_EGRESS_PORT` (default 7778) on the box address.
  * - `TNEGA_BOX_MAX` (default 3), `TNEGA_BOX_IDLE_MINUTES` (default 10), `TNEGA_BOX_RECLAIM_DAYS` (default 7).
+ * - gVisor: `TNEGA_BOXD_SOCKET`, the socket of `tnega boxd`. Set, this server
+ *   runs no box command itself and needs no root; unset, it runs them and must be root.
  * - E2B: `E2B_API_KEY`, `E2B_API_URL` (default `https://api.e2b.app`).
  */
 export async function machinesSpecFromEnv(env: NodeJS.ProcessEnv, host: MachinesEnvContext): Promise<MachinesCapabilitySpec | undefined> {
@@ -142,8 +144,9 @@ export async function machinesSpecFromEnv(env: NodeJS.ProcessEnv, host: Machines
   } satisfies Partial<MachinePoolConfig>
   if (kind === 'gvisor') {
     const serverUrl = env.TNEGA_BOX_SERVER_URL?.trim() || `ws://${address}:${daemonPort}/daemon`
+    const socket = env.TNEGA_BOXD_SOCKET?.trim()
     return {
-      provider: { kind: 'gvisor' },
+      provider: socket ? { kind: 'gvisor', config: { socket } } : { kind: 'gvisor' },
       databaseUrl: host.databaseUrl,
       // The box reaches the gateway over its own link to this host, never past it.
       pool: { ...pool, serverUrl, plainServer: serverUrl.startsWith('ws://'), hostWorkspace: true, isolation: 'gvisor' },

@@ -490,6 +490,9 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/machine-gvisor':
+        specifier: workspace:*
+        version: link:../machine/machine-gvisor
       '@tnega/plugin-host':
         specifier: workspace:*
         version: link:../plugin-host

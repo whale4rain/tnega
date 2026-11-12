@@ -135,28 +135,83 @@ egress proxy. Do not open ports 7778 and 7779 to the internet in your cloud
 firewall. Rebuild the template after upgrading tnega, so the daemon in it
 matches.
 
-gVisor boxes need `tnega server start` to run as **root**: runsc, the
-network namespaces, the nftables rules and the cgroups all need it. Rootless
-runsc cannot put a box behind a firewall rule on the host, so tnega does not
-use it. Run the server from a root systemd unit and keep the database and the
-members' folders as they are:
+gVisor boxes need root on the host: runsc, the network namespaces, the
+nftables rules and the cgroups all do. Rootless runsc cannot put a box behind a
+firewall rule on the host, so tnega does not use it. Keep root to one small
+process: **`tnega boxd`** runs the boxes as root, and `tnega server start` runs
+as an ordinary user that asks boxd, over a unix socket, to start, pause, stop
+or look at a box. Those four requests are all boxd answers: a server that is
+taken over cannot make boxd run any other command, mount a folder outside the
+workspace roots, or start a box from anything but a template already on the
+host.
+
+```
+tnega server (user tnega-server)
+   │  /run/tnega/boxd.sock  (0660 root:tnega-box)
+   ▼
+tnega boxd (root)  ── runsc, ip, nft, cgroups
+   ▼
+box (uid = owner of the mounted folder, no capabilities)
+```
+
+Set it up once:
+
+```sh
+groupadd --system tnega-box
+usermod -aG tnega-box tnega-server
+```
 
 ```ini
-# /etc/systemd/system/tnega.service
+# /etc/systemd/system/tnega-boxd.service
 [Unit]
-Description=tnega server
-After=network-online.target postgresql.service
+Description=tnega box host
+After=network.target
 
 [Service]
-Environment=TNEGA_SERVER_DIR=/home/tnega-server/.tnega/server
-ExecStart=/usr/bin/tnega server start
+# runsc needs namespaces, mounts and cgroups: this is the one root process.
+ExecStart=/usr/local/bin/tnega boxd --socket /run/tnega/boxd.sock --group tnega-box --workspace-root /home/tnega-server/.tnega/server/members
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Root is only the server's own process. A box runs as the owner of the folder
+```ini
+# /etc/systemd/system/tnega.service
+[Unit]
+Description=tnega server
+After=network-online.target postgresql.service tnega-boxd.service
+Wants=tnega-boxd.service
+
+[Service]
+User=tnega-server
+Environment=TNEGA_SERVER_DIR=/home/tnega-server/.tnega/server
+ExecStart=/usr/local/bin/tnega server start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+and in `server.env`:
+
+```sh
+TNEGA_BOXD_SOCKET=/run/tnega/boxd.sock
+```
+
+- `--workspace-root` names the folders whose subfolders a box may mount
+  (repeat it for owners' folders elsewhere). boxd follows links before it
+  checks, and refuses a folder that belongs to root.
+- The socket is `0660` with the group from `--group`; without `--group` only
+  root may connect. Someone not in the group is refused by the kernel.
+- boxd checks the host when it starts (runsc with its `gvisor-bin/`, `ip`,
+  `nft`, cgroup v2) and exits with the reasons when something is missing. Its
+  state stays root's: `/var/lib/tnega` and `/run/tnega-runsc`. The server keeps
+  only the `machine` rows in the database.
+- Without `TNEGA_BOXD_SOCKET` the server runs the boxes itself and must then be
+  root, as before.
+
+Root is only boxd's (or, without boxd, the server's). A box runs as the owner of the folder
 it mounts (for example `tnega-server`, uid 1001), with no capabilities, so
 what an agent writes in `/workspace` belongs to that owner, and the box cannot
 write anything else of the host's. A box is its own sandbox: commands in it

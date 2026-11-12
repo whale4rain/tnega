@@ -27,6 +27,7 @@ export async function main(argv: readonly string[], options: EntryOptions = {}):
   if (command === 'tui') return runTui(rest)
   if (command === 'daemon') return runDaemon(rest)
   if (command === 'server') return runServer(rest)
+  if (command === 'boxd') return runBoxd(rest)
   // `tnega --continue`, `tnega --cwd x`: options without a command are the TUI's.
   if (command.startsWith('-')) return runTui(argv)
   return runCommand(argv)
@@ -47,6 +48,17 @@ async function runDaemon(args: readonly string[]): Promise<number> {
   try {
     const { runDaemonCommand } = await import('./daemon-command.js')
     return await runDaemonCommand(args)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stdout.write(`error: ${message}\n`)
+    return 2
+  }
+}
+
+async function runBoxd(args: readonly string[]): Promise<number> {
+  try {
+    const { runBoxdCommand } = await import('./boxd-command.js')
+    return await runBoxdCommand(args)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     process.stdout.write(`error: ${message}\n`)
