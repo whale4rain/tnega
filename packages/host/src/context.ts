@@ -11,6 +11,21 @@ import type { WebServerService } from '@tnega/web-kit'
 import type { SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import type { SecretVault } from '@tnega/secrets-local'
 import type { SessionStore } from '@tnega/session-store'
+import type { MachineSpec } from '@tnega/runtime'
+
+/**
+ * A run's place in a box: the daemon's link (files, commands, search go
+ * there), the workspace's path inside the box, and the lease to end when the
+ * run ends so the box can pause.
+ */
+export interface BoxRun {
+  machine: MachineSpec
+  /** The workspace inside the box (`/workspace`). */
+  cwd: string
+  /** Same box and connection as another `BoxRun`: a resident runtime built on one can be reused. */
+  identity: string
+  release(): void
+}
 
 export interface ResidentAgentEntry {
   root: Context
@@ -48,6 +63,11 @@ export interface ServerContext {
    * folders): no `bypass`, and approved escalations stay confined.
    */
   sandboxRequired?: (workspace: string) => boolean
+  /**
+   * The box a signed-in person's run works in, when the server runs boxes
+   * (`TNEGA_MACHINE`). Undefined: the run works on this host.
+   */
+  machineFor?: (input: { workspace: string; sessionId: string; accountId: string; signal?: AbortSignal }) => Promise<BoxRun | undefined>
   browser?: PlaywrightBrowserHost
   /** Background processes per workspace; they outlive the runs that start them. */
   processes: Map<string, ProcessRegistry>

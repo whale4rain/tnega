@@ -148,12 +148,42 @@ host's `/home` is not in the box" and "a direct connection fails":
 TNEGA_GVISOR_TEMPLATE=tnega-box npx vitest run --config vitest.host.config.ts packages/machine/machine-gvisor
 ```
 
+## 6. Boxes behind the server (milestone 3)
+
+The pool, the daemon door and a real gVisor box together, as root, with the
+template built from this branch (`npm pack` first, so the daemon in the box
+knows `TNEGA_DAEMON_ALLOW_WS`):
+
+```sh
+TNEGA_GVISOR_TEMPLATE=tnega-box npx vitest run --config vitest.host.config.ts packages/runtime/test/boxes.e2e.test.ts
+```
+
+It checks, in order: `uname -a` says gVisor, `/home` is empty, the hostname
+is `tnega-box`, no `DEEPSEEK_API_KEY` / master key / database URL / daemon
+token in the box's environment, a file in the box's `/tmp` is not on the host,
+a file in `/workspace` is in the server folder; a direct connection to
+`1.1.1.1` fails, `example.com` works through the proxy and another host is
+refused; after the server scope is disposed and opened again, the same box's
+daemon dials back with the same device; after a pause, a background `sleep`
+is still running. It prints how long the start and the resume took. Set
+`TNEGA_BOX_ADDRESS` when the host's first private IPv4 is not the one to use,
+and `TNEGA_BOX_TEST_UID=1001` to give the member folder to a non-root owner
+(the box must then run as that uid and still write `/workspace`).
+
+Then the whole server, by hand:
+
+```sh
+TNEGA_MACHINE=gvisor TNEGA_BOX_TEMPLATE=tnega-box tnega server start
+```
+
+Sign in as the owner, open a session in a member's folder (or the owner's), and
+ask the agent to run `uname -a`, `ls /home` and `env`. Stop the server with
+Ctrl+C and start it again: the next message in the same session continues in
+the same box.
+
 ## Not testable yet
 
-- An agent run inside a box, files and commands over the daemon from a box,
-  and the setup step in a real box: the server side of the daemon connection
-  is milestone 3.
 - A box with the `egress` network on E2B's cloud: the box must reach the
   egress proxy at a public IPv4 address, so the proxy has to run on a server,
   not behind a home router.
-- Idle pause, the 7-day reclaim and the box cap: server work (milestone 3).
+- Subagents and MCP servers in a box.

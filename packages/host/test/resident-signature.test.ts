@@ -3,6 +3,7 @@ import { ApprovalBroker } from '@tnega/approval-host'
 import type { SystemConfig } from '@tnega/config'
 import { Context } from '@tnega/core'
 import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
+import type { DaemonLink } from '@tnega/daemon-protocol'
 import { residentSignature, type ResidentRunRequest } from '../src/runs.js'
 import { permissionNotice, sessionModelRoute } from '../src/support.js'
 
@@ -48,6 +49,32 @@ describe('residentSignature', () => {
     expect(residentSignature({ ...request, apiKey: 'other' })).not.toBe(residentSignature(request))
     expect(residentSignature({ ...request, effective: { ...request.effective, model: 'other' } }))
       .not.toBe(residentSignature(request))
+  })
+})
+
+describe('residentSignature with boxes', () => {
+  it('rebuilds on a box, and again when the box came back on a new connection', () => {
+    const link: DaemonLink = {
+      deviceId: 'd',
+      protocolVersion: 2,
+      capabilities: { fs: true, process: true, http: true, platform: 'linux' },
+      workspaces: [],
+      closed: false,
+      call: () => Promise.reject(new Error('not used')),
+      onNotification: () => () => undefined,
+      onClose: () => () => undefined,
+      close: () => undefined,
+    }
+    const box = (identity: string) => ({
+      machine: { link },
+      cwd: '/workspace',
+      identity,
+      release: () => undefined,
+    })
+    const onBox = residentSignature({ ...request, box: box('m1:1') })
+    expect(onBox).not.toBe(residentSignature(request))
+    expect(residentSignature({ ...request, box: box('m1:1') })).toBe(onBox)
+    expect(residentSignature({ ...request, box: box('m1:2') })).not.toBe(onBox)
   })
 })
 

@@ -36,7 +36,12 @@ export interface ServerSettings {
   publicUrl: string
   trustProxy: boolean
   allowHttp: boolean
+  /** The box settings (`TNEGA_MACHINE`, `TNEGA_BOX_*`, `E2B_*`), file then environment. */
+  boxes: Record<string, string>
 }
+
+/** Settings that pick and shape the boxes; see `machinesSpecFromEnv` in `@tnega/runtime`. */
+const BOX_SETTING = /^(?:TNEGA_MACHINE|TNEGA_BOX_[A-Z_]+|TNEGA_EGRESS_PORT|E2B_API_KEY|E2B_API_URL)$/u
 
 export interface ServerIo {
   out(text: string): void
@@ -90,6 +95,8 @@ export async function loadServerSettings(dir: string, env: NodeJS.ProcessEnv = p
     publicUrl: value('TNEGA_PUBLIC_URL') ?? `http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`,
     trustProxy: truthy(value('TNEGA_TRUST_PROXY')),
     allowHttp: truthy(value('TNEGA_ALLOW_HTTP')),
+    boxes: Object.fromEntries([...Object.entries(file), ...Object.entries(env)]
+      .flatMap(([key, raw]) => BOX_SETTING.test(key) && raw?.trim() ? [[key, raw.trim()]] : [])),
   }
 }
 
@@ -231,19 +238,22 @@ async function start(args: readonly string[], io: ServerIo, env: NodeJS.ProcessE
   const port = text(parsed, '--port')
   const settings: ServerSettings = { ...loaded, host: text(parsed, '--host') ?? loaded.host, port: port ? Number(port) : loaded.port }
   assertSafeListen(settings)
-  const [{ parseMasterKey }, { startWebServer }] = await Promise.all([import('@tnega/runtime'), import('@tnega/host')])
+  const [{ machinesSpecFromEnv, parseMasterKey }, { startWebServer }] = await Promise.all([import('@tnega/runtime'), import('@tnega/host')])
   const masterKey = parseMasterKey(settings.masterKey)
+  const machines = await machinesSpecFromEnv(settings.boxes, { dir, databaseUrl: settings.databaseUrl, publicUrl: settings.publicUrl })
   // Agents' commands inherit this process's environment: the keys to the
-  // database and to every secret are not theirs.
-  for (const key of ['DATABASE_URL', 'TNEGA_MASTER_KEY']) delete env[key]
+  // database, to every secret and to the box provider are not theirs.
+  for (const key of ['DATABASE_URL', 'TNEGA_MASTER_KEY', 'E2B_API_KEY']) delete env[key]
   await mkdir(settings.membersRoot, { recursive: true })
   const server = await startWebServer({
     host: settings.host,
     port: settings.port,
     state: { sessions: { kind: 'postgres', url: settings.databaseUrl }, masterKey, membersRoot: settings.membersRoot },
     accounts: { url: settings.databaseUrl, membersRoot: settings.membersRoot, trustProxy: settings.trustProxy },
+    ...(machines ? { machines } : {}),
   })
   io.out(`tnega server listening on ${server.url}; open ${settings.publicUrl}\n`)
+  if (machines) io.out(`Sessions run in ${machines.provider.kind} boxes (template ${machines.pool.template}); boxes dial ${machines.pool.serverUrl}\n`)
   await new Promise<void>(done => {
     const stop = (): void => {
       process.off('SIGINT', stop)
@@ -261,7 +271,7 @@ async function start(args: readonly string[], io: ServerIo, env: NodeJS.ProcessE
 async function user(args: readonly string[], io: ServerIo, env: NodeJS.ProcessEnv): Promise<number> {
   const parsed = parse(args, new Set(['--dir', '--role', '--name']))
   only(parsed, ['--dir', '--role', '--name', '--password-stdin', '--disable', '--enable'], 'user')
-  const [action, login] = parsed.positional
+  const [action, login, deviceId] = parsed.positional
   const settings = await loadServerSettings(resolve(text(parsed, '--dir') ?? defaultServerDir(env)), env)
   return withAccounts(settings, async accounts => {
     switch (action) {
@@ -296,8 +306,23 @@ async function user(args: readonly string[], io: ServerIo, env: NodeJS.ProcessEn
         io.out(`Password changed; ${account.login}'s devices were signed out.\n`)
         return 0
       }
+      case 'devices': {
+        const account = await findOrFail(accounts, login)
+        const devices = (await accounts.listDevices(account.id)).filter(device => !device.revoked)
+        io.out(devices.length
+          ? `${devices.map(device => `${device.id}  ${device.kind.padEnd(6)} ${device.lastSeen ?? 'never'.padEnd(24)}  ${device.name}`).join('\n')}\n`
+          : `${account.login} has no signed-in devices.\n`)
+        return 0
+      }
+      case 'revoke': {
+        const account = await findOrFail(accounts, login)
+        if (!deviceId) throw new CliError('tnega server user revoke <login> <device id> (see tnega server user devices <login>)')
+        if (!await accounts.revokeDevice(account.id, deviceId, 'cli')) throw new CliError(`${account.login} has no device ${deviceId}`)
+        io.out(`Revoked ${deviceId}; a daemon on it is disconnected within a minute.\n`)
+        return 0
+      }
       default:
-        throw new CliError('tnega server user list | add <login> | set <login> | passwd <login>')
+        throw new CliError('tnega server user list | add <login> | set <login> | passwd <login> | devices <login> | revoke <login> <device id>')
     }
   })
 }
@@ -416,7 +441,7 @@ const USAGE = `tnega server <command>
   init      write settings, create tables, print the first owner's invite
   start     run the server (sign-in required)
   deploy    write and start a Docker Compose setup (Postgres, server, HTTPS)
-  user      list | add <login> | set <login> | passwd <login>
+  user      list | add <login> | set <login> | passwd <login> | devices <login> | revoke <login> <id>
   invite    print an invite link for a new person (--role member|admin|owner)
   pair      print a pairing code for <login>'s client or --daemon
 `

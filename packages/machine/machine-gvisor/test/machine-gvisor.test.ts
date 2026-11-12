@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -195,6 +195,30 @@ describe('gVisor machines', () => {
     await machines.pause(ref)
   })
 
+  it('mounts a host folder as the workspace when asked, and stopping the box keeps that folder', async () => {
+    const { machines, root } = await host()
+    const folder = join(root, 'members', 'mia')
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'work.txt'), 'kept')
+    const { ref } = await machines.start('machine-1', spec({ hostWorkspace: folder }))
+    const config = await readFile(join(root, 'state', 'boxes', ref, 'bundle', 'config.json'), 'utf8')
+    expect(JSON.stringify(JSON.parse(config))).toContain(`"destination":"/workspace","type":"bind","source":${JSON.stringify(folder)}`)
+    // The box writes the folder as its owner, so the files stay theirs.
+    const owner = await stat(folder)
+    expect(JSON.parse(config)).toMatchObject({ process: { user: { uid: owner.uid, gid: owner.gid } } })
+    await machines.stop(ref)
+    expect(await readFile(join(folder, 'work.txt'), 'utf8')).toBe('kept')
+  })
+
+  it('gives the box a read-only /etc/hosts from the host, with the server in it', async () => {
+    const { machines, root } = await host()
+    const { ref } = await machines.start('machine-1', spec({ daemon: { serverUrl: 'wss://tnega.example.com/daemon', token: 'daemon-token' } }))
+    expect(await readFile(join(root, 'state', 'boxes', ref, 'hosts'), 'utf8')).toBe('127.0.0.1 localhost\n127.0.1.1 tnega-box\n203.0.113.7 tnega.example.com\n')
+    const config = await readFile(join(root, 'state', 'boxes', ref, 'bundle', 'config.json'), 'utf8')
+    expect(JSON.stringify(JSON.parse(config))).toContain(`"destination":"/etc/hosts","type":"bind","source":${JSON.stringify(join(root, 'state', 'boxes', ref, 'hosts'))},"options":["rbind","ro"]`)
+    expect(config).not.toContain('TNEGA_HOSTS')
+  })
+
   it('says why a detached start failed, from runsc\'s log', async () => {
     const { machines } = await host({ runLogs: 'W1111 starting\nE1111 creating container: cannot read client sync file\n' })
     await expect(machines.start('machine-1', spec())).rejects.toThrow(/cannot read client sync file/u)
@@ -207,7 +231,7 @@ describe('gVisor machines', () => {
   })
 
   it('maps resources into the cgroup and mounts the workspace', () => {
-    const paths = { rootfs: '/t/rootfs', box: '/b', bundle: '/b/bundle', upper: '/b/upper', workspace: '/b/workspace', checkpoint: '/b/cp', log: '/b/runsc.log', netns: '/var/run/netns/x' }
+    const paths = { rootfs: '/t/rootfs', box: '/b', bundle: '/b/bundle', upper: '/b/upper', workspace: '/b/workspace', checkpoint: '/b/cp', hosts: '/b/hosts', log: '/b/runsc.log', netns: '/var/run/netns/x' }
     const config = ociConfig(spec({ resources: { cpus: 1, memoryMb: 512, pids: 64 } }), paths, {}, '/tnega/x')
     expect(config).toMatchObject({
       root: { path: '/t/rootfs' },

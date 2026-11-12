@@ -36,7 +36,8 @@ export { DEFAULT_RESOURCES, ociConfig, runscGlobals, runscRestore, runscRun, typ
  * - **Network.** One namespace and veth pair per box; `egress` and `none`
  *   allow only the egress proxy and the server the daemon dials, enforced by
  *   nftables on the host end. The server's name goes into the box's
- *   `/etc/hosts` (`TNEGA_HOSTS`), as on E2B: the box has no DNS. When a rule
+ *   `/etc/hosts`, which the Provider writes on the host and mounts read-only:
+ *   the box has no DNS. When a rule
  *   cannot be set, the start fails with `SANDBOX_UNAVAILABLE` and nothing runs.
  * - **Lifecycle.** `start` is idempotent per key; `pause` checkpoints the
  *   sandbox (memory and all) and falls back to stopping it while keeping the
@@ -175,15 +176,17 @@ export class GvisorMachines extends MachineService {
     this.exec = config.exec ?? runHostCommand
   }
 
-  private paths(id: string, template: string, net: BoxNet): BoxPaths {
+  private paths(id: string, template: string, net: BoxNet, hostWorkspace?: string): BoxPaths {
     const box = join(this.stateDir, 'boxes', id)
     return {
       rootfs: join(this.templatesDir, template, 'rootfs'),
       box,
       bundle: join(box, 'bundle'),
       upper: join(box, 'upper'),
-      workspace: join(box, 'workspace'),
+      // The server's own folder when the spec names one: the server's file views then see the box's work.
+      workspace: hostWorkspace ?? join(box, 'workspace'),
       checkpoint: join(box, 'checkpoint'),
+      hosts: join(box, 'hosts'),
       log: join(box, 'runsc.log'),
       netns: netnsPath(net),
     }
@@ -303,13 +306,19 @@ export class GvisorMachines extends MachineService {
     const record = recordWith(netIndex)
     if (existing) await this.writeRecord({ ...record, state: existing.state })
     const net = boxNet(id.slice('tnega-'.length), record.netIndex)
-    const paths = this.paths(id, spec.template, net)
+    const paths = this.paths(id, spec.template, net, spec.hostWorkspace)
     try {
       await this.clearSandbox(id, net)
       await mkdir(paths.bundle, { recursive: true, mode: 0o700 })
       await mkdir(paths.upper, { recursive: true, mode: 0o700 })
       await mkdir(paths.workspace, { recursive: true, mode: 0o755 })
-      await writeFile(join(paths.bundle, 'config.json'), `${JSON.stringify(ociConfig(spec, paths, env, `/tnega/${id}`), null, 2)}\n`, { mode: 0o600 })
+      // The box has no DNS and may not write /etc: its hosts file comes from here, read-only.
+      const { TNEGA_HOSTS: serverHosts, ...boxEnv } = env
+      await writeFile(paths.hosts, `127.0.0.1 localhost\n127.0.1.1 tnega-box\n${serverHosts ? `${serverHosts}\n` : ''}`, { mode: 0o644 })
+      // A mounted host folder is written as its owner, so the files stay theirs.
+      const owner = spec.hostWorkspace ? await stat(spec.hostWorkspace) : undefined
+      const user = owner ? { uid: owner.uid, gid: owner.gid } : { uid: 0, gid: 0 }
+      await writeFile(join(paths.bundle, 'config.json'), `${JSON.stringify(ociConfig(spec, paths, boxEnv, `/tnega/${id}`, user), null, 2)}\n`, { mode: 0o600 })
       for (const command of networkUp(net, allow)) {
         // A box whose rule did not go in must not run: egress is the only way out.
         await this.run(command, allow === 'open' ? 'MACHINE_FAILED' : 'SANDBOX_UNAVAILABLE')

@@ -1,4 +1,6 @@
-import { resolve } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { homedir, hostname } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { assertSecureServerUrl, connectWebSocket, startDaemon, type Daemon } from '@tnega/daemon'
 import type { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { CliError } from './commands.js'
@@ -6,7 +8,12 @@ import { computerSwitch, terminalKeys } from './daemon-computer.js'
 
 export interface DaemonArgs {
   server: string
-  token: string
+  /** Absent when `pair` gives one, or the saved token file holds one. */
+  token?: string
+  /** A pairing code (`tnega server pair <login> --daemon`) to trade for a token. */
+  pair?: string
+  /** `ws://` to another host is allowed (`TNEGA_DAEMON_ALLOW_WS=1`): a box on the server's own host. */
+  allowPlain?: boolean
   workspaces: string[]
   deviceId?: string
   /** Serve a browser on this machine for the runtime to drive. */
@@ -17,11 +24,41 @@ export interface DaemonArgs {
 
 /** Environment variable for the token, so it stays out of the process list. */
 export const DAEMON_TOKEN_ENV = 'TNEGA_DAEMON_TOKEN'
+/** `1`: dial `ws://` to a host other than localhost. Set by the server for boxes on its own host. */
+export const DAEMON_ALLOW_WS_ENV = 'TNEGA_DAEMON_ALLOW_WS'
+
+/** Where `--pair` keeps the token it was given, so later starts need no flag. */
+export function daemonTokenFile(env: NodeJS.ProcessEnv = process.env): string {
+  return join(env.TNEGA_HOME ?? join(homedir(), '.tnega'), 'daemon.token')
+}
+
+/** The server's HTTP origin for a daemon URL: `wss://h/daemon` → `https://h`. */
+export function httpOrigin(server: URL): string {
+  return `${server.protocol === 'wss:' ? 'https:' : 'http:'}//${server.host}`
+}
+
+/** Trade a pairing code for a daemon token at the server. */
+export async function redeemPairing(server: URL, code: string, device: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const response = await fetchImpl(`${httpOrigin(server)}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tnega-client': '1' },
+    body: JSON.stringify({ code, purpose: 'daemon', device }),
+  })
+  const body: unknown = await response.json().catch(() => undefined)
+  const record = typeof body === 'object' && body !== null ? body : {}
+  if (!response.ok) {
+    const message = 'error' in record && typeof record.error === 'string' ? record.error : `HTTP ${response.status}`
+    throw new CliError(`the server refused the pairing code: ${message}`)
+  }
+  if (!('token' in record) || typeof record.token !== 'string') throw new CliError('the server answered the pairing without a token')
+  return record.token
+}
 
 export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv = process.env): DaemonArgs {
   let server: string | undefined
   let token: string | undefined = env[DAEMON_TOKEN_ENV]
   let deviceId: string | undefined
+  let pair: string | undefined
   let browser = false
   let computer = false
   const workspaces: string[] = []
@@ -38,6 +75,7 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
       case '--token': token = value(); break
       case '--workspace': workspaces.push(resolve(value())); break
       case '--device-id': deviceId = value(); break
+      case '--pair': pair = value(); break
       case '--browser':
         if (inline !== undefined) throw new CliError('--browser takes no value')
         browser = true
@@ -50,10 +88,12 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
     }
   }
   if (!server) throw new CliError('tnega daemon needs --server <url>')
-  if (!token) throw new CliError(`tnega daemon needs --token <token> or ${DAEMON_TOKEN_ENV}`)
+  if (pair && token) throw new CliError('--pair or a token, not both')
   return {
     server,
-    token,
+    ...(token ? { token } : {}),
+    ...(pair ? { pair } : {}),
+    ...(env[DAEMON_ALLOW_WS_ENV] === '1' ? { allowPlain: true } : {}),
     workspaces: workspaces.length ? workspaces : [resolve(process.cwd())],
     ...(deviceId ? { deviceId } : {}),
     ...(browser ? { browser: true } : {}),
@@ -75,6 +115,22 @@ async function openComputer() {
   return { computer: ctx.get('computer'), close: () => fiber.dispose() }
 }
 
+/** The token to dial with: given, traded for a pairing code (and saved), or saved earlier. */
+async function daemonToken(parsed: DaemonArgs, server: URL): Promise<string> {
+  if (parsed.token) return parsed.token
+  const file = daemonTokenFile()
+  if (parsed.pair) {
+    const token = await redeemPairing(server, parsed.pair, hostname())
+    await mkdir(dirname(file), { recursive: true, mode: 0o700 })
+    await writeFile(file, `${token}\n`, { mode: 0o600 })
+    process.stderr.write(`tnega daemon: paired; the token is saved in ${file}\n`)
+    return token
+  }
+  const saved = (await readFile(file, 'utf8').catch(() => '')).trim()
+  if (saved) return saved
+  throw new CliError(`tnega daemon needs --pair <code>, --token <token> or ${DAEMON_TOKEN_ENV}`)
+}
+
 /**
  * `tnega daemon`: serve this machine's files and commands to a tnega server.
  * Runs until interrupted; a dropped connection is dialled again.
@@ -83,8 +139,10 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
   const parsed = parseDaemonArgs(args)
   // Commands the daemon runs inherit its environment; the token is not theirs.
   delete process.env[DAEMON_TOKEN_ENV]
+  delete process.env[DAEMON_ALLOW_WS_ENV]
   // A refused address is a mistake to report, not a connection to retry.
-  assertSecureServerUrl(parsed.server)
+  const serverUrl = assertSecureServerUrl(parsed.server, { allowPlain: parsed.allowPlain === true })
+  const token = await daemonToken(parsed, serverUrl)
   let interrupted = false
   let settle: (code: number) => void = () => {}
   // Ends with 0 on SIGINT / SIGTERM, with 1 when the daemon stops by itself (a refused reconnect).
@@ -104,7 +162,7 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
   const daemon: Daemon = startDaemon({
     ...(browser ? { browser } : {}),
     ...(computer ? { computer: { computer: computer.computer, ...(guard ? { guard } : {}) } } : {}),
-    connect: () => connectWebSocket(parsed.server, { token: parsed.token }),
+    connect: () => connectWebSocket(parsed.server, { token, allowPlain: parsed.allowPlain === true }),
     workspaces: parsed.workspaces.map(path => ({ path })),
     ...(parsed.deviceId ? { deviceId: parsed.deviceId } : {}),
     onState: (state, detail) => {

@@ -802,6 +802,37 @@ importers:
         specifier: workspace:*
         version: link:../../web-kit
 
+  packages/daemon/daemon-gateway:
+    dependencies:
+      '@tnega/accounts':
+        specifier: workspace:*
+        version: link:../../accounts/accounts
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tnega/daemons':
+        specifier: workspace:*
+        version: link:../daemons
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../../web-kit
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@tnega/accounts-pg':
+        specifier: workspace:*
+        version: link:../../accounts/accounts-pg
+      '@tnega/accounts-routes':
+        specifier: workspace:*
+        version: link:../../accounts/accounts-routes
+      '@tnega/daemon':
+        specifier: workspace:*
+        version: link:../daemon
+
   packages/daemon/daemon-routes:
     dependencies:
       '@tnega/browser-playwright':
@@ -835,6 +866,15 @@ importers:
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../../web-kit
+
+  packages/daemon/daemons:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/daemon/fs-remote:
     dependencies:
@@ -1114,6 +1154,10 @@ importers:
       '@tnega/workspace-prompt':
         specifier: workspace:*
         version: link:../workspace-prompt
+    devDependencies:
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../daemon/protocol
 
   packages/jobs/jobs:
     dependencies:
@@ -1254,6 +1298,43 @@ importers:
       '@tnega/machine':
         specifier: workspace:*
         version: link:../machine
+
+  packages/machine/machine-pool:
+    dependencies:
+      '@tnega/accounts':
+        specifier: workspace:*
+        version: link:../../accounts/accounts
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../../daemon/protocol
+      '@tnega/daemons':
+        specifier: workspace:*
+        version: link:../../daemon/daemons
+      '@tnega/egress-proxy':
+        specifier: workspace:*
+        version: link:../egress-proxy
+      '@tnega/environment':
+        specifier: workspace:*
+        version: link:../environment
+      '@tnega/machine':
+        specifier: workspace:*
+        version: link:../machine
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@tnega/accounts-pg':
+        specifier: workspace:*
+        version: link:../../accounts/accounts-pg
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/memory/memory:
     dependencies:
@@ -1918,9 +1999,18 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../core
+      '@tnega/daemon-gateway':
+        specifier: workspace:*
+        version: link:../daemon/daemon-gateway
       '@tnega/daemon-protocol':
         specifier: workspace:*
         version: link:../daemon/protocol
+      '@tnega/daemons':
+        specifier: workspace:*
+        version: link:../daemon/daemons
+      '@tnega/egress-proxy':
+        specifier: workspace:*
+        version: link:../machine/egress-proxy
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox
@@ -1942,6 +2032,18 @@ importers:
       '@tnega/loop-guard':
         specifier: workspace:*
         version: link:../loop/loop-guard
+      '@tnega/machine':
+        specifier: workspace:*
+        version: link:../machine/machine
+      '@tnega/machine-e2b':
+        specifier: workspace:*
+        version: link:../machine/machine-e2b
+      '@tnega/machine-gvisor':
+        specifier: workspace:*
+        version: link:../machine/machine-gvisor
+      '@tnega/machine-pool':
+        specifier: workspace:*
+        version: link:../machine/machine-pool
       '@tnega/memory-local':
         specifier: workspace:*
         version: link:../memory/memory-local
@@ -2042,9 +2144,15 @@ importers:
         specifier: workspace:*
         version: link:../workspace-prompt
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
       '@tnega/daemon':
         specifier: workspace:*
         version: link:../daemon/daemon
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
 
   packages/sandbox/execution-sandbox:
     dependencies:

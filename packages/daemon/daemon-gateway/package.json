@@ -1,0 +1,22 @@
+{
+  "name": "@tnega/daemon-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/accounts": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/daemon-protocol": "workspace:*",
+    "@tnega/daemons": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.12",
+    "@tnega/accounts-pg": "workspace:*",
+    "@tnega/accounts-routes": "workspace:*",
+    "@tnega/daemon": "workspace:*"
+  }
+}

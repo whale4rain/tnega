@@ -140,6 +140,19 @@ export interface MachineSpec {
    * keeps every other value out too.
    */
   secrets?: SecretEnvOptions
+  /**
+   * The folder on this host the machine's workspace is (a box that mounts
+   * it). What this host keeps per workspace (the prompt's instructions, the
+   * agent's memory, remembered secrets) is keyed by it, not by the path inside
+   * the machine, which is the same `/workspace` in every box.
+   */
+  hostWorkspace?: string
+  /**
+   * The machine is itself the sandbox (a box): its commands run without an
+   * inner one, which a box template does not have. The box's own walls and its
+   * egress rule confine them, and approvals still apply on this side.
+   */
+  isolated?: boolean
 }
 
 export interface RuntimeSpec {
@@ -289,7 +302,9 @@ export const sandboxCapability: Plugin = {
 }
 
 /** The sandbox a remote scope asks the daemon to enforce for one command. */
-async function remoteSandbox(spec: SandboxCapabilitySpec, grants: NetworkGrants): Promise<SandboxParams> {
+async function remoteSandbox(spec: SandboxCapabilitySpec, grants: NetworkGrants, isolated: boolean): Promise<SandboxParams> {
+  // A box is the boundary: an inner sandbox would only fail for want of a mechanism in it.
+  if (isolated) return { mode: 'bypass', sessionId: spec.sessionId ?? spec.workspace }
   const network = await withGrants(await networkOf(spec.network), grants)
   return {
     mode: await permissionOf(spec.permission),
@@ -312,7 +327,7 @@ const remoteSandboxCapability: Plugin = {
     const grants = new NetworkGrants(() => ctx.get('session', false))
     const boundary = remoteExecutionProvider(link, {
       workspaceId: announcedWorkspace(link, spec.workspace).id,
-      sandbox: () => remoteSandbox(spec, grants),
+      sandbox: () => remoteSandbox(spec, grants, spec.machine.isolated === true),
     })
     const withSecrets = secretEnvExecution(ctx, boundary, spec.machine.secrets)
     await ctx.plugin(processBoundary, { boundary: spec.sandboxRequired ? withoutEscalation(withSecrets) : withSecrets })
@@ -571,11 +586,13 @@ export const runtimeCapabilities: Plugin = {
     await ctx.plugin(tools, spec.tools ?? {})
     await ctx.plugin(fsCapability, spec.machine ? { machine: spec.machine } : {})
     await ctx.plugin(systemPrompt)
-    await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? spec.workspace })
+    // Per-workspace state on this host: the box's own folder when it mounts one.
+    const hostWorkspace = spec.machine?.hostWorkspace ?? spec.workspace
+    await ctx.plugin(workspacePrompt, { workspace: spec.promptWorkspace ?? hostWorkspace })
     if (spec.summary) await ctx.plugin(runSummary)
     if (spec.loopGuard) await ctx.plugin(loopGuard, spec.loopGuard === true ? {} : spec.loopGuard)
 
-    if (spec.secrets) await ctx.plugin(secretsCapability, { ...spec.secrets, workspace: spec.workspace })
+    if (spec.secrets) await ctx.plugin(secretsCapability, { ...spec.secrets, workspace: hostWorkspace })
     if (builtinOn) {
       await ctx.plugin(sandboxCapability, {
         workspace: spec.workspace,
@@ -600,7 +617,7 @@ export const runtimeCapabilities: Plugin = {
     }
     if (local && (spec.skills ?? builtinOn)) await ctx.plugin(skillsCapability, { workspace: spec.workspace })
     if (spec.memory) {
-      await ctx.plugin(memoryCapability, { workspace: spec.workspace, writeTool: builtinOn })
+      await ctx.plugin(memoryCapability, { workspace: hostWorkspace, writeTool: builtinOn })
     }
 
     if (spec.jobs) {

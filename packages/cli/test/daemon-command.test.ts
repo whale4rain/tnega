@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DAEMON_TOKEN_ENV, parseDaemonArgs } from '../src/daemon-command.js'
+import { DAEMON_ALLOW_WS_ENV, DAEMON_TOKEN_ENV, httpOrigin, parseDaemonArgs, redeemPairing } from '../src/daemon-command.js'
 import { main as runExecutable } from '../src/entry.js'
 import { computerSwitch, describeAction } from '../src/daemon-computer.js'
 
@@ -70,10 +70,33 @@ describe('tnega daemon', () => {
     expect(describeAction({ op: 'key', windowId: 1, keys: ['ctrl', '\u009b2J'] })).toBe('press ctrl+?2J in window 1')
   })
 
-  it('refuses to start without a server or a token, or with an unknown option', () => {
+  it('refuses to start without a server, with both a code and a token, or with an unknown option', () => {
     expect(() => parseDaemonArgs(['--token', 'x'], {})).toThrow(/--server/)
-    expect(() => parseDaemonArgs(['--server', 'wss://t.example'], {})).toThrow(/--token/)
+    expect(() => parseDaemonArgs(['--server', 'wss://t.example', '--pair', 'C', '--token', 'x'], {})).toThrow(/not both/)
     expect(() => parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x', '--bogus'], {})).toThrow(/unknown option/)
+  })
+
+  it('takes a pairing code, and plain ws:// only when the server asked for it', () => {
+    const parsed = parseDaemonArgs(['--server', 'wss://t.example/daemon', '--pair', 'ABCD-EFGH'], {})
+    expect(parsed.pair).toBe('ABCD-EFGH')
+    expect(parsed.token).toBeUndefined()
+    expect(parsed.allowPlain).toBeUndefined()
+    expect(parseDaemonArgs(['--server', 'ws://10.0.0.5:7777/daemon', '--token', 'x'], { [DAEMON_ALLOW_WS_ENV]: '1' }).allowPlain).toBe(true)
+  })
+
+  it('trades a pairing code for a daemon token at the server', async () => {
+    expect(httpOrigin(new URL('wss://t.example/daemon'))).toBe('https://t.example')
+    expect(httpOrigin(new URL('ws://localhost:7777/daemon'))).toBe('http://localhost:7777')
+    const seen: Array<{ url: string; body: unknown; client: string | null }> = []
+    const fakeFetch: typeof fetch = async (input, init) => {
+      const headers = new Headers(init?.headers)
+      seen.push({ url: String(input), body: JSON.parse(String(init?.body)), client: headers.get('x-tnega-client') })
+      return Response.json({ token: 'tnd_new' })
+    }
+    expect(await redeemPairing(new URL('wss://t.example/daemon'), 'ABCD', 'laptop', fakeFetch)).toBe('tnd_new')
+    expect(seen).toEqual([{ url: 'https://t.example/api/auth/pair', body: { code: 'ABCD', purpose: 'daemon', device: 'laptop' }, client: '1' }])
+    const refusing: typeof fetch = async () => Response.json({ error: 'code is not valid' }, { status: 401 })
+    await expect(redeemPairing(new URL('wss://t.example/daemon'), 'BAD', 'laptop', refusing)).rejects.toThrow(/refused the pairing code: code is not valid/)
   })
 
   it('will not send its token over plain ws:// to another machine', async () => {

@@ -1,7 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { HttpError, errorMessage, readJsonBody, sendError, sendJson, writeSse } from '@tnega/web-kit'
 import { MAX_RUN_BODY_BYTES, adapterFromConfig, compactionAdapter, computerSpec, hostPlugins, isActive, mountBrowser, parseRunAttachments, permissionNotice, processesFor, resolveSessionLlm, runKey, searchApiKey, sessionModelRoute, userMessage, withSessionLog } from './support.js'
-import type { ResidentAgentEntry, ServerContext } from './context.js'
+import type { BoxRun, ResidentAgentEntry, ServerContext } from './context.js'
 import { agents, continuationNudge, findInterruptedTurn, type AgentCreationOptions, type AgentHandle, type AgentRegistry, type AgentStreamEvent, type LiveAgent } from '@tnega/agent'
 import { Context, type Fiber, type Plugin } from '@tnega/core'
 import { observePtc } from './ptc-observation.js'
@@ -57,6 +57,8 @@ export async function handleRun(
   }
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   const requestId = submissionId(body.requestId)
+  // Who asked: on a server with boxes, their run works in their own box.
+  const accountId = context.web.attributes(req).principal?.accountId
   const summary = await context.sessions.summary(workspace, id)
   const sandboxRequired = context.sandboxRequired?.(workspace) === true
   const permission: PermissionMode = sandboxRequired ? sandboxedPermission(summary.permission ?? 'read-only') : summary.permission ?? 'read-only'
@@ -93,6 +95,7 @@ export async function handleRun(
       sandboxNetwork: sandboxNetworkFrom(context.configFile),
       resumeQueued,
       attachments,
+      ...(accountId ? { accountId } : {}),
       ...(requestId ? { requestId } : {}),
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
       ...(context.browser ? { browser: context.browser } : {}),
@@ -110,9 +113,12 @@ export async function handleRun(
   const route = sessionModelRoute(context.sessions, context.configFile, workspace, id)
   let runtime: AgentRuntime | undefined
   let approvalFiber: { dispose(): Promise<void> } | undefined
+  let box: BoxRun | undefined
   try {
+    box = await boxFor(context, workspace, id, accountId, controller.signal)
     runtime = await createAgentRuntime({
-      cwd: workspace,
+      cwd: box?.cwd ?? workspace,
+      ...(box ? { machine: box.machine } : {}),
       sessionFile: context.sessions.backend(workspace, id),
       durableInbox: true,
       ...(context.ptcRuntime ? { ptcRuntime: context.ptcRuntime } : {}),
@@ -131,7 +137,7 @@ export async function handleRun(
       // The web and desktop clients render sent files and agent UI.
       reply: true,
       builtinTools: {
-        cwd: workspace,
+        cwd: box?.cwd ?? workspace,
         allowNetwork: true,
         allowShell: true,
         ...(config.fsGuard ? { fsGuard: config.fsGuard } : {}),
@@ -140,7 +146,8 @@ export async function handleRun(
         processes: processesFor(context, workspace),
       },
       plugins: [
-        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false })] : []),
+        // MCP servers start on this host, so a run in a box goes without them.
+        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false, ...(box ? { mcp: false } : {}) })] : []),
         ...hostPlugins(context, workspace),
       ],
     })
@@ -179,7 +186,8 @@ export async function handleRun(
   } catch (error) {
     await approvalFiber?.dispose()
     await runtime?.dispose()
-    sendError(res, 500, `failed to start agent: ${errorMessage(error)}`)
+    box?.release()
+    sendError(res, error instanceof Error && 'code' in error && error.code === 'POOL_FULL' ? 503 : 500, `failed to start agent: ${errorMessage(error)}`)
     return
   }
 
@@ -308,8 +316,15 @@ export async function handleRun(
     context.questionInboxes?.delete(key)
     await approvalFiber?.dispose()
     if (runtime) await runtime.dispose()
+    box?.release()
     if (!res.destroyed && !res.writableEnded) res.end()
   }
+}
+
+/** The signed-in person's box for this run, when the server runs boxes; undefined on this host. */
+async function boxFor(context: ServerContext, workspace: string, sessionId: string, accountId: string | undefined, signal?: AbortSignal): Promise<BoxRun | undefined> {
+  if (!accountId || !context.machineFor) return undefined
+  return await context.machineFor({ workspace, sessionId, accountId, ...(signal ? { signal } : {}) })
 }
 
 /**
@@ -346,6 +361,10 @@ export interface ResidentRunRequest {
   secrets?: SecretVault
   /** Host-level plugins: the hot profile carrier and the plugin dev workshop. */
   hostPlugins?: readonly Plugin[]
+  /** The signed-in person who asked; with boxes on, the turn works in their box. */
+  accountId?: string
+  /** The box this turn works in (set by `runResidentTurn`). */
+  box?: BoxRun
   config: SystemConfig
   prompt: string
   permission: PermissionMode
@@ -382,8 +401,10 @@ export async function createResidentRuntime(
   }
   const sessionOf = (agentId?: string) => root.get('agents', false)?.get(agentId ?? req.sessionId)?.session
 
+  const box = req.box
   await root.plugin(runtimeCapabilities, {
-    workspace,
+    workspace: box?.cwd ?? workspace,
+    ...(box ? { machine: box.machine } : {}),
     permission: currentPermission,
     ...(req.sandboxRequired ? { sandboxRequired: true } : {}),
     ...(req.sandboxNetwork ?? req.config.sandbox?.network ? { sandboxNetwork: req.sandboxNetwork ?? req.config.sandbox?.network } : {}),
@@ -419,6 +440,8 @@ export async function createResidentRuntime(
       cwd: workspace,
       mode: 'auto',
       registerAgent: false,
+      // MCP servers start on this host, so a run in a box goes without them.
+      ...(box ? { mcp: false } : {}),
     }))
   }
   await root.plugin(agents)
@@ -460,7 +483,8 @@ export async function createResidentRuntime(
     },
   }))
   await root.plugin(goalTools)
-  await root.plugin(subagentLocal, {
+  // Subagents run their commands on this host; a run in a box has none yet.
+  if (!box) await root.plugin(subagentLocal, {
     cwd: workspace,
     storageRoot: workspaceSubagentRoot(workspace),
     llm: adapterFromConfig(req.effective, req.apiKey),
@@ -469,7 +493,7 @@ export async function createResidentRuntime(
     allowNetwork: true,
     permission: req.permission,
   })
-  await root.plugin(toolSubagent)
+  if (!box) await root.plugin(toolSubagent)
   for (const plugin of req.hostPlugins ?? []) await root.plugin(plugin)
   return {
     root,
@@ -523,6 +547,8 @@ export function residentSignature(req: ResidentRunRequest): string {
     req.agentType,
     req.permission,
     req.sandboxRequired ? 'sandbox-required' : '',
+    // A box that paused and came back has a new link: the runtime is rebuilt on it.
+    req.box ? `box:${req.box.identity}` : 'host',
     'auto',
   ].join('|')
 }
@@ -670,7 +696,10 @@ export async function runResidentTurn(
   let editTracking: { session: SessionLog; startSeq: number; baseline: Awaited<ReturnType<typeof captureFileEditBaseline>> } | undefined
   let releaseWriteCapture: ReturnType<ToolsService['guard']> | undefined
 
+  let box: BoxRun | undefined
   try {
+    box = await boxFor(context, workspace, id, req.accountId, controller.signal)
+    if (box) req = { ...req, box }
     const entry = await ensureResidentAgent(context, workspace, id, req)
     ptcObservation = await observePtc(entry.root, id, event => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
@@ -758,6 +787,7 @@ export async function runResidentTurn(
     }
     detachApproval()
     context.activeRuns.delete(key)
+    box?.release()
     markReady(false)
     context.steeringReady.delete(key)
     if (!res.destroyed && !res.writableEnded) res.end()

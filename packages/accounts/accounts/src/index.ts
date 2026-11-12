@@ -237,6 +237,11 @@ export abstract class AccountService extends Service {
   abstract signOut(token: string): Promise<void>
   abstract listDevices(accountId: string): Promise<Device[]>
   abstract revokeDevice(accountId: string, deviceId: string, actor?: string): Promise<boolean>
+  /**
+   * A new device for an account without a code: the server minting a box's
+   * daemon token. Revoke it with {@link revokeDevice} when the box goes.
+   */
+  abstract createDevice(accountId: string, input: { kind: DeviceKind; name: string }, actor?: string): Promise<IssuedToken>
 
   abstract issueCode(input: IssueCodeInput): Promise<IssuedCode>
   /** Spend a code: a pairing code gives a device, an invite an account and its first device. */

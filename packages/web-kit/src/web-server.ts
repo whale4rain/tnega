@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Socket } from 'node:net'
+import type { Duplex } from 'node:stream'
 import { Service, type Context } from '@tnega/core'
 
 declare module '@tnega/core' {
@@ -17,7 +17,7 @@ export type RouteHandler = (
   url: URL,
 ) => void | Promise<void>
 
-export type UpgradeHandler = (req: IncomingMessage, socket: Socket, head: Buffer) => void
+export type UpgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer) => void
 
 /** Who sent a request, when a sign-in guard knows. */
 export interface RequestPrincipal {

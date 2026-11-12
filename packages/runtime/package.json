@@ -60,9 +60,19 @@
     "@tnega/secrets-pg": "workspace:*",
     "@tnega/accounts": "workspace:*",
     "@tnega/accounts-pg": "workspace:*",
-    "@tnega/accounts-routes": "workspace:*"
+    "@tnega/accounts-routes": "workspace:*",
+    "@tnega/daemons": "workspace:*",
+    "@tnega/daemon-gateway": "workspace:*",
+    "@tnega/egress-proxy": "workspace:*",
+    "@tnega/machine": "workspace:*",
+    "@tnega/machine-e2b": "workspace:*",
+    "@tnega/machine-gvisor": "workspace:*",
+    "@tnega/machine-pool": "workspace:*"
   },
   "devDependencies": {
-    "@tnega/daemon": "workspace:*"
+    "@tnega/daemon": "workspace:*",
+    "@electric-sql/pglite": "0.5.12",
+    "@tnega/web-kit": "workspace:*",
+    "@tnega/accounts-pg": "workspace:*"
   }
 }
