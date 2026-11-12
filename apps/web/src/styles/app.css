@@ -1956,6 +1956,60 @@ kbd {
   color: var(--text-3);
 }
 
+/* The last few sessions: plain rows under a small label, no card. */
+.welcome-recent {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 520px;
+  margin: 32px auto 0;
+}
+
+.welcome-recent-label {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.welcome-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--row-h);
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-size: var(--text-md);
+  text-align: left;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.welcome-recent-row:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.welcome-recent-row svg {
+  flex: none;
+  color: var(--text-3);
+}
+
+.welcome-recent-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-recent-time {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
 /* --- welcome: an empty session ------------------------------------------
  * The greeting and the composer meet in the middle of the page, like the
  * start of a conversation, and the starters sit under the composer. When the
@@ -2092,6 +2146,7 @@ kbd {
 
 @media (max-height: 640px) {
   .welcome-greeting { margin-top: 12px; }
+  .welcome-recent { display: none; }
 }
 
 @keyframes fade-up {

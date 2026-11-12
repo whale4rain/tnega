@@ -562,6 +562,8 @@ export function App() {
               setSessions(list => list.filter(s => s.id !== id))
               select(undefined)
             }}
+            recentSessions={sessions}
+            onOpenSession={select}
             onOpenSettings={() => setDialog('settings')}
             onOpenSubagent={(id, label) => setWorkbench(current => openDoc(current, { kind: 'subagent', id, label }))}
             onOpenFile={path => setWorkbench(current => openDoc(current, { kind: 'preview', path }))}

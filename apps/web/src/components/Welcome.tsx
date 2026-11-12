@@ -4,6 +4,7 @@ import {
   FileSpreadsheet,
   FileText,
   FlaskConical,
+  History,
   Languages,
   Lightbulb,
   PenLine,
@@ -13,8 +14,9 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useId, useRef, type CSSProperties } from 'react'
-import type { AgentType } from '../lib/types'
-import { eyeOffset, welcomeGreeting } from '../lib/welcome'
+import { relativeTime } from '../lib/hooks'
+import type { AgentType, SessionSummary } from '../lib/types'
+import { eyeOffset, recentSessions, welcomeGreeting } from '../lib/welcome'
 
 interface Starter {
   icon: LucideIcon
@@ -144,5 +146,27 @@ export function WelcomeStarters({ agentType, onPick, disabled }: { agentType: Ag
         </button>
       ))}
     </div>
+  )
+}
+
+/** The last few sessions in this folder, one quiet row each; nothing when there are none. */
+export function WelcomeRecent({ sessions, onOpen, now = Date.now() }: { sessions: readonly SessionSummary[]; onOpen: (id: string) => void; now?: number }) {
+  const recent = recentSessions(sessions)
+  if (recent.length === 0) return null
+  return (
+    <section className="welcome-recent welcome-beat" style={beat(8)} aria-labelledby="welcome-recent-label">
+      <h3 id="welcome-recent-label" className="welcome-recent-label">Pick up where you left off</h3>
+      {recent.map(session => {
+        const title = session.title || 'Untitled session'
+        const when = relativeTime(session.updatedAt, now)
+        return (
+          <button key={session.id} type="button" className="welcome-recent-row" aria-label={`${title}, ${when}`} onClick={() => onOpen(session.id)}>
+            <History size={14} />
+            <span className="welcome-recent-title">{title}</span>
+            <span className="welcome-recent-time">{when}</span>
+          </button>
+        )
+      })}
+    </section>
   )
 }
