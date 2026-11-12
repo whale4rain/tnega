@@ -20,6 +20,7 @@ export const AgentAvatar = memo(function AgentAvatar({
   title,
   rerollable = false,
   weather,
+  brand = false,
 }: {
   id: string
   role?: 'coordinator' | 'agent'
@@ -28,11 +29,16 @@ export const AgentAvatar = memo(function AgentAvatar({
   title?: string
   rerollable?: boolean
   weather?: Weather | undefined
+  /** Draw the brand cloud in the palette's accent (the welcome), whatever the id would pick. */
+  brand?: boolean
 }) {
   const salt = useSyncExternalStore(subscribeAvatars, () => avatarSalt(id), () => 0)
   const overrides = useContext(AvatarSeeds)
   const seed = overrides[id] ?? effectiveSeed(id)
-  const spec = useMemo(() => avatarSpec(seed, role), [seed, role, salt])
+  const spec = useMemo(() => {
+    const drawn = avatarSpec(seed, role)
+    return brand ? brandSpec(drawn) : drawn
+  }, [seed, role, salt, brand])
   const sky = weather ?? (live ? 'cloudy' : undefined)
   const label = title && sky ? `${title} · ${WEATHER_LABEL[sky]}` : title
   const svg = <AvatarSvg spec={spec} size={size} live={live} title={label} weather={sky} />
@@ -43,6 +49,11 @@ export const AgentAvatar = memo(function AgentAvatar({
     </button>
   )
 })
+
+/** The brand cloud: the accent, eyes straight ahead, like the logo. */
+function brandSpec(drawn: AvatarSpec): AvatarSpec {
+  return { ...drawn, shape: 'cloud', color: ACCENT, rotate: 0, gazeX: 0, gazeY: 0, eyes: 'pill', eyeTilt: 0 }
+}
 
 /** Where the eyes sit on each shape: a little above the visual centre. */
 const EYE_Y: Record<Shape, number> = {
