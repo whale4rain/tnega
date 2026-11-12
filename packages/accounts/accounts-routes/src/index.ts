@@ -1,6 +1,6 @@
 import { mkdir, realpath } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { Context } from '@tnega/core'
 import {
   AccountError,
@@ -119,8 +119,31 @@ function publicDevice(device: Device, current?: string) {
 
 /** Whether `path` is `root` or inside it. */
 export function isInside(root: string, path: string): boolean {
-  const rel = relative(root, path)
+  // Windows paths compare without case; the same folder must not look foreign.
+  const fold = process.platform === 'win32' ? (value: string): string => value.toLowerCase() : (value: string): string => value
+  const rel = relative(fold(root), fold(path))
   return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/**
+ * `path` with every existing part resolved, and the parts that do not exist
+ * yet appended as given. A Windows temp folder may be named twice (short and
+ * long), so comparing a new workspace with its parent needs one spelling.
+ */
+export async function canonicalPath(path: string): Promise<string> {
+  const rest: string[] = []
+  let current = resolve(path)
+  for (;;) {
+    try {
+      const real = await realpath(current)
+      return rest.length ? join(real, ...rest.reverse()) : real
+    } catch {
+      const parent = dirname(current)
+      if (parent === current) return resolve(path)
+      rest.push(basename(current))
+      current = parent
+    }
+  }
 }
 
 export const accountsRoutes = {
@@ -155,11 +178,11 @@ export const accountsRoutes = {
       return home
     }
     const memberMayUse = async (account: Account, workspace: string): Promise<boolean> => {
-      const home = await realpath(await homeOf(account))
+      const home = await canonicalPath(await homeOf(account))
       const wanted = resolve(workspace)
       if (!isInside(join(membersRoot, account.login), wanted)) return false
       // A link inside the folder must not lead out of it.
-      const real = await realpath(wanted).catch(() => wanted)
+      const real = await canonicalPath(wanted)
       return isInside(home, real)
     }
 

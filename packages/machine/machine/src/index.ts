@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path'
 import { Service, type Context } from '@tnega/core'
 
 declare module '@tnega/core' {
@@ -170,7 +171,7 @@ export function validateBoxSpec(spec: BoxSpec): void {
   if (!/^(?:wss|ws):\/\//u.test(spec.daemon.serverUrl)) fail('daemon.serverUrl must be a ws:// or wss:// URL')
   if (!spec.daemon.token) fail('the box needs a daemon token')
   if (!spec.workspacePath.startsWith('/')) fail('workspacePath must be an absolute path inside the box')
-  if (spec.hostWorkspace !== undefined && !spec.hostWorkspace.startsWith('/')) fail('hostWorkspace must be an absolute path on the host')
+  if (spec.hostWorkspace !== undefined && !isAbsolute(spec.hostWorkspace)) fail('hostWorkspace must be an absolute path on the host')
   for (const name of Object.keys(spec.env ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) fail(`env name ${name} is not a valid variable name`)
   }
