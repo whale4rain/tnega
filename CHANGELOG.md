@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.7-beta.2 | [`v0.5.7-beta.1...v0.5.7-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.7-beta.1...v0.5.7-beta.2) | 17 |
 | 0.5.7-beta.1 | [`v0.5.6...v0.5.7-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.6...v0.5.7-beta.1) | 77 |
 | 0.5.6 | [`v0.5.5...v0.5.6`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6) | 85 |
 | 0.5.6-beta.2 | [`v0.5.6-beta.1...v0.5.6-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.6-beta.1...v0.5.6-beta.2) | 38 |
@@ -70,6 +71,14 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.7-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.7-beta.2) — 2026-11-12
+
+- **A server several people sign in to.** `tnega server init`, `start` and `deploy` keep Sessions in Postgres, issue device tokens for browsers and daemons, seal remembered secrets with a master key, and give owners and admins people management. Members work only in their own folder, and their commands stay sandboxed even after an approved escalation.
+- **Each person's sessions run in a box of their own**, on gVisor so no KVM is needed. Every person gets one box per workspace with its own network namespace; its egress proxy allows only the hosts named in `.tnega/environment.toml`, and no secret values reach the box. Files, commands and search go to the daemon in the box, so the Workbench, change tracking and skills see the same folder. Boxes pause when idle, restore on the next run, and a restarted server finds them and their daemons dial back in.
+- **`tnega daemon` pairing** serves a folder from your own computer to a server; devices are listed and revoked per person.
+- **Fixes.** gVisor boxes start with `run --detach` on current `runsc`, keep their own network and report why a start failed. A box is its own sandbox, so `read-only` sessions and members no longer fail for want of a second sandbox. A box runs as the owner of the folder it mounts, so `/workspace` is writable and files stay that person's, and `/etc/hosts` comes read-only from the host. Idle pauses are re-armed at startup, sign-in rate limits count the proxy's address, and members' escalated commands stay sandboxed.
+- **Host requirement:** on a gVisor box host the server process runs as root (namespaces, `nft`, cgroups); boxes themselves run as the folder owner without capabilities.
 
 ## [0.5.7-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.7-beta.1) — 2026-11-10
 
