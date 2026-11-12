@@ -678,6 +678,38 @@ export interface AuthSession {
   workspace?: string
 }
 
+/** A device on the admin page: a person's browser or app, or a daemon (theirs or a box's). */
+export interface AdminDevice {
+  id: string
+  accountId: string
+  kind: 'client' | 'daemon'
+  name: string
+  lastSeen?: string
+  /** A daemon on it is connected right now. */
+  connected: boolean
+  connectedAt?: string
+  /** The daemon of a box, not a person's machine. */
+  box: boolean
+}
+
+export interface AdminBox {
+  id: string
+  accountId: string
+  workspace: string
+  provider: string
+  state: 'cold' | 'running' | 'paused'
+  lastUsed: string
+  connected: boolean
+}
+
+/** What the server's owners and admins see on the admin page (`GET /api/admin/overview`). */
+export interface AdminOverview {
+  people: Array<Pick<AccountInfo, 'id' | 'login' | 'name' | 'role' | 'disabled'>>
+  devices: AdminDevice[]
+  /** Absent when the server runs no boxes. */
+  boxes?: { provider: string; maxRunning: number; list: AdminBox[] }
+}
+
 export interface InviteCode {
   code: string
   expiresAt: string

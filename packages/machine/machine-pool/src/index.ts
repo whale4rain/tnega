@@ -263,6 +263,16 @@ export class MachinePool extends Service {
     await tx.query(`update machine set state = $2 where id = $1::uuid`, [id, state])
   }
 
+  /** The Provider's kind (`gvisor`, `e2b`), for an admin page. */
+  get provider(): string {
+    return this.machines.kind
+  }
+
+  /** Most boxes this host runs at once. */
+  get maxRunning(): number {
+    return this.config.maxRunning ?? 3
+  }
+
   async row(id: string): Promise<StoredRow | undefined> {
     const { rows } = await this.sql.query(`select ${COLUMNS} from machine where id = $1::uuid`, [id])
     return rows[0] === undefined ? undefined : rowFrom(rows[0])
