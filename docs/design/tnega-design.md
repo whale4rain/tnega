@@ -217,8 +217,6 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - Project 主对话里，协调者把工作交给 Thread（或 Thread 第一次回话）的地方是一张 **Thread 链接卡**：状态灯 · 标题 · 状态 · 箭头，点开在工作台打开该 Thread；每个 Thread 只在它第一次出现的地方放一张卡，卡上的状态是实时的。协调者在正文里提到 Thread 时写成 `[标题](#thread:<id>)`，渲染为带状态灯的链接，同样打开 Thread。Thread 与协调者之间的往来在 Thread 工具栏的「Messages with …」里查看（工作台的通信标签，按发送者分组，只有名字没有头像）；文档标签不跨重载保留，通信内容从 Box 快照恢复。
 - 消息中的 Markdown 文件引用、带目录的裸文件路径与文件型行内代码可打开工作台（2026-10-22 起按类型分流，`lib/file-open.ts`）：**HTML 在 Browser 里作为页面打开**（`file://`，同目录的 CSS、脚本与图片照常加载；没有浏览器时退回 Files）；**Markdown 在 Files 里渲染显示**；其余文本进 Files，图片、PDF 与 Office 文件进预览。本地开发地址进 Browser，公开网站作为外链打开。代码块保留原文；`mermaid` 代码块画成图（卡片头写 `mermaid`，`Source` 一切换回原文并可复制，图内链接与正文链接去向相同；图与代码块同用 `--pele-*` → token 映射，随模式与调色板变化；画不出来时回退成原来的代码块）。
 
-- **新会话的欢迎页**（2026-11-12 起，`Conversation` 的 `EmptyState`）：居中依次是：品牌云（`AgentAvatar` 的 `brand`，72px，强调色、正视；**晴天** = 就绪，与 §4 同义；每 6 秒眨眼，缓慢上下浮动 4px，`prefers-reduced-motion` 时不动）；两行问候（`--font-display`、`--text-3xl`、500 字重）：第一行 `--text` 写 “Good afternoon, Ocean.”（登录时带名字的第一个词，本地模式不带），第二行 `--text-3` 是按时段的一句（“What are we building?”）；一行 `--text-2` 写工作文件夹与 Agent 类型。有历史会话时，下面是 **Pick up where you left off**：这个工作区最近 3 个会话（不含分叉出的子会话、没有事件的会话），放在一张 `--surface` 卡里，每行 `History` 图标 · 标题（截断）· 相对时间（`--text-3`、`--text-xs`），点开该会话；再下面是 “Or start something new” 与原来的起步卡。两个小标题是 `--text-3`、`--text-xs`、大写、字距 0.04em。没有历史会话时只有起步卡，不写小标题。
-
 - **答复里的文件与界面**（2026-11-03 起，`components/ReplyOutputs.tsx`）：Agent 用 `send_file` 交给你的工作区文件、用 `show_ui` 画的小界面（A2UI 子集）是答复的一部分，**不算步骤**：不进折叠行，排在答复正文下方（改动文件卡之后）。图片内联显示（`.reply-image`：`--border` 细框、`--radius-lg`、最高 360px，点开是与输入区图片相同的全屏查看，右键是 `useFileMenu`）；文件读不到时退回文件卡。其他文件用与 Office 文件相同的 `.office-file` 卡（图标 · 文件名 · “PDF · 2.0 KB · 目录”），点开在工作台打开。界面是一张与问题卡同形的卡（`.a2ui-surface`：`--surface`、`--border`、`--radius-lg`、`--shadow-sm`），里面只用已有控件：`.field` 输入、`.field-check` 复选、`.question-option` 选项行（原生 radio / checkbox）、`.button.small` 按钮（按钮保持自身宽度）。只有**最新且空闲**的回合里的界面可以填；按下按钮后它锁定，底部一行 `--text-3` 小字 “✓ Sent · <按钮名>”，你的消息气泡画成按钮名加各项取值（不是原始的 `[ui-action] {...}`），没有编辑按钮；对话已经越过、没被回答的界面锁定并写 “No longer waiting for an answer”。终端界面里这两个工具是普通步骤行（“Sent chart.png”“Showed a form”），按钮回传的消息写成 “Pressed Continue” 加取值。
 
 - **密钥问题**（2026-10-26 起）：Agent 用 `ask_user_question` 的 `secret`（环境变量名，如 `GITHUB_TOKEN`）要密钥时，问题卡里是一行**隐藏输入**（复用 `.input-with-icon`：`KeyRound` 图标 · `password` 输入框，等宽字体 · 显示 / 隐藏的 `.icon-button.tiny`，`aria-pressed`），没有选项与补充文本框。下面一行 `.muted.small` 写去向（“只在这个会话里使用……命令里用 `$NAME` 读取”），右侧是 **记住** 按钮（`.button.ghost.small`，`aria-pressed`，按下时 `--accent-soft` 底、`--accent-text` 字）：按下则保存到这个工作区（重启后同一工作区的会话都能用），说明文字随之改写。值只交给宿主的密钥库，不进 Session、不回到时间线；Agent 只知道名字。设置里的 **Secrets** 分区（§9）列出名字并可移除。
@@ -345,11 +343,10 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 | `--text-lg` | 13px | 14px | 15.5px | 对话正文与输入（行高 1.6）、侧栏行 |
 | `--text-xl` | 18.5px | 18.5px | 20.5px | 区块标题 |
 | `--text-2xl` | 24px | 24px | 26.5px | 页面标题、欢迎页 |
-| `--text-3xl` | 32px | 32px | 35px | 只给新会话欢迎页的问候（§5.1） |
 
 **界面字体是 Geist + Noto Sans SC，代码用 JetBrains Mono**（2026-10-12 起；三者都由 `@fontsource-variable/*` 随应用打包，桌面端离线与各操作系统显示一致）。`--font-sans` 里 Geist 在前：拉丁字母、数字和标点总由 Geist 显示；Geist 没有中文字形，中文落到 Noto Sans SC，两者不会争同一个字符，混排不会忽大忽小或换来换去。Noto Sans SC 按 unicode-range 分片，只有出现中文时才加载需要的分片。`body` 字重 400。
 
-**展示衬线 `--font-display` = Fraunces**（2026-10-12 起，`@fontsource-variable/fraunces` 的 opsz 轴：大字号时自动变成高对比衬线）。它只给几句表达情绪的字：Board 的问候语、新会话欢迎页的问候语（“Good afternoon, Ocean. / What are we building?”，`--text-3xl`，§5.1）与首次打开的欢迎标题，`--text-2xl`、500 字重；正文、标题栏、按钮与列表永远不用它。中文落到 Noto Sans SC。
+**展示衬线 `--font-display` = Fraunces**（2026-10-12 起，`@fontsource-variable/fraunces` 的 opsz 轴：大字号时自动变成高对比衬线）。它只给几句表达情绪的字：Board 的问候语、新会话空白页的问候语（“Good afternoon. What are we building?”）与首次打开的欢迎标题，`--text-2xl`、500 字重；正文、标题栏、按钮与列表永远不用它。中文落到 Noto Sans SC。
 
 字重以 400 / 500 / 600 为主；700 只留给极小的徽标数字。等宽字体（`--font-mono`）只给代码、路径、命令、哈希与对齐的数字列。
 

@@ -28,7 +28,6 @@ import {
   Presentation,
   Table2,
   PanelRight,
-  History,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
@@ -36,9 +35,7 @@ import { sessionLink } from '@tnega/client/session-link'
 import { ComputerHint } from './ComputerHint'
 
 import { MxcHint } from './MxcHint'
-import { copyToClipboard, errorText, folderName, relativeTime, useScrollPinning, useStableCallback } from '../lib/hooks'
-import { useAccount } from '../lib/account'
-import { AgentAvatar } from './AgentAvatar'
+import { copyToClipboard, errorText, folderName, useScrollPinning, useStableCallback } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
 import { MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
@@ -116,8 +113,6 @@ export function Conversation({
   sidebarOpen,
   onToggleSidebar,
   titleSlot,
-  recentSessions,
-  onOpenSession,
 }: {
   workspace: string
   sessionId: string | undefined
@@ -148,9 +143,6 @@ export function Conversation({
   onToggleSidebar: () => void
   /** The desktop title-bar row over the open Workbench: the header actions move there. */
   titleSlot?: HTMLElement | null | undefined
-  /** The latest sessions in this workspace, for the welcome's "pick up where you left off". */
-  recentSessions?: readonly SessionSummary[]
-  onOpenSession?: (id: string) => void
 }) {
   const [summary, setSummary] = useState<SessionSummary | undefined>()
   const [entries, setEntries] = useState<readonly Entry[]>([])
@@ -1068,8 +1060,6 @@ export function Conversation({
               agentType={settings.agentType}
               onPick={prompt => void send(prompt)}
               disabled={Boolean(disabledReason)}
-              recent={recentSessions ?? []}
-              {...(onOpenSession ? { onOpenSession } : {})}
             />
           )}
           {loadingOlder && (
@@ -1417,88 +1407,34 @@ const PLACEHOLDERS: Record<AgentType, string> = {
   general: 'Ask anything…',
 }
 
-/** The second line of the greeting, by time of day: a few words of mood, never news. */
-function greetingFor(hour: number): { hello: string; prompt: string } {
-  if (hour < 5) return { hello: 'Working late', prompt: 'What needs doing before morning?' }
-  if (hour < 12) return { hello: 'Good morning', prompt: 'What shall we make today?' }
-  if (hour < 18) return { hello: 'Good afternoon', prompt: 'What are we building?' }
-  return { hello: 'Good evening', prompt: 'What should we pick up?' }
-}
-
-/** A session worth reopening from the welcome: the latest few in this workspace, newest first. */
-export function recentForWelcome(sessions: readonly SessionSummary[], workspace: string, limit = 3): SessionSummary[] {
-  return sessions
-    .filter(session => session.workspace === workspace && !session.parentSessionId && session.eventCount > 0)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, limit)
-}
-
-/**
- * The welcome of a new session: the agent itself (the brand cloud, clear
- * weather = ready), a greeting by name and time of day, the latest sessions
- * to pick up, and a few ways to start.
- */
-function EmptyState({ workspace, agentType, onPick, disabled, recent, onOpenSession }: {
-  workspace: string
-  agentType: AgentType
-  onPick: (prompt: string) => void
-  disabled: boolean
-  recent: readonly SessionSummary[]
-  onOpenSession?: (id: string) => void
-}) {
+function EmptyState({ workspace, agentType, onPick, disabled }: { workspace: string; agentType: AgentType; onPick: (prompt: string) => void; disabled: boolean }) {
   const starters = STARTERS[agentType]
-  const account = useAccount()
-  const firstName = account?.account.name.split(/\s+/u)[0]
-  const { hello, prompt } = greetingFor(new Date().getHours())
-  const now = Date.now()
+  const hour = new Date().getHours()
+  const greeting = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   return (
-    <div className="empty-state welcome-hero">
-      <span className="welcome-cloud" aria-hidden>
-        <AgentAvatar id="tnega" role="coordinator" size={72} weather="clear" brand />
-      </span>
-      <h2 className="welcome-greeting">
-        <span>{hello}{firstName ? `, ${firstName}` : ''}.</span>
-        <span className="welcome-question">{prompt}</span>
-      </h2>
-      <p className="welcome-meta">
+    <div className="empty-state">
+      <span className="brand-mark large" aria-hidden />
+      <h2>{greeting}. What are we building?</h2>
+      <p>
         Working in <span className="mono-chip">{folderName(workspace)}</span>
         {` as ${ROLE[agentType]}.`}
       </p>
-      {recent.length > 0 && onOpenSession && (
-        <section className="welcome-recent" aria-label="Pick up where you left off">
-          <span className="welcome-label">Pick up where you left off</span>
-          <ul>
-            {recent.map(session => (
-              <li key={session.id}>
-                <button type="button" className="welcome-recent-row" aria-label={`Open ${session.title}`} onClick={() => onOpenSession(session.id)}>
-                  <History size={14} aria-hidden />
-                  <span className="welcome-recent-title">{session.title}</span>
-                  <span className="welcome-recent-time">{relativeTime(session.updatedAt, now)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section className="welcome-starters" aria-label="Ways to start">
-        {recent.length > 0 && onOpenSession && <span className="welcome-label">Or start something new</span>}
-        <div className="starter-grid">
-          {starters.map(starter => (
-            <button
-              key={starter.title}
-              type="button"
-              className="starter"
-              disabled={disabled}
-              title={starter.prompt}
-              onClick={() => onPick(starter.prompt)}
-            >
-              <starter.icon size={14} />
-              <span className="starter-title">{starter.title}</span>
-              <span className="starter-prompt">{starter.prompt}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      <div className="starter-grid">
+        {starters.map(starter => (
+          <button
+            key={starter.title}
+            type="button"
+            className="starter"
+            disabled={disabled}
+            title={starter.prompt}
+            onClick={() => onPick(starter.prompt)}
+          >
+            <starter.icon size={14} />
+            <span className="starter-title">{starter.title}</span>
+            <span className="starter-prompt">{starter.prompt}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

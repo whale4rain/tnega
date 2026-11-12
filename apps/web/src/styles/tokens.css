@@ -25,8 +25,6 @@
   --text-lg: 14px;
   --text-xl: 18.5px;
   --text-2xl: 24px;
-  /* The welcome greeting only (display serif). */
-  --text-3xl: 32px;
 
   --radius-xs: 3px;
   --radius-sm: 4px;
@@ -635,7 +633,6 @@
   --text-lg: 15.5px;
   --text-xl: 20.5px;
   --text-2xl: 26.5px;
-  --text-3xl: 35px;
 }
 
 [data-reading="narrow"] { --reading-width: 660px; }

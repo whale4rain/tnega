@@ -1,6 +1,6 @@
 import { FolderKanban, FolderPlus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Conversation, recentForWelcome } from './components/Conversation'
+import { Conversation } from './components/Conversation'
 import type { RunSettings } from './components/Composer'
 import { NewProjectDialog } from './components/project/NewProjectDialog'
 import { ProjectView } from './components/project/ProjectView'
@@ -574,8 +574,6 @@ export function App() {
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(open => !open)}
             titleSlot={titleSlot}
-            recentSessions={recentForWelcome(sessions, workspace)}
-            onOpenSession={select}
           />
         )
         : (
