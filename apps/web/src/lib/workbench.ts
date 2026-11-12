@@ -36,6 +36,20 @@ export type DocTab =
   | { key: string; kind: 'thread'; id: string; label: string }
   | { key: string; kind: 'exchange'; firstId: string; secondId: string; label: string }
   | { key: string; kind: 'settings'; label: string }
+  | { key: string; kind: 'sidechat'; label: string; ask?: SideAsk }
+
+/**
+ * A question for the temporary chat (`/btw`): asked as soon as the tab shows
+ * it. `session` is the session it is about; `nonce` changes on every ask, so
+ * asking the same thing twice asks twice.
+ */
+export interface SideAsk {
+  question: string
+  session?: { id: string; title: string }
+  nonce: number
+}
+
+export const SIDE_CHAT_KEY = 'side-chat'
 
 /** A file to bring into view when a tool opens (a changed file, a file to edit). */
 export interface Focus {
@@ -86,6 +100,7 @@ export type NewDoc =
   | { kind: 'thread'; id: string; label: string }
   | { kind: 'exchange'; firstId: string; secondId: string; label: string }
   | { kind: 'settings'; label: string }
+  | { kind: 'sidechat'; label: string; ask?: SideAsk }
 
 function withKey(doc: NewDoc): DocTab {
   switch (doc.kind) {
@@ -95,6 +110,7 @@ function withKey(doc: NewDoc): DocTab {
     case 'thread': return { ...doc, key: `thread:${doc.id}` }
     case 'exchange': return { ...doc, key: `exchange:${[doc.firstId, doc.secondId].sort().join(':')}` }
     case 'settings': return { ...doc, key: 'project-settings' }
+    case 'sidechat': return { ...doc, key: SIDE_CHAT_KEY }
   }
 }
 
@@ -109,6 +125,16 @@ export function openDoc(state: WorkbenchState, doc: NewDoc): WorkbenchState {
   return { ...state, open: true, active: tab.key, docs }
 }
 
+/**
+ * Open the temporary chat. With `ask`, it asks that question (`/btw`); without,
+ * it shows the chat as it is, or a fresh one.
+ */
+export function openSideChat(state: WorkbenchState, ask?: Omit<SideAsk, 'nonce'>): WorkbenchState {
+  const existing = state.docs.find(doc => doc.kind === 'sidechat')
+  const previous = existing?.kind === 'sidechat' ? existing.ask?.nonce ?? 0 : 0
+  return openDoc(state, { kind: 'sidechat', label: 'Temporary chat', ...(ask ? { ask: { ...ask, nonce: previous + 1 } } : existing?.kind === 'sidechat' && existing.ask ? { ask: existing.ask } : {}) })
+}
+
 /** Show a project tab (Board, Library, Routines). */
 export function openProjectTab(state: WorkbenchState, tab: ProjectTabId): WorkbenchState {
   return { ...state, open: true, active: projectTabKey(tab) }
@@ -119,7 +145,7 @@ export function openProjectTab(state: WorkbenchState, tab: ProjectTabId): Workbe
  * Leaving it (`projectId` undefined): drop project tabs and fall back to a tool.
  */
 export function enterProject(state: WorkbenchState, projectId: string | undefined, previous: string | undefined): WorkbenchState {
-  const docs = state.docs.filter(doc => doc.kind === 'preview' || doc.kind === 'subagent')
+  const docs = state.docs.filter(doc => doc.kind === 'preview' || doc.kind === 'subagent' || doc.kind === 'sidechat')
   if (!projectId) {
     return { ...state, docs, active: isProjectKey(state.active) ? 'files' : state.active }
   }

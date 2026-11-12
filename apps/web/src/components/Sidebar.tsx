@@ -11,6 +11,7 @@ import {
   Monitor,
   Moon,
   ListChecks,
+  MessageCircleDashed,
   MoreHorizontal,
   PanelLeftClose,
   Search,
@@ -103,6 +104,7 @@ export function Sidebar({
   onSelectProject,
   onNewSession,
   onNewProject,
+  onTemporaryChat,
   onForkSession,
   onDeleteSession,
   onDeleteSessions,
@@ -136,6 +138,8 @@ export function Sidebar({
   onSelectProject: (workspace: string, id: string) => void
   onNewSession: (workspace: string) => void
   onNewProject: (workspace: string) => void
+  /** Open the temporary chat beside the open view; absent where there is none. */
+  onTemporaryChat?: (() => void) | undefined
   onForkSession: (workspace: string, id: string) => void
   /** Resolves true when the session was deleted. */
   onDeleteSession: (workspace: string, session: SessionSummary) => Promise<boolean>
@@ -398,6 +402,12 @@ export function Sidebar({
           <FolderKanban size={14} aria-hidden />
           <span>New project</span>
         </button>
+        {onTemporaryChat && (
+          <button type="button" className="sidebar-action" onClick={onTemporaryChat} title="Temporary chat: quick questions on the side, not saved">
+            <MessageCircleDashed size={14} aria-hidden />
+            <span>Temporary chat</span>
+          </button>
+        )}
       </div>
 
       <label className="sidebar-search">

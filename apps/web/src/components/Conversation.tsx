@@ -59,7 +59,7 @@ import type {
   StreamEvent,
   ImageAttachment,
 } from '../lib/types'
-import { CLIENT_COMMANDS, mergeCommands, parseCommand } from '../lib/completion'
+import { CLIENT_COMMANDS, asideQuestion, mergeCommands, parseCommand } from '../lib/completion'
 import { useProcessView } from '../lib/process-view'
 import { Composer, SessionControls, type RunSettings } from './Composer'
 import type { ArgumentSuggestion } from './PromptBox'
@@ -106,6 +106,7 @@ export function Conversation({
   onOpenPath,
   onOpenChange,
   onToggleWorkbench,
+  onAside,
   workbenchOpen = false,
   changeCount,
   onBrowserActivity,
@@ -131,6 +132,8 @@ export function Conversation({
   onOpenChange?: (path: string) => void
   /** Show or hide the Workbench (files, changes, terminal, browser). */
   onToggleWorkbench?: () => void
+  /** `/btw`: ask on the side, in the temporary chat, about this session (when there is one). */
+  onAside?: (question: string, session?: { id: string; title: string }) => void
   workbenchOpen?: boolean
   /** Files changed since the last commit, shown on the Workbench button. */
   changeCount?: number | undefined
@@ -659,8 +662,26 @@ export function Conversation({
     })
   }
 
+  /**
+   * `/btw question`: goes to the temporary chat, never into this session, and
+   * never waits for or interrupts the run. Undefined when `text` is not one.
+   */
+  const aside = (text: string, images: readonly ImageAttachment[]): boolean | undefined => {
+    const question = asideQuestion(text)
+    if (question === undefined || !onAside) return undefined
+    if (images.length) {
+      setError('A /btw question cannot carry images yet. Send them without /btw.')
+      return false
+    }
+    setError(undefined)
+    onAside(question, sessionId ? { id: sessionId, title: summary?.title ?? 'This session' } : undefined)
+    return true
+  }
+
   /** Hand a message to the running agent now; it reads it at its next step. */
   const steer = async (text: string, images: readonly ImageAttachment[] = []): Promise<boolean> => {
+    const asked = aside(text, images)
+    if (asked !== undefined) return asked
     const id = liveSession()
     if (!id) return send(text, [...images])
     setError(undefined)
@@ -683,6 +704,8 @@ export function Conversation({
   }
 
   const send = async (text: string, images: ImageAttachment[] = []): Promise<boolean> => {
+    const asked = aside(text, images)
+    if (asked !== undefined) return asked
     setError(undefined)
     const liveId = liveSession()
     if (liveId) {

@@ -49,6 +49,26 @@ describe('TuiController', () => {
     expect(controller.state.finishedAt).toBeDefined()
   })
 
+  it('answers /btw on the side while a run goes, without queueing or steering it', async () => {
+    const { server, controller } = setup()
+    await controller.start()
+    const release = deferred()
+    server.state.release = release.promise
+    await controller.send('first')
+    await until(() => controller.state.running)
+    expect(await controller.send('/btw what is it doing?')).toBe(true)
+    await until(() => controller.state.aside?.pending === false)
+    expect(controller.state.aside).toEqual({ question: 'what is it doing?', answer: 'It is writing tests.', pending: false })
+    expect(controller.state.queued).toEqual([])
+    const side = server.calls.find(call => call.path === '/api/side-chat')
+    expect(side?.body).toEqual({ session: 's2', messages: [{ role: 'user', content: 'what is it doing?' }] })
+    expect(server.calls.some(call => call.path.endsWith('/steer'))).toBe(false)
+    expect(controller.dismissAside()).toBe(true)
+    expect(controller.state.aside).toBeUndefined()
+    release.resolve()
+    await until(() => !controller.state.running)
+  })
+
   it('queues a message sent while the agent runs, and steers with it on request', async () => {
     const { server, controller } = setup()
     await controller.start()

@@ -7,7 +7,7 @@ import { ProjectView } from './components/project/ProjectView'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar, type PickedSession } from './components/Sidebar'
 import { Workbench, WORKBENCH_MIN_WIDTH, type WorkbenchProject } from './components/workbench/Workbench'
-import { enterProject, openDoc, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
+import { enterProject, openDoc, openSideChat, openTool, persisted, restore, toggle, type WorkbenchState } from './lib/workbench'
 import { useChangeCount } from './lib/hooks'
 import { desktopBrowser } from './lib/desktop-browser'
 import { browserAvailable, navigateBrowser } from './lib/browser-live'
@@ -261,6 +261,10 @@ export function App() {
   const titleStripShown = useHeldWhileClosing(workbenchOpen)
   const titleSlot = isDesktopChrome() && titleStripShown && !workbenchFloats ? titleBar : null
   // Both side panels stay mounted once shown, so folding them slides instead of rebuilding their content.
+  // The open session, which the temporary chat offers to read.
+  const openSessionSummary = mode === 'sessions' && selectedId ? sessions.find(session => session.id === selectedId) : undefined
+  const openSessionTitle = openSessionSummary?.title
+  const openSession = useMemo(() => (selectedId && openSessionTitle !== undefined ? { id: selectedId, title: openSessionTitle } : undefined), [selectedId, openSessionTitle])
   const [workbenchShown, setWorkbenchShown] = useState(workbenchOpen)
   if (workbenchOpen && !workbenchShown) setWorkbenchShown(true)
   const panelsMoving = usePanelMotion(`${sidebarOpen}/${workbenchOpen}`)
@@ -501,6 +505,7 @@ export function App() {
         selectedProjectId={projectRoute.id}
         onSelectProject={(path, id) => { enterWorkspace(path); openProject(id) }}
         onNewProject={path => { enterWorkspace(path); setNewProject(true) }}
+        {...(workspace ? { onTemporaryChat: () => setWorkbench(current => openSideChat(current)) } : {})}
       />
 
       {workspace && mode === 'projects' && (projectRoute.id
@@ -563,6 +568,7 @@ export function App() {
             onOpenChange={path => setWorkbench(current => openTool(current, 'changes', path))}
             {...(browserReady ? { onBrowserActivity: showBrowser } : {})}
             onToggleWorkbench={() => setWorkbench(toggle)}
+            onAside={(question, session) => setWorkbench(current => openSideChat(current, { question, ...(session ? { session } : {}) }))}
             workbenchOpen={workbench.open}
             changeCount={changeCount}
             sidebarOpen={sidebarOpen}
@@ -597,6 +603,7 @@ export function App() {
           project={activeProject ? { tabs: projectTabs, slot: setProjectSlot } : undefined}
           titleSlot={setTitleBar}
           sessionId={mode === 'sessions' ? selectedId : undefined}
+          session={openSession}
         />
       )}
 

@@ -1,7 +1,7 @@
 import { createClient } from '@tnega/client/api'
 
 export { ApiError, parseSseFrame } from '@tnega/client/api'
-export type { BackgroundJob, BackgroundProcess, ConfigPatch, DirectoryEntry, SessionPatch, TextFile } from '@tnega/client/api'
+export type { BackgroundJob, BackgroundProcess, ConfigPatch, DirectoryEntry, SessionPatch, SideChatEvent, SideChatRequest, TextFile } from '@tnega/client/api'
 
 /** Same-origin client: the page is served by the tnega server it talks to. */
 const client = createClient()
@@ -23,6 +23,9 @@ export const fetchWorkspaceFile = client.fetchWorkspaceFile
  * as a user cancel.
  */
 export const streamRun = client.streamRun
+
+/** Ask a side question (`/btw`, the temporary chat); nothing is saved. */
+export const streamSideChat = client.streamSideChat
 
 /** Save a fetched file through the browser's download flow. */
 export function saveBlob(blob: Blob, name: string): void {

@@ -1,0 +1,20 @@
+{
+  "name": "@tnega/side-chat",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tnega/agent": "workspace:*",
+    "@tnega/compaction": "workspace:*",
+    "@tnega/core": "workspace:*",
+    "@tnega/session": "workspace:*",
+    "@tnega/session-store": "workspace:*",
+    "@tnega/web-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@tnega/session-store-jsonl": "workspace:*"
+  }
+}

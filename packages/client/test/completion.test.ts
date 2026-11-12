@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyCompletion, detectTrigger, mergeCommands, parseCommand, rankCommands } from '../src/completion.js'
+import { applyCompletion, asideQuestion, detectTrigger, mergeCommands, parseCommand, rankCommands } from '../src/completion.js'
 
 describe('detectTrigger', () => {
   it('recognises commands, their first argument and file mentions at the caret', () => {
@@ -29,7 +29,7 @@ describe('commands', () => {
   const merged = mergeCommands([{ name: '/plan', description: 'server plan' }, { name: 'skills', description: 'List workspace skills' }, { name: '/mode', description: 'x' }])
 
   it('keeps client commands, adds server ones and drops the ones the client handles', () => {
-    expect(merged.map(command => command.name)).toEqual(['/plan', '/goal', '/auto', '/model', '/compact', '/codemode', '/rename', '/skills'])
+    expect(merged.map(command => command.name)).toEqual(['/plan', '/goal', '/auto', '/model', '/compact', '/codemode', '/rename', '/btw', '/skills'])
     expect(merged.find(command => command.name === '/plan')?.source).toBe('client')
   })
 
@@ -44,5 +44,14 @@ describe('commands', () => {
     expect(parseCommand('/plan  add a chart ')).toEqual({ name: '/plan', rest: 'add a chart' })
     expect(parseCommand('/auto')).toEqual({ name: '/auto', rest: '' })
     expect(parseCommand('no command')).toBeUndefined()
+  })
+})
+
+describe('asideQuestion', () => {
+  it('reads the question of a /btw message, and nothing else', () => {
+    expect(asideQuestion('/btw what is it doing?')).toBe('what is it doing?')
+    expect(asideQuestion('  /btw  ')).toBe('')
+    expect(asideQuestion('/btwx hi')).toBeUndefined()
+    expect(asideQuestion('btw hi')).toBeUndefined()
   })
 })

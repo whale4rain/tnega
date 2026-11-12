@@ -37,3 +37,23 @@ it('enables CodeMode through slash completion and can disable it again', async (
   expect(await view.findByText('CodeMode disabled.')).toBeTruthy()
   expect(enabled).toBe(false)
 })
+
+it('sends /btw to the temporary chat instead of the session', async () => {
+  const fetch = vi.fn(async () => Response.json({}))
+  vi.stubGlobal('fetch', fetch)
+  const onAside = vi.fn()
+  const view = render(createElement(Conversation, {
+    workspace: '/work', sessionId: undefined, config: undefined,
+    draftSettings: { agentType: 'general', mode: 'auto', permission: 'read-only', approvalMode: 'manual', reasoningEffort: 'default' },
+    onDraftSettingsChange: vi.fn(), onSessionCreated: vi.fn(), onSessionsChanged: vi.fn(),
+    onSessionDeleted: vi.fn(), onOpenSettings: vi.fn(), onOpenSubagent: vi.fn(), onOpenFile: vi.fn(),
+    sidebarOpen: true, onToggleSidebar: vi.fn(), onAside,
+  }))
+  const input = view.getByRole('textbox')
+  fireEvent.change(input, { target: { value: '/btw what does PTC mean?' } })
+  fireEvent.keyDown(input, { key: 'Escape' })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  await vi.waitFor(() => expect(onAside).toHaveBeenCalledWith('what does PTC mean?', undefined))
+  // No session was created and nothing was sent to one.
+  expect(fetch.mock.calls.some(call => String(call.at(0)).includes('/api/sessions'))).toBe(false)
+})

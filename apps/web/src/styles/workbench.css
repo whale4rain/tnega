@@ -727,3 +727,44 @@
     top: 6px;
   }
 }
+
+/* Temporary chat (sidebar's Temporary chat and /btw): quick questions on the side, never saved.
+   A reading surface like a project thread: messages on --surface, the composer docked below. */
+.wb-card.side-chat-body {
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.side-chat .side-scroll {
+  display: flex;
+  flex-direction: column;
+}
+
+.side-chat .side-scroll > .wb-empty {
+  flex: 1;
+}
+
+.side-chat .room-bubble {
+  max-width: 92%;
+}
+
+.side-chat-about {
+  flex: none;
+  max-width: 55%;
+}
+
+.side-chat-about[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.side-chat-about-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-chat-note {
+  margin: 6px 2px 0;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
