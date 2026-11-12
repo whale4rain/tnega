@@ -16,17 +16,6 @@ import {
   Trash2,
   X,
   PanelLeft,
-  Code2,
-  Bug,
-  FlaskConical,
-  Telescope,
-  Lightbulb,
-  PenLine,
-  Languages,
-  FileSpreadsheet,
-  FileText,
-  Presentation,
-  Table2,
   PanelRight,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -35,6 +24,7 @@ import { sessionLink } from '@tnega/client/session-link'
 import { ComputerHint } from './ComputerHint'
 
 import { MxcHint } from './MxcHint'
+import { WelcomeHero, WelcomeStarters } from './Welcome'
 import { copyToClipboard, errorText, folderName, useScrollPinning, useStableCallback } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
@@ -990,7 +980,7 @@ export function Conversation({
   const onComposerStop = useStableCallback(() => void stop())
 
   return (
-    <main className="conversation">
+    <main className={empty ? 'conversation is-welcome' : 'conversation'}>
       <header className="conv-header">
         {/* Always rendered: it folds away while the sidebar is open, so the title glides instead of jumping. */}
         <button type="button" className="icon-button header-sidebar-toggle" onClick={onToggleSidebar} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)"
@@ -1054,14 +1044,7 @@ export function Conversation({
           <MxcHint />
           {loading && entries.length === 0 && <TimelineSkeleton />}
           {busy === 'Compacting context…' && <div className="notice notice-info" role="status">Compacting context…</div>}
-          {empty && (
-            <EmptyState
-              workspace={workspace}
-              agentType={settings.agentType}
-              onPick={prompt => void send(prompt)}
-              disabled={Boolean(disabledReason)}
-            />
-          )}
+          {empty && <WelcomeHero agentType={settings.agentType} />}
           {loadingOlder && (
             <div className="load-older" role="status">Loading older messages…</div>
           )}
@@ -1148,6 +1131,7 @@ export function Conversation({
             autoFocusKey={sessionId ?? 'draft'}
             resetKey={`${workspace}:${sessionId ?? 'draft'}`}
           />
+          {empty && <WelcomeStarters agentType={settings.agentType} onPick={prompt => void send(prompt)} disabled={Boolean(disabledReason)} />}
         </div>
       </div>
     </main>
@@ -1353,6 +1337,12 @@ function PlanPanel({ plan }: { plan: PlanPayload }) {
   )
 }
 
+const PLACEHOLDERS: Record<AgentType, string> = {
+  coding: 'Describe a change, a bug, or a question about the code…',
+  work: 'Describe the spreadsheet, document or deck you need…',
+  general: 'Ask anything…',
+}
+
 function PlanRow({ item }: { item: PlanItem }) {
   return (
     <li className={`plan-item status-${item.status}`}>
@@ -1378,63 +1368,3 @@ function TimelineSkeleton() {
   )
 }
 
-const CODING_STARTERS = [
-  { icon: Telescope, title: 'Map the codebase', prompt: 'Give me a tour of this codebase: the main modules, how they fit together, and where to start reading.' },
-  { icon: Bug, title: 'Hunt a bug', prompt: 'Look for likely bugs or edge cases that are not handled in this project, and explain the most important ones.' },
-  { icon: FlaskConical, title: 'Strengthen tests', prompt: 'Find the parts of this project with the weakest test coverage and propose focused tests for them.' },
-  { icon: Code2, title: 'Review recent work', prompt: 'Review the most recent changes in this workspace and point out anything risky or unclear.' },
-]
-
-const WORK_STARTERS = [
-  { icon: FileSpreadsheet, title: 'Summarize data', prompt: 'Find the CSV or Excel files in this workspace and build a summary workbook with totals by category, using formulas.' },
-  { icon: FileText, title: 'Write a report', prompt: 'Read the documents in this workspace and write a concise report as a Word document.' },
-  { icon: Presentation, title: 'Build a deck', prompt: 'Turn the main findings in this workspace into a short slide deck of five to seven slides.' },
-  { icon: Table2, title: 'Tidy a table', prompt: 'Find messy tabular data in this workspace, clean it up, and save a tidy Excel workbook next to it.' },
-]
-
-const GENERAL_STARTERS = [
-  { icon: Telescope, title: 'Explore this folder', prompt: 'Look around this workspace and summarize what is in it.' },
-  { icon: PenLine, title: 'Draft a README', prompt: 'Draft a friendly README for this folder based on what it contains.' },
-  { icon: Lightbulb, title: 'Brainstorm', prompt: 'Suggest five practical improvements to the contents of this workspace, most valuable first.' },
-  { icon: Languages, title: 'Explain a concept', prompt: 'Explain how an AI agent uses tools, step by step, with a small concrete example.' },
-]
-
-const STARTERS: Record<AgentType, typeof GENERAL_STARTERS> = { coding: CODING_STARTERS, work: WORK_STARTERS, general: GENERAL_STARTERS }
-const ROLE: Record<AgentType, string> = { coding: 'a coding agent', work: 'a work assistant', general: 'a general assistant' }
-const PLACEHOLDERS: Record<AgentType, string> = {
-  coding: 'Describe a change, a bug, or a question about the code…',
-  work: 'Describe the spreadsheet, document or deck you need…',
-  general: 'Ask anything…',
-}
-
-function EmptyState({ workspace, agentType, onPick, disabled }: { workspace: string; agentType: AgentType; onPick: (prompt: string) => void; disabled: boolean }) {
-  const starters = STARTERS[agentType]
-  const hour = new Date().getHours()
-  const greeting = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
-  return (
-    <div className="empty-state">
-      <span className="brand-mark large" aria-hidden />
-      <h2>{greeting}. What are we building?</h2>
-      <p>
-        Working in <span className="mono-chip">{folderName(workspace)}</span>
-        {` as ${ROLE[agentType]}.`}
-      </p>
-      <div className="starter-grid">
-        {starters.map(starter => (
-          <button
-            key={starter.title}
-            type="button"
-            className="starter"
-            disabled={disabled}
-            title={starter.prompt}
-            onClick={() => onPick(starter.prompt)}
-          >
-            <starter.icon size={14} />
-            <span className="starter-title">{starter.title}</span>
-            <span className="starter-prompt">{starter.prompt}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}

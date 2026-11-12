@@ -21,6 +21,7 @@ import { isDesktopChrome, useDesktopChrome } from './lib/desktop-chrome'
 import { useHeldWhileClosing, useMediaQuery, usePanelMotion, WORKBENCH_OVERLAY_QUERY } from './lib/panels'
 import { useDesktopUpdates } from './lib/desktop-updates'
 import { UpdatingOverlay } from './components/UpdateButton'
+import { WelcomeCloud } from './components/Welcome'
 import { projectApi } from './lib/project-api'
 import type { ProjectRecord } from './lib/project-types'
 import type { AgentType, ApprovalMode, ConfigSnapshot, Permission, SessionSummary } from './lib/types'
@@ -578,7 +579,7 @@ export function App() {
         )
         : (
           <main className="welcome">
-            <span className="brand-mark large" aria-hidden />
+            <WelcomeCloud />
             <h1>Welcome to tnega</h1>
             <p>Pick a folder for the agent to work in. You can switch between workspaces at any time.</p>
             <button type="button" className="button primary large" onClick={() => setDialog('workspace')}>
