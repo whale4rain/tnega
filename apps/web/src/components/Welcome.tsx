@@ -13,7 +13,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useId, useRef, type CSSProperties } from 'react'
-import { folderName } from '../lib/hooks'
 import type { AgentType } from '../lib/types'
 import { eyeOffset, welcomeGreeting } from '../lib/welcome'
 
@@ -45,7 +44,6 @@ const GENERAL_STARTERS: Starter[] = [
 ]
 
 const STARTERS: Record<AgentType, Starter[]> = { coding: CODING_STARTERS, work: WORK_STARTERS, general: GENERAL_STARTERS }
-const ROLE: Record<AgentType, string> = { coding: 'a coding agent', work: 'a work assistant', general: 'a general assistant' }
 
 /** Stagger for the welcome's entrance: each piece arrives a beat after the one above it. */
 function beat(index: number): CSSProperties {
@@ -113,8 +111,8 @@ export function WelcomeCloud() {
   )
 }
 
-/** The top of an empty session: the cloud, a greeting, and where the agent will work. */
-export function WelcomeHero({ workspace, agentType, now = new Date() }: { workspace: string; agentType: AgentType; now?: Date }) {
+/** The top of an empty session: the cloud and one line of greeting. */
+export function WelcomeHero({ agentType, now = new Date() }: { agentType: AgentType; now?: Date }) {
   const { hello, ask } = welcomeGreeting(now.getHours(), agentType)
   return (
     <div className="welcome-hero">
@@ -122,32 +120,27 @@ export function WelcomeHero({ workspace, agentType, now = new Date() }: { worksp
       <h2 className="welcome-greeting welcome-beat" style={beat(1)}>
         <span>{hello}</span> <span className="welcome-ask">{ask}</span>
       </h2>
-      <p className="welcome-where welcome-beat" style={beat(2)}>
-        Working in <span className="mono-chip">{folderName(workspace)}</span>
-        {` as ${ROLE[agentType]}.`}
-      </p>
     </div>
   )
 }
 
-/** Ready-made first messages, under the composer of an empty session. */
+/** Ready-made first messages, under the composer of an empty session: one quiet row of titles. */
 export function WelcomeStarters({ agentType, onPick, disabled }: { agentType: AgentType; onPick: (prompt: string) => void; disabled: boolean }) {
   return (
-    <div className="starter-grid" role="group" aria-label="Ways to start">
+    <div className="welcome-starters" role="group" aria-label="Ways to start">
       {STARTERS[agentType].map((starter, index) => (
         <button
           key={starter.title}
           type="button"
-          className="starter welcome-beat"
-          style={beat(4 + index)}
+          className="chip welcome-beat"
+          style={beat(3 + index)}
           disabled={disabled}
           title={starter.prompt}
           aria-label={starter.title}
           onClick={() => onPick(starter.prompt)}
         >
           <starter.icon size={14} />
-          <span className="starter-title">{starter.title}</span>
-          <span className="starter-prompt">{starter.prompt}</span>
+          {starter.title}
         </button>
       ))}
     </div>

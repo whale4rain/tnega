@@ -1044,7 +1044,7 @@ export function Conversation({
           <MxcHint />
           {loading && entries.length === 0 && <TimelineSkeleton />}
           {busy === 'Compacting context…' && <div className="notice notice-info" role="status">Compacting context…</div>}
-          {empty && <WelcomeHero workspace={workspace} agentType={settings.agentType} />}
+          {empty && <WelcomeHero agentType={settings.agentType} />}
           {loadingOlder && (
             <div className="load-older" role="status">Loading older messages…</div>
           )}

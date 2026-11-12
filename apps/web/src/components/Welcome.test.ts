@@ -6,10 +6,10 @@ import { WelcomeHero, WelcomeStarters } from './Welcome'
 
 afterEach(cleanup)
 
-it('greets you by the time of day and says where the agent will work', () => {
-  const view = render(createElement(WelcomeHero, { workspace: '/home/me/notes', agentType: 'general', now: new Date(2026, 10, 12, 9) }))
+it('greets you by the time of day in one line', () => {
+  const view = render(createElement(WelcomeHero, { agentType: 'general', now: new Date(2026, 10, 12, 9) }))
   expect(view.getByRole('heading').textContent).toBe('Good morning. What’s on your mind?')
-  expect(view.container.textContent).toContain('Working in notes as a general assistant.')
+  expect(view.container.querySelector('p')).toBeNull()
 })
 
 it('sends a starter as the first message, and not while sending is blocked', () => {
