@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.7 | [`v0.5.6...v0.5.7`](https://github.com/whale4rain/tnega/compare/v0.5.6...v0.5.7) | 95 |
 | 0.5.7-beta.2 | [`v0.5.7-beta.1...v0.5.7-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.7-beta.1...v0.5.7-beta.2) | 17 |
 | 0.5.7-beta.1 | [`v0.5.6...v0.5.7-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.6...v0.5.7-beta.1) | 77 |
 | 0.5.6 | [`v0.5.5...v0.5.6`](https://github.com/whale4rain/tnega/compare/v0.5.5...v0.5.6) | 85 |
@@ -71,6 +72,33 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.7](https://github.com/whale4rain/tnega/releases/tag/v0.5.7) — 2026-11-12
+
+Includes `0.5.7-beta.1` and `0.5.7-beta.2`.
+
+### Features
+
+- **A server people sign in to.** `tnega server init`, `start` and `deploy` keep Sessions in Postgres, issue device tokens for browsers and daemons, seal remembered secrets with a master key, and manage people by role. Members work only in their own folder, and their commands stay sandboxed even after an approved escalation.
+- **Each person's sessions run in a box of their own.** With gVisor (no KVM needed) or E2B, every signed-in person gets one box per workspace with its own network namespace. Its egress proxy allows only the hosts named in `.tnega/environment.toml`, and no secret values reach the box. Files, commands and search go to the daemon in the box, so the Workbench, change tracking and skills see the same folder. Boxes pause when idle, restore on the next run, and a restarted server finds them and their daemons dial back in.
+- **Run the agent on another machine.** `tnega daemon` serves a machine's folders, commands, terminals, browser and (opt-in) computer use to a tnega host over WebSocket: handshake, protocol version and capabilities, cancellation, heartbeats and reconnects, with queued streams resumed after a dropped socket, and one generic forwarding path for services that are not files or commands. Pair with `tnega server pair <login> --daemon`; devices are listed and revoked per person.
+- **Files, processes and state behind seams.** `ctx.fs` owns workspace file access, `ctx.process` owns shell and argv execution, `ctx.sessionStore` owns Session lookup and append, and `ctx.blobs` owns content-addressed bytes. Local Providers keep existing behaviour; the daemon adds remote Providers for files, processes and terminals. Session format 11 writes image bytes once to the blob store and keeps only the hash in the log, and older Sessions are read without migration.
+- **MicroVM boxes.** `ctx.machines` starts, pauses, resumes, inspects and kills boxes; the E2B Provider runs Firecracker microVMs from `.tnega/environment.toml`, through a per-box egress proxy that allows listed hosts and can add provider keys. A paused box keeps memory and disk, and a repeated start for the same key returns the same box.
+- **The agent can reply with files and interfaces.** `send_file` attaches a workspace file to the reply, and `show_ui` renders an A2UI subset — text, choices, forms, tables and cards — in clients that have a surface for it.
+
+### Fixes
+
+- gVisor boxes start with `run --detach` on current `runsc`, keep one network per box and say why a start failed instead of failing silently.
+- A box is its own sandbox: commands sent to it no longer ask for a second sandbox the template does not have, so `read-only` sessions and members run normally. A box runs as the owner of the folder it mounts, so `/workspace` is writable and files stay that person's; `/etc/hosts` is mounted read-only from the host and the start script keeps its certificates in a folder the box owns when it is not root.
+- Idle pauses are re-armed at startup for boxes that were running when the server stopped. Sign-in rate limits count the address the proxy added, and members' escalated commands stay in the sandbox.
+- Session storage serializes leases, cuts a torn tail before appending, lets an append under way finish before release or disposal, refuses leases after close and rechecks the lease after waiting. The daemon matches workspace roots by its own rules, drops its device token before serving, refuses a terminal that opens a missing folder, and can no longer have its terminal rewritten by agent-chosen text. The E2B Provider starts one daemon per box from the v2 template, keys each create on the box's daemon token, serializes starts per machine key, applies an address-only box firewall and gives API calls a timeout.
+- Automatic approval keeps up to 50,000 characters of project constraints in the review context, up from 8,000, so a long project brief no longer forces every call to a person.
+
+### Other
+
+- New packages `@tnega/fs`, `@tnega/fs-local`, `@tnega/process`, `@tnega/process-local`, `@tnega/daemon-protocol`, `@tnega/daemon`, `@tnega/daemons`, `@tnega/daemon-gateway`, the `machine` / `machine-gvisor` / `machine-e2b` / `machine-pool` / `environment` / `egress-proxy` box layer, the `session-store` / `session-store-jsonl` / `session-store-pg` seams, `blobs` / `blobs-local`, and `accounts` / `accounts-pg` / `accounts-routes` are published as `tnega/*` subpaths. `@tnega/execution` remains as a deprecated forwarding package for one version.
+- On a gVisor box host the server process runs as root (namespaces, `nft`, cgroups); boxes themselves run as the folder owner without capabilities. `docs/guide/server.md` documents this and the daemon path.
+- ADRs 0018 (microVM box layer), 0016 (computer seam), 0008 (sandbox dimensions) and 0009 (automatic-approval budget) record the decisions; the v2 plans record the daemon protocol, the server MVP and the 1.0 gate.
 
 ## [0.5.7-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.7-beta.2) — 2026-11-12
 
