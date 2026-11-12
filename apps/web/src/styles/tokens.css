@@ -25,6 +25,8 @@
   --text-lg: 14px;
   --text-xl: 18.5px;
   --text-2xl: 24px;
+  /* The new-session greeting only: a few words of welcome, in the display serif. */
+  --text-3xl: 34px;
 
   --radius-xs: 3px;
   --radius-sm: 4px;
@@ -624,6 +626,7 @@
   --text-sm: 11.5px;
   --text-md: 12px;
   --text-lg: 13px;
+  --text-3xl: 32px;
 }
 
 [data-text-size="large"] {
@@ -633,6 +636,7 @@
   --text-lg: 15.5px;
   --text-xl: 20.5px;
   --text-2xl: 26.5px;
+  --text-3xl: 37px;
 }
 
 [data-reading="narrow"] { --reading-width: 660px; }
