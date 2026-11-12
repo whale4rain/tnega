@@ -73,10 +73,11 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
     ],
   },
   boxd: {
-    usage: 'tnega boxd --workspace-root <dir> [options]',
+    usage: 'tnega boxd --workspace-root <dir> --owner <user> [options]',
     summary: 'The root helper of a gVisor box host. It alone runs runsc, ip, nft and\ncgroups; tnega server start runs as an ordinary user and reaches it through\nTNEGA_BOXD_SOCKET. It answers four requests (start, pause, stop, status).',
     options: [
       ['--workspace-root <dir>', 'folder whose subfolders boxes may mount; repeat for more'],
+      ['--owner <user>', 'user whose folders boxes may mount and write as; repeat for more'],
       ['--socket <path>', 'unix socket to listen on (default /run/tnega/boxd.sock)'],
       ['--group <name>', 'group that may connect (socket 0660); without it only root'],
       ['--state-dir <dir>', 'box records and bundles (default /var/lib/tnega/machines)'],

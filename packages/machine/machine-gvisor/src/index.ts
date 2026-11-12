@@ -22,18 +22,21 @@ export { boxNet, netnsPath, networkDown, networkUp, nftRuleset, type BoxNet, typ
 export {
   assertBoxKey,
   assertBoxRef,
-  assertHostWorkspace,
   BOX_REF,
   BOXD_METHODS,
   groupId,
   GvisorMachinesClient,
   MAX_KEY_LENGTH,
   parseBoxSpec,
+  pinHostWorkspace,
   startBoxd,
+  userId,
   type Boxd,
   type BoxdMethod,
   type BoxdOptions,
   type GvisorClientConfig,
+  type PinnedFolder,
+  type WorkspacePolicy,
 } from './boxd.js'
 export { DEFAULT_RESOURCES, ociConfig, runscGlobals, runscRestore, runscRun, type BoxPaths, type RunscGlobals } from './oci.js'
 

@@ -10,8 +10,8 @@
 - **资源。** cgroup v2 限制来自 `BoxSpec.resources`，默认 1.5 个 CPU、768 MiB、512 个进程，一个 box 拖不垮 2 vCPU / 3.6 GiB 的主机。
 - daemon 在 sentry 里没有任何 capability、`noNewPrivileges`。挂了主机文件夹（`hostWorkspace`）时以那个文件夹属主的 uid / gid 运行，写进去的文件仍归属主；否则以 uid 0 运行，只拥有 box 自己建的东西。`/etc/hosts`（含 server 的名字）由主机写好、只读挂进去；CA 由启动脚本写到 box 自己的目录。
 
-不想让 server 以 root 运行时，用 `tnega boxd`（`src/boxd.ts`，issue #91）：它是唯一的 root 进程，在 unix socket 上只回答 `start` / `pause` / `stop` / `status` 四个请求，每行一个 JSON；`key`、`ref` 与 `spec` 都重新校验，主机目录必须在 `--workspace-root` 之内且不属于 root。server 设 `TNEGA_BOXD_SOCKET` 后，插件挂 `GvisorMachinesClient`，自己不跑任何主机命令。
+不想让 server 以 root 运行时，用 `tnega boxd`（`src/boxd.ts`，issue #91）：它是唯一的 root 进程，在 unix socket 上只回答 `start` / `pause` / `stop` / `status` 四个请求，每行一个 JSON；`key`、`ref` 与 `spec` 都重新校验，主机目录必须严格位于 `--workspace-root` 之下（不能是根本身）、属于 `--owner` 列出的用户且不是 root；boxd 只打开一次目录、检查打开的那个目录，再经 `/proc/<pid>/fd/<n>` 挂载它，检查之后换成链接也不会被跟随。socket 所在目录必须属于 boxd 自己且他人不可写。server 设 `TNEGA_BOXD_SOCKET` 后，插件挂 `GvisorMachinesClient`，自己不跑任何主机命令。
 
 主机要求（boxd 或不用 boxd 时的 server）：root、`runsc`（连同 release 包里的 `gvisor-bin/` 目录，只拷 `runsc` 一个文件会让每个沙箱都起不来）、`ip`、`nft`、cgroup v2。`probeGvisorHost()` 检查这些并报告 `/dev/kvm` 是否存在；`pnpm try:boxes gvisor` 先做这个检查，再实际起停一个 box。
 
-测试：`test/machine-gvisor.test.ts` 用一个假的 runsc / ip / nft，覆盖 OCI 配置与 runsc 参数、规则先于沙箱、规则失败时 fail closed、`microvm` 被拒、没有 runsc 时 `MACHINE_UNAVAILABLE` 且什么都不建、幂等与 `MACHINE_SPEC_CHANGED`、checkpoint 与冷暂停；`test/boxd.test.ts` 覆盖 socket 往返、错误码透传、非法 ref / key / 动词 / spec 被拒、工作区根与链接、socket 权限 0600 / 0660。`test/machine-gvisor.e2e.test.ts` 属宿主层：需要 root、gVisor 和用 `build-rootfs.sh` 建好的模板，设置 `TNEGA_GVISOR_TEMPLATE` 后才运行。
+测试：`test/machine-gvisor.test.ts` 用一个假的 runsc / ip / nft，覆盖 OCI 配置与 runsc 参数、规则先于沙箱、规则失败时 fail closed、`microvm` 被拒、没有 runsc 时 `MACHINE_UNAVAILABLE` 且什么都不建、幂等与 `MACHINE_SPEC_CHANGED`、checkpoint 与冷暂停；`test/boxd.test.ts` 覆盖 socket 往返、错误码透传、非法 ref / key / 动词 / spec 被拒、工作区根与链接、检查后换成指向 /etc 的链接、owner 限制、socket 权限 0600 / 0660 与他人可写目录被拒。`test/machine-gvisor.e2e.test.ts` 属宿主层：需要 root、gVisor 和用 `build-rootfs.sh` 建好的模板，设置 `TNEGA_GVISOR_TEMPLATE` 后才运行。

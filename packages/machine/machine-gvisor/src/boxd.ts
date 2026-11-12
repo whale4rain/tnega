@@ -1,4 +1,5 @@
-import { chmod, chown, lstat, mkdir, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { chmod, chown, lstat, mkdir, open, readFile, readlink, realpath, rm } from 'node:fs/promises'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Context } from '@tnega/core'
@@ -35,7 +36,9 @@ import {
  *
  * boxd trusts nothing the server sends: keys and refs are checked, the spec is
  * parsed field by field and validated again, and a host folder must lie
- * inside a workspace root the operator named and must not belong to root.
+ * strictly below a workspace root the operator named and belong to an owner
+ * the operator allowed (never root). The folder is opened once and mounted
+ * through that open handle, so a link swapped in after the check is not followed.
  */
 
 export type BoxdMethod = 'start' | 'pause' | 'stop' | 'status'
@@ -172,24 +175,54 @@ export function assertBoxRef(ref: unknown): string {
   return ref
 }
 
-function isInside(root: string, path: string): boolean {
+/** Whether `path` is strictly below `root`: the root itself is never a box's folder. */
+function isBelow(root: string, path: string): boolean {
   const rest = relative(root, path)
-  return rest === '' || (!rest.startsWith(`..${sep}`) && rest !== '..' && !isAbsolute(rest))
+  return rest !== '' && rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest)
+}
+
+/** Which host folders a box may mount, and as whom it may then write. */
+export interface WorkspacePolicy {
+  /** Real paths (links resolved when boxd started); a box's folder lies strictly below one. */
+  roots: readonly string[]
+  /** The only uids a mounted folder may belong to (the box writes as that owner). Never 0. */
+  owners: readonly number[]
+}
+
+/** A host folder boxd checked and holds open, so the mount sees the very folder that was checked. */
+export interface PinnedFolder {
+  /** `/proc/<boxd pid>/fd/<n>`: names the open folder, whatever happens to its path. */
+  path: string
+  uid: number
+  close(): Promise<void>
 }
 
 /**
- * Refuse a host folder boxd may not mount: outside every workspace root (after
- * links are followed), missing, not a folder, or owned by root, since the box
- * would then write as root.
+ * Open a host folder once and check what was opened: a folder, not a link,
+ * strictly below a workspace root, and owned by an allowed, non-root uid.
+ * The caller mounts {@link PinnedFolder.path}, which keeps naming that same
+ * folder even if the path is swapped for a link afterwards (issue #91 review:
+ * the server owns the members folder and could otherwise race the check).
  */
-export async function assertHostWorkspace(path: string, roots: readonly string[]): Promise<void> {
-  if (!roots.length) invalid('this box host mounts no host folders: start boxd with --workspace-root')
-  const real = await realpath(path).catch(() => invalid(`host folder ${path} does not exist`))
-  const realRoots = await Promise.all(roots.map(root => realpath(root).catch(() => resolve(root))))
-  if (!realRoots.some(root => isInside(root, real))) invalid(`host folder ${path} is outside the workspace roots this box host allows`)
-  const entry = await stat(real)
-  if (!entry.isDirectory()) invalid(`host folder ${path} is not a folder`)
-  if (entry.uid === 0) invalid(`host folder ${path} belongs to root; a box may not write as root`)
+export async function pinHostWorkspace(path: string, policy: WorkspacePolicy): Promise<PinnedFolder> {
+  if (!policy.roots.length) invalid('this box host mounts no host folders: start boxd with --workspace-root')
+  if (!policy.owners.length) invalid('this box host mounts no host folders: start boxd with --owner')
+  if (!isAbsolute(path)) invalid('hostWorkspace must be an absolute path')
+  // O_NOFOLLOW: the folder itself may not be a link; the real path below is read from the open folder.
+  const handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+    .catch(() => invalid(`host folder ${path} does not exist, is not a folder, or is a link`))
+  try {
+    const real = await readlink(`/proc/self/fd/${handle.fd}`).catch(() => invalid('boxd needs /proc to pin a host folder'))
+    if (!policy.roots.some(root => isBelow(root, real))) invalid(`host folder ${path} is not inside the workspace roots this box host allows`)
+    const entry = await handle.stat()
+    if (!entry.isDirectory()) invalid(`host folder ${path} is not a folder`)
+    if (entry.uid === 0) invalid(`host folder ${path} belongs to root; a box may not write as root`)
+    if (!policy.owners.includes(entry.uid)) invalid(`host folder ${path} belongs to uid ${entry.uid}, which this box host does not let boxes write as`)
+    return { path: `/proc/${process.pid}/fd/${handle.fd}`, uid: entry.uid, close: () => handle.close() }
+  } catch (error) {
+    await handle.close()
+    throw error
+  }
 }
 
 export interface BoxdOptions {
@@ -197,8 +230,10 @@ export interface BoxdOptions {
   socket: string
   /** What runs the boxes: `GvisorMachines` in production. */
   machines: MachineProvider
-  /** Folders a box may mount, with everything under them. */
+  /** Folders whose subfolders a box may mount. Resolved once, when boxd starts. */
   workspaceRoots: readonly string[]
+  /** The uids a mounted folder may belong to (`--owner`). */
+  owners: readonly number[]
   /** The group allowed to connect (socket mode 0660, this gid). Without it only root may connect. */
   gid?: number
 }
@@ -217,16 +252,22 @@ function errorAnswer(error: unknown): Answer {
   return { error: { code: 'MACHINE_FAILED', message: error instanceof Error ? error.message : String(error) } }
 }
 
-async function answer(options: BoxdOptions, method: unknown, params: unknown): Promise<Answer> {
+async function answer(options: BoxdOptions, policy: WorkspacePolicy, method: unknown, params: unknown): Promise<Answer> {
   try {
     const fields = isRecord(params) ? params : invalid('params must be an object')
     switch (method) {
       case 'start': {
         const key = assertBoxKey(fields.key)
         const spec = parseBoxSpec(fields.spec)
-        if (spec.hostWorkspace !== undefined) await assertHostWorkspace(spec.hostWorkspace, options.workspaceRoots)
-        const ref: MachineRef = await options.machines.start(key, spec)
-        return { result: { ref: ref.ref } }
+        if (spec.hostWorkspace === undefined) return { result: { ref: (await options.machines.start(key, spec)).ref } }
+        // The box gets the folder that was checked, held open until it is mounted, never the name again.
+        const pinned = await pinHostWorkspace(spec.hostWorkspace, policy)
+        try {
+          const ref: MachineRef = await options.machines.start(key, { ...spec, hostWorkspace: pinned.path })
+          return { result: { ref: ref.ref } }
+        } finally {
+          await pinned.close()
+        }
       }
       case 'pause':
         await options.machines.pause(assertBoxRef(fields.ref))
@@ -275,10 +316,31 @@ async function removeStaleSocket(path: string): Promise<void> {
   await rm(path, { force: true })
 }
 
+/**
+ * The socket's folder must be a real folder owned by boxd's own user and
+ * writable by nobody else; otherwise someone could swap the socket for a link
+ * between listen and chown.
+ */
+async function assertSocketFolder(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true, mode: 0o755 })
+  const entry = await lstat(dir)
+  const me = process.getuid?.() ?? 0
+  if (!entry.isDirectory()) throw new Error(`${dir} is not a folder; boxd keeps its socket in a folder of its own`)
+  if (entry.uid !== me) throw new Error(`${dir} belongs to uid ${entry.uid}; boxd needs it to be its own (uid ${me})`)
+  if ((entry.mode & 0o022) !== 0) throw new Error(`${dir} is writable by others; make it 0755`)
+}
+
 /** Listen on `options.socket` and serve the four box verbs. */
 export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
   const socketPath = resolve(options.socket)
-  await mkdir(dirname(socketPath), { recursive: true, mode: 0o755 })
+  if (options.owners.includes(0)) throw new Error('boxd never lets a box write as root: drop uid 0 from --owner')
+  const policy: WorkspacePolicy = {
+    roots: await Promise.all(options.workspaceRoots.map(root => realpath(root).catch(() => {
+      throw new Error(`workspace root ${root} does not exist`)
+    }))),
+    owners: options.owners,
+  }
+  await assertSocketFolder(dirname(socketPath))
   await removeStaleSocket(socketPath)
   const connections = new Set<Socket>()
   const server: Server = createServer(socket => {
@@ -290,7 +352,7 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
       try { request = JSON.parse(line) } catch { request = undefined }
       const id = isRecord(request) && (typeof request.id === 'number' || typeof request.id === 'string') ? request.id : null
       const pending = isRecord(request)
-        ? answer(options, request.method, request.params)
+        ? answer(options, policy, request.method, request.params)
         : Promise.resolve(errorAnswer(new MachineError('a request is one JSON object per line', 'MACHINE_INVALID')))
       void pending.then(reply => {
         if (!socket.destroyed) socket.write(`${JSON.stringify({ id, ...reply })}\n`)
@@ -307,6 +369,11 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
   } finally {
     process.umask(umask)
   }
+  // Only ever hand out the socket we made: the folder is ours alone, and this is still a socket.
+  if (!(await lstat(socketPath)).isSocket()) {
+    server.close()
+    throw new Error(`${socketPath} is no longer boxd's socket`)
+  }
   if (options.gid !== undefined) await chown(socketPath, process.getuid?.() ?? 0, options.gid)
   await chmod(socketPath, options.gid === undefined ? 0o600 : 0o660)
   return {
@@ -317,6 +384,17 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
       await rm(socketPath, { force: true })
     },
   }
+}
+
+/** The uid of a user in `/etc/passwd`, for `--owner`. */
+export async function userId(name: string, file = '/etc/passwd'): Promise<number> {
+  if (/^\d+$/u.test(name)) return Number(name)
+  const text = await readFile(file, 'utf8').catch(() => '')
+  for (const line of text.split('\n')) {
+    const [user, , uid] = line.split(':')
+    if (user === name && uid !== undefined && /^\d+$/u.test(uid)) return Number(uid)
+  }
+  throw new Error(`no user named ${name}`)
 }
 
 /** The gid of a group in `/etc/group`, for `--group`. */

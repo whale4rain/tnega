@@ -169,7 +169,7 @@ After=network.target
 
 [Service]
 # runsc needs namespaces, mounts and cgroups: this is the one root process.
-ExecStart=/usr/local/bin/tnega boxd --socket /run/tnega/boxd.sock --group tnega-box --workspace-root /home/tnega-server/.tnega/server/members
+ExecStart=/usr/local/bin/tnega boxd --socket /run/tnega/boxd.sock --group tnega-box --workspace-root /home/tnega-server/.tnega/server/members --owner tnega-server
 Restart=on-failure
 
 [Install]
@@ -200,8 +200,15 @@ TNEGA_BOXD_SOCKET=/run/tnega/boxd.sock
 ```
 
 - `--workspace-root` names the folders whose subfolders a box may mount
-  (repeat it for owners' folders elsewhere). boxd follows links before it
-  checks, and refuses a folder that belongs to root.
+  (never the root itself), and `--owner` the users those folders may belong
+  to: the box writes as the folder's owner, so every folder of an `--owner`
+  user under a root is writable by the server through a box. Keep both narrow:
+  usually the members folder and `tnega-server`. Root is never allowed.
+- boxd opens the folder once, checks what it opened (a real folder, not a
+  link, below a root, an allowed owner) and mounts that open folder, so a
+  link swapped in after the check is not followed.
+- The socket's folder must belong to boxd's user (root) and be writable by
+  nobody else; boxd refuses to start otherwise.
 - The socket is `0660` with the group from `--group`; without `--group` only
   root may connect. Someone not in the group is refused by the kernel.
 - boxd checks the host when it starts (runsc with its `gvisor-bin/`, `ip`,

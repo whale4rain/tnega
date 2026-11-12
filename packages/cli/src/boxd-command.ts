@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { Context } from '@tnega/core'
-import { GvisorMachines, groupId, probeGvisorHost, startBoxd, type GvisorMachineConfig } from '@tnega/machine-gvisor'
+import { GvisorMachines, groupId, probeGvisorHost, startBoxd, userId, type GvisorMachineConfig } from '@tnega/machine-gvisor'
 import { CliError } from './commands.js'
 
 /**
@@ -15,15 +15,18 @@ export interface BoxdArgs {
   socket: string
   group?: string
   workspaceRoots: string[]
+  /** Users (names or uids) whose folders boxes may mount and write as. */
+  owners: string[]
   config: GvisorMachineConfig
 }
 
-const PLATFORMS = ['systrap', 'ptrace', 'kvm'] as const
+const PLATFORMS: ReadonlyArray<NonNullable<GvisorMachineConfig['platform']>> = ['systrap', 'ptrace', 'kvm']
 
 export function parseBoxdArgs(args: readonly string[]): BoxdArgs {
   let socket = DEFAULT_BOXD_SOCKET
   let group: string | undefined
   const workspaceRoots: string[] = []
+  const owners: string[] = []
   const config: GvisorMachineConfig = {}
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index]!
@@ -37,6 +40,7 @@ export function parseBoxdArgs(args: readonly string[]): BoxdArgs {
       case '--socket': socket = value(); break
       case '--group': group = value(); break
       case '--workspace-root': workspaceRoots.push(resolve(value())); break
+      case '--owner': owners.push(value()); break
       case '--state-dir': config.stateDir = resolve(value()); break
       case '--templates-dir': config.templatesDir = resolve(value()); break
       case '--runsc-root': config.runscRoot = resolve(value()); break
@@ -54,7 +58,11 @@ export function parseBoxdArgs(args: readonly string[]): BoxdArgs {
   if (!workspaceRoots.length) {
     throw new CliError('tnega boxd needs --workspace-root <dir>: the folder (or folders) whose subfolders boxes may mount, such as the server\'s members folder')
   }
-  return { socket: resolve(socket), ...(group === undefined ? {} : { group }), workspaceRoots, config }
+  if (!owners.length) {
+    throw new CliError('tnega boxd needs --owner <user>: whose folders boxes may mount and write as, such as tnega-server')
+  }
+  if (owners.some(owner => owner === 'root' || owner === '0')) throw new CliError('--owner may not be root: a box never writes as root')
+  return { socket: resolve(socket), ...(group === undefined ? {} : { group }), workspaceRoots, owners, config }
 }
 
 export async function runBoxdCommand(args: readonly string[]): Promise<number> {
@@ -65,9 +73,10 @@ export async function runBoxdCommand(args: readonly string[]): Promise<number> {
     return 1
   }
   const gid = parsed.group === undefined ? undefined : await groupId(parsed.group)
+  const owners = await Promise.all(parsed.owners.map(owner => userId(owner)))
   const scope = new Context()
   const machines = new GvisorMachines(scope, parsed.config)
-  const boxd = await startBoxd({ socket: parsed.socket, machines, workspaceRoots: parsed.workspaceRoots, ...(gid === undefined ? {} : { gid }) })
+  const boxd = await startBoxd({ socket: parsed.socket, machines, workspaceRoots: parsed.workspaceRoots, owners, ...(gid === undefined ? {} : { gid }) })
   process.stderr.write(`tnega boxd: listening on ${boxd.socket}${parsed.group ? ` for group ${parsed.group}` : ' (root only)'}\n`)
   return await new Promise<number>(done => {
     const stop = (): void => {
