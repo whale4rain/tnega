@@ -1,7 +1,7 @@
-import { chmod, chown, mkdir, mkdtemp, rename, rm, stat, symlink } from 'node:fs/promises'
+import { chmod, chown, mkdir, mkdtemp, readdir, rename, rm, stat, symlink } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { MachineError, type BoxSpec, type MachineProvider, type MachineState } from '@tnega/machine'
@@ -9,6 +9,9 @@ import { boxId, groupId, GvisorMachinesClient, machineGvisor, parseBoxSpec, star
 
 /** The uid a box folder belongs to in these tests: ours, or a made-up user when the tests run as root. */
 const OWNER = (process.getuid?.() ?? 0) === 0 ? 4242 : process.getuid?.() ?? 4242
+
+/** Pinning a host folder means bind mounting it, which only root on Linux can do. */
+const CAN_PIN = process.platform === 'linux' && (process.getuid?.() ?? -1) === 0
 
 /** A folder owned by {@link OWNER}. */
 async function ownedFolder(path: string): Promise<string> {
@@ -65,7 +68,14 @@ function fakeMachines() {
 async function serve(options: { workspaceRoots?: string[]; owners?: number[]; gid?: number } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'boxd-'))
   const fake = fakeMachines()
-  const boxd: Boxd = await startBoxd({ socket: join(dir, 'run', 'boxd.sock'), machines: fake.machines, workspaceRoots: options.workspaceRoots ?? [], owners: options.owners ?? [OWNER], ...(options.gid === undefined ? {} : { gid: options.gid }) })
+  const boxd: Boxd = await startBoxd({
+    socket: join(dir, 'run', 'boxd.sock'),
+    machines: fake.machines,
+    workspaceRoots: options.workspaceRoots ?? [],
+    owners: options.owners ?? [OWNER],
+    pinRoot: join(dir, 'pins'),
+    ...(options.gid === undefined ? {} : { gid: options.gid }),
+  })
   const scope = new Context()
   cleanups.push(async () => {
     await scope.fiber.dispose()
@@ -73,7 +83,7 @@ async function serve(options: { workspaceRoots?: string[]; owners?: number[]; gi
     await rm(dir, { recursive: true, force: true })
   })
   const client = new GvisorMachinesClient(scope, { socket: boxd.socket, timeoutMs: 5_000 })
-  return { dir, boxd, client, ...fake }
+  return { dir, boxd, client, pinRoot: join(dir, 'pins'), ...fake }
 }
 
 /** One raw line to boxd, and its answer. */
@@ -124,26 +134,28 @@ describe('boxd', () => {
     expect(calls).toEqual([])
   })
 
-  it('mounts host folders only strictly inside a workspace root, never through a link out of it', async () => {
+  it.skipIf(!CAN_PIN)('mounts host folders only strictly inside a workspace root, never through a link out of it', async () => {
     const outside = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-outside-')))
     const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-root-')))
     cleanups.push(() => rm(outside, { recursive: true, force: true }))
     cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
-    await ownedFolder(join(rootDir, 'mia'))
+    const mia = await ownedFolder(join(rootDir, 'mia'))
+    const checked = (await stat(mia)).ino
     await symlink(outside, join(rootDir, 'escape'))
-    const { client, calls, seen } = await serve({ workspaceRoots: [rootDir] })
+    const { client, calls, seen, pinRoot } = await serve({ workspaceRoots: [rootDir] })
     await expect(client.start('outside', spec({ hostWorkspace: outside }))).rejects.toMatchObject({ code: 'MACHINE_INVALID', message: expect.stringMatching(/not inside the workspace roots/) })
     await expect(client.start('escape', spec({ hostWorkspace: join(rootDir, 'escape') }))).rejects.toMatchObject({ code: 'MACHINE_INVALID' })
     // The root itself would be every member's folders in one box.
     await expect(client.start('root', spec({ hostWorkspace: rootDir }))).rejects.toMatchObject({ code: 'MACHINE_INVALID' })
-    await client.start('mia', spec({ hostWorkspace: join(rootDir, 'mia') }))
+    await client.start('mia', spec({ hostWorkspace: mia }))
     expect(calls).toEqual(['start mia'])
-    // The Provider is handed the open folder, not its name.
-    expect(seen.hostWorkspace).toMatch(new RegExp(`^/proc/${process.pid}/fd/\\d+$`, 'u'))
+    // The Provider is handed a pin under boxd's root, and it is the folder that was checked.
+    expect(seen.hostWorkspace?.startsWith(`${pinRoot}${sep}`)).toBe(true)
+    expect(seen.ino).toBe(checked)
     expect(seen.uid).toBe(OWNER)
   })
 
-  it('mounts the folder it checked even when the path is swapped for a link to /etc during the start', async () => {
+  it.skipIf(!CAN_PIN)('mounts the folder it checked even when the path is swapped for a link to /etc during the start', async () => {
     const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-race-')))
     cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
     const folder = await ownedFolder(join(rootDir, 'x'))
@@ -159,6 +171,31 @@ describe('boxd', () => {
     expect(seen.uid).toBe(OWNER)
   })
 
+  it.skipIf(!CAN_PIN)('keeps the pin while the box lives and releases it on stop', async () => {
+    const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-pin-')))
+    cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
+    const folder = await ownedFolder(join(rootDir, 'pin'))
+    const { client, seen, pinRoot } = await serve({ workspaceRoots: [rootDir] })
+    const { ref } = await client.start('pin', spec({ hostWorkspace: folder }))
+    const pin = seen.hostWorkspace!
+    expect((await stat(pin)).ino).toBe((await stat(folder)).ino)
+    await client.stop(ref)
+    expect(await stat(pin).then(() => true, () => false)).toBe(false)
+    expect((await readdir(pinRoot)).length).toBe(0)
+  })
+
+  it('refuses a pin root that overlaps a workspace root', async () => {
+    const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-overlap-')))
+    cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
+    await expect(startBoxd({
+      socket: join(rootDir, 'x.sock'),
+      machines: fakeMachines().machines,
+      workspaceRoots: [rootDir],
+      owners: [OWNER],
+      pinRoot: join(rootDir, 'pins'),
+    })).rejects.toThrow(/may not overlap/)
+  })
+
   it('refuses a folder of an owner boxd was not told about, and a root-owned one', async () => {
     const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-owner-')))
     cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
@@ -169,14 +206,16 @@ describe('boxd', () => {
       await mkdir(join(rootDir, 'roots'))
       await expect(client.start('r', spec({ hostWorkspace: join(rootDir, 'roots') }))).rejects.toMatchObject({ message: expect.stringMatching(/belongs to root/) })
     }
-    await expect(startBoxd({ socket: join(rootDir, 'x.sock'), machines: fakeMachines().machines, workspaceRoots: [rootDir], owners: [0] })).rejects.toThrow(/root/)
+    const otherPinRoot = await mkdtemp(join(tmpdir(), 'boxd-pinroot-'))
+    cleanups.push(() => rm(otherPinRoot, { recursive: true, force: true }))
+    await expect(startBoxd({ socket: join(rootDir, 'x.sock'), machines: fakeMachines().machines, workspaceRoots: [rootDir], owners: [0], pinRoot: join(otherPinRoot, 'pins') })).rejects.toThrow(/root/)
   })
 
   it.skipIf(process.platform === 'win32')('refuses a socket folder that others can write to', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'boxd-open-'))
     cleanups.push(() => rm(dir, { recursive: true, force: true }))
     await chmod(dir, 0o777)
-    await expect(startBoxd({ socket: join(dir, 'boxd.sock'), machines: fakeMachines().machines, workspaceRoots: [], owners: [OWNER] })).rejects.toThrow(/writable by others/)
+    await expect(startBoxd({ socket: join(dir, 'boxd.sock'), machines: fakeMachines().machines, workspaceRoots: [], owners: [OWNER], pinRoot: join(dir, 'pins') })).rejects.toThrow(/writable by others/)
   })
 
   it('refuses every host folder when no workspace root was given', async () => {
@@ -206,8 +245,8 @@ describe('boxd', () => {
   })
 
   it('refuses to start beside a live boxd on the same socket', async () => {
-    const { boxd, machines } = await serve()
-    await expect(startBoxd({ socket: boxd.socket, machines, workspaceRoots: [], owners: [OWNER] })).rejects.toThrow(/another boxd/)
+    const { boxd, machines, dir } = await serve()
+    await expect(startBoxd({ socket: boxd.socket, machines, workspaceRoots: [], owners: [OWNER], pinRoot: join(dir, 'second-pins') })).rejects.toThrow(/another boxd/)
   })
 
   it('mounts the client when the plugin is given a socket', async () => {

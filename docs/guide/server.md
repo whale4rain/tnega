@@ -205,8 +205,13 @@ TNEGA_BOXD_SOCKET=/run/tnega/boxd.sock
   user under a root is writable by the server through a box. Keep both narrow:
   usually the members folder and `tnega-server`. Root is never allowed.
 - boxd opens the folder once, checks what it opened (a real folder, not a
-  link, below a root, an allowed owner) and mounts that open folder, so a
-  link swapped in after the check is not followed.
+  link, below a root, an allowed owner) and bind mounts that open folder to a
+  fresh folder under `/run/tnega/pins` (`--pin-root` to change; root-only, and
+  never inside a workspace root), so a link swapped in after the check is not
+  followed and runsc gets an ordinary folder to mount. The pin lives while the
+  box lives, because a checkpoint restore needs the same path; `stop` releases
+  it. A new boxd clears pins left by a previous one, so a box paused across a
+  boxd restart starts cold instead of restoring its checkpoint.
 - The socket's folder must belong to boxd's user (root) and be writable by
   nobody else; boxd refuses to start otherwise.
 - The socket is `0660` with the group from `--group`; without `--group` only
