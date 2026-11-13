@@ -1,7 +1,9 @@
+import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { chmod, chown, lstat, mkdir, open, readFile, readlink, realpath, rm } from 'node:fs/promises'
+import { chmod, chown, lstat, mkdir, open, readFile, readlink, readdir, realpath, rm } from 'node:fs/promises'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@tnega/core'
 import {
   BOX_ISOLATION_LEVELS,
@@ -37,8 +39,9 @@ import {
  * boxd trusts nothing the server sends: keys and refs are checked, the spec is
  * parsed field by field and validated again, and a host folder must lie
  * strictly below a workspace root the operator named and belong to an owner
- * the operator allowed (never root). The folder is opened once and mounted
- * through that open handle, so a link swapped in after the check is not followed.
+ * the operator allowed (never root). The folder is opened once and bind
+ * mounted from that open handle to a root-only pin folder, so a link swapped
+ * in after the check is not followed and runsc still sees an ordinary folder.
  */
 
 export type BoxdMethod = 'start' | 'pause' | 'stop' | 'status'
@@ -189,36 +192,121 @@ export interface WorkspacePolicy {
   owners: readonly number[]
 }
 
-/** A host folder boxd checked and holds open, so the mount sees the very folder that was checked. */
+/**
+ * A host folder boxd checked and bind mounted under its pin root, so the box
+ * sees the very folder that was checked.
+ */
 export interface PinnedFolder {
-  /** `/proc/<boxd pid>/fd/<n>`: names the open folder, whatever happens to its path. */
+  /** A folder under the pin root that is a bind mount of the checked folder. */
   path: string
   uid: number
   close(): Promise<void>
 }
 
+/** Where boxd mounts the folders it pinned; root-only, never inside a workspace root. */
+export const DEFAULT_PIN_ROOT = '/run/tnega/pins'
+
+/**
+ * Run `mount` (or `umount`) and turn a failure into an answer the server can
+ * show. `invalid` on the caller's side keeps MACHINE_INVALID for bad input;
+ * this is the host refusing to do its part, so it is SANDBOX_UNAVAILABLE.
+ */
+function hostMount(args: string[], what: string): Promise<void> {
+  return new Promise<void>((done, fail) => {
+    execFile(args[0]!, args.slice(1), { timeout: 10_000 }, (error, _stdout, stderr) => {
+      if (error) {
+        const detail = String(stderr).trim().split('\n')[0]?.slice(0, 200) || error.message
+        fail(new MachineError(`boxd could not ${what}: ${detail}`, 'SANDBOX_UNAVAILABLE'))
+        return
+      }
+      done()
+    })
+  })
+}
+
+/**
+ * Make sure the pin root is boxd's own folder: real, owned by boxd's uid and
+ * closed to everybody else, so a server or a member cannot plant or replace a
+ * pin. Also turns the folder into a private mount point, so a bind mount here
+ * does not spread to other mount namespaces.
+ */
+async function assertPinRoot(pinRoot: string): Promise<void> {
+  await mkdir(pinRoot, { recursive: true, mode: 0o700 })
+  const entry = await lstat(pinRoot)
+  const me = process.getuid?.() ?? 0
+  if (!entry.isDirectory()) throw new Error(`${pinRoot} is not a folder; boxd keeps its pinned folders in a folder of its own`)
+  if (entry.uid !== me) throw new Error(`${pinRoot} belongs to uid ${entry.uid}; boxd needs it to be its own (uid ${me})`)
+  if ((entry.mode & 0o077) !== 0) throw new Error(`${pinRoot} is reachable by others; make it 0700`)
+  await hostMount(['mount', '--make-rprivate', pinRoot], `make ${pinRoot} a private mount point`).catch(() => {
+    // Private propagation is defence in depth, not a condition for pinning.
+  })
+}
+
+/** The real path of `path`, or of its nearest existing ancestor plus the rest: pins may not exist yet. */
+async function realTarget(path: string): Promise<string> {
+  const real = await realpath(path).catch(() => undefined)
+  if (real !== undefined) return real
+  const parent = dirname(path)
+  if (parent === path) return path
+  return join(await realTarget(parent), path.slice(parent.length + 1))
+}
+
+/** Unmount and remove pins a previous boxd left behind; no box from it can restore them anyway. */
+async function clearStalePins(pinRoot: string): Promise<void> {
+  for (const entry of await readdir(pinRoot).catch(() => [] as string[])) {
+    const path = join(pinRoot, entry)
+    await hostMount(['umount', '-R', path], `unmount stale pin ${path}`).catch(() => undefined)
+    await rm(path, { recursive: true, force: true })
+  }
+}
+
 /**
  * Open a host folder once and check what was opened: a folder, not a link,
  * strictly below a workspace root, and owned by an allowed, non-root uid.
- * The caller mounts {@link PinnedFolder.path}, which keeps naming that same
- * folder even if the path is swapped for a link afterwards (issue #91 review:
- * the server owns the members folder and could otherwise race the check).
+ * Then bind mount it from the open handle to a fresh folder under the pin
+ * root, and hand back that folder. runsc cannot bind `/proc/<pid>/fd/<n>`
+ * (`mount` rejects the source), but mounting it here keeps the same promise:
+ * {@link PinnedFolder.path} names the folder that was checked even if its own
+ * path is swapped for a link afterwards (issue #91 review: the server owns the
+ * members folder and could otherwise race the check).
  */
-export async function pinHostWorkspace(path: string, policy: WorkspacePolicy): Promise<PinnedFolder> {
+export async function pinHostWorkspace(path: string, policy: WorkspacePolicy, pinRoot = DEFAULT_PIN_ROOT): Promise<PinnedFolder> {
   if (!policy.roots.length) invalid('this box host mounts no host folders: start boxd with --workspace-root')
   if (!policy.owners.length) invalid('this box host mounts no host folders: start boxd with --owner')
   if (!isAbsolute(path)) invalid('hostWorkspace must be an absolute path')
   // O_NOFOLLOW: the folder itself may not be a link; the real path below is read from the open folder.
   const handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
     .catch(() => invalid(`host folder ${path} does not exist, is not a folder, or is a link`))
+  let pin: string | undefined
   try {
-    const real = await readlink(`/proc/self/fd/${handle.fd}`).catch(() => invalid('boxd needs /proc to pin a host folder'))
-    if (!policy.roots.some(root => isBelow(root, real))) invalid(`host folder ${path} is not inside the workspace roots this box host allows`)
     const entry = await handle.stat()
     if (!entry.isDirectory()) invalid(`host folder ${path} is not a folder`)
     if (entry.uid === 0) invalid(`host folder ${path} belongs to root; a box may not write as root`)
     if (!policy.owners.includes(entry.uid)) invalid(`host folder ${path} belongs to uid ${entry.uid}, which this box host does not let boxes write as`)
-    return { path: `/proc/${process.pid}/fd/${handle.fd}`, uid: entry.uid, close: () => handle.close() }
+    const real = await readlink(`/proc/self/fd/${handle.fd}`).catch(() => invalid('boxd needs /proc to pin a host folder'))
+    if (!policy.roots.some(root => isBelow(root, real))) invalid(`host folder ${path} is not inside the workspace roots this box host allows`)
+    // The mount source is the open handle, so the mount cannot be raced onto another folder.
+    pin = join(pinRoot, randomUUID())
+    await mkdir(pin, { mode: 0o700 })
+    try {
+      await hostMount(['mount', '--bind', `/proc/${process.pid}/fd/${handle.fd}`, pin], `pin host folder ${path}`)
+    } catch (error) {
+      await rm(pin, { recursive: true, force: true })
+      throw error
+    }
+    const pinned = pin
+    return {
+      path: pinned,
+      uid: entry.uid,
+      close: async () => {
+        try {
+          await hostMount(['umount', '-R', pinned], `unmount pin ${pinned}`)
+        } finally {
+          await rm(pinned, { recursive: true, force: true })
+          await handle.close()
+        }
+      },
+    }
   } catch (error) {
     await handle.close()
     throw error
@@ -236,6 +324,8 @@ export interface BoxdOptions {
   owners: readonly number[]
   /** The group allowed to connect (socket mode 0660, this gid). Without it only root may connect. */
   gid?: number
+  /** Where host folders are pinned by bind mount. Default {@link DEFAULT_PIN_ROOT}. */
+  pinRoot?: string
 }
 
 export interface Boxd {
@@ -252,7 +342,7 @@ function errorAnswer(error: unknown): Answer {
   return { error: { code: 'MACHINE_FAILED', message: error instanceof Error ? error.message : String(error) } }
 }
 
-async function answer(options: BoxdOptions, policy: WorkspacePolicy, method: unknown, params: unknown): Promise<Answer> {
+async function answer(options: BoxdOptions, policy: WorkspacePolicy, pins: Map<string, PinnedFolder>, pinRoot: string, method: unknown, params: unknown): Promise<Answer> {
   try {
     const fields = isRecord(params) ? params : invalid('params must be an object')
     switch (method) {
@@ -260,23 +350,46 @@ async function answer(options: BoxdOptions, policy: WorkspacePolicy, method: unk
         const key = assertBoxKey(fields.key)
         const spec = parseBoxSpec(fields.spec)
         if (spec.hostWorkspace === undefined) return { result: { ref: (await options.machines.start(key, spec)).ref } }
-        // The box gets the folder that was checked, held open until it is mounted, never the name again.
-        const pinned = await pinHostWorkspace(spec.hostWorkspace, policy)
+        // The box gets the folder that was checked, pinned under boxd's root, never the name again.
+        const pinned = await pinHostWorkspace(spec.hostWorkspace, policy, pinRoot)
+        let ref: MachineRef
         try {
-          const ref: MachineRef = await options.machines.start(key, { ...spec, hostWorkspace: pinned.path })
-          return { result: { ref: ref.ref } }
-        } finally {
+          ref = await options.machines.start(key, { ...spec, hostWorkspace: pinned.path })
+        } catch (error) {
           await pinned.close()
+          throw error
         }
+        // Keep the pin while the box lives: a checkpoint restores its mounts by this path.
+        const previous = pins.get(ref.ref)
+        pins.set(ref.ref, pinned)
+        if (previous) await previous.close()
+        return { result: { ref: ref.ref } }
       }
       case 'pause':
         await options.machines.pause(assertBoxRef(fields.ref))
         return { result: {} }
-      case 'stop':
-        await options.machines.stop(assertBoxRef(fields.ref))
+      case 'stop': {
+        const ref = assertBoxRef(fields.ref)
+        await options.machines.stop(ref)
+        const pinned = pins.get(ref)
+        if (pinned) {
+          pins.delete(ref)
+          await pinned.close()
+        }
         return { result: {} }
-      case 'status':
-        return { result: { state: await options.machines.status(assertBoxRef(fields.ref)) } }
+      }
+      case 'status': {
+        const ref = assertBoxRef(fields.ref)
+        const state = await options.machines.status(ref)
+        if (state === 'missing') {
+          const pinned = pins.get(ref)
+          if (pinned) {
+            pins.delete(ref)
+            await pinned.close()
+          }
+        }
+        return { result: { state } }
+      }
       default:
         return invalid(`unknown method; boxd answers ${BOXD_METHODS.join(', ')}`)
     }
@@ -340,8 +453,17 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
     }))),
     owners: options.owners,
   }
+  const pinRoot = await realTarget(resolve(options.pinRoot ?? DEFAULT_PIN_ROOT))
+  for (const root of policy.roots) {
+    if (root === pinRoot || isBelow(pinRoot, root) || isBelow(root, pinRoot)) {
+      throw new Error(`the pin root ${pinRoot} may not overlap workspace root ${root}`)
+    }
+  }
+  const pins = new Map<string, PinnedFolder>()
   await assertSocketFolder(dirname(socketPath))
   await removeStaleSocket(socketPath)
+  await assertPinRoot(pinRoot)
+  await clearStalePins(pinRoot)
   const connections = new Set<Socket>()
   const server: Server = createServer(socket => {
     connections.add(socket)
@@ -352,7 +474,7 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
       try { request = JSON.parse(line) } catch { request = undefined }
       const id = isRecord(request) && (typeof request.id === 'number' || typeof request.id === 'string') ? request.id : null
       const pending = isRecord(request)
-        ? answer(options, policy, request.method, request.params)
+        ? answer(options, policy, pins, pinRoot, request.method, request.params)
         : Promise.resolve(errorAnswer(new MachineError('a request is one JSON object per line', 'MACHINE_INVALID')))
       void pending.then(reply => {
         if (!socket.destroyed) socket.write(`${JSON.stringify({ id, ...reply })}\n`)
@@ -382,6 +504,8 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
       for (const socket of connections) socket.destroy()
       await new Promise<void>(done => server.close(() => done()))
       await rm(socketPath, { force: true })
+      for (const pinned of pins.values()) await pinned.close().catch(() => undefined)
+      pins.clear()
     },
   }
 }

@@ -24,6 +24,7 @@ export {
   assertBoxRef,
   BOX_REF,
   BOXD_METHODS,
+  DEFAULT_PIN_ROOT,
   groupId,
   GvisorMachinesClient,
   MAX_KEY_LENGTH,
