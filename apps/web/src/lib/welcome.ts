@@ -1,4 +1,4 @@
-import type { AgentType } from './types'
+import type { AgentType, SessionSummary } from './types'
 
 export interface WelcomeGreeting {
   /** The hello, by the time of day: "Good afternoon." */
@@ -35,4 +35,9 @@ export function eyeOffset(dx: number, dy: number, range = 320): { x: number; y: 
   if (distance < 1) return { x: 0, y: 0 }
   const reach = EYE_REACH * Math.min(1, distance / range)
   return { x: (dx / distance) * reach, y: (dy / distance) * reach * 0.7 }
+}
+
+/** The sessions a new session offers to pick up: the three most recently updated. */
+export function recentSessions(sessions: readonly SessionSummary[], count = 3): SessionSummary[] {
+  return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, count)
 }

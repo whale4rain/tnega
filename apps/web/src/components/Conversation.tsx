@@ -24,7 +24,7 @@ import { sessionLink } from '@tnega/client/session-link'
 import { ComputerHint } from './ComputerHint'
 
 import { MxcHint } from './MxcHint'
-import { WelcomeHero, WelcomeStarters } from './Welcome'
+import { WelcomeHero, WelcomeRecent, WelcomeStarters } from './Welcome'
 import { copyToClipboard, errorText, folderName, useScrollPinning, useStableCallback } from '../lib/hooks'
 import { inTitleBar } from '../lib/desktop-chrome'
 import { confirmDialog } from '../lib/dialogs'
@@ -89,6 +89,8 @@ export function Conversation({
   onSessionCreated,
   onSessionsChanged,
   onSessionDeleted,
+  recentSessions = NO_SESSIONS,
+  onOpenSession,
   onOpenSettings,
   onConfigSaved,
   onOpenSubagent,
@@ -112,6 +114,9 @@ export function Conversation({
   onSessionCreated: (summary: SessionSummary) => void
   onSessionsChanged: () => void
   onSessionDeleted: (id: string) => void
+  /** This workspace's sessions, for "Pick up where you left off" on a new session. */
+  recentSessions?: readonly SessionSummary[]
+  onOpenSession?: (id: string) => void
   onOpenSettings: () => void
   onConfigSaved?: (config: ConfigSnapshot) => void
   onOpenSubagent: (id: string, label: string) => void
@@ -1132,6 +1137,7 @@ export function Conversation({
             resetKey={`${workspace}:${sessionId ?? 'draft'}`}
           />
           {empty && <WelcomeStarters agentType={settings.agentType} onPick={prompt => void send(prompt)} disabled={Boolean(disabledReason)} />}
+          {empty && !sessionId && onOpenSession && <WelcomeRecent sessions={recentSessions} onOpen={onOpenSession} />}
         </div>
       </div>
     </main>
@@ -1139,6 +1145,7 @@ export function Conversation({
 }
 
 const NO_MODELS: ConfigSnapshot['models'] = []
+const NO_SESSIONS: readonly SessionSummary[] = []
 
 /** The newest page of the sessions viewed last, so switching back to one shows it at once. */
 const recentDetails = new Map<string, SessionDetail>()

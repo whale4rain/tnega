@@ -225,6 +225,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
   - **活的云**（`WelcomeCloud`）：64px 的品牌云（与 `--brand-cloud` / `--brand-eyes` 同一画法，眼睛镂空），缓慢浮动，下方柔和投影随之伸缩；和所有头像一样偶尔眨眼（`av-blink`）；眼睛跟着指针看（最多偏 3 个单位，不出云）。这是空闲的生气，不是天气：欢迎页不画天气。背后一团很淡的 `--accent-soft` 径向光，不是色块。`prefers-reduced-motion` 下不动。首次打开的欢迎页（没有工作区时）用同一朵云。
   - **一句问候**：`--font-display`、`--text-3xl`、400 字重，两段：按时间的问好用 `--text`，按 Agent 类型的问句用 `--text-3`（coding “What are we building?”，work “What can I take off your plate?”，general “What’s on your mind?”；`lib/welcome.ts`）。不再写“Working in … as …”——工作区已在标题栏。
   - 输入框，下面一排居中的**描边 `.chip`**（图标 + 标题，`--control` 高），完整提示词只在 `title` 里；点一下就发出。
+  - **Pick up where you left off**：这个文件夹里最近更新的 3 个会话（`WelcomeRecent`），起手式下方。不套卡片：一行 `--text-3` `--text-sm` 小标签，下面是普通行（`History` 图标 · 标题 `--text-2` · 右侧 `--text-3` 相对时间），悬停 `--surface-hover`，点开该会话。没有会话就整段不显示；窗口矮（≤640px）时也不显示。
   - 各部分依次淡入（每段晚 70ms）。提示条留在顶部，不跟着问候下沉。
 
 ### 5.2 输入区与图片
