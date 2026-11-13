@@ -490,6 +490,9 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/machine-gvisor':
+        specifier: workspace:*
+        version: link:../machine/machine-gvisor
       '@tnega/plugin-host':
         specifier: workspace:*
         version: link:../plugin-host
@@ -2083,6 +2086,9 @@ importers:
       '@tnega/secrets-pg':
         specifier: workspace:*
         version: link:../secrets/secrets-pg
+      '@tnega/server-admin':
+        specifier: workspace:*
+        version: link:../server-admin
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
@@ -2302,6 +2308,40 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+
+  packages/server-admin:
+    dependencies:
+      '@tnega/accounts':
+        specifier: workspace:*
+        version: link:../accounts/accounts
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tnega/daemons':
+        specifier: workspace:*
+        version: link:../daemon/daemons
+      '@tnega/machine-pool':
+        specifier: workspace:*
+        version: link:../machine/machine-pool
+      '@tnega/web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@tnega/accounts-pg':
+        specifier: workspace:*
+        version: link:../accounts/accounts-pg
+      '@tnega/accounts-routes':
+        specifier: workspace:*
+        version: link:../accounts/accounts-routes
+      '@tnega/daemon-protocol':
+        specifier: workspace:*
+        version: link:../daemon/protocol
+      '@tnega/machine':
+        specifier: workspace:*
+        version: link:../machine/machine
 
   packages/session:
     dependencies:

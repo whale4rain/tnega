@@ -18,6 +18,7 @@
     "@tnega/home": "workspace:*",
     "@tnega/host": "workspace:*",
     "@tnega/llm": "workspace:*",
+    "@tnega/machine-gvisor": "workspace:*",
     "@tnega/plugin-host": "workspace:*",
     "@tnega/process-local": "workspace:*",
     "@tnega/profile": "workspace:*",

@@ -22,6 +22,7 @@ import type {
   QuestionAnswerItem,
   SecretInfo,
   AccountInfo,
+  AdminOverview,
   AccountRole,
   AuthSession,
   InviteCode,
@@ -308,6 +309,11 @@ export function createClient(options: ClientOptions = {}) {
     invitePerson: (role: AccountRole) => call<InviteCode>('/api/auth/codes', { method: 'POST', body: { purpose: 'invite', role } }),
     updatePerson: (id: string, patch: { role?: AccountRole; disabled?: boolean }) =>
       call<{ user: AccountInfo }>(`/api/auth/users?${new URLSearchParams({ id }).toString()}`, { method: 'PATCH', body: patch }),
+    adminOverview: (signal?: AbortSignal) => call<AdminOverview>('/api/admin/overview', { signal }),
+    pauseBox: (id: string) => call<{ id: string }>(`/api/admin/boxes/pause?${new URLSearchParams({ id }).toString()}`, { method: 'POST' }),
+    stopBox: (id: string) => call<{ id: string }>(`/api/admin/boxes/stop?${new URLSearchParams({ id }).toString()}`, { method: 'POST' }),
+    revokeDevice: (accountId: string, id: string) =>
+      call<{ revoked: string }>(`/api/admin/devices?${new URLSearchParams({ account: accountId, id }).toString()}`, { method: 'DELETE' }),
     secrets: (workspace: string, sessionId?: string, signal?: AbortSignal) =>
       call<{ secrets: SecretInfo[] }>(scoped('/api/secrets', workspace, sessionId ? { session: sessionId } : {}), { signal }),
     removeSecret: (workspace: string, name: string, sessionId?: string) =>

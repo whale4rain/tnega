@@ -4,8 +4,9 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api, ApiError } from '../lib/api'
 import { AccountContext } from '../lib/account'
-import type { AccountInfo, AuthSession, ConfigSnapshot } from '../lib/types'
+import type { AccountInfo, AdminOverview, AuthSession, ConfigSnapshot } from '../lib/types'
 import { AccountSettings } from './AccountSettings'
+import { People, ServerAdmin } from './ServerAdmin'
 import { AuthGate } from './AuthGate'
 import { SettingsDialog } from './SettingsDialog'
 
@@ -63,7 +64,7 @@ it('lets an owner invite someone and disable a person', async () => {
   vi.spyOn(api, 'people').mockResolvedValue({ users: [owner.account, person('mia', 'member')] })
   const invite = vi.spyOn(api, 'invitePerson').mockResolvedValue({ code: 'ABCDE-FGHJK', expiresAt: '2026-11-13T00:00:00Z', role: 'admin' })
   const update = vi.spyOn(api, 'updatePerson').mockResolvedValue({ user: person('mia', 'member', { disabled: true }) })
-  const view = render(createElement(AccountSettings, { session: owner, onSignedOut: vi.fn() }))
+  const view = render(createElement(People, { me: owner.account }))
   expect(await view.findByText('mia')).toBeTruthy()
   // Nobody changes their own role or switches themselves off here.
   expect(view.queryByRole('button', { name: 'Disable Ocean' })).toBeNull()
@@ -103,6 +104,72 @@ it('shows a member only the settings that are theirs', () => {
   expect(tabs).not.toContain('Models')
   expect(tabs).not.toContain('Tools & shell')
   expect(view.queryByRole('button', { name: 'Save changes' })).toBeNull()
+})
+
+it('puts Account first and Server right after it for an owner, and opens on Account', () => {
+  const config: ConfigSnapshot = { apiKeySet: false, effective: { model: 'm', modelId: 'm', baseUrl: 'http://localhost' }, config: { path: '/c.json', apiKeySet: false }, env: { apiKeySet: false }, models: [] }
+  vi.spyOn(api, 'adminOverview').mockResolvedValue({ people: [], devices: [] })
+  vi.spyOn(api, 'people').mockResolvedValue({ users: [] })
+  const view = render(createElement(AccountContext.Provider, { value: owner }, createElement(SettingsDialog, { config, onClose: vi.fn(), onSaved: vi.fn() })))
+  const tabs = view.getAllByRole('tab').map(tab => tab.textContent)
+  expect(tabs.slice(0, 3)).toEqual(['Account', 'Server', 'Models'])
+  expect(view.getByRole('tab', { name: 'Account' }).getAttribute('aria-selected')).toBe('true')
+})
+
+it('keeps Server away from members', () => {
+  const config: ConfigSnapshot = { apiKeySet: false, effective: { model: 'm', modelId: 'm', baseUrl: 'http://localhost' }, config: { path: '/c.json', apiKeySet: false }, env: { apiKeySet: false }, models: [] }
+  const view = render(createElement(AccountContext.Provider, { value: member }, createElement(SettingsDialog, { config, onClose: vi.fn(), onSaved: vi.fn() })))
+  expect(view.getAllByRole('tab').map(tab => tab.textContent)).not.toContain('Server')
+})
+
+it('shows devices and boxes on the Server page, and signs out a device and stops a box', async () => {
+  const mia = person('mia', 'member')
+  const overview: AdminOverview = {
+    people: [owner.account, mia],
+    devices: [
+      { id: 'd1', accountId: 'id-mia', kind: 'daemon', name: 'mia-laptop', connected: true, box: false },
+      { id: 'd2', accountId: 'id-ocean', kind: 'client', name: 'Chrome on macOS', lastSeen: new Date().toISOString(), connected: false, box: false },
+      { id: 'd3', accountId: 'id-mia', kind: 'daemon', name: 'box', connected: true, box: true },
+    ],
+    boxes: { provider: 'gvisor', maxRunning: 3, list: [{ id: 'b1', accountId: 'id-mia', workspace: '/srv/members/mia', provider: 'gvisor', state: 'running', lastUsed: new Date().toISOString(), connected: true }] },
+  }
+  const load = vi.spyOn(api, 'adminOverview').mockResolvedValue(overview)
+  vi.spyOn(api, 'people').mockResolvedValue({ users: [owner.account, mia] })
+  const revoke = vi.spyOn(api, 'revokeDevice').mockResolvedValue({ revoked: 'd1' })
+  const pause = vi.spyOn(api, 'pauseBox').mockResolvedValue({ id: 'b1' })
+  const stop = vi.spyOn(api, 'stopBox').mockResolvedValue({ id: 'b1' })
+  const view = render(createElement(ServerAdmin, { me: owner.account }))
+  expect(await view.findByText('mia-laptop')).toBeTruthy()
+  expect(view.getByText('1 of 3 running · gvisor')).toBeTruthy()
+  // A box's own daemon is listed with the box, not as a device.
+  expect(view.queryByText('box')).toBeNull()
+  expect(view.getByText('Connected')).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: 'Sign out mia-laptop of Mia' }))
+  await waitFor(() => expect(revoke).toHaveBeenCalledWith('id-mia', 'd1'))
+  fireEvent.click(await view.findByRole('button', { name: "Pause Mia's box" }))
+  await waitFor(() => expect(pause).toHaveBeenCalledWith('b1'))
+  fireEvent.click(await view.findByRole('button', { name: "Stop Mia's box" }))
+  await waitFor(() => expect(stop).toHaveBeenCalledWith('b1'))
+  expect(load.mock.calls.length).toBeGreaterThanOrEqual(4)
+})
+
+it('lets an admin sign out only members\' devices', async () => {
+  const ada = person('ada', 'admin')
+  vi.spyOn(api, 'adminOverview').mockResolvedValue({
+    people: [owner.account, ada, person('mia', 'member')],
+    devices: [
+      { id: 'd1', accountId: 'id-mia', kind: 'client', name: 'mia-phone', connected: false, box: false },
+      { id: 'd2', accountId: 'id-ocean', kind: 'client', name: 'ocean-laptop', connected: false, box: false },
+    ],
+  })
+  vi.spyOn(api, 'people').mockResolvedValue({ users: [] })
+  const view = render(createElement(ServerAdmin, { me: ada }))
+  expect(await view.findByText('ocean-laptop')).toBeTruthy()
+  expect(view.getByRole('button', { name: 'Sign out mia-phone of Mia' })).toBeTruthy()
+  expect(view.queryByRole('button', { name: 'Sign out ocean-laptop of Ocean' })).toBeNull()
+  // A server without boxes says so and lists none.
+  expect(view.getByText('Off')).toBeTruthy()
+  expect(view.queryByRole('heading', { name: 'Boxes' })).toBeNull()
 })
 
 it('keeps the Account section off a local host', () => {

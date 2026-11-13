@@ -1,4 +1,4 @@
-import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, ShieldCheck, SquareTerminal, Sun, UserRound } from 'lucide-react'
+import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, Server, ShieldCheck, SquareTerminal, Sun, UserRound } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
@@ -10,6 +10,7 @@ import { ContextInsights } from './context/ContextInsights'
 import { WorkspacePrompt } from './WorkspacePrompt'
 import { SecretsSettings } from './SecretsSettings'
 import { AccountSettings } from './AccountSettings'
+import { ServerAdmin } from './ServerAdmin'
 import { ChoiceField } from './ChoiceField'
 import { runsServer, useAccount } from '../lib/account'
 import type { AuthSession } from '../lib/types'
@@ -22,9 +23,12 @@ import type { DesktopUpdates } from '../lib/desktop-updates'
  * entry in `SECTIONS` plus its panel below. Form fields are saved together
  * with "Save changes"; appearance and updates apply immediately.
  */
-type SectionId = 'model' | 'usage' | 'instructions' | 'secrets' | 'approvals' | 'tools' | 'appearance' | 'account' | 'about'
+type SectionId = 'account' | 'server' | 'model' | 'usage' | 'instructions' | 'secrets' | 'approvals' | 'tools' | 'appearance' | 'about'
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: string; icon: typeof Cpu }> = [
+  // On a server, who you are comes first; the server's own page right after it.
+  { id: 'account', label: 'Account', description: 'Who is signed in to this server, and your password.', icon: UserRound },
+  { id: 'server', label: 'Server', description: 'Look after this server: the people who can sign in, their devices, and the boxes their agents work in.', icon: Server },
   { id: 'model', label: 'Models', description: 'Chat models that run sessions, projects and threads. Register several, choose the default, and switch per session from the composer. Approval reviewers such as TypeSafe Jev are not chat models; set them under Approvals.', icon: Cpu },
   { id: 'usage', label: 'Context insights', description: 'How the sessions in this workspace spend their context: tokens, cost, time and what each prompt held. Set prices on each model under Models to see cost.', icon: ChartColumn },
   { id: 'instructions', label: 'Instructions', description: 'Your instructions for every session in the open workspace.', icon: SquareTerminal },
@@ -32,7 +36,6 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; description: strin
   { id: 'approvals', label: 'Approvals', description: 'Who reviews actions that need permission.', icon: ShieldCheck },
   { id: 'tools', label: 'Tools & shell', description: 'How the agent runs commands and calls its tools.', icon: SquareTerminal },
   { id: 'appearance', label: 'Appearance', description: 'Colours and how much information fits on screen, on this device. Changes apply right away.', icon: Palette },
-  { id: 'account', label: 'Account', description: 'Who is signed in to this server, your password, and the people who can sign in.', icon: UserRound },
   { id: 'about', label: 'About & updates', description: 'Version, updates and where settings are stored.', icon: Info },
 ]
 
@@ -41,9 +44,13 @@ const SECTION_IDS = SECTIONS.map(section => section.id)
 /** Server settings only owners and admins change; a member sees the rest. */
 const HOST_SECTIONS: ReadonlySet<SectionId> = new Set(['model', 'approvals', 'tools'])
 
-/** The sections this person sees: Account only on a server, host settings only for those who run it. */
+/** The sections this person sees: Account only on a server, Server and host settings only for those who run it. */
 function visibleSections(session: AuthSession | undefined) {
-  return SECTIONS.filter(entry => entry.id === 'account' ? session !== undefined : runsServer(session) || !HOST_SECTIONS.has(entry.id))
+  return SECTIONS.filter(entry => {
+    if (entry.id === 'account') return session !== undefined
+    if (entry.id === 'server') return session !== undefined && runsServer(session)
+    return runsServer(session) || !HOST_SECTIONS.has(entry.id)
+  })
 }
 
 export function SettingsDialog({
@@ -77,7 +84,7 @@ export function SettingsDialog({
   const stored = config?.config
   const session = useAccount()
   const sections = visibleSections(session)
-  const [storedSection, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'model', SECTION_IDS)
+  const [storedSection, setSection] = useStoredState<SectionId>('tnega.settingsSection', 'account', SECTION_IDS)
   // A section this person cannot see (a member, a local host) falls back to the first they can.
   const section = sections.some(entry => entry.id === storedSection) ? storedSection : sections[0]!.id
   const hostSettings = runsServer(session)
@@ -360,6 +367,7 @@ export function SettingsDialog({
           {panel('instructions', section === 'instructions' ? <WorkspacePrompt key={workspace} workspace={workspace} /> : null)}
           {panel('secrets', section === 'secrets' ? <SecretsSettings workspace={workspace} sessionId={sessionId} /> : null)}
           {session && panel('account', section === 'account' ? <AccountSettings session={session} onSignedOut={() => location.assign('/')} /> : null)}
+          {session && runsServer(session) && panel('server', section === 'server' ? <ServerAdmin me={session.account} /> : null)}
           {hostSettings && panel('approvals', <div className="form-grid">
             <label className="field">
               <span className="field-label">Approval reviewer</span>

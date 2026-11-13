@@ -19,6 +19,7 @@ const COMMANDS: readonly Row[] = [
   ['tnega run "<prompt>"', 'run one prompt and print the answer'],
   ['tnega daemon [options]', 'serve this machine\'s files and commands to a server'],
   ['tnega server <command>', 'run or deploy a tnega server that several people sign in to'],
+  ['tnega boxd [options]', 'run gVisor boxes for a server that is not root (as root)'],
 ]
 
 const CONFIG: Row = ['--config <file>', 'config file (default: ~/.tnega/config.json)']
@@ -68,6 +69,22 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       ['--device-id <id>', 'name this machine (default: from the host name)'],
       ['--browser', 'let the agent drive a browser here (its own profile, not yours)'],
       ['--computer', 'let the agent see and use the apps here; press p to pause'],
+      HELP,
+    ],
+  },
+  boxd: {
+    usage: 'tnega boxd --workspace-root <dir> --owner <user> [options]',
+    summary: 'The root helper of a gVisor box host. It alone runs runsc, ip, nft and\ncgroups; tnega server start runs as an ordinary user and reaches it through\nTNEGA_BOXD_SOCKET. It answers four requests (start, pause, stop, status).',
+    options: [
+      ['--workspace-root <dir>', 'folder whose subfolders boxes may mount; repeat for more'],
+      ['--owner <user>', 'user whose folders boxes may mount and write as; repeat for more'],
+      ['--socket <path>', 'unix socket to listen on (default /run/tnega/boxd.sock)'],
+      ['--group <name>', 'group that may connect (socket 0660); without it only root'],
+      ['--state-dir <dir>', 'box records and bundles (default /var/lib/tnega/machines)'],
+      ['--templates-dir <dir>', 'template root filesystems (default /var/lib/tnega/templates)'],
+      ['--runsc-root <dir>', 'runsc state (default /run/tnega-runsc)'],
+      ['--runsc <path>', 'the runsc binary (default runsc on PATH)'],
+      ['--platform <name>', 'systrap (default), ptrace or kvm'],
       HELP,
     ],
   },

@@ -41,6 +41,14 @@ describe('boxes from the server settings', () => {
     })
   })
 
+  it('hands gVisor boxes to boxd when TNEGA_BOXD_SOCKET names its socket', async () => {
+    const dir = await tempDir()
+    const local = await machinesSpecFromEnv({ TNEGA_MACHINE: 'gvisor', TNEGA_BOX_ADDRESS: '172.16.0.4' }, host(dir))
+    expect(local?.provider).toEqual({ kind: 'gvisor' })
+    const viaBoxd = await machinesSpecFromEnv({ TNEGA_MACHINE: 'gvisor', TNEGA_BOX_ADDRESS: '172.16.0.4', TNEGA_BOXD_SOCKET: '/run/tnega/boxd.sock' }, host(dir))
+    expect(viaBoxd?.provider).toEqual({ kind: 'gvisor', config: { socket: '/run/tnega/boxd.sock' } })
+  })
+
   it('keeps one egress CA in the server folder, readable by its owner only', async () => {
     const dir = await tempDir()
     const first = await loadEgressRoot(dir)

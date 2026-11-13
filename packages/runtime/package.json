@@ -61,6 +61,7 @@
     "@tnega/accounts": "workspace:*",
     "@tnega/accounts-pg": "workspace:*",
     "@tnega/accounts-routes": "workspace:*",
+    "@tnega/server-admin": "workspace:*",
     "@tnega/daemons": "workspace:*",
     "@tnega/daemon-gateway": "workspace:*",
     "@tnega/egress-proxy": "workspace:*",

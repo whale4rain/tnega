@@ -4189,6 +4189,12 @@ kbd {
 .people-invite { display: flex; align-items: center; gap: 6px; }
 .people-invite input { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--text-sm); }
 
+/* Settings → Server: the admin page; rows reuse the People list. */
+.server-admin { display: grid; gap: var(--space-5); }
+.server-admin-head { display: flex; align-items: flex-start; gap: var(--space-2); }
+.server-admin-head .effective-card { flex: 1; min-width: 0; }
+.server-admin-owner { flex: 1; min-width: 0; color: var(--text-3); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Settings → Secrets: one quiet row per name. */
 .secret-settings { display: grid; gap: 12px; }
 .secret-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }

@@ -2,6 +2,7 @@ import { Context, type Plugin } from '@tnega/core'
 import type { AccountService } from '@tnega/accounts'
 import { accountsPg } from '@tnega/accounts-pg'
 import { accountsRoutes } from '@tnega/accounts-routes'
+import { serverAdmin } from '@tnega/server-admin'
 import { blobsLocal } from '@tnega/blobs-local'
 import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { LOCAL_ACCOUNT_ID, ownedLocalWorkspaces, sessionStorePg } from '@tnega/session-store-pg'
@@ -99,7 +100,8 @@ export interface AccountsCapabilitySpec {
 
 /**
  * Accounts seam of a server host: the Postgres Provider of `ctx.accounts` and
- * the routes that sign people in and guard every API request. Needs
+ * the routes that sign people in and guard every API request, and the
+ * owners' and admins' `/api/admin/` routes. Needs
  * `ctx.webServer`. Local mode mounts none of it and asks nobody to sign in.
  */
 export const accountsCapability: Plugin = {
@@ -111,6 +113,8 @@ export const accountsCapability: Plugin = {
       ...(spec.trustProxy !== undefined ? { trustProxy: spec.trustProxy } : {}),
       ...(spec.secureCookie !== undefined ? { secureCookie: spec.secureCookie } : {}),
     })
+    // The admin page's API: people, devices, daemons and boxes, for owners and admins.
+    await ctx.plugin(serverAdmin)
   },
 }
 
