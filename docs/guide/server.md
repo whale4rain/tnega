@@ -210,8 +210,13 @@ TNEGA_BOXD_SOCKET=/run/tnega/boxd.sock
   never inside a workspace root), so a link swapped in after the check is not
   followed and runsc gets an ordinary folder to mount. The pin lives while the
   box lives, because a checkpoint restore needs the same path; `stop` releases
-  it. A new boxd clears pins left by a previous one, so a box paused across a
-  boxd restart starts cold instead of restoring its checkpoint.
+  it. A second `start` of a box that is still running keeps the pin it has
+  (and is refused if it names another folder). A new boxd clears pins left by
+  a previous one, so a box paused across a boxd restart starts cold instead of
+  restoring its checkpoint. A pin is removed only once it is unmounted, and
+  never recursively, so a pin that would not unmount keeps the member's files.
+- boxd bind mounts the pin root onto itself and makes it a private mount, so
+  pins do not spread into other mount namespaces; it undoes that on exit.
 - The socket's folder must belong to boxd's user (root) and be writable by
   nobody else; boxd refuses to start otherwise.
 - The socket is `0660` with the group from `--group`; without `--group` only

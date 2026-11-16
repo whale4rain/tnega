@@ -1631,6 +1631,9 @@ importers:
       '@tnega/session':
         specifier: workspace:*
         version: link:../../session
+      '@tnega/session-store':
+        specifier: workspace:*
+        version: link:../../session-store/session-store
       '@tnega/thread':
         specifier: workspace:*
         version: link:../thread
@@ -1655,6 +1658,13 @@ importers:
       '@tnega/tools':
         specifier: workspace:*
         version: link:../../tools
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@tnega/session-store-pg':
+        specifier: workspace:*
+        version: link:../../session-store/session-store-pg
 
   packages/project/http:
     dependencies:
@@ -1755,6 +1765,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
 
   packages/project/thread-local:
     dependencies:
@@ -1767,6 +1780,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/session':
+        specifier: workspace:*
+        version: link:../../session
       '@tnega/thread':
         specifier: workspace:*
         version: link:../thread

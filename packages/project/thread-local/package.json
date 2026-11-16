@@ -10,6 +10,7 @@
     "@tnega/agent": "workspace:*",
     "@tnega/blackboard": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/session": "workspace:*",
     "@tnega/thread": "workspace:*"
   }
 }

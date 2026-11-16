@@ -825,6 +825,7 @@ export async function projectHostFor(
     approvals: context.approvals,
     systemConfig: config,
     sandboxNetwork: sandboxNetworkFrom(context.configFile),
+    ...(context.projectThreadLogs ? { threadSessions: context.projectThreadLogs } : {}),
     builtinTools: {
       cwd: path,
       processes: processesFor(context, path),

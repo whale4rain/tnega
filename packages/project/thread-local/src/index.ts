@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { HUMAN_COMMUNICATION_PROMPT, type AgentHandle, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import { BlackboardError, type BlackboardService, type FactRecord } from '@tnega/blackboard'
 import type { Context } from '@tnega/core'
+import type { SessionBackend } from '@tnega/session'
 import {
   DEFAULT_THREAD_LIMITS,
   ThreadError,
@@ -83,6 +84,12 @@ export interface LocalThreadConfig {
   root: string
   /** Session directory; defaults to root. History lives at agents/<id>/session.jsonl. */
   sessionRoot?: string
+  /**
+   * Where a Thread's Session log lives instead of a file under `sessionRoot`:
+   * on a server, the session store's backend (Postgres rows), so thread logs
+   * are not files on the server's disk. The composition layer picks it.
+   */
+  sessionLog?: (threadId: string) => SessionBackend
   llm: LLMAdapter
   contextWindow?: number
   maxDepth?: number
@@ -165,7 +172,13 @@ function toData(record: ThreadRecord): Record<string, unknown> {
  * 版本一起创建出来，于是「读过一次」和「建过 Agent」看起来一模一样。身份的唯一凭据是
  * 那条 `kind: 'agent'` 的 meta 事件。
  */
-async function hasAgentMeta(file: string): Promise<boolean> {
+async function hasAgentMeta(log: string | SessionBackend): Promise<boolean> {
+  if (typeof log !== 'string') {
+    const loaded = await log.load()
+    return loaded?.events.some(event => event.type === 'meta'
+      && isRecord(event.payload) && event.payload.kind === 'agent' && typeof event.payload.agentId === 'string') ?? false
+  }
+  const file = log
   let text: string
   try {
     text = await readFile(file, 'utf8')
@@ -207,6 +220,7 @@ export class LocalThreadService extends ThreadService {
   private readonly projectId: string
   private readonly root: string
   private readonly sessionRoot: string
+  private readonly storedLog: LocalThreadConfig['sessionLog']
   private readonly llm: LLMAdapter
   private readonly contextWindow: number | undefined
   private readonly maxDepth: number
@@ -252,6 +266,7 @@ export class LocalThreadService extends ThreadService {
     this.projectId = config.projectId
     this.root = resolve(config.root)
     this.sessionRoot = resolve(config.sessionRoot ?? config.root)
+    this.storedLog = config.sessionLog
     this.llm = config.llm
     this.contextWindow = config.contextWindow
     this.permission = config.permission ?? 'read-only'
@@ -495,11 +510,11 @@ export class LocalThreadService extends ThreadService {
     await (await this.activate(threadId)).whenIdle()
   }
 
-  override sessionFile(threadId: string): string {
+  override sessionLog(threadId: string): string | SessionBackend {
     if (!ID_PATTERN.test(threadId)) {
       throw new ThreadError(`invalid thread id: ${threadId}`, 'THREAD_INVALID')
     }
-    return join(this.sessionRoot, 'agents', threadId, 'session.jsonl')
+    return this.storedLog?.(threadId) ?? join(this.sessionRoot, 'agents', threadId, 'session.jsonl')
   }
 
   async dispose(): Promise<void> {
@@ -519,7 +534,7 @@ export class LocalThreadService extends ThreadService {
     if (running) return running
     const workspace = await this.prepareWorkspace?.(record)
     if (workspace) record = await this.setWorkspace(record.id, workspace)
-    const file = this.sessionFile(record.id)
+    const file = this.sessionLog(record.id)
     const parentId = record.parentId
     const options = {
       file,

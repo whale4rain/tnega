@@ -32,6 +32,7 @@
     "@tnega/run-summary": "workspace:*",
     "@tnega/runtime": "workspace:*",
     "@tnega/session": "workspace:*",
+    "@tnega/session-store": "workspace:*",
     "@tnega/thread": "workspace:*",
     "@tnega/thread-local": "workspace:*",
     "@tnega/tool-blackboard": "workspace:*",
@@ -40,5 +41,9 @@
     "@tnega/tool-ptc": "workspace:*",
     "@tnega/tool-thread": "workspace:*",
     "@tnega/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.12",
+    "@tnega/session-store-pg": "workspace:*"
   }
 }

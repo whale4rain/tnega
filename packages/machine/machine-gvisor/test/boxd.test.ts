@@ -1,11 +1,12 @@
-import { chmod, chown, mkdir, mkdtemp, readdir, rename, rm, stat, symlink } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { chmod, chown, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join, sep } from 'node:path'
+import { basename, join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@tnega/core'
 import { MachineError, type BoxSpec, type MachineProvider, type MachineState } from '@tnega/machine'
-import { boxId, groupId, GvisorMachinesClient, machineGvisor, parseBoxSpec, startBoxd, userId, type Boxd } from '../src/index.js'
+import { boxId, groupId, GvisorMachinesClient, isMountPoint, machineGvisor, parseBoxSpec, pinHostWorkspace, startBoxd, userId, type Boxd } from '../src/index.js'
 
 /** The uid a box folder belongs to in these tests: ours, or a made-up user when the tests run as root. */
 const OWNER = (process.getuid?.() ?? 0) === 0 ? 4242 : process.getuid?.() ?? 4242
@@ -182,6 +183,80 @@ describe('boxd', () => {
     await client.stop(ref)
     expect(await stat(pin).then(() => true, () => false)).toBe(false)
     expect((await readdir(pinRoot)).length).toBe(0)
+  })
+
+  it.skipIf(!CAN_PIN)('answers a second start of a running box with the pin it already mounts', async () => {
+    const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-again-')))
+    cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
+    const folder = await ownedFolder(join(rootDir, 'again'))
+    await writeFile(join(folder, 'work.txt'), 'kept')
+    const { client, seen, pinRoot } = await serve({ workspaceRoots: [rootDir] })
+    const first = await client.start('again', spec({ hostWorkspace: folder }))
+    const pin = seen.hostWorkspace!
+    // The pool starts a box again when its daemon has not connected yet.
+    const second = await client.start('again', spec({ hostWorkspace: folder }))
+    expect(second.ref).toBe(first.ref)
+    expect(seen.hostWorkspace).toBe(pin)
+    expect(await readdir(pinRoot)).toHaveLength(1)
+    // The running box still sees its folder through the pin.
+    expect(await readFile(join(pin, 'work.txt'), 'utf8')).toBe('kept')
+    // Another folder for the same running box is refused, and the live pin stays.
+    const other = await ownedFolder(join(rootDir, 'other'))
+    await expect(client.start('again', spec({ hostWorkspace: other }))).rejects.toMatchObject({ code: 'MACHINE_INVALID', ref: first.ref })
+    expect(await readFile(join(pin, 'work.txt'), 'utf8')).toBe('kept')
+    expect(await readdir(pinRoot)).toHaveLength(1)
+  })
+
+  it.skipIf(!CAN_PIN)('pins anew when a paused box starts again, and lets go of the old pin', async () => {
+    const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-resume-')))
+    cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
+    const folder = await ownedFolder(join(rootDir, 'resume'))
+    const { client, seen, pinRoot } = await serve({ workspaceRoots: [rootDir] })
+    const { ref } = await client.start('resume', spec({ hostWorkspace: folder }))
+    const old = seen.hostWorkspace!
+    await client.pause(ref)
+    await client.start('resume', spec({ hostWorkspace: folder }))
+    expect(seen.hostWorkspace).not.toBe(old)
+    expect(await readdir(pinRoot)).toEqual([basename(seen.hostWorkspace!)])
+  })
+
+  it.skipIf(!CAN_PIN)('makes the pin root a private mount point, and undoes it on close', async () => {
+    const { boxd, pinRoot } = await serve()
+    expect(await isMountPoint(pinRoot)).toBe(true)
+    const line = (await readFile('/proc/self/mountinfo', 'utf8')).split('\n').filter(entry => entry.split(' ')[4] === pinRoot).at(-1)!
+    // Optional fields sit between the options and ' - '; a private mount has no shared: or master: tag.
+    expect(line.split(' - ')[0]).not.toMatch(/shared:|master:/)
+    await boxd.close()
+    expect(await isMountPoint(pinRoot)).toBe(false)
+  })
+
+  it.skipIf(!CAN_PIN)('never deletes what is behind a pin it could not unmount', async () => {
+    const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-keep-')))
+    cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
+    const folder = await ownedFolder(join(rootDir, 'keep'))
+    const pinRoot = join(rootDir, '..', `${basename(rootDir)}-pins`)
+    await mkdir(pinRoot, { mode: 0o700 })
+    cleanups.push(() => rm(pinRoot, { recursive: true, force: true }))
+    const pinned = await pinHostWorkspace(folder, { roots: [rootDir], owners: [OWNER] }, pinRoot)
+    // Stand-in for an unmount that does not take: the folder still has files in it.
+    await new Promise<void>((done, fail) => execFile('umount', [pinned.path], error => error ? fail(error) : done()))
+    await writeFile(join(pinned.path, 'member.txt'), 'theirs')
+    await expect(pinned.close()).rejects.toMatchObject({ code: 'SANDBOX_UNAVAILABLE' })
+    expect(await readFile(join(pinned.path, 'member.txt'), 'utf8')).toBe('theirs')
+  })
+
+  it.skipIf(!CAN_PIN)('leaves a stale pin that still holds files when it starts', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'boxd-stale-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const pinRoot = join(dir, 'pins')
+    await mkdir(join(pinRoot, 'stale'), { recursive: true, mode: 0o700 })
+    await chmod(pinRoot, 0o700)
+    await writeFile(join(pinRoot, 'stale', 'member.txt'), 'theirs')
+    await mkdir(join(pinRoot, 'empty'), { mode: 0o700 })
+    const boxd = await startBoxd({ socket: join(dir, 'run', 'boxd.sock'), machines: fakeMachines().machines, workspaceRoots: [], owners: [OWNER], pinRoot })
+    cleanups.push(() => boxd.close())
+    expect(await readFile(join(pinRoot, 'stale', 'member.txt'), 'utf8')).toBe('theirs')
+    expect((await readdir(pinRoot)).sort()).toEqual(['stale'])
   })
 
   it('refuses a pin root that overlaps a workspace root', async () => {

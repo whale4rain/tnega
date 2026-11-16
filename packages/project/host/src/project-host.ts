@@ -30,7 +30,8 @@ import { projectLoop } from '@tnega/project-loop'
 import { loopGuard } from '@tnega/loop-guard'
 import { projectLocal } from '@tnega/project-local'
 import type { ProjectRecord, ProjectsService } from '@tnega/project'
-import { SessionLog, foldUsage, type SessionEvent } from '@tnega/session'
+import { SessionLog, foldUsage, type SessionBackend, type SessionEvent } from '@tnega/session'
+import type { SessionStore } from '@tnega/session-store'
 import { RoutineRunner, registerRoutineTools } from '@tnega/project-routines'
 import { foldApprovalMode } from '@tnega/approval-review'
 
@@ -69,6 +70,18 @@ export interface ProjectHostOptions {
   maxChildren?: number
   /** Where pull requests stand now; defaults to asking the GitHub CLI. */
   pullRequestLookup?: PullRequestLookup
+  /**
+   * Keep each Thread's Session in this store (Postgres on a server) instead of
+   * a JSONL file under the tnega home. A project's threads are one store
+   * workspace of their own, {@link projectThreadWorkspace}, so they stay out of
+   * the folder's Session list.
+   */
+  threadSessions?: SessionStore
+}
+
+/** The store workspace a project's Thread Sessions live under: beside the project's artifacts in the folder. */
+export function projectThreadWorkspace(workspace: string, projectId: string): string {
+  return join(resolve(workspace), '.tnega', 'projects', projectId)
 }
 
 /** 一个打开着的 Project：它的作用域与其中的服务。 */
@@ -317,6 +330,11 @@ export class ProjectHost {
       await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
     }
     this.idleSummaries.delete(id)
+    const store = this.options.threadSessions
+    if (store) {
+      const key = projectThreadWorkspace(this.workspace, id)
+      for (const session of await store.list(key).catch(() => [])) await store.delete(key, session.id)
+    }
     await (await this.projects()).delete(id, author)
     await rm(projectSessionRoot(this.workspace, id), { recursive: true, force: true })
     await rm(join(this.workspace, '.tnega', 'projects', id), { recursive: true, force: true })
@@ -792,6 +810,7 @@ export class ProjectHost {
       projectId: record.id,
       root: directory,
       sessionRoot: projectSessionRoot(this.workspace, record.id),
+      ...(this.options.threadSessions ? { sessionLog: this.threadLog(record.id, this.options.threadSessions) } : {}),
       llm: this.options.llm,
       ...(this.options.contextWindow !== undefined
         ? { contextWindow: this.options.contextWindow }
@@ -892,6 +911,11 @@ export class ProjectHost {
     }
   }
 
+  private threadLog(projectId: string, store: SessionStore): (threadId: string) => SessionBackend {
+    const key = projectThreadWorkspace(this.workspace, projectId)
+    return threadId => store.backend(key, threadId)
+  }
+
   /**
    * 读某个 Thread 的 Session；不激活 Agent，只看已经落盘的事实。
    *
@@ -901,11 +925,11 @@ export class ProjectHost {
   private async readSession(project: OpenProject, threadId: string): Promise<SessionEvent[]> {
     const live = project.registry.get(threadId)
     if (live) return await live.session.read()
-    const file = project.threads.sessionFile(threadId)
-    if (!existsSync(file)) return []
+    const target = project.threads.sessionLog(threadId)
+    if (typeof target === 'string' && !existsSync(target)) return []
     let log: SessionLog | undefined
     try {
-      log = new SessionLog(file)
+      log = typeof target === 'string' ? new SessionLog(target) : SessionLog.readOnly(target)
       await log.init()
       return await log.read()
     } catch {

@@ -11,6 +11,13 @@ import { threadLocal } from '../src/index.js'
 import { tools } from '../../../tools/src/index.js'
 
 const directories: string[] = []
+
+/** A local Thread's log: a file, since this scope gives thread-local no store. */
+function logFile(ctx: Context, threadId: string): string {
+  const target = ctx.threads.sessionLog(threadId)
+  if (typeof target !== 'string') throw new Error('expected a session file')
+  return target
+}
 afterEach(async () => {
   // Windows 上文件可能还被后台写入占着，重试比让清理失败更诚实。
   await Promise.all(directories.splice(0).map(path => rm(path, {
@@ -72,8 +79,8 @@ it('stores and resumes Session history separately while retaining project identi
     const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Separate storage' })
     childId = child.id
     await ctx.threads.activate(child.id)
-    expect(ctx.threads.sessionFile(child.id)).toBe(join(sessionRoot, 'agents', child.id, 'session.jsonl'))
-    expect(existsSync(ctx.threads.sessionFile(child.id))).toBe(true)
+    expect(ctx.threads.sessionLog(child.id)).toBe(join(sessionRoot, 'agents', child.id, 'session.jsonl'))
+    expect(existsSync(logFile(ctx, child.id))).toBe(true)
     expect(existsSync(join(root, 'agents', child.id, 'session.jsonl'))).toBe(false)
     expect(existsSync(join(root, 'blackboard'))).toBe(true)
   } finally {
@@ -116,7 +123,7 @@ it('keeps one identity folder per thread and resumes it after a restart', async 
     expect(live.id).toBe(child.id)
     // 同一进程里同一个 Thread 只会有一个 Agent 实例。
     expect(await ctx.threads.activate(child.id)).toBe(live)
-    expect(existsSync(ctx.threads.sessionFile(child.id))).toBe(true)
+    expect(existsSync(logFile(ctx, child.id))).toBe(true)
 
     const grandchild = await ctx.threads.spawn({ parentId: child.id, goal: 'Deeper work' })
     await expect(ctx.threads.spawn({ parentId: grandchild.id, goal: 'Too deep' }))
@@ -162,7 +169,7 @@ it('refuses a fourth running child and ids that would escape the project folder'
 
     await expect(ctx.threads.activate('00000000-0000-4000-8000-000000000000'))
       .rejects.toBeInstanceOf(ThreadError)
-    expect(() => ctx.threads.sessionFile('../escape')).toThrow(ThreadError)
+    expect(() => ctx.threads.sessionLog('../escape')).toThrow(ThreadError)
   } finally {
     await ctx.fiber.dispose()
   }
@@ -176,7 +183,7 @@ it('starts a thread whose session file exists but has no agent identity yet', as
     const child = await ctx.threads.spawn({ parentId: coordinator.id, goal: 'Read-only glimpse' })
     // 读取一个还没跑过的 Session 会在磁盘上留下一个只有格式版本的 meta：`SessionLog`
     // 第一次读不存在的文件时会把它建出来。这样的文件不是 Agent 身份。
-    await writeFile(ctx.threads.sessionFile(child.id), `${JSON.stringify({
+    await writeFile(logFile(ctx, child.id), `${JSON.stringify({
       id: 'e6f0a3a2-3f4b-4e2c-9d5b-2f4b1c8a7d90',
       seq: 1,
       ts: Date.now(),

@@ -683,7 +683,7 @@ async function crashedChild(root: string, call: { name: string; interruption: 'r
   const agent = await ctx.threads.activate(child.id)
   await agent.followup({ text: 'First' })
   await agent.whenIdle()
-  const file = ctx.threads.sessionFile(child.id)
+  const file = ctx.threads.sessionLog(child.id)
   await ctx.threads.setState(child.id, 'working')
   await ctx.fiber.dispose()
   const log = new SessionLog(file)

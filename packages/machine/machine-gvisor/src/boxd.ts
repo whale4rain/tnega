@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { chmod, chown, lstat, mkdir, open, readFile, readlink, readdir, realpath, rm } from 'node:fs/promises'
+import { chmod, chown, lstat, mkdir, open, readFile, readlink, readdir, realpath, rm, rmdir } from 'node:fs/promises'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@tnega/core'
@@ -200,6 +200,9 @@ export interface PinnedFolder {
   /** A folder under the pin root that is a bind mount of the checked folder. */
   path: string
   uid: number
+  /** Device and inode of the checked folder: two pins of one folder share them. */
+  dev: number
+  ino: number
   close(): Promise<void>
 }
 
@@ -224,21 +227,57 @@ function hostMount(args: string[], what: string): Promise<void> {
   })
 }
 
+/** Undo the octal escapes `/proc/self/mountinfo` writes for spaces, tabs, newlines and backslashes. */
+function unescapeMountPath(path: string): string {
+  return path.replace(/\\([0-7]{3})/gu, (_match, code: string) => String.fromCharCode(Number.parseInt(code, 8)))
+}
+
+/** Whether `path` (a real path) is a mount point in boxd's own mount namespace. */
+export async function isMountPoint(path: string, mountinfo = '/proc/self/mountinfo'): Promise<boolean> {
+  const text = await readFile(mountinfo, 'utf8').catch(() => '')
+  // Field 5 of each line is the mount point.
+  return text.split('\n').some(line => {
+    const point = line.split(' ')[4]
+    return point !== undefined && unescapeMountPath(point) === path
+  })
+}
+
 /**
  * Make sure the pin root is boxd's own folder: real, owned by boxd's uid and
  * closed to everybody else, so a server or a member cannot plant or replace a
- * pin. Also turns the folder into a private mount point, so a bind mount here
- * does not spread to other mount namespaces.
+ * pin. As root it also turns the folder into a private mount point, bind
+ * mounting it onto itself first when it is not one yet (`--make-rprivate`
+ * only works on a mount point), so a pin does not spread to other mount
+ * namespaces. Answers whether boxd made that self mount, so close can undo it.
  */
-async function assertPinRoot(pinRoot: string): Promise<void> {
+async function assertPinRoot(pinRoot: string): Promise<boolean> {
   await mkdir(pinRoot, { recursive: true, mode: 0o700 })
   const entry = await lstat(pinRoot)
   const me = process.getuid?.() ?? 0
   if (!entry.isDirectory()) throw new Error(`${pinRoot} is not a folder; boxd keeps its pinned folders in a folder of its own`)
   if (entry.uid !== me) throw new Error(`${pinRoot} belongs to uid ${entry.uid}; boxd needs it to be its own (uid ${me})`)
   if ((entry.mode & 0o077) !== 0) throw new Error(`${pinRoot} is reachable by others; make it 0700`)
-  await hostMount(['mount', '--make-rprivate', pinRoot], `make ${pinRoot} a private mount point`).catch(() => {
-    // Private propagation is defence in depth, not a condition for pinning.
+  // Only root can pin at all; a boxd that is not root refuses every host folder at mount time.
+  if (process.platform !== 'linux' || me !== 0) return false
+  const bound = !await isMountPoint(pinRoot)
+  if (bound) await hostMount(['mount', '--bind', pinRoot, pinRoot], `make ${pinRoot} a mount point`)
+  try {
+    await hostMount(['mount', '--make-rprivate', pinRoot], `make ${pinRoot} a private mount point`)
+  } catch (error) {
+    if (bound) await hostMount(['umount', pinRoot], `unmount ${pinRoot}`).catch(() => undefined)
+    throw error
+  }
+  return bound
+}
+
+/**
+ * Remove an empty pin folder. Never recursive: if the unmount did not take,
+ * the folder still shows a member's files, and those must not be deleted.
+ */
+async function removePinFolder(path: string): Promise<void> {
+  await rmdir(path).catch((error: unknown) => {
+    if (isRecord(error) && error.code === 'ENOENT') return
+    throw error
   })
 }
 
@@ -256,7 +295,8 @@ async function clearStalePins(pinRoot: string): Promise<void> {
   for (const entry of await readdir(pinRoot).catch(() => [] as string[])) {
     const path = join(pinRoot, entry)
     await hostMount(['umount', '-R', path], `unmount stale pin ${path}`).catch(() => undefined)
-    await rm(path, { recursive: true, force: true })
+    // A pin that would not unmount stays: rmdir refuses it rather than emptying the folder behind it.
+    await removePinFolder(path).catch(() => undefined)
   }
 }
 
@@ -291,20 +331,23 @@ export async function pinHostWorkspace(path: string, policy: WorkspacePolicy, pi
     try {
       await hostMount(['mount', '--bind', `/proc/${process.pid}/fd/${handle.fd}`, pin], `pin host folder ${path}`)
     } catch (error) {
-      await rm(pin, { recursive: true, force: true })
+      await removePinFolder(pin).catch(() => undefined)
       throw error
     }
     const pinned = pin
     return {
       path: pinned,
       uid: entry.uid,
+      dev: entry.dev,
+      ino: entry.ino,
       close: async () => {
         try {
           await hostMount(['umount', '-R', pinned], `unmount pin ${pinned}`)
         } finally {
-          await rm(pinned, { recursive: true, force: true })
           await handle.close()
         }
+        // Only once the unmount took: an empty folder of boxd's own is all that is left.
+        await removePinFolder(pinned)
       },
     }
   } catch (error) {
@@ -342,27 +385,82 @@ function errorAnswer(error: unknown): Answer {
   return { error: { code: 'MACHINE_FAILED', message: error instanceof Error ? error.message : String(error) } }
 }
 
-async function answer(options: BoxdOptions, policy: WorkspacePolicy, pins: Map<string, PinnedFolder>, pinRoot: string, method: unknown, params: unknown): Promise<Answer> {
+/** A pin a box mounts, by the box's ref, with the key it was started under. */
+interface LivePin {
+  key: string
+  pinned: PinnedFolder
+}
+
+/** boxd's state between requests. */
+interface BoxdState {
+  options: BoxdOptions
+  policy: WorkspacePolicy
+  pinRoot: string
+  pins: Map<string, LivePin>
+  /** The start under way for each key: starts of one box run one after another. */
+  starting: Map<string, Promise<unknown>>
+}
+
+/** Run starts of one key one after another, so two of them never pin and unpin across each other. */
+async function serially<T>(state: BoxdState, key: string, run: () => Promise<T>): Promise<T> {
+  const previous = state.starting.get(key) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(run)
+  state.starting.set(key, next)
+  try {
+    return await next
+  } finally {
+    if (state.starting.get(key) === next) state.starting.delete(key)
+  }
+}
+
+async function startWithPin(state: BoxdState, key: string, spec: BoxSpec, hostWorkspace: string): Promise<MachineRef> {
+  const { options, pins } = state
+  // The box gets the folder that was checked, pinned under boxd's root, never the name again.
+  const pinned = await pinHostWorkspace(hostWorkspace, state.policy, state.pinRoot)
+  const current = [...pins.entries()].find(([, live]) => live.key === key)
+  if (current && await options.machines.status(current[0]) === 'running') {
+    // A running box already mounts its pin; the Provider answers a second start
+    // with the same box, so the new pin is not needed and the old one must stay.
+    await pinned.close()
+    const [, live] = current
+    if (live.pinned.dev !== pinned.dev || live.pinned.ino !== pinned.ino) {
+      throw new MachineError(`box ${current[0]} already runs on another host folder; stop it before starting it on ${hostWorkspace}`, 'MACHINE_INVALID', { ref: current[0] })
+    }
+    return options.machines.start(key, { ...spec, hostWorkspace: live.pinned.path })
+  }
+  let ref: MachineRef
+  try {
+    ref = await options.machines.start(key, { ...spec, hostWorkspace: pinned.path })
+  } catch (error) {
+    await pinned.close()
+    throw error
+  }
+  // Keep the pin while the box lives: a checkpoint restores its mounts by this path.
+  const previous = pins.get(ref.ref)
+  pins.set(ref.ref, { key, pinned })
+  if (previous) await previous.pinned.close()
+  return ref
+}
+
+async function releasePin(state: BoxdState, ref: string): Promise<void> {
+  const live = state.pins.get(ref)
+  if (!live) return
+  state.pins.delete(ref)
+  await live.pinned.close()
+}
+
+async function answer(state: BoxdState, method: unknown, params: unknown): Promise<Answer> {
+  const { options } = state
   try {
     const fields = isRecord(params) ? params : invalid('params must be an object')
     switch (method) {
       case 'start': {
         const key = assertBoxKey(fields.key)
         const spec = parseBoxSpec(fields.spec)
-        if (spec.hostWorkspace === undefined) return { result: { ref: (await options.machines.start(key, spec)).ref } }
-        // The box gets the folder that was checked, pinned under boxd's root, never the name again.
-        const pinned = await pinHostWorkspace(spec.hostWorkspace, policy, pinRoot)
-        let ref: MachineRef
-        try {
-          ref = await options.machines.start(key, { ...spec, hostWorkspace: pinned.path })
-        } catch (error) {
-          await pinned.close()
-          throw error
-        }
-        // Keep the pin while the box lives: a checkpoint restores its mounts by this path.
-        const previous = pins.get(ref.ref)
-        pins.set(ref.ref, pinned)
-        if (previous) await previous.close()
+        const { hostWorkspace } = spec
+        const ref = await serially(state, key, () => hostWorkspace === undefined
+          ? options.machines.start(key, spec)
+          : startWithPin(state, key, spec, hostWorkspace))
         return { result: { ref: ref.ref } }
       }
       case 'pause':
@@ -371,24 +469,14 @@ async function answer(options: BoxdOptions, policy: WorkspacePolicy, pins: Map<s
       case 'stop': {
         const ref = assertBoxRef(fields.ref)
         await options.machines.stop(ref)
-        const pinned = pins.get(ref)
-        if (pinned) {
-          pins.delete(ref)
-          await pinned.close()
-        }
+        await releasePin(state, ref)
         return { result: {} }
       }
       case 'status': {
         const ref = assertBoxRef(fields.ref)
-        const state = await options.machines.status(ref)
-        if (state === 'missing') {
-          const pinned = pins.get(ref)
-          if (pinned) {
-            pins.delete(ref)
-            await pinned.close()
-          }
-        }
-        return { result: { state } }
+        const machineState = await options.machines.status(ref)
+        if (machineState === 'missing') await releasePin(state, ref)
+        return { result: { state: machineState } }
       }
       default:
         return invalid(`unknown method; boxd answers ${BOXD_METHODS.join(', ')}`)
@@ -459,11 +547,11 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
       throw new Error(`the pin root ${pinRoot} may not overlap workspace root ${root}`)
     }
   }
-  const pins = new Map<string, PinnedFolder>()
   await assertSocketFolder(dirname(socketPath))
   await removeStaleSocket(socketPath)
-  await assertPinRoot(pinRoot)
+  const boundPinRoot = await assertPinRoot(pinRoot)
   await clearStalePins(pinRoot)
+  const state: BoxdState = { options, policy, pinRoot, pins: new Map(), starting: new Map() }
   const connections = new Set<Socket>()
   const server: Server = createServer(socket => {
     connections.add(socket)
@@ -474,7 +562,7 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
       try { request = JSON.parse(line) } catch { request = undefined }
       const id = isRecord(request) && (typeof request.id === 'number' || typeof request.id === 'string') ? request.id : null
       const pending = isRecord(request)
-        ? answer(options, policy, pins, pinRoot, request.method, request.params)
+        ? answer(state, request.method, request.params)
         : Promise.resolve(errorAnswer(new MachineError('a request is one JSON object per line', 'MACHINE_INVALID')))
       void pending.then(reply => {
         if (!socket.destroyed) socket.write(`${JSON.stringify({ id, ...reply })}\n`)
@@ -504,8 +592,10 @@ export async function startBoxd(options: BoxdOptions): Promise<Boxd> {
       for (const socket of connections) socket.destroy()
       await new Promise<void>(done => server.close(() => done()))
       await rm(socketPath, { force: true })
-      for (const pinned of pins.values()) await pinned.close().catch(() => undefined)
-      pins.clear()
+      for (const live of state.pins.values()) await live.pinned.close().catch(() => undefined)
+      state.pins.clear()
+      // The self mount that made the pin root private goes with boxd; a restart makes it again.
+      if (boundPinRoot) await hostMount(['umount', pinRoot], `unmount ${pinRoot}`).catch(() => undefined)
     },
   }
 }
