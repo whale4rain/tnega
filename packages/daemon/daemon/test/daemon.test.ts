@@ -46,7 +46,23 @@ describe('workspace binding', () => {
     await expect(link.call('fs/stat', { workspaceId: 'ws_other', path: 'a' })).rejects.toMatchObject({ rpcCode: RpcErrorCode.WORKSPACE_DENIED })
     const ctx = new Context()
     await ctx.plugin(fsRemote, { link })
-    expect(() => ctx.get('fs').workspace(join(dir, 'elsewhere'))).toThrow(/does not serve/)
+    expect(() => ctx.get('fs').workspace(`${dir}-elsewhere`)).toThrow(/does not serve/)
+  })
+
+  it('opens a folder inside an announced workspace, with relative paths from that folder', async () => {
+    const dir = await tempDir('tnega-daemon-')
+    const { link } = await open(dir)
+    const ctx = new Context()
+    await ctx.plugin(fsRemote, { link })
+    // A Project thread's worktree inside its box's workspace.
+    const inner = ctx.get('fs').workspace(join(dir, 'worktrees', 't1'))
+    expect(inner.root).toBe(join(dir, 'worktrees', 't1'))
+    await inner.mkdir('.')
+    await inner.writeFile('notes.txt', 'hi')
+    expect(await readFile(join(dir, 'worktrees', 't1', 'notes.txt'), 'utf8')).toBe('hi')
+    expect(new TextDecoder().decode(await inner.readFile('notes.txt'))).toBe('hi')
+    // The daemon still fences the whole workspace, not more.
+    await expect(inner.readFile(join(dir, '..', 'x.txt'))).rejects.toThrow()
   })
 
   it('fences files and command folders inside the workspace', async () => {

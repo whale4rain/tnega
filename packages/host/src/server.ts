@@ -114,7 +114,25 @@ function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerCont
         const accountId = await accountOf()
         if (!accountId) return undefined
         const link = await pool.leasedLink({ accountId, workspace, scope: `thread:${thread.id}` })
-        return { machine: boxLinkMachine(link, workspace), cwd: BOX_WORKSPACE, close: () => link.close() }
+        const workspaceId = link.workspaces.find(entry => entry.path === BOX_WORKSPACE)?.id ?? link.workspaces[0]?.id
+        if (!workspaceId) {
+          link.close()
+          throw new Error(`the box for thread ${thread.id} serves no workspace`)
+        }
+        return {
+          machine: boxLinkMachine(link, workspace),
+          cwd: BOX_WORKSPACE,
+          close: () => link.close(),
+          // git and gh for the thread's branch run in its box: the box is the sandbox, keys come from the egress proxy.
+          run: async (command, args, cwd, signal) => {
+            const result = await link.call('process/run', {
+              workspaceId, cwd, argv: [command, ...args], timeoutMs: 120_000,
+              sandbox: { mode: 'bypass', sessionId: thread.id },
+            }, signal ? { signal } : {})
+            if (result.exitCode !== 0) throw new Error(`${command} ${args[0] ?? ''} failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim()}`)
+            return result.stdout.trim()
+          },
+        }
       },
       forget: async threadIds => {
         const accountId = await accountOf()

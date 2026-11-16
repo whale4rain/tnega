@@ -33,11 +33,26 @@ async function rethrow<T>(run: () => Promise<T>): Promise<T> {
  */
 export class RemoteWorkspaceFs implements WorkspaceFs {
   private real: Promise<string> | undefined
+  private readonly base: string
 
-  constructor(private readonly link: DaemonLink, private readonly workspace: DaemonWorkspace) {}
+  /**
+   * `root` may be a folder inside the announced workspace (a Project thread's
+   * worktree in its box): relative paths start there, and the daemon still
+   * fences the whole workspace.
+   */
+  constructor(private readonly link: DaemonLink, private readonly workspace: DaemonWorkspace, root?: string) {
+    this.base = root ?? workspace.path
+  }
 
   get root(): string {
-    return this.workspace.path
+    return this.base
+  }
+
+  /** A path as the daemon reads it: relative paths against this root, in the daemon's own form. */
+  private at(path: string): string {
+    if (this.base === this.workspace.path) return path
+    const paths = this.link.capabilities.platform === 'win32' ? win32 : posix
+    return paths.isAbsolute(path) ? path : paths.join(this.base, path)
   }
 
   private get id(): string {
@@ -45,20 +60,22 @@ export class RemoteWorkspaceFs implements WorkspaceFs {
   }
 
   async realRoot(): Promise<string> {
-    this.real ??= this.link.call('fs/realRoot', { workspaceId: this.id })
+    this.real ??= this.base === this.workspace.path
+      ? this.link.call('fs/realRoot', { workspaceId: this.id })
+      : rethrow(() => this.link.call('fs/resolve', { workspaceId: this.id, path: this.base }))
     return await this.real
   }
 
   async resolve(path: string): Promise<string> {
-    return await rethrow(() => this.link.call('fs/resolve', { workspaceId: this.id, path }))
+    return await rethrow(() => this.link.call('fs/resolve', { workspaceId: this.id, path: this.at(path) }))
   }
 
   async stat(path: string): Promise<FsStat | undefined> {
-    return await rethrow(async () => await this.link.call('fs/stat', { workspaceId: this.id, path }) ?? undefined)
+    return await rethrow(async () => await this.link.call('fs/stat', { workspaceId: this.id, path: this.at(path) }) ?? undefined)
   }
 
   async readFile(path: string, range?: FsRange): Promise<Uint8Array> {
-    const data = await rethrow(() => this.link.call('fs/read', { workspaceId: this.id, path, ...(range ? { start: range.start, end: range.end } : {}) }))
+    const data = await rethrow(() => this.link.call('fs/read', { workspaceId: this.id, path: this.at(path), ...(range ? { start: range.start, end: range.end } : {}) }))
     return decodeBytes(data)
   }
 
@@ -66,26 +83,26 @@ export class RemoteWorkspaceFs implements WorkspaceFs {
     const bytes = typeof data === 'string' ? Buffer.from(data, 'utf8') : data
     await rethrow(() => this.link.call('fs/write', {
       workspaceId: this.id,
-      path,
+      path: this.at(path),
       data: encodeBytes(bytes),
       ...(options.mode ? { mode: options.mode } : {}),
     }, options.signal ? { signal: options.signal } : {}))
   }
 
   async list(path: string): Promise<FsEntry[]> {
-    return await rethrow(() => this.link.call('fs/list', { workspaceId: this.id, path }))
+    return await rethrow(() => this.link.call('fs/list', { workspaceId: this.id, path: this.at(path) }))
   }
 
   async mkdir(path: string): Promise<void> {
-    await rethrow(() => this.link.call('fs/mkdir', { workspaceId: this.id, path }))
+    await rethrow(() => this.link.call('fs/mkdir', { workspaceId: this.id, path: this.at(path) }))
   }
 
   async remove(path: string, options: { recursive?: boolean } = {}): Promise<void> {
-    await rethrow(() => this.link.call('fs/remove', { workspaceId: this.id, path, ...(options.recursive ? { recursive: true } : {}) }))
+    await rethrow(() => this.link.call('fs/remove', { workspaceId: this.id, path: this.at(path), ...(options.recursive ? { recursive: true } : {}) }))
   }
 
   async rename(from: string, to: string): Promise<void> {
-    await rethrow(() => this.link.call('fs/rename', { workspaceId: this.id, from, to }))
+    await rethrow(() => this.link.call('fs/rename', { workspaceId: this.id, from: this.at(from), to: this.at(to) }))
   }
 }
 
@@ -101,7 +118,13 @@ export function announcedWorkspace(link: DaemonLink, root: string): DaemonWorksp
     ? win32.normalize(path).replace(/[\\/]+$/u, '').toLowerCase()
     : posix.normalize(path).replace(/\/+$/u, '')
   const wanted = key(root)
+  const separator = windows ? '\\' : '/'
+  // The folder itself, or a folder inside it (a Project thread's worktree in its box).
   const found = link.workspaces.find(item => item.path === root || key(item.path) === wanted)
+    ?? link.workspaces.find(item => {
+      const base = key(item.path)
+      return wanted.startsWith(base.endsWith(separator) ? base : `${base}${separator}`)
+    })
   if (!found) throw new RemoteError(`daemon ${link.deviceId} does not serve ${root}`, -32002, { name: 'WorkspaceDeniedError', code: 'WORKSPACE_DENIED' })
   return found
 }
@@ -117,7 +140,8 @@ export class RemoteFs extends FsService {
   }
 
   override workspace(root: string): WorkspaceFs {
-    return new RemoteWorkspaceFs(this.link, announcedWorkspace(this.link, root))
+    const announced = announcedWorkspace(this.link, root)
+    return new RemoteWorkspaceFs(this.link, announced, root === announced.path ? undefined : root)
   }
 }
 
