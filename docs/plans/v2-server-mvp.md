@@ -345,6 +345,13 @@ files and commands, so the server tracks two lifecycles separately.
 - **Limits**: a headless turn has a wall-time cap (default 60 minutes) and a
   routine run a token budget; the loop guard and continuation nudge apply;
   nothing that asks is auto-approved.
+  Built in M4: `ProjectHost.unattended` (`turnMs`, `routineTokens`, default
+  400,000 per turn), set on a server with sign-in. A stopped turn ends as
+  aborted and the thread reports itself `blocked` to its parent with the
+  reason. Each Project thread of a member's folder gets its own box
+  (`machine.scope = thread:<id>`) through a link that holds a lease only while
+  calls run, so the box pauses while the thread waits and resumes on its next
+  call; the coordinator stays on the host.
 - **Crashes**: a lost daemon ends its calls as interrupted (§4.3); a server
   restart reloads runs from the log and `findInterruptedTurn` decides whether a
   turn resumes; paused boxes are untouched.

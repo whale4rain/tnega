@@ -1,4 +1,4 @@
-import { accountsCapability, boxMachine, controlCapability, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
+import { accountsCapability, BOX_WORKSPACE, boxLinkMachine, boxMachine, controlCapability, memberLoginOf, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
 import { projectRoutineWakes } from '@tnega/project-host'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
@@ -97,6 +97,34 @@ export interface WebServerOptions {
   pluginDev?: string | boolean
 }
 
+/**
+ * Project threads in boxes: each thread of a member's project gets its own
+ * box in that member's account, reached through a link that holds a lease
+ * only while calls run, so the box pauses while the thread waits.
+ */
+function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerContext['projectThreadMachines']> {
+  const pool = root.get('machinePool')
+  const accounts = root.get('accounts')
+  return workspace => {
+    const login = memberLoginOf(membersRoot, workspace)
+    if (!login) return undefined
+    const accountOf = async (): Promise<string | undefined> => (await accounts.findAccount(login))?.id
+    return {
+      open: async thread => {
+        const accountId = await accountOf()
+        if (!accountId) return undefined
+        const link = await pool.leasedLink({ accountId, workspace, scope: `thread:${thread.id}` })
+        return { machine: boxLinkMachine(link, workspace), cwd: BOX_WORKSPACE, close: () => link.close() }
+      },
+      forget: async threadIds => {
+        const accountId = await accountOf()
+        if (!accountId) return
+        for (const id of threadIds) await pool.stopScope({ accountId, workspace, scope: `thread:${id}` })
+      },
+    }
+  }
+}
+
 /** Runs in boxes: a lease on the person's box for the workspace, ended when the run ends. */
 function boxRuns(root: Context): NonNullable<ServerContext['machineFor']> {
   const pool = root.get('machinePool')
@@ -187,6 +215,9 @@ export async function startWebServer(
     // A member's folder: the sandbox stays on, whatever the Session asks for.
     ...(options.accounts ? { sandboxRequired: insideFolder(options.accounts.membersRoot) } : {}),
     ...(options.machines ? { machineFor: boxRuns(root) } : {}),
+    ...(options.machines && options.accounts ? { projectThreadMachines: threadBoxes(root, options.accounts.membersRoot) } : {}),
+    // Nobody watches a server's Project threads and routines: their turns have limits.
+    ...(options.accounts ? { unattended: {} } : {}),
     ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),

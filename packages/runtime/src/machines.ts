@@ -9,7 +9,10 @@ import { createRootCertificate, type KeyPairPem } from '@tnega/egress-proxy'
 import { machineE2B, type E2BMachineConfig } from '@tnega/machine-e2b'
 import { machineGvisor, type GvisorMachineConfig } from '@tnega/machine-gvisor'
 import { machinePool, type MachineLease, type MachinePoolConfig } from '@tnega/machine-pool'
+import type { DaemonLink } from '@tnega/daemon-protocol'
 import type { MachineSpec } from './compose.js'
+
+export { BOX_WORKSPACE } from '@tnega/machine-pool'
 
 /**
  * Boxes on a server (v2 milestone 3): where each person's runs work. The
@@ -58,7 +61,12 @@ export const machinesCapability: Plugin = {
 
 /** The `MachineSpec` a run in a box gets: its daemon's link, and no secret values in the box. */
 export function boxMachine(lease: MachineLease, hostWorkspace: string): MachineSpec {
-  return { link: lease.link, secrets: { withholdOthers: true }, hostWorkspace, isolated: true }
+  return boxLinkMachine(lease.link, hostWorkspace)
+}
+
+/** A box reached through any link to its daemon (a Project thread's leased link). */
+export function boxLinkMachine(link: DaemonLink, hostWorkspace: string): MachineSpec {
+  return { link, secrets: { withholdOthers: true }, hostWorkspace, isolated: true }
 }
 
 /** This host's first private IPv4 address: where its boxes reach it. */
