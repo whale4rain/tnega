@@ -26,6 +26,7 @@ export {
   BOXD_METHODS,
   DEFAULT_PIN_ROOT,
   groupId,
+  isMountPoint,
   GvisorMachinesClient,
   MAX_KEY_LENGTH,
   parseBoxSpec,
